@@ -27,11 +27,15 @@ type OrchestratorRun struct {
 
 type OrchestratorRunUpdate struct {
 	Status           *string
+	ExpectedStatus   *string
+	ExpectedOwner    *string
 	Goal             *string
 	GoalContract     map[string]any
 	RolePlanSnapshot map[string]any
 	Meta             map[string]any
 }
+
+var ErrOrchestratorRunConflict = errors.New("orchestrator run conflict")
 
 func (r OrchestratorRun) GoalContract() map[string]any {
 	return decodeMeta(r.GoalContractJSON)
@@ -244,19 +248,48 @@ func (d *DB) UpdateOrchestratorRun(ctx context.Context, teamID, orchestratorRunI
 		}
 		push("meta=$"+strconv.Itoa(len(args)+1)+"::jsonb", string(b))
 	}
+	expectedStatus := ""
+	expectedStatusSet := false
+	if update.ExpectedStatus != nil {
+		expectedStatusSet = true
+		expectedStatus = strings.TrimSpace(*update.ExpectedStatus)
+		if expectedStatus == "" {
+			return nil, errors.New("missing expected_status")
+		}
+	}
+	expectedOwner := ""
+	expectedOwnerSet := false
+	if update.ExpectedOwner != nil {
+		expectedOwnerSet = true
+		expectedOwner = strings.TrimSpace(*update.ExpectedOwner)
+	}
 	if len(sets) == 0 {
 		return nil, errors.New("no updates")
 	}
 	sets = append(sets, "updated_at=NOW()")
 	args = append(args, teamID, orchestratorRunID)
-	query := "UPDATE broker_orchestrator_runs SET " + strings.Join(sets, ", ") + " WHERE team_id=$" + strconv.Itoa(len(args)-1) + " AND orchestrator_run_id=$" + strconv.Itoa(len(args))
-	if _, err := d.Pool.Exec(ctx, query, args...); err != nil {
+	query := "UPDATE broker_orchestrator_runs SET " + strings.Join(sets, ", ") +
+		" WHERE team_id=$" + strconv.Itoa(len(args)-1) +
+		" AND orchestrator_run_id=$" + strconv.Itoa(len(args))
+	if expectedStatusSet {
+		args = append(args, expectedStatus)
+		query += " AND status=$" + strconv.Itoa(len(args))
+	}
+	if expectedOwnerSet {
+		args = append(args, expectedOwner)
+		query += " AND COALESCE(meta->>'orchestrator_owner','')=$" + strconv.Itoa(len(args))
+	}
+	tag, err := d.Pool.Exec(ctx, query, args...)
+	if err != nil {
 		return nil, err
+	}
+	if (expectedStatusSet || expectedOwnerSet) && tag.RowsAffected() == 0 {
+		return nil, ErrOrchestratorRunConflict
 	}
 	return d.GetOrchestratorRun(ctx, teamID, orchestratorRunID)
 }
 
-func (d *DB) UpdateOrchestratorRunHeartbeat(ctx context.Context, teamID, orchestratorRunID string, status *string) (*OrchestratorRun, error) {
+func (d *DB) UpdateOrchestratorRunHeartbeat(ctx context.Context, teamID, orchestratorRunID string, status *string, expectedOwner *string, expectedStatus *string) (*OrchestratorRun, error) {
 	if d == nil || d.Pool == nil {
 		return nil, errors.New("db not open")
 	}
@@ -275,10 +308,39 @@ func (d *DB) UpdateOrchestratorRunHeartbeat(ctx context.Context, teamID, orchest
 		args = append(args, statusTrim)
 		sets = append(sets, "status=$"+strconv.Itoa(len(args)))
 	}
+	expectedOwnerTrim := ""
+	expectedOwnerSet := false
+	if expectedOwner != nil {
+		expectedOwnerSet = true
+		expectedOwnerTrim = strings.TrimSpace(*expectedOwner)
+	}
+	expectedStatusTrim := ""
+	expectedStatusSet := false
+	if expectedStatus != nil {
+		expectedStatusSet = true
+		expectedStatusTrim = strings.TrimSpace(*expectedStatus)
+		if expectedStatusTrim == "" {
+			return nil, errors.New("missing expected_status")
+		}
+	}
 	args = append(args, teamID, orchestratorRunID)
-	query := "UPDATE broker_orchestrator_runs SET " + strings.Join(sets, ", ") + " WHERE team_id=$" + strconv.Itoa(len(args)-1) + " AND orchestrator_run_id=$" + strconv.Itoa(len(args))
-	if _, err := d.Pool.Exec(ctx, query, args...); err != nil {
+	query := "UPDATE broker_orchestrator_runs SET " + strings.Join(sets, ", ") +
+		" WHERE team_id=$" + strconv.Itoa(len(args)-1) +
+		" AND orchestrator_run_id=$" + strconv.Itoa(len(args))
+	if expectedStatusSet {
+		args = append(args, expectedStatusTrim)
+		query += " AND status=$" + strconv.Itoa(len(args))
+	}
+	if expectedOwnerSet {
+		args = append(args, expectedOwnerTrim)
+		query += " AND COALESCE(meta->>'orchestrator_owner','')=$" + strconv.Itoa(len(args))
+	}
+	tag, err := d.Pool.Exec(ctx, query, args...)
+	if err != nil {
 		return nil, err
+	}
+	if (expectedStatusSet || expectedOwnerSet) && tag.RowsAffected() == 0 {
+		return nil, ErrOrchestratorRunConflict
 	}
 	return d.GetOrchestratorRun(ctx, teamID, orchestratorRunID)
 }

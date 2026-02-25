@@ -1196,6 +1196,8 @@
           application/json:
             schema:
               $ref: "#/components/schemas/OrchestratorRunResponse"
+      "409":
+        description: Orchestrator run conflict
 
 /v1/teams/{team_id}/orchestrator/runs/{orchestrator_run_id}/heartbeat:
   post:
@@ -1223,6 +1225,8 @@
           application/json:
             schema:
               $ref: "#/components/schemas/OrchestratorRunResponse"
+      "409":
+        description: Orchestrator run conflict
 
 /v1/teams/{team_id}/orchestrator/spawn_requests:
   get:

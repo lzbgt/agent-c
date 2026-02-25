@@ -222,6 +222,37 @@ if [[ -z "${RUN_ID}" ]]; then
   exit 1
 fi
 
+CLAIM_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    -H "Content-Type: application/json" \
+    -d '{"meta":{"orchestrator_owner":"orch_smoke"},"expected_owner":""}' \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/orchestrator/runs/${RUN_ID}"
+)"
+CLAIM_OK="$(python3 - <<PY
+import json
+obj = json.loads(r'''${CLAIM_JSON}''')
+print("1" if obj.get("ok") else "0")
+PY
+)"
+if [[ "${CLAIM_OK}" != "1" ]]; then
+  echo "failed to claim orchestrator run owner: ${CLAIM_JSON}" >&2
+  exit 1
+fi
+
+CONFLICT_CODE="$(
+  curl -sS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    -H "Content-Type: application/json" \
+    -o /dev/null -w "%{http_code}" \
+    -d '{"meta":{"orchestrator_owner":"orch_bad"},"expected_owner":"other"}' \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/orchestrator/runs/${RUN_ID}"
+)"
+if [[ "${CONFLICT_CODE}" != "409" ]]; then
+  echo "expected 409 for wrong expected_owner, got ${CONFLICT_CODE}" >&2
+  exit 1
+fi
+
 GET_JSON="$(
   curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
     -H "Authorization: Bearer ${OIDC_JWT}" \

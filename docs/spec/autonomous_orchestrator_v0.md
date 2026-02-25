@@ -79,7 +79,8 @@ Future (v1+):
 
 7) **Durable orchestration state**
    - Orchestrator runs are persisted (DB + CRUD).
-   - Lease/heartbeat endpoint exists; still need automated lease supervision.
+   - Lease/heartbeat endpoint exists; ownership claim guards prevent split-brain.
+   - Automated lease supervision still needed (stale detection + takeover policy).
 
 8) **Event replay + UI rehydration**
    - Replay API exists; Broker console + team console rehydrate on refresh.
@@ -110,6 +111,8 @@ Minimal responsibilities:
 1) **Lease heartbeat**
    - Refresh `/v1/teams/{team_id}/orchestrator/runs/{run_id}/heartbeat` for active runs.
    - If status is `planned`, the loop may advance it to `running`.
+   - Claim ownership when `meta.orchestrator_owner` is empty (`expected_owner=""`).
+   - Heartbeats and updates include `expected_owner` to avoid conflicting writers.
 
 2) **Team run dispatch**
    - If `meta.active_team_run_id` is missing, create a team run using the
@@ -137,7 +140,7 @@ Minimal responsibilities:
 These optional fields live in `orchestrator_run.meta` and drive the loop behavior:
 
 ```
-meta:
+  meta:
   autonomous: true|false              # default true
   team_mode: "async"|"sync"           # default async
   auto_allocate_roles: true|false     # default true
@@ -152,6 +155,8 @@ meta:
   team_overrides: { ... }             # optional TeamRunRequest.team overrides
 
   # loop-maintained fields
+  orchestrator_owner: string
+  orchestrator_owner_claimed_unix_ms: integer
   active_team_run_id: string
   team_run_history: [{team_run_id, status, updated_unix_ms}]
   spawn_requests: { role: [spawn_request_id, ...] }

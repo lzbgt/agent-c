@@ -128,6 +128,18 @@ func (e *httpError) Error() string {
 	return fmt.Sprintf("http %d: %s", e.Status, e.Body)
 }
 
+func isHTTPStatus(err error, code int) bool {
+	var httpErr *httpError
+	if errors.As(err, &httpErr) {
+		return httpErr.Status == code
+	}
+	return false
+}
+
+func stringPtr(v string) *string {
+	return &v
+}
+
 func main() {
 	cfg := parseFlags()
 	if err := cfg.validate(); err != nil {
@@ -249,6 +261,21 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 	if _, ok := meta["orchestrator_id"]; !ok {
 		meta["orchestrator_id"] = cfg.orchestratorID
 	}
+	owner := strings.TrimSpace(asString(meta["orchestrator_owner"]))
+	if owner != "" && owner != cfg.orchestratorID {
+		return nil
+	}
+	if owner == "" {
+		meta["orchestrator_owner"] = cfg.orchestratorID
+		meta["orchestrator_owner_claimed_unix_ms"] = time.Now().UTC().UnixMilli()
+		if _, err := updateOrchestratorRun(ctx, client, cfg, teamID, run.OrchestratorRunID, "", meta, stringPtr(""), nil); err != nil {
+			if isHTTPStatus(err, http.StatusConflict) {
+				return nil
+			}
+			return err
+		}
+		owner = cfg.orchestratorID
+	}
 
 	if status != "done" && status != "error" {
 		hbStatus := status
@@ -256,7 +283,7 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 			hbStatus = "running"
 		}
 		if hbStatus != "" {
-			if hb, err := heartbeatRun(ctx, client, cfg, teamID, run.OrchestratorRunID, hbStatus); err == nil {
+			if hb, err := heartbeatRun(ctx, client, cfg, teamID, run.OrchestratorRunID, hbStatus, stringPtr(owner), nil); err == nil {
 				if hb.Run.OrchestratorRunID != "" {
 					run = hb.Run
 					status = strings.ToLower(strings.TrimSpace(run.Status))
@@ -264,8 +291,12 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 					if _, ok := meta["orchestrator_id"]; !ok {
 						meta["orchestrator_id"] = cfg.orchestratorID
 					}
+					owner = strings.TrimSpace(asString(meta["orchestrator_owner"]))
 				}
 			} else {
+				if isHTTPStatus(err, http.StatusConflict) {
+					return nil
+				}
 				fmt.Fprintf(os.Stderr, "heartbeat %s failed: %v\n", run.OrchestratorRunID, err)
 			}
 		}
@@ -293,7 +324,7 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 					nextStatus = "error"
 				}
 			}
-			_, err := updateOrchestratorRun(ctx, client, cfg, teamID, run.OrchestratorRunID, nextStatus, meta)
+			_, err := updateOrchestratorRun(ctx, client, cfg, teamID, run.OrchestratorRunID, nextStatus, meta, stringPtr(owner), nil)
 			return err
 		}
 		metaChanged := false
@@ -305,12 +336,12 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 			metaChanged = true
 		}
 		if shouldSpawnMissingRoles(meta) {
-			if err := ensureSpawnRequests(ctx, client, cfg, teamID, run.OrchestratorRunID, meta, asStringSlice(tr.AutoAllocateMissing)); err == nil {
+			if err := ensureSpawnRequests(ctx, client, cfg, teamID, run.OrchestratorRunID, meta, asStringSlice(tr.AutoAllocateMissing), owner); err == nil {
 				metaChanged = true
 			}
 		}
 		if metaChanged {
-			_, _ = updateOrchestratorRun(ctx, client, cfg, teamID, run.OrchestratorRunID, "", meta)
+			_, _ = updateOrchestratorRun(ctx, client, cfg, teamID, run.OrchestratorRunID, "", meta, stringPtr(owner), nil)
 		}
 		return nil
 	}
@@ -325,7 +356,7 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 		if isNoEligibleMembers(err) {
 			roles := collectRolesFromPlan(run, meta)
 			if len(roles) > 0 && shouldSpawnMissingRoles(meta) {
-				_ = ensureSpawnRequests(ctx, client, cfg, teamID, run.OrchestratorRunID, meta, roles)
+				_ = ensureSpawnRequests(ctx, client, cfg, teamID, run.OrchestratorRunID, meta, roles, owner)
 			}
 			return nil
 		}
@@ -337,12 +368,12 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 	}
 	meta["active_team_run_id"] = activeRunID
 	meta["last_team_run_status"] = created.Status
-	if _, err := updateOrchestratorRun(ctx, client, cfg, teamID, run.OrchestratorRunID, "", meta); err != nil {
+	if _, err := updateOrchestratorRun(ctx, client, cfg, teamID, run.OrchestratorRunID, "", meta, stringPtr(owner), nil); err != nil {
 		return err
 	}
 	tr, err := fetchTeamRunStatus(ctx, client, cfg, teamID, activeRunID)
 	if err == nil && shouldSpawnMissingRoles(meta) {
-		_ = ensureSpawnRequests(ctx, client, cfg, teamID, run.OrchestratorRunID, meta, asStringSlice(tr.AutoAllocateMissing))
+		_ = ensureSpawnRequests(ctx, client, cfg, teamID, run.OrchestratorRunID, meta, asStringSlice(tr.AutoAllocateMissing), owner)
 	}
 	return nil
 }
@@ -657,7 +688,7 @@ func shouldSpawnMissingRoles(meta map[string]any) bool {
 	return true
 }
 
-func ensureSpawnRequests(ctx context.Context, client *http.Client, cfg config, teamID, orchestratorRunID string, meta map[string]any, missingRoles []string) error {
+func ensureSpawnRequests(ctx context.Context, client *http.Client, cfg config, teamID, orchestratorRunID string, meta map[string]any, missingRoles []string, owner string) error {
 	if len(missingRoles) == 0 {
 		return nil
 	}
@@ -733,7 +764,7 @@ func ensureSpawnRequests(ctx context.Context, client *http.Client, cfg config, t
 	}
 	if len(created) > 0 {
 		meta["spawn_requests"] = created
-		_, _ = updateOrchestratorRun(ctx, client, cfg, teamID, orchestratorRunID, "", meta)
+		_, _ = updateOrchestratorRun(ctx, client, cfg, teamID, orchestratorRunID, "", meta, stringPtr(owner), nil)
 	}
 	return nil
 }
@@ -795,10 +826,16 @@ func fetchOrchestratorRuns(ctx context.Context, client *http.Client, cfg config,
 	return resp.Runs, nil
 }
 
-func heartbeatRun(ctx context.Context, client *http.Client, cfg config, teamID, runID, status string) (*orchestratorRunResponse, error) {
+func heartbeatRun(ctx context.Context, client *http.Client, cfg config, teamID, runID, status string, expectedOwner *string, expectedStatus *string) (*orchestratorRunResponse, error) {
 	payload := map[string]any{}
 	if status != "" {
 		payload["status"] = status
+	}
+	if expectedOwner != nil {
+		payload["expected_owner"] = *expectedOwner
+	}
+	if expectedStatus != nil {
+		payload["expected_status"] = *expectedStatus
 	}
 	url := fmt.Sprintf("%s/v1/teams/%s/orchestrator/runs/%s/heartbeat", cfg.brokerBase, teamID, runID)
 	var resp orchestratorRunResponse
@@ -808,13 +845,19 @@ func heartbeatRun(ctx context.Context, client *http.Client, cfg config, teamID, 
 	return &resp, nil
 }
 
-func updateOrchestratorRun(ctx context.Context, client *http.Client, cfg config, teamID, runID, status string, meta map[string]any) (*orchestratorRunResponse, error) {
+func updateOrchestratorRun(ctx context.Context, client *http.Client, cfg config, teamID, runID, status string, meta map[string]any, expectedOwner *string, expectedStatus *string) (*orchestratorRunResponse, error) {
 	payload := map[string]any{}
 	if status != "" {
 		payload["status"] = status
 	}
 	if meta != nil {
 		payload["meta"] = meta
+	}
+	if expectedOwner != nil {
+		payload["expected_owner"] = *expectedOwner
+	}
+	if expectedStatus != nil {
+		payload["expected_status"] = *expectedStatus
 	}
 	url := fmt.Sprintf("%s/v1/teams/%s/orchestrator/runs/%s", cfg.brokerBase, teamID, runID)
 	var resp orchestratorRunResponse

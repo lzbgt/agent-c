@@ -100,6 +100,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Weighted tasks (next up)
 
+- [ ] W=14 — Orchestrator ownership + lease takeover: prevent split-brain while keeping automation always-on.
+  - 2026-02-26: added `expected_owner` guard to orchestrator run update/heartbeat and orchestrator loop claim via `meta.orchestrator_owner`.
+  - TODO: implement stale-lease takeover policy + UI surfacing + smoke test for conflicts.
 - [ ] W=13 — Autonomous orchestrator loop: goal contract + drift guard + role handoff events + allocator, with evidence tests and SSE surface.
   - 2026-02-25: drafted `docs/spec/autonomous_orchestrator_v0.md` (goal guard + dynamic allocation model).
   - 2026-02-25: WebUI runtime member quick-add can allocate connected agents by role plan.
@@ -119,6 +122,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-26: WebUI team console includes orchestrator run panel (create/list/update/heartbeat).
   - 2026-02-26: orchestrator run responses include lease status derived from heartbeat.
   - 2026-02-25: added compose smoke for orchestrator runs (create/list/update/heartbeat) via `tests/broker_orchestrator_runs_compose_smoke.sh`.
+- [ ] W=12 — Workflow rehydration beyond localStorage: persist workflow wait/resume state in broker/agentd and restore on WebUI reconnect.
+  - Replace client-only `workflowWaitByScope` persistence with server-backed state (multi-device safe).
+  - Add replay endpoint for workflow status + wait metadata; update WebUI workflow panel to use it.
 - [x] W=9 — Agent provisioning hooks: define an optional `agent_spawn` interface (pluggable adapters for local/remote spawn) so the orchestrator can request new runtime members when capacity is low.
   - 2026-02-25: added broker spawn request persistence + events (`/v1/teams/{team_id}/orchestrator/spawn_requests`).
   - 2026-02-26: added `agentd-spawn-adapter` CLI + `docs/spec/agent_spawn_adapter_v0.md` (local adapter contract).

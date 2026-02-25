@@ -98,6 +98,7 @@ Status: draft (rolling)
 - UI refresh uses `GET /v1/teams/{team_id}/runs` and SSE events to rehydrate.
 - Broker event replay is used to restore team run + orchestrator run events when reconnecting.
 - Orchestrator run responses include lease status (heartbeat age + timeout) for stale detection.
+- Orchestrator updates/heartbeats can include `expected_owner` to avoid split-brain writers.
 - SSE is used to refresh lists; durable state is always in DB.
 - Team runs persist `member_sessions` so moderators can target specific members
   after reload (used by team-run moderator broadcasts).

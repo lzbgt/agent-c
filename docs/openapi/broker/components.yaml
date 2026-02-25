@@ -973,6 +973,8 @@ schemas:
     type: object
     properties:
       status: { type: string }
+      expected_status: { type: string }
+      expected_owner: { type: string }
       goal: { type: string }
       goal_contract:
         $ref: "#/components/schemas/TeamRunGoalContract"
@@ -987,6 +989,8 @@ schemas:
     type: object
     properties:
       status: { type: string }
+      expected_status: { type: string }
+      expected_owner: { type: string }
 
   OrchestratorRunResponse:
     type: object

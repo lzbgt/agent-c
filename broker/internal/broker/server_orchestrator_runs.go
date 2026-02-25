@@ -2,6 +2,7 @@ package broker
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -191,6 +192,8 @@ func (s *Server) handleTeamOrchestratorRunUpdate(w http.ResponseWriter, r *http.
 	}
 	req := struct {
 		Status           *string        `json:"status"`
+		ExpectedStatus   *string        `json:"expected_status"`
+		ExpectedOwner    *string        `json:"expected_owner"`
 		Goal             *string        `json:"goal"`
 		GoalContract     map[string]any `json:"goal_contract"`
 		RolePlanSnapshot map[string]any `json:"role_plan_snapshot"`
@@ -209,6 +212,8 @@ func (s *Server) handleTeamOrchestratorRunUpdate(w http.ResponseWriter, r *http.
 	}
 	update := db.OrchestratorRunUpdate{
 		Status:           req.Status,
+		ExpectedStatus:   req.ExpectedStatus,
+		ExpectedOwner:    req.ExpectedOwner,
 		Goal:             req.Goal,
 		GoalContract:     req.GoalContract,
 		RolePlanSnapshot: req.RolePlanSnapshot,
@@ -216,6 +221,10 @@ func (s *Server) handleTeamOrchestratorRunUpdate(w http.ResponseWriter, r *http.
 	}
 	run, err := s.cfg.DB.UpdateOrchestratorRun(r.Context(), teamID, runID, update)
 	if err != nil {
+		if errors.Is(err, db.ErrOrchestratorRunConflict) {
+			writeErrorJSON(w, "orchestrator run conflict", http.StatusConflict)
+			return
+		}
 		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -250,7 +259,9 @@ func (s *Server) handleTeamOrchestratorRunHeartbeat(w http.ResponseWriter, r *ht
 		return
 	}
 	req := struct {
-		Status *string `json:"status"`
+		Status         *string `json:"status"`
+		ExpectedStatus *string `json:"expected_status"`
+		ExpectedOwner  *string `json:"expected_owner"`
 	}{}
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &req); err != nil {
@@ -258,8 +269,12 @@ func (s *Server) handleTeamOrchestratorRunHeartbeat(w http.ResponseWriter, r *ht
 			return
 		}
 	}
-	run, err := s.cfg.DB.UpdateOrchestratorRunHeartbeat(r.Context(), teamID, runID, req.Status)
+	run, err := s.cfg.DB.UpdateOrchestratorRunHeartbeat(r.Context(), teamID, runID, req.Status, req.ExpectedOwner, req.ExpectedStatus)
 	if err != nil {
+		if errors.Is(err, db.ErrOrchestratorRunConflict) {
+			writeErrorJSON(w, "orchestrator run conflict", http.StatusConflict)
+			return
+		}
 		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return
 	}
