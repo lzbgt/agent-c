@@ -86,6 +86,7 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const [runPrompt, setRunPrompt] = React.useState<string>("");
   const [runModel, setRunModel] = React.useState<string>("");
   const [runTools, setRunTools] = React.useState<string>("basic");
+  const [runMode, setRunMode] = React.useState<string>("async");
   const [runRole, setRunRole] = React.useState<string>("");
   const [runRoles, setRunRoles] = React.useState<string>("");
   const [runConcurrency, setRunConcurrency] = React.useState<string>("1");
@@ -320,6 +321,8 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
       if (Number.isFinite(conc)) teamPayload.max_concurrency = conc;
       const timeout = Number.parseInt(String(runTimeoutMs || ""), 10);
       if (Number.isFinite(timeout)) teamPayload.timeout_ms = timeout;
+      const mode = String(runMode || "").trim();
+      if (mode) teamPayload.mode = mode;
       const qmode = String(runQuorumMode || "").trim();
       if (qmode) teamPayload.quorum_policy = { mode: qmode };
       const overridesMode = String(runOverridesMode || "").trim();
@@ -1136,6 +1139,15 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
           value={runTimeoutMs}
           onChange={(e) => setRunTimeoutMs(e.target.value)}
         />
+        <FieldLabel>Mode</FieldLabel>
+        <select
+          className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+          value={runMode}
+          onChange={(e) => setRunMode(e.target.value)}
+        >
+          <option value="async">async</option>
+          <option value="sync">sync</option>
+        </select>
         <FieldLabel>Quorum</FieldLabel>
         <select
           className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
@@ -1153,6 +1165,9 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
         >
           {runBusy ? "Submitting…" : "Create run"}
         </button>
+      </div>
+      <div className="text-[11px] text-white/50">
+        Async mode dispatches `run_async` per member so the run continues if the UI disconnects.
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <FieldLabel>Run overrides</FieldLabel>
@@ -1695,6 +1710,7 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
       {runResult ? (
         <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
           run id {String(runResult?.team_run_id || "unknown")} · status {String(runResult?.status || "")}
+          {runResult?.mode ? ` · mode ${String(runResult.mode)}` : ""}
         </div>
       ) : null}
 
@@ -1722,6 +1738,52 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
         <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
           status {String(runLookupResult?.status || "")}
           {runLookupResult?.created_unix_ms ? ` · ${fmtTs(runLookupResult.created_unix_ms)}` : ""}
+          {runLookupResult?.mode ? ` · mode ${String(runLookupResult.mode)}` : ""}
+        </div>
+      ) : null}
+      {Array.isArray(runLookupResult?.dispatch_errors) && runLookupResult.dispatch_errors.length > 0 ? (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200">
+          dispatch errors:
+          {runLookupResult.dispatch_errors.map((err: any, idx: number) => {
+            const mid = err?.member_id ? String(err.member_id) : "";
+            const aid = err?.agent_id ? String(err.agent_id) : "";
+            const msg = err?.error ? String(err.error) : "dispatch error";
+            return (
+              <div key={`dispatch-error-${mid || aid}-${idx}`}>
+                {mid ? `${mid} · ` : ""}
+                {aid ? `agent ${aid}` : "agent ?"} · {msg}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+      {Array.isArray(runLookupResult?.member_jobs) && runLookupResult.member_jobs.length > 0 ? (
+        <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
+          member jobs:
+          {runLookupResult.member_jobs.map((job: any, idx: number) => {
+            const mid = job?.member_id ? String(job.member_id) : "";
+            const aid = job?.agent_id ? String(job.agent_id) : "";
+            const jobId = job?.job_id ? String(job.job_id) : "";
+            const status = job?.status ? String(job.status) : "";
+            const ok = typeof job?.ok === "boolean" ? String(job.ok) : "";
+            const err = job?.error ? String(job.error) : job?.dispatch_error ? String(job.dispatch_error) : "";
+            const updated = typeof job?.updated_unix_ms === "number" ? fmtTs(job.updated_unix_ms) : "";
+            return (
+              <div key={`member-job-${mid || aid}-${idx}`} className="mt-1">
+                <div>
+                  {mid ? `${mid} · ` : ""}
+                  {aid ? `agent ${aid}` : "agent ?"}
+                  {jobId ? ` · job ${jobId}` : ""}
+                </div>
+                <div className="text-[10px] text-white/50">
+                  {status ? `status ${status}` : ""}
+                  {ok ? ` · ok ${ok}` : ""}
+                  {updated ? ` · ${updated}` : ""}
+                  {err ? ` · ${err}` : ""}
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : null}
       {Array.isArray(runLookupResult?.runtime_members) && runLookupResult.runtime_members.length > 0 ? (

@@ -1,12 +1,12 @@
 # Team Orchestration v0 (agentd + broker)
 
 Date: 2026-02-19
-Status: v0 (design draft; broker team registry CRUD + synchronous team runs implemented; quorum enforcement pending)
+Status: v0 (design draft; broker team registry CRUD + sync/async team runs implemented; quorum enforcement pending)
 
 This spec defines a **team orchestration model** for multi-agent runs that goes beyond
 single-run tool loops. It formalizes agent groups, roles, shared memory scopes, and
 quorum gating for sensitive actions. This is a **design target**; endpoints and schemas
-listed below are proposed and only partially implemented today (team registry CRUD + synchronous team runs).
+listed below are proposed and only partially implemented today (team registry CRUD + sync/async team runs).
 
 ---
 
@@ -56,7 +56,19 @@ Example: at least 2 reviewers must approve `shell_exec`.
 A **team run** is a coordinated execution that may spawn multiple sub-runs
 per team member, with explicit aggregation and quorum checks.
 
-### 6) Runtime members (v0.3)
+### 6) Run mode (v0.4)
+
+Team runs may execute in **sync** or **async** mode:
+
+- `mode=sync` (default): broker blocks until all member runs complete.
+- `mode=async`: broker dispatches `/api/v1/run_async` per member, returns immediately with job IDs,
+  and persists `member_jobs` metadata. Status is reconciled by polling job status on demand.
+
+Async mode enables **nonblocking** orchestration: UI refresh or disconnect does not stop member runs.
+Member job execution persists inside each target `agentd` (job engine), so broker restarts do not cancel
+in-flight member runs.
+
+### 7) Runtime members (v0.3)
 
 Team runs may include **runtime members** supplied in the run request. These are
 ephemeral members used **only for the current run** and are **not persisted** in
@@ -70,7 +82,7 @@ Constraints:
 - Runtime members may include `meta.run_overrides` and `meta.backend_label`,
   and the same **allowlist** rules apply to `run_overrides`.
 
-### 7) Member backend profile (v0.2)
+### 8) Member backend profile (v0.2)
 
 Each team member may carry an optional backend profile stored under `member.meta`.
 The broker can optionally merge these **run overrides** into the base run when executing
@@ -158,8 +170,28 @@ retention_policy_ref: string | null
 team_run_id: string
 team_id: string
 root_run_id: string           # canonical run ID in agentd
-mode: string                  # sync|async
+mode: string                  # sync|async (default sync)
 created_unix_ms: integer
+```
+
+#### Member jobs (async mode)
+
+```
+member_jobs: [
+  {
+    member_id: string
+    agent_id: string
+    deployment_id: string | null
+    job_id: string
+    status: string               # queued|running|done|error|cancelled|interrupted|unknown
+    ok: boolean | null
+    error: string | null
+    updated_unix_ms: integer | null
+  }
+]
+dispatch_errors: [
+  { member_id: string, agent_id: string, error: string }
+]
 ```
 
 ### Quorum approval
@@ -185,7 +217,9 @@ hosted in either component; the broker is recommended for multi-deployment routi
 
 Current broker implementation:
 - `GET/POST/PATCH/DELETE /v1/teams` + `/members` + `/quorum` are implemented.
-- `POST /v1/teams/{team_id}/runs` executes synchronous fan-out across active members.
+- `POST /v1/teams/{team_id}/runs` executes sync or async fan-out across active members.
+  - `team.mode=sync` blocks until all member runs complete (default).
+  - `team.mode=async` dispatches `/api/v1/run_async` per member and returns immediately with job IDs.
 - `GET /v1/teams/{team_id}/runs/{team_run_id}` returns stored status + current members.
 - `POST /v1/teams/{team_id}/runs` enforces **team_run quorum rules** when
   `team.quorum_policy.mode` is `auto` (default). Approvals are passed inline
@@ -235,6 +269,7 @@ Run requests may accept:
 ```
 "team": {
   "team_id": "...",
+  "mode": "sync" | "async",
   "role": "planner",
   "shared_memory": { "scope_id": "...", "mode": "read_only" },
   "quorum_policy": { "mode": "auto" | "off" },
@@ -263,6 +298,7 @@ Notes:
 - `replace` (default) overwrites the stored runtime member list; `merge` updates by `member_id` and appends new entries.
 - The broker validates the runtime members and updates the stored run payload.
 - For synchronous runs that already completed, updates are recorded for auditability and future orchestration; they do not retroactively re-run the completed fan-out.
+- For async runs, updates do not affect already-dispatched member jobs; use runtime updates to prepare for follow-on orchestration.
 
 `run_overrides_mode`:
 - `off` (default): no per-member overrides.

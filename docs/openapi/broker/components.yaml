@@ -377,6 +377,27 @@ schemas:
         type: object
         additionalProperties: true
 
+  TeamRunMemberJob:
+    type: object
+    properties:
+      member_id: { type: string }
+      agent_id: { type: string }
+      deployment_id: { type: string }
+      job_id: { type: string }
+      status: { type: string }
+      ok: { type: boolean }
+      error: { type: string }
+      http_status: { type: integer, format: int32 }
+      updated_unix_ms: { type: integer, format: int64 }
+      dispatch_error: { type: string }
+
+  TeamRunDispatchError:
+    type: object
+    properties:
+      member_id: { type: string }
+      agent_id: { type: string }
+      error: { type: string }
+
   TeamQuorumRule:
     type: object
     required: [rule_id, team_id, action, min_approvals, quorum_mode]
@@ -449,6 +470,10 @@ schemas:
         type: object
         description: Team execution metadata (role filters, concurrency, quorum policy).
         properties:
+          mode:
+            type: string
+            enum: [sync, async]
+            description: Run mode (sync blocks; async dispatches run_async per member).
           role:
             type: string
             description: Single role filter for eligible team members.
@@ -507,6 +532,15 @@ schemas:
       team_run_id: { type: string }
       status: { type: string }
       created_unix_ms: { type: integer, format: int64 }
+      mode: { type: string }
+      member_jobs:
+        type: array
+        items:
+          $ref: "#/components/schemas/TeamRunMemberJob"
+      dispatch_errors:
+        type: array
+        items:
+          $ref: "#/components/schemas/TeamRunDispatchError"
 
   TeamRunStatusResponse:
     type: object
@@ -517,6 +551,7 @@ schemas:
       team_run_id: { type: string }
       status: { type: string }
       created_unix_ms: { type: integer, format: int64 }
+      mode: { type: string }
       members:
         type: array
         items:
@@ -526,6 +561,14 @@ schemas:
         description: Runtime members included in the team run (if provided).
         items:
           $ref: "#/components/schemas/TeamRunRuntimeMember"
+      member_jobs:
+        type: array
+        items:
+          $ref: "#/components/schemas/TeamRunMemberJob"
+      dispatch_errors:
+        type: array
+        items:
+          $ref: "#/components/schemas/TeamRunDispatchError"
 
   TeamRunRuntimeMembersUpdateRequest:
     type: object

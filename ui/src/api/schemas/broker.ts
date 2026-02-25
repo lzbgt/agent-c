@@ -253,13 +253,39 @@ export const BrokerTeamQuorumRuleUpsertRespSchema = z
   .passthrough();
 export type BrokerTeamQuorumRuleUpsertResp = z.infer<typeof BrokerTeamQuorumRuleUpsertRespSchema>;
 
+export const BrokerTeamRunMemberJobSchema = z
+  .object({
+    member_id: z.string().optional(),
+    agent_id: z.string().optional(),
+    deployment_id: z.string().optional(),
+    job_id: z.string().optional(),
+    status: z.string().optional(),
+    ok: z.boolean().optional(),
+    error: z.string().optional(),
+    http_status: z.number().optional(),
+    updated_unix_ms: z.number().optional(),
+    dispatch_error: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamRunDispatchErrorSchema = z
+  .object({
+    member_id: z.string().optional(),
+    agent_id: z.string().optional(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+
 export const BrokerTeamRunRespSchema = z
   .object({
     ok: z.boolean(),
     team_id: z.string().optional(),
     team_run_id: z.string().optional(),
     status: z.string().optional(),
+    mode: z.string().optional(),
     created_unix_ms: z.number().optional(),
+    member_jobs: z.array(BrokerTeamRunMemberJobSchema).optional(),
+    dispatch_errors: z.array(BrokerTeamRunDispatchErrorSchema).optional(),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
@@ -273,8 +299,11 @@ export const BrokerTeamRunStatusRespSchema = z
     team_id: z.string().optional(),
     team_run_id: z.string().optional(),
     status: z.string().optional(),
+    mode: z.string().optional(),
     created_unix_ms: z.number().optional(),
     members: z.array(BrokerTeamMemberSchema).optional(),
+    member_jobs: z.array(BrokerTeamRunMemberJobSchema).optional(),
+    dispatch_errors: z.array(BrokerTeamRunDispatchErrorSchema).optional(),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
