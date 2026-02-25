@@ -335,6 +335,36 @@ export const BrokerTeamRunSummarySchema = z
   .passthrough();
 export type BrokerTeamRunSummary = z.infer<typeof BrokerTeamRunSummarySchema>;
 
+export const BrokerTeamRunGoalContractSchema = z
+  .object({
+    goal: z.string().optional(),
+    success_criteria: z.array(z.string()).optional(),
+    constraints: z.array(z.string()).optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamRunGoalEventSchema = z
+  .object({
+    type: z.string().optional(),
+    ts_unix_ms: z.number().optional(),
+    message: z.string().optional(),
+    event_index: z.number().optional(),
+    data: z.record(z.any()).optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamRunHandoffEventSchema = z
+  .object({
+    from_role: z.string().optional(),
+    to_role: z.string().optional(),
+    reason: z.string().optional(),
+    message: z.string().optional(),
+    ts_unix_ms: z.number().optional(),
+    event_index: z.number().optional(),
+    data: z.record(z.any()).optional(),
+  })
+  .passthrough();
+
 export const BrokerTeamRunListRespSchema = z
   .object({
     ok: z.boolean(),
@@ -365,12 +395,51 @@ export const BrokerTeamRunStatusRespSchema = z
     member_job_summary: BrokerTeamRunMemberJobSummarySchema.optional(),
     cancel_requested_unix_ms: z.number().optional(),
     cancel_results: z.array(BrokerTeamRunCancelResultSchema).optional(),
+    run_overrides_mode: z.string().optional(),
+    role_overrides_applied: z.record(z.any()).optional(),
+    member_overrides_applied: z.record(z.any()).optional(),
+    runtime_members: z.array(z.record(z.any())).optional(),
+    goal_contract: BrokerTeamRunGoalContractSchema.optional(),
+    goal_updated_unix_ms: z.number().optional(),
+    goal_events: z.array(BrokerTeamRunGoalEventSchema).optional(),
+    goal_events_updated_unix_ms: z.number().optional(),
+    handoff_events: z.array(BrokerTeamRunHandoffEventSchema).optional(),
+    handoff_events_updated_unix_ms: z.number().optional(),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
   })
   .passthrough();
 export type BrokerTeamRunStatusResp = z.infer<typeof BrokerTeamRunStatusRespSchema>;
+
+export const BrokerTeamRunGoalUpdateRespSchema = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string().optional(),
+    team_run_id: z.string().optional(),
+    goal_contract: BrokerTeamRunGoalContractSchema.optional(),
+    goal_events: z.array(BrokerTeamRunGoalEventSchema).optional(),
+    goal_event_count: z.number().optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerTeamRunGoalUpdateResp = z.infer<typeof BrokerTeamRunGoalUpdateRespSchema>;
+
+export const BrokerTeamRunHandoffRespSchema = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string().optional(),
+    team_run_id: z.string().optional(),
+    handoff_events: z.array(BrokerTeamRunHandoffEventSchema).optional(),
+    handoff_event_count: z.number().optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerTeamRunHandoffResp = z.infer<typeof BrokerTeamRunHandoffRespSchema>;
 
 export const BrokerTeamRunModeratorRespSchema = z
   .object({

@@ -1674,6 +1674,16 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                   const approvals = payload?.approvals;
                   const required = payload?.required_approvals;
                   summary = `${decision} · ${approvals ?? "?"}/${required ?? "?"}`;
+                } else if (type === "team_goal_progress" || type === "team_goal_drift") {
+                  const ev = payload?.event ?? {};
+                  const msg = ev?.message ? String(ev.message) : "";
+                  summary = `${type === "team_goal_progress" ? "progress" : "drift"}${msg ? ` · ${msg}` : ""}`;
+                } else if (type === "team_handoff") {
+                  const ev = payload?.event ?? {};
+                  const fromRole = ev?.from_role ? String(ev.from_role) : "";
+                  const toRole = ev?.to_role ? String(ev.to_role) : "";
+                  const reason = ev?.reason ? String(ev.reason) : "";
+                  summary = `handoff ${fromRole || "role"} -> ${toRole || "role"}${reason ? ` · ${reason}` : ""}`;
                 } else if (payload && Object.keys(payload).length > 0) {
                   try {
                     summary = JSON.stringify(payload);

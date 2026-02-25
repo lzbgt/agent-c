@@ -20,6 +20,7 @@ import TeamRunCreatePanel, { type InlineApproval } from "./TeamRunCreatePanel";
 import TeamRunModeratorPanel from "./TeamRunModeratorPanel";
 import TeamRunOpsPanel from "./TeamRunOpsPanel";
 import TeamRunRecentRunsPanel from "./TeamRunRecentRunsPanel";
+import TeamRunStatusPanel from "./TeamRunStatusPanel";
 import {
   TEAM_RUN_EVENT_TYPES,
   buildRoleAllocatedRuntimeMembers,
@@ -91,7 +92,7 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
 
   const [runPrompt, setRunPrompt] = React.useState<string>("");
   const [runModel, setRunModel] = React.useState<string>("");
-  const [runTools, setRunTools] = React.useState<string>("basic");
+  const [runTools, setRunTools] = React.useState<string>("host");
   const [runMode, setRunMode] = React.useState<string>("async");
   const [runRole, setRunRole] = React.useState<string>("");
   const [runRoles, setRunRoles] = React.useState<string>("");
@@ -284,7 +285,6 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const [runCancelBusy, setRunCancelBusy] = React.useState<boolean>(false);
   const [runCancelError, setRunCancelError] = React.useState<string | null>(null);
   const [runCancelNote, setRunCancelNote] = React.useState<string>("");
-  const [runOverridesExpanded, setRunOverridesExpanded] = React.useState<boolean>(false);
   const [autoRefreshRunLookup, setAutoRefreshRunLookup] = useLocalStorageState<boolean>(
     "agentui.teamRunLookupAuto",
     true,
@@ -1718,177 +1718,21 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
       {runCancelNote ? (
         <div className="rounded-md border border-amber-400/20 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-100">{runCancelNote}</div>
       ) : null}
-      {runLookupResult ? (
-        <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
-          status {String(runLookupResult?.status || "")}
-          {runLookupResult?.created_unix_ms ? ` · ${fmtTs(runLookupResult.created_unix_ms)}` : ""}
-          {runLookupResult?.mode ? ` · mode ${String(runLookupResult.mode)}` : ""}
-          {typeof runLookupResult?.cancel_requested_unix_ms === "number"
-            ? ` · cancel requested ${fmtTs(runLookupResult.cancel_requested_unix_ms)}`
-            : ""}
-        </div>
-      ) : null}
-      {runLookupResult?.run_overrides_mode ? (
-        <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
-          overrides mode: {String(runLookupResult.run_overrides_mode)}
-        </div>
-      ) : null}
-      {runLookupResult?.role_overrides_applied || runLookupResult?.member_overrides_applied ? (
-        <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span>applied overrides</span>
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
-              type="button"
-              onClick={() => setRunOverridesExpanded((prev) => !prev)}
-            >
-              {runOverridesExpanded ? "Hide" : "Show"}
-            </button>
-          </div>
-          {runOverridesExpanded ? (
-            <pre className="mt-1 whitespace-pre-wrap break-words text-[10px] text-white/60">
-              {JSON.stringify(
-                {
-                  role_overrides_applied: runLookupResult?.role_overrides_applied ?? null,
-                  member_overrides_applied: runLookupResult?.member_overrides_applied ?? null,
-                },
-                null,
-                2,
-              )}
-            </pre>
-          ) : null}
-        </div>
-      ) : null}
-      {fmtSummary(runLookupResult?.member_job_summary) ? (
-        <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
-          summary: {fmtSummary(runLookupResult?.member_job_summary)}
-        </div>
-      ) : null}
-      {Array.isArray(runLookupResult?.dispatch_errors) && runLookupResult.dispatch_errors.length > 0 ? (
-        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200">
-          dispatch errors:
-          {runLookupResult.dispatch_errors.map((err: any, idx: number) => {
-            const mid = err?.member_id ? String(err.member_id) : "";
-            const aid = err?.agent_id ? String(err.agent_id) : "";
-            const msg = err?.error ? String(err.error) : "dispatch error";
-            return (
-              <div key={`dispatch-error-${mid || aid}-${idx}`}>
-                {mid ? `${mid} · ` : ""}
-                {aid ? `agent ${aid}` : "agent ?"} · {msg}
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
-      {Array.isArray(runLookupResult?.cancel_results) && runLookupResult.cancel_results.length > 0 ? (
-        <div className="rounded-md border border-amber-400/20 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-100">
-          cancel results:
-          {runLookupResult.cancel_results.map((row: any, idx: number) => {
-            const mid = row?.member_id ? String(row.member_id) : "";
-            const aid = row?.agent_id ? String(row.agent_id) : "";
-            const jobId = row?.job_id ? String(row.job_id) : "";
-            const ok = typeof row?.ok === "boolean" ? String(row.ok) : "";
-            const http = typeof row?.http_status === "number" ? `http ${row.http_status}` : "";
-            const err = row?.error ? String(row.error) : "";
-            return (
-              <div key={`cancel-result-${mid || aid}-${idx}`}>
-                {mid ? `${mid} · ` : ""}
-                {aid ? `agent ${aid}` : "agent ?"}
-                {jobId ? ` · job ${jobId}` : ""}
-                {ok ? ` · ok ${ok}` : ""}
-                {http ? ` · ${http}` : ""}
-                {err ? ` · ${err}` : ""}
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
-      {Array.isArray(runLookupResult?.member_jobs) && runLookupResult.member_jobs.length > 0 ? (
-        <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
-          member jobs:
-          {runLookupResult.member_jobs.map((job: any, idx: number) => {
-            const mid = job?.member_id ? String(job.member_id) : "";
-            const aid = job?.agent_id ? String(job.agent_id) : "";
-            const jobId = job?.job_id ? String(job.job_id) : "";
-            const status = job?.status ? String(job.status) : "";
-            const ok = typeof job?.ok === "boolean" ? String(job.ok) : "";
-            const err = job?.error ? String(job.error) : job?.dispatch_error ? String(job.dispatch_error) : "";
-            const updated = typeof job?.updated_unix_ms === "number" ? fmtTs(job.updated_unix_ms) : "";
-            return (
-              <div key={`member-job-${mid || aid}-${idx}`} className="mt-1">
-                <div>
-                  {mid ? `${mid} · ` : ""}
-                  {aid ? `agent ${aid}` : "agent ?"}
-                  {jobId ? ` · job ${jobId}` : ""}
-                </div>
-                <div className="text-[10px] text-white/50">
-                  {status ? `status ${status}` : ""}
-                  {ok ? ` · ok ${ok}` : ""}
-                  {updated ? ` · ${updated}` : ""}
-                  {err ? ` · ${err}` : ""}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
-      {runMemberSessions.length > 0 ? (
-        <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
-          member sessions:
-          {runMemberSessions.map((row, idx) => (
-            <div key={`member-session-${row.memberId}-${idx}`} className="mt-1 text-[10px] text-white/60">
-              {row.memberId} · {row.sessionId}
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {Array.isArray(runLookupResult?.runtime_members) && runLookupResult.runtime_members.length > 0 ? (
-        <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
-          runtime members:
-          {runLookupResult.runtime_members.map((m: any, idx: number) => {
-            const agentId = m?.agent_id ? String(m.agent_id) : "";
-            const role = m?.role ? String(m.role) : "";
-            const mid = m?.member_id ? String(m.member_id) : "";
-            const status = m?.status ? String(m.status) : "";
-            const rawKey = mid || agentId || `row-${idx}`;
-            const runtimeKey = rawKey.replace(/[^a-zA-Z0-9_-]/g, "_");
-            return (
-              <div
-                key={`runtime-member-${mid || agentId}-${idx}`}
-                data-testid={`team-run-runtime-row-${runtimeKey}`}
-                className="flex flex-wrap items-center justify-between gap-2"
-              >
-                <div>
-                  {mid ? `${mid} · ` : ""}
-                  {agentId ? `agent ${agentId}` : "agent ?"}
-                  {role ? ` · role ${role}` : ""}
-                  {status ? ` · ${status}` : ""}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-                    type="button"
-                    data-testid={`team-run-runtime-toggle-${runtimeKey}`}
-                    disabled={!props.canQuery || runtimeUpdateBusy}
-                    onClick={() => void handleRuntimeMemberToggle(m)}
-                  >
-                    {String(status || "active").toLowerCase() === "paused" ? "Resume" : "Pause"}
-                  </button>
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-                    type="button"
-                    data-testid={`team-run-runtime-remove-${runtimeKey}`}
-                    disabled={!props.canQuery || runtimeUpdateBusy}
-                    onClick={() => void handleRuntimeMemberRemove(m)}
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
+      <TeamRunStatusPanel
+        base={props.base}
+        auth={props.auth}
+        canQuery={props.canQuery}
+        teamId={teamIdTrimmed}
+        runId={resolveRunId()}
+        runLookupResult={runLookupResult}
+        fmtTs={fmtTs}
+        fmtSummary={fmtSummary}
+        runtimeUpdateBusy={runtimeUpdateBusy}
+        memberSessions={runMemberSessions}
+        onRuntimeMemberToggle={handleRuntimeMemberToggle}
+        onRuntimeMemberRemove={handleRuntimeMemberRemove}
+        onRefreshRun={(runId) => fetchRunStatus(runId)}
+      />
       <TeamRunModeratorPanel
         canQuery={props.canQuery}
         runId={resolveRunId()}

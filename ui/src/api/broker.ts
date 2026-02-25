@@ -31,6 +31,10 @@ import {
   type BrokerTeamRunListResp,
   BrokerTeamRunStatusRespSchema,
   type BrokerTeamRunStatusResp,
+  BrokerTeamRunGoalUpdateRespSchema,
+  type BrokerTeamRunGoalUpdateResp,
+  BrokerTeamRunHandoffRespSchema,
+  type BrokerTeamRunHandoffResp,
   BrokerTeamRunApprovalListRespSchema,
   type BrokerTeamRunApprovalListResp,
   BrokerTeamRunModeratorRespSchema,
@@ -658,6 +662,48 @@ export async function apiBrokerTeamRunCancel(
   });
   const j = await r.json();
   return BrokerTeamRunStatusRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamRunGoalUpdate(
+  brokerBase: string,
+  teamId: string,
+  teamRunId: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<BrokerTeamRunGoalUpdateResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  const rid = String(teamRunId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  if (!rid) throw new Error("missing team_run_id");
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/runs/${encodeURIComponent(rid)}/goal`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(body ?? {}),
+  });
+  const j = await r.json();
+  return BrokerTeamRunGoalUpdateRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamRunHandoff(
+  brokerBase: string,
+  teamId: string,
+  teamRunId: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<BrokerTeamRunHandoffResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  const rid = String(teamRunId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  if (!rid) throw new Error("missing team_run_id");
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/runs/${encodeURIComponent(rid)}/handoff`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(body ?? {}),
+  });
+  const j = await r.json();
+  return BrokerTeamRunHandoffRespSchema.parse(j);
 }
 
 export async function apiBrokerTeamRunModeratorDirective(

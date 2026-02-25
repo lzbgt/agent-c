@@ -106,8 +106,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-25: broker runtime member allocator endpoint added (role-based allocation + tests).
   - 2026-02-25: broker goal update endpoint added with SSE events and run payload persistence.
   - 2026-02-25: broker role handoff endpoint added with SSE event and run payload persistence.
+  - 2026-02-25: WebUI team run status panel surfaces goal contract/events and handoff events with emit actions.
 - [ ] W=11 — Team shared memory scope enforcement (read-only/read-write) wired through team runs + tool policy hooks + tests.
 - [ ] W=10 — Role handoff execution: emit `team_handoff` events and visualize role graph in WebUI.
+  - 2026-02-25: WebUI team run status panel can emit and display handoff events (role graph visualization still pending).
 
 - [x] W=11 — Automation mode profile + moderator control plane: explicit profiles in caps, per-run override, moderator directives, and nonblocking UX.
   - 2026-02-25: added automation profiles in `/api/v1/caps`, per-run `automation_profile` override, and `effective_automation_profile` response field (agentd + docs + smoke test).
