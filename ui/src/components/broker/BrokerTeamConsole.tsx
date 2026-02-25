@@ -785,7 +785,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         ) : null}
       </div>
 
-      <div className="mt-3 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
+      <div data-testid="team-settings" className="mt-3 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
         <div className="flex items-center justify-between gap-2">
           <div className="text-xs font-semibold text-white/80">Team settings</div>
           <button

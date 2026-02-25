@@ -342,17 +342,18 @@ test("broker team settings update submits patch", async ({ page }) => {
   const teamSection = page.locator("section").filter({ has: page.getByText("Teams", { exact: true }) });
   await teamSection.getByRole("button", { name: "Refresh" }).first().click();
 
-  const teamNameInput = teamSection.getByPlaceholder("Team display name");
+  const teamSettings = page.getByTestId("team-settings");
+  const teamNameInput = teamSettings.getByPlaceholder("Team display name");
   await expect(teamNameInput).toHaveValue("Team Alpha");
   await teamNameInput.fill("Team Beta");
-  await teamSection.getByPlaceholder("ops,security").fill("ops,security");
-  await teamSection.getByPlaceholder("policy:high-risk").fill("policy:new");
-  await teamSection.getByPlaceholder("scope-id").fill("scope-new");
-  await teamSection.getByPlaceholder("{\"owner_notes\":\"tier-1\",\"priority\":\"high\"}").fill(
+  await teamSettings.getByPlaceholder("ops,security").fill("ops,security");
+  await teamSettings.getByPlaceholder("policy:high-risk").fill("policy:new");
+  await teamSettings.getByPlaceholder("scope-id").fill("scope-new");
+  await teamSettings.getByPlaceholder("{\"owner_notes\":\"tier-1\",\"priority\":\"high\"}").fill(
     "{\"owner_notes\":\"tier-1\",\"priority\":\"high\"}",
   );
 
-  await teamSection.getByRole("button", { name: "Update team" }).click();
+  await teamSettings.getByRole("button", { name: "Update team" }).click();
 
   await expect.poll(() => updatePayload).not.toBeNull();
   expect(updatePayload).toEqual({
