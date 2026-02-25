@@ -1320,6 +1320,20 @@ schemas:
       receipt:
         $ref: "#/components/schemas/GuidanceReceipt"
 
+  GuidanceReceiptListResponse:
+    type: object
+    required: [ok, team_id, guidance_id, receipts]
+    properties:
+      ok: { type: boolean }
+      team_id: { type: string }
+      guidance_id: { type: string }
+      limit: { type: integer, format: int32 }
+      count: { type: integer, format: int32 }
+      receipts:
+        type: array
+        items:
+          $ref: "#/components/schemas/GuidanceReceipt"
+
   OrchestrateRequest:
     type: object
     required: [tasks]

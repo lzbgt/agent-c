@@ -159,6 +159,10 @@ func (s *Server) handleTeamsSubroutes(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
+		if len(parts) >= 4 && parts[3] == "receipts" {
+			s.handleTeamGuidanceReceipts(w, r, teamID, parts[2])
+			return
+		}
 		if len(parts) >= 4 && parts[3] == "ack" {
 			s.handleTeamGuidanceAck(w, r, teamID, parts[2])
 			return

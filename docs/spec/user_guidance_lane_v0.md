@@ -109,6 +109,10 @@ Body:
 }
 ```
 
+### List guidance receipts
+
+`GET /v1/teams/{team_id}/guidance/{guidance_id}/receipts?limit=50`
+
 ## SSE / replay events
 
 Event types:

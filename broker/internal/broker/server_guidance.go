@@ -260,6 +260,57 @@ func (s *Server) handleTeamGuidanceGet(w http.ResponseWriter, r *http.Request, t
 	writeJSON(w, map[string]any{"ok": true, "team_id": teamID, "guidance": guidanceEventToJSON(*ev)})
 }
 
+func (s *Server) handleTeamGuidanceReceipts(w http.ResponseWriter, r *http.Request, teamID, guidanceID string) {
+	if r.Method != "GET" {
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if !s.allowAutomationPrincipal(p) {
+		writeErrorJSON(w, "oidc required", http.StatusForbidden)
+		return
+	}
+	if _, ok := s.requireTeamOwner(w, r, p, teamID); !ok {
+		return
+	}
+	guidanceID = strings.TrimSpace(guidanceID)
+	if guidanceID == "" || !guidanceIDRe.MatchString(guidanceID) {
+		writeErrorJSON(w, "invalid guidance_id", http.StatusBadRequest)
+		return
+	}
+	if _, err := s.cfg.DB.GetGuidanceEvent(r.Context(), teamID, guidanceID); err != nil {
+		writeErrorJSON(w, "guidance not found", http.StatusNotFound)
+		return
+	}
+	limit := 50
+	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+		if n, ok := parseIntBounded(v, 1, 200); ok {
+			limit = n
+		}
+	}
+	receipts, err := s.cfg.DB.ListGuidanceReceipts(r.Context(), guidanceID, limit)
+	if err != nil {
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	out := make([]map[string]any, 0, len(receipts))
+	for _, row := range receipts {
+		out = append(out, guidanceReceiptToJSON(row))
+	}
+	writeJSON(w, map[string]any{
+		"ok":          true,
+		"team_id":     teamID,
+		"guidance_id": guidanceID,
+		"limit":       limit,
+		"count":       len(out),
+		"receipts":    out,
+	})
+}
+
 func (s *Server) handleTeamGuidanceAck(w http.ResponseWriter, r *http.Request, teamID, guidanceID string) {
 	if r.Method != "POST" {
 		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)

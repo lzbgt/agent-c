@@ -37,6 +37,8 @@ import {
   type BrokerGuidanceCreateResp,
   BrokerGuidanceListRespSchema,
   type BrokerGuidanceListResp,
+  BrokerGuidanceReceiptListRespSchema,
+  type BrokerGuidanceReceiptListResp,
   BrokerTeamQuorumRuleListRespSchema,
   type BrokerTeamQuorumRuleListResp,
   BrokerTeamQuorumRuleUpsertRespSchema,
@@ -842,6 +844,28 @@ export async function apiBrokerTeamGuidanceAck(
   });
   const j = await r.json();
   return BrokerGuidanceAckRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamGuidanceReceiptsList(
+  brokerBase: string,
+  teamId: string,
+  guidanceId: string,
+  params?: { limit?: number },
+  auth?: ApiAuth,
+): Promise<BrokerGuidanceReceiptListResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  const gid = String(guidanceId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  if (!gid) throw new Error("missing guidance_id");
+  const qs = new URLSearchParams();
+  if (Number.isFinite(params?.limit ?? NaN)) qs.set("limit", String(params?.limit));
+  const url = `${base}/v1/teams/${encodeURIComponent(tid)}/guidance/${encodeURIComponent(gid)}/receipts${
+    qs.toString() ? `?${qs}` : ""
+  }`;
+  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return BrokerGuidanceReceiptListRespSchema.parse(j);
 }
 
 export async function apiBrokerTeamQuorumList(

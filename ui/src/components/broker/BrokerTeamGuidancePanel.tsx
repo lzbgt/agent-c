@@ -3,8 +3,10 @@ import {
   apiBrokerTeamGuidanceAck,
   apiBrokerTeamGuidanceCreate,
   apiBrokerTeamGuidanceList,
+  apiBrokerTeamGuidanceReceiptsList,
   type ApiAuth,
   type BrokerGuidanceEvent,
+  type BrokerGuidanceReceipt,
 } from "../../api";
 import FieldLabel from "../FieldLabel";
 import { fmtTs, parseCsvList, GUIDANCE_EVENT_TYPES } from "./teamRunUtils";
@@ -45,6 +47,10 @@ export default function BrokerTeamGuidancePanel(props: BrokerTeamGuidancePanelPr
   const [ackBusyId, setAckBusyId] = React.useState<string>("");
   const [ackError, setAckError] = React.useState<string | null>(null);
   const lastEventTsRef = React.useRef<number>(0);
+  const [receiptsByGuidanceId, setReceiptsByGuidanceId] = React.useState<Record<string, BrokerGuidanceReceipt[]>>({});
+  const [receiptsBusyId, setReceiptsBusyId] = React.useState<string>("");
+  const [receiptsErrorByGuidanceId, setReceiptsErrorByGuidanceId] = React.useState<Record<string, string>>({});
+  const [receiptsOpenByGuidanceId, setReceiptsOpenByGuidanceId] = React.useState<Record<string, boolean>>({});
 
   const guidanceEvents = React.useMemo(() => {
     const rows = Array.isArray(props.events) ? props.events : [];
@@ -160,16 +166,58 @@ export default function BrokerTeamGuidancePanel(props: BrokerTeamGuidancePanelPr
         );
         if (!resp.ok) throw new Error(resp.error || resp.err || "ack failed");
         await loadGuidance();
+        if (receiptsOpenByGuidanceId[guidanceId]) {
+          const receipts = await apiBrokerTeamGuidanceReceiptsList(
+            props.base,
+            teamIdTrimmed,
+            guidanceId,
+            { limit: 50 },
+            props.auth,
+          );
+          if (receipts.ok) {
+            setReceiptsByGuidanceId((prev) => ({
+              ...prev,
+              [guidanceId]: Array.isArray(receipts.receipts) ? receipts.receipts : [],
+            }));
+          }
+        }
       } catch (err) {
         setAckError(String(err));
       } finally {
         setAckBusyId("");
       }
     },
-    [canQuery, ackNote, props.base, props.auth, teamIdTrimmed, loadGuidance],
+    [canQuery, ackNote, props.base, props.auth, teamIdTrimmed, loadGuidance, receiptsOpenByGuidanceId],
   );
 
   const guidanceRows = normalizeGuidanceList(guidance);
+  const loadReceipts = React.useCallback(
+    async (guidanceId: string) => {
+      if (!canQuery || !guidanceId) return;
+      setReceiptsBusyId(guidanceId);
+      setReceiptsErrorByGuidanceId((prev) => ({ ...prev, [guidanceId]: "" }));
+      try {
+        const resp = await apiBrokerTeamGuidanceReceiptsList(
+          props.base,
+          teamIdTrimmed,
+          guidanceId,
+          { limit: 50 },
+          props.auth,
+        );
+        if (!resp.ok) throw new Error(resp.error || resp.err || "receipts failed");
+        setReceiptsByGuidanceId((prev) => ({
+          ...prev,
+          [guidanceId]: Array.isArray(resp.receipts) ? resp.receipts : [],
+        }));
+      } catch (err) {
+        setReceiptsErrorByGuidanceId((prev) => ({ ...prev, [guidanceId]: String(err) }));
+        setReceiptsByGuidanceId((prev) => ({ ...prev, [guidanceId]: [] }));
+      } finally {
+        setReceiptsBusyId("");
+      }
+    },
+    [canQuery, props.base, props.auth, teamIdTrimmed],
+  );
 
   return (
     <div className="space-y-3 rounded-lg border border-white/10 bg-white/5 p-3">
@@ -311,10 +359,15 @@ export default function BrokerTeamGuidancePanel(props: BrokerTeamGuidancePanelPr
           <div className="text-[11px] text-white/50">No guidance items.</div>
         ) : (
           <div className="space-y-2">
-            {guidanceRows.map((item) => {
+            {guidanceRows.map((item, idx) => {
               const gid = String(item.guidance_id || "");
+              const receipts = receiptsByGuidanceId[gid] ?? [];
+              const receiptsOpen = !!receiptsOpenByGuidanceId[gid];
+              const receiptsError = receiptsErrorByGuidanceId[gid];
+              const receiptsBusy = receiptsBusyId === gid;
+              const receiptsLoaded = Object.prototype.hasOwnProperty.call(receiptsByGuidanceId, gid);
               return (
-                <div key={gid || Math.random()} className="rounded-md border border-white/10 bg-black/20 p-2">
+                <div key={gid || String(item.created_unix_ms || idx)} className="rounded-md border border-white/10 bg-black/20 p-2">
                   <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/70">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-white/60">
@@ -326,14 +379,31 @@ export default function BrokerTeamGuidancePanel(props: BrokerTeamGuidancePanelPr
                       {item.team_run_id ? <span>run {item.team_run_id}</span> : null}
                       {item.created_unix_ms ? <span>{fmtTs(item.created_unix_ms)}</span> : null}
                     </div>
-                    <button
-                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
-                      type="button"
-                      disabled={!canQuery || !gid || ackBusyId === gid}
-                      onClick={() => void handleAck(gid)}
-                    >
-                      {ackBusyId === gid ? "Acking…" : "Ack"}
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
+                        type="button"
+                        disabled={!canQuery || !gid}
+                        onClick={() => {
+                          if (!gid) return;
+                          const nextOpen = !receiptsOpen;
+                          setReceiptsOpenByGuidanceId((prev) => ({ ...prev, [gid]: nextOpen }));
+                          if (nextOpen && !receiptsLoaded) {
+                            void loadReceipts(gid);
+                          }
+                        }}
+                      >
+                        {receiptsOpen ? "Hide receipts" : `Receipts${receipts.length ? ` (${receipts.length})` : ""}`}
+                      </button>
+                      <button
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
+                        type="button"
+                        disabled={!canQuery || !gid || ackBusyId === gid}
+                        onClick={() => void handleAck(gid)}
+                      >
+                        {ackBusyId === gid ? "Acking…" : "Ack"}
+                      </button>
+                    </div>
                   </div>
                   <div className="mt-1 text-[12px] text-white/80">{item.message}</div>
                   <div className="mt-1 text-[11px] text-white/50">
@@ -341,7 +411,56 @@ export default function BrokerTeamGuidancePanel(props: BrokerTeamGuidancePanelPr
                       ? `roles: ${item.target_roles.join(", ")}`
                       : null}
                     {item.target_orchestrator_id ? ` · orch: ${item.target_orchestrator_id}` : null}
+                    {item.status ? ` · status: ${item.status}` : null}
+                    {item.acked_by ? ` · acked by ${item.acked_by}` : null}
+                    {item.acked_unix_ms ? ` · ${fmtTs(item.acked_unix_ms)}` : null}
                   </div>
+                  {receiptsOpen ? (
+                    <div className="mt-2 rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold text-white/70">Receipts</span>
+                        <button
+                          className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/60 hover:bg-black/40 disabled:opacity-50"
+                          type="button"
+                          disabled={!canQuery || receiptsBusy}
+                          onClick={() => void loadReceipts(gid)}
+                        >
+                          {receiptsBusy ? "Loading…" : "Refresh"}
+                        </button>
+                      </div>
+                      {receiptsError ? <div className="mt-1 text-[11px] text-rose-200">{receiptsError}</div> : null}
+                      {receiptsBusy && receipts.length === 0 ? (
+                        <div className="mt-1 text-[11px] text-white/50">Loading receipts…</div>
+                      ) : null}
+                      {!receiptsBusy && receiptsLoaded && receipts.length === 0 ? (
+                        <div className="mt-1 text-[11px] text-white/50">No receipts yet.</div>
+                      ) : null}
+                      {receipts.length > 0 ? (
+                        <div className="mt-2 space-y-1">
+                          {receipts.map((receipt, idx) => (
+                            <div
+                              key={`${receipt.id || receipt.acked_unix_ms || idx}`}
+                              className="rounded-md border border-white/10 bg-black/20 px-2 py-1"
+                            >
+                              <div className="flex flex-wrap items-center gap-2 text-[10px] text-white/60">
+                                {receipt.ack_source ? (
+                                  <span className="rounded-full border border-white/10 px-2 py-0.5">
+                                    {receipt.ack_source}
+                                  </span>
+                                ) : null}
+                                {receipt.ack_by ? <span>{receipt.ack_by}</span> : null}
+                                {receipt.ack_role ? <span>role {receipt.ack_role}</span> : null}
+                                {receipt.acked_unix_ms ? <span>{fmtTs(receipt.acked_unix_ms)}</span> : null}
+                              </div>
+                              {receipt.ack_note ? (
+                                <div className="mt-1 text-[11px] text-white/70">{receipt.ack_note}</div>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}

@@ -743,6 +743,31 @@
             schema:
               $ref: "#/components/schemas/GuidanceGetResponse"
 
+/v1/teams/{team_id}/guidance/{guidance_id}/receipts:
+  get:
+    tags: [teams]
+    summary: List guidance receipts
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: guidance_id
+        required: true
+        schema: { type: string }
+      - in: query
+        name: limit
+        required: false
+        schema: { type: integer, format: int32 }
+    responses:
+      "200":
+        description: Receipts
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuidanceReceiptListResponse"
+
 /v1/teams/{team_id}/guidance/{guidance_id}/ack:
   post:
     tags: [teams]

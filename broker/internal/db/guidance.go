@@ -450,3 +450,52 @@ func (d *DB) CreateGuidanceReceipt(
 	}
 	return &out, nil
 }
+
+func (d *DB) ListGuidanceReceipts(ctx context.Context, guidanceID string, limit int) ([]GuidanceReceipt, error) {
+	if d == nil || d.Pool == nil {
+		return nil, errors.New("db not open")
+	}
+	guidanceID = strings.TrimSpace(guidanceID)
+	if guidanceID == "" {
+		return nil, errors.New("missing guidance_id")
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	rows, err := d.Pool.Query(ctx, `
+		SELECT id, guidance_id, ack_by, COALESCE(ack_role, ''), ack_source,
+		       COALESCE(ack_note, ''), acked_unix_ms
+		FROM broker_guidance_receipts
+		WHERE guidance_id=$1
+		ORDER BY acked_unix_ms DESC, id DESC
+		LIMIT $2
+	`, guidanceID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []GuidanceReceipt{}
+	for rows.Next() {
+		var row GuidanceReceipt
+		if err := rows.Scan(
+			&row.ID,
+			&row.GuidanceID,
+			&row.AckBy,
+			&row.AckRole,
+			&row.AckSource,
+			&row.AckNote,
+			&row.AckedUnixMS,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}

@@ -765,3 +765,18 @@ export const BrokerGuidanceAckRespSchema = z
   })
   .passthrough();
 export type BrokerGuidanceAckResp = z.infer<typeof BrokerGuidanceAckRespSchema>;
+
+export const BrokerGuidanceReceiptListRespSchema = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string().optional(),
+    guidance_id: z.string().optional(),
+    limit: z.number().optional(),
+    count: z.number().optional(),
+    receipts: z.array(BrokerGuidanceReceiptSchema).optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerGuidanceReceiptListResp = z.infer<typeof BrokerGuidanceReceiptListRespSchema>;
