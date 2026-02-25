@@ -293,6 +293,13 @@ export default function App() {
     pending: RunWatchByScope | null;
     lastSentAt: number;
   }>({ timer: null, pending: null, lastSentAt: 0 });
+  const runWatchMode = React.useMemo(() => {
+    if (!runWatchCanUse) return "local";
+    if (runWatchServerStatus === "error") return "local";
+    if (runWatchServerStatus === "loading") return "server:loading";
+    if (runWatchServerStatus === "ready") return "server";
+    return "server";
+  }, [runWatchCanUse, runWatchServerStatus]);
   const topbarRef = React.useRef<HTMLElement | null>(null);
   const promptbarRef = React.useRef<HTMLDivElement | null>(null);
   const [topbarHeightPx, setTopbarHeightPx] = React.useState<number>(56);
@@ -1925,6 +1932,7 @@ export default function App() {
         activeJobId={activeJobId}
         jobStatus={jobStatus}
         jobProgressLabel={jobProgressLabel}
+        runWatchMode={runWatchMode}
         daemonAuth={daemonAuth}
         prompt={prompt}
         setPrompt={setPrompt}

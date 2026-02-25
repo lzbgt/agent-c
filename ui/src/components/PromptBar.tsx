@@ -40,6 +40,7 @@ type PromptBarProps = {
   activeJobId: string | null;
   jobStatus: string | null;
   jobProgressLabel: string;
+  runWatchMode: string;
   daemonAuth: ApiAuth;
   prompt: string;
   setPrompt: (next: string) => void;
@@ -143,6 +144,7 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
                 <div className="text-[11px] text-white/60">
                   session=<code className="text-white/70 break-all">{String(props.sessionId || "").trim() || "(none)"}</code>{" "}
                   tools=<code className="text-white/70 break-all">{String(props.tools || "")}</code>{" "}
+                  run_watch=<code className="text-white/70 break-all">{String(props.runWatchMode || "local")}</code>{" "}
                   {props.activeJobId ? (
                     <>
                       job=<code className="text-white/70 break-all">{props.activeJobId}</code>{" "}
