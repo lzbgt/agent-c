@@ -221,6 +221,10 @@ All endpoints below are served by the broker (not by agents).
   - emitted events (SSE + replay):
     - `orchestrator_run_created|updated|status|heartbeat`
     - `orchestrator_spawn_requested|updated|status`
+- Autonomous service auth:
+  - `agentd-orchestrator` and `agentd-spawn-adapter` accept `BROKER_OIDC_TOKEN_FILE` and will read the
+    token file on each request (best-effort).
+  - Use `agentd-oidc-refresh` (broker image) or `tools/oidc_token_refresh.sh` to keep the token file fresh.
 - `GET /v1/teams/{team_id}/runs`
   - lists recent team runs (status + created time + best-effort summary)
   - optional query: `limit`, `offset`, `status`
