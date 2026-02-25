@@ -786,6 +786,33 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
     });
   }, [moderatorPinnedEntries]);
   React.useEffect(() => {
+    if (!props.open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (!event.ctrlKey || !event.shiftKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName ? target.tagName.toLowerCase() : "";
+        if (tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable) {
+          return;
+        }
+      }
+      if (event.code === "KeyS") {
+        if (pinnedCompareA && pinnedCompareB) {
+          event.preventDefault();
+          setPinnedCompareA(pinnedCompareB);
+          setPinnedCompareB(pinnedCompareA);
+        }
+      } else if (event.code === "KeyD") {
+        event.preventDefault();
+        setPinnedCompareDiffOnly((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [pinnedCompareA, pinnedCompareB, props.open]);
+  React.useEffect(() => {
     if (!pinnedCompareA || !moderatorPinnedEvents[pinnedCompareA]) {
       setPinnedCompareA(pinnedCompareOptions[0]?.key ?? "");
     }
