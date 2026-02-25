@@ -32,6 +32,8 @@ import json
 print(json.dumps({
   "session_id": "${SESSION_ID}",
   "directive": "pause automation until next update",
+  "scope": "all",
+  "assignees": ["agent-a", "role:planner"],
   "actor": {"id": "moderator-smoke", "kind": "test"}
 }))
 PY
@@ -46,6 +48,7 @@ print(json.dumps({
   "session_id": "${SESSION_ID}",
   "title": "collect system status",
   "detail": "run diagnostics and summarize",
+  "assignees": ["agent-b", "role:executor"],
   "actor": {"id": "moderator-smoke", "kind": "test"}
 }))
 PY
@@ -65,6 +68,15 @@ if not dir_obj.get("ok"):
 if dir_obj.get("type") != "moderator_directive":
   print("unexpected directive type:", dir_obj.get("type"), file=sys.stderr)
   raise SystemExit(1)
+event = dir_obj.get("event") or {}
+data = event.get("data") or {}
+if data.get("scope") != "all":
+  print("missing directive scope:", data, file=sys.stderr)
+  raise SystemExit(1)
+assignees = data.get("assignees") or []
+if "agent-a" not in assignees:
+  print("missing directive assignee:", assignees, file=sys.stderr)
+  raise SystemExit(1)
 
 task_obj = json.loads(os.environ["RESP_TASK"])
 if not task_obj.get("ok"):
@@ -72,6 +84,13 @@ if not task_obj.get("ok"):
   raise SystemExit(1)
 if task_obj.get("type") != "moderator_task_published":
   print("unexpected task type:", task_obj.get("type"), file=sys.stderr)
+  raise SystemExit(1)
+task_event = task_obj.get("event") or {}
+task_data = task_event.get("data") or {}
+task = task_data.get("task") or {}
+task_assignees = task.get("assignees") or []
+if "agent-b" not in task_assignees:
+  print("missing task assignee:", task_assignees, file=sys.stderr)
   raise SystemExit(1)
 
 ev_obj = json.loads(os.environ["RESP_EVENTS"])

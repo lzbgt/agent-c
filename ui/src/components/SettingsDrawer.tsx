@@ -66,6 +66,19 @@ function formatDuration(ms?: number | null) {
   return `${rem}s`;
 }
 
+function parseCsvList(raw: string) {
+  const out: string[] = [];
+  if (!raw) return out;
+  const seen = new Set<string>();
+  for (const entry of raw.split(",")) {
+    const trimmed = entry.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out;
+}
+
 type SettingsDrawerProps = {
   open: boolean;
   onClose: () => void;
@@ -121,8 +134,11 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const [brokerDeployments, setBrokerDeployments] = React.useState<any[] | null>(null);
   const [brokerDeploymentsDefaultId, setBrokerDeploymentsDefaultId] = React.useState<string | null>(null);
   const [moderatorDirective, setModeratorDirective] = React.useState<string>("");
+  const [moderatorDirectiveScope, setModeratorDirectiveScope] = React.useState<string>("");
+  const [moderatorDirectiveAssignees, setModeratorDirectiveAssignees] = React.useState<string>("");
   const [moderatorTaskTitle, setModeratorTaskTitle] = React.useState<string>("");
   const [moderatorTaskDetail, setModeratorTaskDetail] = React.useState<string>("");
+  const [moderatorTaskAssignees, setModeratorTaskAssignees] = React.useState<string>("");
   const [moderatorAppendToSession, setModeratorAppendToSession] = React.useState<boolean>(false);
   const [moderatorBusy, setModeratorBusy] = React.useState<boolean>(false);
   const [moderatorError, setModeratorError] = React.useState<string | null>(null);
@@ -337,6 +353,8 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const publishModeratorDirective = React.useCallback(async () => {
     const sid = String(props.session.id || "").trim();
     const directive = String(moderatorDirective || "").trim();
+    const scope = String(moderatorDirectiveScope || "").trim();
+    const assignees = parseCsvList(moderatorDirectiveAssignees);
     if (!sid) {
       setModeratorError("missing session_id");
       return;
@@ -349,14 +367,17 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
     setModeratorError(null);
     setModeratorSuccess(null);
     try {
+      const req: any = {
+        session_id: sid,
+        directive,
+        append_to_session: moderatorAppendToSession,
+        actor: { role: "moderator", id: client.clientId || "moderator", kind: "webui" },
+      };
+      if (scope) req.scope = scope;
+      if (assignees.length > 0) req.assignees = assignees;
       const resp = await apiPostModeratorDirective(
         connection.effectiveBase,
-        {
-          session_id: sid,
-          directive,
-          append_to_session: moderatorAppendToSession,
-          actor: { role: "moderator", id: client.clientId || "moderator", kind: "webui" },
-        },
+        req,
         connection.daemonAuth,
       );
       if (!resp.ok) throw new Error(resp.error || "failed to publish directive");
@@ -367,12 +388,22 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
     } finally {
       setModeratorBusy(false);
     }
-  }, [client.clientId, connection.daemonAuth, connection.effectiveBase, moderatorAppendToSession, moderatorDirective, props.session.id]);
+  }, [
+    client.clientId,
+    connection.daemonAuth,
+    connection.effectiveBase,
+    moderatorAppendToSession,
+    moderatorDirective,
+    moderatorDirectiveAssignees,
+    moderatorDirectiveScope,
+    props.session.id,
+  ]);
 
   const publishModeratorTask = React.useCallback(async () => {
     const sid = String(props.session.id || "").trim();
     const title = String(moderatorTaskTitle || "").trim();
     const detail = String(moderatorTaskDetail || "").trim();
+    const assignees = parseCsvList(moderatorTaskAssignees);
     if (!sid) {
       setModeratorError("missing session_id");
       return;
@@ -385,15 +416,17 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
     setModeratorError(null);
     setModeratorSuccess(null);
     try {
+      const req: any = {
+        session_id: sid,
+        title,
+        detail: detail || undefined,
+        append_to_session: moderatorAppendToSession,
+        actor: { role: "moderator", id: client.clientId || "moderator", kind: "webui" },
+      };
+      if (assignees.length > 0) req.assignees = assignees;
       const resp = await apiPostModeratorTask(
         connection.effectiveBase,
-        {
-          session_id: sid,
-          title,
-          detail: detail || undefined,
-          append_to_session: moderatorAppendToSession,
-          actor: { role: "moderator", id: client.clientId || "moderator", kind: "webui" },
-        },
+        req,
         connection.daemonAuth,
       );
       if (!resp.ok) throw new Error(resp.error || "failed to publish task");
@@ -410,6 +443,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
     connection.daemonAuth,
     connection.effectiveBase,
     moderatorAppendToSession,
+    moderatorTaskAssignees,
     moderatorTaskDetail,
     moderatorTaskTitle,
     props.session.id,
@@ -899,6 +933,30 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
               />
             </div>
             <div>
+              <FieldLabel>Directive scope (optional)</FieldLabel>
+              <input
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                placeholder="e.g. all, team:ops, agent:planner"
+                value={moderatorDirectiveScope}
+                onChange={(e) => setModeratorDirectiveScope(e.target.value)}
+              />
+              <div className="mt-1 text-[11px] text-white/50">
+                Scope is an advisory label used by collaborating agents to route directives.
+              </div>
+            </div>
+            <div>
+              <FieldLabel>Directive assignees (comma-separated, optional)</FieldLabel>
+              <input
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                placeholder="agent-a, agent-b, role:planner"
+                value={moderatorDirectiveAssignees}
+                onChange={(e) => setModeratorDirectiveAssignees(e.target.value)}
+              />
+              <div className="mt-1 text-[11px] text-white/50">
+                Leave empty to broadcast to all listening agents.
+              </div>
+            </div>
+            <div>
               <FieldLabel>Task</FieldLabel>
               <input
                 className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
@@ -913,6 +971,15 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                 value={moderatorTaskDetail}
                 onChange={(e) => setModeratorTaskDetail(e.target.value)}
               />
+              <div className="mt-2">
+                <FieldLabel>Task assignees (comma-separated, optional)</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  placeholder="agent-a, agent-b, role:executor"
+                  value={moderatorTaskAssignees}
+                  onChange={(e) => setModeratorTaskAssignees(e.target.value)}
+                />
+              </div>
               <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
                 <button
                   className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
@@ -957,7 +1024,8 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
             {moderatorError ? <div className="text-rose-200">moderator error: {moderatorError}</div> : null}
             {moderatorSuccess ? <div className="text-emerald-200">{moderatorSuccess}</div> : null}
             <div className="text-[11px] text-white/50">
-              Moderator directives/tasks are stored as client events and do not block automation unless policy hooks require it.
+              Moderator directives/tasks are stored as client events. Assignees and scope are advisory hints; empty assignees
+              broadcast to all listening agents.
             </div>
           </div>
         </div>

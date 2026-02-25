@@ -136,6 +136,8 @@ Read-back helpers:
 Moderator events (server-issued, stored as client events):
 - moderator_directive
 - moderator_task_published
+  - directive `data` may include `scope` and `assignees` (advisory routing hints)
+  - task `data.task` may include `assignees` (advisory routing hints)
 
 ## Agent -> client actions (ui_action)
 

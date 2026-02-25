@@ -13,6 +13,7 @@ export const ModeratorDirectiveReqSchema = z.object({
   session_id: z.string(),
   directive: z.string(),
   scope: z.string().optional(),
+  assignees: z.array(z.string()).optional(),
   priority: z.number().int().optional(),
   metadata: z.record(z.any()).optional(),
   actor: ModeratorActorSchema.optional(),

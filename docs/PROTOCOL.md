@@ -193,6 +193,7 @@ Automation profile override:
   - `strict`: `yolo_default=false`, `host_policy=readonly`, `policy_mode=enforce`
   - `custom`: no override (use daemon config as-is)
 - The daemon reports the applied profile as `effective_automation_profile` in the run response.
+- If `automation_profile` is omitted, the daemon uses its compiled defaults (currently equivalent to `full`).
 
 ### Run replay bundles (deterministic audit)
 
@@ -263,6 +264,28 @@ Moderator control plane:
 - `POST /api/v1/moderator/directive` publishes a moderator directive (`type=moderator_directive`).
 - `POST /api/v1/moderator/task` publishes a moderator task (`type=moderator_task_published`).
 - `GET /api/v1/moderator/events?session_id=...` lists moderator events (filtered from client events).
+
+Moderator directive payload (POST /api/v1/moderator/directive):
+- `session_id` (string, required)
+- `directive` (string, required)
+- `scope` (string, optional; advisory routing label)
+- `assignees` (string[], optional; advisory targets, empty → broadcast)
+- `priority` (int, optional)
+- `metadata` (object, optional)
+- `append_to_session` (bool, optional)
+- `actor` (object, optional; default role=moderator)
+
+Moderator task payload (POST /api/v1/moderator/task):
+- `session_id` (string, required)
+- `title` (string, required)
+- `detail` (string, optional)
+- `assignees` (string[], optional; advisory targets, empty → broadcast)
+- `tags` (string[], optional)
+- `priority` (int, optional)
+- `status` (string, optional; default `open`)
+- `metadata` (object, optional)
+- `append_to_session` (bool, optional)
+- `actor` (object, optional; default role=moderator)
 
 
 ### Endpoint: list client events (file-backed)

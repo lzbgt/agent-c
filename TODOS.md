@@ -105,6 +105,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-25: WebUI run settings + workflow defaults now include `automation_profile` with caps-driven options.
   - 2026-02-25: session audit records include `effective_automation_profile`; WebUI history shows applied run settings.
   - 2026-02-25: added moderator directive/task endpoints + caps feature; WebUI moderator panel publishes nonblocking events.
+  - 2026-02-25: Moderator directives accept assignees/scope; WebUI exposes assignee/scope inputs and docs clarify broadcast defaults.
 - [x] W=9 — Rolling memory consolidation v1: scheduled rollups (daily/weekly), cross-run correlation index, and evidence-linked recall.
   - 2026-02-24: added scheduled recap engine (daily/weekly) with config/env/caps plumbing; recap files now carry `kind` and `evidence_sources`.
   - 2026-02-25: added correlation index build endpoint + index-backed trace correlation (daily + recap evidence), rebuilt after recaps/consolidation.

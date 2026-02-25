@@ -230,6 +230,16 @@ void handle_moderator_directive_endpoint(
   if (body.isMember("metadata") && body["metadata"].isObject()) {
     data["metadata"] = body["metadata"];
   }
+  if (body.isMember("assignees") && body["assignees"].isArray()) {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& t : body["assignees"]) {
+      if (t.isString()) {
+        const std::string v = trim_copy(t.asString());
+        if (!v.empty()) arr.append(v);
+      }
+    }
+    if (!arr.empty()) data["assignees"] = arr;
+  }
 
   Json::Value payload(Json::objectValue);
   payload["type"] = "moderator_directive";

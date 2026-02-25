@@ -100,7 +100,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v30)
+## Schema (v31)
 
 All timestamps are Unix milliseconds.
 
@@ -222,6 +222,7 @@ Approval decisions tied to an approval request.
 - `id INTEGER PRIMARY KEY AUTOINCREMENT`
 - `approval_id TEXT NOT NULL`
 - `member_id TEXT NOT NULL`
+- `member_role TEXT` (optional)
 - `decision TEXT NOT NULL` (`approve|deny`)
 - `decision_unix_ms INTEGER NOT NULL`
 - `note TEXT` (optional)
