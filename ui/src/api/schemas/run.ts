@@ -138,3 +138,26 @@ export const JobRespSchema = z.object({
   result: RunResponseSchema.optional(),
 });
 export type JobResp = z.infer<typeof JobRespSchema>;
+
+export const RunReplayBundleSchema = z.object({
+  schema: z.string().optional(),
+  request: z.any().optional(),
+  response: z.any().optional(),
+  tool_records: z.array(z.any()).optional(),
+});
+export type RunReplayBundle = z.infer<typeof RunReplayBundleSchema>;
+
+export const RunReplayRespSchema = z.object({
+  ok: z.boolean(),
+  run_id: z.union([z.number(), z.string()]).optional(),
+  session_id: z.string().optional(),
+  bundle: RunReplayBundleSchema.optional(),
+  replay_sha256: z.string().optional(),
+  replay_sha256_alg: z.string().optional(),
+  replay_sha256_schema: z.string().optional(),
+  replay_error: z.string().optional(),
+  error: z.string().optional(),
+  err: z.string().optional(),
+  code: z.string().optional(),
+});
+export type RunReplayResp = z.infer<typeof RunReplayRespSchema>;

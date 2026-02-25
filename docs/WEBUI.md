@@ -116,6 +116,13 @@ The **Memory explorer** panel (toggle from the main UI) provides operator toolin
 - Recap scheduling controls that update `memory.recap_*` config via `/api/v1/config/update`
   (scheduled recaps require `summary_model`).
 
+## Run diff (replay bundles)
+
+The WebUI includes a **Run diff** panel for replay bundle comparison:
+- Load two `run_id` values and diff request/response/tool records from `/api/v1/run/replay`.
+- Displays replay hash match status, usage summary, and a baseline shortcut.
+- Baselines are stored in the browser (per base URL) for quick reuse.
+
 ## Workflows (read-only)
 
 The WebUI includes a **Workflows** panel for durable workflow inspection:

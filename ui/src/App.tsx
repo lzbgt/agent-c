@@ -39,6 +39,7 @@ import SettingsDrawer from "./components/SettingsDrawer";
 import TraceLookupPanel from "./components/TraceLookupPanel";
 import BrokerPanel from "./components/BrokerPanel";
 import MemoryPanel from "./components/MemoryPanel";
+import RunDiffPanel from "./components/RunDiffPanel";
 import ApprovalQueuePanel from "./components/ApprovalQueuePanel";
 import WorkflowPanel from "./components/WorkflowPanel";
 import useLocalStorageState from "./hooks/useLocalStorageState";
@@ -181,6 +182,7 @@ export default function App() {
   const [traceLookupId, setTraceLookupId] = useLocalStorageState("agentui.traceLookupId", "");
   const [traceLookupOpen, setTraceLookupOpen] = useLocalStorageState("agentui.traceLookupOpen", false);
   const [memoryPanelOpen, setMemoryPanelOpen] = useLocalStorageState("agentui.memoryPanelOpen", false);
+  const [runDiffPanelOpen, setRunDiffPanelOpen] = useLocalStorageState("agentui.runDiffPanelOpen", false);
   const [approvalPanelOpen, setApprovalPanelOpen] = useLocalStorageState("agentui.approvalPanelOpen", false);
   const [workflowPanelOpen, setWorkflowPanelOpen] = useLocalStorageState("agentui.workflowPanelOpen", false);
   // Keep prompts separate so an active async run does not overwrite the "last completed" view.
@@ -1668,6 +1670,12 @@ export default function App() {
               yolo={yolo}
               agentdTrace={traceLookupAgentd}
               brokerTrace={traceLookupBroker}
+            />
+            <RunDiffPanel
+              open={!!runDiffPanelOpen}
+              onToggle={(open) => setRunDiffPanelOpen(open)}
+              baseUrl={effectiveBase}
+              auth={daemonAuth}
             />
             <MemoryPanel
               open={!!memoryPanelOpen}

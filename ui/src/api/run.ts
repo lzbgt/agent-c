@@ -4,6 +4,8 @@ import {
   type JobResp,
   RunAsyncRespSchema,
   type RunAsyncResp,
+  RunReplayRespSchema,
+  type RunReplayResp,
   RunRequestSchema,
   type RunRequest,
   RunResponseSchema,
@@ -78,6 +80,24 @@ export async function apiCancelJob(base: string, jobId: string, auth?: ApiAuth):
   });
   const j = await r.json();
   return j;
+}
+
+export async function apiRunReplay(base: string, runId: string, auth?: ApiAuth): Promise<RunReplayResp> {
+  const rid = String(runId || "").trim();
+  if (!rid) throw new Error("missing run_id");
+  const r = await fetch(`${base}/api/v1/run/replay?run_id=${encodeURIComponent(rid)}`, {
+    headers: daemonHeaders(auth),
+  });
+  let j: any = {};
+  try {
+    j = await r.json();
+  } catch {
+    j = {};
+  }
+  if (!r.ok) {
+    return RunReplayRespSchema.parse({ ok: false, ...j });
+  }
+  return RunReplayRespSchema.parse(j);
 }
 
 function sleep(ms: number) {

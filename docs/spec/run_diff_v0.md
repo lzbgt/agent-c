@@ -1,13 +1,20 @@
 # Run Diff + Evidence Comparison v0
 
 Date: 2026-02-20
-Status: draft
+Status: v0.1 (client-side replay diff shipped; server diff endpoints planned)
 
 ## Summary
 
 Provide a deterministic way to compare two runs (or a run vs a baseline)
 using evidence bundles as the source of truth. The diff output is
 machine-checkable and UI-friendly.
+
+## Current implementation (v0.1)
+
+- WebUI uses **replay bundles** from `GET /api/v1/run/replay?run_id=...` and computes
+  a client-side diff across request/response/tool records.
+- The diff output is UI-facing only (not persisted in agentd yet).
+- Baselines are stored in the browser (per base URL) for quick reuse.
 
 ## Goals
 
@@ -24,10 +31,10 @@ machine-checkable and UI-friendly.
 
 ## Inputs
 
-1) Evidence bundle A
-2) Evidence bundle B
+1) Replay bundle A (`/api/v1/run/replay`)
+2) Replay bundle B (`/api/v1/run/replay`)
 
-Bundles include:
+Replay bundles include:
 - run metadata (model, provider, limits, timestamps)
 - event log (run/workflow events with stable indices)
 - tool IO hashes
@@ -54,6 +61,13 @@ Top-level fields:
 
 ## API surface (agentd)
 
+### Implemented today
+
+- `GET /api/v1/run/replay?run_id=...`
+  - returns: replay bundle JSON (request + response + tool records + hashes)
+
+### Planned
+
 - `POST /api/v1/run/diff`
   - body: `{ "lhs_bundle_id": "...", "rhs_bundle_id": "...", "options": {...} }`
   - returns: diff result JSON
@@ -63,8 +77,8 @@ Top-level fields:
 
 ## UI expectations
 
-- Side-by-side timeline with event-level diffs.
-- Artifact diff view with hash changes and sizes.
+- Side-by-side timeline with event-level diffs (planned).
+- Artifact diff view with hash changes and sizes (planned).
 - Cost/usage deltas highlighted.
 - Evidence bundle links preserved.
 
