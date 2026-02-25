@@ -6,6 +6,7 @@ import {
   apiBrokerTeamRunApprovalsList,
   apiBrokerTeamRunCreate,
   apiBrokerTeamRunGet,
+  apiBrokerTeamRunRuntimeMembersUpdate,
   type ApiAuth,
 } from "../../api";
 import FieldLabel from "../FieldLabel";
@@ -111,6 +112,10 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const [runtimeSaveError, setRuntimeSaveError] = React.useState<string | null>(null);
   const runtimeImportRef = React.useRef<HTMLInputElement | null>(null);
   const [runtimeImportMerge, setRuntimeImportMerge] = React.useState<boolean>(true);
+  const [runtimeUpdateMode, setRuntimeUpdateMode] = React.useState<string>("replace");
+  const [runtimeUpdateBusy, setRuntimeUpdateBusy] = React.useState<boolean>(false);
+  const [runtimeUpdateError, setRuntimeUpdateError] = React.useState<string | null>(null);
+  const [runtimeUpdateNote, setRuntimeUpdateNote] = React.useState<string>("");
 
   const runtimeMembersPreview = React.useMemo(() => {
     const raw = String(runRuntimeMembersJson || "").trim();
@@ -393,6 +398,62 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
       setRunLookupError(String(err));
     } finally {
       setRunLookupBusy(false);
+    }
+  };
+
+  const handleRuntimeMembersLoadFromRun = () => {
+    const runtimeMembers = runLookupResult?.runtime_members;
+    if (!Array.isArray(runtimeMembers) || runtimeMembers.length === 0) {
+      setRuntimeUpdateError("no runtime members to load");
+      return;
+    }
+    setRunRuntimeMembersJson(JSON.stringify(runtimeMembers, null, 2));
+    setRuntimeUpdateError(null);
+  };
+
+  const handleRuntimeMembersUpdate = async () => {
+    const runId = String(runLookupId || runResult?.team_run_id || "").trim();
+    if (!teamIdTrimmed || !runId) {
+      setRuntimeUpdateError("missing team_id or run id");
+      return;
+    }
+    const raw = String(runRuntimeMembersJson || "").trim();
+    if (!raw) {
+      setRuntimeUpdateError("runtime members json required");
+      return;
+    }
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      setRuntimeUpdateError(`invalid runtime_members json: ${String(err)}`);
+      return;
+    }
+    if (!Array.isArray(parsed)) {
+      setRuntimeUpdateError("runtime_members must be a JSON array of member objects");
+      return;
+    }
+    const mode = String(runtimeUpdateMode || "").trim() || "replace";
+    setRuntimeUpdateError(null);
+    setRuntimeUpdateNote("");
+    setRuntimeUpdateBusy(true);
+    try {
+      const resp = await apiBrokerTeamRunRuntimeMembersUpdate(
+        props.base,
+        teamIdTrimmed,
+        runId,
+        { mode, runtime_members: parsed },
+        props.auth,
+      );
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "runtime members update failed");
+      }
+      setRunLookupResult(resp);
+      setRuntimeUpdateNote(`updated ${Array.isArray(resp.runtime_members) ? resp.runtime_members.length : 0} runtime members`);
+    } catch (err) {
+      setRuntimeUpdateError(String(err));
+    } finally {
+      setRuntimeUpdateBusy(false);
     }
   };
 
@@ -1075,6 +1136,7 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
         <FieldLabel>Runtime members JSON (optional)</FieldLabel>
         <textarea
           className="min-h-[84px] w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
+          data-testid="team-run-runtime-json"
           value={runRuntimeMembersJson}
           onChange={(e) => setRunRuntimeMembersJson(e.target.value)}
           placeholder='[{"member_id":"rt-1","agent_id":"agent_a","role":"executor","capabilities":["vision"],"meta":{"backend_label":"openai-mini"}}]'
@@ -1621,6 +1683,46 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
           })}
         </div>
       ) : null}
+      <div className="mt-2 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
+        <div className="text-xs font-semibold text-white/80">Runtime member updates</div>
+        <div className="text-[11px] text-white/50">
+          Apply the runtime members JSON (above) to an existing run; merge preserves existing members by member_id.
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <FieldLabel>Mode</FieldLabel>
+          <select
+            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            data-testid="team-run-runtime-mode"
+            value={runtimeUpdateMode}
+            onChange={(e) => setRuntimeUpdateMode(e.target.value)}
+          >
+            <option value="replace">replace</option>
+            <option value="merge">merge</option>
+          </select>
+          <button
+            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+            type="button"
+            data-testid="team-run-runtime-load"
+            disabled={!props.canQuery || runtimeUpdateBusy}
+            onClick={() => handleRuntimeMembersLoadFromRun()}
+          >
+            Load from run
+          </button>
+          <button
+            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+            type="button"
+            data-testid="team-run-runtime-update"
+            disabled={!props.canQuery || runtimeUpdateBusy}
+            onClick={() => void handleRuntimeMembersUpdate()}
+          >
+            {runtimeUpdateBusy ? "Updating…" : "Update runtime members"}
+          </button>
+        </div>
+        {runtimeUpdateError ? (
+          <div className="text-[11px] text-rose-200">{runtimeUpdateError}</div>
+        ) : null}
+        {runtimeUpdateNote ? <div className="text-[11px] text-white/60">{runtimeUpdateNote}</div> : null}
+      </div>
 
       <div className="mt-3 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
         <div className="text-xs font-semibold text-white/80">Run approvals</div>

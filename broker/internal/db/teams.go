@@ -164,6 +164,26 @@ func (d *DB) UpdateTeamRunStatus(ctx context.Context, teamID, teamRunID, status 
 	return err
 }
 
+func (d *DB) UpdateTeamRunPayload(ctx context.Context, teamID, teamRunID string, runJSON []byte) error {
+	if d == nil || d.Pool == nil {
+		return errors.New("db not open")
+	}
+	teamID = strings.TrimSpace(teamID)
+	teamRunID = strings.TrimSpace(teamRunID)
+	if teamID == "" || teamRunID == "" {
+		return errors.New("missing team_id or team_run_id")
+	}
+	if len(runJSON) == 0 {
+		return errors.New("missing run_json")
+	}
+	_, err := d.Pool.Exec(ctx, `
+		UPDATE broker_team_runs
+		SET run_json=$3::jsonb
+		WHERE team_id=$1 AND team_run_id=$2
+	`, teamID, teamRunID, string(runJSON))
+	return err
+}
+
 func (d *DB) GetTeamRunApproval(ctx context.Context, teamID, teamRunID, ruleID, memberID string) (*TeamRunApproval, error) {
 	if d == nil || d.Pool == nil {
 		return nil, errors.New("db not open")

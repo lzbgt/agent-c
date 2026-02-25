@@ -110,6 +110,7 @@ func (s *Server) handleTeamsSubroutes(w http.ResponseWriter, r *http.Request) {
 	// - /v1/teams/{team_id}/runs
 	// - /v1/teams/{team_id}/runs/{team_run_id}
 	// - /v1/teams/{team_id}/runs/{team_run_id}/approvals
+	// - /v1/teams/{team_id}/runs/{team_run_id}/runtime_members
 
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/teams/")
 	parts := strings.SplitN(rest, "/", 4)
@@ -173,6 +174,13 @@ func (s *Server) handleTeamsSubroutes(w http.ResponseWriter, r *http.Request) {
 				}
 				if r.Method == "POST" {
 					s.handleTeamRunApprovalsCreate(w, r, teamID, parts[2])
+					return
+				}
+				writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			case "runtime_members":
+				if r.Method == "PATCH" {
+					s.handleTeamRunRuntimeMembersUpdate(w, r, teamID, parts[2])
 					return
 				}
 				writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -991,8 +999,177 @@ func (s *Server) handleTeamRunGet(w http.ResponseWriter, r *http.Request, teamID
 		writeErrorJSON(w, "team run not found", http.StatusNotFound)
 		return
 	}
-	var runtimeMembers any
+	resp, err := s.teamRunStatusResponse(r.Context(), run)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, resp)
+}
+
+func (s *Server) handleTeamRunRuntimeMembersUpdate(w http.ResponseWriter, r *http.Request, teamID, teamRunID string) {
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if p.AuthKind != "oidc" {
+		writeErrorJSON(w, "oidc required", http.StatusForbidden)
+		return
+	}
+	if _, ok := s.requireTeamOwner(w, r, p, teamID); !ok {
+		return
+	}
+	run, err := s.cfg.DB.GetTeamRun(r.Context(), teamID, teamRunID)
+	if err != nil {
+		writeErrorJSON(w, "team run not found", http.StatusNotFound)
+		return
+	}
+	body, err := readBodyBounded(r.Body, 1024*1024)
+	if err != nil {
+		writeErrorJSON(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	if len(body) == 0 {
+		writeErrorJSON(w, "missing body", http.StatusBadRequest)
+		return
+	}
+	var raw any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		writeErrorJSON(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	mode := "replace"
+	var items []any
+	switch t := raw.(type) {
+	case []any:
+		items = t
+	case map[string]any:
+		if v, ok := t["mode"]; ok {
+			if s, ok := v.(string); ok {
+				mode = strings.ToLower(strings.TrimSpace(s))
+			} else {
+				writeErrorJSON(w, "mode must be string", http.StatusBadRequest)
+				return
+			}
+		}
+		if v, ok := t["runtime_members"]; ok {
+			if v == nil {
+				items = []any{}
+			} else if arr, ok := v.([]any); ok {
+				items = arr
+			} else {
+				writeErrorJSON(w, "runtime_members must be array", http.StatusBadRequest)
+				return
+			}
+		} else {
+			writeErrorJSON(w, "runtime_members required", http.StatusBadRequest)
+			return
+		}
+	default:
+		writeErrorJSON(w, "invalid payload", http.StatusBadRequest)
+		return
+	}
+	if mode == "" {
+		mode = "replace"
+	}
+	if mode != "replace" && mode != "merge" {
+		writeErrorJSON(w, "invalid mode (replace|merge)", http.StatusBadRequest)
+		return
+	}
+
+	incomingInputs, err := parseTeamRunRuntimeMembers(map[string]any{"runtime_members": items})
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var runPayload map[string]any
 	if len(run.RunJSON) > 0 {
+		if err := json.Unmarshal(run.RunJSON, &runPayload); err != nil {
+			writeErrorJSON(w, "invalid stored run payload", http.StatusInternalServerError)
+			return
+		}
+	}
+	if runPayload == nil {
+		runPayload = map[string]any{}
+	}
+	teamMeta, _ := runPayload["team"].(map[string]any)
+	if teamMeta == nil {
+		teamMeta = map[string]any{}
+	}
+	var existingInputs []teamRuntimeMemberInput
+	if mode == "merge" {
+		if rawMembers, ok := teamMeta["runtime_members"]; ok && rawMembers != nil {
+			if arr, ok := rawMembers.([]any); ok {
+				existingInputs, err = parseTeamRunRuntimeMembers(map[string]any{"runtime_members": arr})
+				if err != nil {
+					writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+			}
+		}
+	}
+	mergedInputs := incomingInputs
+	if mode == "merge" {
+		mergedInputs = mergeRuntimeMemberInputs(existingInputs, incomingInputs)
+	}
+
+	members, err := s.cfg.DB.ListTeamMembers(r.Context(), teamID)
+	if err != nil {
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	usedIDs := map[string]bool{}
+	for _, m := range members {
+		if m.MemberID != "" {
+			usedIDs[m.MemberID] = true
+		}
+	}
+	runtimeMembers, runtimeMembersJSON, err := buildRuntimeMembers(mergedInputs, teamID, usedIDs)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	for _, m := range runtimeMembers {
+		if strings.TrimSpace(m.AgentID) == "" {
+			writeErrorJSON(w, "runtime member missing agent_id", http.StatusBadRequest)
+			return
+		}
+		if ok, err := s.canAccessAgent(r.Context(), p, m.AgentID); err != nil {
+			writeErrorJSON(w, "db error", http.StatusInternalServerError)
+			return
+		} else if !ok {
+			writeErrorJSON(w, "forbidden", http.StatusForbidden)
+			return
+		}
+	}
+	if len(runtimeMembersJSON) > 0 {
+		teamMeta["runtime_members"] = runtimeMembersJSON
+	} else {
+		delete(teamMeta, "runtime_members")
+	}
+	teamMeta["runtime_members_updated_unix_ms"] = time.Now().UTC().UnixMilli()
+	runPayload["team"] = teamMeta
+	if err := s.cfg.DB.UpdateTeamRunPayload(r.Context(), teamID, teamRunID, mustJSON(runPayload)); err != nil {
+		writeErrorJSON(w, "update team run failed", http.StatusInternalServerError)
+		return
+	}
+	run.RunJSON = mustJSON(runPayload)
+	publishTeamRuntimeMembersUpdated(s.cfg.Events, p.Sub, teamID, teamRunID, runtimeMembersJSON, traceIDFromContext(r.Context()))
+	resp, err := s.teamRunStatusResponse(r.Context(), run)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if len(runtimeMembersJSON) == 0 {
+		delete(resp, "runtime_members")
+	}
+	writeJSON(w, resp)
+}
+
+func (s *Server) teamRunStatusResponse(ctx context.Context, run *db.TeamRun) (map[string]any, error) {
+	var runtimeMembers any
+	if run != nil && len(run.RunJSON) > 0 {
 		var runPayload map[string]any
 		if err := json.Unmarshal(run.RunJSON, &runPayload); err == nil {
 			if teamRaw, ok := runPayload["team"].(map[string]any); ok {
@@ -1002,10 +1179,9 @@ func (s *Server) handleTeamRunGet(w http.ResponseWriter, r *http.Request, teamID
 			}
 		}
 	}
-	members, err := s.cfg.DB.ListTeamMembers(r.Context(), teamID)
+	members, err := s.cfg.DB.ListTeamMembers(ctx, run.TeamID)
 	if err != nil {
-		writeErrorJSON(w, "db error", http.StatusInternalServerError)
-		return
+		return nil, err
 	}
 	outMembers := make([]map[string]any, 0, len(members))
 	for _, m := range members {
@@ -1022,7 +1198,7 @@ func (s *Server) handleTeamRunGet(w http.ResponseWriter, r *http.Request, teamID
 	if runtimeMembers != nil {
 		resp["runtime_members"] = runtimeMembers
 	}
-	writeJSON(w, resp)
+	return resp, nil
 }
 
 func (s *Server) handleTeamRunApprovalsList(w http.ResponseWriter, r *http.Request, teamID, teamRunID string) {
@@ -1315,6 +1491,32 @@ func publishTeamQuorumResult(hub *events.Hub, userSub, teamID, teamRunID string,
 	}
 }
 
+func publishTeamRuntimeMembersUpdated(
+	hub *events.Hub,
+	userSub,
+	teamID,
+	teamRunID string,
+	runtimeMembers []map[string]any,
+	traceID string,
+) {
+	if hub == nil || userSub == "" {
+		return
+	}
+	payload := map[string]any{
+		"team_id":         teamID,
+		"team_run_id":     teamRunID,
+		"runtime_members": runtimeMembers,
+		"count":           len(runtimeMembers),
+	}
+	ev := events.Event{
+		Type:    "team_runtime_members_updated",
+		UserSub: userSub,
+		TraceID: traceID,
+		Payload: payload,
+	}
+	hub.PublishTo([]string{userSub}, ev)
+}
+
 type teamRunQuorumRuleEval struct {
 	RuleID                string
 	Action                string
@@ -1505,6 +1707,34 @@ func parseTeamRunRuntimeMembers(meta map[string]any) ([]teamRuntimeMemberInput, 
 		})
 	}
 	return out, nil
+}
+
+func mergeRuntimeMemberInputs(existing, incoming []teamRuntimeMemberInput) []teamRuntimeMemberInput {
+	if len(existing) == 0 {
+		return incoming
+	}
+	if len(incoming) == 0 {
+		return existing
+	}
+	out := make([]teamRuntimeMemberInput, 0, len(existing)+len(incoming))
+	seen := map[string]int{}
+	for _, item := range existing {
+		if item.MemberID != "" {
+			seen[item.MemberID] = len(out)
+		}
+		out = append(out, item)
+	}
+	for _, item := range incoming {
+		if item.MemberID != "" {
+			if idx, ok := seen[item.MemberID]; ok {
+				out[idx] = item
+				continue
+			}
+			seen[item.MemberID] = len(out)
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 func parseTeamRunQuorumPolicy(meta map[string]any) (string, error) {

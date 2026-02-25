@@ -652,3 +652,28 @@ export async function apiBrokerTeamRunApprovalsCreate(
   const j = await r.json();
   return BrokerTeamRunApprovalListRespSchema.parse(j);
 }
+
+export async function apiBrokerTeamRunRuntimeMembersUpdate(
+  brokerBase: string,
+  teamId: string,
+  teamRunId: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<BrokerTeamRunStatusResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const team = String(teamId || "").trim();
+  const run = String(teamRunId || "").trim();
+  if (!team) throw new Error("missing team_id");
+  if (!run) throw new Error("missing team_run_id");
+  const payload = body ?? {};
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(team)}/runs/${encodeURIComponent(run)}/runtime_members`,
+    {
+      method: "PATCH",
+      headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+      body: JSON.stringify(payload),
+    },
+  );
+  const j = await r.json();
+  return BrokerTeamRunStatusRespSchema.parse(j);
+}

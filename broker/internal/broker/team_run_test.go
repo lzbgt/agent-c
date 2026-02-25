@@ -232,3 +232,24 @@ func TestBuildRuntimeMembersDuplicateID(t *testing.T) {
 		t.Fatalf("expected duplicate member_id error")
 	}
 }
+
+func TestMergeRuntimeMemberInputs(t *testing.T) {
+	existing := []teamRuntimeMemberInput{
+		{MemberID: "rt-1", AgentID: "agent-a", Role: "executor"},
+		{MemberID: "rt-2", AgentID: "agent-b", Role: "planner"},
+	}
+	incoming := []teamRuntimeMemberInput{
+		{MemberID: "rt-2", AgentID: "agent-b", Role: "reviewer"},
+		{MemberID: "", AgentID: "agent-c", Role: "executor"},
+	}
+	merged := mergeRuntimeMemberInputs(existing, incoming)
+	if len(merged) != 3 {
+		t.Fatalf("expected 3 members, got %d", len(merged))
+	}
+	if merged[1].MemberID != "rt-2" || merged[1].Role != "reviewer" {
+		t.Fatalf("expected rt-2 replaced, got %+v", merged[1])
+	}
+	if merged[2].AgentID != "agent-c" {
+		t.Fatalf("expected appended agent-c, got %+v", merged[2])
+	}
+}

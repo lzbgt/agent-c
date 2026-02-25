@@ -225,6 +225,7 @@ DELETE /v1/teams/{team_id}/quorum/{rule_id}
 ```
 POST /v1/teams/{team_id}/runs
 GET  /v1/teams/{team_id}/runs/{team_run_id}
+PATCH /v1/teams/{team_id}/runs/{team_run_id}/runtime_members
 GET  /v1/teams/{team_id}/runs/{team_run_id}/approvals
 POST /v1/teams/{team_id}/runs/{team_run_id}/approvals
 ```
@@ -247,6 +248,21 @@ Run requests may accept:
   }
 }
 ```
+
+Runtime members can be updated after run creation:
+
+```
+PATCH /v1/teams/{team_id}/runs/{team_run_id}/runtime_members
+{
+  "mode": "replace" | "merge",
+  "runtime_members": [ ... ]
+}
+```
+
+Notes:
+- `replace` (default) overwrites the stored runtime member list; `merge` updates by `member_id` and appends new entries.
+- The broker validates the runtime members and updates the stored run payload.
+- For synchronous runs that already completed, updates are recorded for auditability and future orchestration; they do not retroactively re-run the completed fan-out.
 
 `run_overrides_mode`:
 - `off` (default): no per-member overrides.

@@ -527,6 +527,20 @@ schemas:
         items:
           $ref: "#/components/schemas/TeamRunRuntimeMember"
 
+  TeamRunRuntimeMembersUpdateRequest:
+    type: object
+    required: [runtime_members]
+    properties:
+      mode:
+        type: string
+        enum: [replace, merge]
+        description: Replace current runtime members or merge new entries (default replace).
+      runtime_members:
+        type: array
+        description: Updated runtime members for this team run.
+        items:
+          $ref: "#/components/schemas/TeamRunRuntimeMember"
+
   TeamRunApprovalInput:
     type: object
     required: [member_id]
