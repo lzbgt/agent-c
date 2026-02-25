@@ -241,9 +241,14 @@ test("broker team member inline edit submits patch", async ({ page }) => {
   await editPanel.getByTestId("team-member-edit-caps").fill("vision,audio");
   await editPanel.getByTestId("team-member-edit-agent-pick").selectOption("agent-b");
   await editPanel.getByTestId("team-member-edit-deployment").selectOption("dep-b");
+  await editPanel.getByTestId("team-member-edit-backend").fill("new-backend");
+  await editPanel.getByTestId("team-member-edit-model").fill("gpt-4.1-mini");
+  await editPanel.getByTestId("team-member-edit-base-url").fill("https://api.openai.com/v1");
+  await editPanel.getByTestId("team-member-edit-tools").fill("basic");
+  await editPanel.getByTestId("team-member-edit-timeout").fill("60000");
   await editPanel
     .getByTestId("team-member-edit-meta")
-    .fill("{\"backend_label\":\"new-backend\",\"notes\":\"edited\"}");
+    .fill("{\"notes\":\"edited\"}");
 
   await editPanel.getByRole("button", { name: "Save" }).click();
 
@@ -252,7 +257,16 @@ test("broker team member inline edit submits patch", async ({ page }) => {
     role: "reviewer",
     status: "paused",
     capabilities: ["vision", "audio"],
-    meta: { backend_label: "new-backend", notes: "edited" },
+    meta: {
+      backend_label: "new-backend",
+      notes: "edited",
+      run_overrides: {
+        model: "gpt-4.1-mini",
+        base_url: "https://api.openai.com/v1",
+        tools: "basic",
+        timeout_ms: 60000,
+      },
+    },
     agent_id: "agent-b",
     deployment_id: "dep-b",
     weight: 2,

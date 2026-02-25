@@ -87,6 +87,12 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [memberEditWeight, setMemberEditWeight] = React.useState<string>("");
   const [memberEditCapabilities, setMemberEditCapabilities] = React.useState<string>("");
   const [memberEditMetaJson, setMemberEditMetaJson] = React.useState<string>("");
+  const [memberEditBackendLabel, setMemberEditBackendLabel] = React.useState<string>("");
+  const [memberEditModel, setMemberEditModel] = React.useState<string>("");
+  const [memberEditBaseUrl, setMemberEditBaseUrl] = React.useState<string>("");
+  const [memberEditSummaryModel, setMemberEditSummaryModel] = React.useState<string>("");
+  const [memberEditTools, setMemberEditTools] = React.useState<string>("");
+  const [memberEditTimeoutMs, setMemberEditTimeoutMs] = React.useState<string>("");
   const [memberEditAgentId, setMemberEditAgentId] = React.useState<string>("");
   const [memberEditDeploymentId, setMemberEditDeploymentId] = React.useState<string>("");
   const [memberEditBusy, setMemberEditBusy] = React.useState<boolean>(false);
@@ -466,7 +472,9 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       ? member.capabilities.map((c) => String(c).trim()).filter(Boolean)
       : [];
     setMemberEditCapabilities(caps.join(", "));
+    let metaObj: Record<string, any> | null = null;
     if (member?.meta && typeof member.meta === "object") {
+      metaObj = member.meta as Record<string, any>;
       try {
         setMemberEditMetaJson(JSON.stringify(member.meta, null, 2));
       } catch {
@@ -474,6 +482,24 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       }
     } else {
       setMemberEditMetaJson("");
+    }
+    const backendLabel = metaObj?.backend_label ? String(metaObj.backend_label) : "";
+    setMemberEditBackendLabel(backendLabel);
+    const overridesRaw =
+      metaObj?.run_overrides && typeof metaObj.run_overrides === "object"
+        ? (metaObj.run_overrides as Record<string, any>)
+        : null;
+    setMemberEditModel(overridesRaw?.model ? String(overridesRaw.model) : "");
+    setMemberEditBaseUrl(overridesRaw?.base_url ? String(overridesRaw.base_url) : "");
+    setMemberEditSummaryModel(overridesRaw?.summary_model ? String(overridesRaw.summary_model) : "");
+    setMemberEditTools(overridesRaw?.tools ? String(overridesRaw.tools) : "");
+    const timeoutRaw = overridesRaw?.timeout_ms;
+    if (typeof timeoutRaw === "number" && Number.isFinite(timeoutRaw)) {
+      setMemberEditTimeoutMs(String(timeoutRaw));
+    } else if (typeof timeoutRaw === "string" && timeoutRaw.trim().length > 0) {
+      setMemberEditTimeoutMs(timeoutRaw.trim());
+    } else {
+      setMemberEditTimeoutMs("");
     }
     setMemberEditError(null);
   };
@@ -487,6 +513,12 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     setMemberEditWeight("");
     setMemberEditCapabilities("");
     setMemberEditMetaJson("");
+    setMemberEditBackendLabel("");
+    setMemberEditModel("");
+    setMemberEditBaseUrl("");
+    setMemberEditSummaryModel("");
+    setMemberEditTools("");
+    setMemberEditTimeoutMs("");
     setMemberEditError(null);
   };
 
@@ -517,6 +549,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       weightValue = parsed;
     }
     let meta: Record<string, any> = {};
+    let hasMeta = false;
     const metaRaw = String(memberEditMetaJson || "").trim();
     if (metaRaw) {
       try {
@@ -525,11 +558,52 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
           setMemberEditError("meta must be a JSON object");
           return;
         }
-        meta = parsed;
+        meta = parsed as Record<string, any>;
+        hasMeta = true;
       } catch (err) {
         setMemberEditError(`invalid meta json: ${String(err)}`);
         return;
       }
+    }
+    const backendLabel = String(memberEditBackendLabel || "").trim();
+    if (backendLabel) {
+      meta.backend_label = backendLabel;
+      hasMeta = true;
+    } else if (meta && Object.prototype.hasOwnProperty.call(meta, "backend_label")) {
+      delete meta.backend_label;
+      hasMeta = true;
+    }
+    const runOverrides: Record<string, any> =
+      meta && meta.run_overrides && typeof meta.run_overrides === "object" ? { ...meta.run_overrides } : {};
+    const model = String(memberEditModel || "").trim();
+    if (model) runOverrides.model = model;
+    else if (Object.prototype.hasOwnProperty.call(runOverrides, "model")) delete runOverrides.model;
+    const baseUrl = String(memberEditBaseUrl || "").trim();
+    if (baseUrl) runOverrides.base_url = baseUrl;
+    else if (Object.prototype.hasOwnProperty.call(runOverrides, "base_url")) delete runOverrides.base_url;
+    const summaryModel = String(memberEditSummaryModel || "").trim();
+    if (summaryModel) runOverrides.summary_model = summaryModel;
+    else if (Object.prototype.hasOwnProperty.call(runOverrides, "summary_model")) delete runOverrides.summary_model;
+    const tools = String(memberEditTools || "").trim();
+    if (tools) runOverrides.tools = tools;
+    else if (Object.prototype.hasOwnProperty.call(runOverrides, "tools")) delete runOverrides.tools;
+    const timeoutMsRaw = String(memberEditTimeoutMs || "").trim();
+    if (timeoutMsRaw.length > 0) {
+      const parsed = Number.parseInt(timeoutMsRaw, 10);
+      if (!Number.isFinite(parsed)) {
+        setMemberEditError("timeout_ms must be a number");
+        return;
+      }
+      runOverrides.timeout_ms = parsed;
+    } else if (Object.prototype.hasOwnProperty.call(runOverrides, "timeout_ms")) {
+      delete runOverrides.timeout_ms;
+    }
+    if (Object.keys(runOverrides).length > 0) {
+      meta.run_overrides = runOverrides;
+      hasMeta = true;
+    } else if (meta && Object.prototype.hasOwnProperty.call(meta, "run_overrides")) {
+      delete meta.run_overrides;
+      hasMeta = true;
     }
     setMemberEditError(null);
     setMemberEditBusy(true);
@@ -538,8 +612,8 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         role,
         status,
         capabilities: caps,
-        meta,
       };
+      if (hasMeta) payload.meta = meta;
       payload.agent_id = agentId;
       payload.deployment_id = deploymentId;
       if (weightValue !== undefined) payload.weight = weightValue;
@@ -1256,6 +1330,58 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                           value={memberEditCapabilities}
                           onChange={(e) => setMemberEditCapabilities(e.target.value)}
                           placeholder="vision,audio"
+                        />
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <FieldLabel>Backend label</FieldLabel>
+                        <input
+                          className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                          data-testid="team-member-edit-backend"
+                          value={memberEditBackendLabel}
+                          onChange={(e) => setMemberEditBackendLabel(e.target.value)}
+                          placeholder="openrouter-main"
+                        />
+                        <FieldLabel>Model</FieldLabel>
+                        <input
+                          className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                          data-testid="team-member-edit-model"
+                          value={memberEditModel}
+                          onChange={(e) => setMemberEditModel(e.target.value)}
+                          placeholder="gpt-4.1-mini"
+                        />
+                        <FieldLabel>Tools</FieldLabel>
+                        <input
+                          className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                          data-testid="team-member-edit-tools"
+                          value={memberEditTools}
+                          onChange={(e) => setMemberEditTools(e.target.value)}
+                          placeholder="basic"
+                        />
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <FieldLabel>Base URL</FieldLabel>
+                        <input
+                          className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                          data-testid="team-member-edit-base-url"
+                          value={memberEditBaseUrl}
+                          onChange={(e) => setMemberEditBaseUrl(e.target.value)}
+                          placeholder="https://api.openai.com/v1"
+                        />
+                        <FieldLabel>Summary model</FieldLabel>
+                        <input
+                          className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                          data-testid="team-member-edit-summary-model"
+                          value={memberEditSummaryModel}
+                          onChange={(e) => setMemberEditSummaryModel(e.target.value)}
+                          placeholder="gpt-4.1-mini"
+                        />
+                        <FieldLabel>Timeout ms</FieldLabel>
+                        <input
+                          className="w-24 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                          data-testid="team-member-edit-timeout"
+                          value={memberEditTimeoutMs}
+                          onChange={(e) => setMemberEditTimeoutMs(e.target.value)}
+                          placeholder="60000"
                         />
                       </div>
                       <div className="mt-2 grid gap-1">
