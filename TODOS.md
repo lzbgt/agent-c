@@ -111,6 +111,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-26: broker events are persisted + replayable; remaining work is autonomous loop + drift checkpoints.
   - 2026-02-25: added `agentd-orchestrator` loop (heartbeat + dispatch + missing-role spawn requests + drift/progress + handoff queue).
   - 2026-02-25: added compose smoke for orchestrator loop (`tests/broker_orchestrator_loop_compose_smoke.sh`).
+  - 2026-02-25: added compose smoke for drift/progress/handoff events (`tests/broker_orchestrator_loop_events_compose_smoke.sh`).
 - [ ] W=12 — Durable orchestration state + event replay: persist orchestrator runs (DB + CRUD), add replayable event log for team run/goal/handoff/moderator events, and rehydrate WebUI on refresh without losing context.
   - 2026-02-26: broker persists events and exposes `/v1/events/replay`; UI rehydrates on refresh (paging still capped).
   - 2026-02-26: WebUI broker console + team console replay events on refresh; orchestrator panel also rehydrates from replay.
