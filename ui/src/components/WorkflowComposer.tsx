@@ -936,6 +936,13 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
           {submitBusy ? "Submitting…" : "Submit workflow"}
         </button>
         {submitError ? <span className="text-xs text-rose-200">{submitError}</span> : null}
+        {serverWaitStatus === "error" ? (
+          <span className="text-[11px] text-amber-200">wait sync: local-only</span>
+        ) : serverWaitStatus === "loading" ? (
+          <span className="text-[11px] text-white/50">wait sync: loading…</span>
+        ) : serverWaitStatus === "ready" ? (
+          <span className="text-[11px] text-emerald-200">wait sync: server</span>
+        ) : null}
         {waitState ? (
           <>
             <span className="text-[11px] text-white/60">
