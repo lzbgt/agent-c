@@ -1545,6 +1545,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         members={membersList}
         rules={rulesList}
         quorumEvents={props.quorumEvents}
+        teamMeta={teamDetails?.meta && typeof teamDetails.meta === "object" ? (teamDetails.meta as Record<string, any>) : null}
         onMembersRefresh={refreshMembers}
         onTeamSelect={setTeamId}
       />

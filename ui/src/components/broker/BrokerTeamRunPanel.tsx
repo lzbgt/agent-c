@@ -61,6 +61,7 @@ export type BrokerTeamRunPanelProps = {
   members: TeamMemberRow[];
   rules: TeamQuorumRuleRow[];
   quorumEvents?: BrokerEventRow[];
+  teamMeta?: Record<string, any> | null;
   onMembersRefresh?: (teamId: string) => Promise<void> | void;
   onTeamSelect?: (teamId: string) => void;
 };
@@ -150,6 +151,15 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const [runtimeUpdateBusy, setRuntimeUpdateBusy] = React.useState<boolean>(false);
   const [runtimeUpdateError, setRuntimeUpdateError] = React.useState<string | null>(null);
   const [runtimeUpdateNote, setRuntimeUpdateNote] = React.useState<string>("");
+
+  const teamMetaObj = props.teamMeta && typeof props.teamMeta === "object" ? props.teamMeta : null;
+  const teamRoleOverridesDefaults =
+    teamMetaObj?.role_overrides && typeof teamMetaObj.role_overrides === "object"
+      ? (teamMetaObj.role_overrides as Record<string, any>)
+      : null;
+  const teamRoleOverrideKeys = teamRoleOverridesDefaults
+    ? Object.keys(teamRoleOverridesDefaults).map((k) => String(k)).filter(Boolean)
+    : [];
 
   const runtimeMembersPreview = React.useMemo(() => {
     const raw = String(runRuntimeMembersJson || "").trim();
@@ -442,6 +452,15 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
       setRunError(String(err));
     } finally {
       setRunBusy(false);
+    }
+  };
+
+  const handleSeedRoleOverrides = () => {
+    if (!teamRoleOverridesDefaults) return;
+    try {
+      setRunRoleOverridesJson(JSON.stringify(teamRoleOverridesDefaults, null, 2));
+    } catch {
+      setRunRoleOverridesJson("");
     }
   };
 
@@ -1358,6 +1377,20 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
         <div className="text-[11px] text-white/50">
           Role overrides apply before member overrides and use the same allowlist. If empty, broker uses team defaults.
         </div>
+        {teamRoleOverrideKeys.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+              type="button"
+              onClick={() => handleSeedRoleOverrides()}
+            >
+              Seed from team defaults
+            </button>
+            <span className="text-[11px] text-white/50">Defaults: {teamRoleOverrideKeys.join(", ")}</span>
+          </div>
+        ) : (
+          <div className="text-[11px] text-white/40">No role override defaults saved on this team.</div>
+        )}
       </div>
       <div className="grid gap-1">
         <FieldLabel>Runtime members JSON (optional)</FieldLabel>
