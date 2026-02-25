@@ -197,6 +197,11 @@ All endpoints below are served by the broker (not by agents).
     - team create/update validates + sanitizes `meta.role_overrides` using the same allowlist
     - allowlist: `model`, `base_url`, `summary_model`, `tools`, `timeout_ms`, `max_steps`, `stream_assistant`
     - `api_key` is never accepted via team/member metadata
+  - supports per-role prompt composition for orchestration roles:
+    - `team.role_instructions`: map of `role` → instruction string
+    - `team.role_prompt_mode`: `prepend|append|replace` (default `prepend`)
+    - if `team.role_instructions` is omitted, the broker falls back to `team.meta.role_instructions` defaults
+    - instructions may include `{{goal}}` placeholder for the base prompt
   - accepts ephemeral runtime members (not persisted in team registry):
     - `team.runtime_members`: array of `{member_id?, agent_id, deployment_id?, role, capabilities?, status?, weight?, meta?}`
     - runtime members participate in the current fan-out only

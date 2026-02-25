@@ -193,6 +193,9 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-25: Added `team_run_created` + `team_run_status` broker SSE events to drive live run list refresh.
   - 2026-02-25: Added compose smoke for team run created/status SSE events.
   - 2026-02-25: Drafted `docs/spec/orchestrator_console_v0.md` for WebUI role/back-end orchestration UX.
+  - 2026-02-25: Added role instructions + prompt composition (`role_instructions`, `role_prompt_mode`) with `{{goal}}` templating in broker team runs.
+  - 2026-02-25: WebUI team settings now includes a role plan editor (role instructions + role graph) and run builder supports role prompts.
+  - 2026-02-25: Team run lookup now persists per team with auto-resume toggle; Team run UI split into subpanels to keep files SOLID.
 - [x] W=9 — Approval queues + tool-level quorum gating: WebUI approval queue, tool-level quorum enforcement, and SSE updates for approval state.
   - 2026-02-24: Added agentd approval DB tables, approval gate, approval APIs, and approval run events.
   - 2026-02-24: Added approval event schemas + fixtures + spec tests.

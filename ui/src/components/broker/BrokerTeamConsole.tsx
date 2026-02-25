@@ -17,6 +17,7 @@ import {
 } from "../../api";
 import FieldLabel from "../FieldLabel";
 import BrokerTeamRunPanel from "./BrokerTeamRunPanel";
+import TeamRolePlanEditor, { type RoleGraphEdge } from "./TeamRolePlanEditor";
 import type { BrokerEventRow, TeamMemberRow, TeamQuorumRuleRow } from "./types";
 
 const fmtTs = (ms?: number | null) => {
@@ -26,6 +27,46 @@ const fmtTs = (ms?: number | null) => {
   } catch {
     return String(ms);
   }
+};
+
+const normalizeRoleInstructionMap = (raw: any): Record<string, string> => {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    const role = String(key || "").trim().toLowerCase();
+    if (!role) continue;
+    let instr = "";
+    if (typeof value === "string") instr = value;
+    else if (value && typeof value === "object" && typeof (value as any).instruction === "string") {
+      instr = String((value as any).instruction);
+    }
+    instr = instr.trim();
+    if (instr) out[role] = instr;
+  }
+  return out;
+};
+
+const normalizeRolePromptMode = (raw: any): string => {
+  if (typeof raw !== "string") return "prepend";
+  const mode = raw.trim().toLowerCase();
+  if (mode === "append" || mode === "replace") return mode;
+  return "prepend";
+};
+
+const normalizeRoleGraphEdges = (raw: any): RoleGraphEdge[] => {
+  let edgesRaw: any[] = [];
+  if (Array.isArray(raw)) edgesRaw = raw;
+  else if (raw && typeof raw === "object" && Array.isArray((raw as any).edges)) edgesRaw = (raw as any).edges;
+  const out: RoleGraphEdge[] = [];
+  for (const item of edgesRaw) {
+    if (!item || typeof item !== "object") continue;
+    const from = String((item as any).from_role || (item as any).from || "").trim().toLowerCase();
+    const to = String((item as any).to_role || (item as any).to || "").trim().toLowerCase();
+    if (!from || !to) continue;
+    const reason = (item as any).reason ? String((item as any).reason).trim() : "";
+    out.push({ from_role: from, to_role: to, reason: reason || undefined });
+  }
+  return out;
 };
 
 export type BrokerTeamConsoleProps = {
@@ -62,6 +103,10 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [teamEditSharedScope, setTeamEditSharedScope] = React.useState<string>("");
   const [teamEditMetaJson, setTeamEditMetaJson] = React.useState<string>("");
   const [teamEditRoleOverridesJson, setTeamEditRoleOverridesJson] = React.useState<string>("");
+  const [teamRoleInstructions, setTeamRoleInstructions] = React.useState<Record<string, string>>({});
+  const [teamRolePromptMode, setTeamRolePromptMode] = React.useState<string>("prepend");
+  const [teamRoleGraphEdges, setTeamRoleGraphEdges] = React.useState<RoleGraphEdge[]>([]);
+  const [teamRolePlanTouched, setTeamRolePlanTouched] = React.useState<boolean>(false);
   const [teamEditBusy, setTeamEditBusy] = React.useState<boolean>(false);
   const [teamEditError, setTeamEditError] = React.useState<string | null>(null);
 
@@ -112,6 +157,35 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const teamList = Array.isArray(teams) ? teams : [];
   const teamIdTrimmed = String(teamId || "").trim();
   const membersList = Array.isArray(members) ? members : [];
+  const rolePlanOptions = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const member of membersList) {
+      const role = String(member?.role || "").trim().toLowerCase();
+      if (role) set.add(role);
+    }
+    try {
+      const parsed = JSON.parse(String(teamEditRoleOverridesJson || "").trim() || "{}");
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        for (const key of Object.keys(parsed)) {
+          const role = String(key || "").trim().toLowerCase();
+          if (role) set.add(role);
+        }
+      }
+    } catch {
+      // ignore invalid JSON; handled elsewhere
+    }
+    for (const role of Object.keys(teamRoleInstructions)) {
+      const r = String(role || "").trim().toLowerCase();
+      if (r) set.add(r);
+    }
+    for (const edge of teamRoleGraphEdges) {
+      const from = String(edge?.from_role || "").trim().toLowerCase();
+      const to = String(edge?.to_role || "").trim().toLowerCase();
+      if (from) set.add(from);
+      if (to) set.add(to);
+    }
+    return Array.from(set).filter(Boolean).sort();
+  }, [membersList, teamEditRoleOverridesJson, teamRoleInstructions, teamRoleGraphEdges]);
   const rulesList = Array.isArray(rules) ? rules : [];
   const memberAgentOptions = Array.isArray(memberAgents) ? memberAgents : [];
   const memberSelectedAgent = memberAgentOptions.find(
@@ -274,6 +348,31 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     } else {
       setTeamEditRoleOverridesJson("");
     }
+    if (metaObj) {
+      setTeamRoleInstructions(normalizeRoleInstructionMap(metaObj.role_instructions));
+      setTeamRolePromptMode(normalizeRolePromptMode(metaObj.role_prompt_mode));
+      setTeamRoleGraphEdges(normalizeRoleGraphEdges(metaObj.role_graph));
+    } else {
+      setTeamRoleInstructions({});
+      setTeamRolePromptMode("prepend");
+      setTeamRoleGraphEdges([]);
+    }
+    setTeamRolePlanTouched(false);
+  };
+
+  const handleRoleInstructionsChange = (next: Record<string, string>) => {
+    setTeamRolePlanTouched(true);
+    setTeamRoleInstructions(next);
+  };
+
+  const handleRolePromptModeChange = (next: string) => {
+    setTeamRolePlanTouched(true);
+    setTeamRolePromptMode(next);
+  };
+
+  const handleRoleGraphEdgesChange = (next: RoleGraphEdge[]) => {
+    setTeamRolePlanTouched(true);
+    setTeamRoleGraphEdges(next);
   };
 
   const handleUpdateTeam = async () => {
@@ -323,6 +422,20 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       } catch (err) {
         setTeamEditError(`invalid role overrides json: ${String(err)}`);
         return;
+      }
+    }
+    if (teamRolePlanTouched) {
+      if (Object.keys(teamRoleInstructions).length > 0) {
+        meta.role_instructions = teamRoleInstructions;
+        meta.role_prompt_mode = normalizeRolePromptMode(teamRolePromptMode);
+      } else {
+        delete meta.role_instructions;
+        delete meta.role_prompt_mode;
+      }
+      if (teamRoleGraphEdges.length > 0) {
+        meta.role_graph = { edges: teamRoleGraphEdges };
+      } else {
+        delete meta.role_graph;
       }
     }
     setTeamEditError(null);
@@ -949,6 +1062,24 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
           />
           <div className="text-[11px] text-white/50">
             Stored under meta.role_overrides; applied to team runs unless a run overrides it.
+          </div>
+        </div>
+        <div className="grid gap-1">
+          <FieldLabel>Role plan</FieldLabel>
+          <div className="rounded-md border border-white/10 bg-black/20 p-2">
+            <TeamRolePlanEditor
+              disabled={!canQuery || !teamIdTrimmed}
+              roleInstructions={teamRoleInstructions}
+              onRoleInstructionsChange={handleRoleInstructionsChange}
+              rolePromptMode={teamRolePromptMode}
+              onRolePromptModeChange={handleRolePromptModeChange}
+              edges={teamRoleGraphEdges}
+              onEdgesChange={handleRoleGraphEdgesChange}
+              roleOptions={rolePlanOptions}
+            />
+          </div>
+          <div className="text-[11px] text-white/50">
+            Stored under meta.role_instructions / meta.role_prompt_mode / meta.role_graph; applied to team runs by default.
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">

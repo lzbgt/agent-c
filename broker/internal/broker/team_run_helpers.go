@@ -833,6 +833,85 @@ func parseRoleOverrides(v any) (map[string]map[string]any, error) {
 	return out, nil
 }
 
+func parseRoleInstructions(v any) (map[string]string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	raw, ok := v.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("role_instructions must be object")
+	}
+	out := map[string]string{}
+	for k, rv := range raw {
+		role := strings.ToLower(strings.TrimSpace(k))
+		if role == "" {
+			continue
+		}
+		var instr string
+		switch t := rv.(type) {
+		case string:
+			instr = strings.TrimSpace(t)
+		case map[string]any:
+			if rawInstr, ok := t["instruction"]; ok {
+				if s, ok := rawInstr.(string); ok {
+					instr = strings.TrimSpace(s)
+				}
+			}
+		default:
+			return nil, fmt.Errorf("role_instructions.%s must be string or object", role)
+		}
+		if instr != "" {
+			out[role] = instr
+		}
+	}
+	return out, nil
+}
+
+func parseRolePromptMode(v any) (string, error) {
+	if v == nil {
+		return "", nil
+	}
+	raw, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("role_prompt_mode must be string")
+	}
+	mode := strings.ToLower(strings.TrimSpace(raw))
+	if mode == "" {
+		return "", nil
+	}
+	switch mode {
+	case "prepend", "append", "replace":
+		return mode, nil
+	default:
+		return "", fmt.Errorf("role_prompt_mode must be prepend|append|replace")
+	}
+}
+
+func applyRoleInstruction(instruction, goal, mode string) string {
+	instr := strings.TrimSpace(instruction)
+	goal = strings.TrimSpace(goal)
+	if instr == "" {
+		return goal
+	}
+	if strings.Contains(instr, "{{goal}}") {
+		return strings.ReplaceAll(instr, "{{goal}}", goal)
+	}
+	switch mode {
+	case "append":
+		if goal == "" {
+			return instr
+		}
+		return goal + "\n\n" + instr
+	case "replace":
+		return instr
+	default:
+		if goal == "" {
+			return instr
+		}
+		return instr + "\n\n" + goal
+	}
+}
+
 func normalizeTeamMetaRoleOverrides(meta map[string]any) (map[string]any, error) {
 	if meta == nil {
 		return meta, nil

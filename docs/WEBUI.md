@@ -77,6 +77,8 @@ Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`,
 - Team member rows support inline edit (role/status/weight/capabilities/backend overrides/meta plus agent/deployment reassignment).
 - Team settings editor can update display name, tags, policy ref, shared memory scope, and meta JSON.
 - Team settings editor includes a role overrides JSON field (stored in `meta.role_overrides`) used as team run defaults.
+- Team settings editor includes a role plan editor (role graph + role instructions + prompt mode) stored in `meta.role_graph` / `meta.role_instructions`.
+- Role instructions can include `{{goal}}` and are used to compose per-role prompts for team runs.
 - Team runs support **inline approvals** (optional) to satisfy strict quorum rules at submit time; failed quorum responses surface rule evals.
 - Inline approvals live in the Team console → Team run panel. Add `member_id` + decision (optional `rule_id`/reason) before Create run; approvals are sent under `team.approvals`, persisted, and the Run approvals panel auto-loads the run after submission.
 - The Team run panel lists recent runs (status/mode/summary) and supports a live (SSE) toggle to refresh on broker events without polling.
@@ -184,6 +186,7 @@ This panel includes a **Workflow composer** with JSON and Graph modes:
 
 - The UI persists the active async `job_id` + SSE cursor so refresh can resume a running job stream.
 - Team runs in async mode persist member `job_id`s in the broker DB; status lookups remain valid after refresh.
+- The Team run panel can persist the last-focused run per team and resume the status lookup after refresh (optional toggle).
 - The selected `session_id` is stored per daemon base URL.
 - The Scene cache is stored per `session_id`.
 - The UI posts acknowledgement events (`ui_action_shown`, `client_rpc_result`,

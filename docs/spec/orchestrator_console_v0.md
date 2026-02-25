@@ -15,7 +15,8 @@ Status: draft (rolling)
 
 3) **Team-graph orchestration UI**
    - Create teams and define **role-specific backends** (model/base URL/tools/timeout) using `team.role_overrides`.
-   - Connect agents to roles, define orchestration goals, and start runs.
+   - Define a **role plan** (roles + handoff edges) plus **role instructions** tied to a goal.
+   - Connect agents to roles, define orchestration goals, and start runs with role-aware prompts.
 
 4) **Reload-safe, persistent runs**
    - UI reloads must not interrupt background work.
@@ -40,6 +41,11 @@ Status: draft (rolling)
 - Per-member backend profiles via member meta `run_overrides` allowlist.
 - Per-role run overrides via `team.role_overrides` (allowlist enforced).
 - Team defaults can persist `meta.role_overrides` and are applied when runs omit overrides.
+- Team meta supports a **role plan** stored under:
+  - `meta.role_graph` (roles + edges)
+  - `meta.role_instructions` (per-role instruction strings)
+  - `meta.role_prompt_mode` (`prepend|append|replace`)
+  These defaults are applied to team runs when the run does not override them.
 - Runtime members for per-run team composition (replace/merge).
 - Async team runs (`team.mode=async`) with job persistence + status reconcile.
 - Broker SSE events: `team_run_created`, `team_run_status`, `team_quorum_*`, `team_runtime_members_updated`.
@@ -55,6 +61,9 @@ Status: draft (rolling)
   - agent_id + deployment_id
   - role + status
   - backend profile (model/base URL/tools/timeout)
+- **Role plan editor**:
+  - Role graph edges (`from_role` → `to_role`, optional `reason`)
+  - Role instructions (used to generate per-role prompts for a goal)
 
 ### 2) Backend profile editor
 
@@ -66,6 +75,7 @@ Status: draft (rolling)
 
 - Create a **team run** with:
   - goal/prompt
+  - role prompt mode (`prepend|append|replace`) + per-role instructions (optional)
   - role selection / role allowlist
   - async vs sync
   - optional quorum approvals (inline)
@@ -84,6 +94,8 @@ Status: draft (rolling)
 - SSE is used to refresh lists; durable state is always in DB.
 - Team runs persist `member_sessions` so moderators can target specific members
   after reload (used by team-run moderator broadcasts).
+- The UI stores the **last-focused team run** per team in local storage so it can
+  auto-resume lookups after refresh (optional, user-controlled).
 
 ## Event model (SSE)
 
@@ -109,10 +121,13 @@ Phase 0 (docs + alignment):
 Phase 1 (role + backend UX):
 - Add role definitions + backend profile editor UI (per-role + per-member).
 - Persist role metadata in team meta (broker DB).
+ - Add role instructions + role graph editor (stored in team meta).
+ - Allow team runs to reuse stored role instructions without re-entry.
 
 Phase 2 (team graph + orchestration UX):
-- Visual role graph (nodes=roles, edges=handoff).
+- Visual role graph (nodes=roles, edges=handoff) and handoff list view.
 - Orchestrator run builder (goal + role routing + approvals).
+ - Role prompt composition (prepend/append/replace with goal substitution).
 
 Phase 3 (moderator ops):
 - Moderator task panel integrated with team run view.

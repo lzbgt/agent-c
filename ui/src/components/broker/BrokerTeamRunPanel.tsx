@@ -16,54 +16,20 @@ import {
 } from "../../api";
 import useLocalStorageState from "../../hooks/useLocalStorageState";
 import FieldLabel from "../FieldLabel";
+import TeamRunCreatePanel, { type InlineApproval } from "./TeamRunCreatePanel";
 import TeamRunModeratorPanel from "./TeamRunModeratorPanel";
+import TeamRunOpsPanel from "./TeamRunOpsPanel";
+import TeamRunRecentRunsPanel from "./TeamRunRecentRunsPanel";
+import {
+  TEAM_RUN_EVENT_TYPES,
+  fmtSummary,
+  fmtTs,
+  normalizeRoleInstructionMap,
+  normalizeRolePromptMode,
+  parseCsvList,
+} from "./teamRunUtils";
 import type { BrokerEventRow, TeamMemberRow, TeamQuorumRuleRow } from "./types";
 
-const fmtTs = (ms?: number | null) => {
-  if (!ms || !Number.isFinite(ms)) return "";
-  try {
-    return new Date(ms).toLocaleString();
-  } catch {
-    return String(ms);
-  }
-};
-
-const fmtSummary = (summary?: any) => {
-  if (!summary || typeof summary !== "object") return "";
-  const parts: string[] = [];
-  const pushIf = (key: string, label: string) => {
-    const val = summary?.[key];
-    if (typeof val === "number") parts.push(`${label} ${val}`);
-  };
-  pushIf("total", "total");
-  pushIf("queued", "queued");
-  pushIf("running", "running");
-  pushIf("done", "done");
-  pushIf("error", "error");
-  pushIf("cancelled", "cancelled");
-  pushIf("interrupted", "interrupted");
-  pushIf("unknown", "unknown");
-  pushIf("ok", "ok");
-  pushIf("failed", "failed");
-  pushIf("dispatch_errors", "dispatch_errors");
-  return parts.join(" · ");
-};
-
-const parseCsvList = (raw?: string | null) => {
-  if (!raw) return [];
-  return String(raw)
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-};
-
-const TEAM_RUN_EVENT_TYPES = new Set([
-  "team_run_created",
-  "team_run_status",
-  "team_runtime_members_updated",
-  "team_quorum_request",
-  "team_quorum_result",
-]);
 
 export type BrokerTeamRunPanelProps = {
   base: string;
@@ -76,13 +42,6 @@ export type BrokerTeamRunPanelProps = {
   teamMeta?: Record<string, any> | null;
   onMembersRefresh?: (teamId: string) => Promise<void> | void;
   onTeamSelect?: (teamId: string) => void;
-};
-
-type InlineApproval = {
-  member_id: string;
-  decision: "approve" | "deny";
-  rule_id?: string;
-  reason?: string;
 };
 
 type QuorumRuleEval = {
@@ -140,6 +99,9 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const [runOverridesMode, setRunOverridesMode] = React.useState<string>("member_meta");
   const [runMemberOverridesJson, setRunMemberOverridesJson] = React.useState<string>("");
   const [runRoleOverridesJson, setRunRoleOverridesJson] = React.useState<string>("");
+  const [runRoleInstructionsOverride, setRunRoleInstructionsOverride] = React.useState<boolean>(false);
+  const [runRoleInstructions, setRunRoleInstructions] = React.useState<Record<string, string>>({});
+  const [runRolePromptMode, setRunRolePromptMode] = React.useState<string>("prepend");
   const [runRuntimeMembersJson, setRunRuntimeMembersJson] = React.useState<string>("");
   const [runtimeMemberId, setRuntimeMemberId] = React.useState<string>("");
   const [runtimeMemberAgentId, setRuntimeMemberAgentId] = React.useState<string>("");
@@ -172,6 +134,25 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const teamRoleOverrideKeys = teamRoleOverridesDefaults
     ? Object.keys(teamRoleOverridesDefaults).map((k) => String(k)).filter(Boolean)
     : [];
+  const teamRoleInstructionsDefaults = normalizeRoleInstructionMap(teamMetaObj?.role_instructions);
+  const teamRoleInstructionKeys = Object.keys(teamRoleInstructionsDefaults);
+  const teamRolePromptModeDefault = normalizeRolePromptMode(teamMetaObj?.role_prompt_mode);
+  const runRolePlanOptions = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const role of teamRoleOverrideKeys) {
+      const r = String(role || "").trim().toLowerCase();
+      if (r) set.add(r);
+    }
+    for (const role of teamRoleInstructionKeys) {
+      const r = String(role || "").trim().toLowerCase();
+      if (r) set.add(r);
+    }
+    for (const member of membersList) {
+      const r = String(member?.role || "").trim().toLowerCase();
+      if (r) set.add(r);
+    }
+    return Array.from(set).filter(Boolean).sort();
+  }, [teamRoleOverrideKeys, teamRoleInstructionKeys, membersList]);
 
   const runtimeMembersPreview = React.useMemo(() => {
     const raw = String(runRuntimeMembersJson || "").trim();
@@ -290,7 +271,11 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const [runError, setRunError] = React.useState<string | null>(null);
   const [runResult, setRunResult] = React.useState<any | null>(null);
   const [runQuorum, setRunQuorum] = React.useState<QuorumEval | null>(null);
-  const [runLookupId, setRunLookupId] = useLocalStorageState<string>("agentui.teamRunLookupId", "");
+  const [runLookupByTeam, setRunLookupByTeam] = useLocalStorageState<Record<string, string>>(
+    "agentui.teamRunLookupByTeam",
+    {},
+  );
+  const [runLookupId, setRunLookupIdState] = React.useState<string>("");
   const [runLookupBusy, setRunLookupBusy] = React.useState<boolean>(false);
   const [runLookupError, setRunLookupError] = React.useState<string | null>(null);
   const [runLookupResult, setRunLookupResult] = React.useState<any | null>(null);
@@ -300,6 +285,10 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const [runOverridesExpanded, setRunOverridesExpanded] = React.useState<boolean>(false);
   const [autoRefreshRunLookup, setAutoRefreshRunLookup] = useLocalStorageState<boolean>(
     "agentui.teamRunLookupAuto",
+    true,
+  );
+  const [autoResumeRunLookup, setAutoResumeRunLookup] = useLocalStorageState<boolean>(
+    "agentui.teamRunLookupResume",
     true,
   );
   const [runLookupLastEvent, setRunLookupLastEvent] = React.useState<string>("");
@@ -342,6 +331,25 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const [recentRunsLimit, setRecentRunsLimit] = useLocalStorageState<number>("agentui.teamRunListLimit", 10);
   const [recentRunsStatus, setRecentRunsStatus] = useLocalStorageState<string>("agentui.teamRunListStatus", "");
   const recentRunsEventRef = React.useRef<string>("");
+  const autoResumeKeyRef = React.useRef<string>("");
+
+  React.useEffect(() => {
+    if (!teamIdTrimmed) {
+      setRunLookupIdState("");
+      return;
+    }
+    const next = runLookupByTeam[teamIdTrimmed] || "";
+    setRunLookupIdState(next);
+  }, [teamIdTrimmed, runLookupByTeam]);
+
+  const setRunLookupId = React.useCallback(
+    (next: string) => {
+      setRunLookupIdState(next);
+      if (!teamIdTrimmed) return;
+      setRunLookupByTeam((prev) => ({ ...prev, [teamIdTrimmed]: next }));
+    },
+    [teamIdTrimmed, setRunLookupByTeam],
+  );
 
   const approvalRunIdTrimmed = String(approvalRunId || runLookupId || "").trim();
   const recentRunsItems = Array.isArray(recentRuns) ? recentRuns : [];
@@ -403,6 +411,12 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
       setApprovalRunId(String(runResult.team_run_id));
     }
   }, [approvalRunId, runResult]);
+
+  React.useEffect(() => {
+    setRunRoleInstructionsOverride(false);
+    setRunRoleInstructions({});
+    setRunRolePromptMode("prepend");
+  }, [teamIdTrimmed]);
 
   React.useEffect(() => {
     if (!approvalRunId && runLookupResult?.team_run_id) {
@@ -505,6 +519,11 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
         }
         teamPayload.role_overrides = parsed;
       }
+      if (runRoleInstructionsOverride) {
+        teamPayload.role_instructions = runRoleInstructions;
+        const mode = String(runRolePromptMode || "").trim();
+        if (mode) teamPayload.role_prompt_mode = mode;
+      }
       const runtimeMembersRaw = String(runRuntimeMembersJson || "").trim();
       if (runtimeMembersRaw) {
         let parsed: any = null;
@@ -556,6 +575,13 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
     }
   };
 
+  const handleSeedRoleInstructions = () => {
+    if (teamRoleInstructionKeys.length === 0) return;
+    setRunRoleInstructionsOverride(true);
+    setRunRoleInstructions({ ...teamRoleInstructionsDefaults });
+    setRunRolePromptMode(teamRolePromptModeDefault || "prepend");
+  };
+
   const fetchRunStatus = React.useCallback(
     async (runId: string) => {
       if (!teamIdTrimmed || !runId) {
@@ -580,6 +606,16 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
     const runId = String(runLookupId || "").trim();
     await fetchRunStatus(runId);
   };
+
+  React.useEffect(() => {
+    if (!autoResumeRunLookup || !props.canQuery) return;
+    const runId = String(runLookupId || "").trim();
+    if (!teamIdTrimmed || !runId) return;
+    const key = `${teamIdTrimmed}:${runId}`;
+    if (autoResumeKeyRef.current === key) return;
+    autoResumeKeyRef.current = key;
+    void fetchRunStatus(runId);
+  }, [autoResumeRunLookup, props.canQuery, runLookupId, teamIdTrimmed, fetchRunStatus]);
 
   const loadRecentRuns = React.useCallback(async () => {
     if (!teamIdTrimmed) {
@@ -1506,749 +1542,132 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
 
   return (
     <div className="mt-4 grid gap-3">
-      <div className="text-xs font-semibold text-white/80">Team run</div>
-      <div className="text-[11px] text-white/50">Creates a run across team members; prompt is required.</div>
-      <div className="flex flex-wrap items-center gap-2">
-        <FieldLabel>Prompt</FieldLabel>
-        <input
-          className="min-w-[240px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-          value={runPrompt}
-          onChange={(e) => setRunPrompt(e.target.value)}
-          placeholder="Summarize today’s alerts"
-        />
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <FieldLabel>Model</FieldLabel>
-        <input
-          className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-          value={runModel}
-          onChange={(e) => setRunModel(e.target.value)}
-          placeholder="optional"
-        />
-        <FieldLabel>Tools</FieldLabel>
-        <select
-          className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-          value={runTools}
-          onChange={(e) => setRunTools(e.target.value)}
-        >
-          <option value="none">none</option>
-          <option value="basic">basic</option>
-          <option value="host">host</option>
-        </select>
-        <FieldLabel>Role</FieldLabel>
-        <input
-          className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-          value={runRole}
-          onChange={(e) => setRunRole(e.target.value)}
-          placeholder="planner"
-        />
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <FieldLabel>Roles</FieldLabel>
-        <input
-          className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-          value={runRoles}
-          onChange={(e) => setRunRoles(e.target.value)}
-          placeholder="planner,executor"
-        />
-        <FieldLabel>Max concurrency</FieldLabel>
-        <input
-          className="w-20 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-          value={runConcurrency}
-          onChange={(e) => setRunConcurrency(e.target.value)}
-        />
-        <FieldLabel>Timeout ms</FieldLabel>
-        <input
-          className="w-24 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-          value={runTimeoutMs}
-          onChange={(e) => setRunTimeoutMs(e.target.value)}
-        />
-        <FieldLabel>Mode</FieldLabel>
-        <select
-          className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-          value={runMode}
-          onChange={(e) => setRunMode(e.target.value)}
-        >
-          <option value="async">async</option>
-          <option value="sync">sync</option>
-        </select>
-        <FieldLabel>Quorum</FieldLabel>
-        <select
-          className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-          value={runQuorumMode}
-          onChange={(e) => setRunQuorumMode(e.target.value)}
-        >
-          <option value="auto">auto</option>
-          <option value="off">off</option>
-        </select>
-        <button
-          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-          type="button"
-          disabled={!props.canQuery || !teamIdTrimmed || runBusy}
-          onClick={() => void handleCreateRun()}
-        >
-          {runBusy ? "Submitting…" : "Create run"}
-        </button>
-      </div>
-      <div className="text-[11px] text-white/50">
-        Async mode dispatches `run_async` per member so the run continues if the UI disconnects.
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <FieldLabel>Run overrides</FieldLabel>
-        <select
-          className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-          value={runOverridesMode}
-          onChange={(e) => setRunOverridesMode(e.target.value)}
-        >
-          <option value="off">off</option>
-          <option value="member_meta">member meta</option>
-          <option value="explicit">explicit</option>
-        </select>
-        <span className="text-[11px] text-white/50">Apply per-member backend overrides when enabled.</span>
-      </div>
-      {runOverridesMode === "explicit" ? (
-        <div className="grid gap-1">
-          <FieldLabel>Member overrides JSON</FieldLabel>
-          <textarea
-            className="min-h-[84px] w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
-            value={runMemberOverridesJson}
-            onChange={(e) => setRunMemberOverridesJson(e.target.value)}
-            placeholder='{"member_1":{"model":"gpt-4.1-mini","base_url":"https://api.openai.com/v1","tools":"basic"}}'
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-              type="button"
-              onClick={() => handleSeedExplicitOverrides()}
-            >
-              Seed from team members
-            </button>
-          </div>
-          <div className="text-[11px] text-white/50">
-            Allowed fields: model, base_url, summary_model, tools, timeout_ms, max_steps, stream_assistant.
-          </div>
-        </div>
-      ) : null}
-      <div className="grid gap-1">
-        <FieldLabel>Role overrides JSON (optional)</FieldLabel>
-        <textarea
-          className="min-h-[84px] w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
-          value={runRoleOverridesJson}
-          onChange={(e) => setRunRoleOverridesJson(e.target.value)}
-          placeholder='{"planner":{"model":"gpt-4.1-mini","tools":"basic"},"executor":{"base_url":"https://api.openai.com/v1"}}'
-        />
-        <div className="text-[11px] text-white/50">
-          Role overrides apply before member overrides and use the same allowlist. If empty, broker uses team defaults.
-        </div>
-        {teamRoleOverrideKeys.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-              type="button"
-              onClick={() => handleSeedRoleOverrides()}
-            >
-              Seed from team defaults
-            </button>
-            <span className="text-[11px] text-white/50">Defaults: {teamRoleOverrideKeys.join(", ")}</span>
-          </div>
-        ) : (
-          <div className="text-[11px] text-white/40">No role override defaults saved on this team.</div>
-        )}
-      </div>
-      <div className="grid gap-1">
-        <FieldLabel>Runtime members JSON (optional)</FieldLabel>
-        <textarea
-          className="min-h-[84px] w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
-          data-testid="team-run-runtime-json"
-          value={runRuntimeMembersJson}
-          onChange={(e) => setRunRuntimeMembersJson(e.target.value)}
-          placeholder='[{"member_id":"rt-1","agent_id":"agent_a","role":"executor","capabilities":["vision"],"meta":{"backend_label":"openai-mini"}}]'
-        />
-        <div className="text-[11px] text-white/50">
-          Each entry needs agent_id + role; member_id is optional (required for explicit overrides).
-        </div>
-        <div className="text-[11px] text-white/50">
-          Runtime members are per-run and let an orchestrator add/pause agents dynamically; use "Save to team" to persist.
-        </div>
-        {runtimeMembersPreview.error ? (
-          <div className="text-[11px] text-rose-200">{runtimeMembersPreview.error}</div>
-        ) : null}
-        {runtimeMembersPreview.items.length > 0 ? (
-          <div className="grid gap-2">
-            <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-              <span>Bulk status:</span>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                type="button"
-                onClick={() => handleSetAllRuntimeStatus("paused")}
-              >
-                Pause all
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                type="button"
-                onClick={() => handleSetAllRuntimeStatus("active")}
-              >
-                Resume all
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                type="button"
-                onClick={() => handleRemovePausedRuntimeMembers()}
-              >
-                Remove paused
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                type="button"
-                onClick={() => handleCompactRuntimeMembers()}
-              >
-                Compact JSON
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                type="button"
-                onClick={() => void handleCopyRuntimeMembers()}
-              >
-                Copy JSON
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                type="button"
-                onClick={() => runtimeImportRef.current?.click()}
-              >
-                Import JSON
-              </button>
-              <label className="flex items-center gap-2 text-[11px] text-white/60">
-                <input
-                  type="checkbox"
-                  checked={runtimeImportMerge}
-                  onChange={(e) => setRuntimeImportMerge(e.target.checked)}
-                />
-                merge
-              </label>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                type="button"
-                onClick={() => handleDownloadRuntimeMembers()}
-              >
-                Download JSON
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                type="button"
-                onClick={() => handleExportTeamMembers()}
-              >
-                Export team
-              </button>
-              <input
-                ref={runtimeImportRef}
-                className="hidden"
-                type="file"
-                accept="application/json,.json"
-                onChange={handleImportRuntimeMembers}
-              />
-            </div>
-            {runtimeMembersPreview.items.map((item, idx) => {
-              const memberId = item?.member_id ? String(item.member_id) : "";
-              const agentId = item?.agent_id ? String(item.agent_id) : "";
-              const role = item?.role ? String(item.role) : "";
-              const label = memberId ? `${memberId}` : agentId ? `agent ${agentId}` : "runtime member";
-              const status = item?.status ? String(item.status).toLowerCase() : "active";
-              return (
-                <div
-                  key={`runtime-preview-${label}-${idx}`}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70"
-                >
-                  <div>
-                    <span className="text-white/90">{label}</span>
-                    {agentId && memberId ? ` · agent ${agentId}` : ""}
-                    {role ? ` · role ${role}` : ""}
-                    {status && status !== "active" ? ` · ${status}` : ""}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                      type="button"
-                      onClick={() => handleToggleRuntimeMemberStatus(idx)}
-                    >
-                      {status === "paused" ? "Resume" : "Pause"}
-                    </button>
-                    <button
-                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                      type="button"
-                      onClick={() => handleRemoveRuntimeMember(idx)}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-            {runtimeMembersPreview.items.length > 0 ? (
-              <div className="mt-2 rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
-                <div>
-                  team diff · runtime-only {runtimeTeamDiff.runtimeOnly.length} · team-only {runtimeTeamDiff.teamOnly.length} · mismatched {runtimeTeamDiff.mismatched.length}
-                </div>
-                {runtimeTeamDiff.runtimeOnly.length > 0 ? (
-                  <div>
-                    runtime-only:
-                    {runtimeTeamDiff.runtimeOnly.map((item, idx) => {
-                      const mid = item?.member_id ? String(item.member_id) : "";
-                      const aid = item?.agent_id ? String(item.agent_id) : "";
-                      const label = mid ? mid : aid ? `agent ${aid}` : `runtime-${idx + 1}`;
-                      return <div key={`runtime-only-${label}-${idx}`}>{label}</div>;
-                    })}
-                  </div>
-                ) : null}
-                {runtimeTeamDiff.teamOnly.length > 0 ? (
-                  <div>
-                    team-only:
-                    {runtimeTeamDiff.teamOnly.map((item, idx) => {
-                      const mid = item?.member_id ? String(item.member_id) : "";
-                      const aid = item?.agent_id ? String(item.agent_id) : "";
-                      const label = mid ? mid : aid ? `agent ${aid}` : `team-${idx + 1}`;
-                      return <div key={`team-only-${label}-${idx}`}>{label}</div>;
-                    })}
-                  </div>
-                ) : null}
-                {runtimeTeamDiff.mismatched.length > 0 ? (
-                  <div>
-                    mismatched:
-                    {runtimeTeamDiff.mismatched.map((row: any, idx: number) => {
-                      const item = row?.item ?? {};
-                      const mid = item?.member_id ? String(item.member_id) : "";
-                      const aid = item?.agent_id ? String(item.agent_id) : "";
-                      const label = mid ? mid : aid ? `agent ${aid}` : `runtime-${idx + 1}`;
-                      return (
-                        <div key={`runtime-mismatch-${label}-${idx}`}>
-                          {label} · {Array.isArray(row?.diffs) ? row.diffs.join(", ") : "diff"}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="mt-2 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
-          <div className="text-[11px] text-white/70">Quick add runtime member</div>
-          <div className="flex flex-wrap items-center gap-2">
-            <FieldLabel>Member ID</FieldLabel>
-            <input
-              className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={runtimeMemberId}
-              onChange={(e) => setRuntimeMemberId(e.target.value)}
-              placeholder="optional"
-            />
-            <FieldLabel>Agent ID</FieldLabel>
-            <input
-              className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={runtimeMemberAgentId}
-              onChange={(e) => setRuntimeMemberAgentId(e.target.value)}
-              placeholder="agent1"
-            />
-            <FieldLabel>Role</FieldLabel>
-            <input
-              className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={runtimeMemberRole}
-              onChange={(e) => setRuntimeMemberRole(e.target.value)}
-              placeholder="executor"
-            />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <FieldLabel>Agent pick</FieldLabel>
-            <select
-              className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={runtimeMemberAgentId}
-              onChange={(e) => setRuntimeMemberAgentId(e.target.value)}
-            >
-              <option value="">(select agent)</option>
-              {runtimeAgentOptions.map((agent) => {
-                const id = String(agent?.agent_id || "");
-                const connected = agent?.connected === true;
-                const depCount = Array.isArray(agent?.deployments) ? agent.deployments.length : 0;
-                const label = id
-                  ? `${id}${connected ? " · connected" : ""}${depCount ? ` · ${depCount} dep` : ""}`
-                  : "agent";
-                return (
-                  <option key={`runtime-agent-${id}`} value={id}>
-                    {label}
-                  </option>
-                );
-              })}
-            </select>
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-              type="button"
-              disabled={!props.canQuery || runtimeAgentsBusy}
-              onClick={() => void refreshRuntimeAgents()}
-            >
-              {runtimeAgentsBusy ? "Loading…" : "Refresh agents"}
-            </button>
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-              type="button"
-              disabled={!props.canQuery || runtimeAgentsBusy}
-              onClick={() => handleAddConnectedAgents()}
-            >
-              Add connected agents
-            </button>
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-              type="button"
-              disabled={!props.canQuery || runtimeSaveBusy || runtimeMembersPreview.items.length === 0}
-              onClick={() => void handleSaveRuntimeMembers()}
-            >
-              {runtimeSaveBusy ? "Saving…" : "Save to team"}
-            </button>
-            {runtimeAgentsError ? (
-              <span className="text-[11px] text-rose-200">{runtimeAgentsError}</span>
-            ) : null}
-          </div>
-          {runtimeSaveError ? (
-            <div className="text-[11px] text-rose-200">{runtimeSaveError}</div>
-          ) : null}
-          {runtimeMembersPreview.items.length > 0 ? (
-            <div className="grid gap-1 text-[11px] text-white/50">
-              <div>
-                save preview: {runtimeSavePreview.newMembers.length} new · {runtimeSavePreview.skipped.length} skipped · {runtimeSavePreview.invalid.length} invalid
-              </div>
-              {runtimeSavePreview.invalid.length > 0 ? (
-                <div>
-                  invalid:
-                  <button
-                    className="ml-2 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/80 hover:bg-black/40"
-                    type="button"
-                    onClick={() => handleFixInvalidRuntimeMembers()}
-                  >
-                    Fix invalid
-                  </button>
-                  {runtimeSavePreview.invalid.map((row, idx) => {
-                    const item = row?.item ?? {};
-                    const label = item?.member_id
-                      ? String(item.member_id)
-                      : item?.agent_id
-                      ? `agent ${String(item.agent_id)}`
-                      : `runtime-${idx + 1}`;
-                    return (
-                      <div key={`runtime-invalid-${label}-${idx}`}>
-                        {label} · {row?.reason || "invalid"}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
-              {runtimeSavePreview.skipped.length > 0 ? (
-                <div>
-                  skipped:
-                  {runtimeSavePreview.skipped.map((row, idx) => {
-                    const item = row?.item ?? {};
-                    const label = item?.member_id
-                      ? String(item.member_id)
-                      : item?.agent_id
-                      ? `agent ${String(item.agent_id)}`
-                      : `runtime-${idx + 1}`;
-                    return (
-                      <div key={`runtime-skipped-${label}-${idx}`}>
-                        {label} · {row?.reason || "skipped"}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          <div className="flex flex-wrap items-center gap-2">
-            <FieldLabel>Deployment</FieldLabel>
-            <input
-              className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={runtimeMemberDeploymentId}
-              onChange={(e) => setRuntimeMemberDeploymentId(e.target.value)}
-              placeholder="default"
-            />
-            <FieldLabel>Deployment pick</FieldLabel>
-            <select
-              className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={runtimeMemberDeploymentId}
-              onChange={(e) => setRuntimeMemberDeploymentId(e.target.value)}
-              disabled={runtimeAgentDeployments.length === 0}
-            >
-              <option value="">default</option>
-              {runtimeAgentDeployments.map((dep, idx) => {
-                const depId = String(dep?.deployment_id || "");
-                const connected = dep?.connected === true;
-                const label = depId ? `${depId}${connected ? " · connected" : ""}` : `deployment-${idx + 1}`;
-                return (
-                  <option key={`runtime-dep-${depId || idx}`} value={depId}>
-                    {label}
-                  </option>
-                );
-              })}
-            </select>
-            <FieldLabel>Capabilities</FieldLabel>
-            <input
-              className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={runtimeMemberCapabilities}
-              onChange={(e) => setRuntimeMemberCapabilities(e.target.value)}
-              placeholder="vision,audio"
-            />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <FieldLabel>Backend label</FieldLabel>
-            <input
-              className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={runtimeMemberBackendLabel}
-              onChange={(e) => setRuntimeMemberBackendLabel(e.target.value)}
-              placeholder="openrouter-main"
-            />
-            <FieldLabel>Model</FieldLabel>
-            <input
-              className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={runtimeMemberModel}
-              onChange={(e) => setRuntimeMemberModel(e.target.value)}
-              placeholder="optional"
-            />
-            <FieldLabel>Base URL</FieldLabel>
-            <input
-              className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={runtimeMemberBaseUrl}
-              onChange={(e) => setRuntimeMemberBaseUrl(e.target.value)}
-              placeholder="https://api.openai.com/v1"
-            />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <FieldLabel>Summary model</FieldLabel>
-            <input
-              className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={runtimeMemberSummaryModel}
-              onChange={(e) => setRuntimeMemberSummaryModel(e.target.value)}
-              placeholder="optional"
-            />
-            <FieldLabel>Tools</FieldLabel>
-            <select
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={runtimeMemberTools}
-              onChange={(e) => setRuntimeMemberTools(e.target.value)}
-            >
-              <option value="">inherit</option>
-              <option value="none">none</option>
-              <option value="basic">basic</option>
-              <option value="host">host</option>
-            </select>
-            <FieldLabel>Timeout ms</FieldLabel>
-            <input
-              className="w-24 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={runtimeMemberTimeoutMs}
-              onChange={(e) => setRuntimeMemberTimeoutMs(e.target.value)}
-              placeholder="60000"
-            />
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
-              type="button"
-              onClick={() => handleAddRuntimeMember()}
-            >
-              Add runtime member
-            </button>
-            {runRuntimeMembersJson.trim() ? (
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                type="button"
-                onClick={() => setRunRuntimeMembersJson("")}
-              >
-                Clear runtime members
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </div>
-      <div className="mt-2 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2" data-testid="team-inline-approvals">
-        <div className="text-[11px] text-white/70">Inline approvals (optional)</div>
-        <div className="flex flex-wrap items-center gap-2">
-          <FieldLabel>Member ID</FieldLabel>
-          <input
-            className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={runApprovalMemberId}
-            onChange={(e) => setRunApprovalMemberId(e.target.value)}
-            placeholder="member id"
-            list="team-approvals-members"
-          />
-          <FieldLabel>Decision</FieldLabel>
-          <select
-            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={runApprovalDecision}
-            onChange={(e) => setRunApprovalDecision(e.target.value as "approve" | "deny")}
-          >
-            <option value="approve">approve</option>
-            <option value="deny">deny</option>
-          </select>
-          <FieldLabel>Rule ID</FieldLabel>
-          <input
-            className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={runApprovalRuleId}
-            onChange={(e) => setRunApprovalRuleId(e.target.value)}
-            placeholder="optional"
-            list="team-approvals-rules"
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <FieldLabel>Reason</FieldLabel>
-          <input
-            className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={runApprovalReason}
-            onChange={(e) => setRunApprovalReason(e.target.value)}
-            placeholder="optional"
-          />
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-            type="button"
-            disabled={!props.canQuery || !teamIdTrimmed || runBusy}
-            onClick={() => handleAddRunApproval()}
-          >
-            Add approval
-          </button>
-          {runApprovals.length > 0 ? (
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-              type="button"
-              onClick={() => setRunApprovals([])}
-            >
-              Clear approvals
-            </button>
-          ) : null}
-        </div>
-        {runApprovals.length > 0 ? (
-          <div className="grid gap-2">
-            {runApprovals.map((a, idx) => (
-              <div
-                key={`run-approval-${a.member_id}-${a.rule_id || "any"}-${idx}`}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70"
-              >
-                <div className="text-[11px] text-white/70">
-                  <span className="text-white/90">{a.member_id}</span>
-                  {a.decision ? ` · ${a.decision}` : ""}
-                  {a.rule_id ? ` · rule ${a.rule_id}` : ""}
-                  {a.reason ? ` · ${a.reason}` : ""}
-                </div>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                  type="button"
-                  onClick={() => setRunApprovals((prev) => prev.filter((_, i) => i !== idx))}
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-[11px] text-white/50">No inline approvals.</div>
-        )}
-      </div>
-      {runError ? (
-        <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">{runError}</div>
-      ) : null}
-      {runQuorum?.rules && runQuorum.rules.length > 0 ? (
-        <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
-          {runQuorum.rules.map((r, idx) => (
-            <div key={`quorum-eval-${r.rule_id || idx}`}>
-              {r.rule_id ? `rule ${r.rule_id}` : "rule"} · min {r.min_approvals ?? "?"} · approved {r.approved ?? 0} · missing {r.missing ?? 0}
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {runResult ? (
-        <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
-          run id {String(runResult?.team_run_id || "unknown")} · status {String(runResult?.status || "")}
-          {runResult?.mode ? ` · mode ${String(runResult.mode)}` : ""}
-        </div>
-      ) : null}
-
-      <div className="mt-3 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="text-[11px] text-white/70">Recent team runs</div>
-          <div className="flex flex-wrap items-center gap-2">
-            <FieldLabel>Limit</FieldLabel>
-            <input
-              className="w-16 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={String(recentRunsLimit)}
-              onChange={(e) => {
-                const next = Number.parseInt(e.target.value, 10);
-                if (Number.isFinite(next) && next > 0) {
-                  setRecentRunsLimit(next);
-                } else if (!e.target.value.trim()) {
-                  setRecentRunsLimit(10);
-                }
-              }}
-              placeholder="10"
-            />
-            <FieldLabel>Status</FieldLabel>
-            <input
-              className="w-24 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={recentRunsStatus}
-              onChange={(e) => setRecentRunsStatus(e.target.value)}
-              placeholder="optional"
-            />
-            <label className="flex items-center gap-2 text-[10px] text-white/60">
-              <input
-                type="checkbox"
-                className="rounded border-white/20 bg-black/40"
-                checked={recentRunsLive}
-                onChange={(e) => setRecentRunsLive(e.target.checked)}
-              />
-              live (SSE)
-            </label>
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-              type="button"
-              disabled={!props.canQuery || !teamIdTrimmed || recentRunsBusy}
-              onClick={() => void loadRecentRuns()}
-            >
-              {recentRunsBusy ? "Loading…" : "Refresh"}
-            </button>
-          </div>
-        </div>
-        {recentRunsError ? (
-          <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
-            {recentRunsError}
-          </div>
-        ) : null}
-        {recentRunsItems.length > 0 ? (
-          <div className="grid gap-1 text-[11px] text-white/70">
-            {recentRunsItems.map((row: any, idx: number) => {
-              const runId = String(row?.team_run_id || "");
-              return (
-                <div
-                  key={`team-run-row-${runId || idx}`}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1"
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-white/90">{runId || "?"}</span>
-                    {row?.status ? <span>· {row.status}</span> : null}
-                    {row?.mode ? <span>· {row.mode}</span> : null}
-                    {typeof row?.created_unix_ms === "number" ? <span>· {fmtTs(row.created_unix_ms)}</span> : null}
-                    {fmtSummary(row?.member_job_summary) ? <span>· {fmtSummary(row.member_job_summary)}</span> : null}
-                  </div>
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                    type="button"
-                    onClick={() => {
-                      if (!runId) return;
-                      setRunLookupId(runId);
-                      void fetchRunStatus(runId);
-                    }}
-                  >
-                    Load
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-[11px] text-white/50">No recent runs.</div>
-        )}
-      </div>
-
+      <TeamRunCreatePanel
+        canQuery={props.canQuery}
+        teamId={teamIdTrimmed}
+        runPrompt={runPrompt}
+        setRunPrompt={setRunPrompt}
+        runModel={runModel}
+        setRunModel={setRunModel}
+        runTools={runTools}
+        setRunTools={setRunTools}
+        runRole={runRole}
+        setRunRole={setRunRole}
+        runRoles={runRoles}
+        setRunRoles={setRunRoles}
+        runConcurrency={runConcurrency}
+        setRunConcurrency={setRunConcurrency}
+        runTimeoutMs={runTimeoutMs}
+        setRunTimeoutMs={setRunTimeoutMs}
+        runMode={runMode}
+        setRunMode={setRunMode}
+        runQuorumMode={runQuorumMode}
+        setRunQuorumMode={setRunQuorumMode}
+        runBusy={runBusy}
+        onCreateRun={handleCreateRun}
+        runOverridesMode={runOverridesMode}
+        setRunOverridesMode={setRunOverridesMode}
+        runMemberOverridesJson={runMemberOverridesJson}
+        setRunMemberOverridesJson={setRunMemberOverridesJson}
+        onSeedExplicitOverrides={handleSeedExplicitOverrides}
+        runRoleOverridesJson={runRoleOverridesJson}
+        setRunRoleOverridesJson={setRunRoleOverridesJson}
+        teamRoleOverrideKeys={teamRoleOverrideKeys}
+        onSeedRoleOverrides={handleSeedRoleOverrides}
+        runRoleInstructionsOverride={runRoleInstructionsOverride}
+        setRunRoleInstructionsOverride={setRunRoleInstructionsOverride}
+        runRoleInstructions={runRoleInstructions}
+        setRunRoleInstructions={setRunRoleInstructions}
+        runRolePromptMode={runRolePromptMode}
+        setRunRolePromptMode={setRunRolePromptMode}
+        teamRoleInstructionKeys={teamRoleInstructionKeys}
+        onSeedRoleInstructions={handleSeedRoleInstructions}
+        runRolePlanOptions={runRolePlanOptions}
+        runRuntimeMembersJson={runRuntimeMembersJson}
+        setRunRuntimeMembersJson={setRunRuntimeMembersJson}
+        runtimeMembersPreview={runtimeMembersPreview}
+        runtimeTeamDiff={runtimeTeamDiff}
+        handleSetAllRuntimeStatus={handleSetAllRuntimeStatus}
+        handleRemovePausedRuntimeMembers={handleRemovePausedRuntimeMembers}
+        handleCompactRuntimeMembers={handleCompactRuntimeMembers}
+        handleCopyRuntimeMembers={handleCopyRuntimeMembers}
+        runtimeImportRef={runtimeImportRef}
+        runtimeImportMerge={runtimeImportMerge}
+        setRuntimeImportMerge={setRuntimeImportMerge}
+        handleDownloadRuntimeMembers={handleDownloadRuntimeMembers}
+        handleExportTeamMembers={handleExportTeamMembers}
+        handleImportRuntimeMembers={handleImportRuntimeMembers}
+        handleToggleRuntimeMemberStatus={handleToggleRuntimeMemberStatus}
+        handleRemoveRuntimeMember={handleRemoveRuntimeMember}
+        runtimeMemberId={runtimeMemberId}
+        setRuntimeMemberId={setRuntimeMemberId}
+        runtimeMemberAgentId={runtimeMemberAgentId}
+        setRuntimeMemberAgentId={setRuntimeMemberAgentId}
+        runtimeMemberRole={runtimeMemberRole}
+        setRuntimeMemberRole={setRuntimeMemberRole}
+        runtimeAgentOptions={runtimeAgentOptions}
+        runtimeAgentsBusy={runtimeAgentsBusy}
+        refreshRuntimeAgents={refreshRuntimeAgents}
+        handleAddConnectedAgents={handleAddConnectedAgents}
+        runtimeSaveBusy={runtimeSaveBusy}
+        handleSaveRuntimeMembers={handleSaveRuntimeMembers}
+        runtimeAgentsError={runtimeAgentsError}
+        runtimeSaveError={runtimeSaveError}
+        runtimeSavePreview={runtimeSavePreview}
+        handleFixInvalidRuntimeMembers={handleFixInvalidRuntimeMembers}
+        runtimeMemberDeploymentId={runtimeMemberDeploymentId}
+        setRuntimeMemberDeploymentId={setRuntimeMemberDeploymentId}
+        runtimeAgentDeployments={runtimeAgentDeployments}
+        runtimeMemberCapabilities={runtimeMemberCapabilities}
+        setRuntimeMemberCapabilities={setRuntimeMemberCapabilities}
+        runtimeMemberBackendLabel={runtimeMemberBackendLabel}
+        setRuntimeMemberBackendLabel={setRuntimeMemberBackendLabel}
+        runtimeMemberModel={runtimeMemberModel}
+        setRuntimeMemberModel={setRuntimeMemberModel}
+        runtimeMemberBaseUrl={runtimeMemberBaseUrl}
+        setRuntimeMemberBaseUrl={setRuntimeMemberBaseUrl}
+        runtimeMemberSummaryModel={runtimeMemberSummaryModel}
+        setRuntimeMemberSummaryModel={setRuntimeMemberSummaryModel}
+        runtimeMemberTools={runtimeMemberTools}
+        setRuntimeMemberTools={setRuntimeMemberTools}
+        runtimeMemberTimeoutMs={runtimeMemberTimeoutMs}
+        setRuntimeMemberTimeoutMs={setRuntimeMemberTimeoutMs}
+        handleAddRuntimeMember={handleAddRuntimeMember}
+        runApprovalMemberId={runApprovalMemberId}
+        setRunApprovalMemberId={setRunApprovalMemberId}
+        runApprovalDecision={runApprovalDecision}
+        setRunApprovalDecision={setRunApprovalDecision}
+        runApprovalRuleId={runApprovalRuleId}
+        setRunApprovalRuleId={setRunApprovalRuleId}
+        runApprovalReason={runApprovalReason}
+        setRunApprovalReason={setRunApprovalReason}
+        runApprovals={runApprovals}
+        setRunApprovals={setRunApprovals}
+        handleAddRunApproval={handleAddRunApproval}
+        runError={runError}
+        runQuorum={runQuorum}
+        runResult={runResult}
+      />
+      <TeamRunRecentRunsPanel
+        canQuery={props.canQuery}
+        teamId={teamIdTrimmed}
+        recentRunsLimit={recentRunsLimit}
+        setRecentRunsLimit={setRecentRunsLimit}
+        recentRunsStatus={recentRunsStatus}
+        setRecentRunsStatus={setRecentRunsStatus}
+        recentRunsLive={recentRunsLive}
+        setRecentRunsLive={setRecentRunsLive}
+        recentRunsBusy={recentRunsBusy}
+        onRefresh={loadRecentRuns}
+        recentRunsError={recentRunsError}
+        recentRunsItems={recentRunsItems}
+        fmtTs={fmtTs}
+        fmtSummary={fmtSummary}
+        onLoadRun={(runId) => {
+          setRunLookupId(runId);
+          void fetchRunStatus(runId);
+        }}
+      />
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <FieldLabel>Run ID</FieldLabel>
         <input
@@ -2274,6 +1693,15 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
           {runCancelBusy ? "Cancelling…" : "Cancel run"}
         </button>
       </div>
+      <label className="flex items-center gap-2 text-[11px] text-white/60">
+        <input
+          type="checkbox"
+          className="rounded border-white/20 bg-black/40"
+          checked={autoResumeRunLookup}
+          onChange={(e) => setAutoResumeRunLookup(e.target.checked)}
+        />
+        Auto resume saved run on reload
+      </label>
       <label className="flex items-center gap-2 text-[11px] text-white/60">
         <input
           type="checkbox"
@@ -2508,197 +1936,39 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
         onEventsLoad={() => void handleModeratorEventsLoad()}
         onEventsToggleExpanded={() => setModeratorEventsExpanded((prev) => !prev)}
       />
-      <div className="mt-2 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
-        <div className="text-xs font-semibold text-white/80">Runtime member updates</div>
-        <div className="text-[11px] text-white/50">
-          Apply the runtime members JSON (above) to an existing run; merge preserves existing members by member_id.
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <FieldLabel>Mode</FieldLabel>
-          <select
-            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            data-testid="team-run-runtime-mode"
-            value={runtimeUpdateMode}
-            onChange={(e) => setRuntimeUpdateMode(e.target.value)}
-          >
-            <option value="replace">replace</option>
-            <option value="merge">merge</option>
-          </select>
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-            type="button"
-            data-testid="team-run-runtime-load"
-            disabled={!props.canQuery || runtimeUpdateBusy}
-            onClick={() => handleRuntimeMembersLoadFromRun()}
-          >
-            Load from run
-          </button>
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-            type="button"
-            data-testid="team-run-runtime-update"
-            disabled={!props.canQuery || runtimeUpdateBusy}
-            onClick={() => void handleRuntimeMembersUpdate()}
-          >
-            {runtimeUpdateBusy ? "Updating…" : "Update runtime members"}
-          </button>
-        </div>
-        {runtimeUpdateError ? (
-          <div className="text-[11px] text-rose-200">{runtimeUpdateError}</div>
-        ) : null}
-        {runtimeUpdateNote ? <div className="text-[11px] text-white/60">{runtimeUpdateNote}</div> : null}
-      </div>
-
-      <div className="mt-3 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
-        <div className="text-xs font-semibold text-white/80">Run approvals</div>
-        <div className="text-[11px] text-white/50">Submit or review approvals for a team run (quorum rules apply).</div>
-        {approvalsLastSyncMs ? (
-          <div className="text-[11px] text-white/50">Last sync: {fmtTs(approvalsLastSyncMs)}</div>
-        ) : null}
-        {quorumRequestRows.length > 0 ? (
-          <div className="grid gap-2">
-            <div className="text-[11px] text-white/60">Recent quorum requests</div>
-            {quorumRequestRows.map((row, idx) => {
-              const payload = row?.payload ?? {};
-              const teamId = payload?.team_id ? String(payload.team_id) : "";
-              const runId = payload?.team_run_id ? String(payload.team_run_id) : "";
-              const ruleId = payload?.rule_id ? String(payload.rule_id) : "";
-              const action = payload?.action ? String(payload.action) : "";
-              const min = payload?.min_approvals;
-              const ts = fmtTs(row?.ts_unix_ms);
-              return (
-                <div
-                  key={`quorum-request-${teamId}-${runId}-${ruleId}-${idx}`}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70"
-                >
-                  <div className="text-[11px] text-white/70">
-                    <span className="text-white/90">{action || "team_run"}</span>
-                    {min !== undefined ? ` · min ${min}` : ""}
-                    {ruleId ? ` · rule ${ruleId}` : ""}
-                    {ts ? ` · ${ts}` : ""}
-                  </div>
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                    type="button"
-                    onClick={() => {
-                      if (teamId && props.onTeamSelect) props.onTeamSelect(teamId);
-                      if (runId) {
-                        setApprovalRunId(runId);
-                        setRunLookupId(runId);
-                      }
-                      if (ruleId) setApprovalRuleId(ruleId);
-                    }}
-                  >
-                    Use
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-[11px] text-white/50">No quorum requests captured yet.</div>
-        )}
-        <div className="flex flex-wrap items-center gap-2">
-          <FieldLabel>Run ID</FieldLabel>
-          <input
-            className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={approvalRunId}
-            onChange={(e) => setApprovalRunId(e.target.value)}
-            placeholder="defaults to run id above"
-          />
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-            type="button"
-            disabled={!props.canQuery || !teamIdTrimmed || approvalsBusy}
-            onClick={() => void handleApprovalsRefresh()}
-          >
-            {approvalsBusy ? "Loading…" : "Load approvals"}
-          </button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <FieldLabel>Member ID</FieldLabel>
-          <input
-            className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={approvalMemberId}
-            onChange={(e) => setApprovalMemberId(e.target.value)}
-            placeholder="member id"
-            list="team-approvals-members"
-          />
-          <datalist id="team-approvals-members">
-            {membersList.map((m, idx) => {
-              const mid = String(m?.member_id || "");
-              if (!mid) return null;
-              return <option key={`member-opt-${mid}-${idx}`} value={mid} />;
-            })}
-          </datalist>
-          <FieldLabel>Decision</FieldLabel>
-          <select
-            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={approvalDecision}
-            onChange={(e) => setApprovalDecision(e.target.value)}
-          >
-            <option value="approve">approve</option>
-            <option value="deny">deny</option>
-          </select>
-          <FieldLabel>Rule ID</FieldLabel>
-          <input
-            className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={approvalRuleId}
-            onChange={(e) => setApprovalRuleId(e.target.value)}
-            placeholder="optional"
-            list="team-approvals-rules"
-          />
-          <datalist id="team-approvals-rules">
-            {rulesList.map((r, idx) => {
-              const rid = String(r?.rule_id || "");
-              if (!rid) return null;
-              return <option key={`rule-opt-${rid}-${idx}`} value={rid} />;
-            })}
-          </datalist>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <FieldLabel>Reason</FieldLabel>
-          <input
-            className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={approvalReason}
-            onChange={(e) => setApprovalReason(e.target.value)}
-            placeholder="optional"
-          />
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-            type="button"
-            disabled={!props.canQuery || !teamIdTrimmed || approvalsBusy}
-            onClick={() => void handleApprovalSubmit()}
-          >
-            {approvalsBusy ? "Submitting…" : "Submit approval"}
-          </button>
-        </div>
-        {approvalsError ? (
-          <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">{approvalsError}</div>
-        ) : null}
-        {approvals && approvals.length > 0 ? (
-          <div className="grid gap-2">
-            {approvals.map((a, idx) => (
-              <div
-                key={`approval-${a?.approval_id || idx}`}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70"
-              >
-                <div className="text-[11px] text-white/70">
-                  <span className="text-white/90">{String(a?.member_id || "member")}</span>
-                  {a?.decision ? ` · ${a.decision}` : ""}
-                  {a?.rule_id ? ` · rule ${a.rule_id}` : ""}
-                  {a?.role ? ` · role ${a.role}` : ""}
-                  {a?.created_by ? ` · by ${a.created_by}` : ""}
-                  {a?.created_unix_ms ? ` · ${fmtTs(a.created_unix_ms)}` : ""}
-                  {a?.reason ? ` · ${a.reason}` : ""}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : approvals ? (
-          <div className="text-[11px] text-white/50">No approvals yet.</div>
-        ) : null}
-      </div>
+      <TeamRunOpsPanel
+        canQuery={props.canQuery}
+        teamId={teamIdTrimmed}
+        runtimeUpdateMode={runtimeUpdateMode}
+        setRuntimeUpdateMode={setRuntimeUpdateMode}
+        runtimeUpdateBusy={runtimeUpdateBusy}
+        runtimeUpdateError={runtimeUpdateError}
+        runtimeUpdateNote={runtimeUpdateNote}
+        onRuntimeMembersLoadFromRun={handleRuntimeMembersLoadFromRun}
+        onRuntimeMembersUpdate={handleRuntimeMembersUpdate}
+        approvalsLastSyncMs={approvalsLastSyncMs}
+        fmtTs={fmtTs}
+        quorumRequestRows={quorumRequestRows}
+        onTeamSelect={props.onTeamSelect}
+        setApprovalRunId={setApprovalRunId}
+        setRunLookupId={setRunLookupId}
+        approvalRunId={approvalRunId}
+        approvalsBusy={approvalsBusy}
+        onApprovalsRefresh={handleApprovalsRefresh}
+        membersList={membersList}
+        approvalMemberId={approvalMemberId}
+        setApprovalMemberId={setApprovalMemberId}
+        approvalDecision={approvalDecision}
+        setApprovalDecision={setApprovalDecision}
+        approvalRuleId={approvalRuleId}
+        setApprovalRuleId={setApprovalRuleId}
+        rulesList={rulesList}
+        approvalReason={approvalReason}
+        setApprovalReason={setApprovalReason}
+        onApprovalSubmit={handleApprovalSubmit}
+        approvalsError={approvalsError}
+        approvals={approvals}
+      />
     </div>
   );
 }

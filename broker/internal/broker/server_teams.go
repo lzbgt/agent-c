@@ -850,6 +850,60 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 			}
 		}
 	}
+	roleInstructionsProvided := false
+	if _, ok := teamMeta["role_instructions"]; ok {
+		roleInstructionsProvided = true
+	}
+	roleInstructions, err := parseRoleInstructions(teamMeta["role_instructions"])
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	rolePromptMode, err := parseRolePromptMode(teamMeta["role_prompt_mode"])
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if !roleInstructionsProvided && team != nil {
+		if teamMetaDefaults := team.Meta(); len(teamMetaDefaults) > 0 {
+			if rawDefaults, ok := teamMetaDefaults["role_instructions"]; ok {
+				defaults, err := parseRoleInstructions(rawDefaults)
+				if err != nil {
+					writeErrorJSON(w, "invalid team role_instructions", http.StatusBadRequest)
+					return
+				}
+				if len(defaults) > 0 {
+					roleInstructions = defaults
+					teamMeta["role_instructions"] = defaults
+				}
+			}
+			if rolePromptMode == "" {
+				if rawMode, ok := teamMetaDefaults["role_prompt_mode"]; ok {
+					mode, err := parseRolePromptMode(rawMode)
+					if err != nil {
+						writeErrorJSON(w, "invalid team role_prompt_mode", http.StatusBadRequest)
+						return
+					}
+					if mode != "" {
+						rolePromptMode = mode
+					}
+				}
+			}
+		}
+	}
+	if len(roleInstructions) > 0 {
+		teamMeta["role_instructions"] = roleInstructions
+	} else {
+		delete(teamMeta, "role_instructions")
+	}
+	if rolePromptMode == "" && len(roleInstructions) > 0 {
+		rolePromptMode = "prepend"
+	}
+	if rolePromptMode != "" {
+		teamMeta["role_prompt_mode"] = rolePromptMode
+	} else {
+		delete(teamMeta, "role_prompt_mode")
+	}
 	teamMeta["run_overrides_mode"] = overrides.Mode
 	if overrides.Mode != "explicit" {
 		delete(teamMeta, "member_overrides")
@@ -1014,6 +1068,20 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 				runForMember[k] = v
 			}
 			memberOverridesApplied[member.MemberID] = overridesForMember
+		}
+		if roleKey != "" && len(roleInstructions) > 0 {
+			if instr, ok := roleInstructions[roleKey]; ok && strings.TrimSpace(instr) != "" {
+				basePrompt := ""
+				if rawPrompt, ok := runForMember["prompt"]; ok {
+					if s, ok := rawPrompt.(string); ok {
+						basePrompt = s
+					}
+				}
+				finalPrompt := applyRoleInstruction(instr, basePrompt, rolePromptMode)
+				if finalPrompt != "" {
+					runForMember["prompt"] = finalPrompt
+				}
+			}
 		}
 		if !noSession {
 			sessionID := runSessionID

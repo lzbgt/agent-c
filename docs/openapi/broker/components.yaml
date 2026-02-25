@@ -659,6 +659,15 @@ schemas:
             type: string
             enum: [off, member_meta, explicit]
             description: Per-member run override mode (default off).
+          role_prompt_mode:
+            type: string
+            enum: [prepend, append, replace]
+            description: How role_instructions compose with the base prompt (default prepend).
+          role_instructions:
+            type: object
+            additionalProperties:
+              type: string
+            description: Map of role to instruction string; used to generate per-role prompts.
           role_overrides:
             type: object
             additionalProperties: true

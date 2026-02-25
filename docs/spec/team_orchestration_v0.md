@@ -152,6 +152,26 @@ Team runs provide an aggregate read path for moderator events:
   - supports optional target filters (roles/member_ids/agent_ids)
   - response includes `events`, `errors`, and `skipped` details
 
+### 13) Role plan + role instructions (v0.10)
+
+Team orchestration supports a **role plan** stored in team meta and reused by runs:
+
+- `meta.role_graph`: roles + handoff edges (`from_role` → `to_role`, optional `reason`)
+- `meta.role_instructions`: map of `role` → instruction string
+- `meta.role_prompt_mode`: `prepend|append|replace` (default `prepend`)
+
+When a team run is created:
+
+- If the run omits `team.role_instructions`, the broker falls back to
+  `team.meta.role_instructions` (same for `role_prompt_mode`).
+- For each member, the broker composes the final prompt using the base run prompt
+  and the role instruction:
+  - **prepend**: `<instruction>\n\n<goal>`
+  - **append**: `<goal>\n\n<instruction>`
+  - **replace**: `<instruction>`
+- If the instruction string contains `{{goal}}`, the broker replaces it with the
+  base run prompt before applying the mode.
+
 ---
 
 ## Data model (proposed)
@@ -166,6 +186,7 @@ created_unix_ms: integer
 tags: string[]
 policy_ref: string | null
 shared_memory_scope_id: string | null
+meta: object | null            # optional; includes role_overrides, role_graph, role_instructions
 ```
 
 ### Team member

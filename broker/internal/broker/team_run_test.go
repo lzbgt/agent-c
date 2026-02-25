@@ -248,6 +248,73 @@ func TestParseRoleOverrides(t *testing.T) {
 	}
 }
 
+func TestParseRoleInstructions(t *testing.T) {
+	raw := map[string]any{
+		"Planner":  "  Plan the work  ",
+		"Executor": map[string]any{"instruction": "Do the work"},
+		"":         "skip",
+	}
+	got, err := parseRoleInstructions(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := map[string]string{
+		"planner":  "Plan the work",
+		"executor": "Do the work",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("role_instructions mismatch: got=%v want=%v", got, want)
+	}
+}
+
+func TestParseRoleInstructionsRejectsBadType(t *testing.T) {
+	raw := map[string]any{
+		"planner": 123,
+	}
+	_, err := parseRoleInstructions(raw)
+	if err == nil {
+		t.Fatalf("expected error for invalid role_instructions type")
+	}
+}
+
+func TestParseRolePromptMode(t *testing.T) {
+	mode, err := parseRolePromptMode("append")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if mode != "append" {
+		t.Fatalf("expected append, got %q", mode)
+	}
+	_, err = parseRolePromptMode("nope")
+	if err == nil {
+		t.Fatalf("expected error for invalid role_prompt_mode")
+	}
+}
+
+func TestApplyRoleInstruction(t *testing.T) {
+	goal := "Ship the feature."
+	instr := "You are the planner. Goal: {{goal}}"
+	out := applyRoleInstruction(instr, goal, "prepend")
+	if out != "You are the planner. Goal: Ship the feature." {
+		t.Fatalf("unexpected template result: %q", out)
+	}
+
+	out = applyRoleInstruction("You are the planner.", goal, "prepend")
+	if out != "You are the planner.\n\nShip the feature." {
+		t.Fatalf("unexpected prepend result: %q", out)
+	}
+
+	out = applyRoleInstruction("You are the planner.", goal, "append")
+	if out != "Ship the feature.\n\nYou are the planner." {
+		t.Fatalf("unexpected append result: %q", out)
+	}
+
+	out = applyRoleInstruction("You are the planner.", goal, "replace")
+	if out != "You are the planner." {
+		t.Fatalf("unexpected replace result: %q", out)
+	}
+}
+
 func TestParseRoleOverridesRejectsBadRole(t *testing.T) {
 	raw := map[string]any{
 		"planner": "nope",
