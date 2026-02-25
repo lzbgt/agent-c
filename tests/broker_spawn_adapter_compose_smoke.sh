@@ -274,4 +274,79 @@ if not isinstance(members, list) or len(members) < 1:
   raise SystemExit(1)
 PY
 
+AGENTS_READY="0"
+for _ in $(seq 1 30); do
+  AGENTS_JSON="$(
+    curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+      -H "Authorization: Bearer ${OIDC_JWT}" \
+      "${BROKER_BASE}/v1/agents"
+  )" || AGENTS_JSON=""
+  if python3 - <<PY >/dev/null 2>&1
+import json,sys
+obj=json.loads(r'''${AGENTS_JSON}''')
+agents=obj.get("agents") or []
+sys.exit(0 if any(a.get("connected") for a in agents) else 1)
+PY
+  then
+    AGENTS_READY="1"
+    break
+  fi
+  sleep 2
+done
+if [[ "${AGENTS_READY}" != "1" ]]; then
+  echo "no connected agents available for allocator mode" >&2
+  exit 1
+fi
+
+SPAWN2_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    -H "Content-Type: application/json" \
+    -d '{"role":"reviewer","count":1,"orchestrator_run_id":"'"${RUN_ID}"'"}' \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/orchestrator/spawn_requests"
+)"
+SPAWN2_ID="$(python3 - <<PY
+import json
+obj = json.loads(r'''${SPAWN2_JSON}''')
+req = obj.get("spawn_request") or {}
+print(req.get("spawn_request_id",""))
+PY
+)"
+if [[ -z "${SPAWN2_ID}" ]]; then
+  echo "failed to create allocator spawn request: ${SPAWN2_JSON}" >&2
+  exit 1
+fi
+
+ADAPTER_ALLOC_LOG="${LOG_DIR}/broker_spawn_adapter_allocator.log"
+(
+  cd "${ROOT}/broker"
+  go run ./cmd/agentd-spawn-adapter \
+    --broker-base "${BROKER_BASE}" \
+    --oidc-token "${OIDC_JWT}" \
+    --insecure \
+    --once \
+    --allocator
+) > "${ADAPTER_ALLOC_LOG}" 2>&1 || {
+  cat "${ADAPTER_ALLOC_LOG}" >&2 || true
+  exit 1
+}
+
+SPAWN2_GET_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/orchestrator/spawn_requests/${SPAWN2_ID}"
+)"
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${SPAWN2_GET_JSON}''')
+req = obj.get("spawn_request") or {}
+if req.get("status") != "allocated":
+  print("expected allocated status (allocator)", obj, file=sys.stderr)
+  raise SystemExit(1)
+members = req.get("assigned_members") or []
+if not isinstance(members, list) or len(members) < 1:
+  print("expected assigned_members (allocator)", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 echo "broker_spawn_adapter_compose_smoke OK"

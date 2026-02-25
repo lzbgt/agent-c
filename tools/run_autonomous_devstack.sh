@@ -7,23 +7,23 @@ BROKER_BASE=""
 KEYCLOAK_BASE=""
 SPAWN_COMMAND=""
 SPAWN_ALLOCATOR="${SPAWN_ALLOCATOR:-}"
-ADAPTER_ARGS=()
 INSECURE="0"
 ONCE="0"
-LOG_DIR="${ROOT}/out"
+ORCH_ARGS=()
+SPAWN_ARGS=()
 
 usage() {
   cat <<'USAGE'
-Usage: tools/run_spawn_adapter_devstack.sh [options]
+Usage: tools/run_autonomous_devstack.sh [options]
 
 Options:
   --state <path>        devstack_state.json path (default: out/devstack_state.json)
   --broker-base <url>   override broker base URL (default: from state)
   --keycloak <url>      override keycloak base URL (default: from state)
-  --command <cmd>       spawn command (required if SPAWN_COMMAND env not set)
+  --orchestrator-id <id> orchestrator id (default: random)
+  --command <cmd>       spawn command (optional when --allocator is set)
   --allocator           use broker runtime member allocator (no command required)
-  --adapter-id <id>     adapter id (default: random)
-  --status <status>     status filter (default: requested)
+  --status <status>     spawn request status filter (default: requested)
   --limit <n>           max requests per team (default: 50)
   --poll-interval <s>   poll interval seconds (default: 3)
   --once                run one poll cycle and exit
@@ -36,25 +36,18 @@ while [[ $# -gt 0 ]]; do
     --state) STATE_PATH="$2"; shift 2 ;;
     --broker-base) BROKER_BASE="$2"; shift 2 ;;
     --keycloak) KEYCLOAK_BASE="$2"; shift 2 ;;
+    --orchestrator-id) ORCH_ARGS+=(--orchestrator-id "$2"); shift 2 ;;
     --command) SPAWN_COMMAND="$2"; shift 2 ;;
     --allocator) SPAWN_ALLOCATOR="1"; shift ;;
-    --adapter-id) ADAPTER_ARGS+=(--adapter-id "$2"); shift 2 ;;
-    --status) ADAPTER_ARGS+=(--status "$2"); shift 2 ;;
-    --limit) ADAPTER_ARGS+=(--limit "$2"); shift 2 ;;
-    --poll-interval) ADAPTER_ARGS+=(--poll-interval "$2"s); shift 2 ;;
+    --status) SPAWN_ARGS+=(--status "$2"); shift 2 ;;
+    --limit) SPAWN_ARGS+=(--limit "$2"); shift 2 ;;
+    --poll-interval) SPAWN_ARGS+=(--poll-interval "$2"s); shift 2 ;;
     --once) ONCE="1"; shift ;;
     --insecure) INSECURE="1"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown arg: $1" >&2; usage; exit 1 ;;
   esac
 done
-
-if [[ -z "${SPAWN_COMMAND}" ]]; then
-  SPAWN_COMMAND="${SPAWN_COMMAND:-}"
-fi
-if [[ -z "${SPAWN_ALLOCATOR}" ]]; then
-  SPAWN_ALLOCATOR="${SPAWN_ALLOCATOR:-}"
-fi
 
 if [[ -f "${STATE_PATH}" ]]; then
   if [[ -z "${BROKER_BASE}" ]]; then
@@ -86,8 +79,7 @@ if [[ -z "${KEYCLOAK_BASE}" ]]; then
   exit 2
 fi
 if [[ -z "${SPAWN_COMMAND}" && "${SPAWN_ALLOCATOR}" != "1" ]]; then
-  echo "missing spawn command (set --command/SPAWN_COMMAND) or enable --allocator" >&2
-  exit 2
+  SPAWN_ALLOCATOR="1"
 fi
 
 OIDC_TOKEN="${BROKER_OIDC_TOKEN:-}"
@@ -99,24 +91,43 @@ if [[ -z "${OIDC_TOKEN}" ]]; then
   exit 3
 fi
 
-mkdir -p "${LOG_DIR}"
-TS="$(date +\"%Y%m%d_%H%M%S\")"
-LOG_FILE="${LOG_DIR}/spawn_adapter_${TS}.log"
-
 export BROKER_BASE="${BROKER_BASE}"
 export BROKER_OIDC_TOKEN="${OIDC_TOKEN}"
 export SPAWN_COMMAND="${SPAWN_COMMAND}"
 export SPAWN_ALLOCATOR="${SPAWN_ALLOCATOR}"
 
 if [[ "${INSECURE}" == "1" ]]; then
-  ADAPTER_ARGS+=(--insecure)
+  ORCH_ARGS+=(--insecure)
+  SPAWN_ARGS+=(--insecure)
 fi
 if [[ "${ONCE}" == "1" ]]; then
-  ADAPTER_ARGS+=(--once)
+  ORCH_ARGS+=(--once)
+  SPAWN_ARGS+=(--once)
 fi
 if [[ "${SPAWN_ALLOCATOR}" == "1" ]]; then
-  ADAPTER_ARGS+=(--allocator)
+  SPAWN_ARGS+=(--allocator)
 fi
 
-(cd "${ROOT}/broker" && go run ./cmd/agentd-spawn-adapter "${ADAPTER_ARGS[@]}") >"${LOG_FILE}" 2>&1
-echo "[spawn-adapter] done (log: ${LOG_FILE})"
+pids=()
+cleanup() {
+  for pid in "${pids[@]}"; do
+    kill "${pid}" >/dev/null 2>&1 || true
+  done
+  wait >/dev/null 2>&1 || true
+}
+trap cleanup EXIT INT TERM
+
+orch_cmd=("${ROOT}/tools/run_orchestrator_devstack.sh" --broker-base "${BROKER_BASE}")
+orch_cmd+=("${ORCH_ARGS[@]}")
+"${orch_cmd[@]}" &
+pids+=("$!")
+
+spawn_cmd=("${ROOT}/tools/run_spawn_adapter_devstack.sh" --broker-base "${BROKER_BASE}" --keycloak "${KEYCLOAK_BASE}")
+spawn_cmd+=("${SPAWN_ARGS[@]}")
+if [[ -n "${SPAWN_COMMAND}" ]]; then
+  spawn_cmd+=(--command "${SPAWN_COMMAND}")
+fi
+"${spawn_cmd[@]}" &
+pids+=("$!")
+
+wait "${pids[@]}"

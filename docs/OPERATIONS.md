@@ -160,8 +160,15 @@ SPAWN_COMMAND='printf "{\"status\":\"allocated\",\"assigned_members\":[{\"agent_
   tools/run_spawn_adapter_devstack.sh --once --insecure
 ```
 
+Allocator mode (reuse connected agents, no custom command required):
+
+```bash
+SPAWN_ALLOCATOR=1 tools/run_spawn_adapter_devstack.sh --once --insecure
+```
+
 Notes:
 - `SPAWN_COMMAND` runs via `/bin/sh -c` and must emit JSON to stdout.
+- `SPAWN_ALLOCATOR=1` uses the broker runtime member allocator instead of a command.
 - `BROKER_INSECURE_TLS=1` or `--insecure` is useful for local self-signed stacks.
 - See `docs/spec/agent_spawn_adapter_v0.md` for the full contract.
 
@@ -174,6 +181,12 @@ Example (devstack + single poll cycle):
 
 ```bash
 tools/run_orchestrator_devstack.sh --once --insecure
+```
+
+Full autonomous devstack (orchestrator + spawn adapter together):
+
+```bash
+tools/run_autonomous_devstack.sh --insecure
 ```
 
 Notes:

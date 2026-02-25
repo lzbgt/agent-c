@@ -31,6 +31,7 @@ type config struct {
 	limit          int
 	status         string
 	adapterID      string
+	useAllocator   bool
 }
 
 type teamRow struct {
@@ -75,6 +76,24 @@ type spawnCommandOutput struct {
 	AssignedMembers []map[string]any `json:"assigned_members"`
 	Error           string           `json:"error"`
 	Meta            map[string]any   `json:"meta"`
+}
+
+type runtimeMember struct {
+	AgentID      string `json:"agent_id"`
+	DeploymentID string `json:"deployment_id"`
+	Role         string `json:"role"`
+}
+
+type runtimeAllocateResponse struct {
+	OK             bool            `json:"ok"`
+	TeamID         string          `json:"team_id"`
+	RuntimeMembers []runtimeMember `json:"runtime_members"`
+	AllocatedRoles []string        `json:"allocated_roles"`
+	MissingRoles   []string        `json:"missing_roles"`
+	Warnings       []string        `json:"warnings"`
+	Error          string          `json:"error"`
+	Err            string          `json:"err"`
+	Code           string          `json:"code"`
 }
 
 type httpError struct {
@@ -123,6 +142,7 @@ func parseFlags() config {
 	flag.IntVar(&cfg.limit, "limit", 50, "Max spawn requests to fetch per team per poll.")
 	flag.StringVar(&cfg.status, "status", "requested", "Spawn request status to filter (default: requested).")
 	flag.StringVar(&cfg.adapterID, "adapter-id", strings.TrimSpace(os.Getenv("SPAWN_ADAPTER_ID")), "Adapter id stored in spawn request meta.")
+	flag.BoolVar(&cfg.useAllocator, "allocator", envBool("SPAWN_ALLOCATOR"), "Use broker runtime-member allocator instead of SPAWN_COMMAND (env: SPAWN_ALLOCATOR=1).")
 	flag.Parse()
 	if cfg.adapterID == "" {
 		cfg.adapterID = "adapter_" + randID(8)
@@ -137,7 +157,7 @@ func (c config) validate() error {
 	if c.oidcToken == "" {
 		return fmt.Errorf("missing oidc token")
 	}
-	if c.command == "" {
+	if !c.useAllocator && c.command == "" {
 		return fmt.Errorf("missing spawn command")
 	}
 	if c.limit <= 0 {
@@ -198,6 +218,9 @@ func handleSpawnRequest(ctx context.Context, client *http.Client, cfg config, re
 		}
 		return err
 	}
+	if cfg.useAllocator {
+		return handleSpawnRequestAllocator(ctx, client, cfg, req, claimedMeta)
+	}
 	out, err := runCommand(ctx, cfg, req, claimedMeta)
 	if err != nil {
 		_, patchErr := updateSpawnRequest(ctx, client, cfg, req.TeamID, req.SpawnRequestID, map[string]any{
@@ -234,6 +257,88 @@ func handleSpawnRequest(ctx context.Context, client *http.Client, cfg config, re
 		patch["error"] = out.Error
 	}
 	if _, err := updateSpawnRequest(ctx, client, cfg, req.TeamID, req.SpawnRequestID, patch); err != nil {
+		return err
+	}
+	return nil
+}
+
+func handleSpawnRequestAllocator(
+	ctx context.Context,
+	client *http.Client,
+	cfg config,
+	req spawnRequest,
+	claimedMeta map[string]any,
+) error {
+	role := strings.TrimSpace(req.Role)
+	if role == "" {
+		_, patchErr := updateSpawnRequest(ctx, client, cfg, req.TeamID, req.SpawnRequestID, map[string]any{
+			"status": "error",
+			"error":  "missing role",
+			"meta":   claimedMeta,
+		})
+		if patchErr != nil {
+			return fmt.Errorf("allocator failed: missing role (patch error: %w)", patchErr)
+		}
+		return fmt.Errorf("allocator failed: missing role")
+	}
+	maxMembers := 0
+	if req.Count > 0 {
+		maxMembers = req.Count
+	}
+	resp, err := allocateRuntimeMembers(ctx, client, cfg, req.TeamID, []string{role}, maxMembers)
+	meta := cloneMap(claimedMeta)
+	meta["allocator_mode"] = "runtime_members"
+	if resp != nil {
+		if len(resp.AllocatedRoles) > 0 {
+			meta["allocated_roles"] = resp.AllocatedRoles
+		}
+		if len(resp.MissingRoles) > 0 {
+			meta["missing_roles"] = resp.MissingRoles
+		}
+		if len(resp.Warnings) > 0 {
+			meta["allocator_warnings"] = resp.Warnings
+		}
+	}
+	status := "allocated"
+	errMsg := ""
+	assigned := []map[string]any{}
+	if err != nil {
+		status = "error"
+		errMsg = err.Error()
+	} else if resp != nil {
+		for _, member := range resp.RuntimeMembers {
+			entry := map[string]any{
+				"agent_id": member.AgentID,
+				"role":     member.Role,
+			}
+			if member.DeploymentID != "" {
+				entry["deployment_id"] = member.DeploymentID
+			}
+			assigned = append(assigned, entry)
+		}
+		if len(assigned) == 0 {
+			status = "error"
+			if len(resp.Warnings) > 0 {
+				errMsg = strings.Join(resp.Warnings, "; ")
+			} else {
+				errMsg = "allocator returned no members"
+			}
+		}
+	}
+	patch := map[string]any{
+		"status": status,
+		"meta":   meta,
+	}
+	if len(assigned) > 0 {
+		patch["assigned_members"] = assigned
+	}
+	if errMsg != "" {
+		patch["error"] = errMsg
+	}
+	if _, err := updateSpawnRequest(ctx, client, cfg, req.TeamID, req.SpawnRequestID, patch); err != nil {
+		return err
+	}
+	if err != nil {
 		return err
 	}
 	return nil
@@ -329,6 +434,25 @@ func updateSpawnRequest(ctx context.Context, client *http.Client, cfg config, te
 	return &resp.SpawnRequest, nil
 }
 
+func allocateRuntimeMembers(ctx context.Context, client *http.Client, cfg config, teamID string, roles []string, maxMembers int) (*runtimeAllocateResponse, error) {
+	payload := map[string]any{
+		"roles":            roles,
+		"prefer_connected": true,
+	}
+	if maxMembers > 0 {
+		payload["max_members"] = maxMembers
+	}
+	var resp runtimeAllocateResponse
+	url := fmt.Sprintf("%s/v1/teams/%s/runtime_members/allocate", cfg.brokerBase, teamID)
+	if err := doJSON(ctx, client, cfg, http.MethodPost, url, payload, &resp); err != nil {
+		return nil, err
+	}
+	if !resp.OK {
+		return &resp, fmt.Errorf("broker returned ok=false for runtime member allocation")
+	}
+	return &resp, nil
+}
+
 func doJSON(ctx context.Context, client *http.Client, cfg config, method, url string, body any, out any) error {
 	var reader io.Reader
 	if body != nil {
@@ -405,4 +529,17 @@ func cloneMap(in map[string]any) map[string]any {
 		out[k] = v
 	}
 	return out
+}
+
+func envBool(key string) bool {
+	val := strings.TrimSpace(os.Getenv(key))
+	if val == "" {
+		return false
+	}
+	switch strings.ToLower(val) {
+	case "1", "true", "yes", "y":
+		return true
+	default:
+		return false
+	}
 }

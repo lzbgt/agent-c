@@ -49,6 +49,7 @@ Optional:
 - `--command-timeout` (default: 2m)
 - `--limit` (default: 50)
 - `--status` (default: requested)
+- `--allocator` (env: `SPAWN_ALLOCATOR=1`, use broker runtime member allocator; no command required)
 - `--once` (process one poll cycle and exit)
 - `--insecure` (env: `BROKER_INSECURE_TLS=1`)
 
@@ -57,8 +58,20 @@ The adapter:
 2) Lists spawn requests per team (status filter).
 3) Claims the request by setting `status=allocating`, sending `expected_status=requested`, and recording `adapter_id` in `meta`.
    - A `409` response means another adapter claimed it first; treat as non-fatal and move on.
-4) Executes the spawn command.
+4) Executes the spawn command (or allocator mode).
 5) Updates the request with `status`, `assigned_members`, `error`, and merged `meta`.
+
+## Allocator mode (optional)
+
+When `--allocator` is enabled, the adapter calls
+`POST /v1/teams/{team_id}/runtime_members/allocate` using the requested role
+and updates the spawn request with the allocated runtime members. This mode
+is useful for fully-automatic dev stacks where connected agents can be reused
+without provisioning new hosts.
+
+Notes:
+- `SPAWN_COMMAND` is optional when `--allocator` is enabled.
+- The adapter records allocator warnings/missing roles in spawn request meta.
 
 ## Spawn command contract
 

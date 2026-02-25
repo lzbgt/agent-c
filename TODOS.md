@@ -116,6 +116,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-25: added `agentd-orchestrator` loop (heartbeat + dispatch + missing-role spawn requests + drift/progress + handoff queue).
   - 2026-02-25: added compose smoke for orchestrator loop (`tests/broker_orchestrator_loop_compose_smoke.sh`).
   - 2026-02-25: added compose smoke for drift/progress/handoff events (`tests/broker_orchestrator_loop_events_compose_smoke.sh`).
+  - 2026-02-26: added `tools/run_autonomous_devstack.sh` to run orchestrator + spawn adapter together.
 - [ ] W=12 — Durable orchestration state + event replay: persist orchestrator runs (DB + CRUD), add replayable event log for team run/goal/handoff/moderator events, and rehydrate WebUI on refresh without losing context.
   - 2026-02-26: broker persists events and exposes `/v1/events/replay`; UI rehydrates on refresh (paging still capped).
   - 2026-02-26: WebUI broker console + team console replay events on refresh; orchestrator panel also rehydrates from replay.
@@ -125,11 +126,14 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-25: added compose smoke for orchestrator runs (create/list/update/heartbeat) via `tests/broker_orchestrator_runs_compose_smoke.sh`.
 - [x] W=12 — Workflow rehydration beyond localStorage: persist workflow wait/resume state in broker/agentd and restore on WebUI reconnect.
   - 2026-02-26: workflow waits persist to client prefs (broker/agentd) with local fallback.
+- [ ] W=11 — Autonomous ops stack defaults: orchestrator + spawn adapter as first-class services (compose/systemd/launchd) with auto OIDC token refresh, so automation runs without the WebUI.
+  - 2026-02-26: added `tools/run_autonomous_devstack.sh` wrapper for dev stacks.
 - [x] W=9 — Agent provisioning hooks: define an optional `agent_spawn` interface (pluggable adapters for local/remote spawn) so the orchestrator can request new runtime members when capacity is low.
   - 2026-02-25: added broker spawn request persistence + events (`/v1/teams/{team_id}/orchestrator/spawn_requests`).
   - 2026-02-26: added `agentd-spawn-adapter` CLI + `docs/spec/agent_spawn_adapter_v0.md` (local adapter contract).
   - 2026-02-26: added compose smoke for spawn adapter (`tests/broker_spawn_adapter_compose_smoke.sh`).
   - 2026-02-26: added `expected_status` claim guard to prevent double-claim races.
+  - 2026-02-26: spawn adapter supports allocator mode (`SPAWN_ALLOCATOR=1`) using broker runtime member allocation.
 - [x] W=11 — Team shared memory scope enforcement (read-only/read-write) wired through team runs + tool policy hooks + tests.
   - 2026-02-25: agentd run request supports `memory_scope_id` + `memory_scope_mode` with scoped memory roots.
   - 2026-02-25: host memory tools enforce read_only mode (write tools rejected, read tools allowed).

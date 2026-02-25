@@ -97,6 +97,42 @@ const extractWorkflowWaitByScope = (prefs: any): Record<string, WaitStatePersist
   return out;
 };
 
+const waitStateTs = (value?: WaitStatePersisted | null) => {
+  if (!value) return 0;
+  if (typeof value.updated_unix_ms === "number") return value.updated_unix_ms;
+  if (typeof value.started_unix_ms === "number") return value.started_unix_ms;
+  return 0;
+};
+
+const mergeWaitMaps = (
+  primary: Record<string, WaitStatePersisted>,
+  secondary: Record<string, WaitStatePersisted>,
+) => {
+  const out: Record<string, WaitStatePersisted> = { ...secondary };
+  for (const [key, value] of Object.entries(primary)) {
+    const existing = out[key];
+    if (!existing || waitStateTs(value) >= waitStateTs(existing)) {
+      out[key] = value;
+    }
+  }
+  return out;
+};
+
+const waitMapsEqual = (a: Record<string, WaitStatePersisted>, b: Record<string, WaitStatePersisted>) => {
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  for (const key of keysA) {
+    const av = a[key];
+    const bv = b[key];
+    if (!bv) return false;
+    if (av.workflow_id !== bv.workflow_id) return false;
+    if (waitStateTs(av) !== waitStateTs(bv)) return false;
+    if ((av.last_status || "") !== (bv.last_status || "")) return false;
+  }
+  return true;
+};
+
 const brokerBaseFromProxy = (baseUrl: string) => {
   const trimmed = String(baseUrl || "").trim().replace(/\/+$/, "");
   const marker = "/v1/agents/";
@@ -249,6 +285,7 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
     "agentui.workflowWaitByScope",
     {},
   );
+  const waitByScopeRef = React.useRef(waitByScope);
   const [serverWaitByScope, setServerWaitByScope] = React.useState<Record<string, WaitStatePersisted>>({});
   const [serverWaitStatus, setServerWaitStatus] = React.useState<"idle" | "loading" | "ready" | "error">("idle");
   const serverPrefsClientId = React.useMemo(() => String(props.clientId || "webui"), [props.clientId]);
@@ -313,18 +350,28 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
       if (!resp.ok) {
         throw new Error(resp.error || resp.err || resp.code || "workflow prefs fetch failed");
       }
-      const nextMap = pruneWaitByScope(extractWorkflowWaitByScope(resp.prefs), Date.now(), waitStaleMs);
-      setServerWaitByScope(nextMap);
+      const now = Date.now();
+      const remoteMap = pruneWaitByScope(extractWorkflowWaitByScope(resp.prefs), now, waitStaleMs);
+      const localMap = pruneWaitByScope(waitByScopeRef.current, now, waitStaleMs);
+      const merged = mergeWaitMaps(localMap, remoteMap);
+      setServerWaitByScope(merged);
       setServerWaitStatus("ready");
+      if (!waitMapsEqual(merged, remoteMap)) {
+        scheduleServerPersist(merged);
+      }
     } catch (err) {
       setServerWaitStatus("error");
     }
-  }, [props.auth, serverPrefsBase, serverPrefsClientId, waitStaleMs]);
+  }, [props.auth, scheduleServerPersist, serverPrefsBase, serverPrefsClientId, waitStaleMs]);
 
   React.useEffect(() => {
     if (!serverPrefsBase || !serverPrefsClientId) return;
     void loadServerWait();
   }, [loadServerWait, props.authKey, serverPrefsBase, serverPrefsClientId]);
+
+  React.useEffect(() => {
+    waitByScopeRef.current = waitByScope;
+  }, [waitByScope]);
 
   React.useEffect(
     () => () => {
