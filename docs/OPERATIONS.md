@@ -155,17 +155,9 @@ command you provide.
 Example (devstack + local adapter command):
 
 ```bash
-# get a broker OIDC token (devstack)
-tools/devstack_oidc_token.sh --state out/devstack_state.json
-
-# set env vars for the adapter
-export BROKER_BASE="https://127.0.0.1:${BROKER_PUBLISHED_PORT}"
-export BROKER_OIDC_TOKEN="eyJhbGciOi..."
-export SPAWN_COMMAND='printf "{\"status\":\"allocated\",\"assigned_members\":[{\"agent_id\":\"agent-1\",\"role\":\"planner\"}]}\n"'
-
-# run a single poll cycle
-cd broker
-go run ./cmd/agentd-spawn-adapter --once --insecure
+# run a single poll cycle via helper script
+SPAWN_COMMAND='printf "{\"status\":\"allocated\",\"assigned_members\":[{\"agent_id\":\"agent-1\",\"role\":\"planner\"}]}\n"' \
+  tools/run_spawn_adapter_devstack.sh --once --insecure
 ```
 
 Notes:
