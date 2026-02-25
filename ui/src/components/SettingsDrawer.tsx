@@ -1749,8 +1749,14 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                                         {diffs.slice(0, 200).map((diff, idx) => (
                                           <div key={`diff-${idx}`} className="border-b border-white/5 py-1 last:border-b-0">
                                             <div className="text-[10px] text-white/70">{diff.path}</div>
-                                            <div className="text-[10px] text-emerald-200">A: {formatDiffValue(diff.a)}</div>
-                                            <div className="text-[10px] text-amber-200">B: {formatDiffValue(diff.b)}</div>
+                                            <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px]">
+                                              <span className="rounded-md bg-emerald-500/10 px-2 py-1 text-emerald-200">
+                                                A: {formatDiffValue(diff.a)}
+                                              </span>
+                                              <span className="rounded-md bg-amber-500/10 px-2 py-1 text-amber-200">
+                                                B: {formatDiffValue(diff.b)}
+                                              </span>
+                                            </div>
                                           </div>
                                         ))}
                                       </div>
