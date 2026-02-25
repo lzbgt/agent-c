@@ -233,8 +233,13 @@ start_compose_stack() {
   export BROKER_PUBLISHED_PORT KEYCLOAK_PUBLISHED_PORT POSTGRES_PUBLISHED_PORT AGENTD_PUBLISHED_PORT WEBUI_PUBLISHED_PORT
 
   VERIFY_LOG="${LOG_DIR}/broker_team_runs_shared_memory_compose_verify.log"
-  if ! "${ROOT}/tools/verify_compose_stack.sh" > "${VERIFY_LOG}" 2>&1; then
+  "${ROOT}/tools/verify_compose_stack.sh" > "${VERIFY_LOG}" 2>&1
+  verify_status=$?
+  if [[ "${verify_status}" -ne 0 ]]; then
     cat "${VERIFY_LOG}" >&2 || true
+    if [[ "${verify_status}" -eq 77 ]]; then
+      exit 77
+    fi
     if [[ -n "${COMPOSE_PROJECT_NAME:-}" ]]; then
       (cd "${ROOT}" && docker compose -p "${COMPOSE_PROJECT_NAME}" down -v --remove-orphans >/dev/null 2>&1) || true
     fi

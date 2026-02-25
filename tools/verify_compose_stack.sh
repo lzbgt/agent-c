@@ -25,9 +25,18 @@ compose_args=()
 for f in "${compose_files[@]}"; do
   compose_args+=("-f" "${f}")
 done
+build_env=()
 
 compose_cmd() {
   docker compose "${compose_args[@]}" "$@"
+}
+
+compose_cmd_env() {
+  if (( ${#build_env[@]} )); then
+    env "${build_env[@]}" docker compose "${compose_args[@]}" "$@"
+  else
+    docker compose "${compose_args[@]}" "$@"
+  fi
 }
 
 curlq() {
@@ -238,10 +247,10 @@ if [[ "${COMPOSE_BUILD:-1}" == "1" ]]; then
     if [[ "${COMPOSE_BUILD_SERIAL:-1}" == "1" ]]; then
       for svc in agentd broker connector webui; do
         echo "[compose] build ${svc}"
-        env ${build_env[@]+"${build_env[@]}"} compose_cmd build "${svc}"
+        compose_cmd_env build "${svc}"
       done
     else
-      env ${build_env[@]+"${build_env[@]}"} compose_cmd build
+      compose_cmd_env build
     fi
   }
 
