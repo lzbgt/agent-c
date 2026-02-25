@@ -322,6 +322,34 @@ export const BrokerTeamRunRespSchema = z
   .passthrough();
 export type BrokerTeamRunResp = z.infer<typeof BrokerTeamRunRespSchema>;
 
+export const BrokerTeamRunSummarySchema = z
+  .object({
+    team_id: z.string().optional(),
+    team_run_id: z.string().optional(),
+    status: z.string().optional(),
+    mode: z.string().optional(),
+    created_by: z.string().optional(),
+    created_unix_ms: z.number().optional(),
+    member_job_summary: BrokerTeamRunMemberJobSummarySchema.optional(),
+  })
+  .passthrough();
+export type BrokerTeamRunSummary = z.infer<typeof BrokerTeamRunSummarySchema>;
+
+export const BrokerTeamRunListRespSchema = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string().optional(),
+    limit: z.number().optional(),
+    offset: z.number().optional(),
+    status: z.string().optional(),
+    runs: z.array(BrokerTeamRunSummarySchema).optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerTeamRunListResp = z.infer<typeof BrokerTeamRunListRespSchema>;
+
 export const BrokerTeamRunStatusRespSchema = z
   .object({
     ok: z.boolean(),

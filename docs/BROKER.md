@@ -198,6 +198,9 @@ All endpoints below are served by the broker (not by agents).
     - `team.runtime_members`: array of `{member_id?, agent_id, deployment_id?, role, capabilities?, status?, weight?, meta?}`
     - runtime members participate in the current fan-out only
     - quorum approvals are still stored against persistent team members
+- `GET /v1/teams/{team_id}/runs`
+  - lists recent team runs (status + created time + best-effort summary)
+  - optional query: `limit`, `offset`, `status`
 - `GET /v1/teams/{team_id}/runs/{team_run_id}`
   - returns the stored team run status + current member list
   - if runtime members were provided, `runtime_members` is included in the response

@@ -7,9 +7,11 @@ import {
   apiBrokerTeamRunCancel,
   apiBrokerTeamRunCreate,
   apiBrokerTeamRunGet,
+  apiBrokerTeamRunList,
   apiBrokerTeamRunRuntimeMembersUpdate,
   type ApiAuth,
 } from "../../api";
+import useLocalStorageState from "../../hooks/useLocalStorageState";
 import FieldLabel from "../FieldLabel";
 import type { BrokerEventRow, TeamMemberRow, TeamQuorumRuleRow } from "./types";
 
@@ -257,7 +259,7 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const [runError, setRunError] = React.useState<string | null>(null);
   const [runResult, setRunResult] = React.useState<any | null>(null);
   const [runQuorum, setRunQuorum] = React.useState<QuorumEval | null>(null);
-  const [runLookupId, setRunLookupId] = React.useState<string>("");
+  const [runLookupId, setRunLookupId] = useLocalStorageState<string>("agentui.teamRunLookupId", "");
   const [runLookupBusy, setRunLookupBusy] = React.useState<boolean>(false);
   const [runLookupError, setRunLookupError] = React.useState<string | null>(null);
   const [runLookupResult, setRunLookupResult] = React.useState<any | null>(null);
@@ -274,8 +276,15 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const [approvalDecision, setApprovalDecision] = React.useState<string>("approve");
   const [approvalReason, setApprovalReason] = React.useState<string>("");
   const lastAutoApprovalRunIdRef = React.useRef<string>("");
+  const [recentRuns, setRecentRuns] = React.useState<any[]>([]);
+  const [recentRunsBusy, setRecentRunsBusy] = React.useState<boolean>(false);
+  const [recentRunsError, setRecentRunsError] = React.useState<string | null>(null);
+  const [recentRunsAuto, setRecentRunsAuto] = useLocalStorageState<boolean>("agentui.teamRunListAuto", false);
+  const [recentRunsLimit, setRecentRunsLimit] = useLocalStorageState<number>("agentui.teamRunListLimit", 10);
+  const [recentRunsStatus, setRecentRunsStatus] = useLocalStorageState<string>("agentui.teamRunListStatus", "");
 
   const approvalRunIdTrimmed = String(approvalRunId || runLookupId || "").trim();
+  const recentRunsItems = Array.isArray(recentRuns) ? recentRuns : [];
 
   React.useEffect(() => {
     if (!approvalRunId && runResult?.team_run_id) {
@@ -411,8 +420,7 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
     }
   };
 
-  const handleRunLookup = async () => {
-    const runId = String(runLookupId || "").trim();
+  const fetchRunStatus = async (runId: string) => {
     if (!teamIdTrimmed || !runId) {
       setRunLookupError("missing team_id or run id");
       return;
@@ -428,6 +436,50 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
       setRunLookupBusy(false);
     }
   };
+
+  const handleRunLookup = async () => {
+    const runId = String(runLookupId || "").trim();
+    await fetchRunStatus(runId);
+  };
+
+  const loadRecentRuns = React.useCallback(async () => {
+    if (!teamIdTrimmed) {
+      setRecentRuns([]);
+      return;
+    }
+    setRecentRunsBusy(true);
+    setRecentRunsError(null);
+    try {
+      const resp = await apiBrokerTeamRunList(props.base, teamIdTrimmed, props.auth, {
+        limit: recentRunsLimit,
+        status: recentRunsStatus.trim() ? recentRunsStatus.trim() : undefined,
+      });
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "team runs list failed");
+      }
+      setRecentRuns(Array.isArray(resp.runs) ? resp.runs : []);
+    } catch (err) {
+      setRecentRunsError(String(err));
+    } finally {
+      setRecentRunsBusy(false);
+    }
+  }, [teamIdTrimmed, props.base, props.auth, recentRunsLimit, recentRunsStatus]);
+
+  React.useEffect(() => {
+    if (!teamIdTrimmed) {
+      setRecentRuns([]);
+      return;
+    }
+    void loadRecentRuns();
+  }, [teamIdTrimmed, loadRecentRuns]);
+
+  React.useEffect(() => {
+    if (!recentRunsAuto) return;
+    const handle = window.setInterval(() => {
+      void loadRecentRuns();
+    }, 5000);
+    return () => window.clearInterval(handle);
+  }, [recentRunsAuto, loadRecentRuns]);
 
   const handleRunCancel = async () => {
     const runId = resolveRunId();
@@ -1762,6 +1814,91 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
           {runResult?.mode ? ` · mode ${String(runResult.mode)}` : ""}
         </div>
       ) : null}
+
+      <div className="mt-3 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-[11px] text-white/70">Recent team runs</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <FieldLabel>Limit</FieldLabel>
+            <input
+              className="w-16 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={String(recentRunsLimit)}
+              onChange={(e) => {
+                const next = Number.parseInt(e.target.value, 10);
+                if (Number.isFinite(next) && next > 0) {
+                  setRecentRunsLimit(next);
+                } else if (!e.target.value.trim()) {
+                  setRecentRunsLimit(10);
+                }
+              }}
+              placeholder="10"
+            />
+            <FieldLabel>Status</FieldLabel>
+            <input
+              className="w-24 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={recentRunsStatus}
+              onChange={(e) => setRecentRunsStatus(e.target.value)}
+              placeholder="optional"
+            />
+            <label className="flex items-center gap-2 text-[10px] text-white/60">
+              <input
+                type="checkbox"
+                className="rounded border-white/20 bg-black/40"
+                checked={recentRunsAuto}
+                onChange={(e) => setRecentRunsAuto(e.target.checked)}
+              />
+              auto
+            </label>
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+              type="button"
+              disabled={!props.canQuery || !teamIdTrimmed || recentRunsBusy}
+              onClick={() => void loadRecentRuns()}
+            >
+              {recentRunsBusy ? "Loading…" : "Refresh"}
+            </button>
+          </div>
+        </div>
+        {recentRunsError ? (
+          <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+            {recentRunsError}
+          </div>
+        ) : null}
+        {recentRunsItems.length > 0 ? (
+          <div className="grid gap-1 text-[11px] text-white/70">
+            {recentRunsItems.map((row: any, idx: number) => {
+              const runId = String(row?.team_run_id || "");
+              return (
+                <div
+                  key={`team-run-row-${runId || idx}`}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-white/90">{runId || "?"}</span>
+                    {row?.status ? <span>· {row.status}</span> : null}
+                    {row?.mode ? <span>· {row.mode}</span> : null}
+                    {typeof row?.created_unix_ms === "number" ? <span>· {fmtTs(row.created_unix_ms)}</span> : null}
+                    {fmtSummary(row?.member_job_summary) ? <span>· {fmtSummary(row.member_job_summary)}</span> : null}
+                  </div>
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                    type="button"
+                    onClick={() => {
+                      if (!runId) return;
+                      setRunLookupId(runId);
+                      void fetchRunStatus(runId);
+                    }}
+                  >
+                    Load
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-[11px] text-white/50">No recent runs.</div>
+        )}
+      </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <FieldLabel>Run ID</FieldLabel>

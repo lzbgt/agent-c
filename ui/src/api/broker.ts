@@ -27,6 +27,8 @@ import {
   type BrokerTeamQuorumRuleUpsertResp,
   BrokerTeamRunRespSchema,
   type BrokerTeamRunResp,
+  BrokerTeamRunListRespSchema,
+  type BrokerTeamRunListResp,
   BrokerTeamRunStatusRespSchema,
   type BrokerTeamRunStatusResp,
   BrokerTeamRunApprovalListRespSchema,
@@ -593,6 +595,28 @@ export async function apiBrokerTeamRunCreate(
   });
   const j = await r.json();
   return BrokerTeamRunRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamRunList(
+  brokerBase: string,
+  teamId: string,
+  auth?: ApiAuth,
+  opts?: { limit?: number; offset?: number; status?: string },
+): Promise<BrokerTeamRunListResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  const q = new URLSearchParams();
+  if (typeof opts?.limit === "number") q.set("limit", String(opts.limit));
+  if (typeof opts?.offset === "number") q.set("offset", String(opts.offset));
+  if (typeof opts?.status === "string" && opts.status.trim()) q.set("status", opts.status.trim());
+  const qs = q.toString();
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/runs${qs ? `?${qs}` : ""}`,
+    { headers: daemonHeaders(auth) },
+  );
+  const j = await r.json();
+  return BrokerTeamRunListRespSchema.parse(j);
 }
 
 export async function apiBrokerTeamRunGet(

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type Team struct {
@@ -141,6 +143,65 @@ func (d *DB) GetTeamRun(ctx context.Context, teamID, teamRunID string) (*TeamRun
 	}
 	tr.RunJSON = json.RawMessage(runJSON)
 	return &tr, nil
+}
+
+func (d *DB) ListTeamRuns(ctx context.Context, teamID string, limit, offset int, status string) ([]TeamRun, error) {
+	if d == nil || d.Pool == nil {
+		return nil, errors.New("db not open")
+	}
+	teamID = strings.TrimSpace(teamID)
+	status = strings.TrimSpace(status)
+	if teamID == "" {
+		return nil, errors.New("missing team_id")
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	var rows pgx.Rows
+	var err error
+	if status != "" {
+		rows, err = d.Pool.Query(ctx, `
+			SELECT team_run_id, team_id, status, COALESCE(created_by, ''), run_json::text, created_at
+			FROM broker_team_runs
+			WHERE team_id=$1 AND status=$2
+			ORDER BY created_at DESC, team_run_id ASC
+			LIMIT $3 OFFSET $4
+		`, teamID, status, limit, offset)
+	} else {
+		rows, err = d.Pool.Query(ctx, `
+			SELECT team_run_id, team_id, status, COALESCE(created_by, ''), run_json::text, created_at
+			FROM broker_team_runs
+			WHERE team_id=$1
+			ORDER BY created_at DESC, team_run_id ASC
+			LIMIT $2 OFFSET $3
+		`, teamID, limit, offset)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []TeamRun{}
+	for rows.Next() {
+		var tr TeamRun
+		var runJSON string
+		if err := rows.Scan(&tr.TeamRunID, &tr.TeamID, &tr.Status, &tr.CreatedBy, &runJSON, &tr.CreatedAt); err != nil {
+			return nil, err
+		}
+		tr.RunJSON = json.RawMessage(runJSON)
+		out = append(out, tr)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (d *DB) UpdateTeamRunStatus(ctx context.Context, teamID, teamRunID, status string) error {

@@ -162,7 +162,14 @@ func (s *Server) handleTeamsSubroutes(w http.ResponseWriter, r *http.Request) {
 		s.handleTeamQuorumUpdateOrDelete(w, r, teamID, parts[2])
 	case "runs":
 		if len(parts) == 2 || parts[2] == "" {
-			s.handleTeamRunCreate(w, r, teamID)
+			switch r.Method {
+			case "GET":
+				s.handleTeamRunsList(w, r, teamID)
+			case "POST":
+				s.handleTeamRunCreate(w, r, teamID)
+			default:
+				writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+			}
 			return
 		}
 		if len(parts) >= 4 && parts[3] != "" {
@@ -1015,6 +1022,62 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 	})
 }
 
+func (s *Server) handleTeamRunsList(w http.ResponseWriter, r *http.Request, teamID string) {
+	if r.Method != "GET" {
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if p.AuthKind != "oidc" {
+		writeErrorJSON(w, "oidc required", http.StatusForbidden)
+		return
+	}
+	_, ok := s.requireTeamOwner(w, r, p, teamID)
+	if !ok {
+		return
+	}
+	limit := 25
+	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+		if n, ok := parseIntBounded(v, 1, 200); ok {
+			limit = n
+		}
+	}
+	offset := 0
+	if v := strings.TrimSpace(r.URL.Query().Get("offset")); v != "" {
+		if n, ok := parseIntBounded(v, 0, 10_000); ok {
+			offset = n
+		}
+	}
+	status := strings.TrimSpace(r.URL.Query().Get("status"))
+	if status != "" {
+		status = strings.ToLower(status)
+	}
+	rows, err := s.cfg.DB.ListTeamRuns(r.Context(), teamID, limit, offset, status)
+	if err != nil {
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, teamRunSummaryToJSON(row))
+	}
+	resp := map[string]any{
+		"ok":      true,
+		"team_id": teamID,
+		"limit":   limit,
+		"offset":  offset,
+		"runs":    out,
+	}
+	if status != "" {
+		resp["status"] = status
+	}
+	writeJSON(w, resp)
+}
+
 func (s *Server) handleTeamRunGet(w http.ResponseWriter, r *http.Request, teamID, teamRunID string) {
 	if r.Method != "GET" {
 		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1479,6 +1542,39 @@ func (s *Server) requireTeamOwner(w http.ResponseWriter, r *http.Request, p *Pri
 		return nil, false
 	}
 	return team, true
+}
+
+func teamRunSummaryToJSON(run db.TeamRun) map[string]any {
+	out := map[string]any{
+		"team_run_id":     run.TeamRunID,
+		"team_id":         run.TeamID,
+		"status":          run.Status,
+		"created_by":      run.CreatedBy,
+		"created_unix_ms": run.CreatedAt.UnixMilli(),
+	}
+	if len(run.RunJSON) == 0 {
+		return out
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(run.RunJSON, &payload); err != nil || payload == nil {
+		return out
+	}
+	if rawTeam, ok := payload["team"]; ok {
+		if teamMeta, ok := rawTeam.(map[string]any); ok {
+			if modeRaw, ok := teamMeta["mode"]; ok {
+				if mode, ok := modeRaw.(string); ok {
+					mode = strings.ToLower(strings.TrimSpace(mode))
+					if mode != "" {
+						out["mode"] = mode
+					}
+				}
+			}
+			if summary := teamRunMemberJobSummary(teamMeta); summary != nil {
+				out["member_job_summary"] = summary
+			}
+		}
+	}
+	return out
 }
 
 func teamToJSON(t db.Team) map[string]any {
