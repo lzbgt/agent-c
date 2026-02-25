@@ -279,7 +279,7 @@ SPAWN_LIST_JSON="$(
     -H "Authorization: Bearer ${OIDC_JWT}" \
     "${BROKER_BASE}/v1/teams/${TEAM_ID}/orchestrator/spawn_requests?orchestrator_run_id=${RUN_ID}&limit=50"
 )"
-python3 - <<PY
+SPAWN_COUNT="$(python3 - <<PY
 import json, sys
 obj = json.loads(r'''${SPAWN_LIST_JSON}''')
 items = obj.get("spawn_requests") or []
@@ -313,7 +313,13 @@ if str(preq.get("region","")) != "eu" or str(preq.get("tier","")) != "gpu":
 if str(ereq.get("region","")) != "us":
   print("executor requirements mismatch", executor, file=sys.stderr)
   raise SystemExit(1)
+print(len(items))
 PY
+)"
+if [[ -z "${SPAWN_COUNT}" ]]; then
+  echo "failed to compute spawn count" >&2
+  exit 1
+fi
 
 BAD_RUN_GET_JSON="$(
   curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
@@ -348,6 +354,39 @@ if not isinstance(events, list) or len(events) < 1:
 types = [str(e.get("type","")) for e in events if isinstance(e, dict)]
 if "spawn_validation" not in types:
   print("expected spawn_validation goal event", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+ORCH_LOG2="${LOG_DIR}/broker_orchestrator_loop_repeat.log"
+(
+  cd "${ROOT}/broker"
+  go run ./cmd/agentd-orchestrator \
+    --broker-base "${BROKER_BASE}" \
+    --oidc-token "${OIDC_JWT}" \
+    --insecure \
+    --orchestrator-id "orch_takeover" \
+    --once
+) > "${ORCH_LOG2}" 2>&1 || {
+  cat "${ORCH_LOG2}" >&2 || true
+  exit 1
+}
+
+SPAWN_LIST_JSON2="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/orchestrator/spawn_requests?orchestrator_run_id=${RUN_ID}&limit=50"
+)"
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${SPAWN_LIST_JSON2}''')
+items = obj.get("spawn_requests") or []
+if not isinstance(items, list):
+  print("spawn request list invalid", obj, file=sys.stderr)
+  raise SystemExit(1)
+count = len(items)
+expected = int("${SPAWN_COUNT}")
+if count != expected:
+  print("spawn request count changed after repeat tick", expected, count, obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 
