@@ -69,6 +69,57 @@ function formatDuration(ms?: number | null) {
   return `${rem}s`;
 }
 
+function truncateText(value: string, maxLen: number) {
+  if (value.length <= maxLen) return value;
+  return `${value.slice(0, Math.max(0, maxLen - 1))}…`;
+}
+
+function formatDiffValue(value: unknown) {
+  if (value === undefined) return "(undefined)";
+  if (value === null) return "null";
+  if (typeof value === "string") return truncateText(JSON.stringify(value), 200);
+  try {
+    return truncateText(JSON.stringify(value), 200);
+  } catch {
+    return truncateText(String(value), 200);
+  }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+type JsonDiffEntry = { path: string; a: unknown; b: unknown };
+
+function collectJsonDiffs(a: unknown, b: unknown, path: string, out: JsonDiffEntry[], maxDiffs: number) {
+  if (out.length >= maxDiffs) return;
+  if (a === b) return;
+  const aIsArr = Array.isArray(a);
+  const bIsArr = Array.isArray(b);
+  if (aIsArr || bIsArr) {
+    if (!aIsArr || !bIsArr) {
+      out.push({ path: path || "<root>", a, b });
+      return;
+    }
+    const max = Math.max(a.length, b.length);
+    for (let i = 0; i < max; i += 1) {
+      collectJsonDiffs(a[i], b[i], `${path}[${i}]`, out, maxDiffs);
+      if (out.length >= maxDiffs) return;
+    }
+    return;
+  }
+  if (isPlainObject(a) && isPlainObject(b)) {
+    const keys = new Set<string>([...Object.keys(a), ...Object.keys(b)]);
+    for (const key of keys) {
+      const nextPath = path ? `${path}.${key}` : key;
+      collectJsonDiffs(a[key], b[key], nextPath, out, maxDiffs);
+      if (out.length >= maxDiffs) return;
+    }
+    return;
+  }
+  out.push({ path: path || "<root>", a, b });
+}
+
 function formatModeratorEventSummary(event: ModeratorEvent) {
   const type = typeof event?.type === "string" ? event.type : "";
   const data = event?.data && typeof event.data === "object" ? (event.data as any) : {};
@@ -1615,6 +1666,10 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                             const jsonB = JSON.stringify(evB, null, 2);
                             const same = jsonA === jsonB;
                             const diffText = JSON.stringify({ a: evA, b: evB }, null, 2);
+                            const diffs: JsonDiffEntry[] = [];
+                            if (!same) {
+                              collectJsonDiffs(evA, evB, "", diffs, 200);
+                            }
                             return (
                               <div className="mt-2 grid gap-2">
                                 <div className={`text-[11px] ${same ? "text-emerald-200" : "text-amber-200"}`}>
@@ -1679,6 +1734,30 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                                     <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-[10px] text-white/70">
                                       {diffText}
                                     </pre>
+                                  </div>
+                                ) : null}
+                                {pinnedCompareDiffOnly ? (
+                                  <div className="rounded-md border border-white/10 bg-black/30 p-2">
+                                    <div className="flex items-center justify-between gap-2 text-[10px] text-white/60">
+                                      <span>Key diffs</span>
+                                      <span>{diffs.length} changes</span>
+                                    </div>
+                                    {diffs.length === 0 ? (
+                                      <div className="mt-2 text-[10px] text-white/40">No key-level differences detected.</div>
+                                    ) : (
+                                      <div className="mt-2 max-h-64 overflow-auto">
+                                        {diffs.slice(0, 200).map((diff, idx) => (
+                                          <div key={`diff-${idx}`} className="border-b border-white/5 py-1 last:border-b-0">
+                                            <div className="text-[10px] text-white/70">{diff.path}</div>
+                                            <div className="text-[10px] text-emerald-200">A: {formatDiffValue(diff.a)}</div>
+                                            <div className="text-[10px] text-amber-200">B: {formatDiffValue(diff.b)}</div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {diffs.length >= 200 ? (
+                                      <div className="mt-2 text-[10px] text-white/40">Diffs truncated at 200 entries.</div>
+                                    ) : null}
                                   </div>
                                 ) : null}
                               </div>
