@@ -369,9 +369,9 @@ func (d *DB) UpdateGuidanceAck(
 	ackedBy,
 	ackNote string,
 	ackedUnixMS int64,
-) (*GuidanceEvent, error) {
+) (*GuidanceEvent, bool, error) {
 	if d == nil || d.Pool == nil {
-		return nil, errors.New("db not open")
+		return nil, false, errors.New("db not open")
 	}
 	teamID = strings.TrimSpace(teamID)
 	guidanceID = strings.TrimSpace(guidanceID)
@@ -379,10 +379,10 @@ func (d *DB) UpdateGuidanceAck(
 	ackedBy = strings.TrimSpace(ackedBy)
 	ackNote = strings.TrimSpace(ackNote)
 	if teamID == "" || guidanceID == "" {
-		return nil, errors.New("missing team_id or guidance_id")
+		return nil, false, errors.New("missing team_id or guidance_id")
 	}
 	if status == "" {
-		return nil, errors.New("missing status")
+		return nil, false, errors.New("missing status")
 	}
 	if ackedUnixMS <= 0 {
 		ackedUnixMS = time.Now().UnixMilli()
@@ -393,12 +393,14 @@ func (d *DB) UpdateGuidanceAck(
 		WHERE team_id=$1 AND guidance_id=$2 AND status='open'
 	`, teamID, guidanceID, status, nullIfEmpty(ackedBy), ackedUnixMS, nullIfEmpty(ackNote))
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	if tag.RowsAffected() == 0 {
-		return d.GetGuidanceEvent(ctx, teamID, guidanceID)
+	updated := tag.RowsAffected() > 0
+	ev, err := d.GetGuidanceEvent(ctx, teamID, guidanceID)
+	if err != nil {
+		return nil, updated, err
 	}
-	return d.GetGuidanceEvent(ctx, teamID, guidanceID)
+	return ev, updated, nil
 }
 
 func (d *DB) CreateGuidanceReceipt(

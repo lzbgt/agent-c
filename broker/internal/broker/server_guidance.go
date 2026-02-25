@@ -323,9 +323,13 @@ func (s *Server) handleTeamGuidanceAck(w http.ResponseWriter, r *http.Request, t
 	ackRole := strings.TrimSpace(req.AckRole)
 	ackUnixMS := time.Now().UnixMilli()
 
-	ev, err := s.cfg.DB.UpdateGuidanceAck(r.Context(), teamID, guidanceID, status, p.Sub, note, ackUnixMS)
+	ev, updated, err := s.cfg.DB.UpdateGuidanceAck(r.Context(), teamID, guidanceID, status, p.Sub, note, ackUnixMS)
 	if err != nil {
 		writeErrorJSON(w, "guidance not found", http.StatusNotFound)
+		return
+	}
+	if !updated {
+		writeErrorJSON(w, "guidance already closed", http.StatusConflict)
 		return
 	}
 	receipt, err := s.cfg.DB.CreateGuidanceReceipt(r.Context(), guidanceID, p.Sub, ackRole, ackSource, note, ackUnixMS)

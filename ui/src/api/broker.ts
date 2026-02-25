@@ -31,6 +31,12 @@ import {
   type BrokerTeamMemberListResp,
   BrokerTeamMemberUpsertRespSchema,
   type BrokerTeamMemberUpsertResp,
+  BrokerGuidanceAckRespSchema,
+  type BrokerGuidanceAckResp,
+  BrokerGuidanceCreateRespSchema,
+  type BrokerGuidanceCreateResp,
+  BrokerGuidanceListRespSchema,
+  type BrokerGuidanceListResp,
   BrokerTeamQuorumRuleListRespSchema,
   type BrokerTeamQuorumRuleListResp,
   BrokerTeamQuorumRuleUpsertRespSchema,
@@ -766,6 +772,76 @@ export async function apiBrokerTeamMembersDelete(
   });
   const j = await r.json();
   return BrokerTeamDeleteRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamGuidanceList(
+  brokerBase: string,
+  teamId: string,
+  params?: {
+    teamRunId?: string;
+    status?: string;
+    sinceTs?: number;
+    limit?: number;
+    offset?: number;
+  },
+  auth?: ApiAuth,
+): Promise<BrokerGuidanceListResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  const qs = new URLSearchParams();
+  const teamRunId = String(params?.teamRunId || "").trim();
+  if (teamRunId) qs.set("team_run_id", teamRunId);
+  const status = String(params?.status || "").trim();
+  if (status) qs.set("status", status);
+  if (Number.isFinite(params?.sinceTs ?? NaN)) qs.set("since_ts", String(params?.sinceTs));
+  if (Number.isFinite(params?.limit ?? NaN)) qs.set("limit", String(params?.limit));
+  if (Number.isFinite(params?.offset ?? NaN)) qs.set("offset", String(params?.offset));
+  const url = `${base}/v1/teams/${encodeURIComponent(tid)}/guidance${qs.toString() ? `?${qs}` : ""}`;
+  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return BrokerGuidanceListRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamGuidanceCreate(
+  brokerBase: string,
+  teamId: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<BrokerGuidanceCreateResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  const payload = body ?? {};
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/guidance`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  return BrokerGuidanceCreateRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamGuidanceAck(
+  brokerBase: string,
+  teamId: string,
+  guidanceId: string,
+  body?: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<BrokerGuidanceAckResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  const gid = String(guidanceId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  if (!gid) throw new Error("missing guidance_id");
+  const payload = body ?? {};
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/guidance/${encodeURIComponent(gid)}/ack`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  return BrokerGuidanceAckRespSchema.parse(j);
 }
 
 export async function apiBrokerTeamQuorumList(

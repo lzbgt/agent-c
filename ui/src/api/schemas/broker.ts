@@ -684,3 +684,84 @@ export const BrokerTeamRunApprovalListRespSchema = z
   })
   .passthrough();
 export type BrokerTeamRunApprovalListResp = z.infer<typeof BrokerTeamRunApprovalListRespSchema>;
+
+export const BrokerGuidanceEventSchema = z
+  .object({
+    guidance_id: z.string().optional(),
+    team_id: z.string().optional(),
+    team_run_id: z.string().optional(),
+    kind: z.string().optional(),
+    priority: z.string().optional(),
+    message: z.string().optional(),
+    payload: z.record(z.any()).optional(),
+    target_roles: z.array(z.string()).optional(),
+    target_member_ids: z.array(z.string()).optional(),
+    target_agent_ids: z.array(z.string()).optional(),
+    target_orchestrator_id: z.string().optional(),
+    created_by: z.string().optional(),
+    created_sub: z.string().optional(),
+    created_unix_ms: z.number().optional(),
+    expires_unix_ms: z.number().optional(),
+    status: z.string().optional(),
+    acked_by: z.string().optional(),
+    acked_unix_ms: z.number().optional(),
+    ack_note: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerGuidanceEvent = z.infer<typeof BrokerGuidanceEventSchema>;
+
+export const BrokerGuidanceReceiptSchema = z
+  .object({
+    id: z.number().optional(),
+    guidance_id: z.string().optional(),
+    ack_by: z.string().optional(),
+    ack_role: z.string().optional(),
+    ack_source: z.string().optional(),
+    ack_note: z.string().optional(),
+    acked_unix_ms: z.number().optional(),
+  })
+  .passthrough();
+export type BrokerGuidanceReceipt = z.infer<typeof BrokerGuidanceReceiptSchema>;
+
+export const BrokerGuidanceListRespSchema = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string().optional(),
+    team_run_id: z.string().optional(),
+    status: z.array(z.string()).optional(),
+    since_ts: z.number().optional(),
+    limit: z.number().optional(),
+    offset: z.number().optional(),
+    count: z.number().optional(),
+    guidance: z.array(BrokerGuidanceEventSchema).optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerGuidanceListResp = z.infer<typeof BrokerGuidanceListRespSchema>;
+
+export const BrokerGuidanceCreateRespSchema = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string().optional(),
+    guidance: BrokerGuidanceEventSchema.optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerGuidanceCreateResp = z.infer<typeof BrokerGuidanceCreateRespSchema>;
+
+export const BrokerGuidanceAckRespSchema = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string().optional(),
+    guidance: BrokerGuidanceEventSchema.optional(),
+    receipt: BrokerGuidanceReceiptSchema.optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerGuidanceAckResp = z.infer<typeof BrokerGuidanceAckRespSchema>;

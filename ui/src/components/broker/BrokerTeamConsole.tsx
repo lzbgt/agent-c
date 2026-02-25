@@ -21,6 +21,7 @@ import FieldLabel from "../FieldLabel";
 import BrokerTeamRunPanel from "./BrokerTeamRunPanel";
 import BrokerOrchestratorRunPanel from "./BrokerOrchestratorRunPanel";
 import BrokerOrchestratorSpawnPanel from "./BrokerOrchestratorSpawnPanel";
+import BrokerTeamGuidancePanel from "./BrokerTeamGuidancePanel";
 import TeamRolePlanEditor, { type RoleGraphEdge } from "./TeamRolePlanEditor";
 import { ORCHESTRATOR_EVENT_TYPES, TEAM_RUN_EVENT_TYPES } from "./teamRunUtils";
 import type { BrokerEventRow, TeamMemberRow, TeamQuorumRuleRow } from "./types";
@@ -1920,6 +1921,8 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         teamMeta={teamDetails?.meta && typeof teamDetails.meta === "object" ? (teamDetails.meta as Record<string, any>) : null}
         events={mergedOrchestratorEvents}
       />
+
+      <BrokerTeamGuidancePanel base={props.base} auth={props.auth} canQuery={canQuery} teamId={teamIdTrimmed} />
 
       <BrokerOrchestratorSpawnPanel
         base={props.base}

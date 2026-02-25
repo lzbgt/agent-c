@@ -123,6 +123,41 @@ type spawnCreateResponse struct {
 	SpawnRequest spawnRequest `json:"spawn_request"`
 }
 
+type guidanceEvent struct {
+	GuidanceID         string         `json:"guidance_id"`
+	TeamID             string         `json:"team_id"`
+	TeamRunID          string         `json:"team_run_id"`
+	Kind               string         `json:"kind"`
+	Priority           string         `json:"priority"`
+	Message            string         `json:"message"`
+	Payload            map[string]any `json:"payload"`
+	TargetRoles        []string       `json:"target_roles"`
+	TargetMemberIDs    []string       `json:"target_member_ids"`
+	TargetAgentIDs     []string       `json:"target_agent_ids"`
+	TargetOrchestrator string         `json:"target_orchestrator_id"`
+	CreatedUnixMS      int64          `json:"created_unix_ms"`
+	ExpiresUnixMS      int64          `json:"expires_unix_ms"`
+	Status             string         `json:"status"`
+	AckedBy            string         `json:"acked_by"`
+	AckedUnixMS        int64          `json:"acked_unix_ms"`
+	AckNote            string         `json:"ack_note"`
+}
+
+type guidanceListResponse struct {
+	OK       bool            `json:"ok"`
+	TeamID   string          `json:"team_id"`
+	TeamRun  string          `json:"team_run_id"`
+	Count    int             `json:"count"`
+	Guidance []guidanceEvent `json:"guidance"`
+}
+
+type guidanceAckResponse struct {
+	OK       bool           `json:"ok"`
+	TeamID   string         `json:"team_id"`
+	Guidance guidanceEvent  `json:"guidance"`
+	Receipt  map[string]any `json:"receipt"`
+}
+
 type httpError struct {
 	Status int
 	Body   string
@@ -378,6 +413,14 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 	}
 
 	activeRunID := strings.TrimSpace(asString(meta["active_team_run_id"]))
+	guidanceChanged := false
+	if owner == cfg.orchestratorID {
+		if changed, err := processGuidance(ctx, client, cfg, teamID, activeRunID, meta); err != nil {
+			return err
+		} else if changed {
+			guidanceChanged = true
+		}
+	}
 	if activeRunID != "" {
 		tr, err := fetchTeamRunStatus(ctx, client, cfg, teamID, activeRunID)
 		if err != nil {
@@ -402,7 +445,7 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 			_, err := updateOrchestratorRun(ctx, client, cfg, teamID, run.OrchestratorRunID, nextStatus, meta, stringPtr(owner), nil)
 			return err
 		}
-		metaChanged := false
+		metaChanged := guidanceChanged
 		changed, err := tickActiveTeamRun(ctx, client, cfg, teamID, activeRunID, tr, meta)
 		if err != nil {
 			return err
@@ -422,6 +465,9 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 	}
 
 	if status == "done" || status == "error" || status == "paused" || status == "waiting" {
+		if guidanceChanged {
+			_, _ = updateOrchestratorRun(ctx, client, cfg, teamID, run.OrchestratorRunID, "", meta, stringPtr(owner), nil)
+		}
 		return nil
 	}
 
@@ -482,6 +528,95 @@ func tickActiveTeamRun(
 		changed = true
 	}
 	return changed, nil
+}
+
+func processGuidance(
+	ctx context.Context,
+	client *http.Client,
+	cfg config,
+	teamID,
+	teamRunID string,
+	meta map[string]any,
+) (bool, error) {
+	if meta == nil {
+		return false, nil
+	}
+	ackedIDs := asStringSlice(meta["guidance_ack_ids"])
+	ackedSet := map[string]bool{}
+	for _, id := range ackedIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		ackedSet[id] = true
+	}
+	sinceTS := int64(0)
+	if v, ok := asInt64(meta["guidance_since_ts"]); ok && v > 0 {
+		sinceTS = v
+	}
+	items, maxTS, err := fetchGuidance(ctx, client, cfg, teamID, teamRunID, sinceTS)
+	if err != nil {
+		return false, err
+	}
+	if len(items) == 0 && maxTS <= sinceTS {
+		return false, nil
+	}
+	changed := false
+	for _, item := range items {
+		id := strings.TrimSpace(item.GuidanceID)
+		if id == "" {
+			continue
+		}
+		if ackedSet[id] {
+			continue
+		}
+		if !shouldHandleGuidance(item, cfg.orchestratorID) {
+			continue
+		}
+		note := fmt.Sprintf("received by orchestrator %s", cfg.orchestratorID)
+		if _, err := ackGuidance(ctx, client, cfg, teamID, id, note, "orchestrator", "orchestrator"); err != nil {
+			if isHTTPStatus(err, http.StatusConflict) {
+				ackedSet[id] = true
+				ackedIDs = append(ackedIDs, id)
+				changed = true
+				continue
+			}
+			return false, err
+		}
+		ackedSet[id] = true
+		ackedIDs = append(ackedIDs, id)
+		changed = true
+	}
+	if maxTS > sinceTS {
+		meta["guidance_since_ts"] = maxTS
+		changed = true
+	}
+	if changed {
+		const maxAcked = 200
+		if len(ackedIDs) > maxAcked {
+			ackedIDs = ackedIDs[len(ackedIDs)-maxAcked:]
+		}
+		meta["guidance_ack_ids"] = ackedIDs
+	}
+	return changed, nil
+}
+
+func shouldHandleGuidance(item guidanceEvent, orchestratorID string) bool {
+	if item.TargetOrchestrator != "" && item.TargetOrchestrator != orchestratorID {
+		return false
+	}
+	if len(item.TargetMemberIDs) > 0 || len(item.TargetAgentIDs) > 0 {
+		return false
+	}
+	if len(item.TargetRoles) == 0 {
+		return true
+	}
+	for _, r := range item.TargetRoles {
+		if strings.EqualFold(strings.TrimSpace(r), "orchestrator") {
+			return true
+		}
+	}
+	return false
 }
 
 func buildTeamRunPayload(run orchestratorRun, meta map[string]any) (map[string]any, map[string]any) {
@@ -993,6 +1128,51 @@ func createSpawnRequest(ctx context.Context, client *http.Client, cfg config, te
 		return nil, fmt.Errorf("broker returned ok=false for spawn request")
 	}
 	return &resp.SpawnRequest, nil
+}
+
+func fetchGuidance(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, sinceTS int64) ([]guidanceEvent, int64, error) {
+	qs := url.Values{}
+	qs.Set("status", "open")
+	qs.Set("limit", "200")
+	if teamRunID != "" {
+		qs.Set("team_run_id", teamRunID)
+	}
+	if sinceTS > 0 {
+		qs.Set("since_ts", fmt.Sprintf("%d", sinceTS))
+	}
+	url := fmt.Sprintf("%s/v1/teams/%s/guidance?%s", cfg.brokerBase, teamID, qs.Encode())
+	var resp guidanceListResponse
+	if err := doJSON(ctx, client, cfg, http.MethodGet, url, nil, &resp); err != nil {
+		return nil, sinceTS, err
+	}
+	if !resp.OK {
+		return nil, sinceTS, fmt.Errorf("broker returned ok=false for guidance list")
+	}
+	maxTS := sinceTS
+	for _, item := range resp.Guidance {
+		if item.CreatedUnixMS > maxTS {
+			maxTS = item.CreatedUnixMS
+		}
+	}
+	return resp.Guidance, maxTS, nil
+}
+
+func ackGuidance(ctx context.Context, client *http.Client, cfg config, teamID, guidanceID, note, ackSource, ackRole string) (*guidanceAckResponse, error) {
+	payload := map[string]any{
+		"status":     "acked",
+		"note":       note,
+		"ack_source": ackSource,
+		"ack_role":   ackRole,
+	}
+	url := fmt.Sprintf("%s/v1/teams/%s/guidance/%s/ack", cfg.brokerBase, teamID, guidanceID)
+	var resp guidanceAckResponse
+	if err := doJSON(ctx, client, cfg, http.MethodPost, url, payload, &resp); err != nil {
+		return nil, err
+	}
+	if !resp.OK {
+		return nil, fmt.Errorf("broker returned ok=false for guidance ack")
+	}
+	return &resp, nil
 }
 
 func doJSON(ctx context.Context, client *http.Client, cfg config, method, url string, body any, out any) error {

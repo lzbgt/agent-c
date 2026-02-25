@@ -134,6 +134,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [ ] W=12 — User guidance/override lane: persist operator “guidance” events, deliver to orchestrator + active agents, and surface in WebUI with ack/receipt so rare human intervention re-aligns autonomy without breaking flows.
   - 2026-02-26: drafted `docs/spec/user_guidance_lane_v0.md` (guidance events + ack + replay).
   - 2026-02-26: broker storage + endpoints + SSE events for guidance lane.
+  - 2026-02-26: orchestrator polls open guidance + auto-acks targeted items.
+  - 2026-02-26: WebUI team console guidance panel (list/create/ack).
 - [x] W=9 — Agent provisioning hooks: define an optional `agent_spawn` interface (pluggable adapters for local/remote spawn) so the orchestrator can request new runtime members when capacity is low.
   - 2026-02-25: added broker spawn request persistence + events (`/v1/teams/{team_id}/orchestrator/spawn_requests`).
   - 2026-02-26: added `agentd-spawn-adapter` CLI + `docs/spec/agent_spawn_adapter_v0.md` (local adapter contract).
