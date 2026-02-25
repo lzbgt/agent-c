@@ -118,6 +118,7 @@ Phase 3 (moderator ops):
 - Moderator task panel integrated with team run view.
 - Moderators can publish directives without stopping runs.
 - Broadcast uses team-run session mappings to target members by role or id.
+- Moderator event feed aggregates per-member session events into a unified view.
 
 ## Open questions
 

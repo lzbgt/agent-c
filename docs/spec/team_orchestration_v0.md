@@ -142,6 +142,16 @@ Moderators can publish **directives** or **tasks** to a team run:
   the broadcast; otherwise the event is sent to all eligible members.
 - Results include per-member dispatch status (`ok`, `http_status`, `error`).
 
+### 12) Moderator event aggregation (v0.9)
+
+Team runs provide an aggregate read path for moderator events:
+
+- `GET /v1/teams/{team_id}/runs/{team_run_id}/moderator/events`
+  - fans out `GET /api/v1/moderator/events` to each member session
+  - merges results and annotates each event with `member_id`/`agent_id`/`session_id`
+  - supports optional target filters (roles/member_ids/agent_ids)
+  - response includes `events`, `errors`, and `skipped` details
+
 ---
 
 ## Data model (proposed)

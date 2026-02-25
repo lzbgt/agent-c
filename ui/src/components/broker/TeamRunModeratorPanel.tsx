@@ -21,6 +21,13 @@ export type TeamRunModeratorPanelProps = {
   busy: boolean;
   error: string | null;
   success: string | null;
+  events: any[];
+  eventsBusy: boolean;
+  eventsError: string | null;
+  eventsTypes: string;
+  eventsMaxBytes: string;
+  eventsLimit: string;
+  eventsExpanded: boolean;
   onDirectiveChange: (value: string) => void;
   onDirectiveScopeChange: (value: string) => void;
   onTaskTitleChange: (value: string) => void;
@@ -33,11 +40,17 @@ export type TeamRunModeratorPanelProps = {
   onAppendToSessionChange: (value: boolean) => void;
   onPublishDirective: () => void;
   onPublishTask: () => void;
+  onEventsTypesChange: (value: string) => void;
+  onEventsMaxBytesChange: (value: string) => void;
+  onEventsLimitChange: (value: string) => void;
+  onEventsLoad: () => void;
+  onEventsToggleExpanded: () => void;
 };
 
 export default function TeamRunModeratorPanel(props: TeamRunModeratorPanelProps) {
   const sessionsEmpty = props.memberSessions.length === 0;
   const disabled = props.busy || !props.canQuery || !props.runId;
+  const eventsDisabled = props.eventsBusy || !props.canQuery || !props.runId;
 
   return (
     <div className="mt-2 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
@@ -165,6 +178,77 @@ export default function TeamRunModeratorPanel(props: TeamRunModeratorPanelProps)
         </label>
         {props.error ? <div className="text-[11px] text-rose-200">{props.error}</div> : null}
         {props.success ? <div className="text-[11px] text-emerald-200">{props.success}</div> : null}
+        <div className="mt-2 grid gap-2 rounded-md border border-white/5 bg-black/20 p-2">
+          <div className="text-[11px] text-white/60">Moderator events (aggregated)</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <FieldLabel>Types</FieldLabel>
+            <input
+              className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={props.eventsTypes}
+              onChange={(e) => props.onEventsTypesChange(e.target.value)}
+              placeholder="moderator_directive,moderator_task_published"
+            />
+            <FieldLabel>Max bytes</FieldLabel>
+            <input
+              className="min-w-[100px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={props.eventsMaxBytes}
+              onChange={(e) => props.onEventsMaxBytesChange(e.target.value)}
+              placeholder="1048576"
+            />
+            <FieldLabel>Limit</FieldLabel>
+            <input
+              className="min-w-[80px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={props.eventsLimit}
+              onChange={(e) => props.onEventsLimitChange(e.target.value)}
+              placeholder="200"
+            />
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+              type="button"
+              disabled={eventsDisabled}
+              onClick={() => props.onEventsLoad()}
+            >
+              {props.eventsBusy ? "Loading…" : "Load events"}
+            </button>
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
+              type="button"
+              disabled={props.events.length === 0}
+              onClick={() => props.onEventsToggleExpanded()}
+            >
+              {props.eventsExpanded ? "Hide JSON" : "Show JSON"}
+            </button>
+          </div>
+          {props.eventsError ? <div className="text-[11px] text-rose-200">{props.eventsError}</div> : null}
+          {props.events.length === 0 ? (
+            <div className="text-[11px] text-white/50">No events loaded.</div>
+          ) : props.eventsExpanded ? (
+            <pre className="whitespace-pre-wrap break-words text-[10px] text-white/60">
+              {JSON.stringify(props.events, null, 2)}
+            </pre>
+          ) : (
+            <div className="grid gap-1 text-[10px] text-white/70">
+              {props.events.map((ev, idx) => {
+                const mid = ev?.member_id ? String(ev.member_id) : "";
+                const typ = ev?.type ? String(ev.type) : "";
+                const ts = ev?.ts_unix_ms ? new Date(Number(ev.ts_unix_ms)).toLocaleString() : "";
+                const data = ev?.event?.data;
+                const summary =
+                  data && typeof data === "object"
+                    ? String(data.directive || data.title || data.detail || "")
+                    : "";
+                return (
+                  <div key={`moderator-event-${mid}-${idx}`} className="flex flex-wrap gap-2">
+                    <span>{typ || "event"}</span>
+                    {mid ? <span>· {mid}</span> : null}
+                    {ts ? <span>· {ts}</span> : null}
+                    {summary ? <span className="text-white/60">· {summary}</span> : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

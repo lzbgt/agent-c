@@ -33,3 +33,24 @@ func TestFilterTeamRunModeratorTargetsNone(t *testing.T) {
 		t.Fatalf("expected no skipped, got %d", len(skipped))
 	}
 }
+
+func TestParseTeamRunModeratorTargets(t *testing.T) {
+	q := map[string][]string{
+		"roles":      {"planner, executor"},
+		"member_ids": {"m1, m2"},
+		"agent_ids":  {"a1"},
+	}
+	targets := parseTeamRunModeratorTargets(q)
+	if targets == nil {
+		t.Fatalf("expected targets")
+	}
+	if len(targets.Roles) != 2 {
+		t.Fatalf("expected 2 roles, got %d", len(targets.Roles))
+	}
+	if len(targets.MemberIDs) != 2 {
+		t.Fatalf("expected 2 member_ids, got %d", len(targets.MemberIDs))
+	}
+	if len(targets.AgentIDs) != 1 {
+		t.Fatalf("expected 1 agent_id, got %d", len(targets.AgentIDs))
+	}
+}

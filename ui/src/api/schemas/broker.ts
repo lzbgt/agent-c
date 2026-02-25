@@ -410,6 +410,59 @@ export const BrokerTeamRunModeratorRespSchema = z
   .passthrough();
 export type BrokerTeamRunModeratorResp = z.infer<typeof BrokerTeamRunModeratorRespSchema>;
 
+export const BrokerTeamRunModeratorEventsRespSchema = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string().optional(),
+    team_run_id: z.string().optional(),
+    events: z
+      .array(
+        z
+          .object({
+            member_id: z.string().optional(),
+            agent_id: z.string().optional(),
+            deployment_id: z.string().optional(),
+            session_id: z.string().optional(),
+            type: z.string().optional(),
+            ts_unix_ms: z.number().optional(),
+            event: z.record(z.any()).optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+    errors: z
+      .array(
+        z
+          .object({
+            member_id: z.string().optional(),
+            agent_id: z.string().optional(),
+            deployment_id: z.string().optional(),
+            session_id: z.string().optional(),
+            ok: z.boolean().optional(),
+            http_status: z.number().optional(),
+            error: z.string().optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+    skipped: z
+      .array(
+        z
+          .object({
+            member_id: z.string().optional(),
+            agent_id: z.string().optional(),
+            reason: z.string().optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerTeamRunModeratorEventsResp = z.infer<typeof BrokerTeamRunModeratorEventsRespSchema>;
+
 export const BrokerTeamRunApprovalSchema = z
   .object({
     approval_id: z.string().optional(),

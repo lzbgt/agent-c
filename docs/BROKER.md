@@ -231,6 +231,10 @@ All endpoints below are served by the broker (not by agents).
   - broadcasts a moderator task to team run member sessions
   - optional target filters: `targets.roles`, `targets.member_ids`, `targets.agent_ids`
   - response includes per-member dispatch status (`ok`, `http_status`, `error`)
+- `GET /v1/teams/{team_id}/runs/{team_run_id}/moderator/events`
+  - aggregates moderator events across team run member sessions
+  - supports query filters: `types`, `max_bytes`, `limit`, `roles`, `member_ids`, `agent_ids`
+  - response includes merged `events` plus `errors` and `skipped` members
 
 - `POST /v1/agents/{agent_id}/delete` (or `DELETE` to the same path)
   - deletes an agent record (owner or admin)

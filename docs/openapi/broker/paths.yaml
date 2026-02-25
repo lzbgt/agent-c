@@ -967,6 +967,63 @@
             schema:
               $ref: "#/components/schemas/TeamRunModeratorResponse"
 
+/v1/teams/{team_id}/runs/{team_run_id}/moderator/events:
+  get:
+    tags: [teams]
+    summary: List moderator events aggregated across team run members
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: team_run_id
+        required: true
+        schema: { type: string }
+      - in: query
+        name: types
+        required: false
+        schema: { type: string }
+        description: Comma-separated moderator event types to include.
+      - in: query
+        name: max_bytes
+        required: false
+        schema: { type: integer, format: int64 }
+      - in: query
+        name: limit
+        required: false
+        schema: { type: integer, format: int32 }
+      - in: query
+        name: roles
+        required: false
+        schema: { type: string }
+        description: Comma-separated role filter.
+      - in: query
+        name: member_ids
+        required: false
+        schema: { type: string }
+        description: Comma-separated member_id filter.
+      - in: query
+        name: agent_ids
+        required: false
+        schema: { type: string }
+        description: Comma-separated agent_id filter.
+      - in: query
+        name: max_concurrency
+        required: false
+        schema: { type: integer, format: int32 }
+      - in: query
+        name: timeout_ms
+        required: false
+        schema: { type: integer, format: int32 }
+    responses:
+      "200":
+        description: Aggregated moderator events
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamRunModeratorEventsResponse"
+
 /v1/orchestrate:
   post:
     tags: [orchestrate]

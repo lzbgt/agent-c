@@ -35,6 +35,8 @@ import {
   type BrokerTeamRunApprovalListResp,
   BrokerTeamRunModeratorRespSchema,
   type BrokerTeamRunModeratorResp,
+  BrokerTeamRunModeratorEventsRespSchema,
+  type BrokerTeamRunModeratorEventsResp,
 } from "./schemas/broker";
 import {
   ClientPrefsSchema,
@@ -698,6 +700,45 @@ export async function apiBrokerTeamRunModeratorTask(
   });
   const j = await r.json();
   return BrokerTeamRunModeratorRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamRunModeratorEvents(
+  brokerBase: string,
+  teamId: string,
+  teamRunId: string,
+  opts: {
+    types?: string;
+    maxBytes?: number;
+    limit?: number;
+    roles?: string;
+    memberIds?: string;
+    agentIds?: string;
+    maxConcurrency?: number;
+    timeoutMs?: number;
+  },
+  auth?: ApiAuth,
+): Promise<BrokerTeamRunModeratorEventsResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  const rid = String(teamRunId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  if (!rid) throw new Error("missing team_run_id");
+  const q = new URLSearchParams();
+  if (opts?.types) q.set("types", opts.types);
+  if (typeof opts?.maxBytes === "number") q.set("max_bytes", String(opts.maxBytes));
+  if (typeof opts?.limit === "number") q.set("limit", String(opts.limit));
+  if (opts?.roles) q.set("roles", opts.roles);
+  if (opts?.memberIds) q.set("member_ids", opts.memberIds);
+  if (opts?.agentIds) q.set("agent_ids", opts.agentIds);
+  if (typeof opts?.maxConcurrency === "number") q.set("max_concurrency", String(opts.maxConcurrency));
+  if (typeof opts?.timeoutMs === "number") q.set("timeout_ms", String(opts.timeoutMs));
+  const qs = q.toString();
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/runs/${encodeURIComponent(rid)}/moderator/events${qs ? `?${qs}` : ""}`,
+    { headers: daemonHeaders(auth) },
+  );
+  const j = await r.json();
+  return BrokerTeamRunModeratorEventsRespSchema.parse(j);
 }
 
 export async function apiBrokerTeamRunApprovalsList(

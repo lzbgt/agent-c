@@ -9,6 +9,7 @@ import {
   apiBrokerTeamRunGet,
   apiBrokerTeamRunList,
   apiBrokerTeamRunModeratorDirective,
+  apiBrokerTeamRunModeratorEvents,
   apiBrokerTeamRunModeratorTask,
   apiBrokerTeamRunRuntimeMembersUpdate,
   type ApiAuth,
@@ -315,6 +316,15 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const [moderatorBusy, setModeratorBusy] = React.useState<boolean>(false);
   const [moderatorError, setModeratorError] = React.useState<string | null>(null);
   const [moderatorSuccess, setModeratorSuccess] = React.useState<string | null>(null);
+  const [moderatorEvents, setModeratorEvents] = React.useState<any[]>([]);
+  const [moderatorEventsBusy, setModeratorEventsBusy] = React.useState<boolean>(false);
+  const [moderatorEventsError, setModeratorEventsError] = React.useState<string | null>(null);
+  const [moderatorEventsTypes, setModeratorEventsTypes] = React.useState<string>(
+    "moderator_directive,moderator_task_published",
+  );
+  const [moderatorEventsMaxBytes, setModeratorEventsMaxBytes] = React.useState<string>("1048576");
+  const [moderatorEventsLimit, setModeratorEventsLimit] = React.useState<string>("200");
+  const [moderatorEventsExpanded, setModeratorEventsExpanded] = React.useState<boolean>(false);
   const [approvalsBusy, setApprovalsBusy] = React.useState<boolean>(false);
   const [approvalsError, setApprovalsError] = React.useState<string | null>(null);
   const [approvals, setApprovals] = React.useState<TeamRunApprovalRow[] | null>(null);
@@ -774,6 +784,47 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
       setModeratorError(String(err));
     } finally {
       setModeratorBusy(false);
+    }
+  };
+
+  const handleModeratorEventsLoad = async () => {
+    const runId = resolveRunId();
+    if (!teamIdTrimmed || !runId) {
+      setModeratorEventsError("missing team_id or run id");
+      return;
+    }
+    setModeratorEventsBusy(true);
+    setModeratorEventsError(null);
+    try {
+      const maxBytesRaw = Number.parseInt(String(moderatorEventsMaxBytes || ""), 10);
+      const limitRaw = Number.parseInt(String(moderatorEventsLimit || ""), 10);
+      const resp = await apiBrokerTeamRunModeratorEvents(
+        props.base,
+        teamIdTrimmed,
+        runId,
+        {
+          types: String(moderatorEventsTypes || "").trim(),
+          maxBytes: Number.isFinite(maxBytesRaw) ? maxBytesRaw : undefined,
+          limit: Number.isFinite(limitRaw) ? limitRaw : undefined,
+          roles: String(moderatorTargetRoles || "").trim(),
+          memberIds: String(moderatorTargetMembers || "").trim(),
+          agentIds: String(moderatorTargetAgents || "").trim(),
+        },
+        props.auth,
+      );
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "moderator events failed");
+      }
+      setModeratorEvents(Array.isArray(resp.events) ? resp.events : []);
+      if (resp.skipped && Array.isArray(resp.skipped) && resp.skipped.length > 0) {
+        setModeratorSuccess(`loaded ${resp.events?.length ?? 0} events (skipped ${resp.skipped.length})`);
+      } else {
+        setModeratorSuccess(`loaded ${resp.events?.length ?? 0} events`);
+      }
+    } catch (err) {
+      setModeratorEventsError(String(err));
+    } finally {
+      setModeratorEventsBusy(false);
     }
   };
 
@@ -2432,6 +2483,13 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
         busy={moderatorBusy}
         error={moderatorError}
         success={moderatorSuccess}
+        events={moderatorEvents}
+        eventsBusy={moderatorEventsBusy}
+        eventsError={moderatorEventsError}
+        eventsTypes={moderatorEventsTypes}
+        eventsMaxBytes={moderatorEventsMaxBytes}
+        eventsLimit={moderatorEventsLimit}
+        eventsExpanded={moderatorEventsExpanded}
         onDirectiveChange={setModeratorDirective}
         onDirectiveScopeChange={setModeratorDirectiveScope}
         onTaskTitleChange={setModeratorTaskTitle}
@@ -2444,6 +2502,11 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
         onAppendToSessionChange={setModeratorAppendToSession}
         onPublishDirective={() => void handleModeratorDirectivePublish()}
         onPublishTask={() => void handleModeratorTaskPublish()}
+        onEventsTypesChange={setModeratorEventsTypes}
+        onEventsMaxBytesChange={setModeratorEventsMaxBytes}
+        onEventsLimitChange={setModeratorEventsLimit}
+        onEventsLoad={() => void handleModeratorEventsLoad()}
+        onEventsToggleExpanded={() => setModeratorEventsExpanded((prev) => !prev)}
       />
       <div className="mt-2 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
         <div className="text-xs font-semibold text-white/80">Runtime member updates</div>

@@ -118,6 +118,7 @@ func (s *Server) handleTeamsSubroutes(w http.ResponseWriter, r *http.Request) {
 	// - /v1/teams/{team_id}/runs/{team_run_id}/runtime_members
 	// - /v1/teams/{team_id}/runs/{team_run_id}/moderator/directive
 	// - /v1/teams/{team_id}/runs/{team_run_id}/moderator/task
+	// - /v1/teams/{team_id}/runs/{team_run_id}/moderator/events
 
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/teams/")
 	parts := strings.SplitN(rest, "/", 5)
@@ -217,6 +218,9 @@ func (s *Server) handleTeamsSubroutes(w http.ResponseWriter, r *http.Request) {
 					return
 				case "task":
 					s.handleTeamRunModeratorTask(w, r, teamID, parts[2])
+					return
+				case "events":
+					s.handleTeamRunModeratorEvents(w, r, teamID, parts[2])
 					return
 				default:
 					writeErrorJSON(w, "not found", http.StatusNotFound)

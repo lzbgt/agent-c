@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
+	"sort"
 	"strings"
 )
 
@@ -43,6 +45,23 @@ type teamRunMemberInfo struct {
 	AgentID      string
 	DeploymentID string
 	Role         string
+}
+
+type teamRunModeratorEventRow struct {
+	MemberID     string
+	AgentID      string
+	DeploymentID string
+	SessionID    string
+	Type         string
+	TsUnixMS     int64
+	Event        map[string]any
+}
+
+type teamRunModeratorEventSource struct {
+	MemberID     string
+	AgentID      string
+	DeploymentID string
+	SessionID    string
 }
 
 func (s *Server) handleTeamRunModeratorDirective(w http.ResponseWriter, r *http.Request, teamID, teamRunID string) {
@@ -220,6 +239,314 @@ func (s *Server) handleTeamRunModeratorTask(w http.ResponseWriter, r *http.Reque
 	}
 	if len(skipped) > 0 {
 		resp["skipped"] = skipped
+	}
+	writeJSON(w, resp)
+}
+
+func (s *Server) handleTeamRunModeratorEvents(w http.ResponseWriter, r *http.Request, teamID, teamRunID string) {
+	if r.Method != "GET" {
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if p.AuthKind != "oidc" {
+		writeErrorJSON(w, "oidc required", http.StatusForbidden)
+		return
+	}
+	if _, ok := s.requireTeamOwner(w, r, p, teamID); !ok {
+		return
+	}
+
+	run, err := s.cfg.DB.GetTeamRun(r.Context(), teamID, teamRunID)
+	if err != nil {
+		writeErrorJSON(w, "team run not found", http.StatusNotFound)
+		return
+	}
+
+	query := r.URL.Query()
+	types := strings.TrimSpace(query.Get("types"))
+	maxBytes := 1_048_576
+	if v := strings.TrimSpace(query.Get("max_bytes")); v != "" {
+		if n, ok := parseIntBounded(v, 1, 5_000_000); ok {
+			maxBytes = n
+		}
+	}
+	limit := 200
+	if v := strings.TrimSpace(query.Get("limit")); v != "" {
+		if n, ok := parseIntBounded(v, 1, 5_000); ok {
+			limit = n
+		}
+	}
+	maxConcurrency := 4
+	if v := strings.TrimSpace(query.Get("max_concurrency")); v != "" {
+		if n, ok := parseIntBounded(v, 1, 16); ok {
+			maxConcurrency = n
+		}
+	}
+	timeoutMS := 10_000
+	if v := strings.TrimSpace(query.Get("timeout_ms")); v != "" {
+		if n, ok := parseIntBounded(v, 1, 120_000); ok {
+			timeoutMS = n
+		}
+	}
+
+	targets := parseTeamRunModeratorTargets(query)
+
+	var runPayload map[string]any
+	if len(run.RunJSON) > 0 {
+		if err := json.Unmarshal(run.RunJSON, &runPayload); err != nil {
+			writeErrorJSON(w, "invalid stored run payload", http.StatusInternalServerError)
+			return
+		}
+	}
+	if runPayload == nil {
+		runPayload = map[string]any{}
+	}
+	teamMeta, _ := runPayload["team"].(map[string]any)
+	if teamMeta == nil {
+		teamMeta = map[string]any{}
+	}
+	runMap, _ := runPayload["run"].(map[string]any)
+
+	noSession := false
+	var baseSessionID string
+	if runMap != nil {
+		if v, ok := runMap["no_session"]; ok {
+			if b, ok := v.(bool); ok && b {
+				noSession = true
+			}
+		}
+		if raw, ok := runMap["session_id"]; ok {
+			if s, ok := raw.(string); ok {
+				s = strings.TrimSpace(s)
+				if s != "" && isSessionIDSafe(s) {
+					baseSessionID = s
+				}
+			}
+		}
+	}
+	memberSessions := teamRunMemberSessionsFromMeta(teamMeta)
+
+	members, err := s.cfg.DB.ListTeamMembers(r.Context(), teamID)
+	if err != nil {
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	combined := make([]teamRunMemberInfo, 0, len(members))
+	for _, m := range members {
+		combined = append(combined, teamRunMemberInfo{
+			MemberID:     m.MemberID,
+			AgentID:      m.AgentID,
+			DeploymentID: m.DeploymentID,
+			Role:         m.Role,
+		})
+	}
+	if rawMembers, ok := teamMeta["runtime_members"]; ok && rawMembers != nil {
+		if arr, ok := rawMembers.([]any); ok {
+			inputs, err := parseTeamRunRuntimeMembers(map[string]any{"runtime_members": arr})
+			if err != nil {
+				writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			for _, input := range inputs {
+				combined = append(combined, teamRunMemberInfo{
+					MemberID:     strings.TrimSpace(input.MemberID),
+					AgentID:      strings.TrimSpace(input.AgentID),
+					DeploymentID: strings.TrimSpace(input.DeploymentID),
+					Role:         strings.TrimSpace(input.Role),
+				})
+			}
+		}
+	}
+
+	selected, skipped := filterTeamRunModeratorTargets(combined, targets)
+	if len(selected) == 0 {
+		writeJSON(w, map[string]any{
+			"ok":          true,
+			"team_id":     teamID,
+			"team_run_id": teamRunID,
+			"events":      []any{},
+			"skipped":     skipped,
+		})
+		return
+	}
+
+	if noSession {
+		writeJSON(w, map[string]any{
+			"ok":          true,
+			"team_id":     teamID,
+			"team_run_id": teamRunID,
+			"events":      []any{},
+			"skipped":     append(skipped, map[string]any{"reason": "no_session"}),
+		})
+		return
+	}
+
+	for _, member := range selected {
+		if strings.TrimSpace(member.AgentID) == "" {
+			writeErrorJSON(w, "team member missing agent_id", http.StatusBadRequest)
+			return
+		}
+		if ok, err := s.canAccessAgent(r.Context(), p, member.AgentID); err != nil {
+			writeErrorJSON(w, "db error", http.StatusInternalServerError)
+			return
+		} else if !ok {
+			writeErrorJSON(w, "forbidden", http.StatusForbidden)
+			return
+		}
+	}
+
+	tasks := make([]agentTaskPrepared, 0, len(selected))
+	sources := make([]teamRunModeratorEventSource, 0, len(selected))
+	skippedRows := skipped
+
+	for idx, member := range selected {
+		sessionID := ""
+		if memberSessions != nil {
+			sessionID = memberSessions[member.MemberID]
+		}
+		if sessionID == "" && baseSessionID != "" {
+			sessionID = baseSessionID
+		}
+		if sessionID == "" {
+			skippedRows = append(skippedRows, map[string]any{
+				"member_id": member.MemberID,
+				"agent_id":  member.AgentID,
+				"reason":    "missing session_id",
+			})
+			continue
+		}
+		q := url.Values{}
+		q.Set("session_id", sessionID)
+		if types != "" {
+			q.Set("types", types)
+		}
+		if maxBytes > 0 {
+			q.Set("max_bytes", itoa(maxBytes))
+		}
+		tasks = append(tasks, agentTaskPrepared{
+			TaskID:       "member_" + itoa(idx),
+			AgentID:      member.AgentID,
+			DeploymentID: member.DeploymentID,
+			Method:       "GET",
+			Path:         "/api/v1/moderator/events",
+			Query:        q.Encode(),
+			Headers:      map[string]string{},
+		})
+		sources = append(sources, teamRunModeratorEventSource{
+			MemberID:     member.MemberID,
+			AgentID:      member.AgentID,
+			DeploymentID: member.DeploymentID,
+			SessionID:    sessionID,
+		})
+	}
+
+	if len(tasks) == 0 {
+		writeJSON(w, map[string]any{
+			"ok":          true,
+			"team_id":     teamID,
+			"team_run_id": teamRunID,
+			"events":      []any{},
+			"skipped":     skippedRows,
+		})
+		return
+	}
+
+	results := s.executeAgentTasks(r.Context(), p, tasks, maxConcurrency, timeoutMS, traceIDFromContext(r.Context()))
+	events := make([]teamRunModeratorEventRow, 0, len(results))
+	errorsOut := make([]map[string]any, 0)
+
+	for idx, res := range results {
+		if idx >= len(sources) {
+			continue
+		}
+		src := sources[idx]
+		if !res.OK {
+			row := map[string]any{
+				"member_id": src.MemberID,
+				"agent_id":  src.AgentID,
+			}
+			if src.DeploymentID != "" {
+				row["deployment_id"] = src.DeploymentID
+			}
+			if res.HTTPStatus != 0 {
+				row["http_status"] = res.HTTPStatus
+			}
+			if res.Error != "" {
+				row["error"] = res.Error
+			}
+			errorsOut = append(errorsOut, row)
+			continue
+		}
+		rawEvents, ok := res.Result["events"].([]any)
+		if !ok {
+			continue
+		}
+		for _, item := range rawEvents {
+			evMap, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			evType, _ := evMap["type"].(string)
+			ts := int64(0)
+			if v, ok := evMap["ts_unix_ms"]; ok {
+				if n, ok := asInt(v); ok {
+					ts = int64(n)
+				}
+			}
+			events = append(events, teamRunModeratorEventRow{
+				MemberID:     src.MemberID,
+				AgentID:      src.AgentID,
+				DeploymentID: src.DeploymentID,
+				SessionID:    src.SessionID,
+				Type:         evType,
+				TsUnixMS:     ts,
+				Event:        evMap,
+			})
+		}
+	}
+
+	sort.Slice(events, func(i, j int) bool {
+		if events[i].TsUnixMS == events[j].TsUnixMS {
+			return events[i].MemberID < events[j].MemberID
+		}
+		return events[i].TsUnixMS > events[j].TsUnixMS
+	})
+	if limit > 0 && len(events) > limit {
+		events = events[:limit]
+	}
+
+	outEvents := make([]map[string]any, 0, len(events))
+	for _, ev := range events {
+		row := map[string]any{
+			"member_id":  ev.MemberID,
+			"agent_id":   ev.AgentID,
+			"session_id": ev.SessionID,
+			"type":       ev.Type,
+			"ts_unix_ms": ev.TsUnixMS,
+			"event":      ev.Event,
+		}
+		if ev.DeploymentID != "" {
+			row["deployment_id"] = ev.DeploymentID
+		}
+		outEvents = append(outEvents, row)
+	}
+
+	resp := map[string]any{
+		"ok":          true,
+		"team_id":     teamID,
+		"team_run_id": teamRunID,
+		"events":      outEvents,
+	}
+	if len(errorsOut) > 0 {
+		resp["errors"] = errorsOut
+	}
+	if len(skippedRows) > 0 {
+		resp["skipped"] = skippedRows
 	}
 	writeJSON(w, resp)
 }
@@ -472,4 +799,41 @@ func filterTeamRunModeratorTargets(members []teamRunMemberInfo, targets *teamRun
 		}
 	}
 	return selected, skipped
+}
+
+func parseTeamRunModeratorTargets(q url.Values) *teamRunModeratorTargets {
+	if q == nil {
+		return nil
+	}
+	roles := splitCSVParam(q.Get("roles"))
+	memberIDs := splitCSVParam(q.Get("member_ids"))
+	agentIDs := splitCSVParam(q.Get("agent_ids"))
+	if len(roles) == 0 && len(memberIDs) == 0 && len(agentIDs) == 0 {
+		return nil
+	}
+	return &teamRunModeratorTargets{
+		Roles:     roles,
+		MemberIDs: memberIDs,
+		AgentIDs:  agentIDs,
+	}
+}
+
+func splitCSVParam(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		out = append(out, part)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

@@ -512,6 +512,39 @@ schemas:
         items:
           $ref: "#/components/schemas/TeamRunModeratorSkipped"
 
+  TeamRunModeratorEvent:
+    type: object
+    properties:
+      member_id: { type: string }
+      agent_id: { type: string }
+      deployment_id: { type: string }
+      session_id: { type: string }
+      type: { type: string }
+      ts_unix_ms: { type: integer, format: int64 }
+      event:
+        type: object
+        additionalProperties: true
+
+  TeamRunModeratorEventsResponse:
+    type: object
+    required: [ok, team_id, team_run_id, events]
+    properties:
+      ok: { type: boolean }
+      team_id: { type: string }
+      team_run_id: { type: string }
+      events:
+        type: array
+        items:
+          $ref: "#/components/schemas/TeamRunModeratorEvent"
+      errors:
+        type: array
+        items:
+          $ref: "#/components/schemas/TeamRunModeratorDispatch"
+      skipped:
+        type: array
+        items:
+          $ref: "#/components/schemas/TeamRunModeratorSkipped"
+
   TeamRunDispatchError:
     type: object
     properties:

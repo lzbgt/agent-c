@@ -181,6 +181,8 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-25: Team runs now persist per-member session_id mappings; run status includes `member_sessions` and runtime member updates extend mappings.
   - 2026-02-25: Added broker team-run moderator broadcast endpoints (directive/task) + OpenAPI/docs updates.
   - 2026-02-25: WebUI team run panel now publishes moderator directives/tasks with target filters; session mappings visible in run status.
+  - 2026-02-25: Added team-run moderator events aggregation endpoint + OpenAPI/docs.
+  - 2026-02-25: WebUI team run moderator panel can load aggregated moderator events (filters + JSON view).
   - 2026-02-25: Team member inline edit panel added (role/status/weight/caps/meta + agent/deployment).
   - [x] 2026-02-25: Added runtime member updates for team runs (replace/merge) + WebUI panel + broker API/event.
   - [x] 2026-02-25: Added compose smoke for team run runtime member updates.
