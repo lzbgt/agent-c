@@ -357,6 +357,40 @@ if "spawn_validation" not in types:
   raise SystemExit(1)
 PY
 
+EVENTS_REPLAY_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    "${BROKER_BASE}/v1/events/replay?types=team_goal_spawn_validation&limit=50"
+)"
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${EVENTS_REPLAY_JSON}''')
+events = obj.get("events") or []
+if not isinstance(events, list) or len(events) < 1:
+  print("expected replay events for team_goal_spawn_validation", obj, file=sys.stderr)
+  raise SystemExit(1)
+found = False
+for raw in events:
+  if isinstance(raw, str):
+    try:
+      ev = json.loads(raw)
+    except json.JSONDecodeError:
+      continue
+  elif isinstance(raw, dict):
+    ev = raw
+  else:
+    continue
+  if str(ev.get("type","")) != "team_goal_spawn_validation":
+    continue
+  payload = ev.get("payload") or {}
+  if str(payload.get("team_run_id","")) == "${BAD_TEAM_RUN_ID}":
+    found = True
+    break
+if not found:
+  print("spawn_validation event not found for bad run", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 ORCH_LOG2="${LOG_DIR}/broker_orchestrator_loop_repeat.log"
 (
   cd "${ROOT}/broker"
