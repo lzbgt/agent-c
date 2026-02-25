@@ -147,6 +147,50 @@ export const BrokerEventsReplayRespSchema = z
   .passthrough();
 export type BrokerEventsReplayResp = z.infer<typeof BrokerEventsReplayRespSchema>;
 
+export const BrokerOrchestratorRunSchema = z
+  .object({
+    orchestrator_run_id: z.string(),
+    team_id: z.string().optional(),
+    status: z.string().optional(),
+    goal: z.string().optional(),
+    created_by: z.string().optional(),
+    created_unix_ms: z.number().optional(),
+    updated_unix_ms: z.number().optional(),
+    last_heartbeat_unix_ms: z.number().optional(),
+    goal_contract: z.record(z.any()).optional(),
+    role_plan_snapshot: z.record(z.any()).optional(),
+    meta: z.record(z.any()).optional(),
+  })
+  .passthrough();
+export type BrokerOrchestratorRun = z.infer<typeof BrokerOrchestratorRunSchema>;
+
+export const BrokerOrchestratorRunRespSchema = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string().optional(),
+    run: BrokerOrchestratorRunSchema.optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerOrchestratorRunResp = z.infer<typeof BrokerOrchestratorRunRespSchema>;
+
+export const BrokerOrchestratorRunListRespSchema = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string().optional(),
+    runs: z.array(BrokerOrchestratorRunSchema).optional(),
+    limit: z.number().optional(),
+    offset: z.number().optional(),
+    status: z.string().optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerOrchestratorRunListResp = z.infer<typeof BrokerOrchestratorRunListRespSchema>;
+
 export const BrokerTeamSchema = z
   .object({
     team_id: z.string(),

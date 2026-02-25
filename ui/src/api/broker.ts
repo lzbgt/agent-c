@@ -11,6 +11,10 @@ import {
   type BrokerMembershipAuditResp,
   BrokerEventsReplayRespSchema,
   type BrokerEventsReplayResp,
+  BrokerOrchestratorRunRespSchema,
+  type BrokerOrchestratorRunResp,
+  BrokerOrchestratorRunListRespSchema,
+  type BrokerOrchestratorRunListResp,
   BrokerTeamCreateRespSchema,
   type BrokerTeamCreateResp,
   BrokerTeamDeleteRespSchema,
@@ -391,6 +395,110 @@ export async function apiBrokerEventsReplay(
   const r = await fetch(url, { headers: daemonHeaders(auth) });
   const j = await r.json();
   return BrokerEventsReplayRespSchema.parse(j);
+}
+
+export async function apiBrokerOrchestratorRunsList(
+  brokerBase: string,
+  teamId: string,
+  auth?: ApiAuth,
+  opts?: { limit?: number; offset?: number; status?: string },
+): Promise<BrokerOrchestratorRunListResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  const params = new URLSearchParams();
+  if (typeof opts?.limit === "number" && Number.isFinite(opts.limit)) {
+    params.set("limit", String(Math.max(1, Math.floor(opts.limit))));
+  }
+  if (typeof opts?.offset === "number" && Number.isFinite(opts.offset)) {
+    params.set("offset", String(Math.max(0, Math.floor(opts.offset))));
+  }
+  if (typeof opts?.status === "string" && opts.status.trim()) {
+    params.set("status", opts.status.trim());
+  }
+  const qs = params.toString();
+  const url = `${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/runs${qs ? `?${qs}` : ""}`;
+  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return BrokerOrchestratorRunListRespSchema.parse(j);
+}
+
+export async function apiBrokerOrchestratorRunCreate(
+  brokerBase: string,
+  teamId: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<BrokerOrchestratorRunResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/runs`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(body ?? {}),
+  });
+  const j = await r.json();
+  return BrokerOrchestratorRunRespSchema.parse(j);
+}
+
+export async function apiBrokerOrchestratorRunGet(
+  brokerBase: string,
+  teamId: string,
+  runId: string,
+  auth?: ApiAuth,
+): Promise<BrokerOrchestratorRunResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  const rid = String(runId || "").trim();
+  if (!tid || !rid) throw new Error("missing team_id or run id");
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/runs/${encodeURIComponent(rid)}`, {
+    headers: daemonHeaders(auth),
+  });
+  const j = await r.json();
+  return BrokerOrchestratorRunRespSchema.parse(j);
+}
+
+export async function apiBrokerOrchestratorRunUpdate(
+  brokerBase: string,
+  teamId: string,
+  runId: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<BrokerOrchestratorRunResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  const rid = String(runId || "").trim();
+  if (!tid || !rid) throw new Error("missing team_id or run id");
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/runs/${encodeURIComponent(rid)}`, {
+    method: "PATCH",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(body ?? {}),
+  });
+  const j = await r.json();
+  return BrokerOrchestratorRunRespSchema.parse(j);
+}
+
+export async function apiBrokerOrchestratorRunHeartbeat(
+  brokerBase: string,
+  teamId: string,
+  runId: string,
+  body: Record<string, any> | undefined,
+  auth?: ApiAuth,
+): Promise<BrokerOrchestratorRunResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  const rid = String(runId || "").trim();
+  if (!tid || !rid) throw new Error("missing team_id or run id");
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/runs/${encodeURIComponent(rid)}/heartbeat`,
+    {
+      method: "POST",
+      headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+      body: JSON.stringify(body ?? {}),
+    },
+  );
+  const j = await r.json();
+  return BrokerOrchestratorRunRespSchema.parse(j);
 }
 
 export async function apiBrokerGetClientPrefs(

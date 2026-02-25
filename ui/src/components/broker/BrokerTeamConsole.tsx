@@ -17,6 +17,7 @@ import {
 } from "../../api";
 import FieldLabel from "../FieldLabel";
 import BrokerTeamRunPanel from "./BrokerTeamRunPanel";
+import BrokerOrchestratorRunPanel from "./BrokerOrchestratorRunPanel";
 import TeamRolePlanEditor, { type RoleGraphEdge } from "./TeamRolePlanEditor";
 import type { BrokerEventRow, TeamMemberRow, TeamQuorumRuleRow } from "./types";
 
@@ -1706,6 +1707,14 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         ) : null}
       </div>
 
+
+      <BrokerOrchestratorRunPanel
+        base={props.base}
+        auth={props.auth}
+        canQuery={canQuery}
+        teamId={teamIdTrimmed}
+        teamMeta={teamDetails?.meta && typeof teamDetails.meta === "object" ? (teamDetails.meta as Record<string, any>) : null}
+      />
 
       <BrokerTeamRunPanel
         base={props.base}

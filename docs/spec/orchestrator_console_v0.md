@@ -50,6 +50,7 @@ Status: draft (rolling)
 - Async team runs (`team.mode=async`) with job persistence + status reconcile.
 - Broker SSE events: `team_run_created`, `team_run_status`, `team_quorum_*`, `team_runtime_members_updated`.
 - WebUI Team console with run panel (recent runs + inline approvals).
+- WebUI Team console includes orchestrator run panel (create/list/update/heartbeat).
 - WebUI team run status panel shows goal contracts, goal progress/drift events, and handoff events; it can emit goal + handoff updates.
 
 ## Proposed UI flows
