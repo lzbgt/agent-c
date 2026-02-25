@@ -112,6 +112,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-25: host memory tools enforce read_only mode (write tools rejected, read tools allowed).
   - 2026-02-25: broker injects shared memory scope/mode into member runs; status surfaces shared memory fields.
   - 2026-02-25: WebUI team settings include shared memory mode control; OpenAPI/docs updated.
+  - 2026-02-26: added broker compose smoke for shared memory read_only enforcement.
 - [ ] W=10 — Role handoff execution: emit `team_handoff` events and visualize role graph in WebUI.
   - 2026-02-25: WebUI team run status panel can emit and display handoff events (role graph visualization still pending).
 
