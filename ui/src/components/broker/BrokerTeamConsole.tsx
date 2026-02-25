@@ -81,6 +81,14 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [memberSummaryModel, setMemberSummaryModel] = React.useState<string>("");
   const [memberTools, setMemberTools] = React.useState<string>("");
   const [memberTimeoutMs, setMemberTimeoutMs] = React.useState<string>("");
+  const [memberEditId, setMemberEditId] = React.useState<string>("");
+  const [memberEditRole, setMemberEditRole] = React.useState<string>("");
+  const [memberEditStatus, setMemberEditStatus] = React.useState<string>("");
+  const [memberEditWeight, setMemberEditWeight] = React.useState<string>("");
+  const [memberEditCapabilities, setMemberEditCapabilities] = React.useState<string>("");
+  const [memberEditMetaJson, setMemberEditMetaJson] = React.useState<string>("");
+  const [memberEditBusy, setMemberEditBusy] = React.useState<boolean>(false);
+  const [memberEditError, setMemberEditError] = React.useState<string | null>(null);
   const [memberAgentsBusy, setMemberAgentsBusy] = React.useState<boolean>(false);
   const [memberAgentsError, setMemberAgentsError] = React.useState<string | null>(null);
   const [memberAgents, setMemberAgents] = React.useState<any[] | null>(null);
@@ -432,6 +440,103 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       setMembersError(String(err));
     } finally {
       setMembersBusy(false);
+    }
+  };
+
+  const handleEditMember = (member: TeamMemberRow) => {
+    const mid = String(member?.member_id || "").trim();
+    if (!mid) return;
+    setMemberEditId(mid);
+    setMemberEditRole(String(member?.role || ""));
+    setMemberEditStatus(String(member?.status || "active"));
+    setMemberEditWeight(
+      typeof member?.weight === "number" && Number.isFinite(member.weight) ? String(member.weight) : "",
+    );
+    const caps = Array.isArray(member?.capabilities)
+      ? member.capabilities.map((c) => String(c).trim()).filter(Boolean)
+      : [];
+    setMemberEditCapabilities(caps.join(", "));
+    if (member?.meta && typeof member.meta === "object") {
+      try {
+        setMemberEditMetaJson(JSON.stringify(member.meta, null, 2));
+      } catch {
+        setMemberEditMetaJson("");
+      }
+    } else {
+      setMemberEditMetaJson("");
+    }
+    setMemberEditError(null);
+  };
+
+  const handleCancelMemberEdit = () => {
+    setMemberEditId("");
+    setMemberEditRole("");
+    setMemberEditStatus("");
+    setMemberEditWeight("");
+    setMemberEditCapabilities("");
+    setMemberEditMetaJson("");
+    setMemberEditError(null);
+  };
+
+  const handleSaveMemberEdit = async () => {
+    const tid = teamIdTrimmed;
+    const mid = String(memberEditId || "").trim();
+    if (!tid || !mid) return;
+    const role = String(memberEditRole || "").trim();
+    if (!role) {
+      setMemberEditError("role required");
+      return;
+    }
+    const status = String(memberEditStatus || "").trim() || "active";
+    const caps = String(memberEditCapabilities || "")
+      .split(",")
+      .map((c) => c.trim())
+      .filter(Boolean);
+    const weightRaw = String(memberEditWeight || "").trim();
+    let weightValue: number | undefined = undefined;
+    if (weightRaw.length > 0) {
+      const parsed = Number.parseInt(weightRaw, 10);
+      if (!Number.isFinite(parsed)) {
+        setMemberEditError("weight must be a number");
+        return;
+      }
+      weightValue = parsed;
+    }
+    let meta: Record<string, any> = {};
+    const metaRaw = String(memberEditMetaJson || "").trim();
+    if (metaRaw) {
+      try {
+        const parsed = JSON.parse(metaRaw);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          setMemberEditError("meta must be a JSON object");
+          return;
+        }
+        meta = parsed;
+      } catch (err) {
+        setMemberEditError(`invalid meta json: ${String(err)}`);
+        return;
+      }
+    }
+    setMemberEditError(null);
+    setMemberEditBusy(true);
+    try {
+      const payload: Record<string, any> = {
+        role,
+        status,
+        capabilities: caps,
+        meta,
+      };
+      if (weightValue !== undefined) payload.weight = weightValue;
+      const resp = await apiBrokerTeamMemberUpdate(props.base, tid, mid, payload, props.auth);
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "update member failed");
+      }
+      await refreshMembers(tid);
+      handleCancelMemberEdit();
+    } catch (err) {
+      setMemberEditError(String(err));
+    } finally {
+      setMemberEditBusy(false);
     }
   };
 
@@ -991,39 +1096,112 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
               if (backendLabel) infoBits.push(`backend ${backendLabel}`);
               if (overrideBits.length > 0) infoBits.push(`overrides ${overrideBits.join(", ")}`);
               return (
-                <div
-                  key={`member-${mid}-${idx}`}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70"
-                >
-                  <div className="text-[11px] text-white/70">
-                    <div>
-                      <span className="text-white/90">{mid || "member"}</span>
-                      {m?.role ? ` · role ${m.role}` : ""}
-                      {m?.status ? ` · ${m.status}` : ""}
-                      {m?.agent_id ? ` · agent ${m.agent_id}` : ""}
-                      {m?.deployment_id ? ` · dep ${m.deployment_id}` : ""}
-                      {m?.created_unix_ms ? ` · ${fmtTs(m.created_unix_ms)}` : ""}
+                <div key={`member-${mid}-${idx}`} className="grid gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
+                    <div className="text-[11px] text-white/70">
+                      <div>
+                        <span className="text-white/90">{mid || "member"}</span>
+                        {m?.role ? ` · role ${m.role}` : ""}
+                        {m?.status ? ` · ${m.status}` : ""}
+                        {m?.agent_id ? ` · agent ${m.agent_id}` : ""}
+                        {m?.deployment_id ? ` · dep ${m.deployment_id}` : ""}
+                        {m?.created_unix_ms ? ` · ${fmtTs(m.created_unix_ms)}` : ""}
+                      </div>
+                      {infoBits.length > 0 ? (
+                        <div className="text-[10px] text-white/50">{infoBits.join(" · ")}</div>
+                      ) : null}
                     </div>
-                    {infoBits.length > 0 ? (
-                      <div className="text-[10px] text-white/50">{infoBits.join(" · ")}</div>
-                    ) : null}
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                        type="button"
+                        onClick={() => void handleToggleMemberStatus(m)}
+                      >
+                        {String(m?.status || "active").toLowerCase() === "paused" ? "Resume" : "Pause"}
+                      </button>
+                      <button
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                        type="button"
+                        onClick={() => handleEditMember(m)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                        type="button"
+                        onClick={() => void handleDeleteMember(mid)}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                      type="button"
-                      onClick={() => void handleToggleMemberStatus(m)}
-                    >
-                      {String(m?.status || "active").toLowerCase() === "paused" ? "Resume" : "Pause"}
-                    </button>
-                    <button
-                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                      type="button"
-                      onClick={() => void handleDeleteMember(mid)}
-                    >
-                      Remove
-                    </button>
-                  </div>
+                  {memberEditId === mid ? (
+                    <div className="rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <FieldLabel>Role</FieldLabel>
+                        <input
+                          className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                          value={memberEditRole}
+                          onChange={(e) => setMemberEditRole(e.target.value)}
+                        />
+                        <FieldLabel>Status</FieldLabel>
+                        <select
+                          className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                          value={memberEditStatus}
+                          onChange={(e) => setMemberEditStatus(e.target.value)}
+                        >
+                          <option value="active">active</option>
+                          <option value="paused">paused</option>
+                          <option value="disabled">disabled</option>
+                        </select>
+                        <FieldLabel>Weight</FieldLabel>
+                        <input
+                          className="w-20 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                          value={memberEditWeight}
+                          onChange={(e) => setMemberEditWeight(e.target.value)}
+                          placeholder="1"
+                        />
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <FieldLabel>Capabilities</FieldLabel>
+                        <input
+                          className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                          value={memberEditCapabilities}
+                          onChange={(e) => setMemberEditCapabilities(e.target.value)}
+                          placeholder="vision,audio"
+                        />
+                      </div>
+                      <div className="mt-2 grid gap-1">
+                        <FieldLabel>Meta JSON</FieldLabel>
+                        <textarea
+                          className="min-h-[72px] w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
+                          value={memberEditMetaJson}
+                          onChange={(e) => setMemberEditMetaJson(e.target.value)}
+                          placeholder='{"backend_label":"openrouter-main"}'
+                        />
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <button
+                          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                          type="button"
+                          disabled={!canQuery || memberEditBusy}
+                          onClick={() => void handleSaveMemberEdit()}
+                        >
+                          {memberEditBusy ? "Saving…" : "Save"}
+                        </button>
+                        <button
+                          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                          type="button"
+                          onClick={() => handleCancelMemberEdit()}
+                        >
+                          Cancel
+                        </button>
+                        {memberEditError ? (
+                          <span className="text-[11px] text-rose-200">{memberEditError}</span>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               );
             })}

@@ -173,6 +173,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-25: Team member rows add pause/resume status toggles.
   - 2026-02-25: Team members list adds bulk pause/resume controls.
   - 2026-02-25: Team members list adds bulk remove-paused control.
+  - 2026-02-25: Team member inline edit panel added (role/status/weight/caps/meta).
 - [x] W=9 — Approval queues + tool-level quorum gating: WebUI approval queue, tool-level quorum enforcement, and SSE updates for approval state.
   - 2026-02-24: Added agentd approval DB tables, approval gate, approval APIs, and approval run events.
   - 2026-02-24: Added approval event schemas + fixtures + spec tests.
