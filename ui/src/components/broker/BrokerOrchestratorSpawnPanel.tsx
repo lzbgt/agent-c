@@ -259,6 +259,9 @@ export default function BrokerOrchestratorSpawnPanel(props: SpawnPanelProps) {
   return (
     <section className="rounded-md border border-white/10 bg-black/20 p-3">
       <div className="mb-2 text-xs font-semibold text-white/80">Orchestrator spawn requests</div>
+      <div className="text-[11px] text-white/50">
+        Spawn requests are fulfilled by external adapters. See docs/spec/agent_spawn_adapter_v0.md for the contract.
+      </div>
       <div className="grid gap-3">
         <div className="grid gap-2 rounded-md border border-white/5 bg-black/30 p-2">
           <div className="text-[11px] text-white/60">Create spawn request</div>
