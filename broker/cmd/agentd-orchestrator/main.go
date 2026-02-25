@@ -23,6 +23,7 @@ import (
 type config struct {
 	brokerBase     string
 	oidcToken      string
+	oidcTokenFile  string
 	insecureTLS    bool
 	pollInterval   time.Duration
 	once           bool
@@ -208,6 +209,7 @@ func parseFlags() config {
 	var cfg config
 	flag.StringVar(&cfg.brokerBase, "broker-base", strings.TrimSpace(os.Getenv("BROKER_BASE")), "Broker base URL (env: BROKER_BASE).")
 	flag.StringVar(&cfg.oidcToken, "oidc-token", strings.TrimSpace(os.Getenv("BROKER_OIDC_TOKEN")), "Bearer token for broker auth (env: BROKER_OIDC_TOKEN).")
+	flag.StringVar(&cfg.oidcTokenFile, "oidc-token-file", strings.TrimSpace(os.Getenv("BROKER_OIDC_TOKEN_FILE")), "Path to broker auth token file (env: BROKER_OIDC_TOKEN_FILE).")
 	flag.BoolVar(&cfg.insecureTLS, "insecure", strings.TrimSpace(os.Getenv("BROKER_INSECURE_TLS")) == "1", "Skip TLS verification (env: BROKER_INSECURE_TLS=1).")
 	flag.DurationVar(&cfg.pollInterval, "poll-interval", 5*time.Second, "Polling interval when not --once.")
 	flag.BoolVar(&cfg.once, "once", false, "Process one poll cycle and exit.")
@@ -226,7 +228,7 @@ func (c config) validate() error {
 	if c.brokerBase == "" {
 		return fmt.Errorf("missing broker base url")
 	}
-	if c.oidcToken == "" {
+	if c.oidcToken == "" && c.oidcTokenFile == "" {
 		return fmt.Errorf("missing oidc token")
 	}
 	if c.limit <= 0 {
@@ -239,6 +241,23 @@ func (c config) validate() error {
 		c.status = "running"
 	}
 	return nil
+}
+
+func (c config) bearerToken() (string, error) {
+	if c.oidcTokenFile != "" {
+		if data, err := os.ReadFile(c.oidcTokenFile); err == nil {
+			token := strings.TrimSpace(string(data))
+			if token != "" {
+				return token, nil
+			}
+		} else if strings.TrimSpace(c.oidcToken) == "" {
+			return "", fmt.Errorf("read oidc token file: %w", err)
+		}
+	}
+	if strings.TrimSpace(c.oidcToken) == "" {
+		return "", fmt.Errorf("missing oidc token")
+	}
+	return strings.TrimSpace(c.oidcToken), nil
 }
 
 func runOnce(ctx context.Context, client *http.Client, cfg config) error {
@@ -1188,7 +1207,11 @@ func doJSON(ctx context.Context, client *http.Client, cfg config, method, url st
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+cfg.oidcToken)
+	token, err := cfg.bearerToken()
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	resp, err := client.Do(req)

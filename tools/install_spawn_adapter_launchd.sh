@@ -9,6 +9,7 @@ label="com.agentd.spawn-adapter"
 spawn_bin="${SPAWN_ADAPTER_BIN:-/usr/local/bin/agentd-spawn-adapter}"
 broker_base="${BROKER_BASE:-}"
 broker_token="${BROKER_OIDC_TOKEN:-}"
+broker_token_file="${BROKER_OIDC_TOKEN_FILE:-}"
 broker_insecure="${BROKER_INSECURE_TLS:-}"
 spawn_log_dir="${SPAWN_ADAPTER_LOG_DIR:-${HOME}/Library/Logs}"
 spawn_plist_path="${SPAWN_ADAPTER_PLIST_PATH:-${HOME}/Library/LaunchAgents/${label}.plist}"
@@ -32,8 +33,8 @@ if [[ ! -x "${spawn_bin}" ]]; then
   echo "spawn adapter binary not found or not executable: ${spawn_bin}" >&2
   exit 1
 fi
-if [[ -z "${broker_base}" || -z "${broker_token}" ]]; then
-  echo "missing BROKER_BASE or BROKER_OIDC_TOKEN" >&2
+if [[ -z "${broker_base}" || ( -z "${broker_token}" && -z "${broker_token_file}" ) ]]; then
+  echo "missing BROKER_BASE or BROKER_OIDC_TOKEN/BROKER_OIDC_TOKEN_FILE" >&2
   exit 1
 fi
 if [[ -z "${spawn_command}" ]] && ! is_truthy "${spawn_allocator}"; then
@@ -94,7 +95,12 @@ stderr_path="${spawn_log_dir}/spawn_adapter.err.log"
   echo '  <key>EnvironmentVariables</key>'
   echo '  <dict>'
   echo "    <key>BROKER_BASE</key><string>$(xml_escape "${broker_base}")</string>"
-  echo "    <key>BROKER_OIDC_TOKEN</key><string>$(xml_escape "${broker_token}")</string>"
+  if [[ -n "${broker_token}" ]]; then
+    echo "    <key>BROKER_OIDC_TOKEN</key><string>$(xml_escape "${broker_token}")</string>"
+  fi
+  if [[ -n "${broker_token_file}" ]]; then
+    echo "    <key>BROKER_OIDC_TOKEN_FILE</key><string>$(xml_escape "${broker_token_file}")</string>"
+  fi
   if [[ -n "${broker_insecure}" ]]; then
     echo "    <key>BROKER_INSECURE_TLS</key><string>$(xml_escape "${broker_insecure}")</string>"
   fi

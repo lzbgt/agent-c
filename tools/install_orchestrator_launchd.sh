@@ -9,6 +9,7 @@ label="com.agentd.orchestrator"
 orch_bin="${ORCHESTRATOR_BIN:-/usr/local/bin/agentd-orchestrator}"
 broker_base="${BROKER_BASE:-}"
 broker_token="${BROKER_OIDC_TOKEN:-}"
+broker_token_file="${BROKER_OIDC_TOKEN_FILE:-}"
 broker_insecure="${BROKER_INSECURE_TLS:-}"
 orch_log_dir="${ORCHESTRATOR_LOG_DIR:-${HOME}/Library/Logs}"
 orch_plist_path="${ORCHESTRATOR_PLIST_PATH:-${HOME}/Library/LaunchAgents/${label}.plist}"
@@ -23,8 +24,8 @@ if [[ ! -x "${orch_bin}" ]]; then
   echo "orchestrator binary not found or not executable: ${orch_bin}" >&2
   exit 1
 fi
-if [[ -z "${broker_base}" || -z "${broker_token}" ]]; then
-  echo "missing BROKER_BASE or BROKER_OIDC_TOKEN" >&2
+if [[ -z "${broker_base}" || ( -z "${broker_token}" && -z "${broker_token_file}" ) ]]; then
+  echo "missing BROKER_BASE or BROKER_OIDC_TOKEN/BROKER_OIDC_TOKEN_FILE" >&2
   exit 1
 fi
 
@@ -76,7 +77,12 @@ stderr_path="${orch_log_dir}/orchestrator.err.log"
   echo '  <key>EnvironmentVariables</key>'
   echo '  <dict>'
   echo "    <key>BROKER_BASE</key><string>$(xml_escape "${broker_base}")</string>"
-  echo "    <key>BROKER_OIDC_TOKEN</key><string>$(xml_escape "${broker_token}")</string>"
+  if [[ -n "${broker_token}" ]]; then
+    echo "    <key>BROKER_OIDC_TOKEN</key><string>$(xml_escape "${broker_token}")</string>"
+  fi
+  if [[ -n "${broker_token_file}" ]]; then
+    echo "    <key>BROKER_OIDC_TOKEN_FILE</key><string>$(xml_escape "${broker_token_file}")</string>"
+  fi
   if [[ -n "${broker_insecure}" ]]; then
     echo "    <key>BROKER_INSECURE_TLS</key><string>$(xml_escape "${broker_insecure}")</string>"
   fi

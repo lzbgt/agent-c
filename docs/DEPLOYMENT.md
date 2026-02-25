@@ -310,7 +310,19 @@ WantedBy=multi-user.target
 Notes:
 - `BROKER_OIDC_TOKEN` can be a static client token when the broker is configured with
   `--client-auth-file` + `--client-auth-fallback` + `--client-auth-allow-automation`.
-- For OIDC-only deployments, use a token refresh sidecar to keep `BROKER_OIDC_TOKEN` current.
+- `BROKER_OIDC_TOKEN_FILE` can be used instead; the orchestrator/spawn adapter will
+  read the token file on each request (best-effort).
+- For OIDC-only deployments, use a token refresh sidecar to keep the token file current.
+
+Example refresh helper (Keycloak/password grant):
+```
+tools/oidc_token_refresh.sh \
+  --issuer https://id.example.com/realms/agentd \
+  --client-id agentd-broker \
+  --user orchestration \
+  --password 'REDACTED' \
+  --output /etc/agentd/broker_oidc_token.txt
+```
 
 On macOS, the launchd helper scripts mirror these services:
 ```
@@ -322,6 +334,10 @@ BROKER_BASE="https://broker.example.com" \
   BROKER_OIDC_TOKEN="REPLACE_WITH_SERVICE_TOKEN" \
   SPAWN_ALLOCATOR=1 \
   tools/install_spawn_adapter_launchd.sh
+
+BROKER_BASE="https://broker.example.com" \
+  BROKER_OIDC_TOKEN_FILE="/etc/agentd/broker_oidc_token.txt" \
+  tools/install_orchestrator_launchd.sh
 ```
 
 ### Example (connector flags)

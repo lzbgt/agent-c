@@ -5,12 +5,18 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE_PATH="${ROOT}/out/devstack_state.json"
 BROKER_BASE=""
 KEYCLOAK_BASE=""
+TOKEN_FILE="${BROKER_OIDC_TOKEN_FILE:-}"
+OIDC_REALM="${OIDC_REALM:-agentd}"
+OIDC_CLIENT_ID="${OIDC_CLIENT_ID:-agentd-broker-dev}"
+OIDC_USERNAME="${OIDC_USERNAME:-test}"
+OIDC_PASSWORD="${OIDC_PASSWORD:-test}"
 SPAWN_COMMAND=""
 SPAWN_ALLOCATOR="${SPAWN_ALLOCATOR:-}"
 INSECURE="0"
 ONCE="0"
 ORCH_ARGS=()
 SPAWN_ARGS=()
+REFRESH_PID=""
 
 usage() {
   cat <<'USAGE'
@@ -20,6 +26,7 @@ Options:
   --state <path>        devstack_state.json path (default: out/devstack_state.json)
   --broker-base <url>   override broker base URL (default: from state)
   --keycloak <url>      override keycloak base URL (default: from state)
+  --token-file <path>   path to broker OIDC token file (env: BROKER_OIDC_TOKEN_FILE)
   --orchestrator-id <id> orchestrator id (default: random)
   --command <cmd>       spawn command (optional when --allocator is set)
   --allocator           use broker runtime member allocator (no command required)
@@ -36,6 +43,7 @@ while [[ $# -gt 0 ]]; do
     --state) STATE_PATH="$2"; shift 2 ;;
     --broker-base) BROKER_BASE="$2"; shift 2 ;;
     --keycloak) KEYCLOAK_BASE="$2"; shift 2 ;;
+    --token-file) TOKEN_FILE="$2"; shift 2 ;;
     --orchestrator-id) ORCH_ARGS+=(--orchestrator-id "$2"); shift 2 ;;
     --command) SPAWN_COMMAND="$2"; shift 2 ;;
     --allocator) SPAWN_ALLOCATOR="1"; shift ;;
@@ -83,16 +91,34 @@ if [[ -z "${SPAWN_COMMAND}" && "${SPAWN_ALLOCATOR}" != "1" ]]; then
 fi
 
 OIDC_TOKEN="${BROKER_OIDC_TOKEN:-}"
-if [[ -z "${OIDC_TOKEN}" ]]; then
-  OIDC_TOKEN="$("${ROOT}/tools/devstack_oidc_token.sh" --state "${STATE_PATH}" --keycloak "${KEYCLOAK_BASE}")"
+if [[ -z "${TOKEN_FILE}" ]]; then
+  TOKEN_FILE="${ROOT}/out/broker_oidc_token.txt"
 fi
+mkdir -p "${ROOT}/out"
 if [[ -z "${OIDC_TOKEN}" ]]; then
-  echo "failed to obtain OIDC token" >&2
-  exit 3
+  refresh_cmd=("${ROOT}/tools/oidc_token_refresh.sh" \
+    --state "${STATE_PATH}" \
+    --keycloak "${KEYCLOAK_BASE}" \
+    --realm "${OIDC_REALM}" \
+    --client-id "${OIDC_CLIENT_ID}" \
+    --user "${OIDC_USERNAME}" \
+    --password "${OIDC_PASSWORD}" \
+    --output "${TOKEN_FILE}")
+  if [[ "${INSECURE}" == "1" ]]; then
+    refresh_cmd+=(--insecure)
+  fi
+  "${refresh_cmd[@]}" >"${ROOT}/out/oidc_token_refresh.log" 2>&1 &
+  REFRESH_PID=$!
+else
+  mkdir -p "$(dirname "${TOKEN_FILE}")"
+  printf '%s' "${OIDC_TOKEN}" > "${TOKEN_FILE}"
 fi
 
 export BROKER_BASE="${BROKER_BASE}"
-export BROKER_OIDC_TOKEN="${OIDC_TOKEN}"
+if [[ -n "${OIDC_TOKEN}" ]]; then
+  export BROKER_OIDC_TOKEN="${OIDC_TOKEN}"
+fi
+export BROKER_OIDC_TOKEN_FILE="${TOKEN_FILE}"
 export SPAWN_COMMAND="${SPAWN_COMMAND}"
 export SPAWN_ALLOCATOR="${SPAWN_ALLOCATOR}"
 
@@ -110,6 +136,10 @@ fi
 
 pids=()
 cleanup() {
+  if [[ -n "${REFRESH_PID}" ]]; then
+    kill "${REFRESH_PID}" >/dev/null 2>&1 || true
+    wait "${REFRESH_PID}" >/dev/null 2>&1 || true
+  fi
   for pid in "${pids[@]}"; do
     kill "${pid}" >/dev/null 2>&1 || true
   done

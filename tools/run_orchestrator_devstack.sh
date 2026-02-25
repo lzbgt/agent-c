@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE_PATH="${ROOT}/out/devstack_state.json"
 BROKER_BASE=""
 KEYCLOAK_BASE=""
+TOKEN_FILE="${BROKER_OIDC_TOKEN_FILE:-}"
 ORCH_ARGS=()
 INSECURE="0"
 ONCE="0"
@@ -18,6 +19,7 @@ Options:
   --state <path>          devstack_state.json path (default: out/devstack_state.json)
   --broker-base <url>     override broker base URL (default: from state)
   --keycloak <url>        override keycloak base URL (default: from state)
+  --token-file <path>     path to broker OIDC token file (env: BROKER_OIDC_TOKEN_FILE)
   --orchestrator-id <id>  orchestrator id (default: random)
   --status <status>       run status filter (default: running)
   --limit <n>             max runs per team (default: 50)
@@ -33,6 +35,7 @@ while [[ $# -gt 0 ]]; do
     --state) STATE_PATH="$2"; shift 2 ;;
     --broker-base) BROKER_BASE="$2"; shift 2 ;;
     --keycloak) KEYCLOAK_BASE="$2"; shift 2 ;;
+    --token-file) TOKEN_FILE="$2"; shift 2 ;;
     --orchestrator-id) ORCH_ARGS+=(--orchestrator-id "$2"); shift 2 ;;
     --status) ORCH_ARGS+=(--status "$2"); shift 2 ;;
     --limit) ORCH_ARGS+=(--limit "$2"); shift 2 ;;
@@ -76,12 +79,21 @@ if [[ -z "${KEYCLOAK_BASE}" ]]; then
 fi
 
 OIDC_TOKEN="${BROKER_OIDC_TOKEN:-}"
-if [[ -z "${OIDC_TOKEN}" ]]; then
+if [[ -n "${TOKEN_FILE}" && -z "${OIDC_TOKEN}" && ! -s "${TOKEN_FILE}" ]]; then
+  OIDC_TOKEN="$("${ROOT}/tools/devstack_oidc_token.sh" --state "${STATE_PATH}" --keycloak "${KEYCLOAK_BASE}")"
+elif [[ -z "${TOKEN_FILE}" && -z "${OIDC_TOKEN}" ]]; then
   OIDC_TOKEN="$("${ROOT}/tools/devstack_oidc_token.sh" --state "${STATE_PATH}" --keycloak "${KEYCLOAK_BASE}")"
 fi
-if [[ -z "${OIDC_TOKEN}" ]]; then
+if [[ -z "${OIDC_TOKEN}" && -z "${TOKEN_FILE}" ]]; then
   echo "failed to obtain OIDC token" >&2
   exit 3
+fi
+if [[ -n "${TOKEN_FILE}" && -n "${OIDC_TOKEN}" ]]; then
+  mkdir -p "$(dirname "${TOKEN_FILE}")"
+  printf '%s' "${OIDC_TOKEN}" > "${TOKEN_FILE}"
+fi
+if [[ -n "${TOKEN_FILE}" && ! -s "${TOKEN_FILE}" ]]; then
+  echo "warning: OIDC token file is empty (${TOKEN_FILE}); orchestrator requests may fail until refreshed" >&2
 fi
 
 mkdir -p "${LOG_DIR}"
@@ -89,7 +101,12 @@ TS="$(date +\"%Y%m%d_%H%M%S\")"
 LOG_FILE="${LOG_DIR}/orchestrator_${TS}.log"
 
 export BROKER_BASE="${BROKER_BASE}"
-export BROKER_OIDC_TOKEN="${OIDC_TOKEN}"
+if [[ -n "${OIDC_TOKEN}" ]]; then
+  export BROKER_OIDC_TOKEN="${OIDC_TOKEN}"
+fi
+if [[ -n "${TOKEN_FILE}" ]]; then
+  export BROKER_OIDC_TOKEN_FILE="${TOKEN_FILE}"
+fi
 
 if [[ "${INSECURE}" == "1" ]]; then
   ORCH_ARGS+=(--insecure)

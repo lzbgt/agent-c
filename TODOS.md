@@ -127,11 +127,12 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-26: broker console replay cursor persists via client prefs (fallback localStorage).
 - [x] W=12 — Workflow rehydration beyond localStorage: persist workflow wait/resume state in broker/agentd and restore on WebUI reconnect.
   - 2026-02-26: workflow waits persist to client prefs (broker/agentd) with local fallback.
-- [ ] W=11 — Autonomous ops stack defaults: orchestrator + spawn adapter as first-class services (compose/systemd/launchd) with auto OIDC token refresh, so automation runs without the WebUI.
+- [x] W=11 — Autonomous ops stack defaults: orchestrator + spawn adapter as first-class services (compose/systemd/launchd) with auto OIDC token refresh, so automation runs without the WebUI.
   - 2026-02-26: added `tools/run_autonomous_devstack.sh` wrapper for dev stacks.
   - 2026-02-26: broker supports `client-auth-allow-automation` for admin client tokens.
   - 2026-02-26: compose overlay `docker/compose.autonomous.yml` + dev client auth file added.
   - 2026-02-26: launchd install/uninstall scripts added for orchestrator + spawn adapter.
+  - 2026-02-26: orchestrator/spawn adapter can read `BROKER_OIDC_TOKEN_FILE`; added `tools/oidc_token_refresh.sh`.
 - [ ] W=12 — User guidance/override lane: persist operator “guidance” events, deliver to orchestrator + active agents, and surface in WebUI with ack/receipt so rare human intervention re-aligns autonomy without breaking flows.
   - 2026-02-26: drafted `docs/spec/user_guidance_lane_v0.md` (guidance events + ack + replay).
   - 2026-02-26: broker storage + endpoints + SSE events for guidance lane.
