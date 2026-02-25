@@ -21,7 +21,7 @@ func (s *Server) handleTeamOrchestratorRunsList(w http.ResponseWriter, r *http.R
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -76,7 +76,7 @@ func (s *Server) handleTeamOrchestratorRunCreate(w http.ResponseWriter, r *http.
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -153,7 +153,7 @@ func (s *Server) handleTeamOrchestratorRunGet(w http.ResponseWriter, r *http.Req
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -178,7 +178,7 @@ func (s *Server) handleTeamOrchestratorRunUpdate(w http.ResponseWriter, r *http.
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -246,7 +246,7 @@ func (s *Server) handleTeamOrchestratorRunHeartbeat(w http.ResponseWriter, r *ht
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}

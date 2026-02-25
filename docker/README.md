@@ -15,6 +15,18 @@ If Docker is unavailable, `tools/verify_mac_local_stack.sh` verifies agentd + We
 
 Use `tools/verify_compose_stack.sh` to bring everything up and run basic smoke checks.
 
+To add the autonomous services (orchestrator + spawn adapter) to the stack:
+
+```bash
+docker compose -f docker-compose.yml -f docker/compose.autonomous.yml up -d
+```
+
+Notes:
+- The autonomous compose overlay enables broker client auth fallback and uses a dev token
+  (`AUTOMATION_CLIENT_TOKEN`, default `dev-orchestrator-token`) for the services.
+- Override `AUTOMATION_CLIENT_TOKEN` and update `docker/broker/client_auth.autonomous.json`
+  for real deployments.
+
 If Docker build fails on macOS with `unpigz`/`runc` resource errors, restart Docker Desktop or increase
 CPU/RAM. You can also control the build behavior via:
 - `COMPOSE_BUILD_SERIAL=1` (default) to reduce concurrency

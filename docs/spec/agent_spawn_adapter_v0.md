@@ -40,7 +40,7 @@ Spawn request statuses (convention):
 
 Required:
 - `--broker-base` (env: `BROKER_BASE`)
-- `--oidc-token` (env: `BROKER_OIDC_TOKEN`)
+- `--oidc-token` (env: `BROKER_OIDC_TOKEN`, OIDC or client auth token)
 - `--command` (env: `SPAWN_COMMAND`)
 
 Optional:
@@ -72,6 +72,7 @@ without provisioning new hosts.
 Notes:
 - `SPAWN_COMMAND` is optional when `--allocator` is enabled.
 - The adapter records allocator warnings/missing roles in spawn request meta.
+- Client auth tokens require broker `--client-auth-allow-automation`.
 
 ## Spawn command contract
 

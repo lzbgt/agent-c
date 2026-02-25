@@ -139,6 +139,19 @@ func (s *Server) requirePrincipal(r *http.Request) (*Principal, error) {
 	}, nil
 }
 
+func (s *Server) allowAutomationPrincipal(p *Principal) bool {
+	if p == nil {
+		return false
+	}
+	if p.AuthKind == "oidc" {
+		return true
+	}
+	if p.AuthKind == "client" && p.Admin && s.cfg.ClientAuthAllowAutomation {
+		return true
+	}
+	return false
+}
+
 func (s *Server) canAccessAgent(ctx context.Context, p *Principal, agentID string) (bool, error) {
 	if p == nil {
 		return false, nil

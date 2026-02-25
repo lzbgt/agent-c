@@ -128,6 +128,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-26: workflow waits persist to client prefs (broker/agentd) with local fallback.
 - [ ] W=11 — Autonomous ops stack defaults: orchestrator + spawn adapter as first-class services (compose/systemd/launchd) with auto OIDC token refresh, so automation runs without the WebUI.
   - 2026-02-26: added `tools/run_autonomous_devstack.sh` wrapper for dev stacks.
+  - 2026-02-26: broker supports `client-auth-allow-automation` for admin client tokens.
+  - 2026-02-26: compose overlay `docker/compose.autonomous.yml` + dev client auth file added.
+  - 2026-02-26: launchd install/uninstall scripts added for orchestrator + spawn adapter.
+- [ ] W=12 — User guidance/override lane: persist operator “guidance” events, deliver to orchestrator + active agents, and surface in WebUI with ack/receipt so rare human intervention re-aligns autonomy without breaking flows.
 - [x] W=9 — Agent provisioning hooks: define an optional `agent_spawn` interface (pluggable adapters for local/remote spawn) so the orchestrator can request new runtime members when capacity is low.
   - 2026-02-25: added broker spawn request persistence + events (`/v1/teams/{team_id}/orchestrator/spawn_requests`).
   - 2026-02-26: added `agentd-spawn-adapter` CLI + `docs/spec/agent_spawn_adapter_v0.md` (local adapter contract).

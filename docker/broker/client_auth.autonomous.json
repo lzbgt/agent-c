@@ -1,0 +1,9 @@
+{
+  "clients": [
+    {
+      "client_id": "autonomous-orchestrator",
+      "token": "dev-orchestrator-token",
+      "admin": true
+    }
+  ]
+}

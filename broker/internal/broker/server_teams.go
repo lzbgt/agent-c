@@ -25,7 +25,7 @@ func (s *Server) handleTeamsList(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -52,7 +52,7 @@ func (s *Server) handleTeamsCreate(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -326,7 +326,7 @@ func (s *Server) handleTeamGet(w http.ResponseWriter, r *http.Request, teamID st
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -343,7 +343,7 @@ func (s *Server) handleTeamUpdate(w http.ResponseWriter, r *http.Request, teamID
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -412,7 +412,7 @@ func (s *Server) handleTeamDelete(w http.ResponseWriter, r *http.Request, teamID
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -433,7 +433,7 @@ func (s *Server) handleTeamMembersList(w http.ResponseWriter, r *http.Request, t
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -459,7 +459,7 @@ func (s *Server) handleTeamMembersCreate(w http.ResponseWriter, r *http.Request,
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -515,7 +515,7 @@ func (s *Server) handleTeamRuntimeMembersAllocate(w http.ResponseWriter, r *http
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -659,7 +659,7 @@ func (s *Server) handleTeamMemberUpdate(w http.ResponseWriter, r *http.Request, 
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -741,7 +741,7 @@ func (s *Server) handleTeamMemberDelete(w http.ResponseWriter, r *http.Request, 
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -767,7 +767,7 @@ func (s *Server) handleTeamQuorumList(w http.ResponseWriter, r *http.Request, te
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -793,7 +793,7 @@ func (s *Server) handleTeamQuorumCreate(w http.ResponseWriter, r *http.Request, 
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -870,7 +870,7 @@ func (s *Server) handleTeamQuorumUpdate(w http.ResponseWriter, r *http.Request, 
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -966,7 +966,7 @@ func (s *Server) handleTeamQuorumDelete(w http.ResponseWriter, r *http.Request, 
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}

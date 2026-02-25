@@ -192,6 +192,7 @@ tools/run_autonomous_devstack.sh --insecure
 Notes:
 - The loop honors `orchestrator_run.meta` (see `docs/spec/autonomous_orchestrator_v0.md`).
 - `BROKER_INSECURE_TLS=1` or `--insecure` is useful for local self-signed stacks.
+- Client auth tokens require broker `--client-auth-allow-automation`.
 
 ## Network smoke tests
 

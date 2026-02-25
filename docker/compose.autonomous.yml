@@ -1,0 +1,41 @@
+services:
+  broker:
+    environment:
+      AGENTD_BROKER_CLIENT_AUTH_FILE: /etc/agentd/client_auth.json
+      AGENTD_BROKER_CLIENT_AUTH_FALLBACK: "1"
+      AGENTD_BROKER_CLIENT_AUTH_RELOAD_MS: "60000"
+      AGENTD_BROKER_CLIENT_AUTH_STRICT: "1"
+      AGENTD_BROKER_CLIENT_AUTH_ALLOW_AUTOMATION: "1"
+    volumes:
+      - ./docker/broker/client_auth.autonomous.json:/etc/agentd/client_auth.json:ro
+
+  orchestrator:
+    image: ${BROKER_IMAGE:-agentd-broker-local}
+    depends_on:
+      broker:
+        condition: service_healthy
+    environment:
+      BROKER_BASE: https://broker:8443
+      BROKER_OIDC_TOKEN: ${AUTOMATION_CLIENT_TOKEN:-dev-orchestrator-token}
+      BROKER_INSECURE_TLS: "1"
+      ORCHESTRATOR_ID: ${ORCHESTRATOR_ID:-auto-orchestrator}
+    command:
+      - /usr/local/bin/agentd-orchestrator
+      - --poll-interval
+      - 5s
+
+  spawn-adapter:
+    image: ${BROKER_IMAGE:-agentd-broker-local}
+    depends_on:
+      broker:
+        condition: service_healthy
+    environment:
+      BROKER_BASE: https://broker:8443
+      BROKER_OIDC_TOKEN: ${AUTOMATION_CLIENT_TOKEN:-dev-orchestrator-token}
+      BROKER_INSECURE_TLS: "1"
+      SPAWN_ALLOCATOR: "1"
+    command:
+      - /usr/local/bin/agentd-spawn-adapter
+      - --poll-interval
+      - 3s
+      - --allocator

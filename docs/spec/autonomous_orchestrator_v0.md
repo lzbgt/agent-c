@@ -39,6 +39,8 @@ Future (v1+):
 - Runtime members are supported for team runs (replace/merge).
 - Broker `/v1/events` persists events and exposes `/v1/events/replay` (Broker console + team console rehydrate on refresh).
 - Broker orchestrator spawn requests persist and emit events (`/v1/teams/{team_id}/orchestrator/spawn_requests`).
+- Broker can optionally allow admin client tokens for automation endpoints
+  (`--client-auth-allow-automation`) to run unattended services.
 
 ## Current primitives (implemented)
 

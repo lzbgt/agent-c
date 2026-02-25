@@ -22,7 +22,7 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -635,7 +635,7 @@ func (s *Server) handleTeamRunsList(w http.ResponseWriter, r *http.Request, team
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -691,7 +691,7 @@ func (s *Server) handleTeamRunGet(w http.ResponseWriter, r *http.Request, teamID
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -722,7 +722,7 @@ func (s *Server) handleTeamRunCancel(w http.ResponseWriter, r *http.Request, tea
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -785,7 +785,7 @@ func (s *Server) handleTeamRunRuntimeMembersUpdate(w http.ResponseWriter, r *htt
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -988,7 +988,7 @@ func (s *Server) handleTeamRunGoalUpdate(w http.ResponseWriter, r *http.Request,
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -1102,7 +1102,7 @@ func (s *Server) handleTeamRunHandoffUpdate(w http.ResponseWriter, r *http.Reque
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -1365,7 +1365,7 @@ func (s *Server) handleTeamRunApprovalsList(w http.ResponseWriter, r *http.Reque
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
@@ -1400,7 +1400,7 @@ func (s *Server) handleTeamRunApprovalsCreate(w http.ResponseWriter, r *http.Req
 		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if p.AuthKind != "oidc" {
+	if !s.allowAutomationPrincipal(p) {
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}

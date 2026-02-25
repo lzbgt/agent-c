@@ -58,6 +58,7 @@ Key flags:
   - `--client-auth-strict` (fail readiness if reload fails; env `AGENTD_BROKER_CLIENT_AUTH_STRICT=1`)
   - `--client-auth-max-age-ms` (fail readiness if last reload is too old; env `AGENTD_BROKER_CLIENT_AUTH_MAX_AGE_MS`)
   - `--client-auth-event-include-error` (include reload error text in events; env `AGENTD_BROKER_CLIENT_AUTH_EVENT_INCLUDE_ERROR=1`)
+  - `--client-auth-allow-automation` (allow admin client tokens to access orchestration endpoints; env `AGENTD_BROKER_CLIENT_AUTH_ALLOW_AUTOMATION=1`)
   - Send `SIGHUP` to reload immediately
 - Resource limits:
   - `--max-pending-per-agent` (default `256`)

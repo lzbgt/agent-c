@@ -125,6 +125,7 @@ func main() {
 	var clientAuthStrict = flag.Bool("client-auth-strict", false, "fail readiness if client auth reload fails (env AGENTD_BROKER_CLIENT_AUTH_STRICT)")
 	var clientAuthMaxAgeMS = flag.Int64("client-auth-max-age-ms", 0, "max age in ms since last client auth reload (0 disables; env AGENTD_BROKER_CLIENT_AUTH_MAX_AGE_MS)")
 	var clientAuthEventIncludeError = flag.Bool("client-auth-event-include-error", false, "include reload error text in events (env AGENTD_BROKER_CLIENT_AUTH_EVENT_INCLUDE_ERROR)")
+	var clientAuthAllowAutomation = flag.Bool("client-auth-allow-automation", false, "allow admin client tokens to access automation endpoints (env AGENTD_BROKER_CLIENT_AUTH_ALLOW_AUTOMATION)")
 	var adminSubsCSV = flag.String("admin-subs", "", "comma-separated OIDC sub values treated as admin")
 	var authCookieName = flag.String("auth-cookie", "", "cookie name for OIDC bearer token (env AGENTD_BROKER_AUTH_COOKIE)")
 	var corsOriginsCSV = flag.String("cors-origins", "", "comma-separated allowed CORS origins (e.g. https://ui.example.com)")
@@ -196,6 +197,10 @@ func main() {
 	includeErr := *clientAuthEventIncludeError
 	if v, ok := envBool("AGENTD_BROKER_CLIENT_AUTH_EVENT_INCLUDE_ERROR"); ok && v {
 		includeErr = true
+	}
+	allowAutomation := *clientAuthAllowAutomation
+	if v, ok := envBool("AGENTD_BROKER_CLIENT_AUTH_ALLOW_AUTOMATION"); ok && v {
+		allowAutomation = true
 	}
 
 	iss := strings.TrimSpace(*oidcIssuer)
@@ -348,16 +353,17 @@ func main() {
 		idemMaxBody = v
 	}
 	s, err := broker.New(broker.Config{
-		OIDC:               ver,
-		ClientAuth:         clientAuth,
-		ClientAuthFallback: fallbackEnabled,
-		ClientAuthStrict:   strictEnabled,
-		ClientAuthMaxAge:   time.Duration(maxAgeMS) * time.Millisecond,
-		DB:                 dbConn,
-		Registry:           reg,
-		Events:             ev,
-		AgentCNPfx:         *agentCNPfx,
-		RequireAgentMTLS:   *requireAgentMTLS,
+		OIDC:                      ver,
+		ClientAuth:                clientAuth,
+		ClientAuthFallback:        fallbackEnabled,
+		ClientAuthStrict:          strictEnabled,
+		ClientAuthMaxAge:          time.Duration(maxAgeMS) * time.Millisecond,
+		ClientAuthAllowAutomation: allowAutomation,
+		DB:                        dbConn,
+		Registry:                  reg,
+		Events:                    ev,
+		AgentCNPfx:                *agentCNPfx,
+		RequireAgentMTLS:          *requireAgentMTLS,
 		MaxRequestBodySize: func() int64 {
 			if *maxBodyBytes <= 0 {
 				return 64 * 1024 * 1024
@@ -448,6 +454,7 @@ func main() {
 	log.Printf("client auth configured: %v", clientAuth != nil)
 	log.Printf("client auth fallback: %v", fallbackEnabled)
 	log.Printf("client auth strict: %v", strictEnabled)
+	log.Printf("client auth allow automation: %v", allowAutomation)
 	if maxAgeMS > 0 {
 		log.Printf("client auth max age: %dms", maxAgeMS)
 	}

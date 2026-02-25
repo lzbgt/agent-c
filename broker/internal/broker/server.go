@@ -23,9 +23,11 @@ type Config struct {
 	ClientAuthFallback bool
 	ClientAuthStrict   bool
 	ClientAuthMaxAge   time.Duration
-	DB                 *db.DB
-	Registry           *registry.Registry
-	Events             *events.Hub
+	// Allow admin client tokens (client auth) to access automation endpoints.
+	ClientAuthAllowAutomation bool
+	DB                        *db.DB
+	Registry                  *registry.Registry
+	Events                    *events.Hub
 
 	AgentCNPfx              string
 	RequireAgentMTLS        bool

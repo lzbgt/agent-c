@@ -94,6 +94,19 @@ You can also point the daemon at a specific dotenv file when installing the serv
 ```
 AGENTD_DOTENV_PATH="/path/to/.env" tools/install_agentd_launchd.sh
 ```
+For autonomous orchestration services on macOS, use the helper scripts:
+```
+BROKER_BASE="https://broker.example.com" \
+  BROKER_OIDC_TOKEN="REPLACE_WITH_SERVICE_TOKEN" \
+  tools/install_orchestrator_launchd.sh
+tools/uninstall_orchestrator_launchd.sh
+
+BROKER_BASE="https://broker.example.com" \
+  BROKER_OIDC_TOKEN="REPLACE_WITH_SERVICE_TOKEN" \
+  SPAWN_ALLOCATOR=1 \
+  tools/install_spawn_adapter_launchd.sh
+tools/uninstall_spawn_adapter_launchd.sh
+```
 
 Environment overrides:
 - `AGENTD_BIN` (default `./build/agentd`)
@@ -109,6 +122,15 @@ Environment overrides:
 - `AGENTD_CORS_ROUTES` (JSON array of `{path_prefix, origins}`)
 - `AGENTD_UPLOAD_MAX_BYTES` (per-file session upload cap)
 - `AGENTD_EXTRA_ARGS` (space-delimited)
+
+Autonomous launchd overrides:
+- `ORCHESTRATOR_BIN`, `ORCHESTRATOR_PLIST_PATH`, `ORCHESTRATOR_LOG_DIR`
+- `ORCHESTRATOR_POLL_INTERVAL`, `ORCHESTRATOR_STATUS`, `ORCHESTRATOR_LIMIT`
+- `ORCHESTRATOR_INCLUDE_PLANNED`, `ORCHESTRATOR_ID`, `ORCHESTRATOR_EXTRA_ARGS`
+- `SPAWN_ADAPTER_BIN`, `SPAWN_ADAPTER_PLIST_PATH`, `SPAWN_ADAPTER_LOG_DIR`
+- `SPAWN_ADAPTER_POLL_INTERVAL`, `SPAWN_ADAPTER_STATUS`, `SPAWN_ADAPTER_LIMIT`
+- `SPAWN_ADAPTER_COMMAND_TIMEOUT`, `SPAWN_ADAPTER_EXTRA_ARGS`
+- `SPAWN_COMMAND`, `SPAWN_ALLOCATOR`, `SPAWN_ADAPTER_ID`
 
 ### OTA updates (agentd)
 
@@ -238,8 +260,69 @@ Env equivalents:
 - `AGENTD_BROKER_CLIENT_AUTH_RELOAD_MS=60000`
 - `AGENTD_BROKER_CLIENT_AUTH_STRICT=1`
 - `AGENTD_BROKER_CLIENT_AUTH_MAX_AGE_MS=120000`
+- `AGENTD_BROKER_CLIENT_AUTH_ALLOW_AUTOMATION=1` (allow admin client tokens for orchestration endpoints)
 
 You can also send `SIGHUP` to reload the client auth file immediately.
+
+### Autonomous services (orchestrator + spawn adapter)
+
+For fully automatic operation without a UI, run the broker with client auth enabled and
+allow admin client tokens to access orchestration endpoints.
+
+Example (systemd):
+```
+[Unit]
+Description=agentd orchestrator loop
+After=network.target
+
+[Service]
+User=agentd
+Environment=BROKER_BASE=https://broker.example.com
+Environment=BROKER_OIDC_TOKEN=REPLACE_WITH_SERVICE_TOKEN
+Environment=BROKER_INSECURE_TLS=0
+ExecStart=/usr/local/bin/agentd-orchestrator --poll-interval 5s
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```
+[Unit]
+Description=agentd spawn adapter
+After=network.target
+
+[Service]
+User=agentd
+Environment=BROKER_BASE=https://broker.example.com
+Environment=BROKER_OIDC_TOKEN=REPLACE_WITH_SERVICE_TOKEN
+Environment=SPAWN_ALLOCATOR=1
+Environment=BROKER_INSECURE_TLS=0
+ExecStart=/usr/local/bin/agentd-spawn-adapter --poll-interval 3s --allocator
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Notes:
+- `BROKER_OIDC_TOKEN` can be a static client token when the broker is configured with
+  `--client-auth-file` + `--client-auth-fallback` + `--client-auth-allow-automation`.
+- For OIDC-only deployments, use a token refresh sidecar to keep `BROKER_OIDC_TOKEN` current.
+
+On macOS, the launchd helper scripts mirror these services:
+```
+BROKER_BASE="https://broker.example.com" \
+  BROKER_OIDC_TOKEN="REPLACE_WITH_SERVICE_TOKEN" \
+  tools/install_orchestrator_launchd.sh
+
+BROKER_BASE="https://broker.example.com" \
+  BROKER_OIDC_TOKEN="REPLACE_WITH_SERVICE_TOKEN" \
+  SPAWN_ALLOCATOR=1 \
+  tools/install_spawn_adapter_launchd.sh
+```
 
 ### Example (connector flags)
 ```
