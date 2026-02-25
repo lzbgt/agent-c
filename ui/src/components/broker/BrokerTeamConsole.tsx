@@ -21,7 +21,7 @@ import FieldLabel from "../FieldLabel";
 import BrokerTeamRunPanel from "./BrokerTeamRunPanel";
 import BrokerOrchestratorRunPanel from "./BrokerOrchestratorRunPanel";
 import TeamRolePlanEditor, { type RoleGraphEdge } from "./TeamRolePlanEditor";
-import { TEAM_RUN_EVENT_TYPES } from "./teamRunUtils";
+import { ORCHESTRATOR_EVENT_TYPES, TEAM_RUN_EVENT_TYPES } from "./teamRunUtils";
 import type { BrokerEventRow, TeamMemberRow, TeamQuorumRuleRow } from "./types";
 
 const fmtTs = (ms?: number | null) => {
@@ -126,6 +126,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [teamEditError, setTeamEditError] = React.useState<string | null>(null);
 
   const [teamReplayEvents, setTeamReplayEvents] = React.useState<BrokerEventRow[]>([]);
+  const [orchestratorReplayEvents, setOrchestratorReplayEvents] = React.useState<BrokerEventRow[]>([]);
   const [teamReplayBusy, setTeamReplayBusy] = React.useState<boolean>(false);
   const [teamReplayError, setTeamReplayError] = React.useState<string | null>(null);
   const [teamReplayNote, setTeamReplayNote] = React.useState<string | null>(null);
@@ -246,6 +247,17 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     [eventTeamId, teamIdTrimmed],
   );
 
+  const isOrchestratorEvent = React.useCallback(
+    (row?: BrokerEventRow | null) => {
+      if (!row) return false;
+      const type = String(row.type || "");
+      if (!ORCHESTRATOR_EVENT_TYPES.has(type)) return false;
+      if (!teamIdTrimmed) return true;
+      return eventTeamId(row) === teamIdTrimmed;
+    },
+    [eventTeamId, teamIdTrimmed],
+  );
+
   const buildEventKey = (row: BrokerEventRow) =>
     row.event_id || `${row.type || ""}:${row.ts_unix_ms || 0}:${row.trace_id || ""}`;
 
@@ -276,10 +288,41 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     [isTeamEvent],
   );
 
+  const mergeOrchestratorEvents = React.useCallback(
+    (live: BrokerEventRow[], replay: BrokerEventRow[]) => {
+      const seen = new Set<string>();
+      const out: BrokerEventRow[] = [];
+      const push = (row: BrokerEventRow) => {
+        const key = buildEventKey(row);
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push(row);
+      };
+      for (const row of replay) {
+        if (!isOrchestratorEvent(row)) continue;
+        push(row);
+      }
+      for (const row of live) {
+        if (!isOrchestratorEvent(row)) continue;
+        push(row);
+      }
+      out.sort((a, b) => (a.ts_unix_ms || 0) - (b.ts_unix_ms || 0));
+      if (out.length > TEAM_EVENTS_MAX) {
+        return out.slice(out.length - TEAM_EVENTS_MAX);
+      }
+      return out;
+    },
+    [isOrchestratorEvent],
+  );
+
   const liveEvents = Array.isArray(props.quorumEvents) ? props.quorumEvents : [];
   const mergedTeamEvents = React.useMemo(
     () => mergeTeamEvents(liveEvents, teamReplayEvents),
     [liveEvents, teamReplayEvents, mergeTeamEvents],
+  );
+  const mergedOrchestratorEvents = React.useMemo(
+    () => mergeOrchestratorEvents(liveEvents, orchestratorReplayEvents),
+    [liveEvents, orchestratorReplayEvents, mergeOrchestratorEvents],
   );
 
   const loadTeamReplay = React.useCallback(async () => {
@@ -291,7 +334,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       const resp = await apiBrokerEventsReplay(props.base, props.auth, {
         sinceTs: teamEventsCursorRef.current || 0,
         limit: TEAM_EVENTS_MAX,
-        types: Array.from(TEAM_RUN_EVENT_TYPES),
+        types: Array.from(new Set([...TEAM_RUN_EVENT_TYPES, ...ORCHESTRATOR_EVENT_TYPES])),
       });
       if (!resp.ok) {
         throw new Error(resp.error || resp.err || resp.code || "team events replay failed");
@@ -304,9 +347,9 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
           event_id: ev?.event_id ? String(ev.event_id) : undefined,
           trace_id: ev?.trace_id ? String(ev.trace_id) : undefined,
           payload: ev?.payload && typeof ev.payload === "object" ? (ev.payload as Record<string, any>) : undefined,
-        }))
-        .filter((row) => isTeamEvent(row));
-      setTeamReplayEvents(rows);
+        }));
+      setTeamReplayEvents(rows.filter((row) => isTeamEvent(row)));
+      setOrchestratorReplayEvents(rows.filter((row) => isOrchestratorEvent(row)));
       let nextCursor = teamEventsCursorRef.current || 0;
       if (typeof resp.next_since_ts === "number") {
         nextCursor = Math.max(nextCursor, resp.next_since_ts);
@@ -1874,6 +1917,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         canQuery={canQuery}
         teamId={teamIdTrimmed}
         teamMeta={teamDetails?.meta && typeof teamDetails.meta === "object" ? (teamDetails.meta as Record<string, any>) : null}
+        events={mergedOrchestratorEvents}
       />
 
       <BrokerTeamRunPanel

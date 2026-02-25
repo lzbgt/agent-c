@@ -111,7 +111,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-26: SSE is in-memory only; durable orchestrator state + event replay still missing.
 - [ ] W=12 — Durable orchestration state + event replay: persist orchestrator runs (DB + CRUD), add replayable event log for team run/goal/handoff/moderator events, and rehydrate WebUI on refresh without losing context.
   - 2026-02-26: broker persists events and exposes `/v1/events/replay` (UI rehydration still pending).
-  - 2026-02-26: WebUI broker console + team console replay events on refresh; remaining gaps are per-run UI state (orchestrator loop + drift guard).
+  - 2026-02-26: WebUI broker console + team console replay events on refresh; orchestrator panel also rehydrates from replay.
   - 2026-02-26: broker orchestrator runs persisted with CRUD + heartbeat endpoint.
   - 2026-02-26: WebUI team console includes orchestrator run panel (create/list/update/heartbeat).
 - [ ] W=9 — Agent provisioning hooks: define an optional `agent_spawn` interface (pluggable adapters for local/remote spawn) so the orchestrator can request new runtime members when capacity is low.

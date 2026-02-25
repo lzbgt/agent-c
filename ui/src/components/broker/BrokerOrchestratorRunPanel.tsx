@@ -17,6 +17,7 @@ type OrchestratorRunPanelProps = {
   canQuery: boolean;
   teamId: string;
   teamMeta?: Record<string, any> | null;
+  events?: Array<{ type?: string; ts_unix_ms?: number; event_id?: string; trace_id?: string; payload?: any }>;
 };
 
 type ParsedJson = { ok: true; value: any } | { ok: false; error: string };
@@ -75,6 +76,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
     "agentui.orchestratorHeartbeatMs",
     30000,
   );
+  const lastEventKeyRef = React.useRef<string>("");
 
   React.useEffect(() => {
     if (!teamIdTrimmed) {
@@ -279,6 +281,21 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
     }, interval);
     return () => clearInterval(timer);
   }, [heartbeatAuto, heartbeatIntervalMs, props.canQuery, runId]);
+
+  React.useEffect(() => {
+    if (!props.canQuery || !teamIdTrimmed) return;
+    const rows = Array.isArray(props.events) ? props.events : [];
+    if (rows.length === 0) return;
+    const last = rows[rows.length - 1];
+    const key = last?.event_id || `${last?.type || ""}:${last?.ts_unix_ms || 0}:${last?.trace_id || ""}`;
+    if (!key || lastEventKeyRef.current === key) return;
+    lastEventKeyRef.current = key;
+    void loadRuns();
+    const rid = last?.payload?.orchestrator_run_id ? String(last.payload.orchestrator_run_id) : "";
+    if (rid && rid === String(runId || "").trim()) {
+      void loadRun(rid);
+    }
+  }, [props.canQuery, props.events, teamIdTrimmed, runId, loadRuns, loadRun]);
 
   const currentRun = runResult;
   const rolePlanDefaults = teamMetaObj?.role_graph || teamMetaObj?.role_instructions ? "team meta" : "none";

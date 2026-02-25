@@ -9,6 +9,13 @@ export const TEAM_RUN_EVENT_TYPES = new Set([
   "team_handoff",
 ]);
 
+export const ORCHESTRATOR_EVENT_TYPES = new Set([
+  "orchestrator_run_created",
+  "orchestrator_run_updated",
+  "orchestrator_run_status",
+  "orchestrator_run_heartbeat",
+]);
+
 export const fmtTs = (ms?: number | null) => {
   if (!ms || !Number.isFinite(ms)) return "";
   try {

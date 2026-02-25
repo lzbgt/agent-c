@@ -94,7 +94,7 @@ Status: draft (rolling)
 - Runs are persisted by broker with `team_run_id`, status, payload, and job ids.
 - Orchestrator runs persist separately (`/v1/teams/{team_id}/orchestrator/runs`).
 - UI refresh uses `GET /v1/teams/{team_id}/runs` and SSE events to rehydrate.
-- Broker event replay is used to restore team run events when reconnecting.
+- Broker event replay is used to restore team run + orchestrator run events when reconnecting.
 - SSE is used to refresh lists; durable state is always in DB.
 - Team runs persist `member_sessions` so moderators can target specific members
   after reload (used by team-run moderator broadcasts).
