@@ -379,6 +379,35 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     }
   };
 
+  const handleSetAllMemberStatus = async (status: "active" | "paused") => {
+    const tid = teamIdTrimmed;
+    if (!tid) return;
+    if (membersList.length === 0) {
+      setMembersError("no team members loaded");
+      return;
+    }
+    if (!window.confirm(`Set ${membersList.length} member(s) to ${status}?`)) return;
+    setMembersError(null);
+    setMembersBusy(true);
+    try {
+      for (const member of membersList) {
+        const mid = String(member?.member_id || "").trim();
+        if (!mid) continue;
+        const current = String(member?.status || "active").toLowerCase();
+        if (current === status) continue;
+        const resp = await apiBrokerTeamMemberUpdate(props.base, tid, mid, { status }, props.auth);
+        if (!resp.ok) {
+          throw new Error(resp.error || resp.err || resp.code || "update member failed");
+        }
+      }
+      await refreshMembers(tid);
+    } catch (err) {
+      setMembersError(String(err));
+    } finally {
+      setMembersBusy(false);
+    }
+  };
+
   const handleAddConnectedAgentsToTeam = async () => {
     const tid = teamIdTrimmed;
     if (!tid) return;
@@ -868,6 +897,27 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         {membersError ? (
           <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
             {membersError}
+          </div>
+        ) : null}
+        {members && members.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+            <span>Bulk status:</span>
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+              type="button"
+              disabled={!canQuery || membersBusy}
+              onClick={() => void handleSetAllMemberStatus("paused")}
+            >
+              Pause all
+            </button>
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+              type="button"
+              disabled={!canQuery || membersBusy}
+              onClick={() => void handleSetAllMemberStatus("active")}
+            >
+              Resume all
+            </button>
           </div>
         ) : null}
         {members && members.length > 0 ? (
