@@ -222,6 +222,25 @@ if [[ -z "${RUN_ID}" ]]; then
   exit 1
 fi
 
+TAKEOVER_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    -H "Content-Type: application/json" \
+    -d '{"goal":"Takeover smoke goal","status":"running","meta":{"team_mode":"async","orchestrator_owner":"orch_prev","allow_takeover":true}}' \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/orchestrator/runs"
+)"
+TAKEOVER_ID="$(python3 - <<PY
+import json
+obj = json.loads(r'''${TAKEOVER_JSON}''')
+run = obj.get("run") or {}
+print(run.get("orchestrator_run_id",""))
+PY
+)"
+if [[ -z "${TAKEOVER_ID}" ]]; then
+  echo "failed to create takeover run: ${TAKEOVER_JSON}" >&2
+  exit 1
+fi
+
 ORCH_LOG="${LOG_DIR}/broker_orchestrator_loop.log"
 (
   cd "${ROOT}/broker"
@@ -229,6 +248,7 @@ ORCH_LOG="${LOG_DIR}/broker_orchestrator_loop.log"
     --broker-base "${BROKER_BASE}" \
     --oidc-token "${OIDC_JWT}" \
     --insecure \
+    --orchestrator-id "orch_takeover" \
     --once
 ) > "${ORCH_LOG}" 2>&1 || {
   cat "${ORCH_LOG}" >&2 || true
@@ -250,6 +270,26 @@ if not isinstance(items, list) or len(items) < 1:
 roles = {str(item.get("role","")) for item in items if isinstance(item, dict)}
 if not roles:
   print("expected spawn request roles", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+TAKEOVER_GET_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/orchestrator/runs/${TAKEOVER_ID}"
+)"
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${TAKEOVER_GET_JSON}''')
+run = obj.get("run") or {}
+meta = run.get("meta") or {}
+owner = str(meta.get("orchestrator_owner",""))
+prev = str(meta.get("orchestrator_owner_prev",""))
+if owner != "orch_takeover":
+  print("expected takeover owner orch_takeover", obj, file=sys.stderr)
+  raise SystemExit(1)
+if prev != "orch_prev":
+  print("expected previous owner orch_prev", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 

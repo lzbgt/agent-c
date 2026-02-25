@@ -32,6 +32,14 @@ const parseJsonField = (raw: string, label: string): ParsedJson => {
   }
 };
 
+const fmtAge = (ms?: number | null) => {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return "";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60000) return `${Math.round(ms / 100) / 10}s`;
+  if (ms < 3600000) return `${Math.round(ms / 6000) / 10}m`;
+  return `${Math.round(ms / 360000) / 10}h`;
+};
+
 export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelProps) {
   const teamIdTrimmed = String(props.teamId || "").trim();
   const teamMetaObj = props.teamMeta && typeof props.teamMeta === "object" ? props.teamMeta : null;
@@ -63,11 +71,16 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
   const [updateGoalContractJson, setUpdateGoalContractJson] = React.useState<string>("");
   const [updateRolePlanJson, setUpdateRolePlanJson] = React.useState<string>("");
   const [updateMetaJson, setUpdateMetaJson] = React.useState<string>("");
+  const [updateExpectedOwner, setUpdateExpectedOwner] = React.useState<string>("");
+  const [updateExpectedOwnerEmpty, setUpdateExpectedOwnerEmpty] = React.useState<boolean>(false);
+  const [updateExpectedStatus, setUpdateExpectedStatus] = React.useState<string>("");
   const [updateBusy, setUpdateBusy] = React.useState<boolean>(false);
   const [updateError, setUpdateError] = React.useState<string | null>(null);
   const [updateNote, setUpdateNote] = React.useState<string | null>(null);
 
   const [heartbeatStatus, setHeartbeatStatus] = React.useState<string>("");
+  const [heartbeatExpectedOwner, setHeartbeatExpectedOwner] = React.useState<string>("");
+  const [heartbeatExpectedStatus, setHeartbeatExpectedStatus] = React.useState<string>("");
   const [heartbeatBusy, setHeartbeatBusy] = React.useState<boolean>(false);
   const [heartbeatError, setHeartbeatError] = React.useState<string | null>(null);
   const [heartbeatNote, setHeartbeatNote] = React.useState<string | null>(null);
@@ -226,6 +239,12 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
       if (goalContract.value !== undefined) body.goal_contract = goalContract.value;
       if (rolePlan.value !== undefined) body.role_plan_snapshot = rolePlan.value;
       if (meta.value !== undefined) body.meta = meta.value;
+      if (updateExpectedOwnerEmpty) {
+        body.expected_owner = "";
+      } else if (updateExpectedOwner.trim()) {
+        body.expected_owner = updateExpectedOwner.trim();
+      }
+      if (updateExpectedStatus.trim()) body.expected_status = updateExpectedStatus.trim();
       if (Object.keys(body).length === 0) {
         setUpdateError("no update fields set");
         return;
@@ -257,6 +276,8 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
     try {
       const body: Record<string, any> = {};
       if (heartbeatStatus.trim()) body.status = heartbeatStatus.trim();
+      if (heartbeatExpectedOwner.trim()) body.expected_owner = heartbeatExpectedOwner.trim();
+      if (heartbeatExpectedStatus.trim()) body.expected_status = heartbeatExpectedStatus.trim();
       const resp = await apiBrokerOrchestratorRunHeartbeat(props.base, teamIdTrimmed, rid, body, props.auth);
       if (!resp.ok) {
         throw new Error(resp.error || resp.err || resp.code || "heartbeat failed");
@@ -298,6 +319,11 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
   }, [props.canQuery, props.events, teamIdTrimmed, runId, loadRuns, loadRun]);
 
   const currentRun = runResult;
+  const currentMeta = currentRun && typeof currentRun.meta === "object" ? currentRun.meta : null;
+  const currentOwner = currentMeta?.orchestrator_owner ? String(currentMeta.orchestrator_owner) : "";
+  const prevOwner = currentMeta?.orchestrator_owner_prev ? String(currentMeta.orchestrator_owner_prev) : "";
+  const allowTakeover =
+    currentMeta?.allow_takeover === undefined ? "default" : currentMeta.allow_takeover ? "true" : "false";
   const rolePlanDefaults = teamMetaObj?.role_graph || teamMetaObj?.role_instructions ? "team meta" : "none";
 
   return (
@@ -457,6 +483,18 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                 {currentRun.status || "status"}
                 {currentRun.updated_unix_ms ? ` · updated ${fmtTs(currentRun.updated_unix_ms)}` : ""}
                 {currentRun.last_heartbeat_unix_ms ? ` · heartbeat ${fmtTs(currentRun.last_heartbeat_unix_ms)}` : ""}
+                {currentRun.lease_status ? ` · lease ${currentRun.lease_status}` : ""}
+                {currentRun.heartbeat_age_ms !== undefined && currentRun.heartbeat_age_ms !== null
+                  ? ` · hb age ${fmtAge(Number(currentRun.heartbeat_age_ms))}`
+                  : ""}
+                {currentRun.lease_timeout_ms !== undefined && currentRun.lease_timeout_ms !== null
+                  ? ` · lease timeout ${fmtAge(Number(currentRun.lease_timeout_ms))}`
+                  : ""}
+              </div>
+              <div className="text-[11px] text-white/50">
+                {currentOwner ? `owner ${currentOwner}` : "owner unclaimed"}
+                {prevOwner ? ` · prev ${prevOwner}` : ""}
+                {allowTakeover ? ` · allow_takeover ${allowTakeover}` : ""}
               </div>
             </div>
           ) : (
@@ -510,6 +548,33 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
               />
             </div>
           </div>
+          <div className="grid gap-2 md:grid-cols-3">
+            <div className="grid gap-1">
+              <FieldLabel>Expected owner</FieldLabel>
+              <input
+                className="w-full rounded-md border border-white/10 bg-black/40 px-2 py-1 text-xs text-white/90"
+                value={updateExpectedOwner}
+                onChange={(e) => setUpdateExpectedOwner(e.target.value)}
+                placeholder={currentOwner || ""}
+              />
+              <label className="flex items-center gap-2 text-[11px] text-white/60">
+                <input
+                  type="checkbox"
+                  checked={updateExpectedOwnerEmpty}
+                  onChange={(e) => setUpdateExpectedOwnerEmpty(e.target.checked)}
+                />
+                Expect owner empty
+              </label>
+            </div>
+            <div className="grid gap-1">
+              <FieldLabel>Expected status</FieldLabel>
+              <input
+                className="w-full rounded-md border border-white/10 bg-black/40 px-2 py-1 text-xs text-white/90"
+                value={updateExpectedStatus}
+                onChange={(e) => setUpdateExpectedStatus(e.target.value)}
+              />
+            </div>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
               className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
@@ -530,15 +595,34 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
 
         <div className="grid gap-2 rounded-md border border-white/5 bg-black/30 p-2">
           <div className="text-[11px] text-white/60">Heartbeat</div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="grid gap-2 md:grid-cols-3">
             <div className="grid gap-1">
               <FieldLabel>Status (optional)</FieldLabel>
               <input
-                className="w-40 rounded-md border border-white/10 bg-black/40 px-2 py-1 text-xs text-white/90"
+                className="w-full rounded-md border border-white/10 bg-black/40 px-2 py-1 text-xs text-white/90"
                 value={heartbeatStatus}
                 onChange={(e) => setHeartbeatStatus(e.target.value)}
               />
             </div>
+            <div className="grid gap-1">
+              <FieldLabel>Expected owner</FieldLabel>
+              <input
+                className="w-full rounded-md border border-white/10 bg-black/40 px-2 py-1 text-xs text-white/90"
+                value={heartbeatExpectedOwner}
+                onChange={(e) => setHeartbeatExpectedOwner(e.target.value)}
+                placeholder={currentOwner || ""}
+              />
+            </div>
+            <div className="grid gap-1">
+              <FieldLabel>Expected status</FieldLabel>
+              <input
+                className="w-full rounded-md border border-white/10 bg-black/40 px-2 py-1 text-xs text-white/90"
+                value={heartbeatExpectedStatus}
+                onChange={(e) => setHeartbeatExpectedStatus(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
             <button
               className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
               type="button"

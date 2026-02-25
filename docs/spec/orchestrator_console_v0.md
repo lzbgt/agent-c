@@ -99,6 +99,7 @@ Status: draft (rolling)
 - Broker event replay is used to restore team run + orchestrator run events when reconnecting.
 - Orchestrator run responses include lease status (heartbeat age + timeout) for stale detection.
 - Orchestrator updates/heartbeats can include `expected_owner` to avoid split-brain writers.
+- Run detail UI surfaces lease status, heartbeat age, and current owner for takeover decisions.
 - SSE is used to refresh lists; durable state is always in DB.
 - Team runs persist `member_sessions` so moderators can target specific members
   after reload (used by team-run moderator broadcasts).

@@ -103,7 +103,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [ ] W=14 — Orchestrator ownership + lease takeover: prevent split-brain while keeping automation always-on.
   - 2026-02-26: added `expected_owner` guard to orchestrator run update/heartbeat and orchestrator loop claim via `meta.orchestrator_owner`.
   - 2026-02-26: orchestrator loop can take over stale/missing leases when `allow_takeover=true`.
-  - TODO: UI surfacing + explicit takeover smoke (stale-lease) for orchestration console.
+  - 2026-02-26: orchestrator console surfaces lease/owner; compose smoke asserts takeover behavior.
 - [ ] W=13 — Autonomous orchestrator loop: goal contract + drift guard + role handoff events + allocator, with evidence tests and SSE surface.
   - 2026-02-25: drafted `docs/spec/autonomous_orchestrator_v0.md` (goal guard + dynamic allocation model).
   - 2026-02-25: WebUI runtime member quick-add can allocate connected agents by role plan.
