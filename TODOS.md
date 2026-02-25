@@ -127,6 +127,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-26: broker console replay cursor persists via client prefs (fallback localStorage).
 - [x] W=12 — Workflow rehydration beyond localStorage: persist workflow wait/resume state in broker/agentd and restore on WebUI reconnect.
   - 2026-02-26: workflow waits persist to client prefs (broker/agentd) with local fallback.
+- [x] W=12 — Refresh-safe run streaming: persist active job stream state in client prefs (broker/agentd) and auto-resume after reload.
+  - 2026-02-26: localStorage-based job resume exists; extend to server prefs + merge strategy.
+  - 2026-02-25: server-backed run watch prefs merged with localStorage; throttle server updates for cursor persistence.
 - [x] W=11 — Autonomous ops stack defaults: orchestrator + spawn adapter as first-class services (compose/systemd/launchd) with auto OIDC token refresh, so automation runs without the WebUI.
   - 2026-02-26: added `tools/run_autonomous_devstack.sh` wrapper for dev stacks.
   - 2026-02-26: broker supports `client-auth-allow-automation` for admin client tokens.
@@ -754,9 +757,9 @@ streaming and plugins are stable.
 
 Priority order (reweighted after event-triggered durable orchestration shipped; memory leak resolved):
 
-1) **Streaming stability** — OpenRouter pins + provider matrix upkeep + provider key verification (Moonshot/Kimi, OpenRouter).
-2) **Tool plugin isolation** — sandbox/host policy hardening + limits enforcement.
-3) **Audio streaming** — Opus/WebRTC pipeline + broker relay + UI voice controls.
+1) **Autonomous continuity** — durable orchestrator state + refresh-safe UI resume + guidance lane alignment.
+2) **Streaming stability** — OpenRouter pins + provider matrix upkeep + provider key verification (Moonshot/Kimi, OpenRouter).
+3) **Tool plugin isolation** — sandbox/host policy hardening + limits enforcement.
 4) **Agent collaboration v2.2** — unify fan-out/join patterns across edge + LLM tasks (edge_parallel + delegate_parallel).
 5) **Interop v0.4** — enforceable edge attestation + trust roots and stronger multi-node identity binding.
 

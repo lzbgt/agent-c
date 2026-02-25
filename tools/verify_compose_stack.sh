@@ -457,6 +457,36 @@ curlq -fsS -H "Authorization: Bearer dev-agentd-token" \
 echo "[compose] verifying webui is served..."
 curlq -fsS "${WEBUI_BASE}/" >/dev/null
 
+if [[ "${COMPOSE_AUTONOMOUS:-0}" == "1" ]]; then
+  echo "[compose] verifying autonomous services are running..."
+  running_services="$(cd "${ROOT}" && compose_cmd ps --services --filter status=running 2>/dev/null || true)"
+  missing_autonomous=()
+  for svc in orchestrator spawn-adapter oidc-refresh; do
+    if ! echo "${running_services}" | grep -qx "${svc}"; then
+      missing_autonomous+=("${svc}")
+    fi
+  done
+  if (( ${#missing_autonomous[@]} > 0 )); then
+    echo "[compose] ERROR: missing autonomous services: ${missing_autonomous[*]}" >&2
+    exit 5
+  fi
+
+  echo "[compose] waiting for autonomous token file..."
+  token_started="$(date +%s)"
+  token_path="/run/agentd/broker_oidc_token.txt"
+  while true; do
+    if (cd "${ROOT}" && compose_cmd exec -T oidc-refresh sh -c "test -s ${token_path}") >/dev/null 2>&1; then
+      break
+    fi
+    now="$(date +%s)"
+    if (( now - token_started > 180 )); then
+      echo "[compose] ERROR: token file not ready (${token_path})" >&2
+      exit 6
+    fi
+    sleep 2
+  done
+fi
+
 echo "[compose] OK"
 echo "  - WebUI:    ${WEBUI_BASE} (set Daemon auth token: dev-agentd-token)"
 echo "  - agentd:   ${AGENTD_BASE}"

@@ -189,6 +189,7 @@ This panel includes a **Workflow composer** with JSON and Graph modes:
 ## Reliability notes
 
 - The UI persists the active async `job_id` + SSE cursor so refresh can resume a running job stream.
+- When client prefs are supported (daemon/broker), job resume state is stored server-side with localStorage as fallback.
 - Team runs in async mode persist member `job_id`s in the broker DB; status lookups remain valid after refresh.
 - The Team run panel can persist the last-focused run per team and resume the status lookup after refresh (optional toggle).
 - The selected `session_id` is stored per daemon base URL.

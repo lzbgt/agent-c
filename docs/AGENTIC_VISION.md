@@ -185,6 +185,10 @@ The following areas drive the biggest step-change beyond a typical gateway/plugi
    - Admission control, quotas, and fairness guarantees.
    - Tool execution caps (CPU/memory/disk/network) with per-run budgets.
 
+9) **Autonomous continuity + dynamic agent formation**
+   - Background runs persist across UI refresh/reconnect (server-backed resume state).
+   - Orchestrator can create/retire agents on demand and keep user input optional.
+
 ---
 
 ## 5) Near-term focus (actionable)
@@ -198,6 +202,14 @@ These are the most leveraged next steps grounded in current architecture:
 2) **Policy hook MVP (implemented 2026-02-19)**
    - Deterministic policy hook interface (pre/post run + tool call).
    - Configurable allow/deny + budget caps with audit logging.
+
+3) **Autonomy continuity (refresh-safe + server-backed state)**
+   - Persist active job/watch state in client prefs so the UI can resume long-running runs after refresh/reconnect.
+   - Use broker/daemon storage when available, with localStorage as fallback.
+
+4) **Dynamic agent creation + orchestrator autoscale (spec + MVP)**
+   - Orchestrator declares desired agent roles/capabilities; spawn adapter provisions agents to match.
+   - Auto-retire idle agents and persist a run-time team roster so the user only intervenes on drift.
 
 3) **Attestation bundle format**
    - Canonical JSON hashing (`agent_json_c14n_v1`) for replay bundles.
