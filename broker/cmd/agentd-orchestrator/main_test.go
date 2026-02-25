@@ -680,6 +680,12 @@ func TestMaybeProcessHandoffQueueDispatchesDirective(t *testing.T) {
 	if st.directiveBody == nil {
 		t.Fatalf("expected directive body")
 	}
+	if dir, _ := st.directiveBody["directive"].(string); !strings.Contains(dir, "Handoff planner -> executor") {
+		t.Fatalf("unexpected directive content: %q", dir)
+	}
+	if scope, _ := st.directiveBody["scope"].(string); scope != "handoff:planner:executor" {
+		t.Fatalf("unexpected directive scope: %q", scope)
+	}
 	targets, _ := st.directiveBody["targets"].(map[string]any)
 	roles, _ := targets["roles"].([]any)
 	if len(roles) != 1 || strings.TrimSpace(roles[0].(string)) != "executor" {

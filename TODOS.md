@@ -120,6 +120,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-26: added `tools/run_autonomous_devstack.sh` to run orchestrator + spawn adapter together.
   - 2026-02-26: added runtime member retire policy (orchestrator meta-driven, terminal runs).
   - 2026-02-26: orchestrator loop attempts allocator-backed runtime member allocation for missing roles (meta tracking + tests).
+  - 2026-02-26: orchestrator loop dispatches handoff directives to target roles (retriable on missing sessions).
 - [ ] W=12 — Durable orchestration state + event replay: persist orchestrator runs (DB + CRUD), add replayable event log for team run/goal/handoff/moderator events, and rehydrate WebUI on refresh without losing context.
   - 2026-02-26: broker persists events and exposes `/v1/events/replay`; UI rehydrates on refresh (paging still capped).
   - 2026-02-26: WebUI broker console + team console replay events on refresh; orchestrator panel also rehydrates from replay.
