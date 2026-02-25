@@ -129,8 +129,8 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
       return;
     }
     const eventType = String(goalEventType || "").trim().toLowerCase();
-    if (eventType !== "progress" && eventType !== "drift") {
-      setGoalUpdateError("goal event type must be progress or drift");
+    if (eventType !== "progress" && eventType !== "drift" && eventType !== "spawn_validation") {
+      setGoalUpdateError("goal event type must be progress, drift, or spawn_validation");
       return;
     }
     let dataObj: Record<string, any> | undefined;
@@ -461,7 +461,7 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
       </div>
 
       <div className="mt-2 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
-        <div className="text-xs font-semibold text-white/80">Goal events (progress / drift)</div>
+        <div className="text-xs font-semibold text-white/80">Goal events (progress / drift / spawn_validation)</div>
         {goalEventRows.length > 0 ? (
           <div className="grid gap-1 text-[11px] text-white/60">
             {goalEventRows.map((ev: any, idx: number) => {
@@ -499,6 +499,7 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
             >
               <option value="progress">progress</option>
               <option value="drift">drift</option>
+              <option value="spawn_validation">spawn_validation</option>
             </select>
             <FieldLabel>Message</FieldLabel>
             <input
