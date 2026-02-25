@@ -7,6 +7,7 @@ import {
   apiBrokerTeamMembersDelete,
   apiBrokerTeamMembersList,
   apiBrokerTeamMembersUpsert,
+  apiBrokerTeamMemberUpdate,
   apiBrokerListAgents,
   apiBrokerTeamQuorumDelete,
   apiBrokerTeamQuorumList,
@@ -348,6 +349,28 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       if (Object.keys(meta).length > 0) payload.meta = meta;
       await apiBrokerTeamMembersUpsert(props.base, tid, payload, props.auth);
       setMemberId("");
+      await refreshMembers(tid);
+    } catch (err) {
+      setMembersError(String(err));
+    } finally {
+      setMembersBusy(false);
+    }
+  };
+
+  const handleToggleMemberStatus = async (member: TeamMemberRow) => {
+    const tid = teamIdTrimmed;
+    if (!tid) return;
+    const mid = String(member?.member_id || "").trim();
+    if (!mid) return;
+    const current = String(member?.status || "active").toLowerCase();
+    const next = current === "paused" ? "active" : "paused";
+    setMembersError(null);
+    setMembersBusy(true);
+    try {
+      const resp = await apiBrokerTeamMemberUpdate(props.base, tid, mid, { status: next }, props.auth);
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "update member failed");
+      }
       await refreshMembers(tid);
     } catch (err) {
       setMembersError(String(err));
@@ -900,13 +923,22 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                       <div className="text-[10px] text-white/50">{infoBits.join(" · ")}</div>
                     ) : null}
                   </div>
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                    type="button"
-                    onClick={() => void handleDeleteMember(mid)}
-                  >
-                    Remove
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                      type="button"
+                      onClick={() => void handleToggleMemberStatus(m)}
+                    >
+                      {String(m?.status || "active").toLowerCase() === "paused" ? "Resume" : "Pause"}
+                    </button>
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                      type="button"
+                      onClick={() => void handleDeleteMember(mid)}
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </div>
               );
             })}

@@ -485,6 +485,27 @@ export async function apiBrokerTeamMembersUpsert(
   return BrokerTeamMemberUpsertRespSchema.parse(j);
 }
 
+export async function apiBrokerTeamMemberUpdate(
+  brokerBase: string,
+  teamId: string,
+  memberId: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<BrokerTeamMemberUpsertResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  const mid = String(memberId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  if (!mid) throw new Error("missing member_id");
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/members/${encodeURIComponent(mid)}`, {
+    method: "PATCH",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(body ?? {}),
+  });
+  const j = await r.json();
+  return BrokerTeamMemberUpsertRespSchema.parse(j);
+}
+
 export async function apiBrokerTeamMembersDelete(
   brokerBase: string,
   teamId: string,
