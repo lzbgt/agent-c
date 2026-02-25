@@ -146,6 +146,33 @@ On macOS, Docker preflight will try to auto-start Docker Desktop when the daemon
 is down. Set `AGENT_DOCKER_AUTOSTART=0` to disable, or tune the wait with
 `AGENT_DOCKER_STARTUP_TIMEOUT_SEC` (default: 120 seconds).
 
+## Spawn adapter (orchestrator provisioning)
+
+The broker can persist spawn requests for new runtime members. The
+`agentd-spawn-adapter` CLI polls those requests and fulfills them via a
+command you provide.
+
+Example (devstack + local adapter command):
+
+```bash
+# get a broker OIDC token (devstack)
+tools/devstack_oidc_token.sh --state out/devstack_state.json
+
+# set env vars for the adapter
+export BROKER_BASE="https://127.0.0.1:${BROKER_PUBLISHED_PORT}"
+export BROKER_OIDC_TOKEN="eyJhbGciOi..."
+export SPAWN_COMMAND='printf "{\"status\":\"allocated\",\"assigned_members\":[{\"agent_id\":\"agent-1\",\"role\":\"planner\"}]}\n"'
+
+# run a single poll cycle
+cd broker
+go run ./cmd/agentd-spawn-adapter --once --insecure
+```
+
+Notes:
+- `SPAWN_COMMAND` runs via `/bin/sh -c` and must emit JSON to stdout.
+- `BROKER_INSECURE_TLS=1` or `--insecure` is useful for local self-signed stacks.
+- See `docs/spec/agent_spawn_adapter_v0.md` for the full contract.
+
 ## Network smoke tests
 
 `ctest` includes network smokes (OpenRouter + DeepSeek). They run when keys are available via:
