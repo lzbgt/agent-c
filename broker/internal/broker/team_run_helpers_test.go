@@ -190,3 +190,42 @@ func TestAppendGoalEventCapped(t *testing.T) {
 		t.Fatalf("expected 3 events, got %d", len(events))
 	}
 }
+
+func TestParseHandoffEvent(t *testing.T) {
+	ev, err := parseHandoffEvent(map[string]any{
+		"from_role": "Planner",
+		"to_role":   "Executor",
+		"reason":    "handoff",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ev.FromRole != "planner" || ev.ToRole != "executor" {
+		t.Fatalf("unexpected roles: %+v", ev)
+	}
+
+	if _, err := parseHandoffEvent(map[string]any{"from_role": "planner"}); err == nil {
+		t.Fatal("expected error for missing to_role")
+	}
+}
+
+func TestAppendHandoffEventCapped(t *testing.T) {
+	meta := map[string]any{}
+	for i := 0; i < 5; i++ {
+		events, err := appendHandoffEvent(meta, teamHandoffEventInput{
+			FromRole: "planner",
+			ToRole:   "executor",
+			Reason:   "step",
+		}, 2)
+		if err != nil {
+			t.Fatalf("append failed: %v", err)
+		}
+		if len(events) > 2 {
+			t.Fatalf("expected cap 2, got %d", len(events))
+		}
+	}
+	events, _ := meta["handoff_events"].([]map[string]any)
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(events))
+	}
+}

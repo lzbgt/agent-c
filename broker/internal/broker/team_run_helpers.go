@@ -104,6 +104,17 @@ type teamGoalEventInput struct {
 
 const maxGoalEvents = 200
 
+type teamHandoffEventInput struct {
+	FromRole string
+	ToRole   string
+	Reason   string
+	Message  string
+	Data     map[string]any
+	TSUnixMS int64
+}
+
+const maxHandoffEvents = 200
+
 type runtimeAgentCandidate struct {
 	AgentID      string
 	DeploymentID string
@@ -267,6 +278,111 @@ func appendGoalEvent(teamMeta map[string]any, event teamGoalEventInput, maxEvent
 		events = events[len(events)-maxEvents:]
 	}
 	teamMeta["goal_events"] = events
+	return events, nil
+}
+
+func parseHandoffEvent(raw any) (teamHandoffEventInput, error) {
+	if raw == nil {
+		return teamHandoffEventInput{}, fmt.Errorf("handoff event required")
+	}
+	obj, ok := raw.(map[string]any)
+	if !ok {
+		return teamHandoffEventInput{}, fmt.Errorf("handoff event must be object")
+	}
+	fromRole, _ := obj["from_role"].(string)
+	toRole, _ := obj["to_role"].(string)
+	fromRole = strings.ToLower(strings.TrimSpace(fromRole))
+	toRole = strings.ToLower(strings.TrimSpace(toRole))
+	if fromRole == "" || toRole == "" {
+		return teamHandoffEventInput{}, fmt.Errorf("handoff event requires from_role and to_role")
+	}
+	reason := ""
+	if v, ok := obj["reason"]; ok {
+		if s, ok := v.(string); ok {
+			reason = strings.TrimSpace(s)
+		} else {
+			return teamHandoffEventInput{}, fmt.Errorf("handoff event reason must be string")
+		}
+	}
+	message := ""
+	if v, ok := obj["message"]; ok {
+		if s, ok := v.(string); ok {
+			message = strings.TrimSpace(s)
+		} else {
+			return teamHandoffEventInput{}, fmt.Errorf("handoff event message must be string")
+		}
+	}
+	var data map[string]any
+	if v, ok := obj["data"]; ok && v != nil {
+		m, ok := v.(map[string]any)
+		if !ok {
+			return teamHandoffEventInput{}, fmt.Errorf("handoff event data must be object")
+		}
+		data = m
+	}
+	ts := int64(0)
+	if v, ok := obj["ts_unix_ms"]; ok {
+		if n, ok := asInt(v); ok {
+			ts = int64(n)
+		} else {
+			return teamHandoffEventInput{}, fmt.Errorf("handoff event ts_unix_ms must be integer")
+		}
+	}
+	return teamHandoffEventInput{
+		FromRole: fromRole,
+		ToRole:   toRole,
+		Reason:   reason,
+		Message:  message,
+		Data:     data,
+		TSUnixMS: ts,
+	}, nil
+}
+
+func appendHandoffEvent(teamMeta map[string]any, event teamHandoffEventInput, maxEvents int) ([]map[string]any, error) {
+	if teamMeta == nil {
+		return nil, fmt.Errorf("missing team meta")
+	}
+	if event.FromRole == "" || event.ToRole == "" {
+		return nil, fmt.Errorf("handoff event requires from_role and to_role")
+	}
+	if maxEvents <= 0 {
+		maxEvents = maxHandoffEvents
+	}
+	var events []map[string]any
+	if raw, ok := teamMeta["handoff_events"]; ok && raw != nil {
+		switch t := raw.(type) {
+		case []map[string]any:
+			events = append(events, t...)
+		case []any:
+			for _, item := range t {
+				if m, ok := item.(map[string]any); ok {
+					events = append(events, m)
+				}
+			}
+		default:
+			return nil, fmt.Errorf("handoff_events must be array")
+		}
+	}
+	ts := event.TSUnixMS
+	if ts <= 0 {
+		ts = time.Now().UTC().UnixMilli()
+	}
+	entry := map[string]any{
+		"from_role":   event.FromRole,
+		"to_role":     event.ToRole,
+		"ts_unix_ms":  ts,
+		"reason":      event.Reason,
+		"message":     event.Message,
+		"event_index": len(events) + 1,
+	}
+	if event.Data != nil {
+		entry["data"] = event.Data
+	}
+	events = append(events, entry)
+	if len(events) > maxEvents {
+		events = events[len(events)-maxEvents:]
+	}
+	teamMeta["handoff_events"] = events
 	return events, nil
 }
 

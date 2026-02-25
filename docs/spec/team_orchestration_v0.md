@@ -438,7 +438,7 @@ Broker SSE events surfaced for team orchestration:
 
 Future additions (schemas TBD):
 
-- `team_handoff`: explicit handoff between roles.
+- `team_handoff`: explicit handoff between roles (broker now emits on `/runs/{id}/handoff`).
 - `team_member_result`: per-member run summary.
 
 Existing `policy_decision` events remain valid for tool/limit enforcement.

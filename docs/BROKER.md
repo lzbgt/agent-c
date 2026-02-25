@@ -226,6 +226,8 @@ All endpoints below are served by the broker (not by agents).
 - `POST /v1/teams/{team_id}/runs/{team_run_id}/goal`
   - updates the goal contract and/or appends a goal event (`progress` or `drift`)
   - events are stored in the run payload (bounded) and emitted as SSE (`team_goal_progress`, `team_goal_drift`)
+- `POST /v1/teams/{team_id}/runs/{team_run_id}/handoff`
+  - appends a role handoff event (`from_role` → `to_role`) and emits SSE (`team_handoff`)
 - `POST /v1/teams/{team_id}/runtime_members/allocate`
   - allocates runtime members for missing roles using connected agents
   - request accepts `roles` plus optional `existing_runtime_members`, `exclude_team_members`, and `max_members`
