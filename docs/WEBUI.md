@@ -54,6 +54,7 @@ Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`,
 - The broker console exposes agent membership management, audit events, team setup (members + quorum rules), team runs, and quorum approvals (Team console includes recent quorum requests and approvals).
 - Team runs support **inline approvals** (optional) to satisfy strict quorum rules at submit time; failed quorum responses surface rule evals.
 - Inline approvals live in the Team console → Team run panel. Add `member_id` + decision (optional `rule_id`/reason) before Create run; approvals are sent under `team.approvals`, persisted, and the Run approvals panel auto-loads the run after submission.
+- Team runs support **runtime members** for per-run team composition (ephemeral). Use runtime members to add/pause agents dynamically; "Save to team" persists them into the registry.
 - Server-side sync prefers the **daemon** (direct mode) or **broker** (broker mode) when supported.
   - Default: **auto** (syncs when the server advertises client prefs and auth allows; broker requires OIDC token).
   - The client prefs id defaults to `webui` and can be changed in Settings → Connection.
