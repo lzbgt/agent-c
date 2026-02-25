@@ -570,6 +570,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const moderatorEventsData = moderatorEvents.data;
   const moderatorEventsError = moderatorEvents.isError ? String(moderatorEvents.error || "failed to load events") : null;
   const moderatorEventsList = Array.isArray(moderatorEventsData?.events) ? (moderatorEventsData?.events as ModeratorEvent[]) : [];
+  const moderatorRolePresets = React.useMemo(() => ["role:planner", "role:executor", "role:critic"], []);
 
   if (!props.open) return null;
 
@@ -1045,6 +1046,19 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
               <div className="mt-1 text-[11px] text-white/50">
                 Leave empty to broadcast to all listening agents.
               </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+                <span>Quick roles:</span>
+                {moderatorRolePresets.map((role) => (
+                  <button
+                    key={`moderator-directive-role-${role}`}
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                    type="button"
+                    onClick={() => addDirectiveAssignee(role)}
+                  >
+                    {role}
+                  </button>
+                ))}
+              </div>
               {connection.mode === "broker" ? (
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
                   <select
@@ -1102,6 +1116,19 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                   value={moderatorTaskAssignees}
                   onChange={(e) => setModeratorTaskAssignees(e.target.value)}
                 />
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+                  <span>Quick roles:</span>
+                  {moderatorRolePresets.map((role) => (
+                    <button
+                      key={`moderator-task-role-${role}`}
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                      type="button"
+                      onClick={() => addTaskAssignee(role)}
+                    >
+                      {role}
+                    </button>
+                  ))}
+                </div>
                 {connection.mode === "broker" ? (
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
                     <select
