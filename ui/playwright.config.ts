@@ -1,6 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
 const baseURL = process.env.AGENT_E2E_UI_BASE_URL || "http://127.0.0.1:5173";
+const useExistingServer = Boolean(process.env.AGENT_E2E_UI_BASE_URL);
 
 export default defineConfig({
   testDir: "./e2e",
@@ -14,5 +15,13 @@ export default defineConfig({
     screenshot: "on",
     video: "on",
   },
+  webServer: useExistingServer
+    ? undefined
+    : {
+        command: "npm run dev -- --host 127.0.0.1 --port 5173",
+        url: baseURL,
+        reuseExistingServer: true,
+        timeout: 120 * 1000,
+      },
   reporter: [["list"]],
 });

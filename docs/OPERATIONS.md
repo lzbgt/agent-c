@@ -182,6 +182,9 @@ The Playwright suite includes heavier flows that are opt-in via env flags:
 - `AGENT_E2E_REQUIRE_CANVAS=1` enables the canvas2d observe spec (open-world harness).
 - `AGENT_E2E_REQUIRE_VOICE=1` enables the voice observe spec (open-world harness).
 
+Playwright will auto-start a local Vite dev server for UI e2e runs unless
+`AGENT_E2E_UI_BASE_URL` is set (use that env var to target an existing server).
+
 The open-world harness scripts under `tests/` set these flags for you when they run.
 
 Open-world harness entry points (stub provider, deterministic):
