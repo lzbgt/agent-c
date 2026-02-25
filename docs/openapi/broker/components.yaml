@@ -611,6 +611,13 @@ schemas:
       status: { type: string }
       created_unix_ms: { type: integer, format: int64 }
       mode: { type: string }
+      run_overrides_mode: { type: string }
+      role_overrides_applied:
+        type: object
+        additionalProperties: true
+      member_overrides_applied:
+        type: object
+        additionalProperties: true
       members:
         type: array
         items:

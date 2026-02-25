@@ -1421,6 +1421,18 @@ func (s *Server) teamRunStatusResponse(ctx context.Context, p *Principal, run *d
 	if raw, ok := teamMeta["runtime_members"]; ok {
 		runtimeMembers = raw
 	}
+	var memberOverridesApplied any
+	if raw, ok := teamMeta["member_overrides_applied"]; ok {
+		memberOverridesApplied = raw
+	}
+	var roleOverridesApplied any
+	if raw, ok := teamMeta["role_overrides_applied"]; ok {
+		roleOverridesApplied = raw
+	}
+	var runOverridesMode any
+	if raw, ok := teamMeta["run_overrides_mode"]; ok {
+		runOverridesMode = raw
+	}
 	var memberJobs any
 	if raw, ok := teamMeta["member_jobs"]; ok {
 		memberJobs = raw
@@ -1457,6 +1469,15 @@ func (s *Server) teamRunStatusResponse(ctx context.Context, p *Principal, run *d
 	}
 	if runtimeMembers != nil {
 		resp["runtime_members"] = runtimeMembers
+	}
+	if memberOverridesApplied != nil {
+		resp["member_overrides_applied"] = memberOverridesApplied
+	}
+	if roleOverridesApplied != nil {
+		resp["role_overrides_applied"] = roleOverridesApplied
+	}
+	if runOverridesMode != nil {
+		resp["run_overrides_mode"] = runOverridesMode
 	}
 	if memberJobs != nil {
 		resp["member_jobs"] = memberJobs

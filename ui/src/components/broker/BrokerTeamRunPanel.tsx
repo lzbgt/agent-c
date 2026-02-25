@@ -285,6 +285,7 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const [runCancelBusy, setRunCancelBusy] = React.useState<boolean>(false);
   const [runCancelError, setRunCancelError] = React.useState<string | null>(null);
   const [runCancelNote, setRunCancelNote] = React.useState<string>("");
+  const [runOverridesExpanded, setRunOverridesExpanded] = React.useState<boolean>(false);
   const [approvalsBusy, setApprovalsBusy] = React.useState<boolean>(false);
   const [approvalsError, setApprovalsError] = React.useState<string | null>(null);
   const [approvals, setApprovals] = React.useState<TeamRunApprovalRow[] | null>(null);
@@ -2028,6 +2029,37 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
           {typeof runLookupResult?.cancel_requested_unix_ms === "number"
             ? ` · cancel requested ${fmtTs(runLookupResult.cancel_requested_unix_ms)}`
             : ""}
+        </div>
+      ) : null}
+      {runLookupResult?.run_overrides_mode ? (
+        <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
+          overrides mode: {String(runLookupResult.run_overrides_mode)}
+        </div>
+      ) : null}
+      {runLookupResult?.role_overrides_applied || runLookupResult?.member_overrides_applied ? (
+        <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>applied overrides</span>
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
+              type="button"
+              onClick={() => setRunOverridesExpanded((prev) => !prev)}
+            >
+              {runOverridesExpanded ? "Hide" : "Show"}
+            </button>
+          </div>
+          {runOverridesExpanded ? (
+            <pre className="mt-1 whitespace-pre-wrap break-words text-[10px] text-white/60">
+              {JSON.stringify(
+                {
+                  role_overrides_applied: runLookupResult?.role_overrides_applied ?? null,
+                  member_overrides_applied: runLookupResult?.member_overrides_applied ?? null,
+                },
+                null,
+                2,
+              )}
+            </pre>
+          ) : null}
         </div>
       ) : null}
       {fmtSummary(runLookupResult?.member_job_summary) ? (

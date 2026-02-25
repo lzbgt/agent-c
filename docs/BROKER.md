@@ -207,6 +207,7 @@ All endpoints below are served by the broker (not by agents).
 - `GET /v1/teams/{team_id}/runs/{team_run_id}`
   - returns the stored team run status + current member list
   - if runtime members were provided, `runtime_members` is included in the response
+  - applied overrides are surfaced via `role_overrides_applied`, `member_overrides_applied`, and `run_overrides_mode`
   - async runs include `member_jobs` (job IDs + status), `dispatch_errors`, and `member_job_summary` when present
   - cancel metadata is surfaced via `cancel_requested_unix_ms` and `cancel_results`
 - `POST /v1/teams/{team_id}/runs/{team_run_id}/cancel`
