@@ -1,6 +1,7 @@
 package main
 
 import (
+	"reflect"
 	"testing"
 	"time"
 )
@@ -57,5 +58,50 @@ func TestAllowLeaseTakeover(t *testing.T) {
 	}
 	if allowLeaseTakeover(map[string]any{"allow_takeover": false}) {
 		t.Fatalf("expected allow_takeover=false to block takeover")
+	}
+}
+
+func TestRuntimeMemberRetireStatus(t *testing.T) {
+	if got := runtimeMemberRetireStatus(nil); got != "paused" {
+		t.Fatalf("expected paused, got %q", got)
+	}
+	meta := map[string]any{"retire_runtime_member_status": "ACTIVE"}
+	if got := runtimeMemberRetireStatus(meta); got != "active" {
+		t.Fatalf("expected active, got %q", got)
+	}
+}
+
+func TestParseRuntimeMembers(t *testing.T) {
+	input := []map[string]any{{"member_id": "rt-1"}, {"member_id": "rt-2"}}
+	out := parseRuntimeMembers(input)
+	if !reflect.DeepEqual(out, input) {
+		t.Fatalf("expected parsed runtime members to match input")
+	}
+	mixed := []any{map[string]any{"member_id": "rt-3"}, "bad", 42}
+	out = parseRuntimeMembers(mixed)
+	if len(out) != 1 {
+		t.Fatalf("expected 1 valid runtime member, got %d", len(out))
+	}
+	if out[0]["member_id"] != "rt-3" {
+		t.Fatalf("unexpected runtime member: %#v", out[0])
+	}
+}
+
+func TestBuildRuntimeMemberUpdates(t *testing.T) {
+	runtimeMembers := []map[string]any{
+		{"member_id": "rt-1", "agent_id": "agent-1", "role": "planner"},
+		{"member_id": "rt-2", "agent_id": "agent-2", "role": "executor", "deployment_id": "dep-2"},
+		{"member_id": "", "agent_id": "agent-3", "role": "bad"},
+		{"member_id": "rt-4", "agent_id": "", "role": "bad"},
+	}
+	updates := buildRuntimeMemberUpdates(runtimeMembers, "paused")
+	if len(updates) != 2 {
+		t.Fatalf("expected 2 updates, got %d", len(updates))
+	}
+	if updates[0]["status"] != "paused" || updates[1]["status"] != "paused" {
+		t.Fatalf("expected paused status in updates: %#v", updates)
+	}
+	if updates[1]["deployment_id"] != "dep-2" {
+		t.Fatalf("expected deployment_id preserved: %#v", updates[1])
 	}
 }
