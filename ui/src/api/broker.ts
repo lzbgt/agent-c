@@ -406,6 +406,24 @@ export async function apiBrokerTeamCreate(
   return BrokerTeamCreateRespSchema.parse(j);
 }
 
+export async function apiBrokerTeamUpdate(
+  brokerBase: string,
+  teamId: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<BrokerTeamGetResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const id = String(teamId || "").trim();
+  if (!id) throw new Error("missing team_id");
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(body ?? {}),
+  });
+  const j = await r.json();
+  return BrokerTeamGetRespSchema.parse(j);
+}
+
 export async function apiBrokerTeamGet(
   brokerBase: string,
   teamId: string,

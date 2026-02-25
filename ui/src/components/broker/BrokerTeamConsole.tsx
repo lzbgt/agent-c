@@ -11,6 +11,7 @@ import {
   apiBrokerTeamQuorumDelete,
   apiBrokerTeamQuorumList,
   apiBrokerTeamQuorumUpsert,
+  apiBrokerTeamUpdate,
   type ApiAuth,
 } from "../../api";
 import FieldLabel from "../FieldLabel";
@@ -54,6 +55,13 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [newTeamId, setNewTeamId] = React.useState<string>("");
   const [newTeamName, setNewTeamName] = React.useState<string>("");
   const [teamDetails, setTeamDetails] = React.useState<any | null>(null);
+  const [teamEditName, setTeamEditName] = React.useState<string>("");
+  const [teamEditTags, setTeamEditTags] = React.useState<string>("");
+  const [teamEditPolicyRef, setTeamEditPolicyRef] = React.useState<string>("");
+  const [teamEditSharedScope, setTeamEditSharedScope] = React.useState<string>("");
+  const [teamEditMetaJson, setTeamEditMetaJson] = React.useState<string>("");
+  const [teamEditBusy, setTeamEditBusy] = React.useState<boolean>(false);
+  const [teamEditError, setTeamEditError] = React.useState<string | null>(null);
 
   const [membersBusy, setMembersBusy] = React.useState<boolean>(false);
   const [membersError, setMembersError] = React.useState<string | null>(null);
@@ -205,6 +213,93 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       setTeamsError(String(err));
     } finally {
       setTeamsBusy(false);
+    }
+  };
+
+  const loadTeamEditsFromDetails = (details: any | null) => {
+    if (!details) {
+      setTeamEditName("");
+      setTeamEditTags("");
+      setTeamEditPolicyRef("");
+      setTeamEditSharedScope("");
+      setTeamEditMetaJson("");
+      return;
+    }
+    setTeamEditName(String(details?.display_name || ""));
+    const tags = Array.isArray(details?.tags) ? details.tags : [];
+    setTeamEditTags(tags.map((t: any) => String(t)).filter(Boolean).join(", "));
+    setTeamEditPolicyRef(String(details?.policy_ref || ""));
+    setTeamEditSharedScope(String(details?.shared_memory_scope_id || ""));
+    if (details?.meta && typeof details.meta === "object") {
+      try {
+        setTeamEditMetaJson(JSON.stringify(details.meta, null, 2));
+      } catch {
+        setTeamEditMetaJson("");
+      }
+    } else {
+      setTeamEditMetaJson("");
+    }
+  };
+
+  const handleUpdateTeam = async () => {
+    const tid = teamIdTrimmed;
+    if (!tid) return;
+    const displayName = String(teamEditName || "").trim();
+    if (!displayName) {
+      setTeamEditError("display_name required");
+      return;
+    }
+    const tagsRaw = String(teamEditTags || "").trim();
+    const tags =
+      tagsRaw.length === 0
+        ? []
+        : tagsRaw
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean);
+    const policyRef = String(teamEditPolicyRef || "").trim();
+    const sharedScope = String(teamEditSharedScope || "").trim();
+    const metaRaw = String(teamEditMetaJson || "").trim();
+    let meta: Record<string, any> = {};
+    if (metaRaw) {
+      try {
+        const parsed = JSON.parse(metaRaw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          meta = parsed;
+        } else {
+          setTeamEditError("meta must be a JSON object");
+          return;
+        }
+      } catch (err) {
+        setTeamEditError(`invalid meta json: ${String(err)}`);
+        return;
+      }
+    }
+    setTeamEditError(null);
+    setTeamEditBusy(true);
+    try {
+      const resp = await apiBrokerTeamUpdate(
+        props.base,
+        tid,
+        {
+          display_name: displayName,
+          tags,
+          policy_ref: policyRef,
+          shared_memory_scope_id: sharedScope,
+          meta,
+        },
+        props.auth,
+      );
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "update team failed");
+      }
+      setTeamDetails(resp?.team ?? null);
+      await refreshTeams();
+      loadTeamEditsFromDetails(resp?.team ?? null);
+    } catch (err) {
+      setTeamEditError(String(err));
+    } finally {
+      setTeamEditBusy(false);
     }
   };
 
@@ -388,6 +483,14 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   }, [canQuery, teamIdTrimmed, teamList.length]);
 
   React.useEffect(() => {
+    if (!teamIdTrimmed) {
+      loadTeamEditsFromDetails(null);
+      return;
+    }
+    loadTeamEditsFromDetails(teamDetails);
+  }, [teamDetails, teamIdTrimmed]);
+
+  React.useEffect(() => {
     if (!canQuery || !teamIdTrimmed) return;
     void refreshMembers(teamIdTrimmed);
     void refreshRules(teamIdTrimmed);
@@ -464,6 +567,74 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             {teamDetails?.created_unix_ms ? ` · ${fmtTs(teamDetails.created_unix_ms)}` : ""}
           </div>
         ) : null}
+      </div>
+
+      <div className="mt-3 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-xs font-semibold text-white/80">Team settings</div>
+          <button
+            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+            type="button"
+            disabled={!teamDetails}
+            onClick={() => loadTeamEditsFromDetails(teamDetails)}
+          >
+            Load
+          </button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <FieldLabel>Name</FieldLabel>
+          <input
+            className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={teamEditName}
+            onChange={(e) => setTeamEditName(e.target.value)}
+            placeholder="Team display name"
+          />
+          <FieldLabel>Tags</FieldLabel>
+          <input
+            className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={teamEditTags}
+            onChange={(e) => setTeamEditTags(e.target.value)}
+            placeholder="ops,security"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <FieldLabel>Policy ref</FieldLabel>
+          <input
+            className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={teamEditPolicyRef}
+            onChange={(e) => setTeamEditPolicyRef(e.target.value)}
+            placeholder="policy:high-risk"
+          />
+          <FieldLabel>Shared memory scope</FieldLabel>
+          <input
+            className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={teamEditSharedScope}
+            onChange={(e) => setTeamEditSharedScope(e.target.value)}
+            placeholder="scope-id"
+          />
+        </div>
+        <div className="grid gap-1">
+          <FieldLabel>Meta JSON</FieldLabel>
+          <textarea
+            className="min-h-[72px] w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
+            value={teamEditMetaJson}
+            onChange={(e) => setTeamEditMetaJson(e.target.value)}
+            placeholder='{"owner_notes":"tier-1","priority":"high"}'
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+            type="button"
+            disabled={!canQuery || !teamIdTrimmed || teamEditBusy}
+            onClick={() => void handleUpdateTeam()}
+          >
+            {teamEditBusy ? "Saving…" : "Update team"}
+          </button>
+          {teamEditError ? (
+            <span className="text-[11px] text-rose-200">{teamEditError}</span>
+          ) : null}
+        </div>
       </div>
 
       <div className="mt-3 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
