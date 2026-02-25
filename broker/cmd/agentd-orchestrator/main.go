@@ -658,8 +658,7 @@ func processGuidance(
 				}
 			}
 		}
-		shouldAck := shouldHandleGuidance(item, cfg.orchestratorID) || dispatched
-		if !shouldAck {
+		if shouldDispatch && !dispatched {
 			if itemPending {
 				if itemRunID == "" {
 					pendingGlobal = true
@@ -667,6 +666,10 @@ func processGuidance(
 					pendingRun = true
 				}
 			}
+			continue
+		}
+		shouldAck := shouldHandleGuidance(item, cfg.orchestratorID) || dispatched
+		if !shouldAck {
 			continue
 		}
 		note := fmt.Sprintf("received by orchestrator %s", cfg.orchestratorID)

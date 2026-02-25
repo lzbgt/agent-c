@@ -139,7 +139,8 @@ guidance state on refresh.
 3) Orchestrator subscribes (SSE or replay) and dispatches guidance to
    active members via `/runs/{team_run_id}/moderator/directive` with
    guidance metadata attached.
-4) Orchestrator/agent acknowledges via `/ack`, emitting `team_guidance_ack`.
+4) Orchestrator acknowledges via `/ack` after successful dispatch (or
+   immediately for orchestrator-only guidance), emitting `team_guidance_ack`.
 5) UI shows guidance lifecycle and receipt trail.
 
 ## RBAC
