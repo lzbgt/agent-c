@@ -52,6 +52,7 @@ Status: draft (rolling)
 - WebUI Team console with run panel (recent runs + inline approvals).
 - WebUI Team console includes orchestrator run panel (create/list/update/heartbeat).
 - WebUI team run status panel shows goal contracts, goal progress/drift events, and handoff events; it can emit goal + handoff updates.
+- Broker orchestrator spawn requests persist + emit events (`/v1/teams/{team_id}/orchestrator/spawn_requests`).
 
 ## Proposed UI flows
 
@@ -82,6 +83,7 @@ Status: draft (rolling)
   - async vs sync
   - optional quorum approvals (inline)
 - For advanced flows, allow a run to spawn **runtime members** (ephemeral).
+- Orchestrators can issue **spawn requests** for new members (external adapter fulfills).
 
 ### 4) Run monitor (reload-safe)
 

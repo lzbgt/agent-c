@@ -28,7 +28,8 @@ Status: draft (rolling)
 - LLM-driven policy scripting (policy hooks/VM are handled separately).
 
 Future (v1+):
-- Optional agent provisioning hooks (pluggable `agent_spawn` adapters).
+- Pluggable `agent_spawn` adapters that can directly provision new agentd nodes.
+- V0 exposes spawn request APIs so external automation can act as the adapter.
 
 ## Constraints (facts)
 
@@ -37,6 +38,7 @@ Future (v1+):
 - Moderator directives/tasks exist and are persisted (`automation_mode_v0.md`).
 - Runtime members are supported for team runs (replace/merge).
 - Broker `/v1/events` persists events and exposes `/v1/events/replay` (UI rehydration still pending).
+- Broker orchestrator spawn requests persist and emit events (`/v1/teams/{team_id}/orchestrator/spawn_requests`).
 
 ## Current primitives (implemented)
 
@@ -63,18 +65,22 @@ Future (v1+):
    - Runtime members are manual today.
    - Broker supports an allocator endpoint and `auto_allocate_roles` on team runs, but no autonomous loop yet.
 
-4) **Shared memory scope enforcement**
+4) **Agent provisioning adapter**
+   - Spawn requests are persisted + evented.
+   - Still missing the pluggable adapter that provisions new nodes and resolves requests.
+
+5) **Shared memory scope enforcement**
    - Scope IDs are stored; enforcement is still pending.
    - Team runs should apply read/write mode at tool level.
 
-5) **Tool-level quorum gates**
+6) **Tool-level quorum gates**
    - Team-run quorum exists; tool-level quorum is still pending.
 
-6) **Durable orchestration state**
+7) **Durable orchestration state**
    - Orchestrator runs are persisted (DB + CRUD).
    - Lease/heartbeat endpoint exists; still need automated lease supervision.
 
-7) **Event replay + UI rehydration**
+8) **Event replay + UI rehydration**
    - Replay API exists; Broker console replays on refresh.
    - Team/run views still need cursor persistence + replay-based rehydration.
 

@@ -1224,6 +1224,106 @@
             schema:
               $ref: "#/components/schemas/OrchestratorRunResponse"
 
+/v1/teams/{team_id}/orchestrator/spawn_requests:
+  get:
+    tags: [teams]
+    summary: List orchestrator spawn requests for a team
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: query
+        name: limit
+        required: false
+        schema: { type: integer, format: int32 }
+      - in: query
+        name: offset
+        required: false
+        schema: { type: integer, format: int32 }
+      - in: query
+        name: status
+        required: false
+        schema: { type: string }
+      - in: query
+        name: orchestrator_run_id
+        required: false
+        schema: { type: string }
+    responses:
+      "200":
+        description: Orchestrator spawn requests
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrchestratorSpawnRequestListResponse"
+  post:
+    tags: [teams]
+    summary: Create an orchestrator spawn request for a team
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/OrchestratorSpawnRequestCreateRequest"
+    responses:
+      "200":
+        description: Orchestrator spawn request created
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrchestratorSpawnRequestResponse"
+
+/v1/teams/{team_id}/orchestrator/spawn_requests/{spawn_request_id}:
+  get:
+    tags: [teams]
+    summary: Get an orchestrator spawn request
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: spawn_request_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Orchestrator spawn request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrchestratorSpawnRequestResponse"
+  patch:
+    tags: [teams]
+    summary: Update an orchestrator spawn request
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: spawn_request_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/OrchestratorSpawnRequestUpdateRequest"
+    responses:
+      "200":
+        description: Orchestrator spawn request updated
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrchestratorSpawnRequestResponse"
+
 /v1/orchestrate:
   post:
     tags: [orchestrate]
