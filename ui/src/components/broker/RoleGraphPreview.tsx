@@ -29,6 +29,7 @@ const buildRoleGraphLayout = (roles: string[]) => {
 export default function RoleGraphPreview(props: RoleGraphPreviewProps) {
   const roles = Array.isArray(props.roles) ? props.roles : [];
   const edges = Array.isArray(props.edges) ? props.edges : [];
+  const markerId = React.useId();
   if (roles.length === 0) {
     return <div className="text-[11px] text-white/40">{props.emptyLabel || "No role graph recorded."}</div>;
   }
@@ -40,7 +41,7 @@ export default function RoleGraphPreview(props: RoleGraphPreviewProps) {
       <svg className="mt-2 w-full" viewBox={`0 0 ${layout.size} ${layout.size}`} role="img" aria-label={title}>
         <defs>
           <marker
-            id="roleGraphArrow"
+            id={markerId}
             markerWidth="6"
             markerHeight="6"
             refX="5"
@@ -64,7 +65,7 @@ export default function RoleGraphPreview(props: RoleGraphPreviewProps) {
               y2={to.y}
               stroke="#93c5fd"
               strokeWidth="1.5"
-              markerEnd="url(#roleGraphArrow)"
+              markerEnd={`url(#${markerId})`}
               opacity="0.7"
             />
           );
