@@ -258,3 +258,108 @@ test("broker team member inline edit submits patch", async ({ page }) => {
     weight: 2,
   });
 });
+
+test("broker team settings update submits patch", async ({ page }) => {
+  const teamId = "team-alpha";
+  let updatePayload: any = null;
+
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem("agentui.connectionMode", JSON.stringify("broker"));
+      window.localStorage.setItem("agentui.brokerBase", "https://broker.example.invalid");
+      window.localStorage.setItem("agentui.brokerAuthToken", "test-token");
+      window.localStorage.setItem("agentui.brokerAgentId", "agent1");
+      window.localStorage.setItem("agentui.brokerPanelOpen", "true");
+      window.localStorage.setItem("agentui.showSettings", "false");
+      window.localStorage.setItem("agentui.allowClientRpcs", "true");
+      window.localStorage.setItem("agentui.allowClientEffects", "true");
+    } catch {
+      // ignore
+    }
+  });
+
+  await page.route("**/v1/teams**", async (route, request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    if (request.method() === "GET" && path === "/v1/teams") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, teams: [{ team_id: teamId, display_name: "Team Alpha" }] }),
+      });
+      return;
+    }
+    if (request.method() === "GET" && path === `/v1/teams/${teamId}`) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          team: {
+            team_id: teamId,
+            owner_sub: "owner",
+            display_name: "Team Alpha",
+            tags: ["ops"],
+            policy_ref: "policy:old",
+            shared_memory_scope_id: "scope-old",
+            meta: { note: "old" },
+          },
+        }),
+      });
+      return;
+    }
+    if (request.method() === "PATCH" && path === `/v1/teams/${teamId}`) {
+      const body = request.postData() || "{}";
+      updatePayload = JSON.parse(body);
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, team: { team_id: teamId, display_name: updatePayload.display_name } }),
+      });
+      return;
+    }
+    if (request.method() === "GET" && path === `/v1/teams/${teamId}/members`) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, team_id: teamId, members: [] }),
+      });
+      return;
+    }
+    if (request.method() === "GET" && path === `/v1/teams/${teamId}/quorum`) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, team_id: teamId, rules: [] }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/");
+
+  const teamSection = page.locator("section").filter({ has: page.getByText("Teams", { exact: true }) });
+  await teamSection.getByRole("button", { name: "Refresh" }).first().click();
+
+  const teamNameInput = teamSection.getByPlaceholder("Team display name");
+  await expect(teamNameInput).toHaveValue("Team Alpha");
+  await teamNameInput.fill("Team Beta");
+  await teamSection.getByPlaceholder("ops,security").fill("ops,security");
+  await teamSection.getByPlaceholder("policy:high-risk").fill("policy:new");
+  await teamSection.getByPlaceholder("scope-id").fill("scope-new");
+  await teamSection.getByPlaceholder("{\"owner_notes\":\"tier-1\",\"priority\":\"high\"}").fill(
+    "{\"owner_notes\":\"tier-1\",\"priority\":\"high\"}",
+  );
+
+  await teamSection.getByRole("button", { name: "Update team" }).click();
+
+  await expect.poll(() => updatePayload).not.toBeNull();
+  expect(updatePayload).toEqual({
+    display_name: "Team Beta",
+    tags: ["ops", "security"],
+    policy_ref: "policy:new",
+    shared_memory_scope_id: "scope-new",
+    meta: { owner_notes: "tier-1", priority: "high" },
+  });
+});
