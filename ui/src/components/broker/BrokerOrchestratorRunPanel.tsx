@@ -131,6 +131,10 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
     "agentui.orchestratorRevisionFilterByTeam",
     {},
   );
+  const [revisionScopeByTeam, setRevisionScopeByTeam] = useLocalStorageState<Record<string, string>>(
+    "agentui.orchestratorRevisionScopeByTeam",
+    {},
+  );
   const [revisionFilter, setRevisionFilterState] = React.useState<string>("");
   const [revisionFilterScope, setRevisionFilterScope] = React.useState<"all" | "goal" | "role">("all");
 
@@ -177,6 +181,19 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
     setRevisionFilterState(next);
   }, [revisionFilterByTeam, teamIdTrimmed]);
 
+  React.useEffect(() => {
+    if (!teamIdTrimmed) {
+      setRevisionFilterScope("all");
+      return;
+    }
+    const raw = revisionScopeByTeam[teamIdTrimmed] || "all";
+    if (raw === "goal" || raw === "role" || raw === "all") {
+      setRevisionFilterScope(raw);
+    } else {
+      setRevisionFilterScope("all");
+    }
+  }, [revisionScopeByTeam, teamIdTrimmed]);
+
   const setRevisionFilter = React.useCallback(
     (next: string) => {
       setRevisionFilterState(next);
@@ -184,6 +201,15 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
       setRevisionFilterByTeam((prev) => ({ ...prev, [teamIdTrimmed]: next }));
     },
     [setRevisionFilterByTeam, teamIdTrimmed],
+  );
+
+  const setRevisionScope = React.useCallback(
+    (next: "all" | "goal" | "role") => {
+      setRevisionFilterScope(next);
+      if (!teamIdTrimmed) return;
+      setRevisionScopeByTeam((prev) => ({ ...prev, [teamIdTrimmed]: next }));
+    },
+    [setRevisionScopeByTeam, teamIdTrimmed],
   );
 
   const setRunId = React.useCallback(
@@ -470,6 +496,8 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
       : revisionFilterLower
         ? rolePlanRevisions.filter((entry) => revisionMatches(entry))
         : rolePlanRevisions;
+  const totalFiltered = filteredGoalRevisions.length + filteredRoleRevisions.length;
+  const totalRevisions = goalRevisions.length + rolePlanRevisions.length;
   const revisionEvents = React.useMemo(() => {
     const rows = Array.isArray(props.events) ? props.events : [];
     if (rows.length === 0) return [];
@@ -678,6 +706,9 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
               value={revisionFilter}
               onChange={(e) => setRevisionFilter(e.target.value)}
             />
+            <span className="text-[10px] text-white/40">
+              {totalFiltered}/{totalRevisions}
+            </span>
             <div className="flex items-center gap-1">
               {(["all", "goal", "role"] as const).map((scope) => (
                 <button
@@ -688,7 +719,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                       : "border-white/10 bg-black/30 text-white/70 hover:bg-black/40"
                   }`}
                   type="button"
-                  onClick={() => setRevisionFilterScope(scope)}
+                  onClick={() => setRevisionScope(scope)}
                 >
                   {scope}
                 </button>
