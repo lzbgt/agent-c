@@ -829,6 +829,12 @@ func buildGoalRevisionPayload(teamID, runID string, meta map[string]any) map[str
 	if v, ok := entry["goal_contract"]; ok {
 		payload["goal_contract"] = v
 	}
+	if v, ok := entry["goal_changed"]; ok {
+		payload["goal_changed"] = v
+	}
+	if v, ok := entry["goal_contract_changed"]; ok {
+		payload["goal_contract_changed"] = v
+	}
 	if v, ok := entry["goal_contract_diff"]; ok {
 		payload["goal_contract_diff"] = v
 	}
