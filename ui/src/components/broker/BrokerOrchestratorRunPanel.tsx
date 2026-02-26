@@ -496,7 +496,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
     if (!latestGoalRevision) return "";
     const parts: string[] = [];
     if (latestGoalRevision.goal_changed === true) parts.push("goal changed");
-    if (latestGoalRevision.goal_contract_changed === true) parts.push("contract changed");
+    if (latestGoalRevision.goal_contract_changed === true) parts.push("goal contract changed");
     return parts.join(" · ");
   }, [latestGoalRevision]);
   const revisionFilterLower = revisionFilter.trim().toLowerCase();
@@ -509,7 +509,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
       const goal = entry.goal ? String(entry.goal).toLowerCase() : "";
       const changeLabels: string[] = [];
       if (entry.goal_changed === true) changeLabels.push("goal changed");
-      if (entry.goal_contract_changed === true) changeLabels.push("contract changed");
+      if (entry.goal_contract_changed === true) changeLabels.push("goal contract changed");
       const matchesChange = changeLabels.some((label) => label.includes(revisionFilterLower));
       const contractDiffKeys = diffKeys(entry.goal_contract_diff).map((v) => v.toLowerCase());
       const roleDiffKeys = diffKeys(entry.role_plan_diff).map((v) => v.toLowerCase());
@@ -830,7 +830,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                               <div className="text-white/40">
                                 {goalChanged ? "goal changed" : null}
                                 {goalChanged && contractChanged ? " · " : null}
-                                {contractChanged ? "contract changed" : null}
+                                {contractChanged ? "goal contract changed" : null}
                               </div>
                             ) : null}
                             {summary ? <div className="text-white/50">diff {summary}</div> : null}
@@ -1060,7 +1060,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                         <div className="text-white/40">
                           {goalChanged ? "goal changed" : null}
                           {goalChanged && contractChanged ? " · " : null}
-                          {contractChanged ? "contract changed" : null}
+                          {contractChanged ? "goal contract changed" : null}
                         </div>
                       ) : null}
                       {goalText ? <div className="text-white/60">{goalText}</div> : null}
