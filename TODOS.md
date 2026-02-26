@@ -65,7 +65,6 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] WebUI connection profiles for multi-agentd deployments (direct or broker-backed).
   - [x] Broker-mode connection profile persistence (server-side store; avoid localStorage-only URLs).
   - 2026-02-24: Broker client prefs endpoint + WebUI broker-mode profile sync (no tokens).
-  - 2026-02-24: Added broker client prefs smoke test (`tests/broker_client_prefs_smoke.sh`).
   - 2026-02-24: Added devstack OIDC helper (`tools/devstack_oidc_token.sh`).
   - 2026-02-24: Added broker client prefs smoke test (`tests/broker_client_prefs_smoke.sh`).
   - 2026-02-24: WebUI server-side profile sync defaults to auto when supported (auth required; tokens remain local).
