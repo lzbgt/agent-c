@@ -509,7 +509,9 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
       const goal = entry.goal ? String(entry.goal).toLowerCase() : "";
       const changeLabels: string[] = [];
       if (entry.goal_changed === true) changeLabels.push("goal changed");
-      if (entry.goal_contract_changed === true) changeLabels.push("goal contract changed");
+      if (entry.goal_contract_changed === true) {
+        changeLabels.push("goal contract changed", "contract changed");
+      }
       const matchesChange = changeLabels.some((label) => label.includes(revisionFilterLower));
       const contractDiffKeys = diffKeys(entry.goal_contract_diff).map((v) => v.toLowerCase());
       const roleDiffKeys = diffKeys(entry.role_plan_diff).map((v) => v.toLowerCase());
