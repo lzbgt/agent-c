@@ -3,7 +3,7 @@
   "enabled": true,
   "sslRequired": "none",
   "displayName": "agentd dev realm",
-  "accessTokenLifespan": 3600,
+  "accessTokenLifespan": 43200,
   "users": [
     {
       "username": "test",
