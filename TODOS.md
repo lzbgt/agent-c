@@ -192,6 +192,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-26: broker stores `goal_versions` + `role_plan_versions` with version counters and emits
     `orchestrator_goal_revision` / `orchestrator_role_plan_revision` events; UI event filter updated.
 - [ ] W=10 — Populate OpenRouter streaming pins with a verified key, commit `ref/openrouter/streaming_pins.json`, and tighten smoke tests to prefer pins (unblocks streaming stability work). Current key returns 401 “User not found” on chat preflight; verify key and OpenRouter headers.
+  - 2026-02-26: OpenRouter streaming smokes now iterate pinned model lists in order (with candidate logging), and `tools/openrouter_auth_debug.sh` reports pin metadata.
   - 2026-02-19 check: key from `~/.env` returns 401 “User not found”; `OPENROUTER_HTTP_REFERER`/`OPENROUTER_X_TITLE` not set.
   - 2026-02-19 check: setting `OPENROUTER_HTTP_REFERER=http://localhost` and `OPENROUTER_X_TITLE=agentd` still returns 401 “User not found”.
   - 2026-02-19 check: `tools/probe_openrouter_stream_models.sh` fails with 401 chat auth even with headers set.
