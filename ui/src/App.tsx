@@ -2589,7 +2589,7 @@ export default function App() {
                 </div>
               </section>
               {advancedPage ? (
-                <aside className="min-w-0 overflow-x-hidden rounded-lg border border-white/10 bg-black/20 p-3 lg:w-[45vw] lg:max-w-[960px] lg:min-w-[360px] lg:shrink-0">
+                <aside className="min-w-0 overflow-x-hidden rounded-lg border border-white/10 bg-black/20 p-3 lg:w-[min(52vw,1100px)] lg:min-w-[360px] lg:shrink-0">
                   {advancedPage === "trace" ? (
                     <TraceLookupPanel
                       open={true}

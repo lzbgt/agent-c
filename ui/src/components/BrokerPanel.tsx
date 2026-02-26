@@ -1151,8 +1151,8 @@ export default function BrokerPanel(props: BrokerPanelProps) {
           </div>
         ) : null}
 
-        <div className="grid gap-4">
-          <aside className="rounded-md border border-white/10 bg-black/20 p-3">
+        <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)] lg:items-start">
+          <aside className="rounded-md border border-white/10 bg-black/20 p-3 lg:sticky lg:top-3">
             <div className="text-[11px] font-semibold text-white/60">Broker pages</div>
             <div className="mt-2 flex flex-wrap gap-2">
               {brokerPages.map((page) => {
