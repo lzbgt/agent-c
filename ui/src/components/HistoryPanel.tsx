@@ -255,6 +255,12 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                     const roleLabel = typeof meta?.role === "string" && meta.role ? meta.role : role;
                     const agentLabel = typeof meta?.agent_id === "string" && meta.agent_id ? meta.agent_id : "";
                     const sessionLabel = typeof meta?.session_id === "string" ? meta.session_id : "";
+                    const payload = meta?.payload ?? {};
+                    const uploads = Array.isArray(payload?.uploads) ? payload.uploads : [];
+                    const uploadFiles = uploads.flatMap((u: any) => (Array.isArray(u?.files) ? u.files : []));
+                    const uploadNames = uploadFiles
+                      .map((f: any) => String(f?.name || f?.path || "").trim())
+                      .filter((f: string) => f.length > 0);
                     return (
                       <div key={`team-msg:${ts || idx}`} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
                         <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
@@ -268,6 +274,11 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                         {content ? (
                           <div className="mt-2 text-sm text-white/90">
                             <Markdown text={String(content)} />
+                          </div>
+                        ) : null}
+                        {uploadNames.length > 0 ? (
+                          <div className="mt-2 text-[11px] text-white/60">
+                            Shared files: <span className="text-white/80">{uploadNames.join(", ")}</span>
                           </div>
                         ) : null}
                       </div>

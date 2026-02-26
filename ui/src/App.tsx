@@ -29,9 +29,12 @@ import {
   apiBrokerGetClientPrefs,
   apiBrokerPostClientPrefs,
   apiBrokerProxyJson,
+  apiBrokerTeamGuidanceCreate,
+  apiBrokerTeamGuidanceList,
   apiBrokerTeamRunCreate,
   apiBrokerTeamRunGet,
   apiBrokerTeamRunList,
+  apiBrokerTeamRunGoalUpdate,
   apiBrokerTrace,
   daemonHeaders,
   RunRequest,
@@ -65,6 +68,13 @@ const RUN_WATCH_PERSIST_MIN_INTERVAL_MS = 5000;
 
 type RunWatchByScope = Record<string, any>;
 type QueuedRun = { prompt: string; attachments: Attachment[]; queued_unix_ms: number };
+type TeamActivity = {
+  ts: number;
+  prompt: string;
+  run_id?: string;
+  kind?: "prompt" | "guidance" | "goal";
+  payload?: any;
+};
 
 const extractRunWatchByScope = (prefs: any): RunWatchByScope => {
   const root = prefs && typeof prefs === "object" ? prefs.run_watch : null;
@@ -135,9 +145,16 @@ export default function App() {
       setChatTarget("session");
     }
   }, [brokerChatAvailable, chatTarget, setChatTarget]);
-  const [teamPromptHistory, setTeamPromptHistory] = useLocalStorageState<
-    Record<string, { ts: number; prompt: string; run_id?: string }[]>
-  >("agentui.teamPrompts", {});
+  const [teamAction, setTeamAction] = useLocalStorageState<string>("agentui.teamAction", "run");
+  React.useEffect(() => {
+    if (chatTarget !== "team" && teamAction !== "run") {
+      setTeamAction("run");
+    }
+  }, [chatTarget, teamAction, setTeamAction]);
+  const [teamPromptHistory, setTeamPromptHistory] = useLocalStorageState<Record<string, TeamActivity[]>>(
+    "agentui.teamPrompts",
+    {},
+  );
   const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "");
   const [capsCache, setCapsCache] = useLocalStorageState<Record<string, { caps: Caps; ts: number }>>(
     "agentui.capsByBase",
@@ -1150,6 +1167,20 @@ export default function App() {
     retry: 1,
   });
 
+  const teamGuidance = useQuery({
+    queryKey: ["broker_team_guidance", brokerBase, authKey, selectedTeamIdTrimmed, latestTeamRunId],
+    queryFn: () =>
+      apiBrokerTeamGuidanceList(
+        brokerBase,
+        selectedTeamIdTrimmed,
+        { teamRunId: latestTeamRunId, limit: 50, offset: 0 },
+        daemonAuth,
+      ),
+    enabled: brokerChatAvailable && !!brokerBase && selectedTeamIdTrimmed.length > 0,
+    refetchInterval: brokerChatAvailable ? 6000 : false,
+    retry: 1,
+  });
+
   const teamConversationItems = React.useMemo(() => {
     const out: any[] = [];
     const items = Array.isArray(teamChat.data?.items) ? (teamChat.data?.items as any[]) : [];
@@ -1165,18 +1196,55 @@ export default function App() {
         meta: item?.meta ?? {},
       });
     }
+    const guidanceRows =
+      teamGuidance.data?.ok && Array.isArray(teamGuidance.data?.guidance) ? (teamGuidance.data.guidance as any[]) : [];
+    for (const g of guidanceRows) {
+      const ts = typeof g?.created_unix_ms === "number" ? g.created_unix_ms : 0;
+      const message = typeof g?.message === "string" ? g.message : "";
+      if (!ts || !message) continue;
+      out.push({
+        kind: "guidance",
+        ts,
+        message: { role: "guidance", content: message },
+        meta: {
+          guidance_id: g?.guidance_id,
+          kind: g?.kind,
+          priority: g?.priority,
+          status: g?.status,
+          run_id: g?.team_run_id,
+          payload: g?.payload,
+        },
+      });
+    }
     const prompts = teamPromptHistory[selectedTeamIdTrimmed] || [];
     for (const p of prompts) {
       if (!p || typeof p !== "object") continue;
       const ts = typeof p.ts === "number" ? p.ts : 0;
       const prompt = String((p as any).prompt || "").trim();
       if (!ts || !prompt) continue;
-      out.push({
-        kind: "prompt",
-        ts,
-        message: { role: "user", content: prompt },
-        meta: { run_id: (p as any).run_id || undefined },
-      });
+      const kind = typeof (p as any).kind === "string" ? (p as any).kind : "prompt";
+      if (kind === "guidance") {
+        out.push({
+          kind: "guidance",
+          ts,
+          message: { role: "guidance", content: prompt },
+          meta: { run_id: (p as any).run_id || undefined, payload: (p as any).payload },
+        });
+      } else if (kind === "goal") {
+        out.push({
+          kind: "goal",
+          ts,
+          message: { role: "goal", content: prompt },
+          meta: { run_id: (p as any).run_id || undefined, payload: (p as any).payload },
+        });
+      } else {
+        out.push({
+          kind: "prompt",
+          ts,
+          message: { role: "user", content: prompt },
+          meta: { run_id: (p as any).run_id || undefined },
+        });
+      }
     }
     out.sort((a, b) => a.ts - b.ts);
     const deduped: any[] = [];
@@ -1192,7 +1260,7 @@ export default function App() {
       deduped.push(item);
     }
     return deduped;
-  }, [teamChat.data, teamPromptHistory, selectedTeamIdTrimmed]);
+  }, [teamChat.data, teamGuidance.data, teamPromptHistory, selectedTeamIdTrimmed]);
 
   const teamRunCreate = useMutation({
     mutationFn: async (vars: { prompt: string }) => {
@@ -1201,36 +1269,7 @@ export default function App() {
       if (!brokerChatAvailable) throw new Error("team chat unavailable");
       if (!brokerBase) throw new Error("missing broker base");
       if (!selectedTeamIdTrimmed) throw new Error("missing team_id");
-      return apiBrokerTeamRunCreate(
-        brokerBase,
-        selectedTeamIdTrimmed,
-        { prompt: trimmed },
-        daemonAuth,
-      );
-    },
-    onSuccess: (resp, vars) => {
-      if (!resp?.ok) {
-        setJobNotice(resp?.error || resp?.err || resp?.code || "team run failed");
-        return;
-      }
-      const runId = String(resp?.team_run_id || "").trim();
-      const trimmed = String(vars.prompt || "").trim();
-      if (trimmed) {
-        setTeamPromptHistory((prev) => {
-          const cur = Array.isArray(prev[selectedTeamIdTrimmed]) ? prev[selectedTeamIdTrimmed] : [];
-          const next = [...cur, { ts: Date.now(), prompt: trimmed, run_id: runId || undefined }];
-          return { ...prev, [selectedTeamIdTrimmed]: next };
-        });
-      }
-      setPrompt("");
-      setComposerTaskNonce((n) => n + 1);
-      setJobNotice(runId ? `team run ${runId} started` : "team run started");
-      if (teamRunList.refetch) {
-        void teamRunList.refetch();
-      }
-    },
-    onError: (err) => {
-      setJobNotice(`team run failed: ${String(err)}`);
+      return apiBrokerTeamRunCreate(brokerBase, selectedTeamIdTrimmed, { prompt: trimmed }, daemonAuth);
     },
   });
 
@@ -1464,6 +1503,17 @@ export default function App() {
   const [result, setResult] = React.useState<RunResponse | undefined>(undefined);
   // Incremented when a run successfully starts/completes; used to clear "next run only" UI state (e.g. attachments).
   const [composerTaskNonce, setComposerTaskNonce] = React.useState<number>(0);
+  const lastChatTargetRef = React.useRef<string>("");
+  React.useEffect(() => {
+    if (lastChatTargetRef.current === chatTarget) return;
+    lastChatTargetRef.current = chatTarget;
+    setComposerTaskNonce((n) => n + 1);
+  }, [chatTarget]);
+  React.useEffect(() => {
+    if (chatTarget === "team" && teamAction === "goal") {
+      setComposerTaskNonce((n) => n + 1);
+    }
+  }, [chatTarget, teamAction]);
 
   const run = useMutation({
     mutationFn: async (vars: { prompt: string; attachments: Attachment[] }) => {
@@ -1731,19 +1781,246 @@ export default function App() {
   }, [activeJobId, run.isPending, runQueue, run, setJobNotice, setRunQueue]);
 
   const isTeamTarget = brokerChatAvailable && chatTarget === "team";
+  const teamActionNormalized =
+    teamAction === "guidance" || teamAction === "goal" ? (teamAction as "guidance" | "goal") : "run";
+
+  const addTeamActivity = React.useCallback(
+    (entry: TeamActivity) => {
+      const tid = selectedTeamIdTrimmed;
+      if (!tid) return;
+      setTeamPromptHistory((prev) => {
+        const cur = Array.isArray(prev[tid]) ? prev[tid] : [];
+        return { ...prev, [tid]: [...cur, entry] };
+      });
+    },
+    [selectedTeamIdTrimmed, setTeamPromptHistory],
+  );
+
+  const buildGoalContractFromPrompt = (promptRaw: string) => {
+    const lines = String(promptRaw || "")
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+    if (lines.length === 0) return null;
+    const [goal, ...rest] = lines;
+    const contract: Record<string, any> = { goal };
+    if (rest.length > 0) contract.success_criteria = rest;
+    return contract;
+  };
+
+  const collectTeamUploadFiles = (attachments: Attachment[]) => {
+    return (attachments || []).filter((a) => typeof a?.data_base64 === "string" && a.data_base64.length > 0);
+  };
+
+  const waitForTeamMemberSessions = React.useCallback(
+    async (runId: string) => {
+      let lastStatus: any = null;
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const status = await apiBrokerTeamRunGet(brokerBase, selectedTeamIdTrimmed, runId, daemonAuth);
+        lastStatus = status;
+        const sessions = status?.member_sessions;
+        if (sessions && typeof sessions === "object" && Object.keys(sessions).length > 0) {
+          return status;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 750));
+      }
+      return lastStatus;
+    },
+    [brokerBase, daemonAuth, selectedTeamIdTrimmed],
+  );
+
+  const broadcastTeamUploads = React.useCallback(
+    async (status: any, attachments: Attachment[]) => {
+      const uploads = collectTeamUploadFiles(attachments);
+      if (uploads.length === 0) return { uploads: [], errors: [] as string[] };
+      const memberSessions = status?.member_sessions && typeof status.member_sessions === "object" ? status.member_sessions : {};
+      const members = Array.isArray(status?.members) ? status.members : [];
+      const memberJobs = Array.isArray(status?.member_jobs) ? status.member_jobs : [];
+      const memberMeta: Record<string, { agent_id?: string; deployment_id?: string }> = {};
+      for (const m of members) {
+        const id = String((m as any)?.member_id || "").trim();
+        if (!id) continue;
+        memberMeta[id] = {
+          agent_id: String((m as any)?.agent_id || "").trim() || undefined,
+          deployment_id: String((m as any)?.deployment_id || "").trim() || undefined,
+        };
+      }
+      for (const job of memberJobs) {
+        const id = String((job as any)?.member_id || "").trim();
+        if (!id) continue;
+        memberMeta[id] = {
+          agent_id: String((job as any)?.agent_id || memberMeta[id]?.agent_id || "").trim() || undefined,
+          deployment_id: String((job as any)?.deployment_id || memberMeta[id]?.deployment_id || "").trim() || undefined,
+        };
+      }
+
+      const errors: string[] = [];
+      const uploadResults: any[] = [];
+      const entries = Object.entries(memberSessions as Record<string, string>);
+      for (const [memberIdRaw, sessionIdRaw] of entries) {
+        const memberId = String(memberIdRaw || "").trim();
+        const sid = String(sessionIdRaw || "").trim();
+        if (!memberId || !sid) continue;
+        const meta = memberMeta[memberId] || {};
+        const agentId = meta.agent_id || String(connection.brokerAgentId || "").trim();
+        if (!agentId) {
+          errors.push(`missing agent_id for member ${memberId}`);
+          continue;
+        }
+        const depId = meta.deployment_id;
+        const body = {
+          session_id: sid,
+          files: uploads.map((f) => ({
+            name: f.name || "upload.bin",
+            mime: f.mime,
+            data_base64: f.data_base64,
+          })),
+        };
+        const resp = await apiBrokerProxyJson(
+          brokerBase,
+          agentId,
+          "/api/v1/session/upload",
+          "POST",
+          body,
+          daemonAuth,
+          depId,
+        );
+        if (!resp?.data?.ok) {
+          errors.push(`upload failed for member ${memberId}`);
+          continue;
+        }
+        const files = Array.isArray(resp?.data?.files) ? resp.data.files : [];
+        uploadResults.push({ member_id: memberId, session_id: sid, agent_id: agentId, deployment_id: depId, files });
+      }
+      return { uploads: uploadResults, errors };
+    },
+    [brokerBase, daemonAuth, connection.brokerAgentId],
+  );
+
   const handleRunRequest = React.useCallback(
-    (vars: { prompt: string; attachments: Attachment[] }) => {
+    async (vars: { prompt: string; attachments: Attachment[] }) => {
       if (isTeamTarget) {
         const trimmed = String(vars.prompt || "").trim();
         if (!trimmed) {
           setJobNotice("prompt required");
           return;
         }
-        if (vars.attachments.length > 0) {
-          setJobNotice("team runs do not support attachments yet");
+
+        if (teamActionNormalized === "goal") {
+          if (!latestTeamRunId) {
+            setJobNotice("start a team run before setting a goal");
+            return;
+          }
+          const contract = buildGoalContractFromPrompt(trimmed);
+          if (!contract) {
+            setJobNotice("goal required");
+            return;
+          }
+          try {
+            const resp = await apiBrokerTeamRunGoalUpdate(
+              brokerBase,
+              selectedTeamIdTrimmed,
+              latestTeamRunId,
+              { goal_contract: contract },
+              daemonAuth,
+            );
+            if (!resp?.ok) throw new Error(resp?.error || resp?.err || "goal update failed");
+            addTeamActivity({ ts: Date.now(), prompt: trimmed, run_id: latestTeamRunId, kind: "goal", payload: contract });
+            setPrompt("");
+            setComposerTaskNonce((n) => n + 1);
+            setJobNotice("goal updated");
+          } catch (err) {
+            setJobNotice(`goal update failed: ${String(err)}`);
+          }
           return;
         }
-        teamRunCreate.mutate({ prompt: trimmed });
+
+        if (teamActionNormalized === "guidance") {
+          try {
+            const runId = latestTeamRunId || "";
+            const uploads = collectTeamUploadFiles(vars.attachments);
+            let uploadPayload: any = null;
+            if (uploads.length > 0) {
+              if (!runId) {
+                setJobNotice("start a team run before attaching files");
+                return;
+              }
+              setJobNotice("sharing attachments with the team…");
+              const status = await waitForTeamMemberSessions(runId);
+              const uploadResult = await broadcastTeamUploads(status, uploads);
+              uploadPayload = { uploads: uploadResult.uploads };
+              if (uploadResult.errors.length > 0) {
+                setJobNotice(`shared with errors: ${uploadResult.errors[0]}`);
+              }
+            }
+            const body: Record<string, any> = {
+              kind: "note",
+              priority: "normal",
+              message: trimmed,
+            };
+            if (runId) body.team_run_id = runId;
+            if (uploadPayload) body.payload = uploadPayload;
+            const resp = await apiBrokerTeamGuidanceCreate(brokerBase, selectedTeamIdTrimmed, body, daemonAuth);
+            if (!resp?.ok) throw new Error(resp?.error || resp?.err || "guidance failed");
+            addTeamActivity({ ts: Date.now(), prompt: trimmed, run_id: runId || undefined, kind: "guidance", payload: uploadPayload });
+            setPrompt("");
+            setComposerTaskNonce((n) => n + 1);
+            setJobNotice("guidance sent");
+            if (teamGuidance.refetch) void teamGuidance.refetch();
+          } catch (err) {
+            setJobNotice(`guidance failed: ${String(err)}`);
+          }
+          return;
+        }
+
+        try {
+          const resp = await teamRunCreate.mutateAsync({ prompt: trimmed });
+          if (!resp?.ok) throw new Error(resp?.error || resp?.err || resp?.code || "team run failed");
+          const runId = String(resp?.team_run_id || "").trim();
+          addTeamActivity({ ts: Date.now(), prompt: trimmed, run_id: runId || undefined, kind: "prompt" });
+          setPrompt("");
+          setComposerTaskNonce((n) => n + 1);
+          setJobNotice(runId ? `team run ${runId} started` : "team run started");
+          if (teamRunList.refetch) void teamRunList.refetch();
+          const uploads = collectTeamUploadFiles(vars.attachments);
+          if (uploads.length > 0) {
+            if (!runId) {
+              setJobNotice("team run id missing; attachments not shared");
+              return;
+            }
+            setJobNotice("sharing attachments with the team…");
+            const status = await waitForTeamMemberSessions(runId);
+            const uploadResult = await broadcastTeamUploads(status, uploads);
+            const fileNames = uploads.map((f) => f.name || "file").join(", ");
+            const guidanceMsg = `Shared files: ${fileNames}`;
+            const guidanceBody: Record<string, any> = {
+              kind: "resource",
+              priority: "normal",
+              message: guidanceMsg,
+              team_run_id: runId,
+              payload: { uploads: uploadResult.uploads },
+            };
+            const gResp = await apiBrokerTeamGuidanceCreate(brokerBase, selectedTeamIdTrimmed, guidanceBody, daemonAuth);
+            if (gResp?.ok) {
+              addTeamActivity({
+                ts: Date.now(),
+                prompt: guidanceMsg,
+                run_id: runId,
+                kind: "guidance",
+                payload: guidanceBody.payload,
+              });
+            }
+            if (uploadResult.errors.length > 0) {
+              setJobNotice(`shared with errors: ${uploadResult.errors[0]}`);
+            } else {
+              setJobNotice("attachments shared");
+            }
+            setComposerTaskNonce((n) => n + 1);
+            if (teamGuidance.refetch) void teamGuidance.refetch();
+          }
+        } catch (err) {
+          setJobNotice(`team run failed: ${String(err)}`);
+        }
         return;
       }
       if (activeJobId || run.isPending) {
@@ -1752,7 +2029,28 @@ export default function App() {
       }
       run.mutate(vars);
     },
-    [activeJobId, enqueueRun, isTeamTarget, run, setJobNotice, teamRunCreate],
+    [
+      activeJobId,
+      addTeamActivity,
+      apiBrokerTeamRunGoalUpdate,
+      brokerBase,
+      broadcastTeamUploads,
+      buildGoalContractFromPrompt,
+      collectTeamUploadFiles,
+      daemonAuth,
+      enqueueRun,
+      isTeamTarget,
+      latestTeamRunId,
+      run,
+      selectedTeamIdTrimmed,
+      setJobNotice,
+      setPrompt,
+      teamActionNormalized,
+      teamGuidance,
+      teamRunCreate,
+      teamRunList,
+      waitForTeamMemberSessions,
+    ],
   );
 
   const traceLookup = useMutation({
@@ -2280,7 +2578,13 @@ export default function App() {
                           ? teamChat.data?.status?.code
                           : ""
                     }
-                    teamConversationWarnings={Array.isArray(teamChat.data?.warnings) ? teamChat.data?.warnings : []}
+                    teamConversationWarnings={[
+                      ...(Array.isArray(teamChat.data?.warnings) ? teamChat.data?.warnings : []),
+                      ...(teamGuidance.isError ? [String(teamGuidance.error)] : []),
+                      ...(teamGuidance.data?.ok === false
+                        ? [teamGuidance.data?.error || teamGuidance.data?.err || teamGuidance.data?.code || "guidance error"]
+                        : []),
+                    ].filter(Boolean)}
                   />
                 </div>
               </section>
@@ -2391,7 +2695,11 @@ export default function App() {
           isTeamTarget
             ? teamRunCreate.isPending
               ? "Sending…"
-              : "Send"
+              : teamActionNormalized === "goal"
+                ? "Update goal"
+                : teamActionNormalized === "guidance"
+                  ? "Send guidance"
+                  : "Run team"
             : run.isPending || activeJobId
               ? "Queue"
               : "Run"
@@ -2401,16 +2709,23 @@ export default function App() {
         setJobNotice={setJobNotice}
         jobNotice={jobNotice}
         jobError={jobError}
-        runError={isTeamTarget ? (teamRunCreate.isError ? String(teamRunCreate.error) : null) : run.isError ? String(run.error) : null}
+        runError={
+          isTeamTarget ? (teamRunCreate.isError ? String(teamRunCreate.error) : null) : run.isError ? String(run.error) : null
+        }
         resultError={!result?.ok && result?.error ? result.error : null}
         clearAttachmentsNonce={composerTaskNonce}
-        uploadsEnabled={uploadsEnabled && !isTeamTarget}
+        uploadsEnabled={uploadsEnabled && (!isTeamTarget || teamActionNormalized !== "goal")}
         uploadMaxBytes={uploadMaxBytes}
-        uploadsDisabledReason={isTeamTarget ? "Uploads disabled for team runs." : ""}
+        uploadsDisabledReason={
+          isTeamTarget ? (teamActionNormalized === "goal" ? "Goal updates do not accept attachments." : "") : ""
+        }
         chatTarget={isTeamTarget ? "team" : "session"}
         teamId={selectedTeamIdTrimmed}
         teamAvailable={brokerChatAvailable}
         onChatTargetChange={(next) => setChatTarget(next)}
+        uploadMode={isTeamTarget ? "team" : "session"}
+        teamAction={teamActionNormalized}
+        onTeamActionChange={(next) => setTeamAction(next)}
       />
 
       <SettingsDrawer

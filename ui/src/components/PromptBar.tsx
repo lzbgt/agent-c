@@ -2,7 +2,14 @@ import React from "react";
 import { apiCancelJob, apiPostSessionUpload, type ApiAuth } from "../api";
 import useLocalStorageState from "../hooks/useLocalStorageState";
 
-export type Attachment = { path: string; name?: string; mime?: string; kind?: string; bytes?: number };
+export type Attachment = {
+  path: string;
+  name?: string;
+  mime?: string;
+  kind?: string;
+  bytes?: number;
+  data_base64?: string;
+};
 
 function guessMimeFromName(name: string): string {
   const lower = String(name || "").toLowerCase();
@@ -81,6 +88,9 @@ type PromptBarProps = {
   teamId?: string;
   teamAvailable?: boolean;
   onChatTargetChange?: (next: "session" | "team") => void;
+  uploadMode?: "session" | "team";
+  teamAction?: "run" | "guidance" | "goal";
+  onTeamActionChange?: (next: "run" | "guidance" | "goal") => void;
 };
 
 const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function PromptBar(props, ref) {
@@ -104,6 +114,8 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
   const chatTarget = props.chatTarget === "team" ? "team" : "session";
   const teamAvailable = props.teamAvailable === true;
   const teamId = String(props.teamId || "").trim();
+  const uploadMode = props.uploadMode === "team" ? "team" : "session";
+  const teamAction = props.teamAction === "guidance" || props.teamAction === "goal" ? props.teamAction : "run";
 
   React.useEffect(() => {
     setAttachments([]);
@@ -116,6 +128,10 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
     setAttachments([]);
     setDrawerOpen(false);
   }, [props.effectiveBase, String(props.sessionId || "").trim()]);
+
+  React.useEffect(() => {
+    setAttachments([]);
+  }, [chatTarget, teamAction]);
 
   React.useEffect(() => {
     const shouldOpen =
@@ -143,6 +159,15 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
     const vars = { prompt: props.prompt, attachments };
     props.onRun(vars);
   }, [attachments, props]);
+
+  const promptPlaceholder = React.useMemo(() => {
+    if (chatTarget === "team") {
+      if (teamAction === "guidance") return "Add a guideline or update for the team…";
+      if (teamAction === "goal") return "Describe the goal (first line), add success criteria on new lines…";
+      return "Describe the team task…";
+    }
+    return "Describe the task… (Ctrl/⌘+Enter to run)";
+  }, [chatTarget, teamAction]);
 
   return (
     <div ref={ref} className="fixed bottom-0 left-0 right-0 z-30 border-t border-white/10 bg-slate-950/90 backdrop-blur">
@@ -176,6 +201,11 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
                   tools=<code className="text-white/70 break-all">{String(props.tools || "")}</code>{" "}
                   run_watch=<code className="text-white/70 break-all">{String(props.runWatchMode || "local")}</code>{" "}
                   target=<code className="text-white/70 break-all">{chatTarget}</code>{" "}
+                  {chatTarget === "team" ? (
+                    <>
+                      action=<code className="text-white/70 break-all">{teamAction}</code>{" "}
+                    </>
+                  ) : null}
                   {props.queueCount && props.queueCount > 0 ? (
                     <>
                       queued=<code className="text-white/70 break-all">{props.queueCount}</code>{" "}
@@ -238,6 +268,9 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
                     Attachments apply to the next <span className="text-white/70">Run</span> only. After the run is accepted by the daemon (async) or completes (sync), the staged list is cleared.
                     Uploaded files may still remain in the session storage on the daemon.
                   </div>
+                  {uploadMode === "team" ? (
+                    <div className="mt-2 text-white/50">Team attachments are shared with all team members when you send.</div>
+                  ) : null}
                 </div>
 
                 {props.runError ? (
@@ -314,6 +347,32 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
                 </button>
               </div>
             ) : null}
+
+            {chatTarget === "team" ? (
+              <div className="inline-flex items-center overflow-hidden rounded-md border border-white/10 bg-black/30 text-xs text-white/70">
+                <button
+                  className={`px-2 py-1 ${teamAction === "run" ? "bg-indigo-500/20 text-indigo-100" : "hover:bg-black/40"}`}
+                  type="button"
+                  onClick={() => props.onTeamActionChange?.("run")}
+                >
+                  Prompt
+                </button>
+                <button
+                  className={`px-2 py-1 ${teamAction === "guidance" ? "bg-indigo-500/20 text-indigo-100" : "hover:bg-black/40"}`}
+                  type="button"
+                  onClick={() => props.onTeamActionChange?.("guidance")}
+                >
+                  Guidance
+                </button>
+                <button
+                  className={`px-2 py-1 ${teamAction === "goal" ? "bg-indigo-500/20 text-indigo-100" : "hover:bg-black/40"}`}
+                  type="button"
+                  onClick={() => props.onTeamActionChange?.("goal")}
+                >
+                  Goal
+                </button>
+              </div>
+            ) : null}
           </div>
 
           <div className="flex items-center gap-2">
@@ -359,7 +418,7 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
               data-testid="prompt"
               rows={3}
               value={props.prompt}
-              placeholder="Describe the task… (Ctrl/⌘+Enter to run)"
+              placeholder={promptPlaceholder}
               onChange={(e) => props.setPrompt(e.target.value)}
               onKeyDown={(e) => {
                 if (props.runDisabled) return;
@@ -391,21 +450,35 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
                   setUploadBusy(true);
                   props.setJobNotice(null);
                   try {
-                    const payloadFiles: { name: string; mime?: string; data_base64: string }[] = [];
+                    const payloadFiles: { name: string; mime?: string; data_base64: string; bytes?: number }[] = [];
                     for (const f of files.slice(0, 16)) {
                       if (typeof (f as any)?.size === "number" && (f as any).size > uploadMaxBytes) continue;
                       const name = sanitizeUploadName(f.name || "upload.bin");
                       const mime = String(f.type || "").trim() || guessMimeFromName(name) || undefined;
                       const data_base64 = await fileToBase64(f);
-                      payloadFiles.push({ name, mime, data_base64 });
+                      payloadFiles.push({ name, mime, data_base64, bytes: (f as any)?.size });
                     }
                     if (payloadFiles.length === 0) {
                       props.setJobNotice("no files uploaded (too large or invalid)");
                       return;
                     }
+                    if (uploadMode === "team") {
+                      const newOnes = payloadFiles.map((f) => ({
+                        path: `local:${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                        name: f.name,
+                        mime: f.mime,
+                        kind: f.mime,
+                        bytes: typeof f.bytes === "number" ? f.bytes : undefined,
+                        data_base64: f.data_base64,
+                      }));
+                      setAttachments((prev) => [...prev, ...newOnes]);
+                      props.setJobNotice(`staged ${newOnes.length} file(s) for team`);
+                      return;
+                    }
+
                     const resp = await apiPostSessionUpload(
                       props.effectiveBase,
-                      { session_id: sid, files: payloadFiles },
+                      { session_id: sid, files: payloadFiles.map(({ name, mime, data_base64 }) => ({ name, mime, data_base64 })) },
                       props.daemonAuth,
                     );
                     if (!resp.ok) {
