@@ -160,12 +160,12 @@ func TestBuildRevisionPayloads(t *testing.T) {
 	meta := map[string]any{
 		"goal_versions": []map[string]any{
 			{"version": 1, "goal": "old"},
-			{"version": 3, "goal": "new", "goal_contract": map[string]any{"scope": "s1"}},
+			{"version": 3, "goal": "new", "goal_contract": map[string]any{"scope": "s1"}, "goal_contract_diff": map[string]any{"added": []string{"scope"}}},
 			{"version": 2, "goal": "mid"},
 		},
 		"role_plan_versions": []map[string]any{
 			{"version": 2, "role_plan_snapshot": map[string]any{"role": "b"}},
-			{"version": 4, "role_plan_snapshot": map[string]any{"role": "c"}},
+			{"version": 4, "role_plan_snapshot": map[string]any{"role": "c"}, "role_plan_diff": map[string]any{"changed": []string{"role"}}},
 		},
 	}
 	goalPayload := buildGoalRevisionPayload("team1", "run1", meta)
@@ -175,11 +175,27 @@ func TestBuildRevisionPayloads(t *testing.T) {
 	if goalPayload["goal"] != "new" {
 		t.Fatalf("expected goal payload 'new', got %#v", goalPayload["goal"])
 	}
+	goalDiff, ok := goalPayload["goal_contract_diff"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected goal_contract_diff, got %#v", goalPayload["goal_contract_diff"])
+	}
+	added, ok := goalDiff["added"].([]string)
+	if !ok || len(added) != 1 || added[0] != "scope" {
+		t.Fatalf("unexpected goal_contract_diff added keys: %#v", goalDiff["added"])
+	}
 	rolePayload := buildRolePlanRevisionPayload("team1", "run1", meta)
 	if rolePayload == nil || rolePayload["version"] != 4 {
 		t.Fatalf("expected role payload version 4, got %#v", rolePayload)
 	}
 	if rolePayload["role_plan_snapshot"] == nil {
 		t.Fatalf("expected role_plan_snapshot in payload")
+	}
+	roleDiff, ok := rolePayload["role_plan_diff"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected role_plan_diff, got %#v", rolePayload["role_plan_diff"])
+	}
+	changed, ok := roleDiff["changed"].([]string)
+	if !ok || len(changed) != 1 || changed[0] != "role" {
+		t.Fatalf("unexpected role_plan_diff changed keys: %#v", roleDiff["changed"])
 	}
 }
