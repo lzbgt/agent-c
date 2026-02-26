@@ -1184,6 +1184,7 @@ export default function App() {
                   role: meta.role,
                   agent_id: agentId,
                   session_id: sid,
+                  run_id: latestTeamRunId || undefined,
                 },
               });
             }

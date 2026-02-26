@@ -64,6 +64,23 @@ export default function HistoryPanel(props: HistoryPanelProps) {
   }, [props.effectiveBase, teamId]);
   const [showTeamChat, setShowTeamChat] = useLocalStorageState<boolean>(teamChatKey, true);
 
+  const teamTimelineItems = React.useMemo(() => {
+    const items = teamConversationItems.slice().sort((a, b) => (a?.ts || 0) - (b?.ts || 0));
+    const out: Array<{ kind: "marker" | "item"; runId?: string; item?: any; ts: number }> = [];
+    let lastRunId = "";
+    for (const item of items) {
+      const ts = typeof item?.ts === "number" ? item.ts : 0;
+      const runIdRaw = item?.meta?.run_id;
+      const runId = typeof runIdRaw === "string" ? runIdRaw : String(runIdRaw || "").trim();
+      if (runId && runId !== lastRunId) {
+        out.push({ kind: "marker", runId, ts });
+        lastRunId = runId;
+      }
+      out.push({ kind: "item", item, ts });
+    }
+    return out;
+  }, [teamConversationItems]);
+
   const conversationItems = React.useMemo(() => {
     const items: {
       kind: "message" | "tool_record";
@@ -245,7 +262,18 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 </div>
               ) : (
                 <div className="mt-3 grid gap-3">
-                  {teamConversationItems.map((item, idx) => {
+                  {teamTimelineItems.map((entry, idx) => {
+                    if (entry.kind === "marker") {
+                      return (
+                        <div
+                          key={`team-run:${entry.runId || idx}`}
+                          className="rounded-md border border-indigo-400/20 bg-indigo-500/10 px-3 py-2 text-[11px] text-indigo-100"
+                        >
+                          Run {entry.runId}
+                        </div>
+                      );
+                    }
+                    const item = entry.item;
                     const msg = item?.message ?? {};
                     const role = typeof msg?.role === "string" ? msg.role : "message";
                     const content = typeof msg?.content === "string" ? msg.content : "";
