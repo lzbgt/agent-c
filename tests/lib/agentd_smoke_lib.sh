@@ -285,6 +285,8 @@ add(obj.get(primary_key, ""))
 add_list(obj.get(fallback_list_key, []))
 for key in fallback_compat_keys:
     add_list(obj.get(key, []))
+if not ordered:
+    print(f"[stream] pins file has no usable entries: {path}", file=sys.stderr)
 for item in ordered:
     print(item)
 PY
