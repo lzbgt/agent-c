@@ -1706,17 +1706,15 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             </div>
 
             <div className="grid gap-2">
-              <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-[minmax(140px,1fr)_minmax(140px,1fr)_minmax(160px,1.1fr)_minmax(160px,1fr)_minmax(120px,0.8fr)_auto] gap-2 text-[10px] uppercase tracking-wide text-white/40">
+              <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-[minmax(140px,1fr)_minmax(140px,1fr)_minmax(180px,1.2fr)_auto] gap-2 text-[10px] uppercase tracking-wide text-white/40">
                 <span>Role</span>
                 <span>Provider</span>
                 <span>Model</span>
-                <span>Agent</span>
-                <span>Deployment</span>
                 <span className="lg:text-right">Actions</span>
               </div>
               {quickMembers.map((m) => (
                 <div key={m.id} className="rounded-md border border-white/10 bg-black/20 p-2">
-                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(140px,1fr)_minmax(140px,1fr)_minmax(160px,1.1fr)_minmax(160px,1fr)_minmax(120px,0.8fr)_auto]">
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(140px,1fr)_minmax(140px,1fr)_minmax(180px,1.2fr)_auto]">
                     <input
                       aria-label="Role"
                       className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
@@ -1745,26 +1743,6 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                       onChange={(e) => handleQuickMemberUpdate(m.id, { model: e.target.value })}
                       placeholder={providerModelDefaults[m.provider] || "model"}
                     />
-                    <select
-                      aria-label="Agent"
-                      className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                      value={m.agentId}
-                      onChange={(e) => handleQuickMemberUpdate(m.id, { agentId: e.target.value, deploymentId: "" })}
-                    >
-                      <option value="">(any)</option>
-                      {(memberAgents || []).map((agent: any) => (
-                        <option key={agent?.agent_id || agent?.id} value={String(agent?.agent_id || agent?.id || "")}>
-                          {String(agent?.display_name || agent?.agent_id || agent?.id || "")}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      aria-label="Deployment"
-                      className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                      value={m.deploymentId}
-                      onChange={(e) => handleQuickMemberUpdate(m.id, { deploymentId: e.target.value })}
-                      placeholder="optional"
-                    />
                     <div className="flex items-center justify-end gap-2 sm:col-span-2 lg:col-span-1">
                       <button
                         className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
@@ -1777,7 +1755,29 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                     </div>
                   </div>
                   <details className="mt-2 rounded-md border border-white/10 bg-black/30 px-2 py-1">
-                    <summary className="cursor-pointer text-[11px] text-white/60">Advanced provider overrides</summary>
+                    <summary className="cursor-pointer text-[11px] text-white/60">Assignments & overrides</summary>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <select
+                        aria-label="Agent"
+                        className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                        value={m.agentId}
+                        onChange={(e) => handleQuickMemberUpdate(m.id, { agentId: e.target.value, deploymentId: "" })}
+                      >
+                        <option value="">(any agent)</option>
+                        {(memberAgents || []).map((agent: any) => (
+                          <option key={agent?.agent_id || agent?.id} value={String(agent?.agent_id || agent?.id || "")}>
+                            {String(agent?.display_name || agent?.agent_id || agent?.id || "")}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        aria-label="Deployment"
+                        className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                        value={m.deploymentId}
+                        onChange={(e) => handleQuickMemberUpdate(m.id, { deploymentId: e.target.value })}
+                        placeholder="deployment (optional)"
+                      />
+                    </div>
                     <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
                       <input
                         aria-label="Base URL"
