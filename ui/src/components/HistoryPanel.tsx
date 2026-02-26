@@ -81,6 +81,12 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     return `agentui.teamSummaryExpanded:${base}::${tid}`;
   }, [props.effectiveBase, teamId]);
   const [showAllTeamAgents, setShowAllTeamAgents] = useLocalStorageState<boolean>(teamSummaryKey, false);
+  const teamGroupStateKey = React.useMemo(() => {
+    const base = String(props.effectiveBase || "").trim() || "default";
+    const tid = teamId || "none";
+    return `agentui.teamGroupState:${base}::${tid}`;
+  }, [props.effectiveBase, teamId]);
+  const [teamGroupState, setTeamGroupState] = useLocalStorageState<Record<string, boolean>>(teamGroupStateKey, {});
   const MAX_HISTORY_EXPANDED_KEYS = 200;
   const technicalHistoryKey = React.useMemo(() => {
     const base = String(props.effectiveBase || "").trim() || "default";
@@ -497,6 +503,26 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                   Clear muted
                 </button>
               ) : null}
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                type="button"
+                onClick={() => {
+                  if (typeof window !== "undefined") {
+                    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+                  }
+                }}
+              >
+                Jump to latest
+              </button>
+              {showTeamGroupByAgent && teamGroupedByAgent.length > 0 ? (
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                  type="button"
+                  onClick={() => setTeamGroupState({})}
+                >
+                  Collapse groups
+                </button>
+              ) : null}
             </div>
             {teamMutedAgents.length > 0 ? (
               <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
@@ -526,8 +552,20 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                   {showTeamGroupByAgent
                     ? teamGroupedByAgent.map((group) => {
                         const isMuted = mutedAgentSet.has(group.key);
+                        const isOpen =
+                          Object.prototype.hasOwnProperty.call(teamGroupState, group.key)
+                            ? !!teamGroupState[group.key]
+                            : false;
                         return (
-                          <details key={group.key} className="rounded-md border border-white/10 bg-black/20 p-2">
+                          <details
+                            key={group.key}
+                            className="rounded-md border border-white/10 bg-black/20 p-2"
+                            open={isOpen}
+                            onToggle={(event) => {
+                              const open = (event.currentTarget as HTMLDetailsElement).open;
+                              setTeamGroupState((prev) => ({ ...(prev || {}), [group.key]: open }));
+                            }}
+                          >
                             <summary className="cursor-pointer text-[11px] text-white/70">
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div className="flex flex-wrap items-center gap-2">
