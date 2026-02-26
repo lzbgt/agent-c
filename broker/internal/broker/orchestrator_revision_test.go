@@ -81,3 +81,21 @@ func TestMergeOrchestratorRevisionHistory(t *testing.T) {
 		t.Fatalf("expected role_plan_version to be copied, got %v", dst["role_plan_version"])
 	}
 }
+
+func TestInitializeOrchestratorRevisionHistory(t *testing.T) {
+	meta := initializeOrchestratorRevisionHistory(nil, "goal", map[string]any{"scope": "s1"}, map[string]any{"role": "plan"}, "user1")
+	goalVersions := readRevisionEntries(meta, "goal_versions")
+	if len(goalVersions) != 1 {
+		t.Fatalf("expected goal_versions seeded, got %d", len(goalVersions))
+	}
+	if meta["goal_version"] != int64(1) {
+		t.Fatalf("expected goal_version=1, got %v", meta["goal_version"])
+	}
+	roleVersions := readRevisionEntries(meta, "role_plan_versions")
+	if len(roleVersions) != 1 {
+		t.Fatalf("expected role_plan_versions seeded, got %d", len(roleVersions))
+	}
+	if meta["role_plan_version"] != int64(1) {
+		t.Fatalf("expected role_plan_version=1, got %v", meta["role_plan_version"])
+	}
+}

@@ -141,6 +141,7 @@ func (s *Server) handleTeamOrchestratorRunCreate(w http.ResponseWriter, r *http.
 	if rolePlan == nil {
 		rolePlan = buildRolePlanSnapshot(team.Meta())
 	}
+	meta := initializeOrchestratorRevisionHistory(req.Meta, goal, req.GoalContract, rolePlan, p.Sub)
 	run, err := s.cfg.DB.CreateOrchestratorRun(
 		r.Context(),
 		runID,
@@ -150,7 +151,7 @@ func (s *Server) handleTeamOrchestratorRunCreate(w http.ResponseWriter, r *http.
 		p.Sub,
 		req.GoalContract,
 		rolePlan,
-		req.Meta,
+		meta,
 	)
 	if err != nil {
 		writeErrorJSON(w, "create orchestrator run failed", http.StatusBadRequest)
@@ -704,6 +705,60 @@ func trimRevisionEntries(entries []map[string]any, max int) []map[string]any {
 		return entries
 	}
 	return entries[len(entries)-max:]
+}
+
+func initializeOrchestratorRevisionHistory(
+	meta map[string]any,
+	goal string,
+	goalContract map[string]any,
+	rolePlanSnapshot map[string]any,
+	updatedBy string,
+) map[string]any {
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	nowMs := time.Now().UTC().UnixMilli()
+	goalEntries := readRevisionEntries(meta, "goal_versions")
+	if len(goalEntries) == 0 {
+		entry := map[string]any{
+			"version":         int64(1),
+			"updated_unix_ms": nowMs,
+			"updated_by":      updatedBy,
+			"goal":            goal,
+			"goal_contract":   goalContract,
+		}
+		meta["goal_versions"] = []map[string]any{entry}
+		meta["goal_version"] = int64(1)
+		meta["goal_updated_unix_ms"] = nowMs
+	} else {
+		if _, ok := meta["goal_version"]; !ok {
+			meta["goal_version"] = nextRevisionVersion(goalEntries) - 1
+		}
+		if _, ok := meta["goal_updated_unix_ms"]; !ok {
+			meta["goal_updated_unix_ms"] = nowMs
+		}
+	}
+
+	roleEntries := readRevisionEntries(meta, "role_plan_versions")
+	if len(roleEntries) == 0 && rolePlanSnapshot != nil {
+		entry := map[string]any{
+			"version":            int64(1),
+			"updated_unix_ms":    nowMs,
+			"updated_by":         updatedBy,
+			"role_plan_snapshot": rolePlanSnapshot,
+		}
+		meta["role_plan_versions"] = []map[string]any{entry}
+		meta["role_plan_version"] = int64(1)
+		meta["role_plan_updated_unix_ms"] = nowMs
+	} else if len(roleEntries) > 0 {
+		if _, ok := meta["role_plan_version"]; !ok {
+			meta["role_plan_version"] = nextRevisionVersion(roleEntries) - 1
+		}
+		if _, ok := meta["role_plan_updated_unix_ms"]; !ok {
+			meta["role_plan_updated_unix_ms"] = nowMs
+		}
+	}
+	return meta
 }
 
 func mapDiffKeys(prev, next map[string]any) map[string]any {
