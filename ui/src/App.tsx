@@ -155,6 +155,16 @@ export default function App() {
     "agentui.teamPrompts",
     {},
   );
+  const [teamRunSessionsByKey, setTeamRunSessionsByKey] = useLocalStorageState<
+    Record<
+      string,
+      {
+        sessions: Record<string, string>;
+        members: Record<string, { role?: string; agent_id?: string; deployment_id?: string }>;
+        updated_unix_ms: number;
+      }
+    >
+  >("agentui.teamRunSessions", {});
   const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "");
   const [capsCache, setCapsCache] = useLocalStorageState<Record<string, { caps: Caps; ts: number }>>(
     "agentui.capsByBase",
@@ -1086,6 +1096,10 @@ export default function App() {
       .sort((a, b) => (Number(b?.created_unix_ms || 0) || 0) - (Number(a?.created_unix_ms || 0) || 0));
     return String(sorted[0]?.team_run_id || "").trim();
   }, [teamRunList.data]);
+  const teamRunSessionKey = React.useMemo(() => {
+    if (!brokerBase || !selectedTeamIdTrimmed || !latestTeamRunId) return "";
+    return `${brokerBase}::${selectedTeamIdTrimmed}::${latestTeamRunId}`;
+  }, [brokerBase, selectedTeamIdTrimmed, latestTeamRunId]);
 
   const teamChat = useQuery({
     queryKey: ["broker_team_chat", brokerBase, authKey, selectedTeamIdTrimmed, latestTeamRunId],
@@ -1093,14 +1107,19 @@ export default function App() {
       if (!latestTeamRunId) {
         return { status: null as any, items: [] as any[], warnings: [] as string[] };
       }
+      const storedSnapshot =
+        teamRunSessionKey && teamRunSessionsByKey[teamRunSessionKey] ? teamRunSessionsByKey[teamRunSessionKey] : undefined;
       const status = await apiBrokerTeamRunGet(brokerBase, selectedTeamIdTrimmed, latestTeamRunId, daemonAuth);
       if (!status.ok) {
         return { status, items: [] as any[], warnings: [status.error || status.err || status.code || "team run failed"] };
       }
-      const memberSessions = status.member_sessions && typeof status.member_sessions === "object" ? status.member_sessions : {};
+      const rawMemberSessions =
+        status.member_sessions && typeof status.member_sessions === "object" ? status.member_sessions : {};
       const members = Array.isArray(status.members) ? status.members : [];
       const memberJobs = Array.isArray(status.member_jobs) ? status.member_jobs : [];
       const memberMeta: Record<string, { role?: string; agent_id?: string; deployment_id?: string }> = {};
+      const hasStatusMembers = members.length > 0 || memberJobs.length > 0;
+      const hasStatusSessions = Object.keys(rawMemberSessions).length > 0;
       for (const m of members) {
         const id = String((m as any)?.member_id || "").trim();
         if (!id) continue;
@@ -1120,6 +1139,20 @@ export default function App() {
           deployment_id: String((job as any)?.deployment_id || prev.deployment_id || "").trim() || undefined,
         };
       }
+      const memberSessions = hasStatusSessions
+        ? (rawMemberSessions as Record<string, string>)
+        : storedSnapshot?.sessions || {};
+      const mergedMemberMeta = hasStatusMembers ? memberMeta : storedSnapshot?.members || {};
+      if (teamRunSessionKey && (hasStatusSessions || hasStatusMembers)) {
+        setTeamRunSessionsByKey((prev) => ({
+          ...prev,
+          [teamRunSessionKey]: {
+            sessions: hasStatusSessions ? (rawMemberSessions as Record<string, string>) : storedSnapshot?.sessions || {},
+            members: hasStatusMembers ? memberMeta : storedSnapshot?.members || {},
+            updated_unix_ms: Date.now(),
+          },
+        }));
+      }
 
       const warnings: string[] = [];
       const entries = Object.entries(memberSessions as Record<string, string>);
@@ -1128,7 +1161,7 @@ export default function App() {
         entries.map(async ([memberId, sessionId]) => {
           const sid = String(sessionId || "").trim();
           if (!sid) return;
-          const meta = memberMeta[String(memberId || "").trim()] || {};
+          const meta = mergedMemberMeta[String(memberId || "").trim()] || {};
           const agentId = meta.agent_id || String(connection.brokerAgentId || "").trim();
           if (!agentId) {
             warnings.push(`missing agent_id for member ${memberId}`);
