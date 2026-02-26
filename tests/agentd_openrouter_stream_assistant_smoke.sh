@@ -166,6 +166,6 @@ for model in "${MODELS[@]}"; do
 done
 
 if [[ $rc -ne 0 ]]; then
-  echo "OpenRouter streaming smoke failed. Set AGENT_TEST_OPENROUTER_STREAM_MODEL to a known-good model." >&2
+  echo "OpenRouter streaming smoke failed. Update ref/openrouter/streaming_pins.json or set AGENT_TEST_OPENROUTER_STREAM_MODEL." >&2
   exit 1
 fi
