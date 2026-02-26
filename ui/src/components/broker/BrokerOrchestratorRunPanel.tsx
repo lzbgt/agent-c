@@ -79,6 +79,15 @@ const diffSummary = (diff: any): string => {
   return parts.join(" ");
 };
 
+const diffKeys = (diff: any): string[] => {
+  if (!diff || typeof diff !== "object") return [];
+  const out: string[] = [];
+  if (Array.isArray(diff.added)) out.push(...diff.added.map((v: any) => String(v)));
+  if (Array.isArray(diff.removed)) out.push(...diff.removed.map((v: any) => String(v)));
+  if (Array.isArray(diff.changed)) out.push(...diff.changed.map((v: any) => String(v)));
+  return out;
+};
+
 const formatJson = (value: any): string => {
   if (value === undefined) return "";
   try {
@@ -118,7 +127,11 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
   const [showGoalContractJson, setShowGoalContractJson] = React.useState<boolean>(false);
   const [showRolePlanJson, setShowRolePlanJson] = React.useState<boolean>(false);
   const [copyNote, setCopyNote] = React.useState<string | null>(null);
-  const [revisionFilter, setRevisionFilter] = React.useState<string>("");
+  const [revisionFilterByTeam, setRevisionFilterByTeam] = useLocalStorageState<Record<string, string>>(
+    "agentui.orchestratorRevisionFilterByTeam",
+    {},
+  );
+  const [revisionFilter, setRevisionFilterState] = React.useState<string>("");
 
   const [updateGoal, setUpdateGoal] = React.useState<string>("");
   const [updateStatus, setUpdateStatus] = React.useState<string>("");
@@ -153,6 +166,24 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
     const next = runLookupByTeam[teamIdTrimmed] || "";
     setRunIdState(next);
   }, [teamIdTrimmed, runLookupByTeam]);
+
+  React.useEffect(() => {
+    if (!teamIdTrimmed) {
+      setRevisionFilterState("");
+      return;
+    }
+    const next = revisionFilterByTeam[teamIdTrimmed] || "";
+    setRevisionFilterState(next);
+  }, [revisionFilterByTeam, teamIdTrimmed]);
+
+  const setRevisionFilter = React.useCallback(
+    (next: string) => {
+      setRevisionFilterState(next);
+      if (!teamIdTrimmed) return;
+      setRevisionFilterByTeam((prev) => ({ ...prev, [teamIdTrimmed]: next }));
+    },
+    [setRevisionFilterByTeam, teamIdTrimmed],
+  );
 
   const setRunId = React.useCallback(
     (next: string) => {
@@ -412,10 +443,16 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
       const version = entry.version !== undefined ? String(entry.version).toLowerCase() : "";
       const updatedBy = entry.updated_by ? String(entry.updated_by).toLowerCase() : "";
       const goal = entry.goal ? String(entry.goal).toLowerCase() : "";
+      const contractDiffKeys = diffKeys(entry.goal_contract_diff).map((v) => v.toLowerCase());
+      const roleDiffKeys = diffKeys(entry.role_plan_diff).map((v) => v.toLowerCase());
+      const matchesDiffKey =
+        contractDiffKeys.some((key) => key.includes(revisionFilterLower)) ||
+        roleDiffKeys.some((key) => key.includes(revisionFilterLower));
       return (
         (version && version.includes(revisionFilterLower)) ||
         (updatedBy && updatedBy.includes(revisionFilterLower)) ||
-        (goal && goal.includes(revisionFilterLower))
+        (goal && goal.includes(revisionFilterLower)) ||
+        matchesDiffKey
       );
     },
     [revisionFilterLower],
@@ -630,10 +667,18 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
             <span>Filter</span>
             <input
               className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-white/90"
-              placeholder="version / updated_by / goal"
+              placeholder="version / updated_by / goal / diff key"
               value={revisionFilter}
               onChange={(e) => setRevisionFilter(e.target.value)}
             />
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
+              type="button"
+              onClick={() => setRevisionFilter("")}
+              disabled={!revisionFilter.trim()}
+            >
+              Clear
+            </button>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             <div className="grid gap-2 rounded-md border border-white/10 bg-black/40 p-2">
