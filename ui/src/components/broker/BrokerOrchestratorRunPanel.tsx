@@ -606,6 +606,22 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
   const revisionEventsTotal = revisionEvents.length;
   const revisionEventsDisplay = revisionEvents.slice(0, 8);
   const revisionEventsOverflow = revisionEventsTotal > revisionEventsDisplay.length;
+  const goalRevisionEmptyLabel =
+    revisionFilterScope === "role"
+      ? "Hidden by scope filter."
+      : revisionFilterLower
+        ? goalRevisions.length > 0
+          ? "No goal revisions match filter."
+          : "No goal revisions."
+        : "No goal revisions.";
+  const roleRevisionEmptyLabel =
+    revisionFilterScope === "goal"
+      ? "Hidden by scope filter."
+      : revisionFilterLower
+        ? rolePlanRevisions.length > 0
+          ? "No role plan revisions match filter."
+          : "No role plan revisions."
+        : "No role plan revisions.";
   const revisionEventsEmptyLabel = revisionFilterLower
     ? "No revision events match filter."
     : revisionFilterScope === "goal"
@@ -859,7 +875,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                 </button>
               </div>
               {filteredGoalRevisions.length === 0 ? (
-                <div className="text-[11px] text-white/50">No goal revisions.</div>
+                <div className="text-[11px] text-white/50">{goalRevisionEmptyLabel}</div>
               ) : showGoalRevisions ? (
                 <div className="grid gap-2">
                   {filteredGoalRevisions.map((entry, idx) => {
@@ -956,7 +972,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                 </button>
               </div>
               {filteredRoleRevisions.length === 0 ? (
-                <div className="text-[11px] text-white/50">No role plan revisions.</div>
+                <div className="text-[11px] text-white/50">{roleRevisionEmptyLabel}</div>
               ) : showRoleRevisions ? (
                 <div className="grid gap-2">
                   {filteredRoleRevisions.map((entry, idx) => {
