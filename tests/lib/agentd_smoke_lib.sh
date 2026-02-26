@@ -233,6 +233,18 @@ agentd_smoke_openrouter_pins_path() {
   echo "${root}/ref/openrouter/streaming_pins.json"
 }
 
+agentd_smoke_openrouter_pins_source() {
+  if [[ -n "${AGENT_OPENROUTER_STREAM_PINS:-}" ]]; then
+    echo "AGENT_OPENROUTER_STREAM_PINS"
+    return 0
+  fi
+  if [[ -n "${OPENROUTER_STREAM_PINS_PATH:-}" ]]; then
+    echo "OPENROUTER_STREAM_PINS_PATH"
+    return 0
+  fi
+  echo "default"
+}
+
 agentd_smoke_openrouter_pinned_models() {
   local kind="${1:-}"
   if [[ -z "${kind}" ]]; then
@@ -294,14 +306,16 @@ agentd_smoke_openrouter_pinned_model() {
 
 agentd_smoke_openrouter_log_pins() {
   local pins
+  local source
   pins="$(agentd_smoke_openrouter_pins_path)"
+  source="$(agentd_smoke_openrouter_pins_source)"
   if [[ -z "${pins}" ]]; then
     return 0
   fi
   if [[ -f "${pins}" ]]; then
-    echo "[stream] pins path: ${pins} (present)" >&2
+    echo "[stream] pins path: ${pins} (present, source=${source})" >&2
   else
-    echo "[stream] pins path: ${pins} (missing)" >&2
+    echo "[stream] pins path: ${pins} (missing, source=${source})" >&2
   fi
 }
 
