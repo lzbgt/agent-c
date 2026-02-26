@@ -629,13 +629,38 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                         key={`goal-rev-${version}-${idx}`}
                         className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70"
                       >
-                        <div className="text-white/80">
-                          v{version || "?"}
-                          {updated ? ` · ${fmtTs(updated)}` : ""}
-                          {entry.updated_by ? ` · ${String(entry.updated_by)}` : ""}
-                        </div>
-                        {entry.goal ? <div className="text-white/70">{String(entry.goal)}</div> : null}
-                        {summary ? <div className="text-white/50">diff {summary}</div> : null}
+                        <details className="group">
+                          <summary className="cursor-pointer text-white/80">
+                            v{version || "?"}
+                            {updated ? ` · ${fmtTs(updated)}` : ""}
+                            {entry.updated_by ? ` · ${String(entry.updated_by)}` : ""}
+                          </summary>
+                          <div className="mt-1 grid gap-2">
+                            {entry.goal ? <div className="text-white/70">{String(entry.goal)}</div> : null}
+                            {summary ? <div className="text-white/50">diff {summary}</div> : null}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
+                                type="button"
+                                onClick={() => void handleCopyJson(entry.goal_contract, "goal contract")}
+                              >
+                                Copy contract
+                              </button>
+                              {diff ? (
+                                <button
+                                  className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
+                                  type="button"
+                                  onClick={() => void handleCopyJson(diff, "goal contract diff")}
+                                >
+                                  Copy diff
+                                </button>
+                              ) : null}
+                            </div>
+                            <pre className="max-h-52 overflow-auto rounded-md border border-white/10 bg-black/20 px-2 py-1 text-[10px] text-white/70">
+                              {formatJson(entry.goal_contract) || "// empty"}
+                            </pre>
+                          </div>
+                        </details>
                       </div>
                     );
                   })}
@@ -674,12 +699,37 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                         key={`role-rev-${version}-${idx}`}
                         className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70"
                       >
-                        <div className="text-white/80">
-                          v{version || "?"}
-                          {updated ? ` · ${fmtTs(updated)}` : ""}
-                          {entry.updated_by ? ` · ${String(entry.updated_by)}` : ""}
-                        </div>
-                        {summary ? <div className="text-white/50">diff {summary}</div> : null}
+                        <details className="group">
+                          <summary className="cursor-pointer text-white/80">
+                            v{version || "?"}
+                            {updated ? ` · ${fmtTs(updated)}` : ""}
+                            {entry.updated_by ? ` · ${String(entry.updated_by)}` : ""}
+                          </summary>
+                          <div className="mt-1 grid gap-2">
+                            {summary ? <div className="text-white/50">diff {summary}</div> : null}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
+                                type="button"
+                                onClick={() => void handleCopyJson(entry.role_plan_snapshot, "role plan snapshot")}
+                              >
+                                Copy snapshot
+                              </button>
+                              {entry.role_plan_diff ? (
+                                <button
+                                  className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
+                                  type="button"
+                                  onClick={() => void handleCopyJson(entry.role_plan_diff, "role plan diff")}
+                                >
+                                  Copy diff
+                                </button>
+                              ) : null}
+                            </div>
+                            <pre className="max-h-52 overflow-auto rounded-md border border-white/10 bg-black/20 px-2 py-1 text-[10px] text-white/70">
+                              {formatJson(entry.role_plan_snapshot) || "// empty"}
+                            </pre>
+                          </div>
+                        </details>
                       </div>
                     );
                   })}
@@ -787,6 +837,15 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                         {row.ts_unix_ms ? ` · ${fmtTs(row.ts_unix_ms)}` : ""}
                       </div>
                       {summary ? <div className="text-white/50">diff {summary}</div> : null}
+                      {diff ? (
+                        <button
+                          className="mt-1 rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
+                          type="button"
+                          onClick={() => void handleCopyJson(diff, `${isGoal ? "goal" : "role plan"} diff`)}
+                        >
+                          Copy diff
+                        </button>
+                      ) : null}
                     </div>
                   );
                 })}
