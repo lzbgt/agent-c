@@ -102,6 +102,9 @@ Do one of the following:
 - **Browser tries `keycloak.lvh.me:<port>/v1/agents/...`**:
   - Your Broker base URL is misconfigured (Keycloak is the issuer, not the broker).
   - Reset WebUI Settings → Connection to `https://127.0.0.1:<broker_port>` and paste a fresh broker token.
+- **Browser cannot reach `https://127.0.0.1:<broker_port>/v1/agents/<id>/proxy`**:
+  - Accept the self-signed TLS certificate by visiting `https://127.0.0.1:<broker_port>` directly in the browser.
+  - Ensure the WebUI origin is `http://127.0.0.1:<webui_port>` or `http://localhost:<webui_port>` (broker CORS allowlist).
 - **Broker TLS handshake errors in logs**:
   - Common during probing without proper certs; not fatal.
 - **Ports unknown**:

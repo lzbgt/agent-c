@@ -111,6 +111,7 @@ Preset configs:
 - Devstack writes the broker OIDC token into `ui/dist/agentui-config.js` on startup so the WebUI can connect without manual Settings edits; refresh the page if you change/refresh tokens.
 - See `docs/DEVSTACK_NETWORK_AUTH.md` for the end-to-end network/auth workflow and troubleshooting.
   - If the browser tries `keycloak.lvh.me:<port>/v1/agents/...`, the Broker base URL is mis-set; reset Settings → Connection to the broker URL from `out/devstack_state.json`.
+  - If the browser cannot reach `https://127.0.0.1:<broker_port>/v1/agents/<id>/proxy`, accept the self-signed broker certificate by visiting the broker URL directly.
 
 ## Diagnostics
 
