@@ -646,6 +646,23 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                   className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
                   type="button"
                   onClick={() => {
+                    const items = teamFilteredItems;
+                    if (items.length === 0) return;
+                    const entry = items[items.length - 1];
+                    const ts = typeof entry?.ts === "number" ? entry.ts : 0;
+                    if (!ts) return;
+                    const el = document.getElementById(`team-msg-${ts}`);
+                    if (el) {
+                      el.scrollIntoView({ behavior: "smooth", block: "center" });
+                    }
+                  }}
+                >
+                  Latest
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                  type="button"
+                  onClick={() => {
                     setTeamFiltersCollapsed(false);
                     const el = document.getElementById("team-filters");
                     if (el) {
