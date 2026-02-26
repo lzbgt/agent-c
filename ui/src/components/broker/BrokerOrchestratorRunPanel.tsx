@@ -132,6 +132,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
     {},
   );
   const [revisionFilter, setRevisionFilterState] = React.useState<string>("");
+  const [revisionFilterScope, setRevisionFilterScope] = React.useState<"all" | "goal" | "role">("all");
 
   const [updateGoal, setUpdateGoal] = React.useState<string>("");
   const [updateStatus, setUpdateStatus] = React.useState<string>("");
@@ -457,12 +458,18 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
     },
     [revisionFilterLower],
   );
-  const filteredGoalRevisions = revisionFilterLower
-    ? goalRevisions.filter((entry) => revisionMatches(entry))
-    : goalRevisions;
-  const filteredRoleRevisions = revisionFilterLower
-    ? rolePlanRevisions.filter((entry) => revisionMatches(entry))
-    : rolePlanRevisions;
+  const filteredGoalRevisions =
+    revisionFilterScope === "role"
+      ? []
+      : revisionFilterLower
+        ? goalRevisions.filter((entry) => revisionMatches(entry))
+        : goalRevisions;
+  const filteredRoleRevisions =
+    revisionFilterScope === "goal"
+      ? []
+      : revisionFilterLower
+        ? rolePlanRevisions.filter((entry) => revisionMatches(entry))
+        : rolePlanRevisions;
   const revisionEvents = React.useMemo(() => {
     const rows = Array.isArray(props.events) ? props.events : [];
     if (rows.length === 0) return [];
@@ -671,6 +678,22 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
               value={revisionFilter}
               onChange={(e) => setRevisionFilter(e.target.value)}
             />
+            <div className="flex items-center gap-1">
+              {(["all", "goal", "role"] as const).map((scope) => (
+                <button
+                  key={scope}
+                  className={`rounded-md border px-2 py-0.5 text-[10px] ${
+                    revisionFilterScope === scope
+                      ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-100"
+                      : "border-white/10 bg-black/30 text-white/70 hover:bg-black/40"
+                  }`}
+                  type="button"
+                  onClick={() => setRevisionFilterScope(scope)}
+                >
+                  {scope}
+                </button>
+              ))}
+            </div>
             <button
               className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
               type="button"
@@ -683,7 +706,12 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
           <div className="grid gap-3 md:grid-cols-2">
             <div className="grid gap-2 rounded-md border border-white/10 bg-black/40 p-2">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-[11px] text-white/70">Goal revisions</div>
+                <div className="text-[11px] text-white/70">
+                  Goal revisions{" "}
+                  <span className="text-white/40">
+                    ({filteredGoalRevisions.length}/{goalRevisions.length})
+                  </span>
+                </div>
                 <button
                   className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
                   type="button"
@@ -763,7 +791,12 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
 
             <div className="grid gap-2 rounded-md border border-white/10 bg-black/40 p-2">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-[11px] text-white/70">Role plan revisions</div>
+                <div className="text-[11px] text-white/70">
+                  Role plan revisions{" "}
+                  <span className="text-white/40">
+                    ({filteredRoleRevisions.length}/{rolePlanRevisions.length})
+                  </span>
+                </div>
                 <button
                   className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
                   type="button"
