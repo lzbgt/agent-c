@@ -182,9 +182,18 @@ export default function HistoryPanel(props: HistoryPanelProps) {
         {lastAssistantMessage || lastRun ? (
           <div className="mb-4 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
             <div className="text-xs font-semibold text-white/70">Latest outcome</div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-              {lastRun ? (
-                <>
+            {lastAssistantMessage && typeof lastAssistantMessage.content === "string" ? (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-[11px] text-white/60">Assistant response (collapsed)</summary>
+                <div className="mt-2 text-sm text-white/90">
+                  <Markdown text={String(lastAssistantMessage.content)} />
+                </div>
+              </details>
+            ) : null}
+            {lastRun ? (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-[11px] text-white/60">Run info (collapsed)</summary>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
                   <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-semibold text-white/80">
                     run
                   </span>
@@ -197,14 +206,6 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                     </span>
                   ) : null}
                   {lastRun.error ? <span className="text-rose-200">{String(lastRun.error)}</span> : null}
-                </>
-              ) : null}
-            </div>
-            {lastAssistantMessage && typeof lastAssistantMessage.content === "string" ? (
-              <details className="mt-2">
-                <summary className="cursor-pointer text-[11px] text-white/60">Assistant response (collapsed)</summary>
-                <div className="mt-2 text-sm text-white/90">
-                  <Markdown text={String(lastAssistantMessage.content)} />
                 </div>
               </details>
             ) : null}
