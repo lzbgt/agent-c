@@ -276,7 +276,7 @@ echo "[host-stack-local] starting agentd on 127.0.0.1:${AGENTD_PORT}"
   --host 127.0.0.1 \
   --port "${AGENTD_PORT}" \
   --auth-token "${AGENTD_AUTH_TOKEN}" \
-  --tools none \
+  --tools host \
   --state-dir "${AGENTD_STATE_DIR}" \
   --db-path "${AGENTD_STATE_DIR}/agentd.db" \
   --cors-origin "http://127.0.0.1:${WEBUI_PORT}" \

@@ -24,7 +24,7 @@ Options:
   --ui-install     Run npm ci before building UI (default: 1).
   --agent-count    Number of agentd instances to start (default: 1).
   --workflow-http  Enable workflow http/agentd_call tasks on the primary agentd.
-  --agentd-tools   agentd tools mode (default: none)
+  --agentd-tools   agentd tools mode (default: host)
   --agentd-port    agentd port (default: random)
   --broker-port    broker port (default: random)
   --webui-port     WebUI port (default: random)
@@ -78,7 +78,7 @@ run_logged() {
 KEEP=1
 SKIP_UI=0
 UI_INSTALL=1
-AGENTD_TOOLS="none"
+AGENTD_TOOLS="host"
 AGENT_COUNT=1
 WORKFLOW_HTTP=0
 AGENTD_PORT=""
