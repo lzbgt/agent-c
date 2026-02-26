@@ -137,6 +137,14 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     return `agentui.teamSearch:${base}::${tid}`;
   }, [props.effectiveBase, teamId]);
   const [teamSearch, setTeamSearch] = useLocalStorageState<string>(teamSearchKey, "");
+  const teamRoleChips = React.useMemo(() => {
+    const roles = new Set<string>();
+    for (const item of teamConversationItems) {
+      const role = typeof item?.meta?.role === "string" ? item.meta.role : "";
+      if (role) roles.add(role);
+    }
+    return Array.from(roles.values()).slice(0, 6);
+  }, [teamConversationItems]);
 
   const teamTimelineItems = React.useMemo(() => {
     const items = teamConversationItems
@@ -488,6 +496,16 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 {["user", "assistant", "tool"].map((chip) => (
                   <button
                     key={chip}
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[11px] text-white/70 hover:bg-black/40"
+                    type="button"
+                    onClick={() => setTeamSearch((prev) => (prev === chip ? "" : chip))}
+                  >
+                    {chip}
+                  </button>
+                ))}
+                {teamRoleChips.map((chip) => (
+                  <button
+                    key={`role:${chip}`}
                     className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[11px] text-white/70 hover:bg-black/40"
                     type="button"
                     onClick={() => setTeamSearch((prev) => (prev === chip ? "" : chip))}
