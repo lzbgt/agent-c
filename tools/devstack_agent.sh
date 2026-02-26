@@ -168,6 +168,7 @@ AGENTD_PIDS=()
 CONNECTOR_PIDS=()
 AGENTD_BASES=()
 AGENTD_PORTS=()
+CLEANED_AGENT_IDS=()
 
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-agent_devstack_${WEBUI_PORT}}"
 COMPOSE_FILE="${COMPOSE_FILE:-${ROOT}/docker-compose.yml}"
@@ -457,18 +458,35 @@ while true; do
           "${BROKER_BASE}/v1/agents" 2>/dev/null || true
       )"
       exists="$(
-        python3 - <<PY
-import json,sys
+        AGENT_ID="${agent_id}" python3 - <<'PY'
+import json,os,sys
+agent_id = os.environ.get("AGENT_ID", "")
 try:
   data=json.loads(sys.stdin.read() or "{}")
 except Exception:
   data={}
 agents=data.get("agents") or []
-print("1" if any(isinstance(a,dict) and a.get("agent_id")==${agent_id!r} for a in agents) else "0")
+print("1" if any(isinstance(a,dict) and a.get("agent_id")==agent_id for a in agents) else "0")
 PY
       <<<"${list_json}"
       )"
       if [[ "${exists}" != "1" ]]; then
+        cleaned=0
+        for seen in "${CLEANED_AGENT_IDS[@]-}"; do
+          if [[ "${seen}" == "${agent_id}" ]]; then
+            cleaned=1
+            break
+          fi
+        done
+        if [[ "${cleaned}" -eq 0 ]] && docker_compose_preflight "devstack-clean" >/dev/null 2>&1; then
+          CLEANED_AGENT_IDS+=("${agent_id}")
+          postgres_container="${COMPOSE_PROJECT_NAME}-postgres-1"
+          docker exec -i "${postgres_container}" \
+            psql -U postgres -d agentd_broker \
+            -c "DELETE FROM broker_agents WHERE agent_id='${agent_id}';" >/dev/null 2>&1 || true
+          ok=0
+          break
+        fi
         ok=0
         break
       fi

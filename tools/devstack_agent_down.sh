@@ -82,14 +82,38 @@ kill_pid() {
   if [[ -n "${pid}" && "${pid}" != "0" ]]; then
     if kill -0 "${pid}" >/dev/null 2>&1; then
       kill "${pid}" >/dev/null 2>&1 || true
+      local waited=0
+      while kill -0 "${pid}" >/dev/null 2>&1; do
+        if (( waited >= 10 )); then
+          break
+        fi
+        sleep 1
+        waited=$((waited + 1))
+      done
     fi
   fi
+}
+
+kill_port_listeners() {
+  local port="$1"
+  if ! command -v lsof >/dev/null 2>&1; then
+    return 0
+  fi
+  local pids
+  pids="$(lsof -t -nP -iTCP:"${port}" -sTCP:LISTEN 2>/dev/null || true)"
+  if [[ -z "${pids}" ]]; then
+    return 0
+  fi
+  for pid in ${pids}; do
+    kill_pid "${pid}"
+  done
 }
 
 AGENTD_PID="$(read_field agentd_pid)"
 BROKER_PID="$(read_field broker_pid)"
 CONNECTOR_PID="$(read_field connector_pid)"
 WEBUI_PID="$(read_field webui_pid)"
+WEBUI_PORT="$(read_field webui_port)"
 AGENTD_PIDS="$(read_agents_pids agentd_pid)"
 CONNECTOR_PIDS="$(read_agents_pids connector_pid)"
 COMPOSE_PROJECT="$(read_field compose_project)"
@@ -98,6 +122,9 @@ POSTGRES_PORT="$(read_field postgres_port)"
 KEYCLOAK_PORT="$(read_field keycloak_port)"
 
 kill_pid "${WEBUI_PID}"
+if [[ -n "${WEBUI_PID}" ]]; then
+  kill_port_listeners "${WEBUI_PORT}"
+fi
 if [[ -n "${CONNECTOR_PIDS}" ]]; then
   for pid in ${CONNECTOR_PIDS}; do
     kill_pid "${pid}"
