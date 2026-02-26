@@ -49,6 +49,12 @@ PY
   fi
 fi
 
+if [[ "${KEYCLOAK_BASE}" =~ ^http://keycloak\.lvh\.me:([0-9]+)$ ]]; then
+  if ! curl -fsS --max-time 2 "${KEYCLOAK_BASE}/realms/${REALM}/.well-known/openid-configuration" >/dev/null 2>&1; then
+    KEYCLOAK_BASE="http://127.0.0.1:${BASH_REMATCH[1]}"
+  fi
+fi
+
 if [[ -z "${KEYCLOAK_BASE}" ]]; then
   echo "missing keycloak base (set --keycloak or provide devstack_state.json)" >&2
   exit 2
