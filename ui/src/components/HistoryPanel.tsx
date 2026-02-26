@@ -946,7 +946,21 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                       </button>
                     ))}
                     {teamRoleChips.length > 6 ? (
-                      <span className="text-white/40">+{teamRoleChips.length - 6} more</span>
+                      <details className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70">
+                        <summary className="cursor-pointer select-none">+{teamRoleChips.length - 6} more</summary>
+                        <div className="mt-2 flex flex-wrap items-center gap-1">
+                          {teamRoleChips.slice(6).map((chip) => (
+                            <button
+                              key={`role-suggest-more:${chip}`}
+                              className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
+                              type="button"
+                              onClick={() => setTeamSearch((prev) => (prev === chip ? "" : chip))}
+                            >
+                              {chip}
+                            </button>
+                          ))}
+                        </div>
+                      </details>
                     ) : null}
                   </div>
                 ) : null}
