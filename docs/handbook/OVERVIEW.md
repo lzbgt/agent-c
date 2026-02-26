@@ -157,7 +157,7 @@ When `--auth-token` is set, all endpoints require `Authorization: Bearer ...`.
 - OpenRouter auth hints: `OPENROUTER_HTTP_REFERER`, `OPENROUTER_X_TITLE`,
   optional `AGENT_TEST_OPENROUTER_SKIP_CHAT_PREFLIGHT=1`.
 - `tools/openrouter_auth_debug.sh` reports any pin metadata it finds (pinned models + list sizes) and
-  notes when the pins file is missing.
+  notes when the pins file is missing or empty (`pins_empty` flag).
 
 ---
 
