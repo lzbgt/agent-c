@@ -409,6 +409,10 @@ export default function App() {
     `agentui.advancedPage:${sessionScopeKey}`,
     "",
   );
+  const [toolsCollapsed, setToolsCollapsed] = useLocalStorageState<boolean>(
+    `agentui.toolsCollapsed:${sessionScopeKey}`,
+    false,
+  );
   const advancedPages = React.useMemo(() => {
     const pages = [
       { id: "memory", label: "Memory" },
@@ -2678,25 +2682,45 @@ export default function App() {
             <div
               className={`mt-4 grid gap-4 ${
                 advancedPage
-                  ? "lg:grid-cols-[minmax(180px,16vw)_minmax(0,1fr)_minmax(360px,48vw)]"
-                  : "lg:grid-cols-[minmax(180px,16vw)_minmax(0,1fr)]"
+                  ? "lg:grid-cols-[var(--tools-col)_minmax(0,1fr)_minmax(360px,48vw)]"
+                  : "lg:grid-cols-[var(--tools-col)_minmax(0,1fr)]"
               }`}
+              style={{
+                ["--tools-col" as any]: toolsCollapsed ? "72px" : "minmax(180px,16vw)",
+              }}
             >
-              <aside className="rounded-lg border border-white/10 bg-black/20 p-3 lg:sticky lg:top-4 lg:self-start">
-                <div className="text-[11px] font-semibold text-white/60">Tools</div>
+              <aside
+                className={`rounded-lg border border-white/10 bg-black/20 ${toolsCollapsed ? "px-2 py-3" : "p-3"} lg:sticky lg:top-4 lg:self-start`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[11px] font-semibold text-white/60">
+                    {toolsCollapsed ? "Tools" : "Tools"}
+                  </div>
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
+                    type="button"
+                    onClick={() => setToolsCollapsed((prev) => !prev)}
+                    title={toolsCollapsed ? "Expand tools" : "Collapse tools"}
+                  >
+                    {toolsCollapsed ? "»" : "«"}
+                  </button>
+                </div>
                 <div className="mt-2 grid gap-1">
                   {advancedPages.map((page) => {
                     const active = page.id === advancedPage;
+                    const label = page.label;
+                    const shortLabel = label.slice(0, 3).toUpperCase();
                     return (
                       <button
                         key={page.id}
-                        className={`rounded-md px-3 py-2 text-left text-sm ${
+                        className={`rounded-md ${toolsCollapsed ? "px-2 py-2 text-center text-[11px]" : "px-3 py-2 text-left text-sm"} ${
                           active ? "bg-indigo-500/20 text-indigo-100" : "bg-black/20 text-white/70 hover:bg-black/30"
                         }`}
                         type="button"
                         onClick={() => setAdvancedPage(page.id)}
+                        title={label}
                       >
-                        {page.label}
+                        {toolsCollapsed ? shortLabel : label}
                       </button>
                     );
                   })}
