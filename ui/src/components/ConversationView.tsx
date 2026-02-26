@@ -518,9 +518,20 @@ export default function ConversationView({
       sawToolOrAssistant = true;
       const name = String(data.tool_name ?? "");
       const toolCallId = typeof data?.tool_call_id === "string" ? String(data.tool_call_id) : "";
+      const summaryFromResult = toolCallId && toolCallSummaryById[toolCallId] ? toolCallSummaryById[toolCallId] : null;
+      const commandLine =
+        summaryFromResult?.cmd ? summaryFromResult.cmd : summaryFromResult?.argv ? summaryFromResult.argv : "";
       if (typeof data.content === "string") {
         items.push(
           <Card key={`tr-${idx}`} title={`Tool output: ${name || "(unknown)"}`}>
+            {commandLine ? (
+              <div className="mb-2">
+                <div className="mb-1 text-[11px] font-semibold text-white/60">Command</div>
+                <pre className="overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/20 p-2 font-mono text-[11px] leading-relaxed text-white/90">
+                  {commandLine}
+                </pre>
+              </div>
+            ) : null}
             <ToolResultView
               baseUrl={baseUrl}
               yolo={yolo}
@@ -542,6 +553,14 @@ export default function ConversationView({
         }
         items.push(
           <Card key={`tr-${idx}`} title={`Tool output: ${name || "(unknown)"}`}>
+            {commandLine ? (
+              <div className="mb-2">
+                <div className="mb-1 text-[11px] font-semibold text-white/60">Command</div>
+                <pre className="overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/20 p-2 font-mono text-[11px] leading-relaxed text-white/90">
+                  {commandLine}
+                </pre>
+              </div>
+            ) : null}
             <ToolResultView
               baseUrl={baseUrl}
               yolo={yolo}

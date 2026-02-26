@@ -42,7 +42,15 @@ export default function HistoryPanel(props: HistoryPanelProps) {
   const MAX_HISTORY_EXPANDED_KEYS = 200;
 
   const conversationItems = React.useMemo(() => {
-    const items: { kind: "message" | "run"; ts: number; message?: any; run?: any; runId?: number; details?: any }[] = [];
+    const items: {
+      kind: "message" | "run" | "tool_record";
+      ts: number;
+      message?: any;
+      run?: any;
+      runId?: number;
+      details?: any;
+      toolRecord?: any;
+    }[] = [];
     for (const m of dbMessages) {
       const ts = typeof m?.created_unix_ms === "number" ? m.created_unix_ms : 0;
       if (!ts) continue;
@@ -53,7 +61,19 @@ export default function HistoryPanel(props: HistoryPanelProps) {
       if (!ts) continue;
       const runId = typeof r?.run_id === "number" ? r.run_id : Number(r?.run_id ?? r?.id ?? NaN);
       const details = Number.isFinite(runId) ? dbRunDetailsById[runId] : undefined;
-      items.push({ kind: "run", ts, run: r, runId: Number.isFinite(runId) ? runId : undefined, details });
+      const safeRunId = Number.isFinite(runId) ? runId : undefined;
+      items.push({ kind: "run", ts, run: r, runId: safeRunId, details });
+      const toolRecords = details && Array.isArray(details?.tool_records) ? (details.tool_records as any[]) : [];
+      toolRecords.forEach((tr, idx) => {
+        items.push({
+          kind: "tool_record",
+          ts: ts + idx + 1,
+          run: r,
+          runId: safeRunId,
+          details,
+          toolRecord: tr,
+        });
+      });
     }
     items.sort((a, b) => a.ts - b.ts);
     return items;
@@ -153,6 +173,69 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 );
               }
 
+              if (item.kind === "tool_record") {
+                const tr = item.toolRecord ?? {};
+                const toolName = typeof tr?.tool_name === "string" ? tr.tool_name : "tool";
+                const argsJson = typeof tr?.arguments_json === "string" ? tr.arguments_json : "";
+                let parsedArgs: any = null;
+                try {
+                  parsedArgs = argsJson ? JSON.parse(argsJson) : null;
+                } catch {
+                  parsedArgs = null;
+                }
+                const cmd = typeof parsedArgs?.cmd === "string" ? parsedArgs.cmd : "";
+                const argvRaw = Array.isArray(parsedArgs?.argv) ? parsedArgs.argv : null;
+                const argv = argvRaw ? argvRaw.map((x: any) => (typeof x === "string" ? x : "")).filter(Boolean).join(" ") : "";
+                const command = cmd || argv;
+                const resultText = typeof tr?.result_text === "string" ? tr.result_text : "";
+                const resultForPrompt = typeof tr?.result_for_prompt_text === "string" ? tr.result_for_prompt_text : "";
+                const truncatedForPrompt = tr?.result_truncated_for_prompt ? true : false;
+                return (
+                  <div key={`tool:${item.ts || idx}`} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+                      <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-semibold text-white/80">
+                        tool
+                      </span>
+                      <span className="text-white/50">{toolName}</span>
+                    </div>
+                    {command ? (
+                      <div className="mt-2">
+                        <div className="mb-1 text-[11px] font-semibold text-white/60">Command</div>
+                        <pre className="overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/20 p-2 font-mono text-[11px] leading-relaxed text-white/90">
+                          {command}
+                        </pre>
+                      </div>
+                    ) : null}
+                    {resultText ? (
+                      <div className="mt-2">
+                        <div className="mb-1 text-[11px] font-semibold text-white/60">Output</div>
+                        <pre className="overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90">
+                          {resultText}
+                        </pre>
+                      </div>
+                    ) : null}
+                    {resultForPrompt && resultForPrompt !== resultText ? (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-[11px] text-white/60">
+                          Prompt-facing output{truncatedForPrompt ? " (truncated)" : ""}
+                        </summary>
+                        <pre className="mt-2 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90">
+                          {resultForPrompt}
+                        </pre>
+                      </details>
+                    ) : null}
+                    {argsJson ? (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-[11px] text-white/60">Arguments (collapsed)</summary>
+                        <pre className="mt-2 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90">
+                          {formatJson(argsJson)}
+                        </pre>
+                      </details>
+                    ) : null}
+                  </div>
+                );
+              }
+
               const r = item.run ?? {};
               const ts = typeof r?.ts_unix_ms === "number" ? r.ts_unix_ms : 0;
               const when = ts ? new Date(ts).toLocaleString() : "";
@@ -161,10 +244,6 @@ export default function HistoryPanel(props: HistoryPanelProps) {
               const model = typeof r?.model === "string" ? r.model : "";
               const ok = typeof r?.ok === "number" ? r.ok === 1 : typeof r?.ok === "boolean" ? r.ok : undefined;
               const err = typeof r?.error === "string" ? r.error : "";
-              const runId = item.runId;
-              const detail = runId && dbRunDetailsById[runId] ? dbRunDetailsById[runId] : item.details;
-              const toolRecords = detail && Array.isArray(detail?.tool_records) ? (detail.tool_records as any[]) : [];
-
               return (
                 <div key={`run:${ts || idx}`} className="rounded-lg border border-indigo-400/20 bg-indigo-500/5 px-3 py-2">
                   <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
@@ -189,58 +268,6 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                   {!ok && err ? (
                     <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-xs text-rose-200">
                       {err}
-                    </div>
-                  ) : null}
-                  {toolRecords.length > 0 ? (
-                    <div className="mt-3 grid gap-2">
-                      <div className="text-[11px] font-semibold text-white/60">Tool usage</div>
-                      {toolRecords.map((t, i) => {
-                        const toolName = typeof t?.tool_name === "string" ? t.tool_name : "tool";
-                        const callId = typeof t?.tool_call_id === "string" ? t.tool_call_id : "";
-                        const argsJson = typeof t?.arguments_json === "string" ? t.arguments_json : "";
-                        const resultText = typeof t?.result_text === "string" ? t.result_text : "";
-                        const resultForPrompt = typeof t?.result_for_prompt_text === "string" ? t.result_for_prompt_text : "";
-                        const truncatedForPrompt = t?.result_truncated_for_prompt ? true : false;
-                        return (
-                          <details
-                            key={`${toolName}:${callId || i}`}
-                            className="rounded-md border border-white/10 bg-black/20 px-3 py-2"
-                          >
-                            <summary className="cursor-pointer text-xs text-white/70">
-                              {toolName}
-                              {callId ? (
-                                <code className="ml-2 text-[11px] text-white/50">{callId}</code>
-                              ) : null}
-                            </summary>
-                            {argsJson ? (
-                              <div className="mt-2">
-                                <div className="text-[11px] font-semibold text-white/60">Arguments</div>
-                                <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/80">
-                                  {formatJson(argsJson)}
-                                </pre>
-                              </div>
-                            ) : null}
-                            {resultText ? (
-                              <div className="mt-2">
-                                <div className="text-[11px] font-semibold text-white/60">Result</div>
-                                <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/80">
-                                  {resultText}
-                                </pre>
-                              </div>
-                            ) : null}
-                            {resultForPrompt && resultForPrompt !== resultText ? (
-                              <div className="mt-2">
-                                <div className="text-[11px] font-semibold text-white/60">
-                                  Result for prompt{truncatedForPrompt ? " (truncated)" : ""}
-                                </div>
-                                <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/80">
-                                  {resultForPrompt}
-                                </pre>
-                              </div>
-                            ) : null}
-                          </details>
-                        );
-                      })}
                     </div>
                   ) : null}
                 </div>
