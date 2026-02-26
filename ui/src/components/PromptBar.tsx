@@ -76,6 +76,11 @@ type PromptBarProps = {
   clearAttachmentsNonce: number;
   uploadsEnabled?: boolean;
   uploadMaxBytes?: number;
+  uploadsDisabledReason?: string;
+  chatTarget?: "session" | "team";
+  teamId?: string;
+  teamAvailable?: boolean;
+  onChatTargetChange?: (next: "session" | "team") => void;
 };
 
 const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function PromptBar(props, ref) {
@@ -91,10 +96,14 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
     return p.length > 140 ? `${p.slice(0, 140)}…` : p;
   }, [props.prompt]);
   const uploadsEnabled = props.uploadsEnabled !== false;
+  const uploadsDisabledReason = String(props.uploadsDisabledReason || "").trim();
   const uploadMaxBytes =
     typeof props.uploadMaxBytes === "number" && Number.isFinite(props.uploadMaxBytes) && props.uploadMaxBytes > 0
       ? props.uploadMaxBytes
       : 32 * 1024 * 1024;
+  const chatTarget = props.chatTarget === "team" ? "team" : "session";
+  const teamAvailable = props.teamAvailable === true;
+  const teamId = String(props.teamId || "").trim();
 
   React.useEffect(() => {
     setAttachments([]);
@@ -166,6 +175,7 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
                   session=<code className="text-white/70 break-all">{String(props.sessionId || "").trim() || "(none)"}</code>{" "}
                   tools=<code className="text-white/70 break-all">{String(props.tools || "")}</code>{" "}
                   run_watch=<code className="text-white/70 break-all">{String(props.runWatchMode || "local")}</code>{" "}
+                  target=<code className="text-white/70 break-all">{chatTarget}</code>{" "}
                   {props.queueCount && props.queueCount > 0 ? (
                     <>
                       queued=<code className="text-white/70 break-all">{props.queueCount}</code>{" "}
@@ -285,6 +295,25 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
               {props.jobError || props.runError || props.resultError ? <span className="text-rose-300">•</span> : null}
               {props.jobNotice ? <span className="text-amber-200">•</span> : null}
             </button>
+
+            {teamAvailable ? (
+              <div className="inline-flex items-center overflow-hidden rounded-md border border-white/10 bg-black/30 text-xs text-white/70">
+                <button
+                  className={`px-2 py-1 ${chatTarget === "session" ? "bg-indigo-500/20 text-indigo-100" : "hover:bg-black/40"}`}
+                  type="button"
+                  onClick={() => props.onChatTargetChange?.("session")}
+                >
+                  Session
+                </button>
+                <button
+                  className={`px-2 py-1 ${chatTarget === "team" ? "bg-indigo-500/20 text-indigo-100" : "hover:bg-black/40"}`}
+                  type="button"
+                  onClick={() => props.onChatTargetChange?.("team")}
+                >
+                  Team {teamId ? `· ${teamId}` : ""}
+                </button>
+              </div>
+            ) : null}
           </div>
 
           <div className="flex items-center gap-2">
@@ -435,7 +464,7 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
                 {uploadBusy ? "Uploading…" : "Attach files"}
               </label>
               {!uploadsEnabled ? (
-                <div className="text-xs text-rose-200">Uploads disabled by daemon caps.</div>
+                <div className="text-xs text-rose-200">{uploadsDisabledReason || "Uploads disabled by daemon caps."}</div>
               ) : null}
 
               {attachments.length > 0 ? (

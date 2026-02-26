@@ -94,7 +94,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   };
 
   const [teams, setTeams] = React.useState<TeamRow[] | null>(null);
-  const [teamId, setTeamId] = React.useState<string>("");
+  const [teamId, setTeamId] = useLocalStorageState<string>("agentui.brokerTeamId", "");
   const [newTeamId, setNewTeamId] = React.useState<string>("");
   const [newTeamName, setNewTeamName] = React.useState<string>("");
   const [teamDetails, setTeamDetails] = React.useState<any | null>(null);
@@ -1641,129 +1641,176 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             <div className="text-[11px] text-white/60">
               Defaults stay simple; advanced fields are optional.
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <FieldLabel>Team name</FieldLabel>
-              <input
-                className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                value={quickTeamName}
-                onChange={(e) => setQuickTeamName(e.target.value)}
-                placeholder="Ops team"
-              />
-              <FieldLabel>Team id</FieldLabel>
-              <input
-                className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                value={quickTeamId}
-                onChange={(e) => setQuickTeamId(e.target.value)}
-                placeholder="auto"
-              />
-              <FieldLabel>Goal</FieldLabel>
-              <input
-                className="min-w-[260px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                value={quickTeamGoal}
-                onChange={(e) => setQuickTeamGoal(e.target.value)}
-                placeholder="What is this team trying to accomplish?"
-              />
+            <div className="mt-2 grid gap-2 lg:grid-cols-3">
+              <div className="grid gap-1">
+                <FieldLabel>Team name</FieldLabel>
+                <input
+                  className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                  value={quickTeamName}
+                  onChange={(e) => setQuickTeamName(e.target.value)}
+                  placeholder="Ops team"
+                />
+              </div>
+              <div className="grid gap-1">
+                <FieldLabel>Team id</FieldLabel>
+                <input
+                  className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                  value={quickTeamId}
+                  onChange={(e) => setQuickTeamId(e.target.value)}
+                  placeholder="auto"
+                />
+              </div>
+              <div className="grid gap-1 lg:col-span-3">
+                <FieldLabel>Goal</FieldLabel>
+                <input
+                  className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                  value={quickTeamGoal}
+                  onChange={(e) => setQuickTeamGoal(e.target.value)}
+                  placeholder="What is this team trying to accomplish?"
+                />
+              </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <FieldLabel>Template</FieldLabel>
-              <select
-                className="min-w-[180px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                value={quickTemplate}
-                onChange={(e) => handleQuickBuilderApplyTemplate(e.target.value)}
-              >
-                <option value="standard">Planner + Executor + Critic</option>
-                <option value="planner_executor">Planner + Executor</option>
-                <option value="research_team">Researcher + Executor + Critic</option>
-              </select>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                type="button"
-                onClick={handleQuickAddMember}
-              >
-                Add agent
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                type="button"
-                disabled={!canQuery || memberAgentsBusy}
-                onClick={() => void refreshMemberAgents()}
-              >
-                {memberAgentsBusy ? "Refreshing agents…" : "Refresh agents"}
-              </button>
+            <div className="mt-2 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+              <div className="grid gap-1">
+                <FieldLabel>Template</FieldLabel>
+                <select
+                  className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                  value={quickTemplate}
+                  onChange={(e) => handleQuickBuilderApplyTemplate(e.target.value)}
+                >
+                  <option value="standard">Planner + Executor + Critic</option>
+                  <option value="planner_executor">Planner + Executor</option>
+                  <option value="research_team">Researcher + Executor + Critic</option>
+                </select>
+              </div>
+              <div className="flex items-end">
+                <button
+                  className="w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-[11px] text-white/80 hover:bg-black/40"
+                  type="button"
+                  onClick={handleQuickAddMember}
+                >
+                  Add agent
+                </button>
+              </div>
+              <div className="flex items-end">
+                <button
+                  className="w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-[11px] text-white/80 hover:bg-black/40"
+                  type="button"
+                  disabled={!canQuery || memberAgentsBusy}
+                  onClick={() => void refreshMemberAgents()}
+                >
+                  {memberAgentsBusy ? "Refreshing agents…" : "Refresh agents"}
+                </button>
+              </div>
             </div>
 
             <div className="grid gap-2">
-              {quickMembers.map((m) => (
-                <div key={m.id} className="rounded-md border border-white/10 bg-black/20 p-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <FieldLabel>Role</FieldLabel>
-                    <input
-                      className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                      value={m.role}
-                      onChange={(e) => handleQuickMemberUpdate(m.id, { role: e.target.value })}
-                    />
-                    <FieldLabel>Provider</FieldLabel>
-                    <select
-                      className="min-w-[140px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                      value={m.provider}
-                      onChange={(e) => handleQuickMemberUpdate(m.id, { provider: e.target.value })}
-                    >
-                      <option value="openai">OpenAI</option>
-                      <option value="anthropic">Anthropic</option>
-                      <option value="deepseek">DeepSeek</option>
-                      <option value="kimi">Kimi (Moonshot)</option>
-                      <option value="glm">GLM (Zhipu)</option>
-                      <option value="local">Local</option>
-                      <option value="custom">Custom</option>
-                    </select>
-                    <FieldLabel>Model</FieldLabel>
-                    <input
-                      className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                      value={m.model}
-                      onChange={(e) => handleQuickMemberUpdate(m.id, { model: e.target.value })}
-                      placeholder={providerModelDefaults[m.provider] || "model"}
-                    />
-                    <FieldLabel>Base URL</FieldLabel>
-                    <input
-                      className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                      value={m.baseUrl}
-                      onChange={(e) => handleQuickMemberUpdate(m.id, { baseUrl: e.target.value })}
-                      placeholder="https://api.openai.com/v1"
-                    />
-                    <button
-                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                      type="button"
-                      onClick={() => handleQuickRemoveMember(m.id)}
-                      disabled={quickMembers.length <= 1}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <FieldLabel>Agent</FieldLabel>
-                    <select
-                      className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                      value={m.agentId}
-                      onChange={(e) => handleQuickMemberUpdate(m.id, { agentId: e.target.value, deploymentId: "" })}
-                    >
-                      <option value="">(any)</option>
-                      {(memberAgents || []).map((agent: any) => (
-                        <option key={agent?.agent_id || agent?.id} value={String(agent?.agent_id || agent?.id || "")}>
-                          {String(agent?.display_name || agent?.agent_id || agent?.id || "")}
-                        </option>
-                      ))}
-                    </select>
-                    <FieldLabel>Deployment</FieldLabel>
-                    <input
-                      className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                      value={m.deploymentId}
-                      onChange={(e) => handleQuickMemberUpdate(m.id, { deploymentId: e.target.value })}
-                      placeholder="optional"
-                    />
-                  </div>
-                </div>
-              ))}
+              {quickMembers.map((m) => {
+                const summaryModel = m.model || providerModelDefaults[m.provider] || "model";
+                return (
+                  <details key={m.id} className="rounded-md border border-white/10 bg-black/20">
+                    <summary className="cursor-pointer select-none px-3 py-2 text-xs text-white/70">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-white/80">
+                            {m.role || "role"}
+                          </span>
+                          <span className="text-white/50">{m.provider || "provider"}</span>
+                        </div>
+                        <span className="text-white/50">{summaryModel}</span>
+                      </div>
+                    </summary>
+                    <div className="grid gap-3 px-3 pb-3">
+                      <div className="grid gap-2 md:grid-cols-2">
+                        <div className="grid gap-1">
+                          <FieldLabel>Role</FieldLabel>
+                          <input
+                            className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                            value={m.role}
+                            onChange={(e) => handleQuickMemberUpdate(m.id, { role: e.target.value })}
+                          />
+                        </div>
+                        <div className="grid gap-1">
+                          <FieldLabel>Provider</FieldLabel>
+                          <select
+                            className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                            value={m.provider}
+                            onChange={(e) => handleQuickMemberUpdate(m.id, { provider: e.target.value })}
+                          >
+                            <option value="openai">OpenAI</option>
+                            <option value="anthropic">Anthropic</option>
+                            <option value="deepseek">DeepSeek</option>
+                            <option value="kimi">Kimi (Moonshot)</option>
+                            <option value="glm">GLM (Zhipu)</option>
+                            <option value="local">Local</option>
+                            <option value="custom">Custom</option>
+                          </select>
+                        </div>
+                        <div className="grid gap-1">
+                          <FieldLabel>Model</FieldLabel>
+                          <input
+                            className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                            value={m.model}
+                            onChange={(e) => handleQuickMemberUpdate(m.id, { model: e.target.value })}
+                            placeholder={providerModelDefaults[m.provider] || "model"}
+                          />
+                        </div>
+                        <div className="grid gap-1">
+                          <FieldLabel>Agent</FieldLabel>
+                          <select
+                            className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                            value={m.agentId}
+                            onChange={(e) => handleQuickMemberUpdate(m.id, { agentId: e.target.value, deploymentId: "" })}
+                          >
+                            <option value="">(any)</option>
+                            {(memberAgents || []).map((agent: any) => (
+                              <option key={agent?.agent_id || agent?.id} value={String(agent?.agent_id || agent?.id || "")}>
+                                {String(agent?.display_name || agent?.agent_id || agent?.id || "")}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <details className="rounded-md border border-white/10 bg-black/30 px-2 py-2">
+                        <summary className="cursor-pointer text-[11px] text-white/60">Advanced overrides</summary>
+                        <div className="mt-2 grid gap-2 md:grid-cols-2">
+                          <div className="grid gap-1">
+                            <FieldLabel>Base URL</FieldLabel>
+                            <input
+                              className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                              value={m.baseUrl}
+                              onChange={(e) => handleQuickMemberUpdate(m.id, { baseUrl: e.target.value })}
+                              placeholder="https://api.openai.com/v1"
+                            />
+                          </div>
+                          <div className="grid gap-1">
+                            <FieldLabel>Deployment</FieldLabel>
+                            <input
+                              className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                              value={m.deploymentId}
+                              onChange={(e) => handleQuickMemberUpdate(m.id, { deploymentId: e.target.value })}
+                              placeholder="optional"
+                            />
+                          </div>
+                        </div>
+                      </details>
+
+                      <div className="flex justify-end">
+                        <button
+                          className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                          type="button"
+                          onClick={() => handleQuickRemoveMember(m.id)}
+                          disabled={quickMembers.length <= 1}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  </details>
+                );
+              })}
             </div>
 
             {quickBuilderError ? (

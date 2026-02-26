@@ -28,6 +28,10 @@ import {
   apiAgentdTrace,
   apiBrokerGetClientPrefs,
   apiBrokerPostClientPrefs,
+  apiBrokerProxyJson,
+  apiBrokerTeamRunCreate,
+  apiBrokerTeamRunGet,
+  apiBrokerTeamRunList,
   apiBrokerTrace,
   daemonHeaders,
   RunRequest,
@@ -114,6 +118,26 @@ export default function App() {
   const connectionMode = connection.mode;
   const brokerAuthToken = connection.brokerAuthToken;
   const daemonAuthToken = connection.daemonAuthToken;
+  const [selectedTeamId, setSelectedTeamId] = useLocalStorageState<string>("agentui.brokerTeamId", "");
+  const selectedTeamIdTrimmed = String(selectedTeamId || "").trim();
+  const brokerChatAvailable = connectionMode === "broker" && selectedTeamIdTrimmed.length > 0;
+  const [chatTarget, setChatTarget] = useLocalStorageState<string>(
+    "agentui.chatTarget",
+    brokerChatAvailable ? "team" : "session",
+  );
+  React.useEffect(() => {
+    if (connectionMode !== "broker" && chatTarget !== "session") {
+      setChatTarget("session");
+    }
+  }, [chatTarget, connectionMode, setChatTarget]);
+  React.useEffect(() => {
+    if (chatTarget === "team" && !brokerChatAvailable) {
+      setChatTarget("session");
+    }
+  }, [brokerChatAvailable, chatTarget, setChatTarget]);
+  const [teamPromptHistory, setTeamPromptHistory] = useLocalStorageState<
+    Record<string, { ts: number; prompt: string; run_id?: string }[]>
+  >("agentui.teamPrompts", {});
   const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "");
   const [capsCache, setCapsCache] = useLocalStorageState<Record<string, { caps: Caps; ts: number }>>(
     "agentui.capsByBase",
@@ -1028,6 +1052,188 @@ export default function App() {
     retry: 1,
   });
 
+  const brokerBase = String(connection.brokerBase || "").trim();
+  const teamRunList = useQuery({
+    queryKey: ["broker_team_runs", brokerBase, authKey, selectedTeamIdTrimmed],
+    queryFn: () => apiBrokerTeamRunList(brokerBase, selectedTeamIdTrimmed, daemonAuth, { limit: 6, offset: 0 }),
+    enabled: brokerChatAvailable && !!brokerBase && selectedTeamIdTrimmed.length > 0,
+    refetchInterval: brokerChatAvailable ? 6000 : false,
+    retry: 1,
+  });
+
+  const latestTeamRunId = React.useMemo(() => {
+    const runs = teamRunList.data?.ok && Array.isArray(teamRunList.data?.runs) ? (teamRunList.data.runs as any[]) : [];
+    if (runs.length === 0) return "";
+    const sorted = runs
+      .slice()
+      .sort((a, b) => (Number(b?.created_unix_ms || 0) || 0) - (Number(a?.created_unix_ms || 0) || 0));
+    return String(sorted[0]?.team_run_id || "").trim();
+  }, [teamRunList.data]);
+
+  const teamChat = useQuery({
+    queryKey: ["broker_team_chat", brokerBase, authKey, selectedTeamIdTrimmed, latestTeamRunId],
+    queryFn: async () => {
+      if (!latestTeamRunId) {
+        return { status: null as any, items: [] as any[], warnings: [] as string[] };
+      }
+      const status = await apiBrokerTeamRunGet(brokerBase, selectedTeamIdTrimmed, latestTeamRunId, daemonAuth);
+      if (!status.ok) {
+        return { status, items: [] as any[], warnings: [status.error || status.err || status.code || "team run failed"] };
+      }
+      const memberSessions = status.member_sessions && typeof status.member_sessions === "object" ? status.member_sessions : {};
+      const members = Array.isArray(status.members) ? status.members : [];
+      const memberJobs = Array.isArray(status.member_jobs) ? status.member_jobs : [];
+      const memberMeta: Record<string, { role?: string; agent_id?: string; deployment_id?: string }> = {};
+      for (const m of members) {
+        const id = String((m as any)?.member_id || "").trim();
+        if (!id) continue;
+        memberMeta[id] = {
+          role: String((m as any)?.role || "").trim() || undefined,
+          agent_id: String((m as any)?.agent_id || "").trim() || undefined,
+          deployment_id: String((m as any)?.deployment_id || "").trim() || undefined,
+        };
+      }
+      for (const job of memberJobs) {
+        const id = String((job as any)?.member_id || "").trim();
+        if (!id) continue;
+        const prev = memberMeta[id] || {};
+        memberMeta[id] = {
+          role: prev.role,
+          agent_id: String((job as any)?.agent_id || prev.agent_id || "").trim() || undefined,
+          deployment_id: String((job as any)?.deployment_id || prev.deployment_id || "").trim() || undefined,
+        };
+      }
+
+      const warnings: string[] = [];
+      const entries = Object.entries(memberSessions as Record<string, string>);
+      const items: any[] = [];
+      await Promise.all(
+        entries.map(async ([memberId, sessionId]) => {
+          const sid = String(sessionId || "").trim();
+          if (!sid) return;
+          const meta = memberMeta[String(memberId || "").trim()] || {};
+          const agentId = meta.agent_id || String(connection.brokerAgentId || "").trim();
+          if (!agentId) {
+            warnings.push(`missing agent_id for member ${memberId}`);
+            return;
+          }
+          const depId = meta.deployment_id;
+          const path = `/api/v1/db/messages?session_id=${encodeURIComponent(sid)}&limit=80&offset=0&max_content_bytes=65536&max_mm_bytes=0`;
+          try {
+            const resp = await apiBrokerProxyJson(brokerBase, agentId, path, "GET", undefined, daemonAuth, depId);
+            const data = resp?.data;
+            const msgs = data?.ok && Array.isArray(data?.messages) ? (data.messages as any[]) : [];
+            for (const m of msgs) {
+              const ts = typeof m?.created_unix_ms === "number" ? m.created_unix_ms : 0;
+              if (!ts) continue;
+              items.push({
+                ts,
+                message: m,
+                meta: {
+                  member_id: memberId,
+                  role: meta.role,
+                  agent_id: agentId,
+                  session_id: sid,
+                },
+              });
+            }
+          } catch (err) {
+            warnings.push(`failed to load messages for ${memberId}: ${String(err)}`);
+          }
+        }),
+      );
+      items.sort((a, b) => a.ts - b.ts);
+      return { status, items, warnings };
+    },
+    enabled: brokerChatAvailable && !!brokerBase && !!latestTeamRunId,
+    refetchInterval: brokerChatAvailable ? 5000 : false,
+    retry: 1,
+  });
+
+  const teamConversationItems = React.useMemo(() => {
+    const out: any[] = [];
+    const items = Array.isArray(teamChat.data?.items) ? (teamChat.data?.items as any[]) : [];
+    for (const item of items) {
+      const msg = item?.message;
+      if (!msg || typeof msg !== "object") continue;
+      const ts = typeof item?.ts === "number" ? item.ts : 0;
+      if (!ts) continue;
+      out.push({
+        kind: "message",
+        ts,
+        message: msg,
+        meta: item?.meta ?? {},
+      });
+    }
+    const prompts = teamPromptHistory[selectedTeamIdTrimmed] || [];
+    for (const p of prompts) {
+      if (!p || typeof p !== "object") continue;
+      const ts = typeof p.ts === "number" ? p.ts : 0;
+      const prompt = String((p as any).prompt || "").trim();
+      if (!ts || !prompt) continue;
+      out.push({
+        kind: "prompt",
+        ts,
+        message: { role: "user", content: prompt },
+        meta: { run_id: (p as any).run_id || undefined },
+      });
+    }
+    out.sort((a, b) => a.ts - b.ts);
+    const deduped: any[] = [];
+    const seenPromptKeys = new Set<string>();
+    for (const item of out) {
+      const role = String(item?.message?.role || "");
+      const content = String(item?.message?.content || "");
+      if (role === "user" && content) {
+        const key = content.slice(0, 200);
+        if (seenPromptKeys.has(key)) continue;
+        seenPromptKeys.add(key);
+      }
+      deduped.push(item);
+    }
+    return deduped;
+  }, [teamChat.data, teamPromptHistory, selectedTeamIdTrimmed]);
+
+  const teamRunCreate = useMutation({
+    mutationFn: async (vars: { prompt: string }) => {
+      const trimmed = String(vars.prompt || "").trim();
+      if (!trimmed) throw new Error("prompt required");
+      if (!brokerChatAvailable) throw new Error("team chat unavailable");
+      if (!brokerBase) throw new Error("missing broker base");
+      if (!selectedTeamIdTrimmed) throw new Error("missing team_id");
+      return apiBrokerTeamRunCreate(
+        brokerBase,
+        selectedTeamIdTrimmed,
+        { prompt: trimmed },
+        daemonAuth,
+      );
+    },
+    onSuccess: (resp, vars) => {
+      if (!resp?.ok) {
+        setJobNotice(resp?.error || resp?.err || resp?.code || "team run failed");
+        return;
+      }
+      const runId = String(resp?.team_run_id || "").trim();
+      const trimmed = String(vars.prompt || "").trim();
+      if (trimmed) {
+        setTeamPromptHistory((prev) => {
+          const cur = Array.isArray(prev[selectedTeamIdTrimmed]) ? prev[selectedTeamIdTrimmed] : [];
+          const next = [...cur, { ts: Date.now(), prompt: trimmed, run_id: runId || undefined }];
+          return { ...prev, [selectedTeamIdTrimmed]: next };
+        });
+      }
+      setPrompt("");
+      setComposerTaskNonce((n) => n + 1);
+      setJobNotice(runId ? `team run ${runId} started` : "team run started");
+      if (teamRunList.refetch) {
+        void teamRunList.refetch();
+      }
+    },
+    onError: (err) => {
+      setJobNotice(`team run failed: ${String(err)}`);
+    },
+  });
+
   const [dbRunDetailsById, setDbRunDetailsById] = React.useState<Record<number, any>>({});
   const dbRunDetailsByIdRef = React.useRef<Record<number, any>>({});
   const dbRunDetailsLoadingRef = React.useRef<Record<number, boolean>>({});
@@ -1524,15 +1730,29 @@ export default function App() {
       });
   }, [activeJobId, run.isPending, runQueue, run, setJobNotice, setRunQueue]);
 
+  const isTeamTarget = brokerChatAvailable && chatTarget === "team";
   const handleRunRequest = React.useCallback(
     (vars: { prompt: string; attachments: Attachment[] }) => {
+      if (isTeamTarget) {
+        const trimmed = String(vars.prompt || "").trim();
+        if (!trimmed) {
+          setJobNotice("prompt required");
+          return;
+        }
+        if (vars.attachments.length > 0) {
+          setJobNotice("team runs do not support attachments yet");
+          return;
+        }
+        teamRunCreate.mutate({ prompt: trimmed });
+        return;
+      }
       if (activeJobId || run.isPending) {
         enqueueRun(vars);
         return;
       }
       run.mutate(vars);
     },
-    [activeJobId, enqueueRun, run],
+    [activeJobId, enqueueRun, isTeamTarget, run, setJobNotice, teamRunCreate],
   );
 
   const traceLookup = useMutation({
@@ -2050,11 +2270,22 @@ export default function App() {
                       setAdvancedPage("trace");
                       void traceLookup.mutateAsync(traceId).catch(() => {});
                     }}
+                    teamConversationItems={teamConversationItems}
+                    teamId={selectedTeamIdTrimmed}
+                    teamRunId={latestTeamRunId}
+                    teamRunStatus={
+                      typeof teamChat.data?.status?.status === "string"
+                        ? teamChat.data?.status?.status
+                        : typeof teamChat.data?.status?.code === "string"
+                          ? teamChat.data?.status?.code
+                          : ""
+                    }
+                    teamConversationWarnings={Array.isArray(teamChat.data?.warnings) ? teamChat.data?.warnings : []}
                   />
                 </div>
               </section>
               {advancedPage ? (
-                <aside className="rounded-lg border border-white/10 bg-black/20 p-3 lg:w-[40vw] lg:max-w-[720px] lg:min-w-[420px] lg:shrink-0">
+                <aside className="min-w-0 overflow-x-hidden rounded-lg border border-white/10 bg-black/20 p-3 lg:w-[45vw] lg:max-w-[960px] lg:min-w-[360px] lg:shrink-0">
                   {advancedPage === "trace" ? (
                     <TraceLookupPanel
                       open={true}
@@ -2155,18 +2386,31 @@ export default function App() {
         daemonAuth={daemonAuth}
         prompt={prompt}
         setPrompt={setPrompt}
-        runDisabled={false}
-        runLabel={run.isPending || activeJobId ? "Queue" : "Run"}
-        queueCount={Array.isArray(runQueue) ? runQueue.length : 0}
+        runDisabled={isTeamTarget ? !brokerChatAvailable : false}
+        runLabel={
+          isTeamTarget
+            ? teamRunCreate.isPending
+              ? "Sending…"
+              : "Send"
+            : run.isPending || activeJobId
+              ? "Queue"
+              : "Run"
+        }
+        queueCount={isTeamTarget ? 0 : Array.isArray(runQueue) ? runQueue.length : 0}
         onRun={handleRunRequest}
         setJobNotice={setJobNotice}
         jobNotice={jobNotice}
         jobError={jobError}
-        runError={run.isError ? String(run.error) : null}
+        runError={isTeamTarget ? (teamRunCreate.isError ? String(teamRunCreate.error) : null) : run.isError ? String(run.error) : null}
         resultError={!result?.ok && result?.error ? result.error : null}
         clearAttachmentsNonce={composerTaskNonce}
-        uploadsEnabled={uploadsEnabled}
+        uploadsEnabled={uploadsEnabled && !isTeamTarget}
         uploadMaxBytes={uploadMaxBytes}
+        uploadsDisabledReason={isTeamTarget ? "Uploads disabled for team runs." : ""}
+        chatTarget={isTeamTarget ? "team" : "session"}
+        teamId={selectedTeamIdTrimmed}
+        teamAvailable={brokerChatAvailable}
+        onChatTargetChange={(next) => setChatTarget(next)}
       />
 
       <SettingsDrawer

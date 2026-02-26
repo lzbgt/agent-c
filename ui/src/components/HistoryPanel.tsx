@@ -31,6 +31,11 @@ export type HistoryPanelProps = {
   sceneEntities: SceneEntity[];
   onSceneApply: (ops: any[]) => void;
   onTraceIdClick: (traceId: string) => void;
+  teamConversationItems?: any[];
+  teamId?: string;
+  teamRunId?: string;
+  teamRunStatus?: string;
+  teamConversationWarnings?: string[];
 };
 
 export default function HistoryPanel(props: HistoryPanelProps) {
@@ -40,6 +45,11 @@ export default function HistoryPanel(props: HistoryPanelProps) {
   const dbRunDetailsById =
     props.dbRunDetailsById && typeof props.dbRunDetailsById === "object" ? props.dbRunDetailsById : {};
   const sessionArtifacts = Array.isArray(props.sessionArtifacts) ? props.sessionArtifacts : [];
+  const teamConversationItems = Array.isArray(props.teamConversationItems) ? props.teamConversationItems : [];
+  const teamId = String(props.teamId || "").trim();
+  const teamRunId = String(props.teamRunId || "").trim();
+  const teamRunStatus = String(props.teamRunStatus || "").trim();
+  const teamConversationWarnings = Array.isArray(props.teamConversationWarnings) ? props.teamConversationWarnings : [];
   const MAX_HISTORY_EXPANDED_KEYS = 200;
   const technicalHistoryKey = React.useMemo(() => {
     const base = String(props.effectiveBase || "").trim() || "default";
@@ -47,6 +57,12 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     return `agentui.technicalHistory:${base}::${sid}`;
   }, [props.effectiveBase, props.sessionId]);
   const [showTechnicalHistory, setShowTechnicalHistory] = useLocalStorageState<boolean>(technicalHistoryKey, false);
+  const teamChatKey = React.useMemo(() => {
+    const base = String(props.effectiveBase || "").trim() || "default";
+    const tid = teamId || "none";
+    return `agentui.teamChat:${base}::${tid}`;
+  }, [props.effectiveBase, teamId]);
+  const [showTeamChat, setShowTeamChat] = useLocalStorageState<boolean>(teamChatKey, true);
 
   const conversationItems = React.useMemo(() => {
     const items: {
@@ -72,9 +88,17 @@ export default function HistoryPanel(props: HistoryPanelProps) {
       items.push({ kind: "run", ts, run: r, runId: safeRunId, details });
       const toolRecords = details && Array.isArray(details?.tool_records) ? (details.tool_records as any[]) : [];
       toolRecords.forEach((tr, idx) => {
+        const toolTs =
+          typeof tr?.ts_unix_ms === "number"
+            ? tr.ts_unix_ms
+            : typeof tr?.created_unix_ms === "number"
+              ? tr.created_unix_ms
+              : typeof tr?.updated_unix_ms === "number"
+                ? tr.updated_unix_ms
+                : ts + idx + 1;
         items.push({
           kind: "tool_record",
-          ts: ts + idx + 1,
+          ts: toolTs,
           run: r,
           runId: safeRunId,
           details,
@@ -184,6 +208,73 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                   <Markdown text={String(lastAssistantMessage.content)} />
                 </div>
               </details>
+            ) : null}
+          </div>
+        ) : null}
+
+        {teamId ? (
+          <div className="mb-4 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm font-semibold text-white/80">Team chat</div>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                type="button"
+                onClick={() => setShowTeamChat((v) => !v)}
+              >
+                {showTeamChat ? "Hide" : "Show"}
+              </button>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
+              <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-white/70">
+                team {teamId}
+              </span>
+              {teamRunId ? (
+                <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-white/60">
+                  run {teamRunId}
+                </span>
+              ) : null}
+              {teamRunStatus ? <span className="text-white/50">{teamRunStatus}</span> : null}
+            </div>
+            {teamConversationWarnings.length > 0 ? (
+              <div className="mt-2 text-[11px] text-amber-200">{teamConversationWarnings[0]}</div>
+            ) : null}
+            {showTeamChat ? (
+              teamConversationItems.length === 0 ? (
+                <div className="mt-3 rounded-md border border-white/10 bg-black/20 px-3 py-3 text-xs text-white/60">
+                  No team messages yet. Start a team run to populate this chat.
+                </div>
+              ) : (
+                <div className="mt-3 grid gap-3">
+                  {teamConversationItems.map((item, idx) => {
+                    const msg = item?.message ?? {};
+                    const role = typeof msg?.role === "string" ? msg.role : "message";
+                    const content = typeof msg?.content === "string" ? msg.content : "";
+                    const ts = typeof item?.ts === "number" ? item.ts : 0;
+                    const when = ts ? new Date(ts).toLocaleString() : "";
+                    const meta = item?.meta ?? {};
+                    const roleLabel = typeof meta?.role === "string" && meta.role ? meta.role : role;
+                    const agentLabel = typeof meta?.agent_id === "string" && meta.agent_id ? meta.agent_id : "";
+                    const sessionLabel = typeof meta?.session_id === "string" ? meta.session_id : "";
+                    return (
+                      <div key={`team-msg:${ts || idx}`} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+                          <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-semibold text-white/80">
+                            {roleLabel}
+                          </span>
+                          {agentLabel ? <span className="text-white/50">{agentLabel}</span> : null}
+                          {when ? <span>{when}</span> : null}
+                          {sessionLabel ? <span className="text-white/40">session {sessionLabel}</span> : null}
+                        </div>
+                        {content ? (
+                          <div className="mt-2 text-sm text-white/90">
+                            <Markdown text={String(content)} />
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              )
             ) : null}
           </div>
         ) : null}
