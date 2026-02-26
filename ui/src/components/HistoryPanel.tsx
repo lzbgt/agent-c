@@ -207,6 +207,12 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     return `agentui.teamPinnedFilters:${base}::${tid}`;
   }, [props.effectiveBase, teamId]);
   const [teamPinnedFilters, setTeamPinnedFilters] = useLocalStorageState<string[]>(teamPinnedFiltersKey, []);
+  const teamCompactKey = React.useMemo(() => {
+    const base = String(props.effectiveBase || "").trim() || "default";
+    const tid = teamId || "none";
+    return `agentui.teamCompact:${base}::${tid}`;
+  }, [props.effectiveBase, teamId]);
+  const [teamCompactMode, setTeamCompactMode] = useLocalStorageState<boolean>(teamCompactKey, false);
   const teamSearchRef = React.useRef<HTMLInputElement | null>(null);
   const teamRoleChips = React.useMemo(() => {
     const roles = new Set<string>();
@@ -339,10 +345,10 @@ export default function HistoryPanel(props: HistoryPanelProps) {
         <div
           key={`team-msg:${ts || idx}`}
           id={ts ? `team-msg-${ts}` : undefined}
-          className={`rounded-lg border px-3 py-2 ${cardAccent}`}
+          className={`border ${teamCompactMode ? "rounded-md px-2 py-1" : "rounded-lg px-3 py-2"} ${cardAccent}`}
         >
           {showTeamHeaders ? (
-            <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+            <div className={`flex flex-wrap items-center gap-2 text-white/60 ${teamCompactMode ? "text-[10px]" : "text-[11px]"}`}>
               {agentLabel ? (
                 <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-semibold text-white/80">
                   {agentLabel}
@@ -360,14 +366,14 @@ export default function HistoryPanel(props: HistoryPanelProps) {
               {when ? <span>{when}</span> : null}
             </div>
           ) : compactLabel ? (
-            <div className="text-[11px] text-white/60">
+            <div className={`${teamCompactMode ? "text-[10px]" : "text-[11px]"} text-white/60`}>
               <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-semibold text-white/80">
                 {compactLabel}
               </span>
             </div>
           ) : null}
           {highlightSnippet ? (
-            <div className="mt-2 text-[11px] text-amber-100">
+            <div className={`mt-2 text-amber-100 ${teamCompactMode ? "text-[10px]" : "text-[11px]"}`}>
               <span className="text-amber-200">Match:</span>{" "}
               {highlightSnippet.start > 0 ? "…" : null}
               {renderHighlightedSnippet(highlightSnippet.snippet, highlightNeedle)}
@@ -376,29 +382,33 @@ export default function HistoryPanel(props: HistoryPanelProps) {
           ) : null}
           {content ? (
             isSystem ? (
-              <details className="mt-2">
-                <summary className="cursor-pointer text-[11px] text-white/60">System message (collapsed)</summary>
-                <div className="mt-2 text-sm text-white/90">
+              <details className={teamCompactMode ? "mt-1" : "mt-2"}>
+                <summary className={`cursor-pointer text-white/60 ${teamCompactMode ? "text-[10px]" : "text-[11px]"}`}>
+                  System message (collapsed)
+                </summary>
+                <div className={`mt-2 text-white/90 ${teamCompactMode ? "text-[12px]" : "text-sm"}`}>
                   <Markdown text={String(content)} />
                 </div>
               </details>
             ) : (
-              <div className="mt-2 text-sm text-white/90">
+              <div className={`text-white/90 ${teamCompactMode ? "mt-1 text-[12px] leading-snug" : "mt-2 text-sm"}`}>
                 <Markdown text={String(content)} />
               </div>
             )
           ) : null}
           {hasMeta ? (
-            <details className="mt-2">
-              <summary className="cursor-pointer text-[11px] text-white/60">Message details</summary>
-              <div className="mt-2 text-[11px] text-white/60">
+            <details className={teamCompactMode ? "mt-1" : "mt-2"}>
+              <summary className={`cursor-pointer text-white/60 ${teamCompactMode ? "text-[10px]" : "text-[11px]"}`}>
+                Message details
+              </summary>
+              <div className={`mt-2 text-white/60 ${teamCompactMode ? "text-[10px]" : "text-[11px]"}`}>
                 {agentLabel ? <div>agent {agentLabel}</div> : null}
                 {sessionLabel ? <div>session {sessionLabel}</div> : null}
               </div>
             </details>
           ) : null}
           {uploadNames.length > 0 ? (
-            <div className="mt-2 text-[11px] text-white/60">
+            <div className={`text-white/60 ${teamCompactMode ? "mt-1 text-[10px]" : "mt-2 text-[11px]"}`}>
               Shared files: <span className="text-white/80">{uploadNames.join(", ")}</span>
             </div>
           ) : null}
@@ -625,6 +635,13 @@ export default function HistoryPanel(props: HistoryPanelProps) {
             <div className="flex items-center justify-between gap-2">
               <div className="text-sm font-semibold text-white/80">Team chat</div>
               <div className="flex items-center gap-2">
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                  type="button"
+                  onClick={() => setTeamCompactMode((v) => !v)}
+                >
+                  {teamCompactMode ? "Relax" : "Compact"}
+                </button>
                 <button
                   className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
                   type="button"
