@@ -225,6 +225,12 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     return `agentui.teamCompact:${base}::${tid}`;
   }, [props.effectiveBase, teamId]);
   const [teamCompactMode, setTeamCompactMode] = useLocalStorageState<boolean>(teamCompactKey, false);
+  const teamAutoScrollKey = React.useMemo(() => {
+    const base = String(props.effectiveBase || "").trim() || "default";
+    const tid = teamId || "none";
+    return `agentui.teamAutoScroll:${base}::${tid}`;
+  }, [props.effectiveBase, teamId]);
+  const [teamAutoScroll, setTeamAutoScroll] = useLocalStorageState<boolean>(teamAutoScrollKey, true);
   const teamSearchRef = React.useRef<HTMLInputElement | null>(null);
   const teamRoleChips = React.useMemo(() => {
     const roles = new Set<string>();
@@ -444,6 +450,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     },
     [teamFilteredItems],
   );
+  const lastAutoScrollTsRef = React.useRef<number>(0);
 
   React.useEffect(() => {
     if (teamSearch.trim().length > 0) return;
@@ -451,6 +458,20 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     if (!fallback) return;
     setTeamSearch(fallback);
   }, [setTeamSearch, teamDefaultFilter, teamSearch]);
+
+  React.useEffect(() => {
+    if (!showTeamChat || !teamAutoScroll) return;
+    const items = teamFilteredItems;
+    if (items.length === 0) return;
+    const last = items[items.length - 1];
+    const ts = typeof last?.ts === "number" ? last.ts : 0;
+    if (!ts || ts === lastAutoScrollTsRef.current) return;
+    lastAutoScrollTsRef.current = ts;
+    const el = document.getElementById(`team-msg-${ts}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [showTeamChat, teamAutoScroll, teamFilteredItems]);
 
   React.useEffect(() => {
     const lastKeyRef = { key: "", ts: 0 };
@@ -670,6 +691,18 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                     onClick={() => setTeamCompactMode((v) => !v)}
                   >
                     {teamCompactMode ? "Relax" : "Compact"}
+                  </button>
+                  <button
+                    className={`rounded-md border px-2 py-1 text-[11px] ${
+                      teamAutoScroll
+                        ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
+                        : "border-white/10 bg-black/30 text-white/70 hover:bg-black/40"
+                    }`}
+                    type="button"
+                    onClick={() => setTeamAutoScroll((v) => !v)}
+                    title={teamAutoScroll ? "Auto-scroll enabled" : "Auto-scroll disabled"}
+                  >
+                    Auto-scroll
                   </button>
                   <button
                     className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
