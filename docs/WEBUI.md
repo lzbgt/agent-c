@@ -110,6 +110,7 @@ Preset configs:
 - Devstack OIDC helper: `tools/devstack_oidc_token.sh --state out/devstack_state.json` (prints a bearer token; auto-falls back to `http://127.0.0.1:<keycloak_port>` or `http://[::1]:<keycloak_port>` if `keycloak.lvh.me` is unreachable).
 - Devstack writes the broker OIDC token into `ui/dist/agentui-config.js` on startup so the WebUI can connect without manual Settings edits; refresh the page if you change/refresh tokens.
 - See `docs/DEVSTACK_NETWORK_AUTH.md` for the end-to-end network/auth workflow and troubleshooting.
+  - If the browser tries `keycloak.lvh.me:<port>/v1/agents/...`, the Broker base URL is mis-set; reset Settings → Connection to the broker URL from `out/devstack_state.json`.
 
 ## Diagnostics
 

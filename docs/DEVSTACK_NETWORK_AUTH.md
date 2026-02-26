@@ -99,6 +99,9 @@ Do one of the following:
   - Ensure docker compose is running (`docker compose ls`).
 - **WebUI Unauthorized**:
   - Broker token missing/expired. Regenerate with `tools/devstack_oidc_token.sh`.
+- **Browser tries `keycloak.lvh.me:<port>/v1/agents/...`**:
+  - Your Broker base URL is misconfigured (Keycloak is the issuer, not the broker).
+  - Reset WebUI Settings → Connection to `https://127.0.0.1:<broker_port>` and paste a fresh broker token.
 - **Broker TLS handshake errors in logs**:
   - Common during probing without proper certs; not fatal.
 - **Ports unknown**:
