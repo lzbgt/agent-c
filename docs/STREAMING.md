@@ -165,4 +165,5 @@ include `ok_models_*` lists from the probe output. The OpenRouter smoke tests wi
 keys, then `ok_models_assistant`/`ok_models_tool`, then shared lists) before falling back to env vars and defaults above.
 Smokes log the candidate list and each attempted model to stderr for easier debugging.
 Smokes also log the pins path, presence, and source (default vs env override).
+If the pins file exists but has no usable entries, the smokes emit a warning.
 If every candidate fails with OpenRouter auth errors, the probe exits with code 77 and prints a skip message.
