@@ -79,6 +79,15 @@ const diffSummary = (diff: any): string => {
   return parts.join(" ");
 };
 
+const formatJson = (value: any): string => {
+  if (value === undefined) return "";
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return "";
+  }
+};
+
 export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelProps) {
   const teamIdTrimmed = String(props.teamId || "").trim();
   const teamMetaObj = props.teamMeta && typeof props.teamMeta === "object" ? props.teamMeta : null;
@@ -106,6 +115,9 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
   const [runResult, setRunResult] = React.useState<any | null>(null);
   const [showGoalRevisions, setShowGoalRevisions] = React.useState<boolean>(false);
   const [showRoleRevisions, setShowRoleRevisions] = React.useState<boolean>(false);
+  const [showGoalContractJson, setShowGoalContractJson] = React.useState<boolean>(false);
+  const [showRolePlanJson, setShowRolePlanJson] = React.useState<boolean>(false);
+  const [copyNote, setCopyNote] = React.useState<string | null>(null);
 
   const [updateGoal, setUpdateGoal] = React.useState<string>("");
   const [updateStatus, setUpdateStatus] = React.useState<string>("");
@@ -359,12 +371,38 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
     }
   }, [props.canQuery, props.events, teamIdTrimmed, runId, loadRuns, loadRun]);
 
+  const handleCopyJson = async (payload: any, label: string) => {
+    const text = formatJson(payload);
+    if (!text) {
+      setCopyNote(`${label} empty`);
+      return;
+    }
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        setCopyNote(`${label} copied`);
+      } else {
+        setCopyNote("clipboard unavailable");
+      }
+    } catch (err) {
+      setCopyNote(`copy failed: ${String(err)}`);
+    }
+  };
+
   const currentRun = runResult;
   const currentMeta = currentRun && typeof currentRun.meta === "object" ? currentRun.meta : null;
   const goalRevisions = sortRevisions(normalizeRevisionEntries(currentMeta?.goal_versions));
   const rolePlanRevisions = sortRevisions(normalizeRevisionEntries(currentMeta?.role_plan_versions));
   const latestGoalRevision = goalRevisions.length > 0 ? goalRevisions[0] : null;
   const latestRoleRevision = rolePlanRevisions.length > 0 ? rolePlanRevisions[0] : null;
+  const latestGoalContract =
+    latestGoalRevision?.goal_contract !== undefined
+      ? latestGoalRevision.goal_contract
+      : currentRun?.goal_contract ?? undefined;
+  const latestRolePlanSnapshot =
+    latestRoleRevision?.role_plan_snapshot !== undefined
+      ? latestRoleRevision.role_plan_snapshot
+      : currentRun?.role_plan_snapshot ?? undefined;
   const revisionEvents = React.useMemo(() => {
     const rows = Array.isArray(props.events) ? props.events : [];
     if (rows.length === 0) return [];
@@ -654,6 +692,75 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                     : ""}
                 </div>
               )}
+            </div>
+          </div>
+          <div className="grid gap-2 rounded-md border border-white/10 bg-black/40 p-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-[11px] text-white/70">Latest JSON</div>
+              {copyNote ? <div className="text-[11px] text-emerald-200">{copyNote}</div> : null}
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="grid gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[11px] text-white/60">Goal contract</div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
+                      type="button"
+                      onClick={() => setShowGoalContractJson((prev) => !prev)}
+                    >
+                      {showGoalContractJson ? "Hide" : "Show"}
+                    </button>
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
+                      type="button"
+                      onClick={() => void handleCopyJson(latestGoalContract, "goal contract")}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+                {showGoalContractJson ? (
+                  <pre className="max-h-60 overflow-auto rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70">
+                    {formatJson(latestGoalContract) || "// empty"}
+                  </pre>
+                ) : (
+                  <div className="text-[11px] text-white/50">
+                    {latestGoalContract ? "Available" : "Empty"}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[11px] text-white/60">Role plan snapshot</div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
+                      type="button"
+                      onClick={() => setShowRolePlanJson((prev) => !prev)}
+                    >
+                      {showRolePlanJson ? "Hide" : "Show"}
+                    </button>
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
+                      type="button"
+                      onClick={() => void handleCopyJson(latestRolePlanSnapshot, "role plan")}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+                {showRolePlanJson ? (
+                  <pre className="max-h-60 overflow-auto rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70">
+                    {formatJson(latestRolePlanSnapshot) || "// empty"}
+                  </pre>
+                ) : (
+                  <div className="text-[11px] text-white/50">
+                    {latestRolePlanSnapshot ? "Available" : "Empty"}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <div className="grid gap-2 rounded-md border border-white/10 bg-black/40 p-2">
