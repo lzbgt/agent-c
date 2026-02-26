@@ -34,6 +34,26 @@ func TestMapDiffKeys(t *testing.T) {
 	}
 }
 
+func TestMapDiffKeysNilEmpty(t *testing.T) {
+	if mapDiffKeys(nil, nil) != nil {
+		t.Fatalf("expected nil diff for nil maps")
+	}
+	if mapDiffKeys(map[string]any{}, nil) != nil {
+		t.Fatalf("expected nil diff for empty vs nil")
+	}
+	if mapDiffKeys(nil, map[string]any{}) != nil {
+		t.Fatalf("expected nil diff for nil vs empty")
+	}
+	diff := mapDiffKeys(nil, map[string]any{"a": 1})
+	if diff == nil {
+		t.Fatalf("expected diff for nil vs non-empty")
+	}
+	added := diff["added"].([]string)
+	if len(added) != 1 || added[0] != "a" {
+		t.Fatalf("unexpected added keys: %v", added)
+	}
+}
+
 func TestNextRevisionVersion(t *testing.T) {
 	entries := []map[string]any{
 		{"version": 1},
