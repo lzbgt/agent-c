@@ -450,8 +450,28 @@ while true; do
       -H "Content-Type: application/json" \
       -d "{\"agent_id\":\"${agent_id}\"}" \
       "${BROKER_BASE}/v1/agents" >/dev/null 2>&1; then
-      ok=0
-      break
+      # If creation fails, check whether the agent already exists for this user.
+      list_json="$(
+        curl -fsS -k \
+          -H "Authorization: Bearer ${OIDC_JWT}" \
+          "${BROKER_BASE}/v1/agents" 2>/dev/null || true
+      )"
+      exists="$(
+        python3 - <<PY
+import json,sys
+try:
+  data=json.loads(sys.stdin.read() or "{}")
+except Exception:
+  data={}
+agents=data.get("agents") or []
+print("1" if any(isinstance(a,dict) and a.get("agent_id")==${agent_id!r} for a in agents) else "0")
+PY
+      <<<"${list_json}"
+      )"
+      if [[ "${exists}" != "1" ]]; then
+        ok=0
+        break
+      fi
     fi
   done
   if [[ "${ok}" -eq 1 ]]; then

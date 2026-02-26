@@ -116,12 +116,15 @@ fi
 
 if [[ -n "${COMPOSE_FILE}" && -n "${COMPOSE_PROJECT}" ]]; then
   if command -v docker_compose_preflight >/dev/null 2>&1 && docker_compose_preflight "devstack-down" >/dev/null 2>&1; then
-    POSTGRES_PUBLISHED_PORT="${POSTGRES_PORT}" \
-    KEYCLOAK_PUBLISHED_PORT="${KEYCLOAK_PORT}" \
-    COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT}" \
     if [[ "${WIPE_VOLUMES}" -eq 1 ]]; then
+      POSTGRES_PUBLISHED_PORT="${POSTGRES_PORT}" \
+      KEYCLOAK_PUBLISHED_PORT="${KEYCLOAK_PORT}" \
+      COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT}" \
       docker compose -f "${COMPOSE_FILE}" down -v --remove-orphans >/dev/null 2>&1 || true
     else
+      POSTGRES_PUBLISHED_PORT="${POSTGRES_PORT}" \
+      KEYCLOAK_PUBLISHED_PORT="${KEYCLOAK_PORT}" \
+      COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT}" \
       docker compose -f "${COMPOSE_FILE}" down --remove-orphans >/dev/null 2>&1 || true
     fi
   else
