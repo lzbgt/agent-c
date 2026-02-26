@@ -131,6 +131,12 @@ export default function HistoryPanel(props: HistoryPanelProps) {
   }, [props.effectiveBase, teamId]);
   const [teamMutedAgents, setTeamMutedAgents] = useLocalStorageState<string[]>(teamMutedAgentsKey, []);
   const mutedAgentSet = React.useMemo(() => new Set(teamMutedAgents || []), [teamMutedAgents]);
+  const teamSearchKey = React.useMemo(() => {
+    const base = String(props.effectiveBase || "").trim() || "default";
+    const tid = teamId || "none";
+    return `agentui.teamSearch:${base}::${tid}`;
+  }, [props.effectiveBase, teamId]);
+  const [teamSearch, setTeamSearch] = useLocalStorageState<string>(teamSearchKey, "");
 
   const teamTimelineItems = React.useMemo(() => {
     const items = teamConversationItems
@@ -140,6 +146,12 @@ export default function HistoryPanel(props: HistoryPanelProps) {
         if (role === "system" && !showTeamSystemMessages) return false;
         const agentLabel = typeof item?.meta?.agent_id === "string" ? item.meta.agent_id : "";
         if (agentLabel && mutedAgentSet.has(agentLabel)) return false;
+        const needle = String(teamSearch || "").trim().toLowerCase();
+        if (needle) {
+          const content = typeof item?.message?.content === "string" ? item.message.content : "";
+          const haystack = `${content} ${agentLabel} ${role}`.toLowerCase();
+          if (!haystack.includes(needle)) return false;
+        }
         return true;
       })
       .sort((a, b) => (a?.ts || 0) - (b?.ts || 0));
@@ -466,6 +478,12 @@ export default function HistoryPanel(props: HistoryPanelProps) {
               </div>
             ) : null}
             <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
+              <input
+                className="min-w-[180px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80"
+                value={teamSearch}
+                onChange={(e) => setTeamSearch(e.target.value)}
+                placeholder="Filter team chat…"
+              />
               <button
                 className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
                 type="button"
@@ -501,6 +519,15 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                   onClick={() => setTeamMutedAgents([])}
                 >
                   Clear muted
+                </button>
+              ) : null}
+              {teamSearch.trim().length > 0 ? (
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                  type="button"
+                  onClick={() => setTeamSearch("")}
+                >
+                  Clear filter
                 </button>
               ) : null}
               <button
