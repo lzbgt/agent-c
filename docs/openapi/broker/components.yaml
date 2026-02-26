@@ -974,6 +974,7 @@ schemas:
           goal_versions/role_plan_versions may include goal_changed,
           goal_contract_changed, goal_contract_diff, or role_plan_diff
           (added/removed/changed key lists). Change flags are only set when true.
+          Diff key lists are top-level only; nested changes appear under the parent key.
           Revision histories are bounded to 50 entries each.
 
   OrchestratorRunCreateRequest:
