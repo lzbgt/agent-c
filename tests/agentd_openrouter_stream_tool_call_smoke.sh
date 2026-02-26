@@ -159,11 +159,13 @@ PY
 
 rc=1
 for model in "${MODELS[@]}"; do
+  echo "[stream] trying model: ${model}" >&2
   set +e
   run_with_model "${model}"
   rc=$?
   set -e
   if [[ $rc -eq 0 ]]; then
+    echo "[stream] ok model: ${model}" >&2
     break
   fi
   if [[ $rc -eq 77 ]]; then
