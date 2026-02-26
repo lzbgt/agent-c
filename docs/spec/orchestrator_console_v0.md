@@ -101,7 +101,7 @@ Status: draft (rolling)
 - Orchestrator updates/heartbeats can include `expected_owner` to avoid split-brain writers.
 - Run detail UI surfaces lease status, heartbeat age, and current owner for takeover decisions.
 - Orchestrator run meta stores goal/role plan revision history (`goal_versions`, `role_plan_versions`)
-  with version counters + updated timestamps for audit/replay.
+  with version counters + updated timestamps for audit/replay (bounded to 50 entries each).
 - Revision history entries are append-only and store diffs for key changes:
 
 ```
