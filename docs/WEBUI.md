@@ -75,7 +75,7 @@ Preset configs:
 - Keyboard shortcuts: Ctrl+Shift+S swaps A/B, Ctrl+Shift+D toggles diff-only (when Settings is focused).
 - The broker console exposes agent membership management, audit events, team setup (members + quorum rules), team runs, and quorum approvals (Team console includes recent quorum requests and approvals).
 - The Team console includes **orchestrator run** controls (create/list/update/heartbeat) and a **spawn request** panel (create/lookup/update/list).
-- Orchestrator run detail view includes goal/role plan revision history with diff summaries, change flags, latest-change summaries, filters (including change flag keywords like "goal changed" or "goal contract changed"), JSON expanders, and copy actions.
+- Orchestrator run detail view includes goal/role plan revision history with diff summaries, change flags, latest-change summaries, filters (including change flag keywords like "goal changed" or "goal contract changed"), JSON expanders, copy actions, and revision-event filtering.
 - Guidance lane rows surface re-entry briefings (goal + drift context + proposed changes) when present.
 - Team members editor supports broker agent/deployment pickers and a bulk add for connected agents.
 - Team member rows support quick pause/resume (updates status via PATCH).
