@@ -63,6 +63,12 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     return `agentui.teamChat:${base}::${tid}`;
   }, [props.effectiveBase, teamId]);
   const [showTeamChat, setShowTeamChat] = useLocalStorageState<boolean>(teamChatKey, true);
+  const teamRunMarkersKey = React.useMemo(() => {
+    const base = String(props.effectiveBase || "").trim() || "default";
+    const tid = teamId || "none";
+    return `agentui.teamRunMarkers:${base}::${tid}`;
+  }, [props.effectiveBase, teamId]);
+  const [showTeamRunMarkers, setShowTeamRunMarkers] = useLocalStorageState<boolean>(teamRunMarkersKey, true);
 
   const teamTimelineItems = React.useMemo(() => {
     const items = teamConversationItems.slice().sort((a, b) => (a?.ts || 0) - (b?.ts || 0));
@@ -72,14 +78,14 @@ export default function HistoryPanel(props: HistoryPanelProps) {
       const ts = typeof item?.ts === "number" ? item.ts : 0;
       const runIdRaw = item?.meta?.run_id;
       const runId = typeof runIdRaw === "string" ? runIdRaw : String(runIdRaw || "").trim();
-      if (runId && runId !== lastRunId) {
+      if (showTeamRunMarkers && runId && runId !== lastRunId) {
         out.push({ kind: "marker", runId, ts });
         lastRunId = runId;
       }
       out.push({ kind: "item", item, ts });
     }
     return out;
-  }, [teamConversationItems]);
+  }, [showTeamRunMarkers, teamConversationItems]);
 
   const conversationItems = React.useMemo(() => {
     const items: {
@@ -251,6 +257,15 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 </span>
               ) : null}
               {teamRunStatus ? <span className="text-white/50">{teamRunStatus}</span> : null}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                type="button"
+                onClick={() => setShowTeamRunMarkers((v) => !v)}
+              >
+                {showTeamRunMarkers ? "Hide run markers" : "Show run markers"}
+              </button>
             </div>
             {teamConversationWarnings.length > 0 ? (
               <div className="mt-2 text-[11px] text-amber-200">{teamConversationWarnings[0]}</div>
