@@ -74,11 +74,14 @@ export type BrokerTeamConsoleProps = {
   authKey: string;
   clientId: string;
   quorumEvents?: BrokerEventRow[];
+  mode?: "full" | "inline";
+  forcedTab?: "run" | "members" | "setup" | "settings" | "advanced";
 };
 
 export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const authToken = props.auth?.token ? String(props.auth.token).trim() : "";
   const canQuery = props.base.length > 0 && authToken.length > 0;
+  const mode = props.mode ?? "full";
 
   const [teamsBusy, setTeamsBusy] = React.useState<boolean>(false);
   const [teamsError, setTeamsError] = React.useState<string | null>(null);
@@ -123,6 +126,8 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   );
   const [teamTab, setTeamTab] = useLocalStorageState<string>("agentui.teamTab", "run");
   const teamTabIds = React.useMemo(() => new Set(teamTabs.map((t) => t.id)), [teamTabs]);
+  const forcedTab = props.forcedTab && teamTabIds.has(props.forcedTab) ? props.forcedTab : "";
+  const activeTab = forcedTab || teamTab;
   React.useEffect(() => {
     if (!teamTabIds.has(teamTab)) setTeamTab("run");
   }, [teamTab, teamTabIds, setTeamTab]);
@@ -1510,7 +1515,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   }, [memberEditAgentId, memberEditDeploymentId, memberEditAgentDeployments]);
 
   return (
-    <section className="rounded-md border border-white/10 bg-black/20 p-3">
+    <section className={`rounded-md border border-white/10 bg-black/20 ${mode === "inline" ? "p-2" : "p-3"}`}>
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="text-xs font-semibold text-white/80">Teams</div>
         <div className="flex items-center gap-2">
@@ -1560,26 +1565,28 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         ) : null}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2" data-testid="team-tabs">
-        {teamTabs.map((tab) => {
-          const active = tab.id === teamTab;
-          return (
-            <button
-              key={tab.id}
-              data-testid={`team-tab-${tab.id}`}
-              className={`rounded-md px-3 py-1.5 text-xs ${
-                active ? "bg-indigo-500/20 text-indigo-100" : "bg-black/20 text-white/70 hover:bg-black/30"
-              }`}
-              type="button"
-              onClick={() => setTeamTab(tab.id)}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
+      {forcedTab ? null : (
+        <div className="mt-3 flex flex-wrap items-center gap-2" data-testid="team-tabs">
+          {teamTabs.map((tab) => {
+            const active = tab.id === teamTab;
+            return (
+              <button
+                key={tab.id}
+                data-testid={`team-tab-${tab.id}`}
+                className={`rounded-md px-3 py-1.5 text-xs ${
+                  active ? "bg-indigo-500/20 text-indigo-100" : "bg-black/20 text-white/70 hover:bg-black/30"
+                }`}
+                type="button"
+                onClick={() => setTeamTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
-      {teamTab === "run" ? (
+      {activeTab === "run" ? (
         <SectionCard title="Team run" description="Start and monitor team runs." defaultOpen={true}>
           <BrokerTeamRunPanel
             base={props.base}
@@ -1596,7 +1603,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         </SectionCard>
       ) : null}
 
-      {teamTab === "settings" ? (
+      {activeTab === "settings" ? (
         <SectionCard title="Team settings" description="Name, tags, shared memory, and role graph defaults.">
           <BrokerTeamSettingsPanel
             canQuery={canQuery}
@@ -1631,7 +1638,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         </SectionCard>
       ) : null}
 
-      {teamTab === "setup" ? (
+      {activeTab === "setup" ? (
         <>
           <SectionCard
             title="Quick team builder"
@@ -1838,7 +1845,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         </>
       ) : null}
 
-      {teamTab === "members" ? (
+      {activeTab === "members" ? (
         <SectionCard title="Team members" description="Add members, update status, or edit overrides.">
         <div className="flex items-center justify-between gap-2">
           <div className="text-xs font-semibold text-white/80">Team members</div>

@@ -53,6 +53,7 @@ import PromptBar, { type Attachment } from "./components/PromptBar";
 import SettingsDrawer from "./components/SettingsDrawer";
 import TraceLookupPanel from "./components/TraceLookupPanel";
 import BrokerPanel from "./components/BrokerPanel";
+import BrokerTeamConsole from "./components/broker/BrokerTeamConsole";
 import MemoryPanel from "./components/MemoryPanel";
 import RunDiffPanel from "./components/RunDiffPanel";
 import ApprovalQueuePanel from "./components/ApprovalQueuePanel";
@@ -447,6 +448,10 @@ export default function App() {
   );
   const [sceneCollapsed, setSceneCollapsed] = useLocalStorageState<boolean>(`${historyUiKey}:sceneCollapsed`, false);
   const [focusAdvancedPanel, setFocusAdvancedPanel] = useLocalStorageState<boolean>("agentui.focusAdvancedPanel", false);
+  const [inlineTeamSetupOpen, setInlineTeamSetupOpen] = useLocalStorageState<boolean>(
+    "agentui.inlineTeamSetupOpen",
+    false,
+  );
   const [mainScrollTop, setMainScrollTop] = useLocalStorageState<number>(`${historyUiKey}:scrollTop`, 0);
   const mainScrollRef = React.useRef<HTMLElement | null>(null);
   const mainScrollRestoredKeyRef = React.useRef<string>("");
@@ -2806,9 +2811,19 @@ export default function App() {
                         <button
                           className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
                           type="button"
-                          onClick={() => openTeamPanel("setup")}
+                          onClick={() => setInlineTeamSetupOpen((prev) => !prev)}
                         >
-                          Setup team
+                          {inlineTeamSetupOpen ? "Hide setup" : "Quick setup"}
+                        </button>
+                        <button
+                          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                          type="button"
+                          onClick={() => {
+                            openTeamPanel("setup");
+                            setFocusAdvancedPanel(true);
+                          }}
+                        >
+                          Full setup
                         </button>
                         <button
                           className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
@@ -2944,6 +2959,32 @@ export default function App() {
                       </div>
                     ) : null}
                   </div>
+                ) : null}
+                {brokerChatAvailable && inlineTeamSetupOpen && advancedPage !== "broker" ? (
+                  <details
+                    className="mt-3 rounded-lg border border-white/10 bg-black/20 p-3"
+                    open={inlineTeamSetupOpen}
+                    onToggle={(event) =>
+                      setInlineTeamSetupOpen((event.currentTarget as HTMLDetailsElement).open)
+                    }
+                  >
+                    <summary className="cursor-pointer select-none text-xs font-semibold text-white/80">
+                      Inline team setup
+                    </summary>
+                    <div className="mt-2 text-[11px] text-white/60">
+                      Configure the team without leaving the chat. Attachments and prompts below are shared once you run.
+                    </div>
+                    <div className="mt-3">
+                      <BrokerTeamConsole
+                        mode="inline"
+                        forcedTab="setup"
+                        base={connection.brokerBase}
+                        auth={daemonAuth}
+                        authKey={authKey}
+                        clientId={client.id}
+                      />
+                    </div>
+                  </details>
                 ) : null}
                 <div className="mt-4">
                   <HistoryPanel
