@@ -99,3 +99,21 @@ func TestInitializeOrchestratorRevisionHistory(t *testing.T) {
 		t.Fatalf("expected role_plan_version=1, got %v", meta["role_plan_version"])
 	}
 }
+
+func TestLatestRevisionEntry(t *testing.T) {
+	entries := []map[string]any{
+		{"version": 2},
+		{"version": 1},
+		{"note": "no version"},
+		{"version": 5},
+	}
+	latest := latestRevisionEntry(entries)
+	if latest == nil || latest["version"] != 5 {
+		t.Fatalf("expected latest version 5, got %#v", latest)
+	}
+	entries = []map[string]any{{"note": "a"}, {"note": "b"}}
+	latest = latestRevisionEntry(entries)
+	if latest == nil || latest["note"] != "a" {
+		t.Fatalf("expected first entry fallback, got %#v", latest)
+	}
+}

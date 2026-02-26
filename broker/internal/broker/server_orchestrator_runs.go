@@ -717,6 +717,27 @@ func trimRevisionEntries(entries []map[string]any, max int) []map[string]any {
 	return entries[len(entries)-max:]
 }
 
+func latestRevisionEntry(entries []map[string]any) map[string]any {
+	var selected map[string]any
+	var max int64
+	for _, entry := range entries {
+		if entry == nil {
+			continue
+		}
+		if v, ok := parseInt64Value(entry["version"]); ok {
+			if selected == nil || v > max {
+				max = v
+				selected = entry
+			}
+			continue
+		}
+		if selected == nil {
+			selected = entry
+		}
+	}
+	return selected
+}
+
 func initializeOrchestratorRevisionHistory(
 	meta map[string]any,
 	goal string,
@@ -776,7 +797,10 @@ func buildGoalRevisionPayload(teamID, runID string, meta map[string]any) map[str
 	if len(entries) == 0 {
 		return nil
 	}
-	entry := entries[len(entries)-1]
+	entry := latestRevisionEntry(entries)
+	if entry == nil {
+		return nil
+	}
 	payload := map[string]any{
 		"team_id":             teamID,
 		"orchestrator_run_id": runID,
@@ -807,7 +831,10 @@ func buildRolePlanRevisionPayload(teamID, runID string, meta map[string]any) map
 	if len(entries) == 0 {
 		return nil
 	}
-	entry := entries[len(entries)-1]
+	entry := latestRevisionEntry(entries)
+	if entry == nil {
+		return nil
+	}
 	payload := map[string]any{
 		"team_id":             teamID,
 		"orchestrator_run_id": runID,
