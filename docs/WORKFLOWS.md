@@ -812,7 +812,6 @@ Implemented:
 - Scenario packs: tools/scenarios/ + tools/scenario_runner.py
 - Eval packs: tools/eval_pack.py + tools/eval_packs/ (deterministic checks + scoring)
 - One-command dev stack: tools/devstack_agent.sh + tools/devstack_agent_down.sh (use --wipe-volumes to reset Keycloak)
-- Always-on dev stack: tools/devstack_agent_ensure.sh (starts if not running)
 - Operator UX defaults: runtime config via ui/public/agentui-config.js (no rebuild required)
 
 Proposed (still open):
