@@ -298,6 +298,14 @@ export default function HistoryPanel(props: HistoryPanelProps) {
       const meta = item?.meta ?? {};
       const roleLabel = typeof meta?.role === "string" && meta.role ? meta.role : role;
       const agentLabel = typeof meta?.agent_id === "string" && meta.agent_id ? meta.agent_id : "";
+      const roleBadge =
+        roleLabel === "guidance"
+          ? "border-amber-400/30 bg-amber-500/10 text-amber-100"
+          : roleLabel === "goal"
+            ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
+            : roleLabel === "user"
+              ? "border-indigo-400/30 bg-indigo-500/10 text-indigo-100"
+              : "border-white/10 bg-black/30 text-white/70";
       const isSystem = role === "system" || roleLabel === "system";
       if (agentLabel && mutedAgentSet.has(agentLabel)) return null;
       const sessionLabel = typeof meta?.session_id === "string" ? meta.session_id : "";
@@ -321,10 +329,14 @@ export default function HistoryPanel(props: HistoryPanelProps) {
               <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-semibold text-white/80">
                 {agentLabel}
               </span>
+            ) : roleLabel === "user" ? (
+              <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-semibold text-white/80">
+                You
+              </span>
             ) : null}
             {showTeamRoleLabels ? (
-              <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-white/70">
-                {roleLabel}
+              <span className={`rounded-md border px-2 py-0.5 text-[11px] ${roleBadge}`}>
+                {roleLabel === "user" ? "user" : roleLabel}
               </span>
             ) : null}
             {when ? <span>{when}</span> : null}
