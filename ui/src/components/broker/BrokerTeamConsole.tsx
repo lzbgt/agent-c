@@ -127,6 +127,8 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     openai: "https://api.openai.com/v1",
     anthropic: "https://api.anthropic.com",
     deepseek: "https://api.deepseek.com",
+    kimi: "https://api.moonshot.cn/v1",
+    glm: "https://open.bigmodel.cn/api/paas/v4",
     local: "",
     custom: "",
   };
@@ -1615,6 +1617,8 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                       <option value="openai">OpenAI</option>
                       <option value="anthropic">Anthropic</option>
                       <option value="deepseek">DeepSeek</option>
+                      <option value="kimi">Kimi (Moonshot)</option>
+                      <option value="glm">GLM (Zhipu)</option>
                       <option value="local">Local</option>
                       <option value="custom">Custom</option>
                     </select>
