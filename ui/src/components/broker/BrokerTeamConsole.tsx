@@ -173,12 +173,21 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     local: "",
     custom: "",
   };
+  const providerModelDefaults: Record<string, string> = {
+    openai: "gpt-4.1",
+    anthropic: "claude-3-7-sonnet-20250219",
+    deepseek: "deepseek-chat",
+    kimi: "kimi-k2.5",
+    glm: "glm-4",
+    local: "",
+    custom: "",
+  };
   const makeQuickMembers = React.useCallback((template: string): QuickMember[] => {
     const mk = (role: string): QuickMember => ({
       id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       role,
       provider: "openai",
-      model: "",
+      model: providerModelDefaults.openai,
       baseUrl: providerDefaults.openai,
       agentId: "",
       deploymentId: "",
@@ -743,8 +752,12 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         const next = { ...m, ...patch };
         if (patch.provider !== undefined) {
           const def = providerDefaults[patch.provider] ?? "";
+          const modelDef = providerModelDefaults[patch.provider] ?? "";
           if (!next.baseUrl || next.baseUrl === providerDefaults[m.provider]) {
             next.baseUrl = def;
+          }
+          if (!next.model || next.model === providerModelDefaults[m.provider]) {
+            next.model = modelDef;
           }
         }
         return next;
@@ -759,7 +772,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         id: `member-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         role: "executor",
         provider: "openai",
-        model: "",
+        model: providerModelDefaults.openai,
         baseUrl: providerDefaults.openai,
         agentId: "",
         deploymentId: "",
@@ -1709,7 +1722,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                       className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
                       value={m.model}
                       onChange={(e) => handleQuickMemberUpdate(m.id, { model: e.target.value })}
-                      placeholder="gpt-4.1"
+                      placeholder={providerModelDefaults[m.provider] || "model"}
                     />
                     <FieldLabel>Base URL</FieldLabel>
                     <input
