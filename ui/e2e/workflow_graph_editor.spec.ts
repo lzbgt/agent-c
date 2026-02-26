@@ -3,6 +3,7 @@ import { test, expect } from "@playwright/test";
 test("workflow graph editor renders and can add nodes", async ({ page }) => {
   await page.addInitScript(() => {
     try {
+      window.localStorage.setItem("agentui.simpleMode", "false");
       window.localStorage.setItem("agentui.workflowPanelOpen", JSON.stringify(true));
       window.localStorage.setItem("agentui.workflowComposerMode", JSON.stringify("graph"));
       window.localStorage.setItem("agentui.connectionMode", JSON.stringify("broker"));

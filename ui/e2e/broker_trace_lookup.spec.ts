@@ -3,6 +3,7 @@ import { test, expect } from "@playwright/test";
 test("trace lookup panel renders in broker mode", async ({ page }) => {
   await page.addInitScript(() => {
     try {
+      window.localStorage.setItem("agentui.simpleMode", "false");
       window.localStorage.setItem("agentui.connectionMode", JSON.stringify("broker"));
       window.localStorage.setItem("agentui.brokerBase", "https://broker.example.invalid");
       window.localStorage.setItem("agentui.brokerAuthToken", "test-token");

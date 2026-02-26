@@ -9,20 +9,23 @@ Devstack runs a mixed topology:
 - **Host processes**: agentd, broker, connector, WebUI static server.
 - **Docker compose**: Keycloak + Postgres (published to host ports).
 
+By default the broker runs over plain HTTP to avoid local TLS trust issues.
+Enable HTTPS + mTLS with `tools/devstack_agent.sh --broker-tls`.
+
 Ports are chosen at runtime and written to `out/devstack_state.json`.
 The compose project name matches the WebUI port by default
 (`agent_devstack_<webui_port>`).
 
 Example (from `out/devstack_state.json`):
 - agentd: `http://127.0.0.1:<agentd_port>`
-- broker: `https://127.0.0.1:<broker_port>`
+- broker: `http://127.0.0.1:<broker_port>` (default; `https://` when `--broker-tls`)
 - WebUI: `http://127.0.0.1:<webui_port>`
 - Keycloak: `http://keycloak.lvh.me:<keycloak_port>` (or `127.0.0.1` / `[::1]`)
 - Postgres: `127.0.0.1:<postgres_port>`
 
 ```
           (host)
-  WebUI -> broker (HTTPS, OIDC bearer)
+  WebUI -> broker (HTTP by default, OIDC bearer)
               ^        ^
               |        |
           connector   Keycloak (OIDC issuer)
@@ -61,21 +64,22 @@ tools/devstack_oidc_token.sh --state out/devstack_state.json
 If `keycloak.lvh.me` does not resolve on your host, the helper auto-falls back to
 `http://127.0.0.1:<keycloak_port>` or `http://[::1]:<keycloak_port>`.
 
-Tokens expire. The dev realm sets `accessTokenLifespan` to 1 hour for smoother
+Tokens expire. The dev realm sets `accessTokenLifespan` to 12 hours for smoother
 testing; if you still hit 401s, regenerate a token or restart Keycloak to pick
 up realm changes.
 
 Example:
 ```
 OIDC_TOKEN="$(tools/devstack_oidc_token.sh --state out/devstack_state.json)"
-curl -k -H "Authorization: Bearer ${OIDC_TOKEN}" \
-  https://127.0.0.1:<broker_port>/v1/agents
+curl -H "Authorization: Bearer ${OIDC_TOKEN}" \
+  http://127.0.0.1:<broker_port>/v1/agents
 ```
 
-### 3) Connector mTLS (agent to broker)
+### 3) Connector mTLS (agent to broker, optional)
 
-Devstack generates mTLS test certs and the connector uses them to open
-`wss://127.0.0.1:<broker_port>/v1/agent/connect`.
+When `--broker-tls` is enabled, devstack generates mTLS test certs and the
+connector uses them to open `wss://127.0.0.1:<broker_port>/v1/agent/connect`.
+Without `--broker-tls`, the connector uses plain `ws://` and no mTLS.
 
 This connection is independent from the OIDC bearer token used by WebUI and
 clients; it is a mutual TLS channel for agent traffic.
@@ -105,11 +109,11 @@ Do one of the following:
   - Broker token missing/expired. Regenerate with `tools/devstack_oidc_token.sh`.
 - **Browser tries `keycloak.lvh.me:<port>/v1/agents/...`**:
   - Your Broker base URL is misconfigured (Keycloak is the issuer, not the broker).
-  - Reset WebUI Settings → Connection to `https://127.0.0.1:<broker_port>` and paste a fresh broker token.
-- **Browser cannot reach `https://127.0.0.1:<broker_port>/v1/agents/<id>/proxy`**:
-  - Accept the self-signed TLS certificate by visiting `https://127.0.0.1:<broker_port>` directly in the browser.
+  - Reset WebUI Settings → Connection to `http://127.0.0.1:<broker_port>` (or `https://` if using `--broker-tls`) and paste a fresh broker token.
+- **Browser cannot reach `http://127.0.0.1:<broker_port>/v1/agents/<id>/proxy`**:
   - Ensure the WebUI origin is `http://127.0.0.1:<webui_port>` or `http://localhost:<webui_port>` (broker CORS allowlist).
+  - If you enabled `--broker-tls`, accept the self-signed cert by visiting `https://127.0.0.1:<broker_port>` directly in the browser.
 - **Broker TLS handshake errors in logs**:
-  - Common during probing without proper certs; not fatal.
+  - Common during probing without proper certs when `--broker-tls` is enabled; not fatal.
 - **Ports unknown**:
   - Check `out/devstack_state.json`.

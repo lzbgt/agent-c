@@ -27,6 +27,7 @@ Options:
   --agentd-tools   agentd tools mode (default: host)
   --agentd-port    agentd port (default: random)
   --broker-port    broker port (default: random)
+  --broker-tls     Enable TLS + mTLS for broker/connector (default: off)
   --webui-port     WebUI port (default: random)
   --postgres-port  Postgres published port (default: random)
   --keycloak-port  Keycloak published port (default: random)
@@ -83,6 +84,7 @@ AGENT_COUNT=1
 WORKFLOW_HTTP=0
 AGENTD_PORT=""
 BROKER_PORT=""
+BROKER_TLS="${BROKER_TLS:-0}"
 WEBUI_PORT=""
 POSTGRES_PORT=""
 KEYCLOAK_PORT=""
@@ -100,6 +102,7 @@ while [[ $# -gt 0 ]]; do
     --agentd-tools) AGENTD_TOOLS="$2"; shift 2 ;;
     --agentd-port) AGENTD_PORT="$2"; shift 2 ;;
     --broker-port) BROKER_PORT="$2"; shift 2 ;;
+    --broker-tls) BROKER_TLS=1; shift ;;
     --webui-port) WEBUI_PORT="$2"; shift 2 ;;
     --postgres-port) POSTGRES_PORT="$2"; shift 2 ;;
     --keycloak-port) KEYCLOAK_PORT="$2"; shift 2 ;;
@@ -121,6 +124,10 @@ if ! [[ "${AGENT_COUNT}" =~ ^[0-9]+$ ]]; then
 fi
 if [[ "${AGENT_COUNT}" -lt 1 ]]; then
   echo "[devstack] agent-count must be >= 1" >&2
+  exit 2
+fi
+if [[ "${BROKER_TLS}" != "0" && "${BROKER_TLS}" != "1" ]]; then
+  echo "[devstack] invalid BROKER_TLS (expected 0 or 1): ${BROKER_TLS}" >&2
   exit 2
 fi
 
@@ -265,7 +272,9 @@ if [[ "${SKIP_UI}" -eq 0 ]]; then
   fi
 fi
 
-run_logged "generate mTLS certs" "${LOG_MTLS}" bash -lc "bash ${ROOT}/tools/gen_agentd_broker_mtls_test_certs.sh ${MTLS_DIR} ${AGENT_IDS[*]}"
+if [[ "${BROKER_TLS}" -eq 1 ]]; then
+  run_logged "generate mTLS certs" "${LOG_MTLS}" bash -lc "bash ${ROOT}/tools/gen_agentd_broker_mtls_test_certs.sh ${MTLS_DIR} ${AGENT_IDS[*]}"
+fi
 
 compose_env=(
   "POSTGRES_PUBLISHED_PORT=${POSTGRES_PORT}"
@@ -286,7 +295,6 @@ if [[ "${compose_rc}" -ne 0 ]]; then
 fi
 
 KEYCLOAK_BASE="http://keycloak.lvh.me:${KEYCLOAK_PORT}"
-BROKER_BASE="https://127.0.0.1:${BROKER_PORT}"
 WEBUI_BASE="http://127.0.0.1:${WEBUI_PORT}"
 
 wait_http_ok() {
@@ -363,12 +371,29 @@ AGENTD_PID="${AGENTD_PIDS[0]}"
 wait_http_ok "${AGENTD_BASE}/api/v1/health" 240 || true
 
 BROKER_DB_DSN="postgres://postgres:postgres@127.0.0.1:${POSTGRES_PORT}/agentd_broker?sslmode=disable"
+BROKER_TLS_ARGS=()
+
+if [[ "${BROKER_TLS}" -eq 1 ]]; then
+  BROKER_BASE="https://127.0.0.1:${BROKER_PORT}"
+  BROKER_CONNECT_URL="wss://127.0.0.1:${BROKER_PORT}/v1/agent/connect"
+  BROKER_TLS_ARGS=(--tls-cert "${MTLS_DIR}/server.pem" --tls-key "${MTLS_DIR}/server.key.pem" --tls-client-ca "${MTLS_DIR}/ca.pem")
+else
+  BROKER_BASE="http://127.0.0.1:${BROKER_PORT}"
+  BROKER_CONNECT_URL="ws://127.0.0.1:${BROKER_PORT}/v1/agent/connect"
+  BROKER_TLS_ARGS=(--require-agent-mtls=false)
+fi
+
+broker_curl() {
+  if [[ "${BROKER_TLS}" -eq 1 ]]; then
+    curl -fsS -k "$@"
+  else
+    curl -fsS "$@"
+  fi
+}
 
 nohup "${BROKER_BIN}" \
   --listen "127.0.0.1:${BROKER_PORT}" \
-  --tls-cert "${MTLS_DIR}/server.pem" \
-  --tls-key "${MTLS_DIR}/server.key.pem" \
-  --tls-client-ca "${MTLS_DIR}/ca.pem" \
+  "${BROKER_TLS_ARGS[@]}" \
   --db-dsn "${BROKER_DB_DSN}" \
   --oidc-issuer "${KEYCLOAK_BASE}/realms/agentd" \
   --oidc-audience "agentd-broker-dev" \
@@ -380,14 +405,22 @@ for idx in "${!AGENT_IDS[@]}"; do
   base="${AGENTD_BASES[$idx]}"
   log="${LOG_DIR}/connector_${agent_id}.log"
   CONNECTOR_LOGS+=("${log}")
-  nohup "${CONNECTOR_BIN}" \
-    --broker "wss://127.0.0.1:${BROKER_PORT}/v1/agent/connect" \
-    --local-agentd "${base}" \
-    --tls-ca "${MTLS_DIR}/ca.pem" \
-    --tls-cert "${MTLS_DIR}/client_${agent_id}.pem" \
-    --tls-key "${MTLS_DIR}/client_${agent_id}.key.pem" \
-    --agent-cn-prefix "agentd-" \
-    --agent-id "${agent_id}" >"${log}" 2>&1 &
+  if [[ "${BROKER_TLS}" -eq 1 ]]; then
+    nohup "${CONNECTOR_BIN}" \
+      --broker "${BROKER_CONNECT_URL}" \
+      --local-agentd "${base}" \
+      --tls-ca "${MTLS_DIR}/ca.pem" \
+      --tls-cert "${MTLS_DIR}/client_${agent_id}.pem" \
+      --tls-key "${MTLS_DIR}/client_${agent_id}.key.pem" \
+      --agent-cn-prefix "agentd-" \
+      --agent-id "${agent_id}" >"${log}" 2>&1 &
+  else
+    nohup "${CONNECTOR_BIN}" \
+      --broker "${BROKER_CONNECT_URL}" \
+      --local-agentd "${base}" \
+      --agent-cn-prefix "agentd-" \
+      --agent-id "${agent_id}" >"${log}" 2>&1 &
+  fi
   CONNECTOR_PIDS+=("$!")
 done
 LOG_CONNECTOR="${CONNECTOR_LOGS[0]}"
@@ -446,14 +479,14 @@ started="$(date +%s)"
 while true; do
   ok=1
   for agent_id in "${AGENT_IDS[@]}"; do
-    if ! curl -fsS -k \
+    if ! broker_curl \
       -H "Authorization: Bearer ${OIDC_JWT}" \
       -H "Content-Type: application/json" \
       -d "{\"agent_id\":\"${agent_id}\"}" \
       "${BROKER_BASE}/v1/agents" >/dev/null 2>&1; then
       # If creation fails, check whether the agent already exists for this user.
       list_json="$(
-        curl -fsS -k \
+        broker_curl \
           -H "Authorization: Bearer ${OIDC_JWT}" \
           "${BROKER_BASE}/v1/agents" 2>/dev/null || true
       )"
@@ -505,7 +538,7 @@ PY
 
 started="$(date +%s)"
 while true; do
-  j="$(curl -fsS -k -H "Authorization: Bearer ${OIDC_JWT}" "${BROKER_BASE}/v1/agents" || true)"
+  j="$(broker_curl -H "Authorization: Bearer ${OIDC_JWT}" "${BROKER_BASE}/v1/agents" || true)"
   ok="$(python3 - "${j}" "${AGENT_IDS[@]}" <<'PY'
 import json,sys
 raw = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -532,9 +565,9 @@ PY
     exit 3
   fi
   sleep 1
- done
+done
 
-curl -fsS -k -H "Authorization: Bearer ${OIDC_JWT}" \
+broker_curl -H "Authorization: Bearer ${OIDC_JWT}" \
   "${BROKER_BASE}/v1/agents/${BROKER_AGENT_ID}/proxy/api/v1/health" >/dev/null || true
 
 curl -fsS -H "Authorization: Bearer ${AGENTD_AUTH_TOKEN}" \
@@ -565,6 +598,8 @@ import json
 def split_list(raw):
   return [x for x in (raw or "").split(",") if x]
 
+broker_tls = "${BROKER_TLS}" == "1"
+
 agent_ids = split_list("${AGENT_IDS_CSV}")
 agentd_bases = split_list("${AGENTD_BASES_CSV}")
 agentd_ports = split_list("${AGENTD_PORTS_CSV}")
@@ -589,6 +624,7 @@ print(json.dumps({
   "out_dir": "${OUT_DIR}",
   "agentd_base": "${AGENTD_BASE}",
   "broker_base": "${BROKER_BASE}",
+  "broker_tls": broker_tls,
   "webui_base": "${WEBUI_BASE}",
   "keycloak_base": "${KEYCLOAK_BASE}",
   "agentd_port": ${AGENTD_PORT},
