@@ -302,6 +302,11 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-26: added receipt-based approval thresholds for replan resume (`replan_ack_*`).
   - 2026-02-26: emit `replan_resume` goal event with receipt summary for evidence.
   - 2026-02-26: allow `replan_resume` goal events and SSE `team_goal_replan_resume`.
+  - 2026-02-26: capture `replan_prev_goal`/`replan_prev_goal_contract`/`replan_prev_role_plan_snapshot` and include `prev_goal` + `goal` in replan resume events.
+- [ ] W=10 — Automouse defaults pack: ship a first-class "automouse" config bundle (automation_profile=full, orchestrator + spawn adapter auto-run, preflight checks) so full power is the default without manual setup.
+- [ ] W=9 — Operator briefing payloads: emit structured "re-entry" summaries (goal, drift evidence, proposed changes) on guidance/replan so rare user engagement is low-friction.
+- [ ] W=9 — Goal + role plan versioning: add versioned diffs for goal/role plan changes with replayable events to reduce drift and improve audits.
+- [ ] W=8 — Orchestrator modularization: split `agentd-orchestrator` loop into SOLID modules (scheduling, allocation, drift, guidance) to keep files <2000 LOC.
 - [ ] W=8 — Capacity-based autoscale: spawn or retire runtime members based on backlog/latency signals (not only missing roles).
 - [ ] W=9 — Scheduling + isolation MVP: admission control, per-run budgets, and tool execution caps with evidence logs.
 - [ ] W=8 — Data governance controls: retention policy config, export/erase endpoints, and redaction-aware evidence bundles.

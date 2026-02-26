@@ -200,6 +200,9 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   replan_ack_sources_seen: [string]        # sources from receipts used to resume
   replan_event_unix_ms: integer            # when replan resume event emitted
   replan_event_error: string               # error if resume event fails
+  replan_prev_goal: string                 # previous goal captured before resume
+  replan_prev_goal_contract: { ... }       # previous goal contract captured before resume
+  replan_prev_role_plan_snapshot: { ... }  # previous role plan snapshot captured before resume
   replan_prev_team_run_id: string          # previous run id when new run requested
   replan_new_run_requested_unix_ms: integer # when new run requested
   replan_cancel_unix_ms: integer           # when active run cancel issued
@@ -242,6 +245,9 @@ Notes:
   with `replan_requested=true` for operator review.
   - Once the guidance item is acked, the loop resumes the orchestrator run and
     records `drift_replan_ack_*` fields in meta.
+  - On resume, the loop snapshots the previous goal/contract/role plan into
+    `replan_prev_*` fields and includes `prev_goal`/`goal` in the
+    `replan_resume` event payload when available.
   - When `replan_ack_min` or receipt filters are set, the loop waits for enough
     guidance receipts before resuming.
   - If `replan_create_new_run` is true, the loop clears `active_team_run_id` so

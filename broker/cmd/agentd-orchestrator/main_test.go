@@ -1114,8 +1114,9 @@ func TestMaybeEmitDriftReplanAction(t *testing.T) {
 
 func TestMaybeHandleReplanAckResumesRun(t *testing.T) {
 	type state struct {
-		mu        sync.Mutex
-		patchBody map[string]any
+		mu          sync.Mutex
+		patchBody   map[string]any
+		goalPayload map[string]any
 	}
 	st := &state{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1124,6 +1125,12 @@ func TestMaybeHandleReplanAckResumesRun(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			io.WriteString(w, `{"ok":true,"team_id":"team1","guidance":{"guidance_id":"g-replan","status":"acked","acked_by":"human","acked_unix_ms":123,"ack_note":"ok"}}`)
 		case r.Method == http.MethodPatch && r.URL.Path == "/v1/teams/team1/runs/run1/goal":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			st.mu.Lock()
+			st.goalPayload = payload
+			st.mu.Unlock()
 			w.Header().Set("Content-Type", "application/json")
 			io.WriteString(w, `{"ok":true}`)
 		case r.Method == http.MethodPatch && r.URL.Path == "/v1/teams/team1/orchestrator/runs/orun1":
@@ -1149,7 +1156,12 @@ func TestMaybeHandleReplanAckResumesRun(t *testing.T) {
 		"replan_create_new_run":    true,
 		"active_team_run_id":       "run1",
 	}
-	updated, err := maybeHandleReplanAck(context.Background(), server.Client(), cfg, "team1", "orun1", "orch1", meta)
+	run := orchestratorRun{
+		Goal:             "old goal",
+		GoalContract:     map[string]any{"scope": "prev"},
+		RolePlanSnapshot: map[string]any{"role": "plan"},
+	}
+	updated, err := maybeHandleReplanAck(context.Background(), server.Client(), cfg, "team1", "orun1", "orch1", run, meta)
 	if err != nil {
 		t.Fatalf("maybeHandleReplanAck error: %v", err)
 	}
@@ -1162,6 +1174,15 @@ func TestMaybeHandleReplanAckResumesRun(t *testing.T) {
 	if meta["drift_replan_ack_unix_ms"] != int64(123) {
 		t.Fatalf("expected drift_replan_ack_unix_ms=123, got %#v", meta["drift_replan_ack_unix_ms"])
 	}
+	if meta["replan_prev_goal"] != "old goal" {
+		t.Fatalf("expected replan_prev_goal=old goal, got %#v", meta["replan_prev_goal"])
+	}
+	if exp := map[string]any{"scope": "prev"}; !reflect.DeepEqual(meta["replan_prev_goal_contract"], exp) {
+		t.Fatalf("expected replan_prev_goal_contract %#v, got %#v", exp, meta["replan_prev_goal_contract"])
+	}
+	if exp := map[string]any{"role": "plan"}; !reflect.DeepEqual(meta["replan_prev_role_plan_snapshot"], exp) {
+		t.Fatalf("expected replan_prev_role_plan_snapshot %#v, got %#v", exp, meta["replan_prev_role_plan_snapshot"])
+	}
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	if st.patchBody == nil || st.patchBody["status"] != "running" {
@@ -1172,6 +1193,26 @@ func TestMaybeHandleReplanAckResumesRun(t *testing.T) {
 	}
 	if st.patchBody["goal"] != "new goal" {
 		t.Fatalf("expected goal=new goal, got %#v", st.patchBody["goal"])
+	}
+	if st.goalPayload == nil {
+		t.Fatalf("expected goal event payload, got nil")
+	}
+	event, ok := st.goalPayload["event"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected event payload map, got %#v", st.goalPayload["event"])
+	}
+	if event["type"] != "replan_resume" {
+		t.Fatalf("expected event type replan_resume, got %#v", event["type"])
+	}
+	data, ok := event["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected event data map, got %#v", event["data"])
+	}
+	if data["prev_goal"] != "old goal" {
+		t.Fatalf("expected prev_goal=old goal, got %#v", data["prev_goal"])
+	}
+	if data["goal"] != "new goal" {
+		t.Fatalf("expected goal=new goal, got %#v", data["goal"])
 	}
 	if meta["active_team_run_id"] != "" {
 		t.Fatalf("expected active_team_run_id cleared, got %#v", meta["active_team_run_id"])
@@ -1213,7 +1254,7 @@ func TestMaybeHandleReplanAckRequiresReceipts(t *testing.T) {
 		"drift_replan_guidance_id": "g-replan",
 		"replan_ack_min":           int64(2),
 	}
-	updated, err := maybeHandleReplanAck(context.Background(), server.Client(), cfg, "team1", "orun1", "orch1", meta)
+	updated, err := maybeHandleReplanAck(context.Background(), server.Client(), cfg, "team1", "orun1", "orch1", orchestratorRun{}, meta)
 	if err != nil {
 		t.Fatalf("maybeHandleReplanAck error: %v", err)
 	}

@@ -18,6 +18,7 @@ declares its own status (draft/rolling/implemented) in the document header.
 - `team_orchestration_v0.md`: team orchestration model (roles, shared memory, quorum gates).
 - `orchestrator_console_v0.md`: WebUI orchestration console (roles/backends, run monitor, reload-safe).
 - `autonomous_orchestrator_v0.md`: autonomous orchestration model (goal guard, low drift, dynamic allocation).
+- `automouse_framework_v0.md`: automouse framework overview (full automation + multi-agent + drift resilience).
 - `agent_spawn_adapter_v0.md`: spawn adapter CLI + provisioning contract (draft).
 - `user_guidance_lane_v0.md`: operator guidance/override lane (draft).
 - `eval_pack_v0.md`: deterministic eval pack format for regression gating (draft).

@@ -277,7 +277,7 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 	if activeRunID != "" {
 		if status == "paused" || status == "waiting" {
 			if owner == cfg.orchestratorID {
-				if updated, err := maybeHandleReplanAck(ctx, client, cfg, teamID, run.OrchestratorRunID, owner, meta); err != nil {
+				if updated, err := maybeHandleReplanAck(ctx, client, cfg, teamID, run.OrchestratorRunID, owner, run, meta); err != nil {
 					return err
 				} else if updated {
 					return nil
@@ -1405,6 +1405,7 @@ func maybeHandleReplanAck(
 	teamID,
 	orchestratorRunID,
 	owner string,
+	run orchestratorRun,
 	meta map[string]any,
 ) (bool, error) {
 	if meta == nil {
@@ -1456,6 +1457,18 @@ func maybeHandleReplanAck(
 	}
 	if guidance.AckNote != "" {
 		meta["drift_replan_ack_note"] = guidance.AckNote
+	}
+	if _, ok := meta["replan_prev_goal"]; !ok {
+		prev := strings.TrimSpace(run.Goal)
+		if prev != "" {
+			meta["replan_prev_goal"] = prev
+		}
+	}
+	if _, ok := meta["replan_prev_goal_contract"]; !ok && len(run.GoalContract) > 0 {
+		meta["replan_prev_goal_contract"] = run.GoalContract
+	}
+	if _, ok := meta["replan_prev_role_plan_snapshot"]; !ok && len(run.RolePlanSnapshot) > 0 {
+		meta["replan_prev_role_plan_snapshot"] = run.RolePlanSnapshot
 	}
 	activeRunID := strings.TrimSpace(asString(meta["active_team_run_id"]))
 	goal := strings.TrimSpace(asString(meta["replan_goal"]))
@@ -1524,6 +1537,12 @@ func maybeHandleReplanAck(
 		}
 		if guidance.AckedUnixMS > 0 {
 			event["data"].(map[string]any)["ack_unix_ms"] = guidance.AckedUnixMS
+		}
+		if prevGoal, ok := meta["replan_prev_goal"]; ok {
+			event["data"].(map[string]any)["prev_goal"] = prevGoal
+		}
+		if goalPtr != nil {
+			event["data"].(map[string]any)["goal"] = *goalPtr
 		}
 		if err := emitTeamRunGoalEvent(ctx, client, cfg, teamID, eventRunID, event); err != nil {
 			meta["replan_event_error"] = err.Error()
