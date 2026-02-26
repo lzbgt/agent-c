@@ -114,6 +114,7 @@ role_plan_versions: [
     role_plan_diff: { added: [string], removed: [string], changed: [string] } }
 ]
 ```
+- Change flags are only set when true.
 - SSE is used to refresh lists; durable state is always in DB.
 - Team runs persist `member_sessions` so moderators can target specific members
   after reload (used by team-run moderator broadcasts).
