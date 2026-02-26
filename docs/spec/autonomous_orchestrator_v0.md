@@ -245,6 +245,9 @@ Notes:
   with `replan_requested=true` for operator review.
   - Once the guidance item is acked, the loop resumes the orchestrator run and
     records `drift_replan_ack_*` fields in meta.
+  - Guidance payload includes a `briefing` object (goal/contract/role plan,
+    drift metrics, and proposed changes when available) to make rare user
+    engagement low-friction.
   - On resume, the loop snapshots the previous goal/contract/role plan into
     `replan_prev_*` fields and includes `prev_goal`/`goal` in the
     `replan_resume` event payload when available.

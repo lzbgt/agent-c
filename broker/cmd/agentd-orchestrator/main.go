@@ -317,7 +317,7 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 			return err
 		}
 		metaChanged := guidanceChanged
-		changed, err := tickActiveTeamRun(ctx, client, cfg, teamID, activeRunID, run.OrchestratorRunID, owner, tr, meta)
+		changed, err := tickActiveTeamRun(ctx, client, cfg, teamID, activeRunID, run.OrchestratorRunID, owner, run, tr, meta)
 		if err != nil {
 			return err
 		}
@@ -389,6 +389,7 @@ func tickActiveTeamRun(
 	teamRunID,
 	orchestratorRunID,
 	owner string,
+	run orchestratorRun,
 	status *teamRunResponse,
 	meta map[string]any,
 ) (bool, error) {
@@ -401,7 +402,7 @@ func tickActiveTeamRun(
 	} else if ok {
 		changed = true
 	}
-	if ok, err := maybeEmitDrift(ctx, client, cfg, teamID, teamRunID, orchestratorRunID, owner, status, meta); err != nil {
+	if ok, err := maybeEmitDrift(ctx, client, cfg, teamID, teamRunID, orchestratorRunID, owner, run, status, meta); err != nil {
 		return changed, err
 	} else if ok {
 		changed = true
@@ -602,6 +603,7 @@ func maybeEmitDrift(
 	teamRunID,
 	orchestratorRunID,
 	owner string,
+	run orchestratorRun,
 	status *teamRunResponse,
 	meta map[string]any,
 ) (bool, error) {
@@ -635,11 +637,78 @@ func maybeEmitDrift(
 	}
 	meta["last_drift_unix_ms"] = now
 	meta["last_drift_team_run_id"] = teamRunID
-	if applyDriftAction(ctx, client, cfg, teamID, teamRunID, orchestratorRunID, owner, meta, elapsed, int64(threshold), now) {
+	if applyDriftAction(ctx, client, cfg, teamID, teamRunID, orchestratorRunID, owner, run, status, meta, elapsed, int64(threshold), now) {
 		meta["drift_action_unix_ms"] = now
 		meta["drift_action_team_run_id"] = teamRunID
 	}
 	return true, nil
+}
+
+func buildGuidanceBriefing(
+	run orchestratorRun,
+	status *teamRunResponse,
+	teamRunID string,
+	action string,
+	elapsed,
+	threshold,
+	now int64,
+	meta map[string]any,
+) map[string]any {
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	briefing := map[string]any{
+		"version": 1,
+		"drift": map[string]any{
+			"elapsed_ms":       elapsed,
+			"threshold_ms":     threshold,
+			"detected_unix_ms": now,
+		},
+	}
+	if teamRunID != "" {
+		briefing["team_run_id"] = teamRunID
+	}
+	if action != "" {
+		briefing["drift_action"] = action
+	}
+	if goal := strings.TrimSpace(run.Goal); goal != "" {
+		briefing["goal"] = goal
+	}
+	if run.GoalContract != nil && len(run.GoalContract) > 0 {
+		briefing["goal_contract"] = run.GoalContract
+	} else if status != nil {
+		if gc, ok := status.GoalContract.(map[string]any); ok && len(gc) > 0 {
+			briefing["goal_contract"] = gc
+		}
+	}
+	if run.RolePlanSnapshot != nil && len(run.RolePlanSnapshot) > 0 {
+		briefing["role_plan_snapshot"] = run.RolePlanSnapshot
+	}
+	if status != nil {
+		if v := strings.TrimSpace(status.Status); v != "" {
+			briefing["team_run_status"] = v
+		}
+		if status.CreatedUnixMS > 0 {
+			briefing["team_run_created_unix_ms"] = status.CreatedUnixMS
+			if now > status.CreatedUnixMS {
+				briefing["team_run_elapsed_ms"] = now - status.CreatedUnixMS
+			}
+		}
+	}
+	proposed := map[string]any{}
+	if goal := strings.TrimSpace(asString(meta["replan_goal"])); goal != "" {
+		proposed["goal"] = goal
+	}
+	if gc, ok := meta["replan_goal_contract"].(map[string]any); ok && len(gc) > 0 {
+		proposed["goal_contract"] = gc
+	}
+	if rp, ok := meta["replan_role_plan_snapshot"].(map[string]any); ok && len(rp) > 0 {
+		proposed["role_plan_snapshot"] = rp
+	}
+	if len(proposed) > 0 {
+		briefing["proposed"] = proposed
+	}
+	return briefing
 }
 
 func applyDriftAction(
@@ -650,6 +719,8 @@ func applyDriftAction(
 	teamRunID string,
 	orchestratorRunID string,
 	owner string,
+	run orchestratorRun,
+	status *teamRunResponse,
 	meta map[string]any,
 	elapsed,
 	threshold,
@@ -682,6 +753,9 @@ func applyDriftAction(
 			"orchestrator_run_id": orchestratorRunID,
 			"drift_action":        action,
 			"ts_unix_ms":          now,
+		}
+		if briefing := buildGuidanceBriefing(run, status, teamRunID, action, elapsed, threshold, now, meta); len(briefing) > 0 {
+			payload["briefing"] = briefing
 		}
 		if includeReplan {
 			payload["replan_requested"] = true

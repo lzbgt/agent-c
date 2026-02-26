@@ -37,6 +37,17 @@ GuidanceEvent:
 - `priority` (low | normal | high | urgent)
 - `message` (string, max 4096 chars)
 - `payload` (object, optional structured hints)
+  - `briefing` (optional): structured re-entry summary for rare user engagement.
+    - `version` (integer)
+    - `goal` (string, optional)
+    - `goal_contract` (object, optional)
+    - `role_plan_snapshot` (object, optional)
+    - `team_run_id` (string, optional)
+    - `team_run_status` (string, optional)
+    - `team_run_created_unix_ms` (integer, optional)
+    - `team_run_elapsed_ms` (integer, optional)
+    - `drift` (object): `{ elapsed_ms, threshold_ms, detected_unix_ms }`
+    - `proposed` (object, optional): `{ goal?, goal_contract?, role_plan_snapshot? }`
 - `target_roles` (string array, optional)
 - `target_member_ids` (string array, optional)
 - `target_agent_ids` (string array, optional)

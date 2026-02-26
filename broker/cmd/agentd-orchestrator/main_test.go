@@ -809,7 +809,8 @@ func TestMaybeEmitDriftEmitsOnce(t *testing.T) {
 	cfg := config{brokerBase: server.URL, oidcToken: "token", orchestratorID: "orch1"}
 	meta := map[string]any{"drift_after_ms": int64(1)}
 	status := &teamRunResponse{CreatedUnixMS: time.Now().UTC().UnixMilli() - 500}
-	changed, err := maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", "orun1", "orch1", status, meta)
+	run := orchestratorRun{Goal: "goal"}
+	changed, err := maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", "orun1", "orch1", run, status, meta)
 	if err != nil {
 		t.Fatalf("maybeEmitDrift error: %v", err)
 	}
@@ -833,7 +834,7 @@ func TestMaybeEmitDriftEmitsOnce(t *testing.T) {
 		t.Fatalf("expected drift event, got %#v", event)
 	}
 
-	changed, err = maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", "orun1", "orch1", status, meta)
+	changed, err = maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", "orun1", "orch1", run, status, meta)
 	if err != nil {
 		t.Fatalf("maybeEmitDrift second call error: %v", err)
 	}
@@ -884,8 +885,12 @@ func TestMaybeEmitDriftCreatesGuidance(t *testing.T) {
 		"drift_guidance_payload":      map[string]any{"note": "check goal"},
 		"drift_guidance_target_roles": []string{},
 	}
+	run := orchestratorRun{
+		Goal:         "primary goal",
+		GoalContract: map[string]any{"contract": "value"},
+	}
 	status := &teamRunResponse{CreatedUnixMS: time.Now().UTC().UnixMilli() - 500}
-	changed, err := maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", "orun1", "orch1", status, meta)
+	changed, err := maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", "orun1", "orch1", run, status, meta)
 	if err != nil {
 		t.Fatalf("maybeEmitDrift error: %v", err)
 	}
@@ -921,6 +926,20 @@ func TestMaybeEmitDriftCreatesGuidance(t *testing.T) {
 	if st.guidancePayload["target_orchestrator_id"] != "human" {
 		t.Fatalf("expected target_orchestrator_id=human, got %#v", st.guidancePayload["target_orchestrator_id"])
 	}
+	if payload, ok := st.guidancePayload["payload"].(map[string]any); ok {
+		briefing, ok := payload["briefing"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected briefing payload map, got %#v", payload["briefing"])
+		}
+		if briefing["goal"] != "primary goal" {
+			t.Fatalf("expected briefing goal primary goal, got %#v", briefing["goal"])
+		}
+		if drift, ok := briefing["drift"].(map[string]any); !ok || drift["threshold_ms"] == nil {
+			t.Fatalf("expected briefing drift info, got %#v", briefing["drift"])
+		}
+	} else {
+		t.Fatalf("expected guidance payload map")
+	}
 }
 
 func TestMaybeEmitDriftCancelAction(t *testing.T) {
@@ -952,7 +971,7 @@ func TestMaybeEmitDriftCancelAction(t *testing.T) {
 		"drift_action":   "cancel",
 	}
 	status := &teamRunResponse{CreatedUnixMS: time.Now().UTC().UnixMilli() - 500}
-	changed, err := maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", "orun1", "orch1", status, meta)
+	changed, err := maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", "orun1", "orch1", orchestratorRun{}, status, meta)
 	if err != nil {
 		t.Fatalf("maybeEmitDrift error: %v", err)
 	}
@@ -1006,7 +1025,7 @@ func TestMaybeEmitDriftPauseAction(t *testing.T) {
 		"drift_action":   "pause",
 	}
 	status := &teamRunResponse{CreatedUnixMS: time.Now().UTC().UnixMilli() - 500}
-	changed, err := maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", "orun1", "orch1", status, meta)
+	changed, err := maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", "orun1", "orch1", orchestratorRun{}, status, meta)
 	if err != nil {
 		t.Fatalf("maybeEmitDrift error: %v", err)
 	}
@@ -1074,9 +1093,10 @@ func TestMaybeEmitDriftReplanAction(t *testing.T) {
 		"drift_after_ms":       int64(1),
 		"drift_action":         "replan",
 		"drift_replan_message": "replan now",
+		"replan_goal":          "new goal",
 	}
 	status := &teamRunResponse{CreatedUnixMS: time.Now().UTC().UnixMilli() - 500}
-	changed, err := maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", "orun1", "orch1", status, meta)
+	changed, err := maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", "orun1", "orch1", orchestratorRun{Goal: "old goal"}, status, meta)
 	if err != nil {
 		t.Fatalf("maybeEmitDrift error: %v", err)
 	}
@@ -1106,6 +1126,20 @@ func TestMaybeEmitDriftReplanAction(t *testing.T) {
 	if payload, ok := st.guidancePayload["payload"].(map[string]any); ok {
 		if v, ok := payload["replan_requested"].(bool); !ok || !v {
 			t.Fatalf("expected replan_requested true, got %#v", payload["replan_requested"])
+		}
+		if briefing, ok := payload["briefing"].(map[string]any); ok {
+			if briefing["goal"] != "old goal" {
+				t.Fatalf("expected briefing goal old goal, got %#v", briefing["goal"])
+			}
+			if proposed, ok := briefing["proposed"].(map[string]any); ok {
+				if proposed["goal"] != "new goal" {
+					t.Fatalf("expected proposed goal new goal, got %#v", proposed["goal"])
+				}
+			} else {
+				t.Fatalf("expected briefing proposed map, got %#v", briefing["proposed"])
+			}
+		} else {
+			t.Fatalf("expected briefing payload map, got %#v", payload["briefing"])
 		}
 	} else {
 		t.Fatalf("expected guidance payload map")
