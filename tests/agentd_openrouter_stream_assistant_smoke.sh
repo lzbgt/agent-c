@@ -38,6 +38,9 @@ while IFS= read -r model; do
   MODELS+=("${model}")
 done < <(agentd_smoke_openrouter_model_candidates assistant "${MODEL_PRIMARY}" "${MODEL_FALLBACK}")
 MODEL_BOOTSTRAP="${MODELS[0]:-${MODEL_PRIMARY}}"
+if [[ ${#MODELS[@]} -gt 0 ]]; then
+  echo "[stream] candidate models: ${MODELS[*]}" >&2
+fi
 
 if agent_test_openrouter_auth_ok "${OPENROUTER_KEY}" "${BASE_URL}"; then
   :
