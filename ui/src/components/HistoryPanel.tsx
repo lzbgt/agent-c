@@ -495,6 +495,9 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 onChange={(e) => setTeamSearch(e.target.value)}
                 placeholder="Filter team chat…"
               />
+              {teamSearch.trim().length === 0 ? (
+                <span className="text-[11px] text-white/40">Try “executor”, an agent id, or a keyword</span>
+              ) : null}
               {filtersActive ? (
                 <span className="rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-100">
                   filters active
