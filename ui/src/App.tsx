@@ -1250,6 +1250,8 @@ export default function App() {
     refetchInterval: brokerChatAvailable ? 6000 : false,
     retry: 1,
   });
+  const teamQueueNeedsRun =
+    teamQueueCount > 0 && !latestTeamRunId && teamQueue.some((entry) => entry.action !== "run");
 
   const teamConversationLiveCount = React.useMemo(() => {
     const items = Array.isArray(teamChat.data?.items) ? teamChat.data.items : [];
@@ -2872,6 +2874,27 @@ export default function App() {
                             Clear queue
                           </button>
                         </div>
+                        {teamQueueNeedsRun ? (
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-amber-100">
+                            <span className="rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wide">
+                              needs run
+                            </span>
+                            <span className="text-[11px] text-amber-100/90">Start a run to release queued guidance/goal.</span>
+                            <button
+                              className="rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-100 hover:bg-amber-500/20"
+                              type="button"
+                              onClick={() => {
+                                setChatTarget("team");
+                                setTeamAction("run");
+                                if (promptbarRef.current) {
+                                  promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+                                }
+                              }}
+                            >
+                              Start run
+                            </button>
+                          </div>
+                        ) : null}
                         <div className="mt-1 grid gap-1 text-indigo-100/80">
                           {teamQueue.slice(0, 3).map((entry, idx) => {
                             const snippet = entry.prompt.trim();
