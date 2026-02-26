@@ -179,9 +179,15 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     const tid = teamId || "none";
     return `agentui.teamSystemMessages:${base}::${tid}`;
   }, [props.effectiveBase, teamId]);
+  const systemMessagesKey = React.useMemo(() => {
+    const base = String(props.effectiveBase || "").trim() || "default";
+    const sid = String(props.sessionId || "").trim() || "default";
+    return `agentui.systemMessages:${base}::${sid}`;
+  }, [props.effectiveBase, props.sessionId]);
   const [showTeamRoleLabels, setShowTeamRoleLabels] = useLocalStorageState<boolean>(teamRoleLabelsKey, true);
   const [showTeamHeaders, setShowTeamHeaders] = useLocalStorageState<boolean>(teamHeadersKey, false);
   const [showTeamSystemMessages, setShowTeamSystemMessages] = useLocalStorageState<boolean>(teamSystemKey, false);
+  const [showSystemMessages, setShowSystemMessages] = useLocalStorageState<boolean>(systemMessagesKey, false);
   const teamMutedAgentsKey = React.useMemo(() => {
     const base = String(props.effectiveBase || "").trim() || "default";
     const tid = teamId || "none";
@@ -719,6 +725,17 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                     onClick={() => setShowTeamHeaders((v) => !v)}
                   >
                     {showTeamHeaders ? "Hide meta" : "Show meta"}
+                  </button>
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                    type="button"
+                    onClick={() => {
+                      const next = !showTeamSystemMessages;
+                      setShowTeamSystemMessages(next);
+                      setShowSystemMessages(next);
+                    }}
+                  >
+                    {showTeamSystemMessages ? "Hide system" : "Show system"}
                   </button>
                   <input
                     className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80"
@@ -1267,12 +1284,16 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                       {truncated ? <span className="text-amber-200">truncated</span> : null}
                     </div>
                     {isSystem ? (
-                      <details className="mt-2">
-                        <summary className="cursor-pointer text-xs text-white/60">System prompt (collapsed)</summary>
-                        <div className="mt-2 text-sm text-white/90">
-                          {content ? <Markdown text={content} /> : <span className="text-white/50">(no content)</span>}
-                        </div>
-                      </details>
+                      showSystemMessages ? (
+                        <details className="mt-2">
+                          <summary className="cursor-pointer text-xs text-white/60">System prompt (collapsed)</summary>
+                          <div className="mt-2 text-sm text-white/90">
+                            {content ? <Markdown text={content} /> : <span className="text-white/50">(no content)</span>}
+                          </div>
+                        </details>
+                      ) : (
+                        <div className="mt-2 text-xs text-white/40">System prompt hidden</div>
+                      )
                     ) : (
                       <div className="mt-2 text-sm text-white/90">
                         {content ? <Markdown text={content} /> : <span className="text-white/50">(no content)</span>}
@@ -1414,17 +1435,25 @@ export default function HistoryPanel(props: HistoryPanelProps) {
           </div>
         )}
       </div>
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="text-sm font-semibold text-white/80">Technical history</div>
-        <div className="flex items-center gap-2">
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-            type="button"
-            onClick={() => setShowTechnicalHistory((v) => !v)}
-            title={showTechnicalHistory ? "Hide technical history" : "Show technical history"}
-          >
-            {showTechnicalHistory ? "Hide technical" : "Show technical"}
-          </button>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-sm font-semibold text-white/80">Technical history</div>
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                type="button"
+                onClick={() => setShowSystemMessages((v) => !v)}
+                title={showSystemMessages ? "Hide system messages everywhere" : "Show system messages everywhere"}
+              >
+                {showSystemMessages ? "Hide system" : "Show system"}
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                type="button"
+                onClick={() => setShowTechnicalHistory((v) => !v)}
+                title={showTechnicalHistory ? "Hide technical history" : "Show technical history"}
+              >
+                {showTechnicalHistory ? "Hide technical" : "Show technical"}
+              </button>
           <button
             className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
             type="button"
