@@ -46,6 +46,10 @@ Edit `ui/public/agentui-config.js` (copied to `ui/dist/agentui-config.js`) to pr
 
 Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`, and `VITE_AGENTUI_*` (including `VITE_AGENTUI_SERVER_PREFS_MODE`).
 
+Preset configs:
+- `tools/agentui-config.compose.js` (compose default)
+- `tools/agentui-config.automouse.js` (full automation preset)
+
 ## Broker mode and profiles
 
 - The WebUI caches multiple **connection profiles** (direct or broker-backed) locally and can persist them server-side.

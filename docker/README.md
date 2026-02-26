@@ -21,6 +21,18 @@ To add the autonomous services (orchestrator + spawn adapter) to the stack:
 docker compose -f docker-compose.yml -f docker/compose.autonomous.yml up -d
 ```
 
+For the full "automouse" preset (autonomous services + WebUI automation defaults):
+
+```bash
+docker compose -f docker-compose.yml -f docker/compose.autonomous.yml -f docker/compose.automouse.yml up -d
+```
+
+Or run the wrapper (includes preflight + smoke checks):
+
+```bash
+tools/automouse_pack.sh
+```
+
 Notes:
 - The autonomous compose overlay enables broker client auth fallback and uses a dev token
   (`AUTOMATION_CLIENT_TOKEN`, default `dev-orchestrator-token`) for the services.

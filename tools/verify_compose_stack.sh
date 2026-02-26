@@ -12,14 +12,27 @@ set -euo pipefail
 # Notes:
 # - Uses Keycloak password grant for local dev convenience.
 # - Uses curl -k for broker HTTPS because we generate a local self-signed CA.
+# - Set COMPOSE_AUTOMOUSE=1 to include the automouse overlay (also enables autonomous services).
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${ROOT}/out"
 mkdir -p "${OUT_DIR}"
 
 compose_files=("docker-compose.yml")
-if [[ "${COMPOSE_AUTONOMOUS:-0}" == "1" ]]; then
+autonomous_enabled=0
+automouse_enabled=0
+if [[ "${autonomous_enabled}" == "1" ]]; then
+  autonomous_enabled=1
+fi
+if [[ "${COMPOSE_AUTOMOUSE:-0}" == "1" ]]; then
+  autonomous_enabled=1
+  automouse_enabled=1
+fi
+if [[ "${autonomous_enabled}" == "1" ]]; then
   compose_files+=("docker/compose.autonomous.yml")
+fi
+if [[ "${automouse_enabled}" == "1" ]]; then
+  compose_files+=("docker/compose.automouse.yml")
 fi
 compose_args=()
 for f in "${compose_files[@]}"; do

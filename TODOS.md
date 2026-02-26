@@ -303,7 +303,8 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-26: emit `replan_resume` goal event with receipt summary for evidence.
   - 2026-02-26: allow `replan_resume` goal events and SSE `team_goal_replan_resume`.
   - 2026-02-26: capture `replan_prev_goal`/`replan_prev_goal_contract`/`replan_prev_role_plan_snapshot` and include `prev_goal` + `goal` in replan resume events.
-- [ ] W=10 — Automouse defaults pack: ship a first-class "automouse" config bundle (automation_profile=full, orchestrator + spawn adapter auto-run, preflight checks) so full power is the default without manual setup.
+- [x] W=10 — Automouse defaults pack: ship a first-class "automouse" config bundle (automation_profile=full, orchestrator + spawn adapter auto-run, preflight checks) so full power is the default without manual setup.
+  - 2026-02-26: added automouse compose overlay + WebUI preset config + `tools/automouse_pack.sh`, and extended compose verification with `COMPOSE_AUTOMOUSE`.
 - [ ] W=9 — Operator briefing payloads: emit structured "re-entry" summaries (goal, drift evidence, proposed changes) on guidance/replan so rare user engagement is low-friction.
 - [ ] W=9 — Goal + role plan versioning: add versioned diffs for goal/role plan changes with replayable events to reduce drift and improve audits.
 - [ ] W=8 — Orchestrator modularization: split `agentd-orchestrator` loop into SOLID modules (scheduling, allocation, drift, guidance) to keep files <2000 LOC.

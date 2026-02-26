@@ -269,6 +269,18 @@ You can also send `SIGHUP` to reload the client auth file immediately.
 For fully automatic operation without a UI, run the broker with client auth enabled and
 allow admin client tokens to access orchestration endpoints.
 
+Local automouse preset (compose + autonomous services + WebUI automation defaults):
+
+```
+tools/automouse_pack.sh
+```
+
+Or via compose directly:
+
+```
+COMPOSE_AUTOMOUSE=1 tools/verify_compose_stack.sh
+```
+
 Example (systemd):
 ```
 [Unit]

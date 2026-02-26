@@ -1,0 +1,4 @@
+services:
+  webui:
+    volumes:
+      - ./tools/agentui-config.automouse.js:/usr/share/nginx/html/agentui-config.js:ro
