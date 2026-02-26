@@ -155,6 +155,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [quickBuilderError, setQuickBuilderError] = React.useState<string | null>(null);
   const [quickBuilderBusy, setQuickBuilderBusy] = React.useState<boolean>(false);
   const [quickTemplate, setQuickTemplate] = React.useState<string>("standard");
+  const [quickAdvancedOpen, setQuickAdvancedOpen] = React.useState<boolean>(false);
   type QuickMember = {
     id: string;
     role: string;
@@ -163,7 +164,6 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     baseUrl: string;
     agentId: string;
     deploymentId: string;
-    expanded?: boolean;
   };
   const providerDefaults: Record<string, string> = {
     openai: "https://api.openai.com/v1",
@@ -192,7 +192,6 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       baseUrl: providerDefaults.openai,
       agentId: "",
       deploymentId: "",
-      expanded: false,
     });
     if (template === "planner_executor") return [mk("planner"), mk("executor")];
     if (template === "research_team") return [mk("researcher"), mk("executor"), mk("critic")];
@@ -778,19 +777,12 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         baseUrl: providerDefaults.openai,
         agentId: "",
         deploymentId: "",
-        expanded: false,
       },
     ]);
   };
 
   const handleQuickRemoveMember = (id: string) => {
     setQuickMembers((prev) => prev.filter((m) => m.id !== id));
-  };
-
-  const handleQuickSetMemberExpanded = (id: string, expanded: boolean) => {
-    setQuickMembers((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, expanded } : m)),
-    );
   };
 
   const handleQuickCreateTeam = async () => {
@@ -1680,7 +1672,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
               </div>
             </div>
 
-            <div className="mt-2 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+            <div className="mt-2 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
               <div className="grid gap-1">
                 <FieldLabel>Template</FieldLabel>
                 <select
@@ -1712,150 +1704,115 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                   {memberAgentsBusy ? "Refreshing agents…" : "Refresh agents"}
                 </button>
               </div>
+              <div className="flex items-end">
+                <button
+                  className="w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-[11px] text-white/80 hover:bg-black/40"
+                  type="button"
+                  onClick={() => setQuickAdvancedOpen((prev) => !prev)}
+                >
+                  {quickAdvancedOpen ? "Hide advanced" : "Advanced options"}
+                </button>
+              </div>
             </div>
 
             <div className="grid gap-2">
-              {quickMembers.map((m) => {
-                const summaryModel = m.model || providerModelDefaults[m.provider] || "model";
-                const expanded = !!m.expanded;
-                const summaryAgent = m.agentId ? `agent ${m.agentId}` : "(any agent)";
-                return (
-                  <details
-                    key={m.id}
-                    className="rounded-md border border-white/10 bg-black/20"
-                    open={expanded}
-                    onToggle={(event) =>
-                      handleQuickSetMemberExpanded(m.id, (event.currentTarget as HTMLDetailsElement).open)
-                    }
-                  >
-                    <summary className="cursor-pointer list-none px-3 py-2">
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/60">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-white/80">
-                            {m.role || "role"}
-                          </span>
-                          <span className="text-white/50">{m.provider || "provider"}</span>
-                          <span className="text-white/70">{summaryModel}</span>
-                          <span className="text-white/40">{summaryAgent}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                            type="button"
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              handleQuickSetMemberExpanded(m.id, !expanded);
-                            }}
-                          >
-                            {expanded ? "Collapse" : "Edit"}
-                          </button>
-                          <button
-                            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                            type="button"
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              handleQuickRemoveMember(m.id);
-                            }}
-                            disabled={quickMembers.length <= 1}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    </summary>
-
-                    <div className="grid gap-3 border-t border-white/10 p-3">
-                      <div className="grid gap-2 lg:grid-cols-[minmax(120px,1fr)_minmax(140px,1fr)_minmax(160px,1.2fr)_minmax(160px,1fr)_minmax(120px,0.8fr)]">
-                        <div className="grid gap-1">
-                          <FieldLabel>Role</FieldLabel>
-                          <input
-                            className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                            value={m.role}
-                            onChange={(e) => handleQuickMemberUpdate(m.id, { role: e.target.value })}
-                          />
-                        </div>
-                        <div className="grid gap-1">
-                          <FieldLabel>Provider</FieldLabel>
-                          <select
-                            className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                            value={m.provider}
-                            onChange={(e) => handleQuickMemberUpdate(m.id, { provider: e.target.value })}
-                          >
-                            <option value="openai">OpenAI</option>
-                            <option value="anthropic">Anthropic</option>
-                            <option value="deepseek">DeepSeek</option>
-                            <option value="kimi">Kimi (Moonshot CN)</option>
-                            <option value="glm">GLM (Zhipu)</option>
-                            <option value="local">Local</option>
-                            <option value="custom">Custom</option>
-                          </select>
-                        </div>
-                        <div className="grid gap-1">
-                          <FieldLabel>Model</FieldLabel>
-                          <input
-                            className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                            value={m.model}
-                            onChange={(e) => handleQuickMemberUpdate(m.id, { model: e.target.value })}
-                            placeholder={providerModelDefaults[m.provider] || "model"}
-                          />
-                        </div>
-                        <div className="grid gap-1">
-                          <FieldLabel>Agent</FieldLabel>
-                          <select
-                            className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                            value={m.agentId}
-                            onChange={(e) => handleQuickMemberUpdate(m.id, { agentId: e.target.value, deploymentId: "" })}
-                          >
-                            <option value="">(any)</option>
-                            {(memberAgents || []).map((agent: any) => (
-                              <option key={agent?.agent_id || agent?.id} value={String(agent?.agent_id || agent?.id || "")}>
-                                {String(agent?.display_name || agent?.agent_id || agent?.id || "")}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="grid gap-1">
-                          <FieldLabel>Deployment</FieldLabel>
-                          <input
-                            className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                            value={m.deploymentId}
-                            onChange={(e) => handleQuickMemberUpdate(m.id, { deploymentId: e.target.value })}
-                            placeholder="optional"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-                        <div className="grid gap-1">
-                          <FieldLabel>Base URL</FieldLabel>
-                          <input
-                            className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                            value={m.baseUrl}
-                            onChange={(e) => handleQuickMemberUpdate(m.id, { baseUrl: e.target.value })}
-                            placeholder={providerDefaults[m.provider] || "https://api.openai.com/v1"}
-                          />
-                        </div>
-                        <div className="flex items-end">
-                          <button
-                            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                            type="button"
-                            onClick={() =>
-                              handleQuickMemberUpdate(m.id, {
-                                baseUrl: providerDefaults[m.provider] ?? "",
-                                model: providerModelDefaults[m.provider] ?? "",
-                              })
-                            }
-                          >
-                            Reset defaults
-                          </button>
-                        </div>
+              <div className="hidden md:grid md:grid-cols-[minmax(120px,1fr)_minmax(140px,1fr)_minmax(160px,1.1fr)_minmax(160px,1fr)_minmax(120px,0.8fr)_auto] gap-2 text-[10px] uppercase tracking-wide text-white/40">
+                <span>Role</span>
+                <span>Provider</span>
+                <span>Model</span>
+                <span>Agent</span>
+                <span>Deployment</span>
+                <span className="text-right">Actions</span>
+              </div>
+              {quickMembers.map((m) => (
+                <div key={m.id} className="rounded-md border border-white/10 bg-black/20 p-2">
+                  <div className="grid gap-2 md:grid-cols-[minmax(120px,1fr)_minmax(140px,1fr)_minmax(160px,1.1fr)_minmax(160px,1fr)_minmax(120px,0.8fr)_auto]">
+                    <input
+                      aria-label="Role"
+                      className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                      value={m.role}
+                      onChange={(e) => handleQuickMemberUpdate(m.id, { role: e.target.value })}
+                      placeholder="role"
+                    />
+                    <select
+                      aria-label="Provider"
+                      className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                      value={m.provider}
+                      onChange={(e) => handleQuickMemberUpdate(m.id, { provider: e.target.value })}
+                    >
+                      <option value="openai">OpenAI</option>
+                      <option value="anthropic">Anthropic</option>
+                      <option value="deepseek">DeepSeek</option>
+                      <option value="kimi">Kimi (Moonshot CN)</option>
+                      <option value="glm">GLM (Zhipu)</option>
+                      <option value="local">Local</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                    <input
+                      aria-label="Model"
+                      className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                      value={m.model}
+                      onChange={(e) => handleQuickMemberUpdate(m.id, { model: e.target.value })}
+                      placeholder={providerModelDefaults[m.provider] || "model"}
+                    />
+                    <select
+                      aria-label="Agent"
+                      className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                      value={m.agentId}
+                      onChange={(e) => handleQuickMemberUpdate(m.id, { agentId: e.target.value, deploymentId: "" })}
+                    >
+                      <option value="">(any)</option>
+                      {(memberAgents || []).map((agent: any) => (
+                        <option key={agent?.agent_id || agent?.id} value={String(agent?.agent_id || agent?.id || "")}>
+                          {String(agent?.display_name || agent?.agent_id || agent?.id || "")}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      aria-label="Deployment"
+                      className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                      value={m.deploymentId}
+                      onChange={(e) => handleQuickMemberUpdate(m.id, { deploymentId: e.target.value })}
+                      placeholder="optional"
+                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                        type="button"
+                        onClick={() => handleQuickRemoveMember(m.id)}
+                        disabled={quickMembers.length <= 1}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                  {quickAdvancedOpen ? (
+                    <div className="mt-2 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                      <input
+                        aria-label="Base URL"
+                        className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                        value={m.baseUrl}
+                        onChange={(e) => handleQuickMemberUpdate(m.id, { baseUrl: e.target.value })}
+                        placeholder={providerDefaults[m.provider] || "https://api.openai.com/v1"}
+                      />
+                      <div className="flex items-center">
+                        <button
+                          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                          type="button"
+                          onClick={() =>
+                            handleQuickMemberUpdate(m.id, {
+                              baseUrl: providerDefaults[m.provider] ?? "",
+                              model: providerModelDefaults[m.provider] ?? "",
+                            })
+                          }
+                        >
+                          Reset defaults
+                        </button>
                       </div>
                     </div>
-                  </details>
-                );
-              })}
+                  ) : null}
+                </div>
+              ))}
             </div>
 
             {quickBuilderError ? (
