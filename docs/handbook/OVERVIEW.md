@@ -153,6 +153,7 @@ When `--auth-token` is set, all endpoints require `Authorization: Bearer ...`.
 - OpenRouter pin workflow: run `tools/probe_openrouter_stream_models.sh`,
   set `OPENROUTER_STREAM_PROBE_WRITE_PINS=1`, commit `ref/openrouter/streaming_pins.json`.
 - Smoke tests try pinned models in order (primary keys, then `ok_models_*` lists) before env defaults.
+- Smokes log candidate lists and attempted models to stderr for debugging.
 - OpenRouter auth hints: `OPENROUTER_HTTP_REFERER`, `OPENROUTER_X_TITLE`,
   optional `AGENT_TEST_OPENROUTER_SKIP_CHAT_PREFLIGHT=1`.
 - `tools/openrouter_auth_debug.sh` reports any pin metadata it finds (pinned models + list sizes).
