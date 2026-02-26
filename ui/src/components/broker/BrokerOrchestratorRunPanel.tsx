@@ -579,6 +579,13 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
     out.sort((a, b) => (b.ts_unix_ms || 0) - (a.ts_unix_ms || 0));
     return out.slice(0, 8);
   }, [props.events, revisionFilterLower, revisionFilterScope, runId, teamIdTrimmed]);
+  const revisionEventsEmptyLabel = revisionFilterLower
+    ? "No revision events match filter."
+    : revisionFilterScope === "goal"
+      ? "No goal revision events."
+      : revisionFilterScope === "role"
+        ? "No role plan revision events."
+        : "No revision events yet.";
   const currentOwner = currentMeta?.orchestrator_owner ? String(currentMeta.orchestrator_owner) : "";
   const prevOwner = currentMeta?.orchestrator_owner_prev ? String(currentMeta.orchestrator_owner_prev) : "";
   const allowTakeover =
@@ -1053,7 +1060,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
           <div className="grid gap-2 rounded-md border border-white/10 bg-black/40 p-2">
             <div className="text-[11px] text-white/70">Recent revision events</div>
             {revisionEvents.length === 0 ? (
-              <div className="text-[11px] text-white/50">No revision events yet.</div>
+              <div className="text-[11px] text-white/50">{revisionEventsEmptyLabel}</div>
             ) : (
               <div className="grid gap-2">
                 {revisionEvents.map((row, idx) => {
