@@ -617,6 +617,9 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                     <>
                       <span className="text-white/80">Run {teamRunId}</span>
                       {teamRunStatus ? <span className="text-white/50"> · {teamRunStatus}</span> : null}
+                      {teamRunCreatedMs ? (
+                        <span className="text-white/40"> · {new Date(teamRunCreatedMs).toLocaleString()}</span>
+                      ) : null}
                     </>
                   ) : (
                     <span className="text-white/50">No active run</span>
