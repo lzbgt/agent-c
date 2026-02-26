@@ -38,6 +38,7 @@ while IFS= read -r model; do
   MODELS+=("${model}")
 done < <(agentd_smoke_openrouter_model_candidates assistant "${MODEL_PRIMARY}" "${MODEL_FALLBACK}")
 MODEL_BOOTSTRAP="${MODELS[0]:-${MODEL_PRIMARY}}"
+agentd_smoke_openrouter_log_pins
 if [[ ${#MODELS[@]} -gt 0 ]]; then
   echo "[stream] candidate models: ${MODELS[*]}" >&2
 fi

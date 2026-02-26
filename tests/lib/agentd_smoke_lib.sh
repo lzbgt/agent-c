@@ -292,6 +292,19 @@ agentd_smoke_openrouter_pinned_model() {
   printf "%s\n" "${models%%$'\n'*}"
 }
 
+agentd_smoke_openrouter_log_pins() {
+  local pins
+  pins="$(agentd_smoke_openrouter_pins_path)"
+  if [[ -z "${pins}" ]]; then
+    return 0
+  fi
+  if [[ -f "${pins}" ]]; then
+    echo "[stream] pins path: ${pins} (present)" >&2
+  else
+    echo "[stream] pins path: ${pins} (missing)" >&2
+  fi
+}
+
 agentd_smoke_openrouter_model_candidates() {
   local kind="${1:-}"
   local primary="${2:-}"
