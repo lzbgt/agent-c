@@ -169,12 +169,18 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     const tid = teamId || "none";
     return `agentui.teamRoleLabels:${base}::${tid}`;
   }, [props.effectiveBase, teamId]);
+  const teamHeadersKey = React.useMemo(() => {
+    const base = String(props.effectiveBase || "").trim() || "default";
+    const tid = teamId || "none";
+    return `agentui.teamHeaders:${base}::${tid}`;
+  }, [props.effectiveBase, teamId]);
   const teamSystemKey = React.useMemo(() => {
     const base = String(props.effectiveBase || "").trim() || "default";
     const tid = teamId || "none";
     return `agentui.teamSystemMessages:${base}::${tid}`;
   }, [props.effectiveBase, teamId]);
   const [showTeamRoleLabels, setShowTeamRoleLabels] = useLocalStorageState<boolean>(teamRoleLabelsKey, true);
+  const [showTeamHeaders, setShowTeamHeaders] = useLocalStorageState<boolean>(teamHeadersKey, false);
   const [showTeamSystemMessages, setShowTeamSystemMessages] = useLocalStorageState<boolean>(teamSystemKey, false);
   const teamMutedAgentsKey = React.useMemo(() => {
     const base = String(props.effectiveBase || "").trim() || "default";
@@ -326,29 +332,40 @@ export default function HistoryPanel(props: HistoryPanelProps) {
         .filter((f: string) => f.length > 0);
       const highlightNeedle = teamSearch.trim();
       const highlightSnippet = highlightNeedle ? buildHighlightSnippet(content, highlightNeedle) : null;
+      const compactLabel =
+        agentLabel || (roleLabel === "user" ? "You" : roleLabel && roleLabel !== "assistant" ? roleLabel : "");
+      const showRoleBadges = showTeamHeaders && showTeamRoleLabels;
       return (
         <div
           key={`team-msg:${ts || idx}`}
           id={ts ? `team-msg-${ts}` : undefined}
           className={`rounded-lg border px-3 py-2 ${cardAccent}`}
         >
-          <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-            {agentLabel ? (
+          {showTeamHeaders ? (
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+              {agentLabel ? (
+                <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-semibold text-white/80">
+                  {agentLabel}
+                </span>
+              ) : roleLabel === "user" ? (
+                <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-semibold text-white/80">
+                  You
+                </span>
+              ) : null}
+              {showRoleBadges ? (
+                <span className={`rounded-md border px-2 py-0.5 text-[11px] ${roleBadge}`}>
+                  {roleLabel === "user" ? "user" : roleLabel}
+                </span>
+              ) : null}
+              {when ? <span>{when}</span> : null}
+            </div>
+          ) : compactLabel ? (
+            <div className="text-[11px] text-white/60">
               <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-semibold text-white/80">
-                {agentLabel}
+                {compactLabel}
               </span>
-            ) : roleLabel === "user" ? (
-              <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-semibold text-white/80">
-                You
-              </span>
-            ) : null}
-            {showTeamRoleLabels ? (
-              <span className={`rounded-md border px-2 py-0.5 text-[11px] ${roleBadge}`}>
-                {roleLabel === "user" ? "user" : roleLabel}
-              </span>
-            ) : null}
-            {when ? <span>{when}</span> : null}
-          </div>
+            </div>
+          ) : null}
           {highlightSnippet ? (
             <div className="mt-2 text-[11px] text-amber-100">
               <span className="text-amber-200">Match:</span>{" "}
@@ -388,7 +405,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
         </div>
       );
     },
-    [mutedAgentSet, showTeamRoleLabels, teamSearch],
+    [mutedAgentSet, showTeamHeaders, showTeamRoleLabels, teamSearch],
   );
 
   const jumpToMatch = React.useCallback(
@@ -571,13 +588,22 @@ export default function HistoryPanel(props: HistoryPanelProps) {
           <div id="team-chat" className="mb-4 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
             <div className="flex items-center justify-between gap-2">
               <div className="text-sm font-semibold text-white/80">Team chat</div>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                type="button"
-                onClick={() => setShowTeamChat((v) => !v)}
-              >
-                {showTeamChat ? "Hide" : "Show"}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                  type="button"
+                  onClick={() => setShowTeamHeaders((v) => !v)}
+                >
+                  {showTeamHeaders ? "Hide meta" : "Show meta"}
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                  type="button"
+                  onClick={() => setShowTeamChat((v) => !v)}
+                >
+                  {showTeamChat ? "Hide" : "Show"}
+                </button>
+              </div>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
               <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-white/70">
