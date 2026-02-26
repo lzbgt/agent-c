@@ -61,6 +61,10 @@ tools/devstack_oidc_token.sh --state out/devstack_state.json
 If `keycloak.lvh.me` does not resolve on your host, the helper auto-falls back to
 `http://127.0.0.1:<keycloak_port>` or `http://[::1]:<keycloak_port>`.
 
+Tokens expire. The dev realm sets `accessTokenLifespan` to 1 hour for smoother
+testing; if you still hit 401s, regenerate a token or restart Keycloak to pick
+up realm changes.
+
 Example:
 ```
 OIDC_TOKEN="$(tools/devstack_oidc_token.sh --state out/devstack_state.json)"
