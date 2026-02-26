@@ -231,6 +231,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
   const teamFilteredItems = React.useMemo(() => {
     return teamTimelineItems.filter((entry) => entry.kind === "item");
   }, [teamTimelineItems]);
+  const teamFilteredCount = teamFilteredItems.length;
 
   const teamGroupedByAgent = React.useMemo(() => {
     if (!showTeamGroupByAgent) return [] as Array<{ key: string; label: string; items: any[]; latest: number; preview: string }>;
@@ -600,6 +601,11 @@ export default function HistoryPanel(props: HistoryPanelProps) {
               {filtersActive ? (
                 <span className="rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-100">
                   filters active
+                </span>
+              ) : null}
+              {teamSearch.trim().length > 0 ? (
+                <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[11px] text-white/70">
+                  {teamFilteredCount} match{teamFilteredCount === 1 ? "" : "es"}
                 </span>
               ) : null}
               <div className="flex flex-wrap items-center gap-1">
