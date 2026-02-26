@@ -254,6 +254,7 @@ role_plan_versions: [
 ```
 
 Diff key lists are top-level only; nested changes appear under their parent key.
+Change flags are only set when true.
 
 Notes:
 - Drift guidance defaults to `target_orchestrator_id="human"` when no explicit targets
