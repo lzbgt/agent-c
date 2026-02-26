@@ -994,6 +994,8 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                   const diff = isGoal ? (payload as any).goal_contract_diff : (payload as any).role_plan_diff;
                   const summary = diffSummary(diff);
                   const diffKeysLabel = diffKeyLabel(diff);
+                  const updatedBy = (payload as any).updated_by ? String((payload as any).updated_by) : "";
+                  const goalText = isGoal && (payload as any).goal ? String((payload as any).goal) : "";
                   return (
                     <div
                       key={`${type}-${row.event_id || row.ts_unix_ms || idx}`}
@@ -1003,6 +1005,8 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                         {label} · v{version || "?"}
                         {row.ts_unix_ms ? ` · ${fmtTs(row.ts_unix_ms)}` : ""}
                       </div>
+                      {updatedBy ? <div className="text-white/50">by {updatedBy}</div> : null}
+                      {goalText ? <div className="text-white/60">{goalText}</div> : null}
                       {summary ? <div className="text-white/50">diff {summary}</div> : null}
                       {diffKeysLabel ? <div className="text-white/40">{diffKeysLabel}</div> : null}
                       {diff ? (
