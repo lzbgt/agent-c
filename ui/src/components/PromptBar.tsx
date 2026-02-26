@@ -20,6 +20,26 @@ function guessMimeFromName(name: string): string {
   return "";
 }
 
+function sanitizeUploadName(name: string): string {
+  let out = String(name || "").trim();
+  if (!out) return "upload.bin";
+  out = out.replace(/[\\/]/g, "_");
+  out = out.replace(/[^A-Za-z0-9._-]/g, "_");
+  out = out.replace(/_+/g, "_");
+  if (out.length > 200) out = out.slice(0, 200);
+  if (out === "." || out === ".." || out === "") return "upload.bin";
+  if (out.includes("..")) out = out.replace(/\.\.+/g, ".");
+  return out;
+}
+
+function isSafeSessionId(value: string): boolean {
+  if (!value) return false;
+  if (value.length > 200) return false;
+  if (value === "." || value === "..") return false;
+  if (value.includes("..")) return false;
+  return /^[A-Za-z0-9._-]+$/.test(value);
+}
+
 async function fileToBase64(file: File): Promise<string> {
   return await new Promise((resolve, reject) => {
     const fr = new FileReader();
@@ -326,14 +346,15 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
                   e.currentTarget.value = "";
                   if (files.length === 0) return;
                   if (uploadBusy) return;
-                  const sid = String(props.sessionId || "").trim() || "default";
+                  const rawSid = String(props.sessionId || "").trim();
+                  const sid = isSafeSessionId(rawSid) ? rawSid : "default";
                   setUploadBusy(true);
                   props.setJobNotice(null);
                   try {
                     const payloadFiles: { name: string; mime?: string; data_base64: string }[] = [];
                     for (const f of files.slice(0, 16)) {
                       if (typeof (f as any)?.size === "number" && (f as any).size > uploadMaxBytes) continue;
-                      const name = String(f.name || "upload.bin");
+                      const name = sanitizeUploadName(f.name || "upload.bin");
                       const mime = String(f.type || "").trim() || guessMimeFromName(name) || undefined;
                       const data_base64 = await fileToBase64(f);
                       payloadFiles.push({ name, mime, data_base64 });
@@ -348,7 +369,17 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
                       props.daemonAuth,
                     );
                     if (!resp.ok) {
-                      props.setJobNotice(resp.error ? `upload failed: ${resp.error}` : "upload failed");
+                      const errors = (resp as any)?.errors;
+                      if (Array.isArray(errors) && errors.length > 0) {
+                        const err0 = errors[0] || {};
+                        const code = typeof err0?.code === "string" ? err0.code : "";
+                        const msg = typeof err0?.error === "string" ? err0.error : "";
+                        const name = typeof err0?.name === "string" ? err0.name : "";
+                        const detail = [code, msg].filter(Boolean).join(": ");
+                        props.setJobNotice(`upload failed${name ? ` (${name})` : ""}: ${detail || "upload failed"}`);
+                      } else {
+                        props.setJobNotice(resp.error ? `upload failed: ${resp.error}` : "upload failed");
+                      }
                       return;
                     }
                     const newOnes =
