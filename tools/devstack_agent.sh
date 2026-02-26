@@ -189,7 +189,7 @@ cleanup() {
   if [[ -n "${WEBUI_PID:-}" ]]; then
     kill "${WEBUI_PID}" >/dev/null 2>&1 || true
   fi
-  if [[ "${#CONNECTOR_PIDS[@]:-0}" -gt 0 ]]; then
+  if declare -p CONNECTOR_PIDS >/dev/null 2>&1 && [[ "${#CONNECTOR_PIDS[@]}" -gt 0 ]]; then
     for pid in "${CONNECTOR_PIDS[@]}"; do
       if [[ -n "${pid}" ]]; then
         kill "${pid}" >/dev/null 2>&1 || true
@@ -201,7 +201,7 @@ cleanup() {
   if [[ -n "${BROKER_PID:-}" ]]; then
     kill "${BROKER_PID}" >/dev/null 2>&1 || true
   fi
-  if [[ "${#AGENTD_PIDS[@]:-0}" -gt 0 ]]; then
+  if declare -p AGENTD_PIDS >/dev/null 2>&1 && [[ "${#AGENTD_PIDS[@]}" -gt 0 ]]; then
     for pid in "${AGENTD_PIDS[@]}"; do
       if [[ -n "${pid}" ]]; then
         kill "${pid}" >/dev/null 2>&1 || true
