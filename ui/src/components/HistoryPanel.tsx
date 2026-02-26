@@ -568,7 +568,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
         ) : null}
 
         {teamId ? (
-          <div className="mb-4 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+          <div id="team-chat" className="mb-4 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
             <div className="flex items-center justify-between gap-2">
               <div className="text-sm font-semibold text-white/80">Team chat</div>
               <button

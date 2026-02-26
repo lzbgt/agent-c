@@ -2843,6 +2843,18 @@ export default function App() {
                           className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
                           type="button"
                           onClick={() => {
+                            const el = document.getElementById("team-chat");
+                            if (el) {
+                              el.scrollIntoView({ behavior: "smooth", block: "start" });
+                            }
+                          }}
+                        >
+                          View chat
+                        </button>
+                        <button
+                          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                          type="button"
+                          onClick={() => {
                             openTeamPanel("setup");
                             setFocusAdvancedPanel(true);
                           }}
