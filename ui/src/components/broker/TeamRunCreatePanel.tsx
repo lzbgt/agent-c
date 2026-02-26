@@ -216,6 +216,9 @@ export default function TeamRunCreatePanel(props: TeamRunCreatePanelProps) {
       <div className="text-[11px] text-white/50">
         Async mode dispatches `run_async` per member so the run continues if the UI disconnects.
       </div>
+      <details className="rounded-md border border-white/10 bg-black/20 p-2">
+        <summary className="cursor-pointer text-[11px] text-white/70">Advanced run options</summary>
+        <div className="mt-2 grid gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <FieldLabel>Shared memory scope</FieldLabel>
         <input
@@ -360,6 +363,11 @@ export default function TeamRunCreatePanel(props: TeamRunCreatePanelProps) {
           </div>
         )}
       </div>
+        </div>
+      </details>
+      <details className="rounded-md border border-white/10 bg-black/20 p-2">
+        <summary className="cursor-pointer text-[11px] text-white/70">Runtime members (optional)</summary>
+        <div className="mt-2 grid gap-2">
       <div className="grid gap-1">
         <FieldLabel>Runtime members JSON (optional)</FieldLabel>
         <textarea
@@ -776,8 +784,11 @@ export default function TeamRunCreatePanel(props: TeamRunCreatePanelProps) {
           </div>
         </div>
       </div>
-      <div className="mt-2 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2" data-testid="team-inline-approvals">
-        <div className="text-[11px] text-white/70">Inline approvals (optional)</div>
+        </div>
+      </details>
+      <details className="rounded-md border border-white/10 bg-black/20 p-2" data-testid="team-inline-approvals">
+        <summary className="cursor-pointer text-[11px] text-white/70">Inline approvals (optional)</summary>
+        <div className="mt-2 grid gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <FieldLabel>Member ID</FieldLabel>
           <input
@@ -857,7 +868,8 @@ export default function TeamRunCreatePanel(props: TeamRunCreatePanelProps) {
         ) : (
           <div className="text-[11px] text-white/50">No inline approvals.</div>
         )}
-      </div>
+        </div>
+      </details>
       {props.runError ? (
         <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
           {props.runError}
