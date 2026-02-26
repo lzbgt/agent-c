@@ -418,6 +418,7 @@ export default function App() {
     `${historyUiKey}:expandedByKey`,
     {},
   );
+  const [sceneCollapsed, setSceneCollapsed] = useLocalStorageState<boolean>(`${historyUiKey}:sceneCollapsed`, false);
   const [mainScrollTop, setMainScrollTop] = useLocalStorageState<number>(`${historyUiKey}:scrollTop`, 0);
   const mainScrollRef = React.useRef<HTMLElement | null>(null);
   const mainScrollRestoredKeyRef = React.useRef<string>("");
@@ -2587,17 +2588,37 @@ export default function App() {
                 </div>
               </aside>
               <section className="min-w-0">
-                <div className="h-[calc(100vh-var(--topbar-h)-var(--promptbar-h)-24px)] min-h-0">
-                  <SceneView
-                    baseUrl={effectiveBase}
-                    yolo={yolo}
-                    allowAutoplay={allowAutoplay}
-                    client={client}
-                    daemonAuth={daemonAuth}
-                    sessionId={sessionId}
-                    entities={sceneEntities}
-                    className="h-full"
-                  />
+                <div
+                  className={`rounded-lg border border-white/10 bg-black/20 p-3 ${
+                    sceneCollapsed ? "" : "flex h-[calc(100vh-var(--topbar-h)-var(--promptbar-h)-56px)] min-h-0 flex-col"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm font-semibold text-white/80">Scene</div>
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                      type="button"
+                      onClick={() => setSceneCollapsed((prev) => !prev)}
+                    >
+                      {sceneCollapsed ? "Show scene" : "Collapse"}
+                    </button>
+                  </div>
+                  {sceneCollapsed ? (
+                    <div className="mt-2 text-xs text-white/50">Scene is hidden to save space.</div>
+                  ) : (
+                    <div className="mt-3 min-h-0 flex-1">
+                      <SceneView
+                        baseUrl={effectiveBase}
+                        yolo={yolo}
+                        allowAutoplay={allowAutoplay}
+                        client={client}
+                        daemonAuth={daemonAuth}
+                        sessionId={sessionId}
+                        entities={sceneEntities}
+                        className="h-full"
+                      />
+                    </div>
+                  )}
                 </div>
                 {brokerChatAvailable ? (
                   <div className="mt-4 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
@@ -2646,6 +2667,19 @@ export default function App() {
                           onClick={() => openTeamPanel("run")}
                         >
                           Runs
+                        </button>
+                        <button
+                          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                          type="button"
+                          onClick={() => {
+                            setChatTarget("team");
+                            setTeamAction("guidance");
+                            if (promptbarRef.current) {
+                              promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+                            }
+                          }}
+                        >
+                          Send guidance
                         </button>
                       </div>
                     </div>
