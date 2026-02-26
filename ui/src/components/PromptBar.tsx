@@ -66,6 +66,7 @@ type PromptBarProps = {
   setPrompt: (next: string) => void;
   runDisabled: boolean;
   runLabel: string;
+  queueCount?: number;
   onRun: (vars: { prompt: string; attachments: Attachment[] }) => void;
   setJobNotice: (next: string | null) => void;
   jobNotice: string | null;
@@ -165,6 +166,11 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
                   session=<code className="text-white/70 break-all">{String(props.sessionId || "").trim() || "(none)"}</code>{" "}
                   tools=<code className="text-white/70 break-all">{String(props.tools || "")}</code>{" "}
                   run_watch=<code className="text-white/70 break-all">{String(props.runWatchMode || "local")}</code>{" "}
+                  {props.queueCount && props.queueCount > 0 ? (
+                    <>
+                      queued=<code className="text-white/70 break-all">{props.queueCount}</code>{" "}
+                    </>
+                  ) : null}
                   {props.activeJobId ? (
                     <>
                       job=<code className="text-white/70 break-all">{props.activeJobId}</code>{" "}
@@ -309,6 +315,11 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
             >
               {props.runLabel}
             </button>
+            {props.queueCount && props.queueCount > 0 ? (
+              <span className="rounded-md border border-indigo-400/30 bg-indigo-500/10 px-2 py-1 text-xs text-indigo-100">
+                {props.queueCount} queued
+              </span>
+            ) : null}
           </div>
         </div>
 

@@ -12,6 +12,9 @@ export type HistoryPanelProps = {
   setShowMessages: React.Dispatch<React.SetStateAction<boolean>>;
   historyExpandedByKey: Record<string, boolean>;
   setHistoryExpandedByKey: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  dbMessages?: any[];
+  dbRuns?: any[];
+  dbRunDetailsById?: Record<number, any>;
   effectiveBase: string;
   yolo: boolean;
   sessionId: string;
@@ -29,7 +32,40 @@ export type HistoryPanelProps = {
 
 export default function HistoryPanel(props: HistoryPanelProps) {
   const entries = Array.isArray(props.entries) ? props.entries : [];
+  const dbMessages = Array.isArray(props.dbMessages) ? props.dbMessages : [];
+  const dbRuns = Array.isArray(props.dbRuns) ? props.dbRuns : [];
+  const dbRunDetailsById =
+    props.dbRunDetailsById && typeof props.dbRunDetailsById === "object" ? props.dbRunDetailsById : {};
   const MAX_HISTORY_EXPANDED_KEYS = 200;
+
+  const conversationItems = React.useMemo(() => {
+    const items: { kind: "message" | "run"; ts: number; message?: any; run?: any; runId?: number; details?: any }[] = [];
+    for (const m of dbMessages) {
+      const ts = typeof m?.created_unix_ms === "number" ? m.created_unix_ms : 0;
+      if (!ts) continue;
+      items.push({ kind: "message", ts, message: m });
+    }
+    for (const r of dbRuns) {
+      const ts = typeof r?.ts_unix_ms === "number" ? r.ts_unix_ms : 0;
+      if (!ts) continue;
+      const runId = typeof r?.run_id === "number" ? r.run_id : Number(r?.run_id ?? r?.id ?? NaN);
+      const details = Number.isFinite(runId) ? dbRunDetailsById[runId] : undefined;
+      items.push({ kind: "run", ts, run: r, runId: Number.isFinite(runId) ? runId : undefined, details });
+    }
+    items.sort((a, b) => a.ts - b.ts);
+    return items;
+  }, [dbMessages, dbRuns, dbRunDetailsById]);
+
+  const formatJson = (raw: string): string => {
+    const txt = String(raw ?? "");
+    if (!txt) return "";
+    try {
+      const parsed = JSON.parse(txt);
+      return JSON.stringify(parsed, null, 2);
+    } catch {
+      return txt;
+    }
+  };
 
   const entryKeyFor = React.useCallback((entry: any) => {
     const isLive = entry?.live === true;
@@ -64,6 +100,142 @@ export default function HistoryPanel(props: HistoryPanelProps) {
 
   return (
     <div>
+      <div className="mb-4">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold text-white/80">Conversation</div>
+          <div className="text-[11px] text-white/50">
+            {conversationItems.length > 0 ? `${conversationItems.length} items` : "no persisted history"}
+          </div>
+        </div>
+        {conversationItems.length === 0 ? (
+          <div className="rounded-md border border-white/10 bg-black/20 px-3 py-3 text-xs text-white/60">
+            No persisted messages yet. Run a prompt to populate the chat history.
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            {conversationItems.map((item, idx) => {
+              if (item.kind === "message") {
+                const m = item.message ?? {};
+                const role = typeof m?.role === "string" ? m.role : "message";
+                const content = typeof m?.content === "string" ? m.content : "";
+                const ts = typeof m?.created_unix_ms === "number" ? m.created_unix_ms : 0;
+                const when = ts ? new Date(ts).toLocaleString() : "";
+                const truncated = m?.content_truncated ? true : false;
+                const mmJson = typeof m?.mm_json === "string" ? m.mm_json : "";
+                const mmBytes = typeof m?.mm_bytes === "number" ? m.mm_bytes : mmJson.length || 0;
+                return (
+                  <div key={`msg:${ts || idx}`} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+                      <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-semibold text-white/80">
+                        {role}
+                      </span>
+                      {when ? <span>{when}</span> : null}
+                      {truncated ? <span className="text-amber-200">truncated</span> : null}
+                      {mmBytes > 0 ? <span className="text-white/50">mm {mmBytes}b</span> : null}
+                    </div>
+                    <div className="mt-2 text-sm text-white/90">
+                      {content ? <Markdown text={content} /> : <span className="text-white/50">(no content)</span>}
+                    </div>
+                  </div>
+                );
+              }
+
+              const r = item.run ?? {};
+              const ts = typeof r?.ts_unix_ms === "number" ? r.ts_unix_ms : 0;
+              const when = ts ? new Date(ts).toLocaleString() : "";
+              const prompt = typeof r?.prompt === "string" ? r.prompt : "";
+              const tools = typeof r?.tools === "string" ? r.tools : "";
+              const model = typeof r?.model === "string" ? r.model : "";
+              const ok = typeof r?.ok === "number" ? r.ok === 1 : typeof r?.ok === "boolean" ? r.ok : undefined;
+              const err = typeof r?.error === "string" ? r.error : "";
+              const runId = item.runId;
+              const detail = runId && dbRunDetailsById[runId] ? dbRunDetailsById[runId] : item.details;
+              const toolRecords = detail && Array.isArray(detail?.tool_records) ? (detail.tool_records as any[]) : [];
+
+              return (
+                <div key={`run:${ts || idx}`} className="rounded-lg border border-indigo-400/20 bg-indigo-500/5 px-3 py-2">
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+                    <span className="rounded-md border border-indigo-400/20 bg-indigo-500/10 px-2 py-0.5 font-semibold text-indigo-100">
+                      run
+                    </span>
+                    {when ? <span>{when}</span> : null}
+                    {typeof ok === "boolean" ? (
+                      <span className={ok ? "text-emerald-300" : "text-rose-300"}>{ok ? "ok" : "error"}</span>
+                    ) : null}
+                    {tools ? <span className="text-white/50">tools={tools}</span> : null}
+                    {model ? <span className="text-white/50">model={model}</span> : null}
+                  </div>
+                  {prompt ? (
+                    <div className="mt-2">
+                      <div className="text-[11px] font-semibold text-white/60">Prompt</div>
+                      <div className="mt-1 text-sm text-white/90">
+                        <Markdown text={prompt} />
+                      </div>
+                    </div>
+                  ) : null}
+                  {!ok && err ? (
+                    <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-xs text-rose-200">
+                      {err}
+                    </div>
+                  ) : null}
+                  {toolRecords.length > 0 ? (
+                    <div className="mt-3 grid gap-2">
+                      <div className="text-[11px] font-semibold text-white/60">Tool usage</div>
+                      {toolRecords.map((t, i) => {
+                        const toolName = typeof t?.tool_name === "string" ? t.tool_name : "tool";
+                        const callId = typeof t?.tool_call_id === "string" ? t.tool_call_id : "";
+                        const argsJson = typeof t?.arguments_json === "string" ? t.arguments_json : "";
+                        const resultText = typeof t?.result_text === "string" ? t.result_text : "";
+                        const resultForPrompt = typeof t?.result_for_prompt_text === "string" ? t.result_for_prompt_text : "";
+                        const truncatedForPrompt = t?.result_truncated_for_prompt ? true : false;
+                        return (
+                          <details
+                            key={`${toolName}:${callId || i}`}
+                            className="rounded-md border border-white/10 bg-black/20 px-3 py-2"
+                          >
+                            <summary className="cursor-pointer text-xs text-white/70">
+                              {toolName}
+                              {callId ? (
+                                <code className="ml-2 text-[11px] text-white/50">{callId}</code>
+                              ) : null}
+                            </summary>
+                            {argsJson ? (
+                              <div className="mt-2">
+                                <div className="text-[11px] font-semibold text-white/60">Arguments</div>
+                                <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/80">
+                                  {formatJson(argsJson)}
+                                </pre>
+                              </div>
+                            ) : null}
+                            {resultText ? (
+                              <div className="mt-2">
+                                <div className="text-[11px] font-semibold text-white/60">Result</div>
+                                <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/80">
+                                  {resultText}
+                                </pre>
+                              </div>
+                            ) : null}
+                            {resultForPrompt && resultForPrompt !== resultText ? (
+                              <div className="mt-2">
+                                <div className="text-[11px] font-semibold text-white/60">
+                                  Result for prompt{truncatedForPrompt ? " (truncated)" : ""}
+                                </div>
+                                <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/80">
+                                  {resultForPrompt}
+                                </pre>
+                              </div>
+                            ) : null}
+                          </details>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="text-sm font-semibold text-white/80">History</div>
         <div className="flex items-center gap-2">

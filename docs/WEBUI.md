@@ -114,6 +114,8 @@ Preset configs:
   - If the browser cannot reach `http://127.0.0.1:<broker_port>/v1/agents/<id>/proxy`, ensure Settings → Connection points at the broker URL from `out/devstack_state.json`.
   - If you enabled `--broker-tls`, accept the self-signed broker certificate by visiting `https://127.0.0.1:<broker_port>` directly.
 - The default UI opens in **Simple** mode (goal → run → observe). Use the **Advanced** button in the top bar to reveal full settings and panels.
+- Conversation history is persisted in the daemon DB and reloaded after refresh (user/assistant messages plus run tool records).
+- You can queue prompts while a run is active; queued runs execute in order and the queue count is shown in the Run/Queue button.
 
 ## Diagnostics
 

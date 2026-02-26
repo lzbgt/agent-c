@@ -5,6 +5,9 @@ import {
   apiGetCaps,
   apiGetClientPrefs,
   apiGetConfig,
+  apiGetDbMessages,
+  apiGetDbRun,
+  apiGetDbRuns,
   apiGetDbUiActions,
   apiGetDbClientEvents,
   apiGetSessionClientEvents,
@@ -57,6 +60,7 @@ const RUN_WATCH_PREFS_VERSION = 1;
 const RUN_WATCH_PERSIST_MIN_INTERVAL_MS = 5000;
 
 type RunWatchByScope = Record<string, any>;
+type QueuedRun = { prompt: string; attachments: Attachment[]; queued_unix_ms: number };
 
 const extractRunWatchByScope = (prefs: any): RunWatchByScope => {
   const root = prefs && typeof prefs === "object" ? prefs.run_watch : null;
@@ -337,6 +341,12 @@ export default function App() {
     const sid = String(sessionId || "").trim();
     return `agentui.historyUi:${sessionScopeKey}::${sid}`;
   }, [sessionId, sessionScopeKey]);
+  const runQueueKey = React.useMemo(() => {
+    const baseKey = String(effectiveBase || "").trim() || "default";
+    const sidKey = String(sessionId || "").trim() || "default";
+    return `agentui.runQueue:${baseKey}::${sidKey}`;
+  }, [effectiveBase, sessionId]);
+  const [runQueue, setRunQueue] = useLocalStorageState<QueuedRun[]>(runQueueKey, []);
   const [showAllHistoryEntries, setShowAllHistoryEntries] = useLocalStorageState<boolean>(`${historyUiKey}:showAll`, false);
   const [showHistoryMessages, setShowHistoryMessages] = useLocalStorageState<boolean>(`${historyUiKey}:showMessages`, false);
   const [historyExpandedByKey, setHistoryExpandedByKey] = useLocalStorageState<Record<string, boolean>>(
@@ -982,6 +992,77 @@ export default function App() {
     setSceneVersion((v) => v + 1);
   }, [sceneStoreKey, sessionId, sessionScene.data, touchSceneStore]);
 
+  const dbMessages = useQuery({
+    queryKey: ["db_messages", effectiveBase, authKey, sessionId],
+    queryFn: () =>
+      apiGetDbMessages(effectiveBase, sessionId, daemonAuth, {
+        limit: 200,
+        offset: 0,
+        maxContentBytes: 64 * 1024,
+        maxMmBytes: 2 * 1024 * 1024,
+      }),
+    enabled: !!sessionId,
+    refetchInterval: activeJobId ? 1500 : 5000,
+    retry: 1,
+  });
+
+  const dbRuns = useQuery({
+    queryKey: ["db_runs", effectiveBase, authKey, sessionId],
+    queryFn: () => apiGetDbRuns(effectiveBase, sessionId, daemonAuth, { limit: 50, offset: 0 }),
+    enabled: !!sessionId,
+    refetchInterval: activeJobId ? 2000 : 8000,
+    retry: 1,
+  });
+
+  const [dbRunDetailsById, setDbRunDetailsById] = React.useState<Record<number, any>>({});
+  const dbRunDetailsByIdRef = React.useRef<Record<number, any>>({});
+  const dbRunDetailsLoadingRef = React.useRef<Record<number, boolean>>({});
+
+  React.useEffect(() => {
+    dbRunDetailsByIdRef.current = dbRunDetailsById || {};
+  }, [dbRunDetailsById]);
+
+  React.useEffect(() => {
+    const runs = dbRuns.data?.ok && Array.isArray(dbRuns.data?.runs) ? (dbRuns.data.runs as any[]) : [];
+    if (runs.length === 0) return;
+    const candidates: number[] = [];
+    for (const r of runs.slice(0, 12)) {
+      const runId = typeof r?.run_id === "number" ? r.run_id : Number(r?.run_id ?? r?.id ?? NaN);
+      if (!Number.isFinite(runId)) continue;
+      candidates.push(runId);
+    }
+    if (candidates.length === 0) return;
+
+    let cancelled = false;
+    const fetchMissing = async () => {
+      for (const runId of candidates) {
+        if (cancelled) return;
+        if (dbRunDetailsByIdRef.current[runId]) continue;
+        if (dbRunDetailsLoadingRef.current[runId]) continue;
+        dbRunDetailsLoadingRef.current[runId] = true;
+        try {
+          const resp = await apiGetDbRun(effectiveBase, runId, daemonAuth, {
+            includeTools: true,
+            includeEvents: false,
+            includeArtifacts: false,
+            includeUiActions: false,
+          });
+          if (resp.ok && resp.run) {
+            setDbRunDetailsById((prev) => ({ ...(prev || {}), [runId]: resp }));
+          }
+        } catch {
+          // ignore fetch failures; UI will fallback to run summary only
+        } finally {
+          delete dbRunDetailsLoadingRef.current[runId];
+        }
+      }
+    };
+    void fetchMissing();
+    return () => {
+      cancelled = true;
+    };
+  }, [dbRuns.data, effectiveBase, daemonAuth]);
+
   const dbUiActions = useQuery({
     queryKey: ["db_ui_actions", effectiveBase, authKey, sessionId],
     queryFn: () => apiGetDbUiActions(effectiveBase, sessionId, daemonAuth, { limit: 100, offset: 0 }),
@@ -1389,6 +1470,56 @@ export default function App() {
       setJobNotice(null);
     },
   });
+
+  const dequeueInFlightRef = React.useRef(false);
+
+  const enqueueRun = React.useCallback(
+    (vars: { prompt: string; attachments: Attachment[] }) => {
+      const trimmed = String(vars.prompt || "").trim();
+      if (!trimmed && vars.attachments.length === 0) {
+        setJobNotice("prompt or attachment required");
+        return;
+      }
+      setRunQueue((prev) => [
+        ...(Array.isArray(prev) ? prev : []),
+        { prompt: trimmed, attachments: vars.attachments, queued_unix_ms: Date.now() },
+      ]);
+      setPrompt("");
+      setComposerTaskNonce((n) => n + 1);
+      setJobNotice("queued");
+    },
+    [setComposerTaskNonce, setJobNotice, setPrompt, setRunQueue],
+  );
+
+  React.useEffect(() => {
+    if (activeJobId || run.isPending) return;
+    if (!Array.isArray(runQueue) || runQueue.length === 0) return;
+    if (dequeueInFlightRef.current) return;
+    const next = runQueue[0];
+    if (!next || typeof next !== "object") return;
+    dequeueInFlightRef.current = true;
+    setRunQueue((prev) => (Array.isArray(prev) ? prev.slice(1) : []));
+    run
+      .mutateAsync({ prompt: next.prompt, attachments: next.attachments || [] })
+      .catch((err) => {
+        setJobNotice(`queued run failed: ${String(err)}`);
+        setRunQueue((prev) => [next, ...(Array.isArray(prev) ? prev : [])]);
+      })
+      .finally(() => {
+        dequeueInFlightRef.current = false;
+      });
+  }, [activeJobId, run.isPending, runQueue, run, setJobNotice, setRunQueue]);
+
+  const handleRunRequest = React.useCallback(
+    (vars: { prompt: string; attachments: Attachment[] }) => {
+      if (activeJobId || run.isPending) {
+        enqueueRun(vars);
+        return;
+      }
+      run.mutate(vars);
+    },
+    [activeJobId, enqueueRun, run],
+  );
 
   const traceLookup = useMutation({
     mutationFn: async (traceIdRaw: string) => {
@@ -1978,6 +2109,9 @@ export default function App() {
               setShowMessages={setShowHistoryMessages}
               historyExpandedByKey={historyExpandedByKey}
               setHistoryExpandedByKey={setHistoryExpandedByKey}
+              dbMessages={dbMessages.data?.ok && Array.isArray(dbMessages.data?.messages) ? dbMessages.data.messages : []}
+              dbRuns={dbRuns.data?.ok && Array.isArray(dbRuns.data?.runs) ? dbRuns.data.runs : []}
+              dbRunDetailsById={dbRunDetailsById}
               effectiveBase={effectiveBase}
               yolo={yolo}
               sessionId={sessionId}
@@ -2012,9 +2146,10 @@ export default function App() {
         daemonAuth={daemonAuth}
         prompt={prompt}
         setPrompt={setPrompt}
-        runDisabled={run.isPending || !!activeJobId}
-        runLabel={run.isPending || activeJobId ? "Running…" : "Run"}
-        onRun={(vars) => run.mutate(vars)}
+        runDisabled={false}
+        runLabel={run.isPending || activeJobId ? "Queue" : "Run"}
+        queueCount={Array.isArray(runQueue) ? runQueue.length : 0}
+        onRun={handleRunRequest}
         setJobNotice={setJobNotice}
         jobNotice={jobNotice}
         jobError={jobError}
