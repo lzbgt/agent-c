@@ -111,6 +111,7 @@ export default function App() {
   const brokerAuthToken = connection.brokerAuthToken;
   const daemonAuthToken = connection.daemonAuthToken;
   const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "");
+  const [simpleMode, setSimpleMode] = useLocalStorageState("agentui.simpleMode", true);
   const [capsCache, setCapsCache] = useLocalStorageState<Record<string, { caps: Caps; ts: number }>>(
     "agentui.capsByBase",
     {},
@@ -1698,39 +1699,63 @@ export default function App() {
         <div className="flex h-14 min-w-0 items-center justify-between px-4">
           <div className="min-w-0">
             <div className="text-sm font-semibold">agent UI</div>
-            <div className="text-[11px] text-white/60">
-              profile:{" "}
-              <select
-                className="ml-1 inline-block max-w-[28vw] truncate rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-mono text-[11px] text-white/70"
-                value={connection.activeProfileId}
-                onChange={(e) => connection.setActiveProfileId(e.target.value)}
-                title={profileName}
-              >
-                {connection.profiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>{" "}
-              {runSettings.profileOverridesEnabled ? (
-                <span className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
-                  run overrides
+            {simpleMode ? (
+              <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-white/60">
+                <span>
+                  status:{" "}
+                  {health.isSuccess ? (
+                    <span className="text-emerald-300">ok</span>
+                  ) : health.isFetching ? (
+                    <span className="text-white/60">checking…</span>
+                  ) : (
+                    <span className="text-rose-300">offline</span>
+                  )}
                 </span>
-              ) : null}
-              · daemon:{" "}
-              <span className="inline-block max-w-[60vw] truncate align-bottom font-mono text-[11px] text-white/70" title={effectiveBase}>
-                {effectiveBase}
-              </span>{" "}
-              {health.isSuccess ? (
-                <span className="text-emerald-300">
-                  ok ({health.data.service ?? "agentd"} {health.data.version ?? ""})
-                </span>
-              ) : health.isFetching ? (
-                <span className="text-white/60">checking…</span>
-              ) : (
-                <span className="text-rose-300">offline</span>
-              )}
-            </div>
+                <label className="flex items-center gap-2">
+                  <span className="text-white/60">model</span>
+                  <input
+                    className="w-56 rounded-md border border-white/10 bg-black/30 px-2 py-1 font-mono text-[11px] text-white/80"
+                    placeholder="auto"
+                    value={runSettings.model}
+                    onChange={(e) => runSettings.setModel(e.target.value)}
+                  />
+                </label>
+              </div>
+            ) : (
+              <div className="text-[11px] text-white/60">
+                profile:{" "}
+                <select
+                  className="ml-1 inline-block max-w-[28vw] truncate rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-mono text-[11px] text-white/70"
+                  value={connection.activeProfileId}
+                  onChange={(e) => connection.setActiveProfileId(e.target.value)}
+                  title={profileName}
+                >
+                  {connection.profiles.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>{" "}
+                {runSettings.profileOverridesEnabled ? (
+                  <span className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
+                    run overrides
+                  </span>
+                ) : null}
+                · daemon:{" "}
+                <span className="inline-block max-w-[60vw] truncate align-bottom font-mono text-[11px] text-white/70" title={effectiveBase}>
+                  {effectiveBase}
+                </span>{" "}
+                {health.isSuccess ? (
+                  <span className="text-emerald-300">
+                    ok ({health.data.service ?? "agentd"} {health.data.version ?? ""})
+                  </span>
+                ) : health.isFetching ? (
+                  <span className="text-white/60">checking…</span>
+                ) : (
+                  <span className="text-rose-300">offline</span>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -1740,13 +1765,35 @@ export default function App() {
             >
               Recheck
             </button>
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-              onClick={() => setShowSettings(true)}
-              type="button"
-            >
-              Settings
-            </button>
+            {simpleMode ? (
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+                onClick={() => {
+                  setSimpleMode(false);
+                  setShowSettings(true);
+                }}
+                type="button"
+              >
+                Advanced
+              </button>
+            ) : (
+              <>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+                  onClick={() => setShowSettings(true)}
+                  type="button"
+                >
+                  Settings
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+                  onClick={() => setSimpleMode(true)}
+                  type="button"
+                >
+                  Simple
+                </button>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -1814,85 +1861,91 @@ export default function App() {
       >
         <div className="mx-auto max-w-7xl">
           <div className="min-h-0">
-            <div className="h-[calc(100vh-var(--topbar-h)-var(--promptbar-h)-24px)] min-h-0">
-              <SceneView
-                baseUrl={effectiveBase}
-                yolo={yolo}
-                allowAutoplay={allowAutoplay}
-                client={client}
-                daemonAuth={daemonAuth}
-                sessionId={sessionId}
-                entities={sceneEntities}
-                className="h-full"
-              />
-            </div>
+            {!simpleMode ? (
+              <div className="h-[calc(100vh-var(--topbar-h)-var(--promptbar-h)-24px)] min-h-0">
+                <SceneView
+                  baseUrl={effectiveBase}
+                  yolo={yolo}
+                  allowAutoplay={allowAutoplay}
+                  client={client}
+                  daemonAuth={daemonAuth}
+                  sessionId={sessionId}
+                  entities={sceneEntities}
+                  className="h-full"
+                />
+              </div>
+            ) : null}
           </div>
 
           <div className="mt-4">
-            <TraceLookupPanel
-              open={!!traceLookupOpen}
-              onToggle={(open) => setTraceLookupOpen(open)}
-              traceId={traceLookupId}
-              onTraceIdChange={(next) => setTraceLookupId(next)}
-              onLoad={(id) => void traceLookup.mutateAsync(id).catch(() => {})}
-              onClear={() => {
-                setTraceLookupError(null);
-                setTraceLookupAgentd(null);
-                setTraceLookupBroker(null);
-              }}
-              loading={traceLookup.isPending}
-              error={traceLookupError}
-              connectionMode={connectionMode}
-              baseUrl={effectiveBase}
-              yolo={yolo}
-              agentdTrace={traceLookupAgentd}
-              brokerTrace={traceLookupBroker}
-            />
-            <RunDiffPanel
-              open={!!runDiffPanelOpen}
-              onToggle={(open) => setRunDiffPanelOpen(open)}
-              baseUrl={effectiveBase}
-              auth={daemonAuth}
-            />
-            <MemoryPanel
-              open={!!memoryPanelOpen}
-              onToggle={(open) => setMemoryPanelOpen(open)}
-              baseUrl={effectiveBase}
-              auth={daemonAuth}
-            />
-            <ApprovalQueuePanel
-              open={!!approvalPanelOpen}
-              onToggle={(open) => setApprovalPanelOpen(open)}
-              baseUrl={effectiveBase}
-              auth={daemonAuth}
-            />
-            <WorkflowPanel
-              open={!!workflowPanelOpen}
-              onToggle={(open) => setWorkflowPanelOpen(open)}
-              baseUrl={effectiveBase}
-              auth={daemonAuth}
-              authKey={authKey}
-              clientId={client.id}
-              workflowDefaults={workflowDefaults}
-              workflowTargets={workflowTargets}
-              workflowBearerEnv={workflowBearerEnv}
-              onTraceIdClick={(traceId) => {
-                setTraceLookupId(traceId);
-                setTraceLookupOpen(true);
-                void traceLookup.mutateAsync(traceId).catch(() => {});
-              }}
-            />
-            {connectionMode === "broker" ? (
-                <BrokerPanel
-                  open={!!brokerPanelOpen}
-                  onToggle={(open) => setBrokerPanelOpen(open)}
-                  brokerBase={connection.brokerBase}
-                  brokerAgentId={connection.brokerAgentId}
-                  setBrokerAgentId={connection.setBrokerAgentId}
+            {!simpleMode ? (
+              <>
+                <TraceLookupPanel
+                  open={!!traceLookupOpen}
+                  onToggle={(open) => setTraceLookupOpen(open)}
+                  traceId={traceLookupId}
+                  onTraceIdChange={(next) => setTraceLookupId(next)}
+                  onLoad={(id) => void traceLookup.mutateAsync(id).catch(() => {})}
+                  onClear={() => {
+                    setTraceLookupError(null);
+                    setTraceLookupAgentd(null);
+                    setTraceLookupBroker(null);
+                  }}
+                  loading={traceLookup.isPending}
+                  error={traceLookupError}
+                  connectionMode={connectionMode}
+                  baseUrl={effectiveBase}
+                  yolo={yolo}
+                  agentdTrace={traceLookupAgentd}
+                  brokerTrace={traceLookupBroker}
+                />
+                <RunDiffPanel
+                  open={!!runDiffPanelOpen}
+                  onToggle={(open) => setRunDiffPanelOpen(open)}
+                  baseUrl={effectiveBase}
+                  auth={daemonAuth}
+                />
+                <MemoryPanel
+                  open={!!memoryPanelOpen}
+                  onToggle={(open) => setMemoryPanelOpen(open)}
+                  baseUrl={effectiveBase}
+                  auth={daemonAuth}
+                />
+                <ApprovalQueuePanel
+                  open={!!approvalPanelOpen}
+                  onToggle={(open) => setApprovalPanelOpen(open)}
+                  baseUrl={effectiveBase}
+                  auth={daemonAuth}
+                />
+                <WorkflowPanel
+                  open={!!workflowPanelOpen}
+                  onToggle={(open) => setWorkflowPanelOpen(open)}
+                  baseUrl={effectiveBase}
                   auth={daemonAuth}
                   authKey={authKey}
                   clientId={client.id}
+                  workflowDefaults={workflowDefaults}
+                  workflowTargets={workflowTargets}
+                  workflowBearerEnv={workflowBearerEnv}
+                  onTraceIdClick={(traceId) => {
+                    setTraceLookupId(traceId);
+                    setTraceLookupOpen(true);
+                    void traceLookup.mutateAsync(traceId).catch(() => {});
+                  }}
                 />
+                {connectionMode === "broker" ? (
+                    <BrokerPanel
+                      open={!!brokerPanelOpen}
+                      onToggle={(open) => setBrokerPanelOpen(open)}
+                      brokerBase={connection.brokerBase}
+                      brokerAgentId={connection.brokerAgentId}
+                      setBrokerAgentId={connection.setBrokerAgentId}
+                      auth={daemonAuth}
+                      authKey={authKey}
+                      clientId={client.id}
+                    />
+                ) : null}
+              </>
             ) : null}
             <HistoryPanel
               entries={historyEntriesDesc}

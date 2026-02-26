@@ -112,6 +112,7 @@ Preset configs:
 - See `docs/DEVSTACK_NETWORK_AUTH.md` for the end-to-end network/auth workflow and troubleshooting.
   - If the browser tries `keycloak.lvh.me:<port>/v1/agents/...`, the Broker base URL is mis-set; reset Settings → Connection to the broker URL from `out/devstack_state.json`.
   - If the browser cannot reach `https://127.0.0.1:<broker_port>/v1/agents/<id>/proxy`, accept the self-signed broker certificate by visiting the broker URL directly.
+- The default UI opens in **Simple** mode (goal → run → observe). Use the **Advanced** button in the top bar to reveal full settings and panels.
 
 ## Diagnostics
 
