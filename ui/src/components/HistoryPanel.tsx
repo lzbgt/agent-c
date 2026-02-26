@@ -379,6 +379,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 const resultText = typeof tr?.result_text === "string" ? tr.result_text : "";
                 const resultForPrompt = typeof tr?.result_for_prompt_text === "string" ? tr.result_for_prompt_text : "";
                 const truncatedForPrompt = tr?.result_truncated_for_prompt ? true : false;
+                const shortCommand = command ? (command.length > 140 ? `${command.slice(0, 140)}…` : command) : "";
                 return (
                   <div key={`tool:${item.ts || idx}`} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
@@ -386,22 +387,23 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                         tool
                       </span>
                       <span className="text-white/50">{toolName}</span>
+                      {shortCommand ? <span className="text-white/40">· {shortCommand}</span> : null}
                     </div>
                     {command ? (
-                      <div className="mt-2">
-                        <div className="mb-1 text-[11px] font-semibold text-white/60">Command</div>
-                        <pre className="overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/20 p-2 font-mono text-[11px] leading-relaxed text-white/90">
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-[11px] text-white/60">Command</summary>
+                        <pre className="mt-2 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/20 p-2 font-mono text-[11px] leading-relaxed text-white/90">
                           {command}
                         </pre>
-                      </div>
+                      </details>
                     ) : null}
                     {resultText ? (
-                      <div className="mt-2">
-                        <div className="mb-1 text-[11px] font-semibold text-white/60">Output</div>
-                        <pre className="overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90">
+                      <details className="mt-2" open>
+                        <summary className="cursor-pointer text-[11px] text-white/60">Output</summary>
+                        <pre className="mt-2 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90">
                           {resultText}
                         </pre>
-                      </div>
+                      </details>
                     ) : null}
                     {resultForPrompt && resultForPrompt !== resultText ? (
                       <details className="mt-2">
