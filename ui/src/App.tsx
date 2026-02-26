@@ -446,6 +446,7 @@ export default function App() {
     {},
   );
   const [sceneCollapsed, setSceneCollapsed] = useLocalStorageState<boolean>(`${historyUiKey}:sceneCollapsed`, false);
+  const [focusAdvancedPanel, setFocusAdvancedPanel] = useLocalStorageState<boolean>("agentui.focusAdvancedPanel", false);
   const [mainScrollTop, setMainScrollTop] = useLocalStorageState<number>(`${historyUiKey}:scrollTop`, 0);
   const mainScrollRef = React.useRef<HTMLElement | null>(null);
   const mainScrollRestoredKeyRef = React.useRef<string>("");
@@ -2554,10 +2555,18 @@ export default function App() {
     sessionsRefetch,
   });
 
-  const advancedGridCols =
-    advancedPage === "broker"
+  const showMainColumn = !advancedPage || !focusAdvancedPanel;
+  const advancedGridCols = focusAdvancedPanel
+    ? "lg:grid-cols-[var(--tools-col)_minmax(0,1fr)]"
+    : advancedPage === "broker"
       ? "lg:grid-cols-[var(--tools-col)_minmax(320px,1fr)_minmax(480px,60vw)]"
       : "lg:grid-cols-[var(--tools-col)_minmax(0,1fr)_minmax(360px,48vw)]";
+
+  React.useEffect(() => {
+    if (!advancedPage && focusAdvancedPanel) {
+      setFocusAdvancedPanel(false);
+    }
+  }, [advancedPage, focusAdvancedPanel, setFocusAdvancedPanel]);
 
   return (
     <div
@@ -2733,6 +2742,7 @@ export default function App() {
                   })}
                 </div>
               </aside>
+              {showMainColumn ? (
               <section className="min-w-0">
                 <div
                   className={`rounded-lg border border-white/10 bg-black/20 p-3 ${
@@ -2990,8 +3000,24 @@ export default function App() {
                   />
                 </div>
               </section>
+              ) : null}
               {advancedPage ? (
                 <aside className="min-w-0 overflow-x-auto rounded-lg border border-white/10 bg-black/20 p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="text-[11px] font-semibold text-white/60">Panel view</div>
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
+                      type="button"
+                      onClick={() => setFocusAdvancedPanel((prev) => !prev)}
+                      title={
+                        focusAdvancedPanel
+                          ? "Show scene and history again"
+                          : "Hide scene + history to focus on this panel"
+                      }
+                    >
+                      {focusAdvancedPanel ? "Show main view" : "Focus panel"}
+                    </button>
+                  </div>
                   {advancedPage === "trace" ? (
                     <TraceLookupPanel
                       open={true}
