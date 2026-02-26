@@ -2112,6 +2112,11 @@ export default function App() {
               dbMessages={dbMessages.data?.ok && Array.isArray(dbMessages.data?.messages) ? dbMessages.data.messages : []}
               dbRuns={dbRuns.data?.ok && Array.isArray(dbRuns.data?.runs) ? dbRuns.data.runs : []}
               dbRunDetailsById={dbRunDetailsById}
+              sessionArtifacts={
+                sessionArtifacts.data?.ok && Array.isArray(sessionArtifacts.data?.artifacts)
+                  ? sessionArtifacts.data.artifacts
+                  : []
+              }
               effectiveBase={effectiveBase}
               yolo={yolo}
               sessionId={sessionId}

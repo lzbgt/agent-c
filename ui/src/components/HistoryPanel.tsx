@@ -2,6 +2,7 @@ import React from "react";
 import type { ApiAuth } from "../api";
 import ConversationView from "./ConversationView";
 import Markdown from "./Markdown";
+import ArtifactView from "./ArtifactView";
 import type { SceneEntity } from "./SceneView";
 
 export type HistoryPanelProps = {
@@ -15,6 +16,7 @@ export type HistoryPanelProps = {
   dbMessages?: any[];
   dbRuns?: any[];
   dbRunDetailsById?: Record<number, any>;
+  sessionArtifacts?: any[];
   effectiveBase: string;
   yolo: boolean;
   sessionId: string;
@@ -36,6 +38,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
   const dbRuns = Array.isArray(props.dbRuns) ? props.dbRuns : [];
   const dbRunDetailsById =
     props.dbRunDetailsById && typeof props.dbRunDetailsById === "object" ? props.dbRunDetailsById : {};
+  const sessionArtifacts = Array.isArray(props.sessionArtifacts) ? props.sessionArtifacts : [];
   const MAX_HISTORY_EXPANDED_KEYS = 200;
 
   const conversationItems = React.useMemo(() => {
@@ -230,6 +233,45 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                       })}
                     </div>
                   ) : null}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      <div className="mb-4">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold text-white/80">Artifacts</div>
+          <div className="text-[11px] text-white/50">
+            {sessionArtifacts.length > 0 ? `${sessionArtifacts.length} items` : "none"}
+          </div>
+        </div>
+        {sessionArtifacts.length === 0 ? (
+          <div className="rounded-md border border-white/10 bg-black/20 px-3 py-3 text-xs text-white/60">
+            No artifacts captured yet.
+          </div>
+        ) : (
+          <div className="grid gap-2">
+            {sessionArtifacts.slice(0, 20).map((row, idx) => {
+              const data = row?.data ?? {};
+              const artifact = data?.artifact ?? row?.artifact ?? row;
+              const key =
+                typeof artifact?.path === "string"
+                  ? `artifact:${artifact.path}`
+                  : typeof artifact?.resolved_path === "string"
+                    ? `artifact:${artifact.resolved_path}`
+                    : `artifact:${idx}`;
+              return (
+                <div key={key} className="rounded-md border border-white/10 bg-black/20 p-3">
+                  <ArtifactView
+                    baseUrl={props.effectiveBase}
+                    yolo={props.yolo}
+                    artifact={artifact}
+                    allowAutoplay={props.allowAutoplay}
+                    sessionId={props.sessionId}
+                    client={props.client}
+                    daemonAuth={props.daemonAuth}
+                  />
                 </div>
               );
             })}
