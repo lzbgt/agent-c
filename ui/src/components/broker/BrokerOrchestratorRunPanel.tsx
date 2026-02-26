@@ -563,20 +563,16 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
     },
     [revisionFilterLower],
   );
-  const filteredGoalRevisions =
-    revisionFilterScope === "role"
-      ? []
-      : revisionFilterLower
-        ? goalRevisions.filter((entry) => revisionMatches(entry))
-        : goalRevisions;
-  const filteredRoleRevisions =
-    revisionFilterScope === "goal"
-      ? []
-      : revisionFilterLower
-        ? rolePlanRevisions.filter((entry) => revisionMatches(entry))
-        : rolePlanRevisions;
+  const scopedGoalRevisions = revisionFilterScope === "role" ? [] : goalRevisions;
+  const scopedRoleRevisions = revisionFilterScope === "goal" ? [] : rolePlanRevisions;
+  const filteredGoalRevisions = revisionFilterLower
+    ? scopedGoalRevisions.filter((entry) => revisionMatches(entry))
+    : scopedGoalRevisions;
+  const filteredRoleRevisions = revisionFilterLower
+    ? scopedRoleRevisions.filter((entry) => revisionMatches(entry))
+    : scopedRoleRevisions;
   const totalFiltered = filteredGoalRevisions.length + filteredRoleRevisions.length;
-  const totalRevisions = goalRevisions.length + rolePlanRevisions.length;
+  const totalRevisions = scopedGoalRevisions.length + scopedRoleRevisions.length;
   const revisionEvents = React.useMemo(() => {
     const rows = Array.isArray(props.events) ? props.events : [];
     if (rows.length === 0) return [];
