@@ -189,6 +189,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
 
+- [x] W=10 — Orchestrator goal/role plan versioning: persist revision history in run meta and emit SSE events for replay.
+  - 2026-02-26: broker stores `goal_versions` + `role_plan_versions` with version counters and emits
+    `orchestrator_goal_revision` / `orchestrator_role_plan_revision` events; UI event filter updated.
 - [ ] W=10 — Populate OpenRouter streaming pins with a verified key, commit `ref/openrouter/streaming_pins.json`, and tighten smoke tests to prefer pins (unblocks streaming stability work). Current key returns 401 “User not found” on chat preflight; verify key and OpenRouter headers.
   - 2026-02-19 check: key from `~/.env` returns 401 “User not found”; `OPENROUTER_HTTP_REFERER`/`OPENROUTER_X_TITLE` not set.
   - 2026-02-19 check: setting `OPENROUTER_HTTP_REFERER=http://localhost` and `OPENROUTER_X_TITLE=agentd` still returns 401 “User not found”.

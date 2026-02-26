@@ -100,6 +100,8 @@ Status: draft (rolling)
 - Orchestrator run responses include lease status (heartbeat age + timeout) for stale detection.
 - Orchestrator updates/heartbeats can include `expected_owner` to avoid split-brain writers.
 - Run detail UI surfaces lease status, heartbeat age, and current owner for takeover decisions.
+- Orchestrator run meta stores goal/role plan revision history (`goal_versions`, `role_plan_versions`)
+  with version counters + updated timestamps for audit/replay.
 - SSE is used to refresh lists; durable state is always in DB.
 - Team runs persist `member_sessions` so moderators can target specific members
   after reload (used by team-run moderator broadcasts).
@@ -114,6 +116,14 @@ Required for UI refresh:
 - `team_run_status` (status transitions)
 - `team_quorum_request` / `team_quorum_result` (approvals)
 - `team_runtime_members_updated` (runtime member changes)
+
+Orchestrator refresh + revision events:
+
+- `orchestrator_run_created` / `orchestrator_run_updated` / `orchestrator_run_status`
+- `orchestrator_run_heartbeat` (lease/owner visibility)
+- `orchestrator_goal_revision` (goal/goal_contract version updates)
+- `orchestrator_role_plan_revision` (role_plan_snapshot version updates)
+- `orchestrator_spawn_requested` / `orchestrator_spawn_updated` / `orchestrator_spawn_status`
 
 ## Security + access
 
