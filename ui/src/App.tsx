@@ -2562,8 +2562,8 @@ export default function App() {
             <div
               className={`mt-4 grid gap-4 ${
                 advancedPage
-                  ? "lg:grid-cols-[220px_minmax(0,1fr)_minmax(320px,40vw)]"
-                  : "lg:grid-cols-[220px_minmax(0,1fr)]"
+                  ? "lg:grid-cols-[minmax(180px,16vw)_minmax(0,1fr)_minmax(360px,48vw)]"
+                  : "lg:grid-cols-[minmax(180px,16vw)_minmax(0,1fr)]"
               }`}
             >
               <aside className="rounded-lg border border-white/10 bg-black/20 p-3 lg:sticky lg:top-4 lg:self-start">
