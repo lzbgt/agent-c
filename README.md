@@ -98,7 +98,8 @@ Alternatives:
 - No Docker: `tools/verify_mac_local_stack.sh` (agentd + WebUI only).
 - Docker runs but builds blocked: `tools/verify_mac_full_stack_host.sh`.
 - No Docker/Keycloak, local Postgres: `tools/verify_mac_full_stack_local_postgres.sh`.
-- One-command devstack: `tools/devstack_agent.sh` (stop with `tools/devstack_agent_down.sh`).
+- One-command devstack: `tools/devstack_agent.sh` (stop with `tools/devstack_agent_down.sh`, add `--wipe-volumes` to reset Keycloak).
+- Always-on devstack: `tools/devstack_agent_ensure.sh` (starts it if missing and keeps tokens valid by preserving volumes).
 
 Tip: local verify supports provider tests via `MAC_LOCAL_PROVIDER_TEST=1` (uses `AGENTD_TOOLS=basic` by default; override with `AGENTD_TOOLS=basic|host|none`).
 

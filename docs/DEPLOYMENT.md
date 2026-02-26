@@ -454,7 +454,8 @@ Bring up agentd + broker + connector + WebUI on the host (Postgres + Keycloak vi
 - `tools/devstack_agent.sh`
 
 Stop the stack:
-- `tools/devstack_agent_down.sh`
+- `tools/devstack_agent_down.sh` (use `--wipe-volumes` to reset Keycloak and invalidate existing tokens)
+- `tools/devstack_agent_ensure.sh` (ensure devstack is running for testing)
   - Edit that file to adjust broker URL, agent id, or pass-through daemon token for local dev.
 - WebUI serving in `tools/devstack_agent.sh` and `tools/verify_mac_full_stack_host.sh` uses `python -m http.server`.
   If no Python is available, the scripts skip WebUI serve and continue.

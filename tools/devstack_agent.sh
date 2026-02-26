@@ -330,6 +330,8 @@ for idx in "${!AGENT_IDS[@]}"; do
       --port "${port}" \
       --auth-token "${AGENTD_AUTH_TOKEN}" \
       --tools "${AGENTD_TOOLS}" \
+      --host-policy full \
+      --yolo \
       --state-dir "${agent_state}" \
       --db-path "${agent_state}/agentd.db" \
       --cors-origin "http://127.0.0.1:${WEBUI_PORT}" \
@@ -342,6 +344,8 @@ for idx in "${!AGENT_IDS[@]}"; do
       --port "${port}" \
       --auth-token "${AGENTD_AUTH_TOKEN}" \
       --tools "${AGENTD_TOOLS}" \
+      --host-policy full \
+      --yolo \
       --state-dir "${agent_state}" \
       --db-path "${agent_state}/agentd.db" \
       --cors-origin "http://127.0.0.1:${WEBUI_PORT}" \

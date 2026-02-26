@@ -8,19 +8,25 @@ source "${ROOT}/tools/lib/python_helpers.sh" 2>/dev/null || true
 
 usage() {
   cat <<'USAGE'
-Usage: tools/devstack_agent_down.sh [--state <path>]
+Usage: tools/devstack_agent_down.sh [--state <path>] [--wipe-volumes]
 
 Stops a running devstack started by tools/devstack_agent.sh.
+By default, container volumes are preserved so Keycloak tokens remain valid.
 USAGE
 }
 
 STATE="${ROOT}/out/devstack_state.json"
+WIPE_VOLUMES=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --state)
       STATE="$2"
       shift 2
+      ;;
+    --wipe-volumes)
+      WIPE_VOLUMES=1
+      shift
       ;;
     -h|--help)
       usage
@@ -113,7 +119,11 @@ if [[ -n "${COMPOSE_FILE}" && -n "${COMPOSE_PROJECT}" ]]; then
     POSTGRES_PUBLISHED_PORT="${POSTGRES_PORT}" \
     KEYCLOAK_PUBLISHED_PORT="${KEYCLOAK_PORT}" \
     COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT}" \
-    docker compose -f "${COMPOSE_FILE}" down -v --remove-orphans >/dev/null 2>&1 || true
+    if [[ "${WIPE_VOLUMES}" -eq 1 ]]; then
+      docker compose -f "${COMPOSE_FILE}" down -v --remove-orphans >/dev/null 2>&1 || true
+    else
+      docker compose -f "${COMPOSE_FILE}" down --remove-orphans >/dev/null 2>&1 || true
+    fi
   else
     echo "devstack stopped (docker not available for compose teardown)" >&2
   fi
