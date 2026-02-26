@@ -890,9 +890,27 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                       </button>
                     ) : null}
                     {teamPauseUpdates && teamPendingCountRef.current > 0 ? (
-                      <span className="rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-amber-100">
-                        +{teamPendingCountRef.current} new
-                      </span>
+                      <button
+                        className="rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-amber-100 hover:bg-amber-500/20"
+                        type="button"
+                        onClick={() => {
+                          setTeamPauseUpdates(false);
+                          teamPausedItemsRef.current = teamFilteredItems;
+                          teamPendingCountRef.current = 0;
+                          const items = teamFilteredItems;
+                          if (items.length === 0) return;
+                          const entry = items[items.length - 1];
+                          const ts = typeof entry?.ts === "number" ? entry.ts : 0;
+                          if (!ts) return;
+                          const el = document.getElementById(`team-msg-${ts}`);
+                          if (el) {
+                            el.scrollIntoView({ behavior: "smooth", block: "center" });
+                          }
+                        }}
+                        title="Resume and jump to latest"
+                      >
+                        +{teamPendingCountRef.current} new · jump
+                      </button>
                     ) : null}
                   </div>
                 ) : null}
