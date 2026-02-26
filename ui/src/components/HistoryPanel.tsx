@@ -695,6 +695,24 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                   >
                     Filters
                   </button>
+                  {teamSearch.trim().length > 0 ? (
+                    <>
+                      <button
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                        type="button"
+                        onClick={() => jumpToMatch("first")}
+                      >
+                        First match
+                      </button>
+                      <button
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                        type="button"
+                        onClick={() => jumpToMatch("last")}
+                      >
+                        Last match
+                      </button>
+                    </>
+                  ) : null}
                   <button
                     className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
                     type="button"
