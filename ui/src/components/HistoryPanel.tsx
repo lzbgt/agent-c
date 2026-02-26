@@ -145,6 +145,9 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     }
     return Array.from(roles.values()).slice(0, 6);
   }, [teamConversationItems]);
+  const filtersActive = Boolean(
+    teamSearch.trim().length > 0 || teamMutedAgents.length > 0 || showTeamSystemMessages || !showTeamRunMarkers,
+  );
 
   const teamTimelineItems = React.useMemo(() => {
     const items = teamConversationItems
@@ -492,6 +495,11 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 onChange={(e) => setTeamSearch(e.target.value)}
                 placeholder="Filter team chat…"
               />
+              {filtersActive ? (
+                <span className="rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-100">
+                  filters active
+                </span>
+              ) : null}
               <div className="flex flex-wrap items-center gap-1">
                 {["user", "assistant", "tool"].map((chip) => (
                   <button
@@ -558,6 +566,20 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                   onClick={() => setTeamSearch("")}
                 >
                   Clear filter
+                </button>
+              ) : null}
+              {filtersActive ? (
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                  type="button"
+                  onClick={() => {
+                    setTeamSearch("");
+                    setTeamMutedAgents([]);
+                    setShowTeamSystemMessages(false);
+                    setShowTeamRunMarkers(true);
+                  }}
+                >
+                  Clear all
                 </button>
               ) : null}
               <button
