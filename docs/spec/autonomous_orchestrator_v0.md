@@ -163,6 +163,12 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   retire_runtime_members: true|false  # default false
   retire_runtime_member_status: "paused"|"active"  # default paused
   completion_mode: "on_success"|"on_failure"|"never"  # default on_success
+  goal_version: number                # latest goal revision version (optional)
+  goal_versions: [ { ... } ]           # goal revision history (optional, bounded)
+  goal_updated_unix_ms: integer        # last goal revision update timestamp
+  role_plan_version: number            # latest role plan revision version (optional)
+  role_plan_versions: [ { ... } ]      # role plan revision history (optional, bounded)
+  role_plan_updated_unix_ms: integer   # last role plan revision update timestamp
   progress_every_ms: number           # emit goal_progress every N ms (optional)
   drift_after_ms: number              # emit goal_drift after N ms (optional)
   drift_action: "none"|"guidance"|"pause"|"cancel"|"replan"  # optional drift response
