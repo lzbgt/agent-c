@@ -1127,12 +1127,12 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                       {shortCommand ? <span className="text-white/40">· {shortCommand}</span> : null}
                     </div>
                     {command ? (
-                      <details className="mt-2">
-                        <summary className="cursor-pointer text-[11px] text-white/60">Command</summary>
+                      <div className="mt-2">
+                        <div className="text-[11px] text-white/60">Command</div>
                         <pre className="mt-2 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/20 p-2 font-mono text-[11px] leading-relaxed text-white/90">
                           {command}
                         </pre>
-                      </details>
+                      </div>
                     ) : null}
                     {resultText ? (
                       <details className="mt-2" open>
@@ -1152,7 +1152,14 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                         </pre>
                       </details>
                     ) : null}
-                    {argsJson ? (
+                    {argsJson && !command ? (
+                      <details className="mt-2" open>
+                        <summary className="cursor-pointer text-[11px] text-white/60">Arguments</summary>
+                        <pre className="mt-2 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90">
+                          {formatJson(argsJson)}
+                        </pre>
+                      </details>
+                    ) : argsJson ? (
                       <details className="mt-2">
                         <summary className="cursor-pointer text-[11px] text-white/60">Arguments (collapsed)</summary>
                         <pre className="mt-2 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90">
