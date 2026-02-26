@@ -23,6 +23,17 @@ export type BrokerTeamGuidancePanelProps = {
 const normalizeGuidanceList = (rows?: BrokerGuidanceEvent[]) =>
   Array.isArray(rows) ? rows.filter((row) => row && typeof row === "object") : [];
 
+const formatDuration = (ms?: number | null) => {
+  if (!ms || !Number.isFinite(ms)) return "";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const sec = ms / 1000;
+  if (sec < 60) return `${sec.toFixed(1)}s`;
+  const min = sec / 60;
+  if (min < 60) return `${min.toFixed(1)}m`;
+  const hr = min / 60;
+  return `${hr.toFixed(1)}h`;
+};
+
 export default function BrokerTeamGuidancePanel(props: BrokerTeamGuidancePanelProps) {
   const teamIdTrimmed = String(props.teamId || "").trim();
   const canQuery = props.canQuery && teamIdTrimmed.length > 0;
@@ -51,6 +62,7 @@ export default function BrokerTeamGuidancePanel(props: BrokerTeamGuidancePanelPr
   const [receiptsBusyId, setReceiptsBusyId] = React.useState<string>("");
   const [receiptsErrorByGuidanceId, setReceiptsErrorByGuidanceId] = React.useState<Record<string, string>>({});
   const [receiptsOpenByGuidanceId, setReceiptsOpenByGuidanceId] = React.useState<Record<string, boolean>>({});
+  const [briefingOpenByGuidanceId, setBriefingOpenByGuidanceId] = React.useState<Record<string, boolean>>({});
 
   const guidanceEvents = React.useMemo(() => {
     const rows = Array.isArray(props.events) ? props.events : [];
@@ -361,6 +373,10 @@ export default function BrokerTeamGuidancePanel(props: BrokerTeamGuidancePanelPr
           <div className="space-y-2">
             {guidanceRows.map((item, idx) => {
               const gid = String(item.guidance_id || "");
+              const payload = item.payload && typeof item.payload === "object" ? item.payload : null;
+              const briefing =
+                payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as any).briefing : null;
+              const briefingOpen = !!briefingOpenByGuidanceId[gid];
               const receipts = receiptsByGuidanceId[gid] ?? [];
               const receiptsOpen = !!receiptsOpenByGuidanceId[gid];
               const receiptsError = receiptsErrorByGuidanceId[gid];
@@ -380,6 +396,17 @@ export default function BrokerTeamGuidancePanel(props: BrokerTeamGuidancePanelPr
                       {item.created_unix_ms ? <span>{fmtTs(item.created_unix_ms)}</span> : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                      {briefing && gid ? (
+                        <button
+                          className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                          type="button"
+                          onClick={() =>
+                            setBriefingOpenByGuidanceId((prev) => ({ ...prev, [gid]: !briefingOpen }))
+                          }
+                        >
+                          {briefingOpen ? "Hide briefing" : "Briefing"}
+                        </button>
+                      ) : null}
                       <button
                         className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
                         type="button"
@@ -415,6 +442,63 @@ export default function BrokerTeamGuidancePanel(props: BrokerTeamGuidancePanelPr
                     {item.acked_by ? ` · acked by ${item.acked_by}` : null}
                     {item.acked_unix_ms ? ` · ${fmtTs(item.acked_unix_ms)}` : null}
                   </div>
+                  {briefing && briefingOpen ? (
+                    <div className="mt-2 space-y-2 rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70">
+                      <div className="text-[11px] font-semibold text-white/70">Re-entry briefing</div>
+                      {briefing.goal ? (
+                        <div>
+                          <div className="text-[10px] uppercase text-white/50">Goal</div>
+                          <div className="text-[12px] text-white/80">{String(briefing.goal)}</div>
+                        </div>
+                      ) : null}
+                      {briefing.proposed && typeof briefing.proposed === "object" ? (
+                        <div>
+                          <div className="text-[10px] uppercase text-white/50">Proposed</div>
+                          <pre className="mt-1 max-h-40 overflow-auto rounded-md border border-white/10 bg-black/40 p-2 text-[11px] text-white/70">
+                            {JSON.stringify(briefing.proposed, null, 2)}
+                          </pre>
+                        </div>
+                      ) : null}
+                      {briefing.drift && typeof briefing.drift === "object" ? (
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+                          {Number.isFinite(briefing.drift.elapsed_ms) ? (
+                            <span>elapsed {formatDuration(Number(briefing.drift.elapsed_ms))}</span>
+                          ) : null}
+                          {Number.isFinite(briefing.drift.threshold_ms) ? (
+                            <span>threshold {formatDuration(Number(briefing.drift.threshold_ms))}</span>
+                          ) : null}
+                          {briefing.drift.detected_unix_ms ? (
+                            <span>{fmtTs(Number(briefing.drift.detected_unix_ms))}</span>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {briefing.team_run_status || briefing.team_run_id ? (
+                        <div className="text-[11px] text-white/60">
+                          {briefing.team_run_id ? `run ${briefing.team_run_id}` : null}
+                          {briefing.team_run_status ? ` · ${briefing.team_run_status}` : null}
+                          {Number.isFinite(briefing.team_run_elapsed_ms)
+                            ? ` · elapsed ${formatDuration(Number(briefing.team_run_elapsed_ms))}`
+                            : null}
+                        </div>
+                      ) : null}
+                      {briefing.goal_contract && typeof briefing.goal_contract === "object" ? (
+                        <div>
+                          <div className="text-[10px] uppercase text-white/50">Goal contract</div>
+                          <pre className="mt-1 max-h-40 overflow-auto rounded-md border border-white/10 bg-black/40 p-2 text-[11px] text-white/70">
+                            {JSON.stringify(briefing.goal_contract, null, 2)}
+                          </pre>
+                        </div>
+                      ) : null}
+                      {briefing.role_plan_snapshot && typeof briefing.role_plan_snapshot === "object" ? (
+                        <div>
+                          <div className="text-[10px] uppercase text-white/50">Role plan</div>
+                          <pre className="mt-1 max-h-40 overflow-auto rounded-md border border-white/10 bg-black/40 p-2 text-[11px] text-white/70">
+                            {JSON.stringify(briefing.role_plan_snapshot, null, 2)}
+                          </pre>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {receiptsOpen ? (
                     <div className="mt-2 rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70">
                       <div className="flex flex-wrap items-center justify-between gap-2">
