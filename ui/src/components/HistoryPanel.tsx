@@ -609,6 +609,27 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 </span>
               ) : null}
             </div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <div className="rounded-md border border-white/10 bg-black/20 px-2 py-1">
+                <div className="text-[10px] uppercase tracking-wide text-white/40">Run status</div>
+                <div className="mt-1 text-[11px] text-white/70">
+                  {teamRunId ? (
+                    <>
+                      <span className="text-white/80">Run {teamRunId}</span>
+                      {teamRunStatus ? <span className="text-white/50"> · {teamRunStatus}</span> : null}
+                    </>
+                  ) : (
+                    <span className="text-white/50">No active run</span>
+                  )}
+                </div>
+              </div>
+              <div className="rounded-md border border-white/10 bg-black/20 px-2 py-1">
+                <div className="text-[10px] uppercase tracking-wide text-white/40">Agents</div>
+                <div className="mt-1 text-[11px] text-white/70">
+                  {teamAgentSummary.length > 0 ? `${teamAgentSummary.length} active` : "No agent activity yet"}
+                </div>
+              </div>
+            </div>
             {teamAgentSummary.length > 0 ? (
               <div className="mt-2 grid gap-2 md:grid-cols-2">
                 {teamAgentSummary.slice(0, showAllTeamAgents ? teamAgentSummary.length : 4).map((agent) => (
