@@ -104,7 +104,7 @@ const runWatchMapsEqual = (a: RunWatchByScope, b: RunWatchByScope): boolean => {
 
 export default function App() {
   const ui = useUiSettings();
-  const { connection, run: runSettings, client: clientSettings, brokerPanelOpen, setBrokerPanelOpen } = ui;
+  const { connection, run: runSettings, client: clientSettings } = ui;
   const { effectiveBase, effectiveSseBase, daemonAuth, authKey } = connection;
   const profileName = connection.profileName;
   const profileId = connection.activeProfileId;
@@ -236,11 +236,6 @@ export default function App() {
     allowUnsafePageEval,
   } = clientSettings;
   const [traceLookupId, setTraceLookupId] = useLocalStorageState("agentui.traceLookupId", "");
-  const [traceLookupOpen, setTraceLookupOpen] = useLocalStorageState("agentui.traceLookupOpen", false);
-  const [memoryPanelOpen, setMemoryPanelOpen] = useLocalStorageState("agentui.memoryPanelOpen", false);
-  const [runDiffPanelOpen, setRunDiffPanelOpen] = useLocalStorageState("agentui.runDiffPanelOpen", false);
-  const [approvalPanelOpen, setApprovalPanelOpen] = useLocalStorageState("agentui.approvalPanelOpen", false);
-  const [workflowPanelOpen, setWorkflowPanelOpen] = useLocalStorageState("agentui.workflowPanelOpen", false);
   // Keep prompts separate so an active async run does not overwrite the "last completed" view.
   const [lastRunPrompt, setLastRunPrompt] = React.useState("");
   const [lastCompletedPrompt, setLastCompletedPrompt] = React.useState("");
@@ -336,6 +331,28 @@ export default function App() {
     const sid = typeof m?.[sessionScopeKey] === "string" ? String(m[sessionScopeKey]) : "";
     return sid.trim().length > 0 ? sid.trim() : "default";
   }, [sessionByScopeJson, sessionScopeKey]);
+
+  const [advancedPage, setAdvancedPage] = useLocalStorageState<string>(
+    `agentui.advancedPage:${sessionScopeKey}`,
+    "conversation",
+  );
+  const advancedPages = React.useMemo(() => {
+    const pages = [
+      { id: "conversation", label: "Conversation" },
+      { id: "scene", label: "Scene" },
+      { id: "memory", label: "Memory" },
+      { id: "trace", label: "Trace" },
+      { id: "workflows", label: "Workflows" },
+      { id: "approvals", label: "Approvals" },
+      { id: "run-diff", label: "Run Diff" },
+    ];
+    if (connectionMode === "broker") pages.push({ id: "broker", label: "Broker Console" });
+    return pages;
+  }, [connectionMode]);
+  const advancedPageIds = React.useMemo(() => new Set(advancedPages.map((p) => p.id)), [advancedPages]);
+  React.useEffect(() => {
+    if (!advancedPageIds.has(advancedPage)) setAdvancedPage("conversation");
+  }, [advancedPage, advancedPageIds, setAdvancedPage]);
 
   const historyUiKey = React.useMemo(() => {
     const sid = String(sessionId || "").trim();
@@ -1924,6 +1941,7 @@ export default function App() {
                 className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
                 onClick={() => {
                   setSimpleMode(false);
+                  setAdvancedPage("conversation");
                   setShowSettings(true);
                 }}
                 type="button"
@@ -2014,83 +2032,164 @@ export default function App() {
         className="h-[calc(100vh-var(--topbar-h))] overflow-y-auto px-3 py-3 pb-[var(--promptbar-h)]"
       >
         <div className="mx-auto max-w-7xl">
-          <div className="min-h-0">
-            {!simpleMode ? (
-              <div className="h-[calc(100vh-var(--topbar-h)-var(--promptbar-h)-24px)] min-h-0">
-                <SceneView
-                  baseUrl={effectiveBase}
-                  yolo={yolo}
-                  allowAutoplay={allowAutoplay}
-                  client={client}
-                  daemonAuth={daemonAuth}
-                  sessionId={sessionId}
-                  entities={sceneEntities}
-                  className="h-full"
-                />
-              </div>
-            ) : null}
-          </div>
-
-          <div className="mt-4">
-            {!simpleMode ? (
-              <>
-                <TraceLookupPanel
-                  open={!!traceLookupOpen}
-                  onToggle={(open) => setTraceLookupOpen(open)}
-                  traceId={traceLookupId}
-                  onTraceIdChange={(next) => setTraceLookupId(next)}
-                  onLoad={(id) => void traceLookup.mutateAsync(id).catch(() => {})}
-                  onClear={() => {
-                    setTraceLookupError(null);
-                    setTraceLookupAgentd(null);
-                    setTraceLookupBroker(null);
-                  }}
-                  loading={traceLookup.isPending}
-                  error={traceLookupError}
-                  connectionMode={connectionMode}
-                  baseUrl={effectiveBase}
-                  yolo={yolo}
-                  agentdTrace={traceLookupAgentd}
-                  brokerTrace={traceLookupBroker}
-                />
-                <RunDiffPanel
-                  open={!!runDiffPanelOpen}
-                  onToggle={(open) => setRunDiffPanelOpen(open)}
-                  baseUrl={effectiveBase}
-                  auth={daemonAuth}
-                />
-                <MemoryPanel
-                  open={!!memoryPanelOpen}
-                  onToggle={(open) => setMemoryPanelOpen(open)}
-                  baseUrl={effectiveBase}
-                  auth={daemonAuth}
-                />
-                <ApprovalQueuePanel
-                  open={!!approvalPanelOpen}
-                  onToggle={(open) => setApprovalPanelOpen(open)}
-                  baseUrl={effectiveBase}
-                  auth={daemonAuth}
-                />
-                <WorkflowPanel
-                  open={!!workflowPanelOpen}
-                  onToggle={(open) => setWorkflowPanelOpen(open)}
-                  baseUrl={effectiveBase}
-                  auth={daemonAuth}
-                  authKey={authKey}
-                  clientId={client.id}
-                  workflowDefaults={workflowDefaults}
-                  workflowTargets={workflowTargets}
-                  workflowBearerEnv={workflowBearerEnv}
-                  onTraceIdClick={(traceId) => {
-                    setTraceLookupId(traceId);
-                    setTraceLookupOpen(true);
-                    void traceLookup.mutateAsync(traceId).catch(() => {});
-                  }}
-                />
-                {connectionMode === "broker" ? (
+          {simpleMode ? (
+            <div className="mt-4">
+              <HistoryPanel
+                entries={historyEntriesDesc}
+                showAllEntries={showAllHistoryEntries}
+                setShowAllEntries={setShowAllHistoryEntries}
+                showMessages={showHistoryMessages}
+                setShowMessages={setShowHistoryMessages}
+                historyExpandedByKey={historyExpandedByKey}
+                setHistoryExpandedByKey={setHistoryExpandedByKey}
+                dbMessages={dbMessages.data?.ok && Array.isArray(dbMessages.data?.messages) ? dbMessages.data.messages : []}
+                dbRuns={dbRuns.data?.ok && Array.isArray(dbRuns.data?.runs) ? dbRuns.data.runs : []}
+                dbRunDetailsById={dbRunDetailsById}
+                sessionArtifacts={
+                  sessionArtifacts.data?.ok && Array.isArray(sessionArtifacts.data?.artifacts)
+                    ? sessionArtifacts.data.artifacts
+                    : []
+                }
+                effectiveBase={effectiveBase}
+                yolo={yolo}
+                sessionId={sessionId}
+                client={client}
+                daemonAuth={daemonAuth}
+                showDebugInConversation={showDebugInConversation}
+                allowAutoplay={allowAutoplay}
+                allowClientRpcs={allowClientRpcs}
+                allowClientEffects={allowClientEffects}
+                allowUnsafePageEval={allowUnsafePageEval}
+                sceneEntities={sceneEntities}
+                onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
+                onTraceIdClick={(traceId) => {
+                  setTraceLookupId(traceId);
+                  setAdvancedPage("trace");
+                  void traceLookup.mutateAsync(traceId).catch(() => {});
+                }}
+              />
+            </div>
+          ) : (
+            <div className="mt-4 flex flex-col gap-4 lg:flex-row">
+              <aside className="rounded-lg border border-white/10 bg-black/20 p-3 lg:w-56">
+                <div className="text-[11px] font-semibold text-white/60">Advanced</div>
+                <div className="mt-2 grid gap-1">
+                  {advancedPages.map((page) => {
+                    const active = page.id === advancedPage;
+                    return (
+                      <button
+                        key={page.id}
+                        className={`rounded-md px-3 py-2 text-left text-sm ${
+                          active ? "bg-indigo-500/20 text-indigo-100" : "bg-black/20 text-white/70 hover:bg-black/30"
+                        }`}
+                        type="button"
+                        onClick={() => setAdvancedPage(page.id)}
+                      >
+                        {page.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </aside>
+              <section className="min-w-0 flex-1">
+                {advancedPage === "scene" ? (
+                  <div className="h-[calc(100vh-var(--topbar-h)-var(--promptbar-h)-24px)] min-h-0">
+                    <SceneView
+                      baseUrl={effectiveBase}
+                      yolo={yolo}
+                      allowAutoplay={allowAutoplay}
+                      client={client}
+                      daemonAuth={daemonAuth}
+                      sessionId={sessionId}
+                      entities={sceneEntities}
+                      className="h-full"
+                    />
+                  </div>
+                ) : advancedPage === "trace" ? (
+                  <div className="mt-2">
+                    <TraceLookupPanel
+                      open={true}
+                      onToggle={(open) => {
+                        if (!open) setAdvancedPage("conversation");
+                      }}
+                      traceId={traceLookupId}
+                      onTraceIdChange={(next) => setTraceLookupId(next)}
+                      onLoad={(id) => void traceLookup.mutateAsync(id).catch(() => {})}
+                      onClear={() => {
+                        setTraceLookupError(null);
+                        setTraceLookupAgentd(null);
+                        setTraceLookupBroker(null);
+                      }}
+                      loading={traceLookup.isPending}
+                      error={traceLookupError}
+                      connectionMode={connectionMode}
+                      baseUrl={effectiveBase}
+                      yolo={yolo}
+                      agentdTrace={traceLookupAgentd}
+                      brokerTrace={traceLookupBroker}
+                    />
+                  </div>
+                ) : advancedPage === "run-diff" ? (
+                  <div className="mt-2">
+                    <RunDiffPanel
+                      open={true}
+                      onToggle={(open) => {
+                        if (!open) setAdvancedPage("conversation");
+                      }}
+                      baseUrl={effectiveBase}
+                      auth={daemonAuth}
+                    />
+                  </div>
+                ) : advancedPage === "memory" ? (
+                  <div className="mt-2">
+                    <MemoryPanel
+                      open={true}
+                      onToggle={(open) => {
+                        if (!open) setAdvancedPage("conversation");
+                      }}
+                      baseUrl={effectiveBase}
+                      auth={daemonAuth}
+                    />
+                  </div>
+                ) : advancedPage === "approvals" ? (
+                  <div className="mt-2">
+                    <ApprovalQueuePanel
+                      open={true}
+                      onToggle={(open) => {
+                        if (!open) setAdvancedPage("conversation");
+                      }}
+                      baseUrl={effectiveBase}
+                      auth={daemonAuth}
+                    />
+                  </div>
+                ) : advancedPage === "workflows" ? (
+                  <div className="mt-2">
+                    <WorkflowPanel
+                      open={true}
+                      onToggle={(open) => {
+                        if (!open) setAdvancedPage("conversation");
+                      }}
+                      baseUrl={effectiveBase}
+                      auth={daemonAuth}
+                      authKey={authKey}
+                      clientId={client.id}
+                      workflowDefaults={workflowDefaults}
+                      workflowTargets={workflowTargets}
+                      workflowBearerEnv={workflowBearerEnv}
+                      onTraceIdClick={(traceId) => {
+                        setTraceLookupId(traceId);
+                        setAdvancedPage("trace");
+                        void traceLookup.mutateAsync(traceId).catch(() => {});
+                      }}
+                    />
+                  </div>
+                ) : advancedPage === "broker" && connectionMode === "broker" ? (
+                  <div className="mt-2">
                     <BrokerPanel
-                      open={!!brokerPanelOpen}
-                      onToggle={(open) => setBrokerPanelOpen(open)}
+                      open={true}
+                      onToggle={(open) => {
+                        if (!open) setAdvancedPage("conversation");
+                      }}
                       brokerBase={connection.brokerBase}
                       brokerAgentId={connection.brokerAgentId}
                       setBrokerAgentId={connection.setBrokerAgentId}
@@ -2098,44 +2197,48 @@ export default function App() {
                       authKey={authKey}
                       clientId={client.id}
                     />
-                ) : null}
-              </>
-            ) : null}
-            <HistoryPanel
-              entries={historyEntriesDesc}
-              showAllEntries={showAllHistoryEntries}
-              setShowAllEntries={setShowAllHistoryEntries}
-              showMessages={showHistoryMessages}
-              setShowMessages={setShowHistoryMessages}
-              historyExpandedByKey={historyExpandedByKey}
-              setHistoryExpandedByKey={setHistoryExpandedByKey}
-              dbMessages={dbMessages.data?.ok && Array.isArray(dbMessages.data?.messages) ? dbMessages.data.messages : []}
-              dbRuns={dbRuns.data?.ok && Array.isArray(dbRuns.data?.runs) ? dbRuns.data.runs : []}
-              dbRunDetailsById={dbRunDetailsById}
-              sessionArtifacts={
-                sessionArtifacts.data?.ok && Array.isArray(sessionArtifacts.data?.artifacts)
-                  ? sessionArtifacts.data.artifacts
-                  : []
-              }
-              effectiveBase={effectiveBase}
-              yolo={yolo}
-              sessionId={sessionId}
-              client={client}
-              daemonAuth={daemonAuth}
-              showDebugInConversation={showDebugInConversation}
-              allowAutoplay={allowAutoplay}
-              allowClientRpcs={allowClientRpcs}
-              allowClientEffects={allowClientEffects}
-              allowUnsafePageEval={allowUnsafePageEval}
-              sceneEntities={sceneEntities}
-              onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
-              onTraceIdClick={(traceId) => {
-                setTraceLookupId(traceId);
-                setTraceLookupOpen(true);
-                void traceLookup.mutateAsync(traceId).catch(() => {});
-              }}
-            />
-          </div>
+                  </div>
+                ) : (
+                  <div className="mt-2">
+                    <HistoryPanel
+                      entries={historyEntriesDesc}
+                      showAllEntries={showAllHistoryEntries}
+                      setShowAllEntries={setShowAllHistoryEntries}
+                      showMessages={showHistoryMessages}
+                      setShowMessages={setShowHistoryMessages}
+                      historyExpandedByKey={historyExpandedByKey}
+                      setHistoryExpandedByKey={setHistoryExpandedByKey}
+                      dbMessages={dbMessages.data?.ok && Array.isArray(dbMessages.data?.messages) ? dbMessages.data.messages : []}
+                      dbRuns={dbRuns.data?.ok && Array.isArray(dbRuns.data?.runs) ? dbRuns.data.runs : []}
+                      dbRunDetailsById={dbRunDetailsById}
+                      sessionArtifacts={
+                        sessionArtifacts.data?.ok && Array.isArray(sessionArtifacts.data?.artifacts)
+                          ? sessionArtifacts.data.artifacts
+                          : []
+                      }
+                      effectiveBase={effectiveBase}
+                      yolo={yolo}
+                      sessionId={sessionId}
+                      client={client}
+                      daemonAuth={daemonAuth}
+                      showDebugInConversation={showDebugInConversation}
+                      allowAutoplay={allowAutoplay}
+                      allowClientRpcs={allowClientRpcs}
+                      allowClientEffects={allowClientEffects}
+                      allowUnsafePageEval={allowUnsafePageEval}
+                      sceneEntities={sceneEntities}
+                      onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
+                      onTraceIdClick={(traceId) => {
+                        setTraceLookupId(traceId);
+                        setAdvancedPage("trace");
+                        void traceLookup.mutateAsync(traceId).catch(() => {});
+                      }}
+                    />
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
         </div>
       </main>
 
