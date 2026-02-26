@@ -70,6 +70,7 @@ tool = str(obj.get("tool_model") or "").strip()
 assistant_count = len(obj.get("ok_models_assistant") or [])
 tool_count = len(obj.get("ok_models_tool") or [])
 both_count = len(obj.get("ok_models_both") or [])
+has_any = bool(assistant or tool or assistant_count or tool_count or both_count)
 if assistant:
     print(f"pins_assistant_model={assistant}")
 if tool:
@@ -80,6 +81,7 @@ if tool_count:
     print(f"pins_ok_models_tool={tool_count}")
 if both_count:
     print(f"pins_ok_models_both={both_count}")
+print(f"pins_empty={'0' if has_any else '1'}")
 PY
 fi
 
