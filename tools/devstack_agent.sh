@@ -388,36 +388,6 @@ done
 LOG_CONNECTOR="${CONNECTOR_LOGS[0]}"
 CONNECTOR_PID="${CONNECTOR_PIDS[0]}"
 
-workflow_targets_json="$(
-  printf '%s\n' "${AGENTD_BASES[@]}" | python3 - <<'PY'
-import json,sys
-items = [line.strip() for line in sys.stdin.read().splitlines() if line.strip()]
-print(json.dumps(items))
-PY
-)"
-
-if [[ "${SKIP_UI}" -eq 0 ]]; then
-  cat <<CFG >"${ROOT}/ui/dist/agentui-config.js"
-window.__AGENT_UI_CONFIG__ = {
-  connectionMode: "broker",
-  brokerBaseUrl: "${BROKER_BASE}",
-  brokerAgentId: "${BROKER_AGENT_ID}",
-  brokerAuthToken: "",
-  daemonAuthToken: "${AGENTD_AUTH_TOKEN}",
-  brokerPanelOpen: true,
-  workflowAgentTargets: ${workflow_targets_json},
-  workflowBearerEnv: "AGENTD_CALL_BEARER",
-};
-CFG
-  if http_server_cmd="$(python_http_server_cmd "${WEBUI_PORT}")"; then
-    (cd "${ROOT}/ui/dist" && nohup ${http_server_cmd} >"${LOG_WEBUI}" 2>&1) &
-    WEBUI_PID=$!
-  else
-    echo "[devstack] python not found; skipping WebUI serve" >&2
-    SKIP_UI=1
-  fi
-fi
-
 get_token() {
   local token_json
   token_json="$(
@@ -435,6 +405,36 @@ OIDC_JWT="$(get_token)"
 if [[ -z "${OIDC_JWT}" ]]; then
   echo "[devstack] ERROR: failed to fetch OIDC token" >&2
   exit 2
+fi
+
+workflow_targets_json="$(
+  printf '%s\n' "${AGENTD_BASES[@]}" | python3 - <<'PY'
+import json,sys
+items = [line.strip() for line in sys.stdin.read().splitlines() if line.strip()]
+print(json.dumps(items))
+PY
+)"
+
+if [[ "${SKIP_UI}" -eq 0 ]]; then
+  cat <<CFG >"${ROOT}/ui/dist/agentui-config.js"
+window.__AGENT_UI_CONFIG__ = {
+  connectionMode: "broker",
+  brokerBaseUrl: "${BROKER_BASE}",
+  brokerAgentId: "${BROKER_AGENT_ID}",
+  brokerAuthToken: "${OIDC_JWT}",
+  daemonAuthToken: "${AGENTD_AUTH_TOKEN}",
+  brokerPanelOpen: true,
+  workflowAgentTargets: ${workflow_targets_json},
+  workflowBearerEnv: "AGENTD_CALL_BEARER",
+};
+CFG
+  if http_server_cmd="$(python_http_server_cmd "${WEBUI_PORT}")"; then
+    (cd "${ROOT}/ui/dist" && nohup ${http_server_cmd} >"${LOG_WEBUI}" 2>&1) &
+    WEBUI_PID=$!
+  else
+    echo "[devstack] python not found; skipping WebUI serve" >&2
+    SKIP_UI=1
+  fi
 fi
 
 started="$(date +%s)"

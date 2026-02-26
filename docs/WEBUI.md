@@ -107,7 +107,8 @@ Preset configs:
   - The client prefs id defaults to `webui` and can be changed in Settings → Connection.
   - Toggle “Sync connection profiles to daemon/broker” in Settings → Connection to force on/off.
   - Only non-secret fields are stored (URLs/ids/profile names). Auth tokens remain local.
-- Devstack OIDC helper: `tools/devstack_oidc_token.sh --state out/devstack_state.json` (prints a bearer token; auto-falls back to `http://127.0.0.1:<keycloak_port>` if `keycloak.lvh.me` is unreachable).
+- Devstack OIDC helper: `tools/devstack_oidc_token.sh --state out/devstack_state.json` (prints a bearer token; auto-falls back to `http://127.0.0.1:<keycloak_port>` or `http://[::1]:<keycloak_port>` if `keycloak.lvh.me` is unreachable).
+- Devstack writes the broker OIDC token into `ui/dist/agentui-config.js` on startup so the WebUI can connect without manual Settings edits; refresh the page if you change/refresh tokens.
 
 ## Diagnostics
 

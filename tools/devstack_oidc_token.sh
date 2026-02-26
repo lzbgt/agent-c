@@ -49,9 +49,34 @@ PY
   fi
 fi
 
-if [[ "${KEYCLOAK_BASE}" =~ ^http://keycloak\.lvh\.me:([0-9]+)$ ]]; then
-  if ! curl -fsS --max-time 2 "${KEYCLOAK_BASE}/realms/${REALM}/.well-known/openid-configuration" >/dev/null 2>&1; then
-    KEYCLOAK_BASE="http://127.0.0.1:${BASH_REMATCH[1]}"
+probe_keycloak() {
+  local base="$1"
+  curl -fsS --max-time 2 "${base}/realms/${REALM}/.well-known/openid-configuration" >/dev/null 2>&1
+}
+
+if [[ -n "${KEYCLOAK_BASE}" ]] && ! probe_keycloak "${KEYCLOAK_BASE}"; then
+  if [[ "${KEYCLOAK_BASE}" =~ ^http://keycloak\.lvh\.me:([0-9]+)$ ]]; then
+    port="${BASH_REMATCH[1]}"
+    for candidate in "http://127.0.0.1:${port}" "http://[::1]:${port}"; do
+      if probe_keycloak "${candidate}"; then
+        KEYCLOAK_BASE="${candidate}"
+        break
+      fi
+    done
+  elif [[ "${KEYCLOAK_BASE}" =~ ^http://127\.0\.0\.1:([0-9]+)$ ]]; then
+    port="${BASH_REMATCH[1]}"
+    candidate="http://[::1]:${port}"
+    if probe_keycloak "${candidate}"; then
+      KEYCLOAK_BASE="${candidate}"
+    fi
+  elif [[ "${KEYCLOAK_BASE}" =~ ^http://localhost:([0-9]+)$ ]]; then
+    port="${BASH_REMATCH[1]}"
+    for candidate in "http://127.0.0.1:${port}" "http://[::1]:${port}"; do
+      if probe_keycloak "${candidate}"; then
+        KEYCLOAK_BASE="${candidate}"
+        break
+      fi
+    done
   fi
 fi
 
