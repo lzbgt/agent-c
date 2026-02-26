@@ -155,6 +155,7 @@ When `--auth-token` is set, all endpoints require `Authorization: Bearer ...`.
 - Requests set `stream_options.include_usage=true` and retry without it on 400s.
 - OpenRouter pin workflow: run `tools/probe_openrouter_stream_models.sh`,
   set `OPENROUTER_STREAM_PROBE_WRITE_PINS=1`, commit `ref/openrouter/streaming_pins.json`.
+- Smoke tests try pinned models in order (primary keys, then `ok_models_*` lists) before env defaults.
 - OpenRouter auth hints: `OPENROUTER_HTTP_REFERER`, `OPENROUTER_X_TITLE`,
   optional `AGENT_TEST_OPENROUTER_SKIP_CHAT_PREFLIGHT=1`.
 
@@ -214,4 +215,3 @@ The handbook is a curated summary. For full detail, refer to the source docs bel
 - `docs/WORKFLOWS.md`
 - `docs/openapi/README.md`
 - `docs/spec/README.md`
-
