@@ -424,17 +424,53 @@ export default function HistoryPanel(props: HistoryPanelProps) {
   );
 
   React.useEffect(() => {
+    const lastKeyRef = { key: "", ts: 0 };
+    const shouldIgnoreTarget = (target: EventTarget | null) => {
+      if (!target || !(target as HTMLElement).tagName) return false;
+      const el = target as HTMLElement;
+      const tag = el.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+      if (el.isContentEditable) return true;
+      return false;
+    };
+    const handleGoto = (dest: "team" | "meta") => {
+      if (dest === "meta") {
+        setShowTeamHeaders((v) => !v);
+        return;
+      }
+      setShowTeamChat(true);
+      const el = document.getElementById("team-chat");
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    };
     const onKey = (event: KeyboardEvent) => {
-      if (event.target && (event.target as HTMLElement).tagName === "INPUT") return;
-      if (event.target && (event.target as HTMLElement).tagName === "TEXTAREA") return;
+      if (shouldIgnoreTarget(event.target)) return;
       if (event.key.toLowerCase() === "f" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         teamSearchRef.current?.focus();
+        return;
+      }
+      const now = Date.now();
+      const key = event.key.toLowerCase();
+      if (key === "g") {
+        lastKeyRef.key = "g";
+        lastKeyRef.ts = now;
+        return;
+      }
+      if (lastKeyRef.key === "g" && now - lastKeyRef.ts < 800) {
+        if (key === "t") {
+          event.preventDefault();
+          handleGoto("team");
+        } else if (key === "m") {
+          event.preventDefault();
+          handleGoto("meta");
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [setShowTeamChat, setShowTeamHeaders]);
 
   const conversationItems = React.useMemo(() => {
     const items: {
@@ -605,6 +641,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 </button>
               </div>
             </div>
+            <div className="mt-1 text-[10px] text-white/40">Shortcuts: g t (jump), g m (toggle meta)</div>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
               <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-white/70">
                 team {teamId}
