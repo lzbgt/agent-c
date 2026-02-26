@@ -40,6 +40,45 @@ const fmtAge = (ms?: number | null) => {
   return `${Math.round(ms / 360000) / 10}h`;
 };
 
+const toNumber = (val: any): number | null => {
+  if (typeof val === "number" && Number.isFinite(val)) return val;
+  if (typeof val === "string" && val.trim()) {
+    const parsed = Number.parseFloat(val);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+};
+
+const normalizeRevisionEntries = (raw: any): Array<Record<string, any>> => {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((item) => item && typeof item === "object") as Array<Record<string, any>>;
+};
+
+const revisionVersion = (entry?: Record<string, any> | null): number => {
+  if (!entry) return 0;
+  const val = toNumber(entry.version);
+  return val ? val : 0;
+};
+
+const sortRevisions = (entries: Array<Record<string, any>>): Array<Record<string, any>> => {
+  if (entries.length <= 1) return entries;
+  const copy = [...entries];
+  copy.sort((a, b) => revisionVersion(b) - revisionVersion(a));
+  return copy;
+};
+
+const diffSummary = (diff: any): string => {
+  if (!diff || typeof diff !== "object") return "";
+  const parts: string[] = [];
+  const added = Array.isArray(diff.added) ? diff.added.length : 0;
+  const removed = Array.isArray(diff.removed) ? diff.removed.length : 0;
+  const changed = Array.isArray(diff.changed) ? diff.changed.length : 0;
+  if (added) parts.push(`+${added}`);
+  if (removed) parts.push(`-${removed}`);
+  if (changed) parts.push(`~${changed}`);
+  return parts.join(" ");
+};
+
 export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelProps) {
   const teamIdTrimmed = String(props.teamId || "").trim();
   const teamMetaObj = props.teamMeta && typeof props.teamMeta === "object" ? props.teamMeta : null;
@@ -65,6 +104,8 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
   const [runBusy, setRunBusy] = React.useState<boolean>(false);
   const [runError, setRunError] = React.useState<string | null>(null);
   const [runResult, setRunResult] = React.useState<any | null>(null);
+  const [showGoalRevisions, setShowGoalRevisions] = React.useState<boolean>(false);
+  const [showRoleRevisions, setShowRoleRevisions] = React.useState<boolean>(false);
 
   const [updateGoal, setUpdateGoal] = React.useState<string>("");
   const [updateStatus, setUpdateStatus] = React.useState<string>("");
@@ -320,6 +361,10 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
 
   const currentRun = runResult;
   const currentMeta = currentRun && typeof currentRun.meta === "object" ? currentRun.meta : null;
+  const goalRevisions = sortRevisions(normalizeRevisionEntries(currentMeta?.goal_versions));
+  const rolePlanRevisions = sortRevisions(normalizeRevisionEntries(currentMeta?.role_plan_versions));
+  const latestGoalRevision = goalRevisions.length > 0 ? goalRevisions[0] : null;
+  const latestRoleRevision = rolePlanRevisions.length > 0 ? rolePlanRevisions[0] : null;
   const currentOwner = currentMeta?.orchestrator_owner ? String(currentMeta.orchestrator_owner) : "";
   const prevOwner = currentMeta?.orchestrator_owner_prev ? String(currentMeta.orchestrator_owner_prev) : "";
   const allowTakeover =
@@ -500,6 +545,101 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
           ) : (
             <div className="text-[11px] text-white/50">No run loaded.</div>
           )}
+        </div>
+
+        <div className="grid gap-2 rounded-md border border-white/5 bg-black/30 p-2">
+          <div className="text-[11px] text-white/60">Revision history</div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-2 rounded-md border border-white/10 bg-black/40 p-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] text-white/70">Goal revisions</div>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
+                  type="button"
+                  onClick={() => setShowGoalRevisions((prev) => !prev)}
+                >
+                  {showGoalRevisions ? "Hide" : "Show"}
+                </button>
+              </div>
+              {goalRevisions.length === 0 ? (
+                <div className="text-[11px] text-white/50">No goal revisions.</div>
+              ) : showGoalRevisions ? (
+                <div className="grid gap-2">
+                  {goalRevisions.map((entry, idx) => {
+                    const version = revisionVersion(entry);
+                    const updated = toNumber(entry.updated_unix_ms);
+                    const diff = entry.goal_contract_diff || null;
+                    const summary = diffSummary(diff);
+                    return (
+                      <div
+                        key={`goal-rev-${version}-${idx}`}
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70"
+                      >
+                        <div className="text-white/80">
+                          v{version || "?"}
+                          {updated ? ` · ${fmtTs(updated)}` : ""}
+                          {entry.updated_by ? ` · ${String(entry.updated_by)}` : ""}
+                        </div>
+                        {entry.goal ? <div className="text-white/70">{String(entry.goal)}</div> : null}
+                        {summary ? <div className="text-white/50">diff {summary}</div> : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-[11px] text-white/50">
+                  Latest v{revisionVersion(latestGoalRevision) || "?"}
+                  {latestGoalRevision && toNumber(latestGoalRevision.updated_unix_ms)
+                    ? ` · ${fmtTs(Number(latestGoalRevision.updated_unix_ms))}`
+                    : ""}
+                </div>
+              )}
+            </div>
+
+            <div className="grid gap-2 rounded-md border border-white/10 bg-black/40 p-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] text-white/70">Role plan revisions</div>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
+                  type="button"
+                  onClick={() => setShowRoleRevisions((prev) => !prev)}
+                >
+                  {showRoleRevisions ? "Hide" : "Show"}
+                </button>
+              </div>
+              {rolePlanRevisions.length === 0 ? (
+                <div className="text-[11px] text-white/50">No role plan revisions.</div>
+              ) : showRoleRevisions ? (
+                <div className="grid gap-2">
+                  {rolePlanRevisions.map((entry, idx) => {
+                    const version = revisionVersion(entry);
+                    const updated = toNumber(entry.updated_unix_ms);
+                    const summary = diffSummary(entry.role_plan_diff);
+                    return (
+                      <div
+                        key={`role-rev-${version}-${idx}`}
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70"
+                      >
+                        <div className="text-white/80">
+                          v{version || "?"}
+                          {updated ? ` · ${fmtTs(updated)}` : ""}
+                          {entry.updated_by ? ` · ${String(entry.updated_by)}` : ""}
+                        </div>
+                        {summary ? <div className="text-white/50">diff {summary}</div> : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-[11px] text-white/50">
+                  Latest v{revisionVersion(latestRoleRevision) || "?"}
+                  {latestRoleRevision && toNumber(latestRoleRevision.updated_unix_ms)
+                    ? ` · ${fmtTs(Number(latestRoleRevision.updated_unix_ms))}`
+                    : ""}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="grid gap-2 rounded-md border border-white/5 bg-black/30 p-2">
