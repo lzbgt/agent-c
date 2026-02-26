@@ -125,6 +125,14 @@ Orchestrator refresh + revision events:
 - `orchestrator_role_plan_revision` (role_plan_snapshot version updates)
 - `orchestrator_spawn_requested` / `orchestrator_spawn_updated` / `orchestrator_spawn_status`
 
+Revision event payloads include:
+
+- `team_id`, `orchestrator_run_id`, `version`, `updated_unix_ms`, `updated_by`
+- `orchestrator_goal_revision` adds `goal`, `goal_contract`, `previous_goal`, `previous_goal_contract`,
+  and `goal_contract_diff` (added/removed/changed key lists)
+- `orchestrator_role_plan_revision` adds `role_plan_snapshot`, `previous_role_plan_snapshot`,
+  and `role_plan_diff` (added/removed/changed key lists)
+
 ## Security + access
 
 - Team owner (or admin) controls team membership and runs.
