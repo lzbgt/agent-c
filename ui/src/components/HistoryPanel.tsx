@@ -126,6 +126,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 const truncated = m?.content_truncated ? true : false;
                 const mmJson = typeof m?.mm_json === "string" ? m.mm_json : "";
                 const mmBytes = typeof m?.mm_bytes === "number" ? m.mm_bytes : mmJson.length || 0;
+                const isSystem = role === "system";
                 return (
                   <div key={`msg:${ts || idx}`} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
@@ -136,9 +137,18 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                       {truncated ? <span className="text-amber-200">truncated</span> : null}
                       {mmBytes > 0 ? <span className="text-white/50">mm {mmBytes}b</span> : null}
                     </div>
-                    <div className="mt-2 text-sm text-white/90">
-                      {content ? <Markdown text={content} /> : <span className="text-white/50">(no content)</span>}
-                    </div>
+                    {isSystem ? (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-xs text-white/60">System prompt (collapsed)</summary>
+                        <div className="mt-2 text-sm text-white/90">
+                          {content ? <Markdown text={content} /> : <span className="text-white/50">(no content)</span>}
+                        </div>
+                      </details>
+                    ) : (
+                      <div className="mt-2 text-sm text-white/90">
+                        {content ? <Markdown text={content} /> : <span className="text-white/50">(no content)</span>}
+                      </div>
+                    )}
                   </div>
                 );
               }
@@ -434,7 +444,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                       allowClientRpcs={props.allowClientRpcs}
                       allowClientEffects={props.allowClientEffects}
                       allowUnsafePageEval={props.allowUnsafePageEval}
-                      reverseOrder={true}
+                      reverseOrder={false}
                       disableAutoClientRpcs={idx !== 0}
                       sceneEntities={props.sceneEntities}
                       onSceneApply={props.onSceneApply}

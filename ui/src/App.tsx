@@ -115,7 +115,6 @@ export default function App() {
   const brokerAuthToken = connection.brokerAuthToken;
   const daemonAuthToken = connection.daemonAuthToken;
   const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "");
-  const [simpleMode, setSimpleMode] = useLocalStorageState("agentui.simpleMode", true);
   const [capsCache, setCapsCache] = useLocalStorageState<Record<string, { caps: Caps; ts: number }>>(
     "agentui.capsByBase",
     {},
@@ -1868,63 +1867,39 @@ export default function App() {
         <div className="flex h-14 min-w-0 items-center justify-between px-4">
           <div className="min-w-0">
             <div className="text-sm font-semibold">agent UI</div>
-            {simpleMode ? (
-              <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-white/60">
-                <span>
-                  status:{" "}
-                  {health.isSuccess ? (
-                    <span className="text-emerald-300">ok</span>
-                  ) : health.isFetching ? (
-                    <span className="text-white/60">checking…</span>
-                  ) : (
-                    <span className="text-rose-300">offline</span>
-                  )}
+            <div className="text-[11px] text-white/60">
+              profile:{" "}
+              <select
+                className="ml-1 inline-block max-w-[28vw] truncate rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-mono text-[11px] text-white/70"
+                value={connection.activeProfileId}
+                onChange={(e) => connection.setActiveProfileId(e.target.value)}
+                title={profileName}
+              >
+                {connection.profiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>{" "}
+              {runSettings.profileOverridesEnabled ? (
+                <span className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
+                  run overrides
                 </span>
-                <label className="flex items-center gap-2">
-                  <span className="text-white/60">model</span>
-                  <input
-                    className="w-56 rounded-md border border-white/10 bg-black/30 px-2 py-1 font-mono text-[11px] text-white/80"
-                    placeholder="auto"
-                    value={runSettings.model}
-                    onChange={(e) => runSettings.setModel(e.target.value)}
-                  />
-                </label>
-              </div>
-            ) : (
-              <div className="text-[11px] text-white/60">
-                profile:{" "}
-                <select
-                  className="ml-1 inline-block max-w-[28vw] truncate rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-mono text-[11px] text-white/70"
-                  value={connection.activeProfileId}
-                  onChange={(e) => connection.setActiveProfileId(e.target.value)}
-                  title={profileName}
-                >
-                  {connection.profiles.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>{" "}
-                {runSettings.profileOverridesEnabled ? (
-                  <span className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
-                    run overrides
-                  </span>
-                ) : null}
-                · daemon:{" "}
-                <span className="inline-block max-w-[60vw] truncate align-bottom font-mono text-[11px] text-white/70" title={effectiveBase}>
-                  {effectiveBase}
-                </span>{" "}
-                {health.isSuccess ? (
-                  <span className="text-emerald-300">
-                    ok ({health.data.service ?? "agentd"} {health.data.version ?? ""})
-                  </span>
-                ) : health.isFetching ? (
-                  <span className="text-white/60">checking…</span>
-                ) : (
-                  <span className="text-rose-300">offline</span>
-                )}
-              </div>
-            )}
+              ) : null}
+              · daemon:{" "}
+              <span className="inline-block max-w-[60vw] truncate align-bottom font-mono text-[11px] text-white/70" title={effectiveBase}>
+                {effectiveBase}
+              </span>{" "}
+              {health.isSuccess ? (
+                <span className="text-emerald-300">
+                  ok ({health.data.service ?? "agentd"} {health.data.version ?? ""})
+                </span>
+              ) : health.isFetching ? (
+                <span className="text-white/60">checking…</span>
+              ) : (
+                <span className="text-rose-300">offline</span>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -1934,35 +1909,13 @@ export default function App() {
             >
               Recheck
             </button>
-            {simpleMode ? (
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-                onClick={() => {
-                  setSimpleMode(false);
-                  setShowSettings(true);
-                }}
-                type="button"
-              >
-                Advanced
-              </button>
-            ) : (
-              <>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-                  onClick={() => setShowSettings(true)}
-                  type="button"
-                >
-                  Settings
-                </button>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-                  onClick={() => setSimpleMode(true)}
-                  type="button"
-                >
-                  Simple
-                </button>
-              </>
-            )}
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+              onClick={() => setShowSettings(true)}
+              type="button"
+            >
+              Settings
+            </button>
           </div>
         </div>
       </header>
@@ -2029,45 +1982,7 @@ export default function App() {
         className="h-[calc(100vh-var(--topbar-h))] overflow-y-auto px-3 py-3 pb-[var(--promptbar-h)]"
       >
         <div className="mx-auto max-w-7xl">
-          {simpleMode ? (
-            <div className="mt-4">
-              <HistoryPanel
-                entries={historyEntriesDesc}
-                showAllEntries={showAllHistoryEntries}
-                setShowAllEntries={setShowAllHistoryEntries}
-                showMessages={showHistoryMessages}
-                setShowMessages={setShowHistoryMessages}
-                historyExpandedByKey={historyExpandedByKey}
-                setHistoryExpandedByKey={setHistoryExpandedByKey}
-                dbMessages={dbMessages.data?.ok && Array.isArray(dbMessages.data?.messages) ? dbMessages.data.messages : []}
-                dbRuns={dbRuns.data?.ok && Array.isArray(dbRuns.data?.runs) ? dbRuns.data.runs : []}
-                dbRunDetailsById={dbRunDetailsById}
-                sessionArtifacts={
-                  sessionArtifacts.data?.ok && Array.isArray(sessionArtifacts.data?.artifacts)
-                    ? sessionArtifacts.data.artifacts
-                    : []
-                }
-                effectiveBase={effectiveBase}
-                yolo={yolo}
-                sessionId={sessionId}
-                client={client}
-                daemonAuth={daemonAuth}
-                showDebugInConversation={showDebugInConversation}
-                allowAutoplay={allowAutoplay}
-                allowClientRpcs={allowClientRpcs}
-                allowClientEffects={allowClientEffects}
-                allowUnsafePageEval={allowUnsafePageEval}
-                sceneEntities={sceneEntities}
-                onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
-                onTraceIdClick={(traceId) => {
-                  setTraceLookupId(traceId);
-                  setAdvancedPage("trace");
-                  void traceLookup.mutateAsync(traceId).catch(() => {});
-                }}
-              />
-            </div>
-          ) : (
-            <div className="mt-4 flex flex-col gap-4 lg:flex-row">
+          <div className="mt-4 flex flex-col gap-4 lg:flex-row">
               <aside className="rounded-lg border border-white/10 bg-black/20 p-3 lg:w-56">
                 <div className="text-[11px] font-semibold text-white/60">Tools</div>
                 <div className="mt-2 grid gap-1">
@@ -2224,8 +2139,7 @@ export default function App() {
                   ) : null}
                 </aside>
               ) : null}
-            </div>
-          )}
+          </div>
         </div>
       </main>
 

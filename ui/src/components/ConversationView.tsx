@@ -490,20 +490,25 @@ export default function ConversationView({
         if (name === "proc_exec" && summaryFromResult.argv) return { label: "argv", value: summaryFromResult.argv };
         return null;
       })();
-      const title = (() => {
-        if (!inferredSummary) return `Tool call: ${name || "(unknown)"}`;
-        return `Tool call: ${name || "(unknown)"} — ${inferredSummary.label}: ${safeTrunc(String(inferredSummary.value || ""), 120)}`;
-      })();
+      const title = `Tool call: ${name || "(unknown)"}`;
       items.push(
         <Card key={`tc-${idx}`} title={title}>
           {inferredSummary ? (
-          <pre className="mb-2 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/20 p-2 font-mono text-[11px] leading-relaxed text-white/90">
-            {inferredSummary.value}
-          </pre>
+            <div className="mb-2">
+              <div className="mb-1 text-[11px] font-semibold text-white/60">Command</div>
+              <pre className="overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/20 p-2 font-mono text-[11px] leading-relaxed text-white/90">
+                {inferredSummary.value}
+              </pre>
+            </div>
           ) : null}
-          <pre className="overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
-            {args ? prettyJsonOrRaw(args) : inferredSummary ? "(arguments omitted; see command above)" : "(enable verbose to capture arguments)"}
-          </pre>
+          <details>
+            <summary className="cursor-pointer text-[11px] text-white/60">
+              Arguments (collapsed)
+            </summary>
+            <pre className="mt-2 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
+              {args ? prettyJsonOrRaw(args) : inferredSummary ? "(arguments omitted; see command above)" : "(enable verbose to capture arguments)"}
+            </pre>
+          </details>
         </Card>,
       );
       return;
@@ -515,7 +520,7 @@ export default function ConversationView({
       const toolCallId = typeof data?.tool_call_id === "string" ? String(data.tool_call_id) : "";
       if (typeof data.content === "string") {
         items.push(
-          <div key={`tr-${idx}`} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+          <Card key={`tr-${idx}`} title={`Tool output: ${name || "(unknown)"}`}>
             <ToolResultView
               baseUrl={baseUrl}
               yolo={yolo}
@@ -524,7 +529,7 @@ export default function ConversationView({
               toolCallId={toolCallId}
               content={data.content}
             />
-          </div>,
+          </Card>,
         );
         return;
       }
@@ -536,7 +541,7 @@ export default function ConversationView({
           envelope = JSON.stringify({ ok: true, data: { tool: name } });
         }
         items.push(
-          <div key={`tr-${idx}`} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+          <Card key={`tr-${idx}`} title={`Tool output: ${name || "(unknown)"}`}>
             <ToolResultView
               baseUrl={baseUrl}
               yolo={yolo}
@@ -545,7 +550,7 @@ export default function ConversationView({
               toolCallId={toolCallId}
               content={envelope}
             />
-          </div>,
+          </Card>,
         );
         return;
       }
