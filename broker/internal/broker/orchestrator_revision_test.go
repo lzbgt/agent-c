@@ -68,6 +68,24 @@ func TestNextRevisionVersion(t *testing.T) {
 	}
 }
 
+func TestTrimRevisionEntries(t *testing.T) {
+	entries := []map[string]any{
+		{"version": 1},
+		{"version": 2},
+		{"version": 3},
+	}
+	if got := trimRevisionEntries(entries, 0); len(got) != 3 {
+		t.Fatalf("expected no trim when max=0, got %d entries", len(got))
+	}
+	trimmed := trimRevisionEntries(entries, 2)
+	if len(trimmed) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(trimmed))
+	}
+	if trimmed[0]["version"] != 2 || trimmed[1]["version"] != 3 {
+		t.Fatalf("unexpected trimmed entries: %#v", trimmed)
+	}
+}
+
 func TestReadRevisionEntries(t *testing.T) {
 	meta := map[string]any{
 		"goal_versions": []any{
