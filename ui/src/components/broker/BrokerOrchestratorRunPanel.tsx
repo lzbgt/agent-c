@@ -100,6 +100,56 @@ const diffKeys = (diff: any): string[] => {
   return out;
 };
 
+const toLowerToken = (value: any): string | null => {
+  if (value === undefined || value === null) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+  return str.toLowerCase();
+};
+
+const revisionChangeLabels = (goalChanged?: any, contractChanged?: any): string[] => {
+  const labels: string[] = [];
+  if (goalChanged === true) labels.push("goal changed");
+  if (contractChanged === true) labels.push("goal contract changed", "contract changed");
+  return labels;
+};
+
+const revisionFilterTokens = (input: {
+  version?: any;
+  updatedBy?: any;
+  goal?: any;
+  diffs?: any[];
+  changeLabels?: string[];
+}): string[] => {
+  const tokens: string[] = [];
+  const pushToken = (value: any) => {
+    const token = toLowerToken(value);
+    if (token) tokens.push(token);
+  };
+  pushToken(input.version);
+  pushToken(input.updatedBy);
+  pushToken(input.goal);
+  (input.changeLabels || []).forEach((label) => pushToken(label));
+  (input.diffs || []).forEach((diff) => {
+    diffKeys(diff).forEach((key) => pushToken(key));
+  });
+  return Array.from(new Set(tokens));
+};
+
+const matchesRevisionFilter = (
+  filterLower: string,
+  input: {
+    version?: any;
+    updatedBy?: any;
+    goal?: any;
+    diffs?: any[];
+    changeLabels?: string[];
+  },
+): boolean => {
+  if (!filterLower) return true;
+  return revisionFilterTokens(input).some((token) => token.includes(filterLower));
+};
+
 const formatJson = (value: any): string => {
   if (value === undefined) return "";
   try {
@@ -502,29 +552,14 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
   const revisionFilterLower = revisionFilter.trim().toLowerCase();
   const revisionMatches = React.useCallback(
     (entry?: Record<string, any> | null) => {
-      if (!revisionFilterLower) return true;
       if (!entry) return false;
-      const version = entry.version !== undefined ? String(entry.version).toLowerCase() : "";
-      const updatedBy = entry.updated_by ? String(entry.updated_by).toLowerCase() : "";
-      const goal = entry.goal ? String(entry.goal).toLowerCase() : "";
-      const changeLabels: string[] = [];
-      if (entry.goal_changed === true) changeLabels.push("goal changed");
-      if (entry.goal_contract_changed === true) {
-        changeLabels.push("goal contract changed", "contract changed");
-      }
-      const matchesChange = changeLabels.some((label) => label.includes(revisionFilterLower));
-      const contractDiffKeys = diffKeys(entry.goal_contract_diff).map((v) => v.toLowerCase());
-      const roleDiffKeys = diffKeys(entry.role_plan_diff).map((v) => v.toLowerCase());
-      const matchesDiffKey =
-        contractDiffKeys.some((key) => key.includes(revisionFilterLower)) ||
-        roleDiffKeys.some((key) => key.includes(revisionFilterLower));
-      return (
-        (version && version.includes(revisionFilterLower)) ||
-        (updatedBy && updatedBy.includes(revisionFilterLower)) ||
-        (goal && goal.includes(revisionFilterLower)) ||
-        matchesDiffKey ||
-        matchesChange
-      );
+      return matchesRevisionFilter(revisionFilterLower, {
+        version: entry.version,
+        updatedBy: entry.updated_by,
+        goal: entry.goal,
+        diffs: [entry.goal_contract_diff, entry.role_plan_diff],
+        changeLabels: revisionChangeLabels(entry.goal_changed, entry.goal_contract_changed),
+      });
     },
     [revisionFilterLower],
   );
@@ -555,30 +590,22 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
       if (!payload || typeof payload !== "object") return false;
       if (teamIdTrimmed && String(payload.team_id || "") !== teamIdTrimmed) return false;
       if (rid && String(payload.orchestrator_run_id || "") !== rid) return false;
-      if (!revisionFilterLower) return true;
-      const version = payload.version !== undefined ? String(payload.version).toLowerCase() : "";
-      const updatedBy = payload.updated_by ? String(payload.updated_by).toLowerCase() : "";
-      const goal = payload.goal ? String(payload.goal).toLowerCase() : "";
       const isGoal = type === "orchestrator_goal_revision";
       const diff = isGoal ? payload.goal_contract_diff : payload.role_plan_diff;
-      const diffKeysLower = diffKeys(diff).map((v) => v.toLowerCase());
-      const changeLabels: string[] = [];
-      if (isGoal && payload.goal_changed === true) changeLabels.push("goal changed");
-      if (isGoal && payload.goal_contract_changed === true) {
-        changeLabels.push("goal contract changed", "contract changed");
-      }
-      const matchesChange = changeLabels.some((label) => label.includes(revisionFilterLower));
-      return (
-        (version && version.includes(revisionFilterLower)) ||
-        (updatedBy && updatedBy.includes(revisionFilterLower)) ||
-        (goal && goal.includes(revisionFilterLower)) ||
-        diffKeysLower.some((key) => key.includes(revisionFilterLower)) ||
-        matchesChange
-      );
+      return matchesRevisionFilter(revisionFilterLower, {
+        version: payload.version,
+        updatedBy: payload.updated_by,
+        goal: payload.goal,
+        diffs: [diff],
+        changeLabels: isGoal ? revisionChangeLabels(payload.goal_changed, payload.goal_contract_changed) : [],
+      });
     });
     out.sort((a, b) => (b.ts_unix_ms || 0) - (a.ts_unix_ms || 0));
-    return out.slice(0, 8);
+    return out;
   }, [props.events, revisionFilterLower, revisionFilterScope, runId, teamIdTrimmed]);
+  const revisionEventsTotal = revisionEvents.length;
+  const revisionEventsDisplay = revisionEvents.slice(0, 8);
+  const revisionEventsOverflow = revisionEventsTotal > revisionEventsDisplay.length;
   const revisionEventsEmptyLabel = revisionFilterLower
     ? "No revision events match filter."
     : revisionFilterScope === "goal"
@@ -1058,12 +1085,19 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
             </div>
           </div>
           <div className="grid gap-2 rounded-md border border-white/10 bg-black/40 p-2">
-            <div className="text-[11px] text-white/70">Recent revision events</div>
-            {revisionEvents.length === 0 ? (
+            <div className="flex items-center justify-between gap-2 text-[11px] text-white/70">
+              <div>Recent revision events</div>
+              {revisionEventsOverflow ? (
+                <div className="text-[10px] text-white/40">
+                  Showing {revisionEventsDisplay.length} of {revisionEventsTotal}
+                </div>
+              ) : null}
+            </div>
+            {revisionEventsTotal === 0 ? (
               <div className="text-[11px] text-white/50">{revisionEventsEmptyLabel}</div>
             ) : (
               <div className="grid gap-2">
-                {revisionEvents.map((row, idx) => {
+                {revisionEventsDisplay.map((row, idx) => {
                   const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
                   const type = String(row.type || "");
                   const isGoal = type === "orchestrator_goal_revision";
