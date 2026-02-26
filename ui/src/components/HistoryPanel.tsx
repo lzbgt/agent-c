@@ -231,6 +231,14 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     return `agentui.teamAutoScroll:${base}::${tid}`;
   }, [props.effectiveBase, teamId]);
   const [teamAutoScroll, setTeamAutoScroll] = useLocalStorageState<boolean>(teamAutoScrollKey, true);
+  const teamPauseKey = React.useMemo(() => {
+    const base = String(props.effectiveBase || "").trim() || "default";
+    const tid = teamId || "none";
+    return `agentui.teamPause:${base}::${tid}`;
+  }, [props.effectiveBase, teamId]);
+  const [teamPauseUpdates, setTeamPauseUpdates] = useLocalStorageState<boolean>(teamPauseKey, false);
+  const teamPausedItemsRef = React.useRef<any[] | null>(null);
+  const teamPendingCountRef = React.useRef<number>(0);
   const teamSearchRef = React.useRef<HTMLInputElement | null>(null);
   const teamRoleChips = React.useMemo(() => {
     const roles = new Set<string>();
@@ -281,12 +289,31 @@ export default function HistoryPanel(props: HistoryPanelProps) {
   }, [teamTimelineItems]);
   const teamFilteredCount = teamFilteredItems.length;
 
+  React.useEffect(() => {
+    if (!teamPauseUpdates) {
+      teamPausedItemsRef.current = teamFilteredItems;
+      teamPendingCountRef.current = 0;
+      return;
+    }
+    if (!teamPausedItemsRef.current) {
+      teamPausedItemsRef.current = teamFilteredItems;
+      teamPendingCountRef.current = 0;
+    }
+  }, [teamFilteredItems, teamPauseUpdates]);
+
+  const teamVisibleItems = React.useMemo(() => {
+    if (!teamPauseUpdates) return teamFilteredItems;
+    const prev = teamPausedItemsRef.current;
+    if (!prev) return teamFilteredItems;
+    teamPendingCountRef.current = Math.max(0, teamFilteredItems.length - prev.length);
+    return prev;
+  }, [teamFilteredItems, teamPauseUpdates]);
+
   const teamGroupedByAgent = React.useMemo(() => {
+    const source = teamVisibleItems;
     if (!showTeamGroupByAgent) return [] as Array<{ key: string; label: string; items: any[]; latest: number; preview: string }>;
     const groups = new Map<string, { label: string; items: any[]; latest: number }>();
-    for (const entry of teamTimelineItems) {
-      if (entry.kind !== "item") continue;
-      const item = entry.item;
+    for (const item of source) {
       const meta = item?.meta ?? {};
       const agentLabel = typeof meta?.agent_id === "string" && meta.agent_id ? meta.agent_id : "";
       const roleLabel = typeof meta?.role === "string" && meta.role ? meta.role : "";
@@ -316,7 +343,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
         return { key, ...value, items: sorted, preview };
       })
       .sort((a, b) => b.latest - a.latest);
-  }, [showTeamGroupByAgent, teamTimelineItems]);
+  }, [showTeamGroupByAgent, teamVisibleItems]);
 
   const renderTeamMessage = React.useCallback(
     (item: any, idx: number) => {
@@ -705,6 +732,24 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                     Auto-scroll
                   </button>
                   <button
+                    className={`rounded-md border px-2 py-1 text-[11px] ${
+                      teamPauseUpdates
+                        ? "border-amber-400/30 bg-amber-500/10 text-amber-100"
+                        : "border-white/10 bg-black/30 text-white/70 hover:bg-black/40"
+                    }`}
+                    type="button"
+                    onClick={() => {
+                      const next = !teamPauseUpdates;
+                      setTeamPauseUpdates(next);
+                      if (!next) {
+                        teamPausedItemsRef.current = teamFilteredItems;
+                        teamPendingCountRef.current = 0;
+                      }
+                    }}
+                  >
+                    {teamPauseUpdates ? "Resume" : "Pause"}
+                  </button>
+                  <button
                     className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
                     type="button"
                     onClick={() => {
@@ -843,6 +888,11 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                       >
                         Clear pinned
                       </button>
+                    ) : null}
+                    {teamPauseUpdates && teamPendingCountRef.current > 0 ? (
+                      <span className="rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-amber-100">
+                        +{teamPendingCountRef.current} new
+                      </span>
                     ) : null}
                   </div>
                 ) : null}
@@ -1286,6 +1336,8 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                             </div>
                           );
                         }
+                        const visible = teamVisibleItems.includes(entry.item);
+                        if (!visible) return null;
                         return renderTeamMessage(entry.item, idx);
                       })}
                 </div>
