@@ -799,6 +799,8 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                     const diff = entry.goal_contract_diff || null;
                     const summary = diffSummary(diff);
                     const diffKeysLabel = diffKeyLabel(diff);
+                    const goalChanged = entry.goal_changed === true;
+                    const contractChanged = entry.goal_contract_changed === true;
                     return (
                       <div
                         key={`goal-rev-${version}-${idx}`}
@@ -812,6 +814,13 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                           </summary>
                           <div className="mt-1 grid gap-2">
                             {entry.goal ? <div className="text-white/70">{String(entry.goal)}</div> : null}
+                            {goalChanged || contractChanged ? (
+                              <div className="text-white/40">
+                                {goalChanged ? "goal changed" : null}
+                                {goalChanged && contractChanged ? " · " : null}
+                                {contractChanged ? "contract changed" : null}
+                              </div>
+                            ) : null}
                             {summary ? <div className="text-white/50">diff {summary}</div> : null}
                             {diffKeysLabel ? <div className="text-white/40">{diffKeysLabel}</div> : null}
                             <div className="flex flex-wrap items-center gap-2">
