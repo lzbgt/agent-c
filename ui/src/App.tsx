@@ -1783,6 +1783,23 @@ export default function App() {
   const isTeamTarget = brokerChatAvailable && chatTarget === "team";
   const teamActionNormalized =
     teamAction === "guidance" || teamAction === "goal" ? (teamAction as "guidance" | "goal") : "run";
+  const openTeamPanel = React.useCallback(
+    (tab: string) => {
+      if (connectionMode !== "broker") return;
+      try {
+        if (selectedTeamIdTrimmed) {
+          window.localStorage.setItem("agentui.brokerTeamId", selectedTeamIdTrimmed);
+        }
+        if (tab) {
+          window.localStorage.setItem("agentui.teamTab", tab);
+        }
+      } catch {
+        // ignore localStorage failures
+      }
+      setAdvancedPage("broker");
+    },
+    [connectionMode, selectedTeamIdTrimmed, setAdvancedPage],
+  );
 
   const addTeamActivity = React.useCallback(
     (entry: TeamActivity) => {
@@ -2540,6 +2557,61 @@ export default function App() {
                     className="h-full"
                   />
                 </div>
+                {brokerChatAvailable ? (
+                  <div className="mt-4 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="text-xs font-semibold text-white/80">Team hub</div>
+                        <div className="text-[11px] text-white/60">
+                          Team <span className="text-white/80">{selectedTeamIdTrimmed}</span>
+                          {latestTeamRunId ? (
+                            <>
+                              {" "}
+                              · run <span className="text-white/80">{latestTeamRunId}</span>
+                            </>
+                          ) : null}
+                          {typeof teamChat.data?.status?.status === "string" || typeof teamChat.data?.status?.code === "string" ? (
+                            <>
+                              {" "}
+                              ·{" "}
+                              <span className="text-white/50">
+                                {typeof teamChat.data?.status?.status === "string"
+                                  ? teamChat.data?.status?.status
+                                  : teamChat.data?.status?.code}
+                              </span>
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                          type="button"
+                          onClick={() => openTeamPanel("setup")}
+                        >
+                          Setup team
+                        </button>
+                        <button
+                          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                          type="button"
+                          onClick={() => openTeamPanel("members")}
+                        >
+                          Members
+                        </button>
+                        <button
+                          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                          type="button"
+                          onClick={() => openTeamPanel("run")}
+                        >
+                          Runs
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-2 text-[11px] text-white/50">
+                      Prompts and attachments below are shared with all team members. Use Guidance for mid-run updates.
+                    </div>
+                  </div>
+                ) : null}
                 <div className="mt-4">
                   <HistoryPanel
                     entries={historyEntriesDesc}
