@@ -106,7 +106,7 @@ Status: draft (rolling)
 
 ```
 goal_versions: [
-  { version, updated_unix_ms, updated_by, goal, goal_contract,
+  { version, updated_unix_ms, updated_by, goal, goal_changed?, goal_contract_changed?, goal_contract,
     goal_contract_diff: { added: [string], removed: [string], changed: [string] } }
 ]
 role_plan_versions: [

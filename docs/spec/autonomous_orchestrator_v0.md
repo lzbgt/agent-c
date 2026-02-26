@@ -244,6 +244,7 @@ Revision history entries (stored inside `goal_versions` / `role_plan_versions`) 
 ```
 goal_versions: [
   { version: number, updated_unix_ms: integer, updated_by: string, goal: string,
+    goal_changed?: true, goal_contract_changed?: true,
     goal_contract: { ... }, goal_contract_diff: { added: [string], removed: [string], changed: [string] } }
 ]
 role_plan_versions: [
