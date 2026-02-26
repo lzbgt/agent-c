@@ -79,6 +79,18 @@ const diffSummary = (diff: any): string => {
   return parts.join(" ");
 };
 
+const diffKeyLabel = (diff: any): string => {
+  if (!diff || typeof diff !== "object") return "";
+  const labels: string[] = [];
+  const added = Array.isArray(diff.added) ? diff.added.map((v: any) => String(v)) : [];
+  const removed = Array.isArray(diff.removed) ? diff.removed.map((v: any) => String(v)) : [];
+  const changed = Array.isArray(diff.changed) ? diff.changed.map((v: any) => String(v)) : [];
+  if (added.length > 0) labels.push(`added: ${added.join(", ")}`);
+  if (removed.length > 0) labels.push(`removed: ${removed.join(", ")}`);
+  if (changed.length > 0) labels.push(`changed: ${changed.join(", ")}`);
+  return labels.join(" · ");
+};
+
 const diffKeys = (diff: any): string[] => {
   if (!diff || typeof diff !== "object") return [];
   const out: string[] = [];
@@ -760,6 +772,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                     const updated = toNumber(entry.updated_unix_ms);
                     const diff = entry.goal_contract_diff || null;
                     const summary = diffSummary(diff);
+                    const diffKeysLabel = diffKeyLabel(diff);
                     return (
                       <div
                         key={`goal-rev-${version}-${idx}`}
@@ -774,6 +787,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                           <div className="mt-1 grid gap-2">
                             {entry.goal ? <div className="text-white/70">{String(entry.goal)}</div> : null}
                             {summary ? <div className="text-white/50">diff {summary}</div> : null}
+                            {diffKeysLabel ? <div className="text-white/40">{diffKeysLabel}</div> : null}
                             <div className="flex flex-wrap items-center gap-2">
                               {entry.goal ? (
                                 <button
@@ -844,6 +858,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                     const version = revisionVersion(entry);
                     const updated = toNumber(entry.updated_unix_ms);
                     const summary = diffSummary(entry.role_plan_diff);
+                    const diffKeysLabel = diffKeyLabel(entry.role_plan_diff);
                     return (
                       <div
                         key={`role-rev-${version}-${idx}`}
@@ -857,6 +872,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                           </summary>
                           <div className="mt-1 grid gap-2">
                             {summary ? <div className="text-white/50">diff {summary}</div> : null}
+                            {diffKeysLabel ? <div className="text-white/40">{diffKeysLabel}</div> : null}
                             <div className="flex flex-wrap items-center gap-2">
                               <button
                                 className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
@@ -977,6 +993,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                   const version = toNumber((payload as any).version) || 0;
                   const diff = isGoal ? (payload as any).goal_contract_diff : (payload as any).role_plan_diff;
                   const summary = diffSummary(diff);
+                  const diffKeysLabel = diffKeyLabel(diff);
                   return (
                     <div
                       key={`${type}-${row.event_id || row.ts_unix_ms || idx}`}
@@ -987,6 +1004,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                         {row.ts_unix_ms ? ` · ${fmtTs(row.ts_unix_ms)}` : ""}
                       </div>
                       {summary ? <div className="text-white/50">diff {summary}</div> : null}
+                      {diffKeysLabel ? <div className="text-white/40">{diffKeysLabel}</div> : null}
                       {diff ? (
                         <button
                           className="mt-1 rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
