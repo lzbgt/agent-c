@@ -107,6 +107,45 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [membersBusy, setMembersBusy] = React.useState<boolean>(false);
   const [membersError, setMembersError] = React.useState<string | null>(null);
 
+  const [quickBuilderOpen, setQuickBuilderOpen] = React.useState<boolean>(true);
+  const [quickTeamName, setQuickTeamName] = React.useState<string>("");
+  const [quickTeamId, setQuickTeamId] = React.useState<string>("");
+  const [quickTeamGoal, setQuickTeamGoal] = React.useState<string>("");
+  const [quickBuilderError, setQuickBuilderError] = React.useState<string | null>(null);
+  const [quickBuilderBusy, setQuickBuilderBusy] = React.useState<boolean>(false);
+  const [quickTemplate, setQuickTemplate] = React.useState<string>("standard");
+  type QuickMember = {
+    id: string;
+    role: string;
+    provider: string;
+    model: string;
+    baseUrl: string;
+    agentId: string;
+    deploymentId: string;
+  };
+  const providerDefaults: Record<string, string> = {
+    openai: "https://api.openai.com/v1",
+    anthropic: "https://api.anthropic.com",
+    deepseek: "https://api.deepseek.com",
+    local: "",
+    custom: "",
+  };
+  const makeQuickMembers = React.useCallback((template: string): QuickMember[] => {
+    const mk = (role: string): QuickMember => ({
+      id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      role,
+      provider: "openai",
+      model: "",
+      baseUrl: providerDefaults.openai,
+      agentId: "",
+      deploymentId: "",
+    });
+    if (template === "planner_executor") return [mk("planner"), mk("executor")];
+    if (template === "research_team") return [mk("researcher"), mk("executor"), mk("critic")];
+    return [mk("planner"), mk("executor"), mk("critic")];
+  }, []);
+  const [quickMembers, setQuickMembers] = React.useState<QuickMember[]>(() => makeQuickMembers("standard"));
+
   const [members, setMembers] = React.useState<TeamMemberRow[] | null>(null);
   const [memberId, setMemberId] = React.useState<string>("");
   const [memberRole, setMemberRole] = React.useState<string>("executor");
@@ -629,6 +668,110 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       setTeamsError(String(err));
     } finally {
       setTeamsBusy(false);
+    }
+  };
+
+  const slugifyTeamId = (name: string): string => {
+    const base = String(name || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    return base || `team-${Date.now()}`;
+  };
+
+  const handleQuickBuilderApplyTemplate = React.useCallback(
+    (template: string) => {
+      setQuickTemplate(template);
+      setQuickMembers(makeQuickMembers(template));
+    },
+    [makeQuickMembers],
+  );
+
+  const handleQuickMemberUpdate = (id: string, patch: Partial<QuickMember>) => {
+    setQuickMembers((prev) =>
+      prev.map((m) => {
+        if (m.id !== id) return m;
+        const next = { ...m, ...patch };
+        if (patch.provider !== undefined) {
+          const def = providerDefaults[patch.provider] ?? "";
+          if (!next.baseUrl || next.baseUrl === providerDefaults[m.provider]) {
+            next.baseUrl = def;
+          }
+        }
+        return next;
+      }),
+    );
+  };
+
+  const handleQuickAddMember = () => {
+    setQuickMembers((prev) => [
+      ...prev,
+      {
+        id: `member-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        role: "executor",
+        provider: "openai",
+        model: "",
+        baseUrl: providerDefaults.openai,
+        agentId: "",
+        deploymentId: "",
+      },
+    ]);
+  };
+
+  const handleQuickRemoveMember = (id: string) => {
+    setQuickMembers((prev) => prev.filter((m) => m.id !== id));
+  };
+
+  const handleQuickCreateTeam = async () => {
+    if (!canQuery) return;
+    setQuickBuilderError(null);
+    setQuickBuilderBusy(true);
+    try {
+      const name = String(quickTeamName || "").trim();
+      if (!name) throw new Error("team name required");
+      const id = String(quickTeamId || "").trim() || slugifyTeamId(name);
+      const goal = String(quickTeamGoal || "").trim();
+      const meta: Record<string, any> = {};
+      if (goal) meta.goal = goal;
+      const payload: Record<string, any> = { team_id: id, display_name: name };
+      if (Object.keys(meta).length > 0) payload.meta = meta;
+      const createResp = await apiBrokerTeamCreate(props.base, payload, props.auth);
+      if (!createResp.ok) throw new Error(createResp.error || createResp.err || createResp.code || "team create failed");
+
+      for (const member of quickMembers) {
+        const role = String(member.role || "").trim();
+        if (!role) continue;
+        const memberPayload: Record<string, any> = { role };
+        const agentId = String(member.agentId || "").trim();
+        const deploymentId = String(member.deploymentId || "").trim();
+        if (agentId) memberPayload.agent_id = agentId;
+        if (deploymentId) memberPayload.deployment_id = deploymentId;
+        const metaMember: Record<string, any> = {};
+        const provider = String(member.provider || "").trim();
+        if (provider) metaMember.provider = provider;
+        const runOverrides: Record<string, any> = {};
+        const model = String(member.model || "").trim();
+        if (model) runOverrides.model = model;
+        const baseUrl = String(member.baseUrl || "").trim();
+        if (baseUrl) runOverrides.base_url = baseUrl;
+        if (Object.keys(runOverrides).length > 0) metaMember.run_overrides = runOverrides;
+        if (Object.keys(metaMember).length > 0) memberPayload.meta = metaMember;
+        const upsertResp = await apiBrokerTeamMembersUpsert(props.base, id, memberPayload, props.auth);
+        if (!upsertResp.ok) {
+          throw new Error(upsertResp.error || upsertResp.err || upsertResp.code || "member create failed");
+        }
+      }
+
+      setQuickTeamId(id);
+      setTeamId(id);
+      await refreshTeams();
+      await refreshTeamDetails(id);
+      await refreshMembers(id);
+    } catch (err) {
+      setQuickBuilderError(String(err));
+    } finally {
+      setQuickBuilderBusy(false);
     }
   };
 
@@ -1386,6 +1529,163 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         onRoleGraphEdgesChange={handleRoleGraphEdgesChange}
         onUpdateTeam={() => void handleUpdateTeam()}
       />
+
+      <div className="mt-3 rounded-md border border-white/10 bg-black/30 p-3">
+        <button
+          className="flex w-full items-center justify-between text-left text-xs font-semibold text-white/80"
+          type="button"
+          onClick={() => setQuickBuilderOpen((v) => !v)}
+        >
+          <span>Quick team builder</span>
+          <span className="text-white/50">{quickBuilderOpen ? "Hide" : "Show"}</span>
+        </button>
+        {quickBuilderOpen ? (
+          <div className="mt-3 grid gap-3">
+            <div className="text-[11px] text-white/60">
+              Create a team and add agents in one step. Defaults stay simple; advanced fields are optional.
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <FieldLabel>Team name</FieldLabel>
+              <input
+                className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                value={quickTeamName}
+                onChange={(e) => setQuickTeamName(e.target.value)}
+                placeholder="Ops team"
+              />
+              <FieldLabel>Team id</FieldLabel>
+              <input
+                className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                value={quickTeamId}
+                onChange={(e) => setQuickTeamId(e.target.value)}
+                placeholder="auto"
+              />
+              <FieldLabel>Goal</FieldLabel>
+              <input
+                className="min-w-[260px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                value={quickTeamGoal}
+                onChange={(e) => setQuickTeamGoal(e.target.value)}
+                placeholder="What is this team trying to accomplish?"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <FieldLabel>Template</FieldLabel>
+              <select
+                className="min-w-[180px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                value={quickTemplate}
+                onChange={(e) => handleQuickBuilderApplyTemplate(e.target.value)}
+              >
+                <option value="standard">Planner + Executor + Critic</option>
+                <option value="planner_executor">Planner + Executor</option>
+                <option value="research_team">Researcher + Executor + Critic</option>
+              </select>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                type="button"
+                onClick={handleQuickAddMember}
+              >
+                Add agent
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                type="button"
+                disabled={!canQuery || memberAgentsBusy}
+                onClick={() => void refreshMemberAgents()}
+              >
+                {memberAgentsBusy ? "Refreshing agents…" : "Refresh agents"}
+              </button>
+            </div>
+
+            <div className="grid gap-2">
+              {quickMembers.map((m) => (
+                <div key={m.id} className="rounded-md border border-white/10 bg-black/20 p-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <FieldLabel>Role</FieldLabel>
+                    <input
+                      className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                      value={m.role}
+                      onChange={(e) => handleQuickMemberUpdate(m.id, { role: e.target.value })}
+                    />
+                    <FieldLabel>Provider</FieldLabel>
+                    <select
+                      className="min-w-[140px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                      value={m.provider}
+                      onChange={(e) => handleQuickMemberUpdate(m.id, { provider: e.target.value })}
+                    >
+                      <option value="openai">OpenAI</option>
+                      <option value="anthropic">Anthropic</option>
+                      <option value="deepseek">DeepSeek</option>
+                      <option value="local">Local</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                    <FieldLabel>Model</FieldLabel>
+                    <input
+                      className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                      value={m.model}
+                      onChange={(e) => handleQuickMemberUpdate(m.id, { model: e.target.value })}
+                      placeholder="gpt-4.1"
+                    />
+                    <FieldLabel>Base URL</FieldLabel>
+                    <input
+                      className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                      value={m.baseUrl}
+                      onChange={(e) => handleQuickMemberUpdate(m.id, { baseUrl: e.target.value })}
+                      placeholder="https://api.openai.com/v1"
+                    />
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                      type="button"
+                      onClick={() => handleQuickRemoveMember(m.id)}
+                      disabled={quickMembers.length <= 1}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <FieldLabel>Agent</FieldLabel>
+                    <select
+                      className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                      value={m.agentId}
+                      onChange={(e) => handleQuickMemberUpdate(m.id, { agentId: e.target.value, deploymentId: "" })}
+                    >
+                      <option value="">(any)</option>
+                      {(memberAgents || []).map((agent: any) => (
+                        <option key={agent?.agent_id || agent?.id} value={String(agent?.agent_id || agent?.id || "")}>
+                          {String(agent?.display_name || agent?.agent_id || agent?.id || "")}
+                        </option>
+                      ))}
+                    </select>
+                    <FieldLabel>Deployment</FieldLabel>
+                    <input
+                      className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                      value={m.deploymentId}
+                      onChange={(e) => handleQuickMemberUpdate(m.id, { deploymentId: e.target.value })}
+                      placeholder="optional"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {quickBuilderError ? (
+              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+                {quickBuilderError}
+              </div>
+            ) : null}
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-md border border-white/10 bg-indigo-500/20 px-3 py-2 text-xs font-semibold text-indigo-100 hover:bg-indigo-500/30 disabled:opacity-50"
+                type="button"
+                disabled={!canQuery || quickBuilderBusy}
+                onClick={() => void handleQuickCreateTeam()}
+              >
+                {quickBuilderBusy ? "Creating…" : "Create team + add agents"}
+              </button>
+              {teamsBusy ? <span className="text-xs text-white/50">Refreshing teams…</span> : null}
+            </div>
+          </div>
+        ) : null}
+      </div>
 
       <BrokerTeamCreatePanel
         canQuery={canQuery}
