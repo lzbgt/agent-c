@@ -119,6 +119,7 @@ role_plan_versions: [
   after reload (used by team-run moderator broadcasts).
 - The UI stores the **last-focused team run** per team in local storage so it can
   auto-resume lookups after refresh (optional, user-controlled).
+- Guidance lane rows surface replan/resume events with briefing payloads when drift-driven replans are triggered.
 
 ## Event model (SSE)
 
