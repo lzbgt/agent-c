@@ -1981,7 +1981,7 @@ export default function App() {
         onScroll={onMainScroll}
         className="h-[calc(100vh-var(--topbar-h))] overflow-y-auto px-3 py-3 pb-[var(--promptbar-h)]"
       >
-        <div className="mx-auto max-w-7xl">
+        <div className="mx-auto w-full max-w-none">
             <div className="mt-4 flex flex-col gap-4 lg:flex-row">
               <aside className="rounded-lg border border-white/10 bg-black/20 p-3 lg:w-56 lg:shrink-0">
                 <div className="text-[11px] font-semibold text-white/60">Tools</div>
@@ -2054,7 +2054,7 @@ export default function App() {
                 </div>
               </section>
               {advancedPage ? (
-                <aside className="rounded-lg border border-white/10 bg-black/20 p-3 lg:w-[32vw] lg:max-w-[520px] lg:min-w-[360px] lg:shrink-0">
+                <aside className="rounded-lg border border-white/10 bg-black/20 p-3 lg:w-[40vw] lg:max-w-[720px] lg:min-w-[420px] lg:shrink-0">
                   {advancedPage === "trace" ? (
                     <TraceLookupPanel
                       open={true}
