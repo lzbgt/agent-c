@@ -52,6 +52,29 @@ export default function HistoryPanel(props: HistoryPanelProps) {
   const teamRunCreatedMs = typeof props.teamRunCreatedMs === "number" ? props.teamRunCreatedMs : 0;
   const teamRunStatus = String(props.teamRunStatus || "").trim();
   const teamConversationWarnings = Array.isArray(props.teamConversationWarnings) ? props.teamConversationWarnings : [];
+  const teamAgentSummary = React.useMemo(() => {
+    const items = teamConversationItems.slice().sort((a, b) => (a?.ts || 0) - (b?.ts || 0));
+    const agents = new Map<string, { lastTs: number; lastContent: string }>();
+    for (const item of items) {
+      const meta = item?.meta ?? {};
+      const agentId = typeof meta?.agent_id === "string" ? meta.agent_id : "";
+      if (!agentId) continue;
+      const ts = typeof item?.ts === "number" ? item.ts : 0;
+      const content = typeof item?.message?.content === "string" ? item.message.content : "";
+      const prev = agents.get(agentId);
+      if (!prev || ts >= prev.lastTs) {
+        agents.set(agentId, { lastTs: ts, lastContent: content });
+      }
+    }
+    return Array.from(agents.entries())
+      .map(([agentId, value]) => ({
+        agentId,
+        lastTs: value.lastTs,
+        lastContent: value.lastContent,
+      }))
+      .sort((a, b) => b.lastTs - a.lastTs);
+  }, [teamConversationItems]);
+  const teamLastActivity = teamAgentSummary.length > 0 ? teamAgentSummary[0].lastTs : 0;
   const MAX_HISTORY_EXPANDED_KEYS = 200;
   const technicalHistoryKey = React.useMemo(() => {
     const base = String(props.effectiveBase || "").trim() || "default";
@@ -393,7 +416,34 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                   started {new Date(teamRunCreatedMs).toLocaleString()}
                 </span>
               ) : null}
+              {teamAgentSummary.length > 0 ? (
+                <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-white/50">
+                  {teamAgentSummary.length} agents active
+                </span>
+              ) : null}
+              {teamLastActivity ? (
+                <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-white/50">
+                  last activity {new Date(teamLastActivity).toLocaleString()}
+                </span>
+              ) : null}
             </div>
+            {teamAgentSummary.length > 0 ? (
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                {teamAgentSummary.slice(0, 4).map((agent) => (
+                  <div key={agent.agentId} className="rounded-md border border-white/10 bg-black/20 px-2 py-1 text-[11px] text-white/70">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-white/80">{agent.agentId}</span>
+                      <span className="text-white/40">
+                        {agent.lastTs ? new Date(agent.lastTs).toLocaleString() : "unknown"}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-white/50">
+                      {agent.lastContent.trim().length > 0 ? agent.lastContent.trim().slice(0, 120) : "(no content)"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
               <button
                 className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
