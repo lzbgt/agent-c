@@ -47,8 +47,15 @@ if [[ -n "${MODEL_OVERRIDE}" ]]; then
   echo "model_override=${MODEL_OVERRIDE}"
 fi
 PINS_PATH="${AGENT_OPENROUTER_STREAM_PINS:-${OPENROUTER_STREAM_PINS_PATH:-${ROOT}/ref/openrouter/streaming_pins.json}}"
-if [[ -f "${PINS_PATH}" ]]; then
+if [[ -n "${PINS_PATH}" ]]; then
   echo "stream_pins_path=${PINS_PATH}"
+  if [[ -f "${PINS_PATH}" ]]; then
+    echo "stream_pins_present=1"
+  else
+    echo "stream_pins_present=0"
+  fi
+fi
+if [[ -f "${PINS_PATH}" ]]; then
   python3 - <<PY 2>/dev/null || true
 import json
 path = "${PINS_PATH}"
