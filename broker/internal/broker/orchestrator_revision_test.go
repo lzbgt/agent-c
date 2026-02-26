@@ -1,6 +1,9 @@
 package broker
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestMapDiffKeys(t *testing.T) {
 	prev := map[string]any{
@@ -148,6 +151,18 @@ func TestMergeOrchestratorRevisionHistory(t *testing.T) {
 	}
 	if dst["role_plan_version"] != 3 {
 		t.Fatalf("expected role_plan_version to be copied, got %v", dst["role_plan_version"])
+	}
+}
+
+func TestNormalizeMetaMap(t *testing.T) {
+	normalized := normalizeMetaMap(nil)
+	if normalized == nil || len(normalized) != 0 {
+		t.Fatalf("expected empty map, got %#v", normalized)
+	}
+	original := map[string]any{"a": 1}
+	normalized = normalizeMetaMap(original)
+	if !reflect.DeepEqual(normalized, original) {
+		t.Fatalf("expected map to be unchanged, got %#v", normalized)
 	}
 }
 
