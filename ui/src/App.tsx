@@ -1351,6 +1351,30 @@ export default function App() {
     teamConversationLiveCount === 0 && cachedTeamConversationItems.length > 0;
   const teamConversationCacheUpdatedMs =
     typeof teamConversationCache?.updated_ms === "number" ? teamConversationCache.updated_ms : 0;
+  const teamRecentActivity = React.useMemo(() => {
+    const items = Array.isArray(teamConversationItems) ? teamConversationItems : [];
+    const out: Array<{ key: string; label: string; preview: string; ts: number }> = [];
+    for (let i = items.length - 1; i >= 0 && out.length < 3; i -= 1) {
+      const item = items[i];
+      const ts = typeof item?.ts === "number" ? item.ts : 0;
+      const role = String(item?.message?.role || "").trim() || "message";
+      const meta = item?.meta ?? {};
+      const agentLabel = typeof meta?.agent_id === "string" ? meta.agent_id : "";
+      const label =
+        role === "guidance"
+          ? "guidance"
+          : role === "goal"
+            ? "goal"
+            : role === "user"
+              ? "you"
+              : agentLabel || role;
+      const content = String(item?.message?.content || "").trim();
+      if (!content) continue;
+      const preview = content.length > 140 ? `${content.slice(0, 140)}…` : content;
+      out.push({ key: `${ts}-${i}`, label, preview, ts });
+    }
+    return out;
+  }, [teamConversationItems]);
 
   React.useEffect(() => {
     if (teamConversationLiveCount === 0) return;
@@ -2955,6 +2979,28 @@ export default function App() {
                               +{teamQueueCount - 3} more queued
                             </div>
                           ) : null}
+                        </div>
+                      </div>
+                    ) : null}
+                    {teamRecentActivity.length > 0 ? (
+                      <div className="mt-2 rounded-md border border-white/10 bg-black/30 px-2 py-2 text-[11px] text-white/70">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-semibold text-white/70">Recent activity</div>
+                          <div className="text-[10px] text-white/40">
+                            {teamRecentActivity[0]?.ts
+                              ? new Date(teamRecentActivity[0].ts).toLocaleTimeString()
+                              : ""}
+                          </div>
+                        </div>
+                        <div className="mt-1 grid gap-1">
+                          {teamRecentActivity.map((entry) => (
+                            <div key={entry.key} className="flex flex-wrap items-baseline gap-2">
+                              <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/60">
+                                {entry.label}
+                              </span>
+                              <span className="text-white/80">{entry.preview}</span>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     ) : null}
