@@ -886,8 +886,8 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                     </button>
                   ) : null}
                 </div>
-                {teamSearch.trim().length > 0 || teamDefaultFilter.trim().length > 0 ? (
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-white/50">
+                  {teamSearch.trim().length > 0 || teamDefaultFilter.trim().length > 0 ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-white/50">
                     {teamSearch.trim().length > 0 ? (
                       <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-white/70">
                         filter: “{teamSearch.trim()}”
@@ -930,6 +930,23 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                       >
                         +{teamPendingCountRef.current} new · jump
                       </button>
+                    ) : null}
+                  </div>
+                ) : null}
+                {teamRoleChips.length > 0 ? (
+                  <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-white/50">
+                    {teamRoleChips.slice(0, 6).map((chip) => (
+                      <button
+                        key={`role-suggest:${chip}`}
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
+                        type="button"
+                        onClick={() => setTeamSearch((prev) => (prev === chip ? "" : chip))}
+                      >
+                        {chip}
+                      </button>
+                    ))}
+                    {teamRoleChips.length > 6 ? (
+                      <span className="text-white/40">+{teamRoleChips.length - 6} more</span>
                     ) : null}
                   </div>
                 ) : null}
