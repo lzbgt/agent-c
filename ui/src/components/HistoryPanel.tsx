@@ -645,6 +645,19 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 <button
                   className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
                   type="button"
+                  onClick={() => {
+                    setTeamFiltersCollapsed(false);
+                    const el = document.getElementById("team-filters");
+                    if (el) {
+                      el.scrollIntoView({ behavior: "smooth", block: "center" });
+                    }
+                  }}
+                >
+                  Filters
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                  type="button"
                   onClick={() => setShowTeamHeaders((v) => !v)}
                 >
                   {showTeamHeaders ? "Hide meta" : "Show meta"}
@@ -765,6 +778,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
               </div>
             ) : null}
             <details
+              id="team-filters"
               className="mt-2 rounded-md border border-white/10 bg-black/20 p-2 text-[11px] text-white/50"
               open={!teamFiltersCollapsed}
               onToggle={(event) => {
