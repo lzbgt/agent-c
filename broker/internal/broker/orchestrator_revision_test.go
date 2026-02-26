@@ -54,6 +54,31 @@ func TestMapDiffKeysNilEmpty(t *testing.T) {
 	}
 }
 
+func TestMapDiffKeysSorted(t *testing.T) {
+	prev := map[string]any{
+		"b": 1,
+		"z": 1,
+		"a": 1,
+	}
+	next := map[string]any{
+		"a": 1,
+		"c": 1,
+		"y": 1,
+	}
+	diff := mapDiffKeys(prev, next)
+	if diff == nil {
+		t.Fatalf("expected diff")
+	}
+	added := diff["added"].([]string)
+	removed := diff["removed"].([]string)
+	if len(added) != 2 || added[0] != "c" || added[1] != "y" {
+		t.Fatalf("unexpected added ordering: %v", added)
+	}
+	if len(removed) != 2 || removed[0] != "b" || removed[1] != "z" {
+		t.Fatalf("unexpected removed ordering: %v", removed)
+	}
+}
+
 func TestNextRevisionVersion(t *testing.T) {
 	entries := []map[string]any{
 		{"version": 1},
