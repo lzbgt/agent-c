@@ -631,6 +631,30 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                   Save filter
                 </button>
               ) : null}
+              {teamSavedFilters.length > 0 ? (
+                <details className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70">
+                  <summary className="cursor-pointer select-none">Manage saved</summary>
+                  <div className="mt-2 grid gap-1">
+                    {teamSavedFilters.map((f) => (
+                      <button
+                        key={`remove-${f}`}
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-left text-[11px] text-white/70 hover:bg-black/40"
+                        type="button"
+                        onClick={() => setTeamSavedFilters((prev) => prev.filter((x) => x !== f))}
+                      >
+                        Remove "{f}"
+                      </button>
+                    ))}
+                    <button
+                      className="rounded-md border border-rose-400/30 bg-rose-500/10 px-2 py-0.5 text-left text-[11px] text-rose-100 hover:bg-rose-500/20"
+                      type="button"
+                      onClick={() => setTeamSavedFilters([])}
+                    >
+                      Clear all saved filters
+                    </button>
+                  </div>
+                </details>
+              ) : null}
               {teamSearch.trim().length === 0 ? (
                 <span className="text-[11px] text-white/40">Try “executor”, an agent id, or a keyword</span>
               ) : null}
