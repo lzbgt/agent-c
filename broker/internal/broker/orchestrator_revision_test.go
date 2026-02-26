@@ -100,6 +100,24 @@ func TestInitializeOrchestratorRevisionHistory(t *testing.T) {
 	}
 }
 
+func TestInitializeOrchestratorRevisionHistoryNilContract(t *testing.T) {
+	meta := initializeOrchestratorRevisionHistory(nil, "goal", nil, nil, "user1")
+	goalVersions := readRevisionEntries(meta, "goal_versions")
+	if len(goalVersions) != 1 {
+		t.Fatalf("expected goal_versions seeded, got %d", len(goalVersions))
+	}
+	contract, ok := goalVersions[0]["goal_contract"].(map[string]any)
+	if !ok || contract == nil {
+		t.Fatalf("expected normalized goal_contract map, got %#v", goalVersions[0]["goal_contract"])
+	}
+	if len(contract) != 0 {
+		t.Fatalf("expected empty goal_contract, got %#v", contract)
+	}
+	if len(readRevisionEntries(meta, "role_plan_versions")) != 0 {
+		t.Fatalf("expected no role_plan_versions when snapshot is nil")
+	}
+}
+
 func TestLatestRevisionEntry(t *testing.T) {
 	entries := []map[string]any{
 		{"version": 2},
