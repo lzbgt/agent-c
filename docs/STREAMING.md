@@ -157,6 +157,7 @@ Override the pin path with:
 - `OPENROUTER_STREAM_PINS_PATH` (probe script output path)
 - `AGENT_OPENROUTER_STREAM_PINS` (smoke test override)
 
-The pin file can set distinct `assistant_model` and `tool_model` when no single model passes both checks.
-The OpenRouter smoke tests will prefer this pin file when present, falling back to the env vars and defaults above.
+The pin file can set distinct `assistant_model` and `tool_model` when no single model passes both checks, and may also
+include `ok_models_*` lists from the probe output. The OpenRouter smoke tests will try pinned models in order (primary
+keys, then `ok_models_assistant`/`ok_models_tool`, then shared lists) before falling back to env vars and defaults above.
 If every candidate fails with OpenRouter auth errors, the probe exits with code 77 and prints a skip message.
