@@ -31,10 +31,28 @@ fi
 BASE_URL="${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}"
 MODEL_PRIMARY="${AGENT_TEST_OPENROUTER_STREAM_TOOL_MODEL:-${AGENT_TEST_OPENROUTER_TOOL_MODEL:-bytedance-seed/seed-1.6-flash}}"
 MODEL_FALLBACK="${AGENT_TEST_OPENROUTER_STREAM_TOOL_MODEL_FALLBACK:-google/gemma-3-4b-it}"
-PINNED_MODEL="$(agentd_smoke_openrouter_pinned_model tool || true)"
-if [[ -n "${PINNED_MODEL}" ]]; then
-  MODEL_PRIMARY="${PINNED_MODEL}"
+
+MODELS=()
+declare -A MODEL_SEEN=()
+append_model() {
+  local model="${1:-}"
+  if [[ -z "${model}" ]]; then
+    return
+  fi
+  if [[ -n "${MODEL_SEEN[${model}]:-}" ]]; then
+    return
+  fi
+  MODEL_SEEN["${model}"]=1
+  MODELS+=("${model}")
+}
+while IFS= read -r model; do
+  append_model "${model}"
+done < <(agentd_smoke_openrouter_pinned_models tool || true)
+if [[ ${#MODELS[@]} -eq 0 ]]; then
+  append_model "${MODEL_PRIMARY}"
 fi
+append_model "${MODEL_FALLBACK}"
+MODEL_BOOTSTRAP="${MODELS[0]:-${MODEL_PRIMARY}}"
 
 if agent_test_openrouter_auth_ok "${OPENROUTER_KEY}" "${BASE_URL}"; then
   :
@@ -56,7 +74,7 @@ mkdir -p "${LOG_DIR}"
 
 OPENROUTER_API_KEY="${OPENROUTER_KEY}" agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT}" "agentd_openrouter_stream_tool_call_smoke" \
   --base-url "${BASE_URL}" \
-  --model "${MODEL_PRIMARY}" \
+  --model "${MODEL_BOOTSTRAP}" \
   --tools basic
 
 agentd_smoke_wait_health "${DAEMON_URL}"
@@ -139,19 +157,19 @@ PY
   return "${rc}"
 }
 
-set +e
-run_with_model "${MODEL_PRIMARY}"
-rc=$?
-set -e
-if [[ $rc -eq 77 ]]; then
-  exit 77
-fi
-if [[ $rc -ne 0 ]]; then
+rc=1
+for model in "${MODELS[@]}"; do
   set +e
-  run_with_model "${MODEL_FALLBACK}"
+  run_with_model "${model}"
   rc=$?
   set -e
-fi
+  if [[ $rc -eq 0 ]]; then
+    break
+  fi
+  if [[ $rc -eq 77 ]]; then
+    exit 77
+  fi
+done
 
 if [[ $rc -ne 0 ]]; then
   echo "OpenRouter streaming tool-call smoke failed. Set AGENT_TEST_OPENROUTER_STREAM_TOOL_MODEL to a known-good model." >&2

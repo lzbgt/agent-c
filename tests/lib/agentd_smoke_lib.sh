@@ -233,10 +233,10 @@ agentd_smoke_openrouter_pins_path() {
   echo "${root}/ref/openrouter/streaming_pins.json"
 }
 
-agentd_smoke_openrouter_pinned_model() {
+agentd_smoke_openrouter_pinned_models() {
   local kind="${1:-}"
   if [[ -z "${kind}" ]]; then
-    echo "agentd_smoke_openrouter_pinned_model: missing kind (assistant|tool)" >&2
+    echo "agentd_smoke_openrouter_pinned_models: missing kind (assistant|tool)" >&2
     return 2
   fi
   local pins
@@ -257,24 +257,37 @@ except Exception:
 primary_key = "assistant_model" if kind == "assistant" else "tool_model"
 fallback_list_key = "ok_models_assistant" if kind == "assistant" else "ok_models_tool"
 fallback_compat_keys = ["ok_models_both", "ok_models"]
-val = obj.get(primary_key, "")
-if isinstance(val, str):
-    val = val.strip()
-    if val:
-        print(val)
-        sys.exit(0)
-vals = obj.get(fallback_list_key, [])
-if isinstance(vals, list):
-    for item in vals:
-        if isinstance(item, str) and item.strip():
-            print(item.strip())
-            sys.exit(0)
-for key in fallback_compat_keys:
-    vals = obj.get(key, [])
+ordered = []
+seen = set()
+def add(val):
+    if isinstance(val, str):
+        val = val.strip()
+        if val and val not in seen:
+            ordered.append(val)
+            seen.add(val)
+def add_list(vals):
     if isinstance(vals, list):
         for item in vals:
-            if isinstance(item, str) and item.strip():
-                print(item.strip())
-                sys.exit(0)
+            add(item)
+add(obj.get(primary_key, ""))
+add_list(obj.get(fallback_list_key, []))
+for key in fallback_compat_keys:
+    add_list(obj.get(key, []))
+for item in ordered:
+    print(item)
 PY
+}
+
+agentd_smoke_openrouter_pinned_model() {
+  local kind="${1:-}"
+  if [[ -z "${kind}" ]]; then
+    echo "agentd_smoke_openrouter_pinned_model: missing kind (assistant|tool)" >&2
+    return 2
+  fi
+  local models
+  models="$(agentd_smoke_openrouter_pinned_models "${kind}" || true)"
+  if [[ -z "${models}" ]]; then
+    return 0
+  fi
+  printf "%s\n" "${models%%$'\n'*}"
 }
