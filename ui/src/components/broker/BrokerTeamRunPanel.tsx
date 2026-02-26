@@ -80,6 +80,26 @@ type TeamRunApprovalRow = {
   created_unix_ms?: number;
 };
 
+type RunSectionProps = {
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+};
+
+function RunSection({ title, defaultOpen = false, children }: RunSectionProps) {
+  const [open, setOpen] = React.useState<boolean>(defaultOpen);
+  return (
+    <details
+      className="rounded-md border border-white/10 bg-black/20 p-2"
+      open={open}
+      onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}
+    >
+      <summary className="cursor-pointer text-[11px] font-semibold text-white/70">{title}</summary>
+      <div className="mt-2 grid gap-2">{children}</div>
+    </details>
+  );
+}
+
 export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const teamIdTrimmed = String(props.teamId || "").trim();
   const membersList = Array.isArray(props.members) ? props.members : [];
@@ -1681,171 +1701,184 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
         runQuorum={runQuorum}
         runResult={runResult}
       />
-      <TeamRunRecentRunsPanel
-        canQuery={props.canQuery}
-        teamId={teamIdTrimmed}
-        recentRunsLimit={recentRunsLimit}
-        setRecentRunsLimit={setRecentRunsLimit}
-        recentRunsStatus={recentRunsStatus}
-        setRecentRunsStatus={setRecentRunsStatus}
-        recentRunsLive={recentRunsLive}
-        setRecentRunsLive={setRecentRunsLive}
-        recentRunsBusy={recentRunsBusy}
-        onRefresh={loadRecentRuns}
-        recentRunsError={recentRunsError}
-        recentRunsItems={recentRunsItems}
-        fmtTs={fmtTs}
-        fmtSummary={fmtSummary}
-        onLoadRun={(runId) => {
-          setRunLookupId(runId);
-          void fetchRunStatus(runId);
-        }}
-      />
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <FieldLabel>Run ID</FieldLabel>
-        <input
-          className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-          value={runLookupId}
-          onChange={(e) => setRunLookupId(e.target.value)}
-          placeholder="team_run_id"
+      <RunSection title="Recent runs" defaultOpen={false}>
+        <TeamRunRecentRunsPanel
+          canQuery={props.canQuery}
+          teamId={teamIdTrimmed}
+          recentRunsLimit={recentRunsLimit}
+          setRecentRunsLimit={setRecentRunsLimit}
+          recentRunsStatus={recentRunsStatus}
+          setRecentRunsStatus={setRecentRunsStatus}
+          recentRunsLive={recentRunsLive}
+          setRecentRunsLive={setRecentRunsLive}
+          recentRunsBusy={recentRunsBusy}
+          onRefresh={loadRecentRuns}
+          recentRunsError={recentRunsError}
+          recentRunsItems={recentRunsItems}
+          fmtTs={fmtTs}
+          fmtSummary={fmtSummary}
+          onLoadRun={(runId) => {
+            setRunLookupId(runId);
+            void fetchRunStatus(runId);
+          }}
         />
-        <button
-          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-          type="button"
-          disabled={!props.canQuery || !teamIdTrimmed || runLookupBusy}
-          onClick={() => void handleRunLookup()}
-        >
-          {runLookupBusy ? "Loading…" : "Get status"}
-        </button>
-        <button
-          className="rounded-md border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-[11px] text-amber-100 hover:bg-amber-500/20 disabled:opacity-50"
-          type="button"
-          disabled={!props.canQuery || runCancelBusy || !resolveRunId()}
-          onClick={() => void handleRunCancel()}
-        >
-          {runCancelBusy ? "Cancelling…" : "Cancel run"}
-        </button>
-      </div>
-      <label className="flex items-center gap-2 text-[11px] text-white/60">
-        <input
-          type="checkbox"
-          className="rounded border-white/20 bg-black/40"
-          checked={autoResumeRunLookup}
-          onChange={(e) => setAutoResumeRunLookup(e.target.checked)}
+      </RunSection>
+
+      <RunSection title="Run status & control" defaultOpen={true}>
+        <div className="flex flex-wrap items-center gap-2">
+          <FieldLabel>Run ID</FieldLabel>
+          <input
+            className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={runLookupId}
+            onChange={(e) => setRunLookupId(e.target.value)}
+            placeholder="team_run_id"
+          />
+          <button
+            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+            type="button"
+            disabled={!props.canQuery || !teamIdTrimmed || runLookupBusy}
+            onClick={() => void handleRunLookup()}
+          >
+            {runLookupBusy ? "Loading…" : "Get status"}
+          </button>
+          <button
+            className="rounded-md border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-[11px] text-amber-100 hover:bg-amber-500/20 disabled:opacity-50"
+            type="button"
+            disabled={!props.canQuery || runCancelBusy || !resolveRunId()}
+            onClick={() => void handleRunCancel()}
+          >
+            {runCancelBusy ? "Cancelling…" : "Cancel run"}
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <label className="flex items-center gap-2 text-[11px] text-white/60">
+            <input
+              type="checkbox"
+              className="rounded border-white/20 bg-black/40"
+              checked={autoResumeRunLookup}
+              onChange={(e) => setAutoResumeRunLookup(e.target.checked)}
+            />
+            Auto resume saved run on reload
+          </label>
+          <label className="flex items-center gap-2 text-[11px] text-white/60">
+            <input
+              type="checkbox"
+              className="rounded border-white/20 bg-black/40"
+              checked={autoRefreshRunLookup}
+              onChange={(e) => setAutoRefreshRunLookup(e.target.checked)}
+            />
+            Auto refresh run status on team run events
+          </label>
+        </div>
+        {runLookupError ? (
+          <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">{runLookupError}</div>
+        ) : null}
+        {runCancelError ? (
+          <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">{runCancelError}</div>
+        ) : null}
+        {runCancelNote ? (
+          <div className="rounded-md border border-amber-400/20 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-100">{runCancelNote}</div>
+        ) : null}
+        <TeamRunStatusPanel
+          base={props.base}
+          auth={props.auth}
+          canQuery={props.canQuery}
+          teamId={teamIdTrimmed}
+          runId={resolveRunId()}
+          runLookupResult={runLookupResult}
+          fmtTs={fmtTs}
+          fmtSummary={fmtSummary}
+          runtimeUpdateBusy={runtimeUpdateBusy}
+          memberSessions={runMemberSessions}
+          onRuntimeMemberToggle={handleRuntimeMemberToggle}
+          onRuntimeMemberRemove={handleRuntimeMemberRemove}
+          onRefreshRun={(runId) => fetchRunStatus(runId)}
         />
-        Auto resume saved run on reload
-      </label>
-      <label className="flex items-center gap-2 text-[11px] text-white/60">
-        <input
-          type="checkbox"
-          className="rounded border-white/20 bg-black/40"
-          checked={autoRefreshRunLookup}
-          onChange={(e) => setAutoRefreshRunLookup(e.target.checked)}
+      </RunSection>
+
+      <RunSection title="Moderator actions" defaultOpen={false}>
+        <TeamRunModeratorPanel
+          canQuery={props.canQuery}
+          runId={resolveRunId()}
+          memberSessions={runMemberSessions}
+          roleOptions={runRoleOptions}
+          memberOptions={runMemberOptions}
+          agentOptions={runAgentOptions}
+          directive={moderatorDirective}
+          directiveScope={moderatorDirectiveScope}
+          taskTitle={moderatorTaskTitle}
+          taskDetail={moderatorTaskDetail}
+          taskStatus={moderatorTaskStatus}
+          targetRoles={moderatorTargetRoles}
+          targetMembers={moderatorTargetMembers}
+          targetAgents={moderatorTargetAgents}
+          assignees={moderatorAssignees}
+          appendToSession={moderatorAppendToSession}
+          busy={moderatorBusy}
+          error={moderatorError}
+          success={moderatorSuccess}
+          events={moderatorEvents}
+          eventsBusy={moderatorEventsBusy}
+          eventsError={moderatorEventsError}
+          eventsTypes={moderatorEventsTypes}
+          eventsMaxBytes={moderatorEventsMaxBytes}
+          eventsLimit={moderatorEventsLimit}
+          eventsExpanded={moderatorEventsExpanded}
+          onDirectiveChange={setModeratorDirective}
+          onDirectiveScopeChange={setModeratorDirectiveScope}
+          onTaskTitleChange={setModeratorTaskTitle}
+          onTaskDetailChange={setModeratorTaskDetail}
+          onTaskStatusChange={setModeratorTaskStatus}
+          onTargetRolesChange={setModeratorTargetRoles}
+          onTargetMembersChange={setModeratorTargetMembers}
+          onTargetAgentsChange={setModeratorTargetAgents}
+          onAssigneesChange={setModeratorAssignees}
+          onAppendToSessionChange={setModeratorAppendToSession}
+          onPublishDirective={() => void handleModeratorDirectivePublish()}
+          onPublishTask={() => void handleModeratorTaskPublish()}
+          onEventsTypesChange={setModeratorEventsTypes}
+          onEventsMaxBytesChange={setModeratorEventsMaxBytes}
+          onEventsLimitChange={setModeratorEventsLimit}
+          onEventsLoad={() => void handleModeratorEventsLoad()}
+          onEventsToggleExpanded={() => setModeratorEventsExpanded((prev) => !prev)}
         />
-        Auto refresh run status on team run events
-      </label>
-      {runLookupError ? (
-        <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">{runLookupError}</div>
-      ) : null}
-      {runCancelError ? (
-        <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">{runCancelError}</div>
-      ) : null}
-      {runCancelNote ? (
-        <div className="rounded-md border border-amber-400/20 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-100">{runCancelNote}</div>
-      ) : null}
-      <TeamRunStatusPanel
-        base={props.base}
-        auth={props.auth}
-        canQuery={props.canQuery}
-        teamId={teamIdTrimmed}
-        runId={resolveRunId()}
-        runLookupResult={runLookupResult}
-        fmtTs={fmtTs}
-        fmtSummary={fmtSummary}
-        runtimeUpdateBusy={runtimeUpdateBusy}
-        memberSessions={runMemberSessions}
-        onRuntimeMemberToggle={handleRuntimeMemberToggle}
-        onRuntimeMemberRemove={handleRuntimeMemberRemove}
-        onRefreshRun={(runId) => fetchRunStatus(runId)}
-      />
-      <TeamRunModeratorPanel
-        canQuery={props.canQuery}
-        runId={resolveRunId()}
-        memberSessions={runMemberSessions}
-        roleOptions={runRoleOptions}
-        memberOptions={runMemberOptions}
-        agentOptions={runAgentOptions}
-        directive={moderatorDirective}
-        directiveScope={moderatorDirectiveScope}
-        taskTitle={moderatorTaskTitle}
-        taskDetail={moderatorTaskDetail}
-        taskStatus={moderatorTaskStatus}
-        targetRoles={moderatorTargetRoles}
-        targetMembers={moderatorTargetMembers}
-        targetAgents={moderatorTargetAgents}
-        assignees={moderatorAssignees}
-        appendToSession={moderatorAppendToSession}
-        busy={moderatorBusy}
-        error={moderatorError}
-        success={moderatorSuccess}
-        events={moderatorEvents}
-        eventsBusy={moderatorEventsBusy}
-        eventsError={moderatorEventsError}
-        eventsTypes={moderatorEventsTypes}
-        eventsMaxBytes={moderatorEventsMaxBytes}
-        eventsLimit={moderatorEventsLimit}
-        eventsExpanded={moderatorEventsExpanded}
-        onDirectiveChange={setModeratorDirective}
-        onDirectiveScopeChange={setModeratorDirectiveScope}
-        onTaskTitleChange={setModeratorTaskTitle}
-        onTaskDetailChange={setModeratorTaskDetail}
-        onTaskStatusChange={setModeratorTaskStatus}
-        onTargetRolesChange={setModeratorTargetRoles}
-        onTargetMembersChange={setModeratorTargetMembers}
-        onTargetAgentsChange={setModeratorTargetAgents}
-        onAssigneesChange={setModeratorAssignees}
-        onAppendToSessionChange={setModeratorAppendToSession}
-        onPublishDirective={() => void handleModeratorDirectivePublish()}
-        onPublishTask={() => void handleModeratorTaskPublish()}
-        onEventsTypesChange={setModeratorEventsTypes}
-        onEventsMaxBytesChange={setModeratorEventsMaxBytes}
-        onEventsLimitChange={setModeratorEventsLimit}
-        onEventsLoad={() => void handleModeratorEventsLoad()}
-        onEventsToggleExpanded={() => setModeratorEventsExpanded((prev) => !prev)}
-      />
-      <TeamRunOpsPanel
-        canQuery={props.canQuery}
-        teamId={teamIdTrimmed}
-        runtimeUpdateMode={runtimeUpdateMode}
-        setRuntimeUpdateMode={setRuntimeUpdateMode}
-        runtimeUpdateBusy={runtimeUpdateBusy}
-        runtimeUpdateError={runtimeUpdateError}
-        runtimeUpdateNote={runtimeUpdateNote}
-        onRuntimeMembersLoadFromRun={handleRuntimeMembersLoadFromRun}
-        onRuntimeMembersUpdate={handleRuntimeMembersUpdate}
-        approvalsLastSyncMs={approvalsLastSyncMs}
-        fmtTs={fmtTs}
-        quorumRequestRows={quorumRequestRows}
-        onTeamSelect={props.onTeamSelect}
-        setApprovalRunId={setApprovalRunId}
-        setRunLookupId={setRunLookupId}
-        approvalRunId={approvalRunId}
-        approvalsBusy={approvalsBusy}
-        onApprovalsRefresh={handleApprovalsRefresh}
-        membersList={membersList}
-        approvalMemberId={approvalMemberId}
-        setApprovalMemberId={setApprovalMemberId}
-        approvalDecision={approvalDecision}
-        setApprovalDecision={setApprovalDecision}
-        approvalRuleId={approvalRuleId}
-        setApprovalRuleId={setApprovalRuleId}
-        rulesList={rulesList}
-        approvalReason={approvalReason}
-        setApprovalReason={setApprovalReason}
-        onApprovalSubmit={handleApprovalSubmit}
-        approvalsError={approvalsError}
-        approvals={approvals}
-      />
+      </RunSection>
+
+      <RunSection title="Operations & approvals" defaultOpen={false}>
+        <TeamRunOpsPanel
+          canQuery={props.canQuery}
+          teamId={teamIdTrimmed}
+          runtimeUpdateMode={runtimeUpdateMode}
+          setRuntimeUpdateMode={setRuntimeUpdateMode}
+          runtimeUpdateBusy={runtimeUpdateBusy}
+          runtimeUpdateError={runtimeUpdateError}
+          runtimeUpdateNote={runtimeUpdateNote}
+          onRuntimeMembersLoadFromRun={handleRuntimeMembersLoadFromRun}
+          onRuntimeMembersUpdate={handleRuntimeMembersUpdate}
+          approvalsLastSyncMs={approvalsLastSyncMs}
+          fmtTs={fmtTs}
+          quorumRequestRows={quorumRequestRows}
+          onTeamSelect={props.onTeamSelect}
+          setApprovalRunId={setApprovalRunId}
+          setRunLookupId={setRunLookupId}
+          approvalRunId={approvalRunId}
+          approvalsBusy={approvalsBusy}
+          onApprovalsRefresh={handleApprovalsRefresh}
+          membersList={membersList}
+          approvalMemberId={approvalMemberId}
+          setApprovalMemberId={setApprovalMemberId}
+          approvalDecision={approvalDecision}
+          setApprovalDecision={setApprovalDecision}
+          approvalRuleId={approvalRuleId}
+          setApprovalRuleId={setApprovalRuleId}
+          rulesList={rulesList}
+          approvalReason={approvalReason}
+          setApprovalReason={setApprovalReason}
+          onApprovalSubmit={handleApprovalSubmit}
+          approvalsError={approvalsError}
+          approvals={approvals}
+        />
+      </RunSection>
     </div>
   );
 }
