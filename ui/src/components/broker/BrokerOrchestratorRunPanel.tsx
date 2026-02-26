@@ -472,6 +472,18 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
   const rolePlanRevisions = sortRevisions(normalizeRevisionEntries(currentMeta?.role_plan_versions));
   const latestGoalRevision = goalRevisions.length > 0 ? goalRevisions[0] : null;
   const latestRoleRevision = rolePlanRevisions.length > 0 ? rolePlanRevisions[0] : null;
+  const goalVersion = toNumber(currentMeta?.goal_version);
+  const rolePlanVersion = toNumber(currentMeta?.role_plan_version);
+  const goalUpdatedAt = toNumber(currentMeta?.goal_updated_unix_ms);
+  const rolePlanUpdatedAt = toNumber(currentMeta?.role_plan_updated_unix_ms);
+  const revisionSummary = React.useMemo(() => {
+    const parts: string[] = [];
+    if (goalVersion) parts.push(`goal v${goalVersion}`);
+    if (goalUpdatedAt) parts.push(`goal updated ${fmtTs(goalUpdatedAt)}`);
+    if (rolePlanVersion) parts.push(`role plan v${rolePlanVersion}`);
+    if (rolePlanUpdatedAt) parts.push(`role updated ${fmtTs(rolePlanUpdatedAt)}`);
+    return parts.join(" · ");
+  }, [goalUpdatedAt, goalVersion, rolePlanUpdatedAt, rolePlanVersion]);
   const latestGoalContract =
     latestGoalRevision?.goal_contract !== undefined
       ? latestGoalRevision.goal_contract
@@ -708,6 +720,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                 {prevOwner ? ` · prev ${prevOwner}` : ""}
                 {allowTakeover ? ` · allow_takeover ${allowTakeover}` : ""}
               </div>
+              {revisionSummary ? <div className="text-[11px] text-white/50">{revisionSummary}</div> : null}
             </div>
           ) : (
             <div className="text-[11px] text-white/50">No run loaded.</div>
