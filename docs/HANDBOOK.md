@@ -158,6 +158,7 @@ When `--auth-token` is set, all endpoints require `Authorization: Bearer ...`.
 - Smoke tests try pinned models in order (primary keys, then `ok_models_*` lists) before env defaults.
 - OpenRouter auth hints: `OPENROUTER_HTTP_REFERER`, `OPENROUTER_X_TITLE`,
   optional `AGENT_TEST_OPENROUTER_SKIP_CHAT_PREFLIGHT=1`.
+- `tools/openrouter_auth_debug.sh` reports any pin metadata it finds (pinned models + list sizes).
 
 ---
 

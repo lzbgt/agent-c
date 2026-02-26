@@ -127,7 +127,8 @@ If that still fails, use the debug helper to inspect model selection and the cha
 tools/openrouter_auth_debug.sh
 ```
 
-The quick check prints a hint to run the debug helper when it fails.
+The quick check prints a hint to run the debug helper when it fails. The debug helper also reports any
+`streaming_pins.json` metadata it finds (pinned models and list sizes).
 
 If you need to skip the chat-completions preflight (e.g., keys that can list models but cannot chat), set:
 
