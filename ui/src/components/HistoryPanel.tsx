@@ -133,6 +133,12 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     return `agentui.teamGroupState:${base}::${tid}`;
   }, [props.effectiveBase, teamId]);
   const [teamGroupState, setTeamGroupState] = useLocalStorageState<Record<string, boolean>>(teamGroupStateKey, {});
+  const teamFiltersCollapsedKey = React.useMemo(() => {
+    const base = String(props.effectiveBase || "").trim() || "default";
+    const tid = teamId || "none";
+    return `agentui.teamFiltersCollapsed:${base}::${tid}`;
+  }, [props.effectiveBase, teamId]);
+  const [teamFiltersCollapsed, setTeamFiltersCollapsed] = useLocalStorageState<boolean>(teamFiltersCollapsedKey, false);
   const MAX_HISTORY_EXPANDED_KEYS = 200;
   const technicalHistoryKey = React.useMemo(() => {
     const base = String(props.effectiveBase || "").trim() || "default";
@@ -594,260 +600,277 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 ) : null}
               </div>
             ) : null}
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
-              <input
-                className="min-w-[180px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80"
-                value={teamSearch}
-                onChange={(e) => setTeamSearch(e.target.value)}
-                placeholder="Filter team chat…"
-                ref={teamSearchRef}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    setTeamSearch("");
-                  }
-                }}
-              />
-              {teamSavedFilters.length > 0 ? (
-                <select
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80"
-                  value=""
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val) setTeamSearch(val);
+            <details
+              className="mt-2 rounded-md border border-white/10 bg-black/20 p-2 text-[11px] text-white/50"
+              open={!teamFiltersCollapsed}
+              onToggle={(event) => {
+                const open = (event.currentTarget as HTMLDetailsElement).open;
+                setTeamFiltersCollapsed(!open);
+              }}
+            >
+              <summary className="cursor-pointer select-none text-[11px] text-white/70">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold text-white/80">Filters & controls</span>
+                  {filtersActive ? (
+                    <span className="rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-100">
+                      active
+                    </span>
+                  ) : null}
+                  {teamSearch.trim().length > 0 ? <span className="text-white/50">“{teamSearch.trim()}”</span> : null}
+                  {teamSearch.trim().length > 0 ? (
+                    <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[11px] text-white/70">
+                      {teamFilteredCount} match{teamFilteredCount === 1 ? "" : "es"}
+                    </span>
+                  ) : null}
+                </div>
+              </summary>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
+                <input
+                  className="min-w-[180px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80"
+                  value={teamSearch}
+                  onChange={(e) => setTeamSearch(e.target.value)}
+                  placeholder="Filter team chat…"
+                  ref={teamSearchRef}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      setTeamSearch("");
+                    }
                   }}
-                >
-                  <option value="">Saved filters…</option>
-                  {teamSavedFilters.map((f) => (
-                    <option key={f} value={f}>
-                      {f}
-                    </option>
-                  ))}
-                </select>
-              ) : null}
-              {teamSearch.trim().length > 0 ? (
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                  type="button"
-                  onClick={() => {
-                    const val = teamSearch.trim();
-                    if (!val) return;
-                    setTeamSavedFilters((prev) => (prev.includes(val) ? prev : [...prev, val]));
-                  }}
-                >
-                  Save filter
-                </button>
-              ) : null}
-              {teamSearch.trim().length > 0 && !teamPinnedFilters.includes(teamSearch.trim()) ? (
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                  type="button"
-                  onClick={() => {
-                    const val = teamSearch.trim();
-                    if (!val) return;
-                    setTeamPinnedFilters((prev) => (prev.includes(val) ? prev : [...prev, val]));
-                  }}
-                >
-                  Pin filter
-                </button>
-              ) : null}
-              {teamSavedFilters.length > 0 ? (
-                <details className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70">
-                  <summary className="cursor-pointer select-none">Manage saved</summary>
-                  <div className="mt-2 grid gap-1">
+                />
+                {teamSavedFilters.length > 0 ? (
+                  <select
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80"
+                    value=""
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val) setTeamSearch(val);
+                    }}
+                  >
+                    <option value="">Saved filters…</option>
                     {teamSavedFilters.map((f) => (
-                      <div key={`manage-${f}`} className="flex items-center gap-2">
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+                {teamSearch.trim().length > 0 ? (
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                    type="button"
+                    onClick={() => {
+                      const val = teamSearch.trim();
+                      if (!val) return;
+                      setTeamSavedFilters((prev) => (prev.includes(val) ? prev : [...prev, val]));
+                    }}
+                  >
+                    Save filter
+                  </button>
+                ) : null}
+                {teamSearch.trim().length > 0 && !teamPinnedFilters.includes(teamSearch.trim()) ? (
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                    type="button"
+                    onClick={() => {
+                      const val = teamSearch.trim();
+                      if (!val) return;
+                      setTeamPinnedFilters((prev) => (prev.includes(val) ? prev : [...prev, val]));
+                    }}
+                  >
+                    Pin filter
+                  </button>
+                ) : null}
+                {teamSavedFilters.length > 0 ? (
+                  <details className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70">
+                    <summary className="cursor-pointer select-none">Manage saved</summary>
+                    <div className="mt-2 grid gap-1">
+                      {teamSavedFilters.map((f) => (
+                        <div key={`manage-${f}`} className="flex items-center gap-2">
+                          <button
+                            className="flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-left text-[11px] text-white/70 hover:bg-black/40"
+                            type="button"
+                            onClick={() => setTeamSearch(f)}
+                          >
+                            {f}
+                          </button>
+                          <button
+                            className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[11px] text-white/70 hover:bg-black/40"
+                            type="button"
+                            onClick={() =>
+                              setTeamPinnedFilters((prev) =>
+                                prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f],
+                              )
+                            }
+                          >
+                            {teamPinnedFilters.includes(f) ? "Unpin" : "Pin"}
+                          </button>
+                          <button
+                            className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[11px] text-white/70 hover:bg-black/40"
+                            type="button"
+                            onClick={() => setTeamSavedFilters((prev) => prev.filter((x) => x !== f))}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        className="rounded-md border border-rose-400/30 bg-rose-500/10 px-2 py-0.5 text-left text-[11px] text-rose-100 hover:bg-rose-500/20"
+                        type="button"
+                        onClick={() => setTeamSavedFilters([])}
+                      >
+                        Clear all saved filters
+                      </button>
+                    </div>
+                  </details>
+                ) : null}
+                {teamSearch.trim().length === 0 ? (
+                  <span className="text-[11px] text-white/40">Try “executor”, an agent id, or a keyword</span>
+                ) : null}
+                {teamPinnedFilters.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-1">
+                    {teamPinnedFilters.map((chip) => (
+                      <div key={`pin-${chip}`} className="flex items-center gap-1">
                         <button
-                          className="flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-left text-[11px] text-white/70 hover:bg-black/40"
+                          className="rounded-md border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-100 hover:bg-emerald-500/20"
                           type="button"
-                          onClick={() => setTeamSearch(f)}
+                          onClick={() => setTeamSearch(chip)}
                         >
-                          {f}
+                          {chip}
                         </button>
                         <button
-                          className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[11px] text-white/70 hover:bg-black/40"
+                          className="rounded-md border border-white/10 bg-black/30 px-1.5 py-0.5 text-[11px] text-white/60 hover:bg-black/40"
                           type="button"
-                          onClick={() =>
-                            setTeamPinnedFilters((prev) => (prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]))
-                          }
+                          onClick={() => setTeamPinnedFilters((prev) => prev.filter((x) => x !== chip))}
+                          title="Unpin"
                         >
-                          {teamPinnedFilters.includes(f) ? "Unpin" : "Pin"}
-                        </button>
-                        <button
-                          className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[11px] text-white/70 hover:bg-black/40"
-                          type="button"
-                          onClick={() => setTeamSavedFilters((prev) => prev.filter((x) => x !== f))}
-                        >
-                          Remove
+                          ×
                         </button>
                       </div>
                     ))}
-                    <button
-                      className="rounded-md border border-rose-400/30 bg-rose-500/10 px-2 py-0.5 text-left text-[11px] text-rose-100 hover:bg-rose-500/20"
-                      type="button"
-                      onClick={() => setTeamSavedFilters([])}
-                    >
-                      Clear all saved filters
-                    </button>
                   </div>
-                </details>
-              ) : null}
-              {teamSearch.trim().length === 0 ? (
-                <span className="text-[11px] text-white/40">Try “executor”, an agent id, or a keyword</span>
-              ) : null}
-              {filtersActive ? (
-                <span className="rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-100">
-                  filters active
-                </span>
-              ) : null}
-              {teamSearch.trim().length > 0 ? (
-                <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[11px] text-white/70">
-                  {teamFilteredCount} match{teamFilteredCount === 1 ? "" : "es"}
-                </span>
-              ) : null}
-              {teamPinnedFilters.length > 0 ? (
+                ) : null}
                 <div className="flex flex-wrap items-center gap-1">
-                  {teamPinnedFilters.map((chip) => (
-                    <div key={`pin-${chip}`} className="flex items-center gap-1">
-                      <button
-                        className="rounded-md border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-100 hover:bg-emerald-500/20"
-                        type="button"
-                        onClick={() => setTeamSearch(chip)}
-                      >
-                        {chip}
-                      </button>
-                      <button
-                        className="rounded-md border border-white/10 bg-black/30 px-1.5 py-0.5 text-[11px] text-white/60 hover:bg-black/40"
-                        type="button"
-                        onClick={() => setTeamPinnedFilters((prev) => prev.filter((x) => x !== chip))}
-                        title="Unpin"
-                      >
-                        ×
-                      </button>
-                    </div>
+                  {["user", "assistant", "tool"].map((chip) => (
+                    <button
+                      key={chip}
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[11px] text-white/70 hover:bg-black/40"
+                      type="button"
+                      onClick={() => setTeamSearch((prev) => (prev === chip ? "" : chip))}
+                    >
+                      {chip}
+                    </button>
+                  ))}
+                  {teamRoleChips.map((chip) => (
+                    <button
+                      key={`role:${chip}`}
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[11px] text-white/70 hover:bg-black/40"
+                      type="button"
+                      onClick={() => setTeamSearch((prev) => (prev === chip ? "" : chip))}
+                    >
+                      {chip}
+                    </button>
                   ))}
                 </div>
-              ) : null}
-              <div className="flex flex-wrap items-center gap-1">
-                {["user", "assistant", "tool"].map((chip) => (
-                  <button
-                    key={chip}
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[11px] text-white/70 hover:bg-black/40"
-                    type="button"
-                    onClick={() => setTeamSearch((prev) => (prev === chip ? "" : chip))}
-                  >
-                    {chip}
-                  </button>
-                ))}
-                {teamRoleChips.map((chip) => (
-                  <button
-                    key={`role:${chip}`}
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[11px] text-white/70 hover:bg-black/40"
-                    type="button"
-                    onClick={() => setTeamSearch((prev) => (prev === chip ? "" : chip))}
-                  >
-                    {chip}
-                  </button>
-                ))}
-              </div>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                type="button"
-                onClick={() => setShowTeamRunMarkers((v) => !v)}
-              >
-                {showTeamRunMarkers ? "Hide run markers" : "Show run markers"}
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                type="button"
-                onClick={() => setShowTeamGroupByAgent((v) => !v)}
-              >
-                {showTeamGroupByAgent ? "Timeline view" : "Group by agent"}
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                type="button"
-                onClick={() => setShowTeamRoleLabels((v) => !v)}
-              >
-                {showTeamRoleLabels ? "Hide role labels" : "Show role labels"}
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                type="button"
-                onClick={() => setShowTeamSystemMessages((v) => !v)}
-              >
-                {showTeamSystemMessages ? "Hide system" : "Show system"}
-              </button>
-              {teamMutedAgents.length > 0 ? (
                 <button
                   className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
                   type="button"
-                  onClick={() => setTeamMutedAgents([])}
+                  onClick={() => setShowTeamRunMarkers((v) => !v)}
                 >
-                  Clear muted
+                  {showTeamRunMarkers ? "Hide run markers" : "Show run markers"}
                 </button>
-              ) : null}
-              {teamSearch.trim().length > 0 ? (
                 <button
                   className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
                   type="button"
-                  onClick={() => setTeamSearch("")}
+                  onClick={() => setShowTeamGroupByAgent((v) => !v)}
                 >
-                  Clear filter
+                  {showTeamGroupByAgent ? "Timeline view" : "Group by agent"}
                 </button>
-              ) : null}
-              {teamSearch.trim().length > 0 ? (
-                <>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                  type="button"
+                  onClick={() => setShowTeamRoleLabels((v) => !v)}
+                >
+                  {showTeamRoleLabels ? "Hide role labels" : "Show role labels"}
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                  type="button"
+                  onClick={() => setShowTeamSystemMessages((v) => !v)}
+                >
+                  {showTeamSystemMessages ? "Hide system" : "Show system"}
+                </button>
+                {teamMutedAgents.length > 0 ? (
                   <button
                     className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
                     type="button"
-                    onClick={() => jumpToMatch("first")}
+                    onClick={() => setTeamMutedAgents([])}
                   >
-                    First match
+                    Clear muted
                   </button>
+                ) : null}
+                {teamSearch.trim().length > 0 ? (
                   <button
                     className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
                     type="button"
-                    onClick={() => jumpToMatch("last")}
+                    onClick={() => setTeamSearch("")}
                   >
-                    Last match
+                    Clear filter
                   </button>
-                </>
-              ) : null}
-              {filtersActive ? (
+                ) : null}
+                {teamSearch.trim().length > 0 ? (
+                  <>
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                      type="button"
+                      onClick={() => jumpToMatch("first")}
+                    >
+                      First match
+                    </button>
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                      type="button"
+                      onClick={() => jumpToMatch("last")}
+                    >
+                      Last match
+                    </button>
+                  </>
+                ) : null}
+                {filtersActive ? (
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                    type="button"
+                    onClick={() => {
+                      setTeamSearch("");
+                      setTeamMutedAgents([]);
+                      setShowTeamSystemMessages(false);
+                      setShowTeamRunMarkers(true);
+                    }}
+                  >
+                    Clear all
+                  </button>
+                ) : null}
                 <button
                   className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
                   type="button"
                   onClick={() => {
-                    setTeamSearch("");
-                    setTeamMutedAgents([]);
-                    setShowTeamSystemMessages(false);
-                    setShowTeamRunMarkers(true);
+                    if (typeof window !== "undefined") {
+                      window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+                    }
                   }}
                 >
-                  Clear all
+                  Jump to latest
                 </button>
-              ) : null}
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                type="button"
-                onClick={() => {
-                  if (typeof window !== "undefined") {
-                    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
-                  }
-                }}
-              >
-                Jump to latest
-              </button>
-              {showTeamGroupByAgent && teamGroupedByAgent.length > 0 ? (
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                  type="button"
-                  onClick={() => setTeamGroupState({})}
-                >
-                  Collapse groups
-                </button>
-              ) : null}
-            </div>
+                {showTeamGroupByAgent && teamGroupedByAgent.length > 0 ? (
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                    type="button"
+                    onClick={() => setTeamGroupState({})}
+                  >
+                    Collapse groups
+                  </button>
+                ) : null}
+              </div>
+            </details>
             {teamMutedAgents.length > 0 ? (
               <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
                 Muted:
