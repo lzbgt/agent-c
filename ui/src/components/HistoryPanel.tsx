@@ -71,6 +71,12 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     return `agentui.teamRunMarkers:${base}::${tid}`;
   }, [props.effectiveBase, teamId]);
   const [showTeamRunMarkers, setShowTeamRunMarkers] = useLocalStorageState<boolean>(teamRunMarkersKey, true);
+  const teamGroupByAgentKey = React.useMemo(() => {
+    const base = String(props.effectiveBase || "").trim() || "default";
+    const tid = teamId || "none";
+    return `agentui.teamGroupByAgent:${base}::${tid}`;
+  }, [props.effectiveBase, teamId]);
+  const [showTeamGroupByAgent, setShowTeamGroupByAgent] = useLocalStorageState<boolean>(teamGroupByAgentKey, false);
   const teamRoleLabelsKey = React.useMemo(() => {
     const base = String(props.effectiveBase || "").trim() || "default";
     const tid = teamId || "none";
@@ -107,6 +113,85 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     }
     return out;
   }, [showTeamRunMarkers, showTeamSystemMessages, teamConversationItems]);
+
+  const teamGroupedByAgent = React.useMemo(() => {
+    if (!showTeamGroupByAgent) return [] as Array<{ key: string; label: string; items: any[]; latest: number }>;
+    const groups = new Map<string, { label: string; items: any[]; latest: number }>();
+    for (const entry of teamTimelineItems) {
+      if (entry.kind !== "item") continue;
+      const item = entry.item;
+      const meta = item?.meta ?? {};
+      const agentLabel = typeof meta?.agent_id === "string" && meta.agent_id ? meta.agent_id : "";
+      const roleLabel = typeof meta?.role === "string" && meta.role ? meta.role : "";
+      const baseLabel = agentLabel || roleLabel || "unknown";
+      const label = agentLabel && roleLabel ? `${agentLabel} · ${roleLabel}` : baseLabel;
+      const key = baseLabel;
+      const ts = typeof item?.ts === "number" ? item.ts : 0;
+      if (!groups.has(key)) {
+        groups.set(key, { label, items: [item], latest: ts });
+      } else {
+        const g = groups.get(key)!;
+        g.items.push(item);
+        if (ts > g.latest) g.latest = ts;
+      }
+    }
+    return Array.from(groups.entries())
+      .map(([key, value]) => ({ key, ...value }))
+      .sort((a, b) => b.latest - a.latest);
+  }, [showTeamGroupByAgent, teamTimelineItems]);
+
+  const renderTeamMessage = React.useCallback(
+    (item: any, idx: number) => {
+      const msg = item?.message ?? {};
+      const role = typeof msg?.role === "string" ? msg.role : "message";
+      const content = typeof msg?.content === "string" ? msg.content : "";
+      const ts = typeof item?.ts === "number" ? item.ts : 0;
+      const when = ts ? new Date(ts).toLocaleString() : "";
+      const meta = item?.meta ?? {};
+      const roleLabel = typeof meta?.role === "string" && meta.role ? meta.role : role;
+      const agentLabel = typeof meta?.agent_id === "string" && meta.agent_id ? meta.agent_id : "";
+      const sessionLabel = typeof meta?.session_id === "string" ? meta.session_id : "";
+      const hasMeta = !!agentLabel || !!sessionLabel;
+      const payload = meta?.payload ?? {};
+      const uploads = Array.isArray(payload?.uploads) ? payload.uploads : [];
+      const uploadFiles = uploads.flatMap((u: any) => (Array.isArray(u?.files) ? u.files : []));
+      const uploadNames = uploadFiles
+        .map((f: any) => String(f?.name || f?.path || "").trim())
+        .filter((f: string) => f.length > 0);
+      return (
+        <div key={`team-msg:${ts || idx}`} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+            {showTeamRoleLabels ? (
+              <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-semibold text-white/80">
+                {roleLabel}
+              </span>
+            ) : null}
+            {when ? <span>{when}</span> : null}
+          </div>
+          {content ? (
+            <div className="mt-2 text-sm text-white/90">
+              <Markdown text={String(content)} />
+            </div>
+          ) : null}
+          {hasMeta ? (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-[11px] text-white/60">Message details</summary>
+              <div className="mt-2 text-[11px] text-white/60">
+                {agentLabel ? <div>agent {agentLabel}</div> : null}
+                {sessionLabel ? <div>session {sessionLabel}</div> : null}
+              </div>
+            </details>
+          ) : null}
+          {uploadNames.length > 0 ? (
+            <div className="mt-2 text-[11px] text-white/60">
+              Shared files: <span className="text-white/80">{uploadNames.join(", ")}</span>
+            </div>
+          ) : null}
+        </div>
+      );
+    },
+    [showTeamRoleLabels],
+  );
 
   const conversationItems = React.useMemo(() => {
     const items: {
@@ -299,6 +384,13 @@ export default function HistoryPanel(props: HistoryPanelProps) {
               <button
                 className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
                 type="button"
+                onClick={() => setShowTeamGroupByAgent((v) => !v)}
+              >
+                {showTeamGroupByAgent ? "Timeline view" : "Group by agent"}
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                type="button"
                 onClick={() => setShowTeamRoleLabels((v) => !v)}
               >
                 {showTeamRoleLabels ? "Hide role labels" : "Show role labels"}
@@ -321,66 +413,30 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 </div>
               ) : (
                 <div className="mt-3 grid gap-3">
-                  {teamTimelineItems.map((entry, idx) => {
-                    if (entry.kind === "marker") {
-                      return (
-                        <div
-                          key={`team-run:${entry.runId || idx}`}
-                          className="rounded-md border border-indigo-400/20 bg-indigo-500/10 px-3 py-2 text-[11px] text-indigo-100"
-                        >
-                          Run {entry.runId}
-                        </div>
-                      );
-                    }
-                    const item = entry.item;
-                    const msg = item?.message ?? {};
-                    const role = typeof msg?.role === "string" ? msg.role : "message";
-                    const content = typeof msg?.content === "string" ? msg.content : "";
-                    const ts = typeof item?.ts === "number" ? item.ts : 0;
-                    const when = ts ? new Date(ts).toLocaleString() : "";
-                    const meta = item?.meta ?? {};
-                    const roleLabel = typeof meta?.role === "string" && meta.role ? meta.role : role;
-                    const agentLabel = typeof meta?.agent_id === "string" && meta.agent_id ? meta.agent_id : "";
-                    const sessionLabel = typeof meta?.session_id === "string" ? meta.session_id : "";
-                    const hasMeta = !!agentLabel || !!sessionLabel;
-                    const payload = meta?.payload ?? {};
-                    const uploads = Array.isArray(payload?.uploads) ? payload.uploads : [];
-                    const uploadFiles = uploads.flatMap((u: any) => (Array.isArray(u?.files) ? u.files : []));
-                    const uploadNames = uploadFiles
-                      .map((f: any) => String(f?.name || f?.path || "").trim())
-                      .filter((f: string) => f.length > 0);
-                    return (
-                      <div key={`team-msg:${ts || idx}`} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-                          {showTeamRoleLabels ? (
-                            <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-semibold text-white/80">
-                              {roleLabel}
-                            </span>
-                          ) : null}
-                          {when ? <span>{when}</span> : null}
-                        </div>
-                        {content ? (
-                          <div className="mt-2 text-sm text-white/90">
-                            <Markdown text={String(content)} />
+                  {showTeamGroupByAgent
+                    ? teamGroupedByAgent.map((group) => (
+                        <details key={group.key} className="rounded-md border border-white/10 bg-black/20 p-2">
+                          <summary className="cursor-pointer text-[11px] text-white/70">
+                            {group.label} · {group.items.length} messages
+                          </summary>
+                          <div className="mt-2 grid gap-2">
+                            {group.items.map((item, idx) => renderTeamMessage(item, idx))}
                           </div>
-                        ) : null}
-                        {hasMeta ? (
-                          <details className="mt-2">
-                            <summary className="cursor-pointer text-[11px] text-white/60">Message details</summary>
-                            <div className="mt-2 text-[11px] text-white/60">
-                              {agentLabel ? <div>agent {agentLabel}</div> : null}
-                              {sessionLabel ? <div>session {sessionLabel}</div> : null}
+                        </details>
+                      ))
+                    : teamTimelineItems.map((entry, idx) => {
+                        if (entry.kind === "marker") {
+                          return (
+                            <div
+                              key={`team-run:${entry.runId || idx}`}
+                              className="rounded-md border border-indigo-400/20 bg-indigo-500/10 px-3 py-2 text-[11px] text-indigo-100"
+                            >
+                              Run {entry.runId}
                             </div>
-                          </details>
-                        ) : null}
-                        {uploadNames.length > 0 ? (
-                          <div className="mt-2 text-[11px] text-white/60">
-                            Shared files: <span className="text-white/80">{uploadNames.join(", ")}</span>
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
+                          );
+                        }
+                        return renderTeamMessage(entry.item, idx);
+                      })}
                 </div>
               )
             ) : null}
