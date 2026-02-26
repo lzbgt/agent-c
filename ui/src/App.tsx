@@ -1152,7 +1152,12 @@ export default function App() {
         hostPolicy: tools === "host" ? hostPolicy : undefined,
         sessionId,
       }),
-    retry: 1,
+    enabled: !!effectiveBase,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10_000),
   });
 
   const [result, setResult] = React.useState<RunResponse | undefined>(undefined);

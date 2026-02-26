@@ -257,8 +257,22 @@ export type UiSettings = {
 const normalizeHttpBase = (raw: string, fallback: string, defaultScheme: "http" | "https") => {
   const b = String(raw || "").trim();
   if (b.length === 0) return fallback;
-  const withScheme = /^https?:\/\//i.test(b) ? b : `${defaultScheme}://${b}`;
-  return withScheme.replace(/\/+$/, "");
+  if (/^https?:\/\//i.test(b)) return b.replace(/\/+$/, "");
+
+  const hostPart = b.split("/")[0] || "";
+  const host =
+    hostPart.startsWith("[") && hostPart.includes("]")
+      ? hostPart.slice(1, hostPart.indexOf("]"))
+      : hostPart.split(":")[0] || "";
+  const hostLower = host.toLowerCase();
+  const isLoopback = hostLower === "localhost" || hostLower === "::1" || hostLower.startsWith("127.");
+  let scheme = defaultScheme;
+  if (isLoopback && typeof window !== "undefined") {
+    const proto = String(window.location?.protocol || "").toLowerCase();
+    if (proto === "http:" || proto === "https:") scheme = proto.slice(0, -1) as "http" | "https";
+  }
+
+  return `${scheme}://${b}`.replace(/\/+$/, "");
 };
 
 const safeParse = <T,>(raw: string | null): T | undefined => {
