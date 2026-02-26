@@ -2500,8 +2500,14 @@ export default function App() {
         className="h-[calc(100vh-var(--topbar-h))] overflow-y-auto px-3 py-3 pb-[var(--promptbar-h)]"
       >
         <div className="mx-auto w-full max-w-none">
-            <div className="mt-4 flex flex-col gap-4 lg:flex-row">
-              <aside className="rounded-lg border border-white/10 bg-black/20 p-3 lg:w-56 lg:shrink-0">
+            <div
+              className={`mt-4 grid gap-4 ${
+                advancedPage
+                  ? "lg:grid-cols-[220px_minmax(0,1fr)_minmax(320px,40vw)]"
+                  : "lg:grid-cols-[220px_minmax(0,1fr)]"
+              }`}
+            >
+              <aside className="rounded-lg border border-white/10 bg-black/20 p-3 lg:sticky lg:top-4 lg:self-start">
                 <div className="text-[11px] font-semibold text-white/60">Tools</div>
                 <div className="mt-2 grid gap-1">
                   {advancedPages.map((page) => {
@@ -2521,7 +2527,7 @@ export default function App() {
                   })}
                 </div>
               </aside>
-              <section className="min-w-0 flex-1">
+              <section className="min-w-0">
                 <div className="h-[calc(100vh-var(--topbar-h)-var(--promptbar-h)-24px)] min-h-0">
                   <SceneView
                     baseUrl={effectiveBase}
@@ -2589,7 +2595,7 @@ export default function App() {
                 </div>
               </section>
               {advancedPage ? (
-                <aside className="min-w-0 overflow-x-hidden rounded-lg border border-white/10 bg-black/20 p-3 lg:w-[min(52vw,1100px)] lg:min-w-[360px] lg:shrink-0">
+                <aside className="min-w-0 overflow-x-hidden rounded-lg border border-white/10 bg-black/20 p-3">
                   {advancedPage === "trace" ? (
                     <TraceLookupPanel
                       open={true}
