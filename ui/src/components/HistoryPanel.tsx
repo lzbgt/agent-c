@@ -183,6 +183,12 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     return `agentui.teamSearch:${base}::${tid}`;
   }, [props.effectiveBase, teamId]);
   const [teamSearch, setTeamSearch] = useLocalStorageState<string>(teamSearchKey, "");
+  const teamSavedFiltersKey = React.useMemo(() => {
+    const base = String(props.effectiveBase || "").trim() || "default";
+    const tid = teamId || "none";
+    return `agentui.teamSavedFilters:${base}::${tid}`;
+  }, [props.effectiveBase, teamId]);
+  const [teamSavedFilters, setTeamSavedFilters] = useLocalStorageState<string[]>(teamSavedFiltersKey, []);
   const teamSearchRef = React.useRef<HTMLInputElement | null>(null);
   const teamRoleChips = React.useMemo(() => {
     const roles = new Set<string>();
@@ -595,6 +601,36 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                   }
                 }}
               />
+              {teamSavedFilters.length > 0 ? (
+                <select
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80"
+                  value=""
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val) setTeamSearch(val);
+                  }}
+                >
+                  <option value="">Saved filters…</option>
+                  {teamSavedFilters.map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              {teamSearch.trim().length > 0 ? (
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                  type="button"
+                  onClick={() => {
+                    const val = teamSearch.trim();
+                    if (!val) return;
+                    setTeamSavedFilters((prev) => (prev.includes(val) ? prev : [...prev, val]));
+                  }}
+                >
+                  Save filter
+                </button>
+              ) : null}
               {teamSearch.trim().length === 0 ? (
                 <span className="text-[11px] text-white/40">Try “executor”, an agent id, or a keyword</span>
               ) : null}
