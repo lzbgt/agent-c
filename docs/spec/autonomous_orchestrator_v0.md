@@ -239,7 +239,7 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   last_tick_unix_ms: integer
 ```
 
-Revision history entries (stored inside `goal_versions` / `role_plan_versions`) are append-only and bounded:
+Revision history entries (stored inside `goal_versions` / `role_plan_versions`) are append-only and bounded (max 50 each):
 
 ```
 goal_versions: [
