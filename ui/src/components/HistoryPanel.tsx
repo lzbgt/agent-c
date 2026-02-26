@@ -754,6 +754,19 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 </div>
               ) : (
                 <div className="mt-3 grid gap-3">
+                  {teamSearch.trim().length > 0 && teamFilteredCount === 0 ? (
+                    <div className="rounded-md border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-100">
+                      No matches.{" "}
+                      <button
+                        className="underline hover:text-white"
+                        type="button"
+                        onClick={() => setTeamSearch("")}
+                      >
+                        Clear filter
+                      </button>
+                      .
+                    </div>
+                  ) : null}
                   {showTeamGroupByAgent
                     ? teamGroupedByAgent.map((group) => {
                         const isMuted = mutedAgentSet.has(group.key);
