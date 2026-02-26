@@ -310,7 +310,8 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-26: added automouse compose overlay + WebUI preset config + `tools/automouse_pack.sh`, and extended compose verification with `COMPOSE_AUTOMOUSE`.
 - [x] W=9 — Operator briefing payloads: emit structured "re-entry" summaries (goal, drift evidence, proposed changes) on guidance/replan so rare user engagement is low-friction.
   - 2026-02-26: drift guidance/replan payloads now include `briefing` with goal/contract/role plan, drift metrics, and proposed changes when available.
-- [ ] W=9 — Goal + role plan versioning: add versioned diffs for goal/role plan changes with replayable events to reduce drift and improve audits.
+- [x] W=9 — Goal + role plan versioning: add versioned diffs for goal/role plan changes with replayable events to reduce drift and improve audits.
+  - 2026-02-26: added goal/role revision history with diff keys, replayable events, SSE payloads, and WebUI revision views.
 - [ ] W=8 — Orchestrator modularization: split `agentd-orchestrator` loop into SOLID modules (scheduling, allocation, drift, guidance) to keep files <2000 LOC.
 - [ ] W=8 — Capacity-based autoscale: spawn or retire runtime members based on backlog/latency signals (not only missing roles).
 - [ ] W=9 — Scheduling + isolation MVP: admission control, per-run budgets, and tool execution caps with evidence logs.
