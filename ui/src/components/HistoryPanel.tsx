@@ -634,99 +634,99 @@ export default function HistoryPanel(props: HistoryPanelProps) {
           <div id="team-chat" className="mb-4 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
             <div className="flex items-center justify-between gap-2">
               <div className="text-sm font-semibold text-white/80">Team chat</div>
-              <div className="flex items-center gap-2">
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                  type="button"
-                  onClick={() => setTeamCompactMode((v) => !v)}
-                >
-                  {teamCompactMode ? "Relax" : "Compact"}
-                </button>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                  type="button"
-                  onClick={() => {
-                    const items = teamFilteredItems;
-                    if (items.length === 0) return;
-                    const entry = items[items.length - 1];
-                    const ts = typeof entry?.ts === "number" ? entry.ts : 0;
-                    if (!ts) return;
-                    const el = document.getElementById(`team-msg-${ts}`);
-                    if (el) {
-                      el.scrollIntoView({ behavior: "smooth", block: "center" });
-                    }
-                  }}
-                >
-                  Latest
-                </button>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                  type="button"
-                  onClick={() => {
-                    setTeamFiltersCollapsed(false);
-                    const el = document.getElementById("team-filters");
-                    if (el) {
-                      el.scrollIntoView({ behavior: "smooth", block: "center" });
-                    }
-                  }}
-                >
-                  Filters
-                </button>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                  type="button"
-                  onClick={() => setShowTeamHeaders((v) => !v)}
-                >
-                  {showTeamHeaders ? "Hide meta" : "Show meta"}
-                </button>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                  type="button"
-                  onClick={() => setShowTeamChat((v) => !v)}
-                >
-                  {showTeamChat ? "Hide" : "Show"}
-                </button>
-              </div>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                type="button"
+                onClick={() => setShowTeamChat((v) => !v)}
+              >
+                {showTeamChat ? "Hide" : "Show"}
+              </button>
             </div>
             {showTeamChat ? (
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
-                <input
-                  className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80"
-                  value={teamSearch}
-                  onChange={(e) => setTeamSearch(e.target.value)}
-                  placeholder="Filter team chat…"
-                  ref={teamSearchRef}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") {
-                      setTeamSearch("");
-                    }
-                  }}
-                />
-                {teamSearch.trim().length > 0 && !teamPinnedFilters.includes(teamSearch.trim()) ? (
+              <div className="sticky top-2 z-10 mt-2 rounded-md border border-white/10 bg-black/60 px-2 py-2 backdrop-blur">
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/70">
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                    type="button"
+                    onClick={() => setTeamCompactMode((v) => !v)}
+                  >
+                    {teamCompactMode ? "Relax" : "Compact"}
+                  </button>
                   <button
                     className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
                     type="button"
                     onClick={() => {
-                      const val = teamSearch.trim();
-                      if (!val) return;
-                      setTeamPinnedFilters((prev) => (prev.includes(val) ? prev : [...prev, val]));
+                      const items = teamFilteredItems;
+                      if (items.length === 0) return;
+                      const entry = items[items.length - 1];
+                      const ts = typeof entry?.ts === "number" ? entry.ts : 0;
+                      if (!ts) return;
+                      const el = document.getElementById(`team-msg-${ts}`);
+                      if (el) {
+                        el.scrollIntoView({ behavior: "smooth", block: "center" });
+                      }
                     }}
                   >
-                    Pin
+                    Latest
                   </button>
-                ) : null}
-                {teamSearch.trim().length > 0 ? (
                   <button
                     className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
                     type="button"
-                    onClick={() => setTeamSearch("")}
+                    onClick={() => {
+                      setTeamFiltersCollapsed(false);
+                      const el = document.getElementById("team-filters");
+                      if (el) {
+                        el.scrollIntoView({ behavior: "smooth", block: "center" });
+                      }
+                    }}
                   >
-                    Clear
+                    Filters
                   </button>
-                ) : null}
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                    type="button"
+                    onClick={() => setShowTeamHeaders((v) => !v)}
+                  >
+                    {showTeamHeaders ? "Hide meta" : "Show meta"}
+                  </button>
+                  <input
+                    className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80"
+                    value={teamSearch}
+                    onChange={(e) => setTeamSearch(e.target.value)}
+                    placeholder="Filter team chat…"
+                    ref={teamSearchRef}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        setTeamSearch("");
+                      }
+                    }}
+                  />
+                  {teamSearch.trim().length > 0 && !teamPinnedFilters.includes(teamSearch.trim()) ? (
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                      type="button"
+                      onClick={() => {
+                        const val = teamSearch.trim();
+                        if (!val) return;
+                        setTeamPinnedFilters((prev) => (prev.includes(val) ? prev : [...prev, val]));
+                      }}
+                    >
+                      Pin
+                    </button>
+                  ) : null}
+                  {teamSearch.trim().length > 0 ? (
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                      type="button"
+                      onClick={() => setTeamSearch("")}
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+                <div className="mt-1 text-[10px] text-white/40">Shortcuts: g t (jump), g m (toggle meta)</div>
               </div>
             ) : null}
-            <div className="mt-1 text-[10px] text-white/40">Shortcuts: g t (jump), g m (toggle meta)</div>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
               <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-white/70">
                 team {teamId}
