@@ -137,6 +137,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     return `agentui.teamSearch:${base}::${tid}`;
   }, [props.effectiveBase, teamId]);
   const [teamSearch, setTeamSearch] = useLocalStorageState<string>(teamSearchKey, "");
+  const teamSearchRef = React.useRef<HTMLInputElement | null>(null);
   const teamRoleChips = React.useMemo(() => {
     const roles = new Set<string>();
     for (const item of teamConversationItems) {
@@ -271,6 +272,19 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     },
     [mutedAgentSet, showTeamRoleLabels],
   );
+
+  React.useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.target && (event.target as HTMLElement).tagName === "INPUT") return;
+      if (event.target && (event.target as HTMLElement).tagName === "TEXTAREA") return;
+      if (event.key.toLowerCase() === "f" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        teamSearchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const conversationItems = React.useMemo(() => {
     const items: {
@@ -494,6 +508,12 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 value={teamSearch}
                 onChange={(e) => setTeamSearch(e.target.value)}
                 placeholder="Filter team chat…"
+                ref={teamSearchRef}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    setTeamSearch("");
+                  }
+                }}
               />
               {teamSearch.trim().length === 0 ? (
                 <span className="text-[11px] text-white/40">Try “executor”, an agent id, or a keyword</span>
