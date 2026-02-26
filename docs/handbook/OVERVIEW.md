@@ -160,7 +160,7 @@ When `--auth-token` is set, all endpoints require `Authorization: Bearer ...`.
   optional `AGENT_TEST_OPENROUTER_SKIP_CHAT_PREFLIGHT=1`.
 - `tools/openrouter_auth_debug.sh` reports any pin metadata it finds (pinned models + list sizes) and
   prints `stream_pins_source`/`stream_pins_path` plus `stream_pins_present`/`pins_empty` and a
-  `pins_hint` when pins are missing or empty.
+  `stream_pins_hint` when pins are missing or empty.
 
 ---
 
