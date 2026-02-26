@@ -718,6 +718,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
     : {};
   const deepseekKeyPresent = providerEntries?.deepseek?.key_present === true;
   const moonshotKeyPresent = providerEntries?.moonshot?.key_present === true;
+  const glmKeyPresent = providerEntries?.glm?.key_present === true;
   const moderatorEventsData = moderatorEvents.data;
   const moderatorEventsError = moderatorEvents.isError ? String(moderatorEvents.error || "failed to load events") : null;
   const moderatorEventsList = Array.isArray(moderatorEventsData?.events) ? (moderatorEventsData?.events as ModeratorEvent[]) : [];
@@ -2568,9 +2569,15 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
           <div className="mt-3">
             <div className="text-[11px] font-semibold text-white/60">Providers</div>
             <div className="mt-2 rounded-md border border-white/10 bg-black/20">
-              {["deepseek", "moonshot", "openrouter", "openai"].map((name) => {
+              {["deepseek", "moonshot", "glm", "openrouter", "openai"].map((name) => {
                 const p = providerEntries[name] || {};
                 const keyPresent = p.key_present === true;
+                const label =
+                  name === "moonshot"
+                    ? "Kimi (Moonshot CN)"
+                    : name === "glm"
+                      ? "GLM (Zhipu)"
+                      : name;
                 const source = p.source && typeof p.source === "object"
                   ? `${p.source.kind ?? "source"}:${p.source.label ?? "unknown"}`
                   : "";
@@ -2581,7 +2588,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                 return (
                   <div key={name} className="border-t border-white/5 px-3 py-2 text-[11px] text-white/70 first:border-t-0">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono text-white/80">{name}</span>
+                      <span className="font-mono text-white/80">{label}</span>
                       <span className={keyPresent ? "text-emerald-200" : "text-rose-200"}>
                         key={keyPresent ? "present" : "missing"}
                       </span>
@@ -2612,12 +2619,21 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
               type="button"
               onClick={() => void runProviderTest("moonshot")}
               disabled={!moonshotKeyPresent}
-              title={moonshotKeyPresent ? "Run Moonshot provider test" : "Moonshot key missing"}
+              title={moonshotKeyPresent ? "Run Kimi (Moonshot) provider test" : "Kimi key missing"}
             >
-              Test Moonshot
+              Test Kimi
+            </button>
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+              type="button"
+              onClick={() => void runProviderTest("glm")}
+              disabled={!glmKeyPresent}
+              title={glmKeyPresent ? "Run GLM provider test" : "GLM key missing"}
+            >
+              Test GLM
             </button>
             <span>
-              DeepSeek: {providerStatus("deepseek")} · Moonshot: {providerStatus("moonshot")}
+              DeepSeek: {providerStatus("deepseek")} · Kimi: {providerStatus("moonshot")} · GLM: {providerStatus("glm")}
             </span>
           </div>
           {Object.entries(providerTests).map(([name, entry]) => {
