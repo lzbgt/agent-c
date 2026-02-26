@@ -78,6 +78,29 @@ export default function useJobStreaming(args: JobStreamingArgs) {
           }
 
           if (cancelled) return;
+          if (!job?.ok) {
+            const code = String(job?.code ?? "").toLowerCase();
+            const err = String(job?.error ?? job?.err ?? "").toLowerCase();
+            const notFound = code.includes("not_found") || err.includes("not found");
+            if (notFound) {
+              setJobNotice("job not found (clearing)");
+              setActiveJobId(null);
+              const sid = String(sessionId || "").trim();
+              if (sid) {
+                writeJobsBySession((prev) => {
+                  const nextm = { ...prev };
+                  delete nextm[jobStoreKey];
+                  return nextm;
+                });
+              }
+              void auditRefetch();
+              void sessionsRefetch();
+              return;
+            }
+            setJobNotice(`job fetch failed (retrying): ${String(job?.error ?? job?.err ?? job?.code ?? "unknown")}`);
+            await sleep(1000);
+            continue;
+          }
           setJobStatus(job.status ?? null);
           setJobError(job.status === "error" || job.status === "interrupted" ? (job.error ?? null) : null);
           setJobNotice(null);
@@ -154,7 +177,26 @@ export default function useJobStreaming(args: JobStreamingArgs) {
       void (async () => {
         try {
           const job = await apiGetJob(effectiveBase, jobId, daemonAuth);
-          if (!job?.ok) return;
+          if (!job?.ok) {
+            const code = String(job?.code ?? "").toLowerCase();
+            const err = String(job?.error ?? job?.err ?? "").toLowerCase();
+            const notFound = code.includes("not_found") || err.includes("not found");
+            if (notFound) {
+              setJobNotice("job not found (clearing)");
+              setActiveJobId(null);
+              const sid = String(sessionId || "").trim();
+              if (sid) {
+                writeJobsBySession((prev) => {
+                  const nextm = { ...prev };
+                  delete nextm[jobStoreKey];
+                  return nextm;
+                });
+              }
+              void auditRefetch();
+              void sessionsRefetch();
+            }
+            return;
+          }
           if (job.status === "done" || job.status === "error" || job.status === "cancelled" || job.status === "interrupted") {
             // Trigger the same completion path as streaming.
             if (job.result) {
