@@ -859,7 +859,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                 <div className="text-[11px] text-white/70">
                   Goal revisions{" "}
                   <span className="text-white/40">
-                    ({filteredGoalRevisions.length}/{goalRevisions.length})
+                    ({filteredGoalRevisions.length}/{scopedGoalRevisions.length})
                   </span>
                 </div>
                 <button
@@ -956,7 +956,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                 <div className="text-[11px] text-white/70">
                   Role plan revisions{" "}
                   <span className="text-white/40">
-                    ({filteredRoleRevisions.length}/{rolePlanRevisions.length})
+                    ({filteredRoleRevisions.length}/{scopedRoleRevisions.length})
                   </span>
                 </div>
                 <button
