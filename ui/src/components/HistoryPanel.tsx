@@ -641,6 +641,31 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 </button>
               </div>
             </div>
+            {showTeamChat ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
+                <input
+                  className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80"
+                  value={teamSearch}
+                  onChange={(e) => setTeamSearch(e.target.value)}
+                  placeholder="Filter team chat…"
+                  ref={teamSearchRef}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      setTeamSearch("");
+                    }
+                  }}
+                />
+                {teamSearch.trim().length > 0 ? (
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                    type="button"
+                    onClick={() => setTeamSearch("")}
+                  >
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             <div className="mt-1 text-[10px] text-white/40">Shortcuts: g t (jump), g m (toggle meta)</div>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
               <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-white/70">
@@ -747,18 +772,6 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 </div>
               </summary>
               <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
-                <input
-                  className="min-w-[180px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80"
-                  value={teamSearch}
-                  onChange={(e) => setTeamSearch(e.target.value)}
-                  placeholder="Filter team chat…"
-                  ref={teamSearchRef}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") {
-                      setTeamSearch("");
-                    }
-                  }}
-                />
                 {teamSavedFilters.length > 0 ? (
                   <select
                     className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80"
