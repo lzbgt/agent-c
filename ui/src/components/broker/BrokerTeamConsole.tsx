@@ -41,6 +41,33 @@ const TEAM_EVENTS_MAX = 200;
 const TEAM_EVENTS_PREFS_KIND = "webui-team-events";
 const TEAM_EVENTS_PREFS_VERSION = 1;
 
+type SectionCardProps = {
+  title: string;
+  description?: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+};
+
+function SectionCard({ title, description, defaultOpen = false, children }: SectionCardProps) {
+  const [open, setOpen] = React.useState<boolean>(defaultOpen);
+  return (
+    <details
+      className="rounded-md border border-white/10 bg-black/20 p-3"
+      open={open}
+      onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}
+    >
+      <summary className="cursor-pointer select-none text-xs font-semibold text-white/80">
+        <div className="flex items-center justify-between gap-2">
+          <span>{title}</span>
+          <span className="text-[11px] text-white/40">Toggle</span>
+        </div>
+        {description ? <div className="text-[11px] font-normal text-white/50">{description}</div> : null}
+      </summary>
+      <div className="mt-3 grid gap-3">{children}</div>
+    </details>
+  );
+}
+
 export type BrokerTeamConsoleProps = {
   base: string;
   auth: ApiAuth;
@@ -107,7 +134,6 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [membersBusy, setMembersBusy] = React.useState<boolean>(false);
   const [membersError, setMembersError] = React.useState<string | null>(null);
 
-  const [quickBuilderOpen, setQuickBuilderOpen] = React.useState<boolean>(true);
   const [quickTeamName, setQuickTeamName] = React.useState<string>("");
   const [quickTeamId, setQuickTeamId] = React.useState<string>("");
   const [quickTeamGoal, setQuickTeamGoal] = React.useState<string>("");
@@ -1501,207 +1527,206 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         ) : null}
       </div>
 
-      <BrokerTeamSettingsPanel
-        canQuery={canQuery}
-        teamId={teamIdTrimmed}
-        teamDetails={teamDetails}
-        teamEditName={teamEditName}
-        teamEditTags={teamEditTags}
-        teamEditPolicyRef={teamEditPolicyRef}
-        teamEditSharedScope={teamEditSharedScope}
-        teamEditSharedMode={teamEditSharedMode}
-        teamEditMetaJson={teamEditMetaJson}
-        teamEditRoleOverridesJson={teamEditRoleOverridesJson}
-        teamRoleInstructions={teamRoleInstructions}
-        teamRolePromptMode={teamRolePromptMode}
-        teamRoleGraphEdges={teamRoleGraphEdges}
-        rolePlanOptions={rolePlanOptions}
-        teamEditBusy={teamEditBusy}
-        teamEditError={teamEditError}
-        onLoadTeamEdits={() => loadTeamEditsFromDetails(teamDetails)}
-        onTeamEditNameChange={setTeamEditName}
-        onTeamEditTagsChange={setTeamEditTags}
-        onTeamEditPolicyRefChange={setTeamEditPolicyRef}
-        onTeamEditSharedScopeChange={setTeamEditSharedScope}
-        onTeamEditSharedModeChange={setTeamEditSharedMode}
-        onTeamEditMetaJsonChange={setTeamEditMetaJson}
-        onTeamEditRoleOverridesJsonChange={setTeamEditRoleOverridesJson}
-        onRoleInstructionsChange={handleRoleInstructionsChange}
-        onRolePromptModeChange={handleRolePromptModeChange}
-        onRoleGraphEdgesChange={handleRoleGraphEdgesChange}
-        onUpdateTeam={() => void handleUpdateTeam()}
-      />
+      <SectionCard
+        title="Team settings"
+        description="Name, tags, shared memory, and role graph defaults."
+      >
+        <BrokerTeamSettingsPanel
+          canQuery={canQuery}
+          teamId={teamIdTrimmed}
+          teamDetails={teamDetails}
+          teamEditName={teamEditName}
+          teamEditTags={teamEditTags}
+          teamEditPolicyRef={teamEditPolicyRef}
+          teamEditSharedScope={teamEditSharedScope}
+          teamEditSharedMode={teamEditSharedMode}
+          teamEditMetaJson={teamEditMetaJson}
+          teamEditRoleOverridesJson={teamEditRoleOverridesJson}
+          teamRoleInstructions={teamRoleInstructions}
+          teamRolePromptMode={teamRolePromptMode}
+          teamRoleGraphEdges={teamRoleGraphEdges}
+          rolePlanOptions={rolePlanOptions}
+          teamEditBusy={teamEditBusy}
+          teamEditError={teamEditError}
+          onLoadTeamEdits={() => loadTeamEditsFromDetails(teamDetails)}
+          onTeamEditNameChange={setTeamEditName}
+          onTeamEditTagsChange={setTeamEditTags}
+          onTeamEditPolicyRefChange={setTeamEditPolicyRef}
+          onTeamEditSharedScopeChange={setTeamEditSharedScope}
+          onTeamEditSharedModeChange={setTeamEditSharedMode}
+          onTeamEditMetaJsonChange={setTeamEditMetaJson}
+          onTeamEditRoleOverridesJsonChange={setTeamEditRoleOverridesJson}
+          onRoleInstructionsChange={handleRoleInstructionsChange}
+          onRolePromptModeChange={handleRolePromptModeChange}
+          onRoleGraphEdgesChange={handleRoleGraphEdgesChange}
+          onUpdateTeam={() => void handleUpdateTeam()}
+        />
+      </SectionCard>
 
-      <div className="mt-3 rounded-md border border-white/10 bg-black/30 p-3">
-        <button
-          className="flex w-full items-center justify-between text-left text-xs font-semibold text-white/80"
-          type="button"
-          onClick={() => setQuickBuilderOpen((v) => !v)}
-        >
-          <span>Quick team builder</span>
-          <span className="text-white/50">{quickBuilderOpen ? "Hide" : "Show"}</span>
-        </button>
-        {quickBuilderOpen ? (
-          <div className="mt-3 grid gap-3">
-            <div className="text-[11px] text-white/60">
-              Create a team and add agents in one step. Defaults stay simple; advanced fields are optional.
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <FieldLabel>Team name</FieldLabel>
-              <input
-                className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                value={quickTeamName}
-                onChange={(e) => setQuickTeamName(e.target.value)}
-                placeholder="Ops team"
-              />
-              <FieldLabel>Team id</FieldLabel>
-              <input
-                className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                value={quickTeamId}
-                onChange={(e) => setQuickTeamId(e.target.value)}
-                placeholder="auto"
-              />
-              <FieldLabel>Goal</FieldLabel>
-              <input
-                className="min-w-[260px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                value={quickTeamGoal}
-                onChange={(e) => setQuickTeamGoal(e.target.value)}
-                placeholder="What is this team trying to accomplish?"
-              />
-            </div>
+      <SectionCard
+        title="Quick team builder"
+        description="Create a team and add agents in one step."
+        defaultOpen={true}
+      >
+        <div className="text-[11px] text-white/60">
+          Defaults stay simple; advanced fields are optional.
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <FieldLabel>Team name</FieldLabel>
+          <input
+            className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={quickTeamName}
+            onChange={(e) => setQuickTeamName(e.target.value)}
+            placeholder="Ops team"
+          />
+          <FieldLabel>Team id</FieldLabel>
+          <input
+            className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={quickTeamId}
+            onChange={(e) => setQuickTeamId(e.target.value)}
+            placeholder="auto"
+          />
+          <FieldLabel>Goal</FieldLabel>
+          <input
+            className="min-w-[260px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={quickTeamGoal}
+            onChange={(e) => setQuickTeamGoal(e.target.value)}
+            placeholder="What is this team trying to accomplish?"
+          />
+        </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <FieldLabel>Template</FieldLabel>
-              <select
-                className="min-w-[180px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                value={quickTemplate}
-                onChange={(e) => handleQuickBuilderApplyTemplate(e.target.value)}
-              >
-                <option value="standard">Planner + Executor + Critic</option>
-                <option value="planner_executor">Planner + Executor</option>
-                <option value="research_team">Researcher + Executor + Critic</option>
-              </select>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                type="button"
-                onClick={handleQuickAddMember}
-              >
-                Add agent
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                type="button"
-                disabled={!canQuery || memberAgentsBusy}
-                onClick={() => void refreshMemberAgents()}
-              >
-                {memberAgentsBusy ? "Refreshing agents…" : "Refresh agents"}
-              </button>
-            </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <FieldLabel>Template</FieldLabel>
+          <select
+            className="min-w-[180px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={quickTemplate}
+            onChange={(e) => handleQuickBuilderApplyTemplate(e.target.value)}
+          >
+            <option value="standard">Planner + Executor + Critic</option>
+            <option value="planner_executor">Planner + Executor</option>
+            <option value="research_team">Researcher + Executor + Critic</option>
+          </select>
+          <button
+            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
+            type="button"
+            onClick={handleQuickAddMember}
+          >
+            Add agent
+          </button>
+          <button
+            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
+            type="button"
+            disabled={!canQuery || memberAgentsBusy}
+            onClick={() => void refreshMemberAgents()}
+          >
+            {memberAgentsBusy ? "Refreshing agents…" : "Refresh agents"}
+          </button>
+        </div>
 
-            <div className="grid gap-2">
-              {quickMembers.map((m) => (
-                <div key={m.id} className="rounded-md border border-white/10 bg-black/20 p-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <FieldLabel>Role</FieldLabel>
-                    <input
-                      className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                      value={m.role}
-                      onChange={(e) => handleQuickMemberUpdate(m.id, { role: e.target.value })}
-                    />
-                    <FieldLabel>Provider</FieldLabel>
-                    <select
-                      className="min-w-[140px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                      value={m.provider}
-                      onChange={(e) => handleQuickMemberUpdate(m.id, { provider: e.target.value })}
-                    >
-                      <option value="openai">OpenAI</option>
-                      <option value="anthropic">Anthropic</option>
-                      <option value="deepseek">DeepSeek</option>
-                      <option value="kimi">Kimi (Moonshot)</option>
-                      <option value="glm">GLM (Zhipu)</option>
-                      <option value="local">Local</option>
-                      <option value="custom">Custom</option>
-                    </select>
-                    <FieldLabel>Model</FieldLabel>
-                    <input
-                      className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                      value={m.model}
-                      onChange={(e) => handleQuickMemberUpdate(m.id, { model: e.target.value })}
-                      placeholder="gpt-4.1"
-                    />
-                    <FieldLabel>Base URL</FieldLabel>
-                    <input
-                      className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                      value={m.baseUrl}
-                      onChange={(e) => handleQuickMemberUpdate(m.id, { baseUrl: e.target.value })}
-                      placeholder="https://api.openai.com/v1"
-                    />
-                    <button
-                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                      type="button"
-                      onClick={() => handleQuickRemoveMember(m.id)}
-                      disabled={quickMembers.length <= 1}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <FieldLabel>Agent</FieldLabel>
-                    <select
-                      className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                      value={m.agentId}
-                      onChange={(e) => handleQuickMemberUpdate(m.id, { agentId: e.target.value, deploymentId: "" })}
-                    >
-                      <option value="">(any)</option>
-                      {(memberAgents || []).map((agent: any) => (
-                        <option key={agent?.agent_id || agent?.id} value={String(agent?.agent_id || agent?.id || "")}>
-                          {String(agent?.display_name || agent?.agent_id || agent?.id || "")}
-                        </option>
-                      ))}
-                    </select>
-                    <FieldLabel>Deployment</FieldLabel>
-                    <input
-                      className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                      value={m.deploymentId}
-                      onChange={(e) => handleQuickMemberUpdate(m.id, { deploymentId: e.target.value })}
-                      placeholder="optional"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {quickBuilderError ? (
-              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-                {quickBuilderError}
+        <div className="grid gap-2">
+          {quickMembers.map((m) => (
+            <div key={m.id} className="rounded-md border border-white/10 bg-black/20 p-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <FieldLabel>Role</FieldLabel>
+                <input
+                  className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                  value={m.role}
+                  onChange={(e) => handleQuickMemberUpdate(m.id, { role: e.target.value })}
+                />
+                <FieldLabel>Provider</FieldLabel>
+                <select
+                  className="min-w-[140px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                  value={m.provider}
+                  onChange={(e) => handleQuickMemberUpdate(m.id, { provider: e.target.value })}
+                >
+                  <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="deepseek">DeepSeek</option>
+                  <option value="kimi">Kimi (Moonshot)</option>
+                  <option value="glm">GLM (Zhipu)</option>
+                  <option value="local">Local</option>
+                  <option value="custom">Custom</option>
+                </select>
+                <FieldLabel>Model</FieldLabel>
+                <input
+                  className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                  value={m.model}
+                  onChange={(e) => handleQuickMemberUpdate(m.id, { model: e.target.value })}
+                  placeholder="gpt-4.1"
+                />
+                <FieldLabel>Base URL</FieldLabel>
+                <input
+                  className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                  value={m.baseUrl}
+                  onChange={(e) => handleQuickMemberUpdate(m.id, { baseUrl: e.target.value })}
+                  placeholder="https://api.openai.com/v1"
+                />
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                  type="button"
+                  onClick={() => handleQuickRemoveMember(m.id)}
+                  disabled={quickMembers.length <= 1}
+                >
+                  Remove
+                </button>
               </div>
-            ) : null}
-            <div className="flex items-center gap-2">
-              <button
-                className="rounded-md border border-white/10 bg-indigo-500/20 px-3 py-2 text-xs font-semibold text-indigo-100 hover:bg-indigo-500/30 disabled:opacity-50"
-                type="button"
-                disabled={!canQuery || quickBuilderBusy}
-                onClick={() => void handleQuickCreateTeam()}
-              >
-                {quickBuilderBusy ? "Creating…" : "Create team + add agents"}
-              </button>
-              {teamsBusy ? <span className="text-xs text-white/50">Refreshing teams…</span> : null}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <FieldLabel>Agent</FieldLabel>
+                <select
+                  className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                  value={m.agentId}
+                  onChange={(e) => handleQuickMemberUpdate(m.id, { agentId: e.target.value, deploymentId: "" })}
+                >
+                  <option value="">(any)</option>
+                  {(memberAgents || []).map((agent: any) => (
+                    <option key={agent?.agent_id || agent?.id} value={String(agent?.agent_id || agent?.id || "")}>
+                      {String(agent?.display_name || agent?.agent_id || agent?.id || "")}
+                    </option>
+                  ))}
+                </select>
+                <FieldLabel>Deployment</FieldLabel>
+                <input
+                  className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                  value={m.deploymentId}
+                  onChange={(e) => handleQuickMemberUpdate(m.id, { deploymentId: e.target.value })}
+                  placeholder="optional"
+                />
+              </div>
             </div>
+          ))}
+        </div>
+
+        {quickBuilderError ? (
+          <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+            {quickBuilderError}
           </div>
         ) : null}
-      </div>
+        <div className="flex items-center gap-2">
+          <button
+            className="rounded-md border border-white/10 bg-indigo-500/20 px-3 py-2 text-xs font-semibold text-indigo-100 hover:bg-indigo-500/30 disabled:opacity-50"
+            type="button"
+            disabled={!canQuery || quickBuilderBusy}
+            onClick={() => void handleQuickCreateTeam()}
+          >
+            {quickBuilderBusy ? "Creating…" : "Create team + add agents"}
+          </button>
+          {teamsBusy ? <span className="text-xs text-white/50">Refreshing teams…</span> : null}
+        </div>
+      </SectionCard>
 
-      <BrokerTeamCreatePanel
-        canQuery={canQuery}
-        teamsBusy={teamsBusy}
-        newTeamId={newTeamId}
-        newTeamName={newTeamName}
-        onNewTeamIdChange={setNewTeamId}
-        onNewTeamNameChange={setNewTeamName}
-        onCreateTeam={() => void handleCreateTeam()}
-      />
+      <SectionCard title="Create team" description="Manual team creation if you want a minimal team first.">
+        <BrokerTeamCreatePanel
+          canQuery={canQuery}
+          teamsBusy={teamsBusy}
+          newTeamId={newTeamId}
+          newTeamName={newTeamName}
+          onNewTeamIdChange={setNewTeamId}
+          onNewTeamNameChange={setNewTeamName}
+          onCreateTeam={() => void handleCreateTeam()}
+        />
+      </SectionCard>
 
-      <div className="mt-4 grid gap-3">
+      <SectionCard title="Team members" description="Add members, update status, or edit overrides.">
         <div className="flex items-center justify-between gap-2">
           <div className="text-xs font-semibold text-white/80">Team members</div>
           <button
@@ -2167,9 +2192,9 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             })}
           </div>
         ) : null}
-      </div>
+      </SectionCard>
 
-      <div className="mt-4 grid gap-3">
+      <SectionCard title="Quorum rules" description="Approvals and quorum settings.">
         <div className="flex items-center justify-between gap-2">
           <div className="text-xs font-semibold text-white/80">Quorum rules</div>
           <button
@@ -2241,60 +2266,68 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             })}
           </div>
         ) : null}
-      </div>
+      </SectionCard>
 
+      <SectionCard title="Team event replay" description="Replay recent events for auditing." defaultOpen={false}>
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+          <button
+            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
+            type="button"
+            disabled={!canQuery || !teamIdTrimmed || teamReplayBusy}
+            onClick={() => void loadTeamReplay()}
+          >
+            {teamReplayBusy ? "Replaying…" : "Replay"}
+          </button>
+          {teamReplayNote ? <span className="text-emerald-200">{teamReplayNote}</span> : null}
+          {teamReplayError ? <span className="text-rose-200">{teamReplayError}</span> : null}
+        </div>
+      </SectionCard>
 
-      <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-        <span>Team event replay</span>
-        <button
-          className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
-          type="button"
-          disabled={!canQuery || !teamIdTrimmed || teamReplayBusy}
-          onClick={() => void loadTeamReplay()}
-        >
-          {teamReplayBusy ? "Replaying…" : "Replay"}
-        </button>
-        {teamReplayNote ? <span className="text-emerald-200">{teamReplayNote}</span> : null}
-        {teamReplayError ? <span className="text-rose-200">{teamReplayError}</span> : null}
-      </div>
+      <SectionCard title="Team run" description="Start and monitor team runs." defaultOpen={true}>
+        <BrokerTeamRunPanel
+          base={props.base}
+          auth={props.auth}
+          canQuery={canQuery}
+          teamId={teamIdTrimmed}
+          members={membersList}
+          rules={rulesList}
+          quorumEvents={mergedTeamEvents}
+          teamMeta={teamDetails?.meta && typeof teamDetails.meta === "object" ? (teamDetails.meta as Record<string, any>) : null}
+          onMembersRefresh={refreshMembers}
+          onTeamSelect={setTeamId}
+        />
+      </SectionCard>
 
-      <BrokerOrchestratorRunPanel
-        base={props.base}
-        auth={props.auth}
-        canQuery={canQuery}
-        teamId={teamIdTrimmed}
-        teamMeta={teamDetails?.meta && typeof teamDetails.meta === "object" ? (teamDetails.meta as Record<string, any>) : null}
-        events={mergedOrchestratorEvents}
-      />
+      <SectionCard title="Orchestrator runs" description="Low-level orchestrator controls." defaultOpen={false}>
+        <BrokerOrchestratorRunPanel
+          base={props.base}
+          auth={props.auth}
+          canQuery={canQuery}
+          teamId={teamIdTrimmed}
+          teamMeta={teamDetails?.meta && typeof teamDetails.meta === "object" ? (teamDetails.meta as Record<string, any>) : null}
+          events={mergedOrchestratorEvents}
+        />
+      </SectionCard>
 
-      <BrokerTeamGuidancePanel
-        base={props.base}
-        auth={props.auth}
-        canQuery={canQuery}
-        teamId={teamIdTrimmed}
-        events={mergedGuidanceEvents}
-      />
+      <SectionCard title="Guidance" description="Send guidance and review receipts." defaultOpen={false}>
+        <BrokerTeamGuidancePanel
+          base={props.base}
+          auth={props.auth}
+          canQuery={canQuery}
+          teamId={teamIdTrimmed}
+          events={mergedGuidanceEvents}
+        />
+      </SectionCard>
 
-      <BrokerOrchestratorSpawnPanel
-        base={props.base}
-        auth={props.auth}
-        canQuery={canQuery}
-        teamId={teamIdTrimmed}
-        events={mergedOrchestratorEvents}
-      />
-
-      <BrokerTeamRunPanel
-        base={props.base}
-        auth={props.auth}
-        canQuery={canQuery}
-        teamId={teamIdTrimmed}
-        members={membersList}
-        rules={rulesList}
-        quorumEvents={mergedTeamEvents}
-        teamMeta={teamDetails?.meta && typeof teamDetails.meta === "object" ? (teamDetails.meta as Record<string, any>) : null}
-        onMembersRefresh={refreshMembers}
-        onTeamSelect={setTeamId}
-      />
+      <SectionCard title="Spawn requests" description="Monitor orchestrator spawn requests." defaultOpen={false}>
+        <BrokerOrchestratorSpawnPanel
+          base={props.base}
+          auth={props.auth}
+          canQuery={canQuery}
+          teamId={teamIdTrimmed}
+          events={mergedOrchestratorEvents}
+        />
+      </SectionCard>
 
     </section>
   );
