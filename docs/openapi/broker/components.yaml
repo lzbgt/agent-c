@@ -917,7 +917,9 @@ schemas:
     type: object
     required: [type, ts_unix_ms]
     properties:
-      type: { type: string }
+      type:
+        type: string
+        description: Broker event type (e.g. team_run_status, orchestrator_goal_revision).
       ts_unix_ms: { type: integer, format: int64 }
       agent_id: { type: string }
       user_sub: { type: string }
