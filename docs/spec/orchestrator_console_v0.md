@@ -145,6 +145,7 @@ Revision event payloads include:
   (added/removed/changed key lists; previous_* fields are omitted on create)
 - `orchestrator_role_plan_revision` adds `role_plan_snapshot`, `previous_role_plan_snapshot`,
   and `role_plan_diff` (added/removed/changed key lists; previous_* fields are omitted on create)
+- Diff key lists are top-level only; nested changes appear under their parent key.
 
 ## Security + access
 

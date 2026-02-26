@@ -253,6 +253,8 @@ role_plan_versions: [
 ]
 ```
 
+Diff key lists are top-level only; nested changes appear under their parent key.
+
 Notes:
 - Drift guidance defaults to `target_orchestrator_id="human"` when no explicit targets
   are provided so the item stays open for operator review. Set
