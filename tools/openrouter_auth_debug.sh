@@ -62,7 +62,6 @@ if [[ -f "${PINS_PATH}" ]]; then
   echo "stream_pins_present=1"
 else
   echo "stream_pins_present=0"
-  echo "stream_pins_hint=run tools/probe_openrouter_stream_models.sh with OPENROUTER_STREAM_PROBE_WRITE_PINS=1"
 fi
 if [[ -f "${PINS_PATH}" ]]; then
   python3 - <<PY 2>/dev/null || true
@@ -91,7 +90,7 @@ if both_count:
     print(f"pins_ok_models_both={both_count}")
 print(f"pins_empty={'0' if has_any else '1'}")
 if not has_any:
-    print("pins_hint=run tools/probe_openrouter_stream_models.sh with OPENROUTER_STREAM_PROBE_WRITE_PINS=1")
+    print("stream_pins_hint=run tools/probe_openrouter_stream_models.sh with OPENROUTER_STREAM_PROBE_WRITE_PINS=1")
 PY
 fi
 
