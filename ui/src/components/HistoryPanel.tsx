@@ -702,6 +702,19 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                     }
                   }}
                 />
+                {teamSearch.trim().length > 0 && !teamPinnedFilters.includes(teamSearch.trim()) ? (
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                    type="button"
+                    onClick={() => {
+                      const val = teamSearch.trim();
+                      if (!val) return;
+                      setTeamPinnedFilters((prev) => (prev.includes(val) ? prev : [...prev, val]));
+                    }}
+                  >
+                    Pin
+                  </button>
+                ) : null}
                 {teamSearch.trim().length > 0 ? (
                   <button
                     className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
