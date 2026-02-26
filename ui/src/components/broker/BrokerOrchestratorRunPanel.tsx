@@ -649,6 +649,12 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
             <div className="grid gap-2">
               {runs.map((run) => {
                 const rid = String(run?.orchestrator_run_id || "");
+                const listMeta = run?.meta && typeof run.meta === "object" ? run.meta : null;
+                const listGoalVersion = toNumber(listMeta?.goal_version);
+                const listRoleVersion = toNumber(listMeta?.role_plan_version);
+                const versionParts: string[] = [];
+                if (listGoalVersion) versionParts.push(`goal v${listGoalVersion}`);
+                if (listRoleVersion) versionParts.push(`role v${listRoleVersion}`);
                 return (
                   <button
                     key={rid}
@@ -667,6 +673,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                     <span className="text-[11px] text-white/60">
                       {run?.status ? run.status : "unknown"}
                       {run?.created_unix_ms ? ` · ${fmtTs(run.created_unix_ms)}` : ""}
+                      {versionParts.length > 0 ? ` · ${versionParts.join(" · ")}` : ""}
                     </span>
                   </button>
                 );
