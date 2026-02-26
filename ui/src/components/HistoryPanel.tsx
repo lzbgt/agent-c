@@ -298,6 +298,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
       const meta = item?.meta ?? {};
       const roleLabel = typeof meta?.role === "string" && meta.role ? meta.role : role;
       const agentLabel = typeof meta?.agent_id === "string" && meta.agent_id ? meta.agent_id : "";
+      const isSystem = role === "system" || roleLabel === "system";
       if (agentLabel && mutedAgentSet.has(agentLabel)) return null;
       const sessionLabel = typeof meta?.session_id === "string" ? meta.session_id : "";
       const hasMeta = !!agentLabel || !!sessionLabel;
@@ -316,8 +317,13 @@ export default function HistoryPanel(props: HistoryPanelProps) {
           className="rounded-lg border border-white/10 bg-white/5 px-3 py-2"
         >
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-            {showTeamRoleLabels ? (
+            {agentLabel ? (
               <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-semibold text-white/80">
+                {agentLabel}
+              </span>
+            ) : null}
+            {showTeamRoleLabels ? (
+              <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-white/70">
                 {roleLabel}
               </span>
             ) : null}
@@ -332,9 +338,18 @@ export default function HistoryPanel(props: HistoryPanelProps) {
             </div>
           ) : null}
           {content ? (
-            <div className="mt-2 text-sm text-white/90">
-              <Markdown text={String(content)} />
-            </div>
+            isSystem ? (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-[11px] text-white/60">System message (collapsed)</summary>
+                <div className="mt-2 text-sm text-white/90">
+                  <Markdown text={String(content)} />
+                </div>
+              </details>
+            ) : (
+              <div className="mt-2 text-sm text-white/90">
+                <Markdown text={String(content)} />
+              </div>
+            )
           ) : null}
           {hasMeta ? (
             <details className="mt-2">
