@@ -549,15 +549,36 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
     const out = rows.filter((row) => {
       const type = String(row?.type || "");
       if (type !== "orchestrator_goal_revision" && type !== "orchestrator_role_plan_revision") return false;
+      if (revisionFilterScope === "goal" && type !== "orchestrator_goal_revision") return false;
+      if (revisionFilterScope === "role" && type !== "orchestrator_role_plan_revision") return false;
       const payload = row?.payload;
       if (!payload || typeof payload !== "object") return false;
       if (teamIdTrimmed && String(payload.team_id || "") !== teamIdTrimmed) return false;
       if (rid && String(payload.orchestrator_run_id || "") !== rid) return false;
-      return true;
+      if (!revisionFilterLower) return true;
+      const version = payload.version !== undefined ? String(payload.version).toLowerCase() : "";
+      const updatedBy = payload.updated_by ? String(payload.updated_by).toLowerCase() : "";
+      const goal = payload.goal ? String(payload.goal).toLowerCase() : "";
+      const isGoal = type === "orchestrator_goal_revision";
+      const diff = isGoal ? payload.goal_contract_diff : payload.role_plan_diff;
+      const diffKeysLower = diffKeys(diff).map((v) => v.toLowerCase());
+      const changeLabels: string[] = [];
+      if (isGoal && payload.goal_changed === true) changeLabels.push("goal changed");
+      if (isGoal && payload.goal_contract_changed === true) {
+        changeLabels.push("goal contract changed", "contract changed");
+      }
+      const matchesChange = changeLabels.some((label) => label.includes(revisionFilterLower));
+      return (
+        (version && version.includes(revisionFilterLower)) ||
+        (updatedBy && updatedBy.includes(revisionFilterLower)) ||
+        (goal && goal.includes(revisionFilterLower)) ||
+        diffKeysLower.some((key) => key.includes(revisionFilterLower)) ||
+        matchesChange
+      );
     });
     out.sort((a, b) => (b.ts_unix_ms || 0) - (a.ts_unix_ms || 0));
     return out.slice(0, 8);
-  }, [props.events, runId, teamIdTrimmed]);
+  }, [props.events, revisionFilterLower, revisionFilterScope, runId, teamIdTrimmed]);
   const currentOwner = currentMeta?.orchestrator_owner ? String(currentMeta.orchestrator_owner) : "";
   const prevOwner = currentMeta?.orchestrator_owner_prev ? String(currentMeta.orchestrator_owner_prev) : "";
   const allowTakeover =
