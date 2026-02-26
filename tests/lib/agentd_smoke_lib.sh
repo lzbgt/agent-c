@@ -318,6 +318,7 @@ agentd_smoke_openrouter_log_pins() {
     echo "[stream] pins path: ${pins} (present, source=${source})" >&2
   else
     echo "[stream] pins path: ${pins} (missing, source=${source})" >&2
+    echo "[stream] pins hint: run tools/probe_openrouter_stream_models.sh with OPENROUTER_STREAM_PROBE_WRITE_PINS=1" >&2
   fi
 }
 
