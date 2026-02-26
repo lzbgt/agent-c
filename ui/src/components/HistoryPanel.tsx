@@ -89,6 +89,13 @@ export default function HistoryPanel(props: HistoryPanelProps) {
   }, [props.effectiveBase, teamId]);
   const [showTeamRoleLabels, setShowTeamRoleLabels] = useLocalStorageState<boolean>(teamRoleLabelsKey, true);
   const [showTeamSystemMessages, setShowTeamSystemMessages] = useLocalStorageState<boolean>(teamSystemKey, false);
+  const teamMutedAgentsKey = React.useMemo(() => {
+    const base = String(props.effectiveBase || "").trim() || "default";
+    const tid = teamId || "none";
+    return `agentui.teamMutedAgents:${base}::${tid}`;
+  }, [props.effectiveBase, teamId]);
+  const [teamMutedAgents, setTeamMutedAgents] = useLocalStorageState<string[]>(teamMutedAgentsKey, []);
+  const mutedAgentSet = React.useMemo(() => new Set(teamMutedAgents || []), [teamMutedAgents]);
 
   const teamTimelineItems = React.useMemo(() => {
     const items = teamConversationItems
@@ -96,6 +103,8 @@ export default function HistoryPanel(props: HistoryPanelProps) {
       .filter((item) => {
         const role = typeof item?.message?.role === "string" ? item.message.role : "";
         if (role === "system" && !showTeamSystemMessages) return false;
+        const agentLabel = typeof item?.meta?.agent_id === "string" ? item.meta.agent_id : "";
+        if (agentLabel && mutedAgentSet.has(agentLabel)) return false;
         return true;
       })
       .sort((a, b) => (a?.ts || 0) - (b?.ts || 0));
@@ -112,7 +121,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
       out.push({ kind: "item", item, ts });
     }
     return out;
-  }, [showTeamRunMarkers, showTeamSystemMessages, teamConversationItems]);
+  }, [mutedAgentSet, showTeamRunMarkers, showTeamSystemMessages, teamConversationItems]);
 
   const teamGroupedByAgent = React.useMemo(() => {
     if (!showTeamGroupByAgent) return [] as Array<{ key: string; label: string; items: any[]; latest: number; preview: string }>;
@@ -161,6 +170,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
       const meta = item?.meta ?? {};
       const roleLabel = typeof meta?.role === "string" && meta.role ? meta.role : role;
       const agentLabel = typeof meta?.agent_id === "string" && meta.agent_id ? meta.agent_id : "";
+      if (agentLabel && mutedAgentSet.has(agentLabel)) return null;
       const sessionLabel = typeof meta?.session_id === "string" ? meta.session_id : "";
       const hasMeta = !!agentLabel || !!sessionLabel;
       const payload = meta?.payload ?? {};
@@ -201,7 +211,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
         </div>
       );
     },
-    [showTeamRoleLabels],
+    [mutedAgentSet, showTeamRoleLabels],
   );
 
   const conversationItems = React.useMemo(() => {
@@ -413,7 +423,31 @@ export default function HistoryPanel(props: HistoryPanelProps) {
               >
                 {showTeamSystemMessages ? "Hide system" : "Show system"}
               </button>
+              {teamMutedAgents.length > 0 ? (
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                  type="button"
+                  onClick={() => setTeamMutedAgents([])}
+                >
+                  Clear muted
+                </button>
+              ) : null}
             </div>
+            {teamMutedAgents.length > 0 ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
+                Muted:
+                {teamMutedAgents.map((agent) => (
+                  <button
+                    key={agent}
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[11px] text-white/70 hover:bg-black/40"
+                    type="button"
+                    onClick={() => setTeamMutedAgents((prev) => prev.filter((id) => id !== agent))}
+                  >
+                    {agent} ×
+                  </button>
+                ))}
+              </div>
+            ) : null}
             {teamConversationWarnings.length > 0 ? (
               <div className="mt-2 text-[11px] text-amber-200">{teamConversationWarnings[0]}</div>
             ) : null}
@@ -425,23 +459,41 @@ export default function HistoryPanel(props: HistoryPanelProps) {
               ) : (
                 <div className="mt-3 grid gap-3">
                   {showTeamGroupByAgent
-                    ? teamGroupedByAgent.map((group) => (
-                        <details key={group.key} className="rounded-md border border-white/10 bg-black/20 p-2">
-                          <summary className="cursor-pointer text-[11px] text-white/70">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-white/80">{group.label}</span>
-                              <span className="text-white/40">· {group.items.length} messages</span>
-                              <span className="text-white/40">
-                                · last {group.latest ? new Date(group.latest).toLocaleString() : "unknown"}
-                              </span>
+                    ? teamGroupedByAgent.map((group) => {
+                        const isMuted = mutedAgentSet.has(group.key);
+                        return (
+                          <details key={group.key} className="rounded-md border border-white/10 bg-black/20 p-2">
+                            <summary className="cursor-pointer text-[11px] text-white/70">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-white/80">{group.label}</span>
+                                  <span className="text-white/40">· {group.items.length} messages</span>
+                                  <span className="text-white/40">
+                                    · last {group.latest ? new Date(group.latest).toLocaleString() : "unknown"}
+                                  </span>
+                                </div>
+                                <button
+                                  className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[11px] text-white/70 hover:bg-black/40"
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    setTeamMutedAgents((prev) =>
+                                      isMuted ? prev.filter((id) => id !== group.key) : [...prev, group.key],
+                                    );
+                                  }}
+                                >
+                                  {isMuted ? "Unmute" : "Mute"}
+                                </button>
+                              </div>
+                              <div className="mt-1 text-[11px] text-white/50">{group.preview}</div>
+                            </summary>
+                            <div className="mt-2 grid gap-2">
+                              {group.items.map((item, idx) => renderTeamMessage(item, idx))}
                             </div>
-                            <div className="mt-1 text-[11px] text-white/50">{group.preview}</div>
-                          </summary>
-                          <div className="mt-2 grid gap-2">
-                            {group.items.map((item, idx) => renderTeamMessage(item, idx))}
-                          </div>
-                        </details>
-                      ))
+                          </details>
+                        );
+                      })
                     : teamTimelineItems.map((entry, idx) => {
                         if (entry.kind === "marker") {
                           return (
