@@ -194,7 +194,13 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     const tid = teamId || "none";
     return `agentui.teamSearch:${base}::${tid}`;
   }, [props.effectiveBase, teamId]);
+  const teamDefaultFilterKey = React.useMemo(() => {
+    const base = String(props.effectiveBase || "").trim() || "default";
+    const tid = teamId || "none";
+    return `agentui.teamDefaultFilter:${base}::${tid}`;
+  }, [props.effectiveBase, teamId]);
   const [teamSearch, setTeamSearch] = useLocalStorageState<string>(teamSearchKey, "");
+  const [teamDefaultFilter, setTeamDefaultFilter] = useLocalStorageState<string>(teamDefaultFilterKey, "");
   const teamSavedFiltersKey = React.useMemo(() => {
     const base = String(props.effectiveBase || "").trim() || "default";
     const tid = teamId || "none";
@@ -432,6 +438,13 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     },
     [teamFilteredItems],
   );
+
+  React.useEffect(() => {
+    if (teamSearch.trim().length > 0) return;
+    const fallback = teamDefaultFilter.trim();
+    if (!fallback) return;
+    setTeamSearch(fallback);
+  }, [setTeamSearch, teamDefaultFilter, teamSearch]);
 
   React.useEffect(() => {
     const lastKeyRef = { key: "", ts: 0 };
@@ -712,6 +725,23 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                       }}
                     >
                       Pin
+                    </button>
+                  ) : null}
+                  {teamSearch.trim().length > 0 ? (
+                    <button
+                      className={`rounded-md border px-2 py-1 text-[11px] ${
+                        teamDefaultFilter.trim() === teamSearch.trim()
+                          ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
+                          : "border-white/10 bg-black/30 text-white/70 hover:bg-black/40"
+                      }`}
+                      type="button"
+                      onClick={() => {
+                        const val = teamSearch.trim();
+                        if (!val) return;
+                        setTeamDefaultFilter((prev) => (prev === val ? "" : val));
+                      }}
+                    >
+                      {teamDefaultFilter.trim() === teamSearch.trim() ? "Default ✓" : "Set default"}
                     </button>
                   ) : null}
                   {teamSearch.trim().length > 0 ? (
