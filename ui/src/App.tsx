@@ -2877,6 +2877,7 @@ export default function App() {
                             const snippet = entry.prompt.trim();
                             const preview = snippet.length > 80 ? `${snippet.slice(0, 80)}…` : snippet || "(no prompt)";
                             const attachmentCount = Array.isArray(entry.attachments) ? entry.attachments.length : 0;
+                            const waitingForRun = entry.action !== "run" && !latestTeamRunId;
                             return (
                               <div key={`team-queue-${entry.queued_unix_ms}-${idx}`} className="flex items-center gap-2">
                                 <span className="rounded-md border border-indigo-400/30 bg-indigo-500/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-indigo-100">
@@ -2886,6 +2887,11 @@ export default function App() {
                                 {attachmentCount > 0 ? (
                                   <span className="rounded-md border border-indigo-400/30 bg-indigo-500/20 px-2 py-0.5 text-[10px] text-indigo-100">
                                     +{attachmentCount} file{attachmentCount === 1 ? "" : "s"}
+                                  </span>
+                                ) : null}
+                                {waitingForRun ? (
+                                  <span className="rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-100">
+                                    waiting for run
                                   </span>
                                 ) : null}
                               </div>
