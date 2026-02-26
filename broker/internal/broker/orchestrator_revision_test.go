@@ -117,3 +117,31 @@ func TestLatestRevisionEntry(t *testing.T) {
 		t.Fatalf("expected first entry fallback, got %#v", latest)
 	}
 }
+
+func TestBuildRevisionPayloads(t *testing.T) {
+	meta := map[string]any{
+		"goal_versions": []map[string]any{
+			{"version": 1, "goal": "old"},
+			{"version": 3, "goal": "new", "goal_contract": map[string]any{"scope": "s1"}},
+			{"version": 2, "goal": "mid"},
+		},
+		"role_plan_versions": []map[string]any{
+			{"version": 2, "role_plan_snapshot": map[string]any{"role": "b"}},
+			{"version": 4, "role_plan_snapshot": map[string]any{"role": "c"}},
+		},
+	}
+	goalPayload := buildGoalRevisionPayload("team1", "run1", meta)
+	if goalPayload == nil || goalPayload["version"] != 3 {
+		t.Fatalf("expected goal payload version 3, got %#v", goalPayload)
+	}
+	if goalPayload["goal"] != "new" {
+		t.Fatalf("expected goal payload 'new', got %#v", goalPayload["goal"])
+	}
+	rolePayload := buildRolePlanRevisionPayload("team1", "run1", meta)
+	if rolePayload == nil || rolePayload["version"] != 4 {
+		t.Fatalf("expected role payload version 4, got %#v", rolePayload)
+	}
+	if rolePayload["role_plan_snapshot"] == nil {
+		t.Fatalf("expected role_plan_snapshot in payload")
+	}
+}
