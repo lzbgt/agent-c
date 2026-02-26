@@ -355,7 +355,7 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
                   type="button"
                   onClick={() => props.onTeamActionChange?.("run")}
                 >
-                  Prompt
+                  Run
                 </button>
                 <button
                   className={`px-2 py-1 ${teamAction === "guidance" ? "bg-indigo-500/20 text-indigo-100" : "hover:bg-black/40"}`}
