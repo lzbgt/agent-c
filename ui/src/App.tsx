@@ -2753,6 +2753,19 @@ export default function App() {
                           Runs
                         </button>
                         <button
+                          className="rounded-md border border-indigo-400/30 bg-indigo-500/20 px-3 py-1 text-[11px] text-indigo-100 hover:bg-indigo-500/30"
+                          type="button"
+                          onClick={() => {
+                            setChatTarget("team");
+                            setTeamAction("run");
+                            if (promptbarRef.current) {
+                              promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+                            }
+                          }}
+                        >
+                          Run team
+                        </button>
+                        <button
                           className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
                           type="button"
                           onClick={() => {
@@ -2765,6 +2778,19 @@ export default function App() {
                         >
                           Send guidance
                         </button>
+                        <button
+                          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                          type="button"
+                          onClick={() => {
+                            setChatTarget("team");
+                            setTeamAction("goal");
+                            if (promptbarRef.current) {
+                              promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+                            }
+                          }}
+                        >
+                          Set goal
+                        </button>
                       </div>
                     </div>
                     <div className="mt-2 text-[11px] text-white/50">
@@ -2772,7 +2798,16 @@ export default function App() {
                     </div>
                     {teamQueueCount > 0 ? (
                       <div className="mt-2 rounded-md border border-indigo-400/20 bg-indigo-500/10 px-2 py-2 text-[11px] text-indigo-100">
-                        <div className="font-semibold text-indigo-100">Queued team actions: {teamQueueCount}</div>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-semibold text-indigo-100">Queued team actions: {teamQueueCount}</div>
+                          <button
+                            className="rounded-md border border-indigo-400/30 bg-indigo-500/20 px-2 py-0.5 text-[11px] text-indigo-100 hover:bg-indigo-500/30"
+                            type="button"
+                            onClick={() => setTeamQueue([])}
+                          >
+                            Clear queue
+                          </button>
+                        </div>
                         <div className="mt-1 grid gap-1 text-indigo-100/80">
                           {teamQueue.slice(0, 3).map((entry, idx) => {
                             const snippet = entry.prompt.trim();
