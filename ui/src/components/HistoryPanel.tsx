@@ -75,6 +75,12 @@ export default function HistoryPanel(props: HistoryPanelProps) {
       .sort((a, b) => b.lastTs - a.lastTs);
   }, [teamConversationItems]);
   const teamLastActivity = teamAgentSummary.length > 0 ? teamAgentSummary[0].lastTs : 0;
+  const teamSummaryKey = React.useMemo(() => {
+    const base = String(props.effectiveBase || "").trim() || "default";
+    const tid = teamId || "none";
+    return `agentui.teamSummaryExpanded:${base}::${tid}`;
+  }, [props.effectiveBase, teamId]);
+  const [showAllTeamAgents, setShowAllTeamAgents] = useLocalStorageState<boolean>(teamSummaryKey, false);
   const MAX_HISTORY_EXPANDED_KEYS = 200;
   const technicalHistoryKey = React.useMemo(() => {
     const base = String(props.effectiveBase || "").trim() || "default";
@@ -429,7 +435,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
             </div>
             {teamAgentSummary.length > 0 ? (
               <div className="mt-2 grid gap-2 md:grid-cols-2">
-                {teamAgentSummary.slice(0, 4).map((agent) => (
+                {teamAgentSummary.slice(0, showAllTeamAgents ? teamAgentSummary.length : 4).map((agent) => (
                   <div key={agent.agentId} className="rounded-md border border-white/10 bg-black/20 px-2 py-1 text-[11px] text-white/70">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-white/80">{agent.agentId}</span>
@@ -442,6 +448,15 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                     </div>
                   </div>
                 ))}
+                {teamAgentSummary.length > 4 ? (
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                    type="button"
+                    onClick={() => setShowAllTeamAgents((v) => !v)}
+                  >
+                    {showAllTeamAgents ? "Show fewer agents" : `Show all ${teamAgentSummary.length} agents`}
+                  </button>
+                ) : null}
               </div>
             ) : null}
             <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
