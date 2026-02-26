@@ -255,6 +255,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                     const roleLabel = typeof meta?.role === "string" && meta.role ? meta.role : role;
                     const agentLabel = typeof meta?.agent_id === "string" && meta.agent_id ? meta.agent_id : "";
                     const sessionLabel = typeof meta?.session_id === "string" ? meta.session_id : "";
+                    const hasMeta = !!agentLabel || !!sessionLabel;
                     const payload = meta?.payload ?? {};
                     const uploads = Array.isArray(payload?.uploads) ? payload.uploads : [];
                     const uploadFiles = uploads.flatMap((u: any) => (Array.isArray(u?.files) ? u.files : []));
@@ -267,14 +268,21 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                           <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-semibold text-white/80">
                             {roleLabel}
                           </span>
-                          {agentLabel ? <span className="text-white/50">{agentLabel}</span> : null}
                           {when ? <span>{when}</span> : null}
-                          {sessionLabel ? <span className="text-white/40">session {sessionLabel}</span> : null}
                         </div>
                         {content ? (
                           <div className="mt-2 text-sm text-white/90">
                             <Markdown text={String(content)} />
                           </div>
+                        ) : null}
+                        {hasMeta ? (
+                          <details className="mt-2">
+                            <summary className="cursor-pointer text-[11px] text-white/60">Message details</summary>
+                            <div className="mt-2 text-[11px] text-white/60">
+                              {agentLabel ? <div>agent {agentLabel}</div> : null}
+                              {sessionLabel ? <div>session {sessionLabel}</div> : null}
+                            </div>
+                          </details>
                         ) : null}
                         {uploadNames.length > 0 ? (
                           <div className="mt-2 text-[11px] text-white/60">
@@ -312,6 +320,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 const mmJson = typeof m?.mm_json === "string" ? m.mm_json : "";
                 const mmBytes = typeof m?.mm_bytes === "number" ? m.mm_bytes : mmJson.length || 0;
                 const isSystem = role === "system";
+                const hasMeta = !!truncated || mmBytes > 0;
                 return (
                   <div key={`msg:${ts || idx}`} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
@@ -320,7 +329,6 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                       </span>
                       {when ? <span>{when}</span> : null}
                       {truncated ? <span className="text-amber-200">truncated</span> : null}
-                      {mmBytes > 0 ? <span className="text-white/50">mm {mmBytes}b</span> : null}
                     </div>
                     {isSystem ? (
                       <details className="mt-2">
@@ -334,6 +342,22 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                         {content ? <Markdown text={content} /> : <span className="text-white/50">(no content)</span>}
                       </div>
                     )}
+                    {hasMeta ? (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-[11px] text-white/60">Message details</summary>
+                        <div className="mt-2 text-[11px] text-white/60">
+                          {mmBytes > 0 ? <div>mm bytes: {mmBytes}</div> : null}
+                          {mmJson ? (
+                            <details className="mt-2">
+                              <summary className="cursor-pointer text-[11px] text-white/60">mm json</summary>
+                              <pre className="mt-2 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90">
+                                {formatJson(mmJson)}
+                              </pre>
+                            </details>
+                          ) : null}
+                        </div>
+                      </details>
+                    ) : null}
                   </div>
                 );
               }
@@ -410,18 +434,20 @@ export default function HistoryPanel(props: HistoryPanelProps) {
               const ok = typeof r?.ok === "number" ? r.ok === 1 : typeof r?.ok === "boolean" ? r.ok : undefined;
               const err = typeof r?.error === "string" ? r.error : "";
               return (
-                <div key={`run:${ts || idx}`} className="rounded-lg border border-indigo-400/20 bg-indigo-500/5 px-3 py-2">
-                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-                    <span className="rounded-md border border-indigo-400/20 bg-indigo-500/10 px-2 py-0.5 font-semibold text-indigo-100">
-                      run
-                    </span>
-                    {when ? <span>{when}</span> : null}
-                    {typeof ok === "boolean" ? (
-                      <span className={ok ? "text-emerald-300" : "text-rose-300"}>{ok ? "ok" : "error"}</span>
-                    ) : null}
-                    {tools ? <span className="text-white/50">tools={tools}</span> : null}
-                    {model ? <span className="text-white/50">model={model}</span> : null}
-                  </div>
+                <details key={`run:${ts || idx}`} className="rounded-lg border border-indigo-400/20 bg-indigo-500/5 px-3 py-2">
+                  <summary className="cursor-pointer select-none text-[11px] text-white/60">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-md border border-indigo-400/20 bg-indigo-500/10 px-2 py-0.5 font-semibold text-indigo-100">
+                        run
+                      </span>
+                      {when ? <span>{when}</span> : null}
+                      {typeof ok === "boolean" ? (
+                        <span className={ok ? "text-emerald-300" : "text-rose-300"}>{ok ? "ok" : "error"}</span>
+                      ) : null}
+                      {tools ? <span className="text-white/50">tools={tools}</span> : null}
+                      {model ? <span className="text-white/50">model={model}</span> : null}
+                    </div>
+                  </summary>
                   {prompt ? (
                     <div className="mt-2">
                       <div className="text-[11px] font-semibold text-white/60">Prompt</div>
@@ -435,7 +461,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                       {err}
                     </div>
                   ) : null}
-                </div>
+                </details>
               );
             })}
           </div>
