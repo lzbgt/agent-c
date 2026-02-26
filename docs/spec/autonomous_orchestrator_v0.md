@@ -239,6 +239,19 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   last_tick_unix_ms: integer
 ```
 
+Revision history entries (stored inside `goal_versions` / `role_plan_versions`) are append-only and bounded:
+
+```
+goal_versions: [
+  { version: number, updated_unix_ms: integer, updated_by: string, goal: string,
+    goal_contract: { ... }, goal_contract_diff: { added: [string], removed: [string], changed: [string] } }
+]
+role_plan_versions: [
+  { version: number, updated_unix_ms: integer, updated_by: string,
+    role_plan_snapshot: { ... }, role_plan_diff: { added: [string], removed: [string], changed: [string] } }
+]
+```
+
 Notes:
 - Drift guidance defaults to `target_orchestrator_id="human"` when no explicit targets
   are provided so the item stays open for operator review. Set
