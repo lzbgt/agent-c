@@ -46,15 +46,23 @@ fi
 if [[ -n "${MODEL_OVERRIDE}" ]]; then
   echo "model_override=${MODEL_OVERRIDE}"
 fi
-PINS_PATH="${AGENT_OPENROUTER_STREAM_PINS:-${OPENROUTER_STREAM_PINS_PATH:-${ROOT}/ref/openrouter/streaming_pins.json}}"
-if [[ -n "${PINS_PATH}" ]]; then
-  echo "stream_pins_path=${PINS_PATH}"
-  if [[ -f "${PINS_PATH}" ]]; then
-    echo "stream_pins_present=1"
-  else
-    echo "stream_pins_present=0"
-    echo "stream_pins_hint=run tools/probe_openrouter_stream_models.sh with OPENROUTER_STREAM_PROBE_WRITE_PINS=1"
-  fi
+PINS_SOURCE="default"
+if [[ -n "${AGENT_OPENROUTER_STREAM_PINS:-}" ]]; then
+  PINS_PATH="${AGENT_OPENROUTER_STREAM_PINS}"
+  PINS_SOURCE="AGENT_OPENROUTER_STREAM_PINS"
+elif [[ -n "${OPENROUTER_STREAM_PINS_PATH:-}" ]]; then
+  PINS_PATH="${OPENROUTER_STREAM_PINS_PATH}"
+  PINS_SOURCE="OPENROUTER_STREAM_PINS_PATH"
+else
+  PINS_PATH="${ROOT}/ref/openrouter/streaming_pins.json"
+fi
+echo "stream_pins_source=${PINS_SOURCE}"
+echo "stream_pins_path=${PINS_PATH}"
+if [[ -f "${PINS_PATH}" ]]; then
+  echo "stream_pins_present=1"
+else
+  echo "stream_pins_present=0"
+  echo "stream_pins_hint=run tools/probe_openrouter_stream_models.sh with OPENROUTER_STREAM_PROBE_WRITE_PINS=1"
 fi
 if [[ -f "${PINS_PATH}" ]]; then
   python3 - <<PY 2>/dev/null || true

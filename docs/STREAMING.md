@@ -129,8 +129,8 @@ tools/openrouter_auth_debug.sh
 
 The quick check prints a hint to run the debug helper when it fails. The debug helper also reports any
 `streaming_pins.json` metadata it finds (pinned models and list sizes), including `stream_pins_present`
-and `pins_empty` flags when the file is missing or has no usable entries; when pins are missing/empty
-it prints a `pins_hint` line with the probe command.
+and `pins_empty` flags when the file is missing or has no usable entries, plus the `stream_pins_source`
+and path used; when pins are missing/empty it prints a `pins_hint` line with the probe command.
 
 If you need to skip the chat-completions preflight (e.g., keys that can list models but cannot chat), set:
 
