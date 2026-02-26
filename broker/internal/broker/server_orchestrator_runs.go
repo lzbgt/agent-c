@@ -157,7 +157,17 @@ func (s *Server) handleTeamOrchestratorRunCreate(w http.ResponseWriter, r *http.
 		writeErrorJSON(w, "create orchestrator run failed", http.StatusBadRequest)
 		return
 	}
-	publishOrchestratorRunCreated(s.cfg.Events, p.Sub, run, traceIDFromContext(r.Context()))
+	traceID := traceIDFromContext(r.Context())
+	publishOrchestratorRunCreated(s.cfg.Events, p.Sub, run, traceID)
+	if run != nil {
+		runMeta := run.Meta()
+		if payload := buildGoalRevisionPayload(teamID, runID, runMeta); payload != nil {
+			publishOrchestratorRevisionEvent(s.cfg.Events, p.Sub, "orchestrator_goal_revision", payload, traceID)
+		}
+		if payload := buildRolePlanRevisionPayload(teamID, runID, runMeta); payload != nil {
+			publishOrchestratorRevisionEvent(s.cfg.Events, p.Sub, "orchestrator_role_plan_revision", payload, traceID)
+		}
+	}
 	writeJSON(w, map[string]any{"ok": true, "team_id": teamID, "run": orchestratorRunToJSON(*run)})
 }
 
@@ -759,6 +769,65 @@ func initializeOrchestratorRevisionHistory(
 		}
 	}
 	return meta
+}
+
+func buildGoalRevisionPayload(teamID, runID string, meta map[string]any) map[string]any {
+	entries := readRevisionEntries(meta, "goal_versions")
+	if len(entries) == 0 {
+		return nil
+	}
+	entry := entries[len(entries)-1]
+	payload := map[string]any{
+		"team_id":             teamID,
+		"orchestrator_run_id": runID,
+	}
+	if v, ok := entry["version"]; ok {
+		payload["version"] = v
+	}
+	if v, ok := entry["updated_unix_ms"]; ok {
+		payload["updated_unix_ms"] = v
+	}
+	if v, ok := entry["updated_by"]; ok {
+		payload["updated_by"] = v
+	}
+	if v, ok := entry["goal"]; ok {
+		payload["goal"] = v
+	}
+	if v, ok := entry["goal_contract"]; ok {
+		payload["goal_contract"] = v
+	}
+	if v, ok := entry["goal_contract_diff"]; ok {
+		payload["goal_contract_diff"] = v
+	}
+	return payload
+}
+
+func buildRolePlanRevisionPayload(teamID, runID string, meta map[string]any) map[string]any {
+	entries := readRevisionEntries(meta, "role_plan_versions")
+	if len(entries) == 0 {
+		return nil
+	}
+	entry := entries[len(entries)-1]
+	payload := map[string]any{
+		"team_id":             teamID,
+		"orchestrator_run_id": runID,
+	}
+	if v, ok := entry["version"]; ok {
+		payload["version"] = v
+	}
+	if v, ok := entry["updated_unix_ms"]; ok {
+		payload["updated_unix_ms"] = v
+	}
+	if v, ok := entry["updated_by"]; ok {
+		payload["updated_by"] = v
+	}
+	if v, ok := entry["role_plan_snapshot"]; ok {
+		payload["role_plan_snapshot"] = v
+	}
+	if v, ok := entry["role_plan_diff"]; ok {
+		payload["role_plan_diff"] = v
+	}
+	return payload
 }
 
 func mapDiffKeys(prev, next map[string]any) map[string]any {
