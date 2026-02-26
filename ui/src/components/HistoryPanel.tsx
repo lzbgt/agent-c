@@ -6,6 +6,52 @@ import ArtifactView from "./ArtifactView";
 import type { SceneEntity } from "./SceneView";
 import useLocalStorageState from "../hooks/useLocalStorageState";
 
+type HighlightSnippet = {
+  snippet: string;
+  start: number;
+  end: number;
+};
+
+function buildHighlightSnippet(text: string, needle: string, maxLen = 180): HighlightSnippet | null {
+  const cleanNeedle = needle.trim();
+  if (!text || !cleanNeedle) return null;
+  const lowerText = text.toLowerCase();
+  const lowerNeedle = cleanNeedle.toLowerCase();
+  const idx = lowerText.indexOf(lowerNeedle);
+  if (idx < 0) return null;
+  const pad = 40;
+  let start = Math.max(0, idx - pad);
+  let end = Math.min(text.length, idx + lowerNeedle.length + pad);
+  if (end - start < maxLen) {
+    const extra = maxLen - (end - start);
+    start = Math.max(0, start - Math.floor(extra / 2));
+    end = Math.min(text.length, end + Math.ceil(extra / 2));
+  }
+  return { snippet: text.slice(start, end), start, end };
+}
+
+function renderHighlightedSnippet(snippet: string, needle: string): React.ReactNode {
+  const cleanNeedle = needle.trim();
+  if (!snippet || !cleanNeedle) return snippet;
+  const lowerSnippet = snippet.toLowerCase();
+  const lowerNeedle = cleanNeedle.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  while (true) {
+    const idx = lowerSnippet.indexOf(lowerNeedle, cursor);
+    if (idx < 0) break;
+    if (idx > cursor) parts.push(snippet.slice(cursor, idx));
+    parts.push(
+      <mark key={`${idx}-${cursor}`} className="rounded bg-amber-400/30 px-0.5 text-amber-100">
+        {snippet.slice(idx, idx + lowerNeedle.length)}
+      </mark>,
+    );
+    cursor = idx + lowerNeedle.length;
+  }
+  if (cursor < snippet.length) parts.push(snippet.slice(cursor));
+  return parts;
+}
+
 export type HistoryPanelProps = {
   entries: any[];
   showAllEntries: boolean;
@@ -242,6 +288,8 @@ export default function HistoryPanel(props: HistoryPanelProps) {
       const uploadNames = uploadFiles
         .map((f: any) => String(f?.name || f?.path || "").trim())
         .filter((f: string) => f.length > 0);
+      const highlightNeedle = teamSearch.trim();
+      const highlightSnippet = highlightNeedle ? buildHighlightSnippet(content, highlightNeedle) : null;
       return (
         <div
           key={`team-msg:${ts || idx}`}
@@ -256,6 +304,14 @@ export default function HistoryPanel(props: HistoryPanelProps) {
             ) : null}
             {when ? <span>{when}</span> : null}
           </div>
+          {highlightSnippet ? (
+            <div className="mt-2 text-[11px] text-amber-100">
+              <span className="text-amber-200">Match:</span>{" "}
+              {highlightSnippet.start > 0 ? "…" : null}
+              {renderHighlightedSnippet(highlightSnippet.snippet, highlightNeedle)}
+              {highlightSnippet.end < content.length ? "…" : null}
+            </div>
+          ) : null}
           {content ? (
             <div className="mt-2 text-sm text-white/90">
               <Markdown text={String(content)} />
@@ -278,7 +334,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
         </div>
       );
     },
-    [mutedAgentSet, showTeamRoleLabels],
+    [mutedAgentSet, showTeamRoleLabels, teamSearch],
   );
 
   const jumpToMatch = React.useCallback(
