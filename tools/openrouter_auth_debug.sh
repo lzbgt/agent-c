@@ -46,6 +46,34 @@ fi
 if [[ -n "${MODEL_OVERRIDE}" ]]; then
   echo "model_override=${MODEL_OVERRIDE}"
 fi
+PINS_PATH="${AGENT_OPENROUTER_STREAM_PINS:-${OPENROUTER_STREAM_PINS_PATH:-${ROOT}/ref/openrouter/streaming_pins.json}}"
+if [[ -f "${PINS_PATH}" ]]; then
+  echo "stream_pins_path=${PINS_PATH}"
+  python3 - <<PY 2>/dev/null || true
+import json
+path = "${PINS_PATH}"
+try:
+    with open(path, "r", encoding="utf-8") as f:
+        obj = json.load(f)
+except Exception:
+    raise SystemExit(0)
+assistant = str(obj.get("assistant_model") or "").strip()
+tool = str(obj.get("tool_model") or "").strip()
+assistant_count = len(obj.get("ok_models_assistant") or [])
+tool_count = len(obj.get("ok_models_tool") or [])
+both_count = len(obj.get("ok_models_both") or [])
+if assistant:
+    print(f"pins_assistant_model={assistant}")
+if tool:
+    print(f"pins_tool_model={tool}")
+if assistant_count:
+    print(f"pins_ok_models_assistant={assistant_count}")
+if tool_count:
+    print(f"pins_ok_models_tool={tool_count}")
+if both_count:
+    print(f"pins_ok_models_both={both_count}")
+PY
+fi
 
 resp="$(curl -sS --noproxy "*" -w "\n%{http_code}" \
   "${HEADERS[@]}" \
