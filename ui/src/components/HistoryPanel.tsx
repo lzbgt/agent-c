@@ -307,6 +307,14 @@ export default function HistoryPanel(props: HistoryPanelProps) {
               ? "border-indigo-400/30 bg-indigo-500/10 text-indigo-100"
               : "border-white/10 bg-black/30 text-white/70";
       const isSystem = role === "system" || roleLabel === "system";
+      const cardAccent =
+        roleLabel === "guidance"
+          ? "border-amber-400/30 bg-amber-500/5"
+          : roleLabel === "goal"
+            ? "border-emerald-400/30 bg-emerald-500/5"
+            : roleLabel === "user"
+              ? "border-indigo-400/30 bg-indigo-500/5"
+              : "border-white/10 bg-white/5";
       if (agentLabel && mutedAgentSet.has(agentLabel)) return null;
       const sessionLabel = typeof meta?.session_id === "string" ? meta.session_id : "";
       const hasMeta = !!agentLabel || !!sessionLabel;
@@ -322,7 +330,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
         <div
           key={`team-msg:${ts || idx}`}
           id={ts ? `team-msg-${ts}` : undefined}
-          className="rounded-lg border border-white/10 bg-white/5 px-3 py-2"
+          className={`rounded-lg border px-3 py-2 ${cardAccent}`}
         >
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
             {agentLabel ? (
