@@ -123,6 +123,13 @@ Settings → Diagnostics triggers:
 
 See `docs/DIAGNOSTICS.md` for provider_test usage.
 
+## Uploads
+
+- File attachments use `POST /api/v1/session/upload`.
+- Session IDs must be filename-safe (letters, numbers, `.`, `_`, `-`), or uploads fall back to `default`.
+- Filenames are sanitized to `[A-Za-z0-9._-]` before upload.
+- Upload size is capped by daemon limits (`caps.limits.upload_max_bytes`); oversized files are skipped.
+
 ## Approval queue
 
 The WebUI includes an **Approval queue** panel for tool-level approvals:
