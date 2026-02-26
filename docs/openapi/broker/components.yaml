@@ -970,6 +970,12 @@ schemas:
       meta:
         type: object
         additionalProperties: true
+        description: >
+          Free-form orchestrator metadata. Revision fields may include
+          goal_version, goal_versions, goal_updated_unix_ms, role_plan_version,
+          role_plan_versions, role_plan_updated_unix_ms. Entries inside
+          goal_versions/role_plan_versions may include goal_contract_diff or
+          role_plan_diff (added/removed/changed key lists).
 
   OrchestratorRunCreateRequest:
     type: object
