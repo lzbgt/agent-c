@@ -324,21 +324,29 @@ for idx in "${!AGENT_IDS[@]}"; do
   mkdir -p "${agent_state}"
   log="${LOG_DIR}/agentd_${agent_id}.log"
   AGENTD_LOGS+=("${log}")
-  extra_args=()
   if [[ "${idx}" -eq 0 && "${WORKFLOW_HTTP}" -eq 1 ]]; then
-    extra_args+=("--workflow-enable-http-tasks")
-    extra_args+=("--workflow-http-allow-host" "127.0.0.1")
+    AGENTD_CALL_BEARER="${AGENTD_AUTH_TOKEN}" nohup "${AGENTD_BIN}" \
+      --host 127.0.0.1 \
+      --port "${port}" \
+      --auth-token "${AGENTD_AUTH_TOKEN}" \
+      --tools "${AGENTD_TOOLS}" \
+      --state-dir "${agent_state}" \
+      --db-path "${agent_state}/agentd.db" \
+      --cors-origin "http://127.0.0.1:${WEBUI_PORT}" \
+      --cors-origin "http://localhost:${WEBUI_PORT}" \
+      --workflow-enable-http-tasks \
+      --workflow-http-allow-host 127.0.0.1 >"${log}" 2>&1 &
+  else
+    AGENTD_CALL_BEARER="${AGENTD_AUTH_TOKEN}" nohup "${AGENTD_BIN}" \
+      --host 127.0.0.1 \
+      --port "${port}" \
+      --auth-token "${AGENTD_AUTH_TOKEN}" \
+      --tools "${AGENTD_TOOLS}" \
+      --state-dir "${agent_state}" \
+      --db-path "${agent_state}/agentd.db" \
+      --cors-origin "http://127.0.0.1:${WEBUI_PORT}" \
+      --cors-origin "http://localhost:${WEBUI_PORT}" >"${log}" 2>&1 &
   fi
-  AGENTD_CALL_BEARER="${AGENTD_AUTH_TOKEN}" nohup "${AGENTD_BIN}" \
-    --host 127.0.0.1 \
-    --port "${port}" \
-    --auth-token "${AGENTD_AUTH_TOKEN}" \
-    --tools "${AGENTD_TOOLS}" \
-    --state-dir "${agent_state}" \
-    --db-path "${agent_state}/agentd.db" \
-    --cors-origin "http://127.0.0.1:${WEBUI_PORT}" \
-    --cors-origin "http://localhost:${WEBUI_PORT}" \
-    "${extra_args[@]}" >"${log}" 2>&1 &
   AGENTD_PIDS+=("$!")
 done
 
