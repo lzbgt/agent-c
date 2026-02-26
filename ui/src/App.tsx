@@ -334,7 +334,7 @@ export default function App() {
 
   const [advancedPage, setAdvancedPage] = useLocalStorageState<string>(
     `agentui.advancedPage:${sessionScopeKey}`,
-    "conversation",
+    "scene",
   );
   const advancedPages = React.useMemo(() => {
     const pages = [
@@ -351,7 +351,7 @@ export default function App() {
   }, [connectionMode]);
   const advancedPageIds = React.useMemo(() => new Set(advancedPages.map((p) => p.id)), [advancedPages]);
   React.useEffect(() => {
-    if (!advancedPageIds.has(advancedPage)) setAdvancedPage("conversation");
+    if (!advancedPageIds.has(advancedPage)) setAdvancedPage("scene");
   }, [advancedPage, advancedPageIds, setAdvancedPage]);
 
   const historyUiKey = React.useMemo(() => {
@@ -1941,7 +1941,7 @@ export default function App() {
                 className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
                 onClick={() => {
                   setSimpleMode(false);
-                  setAdvancedPage("conversation");
+                  setAdvancedPage("scene");
                   setShowSettings(true);
                 }}
                 type="button"
@@ -2110,7 +2110,7 @@ export default function App() {
                     <TraceLookupPanel
                       open={true}
                       onToggle={(open) => {
-                        if (!open) setAdvancedPage("conversation");
+                        if (!open) setAdvancedPage("scene");
                       }}
                       traceId={traceLookupId}
                       onTraceIdChange={(next) => setTraceLookupId(next)}
@@ -2134,7 +2134,7 @@ export default function App() {
                     <RunDiffPanel
                       open={true}
                       onToggle={(open) => {
-                        if (!open) setAdvancedPage("conversation");
+                        if (!open) setAdvancedPage("scene");
                       }}
                       baseUrl={effectiveBase}
                       auth={daemonAuth}
@@ -2145,7 +2145,7 @@ export default function App() {
                     <MemoryPanel
                       open={true}
                       onToggle={(open) => {
-                        if (!open) setAdvancedPage("conversation");
+                        if (!open) setAdvancedPage("scene");
                       }}
                       baseUrl={effectiveBase}
                       auth={daemonAuth}
@@ -2156,7 +2156,7 @@ export default function App() {
                     <ApprovalQueuePanel
                       open={true}
                       onToggle={(open) => {
-                        if (!open) setAdvancedPage("conversation");
+                        if (!open) setAdvancedPage("scene");
                       }}
                       baseUrl={effectiveBase}
                       auth={daemonAuth}
@@ -2167,7 +2167,7 @@ export default function App() {
                     <WorkflowPanel
                       open={true}
                       onToggle={(open) => {
-                        if (!open) setAdvancedPage("conversation");
+                        if (!open) setAdvancedPage("scene");
                       }}
                       baseUrl={effectiveBase}
                       auth={daemonAuth}
@@ -2188,7 +2188,7 @@ export default function App() {
                     <BrokerPanel
                       open={true}
                       onToggle={(open) => {
-                        if (!open) setAdvancedPage("conversation");
+                        if (!open) setAdvancedPage("scene");
                       }}
                       brokerBase={connection.brokerBase}
                       brokerAgentId={connection.brokerAgentId}
