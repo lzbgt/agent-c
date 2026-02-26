@@ -442,6 +442,12 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
     }
   }, [props.canQuery, props.events, teamIdTrimmed, runId, loadRuns, loadRun]);
 
+  React.useEffect(() => {
+    if (!copyNote) return;
+    const timer = setTimeout(() => setCopyNote(null), 2500);
+    return () => clearTimeout(timer);
+  }, [copyNote]);
+
   const handleCopyJson = async (payload: any, label: string) => {
     const text = formatJson(payload);
     if (!text) {
