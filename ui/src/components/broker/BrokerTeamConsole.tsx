@@ -1906,6 +1906,20 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             value={memberStatus}
             onChange={(e) => setMemberStatus(e.target.value)}
           />
+          <FieldLabel>Weight</FieldLabel>
+          <input
+            className="w-20 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={memberWeight}
+            onChange={(e) => setMemberWeight(e.target.value)}
+          />
+          <button
+            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+            type="button"
+            disabled={!canQuery || !teamIdTrimmed || membersBusy}
+            onClick={() => void handleAddMember()}
+          >
+            Add member
+          </button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <FieldLabel>Agent ID</FieldLabel>
@@ -1915,28 +1929,6 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             onChange={(e) => setMemberAgentId(e.target.value)}
             placeholder="agent1"
           />
-          <FieldLabel>Deployment</FieldLabel>
-          <input
-            className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={memberDeploymentId}
-            onChange={(e) => setMemberDeploymentId(e.target.value)}
-            placeholder="default"
-          />
-          <FieldLabel>Weight</FieldLabel>
-          <input
-            className="w-20 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={memberWeight}
-            onChange={(e) => setMemberWeight(e.target.value)}
-          />
-          <FieldLabel>Capabilities</FieldLabel>
-          <input
-            className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={memberCapabilities}
-            onChange={(e) => setMemberCapabilities(e.target.value)}
-            placeholder="vision,audio"
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
           <FieldLabel>Agent pick</FieldLabel>
           <select
             className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
@@ -1973,6 +1965,13 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
               );
             })}
           </select>
+          <FieldLabel>Deployment</FieldLabel>
+          <input
+            className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={memberDeploymentId}
+            onChange={(e) => setMemberDeploymentId(e.target.value)}
+            placeholder="default"
+          />
           <button
             className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
             type="button"
@@ -1993,64 +1992,66 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             <span className="text-[11px] text-rose-200">{memberAgentsError}</span>
           ) : null}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <FieldLabel>Backend label</FieldLabel>
-          <input
-            className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={memberBackendLabel}
-            onChange={(e) => setMemberBackendLabel(e.target.value)}
-            placeholder="openrouter-main"
-          />
-          <FieldLabel>Model</FieldLabel>
-          <input
-            className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={memberModel}
-            onChange={(e) => setMemberModel(e.target.value)}
-            placeholder="optional"
-          />
-          <FieldLabel>Base URL</FieldLabel>
-          <input
-            className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={memberBaseUrl}
-            onChange={(e) => setMemberBaseUrl(e.target.value)}
-            placeholder="https://api.openai.com/v1"
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <FieldLabel>Summary model</FieldLabel>
-          <input
-            className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={memberSummaryModel}
-            onChange={(e) => setMemberSummaryModel(e.target.value)}
-            placeholder="optional"
-          />
-          <FieldLabel>Tools</FieldLabel>
-          <select
-            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={memberTools}
-            onChange={(e) => setMemberTools(e.target.value)}
-          >
-            <option value="">inherit</option>
-            <option value="none">none</option>
-            <option value="basic">basic</option>
-            <option value="host">host</option>
-          </select>
-          <FieldLabel>Timeout ms</FieldLabel>
-          <input
-            className="w-24 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={memberTimeoutMs}
-            onChange={(e) => setMemberTimeoutMs(e.target.value)}
-            placeholder="60000"
-          />
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-            type="button"
-            disabled={!canQuery || !teamIdTrimmed || membersBusy}
-            onClick={() => void handleAddMember()}
-          >
-            Add member
-          </button>
-        </div>
+        <details className="rounded-md border border-white/10 bg-black/30 px-2 py-2">
+          <summary className="cursor-pointer text-[11px] text-white/60">Advanced overrides</summary>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <FieldLabel>Capabilities</FieldLabel>
+            <input
+              className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={memberCapabilities}
+              onChange={(e) => setMemberCapabilities(e.target.value)}
+              placeholder="vision,audio"
+            />
+            <FieldLabel>Backend label</FieldLabel>
+            <input
+              className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={memberBackendLabel}
+              onChange={(e) => setMemberBackendLabel(e.target.value)}
+              placeholder="openrouter-main"
+            />
+            <FieldLabel>Model</FieldLabel>
+            <input
+              className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={memberModel}
+              onChange={(e) => setMemberModel(e.target.value)}
+              placeholder="optional"
+            />
+            <FieldLabel>Base URL</FieldLabel>
+            <input
+              className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={memberBaseUrl}
+              onChange={(e) => setMemberBaseUrl(e.target.value)}
+              placeholder="https://api.openai.com/v1"
+            />
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <FieldLabel>Summary model</FieldLabel>
+            <input
+              className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={memberSummaryModel}
+              onChange={(e) => setMemberSummaryModel(e.target.value)}
+              placeholder="optional"
+            />
+            <FieldLabel>Tools</FieldLabel>
+            <select
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={memberTools}
+              onChange={(e) => setMemberTools(e.target.value)}
+            >
+              <option value="">inherit</option>
+              <option value="none">none</option>
+              <option value="basic">basic</option>
+              <option value="host">host</option>
+            </select>
+            <FieldLabel>Timeout ms</FieldLabel>
+            <input
+              className="w-24 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={memberTimeoutMs}
+              onChange={(e) => setMemberTimeoutMs(e.target.value)}
+              placeholder="60000"
+            />
+          </div>
+        </details>
         {membersError ? (
           <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
             {membersError}
@@ -2242,76 +2243,79 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                         </select>
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <FieldLabel>Capabilities</FieldLabel>
-                        <input
-                          className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                          data-testid="team-member-edit-caps"
-                          value={memberEditCapabilities}
-                          onChange={(e) => setMemberEditCapabilities(e.target.value)}
-                          placeholder="vision,audio"
-                        />
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <FieldLabel>Backend label</FieldLabel>
-                        <input
-                          className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                          data-testid="team-member-edit-backend"
-                          value={memberEditBackendLabel}
-                          onChange={(e) => setMemberEditBackendLabel(e.target.value)}
-                          placeholder="openrouter-main"
-                        />
-                        <FieldLabel>Model</FieldLabel>
-                        <input
-                          className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                          data-testid="team-member-edit-model"
-                          value={memberEditModel}
-                          onChange={(e) => setMemberEditModel(e.target.value)}
-                          placeholder="gpt-4.1-mini"
-                        />
-                        <FieldLabel>Tools</FieldLabel>
-                        <input
-                          className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                          data-testid="team-member-edit-tools"
-                          value={memberEditTools}
-                          onChange={(e) => setMemberEditTools(e.target.value)}
-                          placeholder="basic"
-                        />
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <FieldLabel>Base URL</FieldLabel>
-                        <input
-                          className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                          data-testid="team-member-edit-base-url"
-                          value={memberEditBaseUrl}
-                          onChange={(e) => setMemberEditBaseUrl(e.target.value)}
-                          placeholder="https://api.openai.com/v1"
-                        />
-                        <FieldLabel>Summary model</FieldLabel>
-                        <input
-                          className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                          data-testid="team-member-edit-summary-model"
-                          value={memberEditSummaryModel}
-                          onChange={(e) => setMemberEditSummaryModel(e.target.value)}
-                          placeholder="gpt-4.1-mini"
-                        />
-                        <FieldLabel>Timeout ms</FieldLabel>
-                        <input
-                          className="w-24 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                          data-testid="team-member-edit-timeout"
-                          value={memberEditTimeoutMs}
-                          onChange={(e) => setMemberEditTimeoutMs(e.target.value)}
-                          placeholder="60000"
-                        />
-                      </div>
-                      <div className="mt-2 grid gap-1">
-                        <FieldLabel>Meta JSON</FieldLabel>
-                        <textarea
-                          className="min-h-[72px] w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
-                          data-testid="team-member-edit-meta"
-                          value={memberEditMetaJson}
-                          onChange={(e) => setMemberEditMetaJson(e.target.value)}
-                          placeholder='{"backend_label":"openrouter-main"}'
-                        />
+                        <details className="w-full rounded-md border border-white/10 bg-black/20 px-2 py-2">
+                          <summary className="cursor-pointer text-[11px] text-white/60">Advanced overrides</summary>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <FieldLabel>Capabilities</FieldLabel>
+                            <input
+                              className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                              data-testid="team-member-edit-caps"
+                              value={memberEditCapabilities}
+                              onChange={(e) => setMemberEditCapabilities(e.target.value)}
+                              placeholder="vision,audio"
+                            />
+                            <FieldLabel>Backend label</FieldLabel>
+                            <input
+                              className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                              data-testid="team-member-edit-backend"
+                              value={memberEditBackendLabel}
+                              onChange={(e) => setMemberEditBackendLabel(e.target.value)}
+                              placeholder="openrouter-main"
+                            />
+                            <FieldLabel>Model</FieldLabel>
+                            <input
+                              className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                              data-testid="team-member-edit-model"
+                              value={memberEditModel}
+                              onChange={(e) => setMemberEditModel(e.target.value)}
+                              placeholder="gpt-4.1-mini"
+                            />
+                            <FieldLabel>Tools</FieldLabel>
+                            <input
+                              className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                              data-testid="team-member-edit-tools"
+                              value={memberEditTools}
+                              onChange={(e) => setMemberEditTools(e.target.value)}
+                              placeholder="basic"
+                            />
+                          </div>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <FieldLabel>Base URL</FieldLabel>
+                            <input
+                              className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                              data-testid="team-member-edit-base-url"
+                              value={memberEditBaseUrl}
+                              onChange={(e) => setMemberEditBaseUrl(e.target.value)}
+                              placeholder="https://api.openai.com/v1"
+                            />
+                            <FieldLabel>Summary model</FieldLabel>
+                            <input
+                              className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                              data-testid="team-member-edit-summary-model"
+                              value={memberEditSummaryModel}
+                              onChange={(e) => setMemberEditSummaryModel(e.target.value)}
+                              placeholder="gpt-4.1-mini"
+                            />
+                            <FieldLabel>Timeout ms</FieldLabel>
+                            <input
+                              className="w-24 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                              data-testid="team-member-edit-timeout"
+                              value={memberEditTimeoutMs}
+                              onChange={(e) => setMemberEditTimeoutMs(e.target.value)}
+                              placeholder="60000"
+                            />
+                          </div>
+                          <div className="mt-2 grid gap-1">
+                            <FieldLabel>Meta JSON</FieldLabel>
+                            <textarea
+                              className="min-h-[72px] w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
+                              data-testid="team-member-edit-meta"
+                              value={memberEditMetaJson}
+                              onChange={(e) => setMemberEditMetaJson(e.target.value)}
+                              placeholder='{"backend_label":"openrouter-main"}'
+                            />
+                          </div>
+                        </details>
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <button
