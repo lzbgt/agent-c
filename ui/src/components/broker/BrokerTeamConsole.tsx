@@ -787,9 +787,9 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     setQuickMembers((prev) => prev.filter((m) => m.id !== id));
   };
 
-  const handleQuickToggleMember = (id: string) => {
+  const handleQuickSetMemberExpanded = (id: string, expanded: boolean) => {
     setQuickMembers((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, expanded: !m.expanded } : m)),
+      prev.map((m) => (m.id === id ? { ...m, expanded } : m)),
     );
   };
 
@@ -1718,20 +1718,56 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
               {quickMembers.map((m) => {
                 const summaryModel = m.model || providerModelDefaults[m.provider] || "model";
                 const expanded = !!m.expanded;
+                const summaryAgent = m.agentId ? `agent ${m.agentId}` : "(any agent)";
                 return (
-                  <div key={m.id} className="rounded-md border border-white/10 bg-black/20">
-                    <div className="grid gap-3 p-3">
+                  <details
+                    key={m.id}
+                    className="rounded-md border border-white/10 bg-black/20"
+                    open={expanded}
+                    onToggle={(event) =>
+                      handleQuickSetMemberExpanded(m.id, (event.currentTarget as HTMLDetailsElement).open)
+                    }
+                  >
+                    <summary className="cursor-pointer list-none px-3 py-2">
                       <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/60">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-white/80">
                             {m.role || "role"}
                           </span>
-                          <span>{m.provider || "provider"}</span>
+                          <span className="text-white/50">{m.provider || "provider"}</span>
+                          <span className="text-white/70">{summaryModel}</span>
+                          <span className="text-white/40">{summaryAgent}</span>
                         </div>
-                        <span>{summaryModel}</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                            type="button"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              handleQuickSetMemberExpanded(m.id, !expanded);
+                            }}
+                          >
+                            {expanded ? "Collapse" : "Edit"}
+                          </button>
+                          <button
+                            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                            type="button"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              handleQuickRemoveMember(m.id);
+                            }}
+                            disabled={quickMembers.length <= 1}
+                          >
+                            Remove
+                          </button>
+                        </div>
                       </div>
+                    </summary>
 
-                      <div className="grid gap-2 lg:grid-cols-[minmax(120px,1fr)_minmax(140px,1fr)_minmax(160px,1.2fr)_minmax(160px,1fr)_minmax(120px,0.8fr)_auto]">
+                    <div className="grid gap-3 border-t border-white/10 p-3">
+                      <div className="grid gap-2 lg:grid-cols-[minmax(120px,1fr)_minmax(140px,1fr)_minmax(160px,1.2fr)_minmax(160px,1fr)_minmax(120px,0.8fr)]">
                         <div className="grid gap-1">
                           <FieldLabel>Role</FieldLabel>
                           <input
@@ -1789,54 +1825,35 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                             placeholder="optional"
                           />
                         </div>
-                        <div className="flex items-end gap-2">
+                      </div>
+
+                      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                        <div className="grid gap-1">
+                          <FieldLabel>Base URL</FieldLabel>
+                          <input
+                            className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                            value={m.baseUrl}
+                            onChange={(e) => handleQuickMemberUpdate(m.id, { baseUrl: e.target.value })}
+                            placeholder={providerDefaults[m.provider] || "https://api.openai.com/v1"}
+                          />
+                        </div>
+                        <div className="flex items-end">
                           <button
-                            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/70 hover:bg-black/40"
                             type="button"
-                            onClick={() => handleQuickToggleMember(m.id)}
+                            onClick={() =>
+                              handleQuickMemberUpdate(m.id, {
+                                baseUrl: providerDefaults[m.provider] ?? "",
+                                model: providerModelDefaults[m.provider] ?? "",
+                              })
+                            }
                           >
-                            {expanded ? "Hide" : "Advanced"}
-                          </button>
-                          <button
-                            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                            type="button"
-                            onClick={() => handleQuickRemoveMember(m.id)}
-                            disabled={quickMembers.length <= 1}
-                          >
-                            Remove
+                            Reset defaults
                           </button>
                         </div>
                       </div>
-
-                      {expanded ? (
-                        <div className="grid gap-2 border-t border-white/10 pt-3 md:grid-cols-[minmax(0,1fr)_auto]">
-                          <div className="grid gap-1">
-                            <FieldLabel>Base URL</FieldLabel>
-                            <input
-                              className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                              value={m.baseUrl}
-                              onChange={(e) => handleQuickMemberUpdate(m.id, { baseUrl: e.target.value })}
-                              placeholder={providerDefaults[m.provider] || "https://api.openai.com/v1"}
-                            />
-                          </div>
-                          <div className="flex items-end">
-                            <button
-                              className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                              type="button"
-                              onClick={() =>
-                                handleQuickMemberUpdate(m.id, {
-                                  baseUrl: providerDefaults[m.provider] ?? "",
-                                  model: providerModelDefaults[m.provider] ?? "",
-                                })
-                              }
-                            >
-                              Reset defaults
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
                     </div>
-                  </div>
+                  </details>
                 );
               })}
             </div>
