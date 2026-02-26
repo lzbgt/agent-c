@@ -118,6 +118,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
   const [showGoalContractJson, setShowGoalContractJson] = React.useState<boolean>(false);
   const [showRolePlanJson, setShowRolePlanJson] = React.useState<boolean>(false);
   const [copyNote, setCopyNote] = React.useState<string | null>(null);
+  const [revisionFilter, setRevisionFilter] = React.useState<string>("");
 
   const [updateGoal, setUpdateGoal] = React.useState<string>("");
   const [updateStatus, setUpdateStatus] = React.useState<string>("");
@@ -403,6 +404,28 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
     latestRoleRevision?.role_plan_snapshot !== undefined
       ? latestRoleRevision.role_plan_snapshot
       : currentRun?.role_plan_snapshot ?? undefined;
+  const revisionFilterLower = revisionFilter.trim().toLowerCase();
+  const revisionMatches = React.useCallback(
+    (entry?: Record<string, any> | null) => {
+      if (!revisionFilterLower) return true;
+      if (!entry) return false;
+      const version = entry.version !== undefined ? String(entry.version).toLowerCase() : "";
+      const updatedBy = entry.updated_by ? String(entry.updated_by).toLowerCase() : "";
+      const goal = entry.goal ? String(entry.goal).toLowerCase() : "";
+      return (
+        (version && version.includes(revisionFilterLower)) ||
+        (updatedBy && updatedBy.includes(revisionFilterLower)) ||
+        (goal && goal.includes(revisionFilterLower))
+      );
+    },
+    [revisionFilterLower],
+  );
+  const filteredGoalRevisions = revisionFilterLower
+    ? goalRevisions.filter((entry) => revisionMatches(entry))
+    : goalRevisions;
+  const filteredRoleRevisions = revisionFilterLower
+    ? rolePlanRevisions.filter((entry) => revisionMatches(entry))
+    : rolePlanRevisions;
   const revisionEvents = React.useMemo(() => {
     const rows = Array.isArray(props.events) ? props.events : [];
     if (rows.length === 0) return [];
@@ -603,6 +626,15 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
 
         <div className="grid gap-2 rounded-md border border-white/5 bg-black/30 p-2">
           <div className="text-[11px] text-white/60">Revision history</div>
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+            <span>Filter</span>
+            <input
+              className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-white/90"
+              placeholder="version / updated_by / goal"
+              value={revisionFilter}
+              onChange={(e) => setRevisionFilter(e.target.value)}
+            />
+          </div>
           <div className="grid gap-3 md:grid-cols-2">
             <div className="grid gap-2 rounded-md border border-white/10 bg-black/40 p-2">
               <div className="flex items-center justify-between gap-2">
@@ -615,11 +647,11 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                   {showGoalRevisions ? "Hide" : "Show"}
                 </button>
               </div>
-              {goalRevisions.length === 0 ? (
+              {filteredGoalRevisions.length === 0 ? (
                 <div className="text-[11px] text-white/50">No goal revisions.</div>
               ) : showGoalRevisions ? (
                 <div className="grid gap-2">
-                  {goalRevisions.map((entry, idx) => {
+                  {filteredGoalRevisions.map((entry, idx) => {
                     const version = revisionVersion(entry);
                     const updated = toNumber(entry.updated_unix_ms);
                     const diff = entry.goal_contract_diff || null;
@@ -639,6 +671,15 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                             {entry.goal ? <div className="text-white/70">{String(entry.goal)}</div> : null}
                             {summary ? <div className="text-white/50">diff {summary}</div> : null}
                             <div className="flex flex-wrap items-center gap-2">
+                              {entry.goal ? (
+                                <button
+                                  className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
+                                  type="button"
+                                  onClick={() => void handleCopyJson(entry.goal, "goal")}
+                                >
+                                  Copy goal
+                                </button>
+                              ) : null}
                               <button
                                 className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
                                 type="button"
@@ -686,11 +727,11 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                   {showRoleRevisions ? "Hide" : "Show"}
                 </button>
               </div>
-              {rolePlanRevisions.length === 0 ? (
+              {filteredRoleRevisions.length === 0 ? (
                 <div className="text-[11px] text-white/50">No role plan revisions.</div>
               ) : showRoleRevisions ? (
                 <div className="grid gap-2">
-                  {rolePlanRevisions.map((entry, idx) => {
+                  {filteredRoleRevisions.map((entry, idx) => {
                     const version = revisionVersion(entry);
                     const updated = toNumber(entry.updated_unix_ms);
                     const summary = diffSummary(entry.role_plan_diff);
