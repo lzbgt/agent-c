@@ -102,6 +102,18 @@ Status: draft (rolling)
 - Run detail UI surfaces lease status, heartbeat age, and current owner for takeover decisions.
 - Orchestrator run meta stores goal/role plan revision history (`goal_versions`, `role_plan_versions`)
   with version counters + updated timestamps for audit/replay.
+- Revision history entries are append-only and store diffs for key changes:
+
+```
+goal_versions: [
+  { version, updated_unix_ms, updated_by, goal, goal_contract,
+    goal_contract_diff: { added: [string], removed: [string], changed: [string] } }
+]
+role_plan_versions: [
+  { version, updated_unix_ms, updated_by, role_plan_snapshot,
+    role_plan_diff: { added: [string], removed: [string], changed: [string] } }
+]
+```
 - SSE is used to refresh lists; durable state is always in DB.
 - Team runs persist `member_sessions` so moderators can target specific members
   after reload (used by team-run moderator broadcasts).
