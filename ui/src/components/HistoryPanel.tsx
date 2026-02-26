@@ -182,6 +182,10 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     return out;
   }, [mutedAgentSet, showTeamRunMarkers, showTeamSystemMessages, teamConversationItems]);
 
+  const teamFilteredItems = React.useMemo(() => {
+    return teamTimelineItems.filter((entry) => entry.kind === "item");
+  }, [teamTimelineItems]);
+
   const teamGroupedByAgent = React.useMemo(() => {
     if (!showTeamGroupByAgent) return [] as Array<{ key: string; label: string; items: any[]; latest: number; preview: string }>;
     const groups = new Map<string, { label: string; items: any[]; latest: number }>();
@@ -239,7 +243,11 @@ export default function HistoryPanel(props: HistoryPanelProps) {
         .map((f: any) => String(f?.name || f?.path || "").trim())
         .filter((f: string) => f.length > 0);
       return (
-        <div key={`team-msg:${ts || idx}`} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+        <div
+          key={`team-msg:${ts || idx}`}
+          id={ts ? `team-msg-${ts}` : undefined}
+          className="rounded-lg border border-white/10 bg-white/5 px-3 py-2"
+        >
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
             {showTeamRoleLabels ? (
               <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-semibold text-white/80">
@@ -271,6 +279,21 @@ export default function HistoryPanel(props: HistoryPanelProps) {
       );
     },
     [mutedAgentSet, showTeamRoleLabels],
+  );
+
+  const jumpToMatch = React.useCallback(
+    (direction: "first" | "last") => {
+      const items = teamFilteredItems;
+      if (items.length === 0) return;
+      const entry = direction === "first" ? items[0] : items[items.length - 1];
+      const ts = typeof entry?.ts === "number" ? entry.ts : 0;
+      if (!ts) return;
+      const el = document.getElementById(`team-msg-${ts}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    },
+    [teamFilteredItems],
   );
 
   React.useEffect(() => {
@@ -590,6 +613,24 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 >
                   Clear filter
                 </button>
+              ) : null}
+              {teamSearch.trim().length > 0 ? (
+                <>
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                    type="button"
+                    onClick={() => jumpToMatch("first")}
+                  >
+                    First match
+                  </button>
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                    type="button"
+                    onClick={() => jumpToMatch("last")}
+                  >
+                    Last match
+                  </button>
+                </>
               ) : null}
               {filtersActive ? (
                 <button
