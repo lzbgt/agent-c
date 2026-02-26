@@ -507,6 +507,10 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
       const version = entry.version !== undefined ? String(entry.version).toLowerCase() : "";
       const updatedBy = entry.updated_by ? String(entry.updated_by).toLowerCase() : "";
       const goal = entry.goal ? String(entry.goal).toLowerCase() : "";
+      const changeLabels: string[] = [];
+      if (entry.goal_changed === true) changeLabels.push("goal changed");
+      if (entry.goal_contract_changed === true) changeLabels.push("contract changed");
+      const matchesChange = changeLabels.some((label) => label.includes(revisionFilterLower));
       const contractDiffKeys = diffKeys(entry.goal_contract_diff).map((v) => v.toLowerCase());
       const roleDiffKeys = diffKeys(entry.role_plan_diff).map((v) => v.toLowerCase());
       const matchesDiffKey =
@@ -516,7 +520,8 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
         (version && version.includes(revisionFilterLower)) ||
         (updatedBy && updatedBy.includes(revisionFilterLower)) ||
         (goal && goal.includes(revisionFilterLower)) ||
-        matchesDiffKey
+        matchesDiffKey ||
+        matchesChange
       );
     },
     [revisionFilterLower],
