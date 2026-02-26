@@ -801,6 +801,16 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                         default: “{teamDefaultFilter.trim()}”
                       </span>
                     ) : null}
+                    {teamPinnedFilters.length > 0 ? (
+                      <button
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
+                        type="button"
+                        onClick={() => setTeamPinnedFilters([])}
+                        title="Clear all pinned filters"
+                      >
+                        Clear pinned
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
                 <div className="mt-1 text-[10px] text-white/40">Shortcuts: g t (jump), g m (toggle meta)</div>
