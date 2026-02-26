@@ -82,6 +82,8 @@ if tool_count:
 if both_count:
     print(f"pins_ok_models_both={both_count}")
 print(f"pins_empty={'0' if has_any else '1'}")
+if not has_any:
+    print("pins_hint=run tools/probe_openrouter_stream_models.sh with OPENROUTER_STREAM_PROBE_WRITE_PINS=1")
 PY
 fi
 
