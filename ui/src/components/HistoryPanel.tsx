@@ -115,7 +115,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
   }, [showTeamRunMarkers, showTeamSystemMessages, teamConversationItems]);
 
   const teamGroupedByAgent = React.useMemo(() => {
-    if (!showTeamGroupByAgent) return [] as Array<{ key: string; label: string; items: any[]; latest: number }>;
+    if (!showTeamGroupByAgent) return [] as Array<{ key: string; label: string; items: any[]; latest: number; preview: string }>;
     const groups = new Map<string, { label: string; items: any[]; latest: number }>();
     for (const entry of teamTimelineItems) {
       if (entry.kind !== "item") continue;
@@ -136,7 +136,18 @@ export default function HistoryPanel(props: HistoryPanelProps) {
       }
     }
     return Array.from(groups.entries())
-      .map(([key, value]) => ({ key, ...value }))
+      .map(([key, value]) => {
+        const sorted = value.items
+          .slice()
+          .sort((a, b) => (a?.ts || 0) - (b?.ts || 0));
+        const last = sorted[sorted.length - 1];
+        const lastContent = typeof last?.message?.content === "string" ? last.message.content : "";
+        const preview =
+          lastContent.trim().length > 0
+            ? lastContent.trim().slice(0, 120)
+            : "(no content)";
+        return { key, ...value, items: sorted, preview };
+      })
       .sort((a, b) => b.latest - a.latest);
   }, [showTeamGroupByAgent, teamTimelineItems]);
 
@@ -417,7 +428,14 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                     ? teamGroupedByAgent.map((group) => (
                         <details key={group.key} className="rounded-md border border-white/10 bg-black/20 p-2">
                           <summary className="cursor-pointer text-[11px] text-white/70">
-                            {group.label} · {group.items.length} messages
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-white/80">{group.label}</span>
+                              <span className="text-white/40">· {group.items.length} messages</span>
+                              <span className="text-white/40">
+                                · last {group.latest ? new Date(group.latest).toLocaleString() : "unknown"}
+                              </span>
+                            </div>
+                            <div className="mt-1 text-[11px] text-white/50">{group.preview}</div>
                           </summary>
                           <div className="mt-2 grid gap-2">
                             {group.items.map((item, idx) => renderTeamMessage(item, idx))}
