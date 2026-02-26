@@ -66,7 +66,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
 
   const conversationItems = React.useMemo(() => {
     const items: {
-      kind: "message" | "run" | "tool_record";
+      kind: "message" | "tool_record";
       ts: number;
       message?: any;
       run?: any;
@@ -85,7 +85,6 @@ export default function HistoryPanel(props: HistoryPanelProps) {
       const runId = typeof r?.run_id === "number" ? r.run_id : Number(r?.run_id ?? r?.id ?? NaN);
       const details = Number.isFinite(runId) ? dbRunDetailsById[runId] : undefined;
       const safeRunId = Number.isFinite(runId) ? runId : undefined;
-      items.push({ kind: "run", ts, run: r, runId: safeRunId, details });
       const toolRecords = details && Array.isArray(details?.tool_records) ? (details.tool_records as any[]) : [];
       toolRecords.forEach((tr, idx) => {
         const toolTs =
@@ -425,44 +424,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 );
               }
 
-              const r = item.run ?? {};
-              const ts = typeof r?.ts_unix_ms === "number" ? r.ts_unix_ms : 0;
-              const when = ts ? new Date(ts).toLocaleString() : "";
-              const prompt = typeof r?.prompt === "string" ? r.prompt : "";
-              const tools = typeof r?.tools === "string" ? r.tools : "";
-              const model = typeof r?.model === "string" ? r.model : "";
-              const ok = typeof r?.ok === "number" ? r.ok === 1 : typeof r?.ok === "boolean" ? r.ok : undefined;
-              const err = typeof r?.error === "string" ? r.error : "";
-              return (
-                <details key={`run:${ts || idx}`} className="rounded-lg border border-indigo-400/20 bg-indigo-500/5 px-3 py-2">
-                  <summary className="cursor-pointer select-none text-[11px] text-white/60">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-md border border-indigo-400/20 bg-indigo-500/10 px-2 py-0.5 font-semibold text-indigo-100">
-                        run
-                      </span>
-                      {when ? <span>{when}</span> : null}
-                      {typeof ok === "boolean" ? (
-                        <span className={ok ? "text-emerald-300" : "text-rose-300"}>{ok ? "ok" : "error"}</span>
-                      ) : null}
-                      {tools ? <span className="text-white/50">tools={tools}</span> : null}
-                      {model ? <span className="text-white/50">model={model}</span> : null}
-                    </div>
-                  </summary>
-                  {prompt ? (
-                    <div className="mt-2">
-                      <div className="text-[11px] font-semibold text-white/60">Prompt</div>
-                      <div className="mt-1 text-sm text-white/90">
-                        <Markdown text={prompt} />
-                      </div>
-                    </div>
-                  ) : null}
-                  {!ok && err ? (
-                    <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-xs text-rose-200">
-                      {err}
-                    </div>
-                  ) : null}
-                </details>
-              );
+              return null;
             })}
           </div>
         )}
