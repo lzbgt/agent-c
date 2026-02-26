@@ -365,6 +365,22 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
   const rolePlanRevisions = sortRevisions(normalizeRevisionEntries(currentMeta?.role_plan_versions));
   const latestGoalRevision = goalRevisions.length > 0 ? goalRevisions[0] : null;
   const latestRoleRevision = rolePlanRevisions.length > 0 ? rolePlanRevisions[0] : null;
+  const revisionEvents = React.useMemo(() => {
+    const rows = Array.isArray(props.events) ? props.events : [];
+    if (rows.length === 0) return [];
+    const rid = String(runId || "").trim();
+    const out = rows.filter((row) => {
+      const type = String(row?.type || "");
+      if (type !== "orchestrator_goal_revision" && type !== "orchestrator_role_plan_revision") return false;
+      const payload = row?.payload;
+      if (!payload || typeof payload !== "object") return false;
+      if (teamIdTrimmed && String(payload.team_id || "") !== teamIdTrimmed) return false;
+      if (rid && String(payload.orchestrator_run_id || "") !== rid) return false;
+      return true;
+    });
+    out.sort((a, b) => (b.ts_unix_ms || 0) - (a.ts_unix_ms || 0));
+    return out.slice(0, 8);
+  }, [props.events, runId, teamIdTrimmed]);
   const currentOwner = currentMeta?.orchestrator_owner ? String(currentMeta.orchestrator_owner) : "";
   const prevOwner = currentMeta?.orchestrator_owner_prev ? String(currentMeta.orchestrator_owner_prev) : "";
   const allowTakeover =
@@ -639,6 +655,36 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                 </div>
               )}
             </div>
+          </div>
+          <div className="grid gap-2 rounded-md border border-white/10 bg-black/40 p-2">
+            <div className="text-[11px] text-white/70">Recent revision events</div>
+            {revisionEvents.length === 0 ? (
+              <div className="text-[11px] text-white/50">No revision events yet.</div>
+            ) : (
+              <div className="grid gap-2">
+                {revisionEvents.map((row, idx) => {
+                  const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
+                  const type = String(row.type || "");
+                  const isGoal = type === "orchestrator_goal_revision";
+                  const label = isGoal ? "Goal revision" : "Role plan revision";
+                  const version = toNumber((payload as any).version) || 0;
+                  const diff = isGoal ? (payload as any).goal_contract_diff : (payload as any).role_plan_diff;
+                  const summary = diffSummary(diff);
+                  return (
+                    <div
+                      key={`${type}-${row.event_id || row.ts_unix_ms || idx}`}
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70"
+                    >
+                      <div className="text-white/80">
+                        {label} · v{version || "?"}
+                        {row.ts_unix_ms ? ` · ${fmtTs(row.ts_unix_ms)}` : ""}
+                      </div>
+                      {summary ? <div className="text-white/50">diff {summary}</div> : null}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
