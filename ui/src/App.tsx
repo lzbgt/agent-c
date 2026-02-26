@@ -178,6 +178,16 @@ export default function App() {
   }, [connection.brokerBase, selectedTeamIdTrimmed]);
   const [teamQueue, setTeamQueue] = useLocalStorageState<TeamQueuedAction[]>(teamQueueKey, []);
   const teamQueueCount = Array.isArray(teamQueue) ? teamQueue.length : 0;
+  const teamConversationCacheKey = React.useMemo(() => {
+    const base = String(connection.brokerBase || "").trim() || "default";
+    const tid = selectedTeamIdTrimmed || "none";
+    return `agentui.teamChatCache:${base}::${tid}`;
+  }, [connection.brokerBase, selectedTeamIdTrimmed]);
+  const [teamConversationCache, setTeamConversationCache] = useLocalStorageState<{ items: any[]; updated_ms: number }>(
+    teamConversationCacheKey,
+    { items: [], updated_ms: 0 },
+  );
+  const cachedTeamConversationItems = Array.isArray(teamConversationCache?.items) ? teamConversationCache.items : [];
   const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "");
   const [capsCache, setCapsCache] = useLocalStorageState<Record<string, { caps: Caps; ts: number }>>(
     "agentui.capsByBase",
@@ -1237,6 +1247,13 @@ export default function App() {
     retry: 1,
   });
 
+  const teamConversationLiveCount = React.useMemo(() => {
+    const items = Array.isArray(teamChat.data?.items) ? teamChat.data.items : [];
+    const guidance = Array.isArray(teamGuidance.data?.guidance) ? teamGuidance.data.guidance : [];
+    const prompts = teamPromptHistory[selectedTeamIdTrimmed] || [];
+    return items.length + guidance.length + prompts.length;
+  }, [teamChat.data, teamGuidance.data, teamPromptHistory, selectedTeamIdTrimmed]);
+
   const teamConversationItems = React.useMemo(() => {
     const out: any[] = [];
     const items = Array.isArray(teamChat.data?.items) ? (teamChat.data?.items as any[]) : [];
@@ -1315,8 +1332,22 @@ export default function App() {
       }
       deduped.push(item);
     }
-    return deduped;
-  }, [teamChat.data, teamGuidance.data, teamPromptHistory, selectedTeamIdTrimmed]);
+    return deduped.length > 0 ? deduped : cachedTeamConversationItems;
+  }, [teamChat.data, teamGuidance.data, teamPromptHistory, selectedTeamIdTrimmed, cachedTeamConversationItems]);
+
+  const teamConversationUsingCache =
+    teamConversationLiveCount === 0 && cachedTeamConversationItems.length > 0;
+  const teamConversationCacheUpdatedMs =
+    typeof teamConversationCache?.updated_ms === "number" ? teamConversationCache.updated_ms : 0;
+
+  React.useEffect(() => {
+    if (teamConversationLiveCount === 0) return;
+    if (!Array.isArray(teamConversationItems) || teamConversationItems.length === 0) return;
+    setTeamConversationCache({
+      items: teamConversationItems.slice(-200),
+      updated_ms: Date.now(),
+    });
+  }, [setTeamConversationCache, teamConversationItems, teamConversationLiveCount]);
 
   const teamRunCreate = useMutation({
     mutationFn: async (vars: { prompt: string }) => {
@@ -2796,6 +2827,15 @@ export default function App() {
                     <div className="mt-2 text-[11px] text-white/50">
                       Prompts and attachments below are shared with all team members. Use Guidance for mid-run updates.
                     </div>
+                    {teamConversationUsingCache ? (
+                      <div className="mt-2 text-[11px] text-amber-100">
+                        Showing cached team history
+                        {teamConversationCacheUpdatedMs
+                          ? ` (last updated ${new Date(teamConversationCacheUpdatedMs).toLocaleString()})`
+                          : ""}{" "}
+                        because live history is unavailable.
+                      </div>
+                    ) : null}
                     {teamQueueCount > 0 ? (
                       <div className="mt-2 rounded-md border border-indigo-400/20 bg-indigo-500/10 px-2 py-2 text-[11px] text-indigo-100">
                         <div className="flex items-center justify-between gap-2">
