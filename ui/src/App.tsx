@@ -334,12 +334,10 @@ export default function App() {
 
   const [advancedPage, setAdvancedPage] = useLocalStorageState<string>(
     `agentui.advancedPage:${sessionScopeKey}`,
-    "scene",
+    "",
   );
   const advancedPages = React.useMemo(() => {
     const pages = [
-      { id: "conversation", label: "Conversation" },
-      { id: "scene", label: "Scene" },
       { id: "memory", label: "Memory" },
       { id: "trace", label: "Trace" },
       { id: "workflows", label: "Workflows" },
@@ -351,7 +349,7 @@ export default function App() {
   }, [connectionMode]);
   const advancedPageIds = React.useMemo(() => new Set(advancedPages.map((p) => p.id)), [advancedPages]);
   React.useEffect(() => {
-    if (!advancedPageIds.has(advancedPage)) setAdvancedPage("scene");
+    if (advancedPage && !advancedPageIds.has(advancedPage)) setAdvancedPage("");
   }, [advancedPage, advancedPageIds, setAdvancedPage]);
 
   const historyUiKey = React.useMemo(() => {
@@ -1941,7 +1939,6 @@ export default function App() {
                 className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
                 onClick={() => {
                   setSimpleMode(false);
-                  setAdvancedPage("scene");
                   setShowSettings(true);
                 }}
                 type="button"
@@ -2072,7 +2069,7 @@ export default function App() {
           ) : (
             <div className="mt-4 flex flex-col gap-4 lg:flex-row">
               <aside className="rounded-lg border border-white/10 bg-black/20 p-3 lg:w-56">
-                <div className="text-[11px] font-semibold text-white/60">Advanced</div>
+                <div className="text-[11px] font-semibold text-white/60">Tools</div>
                 <div className="mt-2 grid gap-1">
                   {advancedPages.map((page) => {
                     const active = page.id === advancedPage;
@@ -2092,25 +2089,62 @@ export default function App() {
                 </div>
               </aside>
               <section className="min-w-0 flex-1">
-                {advancedPage === "scene" ? (
-                  <div className="h-[calc(100vh-var(--topbar-h)-var(--promptbar-h)-24px)] min-h-0">
-                    <SceneView
-                      baseUrl={effectiveBase}
-                      yolo={yolo}
-                      allowAutoplay={allowAutoplay}
-                      client={client}
-                      daemonAuth={daemonAuth}
-                      sessionId={sessionId}
-                      entities={sceneEntities}
-                      className="h-full"
-                    />
-                  </div>
-                ) : advancedPage === "trace" ? (
-                  <div className="mt-2">
+                <div className="h-[calc(100vh-var(--topbar-h)-var(--promptbar-h)-24px)] min-h-0">
+                  <SceneView
+                    baseUrl={effectiveBase}
+                    yolo={yolo}
+                    allowAutoplay={allowAutoplay}
+                    client={client}
+                    daemonAuth={daemonAuth}
+                    sessionId={sessionId}
+                    entities={sceneEntities}
+                    className="h-full"
+                  />
+                </div>
+                <div className="mt-4">
+                  <HistoryPanel
+                    entries={historyEntriesDesc}
+                    showAllEntries={showAllHistoryEntries}
+                    setShowAllEntries={setShowAllHistoryEntries}
+                    showMessages={showHistoryMessages}
+                    setShowMessages={setShowHistoryMessages}
+                    historyExpandedByKey={historyExpandedByKey}
+                    setHistoryExpandedByKey={setHistoryExpandedByKey}
+                    dbMessages={dbMessages.data?.ok && Array.isArray(dbMessages.data?.messages) ? dbMessages.data.messages : []}
+                    dbRuns={dbRuns.data?.ok && Array.isArray(dbRuns.data?.runs) ? dbRuns.data.runs : []}
+                    dbRunDetailsById={dbRunDetailsById}
+                    sessionArtifacts={
+                      sessionArtifacts.data?.ok && Array.isArray(sessionArtifacts.data?.artifacts)
+                        ? sessionArtifacts.data.artifacts
+                        : []
+                    }
+                    effectiveBase={effectiveBase}
+                    yolo={yolo}
+                    sessionId={sessionId}
+                    client={client}
+                    daemonAuth={daemonAuth}
+                    showDebugInConversation={showDebugInConversation}
+                    allowAutoplay={allowAutoplay}
+                    allowClientRpcs={allowClientRpcs}
+                    allowClientEffects={allowClientEffects}
+                    allowUnsafePageEval={allowUnsafePageEval}
+                    sceneEntities={sceneEntities}
+                    onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
+                    onTraceIdClick={(traceId) => {
+                      setTraceLookupId(traceId);
+                      setAdvancedPage("trace");
+                      void traceLookup.mutateAsync(traceId).catch(() => {});
+                    }}
+                  />
+                </div>
+              </section>
+              {advancedPage ? (
+                <aside className="rounded-lg border border-white/10 bg-black/20 p-3 lg:w-[420px]">
+                  {advancedPage === "trace" ? (
                     <TraceLookupPanel
                       open={true}
                       onToggle={(open) => {
-                        if (!open) setAdvancedPage("scene");
+                        if (!open) setAdvancedPage("");
                       }}
                       traceId={traceLookupId}
                       onTraceIdChange={(next) => setTraceLookupId(next)}
@@ -2128,46 +2162,38 @@ export default function App() {
                       agentdTrace={traceLookupAgentd}
                       brokerTrace={traceLookupBroker}
                     />
-                  </div>
-                ) : advancedPage === "run-diff" ? (
-                  <div className="mt-2">
+                  ) : advancedPage === "run-diff" ? (
                     <RunDiffPanel
                       open={true}
                       onToggle={(open) => {
-                        if (!open) setAdvancedPage("scene");
+                        if (!open) setAdvancedPage("");
                       }}
                       baseUrl={effectiveBase}
                       auth={daemonAuth}
                     />
-                  </div>
-                ) : advancedPage === "memory" ? (
-                  <div className="mt-2">
+                  ) : advancedPage === "memory" ? (
                     <MemoryPanel
                       open={true}
                       onToggle={(open) => {
-                        if (!open) setAdvancedPage("scene");
+                        if (!open) setAdvancedPage("");
                       }}
                       baseUrl={effectiveBase}
                       auth={daemonAuth}
                     />
-                  </div>
-                ) : advancedPage === "approvals" ? (
-                  <div className="mt-2">
+                  ) : advancedPage === "approvals" ? (
                     <ApprovalQueuePanel
                       open={true}
                       onToggle={(open) => {
-                        if (!open) setAdvancedPage("scene");
+                        if (!open) setAdvancedPage("");
                       }}
                       baseUrl={effectiveBase}
                       auth={daemonAuth}
                     />
-                  </div>
-                ) : advancedPage === "workflows" ? (
-                  <div className="mt-2">
+                  ) : advancedPage === "workflows" ? (
                     <WorkflowPanel
                       open={true}
                       onToggle={(open) => {
-                        if (!open) setAdvancedPage("scene");
+                        if (!open) setAdvancedPage("");
                       }}
                       baseUrl={effectiveBase}
                       auth={daemonAuth}
@@ -2182,13 +2208,11 @@ export default function App() {
                         void traceLookup.mutateAsync(traceId).catch(() => {});
                       }}
                     />
-                  </div>
-                ) : advancedPage === "broker" && connectionMode === "broker" ? (
-                  <div className="mt-2">
+                  ) : advancedPage === "broker" && connectionMode === "broker" ? (
                     <BrokerPanel
                       open={true}
                       onToggle={(open) => {
-                        if (!open) setAdvancedPage("scene");
+                        if (!open) setAdvancedPage("");
                       }}
                       brokerBase={connection.brokerBase}
                       brokerAgentId={connection.brokerAgentId}
@@ -2197,46 +2221,9 @@ export default function App() {
                       authKey={authKey}
                       clientId={client.id}
                     />
-                  </div>
-                ) : (
-                  <div className="mt-2">
-                    <HistoryPanel
-                      entries={historyEntriesDesc}
-                      showAllEntries={showAllHistoryEntries}
-                      setShowAllEntries={setShowAllHistoryEntries}
-                      showMessages={showHistoryMessages}
-                      setShowMessages={setShowHistoryMessages}
-                      historyExpandedByKey={historyExpandedByKey}
-                      setHistoryExpandedByKey={setHistoryExpandedByKey}
-                      dbMessages={dbMessages.data?.ok && Array.isArray(dbMessages.data?.messages) ? dbMessages.data.messages : []}
-                      dbRuns={dbRuns.data?.ok && Array.isArray(dbRuns.data?.runs) ? dbRuns.data.runs : []}
-                      dbRunDetailsById={dbRunDetailsById}
-                      sessionArtifacts={
-                        sessionArtifacts.data?.ok && Array.isArray(sessionArtifacts.data?.artifacts)
-                          ? sessionArtifacts.data.artifacts
-                          : []
-                      }
-                      effectiveBase={effectiveBase}
-                      yolo={yolo}
-                      sessionId={sessionId}
-                      client={client}
-                      daemonAuth={daemonAuth}
-                      showDebugInConversation={showDebugInConversation}
-                      allowAutoplay={allowAutoplay}
-                      allowClientRpcs={allowClientRpcs}
-                      allowClientEffects={allowClientEffects}
-                      allowUnsafePageEval={allowUnsafePageEval}
-                      sceneEntities={sceneEntities}
-                      onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
-                      onTraceIdClick={(traceId) => {
-                        setTraceLookupId(traceId);
-                        setAdvancedPage("trace");
-                        void traceLookup.mutateAsync(traceId).catch(() => {});
-                      }}
-                    />
-                  </div>
-                )}
-              </section>
+                  ) : null}
+                </aside>
+              ) : null}
             </div>
           )}
         </div>

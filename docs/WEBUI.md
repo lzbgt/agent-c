@@ -116,7 +116,7 @@ Preset configs:
 - The default UI opens in **Simple** mode (goal → run → observe). Use the **Advanced** button in the top bar to reveal full settings and panels.
 - Conversation history is persisted in the daemon DB and reloaded after refresh (user/assistant messages plus run tool records).
 - You can queue prompts while a run is active; queued runs execute in order and the queue count is shown in the Run/Queue button.
-- Advanced mode keeps the **conversation body clean**; tools like Memory/Trace/Workflows/Broker live in dedicated pages via the left-hand navigation. The **Scene page is the default**.
+- Advanced mode keeps the **conversation body clean**; tools like Memory/Trace/Workflows/Broker live in dedicated pages via the left-hand navigation, while the **Scene stays on top and Conversation below** in the main view.
 
 ## Diagnostics
 
