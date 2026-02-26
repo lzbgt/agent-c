@@ -292,6 +292,7 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
     timer: ReturnType<typeof setTimeout> | null;
     pending: Record<string, WaitStatePersisted> | null;
   }>({ timer: null, pending: null });
+  const serverWaitLoadKeyRef = React.useRef<string>("");
 
   const pushServerWait = React.useCallback(
     async (nextMap: Record<string, WaitStatePersisted>) => {
@@ -356,11 +357,24 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
       setServerWaitStatus("error");
     }
   }, [props.auth, scheduleServerPersist, serverPrefsBase, serverPrefsClientId, waitStaleMs]);
+  const loadServerWaitRef = React.useRef(loadServerWait);
+
+  React.useEffect(() => {
+    loadServerWaitRef.current = loadServerWait;
+  }, [loadServerWait]);
 
   React.useEffect(() => {
     if (!serverPrefsBase || !serverPrefsClientId) return;
-    void loadServerWait();
-  }, [loadServerWait, props.authKey, serverPrefsBase, serverPrefsClientId]);
+    const nextKey = `${serverPrefsBase}::${serverPrefsClientId}::${String(props.authKey || "").trim()}`;
+    if (serverWaitLoadKeyRef.current === nextKey) return;
+    serverWaitLoadKeyRef.current = nextKey;
+    void loadServerWaitRef.current();
+  }, [props.authKey, serverPrefsBase, serverPrefsClientId]);
+
+  React.useEffect(() => {
+    if (serverPrefsBase && serverPrefsClientId) return;
+    serverWaitLoadKeyRef.current = "";
+  }, [serverPrefsBase, serverPrefsClientId]);
 
   React.useEffect(() => {
     waitByScopeRef.current = waitByScope;

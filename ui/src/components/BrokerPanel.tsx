@@ -158,6 +158,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   const [brokerEventsCursorStatus, setBrokerEventsCursorStatus] = React.useState<"idle" | "loading" | "ready" | "error">(
     "idle",
   );
+  const brokerEventsLoadKeyRef = React.useRef<string>("");
   const brokerEventsCursorPersistRef = React.useRef<{
     timer: ReturnType<typeof setTimeout> | null;
     pending: Record<string, BrokerCursorEntry> | null;
@@ -274,6 +275,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     extractBrokerEventsCursorByScope,
     scheduleBrokerEventsCursorPersist,
   ]);
+  const loadBrokerEventsCursorRef = React.useRef(loadBrokerEventsCursor);
 
   React.useEffect(() => {
     setBrokerEvents([]);
@@ -295,8 +297,21 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   }, [brokerEventsCursorKey]);
 
   React.useEffect(() => {
-    void loadBrokerEventsCursor();
+    loadBrokerEventsCursorRef.current = loadBrokerEventsCursor;
   }, [loadBrokerEventsCursor]);
+
+  React.useEffect(() => {
+    if (!canQuery || !brokerPrefsBase || !brokerPrefsClientId || !props.authKey) return;
+    const nextKey = `${brokerPrefsBase}::${brokerPrefsClientId}::${props.authKey}`;
+    if (brokerEventsLoadKeyRef.current === nextKey) return;
+    brokerEventsLoadKeyRef.current = nextKey;
+    void loadBrokerEventsCursorRef.current();
+  }, [brokerPrefsBase, brokerPrefsClientId, canQuery, props.authKey]);
+
+  React.useEffect(() => {
+    if (canQuery) return;
+    brokerEventsLoadKeyRef.current = "";
+  }, [canQuery]);
 
   React.useEffect(() => {
     if (!brokerEventsCursorKey || typeof window === "undefined") return;
