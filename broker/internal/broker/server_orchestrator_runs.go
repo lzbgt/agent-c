@@ -255,10 +255,10 @@ func (s *Server) handleTeamOrchestratorRunUpdate(w http.ResponseWriter, r *http.
 	if req.Goal != nil {
 		goalNext = strings.TrimSpace(*req.Goal)
 	}
-	contractPrev := prev.GoalContract()
+	contractPrev := normalizeMetaMap(prev.GoalContract())
 	contractNext := contractPrev
 	if req.GoalContract != nil {
-		contractNext = req.GoalContract
+		contractNext = normalizeMetaMap(req.GoalContract)
 	}
 	goalChanged := goalNext != goalPrev
 	contractChanged := !reflect.DeepEqual(contractPrev, contractNext)
@@ -314,10 +314,10 @@ func (s *Server) handleTeamOrchestratorRunUpdate(w http.ResponseWriter, r *http.
 		}
 	}
 
-	rolePrev := prev.RolePlanSnapshot()
+	rolePrev := normalizeMetaMap(prev.RolePlanSnapshot())
 	roleNext := rolePrev
 	if req.RolePlanSnapshot != nil {
-		roleNext = req.RolePlanSnapshot
+		roleNext = normalizeMetaMap(req.RolePlanSnapshot)
 	}
 	roleChanged := !reflect.DeepEqual(rolePrev, roleNext)
 	if roleChanged {
@@ -636,6 +636,13 @@ func parseInt64Value(v any) (int64, bool) {
 	return 0, false
 }
 
+func normalizeMetaMap(v map[string]any) map[string]any {
+	if v == nil {
+		return map[string]any{}
+	}
+	return v
+}
+
 func cloneMap(src map[string]any) map[string]any {
 	if src == nil {
 		return nil
@@ -749,6 +756,7 @@ func initializeOrchestratorRevisionHistory(
 		meta = map[string]any{}
 	}
 	nowMs := time.Now().UTC().UnixMilli()
+	goalContract = normalizeMetaMap(goalContract)
 	goalEntries := readRevisionEntries(meta, "goal_versions")
 	if len(goalEntries) == 0 {
 		entry := map[string]any{
@@ -772,6 +780,7 @@ func initializeOrchestratorRevisionHistory(
 
 	roleEntries := readRevisionEntries(meta, "role_plan_versions")
 	if len(roleEntries) == 0 && rolePlanSnapshot != nil {
+		rolePlanSnapshot = normalizeMetaMap(rolePlanSnapshot)
 		entry := map[string]any{
 			"version":            int64(1),
 			"updated_unix_ms":    nowMs,
