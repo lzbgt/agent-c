@@ -68,6 +68,12 @@ const RUN_WATCH_PERSIST_MIN_INTERVAL_MS = 5000;
 
 type RunWatchByScope = Record<string, any>;
 type QueuedRun = { prompt: string; attachments: Attachment[]; queued_unix_ms: number };
+type TeamQueuedAction = {
+  prompt: string;
+  attachments: Attachment[];
+  queued_unix_ms: number;
+  action: "run" | "guidance" | "goal";
+};
 type TeamActivity = {
   ts: number;
   prompt: string;
@@ -165,6 +171,12 @@ export default function App() {
       }
     >
   >("agentui.teamRunSessions", {});
+  const teamQueueKey = React.useMemo(() => {
+    const base = String(connection.brokerBase || "").trim() || "default";
+    const tid = selectedTeamIdTrimmed || "none";
+    return `agentui.teamQueue:${base}::${tid}`;
+  }, [connection.brokerBase, selectedTeamIdTrimmed]);
+  const [teamQueue, setTeamQueue] = useLocalStorageState<TeamQueuedAction[]>(teamQueueKey, []);
   const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "");
   const [capsCache, setCapsCache] = useLocalStorageState<Record<string, { caps: Caps; ts: number }>>(
     "agentui.capsByBase",
@@ -1785,6 +1797,7 @@ export default function App() {
   });
 
   const dequeueInFlightRef = React.useRef(false);
+  const teamQueueBusyRef = React.useRef(false);
 
   const enqueueRun = React.useCallback(
     (vars: { prompt: string; attachments: Attachment[] }) => {
@@ -1802,6 +1815,24 @@ export default function App() {
       setJobNotice("queued");
     },
     [setComposerTaskNonce, setJobNotice, setPrompt, setRunQueue],
+  );
+
+  const enqueueTeamAction = React.useCallback(
+    (vars: { prompt: string; attachments: Attachment[] }, action: "run" | "guidance" | "goal") => {
+      const trimmed = String(vars.prompt || "").trim();
+      if (!trimmed && vars.attachments.length === 0) {
+        setJobNotice("prompt or attachment required");
+        return;
+      }
+      setTeamQueue((prev) => [
+        ...(Array.isArray(prev) ? prev : []),
+        { prompt: trimmed, attachments: vars.attachments, queued_unix_ms: Date.now(), action },
+      ]);
+      setPrompt("");
+      setComposerTaskNonce((n) => n + 1);
+      setJobNotice(`queued team ${action}`);
+    },
+    [setComposerTaskNonce, setJobNotice, setPrompt, setTeamQueue],
   );
 
   React.useEffect(() => {
@@ -1822,6 +1853,7 @@ export default function App() {
         dequeueInFlightRef.current = false;
       });
   }, [activeJobId, run.isPending, runQueue, run, setJobNotice, setRunQueue]);
+
 
   const isTeamTarget = brokerChatAvailable && chatTarget === "team";
   const teamActionNormalized =
@@ -1957,20 +1989,30 @@ export default function App() {
     [brokerBase, daemonAuth, connection.brokerAgentId],
   );
 
-  const handleRunRequest = React.useCallback(
-    async (vars: { prompt: string; attachments: Attachment[] }) => {
-      if (isTeamTarget) {
-        const trimmed = String(vars.prompt || "").trim();
-        if (!trimmed) {
-          setJobNotice("prompt required");
+  const runTeamAction = React.useCallback(
+    async (vars: { prompt: string; attachments: Attachment[] }, action: "run" | "guidance" | "goal") => {
+      const trimmed = String(vars.prompt || "").trim();
+      if (!trimmed) {
+        setJobNotice("prompt required");
+        return;
+      }
+
+      if (action === "goal" && !latestTeamRunId) {
+        setJobNotice("start a team run before setting a goal");
+        return;
+      }
+
+      if (action === "guidance") {
+        const uploads = collectTeamUploadFiles(vars.attachments);
+        if (uploads.length > 0 && !latestTeamRunId) {
+          setJobNotice("start a team run before attaching files");
           return;
         }
+      }
 
-        if (teamActionNormalized === "goal") {
-          if (!latestTeamRunId) {
-            setJobNotice("start a team run before setting a goal");
-            return;
-          }
+      teamQueueBusyRef.current = true;
+      try {
+        if (action === "goal") {
           const contract = buildGoalContractFromPrompt(trimmed);
           if (!contract) {
             setJobNotice("goal required");
@@ -1995,7 +2037,7 @@ export default function App() {
           return;
         }
 
-        if (teamActionNormalized === "guidance") {
+        if (action === "guidance") {
           try {
             const runId = latestTeamRunId || "";
             const uploads = collectTeamUploadFiles(vars.attachments);
@@ -2081,6 +2123,58 @@ export default function App() {
         } catch (err) {
           setJobNotice(`team run failed: ${String(err)}`);
         }
+      } finally {
+        teamQueueBusyRef.current = false;
+      }
+    },
+    [
+      addTeamActivity,
+      apiBrokerTeamGuidanceCreate,
+      apiBrokerTeamRunGoalUpdate,
+      brokerBase,
+      broadcastTeamUploads,
+      buildGoalContractFromPrompt,
+      collectTeamUploadFiles,
+      daemonAuth,
+      latestTeamRunId,
+      selectedTeamIdTrimmed,
+      setComposerTaskNonce,
+      setJobNotice,
+      setPrompt,
+      teamGuidance,
+      teamRunCreate,
+      teamRunList,
+      waitForTeamMemberSessions,
+    ],
+  );
+
+  React.useEffect(() => {
+    if (!brokerChatAvailable) return;
+    if (teamQueueBusyRef.current) return;
+    if (!Array.isArray(teamQueue) || teamQueue.length === 0) return;
+    const next = teamQueue[0];
+    if (!next) return;
+    if (next.action !== "run" && !latestTeamRunId) return;
+    setTeamQueue((prev) => (Array.isArray(prev) ? prev.slice(1) : []));
+    runTeamAction({ prompt: next.prompt, attachments: next.attachments }, next.action)
+      .catch((err) => {
+        setJobNotice(`queued team ${next.action} failed: ${String(err)}`);
+        setTeamQueue((prev) => [next, ...(Array.isArray(prev) ? prev : [])]);
+      })
+      .finally(() => {
+        teamQueueBusyRef.current = false;
+      });
+  }, [brokerChatAvailable, latestTeamRunId, runTeamAction, setJobNotice, setTeamQueue, teamQueue]);
+
+  const handleRunRequest = React.useCallback(
+    async (vars: { prompt: string; attachments: Attachment[] }) => {
+      if (isTeamTarget) {
+        const action = teamActionNormalized;
+        if (teamQueueBusyRef.current || teamRunCreate.isPending) {
+          enqueueTeamAction(vars, action);
+          return;
+        }
+        await runTeamAction(vars, action);
         return;
       }
       if (activeJobId || run.isPending) {
@@ -2091,25 +2185,14 @@ export default function App() {
     },
     [
       activeJobId,
-      addTeamActivity,
-      apiBrokerTeamRunGoalUpdate,
-      brokerBase,
-      broadcastTeamUploads,
-      buildGoalContractFromPrompt,
-      collectTeamUploadFiles,
-      daemonAuth,
+      enqueueTeamAction,
       enqueueRun,
       isTeamTarget,
-      latestTeamRunId,
       run,
-      selectedTeamIdTrimmed,
+      runTeamAction,
       setJobNotice,
-      setPrompt,
       teamActionNormalized,
-      teamGuidance,
       teamRunCreate,
-      teamRunList,
-      waitForTeamMemberSessions,
     ],
   );
 
@@ -2859,7 +2942,9 @@ export default function App() {
               ? "Queue"
               : "Run"
         }
-        queueCount={isTeamTarget ? 0 : Array.isArray(runQueue) ? runQueue.length : 0}
+        queueCount={
+          isTeamTarget ? (Array.isArray(teamQueue) ? teamQueue.length : 0) : Array.isArray(runQueue) ? runQueue.length : 0
+        }
         onRun={handleRunRequest}
         setJobNotice={setJobNotice}
         jobNotice={jobNotice}
