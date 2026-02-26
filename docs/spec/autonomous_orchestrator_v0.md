@@ -255,6 +255,7 @@ role_plan_versions: [
 
 Diff key lists are top-level only; nested changes appear under their parent key.
 Change flags are only set when true.
+`goal_changed` means the goal text changed; `goal_contract_changed` means the contract map changed.
 
 Notes:
 - Drift guidance defaults to `target_orchestrator_id="human"` when no explicit targets

@@ -145,6 +145,7 @@ Revision event payloads include:
 - `orchestrator_goal_revision` adds `goal`, `goal_contract`, `previous_goal`, `previous_goal_contract`,
   `goal_changed`, `goal_contract_changed`, and `goal_contract_diff` (change flags are only set when true)
   (added/removed/changed key lists; previous_* fields are omitted on create)
+  where `goal_changed` means the goal text changed and `goal_contract_changed` means the contract map changed.
 - `orchestrator_role_plan_revision` adds `role_plan_snapshot`, `previous_role_plan_snapshot`,
   and `role_plan_diff` (added/removed/changed key lists; previous_* fields are omitted on create)
 - Diff key lists are top-level only; nested changes appear under their parent key.
