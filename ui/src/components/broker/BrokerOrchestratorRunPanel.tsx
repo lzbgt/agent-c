@@ -492,6 +492,13 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
     latestRoleRevision?.role_plan_snapshot !== undefined
       ? latestRoleRevision.role_plan_snapshot
       : currentRun?.role_plan_snapshot ?? undefined;
+  const latestGoalChangeSummary = React.useMemo(() => {
+    if (!latestGoalRevision) return "";
+    const parts: string[] = [];
+    if (latestGoalRevision.goal_changed === true) parts.push("goal changed");
+    if (latestGoalRevision.goal_contract_changed === true) parts.push("contract changed");
+    return parts.join(" · ");
+  }, [latestGoalRevision]);
   const revisionFilterLower = revisionFilter.trim().toLowerCase();
   const revisionMatches = React.useCallback(
     (entry?: Record<string, any> | null) => {
@@ -865,6 +872,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
                   {latestGoalRevision && toNumber(latestGoalRevision.updated_unix_ms)
                     ? ` · ${fmtTs(Number(latestGoalRevision.updated_unix_ms))}`
                     : ""}
+                  {latestGoalChangeSummary ? ` · ${latestGoalChangeSummary}` : ""}
                 </div>
               )}
             </div>
