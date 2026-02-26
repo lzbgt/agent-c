@@ -277,6 +277,10 @@ export default function App() {
   // Persist job_id + cursor so a browser refresh can reliably resume a running session.
   // Stored per session_id (since multiple sessions can exist and the UI allows switching).
   const [jobsBySessionJson, setJobsBySessionJson] = useLocalStorageState("agentui.jobsBySession", "{}");
+  const jobsBySessionJsonRef = React.useRef(jobsBySessionJson);
+  React.useEffect(() => {
+    jobsBySessionJsonRef.current = jobsBySessionJson;
+  }, [jobsBySessionJson]);
   const runWatchPrefsBase = React.useMemo(() => {
     const base = String(effectiveBase || "").trim();
     if (!base) return "";
@@ -294,6 +298,7 @@ export default function App() {
     pending: RunWatchByScope | null;
     lastSentAt: number;
   }>({ timer: null, pending: null, lastSentAt: 0 });
+  const runWatchLoadKeyRef = React.useRef<string>("");
   const runWatchMode = React.useMemo(() => {
     if (!runWatchCanUse) return "local";
     if (runWatchServerStatus === "error") return "local";
@@ -414,7 +419,7 @@ export default function App() {
   }, [effectiveBase, sessionByBaseJson, sessionByScopeJson, sessionScopeKey, setSessionId]);
 
   const parseJobsBySession = React.useCallback(() => {
-    const v = loadJson(jobsBySessionJson);
+    const v = loadJson(jobsBySessionJsonRef.current);
     const jobs = v && typeof v === "object" ? (v as Record<string, any>) : {};
     const pruned = pruneJobsBySession(Date.now(), jobs);
     if (pruned.changed) {
@@ -425,7 +430,7 @@ export default function App() {
       }
     }
     return pruned.next;
-  }, [jobsBySessionJson, setJobsBySessionJson]);
+  }, [setJobsBySessionJson]);
 
   const pushServerRunWatch = React.useCallback(
     async (nextMap: RunWatchByScope) => {
@@ -508,11 +513,24 @@ export default function App() {
     scheduleRunWatchPersist,
     setJobsBySessionJson,
   ]);
+  const loadServerRunWatchRef = React.useRef(loadServerRunWatch);
 
   React.useEffect(() => {
     if (!runWatchCanUse) return;
-    void loadServerRunWatch();
-  }, [authKey, loadServerRunWatch, runWatchCanUse]);
+    const nextKey = `${runWatchPrefsBase}::${runWatchPrefsClientId}::${daemonAuth.mode}::${authKey}`;
+    if (runWatchLoadKeyRef.current === nextKey) return;
+    runWatchLoadKeyRef.current = nextKey;
+    void loadServerRunWatchRef.current();
+  }, [authKey, daemonAuth.mode, runWatchCanUse, runWatchPrefsBase, runWatchPrefsClientId]);
+
+  React.useEffect(() => {
+    loadServerRunWatchRef.current = loadServerRunWatch;
+  }, [loadServerRunWatch]);
+
+  React.useEffect(() => {
+    if (runWatchCanUse) return;
+    runWatchLoadKeyRef.current = "";
+  }, [runWatchCanUse]);
 
   React.useEffect(
     () => () => {
