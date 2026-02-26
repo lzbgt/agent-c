@@ -1096,6 +1096,14 @@ export default function App() {
       .sort((a, b) => (Number(b?.created_unix_ms || 0) || 0) - (Number(a?.created_unix_ms || 0) || 0));
     return String(sorted[0]?.team_run_id || "").trim();
   }, [teamRunList.data]);
+  const latestTeamRunCreatedMs = React.useMemo(() => {
+    const runs = teamRunList.data?.ok && Array.isArray(teamRunList.data?.runs) ? (teamRunList.data.runs as any[]) : [];
+    if (runs.length === 0) return 0;
+    const sorted = runs
+      .slice()
+      .sort((a, b) => (Number(b?.created_unix_ms || 0) || 0) - (Number(a?.created_unix_ms || 0) || 0));
+    return Number(sorted[0]?.created_unix_ms || 0) || 0;
+  }, [teamRunList.data]);
   const teamRunSessionKey = React.useMemo(() => {
     if (!brokerBase || !selectedTeamIdTrimmed || !latestTeamRunId) return "";
     return `${brokerBase}::${selectedTeamIdTrimmed}::${latestTeamRunId}`;
@@ -2683,6 +2691,7 @@ export default function App() {
                     teamConversationItems={teamConversationItems}
                     teamId={selectedTeamIdTrimmed}
                     teamRunId={latestTeamRunId}
+                    teamRunCreatedMs={latestTeamRunCreatedMs}
                     teamRunStatus={
                       typeof teamChat.data?.status?.status === "string"
                         ? teamChat.data?.status?.status

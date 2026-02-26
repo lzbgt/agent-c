@@ -34,6 +34,7 @@ export type HistoryPanelProps = {
   teamConversationItems?: any[];
   teamId?: string;
   teamRunId?: string;
+  teamRunCreatedMs?: number;
   teamRunStatus?: string;
   teamConversationWarnings?: string[];
 };
@@ -48,6 +49,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
   const teamConversationItems = Array.isArray(props.teamConversationItems) ? props.teamConversationItems : [];
   const teamId = String(props.teamId || "").trim();
   const teamRunId = String(props.teamRunId || "").trim();
+  const teamRunCreatedMs = typeof props.teamRunCreatedMs === "number" ? props.teamRunCreatedMs : 0;
   const teamRunStatus = String(props.teamRunStatus || "").trim();
   const teamConversationWarnings = Array.isArray(props.teamConversationWarnings) ? props.teamConversationWarnings : [];
   const MAX_HISTORY_EXPANDED_KEYS = 200;
@@ -69,9 +71,28 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     return `agentui.teamRunMarkers:${base}::${tid}`;
   }, [props.effectiveBase, teamId]);
   const [showTeamRunMarkers, setShowTeamRunMarkers] = useLocalStorageState<boolean>(teamRunMarkersKey, true);
+  const teamRoleLabelsKey = React.useMemo(() => {
+    const base = String(props.effectiveBase || "").trim() || "default";
+    const tid = teamId || "none";
+    return `agentui.teamRoleLabels:${base}::${tid}`;
+  }, [props.effectiveBase, teamId]);
+  const teamSystemKey = React.useMemo(() => {
+    const base = String(props.effectiveBase || "").trim() || "default";
+    const tid = teamId || "none";
+    return `agentui.teamSystemMessages:${base}::${tid}`;
+  }, [props.effectiveBase, teamId]);
+  const [showTeamRoleLabels, setShowTeamRoleLabels] = useLocalStorageState<boolean>(teamRoleLabelsKey, true);
+  const [showTeamSystemMessages, setShowTeamSystemMessages] = useLocalStorageState<boolean>(teamSystemKey, false);
 
   const teamTimelineItems = React.useMemo(() => {
-    const items = teamConversationItems.slice().sort((a, b) => (a?.ts || 0) - (b?.ts || 0));
+    const items = teamConversationItems
+      .slice()
+      .filter((item) => {
+        const role = typeof item?.message?.role === "string" ? item.message.role : "";
+        if (role === "system" && !showTeamSystemMessages) return false;
+        return true;
+      })
+      .sort((a, b) => (a?.ts || 0) - (b?.ts || 0));
     const out: Array<{ kind: "marker" | "item"; runId?: string; item?: any; ts: number }> = [];
     let lastRunId = "";
     for (const item of items) {
@@ -85,7 +106,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
       out.push({ kind: "item", item, ts });
     }
     return out;
-  }, [showTeamRunMarkers, teamConversationItems]);
+  }, [showTeamRunMarkers, showTeamSystemMessages, teamConversationItems]);
 
   const conversationItems = React.useMemo(() => {
     const items: {
@@ -256,7 +277,16 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                   run {teamRunId}
                 </span>
               ) : null}
-              {teamRunStatus ? <span className="text-white/50">{teamRunStatus}</span> : null}
+              {teamRunStatus ? (
+                <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-white/60">
+                  {teamRunStatus}
+                </span>
+              ) : null}
+              {teamRunCreatedMs ? (
+                <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-white/50">
+                  started {new Date(teamRunCreatedMs).toLocaleString()}
+                </span>
+              ) : null}
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
               <button
@@ -265,6 +295,20 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 onClick={() => setShowTeamRunMarkers((v) => !v)}
               >
                 {showTeamRunMarkers ? "Hide run markers" : "Show run markers"}
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                type="button"
+                onClick={() => setShowTeamRoleLabels((v) => !v)}
+              >
+                {showTeamRoleLabels ? "Hide role labels" : "Show role labels"}
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                type="button"
+                onClick={() => setShowTeamSystemMessages((v) => !v)}
+              >
+                {showTeamSystemMessages ? "Hide system" : "Show system"}
               </button>
             </div>
             {teamConversationWarnings.length > 0 ? (
@@ -308,9 +352,11 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                     return (
                       <div key={`team-msg:${ts || idx}`} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
                         <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-                          <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-semibold text-white/80">
-                            {roleLabel}
-                          </span>
+                          {showTeamRoleLabels ? (
+                            <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-semibold text-white/80">
+                              {roleLabel}
+                            </span>
+                          ) : null}
                           {when ? <span>{when}</span> : null}
                         </div>
                         {content ? (
