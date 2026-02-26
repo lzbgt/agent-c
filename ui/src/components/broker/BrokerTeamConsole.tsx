@@ -155,7 +155,6 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [quickBuilderError, setQuickBuilderError] = React.useState<string | null>(null);
   const [quickBuilderBusy, setQuickBuilderBusy] = React.useState<boolean>(false);
   const [quickTemplate, setQuickTemplate] = React.useState<string>("standard");
-  const [quickAdvancedOpen, setQuickAdvancedOpen] = React.useState<boolean>(false);
   type QuickMember = {
     id: string;
     role: string;
@@ -1672,7 +1671,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
               </div>
             </div>
 
-            <div className="mt-2 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
+            <div className="mt-2 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto]">
               <div className="grid gap-1">
                 <FieldLabel>Template</FieldLabel>
                 <select
@@ -1702,15 +1701,6 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                   onClick={() => void refreshMemberAgents()}
                 >
                   {memberAgentsBusy ? "Refreshing agents…" : "Refresh agents"}
-                </button>
-              </div>
-              <div className="flex items-end">
-                <button
-                  className="w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-[11px] text-white/80 hover:bg-black/40"
-                  type="button"
-                  onClick={() => setQuickAdvancedOpen((prev) => !prev)}
-                >
-                  {quickAdvancedOpen ? "Hide advanced" : "Advanced options"}
                 </button>
               </div>
             </div>
@@ -1786,7 +1776,8 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                       </button>
                     </div>
                   </div>
-                  {quickAdvancedOpen ? (
+                  <details className="mt-2 rounded-md border border-white/10 bg-black/30 px-2 py-1">
+                    <summary className="cursor-pointer text-[11px] text-white/60">Advanced provider overrides</summary>
                     <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
                       <input
                         aria-label="Base URL"
@@ -1810,7 +1801,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                         </button>
                       </div>
                     </div>
-                  ) : null}
+                  </details>
                 </div>
               ))}
             </div>
