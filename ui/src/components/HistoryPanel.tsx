@@ -189,6 +189,12 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     return `agentui.teamSavedFilters:${base}::${tid}`;
   }, [props.effectiveBase, teamId]);
   const [teamSavedFilters, setTeamSavedFilters] = useLocalStorageState<string[]>(teamSavedFiltersKey, []);
+  const teamPinnedFiltersKey = React.useMemo(() => {
+    const base = String(props.effectiveBase || "").trim() || "default";
+    const tid = teamId || "none";
+    return `agentui.teamPinnedFilters:${base}::${tid}`;
+  }, [props.effectiveBase, teamId]);
+  const [teamPinnedFilters, setTeamPinnedFilters] = useLocalStorageState<string[]>(teamPinnedFiltersKey, []);
   const teamSearchRef = React.useRef<HTMLInputElement | null>(null);
   const teamRoleChips = React.useMemo(() => {
     const roles = new Set<string>();
@@ -631,19 +637,49 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                   Save filter
                 </button>
               ) : null}
+              {teamSearch.trim().length > 0 && !teamPinnedFilters.includes(teamSearch.trim()) ? (
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                  type="button"
+                  onClick={() => {
+                    const val = teamSearch.trim();
+                    if (!val) return;
+                    setTeamPinnedFilters((prev) => (prev.includes(val) ? prev : [...prev, val]));
+                  }}
+                >
+                  Pin filter
+                </button>
+              ) : null}
               {teamSavedFilters.length > 0 ? (
                 <details className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70">
                   <summary className="cursor-pointer select-none">Manage saved</summary>
                   <div className="mt-2 grid gap-1">
                     {teamSavedFilters.map((f) => (
-                      <button
-                        key={`remove-${f}`}
-                        className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-left text-[11px] text-white/70 hover:bg-black/40"
-                        type="button"
-                        onClick={() => setTeamSavedFilters((prev) => prev.filter((x) => x !== f))}
-                      >
-                        Remove "{f}"
-                      </button>
+                      <div key={`manage-${f}`} className="flex items-center gap-2">
+                        <button
+                          className="flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-left text-[11px] text-white/70 hover:bg-black/40"
+                          type="button"
+                          onClick={() => setTeamSearch(f)}
+                        >
+                          {f}
+                        </button>
+                        <button
+                          className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[11px] text-white/70 hover:bg-black/40"
+                          type="button"
+                          onClick={() =>
+                            setTeamPinnedFilters((prev) => (prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]))
+                          }
+                        >
+                          {teamPinnedFilters.includes(f) ? "Unpin" : "Pin"}
+                        </button>
+                        <button
+                          className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[11px] text-white/70 hover:bg-black/40"
+                          type="button"
+                          onClick={() => setTeamSavedFilters((prev) => prev.filter((x) => x !== f))}
+                        >
+                          Remove
+                        </button>
+                      </div>
                     ))}
                     <button
                       className="rounded-md border border-rose-400/30 bg-rose-500/10 px-2 py-0.5 text-left text-[11px] text-rose-100 hover:bg-rose-500/20"
@@ -667,6 +703,29 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                 <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[11px] text-white/70">
                   {teamFilteredCount} match{teamFilteredCount === 1 ? "" : "es"}
                 </span>
+              ) : null}
+              {teamPinnedFilters.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-1">
+                  {teamPinnedFilters.map((chip) => (
+                    <div key={`pin-${chip}`} className="flex items-center gap-1">
+                      <button
+                        className="rounded-md border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-100 hover:bg-emerald-500/20"
+                        type="button"
+                        onClick={() => setTeamSearch(chip)}
+                      >
+                        {chip}
+                      </button>
+                      <button
+                        className="rounded-md border border-white/10 bg-black/30 px-1.5 py-0.5 text-[11px] text-white/60 hover:bg-black/40"
+                        type="button"
+                        onClick={() => setTeamPinnedFilters((prev) => prev.filter((x) => x !== chip))}
+                        title="Unpin"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
               ) : null}
               <div className="flex flex-wrap items-center gap-1">
                 {["user", "assistant", "tool"].map((chip) => (
