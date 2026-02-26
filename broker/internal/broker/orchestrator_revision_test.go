@@ -58,10 +58,12 @@ func TestMapDiffKeysSorted(t *testing.T) {
 	prev := map[string]any{
 		"b": 1,
 		"z": 1,
+		"m": 1,
 		"a": 1,
 	}
 	next := map[string]any{
 		"a": 1,
+		"m": 2,
 		"c": 1,
 		"y": 1,
 	}
@@ -71,11 +73,15 @@ func TestMapDiffKeysSorted(t *testing.T) {
 	}
 	added := diff["added"].([]string)
 	removed := diff["removed"].([]string)
+	changed := diff["changed"].([]string)
 	if len(added) != 2 || added[0] != "c" || added[1] != "y" {
 		t.Fatalf("unexpected added ordering: %v", added)
 	}
 	if len(removed) != 2 || removed[0] != "b" || removed[1] != "z" {
 		t.Fatalf("unexpected removed ordering: %v", removed)
+	}
+	if len(changed) != 1 || changed[0] != "m" {
+		t.Fatalf("unexpected changed ordering: %v", changed)
 	}
 }
 
