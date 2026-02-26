@@ -33,25 +33,10 @@ MODEL_PRIMARY="${AGENT_TEST_OPENROUTER_STREAM_MODEL:-${AGENT_TEST_OPENROUTER_MOD
 MODEL_FALLBACK="${AGENT_TEST_OPENROUTER_STREAM_MODEL_FALLBACK:-google/gemma-3-4b-it}"
 
 MODELS=()
-declare -A MODEL_SEEN=()
-append_model() {
-  local model="${1:-}"
-  if [[ -z "${model}" ]]; then
-    return
-  fi
-  if [[ -n "${MODEL_SEEN[${model}]:-}" ]]; then
-    return
-  fi
-  MODEL_SEEN["${model}"]=1
-  MODELS+=("${model}")
-}
 while IFS= read -r model; do
-  append_model "${model}"
-done < <(agentd_smoke_openrouter_pinned_models assistant || true)
-if [[ ${#MODELS[@]} -eq 0 ]]; then
-  append_model "${MODEL_PRIMARY}"
-fi
-append_model "${MODEL_FALLBACK}"
+  [[ -z "${model}" ]] && continue
+  MODELS+=("${model}")
+done < <(agentd_smoke_openrouter_model_candidates assistant "${MODEL_PRIMARY}" "${MODEL_FALLBACK}")
 MODEL_BOOTSTRAP="${MODELS[0]:-${MODEL_PRIMARY}}"
 
 if agent_test_openrouter_auth_ok "${OPENROUTER_KEY}" "${BASE_URL}"; then

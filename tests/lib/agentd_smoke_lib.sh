@@ -291,3 +291,37 @@ agentd_smoke_openrouter_pinned_model() {
   fi
   printf "%s\n" "${models%%$'\n'*}"
 }
+
+agentd_smoke_openrouter_model_candidates() {
+  local kind="${1:-}"
+  local primary="${2:-}"
+  local fallback="${3:-}"
+  if [[ -z "${kind}" ]]; then
+    echo "agentd_smoke_openrouter_model_candidates: missing kind (assistant|tool)" >&2
+    return 2
+  fi
+  local pinned
+  pinned="$(agentd_smoke_openrouter_pinned_models "${kind}" || true)"
+  local -a models=()
+  local -A seen=()
+  add_model() {
+    local model="${1:-}"
+    if [[ -z "${model}" ]]; then
+      return
+    fi
+    if [[ -n "${seen[${model}]:-}" ]]; then
+      return
+    fi
+    seen["${model}"]=1
+    models+=("${model}")
+  }
+  if [[ -n "${pinned}" ]]; then
+    while IFS= read -r model; do
+      add_model "${model}"
+    done <<< "${pinned}"
+  else
+    add_model "${primary}"
+  fi
+  add_model "${fallback}"
+  printf "%s\n" "${models[@]}"
+}
