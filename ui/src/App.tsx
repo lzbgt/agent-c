@@ -2554,6 +2554,11 @@ export default function App() {
     sessionsRefetch,
   });
 
+  const advancedGridCols =
+    advancedPage === "broker"
+      ? "lg:grid-cols-[var(--tools-col)_minmax(320px,1fr)_minmax(480px,60vw)]"
+      : "lg:grid-cols-[var(--tools-col)_minmax(0,1fr)_minmax(360px,48vw)]";
+
   return (
     <div
       className="h-screen w-full bg-slate-950 text-white"
@@ -2684,7 +2689,7 @@ export default function App() {
             <div
               className={`mt-4 grid gap-4 ${
                 advancedPage
-                  ? "lg:grid-cols-[var(--tools-col)_minmax(0,1fr)_minmax(360px,48vw)]"
+                  ? advancedGridCols
                   : "lg:grid-cols-[var(--tools-col)_minmax(0,1fr)]"
               }`}
               style={{
@@ -2986,7 +2991,7 @@ export default function App() {
                 </div>
               </section>
               {advancedPage ? (
-                <aside className="min-w-0 overflow-x-hidden rounded-lg border border-white/10 bg-black/20 p-3">
+                <aside className="min-w-0 overflow-x-auto rounded-lg border border-white/10 bg-black/20 p-3">
                   {advancedPage === "trace" ? (
                     <TraceLookupPanel
                       open={true}
