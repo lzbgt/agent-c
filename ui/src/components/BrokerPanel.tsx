@@ -23,6 +23,7 @@ import {
   type ApiAuth,
 } from "../api";
 import FieldLabel from "./FieldLabel";
+import useLocalStorageState from "../hooks/useLocalStorageState";
 import BrokerTeamConsole from "./broker/BrokerTeamConsole";
 import type { BrokerEventRow } from "./broker/types";
 import { readSseStream } from "../sse";
@@ -68,6 +69,28 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   const agentId = String(props.brokerAgentId || "").trim();
   const authToken = props.auth?.token ? String(props.auth.token).trim() : "";
   const canQuery = base.length > 0 && authToken.length > 0;
+  const brokerPageKey = React.useMemo(() => {
+    const b = base || "default";
+    const k = String(props.authKey || "").trim() || "default";
+    return `agentui.brokerPage:${b}::${k}`;
+  }, [base, props.authKey]);
+  const brokerPages = React.useMemo(
+    () => [
+      { id: "teams", label: "Teams" },
+      { id: "agents", label: "Agents" },
+      { id: "members", label: "Members" },
+      { id: "deployments", label: "Deployments + OTA" },
+      { id: "memory", label: "Memory" },
+      { id: "audit", label: "Membership audit" },
+      { id: "events", label: "Events" },
+    ],
+    [],
+  );
+  const brokerPageIds = React.useMemo(() => new Set(brokerPages.map((p) => p.id)), [brokerPages]);
+  const [brokerPage, setBrokerPage] = useLocalStorageState<string>(brokerPageKey, "teams");
+  React.useEffect(() => {
+    if (!brokerPageIds.has(brokerPage)) setBrokerPage("teams");
+  }, [brokerPage, brokerPageIds, setBrokerPage]);
 
   const agentsQuery = useQuery({
     queryKey: ["brokerAgents", base, props.authKey],
@@ -1128,7 +1151,40 @@ export default function BrokerPanel(props: BrokerPanelProps) {
           </div>
         ) : null}
 
-        <section className="rounded-md border border-white/10 bg-black/20 p-3">
+        <div className="flex flex-col gap-4 lg:flex-row">
+          <aside className="rounded-md border border-white/10 bg-black/20 p-3 lg:w-56">
+            <div className="text-[11px] font-semibold text-white/60">Broker</div>
+            <div className="mt-2 grid gap-1">
+              {brokerPages.map((page) => {
+                const active = page.id === brokerPage;
+                return (
+                  <button
+                    key={page.id}
+                    className={`rounded-md px-3 py-2 text-left text-sm ${
+                      active ? "bg-indigo-500/20 text-indigo-100" : "bg-black/20 text-white/70 hover:bg-black/30"
+                    }`}
+                    type="button"
+                    onClick={() => setBrokerPage(page.id)}
+                  >
+                    {page.label}
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
+          <div className="min-w-0 flex-1 grid gap-4">
+            {brokerPage === "teams" ? (
+              <BrokerTeamConsole
+                base={base}
+                auth={props.auth}
+                authKey={props.authKey}
+                clientId={props.clientId}
+                quorumEvents={brokerEvents}
+              />
+            ) : null}
+
+            {brokerPage === "agents" ? (
+              <section className="rounded-md border border-white/10 bg-black/20 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="text-xs font-semibold text-white/80">Agents</div>
             <button
@@ -1181,8 +1237,10 @@ export default function BrokerPanel(props: BrokerPanelProps) {
             </div>
           )}
         </section>
+            ) : null}
 
-        <section className="rounded-md border border-white/10 bg-black/20 p-3">
+            {brokerPage === "members" ? (
+              <section className="rounded-md border border-white/10 bg-black/20 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="text-xs font-semibold text-white/80">Members</div>
             <button
@@ -1275,8 +1333,10 @@ export default function BrokerPanel(props: BrokerPanelProps) {
             </>
           )}
         </section>
+            ) : null}
 
-        <section className="rounded-md border border-white/10 bg-black/20 p-3">
+            {brokerPage === "deployments" ? (
+              <section className="rounded-md border border-white/10 bg-black/20 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="text-xs font-semibold text-white/80">Deployments + OTA</div>
             <button
@@ -1515,8 +1575,10 @@ export default function BrokerPanel(props: BrokerPanelProps) {
             </div>
           </div>
         </section>
+            ) : null}
 
-        <section className="rounded-md border border-white/10 bg-black/20 p-3">
+            {brokerPage === "memory" ? (
+              <section className="rounded-md border border-white/10 bg-black/20 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="text-xs font-semibold text-white/80">Memory maintenance</div>
             <div className="text-[11px] text-white/50">Fan-out retention + recap operations</div>
@@ -1834,8 +1896,10 @@ export default function BrokerPanel(props: BrokerPanelProps) {
             ) : null}
           </div>
         </section>
+            ) : null}
 
-        <section className="rounded-md border border-white/10 bg-black/20 p-3">
+            {brokerPage === "audit" ? (
+              <section className="rounded-md border border-white/10 bg-black/20 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="text-xs font-semibold text-white/80">Membership audit</div>
             <button
@@ -1892,16 +1956,10 @@ export default function BrokerPanel(props: BrokerPanelProps) {
             </div>
           )}
         </section>
+            ) : null}
 
-        <BrokerTeamConsole
-          base={base}
-          auth={props.auth}
-          authKey={props.authKey}
-          clientId={props.clientId}
-          quorumEvents={brokerEvents}
-        />
-
-        <section className="rounded-md border border-white/10 bg-black/20 p-3">
+            {brokerPage === "events" ? (
+              <section className="rounded-md border border-white/10 bg-black/20 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="text-xs font-semibold text-white/80">Live broker events</div>
             <div className="flex items-center gap-2">
@@ -2014,6 +2072,9 @@ export default function BrokerPanel(props: BrokerPanelProps) {
             </div>
           )}
         </section>
+            ) : null}
+          </div>
+        </div>
       </div>
     </details>
   );
