@@ -194,6 +194,12 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     return `agentui.teamQuiet:${base}::${tid}`;
   }, [props.effectiveBase, teamId]);
   const [teamQuietMode, setTeamQuietMode] = useLocalStorageState<boolean>(teamQuietKey, false);
+  const teamHideToolsKey = React.useMemo(() => {
+    const base = String(props.effectiveBase || "").trim() || "default";
+    const tid = teamId || "none";
+    return `agentui.teamHideTools:${base}::${tid}`;
+  }, [props.effectiveBase, teamId]);
+  const [teamHideTools, setTeamHideTools] = useLocalStorageState<boolean>(teamHideToolsKey, false);
   const teamMutedAgentsKey = React.useMemo(() => {
     const base = String(props.effectiveBase || "").trim() || "default";
     const tid = teamId || "none";
@@ -264,6 +270,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
       .filter((item) => {
         const role = typeof item?.message?.role === "string" ? item.message.role : "";
         if (role === "system" && !showTeamSystemMessages) return false;
+        if (teamHideTools && role === "tool") return false;
         if (teamQuietMode && (role === "system" || role === "tool")) return false;
         const agentLabel = typeof item?.meta?.agent_id === "string" ? item.meta.agent_id : "";
         if (agentLabel && mutedAgentSet.has(agentLabel)) return false;
@@ -289,7 +296,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
       out.push({ kind: "item", item, ts });
     }
     return out;
-  }, [mutedAgentSet, showTeamRunMarkers, showTeamSystemMessages, teamConversationItems, teamQuietMode]);
+  }, [mutedAgentSet, showTeamRunMarkers, showTeamSystemMessages, teamConversationItems, teamQuietMode, teamHideTools]);
 
   const teamFilteredItems = React.useMemo(() => {
     return teamTimelineItems.filter((entry) => entry.kind === "item");
@@ -767,6 +774,18 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                     title="Quiet mode hides system/tool chatter"
                   >
                     {teamQuietMode ? "Quiet ✓" : "Quiet"}
+                  </button>
+                  <button
+                    className={`rounded-md border px-2 py-1 text-[11px] ${
+                      teamHideTools
+                        ? "border-violet-400/30 bg-violet-500/10 text-violet-100"
+                        : "border-white/10 bg-black/30 text-white/70 hover:bg-black/40"
+                    }`}
+                    type="button"
+                    onClick={() => setTeamHideTools((v) => !v)}
+                    title="Hide tool messages"
+                  >
+                    {teamHideTools ? "Hide tools" : "Show tools"}
                   </button>
                   <button
                     className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
