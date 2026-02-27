@@ -78,7 +78,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     () => [
       { id: "teams", label: "Teams" },
       { id: "agents", label: "Agents" },
-      { id: "members", label: "Members" },
+      { id: "members", label: "Member list" },
       { id: "deployments", label: "Deployments + OTA" },
       { id: "memory", label: "Memory" },
       { id: "audit", label: "Membership audit" },
@@ -87,7 +87,15 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     [],
   );
   const brokerPageIds = React.useMemo(() => new Set(brokerPages.map((p) => p.id)), [brokerPages]);
-  const [brokerPage, setBrokerPage] = useLocalStorageState<string>(brokerPageKey, "teams");
+  const brokerPageDefault = React.useMemo(() => {
+    if (typeof window === "undefined") return "teams";
+    const stored = window.localStorage.getItem(brokerPageKey);
+    if (stored && stored.trim().length > 0) return "teams";
+    const panelOpenRaw = window.localStorage.getItem("agentui.brokerPanelOpen");
+    const panelOpen = panelOpenRaw === "true" || panelOpenRaw === "1";
+    return panelOpen ? "members" : "teams";
+  }, [brokerPageKey]);
+  const [brokerPage, setBrokerPage] = useLocalStorageState<string>(brokerPageKey, brokerPageDefault);
   React.useEffect(() => {
     if (!brokerPageIds.has(brokerPage)) setBrokerPage("teams");
   }, [brokerPage, brokerPageIds, setBrokerPage]);
@@ -1135,7 +1143,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     >
       <summary className="cursor-pointer select-none text-xs text-white/80">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="font-semibold text-white/80">Broker console</div>
+          <div className="font-semibold text-white/80">Broker panel</div>
           <div className="text-[11px] text-white/50">Manage agents + membership when in broker mode</div>
         </div>
       </summary>
@@ -1186,7 +1194,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
             {brokerPage === "agents" ? (
               <section className="rounded-md border border-white/10 bg-black/20 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="text-xs font-semibold text-white/80">Agents</div>
+            <div className="text-xs font-semibold text-white/80">Agent list</div>
             <button
               className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
               type="button"
@@ -1901,7 +1909,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
             {brokerPage === "audit" ? (
               <section className="rounded-md border border-white/10 bg-black/20 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="text-xs font-semibold text-white/80">Membership audit</div>
+            <div className="text-xs font-semibold text-white/80">Membership audit log</div>
             <button
               className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
               type="button"

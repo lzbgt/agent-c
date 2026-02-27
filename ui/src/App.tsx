@@ -126,6 +126,7 @@ const runWatchMapsEqual = (a: RunWatchByScope, b: RunWatchByScope): boolean => {
 export default function App() {
   const ui = useUiSettings();
   const { connection, run: runSettings, client: clientSettings } = ui;
+  const { brokerPanelOpen } = ui;
   const { effectiveBase, effectiveSseBase, daemonAuth, authKey } = connection;
   const profileName = connection.profileName;
   const profileId = connection.activeProfileId;
@@ -410,6 +411,8 @@ export default function App() {
     `agentui.advancedPage:${sessionScopeKey}`,
     "",
   );
+  const legacyTraceLookupCheckedRef = React.useRef<boolean>(false);
+  const legacyWorkflowPanelCheckedRef = React.useRef<boolean>(false);
   const [toolsCollapsed, setToolsCollapsed] = useLocalStorageState<boolean>(
     `agentui.toolsCollapsed:${sessionScopeKey}`,
     false,
@@ -429,6 +432,30 @@ export default function App() {
   React.useEffect(() => {
     if (advancedPage && !advancedPageIds.has(advancedPage)) setAdvancedPage("");
   }, [advancedPage, advancedPageIds, setAdvancedPage]);
+  React.useEffect(() => {
+    if (legacyTraceLookupCheckedRef.current) return;
+    legacyTraceLookupCheckedRef.current = true;
+    try {
+      const raw = window.localStorage.getItem("agentui.traceLookupOpen");
+      if (raw === "true" || raw === "1") setAdvancedPage("trace");
+    } catch {
+      // ignore
+    }
+  }, [setAdvancedPage]);
+  React.useEffect(() => {
+    if (legacyWorkflowPanelCheckedRef.current) return;
+    legacyWorkflowPanelCheckedRef.current = true;
+    try {
+      const raw = window.localStorage.getItem("agentui.workflowPanelOpen");
+      if (raw === "true" || raw === "1") setAdvancedPage("workflows");
+    } catch {
+      // ignore
+    }
+  }, [setAdvancedPage]);
+  React.useEffect(() => {
+    if (!brokerPanelOpen || connectionMode !== "broker") return;
+    if (advancedPage !== "broker") setAdvancedPage("broker");
+  }, [advancedPage, brokerPanelOpen, connectionMode, setAdvancedPage]);
 
   const historyUiKey = React.useMemo(() => {
     const sid = String(sessionId || "").trim();

@@ -319,7 +319,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
     >
       <summary className="cursor-pointer select-none text-xs text-white/80">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="font-semibold text-white/80">Workflows</div>
+          <div className="font-semibold text-white/80">Workflow editor</div>
           <div className="text-[11px] text-white/50">Durable workflow DAGs + composer</div>
         </div>
       </summary>
