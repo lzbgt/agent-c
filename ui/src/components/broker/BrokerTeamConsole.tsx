@@ -173,6 +173,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     openai: "https://api.openai.com/v1",
     anthropic: "https://api.anthropic.com",
     deepseek: "https://api.deepseek.com",
+    moonshot: "https://api.moonshot.cn/v1",
     kimi: "https://api.moonshot.cn/v1",
     glm: "https://open.bigmodel.cn/api/paas/v4",
     local: "",
@@ -181,7 +182,8 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const providerModelDefaults: Record<string, string> = {
     openai: "gpt-4.1",
     anthropic: "claude-3-7-sonnet-20250219",
-    deepseek: "deepseek-chat",
+    deepseek: "deepseek-reasoner",
+    moonshot: "kimi-k2.5",
     kimi: "kimi-k2.5",
     glm: "glm-4",
     local: "",
@@ -1738,7 +1740,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                       <option value="openai">OpenAI</option>
                       <option value="anthropic">Anthropic</option>
                       <option value="deepseek">DeepSeek</option>
-                      <option value="kimi">Kimi (Moonshot CN)</option>
+                      <option value="moonshot">Kimi (Moonshot CN)</option>
                       <option value="glm">GLM (Zhipu)</option>
                       <option value="local">Local</option>
                       <option value="custom">Custom</option>

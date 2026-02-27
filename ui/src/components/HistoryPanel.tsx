@@ -556,12 +556,30 @@ export default function HistoryPanel(props: HistoryPanelProps) {
         } else if (key === "m") {
           event.preventDefault();
           handleGoto("meta");
+        } else if (key === "f") {
+          event.preventDefault();
+          setTeamFiltersCollapsed(false);
+          const el = document.getElementById("team-filters");
+          if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        } else if (key === "l") {
+          event.preventDefault();
+          const items = teamFilteredItems;
+          if (items.length === 0) return;
+          const entry = items[items.length - 1];
+          const ts = typeof entry?.ts === "number" ? entry.ts : 0;
+          if (!ts) return;
+          const el = document.getElementById(`team-msg-${ts}`);
+          if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
         }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [setShowTeamChat, setShowTeamHeaders]);
+  }, [setShowTeamChat, setShowTeamHeaders, setTeamFiltersCollapsed, teamFilteredItems]);
 
   const conversationItems = React.useMemo(() => {
     const items: {
@@ -989,7 +1007,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                     ) : null}
                   </div>
                 ) : null}
-                <div className="mt-1 text-[10px] text-white/40">Shortcuts: g t (jump), g m (toggle meta)</div>
+                <div className="mt-1 text-[10px] text-white/40">Shortcuts: g t (jump), g m (toggle meta), g f (filters), g l (latest)</div>
               </div>
             ) : null}
             <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
