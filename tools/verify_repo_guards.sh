@@ -38,6 +38,7 @@ Runs repo hygiene guards:
   - stub file scan
   - handbook bundle sync check
   - tracked file size guard (10 MiB)
+  - skill template manifest validation
 
 Options:
   --strict   Also fail on nested .git dirs (matches CI guard).
@@ -75,3 +76,7 @@ python3 tools/build_handbook_bundle.py --check
 python3 tools/tracked_file_guard.py --max-mb "${MAX_FILE_MB}"
 python3 tools/untracked_file_guard.py --exclude-defaults --max-mb "${MAX_UNTRACKED_MB}"
 python3 tools/vendored_guard.py --path ref
+
+if compgen -G "tools/skills/templates/*/manifest.json" > /dev/null; then
+  python3 tools/skills/validate_manifest.py tools/skills/templates/*
+fi

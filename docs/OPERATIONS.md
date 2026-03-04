@@ -379,6 +379,12 @@ tools/untracked_file_guard.py --exclude-defaults --max-mb 100
 tools/vendored_guard.py --path ref
 ```
 
+Validate skill templates:
+
+```bash
+python3 tools/skills/validate_manifest.py tools/skills/templates/*
+```
+
 Run all repo hygiene guards locally:
 
 ```bash
