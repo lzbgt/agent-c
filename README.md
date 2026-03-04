@@ -15,6 +15,14 @@ Docs quickstart:
 Handbook guard:
 - `tools/verify_repo_guards.sh` enforces a handbook line limit via `HANDBOOK_MAX_LINES` (default: 250).
 
+- ESP32 Voice Agentic Demo
+
+<video width="50%" controls>
+  <source src="esp32_demo/esp32_voice_agent.mp4" type="video/mp4">
+  您的编辑器不支持内嵌视频播放。
+</video>
+
+
 ## Build
 
 ```bash
