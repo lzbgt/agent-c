@@ -2,8 +2,10 @@
 
 #include <cassert>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -153,6 +155,22 @@ int main() {
   std::filesystem::create_directories(tmp, ec);
   const std::string db_path = (tmp / "agentd_test.db").string();
 
+  const std::filesystem::path home_root = tmp / "home";
+  const std::filesystem::path allow_root = tmp / "allow_root";
+  const std::filesystem::path allow_file = home_root / ".config" / "agent" / "mount-allowlist.json";
+  std::filesystem::create_directories(allow_root, ec);
+  std::filesystem::create_directories(allow_file.parent_path(), ec);
+  const std::string allow_root_str = allow_root.generic_string();
+  const std::string allow_json =
+    std::string("{\"allowed_roots\":[{\"path\":\"") + allow_root_str +
+    "\",\"readonly\":false}],\"blocked_patterns\":[\".ssh\"],\"non_main_readonly\":true}";
+  {
+    std::ofstream out(allow_file);
+    out << allow_json;
+    out.close();
+  }
+  (void)::setenv("HOME", home_root.c_str(), 1);
+
   agentd::DaemonConfig cfg;
   cfg.listen_host = "127.0.0.1";
   cfg.listen_port = port;
@@ -182,7 +200,8 @@ int main() {
   const bool ok_body = resp.find("\"ok\":true") != std::string::npos;
 
   std::string resp_post;
-  const std::string body = "{\"host_path\":\"/tmp\",\"container_path\":\"/workspace/extra/tmp\"}";
+  const std::string body =
+    std::string("{\"host_path\":\"") + allow_root_str + "\",\"container_path\":\"/workspace/extra/tmp\"}";
   if (!http_post("127.0.0.1", port, "/api/v1/sandbox/mount_validate", body, &resp_post)) {
     svc.stop();
     std::cerr << "http_post failed\n";
@@ -190,11 +209,12 @@ int main() {
   }
   const bool post_ok_status = resp_post.find("200") != std::string::npos;
   const bool post_ok_body = resp_post.find("\"ok\":true") != std::string::npos;
-  const bool post_reason = resp_post.find("allowlist_missing") != std::string::npos ||
-                           resp_post.find("\"allowed\":false") != std::string::npos;
+  const bool post_allowed = resp_post.find("\"allowed\":true") != std::string::npos;
+  const bool post_readonly = resp_post.find("\"readonly\":false") != std::string::npos;
+  const bool post_reason = resp_post.find("\"reason\":\"ok\"") != std::string::npos;
   svc.stop();
 
-  if (!ok_status || !ok_body || !post_ok_status || !post_ok_body || !post_reason) {
+  if (!ok_status || !ok_body || !post_ok_status || !post_ok_body || !post_allowed || !post_readonly || !post_reason) {
     std::cerr << "unexpected response:\n" << resp << "\n";
     std::cerr << "unexpected post response:\n" << resp_post << "\n";
     return 4;
