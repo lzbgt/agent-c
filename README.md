@@ -3,7 +3,13 @@
 This repo is a **production-oriented agentic platform**: a portable core plus a daemon, broker, CLI, and WebUI for durable, audited automation.
 It is **not a prototype** — the repo includes deployment checklists, verification scripts, and evidence bundles for repeatable, production-grade runs.
 
-What you get:
+## Status
+
+- Rolling release: expect breaking changes until the first stability milestone.
+- Production-oriented verification and deployment tooling (see `docs/OPERATIONS.md` and `docs/DEPLOYMENT.md`).
+- Evidence bundles + repo guards for repeatable runs (`tools/capture_agent_evidence_bundle.sh`, `tools/verify_repo_guards.sh`).
+
+## Components
 - **agent_core** (portable C library): session model, compaction helpers, role utilities.
 - **agentd** (daemon): HTTP/SSE APIs, persistence, tool runtime, workflows, approvals, diagnostics.
 - **broker** (optional relay): auth + multi-deployment routing, audit/event replay, team runs, OTA fanout.
@@ -18,7 +24,7 @@ Key capabilities:
 - **Policy/limits hooks** for tool budgets, approvals, and automation profiles.
 - **OTA updates** (agentd + broker + WebUI) with drain + continuity checks.
 
-## NanoClaw leverage (planned)
+## NanoClaw leverage (in progress)
 
 We reviewed NanoClaw (cloned under `refs/nanoclaw`) and captured a concrete
 leverage plan in `docs/spec/nanoclaw_leverage_v0.md`. Near-term, low-risk
@@ -47,7 +53,7 @@ Docs quickstart:
 Handbook guard:
 - `tools/verify_repo_guards.sh` enforces a handbook line limit via `HANDBOOK_MAX_LINES` (default: 250).
 
-- ESP32 Voice Agentic Demo
+## Demo: ESP32 voice agentic
 
 https://github.com/user-attachments/assets/be605653-04cf-49f1-9696-4dff41796635
 
