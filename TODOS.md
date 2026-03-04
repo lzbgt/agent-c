@@ -198,8 +198,10 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-19 check: `tools/probe_openrouter_stream_models.sh` fails with 401 chat auth even with headers set.
   - 2026-02-20 check: `tools/openrouter_auth_debug.sh` with key from `~/.env` still returns 401 “User not found” on `/chat/completions`.
   - 2026-02-20 check: even with `OPENROUTER_HTTP_REFERER=http://localhost` and `OPENROUTER_X_TITLE=agentd`, `/chat/completions` returns 401 “User not found”.
-- [ ] W=9 — Broker Team Console UX compaction: full-width panel layout + compact member builder to eliminate excessive vertical scroll in team setup/members views.
-- [ ] W=7 — Split `ui/src/components/broker/BrokerTeamConsole.tsx` into smaller subcomponents (<2000 LOC) while preserving behavior.
+- [x] W=9 — Broker Team Console UX compaction: full-width panel layout + compact member builder to eliminate excessive vertical scroll in team setup/members views.
+  - 2026-03-04: compacted team member/setup grids, added list scroll bounding, and widened broker panel layout.
+- [x] W=7 — Split `ui/src/components/broker/BrokerTeamConsole.tsx` into smaller subcomponents (<2000 LOC) while preserving behavior.
+  - 2026-03-04: extracted setup/members panels and shared SectionCard component.
 - [x] W=8 — Nanoclaw feature leverage plan: assess channel skill registry, container-isolated tool runtime, per-group workspace/memory layout, and scheduled-task loop; map what fits agentd/broker/WebUI and capture integration steps.
   - 2026-03-04: drafted `docs/spec/nanoclaw_leverage_v0.md` and linked it from the spec index.
   - 2026-02-25 check: `tools/probe_openrouter_stream_models.sh` still skips with chat 401; `tools/openrouter_auth_debug.sh` reports `chat_status=401` and `User not found` (key source `~/.env`).

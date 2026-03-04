@@ -24,7 +24,9 @@ import BrokerTeamRunPanel from "./BrokerTeamRunPanel";
 import BrokerOrchestratorRunPanel from "./BrokerOrchestratorRunPanel";
 import BrokerOrchestratorSpawnPanel from "./BrokerOrchestratorSpawnPanel";
 import BrokerTeamGuidancePanel from "./BrokerTeamGuidancePanel";
-import BrokerTeamCreatePanel from "./BrokerTeamCreatePanel";
+import BrokerTeamMembersPanel from "./BrokerTeamMembersPanel";
+import BrokerTeamSetupPanel from "./BrokerTeamSetupPanel";
+import SectionCard from "./BrokerTeamSectionCard";
 import BrokerTeamSettingsPanel from "./BrokerTeamSettingsPanel";
 import {
   fmtTs,
@@ -40,33 +42,6 @@ import type { BrokerEventRow, TeamCursorEntry, TeamMemberRow, TeamQuorumRuleRow 
 const TEAM_EVENTS_MAX = 200;
 const TEAM_EVENTS_PREFS_KIND = "webui-team-events";
 const TEAM_EVENTS_PREFS_VERSION = 1;
-
-type SectionCardProps = {
-  title: string;
-  description?: string;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
-};
-
-function SectionCard({ title, description, defaultOpen = false, children }: SectionCardProps) {
-  const [open, setOpen] = React.useState<boolean>(defaultOpen);
-  return (
-    <details
-      className="rounded-md border border-white/10 bg-black/20 p-3"
-      open={open}
-      onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}
-    >
-      <summary className="cursor-pointer select-none text-xs font-semibold text-white/80">
-        <div className="flex items-center justify-between gap-2">
-          <span>{title}</span>
-          <span className="text-[11px] text-white/40">Toggle</span>
-        </div>
-        {description ? <div className="text-[11px] font-normal text-white/50">{description}</div> : null}
-      </summary>
-      <div className="mt-3 grid gap-3">{children}</div>
-    </details>
-  );
-}
 
 export type BrokerTeamConsoleProps = {
   base: string;
@@ -1641,684 +1616,116 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       ) : null}
 
       {activeTab === "setup" ? (
-        <>
-          <SectionCard
-            title="Quick team builder"
-            description="Create a team and add agents in one step."
-            defaultOpen={true}
-          >
-            <div className="text-[11px] text-white/60">
-              Defaults stay simple; advanced fields are optional.
-            </div>
-            <div className="mt-2 grid gap-2 lg:grid-cols-3">
-              <div className="grid gap-1">
-                <FieldLabel>Team name</FieldLabel>
-                <input
-                  className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                  value={quickTeamName}
-                  onChange={(e) => setQuickTeamName(e.target.value)}
-                  placeholder="Ops team"
-                />
-              </div>
-              <div className="grid gap-1">
-                <FieldLabel>Team id</FieldLabel>
-                <input
-                  className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                  value={quickTeamId}
-                  onChange={(e) => setQuickTeamId(e.target.value)}
-                  placeholder="auto"
-                />
-              </div>
-              <div className="grid gap-1 lg:col-span-3">
-                <FieldLabel>Goal</FieldLabel>
-                <input
-                  className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                  value={quickTeamGoal}
-                  onChange={(e) => setQuickTeamGoal(e.target.value)}
-                  placeholder="What is this team trying to accomplish?"
-                />
-              </div>
-            </div>
-
-            <div className="mt-2 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto]">
-              <div className="grid gap-1">
-                <FieldLabel>Template</FieldLabel>
-                <select
-                  className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                  value={quickTemplate}
-                  onChange={(e) => handleQuickBuilderApplyTemplate(e.target.value)}
-                >
-                  <option value="standard">Planner + Executor + Critic</option>
-                  <option value="planner_executor">Planner + Executor</option>
-                  <option value="research_team">Researcher + Executor + Critic</option>
-                </select>
-              </div>
-              <div className="flex items-end">
-                <button
-                  className="w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-[11px] text-white/80 hover:bg-black/40"
-                  type="button"
-                  onClick={handleQuickAddMember}
-                >
-                  Add agent
-                </button>
-              </div>
-              <div className="flex items-end">
-                <button
-                  className="w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-[11px] text-white/80 hover:bg-black/40"
-                  type="button"
-                  disabled={!canQuery || memberAgentsBusy}
-                  onClick={() => void refreshMemberAgents()}
-                >
-                  {memberAgentsBusy ? "Refreshing agents…" : "Refresh agents"}
-                </button>
-              </div>
-            </div>
-
-            <div className="grid gap-2">
-              <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-[minmax(140px,1fr)_minmax(140px,1fr)_minmax(180px,1.2fr)_auto] gap-2 text-[10px] uppercase tracking-wide text-white/40">
-                <span>Role</span>
-                <span>Provider</span>
-                <span>Model</span>
-                <span className="lg:text-right">Actions</span>
-              </div>
-              {quickMembers.map((m) => (
-                <div key={m.id} className="rounded-md border border-white/10 bg-black/20 p-2">
-                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(140px,1fr)_minmax(140px,1fr)_minmax(180px,1.2fr)_auto]">
-                    <input
-                      aria-label="Role"
-                      className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                      value={m.role}
-                      onChange={(e) => handleQuickMemberUpdate(m.id, { role: e.target.value })}
-                      placeholder="role"
-                    />
-                    <select
-                      aria-label="Provider"
-                      className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                      value={m.provider}
-                      onChange={(e) => handleQuickMemberUpdate(m.id, { provider: e.target.value })}
-                    >
-                      <option value="openai">OpenAI</option>
-                      <option value="anthropic">Anthropic</option>
-                      <option value="deepseek">DeepSeek</option>
-                      <option value="moonshot">Kimi (Moonshot CN)</option>
-                      <option value="glm">GLM (Zhipu)</option>
-                      <option value="local">Local</option>
-                      <option value="custom">Custom</option>
-                    </select>
-                    <input
-                      aria-label="Model"
-                      className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                      value={m.model}
-                      onChange={(e) => handleQuickMemberUpdate(m.id, { model: e.target.value })}
-                      placeholder={providerModelDefaults[m.provider] || "model"}
-                    />
-                    <div className="flex items-center justify-end gap-2 sm:col-span-2 lg:col-span-1">
-                      <button
-                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                        type="button"
-                        onClick={() => handleQuickRemoveMember(m.id)}
-                        disabled={quickMembers.length <= 1}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                  <details className="mt-2 rounded-md border border-white/10 bg-black/30 px-2 py-1">
-                    <summary className="cursor-pointer text-[11px] text-white/60">Assignments & overrides</summary>
-                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                      <select
-                        aria-label="Agent"
-                        className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                        value={m.agentId}
-                        onChange={(e) => handleQuickMemberUpdate(m.id, { agentId: e.target.value, deploymentId: "" })}
-                      >
-                        <option value="">(any agent)</option>
-                        {(memberAgents || []).map((agent: any) => (
-                          <option key={agent?.agent_id || agent?.id} value={String(agent?.agent_id || agent?.id || "")}>
-                            {String(agent?.display_name || agent?.agent_id || agent?.id || "")}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        aria-label="Deployment"
-                        className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                        value={m.deploymentId}
-                        onChange={(e) => handleQuickMemberUpdate(m.id, { deploymentId: e.target.value })}
-                        placeholder="deployment (optional)"
-                      />
-                    </div>
-                    <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                      <input
-                        aria-label="Base URL"
-                        className="w-full min-w-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                        value={m.baseUrl}
-                        onChange={(e) => handleQuickMemberUpdate(m.id, { baseUrl: e.target.value })}
-                        placeholder={providerDefaults[m.provider] || "https://api.openai.com/v1"}
-                      />
-                      <div className="flex items-center">
-                        <button
-                          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                          type="button"
-                          onClick={() =>
-                            handleQuickMemberUpdate(m.id, {
-                              baseUrl: providerDefaults[m.provider] ?? "",
-                              model: providerModelDefaults[m.provider] ?? "",
-                            })
-                          }
-                        >
-                          Reset defaults
-                        </button>
-                      </div>
-                    </div>
-                  </details>
-                </div>
-              ))}
-            </div>
-
-            {quickBuilderError ? (
-              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-                {quickBuilderError}
-              </div>
-            ) : null}
-            <div className="flex items-center gap-2">
-              <button
-                className="rounded-md border border-white/10 bg-indigo-500/20 px-3 py-2 text-xs font-semibold text-indigo-100 hover:bg-indigo-500/30 disabled:opacity-50"
-                type="button"
-                disabled={!canQuery || quickBuilderBusy}
-                onClick={() => void handleQuickCreateTeam()}
-              >
-                {quickBuilderBusy ? "Creating…" : "Create team + add agents"}
-              </button>
-              {teamsBusy ? <span className="text-xs text-white/50">Refreshing teams…</span> : null}
-            </div>
-          </SectionCard>
-
-          <SectionCard title="Create team" description="Manual team creation if you want a minimal team first.">
-            <BrokerTeamCreatePanel
-              canQuery={canQuery}
-              teamsBusy={teamsBusy}
-              newTeamId={newTeamId}
-              newTeamName={newTeamName}
-              onNewTeamIdChange={setNewTeamId}
-              onNewTeamNameChange={setNewTeamName}
-              onCreateTeam={() => void handleCreateTeam()}
-            />
-          </SectionCard>
-        </>
+        <BrokerTeamSetupPanel
+          canQuery={canQuery}
+          teamsBusy={teamsBusy}
+          memberAgentsBusy={memberAgentsBusy}
+          quickTeamName={quickTeamName}
+          quickTeamId={quickTeamId}
+          quickTeamGoal={quickTeamGoal}
+          quickTemplate={quickTemplate}
+          quickMembers={quickMembers}
+          quickBuilderBusy={quickBuilderBusy}
+          quickBuilderError={quickBuilderError}
+          providerDefaults={providerDefaults}
+          providerModelDefaults={providerModelDefaults}
+          memberAgents={memberAgents || []}
+          newTeamId={newTeamId}
+          newTeamName={newTeamName}
+          onQuickTeamNameChange={setQuickTeamName}
+          onQuickTeamIdChange={setQuickTeamId}
+          onQuickTeamGoalChange={setQuickTeamGoal}
+          onQuickMemberUpdate={handleQuickMemberUpdate}
+          onQuickAddMember={handleQuickAddMember}
+          onQuickRemoveMember={handleQuickRemoveMember}
+          onQuickCreateTeam={() => void handleQuickCreateTeam()}
+          onQuickApplyTemplate={handleQuickBuilderApplyTemplate}
+          onRefreshMemberAgents={() => void refreshMemberAgents()}
+          onNewTeamIdChange={setNewTeamId}
+          onNewTeamNameChange={setNewTeamName}
+          onCreateTeam={() => void handleCreateTeam()}
+        />
       ) : null}
 
       {activeTab === "members" ? (
-        <SectionCard title="Team members" description="Add members, update status, or edit overrides.">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-xs font-semibold text-white/80">Team members</div>
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-            type="button"
-            disabled={!canQuery || !teamIdTrimmed || membersBusy}
-            onClick={() => void refreshMembers(teamIdTrimmed)}
-          >
-            {membersBusy ? "Loading…" : "Refresh"}
-          </button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <FieldLabel>Member ID</FieldLabel>
-          <input
-            className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={memberId}
-            onChange={(e) => setMemberId(e.target.value)}
-            placeholder="optional"
-          />
-          <FieldLabel>Role</FieldLabel>
-          <input
-            className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={memberRole}
-            onChange={(e) => setMemberRole(e.target.value)}
-          />
-          <FieldLabel>Status</FieldLabel>
-          <input
-            className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={memberStatus}
-            onChange={(e) => setMemberStatus(e.target.value)}
-          />
-          <FieldLabel>Weight</FieldLabel>
-          <input
-            className="w-20 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={memberWeight}
-            onChange={(e) => setMemberWeight(e.target.value)}
-          />
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-            type="button"
-            disabled={!canQuery || !teamIdTrimmed || membersBusy}
-            onClick={() => void handleAddMember()}
-          >
-            Add member
-          </button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <FieldLabel>Agent ID</FieldLabel>
-          <input
-            className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={memberAgentId}
-            onChange={(e) => setMemberAgentId(e.target.value)}
-            placeholder="agent1"
-          />
-          <FieldLabel>Agent pick</FieldLabel>
-          <select
-            className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={memberAgentId}
-            onChange={(e) => setMemberAgentId(e.target.value)}
-          >
-            <option value="">(select agent)</option>
-            {memberAgentOptions.map((agent) => {
-              const aid = String(agent?.agent_id || "");
-              if (!aid) return null;
-              const suffix = agent?.connected ? " · connected" : "";
-              return (
-                <option key={`member-agent-${aid}`} value={aid}>
-                  {aid}
-                  {suffix}
-                </option>
-              );
-            })}
-          </select>
-          <FieldLabel>Deployment pick</FieldLabel>
-          <select
-            className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={memberDeploymentId}
-            onChange={(e) => setMemberDeploymentId(e.target.value)}
-            disabled={memberAgentDeployments.length === 0}
-          >
-            <option value="">(default)</option>
-            {memberAgentDeployments.map((dep, idx) => {
-              const depId = dep?.deployment_id ? String(dep.deployment_id) : "";
-              return (
-                <option key={`member-dep-${depId || idx}`} value={depId}>
-                  {depId || `deployment-${idx + 1}`}
-                </option>
-              );
-            })}
-          </select>
-          <FieldLabel>Deployment</FieldLabel>
-          <input
-            className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={memberDeploymentId}
-            onChange={(e) => setMemberDeploymentId(e.target.value)}
-            placeholder="default"
-          />
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-            type="button"
-            disabled={!canQuery || memberAgentsBusy}
-            onClick={() => void refreshMemberAgents()}
-          >
-            {memberAgentsBusy ? "Loading…" : "Refresh agents"}
-          </button>
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-            type="button"
-            disabled={!canQuery || !teamIdTrimmed || membersBusy || memberAgentsBusy}
-            onClick={() => void handleAddConnectedAgentsToTeam()}
-          >
-            Add connected agents
-          </button>
-          {memberAgentsError ? (
-            <span className="text-[11px] text-rose-200">{memberAgentsError}</span>
-          ) : null}
-        </div>
-        <details className="rounded-md border border-white/10 bg-black/30 px-2 py-2">
-          <summary className="cursor-pointer text-[11px] text-white/60">Advanced overrides</summary>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <FieldLabel>Capabilities</FieldLabel>
-            <input
-              className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={memberCapabilities}
-              onChange={(e) => setMemberCapabilities(e.target.value)}
-              placeholder="vision,audio"
-            />
-            <FieldLabel>Backend label</FieldLabel>
-            <input
-              className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={memberBackendLabel}
-              onChange={(e) => setMemberBackendLabel(e.target.value)}
-              placeholder="openrouter-main"
-            />
-            <FieldLabel>Model</FieldLabel>
-            <input
-              className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={memberModel}
-              onChange={(e) => setMemberModel(e.target.value)}
-              placeholder="optional"
-            />
-            <FieldLabel>Base URL</FieldLabel>
-            <input
-              className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={memberBaseUrl}
-              onChange={(e) => setMemberBaseUrl(e.target.value)}
-              placeholder="https://api.openai.com/v1"
-            />
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <FieldLabel>Summary model</FieldLabel>
-            <input
-              className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={memberSummaryModel}
-              onChange={(e) => setMemberSummaryModel(e.target.value)}
-              placeholder="optional"
-            />
-            <FieldLabel>Tools</FieldLabel>
-            <select
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={memberTools}
-              onChange={(e) => setMemberTools(e.target.value)}
-            >
-              <option value="">inherit</option>
-              <option value="none">none</option>
-              <option value="basic">basic</option>
-              <option value="host">host</option>
-            </select>
-            <FieldLabel>Timeout ms</FieldLabel>
-            <input
-              className="w-24 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={memberTimeoutMs}
-              onChange={(e) => setMemberTimeoutMs(e.target.value)}
-              placeholder="60000"
-            />
-          </div>
-        </details>
-        {membersError ? (
-          <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
-            {membersError}
-          </div>
-        ) : null}
-        {members && members.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-            <span>Bulk status:</span>
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-              type="button"
-              disabled={!canQuery || membersBusy}
-              onClick={() => void handleSetAllMemberStatus("paused")}
-            >
-              Pause all
-            </button>
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-              type="button"
-              disabled={!canQuery || membersBusy}
-              onClick={() => void handleSetAllMemberStatus("active")}
-            >
-              Resume all
-            </button>
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-              type="button"
-              disabled={!canQuery || membersBusy}
-              onClick={() => void handleRemovePausedMembers()}
-            >
-              Remove paused
-            </button>
-          </div>
-        ) : null}
-        {members && members.length > 0 ? (
-          <div className="grid gap-2">
-            {members.map((m, idx) => {
-              const mid = String(m?.member_id || "");
-              const meta = m?.meta && typeof m.meta === "object" ? (m.meta as Record<string, any>) : null;
-              const backendLabel = meta?.backend_label ? String(meta.backend_label) : "";
-              const overridesRaw =
-                meta?.run_overrides && typeof meta.run_overrides === "object" ? meta.run_overrides : null;
-              const overrideBits: string[] = [];
-              if (overridesRaw && typeof overridesRaw === "object") {
-                const model = (overridesRaw as any).model ? String((overridesRaw as any).model) : "";
-                const baseUrl = (overridesRaw as any).base_url ? String((overridesRaw as any).base_url) : "";
-                const summaryModel = (overridesRaw as any).summary_model ? String((overridesRaw as any).summary_model) : "";
-                const tools = (overridesRaw as any).tools ? String((overridesRaw as any).tools) : "";
-                const timeoutMs = (overridesRaw as any).timeout_ms;
-                const maxSteps = (overridesRaw as any).max_steps;
-                const streamAssistant = (overridesRaw as any).stream_assistant;
-                if (model) overrideBits.push(`model ${model}`);
-                if (summaryModel) overrideBits.push(`summary ${summaryModel}`);
-                if (baseUrl) overrideBits.push(`base ${baseUrl}`);
-                if (tools) overrideBits.push(`tools ${tools}`);
-                if (Number.isFinite(timeoutMs)) overrideBits.push(`timeout ${timeoutMs}ms`);
-                if (Number.isFinite(maxSteps)) overrideBits.push(`max_steps ${maxSteps}`);
-                if (typeof streamAssistant === "boolean") {
-                  overrideBits.push(`stream ${streamAssistant ? "on" : "off"}`);
-                }
-              }
-              const infoBits: string[] = [];
-              if (typeof m?.weight === "number") infoBits.push(`weight ${m.weight}`);
-              const caps = Array.isArray(m?.capabilities)
-                ? m.capabilities.map((c) => String(c).trim()).filter(Boolean)
-                : [];
-              if (caps.length > 0) infoBits.push(`caps ${caps.join(",")}`);
-              if (backendLabel) infoBits.push(`backend ${backendLabel}`);
-              if (overrideBits.length > 0) infoBits.push(`overrides ${overrideBits.join(", ")}`);
-              return (
-                <div key={`member-${mid}-${idx}`} className="grid gap-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
-                    <div className="text-[11px] text-white/70">
-                      <div>
-                        <span className="text-white/90">{mid || "member"}</span>
-                        {m?.role ? ` · role ${m.role}` : ""}
-                        {m?.status ? ` · ${m.status}` : ""}
-                        {m?.agent_id ? ` · agent ${m.agent_id}` : ""}
-                        {m?.deployment_id ? ` · dep ${m.deployment_id}` : ""}
-                        {m?.created_unix_ms ? ` · ${fmtTs(m.created_unix_ms)}` : ""}
-                      </div>
-                      {infoBits.length > 0 ? (
-                        <div className="text-[10px] text-white/50">{infoBits.join(" · ")}</div>
-                      ) : null}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                        type="button"
-                        onClick={() => void handleToggleMemberStatus(m)}
-                      >
-                        {String(m?.status || "active").toLowerCase() === "paused" ? "Resume" : "Pause"}
-                      </button>
-                      <button
-                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                        type="button"
-                        onClick={() => handleEditMember(m)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                        type="button"
-                        onClick={() => void handleDeleteMember(mid)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                  {memberEditId === mid ? (
-                    <div
-                      data-testid="team-member-edit"
-                      className="rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <FieldLabel>Role</FieldLabel>
-                        <input
-                          className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                          data-testid="team-member-edit-role"
-                          value={memberEditRole}
-                          onChange={(e) => setMemberEditRole(e.target.value)}
-                        />
-                        <FieldLabel>Status</FieldLabel>
-                        <select
-                          className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                          data-testid="team-member-edit-status"
-                          value={memberEditStatus}
-                          onChange={(e) => setMemberEditStatus(e.target.value)}
-                        >
-                          <option value="active">active</option>
-                          <option value="paused">paused</option>
-                          <option value="disabled">disabled</option>
-                        </select>
-                        <FieldLabel>Weight</FieldLabel>
-                        <input
-                          className="w-20 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                          data-testid="team-member-edit-weight"
-                          value={memberEditWeight}
-                          onChange={(e) => setMemberEditWeight(e.target.value)}
-                          placeholder="1"
-                        />
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <FieldLabel>Agent ID</FieldLabel>
-                        <input
-                          className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                          data-testid="team-member-edit-agent-id"
-                          value={memberEditAgentId}
-                          onChange={(e) => setMemberEditAgentId(e.target.value)}
-                          placeholder="agent1"
-                        />
-                        <FieldLabel>Agent pick</FieldLabel>
-                        <select
-                          className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                          data-testid="team-member-edit-agent-pick"
-                          value={memberEditAgentId}
-                          onChange={(e) => setMemberEditAgentId(e.target.value)}
-                        >
-                          <option value="">(select agent)</option>
-                          {memberAgentOptions.map((agent) => {
-                            const aid = String(agent?.agent_id || "");
-                            if (!aid) return null;
-                            const suffix = agent?.connected ? " · connected" : "";
-                            return (
-                              <option key={`member-edit-agent-${aid}`} value={aid}>
-                                {aid}
-                                {suffix}
-                              </option>
-                            );
-                          })}
-                        </select>
-                        <FieldLabel>Deployment</FieldLabel>
-                        <select
-                          className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                          data-testid="team-member-edit-deployment"
-                          value={memberEditDeploymentId}
-                          onChange={(e) => setMemberEditDeploymentId(e.target.value)}
-                          disabled={memberEditAgentDeployments.length === 0}
-                        >
-                          <option value="">(default)</option>
-                          {memberEditAgentDeployments.map((dep, idx) => {
-                            const depId = dep?.deployment_id ? String(dep.deployment_id) : "";
-                            return (
-                              <option key={`member-edit-dep-${depId || idx}`} value={depId}>
-                                {depId || `deployment-${idx + 1}`}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <details className="w-full rounded-md border border-white/10 bg-black/20 px-2 py-2">
-                          <summary className="cursor-pointer text-[11px] text-white/60">Advanced overrides</summary>
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <FieldLabel>Capabilities</FieldLabel>
-                            <input
-                              className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                              data-testid="team-member-edit-caps"
-                              value={memberEditCapabilities}
-                              onChange={(e) => setMemberEditCapabilities(e.target.value)}
-                              placeholder="vision,audio"
-                            />
-                            <FieldLabel>Backend label</FieldLabel>
-                            <input
-                              className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                              data-testid="team-member-edit-backend"
-                              value={memberEditBackendLabel}
-                              onChange={(e) => setMemberEditBackendLabel(e.target.value)}
-                              placeholder="openrouter-main"
-                            />
-                            <FieldLabel>Model</FieldLabel>
-                            <input
-                              className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                              data-testid="team-member-edit-model"
-                              value={memberEditModel}
-                              onChange={(e) => setMemberEditModel(e.target.value)}
-                              placeholder="gpt-4.1-mini"
-                            />
-                            <FieldLabel>Tools</FieldLabel>
-                            <input
-                              className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                              data-testid="team-member-edit-tools"
-                              value={memberEditTools}
-                              onChange={(e) => setMemberEditTools(e.target.value)}
-                              placeholder="basic"
-                            />
-                          </div>
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <FieldLabel>Base URL</FieldLabel>
-                            <input
-                              className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                              data-testid="team-member-edit-base-url"
-                              value={memberEditBaseUrl}
-                              onChange={(e) => setMemberEditBaseUrl(e.target.value)}
-                              placeholder="https://api.openai.com/v1"
-                            />
-                            <FieldLabel>Summary model</FieldLabel>
-                            <input
-                              className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                              data-testid="team-member-edit-summary-model"
-                              value={memberEditSummaryModel}
-                              onChange={(e) => setMemberEditSummaryModel(e.target.value)}
-                              placeholder="gpt-4.1-mini"
-                            />
-                            <FieldLabel>Timeout ms</FieldLabel>
-                            <input
-                              className="w-24 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                              data-testid="team-member-edit-timeout"
-                              value={memberEditTimeoutMs}
-                              onChange={(e) => setMemberEditTimeoutMs(e.target.value)}
-                              placeholder="60000"
-                            />
-                          </div>
-                          <div className="mt-2 grid gap-1">
-                            <FieldLabel>Meta JSON</FieldLabel>
-                            <textarea
-                              className="min-h-[72px] w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
-                              data-testid="team-member-edit-meta"
-                              value={memberEditMetaJson}
-                              onChange={(e) => setMemberEditMetaJson(e.target.value)}
-                              placeholder='{"backend_label":"openrouter-main"}'
-                            />
-                          </div>
-                        </details>
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <button
-                          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-                          type="button"
-                          disabled={!canQuery || memberEditBusy}
-                          onClick={() => void handleSaveMemberEdit()}
-                        >
-                          {memberEditBusy ? "Saving…" : "Save"}
-                        </button>
-                        <button
-                          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                          type="button"
-                          onClick={() => handleCancelMemberEdit()}
-                        >
-                          Cancel
-                        </button>
-                        {memberEditError ? (
-                          <span className="text-[11px] text-rose-200">{memberEditError}</span>
-                        ) : null}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
-      </SectionCard>
+        <BrokerTeamMembersPanel
+          canQuery={canQuery}
+          teamIdTrimmed={teamIdTrimmed}
+          membersBusy={membersBusy}
+          membersError={membersError}
+          members={members}
+          memberAgentsBusy={memberAgentsBusy}
+          memberAgentsError={memberAgentsError}
+          memberAgentOptions={memberAgentOptions}
+          memberAgentDeployments={memberAgentDeployments}
+          memberEditAgentDeployments={memberEditAgentDeployments}
+          memberId={memberId}
+          memberRole={memberRole}
+          memberStatus={memberStatus}
+          memberWeight={memberWeight}
+          memberCapabilities={memberCapabilities}
+          memberAgentId={memberAgentId}
+          memberDeploymentId={memberDeploymentId}
+          memberBackendLabel={memberBackendLabel}
+          memberModel={memberModel}
+          memberBaseUrl={memberBaseUrl}
+          memberSummaryModel={memberSummaryModel}
+          memberTools={memberTools}
+          memberTimeoutMs={memberTimeoutMs}
+          memberEditId={memberEditId}
+          memberEditRole={memberEditRole}
+          memberEditStatus={memberEditStatus}
+          memberEditWeight={memberEditWeight}
+          memberEditCapabilities={memberEditCapabilities}
+          memberEditMetaJson={memberEditMetaJson}
+          memberEditBackendLabel={memberEditBackendLabel}
+          memberEditModel={memberEditModel}
+          memberEditBaseUrl={memberEditBaseUrl}
+          memberEditSummaryModel={memberEditSummaryModel}
+          memberEditTools={memberEditTools}
+          memberEditTimeoutMs={memberEditTimeoutMs}
+          memberEditAgentId={memberEditAgentId}
+          memberEditDeploymentId={memberEditDeploymentId}
+          memberEditBusy={memberEditBusy}
+          memberEditError={memberEditError}
+          onMemberIdChange={setMemberId}
+          onMemberRoleChange={setMemberRole}
+          onMemberStatusChange={setMemberStatus}
+          onMemberWeightChange={setMemberWeight}
+          onMemberCapabilitiesChange={setMemberCapabilities}
+          onMemberAgentIdChange={setMemberAgentId}
+          onMemberDeploymentIdChange={setMemberDeploymentId}
+          onMemberBackendLabelChange={setMemberBackendLabel}
+          onMemberModelChange={setMemberModel}
+          onMemberBaseUrlChange={setMemberBaseUrl}
+          onMemberSummaryModelChange={setMemberSummaryModel}
+          onMemberToolsChange={setMemberTools}
+          onMemberTimeoutMsChange={setMemberTimeoutMs}
+          onMemberEditRoleChange={setMemberEditRole}
+          onMemberEditStatusChange={setMemberEditStatus}
+          onMemberEditWeightChange={setMemberEditWeight}
+          onMemberEditCapabilitiesChange={setMemberEditCapabilities}
+          onMemberEditBackendLabelChange={setMemberEditBackendLabel}
+          onMemberEditModelChange={setMemberEditModel}
+          onMemberEditBaseUrlChange={setMemberEditBaseUrl}
+          onMemberEditSummaryModelChange={setMemberEditSummaryModel}
+          onMemberEditToolsChange={setMemberEditTools}
+          onMemberEditTimeoutMsChange={setMemberEditTimeoutMs}
+          onMemberEditMetaJsonChange={setMemberEditMetaJson}
+          onMemberEditAgentIdChange={setMemberEditAgentId}
+          onMemberEditDeploymentIdChange={setMemberEditDeploymentId}
+          onRefreshMembers={() => void refreshMembers(teamIdTrimmed)}
+          onAddMember={() => void handleAddMember()}
+          onRefreshMemberAgents={() => void refreshMemberAgents()}
+          onAddConnectedAgents={() => void handleAddConnectedAgentsToTeam()}
+          onToggleMemberStatus={(member) => void handleToggleMemberStatus(member as TeamMemberRow)}
+          onEditMember={(member) => handleEditMember(member as TeamMemberRow)}
+          onDeleteMember={(id) => void handleDeleteMember(id)}
+          onSaveMemberEdit={() => void handleSaveMemberEdit()}
+          onCancelMemberEdit={() => handleCancelMemberEdit()}
+          onSetAllMemberStatus={(status) => void handleSetAllMemberStatus(status)}
+          onRemovePausedMembers={() => void handleRemovePausedMembers()}
+        />
       ) : null}
 
       {teamTab === "advanced" ? (
