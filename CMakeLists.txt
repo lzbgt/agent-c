@@ -964,6 +964,12 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
   target_link_libraries(host_toolset_tests PRIVATE agent_host)
   add_test(NAME host_toolset_tests COMMAND host_toolset_tests)
 
+  add_executable(mount_allowlist_tests
+    tests/test_mount_allowlist.cpp
+  )
+  target_link_libraries(mount_allowlist_tests PRIVATE agentd_lib)
+  add_test(NAME mount_allowlist_tests COMMAND mount_allowlist_tests)
+
   add_executable(session_store_tests
     tests/test_session_store.cpp
   )
