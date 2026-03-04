@@ -1499,6 +1499,142 @@
       "200":
         description: Cancellation requested
 
+/api/v1/workflow_schedules:
+  post:
+    tags: [workflows]
+    summary: Create a workflow schedule (cron)
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/WorkflowScheduleCreateRequest"
+    responses:
+      "200":
+        description: Schedule created
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowScheduleCreateResponse"
+  get:
+    tags: [workflows]
+    summary: List workflow schedules
+    parameters:
+      - in: query
+        name: status
+        required: false
+        schema: { type: string }
+      - in: query
+        name: limit
+        required: false
+        schema: { type: integer, format: int32 }
+      - in: query
+        name: offset
+        required: false
+        schema: { type: integer, format: int32 }
+    responses:
+      "200":
+        description: Schedule list
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowScheduleListResponse"
+
+/api/v1/workflow_schedule:
+  get:
+    tags: [workflows]
+    summary: Get a workflow schedule
+    parameters:
+      - in: query
+        name: schedule_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Schedule response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowScheduleGetResponse"
+  delete:
+    tags: [workflows]
+    summary: Delete a workflow schedule
+    parameters:
+      - in: query
+        name: schedule_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Schedule deleted
+
+/api/v1/workflow_schedule/pause:
+  post:
+    tags: [workflows]
+    summary: Pause a workflow schedule
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [schedule_id]
+            properties:
+              schedule_id: { type: string }
+    responses:
+      "200":
+        description: Schedule paused
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowScheduleUpdateResponse"
+
+/api/v1/workflow_schedule/resume:
+  post:
+    tags: [workflows]
+    summary: Resume a workflow schedule
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [schedule_id]
+            properties:
+              schedule_id: { type: string }
+    responses:
+      "200":
+        description: Schedule resumed
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowScheduleUpdateResponse"
+
+/api/v1/workflow_schedule/runs:
+  get:
+    tags: [workflows]
+    summary: List workflow schedule runs
+    parameters:
+      - in: query
+        name: schedule_id
+        required: true
+        schema: { type: string }
+      - in: query
+        name: limit
+        required: false
+        schema: { type: integer, format: int32 }
+      - in: query
+        name: offset
+        required: false
+        schema: { type: integer, format: int32 }
+    responses:
+      "200":
+        description: Schedule run list
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowScheduleRunsResponse"
+
 /api/v1/workflow/events:
   get:
     tags: [workflows]

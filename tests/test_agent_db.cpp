@@ -261,6 +261,67 @@ int main() {
   assert(ces == 1);
   assert(mm_rows == 1);
 
+  {
+    agentd::AgentDb::WorkflowScheduleRow sched;
+    sched.schedule_id = "sched1";
+    sched.status = "active";
+    sched.cron = "* * * * *";
+    sched.timezone = "UTC";
+    sched.spec_json = R"({"tasks":[{"task_id":"t1","request":{"prompt":"hi","model":"stub","tools":"none"}}]})";
+    sched.created_unix_ms = now;
+    sched.updated_unix_ms = now;
+    sched.next_tick_unix_ms = now + 60000;
+    if (!db.insert_workflow_schedule(sched, &err)) {
+      std::fprintf(stderr, "insert_workflow_schedule failed: %s\n", err.c_str());
+      return 1;
+    }
+
+    agentd::AgentDb::WorkflowScheduleRow got;
+    if (!db.get_workflow_schedule("sched1", &got, &err)) {
+      std::fprintf(stderr, "get_workflow_schedule failed: %s\n", err.c_str());
+      return 1;
+    }
+    assert(got.schedule_id == "sched1");
+
+    std::vector<agentd::AgentDb::WorkflowScheduleRow> scheds;
+    if (!db.list_workflow_schedules("active", 10, 0, &scheds, &err)) {
+      std::fprintf(stderr, "list_workflow_schedules failed: %s\n", err.c_str());
+      return 1;
+    }
+    bool found_sched = false;
+    for (const auto& r : scheds) {
+      if (r.schedule_id == "sched1") {
+        found_sched = true;
+        break;
+      }
+    }
+    assert(found_sched);
+
+    agentd::AgentDb::WorkflowScheduleRunRow run;
+    run.schedule_id = "sched1";
+    run.tick_unix_ms = now + 60000;
+    run.workflow_id = "wf_sched1";
+    run.created_unix_ms = now;
+    run.status = "enqueued";
+    bool inserted = false;
+    if (!db.insert_workflow_schedule_run(run, &inserted, &err) || !inserted) {
+      std::fprintf(stderr, "insert_workflow_schedule_run failed: %s\n", err.c_str());
+      return 1;
+    }
+    inserted = false;
+    if (!db.insert_workflow_schedule_run(run, &inserted, &err) || inserted) {
+      std::fprintf(stderr, "insert_workflow_schedule_run idempotency failed: %s\n", err.c_str());
+      return 1;
+    }
+
+    std::vector<agentd::AgentDb::WorkflowScheduleRunRow> runs;
+    if (!db.list_workflow_schedule_runs("sched1", 10, 0, &runs, &err)) {
+      std::fprintf(stderr, "list_workflow_schedule_runs failed: %s\n", err.c_str());
+      return 1;
+    }
+    assert(!runs.empty());
+  }
+
   // Migration smoke: open an older (v1) DB and ensure it upgrades to the latest schema.
   const std::filesystem::path tmp2 =
     std::filesystem::temp_directory_path() / ("agentd_db_migrate_test_" + std::to_string((long long)getpid()) + ".sqlite");
@@ -320,6 +381,10 @@ int main() {
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflow_events') WHERE name='event_id';");
   const int64_t workflow_event_type_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflow_events') WHERE name='type';");
+  const int64_t workflow_schedule_id_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflow_schedules') WHERE name='schedule_id';");
+  const int64_t workflow_schedule_run_tick_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflow_schedule_runs') WHERE name='tick_unix_ms';");
   const int64_t job_prio_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('jobs') WHERE name='priority';");
   const int64_t workflow_prio_cols =
@@ -409,7 +474,7 @@ int main() {
   const int64_t approval_req_distinct_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('approval_requests') WHERE name='require_distinct_roles';");
   sqlite3_close(raw2);
-  assert(ver == 32);
+  assert(ver == 33);
   assert(fairq_sessions_tbl == 1);
   assert(approval_requests_tbl == 1);
   assert(approval_decisions_tbl == 1);
@@ -430,6 +495,8 @@ int main() {
   assert(workflow_task_id_cols == 1);
   assert(workflow_event_id_cols == 1);
   assert(workflow_event_type_cols == 1);
+  assert(workflow_schedule_id_cols == 1);
+  assert(workflow_schedule_run_tick_cols == 1);
   assert(job_prio_cols == 1);
   assert(workflow_prio_cols == 1);
   assert(workflow_deadline_cols == 1);

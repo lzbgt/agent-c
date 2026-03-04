@@ -227,6 +227,22 @@ schemas:
     $ref: ./components/workflow.yaml#/AvmCapsuleRunArgs
   WorkflowSubmitRequest:
     $ref: ./components/workflow.yaml#/WorkflowSubmitRequest
+  WorkflowSchedule:
+    $ref: ./components/workflow_schedule.yaml#/WorkflowSchedule
+  WorkflowScheduleRun:
+    $ref: ./components/workflow_schedule.yaml#/WorkflowScheduleRun
+  WorkflowScheduleCreateRequest:
+    $ref: ./components/workflow_schedule.yaml#/WorkflowScheduleCreateRequest
+  WorkflowScheduleCreateResponse:
+    $ref: ./components/workflow_schedule.yaml#/WorkflowScheduleCreateResponse
+  WorkflowScheduleListResponse:
+    $ref: ./components/workflow_schedule.yaml#/WorkflowScheduleListResponse
+  WorkflowScheduleGetResponse:
+    $ref: ./components/workflow_schedule.yaml#/WorkflowScheduleGetResponse
+  WorkflowScheduleUpdateResponse:
+    $ref: ./components/workflow_schedule.yaml#/WorkflowScheduleUpdateResponse
+  WorkflowScheduleRunsResponse:
+    $ref: ./components/workflow_schedule.yaml#/WorkflowScheduleRunsResponse
   WorkflowLimits:
     $ref: ./components/workflow.yaml#/WorkflowLimits
   WorkflowGetResponse:

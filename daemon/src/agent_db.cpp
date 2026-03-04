@@ -107,7 +107,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 32;
+  const int kSchemaVersion = 33;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -889,6 +889,40 @@ CREATE INDEX IF NOT EXISTS approval_decisions_by_approval ON approval_decisions(
       if (!exec_locked("ALTER TABLE approval_requests ADD COLUMN require_distinct_roles INTEGER;", out_error)) return false;
     }
     cur_ver = 32;
+  }
+
+  if (cur_ver < 33) {
+    const char* schema_v33 = R"SQL(
+CREATE TABLE IF NOT EXISTS workflow_schedules(
+  schedule_id TEXT PRIMARY KEY,
+  created_unix_ms INTEGER NOT NULL,
+  updated_unix_ms INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  cron TEXT NOT NULL,
+  timezone TEXT NOT NULL,
+  spec_json TEXT NOT NULL,
+  metadata_json TEXT,
+  last_tick_unix_ms INTEGER,
+  next_tick_unix_ms INTEGER,
+  last_error TEXT
+);
+CREATE INDEX IF NOT EXISTS workflow_schedules_by_status ON workflow_schedules(status, updated_unix_ms DESC);
+CREATE INDEX IF NOT EXISTS workflow_schedules_by_next_tick ON workflow_schedules(status, next_tick_unix_ms);
+
+CREATE TABLE IF NOT EXISTS workflow_schedule_runs(
+  schedule_id TEXT NOT NULL,
+  tick_unix_ms INTEGER NOT NULL,
+  workflow_id TEXT NOT NULL,
+  created_unix_ms INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  error TEXT,
+  PRIMARY KEY(schedule_id, tick_unix_ms),
+  FOREIGN KEY(schedule_id) REFERENCES workflow_schedules(schedule_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS workflow_schedule_runs_by_schedule ON workflow_schedule_runs(schedule_id, tick_unix_ms DESC);
+)SQL";
+    if (!exec_locked(schema_v33, out_error)) return false;
+    cur_ver = 33;
   }
 
   // Record schema version.

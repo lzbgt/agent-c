@@ -121,6 +121,23 @@ std::string new_workflow_id() {
   return std::string(buf);
 }
 
+std::string new_workflow_schedule_id() {
+  std::random_device rd;
+  std::mt19937_64 gen(((uint64_t)rd() << 32) ^ (uint64_t)rd());
+  std::uniform_int_distribution<uint32_t> dist(0, 0xffffffffu);
+  uint32_t a = dist(gen);
+  uint16_t b = (uint16_t)(dist(gen) & 0xffffu);
+  uint16_t c = (uint16_t)(dist(gen) & 0xffffu);
+  uint16_t d = (uint16_t)(dist(gen) & 0xffffu);
+  uint64_t e = ((uint64_t)dist(gen) << 32) ^ (uint64_t)dist(gen);
+  c = (uint16_t)((c & 0x0fffu) | 0x4000u);
+  d = (uint16_t)((d & 0x3fffu) | 0x8000u);
+  char buf[96];
+  (void)snprintf(buf, sizeof(buf), "wfs_%08x-%04x-%04x-%04x-%012llx",
+                 a, (unsigned)b, (unsigned)c, (unsigned)d, (unsigned long long)(e & 0xffffffffffffull));
+  return std::string(buf);
+}
+
 std::string redact_json_best_effort(const std::string& json) {
   if (json.empty()) return json;
   Json::Value v;

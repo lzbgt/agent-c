@@ -228,6 +228,8 @@ void handle_diagnostics_endpoint(
       t["workflows"] = (Json::Int64)tables.workflows;
       t["workflow_tasks"] = (Json::Int64)tables.workflow_tasks;
       t["workflow_events"] = (Json::Int64)tables.workflow_events;
+      t["workflow_schedules"] = (Json::Int64)tables.workflow_schedules;
+      t["workflow_schedule_runs"] = (Json::Int64)tables.workflow_schedule_runs;
       t["edge_nodes"] = (Json::Int64)tables.edge_nodes;
       t["edge_tasks"] = (Json::Int64)tables.edge_tasks;
       t["edge_workflows"] = (Json::Int64)tables.edge_workflows;

@@ -289,6 +289,20 @@ Notes:
 - The response includes `daemon_tools` and (when provided) `requested_tools` for clarity.
 - When `session_id` is provided (and `tools=host`), the registry may include session-scoped tools such as `ui_wait_event`.
 
+## Workflow schedules (cron, UTC-only)
+
+Agentd supports cron-bound workflow schedules (durable templates + tick audit log).
+Timezone is currently **UTC only**.
+
+- `POST /api/v1/workflow_schedules`
+  - Body: `{ "cron": "0 9 * * 1-5", "timezone": "UTC", "spec": { ...workflow submit... }, "metadata": {...} }`
+- `GET /api/v1/workflow_schedules?status=active|paused|error&limit=100&offset=0`
+- `GET /api/v1/workflow_schedule?schedule_id=<id>`
+- `POST /api/v1/workflow_schedule/pause` (body `{ "schedule_id": "..." }`)
+- `POST /api/v1/workflow_schedule/resume` (body `{ "schedule_id": "..." }`)
+- `DELETE /api/v1/workflow_schedule?schedule_id=<id>`
+- `GET /api/v1/workflow_schedule/runs?schedule_id=<id>&limit=100&offset=0`
+
 ## Approval queue API
 
 - `GET /api/v1/approvals?status=pending&trace_id=...&job_id=...&tool_name=...&run_id=...&limit=100`

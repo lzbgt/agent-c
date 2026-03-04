@@ -1,0 +1,90 @@
+WorkflowSchedule:
+  type: object
+  required: [schedule_id, status, cron, timezone, created_unix_ms, updated_unix_ms, last_tick_unix_ms, next_tick_unix_ms]
+  properties:
+    schedule_id: { type: string }
+    status: { type: string, enum: [active, paused, error] }
+    cron: { type: string }
+    timezone: { type: string }
+    created_unix_ms: { type: integer, format: int64 }
+    updated_unix_ms: { type: integer, format: int64 }
+    last_tick_unix_ms: { type: integer, format: int64 }
+    next_tick_unix_ms: { type: integer, format: int64 }
+    last_error: { type: string }
+    metadata:
+      type: object
+      additionalProperties: true
+
+WorkflowScheduleRun:
+  type: object
+  required: [schedule_id, tick_unix_ms, workflow_id, created_unix_ms, status]
+  properties:
+    schedule_id: { type: string }
+    tick_unix_ms: { type: integer, format: int64 }
+    workflow_id: { type: string }
+    created_unix_ms: { type: integer, format: int64 }
+    status: { type: string }
+    error: { type: string }
+
+WorkflowScheduleCreateRequest:
+  type: object
+  required: [cron, spec]
+  properties:
+    schedule_id: { type: string }
+    cron: { type: string }
+    timezone:
+      type: string
+      description: Timezone string (UTC only for now).
+    spec:
+      $ref: "#/components/schemas/WorkflowSubmitRequest"
+    metadata:
+      type: object
+      additionalProperties: true
+
+WorkflowScheduleCreateResponse:
+  type: object
+  required: [ok, schedule_id, status, next_tick_unix_ms]
+  properties:
+    ok: { type: boolean }
+    schedule_id: { type: string }
+    status: { type: string }
+    next_tick_unix_ms: { type: integer, format: int64 }
+
+WorkflowScheduleListResponse:
+  type: object
+  required: [ok, schedules]
+  properties:
+    ok: { type: boolean }
+    status: { type: string, nullable: true }
+    schedules:
+      type: array
+      items:
+        $ref: "#/components/schemas/WorkflowSchedule"
+
+WorkflowScheduleGetResponse:
+  type: object
+  required: [ok, schedule]
+  properties:
+    ok: { type: boolean }
+    schedule:
+      $ref: "#/components/schemas/WorkflowSchedule"
+
+WorkflowScheduleUpdateResponse:
+  type: object
+  required: [ok, schedule_id, status]
+  properties:
+    ok: { type: boolean }
+    schedule_id: { type: string }
+    status: { type: string }
+    next_tick_unix_ms: { type: integer, format: int64 }
+
+WorkflowScheduleRunsResponse:
+  type: object
+  required: [ok, schedule_id, runs]
+  properties:
+    ok: { type: boolean }
+    schedule_id: { type: string }
+    runs:
+      type: array
+      items:
+        $ref: "#/components/schemas/WorkflowScheduleRun"

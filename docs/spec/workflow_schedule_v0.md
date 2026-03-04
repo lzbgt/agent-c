@@ -29,6 +29,7 @@ Status: draft (rolling)
 - There is no persisted cron/schedule table today.
 - Workflow scheduler already runs in the daemon (durable queues + fairness).
 - WebUI has a Workflows panel but no schedule UI.
+- Timezone support is **UTC-only** in v0.
 
 ## Proposed model
 
@@ -83,23 +84,23 @@ GET /api/v1/workflow_schedules
 
 **Get schedule**
 ```
-GET /api/v1/workflow_schedules/{schedule_id}
+GET /api/v1/workflow_schedule?schedule_id=...
 ```
 
 **Pause / resume**
 ```
-POST /api/v1/workflow_schedules/{schedule_id}/pause
-POST /api/v1/workflow_schedules/{schedule_id}/resume
+POST /api/v1/workflow_schedule/pause
+POST /api/v1/workflow_schedule/resume
 ```
 
 **Delete**
 ```
-DELETE /api/v1/workflow_schedules/{schedule_id}
+DELETE /api/v1/workflow_schedule?schedule_id=...
 ```
 
 **Runs**
 ```
-GET /api/v1/workflow_schedules/{schedule_id}/runs
+GET /api/v1/workflow_schedule/runs?schedule_id=...
 ```
 
 ### Scheduler loop changes
@@ -143,4 +144,3 @@ double scheduling across restarts.
    - schedule creation + pause/resume
    - tick instantiation idempotency (restart safe)
    - invalid cron -> status `error`
-

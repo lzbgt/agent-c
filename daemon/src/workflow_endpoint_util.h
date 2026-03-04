@@ -13,6 +13,7 @@ bool parse_citation_path_line(const std::string& citation, std::string* out_path
 bool id_is_safe(const std::string& s);
 bool is_safe_relpath_md(const std::string& p);
 std::string new_workflow_id();
+std::string new_workflow_schedule_id();
 std::string redact_json_best_effort(const std::string& json);
 bool validate_dag_or_error(
   const std::vector<std::string>& task_ids,

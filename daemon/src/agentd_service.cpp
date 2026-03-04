@@ -39,6 +39,8 @@
 #include "trace_endpoints.h"
 #include "workflow_endpoints.h"
 #include "workflow_engine.h"
+#include "workflow_schedule_endpoints.h"
+#include "workflow_schedule_engine.h"
 #include "workflow_stream_endpoint.h"
 #include "runtime_config.h"
 #include "sandbox_endpoints.h"
@@ -552,6 +554,7 @@ struct AgentdService::Impl {
   std::unique_ptr<DaemonConfigStore> cfg_store;
   std::unique_ptr<JobEngine> job_engine;
   std::unique_ptr<WorkflowEngine> wf_engine;
+  std::unique_ptr<WorkflowScheduleEngine> wf_schedule_engine;
   std::unique_ptr<MemoryConsolidatorEngine> mem_engine;
   std::unique_ptr<MemoryRecapEngine> mem_recap_engine;
   std::unique_ptr<MemoryRetentionEngine> mem_retention_engine;
@@ -695,6 +698,20 @@ struct AgentdService::Impl {
       std::string werr;
       if (!wf_engine->start(&werr)) {
         std::cerr << "Warning: failed to start workflow engine: " << werr << "\n";
+      }
+    }
+
+    // Workflow schedule engine (background).
+    if (!wf_schedule_engine) {
+      WorkflowScheduleEngine::Options opt;
+      wf_schedule_engine = std::make_unique<WorkflowScheduleEngine>(
+        &db,
+        [this]() { return cfg_store->snapshot(); },
+        opt
+      );
+      std::string serr;
+      if (!wf_schedule_engine->start(&serr)) {
+        std::cerr << "Warning: failed to start workflow schedule engine: " << serr << "\n";
       }
     }
 
@@ -1194,6 +1211,34 @@ struct AgentdService::Impl {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_workflow_cancel_endpoint(cur, cors_cfg, &db, req, resp);
     });
+    server.handle("POST", "/api/v1/workflow_schedules", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_workflow_schedule_create_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("GET", "/api/v1/workflow_schedules", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_workflow_schedule_list_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("GET", "/api/v1/workflow_schedule", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_workflow_schedule_get_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("DELETE", "/api/v1/workflow_schedule", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_workflow_schedule_delete_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("POST", "/api/v1/workflow_schedule/pause", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_workflow_schedule_pause_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("POST", "/api/v1/workflow_schedule/resume", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_workflow_schedule_resume_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("GET", "/api/v1/workflow_schedule/runs", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_workflow_schedule_runs_endpoint(cur, cors_cfg, &db, req, resp);
+    });
     server.handle("GET", "/api/v1/workflow/events", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_workflow_events_endpoint(cur, cors_cfg, &db, req, resp);
@@ -1329,6 +1374,7 @@ struct AgentdService::Impl {
   void stop() {
     if (job_engine) job_engine->stop();
     if (wf_engine) wf_engine->stop();
+    if (wf_schedule_engine) wf_schedule_engine->stop();
     if (mem_engine) mem_engine->stop();
     if (edge_deadline_engine) edge_deadline_engine->stop();
     if (edge_wf_engine) edge_wf_engine->stop();

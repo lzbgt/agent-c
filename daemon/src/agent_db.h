@@ -442,6 +442,30 @@ class AgentDb {
     std::string data_json; // JSON object string (required; stable fallback)
   };
 
+  // Workflow schedules (cron-bound templates).
+  struct WorkflowScheduleRow {
+    std::string schedule_id;
+    int64_t created_unix_ms = 0;
+    int64_t updated_unix_ms = 0;
+    std::string status; // active|paused|error
+    std::string cron;
+    std::string timezone;
+    std::string spec_json;
+    std::string metadata_json;
+    int64_t last_tick_unix_ms = 0;
+    int64_t next_tick_unix_ms = 0;
+    std::string last_error;
+  };
+
+  struct WorkflowScheduleRunRow {
+    std::string schedule_id;
+    int64_t tick_unix_ms = 0;
+    std::string workflow_id;
+    int64_t created_unix_ms = 0;
+    std::string status; // enqueued|running|done|error
+    std::string error;
+  };
+
   // Inserts a workflow and its tasks in a single transaction.
   bool create_workflow(const WorkflowRow& wf, const std::vector<WorkflowTaskRow>& tasks, std::string* out_error);
   bool get_workflow(const std::string& workflow_id, WorkflowRow* out_row, std::string* out_error);
@@ -500,6 +524,8 @@ class AgentDb {
     int64_t workflows = 0;
     int64_t workflow_tasks = 0;
     int64_t workflow_events = 0;
+    int64_t workflow_schedules = 0;
+    int64_t workflow_schedule_runs = 0;
     int64_t edge_nodes = 0;
     int64_t edge_tasks = 0;
     int64_t edge_workflows = 0;
@@ -621,6 +647,60 @@ class AgentDb {
     int64_t after_event_id,
     size_t max_rows,
     std::vector<WorkflowEventRow>* out_rows_asc,
+    std::string* out_error
+  );
+
+  // Workflow schedules (cron-bound).
+  bool insert_workflow_schedule(const WorkflowScheduleRow& row, std::string* out_error);
+  bool get_workflow_schedule(const std::string& schedule_id, WorkflowScheduleRow* out_row, std::string* out_error);
+  bool list_workflow_schedules(
+    const std::string& status,
+    size_t limit,
+    size_t offset,
+    std::vector<WorkflowScheduleRow>* out_rows,
+    std::string* out_error
+  );
+  bool list_workflow_schedules_due(
+    int64_t now_unix_ms,
+    size_t limit,
+    std::vector<WorkflowScheduleRow>* out_rows,
+    std::string* out_error
+  );
+  bool update_workflow_schedule_status(
+    const std::string& schedule_id,
+    const std::string& status,
+    int64_t now_unix_ms,
+    bool* out_found,
+    std::string* out_error
+  );
+  bool update_workflow_schedule_ticks(
+    const std::string& schedule_id,
+    int64_t last_tick_unix_ms,
+    int64_t next_tick_unix_ms,
+    const std::string& last_error,
+    int64_t now_unix_ms,
+    bool* out_found,
+    std::string* out_error
+  );
+  bool delete_workflow_schedule(const std::string& schedule_id, bool* out_found, std::string* out_error);
+  bool insert_workflow_schedule_run(
+    const WorkflowScheduleRunRow& row,
+    bool* out_inserted,
+    std::string* out_error
+  );
+  bool update_workflow_schedule_run_status(
+    const std::string& schedule_id,
+    int64_t tick_unix_ms,
+    const std::string& status,
+    const std::string& error,
+    bool* out_found,
+    std::string* out_error
+  );
+  bool list_workflow_schedule_runs(
+    const std::string& schedule_id,
+    size_t limit,
+    size_t offset,
+    std::vector<WorkflowScheduleRunRow>* out_rows_desc,
     std::string* out_error
   );
 

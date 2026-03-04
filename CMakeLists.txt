@@ -197,12 +197,14 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/agent_db_sessions.cpp
     daemon/src/agent_db_audit.cpp
     daemon/src/agent_db_jobs.cpp
+    daemon/src/agent_db_workflow_schedules.cpp
     daemon/src/agent_db_runs.cpp
     daemon/src/agent_db_blobs.cpp
     daemon/src/agent_db_stats.cpp
     daemon/src/agent_db_edge_nodes.cpp
     daemon/src/agent_db_edge_tasks.cpp
     daemon/src/agent_db_edge_workflows.cpp
+    daemon/src/cron_util.cpp
     daemon/src/agentd_api.cpp
     daemon/src/automation_profile.cpp
     daemon/src/client_profiles.cpp
@@ -287,6 +289,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/workflow_engine_common.cpp
     daemon/src/workflow_engine.cpp
     daemon/src/workflow_engine_pick.cpp
+    daemon/src/workflow_schedule_engine.cpp
     daemon/src/workflow_endpoint_util.cpp
     daemon/src/workflow_http_json.cpp
     daemon/src/workflow_agentd_call.cpp
@@ -297,6 +300,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/workflow_query_endpoints.cpp
     daemon/src/workflow_admin_endpoints.cpp
     daemon/src/workflow_endpoints.cpp
+    daemon/src/workflow_schedule_endpoints.cpp
     daemon/src/workflow_submit.cpp
     daemon/src/workflow_submit_macros.cpp
     daemon/src/workflow_submit_task_builders.cpp
@@ -1071,6 +1075,7 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
       daemon/src/agent_db_sessions.cpp
       daemon/src/agent_db_audit.cpp
       daemon/src/agent_db_jobs.cpp
+      daemon/src/agent_db_workflow_schedules.cpp
       daemon/src/agent_db_runs.cpp
       daemon/src/agent_db_edge_nodes.cpp
       daemon/src/agent_db_edge_tasks.cpp

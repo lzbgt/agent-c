@@ -120,6 +120,8 @@ bool AgentDb::get_table_counts(TableCounts* out_counts, std::string* out_error) 
   ok = ok && count_table_locked(db_, "workflows", &out_counts->workflows, out_error);
   ok = ok && count_table_locked(db_, "workflow_tasks", &out_counts->workflow_tasks, out_error);
   ok = ok && count_table_locked(db_, "workflow_events", &out_counts->workflow_events, out_error);
+  ok = ok && count_table_locked(db_, "workflow_schedules", &out_counts->workflow_schedules, out_error);
+  ok = ok && count_table_locked(db_, "workflow_schedule_runs", &out_counts->workflow_schedule_runs, out_error);
   ok = ok && count_table_locked(db_, "edge_nodes", &out_counts->edge_nodes, out_error);
   ok = ok && count_table_locked(db_, "edge_tasks", &out_counts->edge_tasks, out_error);
   ok = ok && count_table_locked(db_, "edge_workflows", &out_counts->edge_workflows, out_error);

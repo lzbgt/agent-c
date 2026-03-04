@@ -459,6 +459,40 @@ Durable workflow event log used for:
 Indexes:
 - `CREATE INDEX workflow_events_by_workflow ON workflow_events(workflow_id, event_id)`
 
+### `workflow_schedules`
+
+Cron-bound workflow templates. Each schedule stores the workflow submit spec and the next tick time.
+
+- `schedule_id TEXT PRIMARY KEY`
+- `created_unix_ms INTEGER NOT NULL`
+- `updated_unix_ms INTEGER NOT NULL`
+- `status TEXT NOT NULL` (`active|paused|error`)
+- `cron TEXT NOT NULL`
+- `timezone TEXT NOT NULL` (UTC only for now)
+- `spec_json TEXT NOT NULL` (JSON object string; workflow submit template)
+- `metadata_json TEXT` (optional)
+- `last_tick_unix_ms INTEGER` (optional; last scheduled tick)
+- `next_tick_unix_ms INTEGER` (optional; next scheduled tick)
+- `last_error TEXT` (optional)
+
+Indexes:
+- `CREATE INDEX workflow_schedules_by_status ON workflow_schedules(status, updated_unix_ms DESC)`
+- `CREATE INDEX workflow_schedules_by_next_tick ON workflow_schedules(status, next_tick_unix_ms)`
+
+### `workflow_schedule_runs`
+
+Audit log of schedule ticks to preserve idempotency and link ticks to workflows.
+
+- `schedule_id TEXT NOT NULL`
+- `tick_unix_ms INTEGER NOT NULL`
+- `workflow_id TEXT NOT NULL`
+- `created_unix_ms INTEGER NOT NULL`
+- `status TEXT NOT NULL` (`enqueued|running|done|error`)
+- `error TEXT` (optional)
+
+Indexes:
+- `CREATE INDEX workflow_schedule_runs_by_schedule ON workflow_schedule_runs(schedule_id, tick_unix_ms DESC)`
+
 ### `workflow_fairq_sessions` (scheduler internal)
 
 Durable fair-queue session state for workflow scheduling policies (v2.3+).

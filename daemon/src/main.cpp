@@ -37,6 +37,8 @@
 #include "health_endpoint.h"
 #include "workflow_endpoints.h"
 #include "workflow_engine.h"
+#include "workflow_schedule_endpoints.h"
+#include "workflow_schedule_engine.h"
 #include "workflow_stream_endpoint.h"
 #include "db_query_endpoints.h"
 #include "edge_interop_endpoints.h"
@@ -942,6 +944,19 @@ int main(int argc, char** argv) {
     }
   }
 
+  // Workflow schedule engine (background).
+  WorkflowScheduleEngine wf_schedule_engine(
+    db_or_null,
+    [&cfg_store]() { return cfg_store.snapshot(); },
+    WorkflowScheduleEngine::Options{}
+  );
+  {
+    std::string serr;
+    if (!wf_schedule_engine.start(&serr)) {
+      std::cerr << "Warning: failed to start workflow schedule engine: " << serr << "\n";
+    }
+  }
+
   // Memory consolidation (background; disabled by default).
   MemoryConsolidatorEngine mem_engine(
     [&cfg_store]() { return cfg_store.snapshot(); },
@@ -1443,6 +1458,34 @@ int main(int argc, char** argv) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_workflow_cancel_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
+  server.handle("POST", "/api/v1/workflow_schedules", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_workflow_schedule_create_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/workflow_schedules", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_workflow_schedule_list_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/workflow_schedule", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_workflow_schedule_get_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("DELETE", "/api/v1/workflow_schedule", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_workflow_schedule_delete_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("POST", "/api/v1/workflow_schedule/pause", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_workflow_schedule_pause_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("POST", "/api/v1/workflow_schedule/resume", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_workflow_schedule_resume_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/workflow_schedule/runs", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_workflow_schedule_runs_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
 
   server.handle("GET", "/api/v1/workflow/events", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
@@ -1557,6 +1600,7 @@ int main(int argc, char** argv) {
     edge_wf_engine.stop();
     edge_deadline_engine.stop();
     mem_engine.stop();
+    wf_schedule_engine.stop();
     wf_engine.stop();
     job_engine.stop();
     return 2;
@@ -1567,6 +1611,7 @@ int main(int argc, char** argv) {
     edge_wf_engine.stop();
     edge_deadline_engine.stop();
     mem_engine.stop();
+    wf_schedule_engine.stop();
     wf_engine.stop();
     job_engine.stop();
     return 1;
@@ -1574,6 +1619,7 @@ int main(int argc, char** argv) {
   edge_wf_engine.stop();
   edge_deadline_engine.stop();
   mem_engine.stop();
+  wf_schedule_engine.stop();
   wf_engine.stop();
   job_engine.stop();
   return 0;
