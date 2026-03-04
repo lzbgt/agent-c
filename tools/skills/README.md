@@ -63,6 +63,13 @@ Preview in a temporary worktree (produces diff artifacts under `out/skills/previ
 python3 tools/skills/preview_skill.py /path/to/skill
 ```
 
+Validate manifest(s):
+
+```bash
+python3 tools/skills/validate_manifest.py /path/to/skill
+python3 tools/skills/validate_manifest.py tools/skills/templates/sample-skill
+```
+
 Notes:
 - Backups are stored under `out/skills/<skill>/<timestamp>/backup/`.
 - Applied records are stored in `out/skills/<skill>/<timestamp>/applied.json`.

@@ -1,0 +1,10 @@
+{
+  "skill": "sample-skill",
+  "version": "0.1.0",
+  "description": "Template skill (copy and customize).",
+  "adds": [],
+  "modifies": [],
+  "patches": [],
+  "apply": "apply.sh",
+  "post_apply": []
+}

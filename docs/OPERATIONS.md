@@ -425,6 +425,7 @@ Skill transforms (auditable repo changes):
 python3 tools/skills/apply_skill.py /path/to/skill
 python3 tools/skills/apply_skill.py /path/to/skill --dry-run
 python3 tools/skills/preview_skill.py /path/to/skill
+python3 tools/skills/validate_manifest.py /path/to/skill
 ```
 
 Docs: `tools/skills/README.md` (manifest format + backups/state behavior).
