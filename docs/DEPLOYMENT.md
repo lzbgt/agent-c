@@ -374,6 +374,18 @@ agentd-connector \
   --agent-id agent-123
 ```
 
+### Connector status helper (optional)
+Use `agentd-connector-status` to publish connector health into the broker registry:
+
+```
+agentd-connector-status \
+  --broker-base https://broker.example.com \
+  --auth-token "$BROKER_ADMIN_TOKEN" \
+  --connector-id slack \
+  --status ready \
+  --interval 30s
+```
+
 ---
 
 ## macOS (MacBook M2) — broker + WebUI

@@ -160,6 +160,19 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		agents = s.cfg.Registry.AgentCount()
 		deployments = s.cfg.Registry.ConnectionCount()
 	}
+	connectorTotal := 0
+	connectorStatusCounts := map[string]int{}
+	if s != nil && s.cfg.Connectors != nil {
+		list := s.cfg.Connectors.List()
+		connectorTotal = len(list)
+		for _, c := range list {
+			status := strings.TrimSpace(c.Status)
+			if status == "" {
+				status = "unknown"
+			}
+			connectorStatusCounts[status] = connectorStatusCounts[status] + 1
+		}
+	}
 	clientAuthConfigured := 0
 	if s != nil && s.getClientAuth() != nil {
 		clientAuthConfigured = 1
@@ -212,6 +225,18 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, "# HELP broker_agent_deployments_connected Number of connected agent deployments.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE broker_agent_deployments_connected gauge\n")
 	_, _ = fmt.Fprintf(w, "broker_agent_deployments_connected %d\n", deployments)
+	_, _ = fmt.Fprintf(w, "# HELP broker_connectors_total Total connectors registered in the broker.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE broker_connectors_total gauge\n")
+	_, _ = fmt.Fprintf(w, "broker_connectors_total %d\n", connectorTotal)
+	_, _ = fmt.Fprintf(w, "# HELP broker_connectors_by_status Connector count by status.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE broker_connectors_by_status gauge\n")
+	if len(connectorStatusCounts) == 0 {
+		_, _ = fmt.Fprintf(w, "broker_connectors_by_status{status=\"unknown\"} 0\n")
+	} else {
+		for status, count := range connectorStatusCounts {
+			_, _ = fmt.Fprintf(w, "broker_connectors_by_status{status=%q} %d\n", status, count)
+		}
+	}
 	_, _ = fmt.Fprintf(w, "# HELP broker_uptime_seconds Process uptime in seconds.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE broker_uptime_seconds gauge\n")
 	_, _ = fmt.Fprintf(w, "broker_uptime_seconds %.0f\n", uptime)
