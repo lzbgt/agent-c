@@ -6,6 +6,7 @@ import {
   apiBrokerGetMembershipAudit,
   apiBrokerGetClientPrefs,
   apiBrokerListAgents,
+  apiBrokerExportConnectors,
   apiBrokerListConnectors,
   apiBrokerListDeployments,
   apiBrokerEventsReplay,
@@ -1321,14 +1322,29 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                     type="button"
                     onClick={() => {
                       try {
-                        const payload = JSON.stringify(connectors, null, 2);
-                        const blob = new Blob([payload], { type: "application/json" });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `broker-connectors-${Date.now()}.json`;
-                        a.click();
-                        URL.revokeObjectURL(url);
+                        const download = (payload: any) => {
+                          const text = JSON.stringify(payload, null, 2);
+                          const blob = new Blob([text], { type: "application/json" });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `broker-connectors-${Date.now()}.json`;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        };
+                        if (!canQuery) {
+                          download(connectors);
+                          return;
+                        }
+                        apiBrokerExportConnectors(base, props.auth)
+                          .then((resp) => {
+                            if (resp?.ok && Array.isArray(resp.connectors)) {
+                              download(resp.connectors);
+                            } else {
+                              download(connectors);
+                            }
+                          })
+                          .catch(() => download(connectors));
                       } catch {
                         // ignore download errors
                       }

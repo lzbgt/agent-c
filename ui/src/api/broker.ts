@@ -84,6 +84,13 @@ export async function apiBrokerListConnectors(brokerBase: string, auth?: ApiAuth
   return BrokerConnectorsRespSchema.parse(j);
 }
 
+export async function apiBrokerExportConnectors(brokerBase: string, auth?: ApiAuth): Promise<BrokerConnectorsResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const r = await fetch(`${base}/v1/connectors/export`, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return BrokerConnectorsRespSchema.parse(j);
+}
+
 export async function apiBrokerListDeployments(
   brokerBase: string,
   agentId: string,
