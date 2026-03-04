@@ -394,6 +394,12 @@ tools/verify_repo_guards.sh --max-total-gb 2 --max-file-mb 5
 tools/verify_repo_guards.sh --max-untracked-mb 200
 ```
 
+Create a mount allowlist template (for sandboxed tool runners):
+
+```bash
+python3 tools/create_mount_allowlist.py
+```
+
 Vendored guard hooks:
 
 ```bash
