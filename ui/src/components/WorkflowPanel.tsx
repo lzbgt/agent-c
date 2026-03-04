@@ -595,6 +595,13 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
     return `curl -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" -d '{"schedule_id":"${id}"}' ${base}/api/v1/workflow_schedule/${action}`;
   };
 
+  const scheduleCreateCurlSnippet = (cron: string, spec: any) => {
+    const base = String(props.baseUrl || "").replace(/\/$/, "");
+    const token = "$AGENTD_AUTH_TOKEN";
+    const payload = JSON.stringify({ cron, timezone: "UTC", spec });
+    return `curl -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" -d '${payload}' ${base}/api/v1/workflow_schedules`;
+  };
+
   const pauseSchedule = async (id: string) => {
     const trimmed = String(id || "").trim();
     if (!trimmed) return;
@@ -1134,6 +1141,38 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                   disabled={scheduleCreateBusy}
                 >
                   {scheduleCreateBusy ? "Creating…" : "Create"}
+                </button>
+                <button
+                  className="rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-white/80 hover:bg-black/50"
+                  type="button"
+                  onClick={() => {
+                    const cron = String(scheduleCron || "").trim();
+                    const cronIssues = validateCronExpr(cron);
+                    if (cronIssues.length > 0) {
+                      setScheduleCronValidation(cronIssues);
+                      setScheduleError("cron validation failed");
+                      return;
+                    }
+                    const specRaw = String(scheduleSpec || "").trim();
+                    if (!specRaw) {
+                      setScheduleError("spec JSON is required");
+                      return;
+                    }
+                    try {
+                      const parsed = JSON.parse(specRaw);
+                      const issues = validateScheduleSpec(parsed);
+                      setScheduleValidation(issues);
+                      if (issues.length > 0) {
+                        setScheduleError("spec validation failed");
+                        return;
+                      }
+                      void copyText("schedule create curl", scheduleCreateCurlSnippet(cron, parsed));
+                    } catch (err) {
+                      setScheduleError(`spec JSON parse error: ${String(err)}`);
+                    }
+                  }}
+                >
+                  copy create curl
                 </button>
               </div>
               <textarea

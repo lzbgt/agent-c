@@ -184,6 +184,7 @@ The WebUI includes a **Workflows** panel for durable workflow inspection:
   - A sample spec button inserts a minimal valid workflow template.
   - Cron expressions are linted client-side for 5-field numeric ranges.
   - Schedule rows include copy-curl shortcuts for pause/resume/delete requests.
+  - The schedule create form can copy a POST curl request for the current cron/spec.
 
 This panel includes a **Workflow composer** with JSON and Graph modes:
 - JSON templates for LLM DAG workflows (A→B/C) and `agentd_parallel` collaboration templates.
