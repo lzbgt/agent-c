@@ -286,6 +286,18 @@ int main() {
   }
   const bool missing_container_status = resp_missing_container.find("400") != std::string::npos;
   const bool missing_container_err = resp_missing_container.find("missing container_path") != std::string::npos;
+
+  std::string resp_invalid_json;
+  const std::string invalid_json_body = "[1,2,3]";
+  if (!http_post("127.0.0.1", port, "/api/v1/sandbox/mount_validate", invalid_json_body, &resp_invalid_json)) {
+    svc.stop();
+    std::cerr << "http_post invalid json failed\n";
+    return 12;
+  }
+  const bool invalid_json_status = resp_invalid_json.find("400") != std::string::npos;
+  const bool invalid_json_err =
+    resp_invalid_json.find("invalid json") != std::string::npos ||
+    resp_invalid_json.find("expected JSON object") != std::string::npos;
   svc.stop();
 
   if (!ok_status || !ok_body || !post_ok_status || !post_ok_body || !post_allowed || !post_readonly || !post_reason ||
@@ -293,7 +305,8 @@ int main() {
       !prefix_ok_status || !prefix_ok_body || !prefix_denied || !prefix_reason ||
       !custom_ok_status || !custom_ok_body || !custom_allowed || !custom_reason ||
       !bad_prefix_ok_status || !bad_prefix_ok_body || !bad_prefix_denied || !bad_prefix_reason ||
-      !missing_host_status || !missing_host_err || !missing_container_status || !missing_container_err) {
+      !missing_host_status || !missing_host_err || !missing_container_status || !missing_container_err ||
+      !invalid_json_status || !invalid_json_err) {
     std::cerr << "unexpected response:\n" << resp << "\n";
     std::cerr << "unexpected post response:\n" << resp_post << "\n";
     std::cerr << "unexpected blocked response:\n" << resp_blocked << "\n";
@@ -302,6 +315,7 @@ int main() {
     std::cerr << "unexpected bad prefix response:\n" << resp_bad_prefix << "\n";
     std::cerr << "unexpected missing host response:\n" << resp_missing_host << "\n";
     std::cerr << "unexpected missing container response:\n" << resp_missing_container << "\n";
+    std::cerr << "unexpected invalid json response:\n" << resp_invalid_json << "\n";
     return 4;
   }
   return 0;
