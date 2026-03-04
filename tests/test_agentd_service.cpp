@@ -266,19 +266,42 @@ int main() {
   const bool bad_prefix_ok_body = resp_bad_prefix.find("\"ok\":true") != std::string::npos;
   const bool bad_prefix_denied = resp_bad_prefix.find("\"allowed\":false") != std::string::npos;
   const bool bad_prefix_reason = resp_bad_prefix.find("\"reason\":\"container_prefix_invalid\"") != std::string::npos;
+
+  std::string resp_missing_host;
+  const std::string missing_host_body = "{}";
+  if (!http_post("127.0.0.1", port, "/api/v1/sandbox/mount_validate", missing_host_body, &resp_missing_host)) {
+    svc.stop();
+    std::cerr << "http_post missing host failed\n";
+    return 10;
+  }
+  const bool missing_host_status = resp_missing_host.find("400") != std::string::npos;
+  const bool missing_host_err = resp_missing_host.find("missing host_path") != std::string::npos;
+
+  std::string resp_missing_container;
+  const std::string missing_container_body = "{\"host_path\":\"/tmp\"}";
+  if (!http_post("127.0.0.1", port, "/api/v1/sandbox/mount_validate", missing_container_body, &resp_missing_container)) {
+    svc.stop();
+    std::cerr << "http_post missing container failed\n";
+    return 11;
+  }
+  const bool missing_container_status = resp_missing_container.find("400") != std::string::npos;
+  const bool missing_container_err = resp_missing_container.find("missing container_path") != std::string::npos;
   svc.stop();
 
   if (!ok_status || !ok_body || !post_ok_status || !post_ok_body || !post_allowed || !post_readonly || !post_reason ||
       !blocked_ok_status || !blocked_ok_body || !blocked_denied || !blocked_reason ||
       !prefix_ok_status || !prefix_ok_body || !prefix_denied || !prefix_reason ||
       !custom_ok_status || !custom_ok_body || !custom_allowed || !custom_reason ||
-      !bad_prefix_ok_status || !bad_prefix_ok_body || !bad_prefix_denied || !bad_prefix_reason) {
+      !bad_prefix_ok_status || !bad_prefix_ok_body || !bad_prefix_denied || !bad_prefix_reason ||
+      !missing_host_status || !missing_host_err || !missing_container_status || !missing_container_err) {
     std::cerr << "unexpected response:\n" << resp << "\n";
     std::cerr << "unexpected post response:\n" << resp_post << "\n";
     std::cerr << "unexpected blocked response:\n" << resp_blocked << "\n";
     std::cerr << "unexpected prefix response:\n" << resp_prefix << "\n";
     std::cerr << "unexpected custom prefix response:\n" << resp_custom << "\n";
     std::cerr << "unexpected bad prefix response:\n" << resp_bad_prefix << "\n";
+    std::cerr << "unexpected missing host response:\n" << resp_missing_host << "\n";
+    std::cerr << "unexpected missing container response:\n" << resp_missing_container << "\n";
     return 4;
   }
   return 0;
