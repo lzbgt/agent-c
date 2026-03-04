@@ -115,6 +115,20 @@ Protocol hardening:
 - malformed JSON or oversized lines are treated as protocol violations
 - stderr is reserved for logs (stdout is JSON-lines only)
 
+## Sandbox mount validation
+
+Operators can validate whether a host path may be mounted into a sandboxed tool runner
+via the mount allowlist:
+
+```bash
+curl -sS -X POST "http://127.0.0.1:60306/api/v1/sandbox/mount_validate" \
+  -H "Content-Type: application/json" \
+  -d '{"host_path":"/Users/you/Documents","container_path":"/workspace/extra/docs","container_prefix":"/workspace/extra","is_main":true}'
+```
+
+This endpoint does not execute a sandbox; it returns an allow/deny decision and
+whether the mount must be read-only.
+
 ### Deterministic testing
 
 ctest includes agentd_tool_server_smoke, which routes a forced tool call to a
