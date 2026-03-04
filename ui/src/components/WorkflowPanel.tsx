@@ -206,6 +206,58 @@ function extractScheduleRuns(resp?: WorkflowScheduleRunsResp | null): any[] {
   return resp.runs;
 }
 
+function validateCronExpr(expr: string): string[] {
+  const issues: string[] = [];
+  const trimmed = String(expr || "").trim();
+  if (!trimmed) {
+    issues.push("cron is required");
+    return issues;
+  }
+  const parts = trimmed.split(/\s+/);
+  if (parts.length !== 5) {
+    issues.push("cron must have 5 fields (min hour day month weekday)");
+    return issues;
+  }
+  const ranges: Array<[number, number, string]> = [
+    [0, 59, "minute"],
+    [0, 23, "hour"],
+    [1, 31, "day of month"],
+    [1, 12, "month"],
+    [0, 7, "weekday"],
+  ];
+  const parseAtom = (token: string, min: number, max: number, label: string): string | null => {
+    if (token === "*") return null;
+    const stepMatch = token.match(/^\*\/(\d+)$/);
+    if (stepMatch) {
+      const step = Number(stepMatch[1]);
+      if (!Number.isFinite(step) || step <= 0) return `${label} step must be > 0`;
+      return null;
+    }
+    const rangeMatch = token.match(/^(\d+)-(\d+)$/);
+    if (rangeMatch) {
+      const start = Number(rangeMatch[1]);
+      const end = Number(rangeMatch[2]);
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return `${label} range must be numeric`;
+      if (start > end) return `${label} range start must be <= end`;
+      if (start < min || end > max) return `${label} range must be within ${min}-${max}`;
+      return null;
+    }
+    const single = Number(token);
+    if (!Number.isFinite(single)) return `${label} entry "${token}" is invalid`;
+    if (single < min || single > max) return `${label} entry must be within ${min}-${max}`;
+    return null;
+  };
+  parts.forEach((part, idx) => {
+    const [min, max, label] = ranges[idx];
+    const tokens = part.split(",");
+    tokens.forEach((token) => {
+      const issue = parseAtom(token, min, max, label);
+      if (issue) issues.push(issue);
+    });
+  });
+  return issues;
+}
+
 function validateScheduleSpec(spec: any): string[] {
   const issues: string[] = [];
   if (!spec || typeof spec !== "object" || Array.isArray(spec)) {
@@ -261,6 +313,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   const [scheduleRunsFilter, setScheduleRunsFilter] = useLocalStorageState("agentui.workflowScheduleRunsFilter", "");
   const [scheduleError, setScheduleError] = React.useState<string | null>(null);
   const [scheduleValidation, setScheduleValidation] = React.useState<string[]>([]);
+  const [scheduleCronValidation, setScheduleCronValidation] = React.useState<string[]>([]);
   const [scheduleBusyId, setScheduleBusyId] = React.useState<string | null>(null);
   const [scheduleCreateBusy, setScheduleCreateBusy] = React.useState(false);
   const [copyNotice, setCopyNotice] = React.useState<string | null>(null);
@@ -485,8 +538,10 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
       return;
     }
     const cron = String(scheduleCron || "").trim();
-    if (!cron) {
-      setScheduleError("cron is required");
+    const cronIssues = validateCronExpr(cron);
+    setScheduleCronValidation(cronIssues);
+    if (cronIssues.length > 0) {
+      setScheduleError("cron validation failed");
       return;
     }
     const specRaw = String(scheduleSpec || "").trim();
@@ -1032,7 +1087,12 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                 <input
                   className="min-w-[160px] flex-1 rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-white/80"
                   value={String(scheduleCron || "")}
-                  onChange={(e) => setScheduleCron(e.target.value)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setScheduleCron(next);
+                    if (scheduleError) setScheduleError(null);
+                    setScheduleCronValidation(validateCronExpr(next));
+                  }}
                   placeholder="cron (e.g. 0 9 * * 1-5)"
                 />
                 <div className="rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-white/50">
@@ -1068,10 +1128,20 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
               <textarea
                 className="min-h-[120px] rounded border border-white/10 bg-black/40 px-2 py-2 text-[11px] text-white/80"
                 value={String(scheduleSpec || "")}
-                onChange={(e) => setScheduleSpec(e.target.value)}
+                onChange={(e) => {
+                  setScheduleSpec(e.target.value);
+                  if (scheduleError) setScheduleError(null);
+                }}
                 placeholder='spec JSON (workflow submit payload, e.g. {"tasks":[...], "defaults":{...}})'
               />
               {scheduleError ? <div className="text-[11px] text-rose-200">{scheduleError}</div> : null}
+              {scheduleCronValidation.length > 0 ? (
+                <div className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-100">
+                  {scheduleCronValidation.map((msg, idx) => (
+                    <div key={`cron-${msg}-${idx}`}>{msg}</div>
+                  ))}
+                </div>
+              ) : null}
               {scheduleValidation.length > 0 ? (
                 <div className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-100">
                   {scheduleValidation.map((msg, idx) => (
