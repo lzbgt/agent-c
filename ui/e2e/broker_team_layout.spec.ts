@@ -1,4 +1,6 @@
 import { test, expect } from "@playwright/test";
+import fs from "fs/promises";
+import path from "path";
 
 test("broker teams layout screenshot", async ({ page }, testInfo) => {
   const teamId = "team-alpha";
@@ -200,5 +202,19 @@ test("broker teams layout screenshot", async ({ page }, testInfo) => {
   await teamTabs.getByRole("button", { name: "Setup" }).click();
   await expect(page.getByText("Quick team builder", { exact: true })).toBeVisible();
 
-  await page.screenshot({ path: testInfo.outputPath("broker_team_layout.png"), fullPage: true });
+  const screenshotPath = testInfo.outputPath("broker_team_layout.png");
+  await page.screenshot({ path: screenshotPath, fullPage: true });
+
+  const outTarget = process.env.AGENT_E2E_SCREENSHOT_OUT;
+  if (outTarget) {
+    const targetPath = outTarget.endsWith(".png")
+      ? outTarget
+      : path.join(outTarget, "broker_team_layout.png");
+    try {
+      await fs.mkdir(path.dirname(targetPath), { recursive: true });
+      await fs.copyFile(screenshotPath, targetPath);
+    } catch {
+      // ignore best-effort copy
+    }
+  }
 });
