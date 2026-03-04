@@ -15,6 +15,7 @@ without importing NanoClaw wholesale or diluting our SOLID boundaries.
 - `refs/nanoclaw/README.md`
 - `refs/nanoclaw/docs/SPEC.md`
 - `refs/nanoclaw/docs/SECURITY.md`
+- `refs/nanoclaw/docs/SDK_DEEP_DIVE.md`
 
 ## Goals
 
@@ -135,6 +136,32 @@ without importing NanoClaw wholesale or diluting our SOLID boundaries.
 1. Define a `tools/skills/` catalog with small, auditable patch scripts.
 2. Add a WebUI “Guided change” panel that executes a chosen skill and
    shows a diff preview before applying.
+
+### 7) Agent teams: streaming sessions + multi-result handling
+
+**NanoClaw pattern**
+- The SDK’s agent-team mode keeps the leader process alive **after** the first
+  `result` message, continuing to yield further results and task notifications.
+- If the SDK is used in single-turn (string prompt) mode, it closes stdin after
+  the first `result`, which can terminate teammates mid-task.
+- The `resumeSessionAt` option anchors resumption to a specific assistant message
+  UUID to prevent branching on stale session tips.
+
+**Leverage in our system**
+- Treat team runs as **multi-result streams**: don’t assume “first result wins.”
+- Keep team sessions open while teammate work is active; only finalize after the
+  team signal indicates all members are done (or an explicit shutdown is issued).
+- Add **session anchoring** to prevent race conditions when multiple roles share
+  a backing model session (or when cross-role handoffs reuse context).
+
+**Integration steps**
+1. Extend the run stream contract to permit **multiple terminal results** for
+   team runs and surface them in the WebUI timeline in order.
+2. Add a `session_anchor_id` (or equivalent) to team member runs to ensure
+   resume points are deterministic across concurrent roles.
+3. For provider adapters that support “streaming input” semantics, keep the
+   input channel open until all teammates have completed or timed out; then
+   issue a coordinated shutdown sequence.
 
 ## Risks and tradeoffs
 

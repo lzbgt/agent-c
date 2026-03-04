@@ -2615,8 +2615,8 @@ export default function App() {
   const advancedGridCols = focusAdvancedPanel
     ? "lg:grid-cols-[var(--tools-col)_minmax(0,1fr)]"
     : advancedPage === "broker"
-      ? "lg:grid-cols-[var(--tools-col)_minmax(320px,1fr)_minmax(480px,60vw)]"
-      : "lg:grid-cols-[var(--tools-col)_minmax(0,1fr)_minmax(360px,48vw)]";
+      ? "lg:grid-cols-[var(--tools-col)_minmax(260px,1fr)_minmax(0,1.4fr)]"
+      : "lg:grid-cols-[var(--tools-col)_minmax(0,1fr)_minmax(0,1fr)]";
 
   React.useEffect(() => {
     if (!advancedPage && focusAdvancedPanel) {
@@ -2758,7 +2758,7 @@ export default function App() {
                   : "lg:grid-cols-[var(--tools-col)_minmax(0,1fr)]"
               }`}
               style={{
-                ["--tools-col" as any]: toolsCollapsed ? "72px" : "minmax(180px,16vw)",
+                ["--tools-col" as any]: toolsCollapsed ? "72px" : "minmax(140px,12vw)",
               }}
             >
               <aside

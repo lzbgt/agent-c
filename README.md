@@ -23,10 +23,7 @@ Docs quickstart:
 - Deployment checklist (agentd + broker + WebUI): `docs/DEPLOYMENT.md`
 - Daemon ops + runtime config: `docs/AGENTD.md`
 - CLI usage + tool-loop guidance: `docs/CLI.md`
-- WebUI dev/build/runtime config
-
-
-: `docs/WEBUI.md`
+- WebUI dev/build/runtime config: `docs/WEBUI.md`
 - Full docs index: `docs/README.md`
 
 Handbook guard:
