@@ -2549,6 +2549,37 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                 <span className="text-white/50"> · {formatBytes(diag.db.size_bytes)}</span>
               ) : null}
             </div>
+            {diag?.sandbox_mount_allowlist && typeof diag.sandbox_mount_allowlist === "object" ? (
+              <div>
+                mount allowlist:{" "}
+                <code className="text-white/70">
+                  {typeof (diag.sandbox_mount_allowlist as any).path === "string"
+                    ? (diag.sandbox_mount_allowlist as any).path
+                    : "(unknown)"}
+                </code>
+                <span className="text-white/50">
+                  {" "}
+                  · present {String((diag.sandbox_mount_allowlist as any).present ?? false)} · loaded{" "}
+                  {String((diag.sandbox_mount_allowlist as any).loaded ?? false)}
+                </span>
+                {typeof (diag.sandbox_mount_allowlist as any).allowed_roots === "number" ? (
+                  <span className="text-white/50">
+                    {" "}
+                    · roots {(diag.sandbox_mount_allowlist as any).allowed_roots}
+                  </span>
+                ) : null}
+                {typeof (diag.sandbox_mount_allowlist as any).blocked_patterns === "number" ? (
+                  <span className="text-white/50">
+                    {" "}
+                    · blocked {(diag.sandbox_mount_allowlist as any).blocked_patterns}
+                  </span>
+                ) : null}
+                {typeof (diag.sandbox_mount_allowlist as any).error === "string" &&
+                (diag.sandbox_mount_allowlist as any).error ? (
+                  <div className="text-rose-200">allowlist error: {(diag.sandbox_mount_allowlist as any).error}</div>
+                ) : null}
+              </div>
+            ) : null}
             {diag?.jobs && typeof diag.jobs === "object" ? (
               <div>
                 jobs total:{" "}
