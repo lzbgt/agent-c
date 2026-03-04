@@ -85,6 +85,12 @@ int main() {
   }
 
   {
+    const auto res = validate(&allow, ok.string(), "/etc/passwd", true);
+    assert(!res.allowed);
+    assert(res.reason == "container_path_outside_prefix");
+  }
+
+  {
     const auto res = validate(&allow, blocked.string(), "/workspace/extra/blocked", true);
     assert(!res.allowed);
     assert(res.reason == "blocked_pattern");
