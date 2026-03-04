@@ -1287,8 +1287,15 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                 const kind = String(connector?.kind || "");
                 const status = String(connector?.status || "");
                 const description = String(connector?.description || "");
-                const lastSeen = connector?.last_seen_unix_ms ? fmtTs(connector.last_seen_unix_ms) : "";
+                const lastSeenMs = typeof connector?.last_seen_unix_ms === "number" ? connector.last_seen_unix_ms : 0;
+                const lastSeen = lastSeenMs ? fmtTs(lastSeenMs) : "";
+                const nowMs = Date.now();
+                const ageMs = lastSeenMs > 0 ? Math.max(0, nowMs - lastSeenMs) : 0;
+                const isStale = lastSeenMs > 0 && ageMs > 10 * 60 * 1000;
+                const isMissing = lastSeenMs === 0;
                 const lastError = String(connector?.last_error || "");
+                const statusTone = isMissing ? "text-amber-200" : isStale ? "text-amber-200" : "text-emerald-200";
+                const statusLabel = isMissing ? "unknown" : isStale ? "stale" : "fresh";
                 return (
                   <div key={id} className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1">
                     <div className="flex flex-col">
@@ -1296,6 +1303,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                       <div className="text-[11px] text-white/50">
                         {kind ? `kind: ${kind}` : "kind: (unspecified)"}
                         {status ? ` · ${status}` : ""}
+                        <span className={`ml-2 ${statusTone}`}>· {statusLabel}</span>
                       </div>
                       {lastSeen ? <div className="text-[11px] text-white/50">last seen: {lastSeen}</div> : null}
                       {lastError ? (
