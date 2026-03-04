@@ -408,6 +408,15 @@ curl -sS -X POST "http://127.0.0.1:60306/api/v1/sandbox/mount_validate" \
   -d '{"host_path":"/Users/you/Documents","container_path":"/workspace/extra/docs","container_prefix":"/workspace/extra","is_main":true}'
 ```
 
+If `agentd` is started with `--auth-token`, include the `Authorization: Bearer ...` header:
+
+```bash
+curl -sS -X POST "http://127.0.0.1:60306/api/v1/sandbox/mount_validate" \
+  -H "Authorization: Bearer $AGENTD_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"host_path":"/Users/you/Documents","container_path":"/workspace/extra/docs","container_prefix":"/workspace/extra","is_main":true}'
+```
+
 Vendored guard hooks:
 
 ```bash
