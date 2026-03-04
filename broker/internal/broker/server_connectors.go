@@ -47,6 +47,10 @@ func (s *Server) handleConnectorsSubroutes(w http.ResponseWriter, r *http.Reques
 	if len(parts) > 1 {
 		action = parts[1]
 	}
+	if connectorID == "export" && action == "" {
+		s.handleConnectorsExport(w, r)
+		return
+	}
 	if action != "status" {
 		writeErrorJSON(w, "not found", http.StatusNotFound)
 		return
@@ -89,5 +93,31 @@ func (s *Server) handleConnectorsSubroutes(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, map[string]any{
 		"ok":        true,
 		"connector": updated,
+	})
+}
+
+func (s *Server) handleConnectorsExport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	_, err := s.requirePrincipal(r)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	connectors := []any{}
+	if s.cfg.Connectors != nil {
+		list := s.cfg.Connectors.List()
+		connectors = make([]any, 0, len(list))
+		for _, c := range list {
+			connectors = append(connectors, c)
+		}
+	}
+	writeJSON(w, map[string]any{
+		"ok":         true,
+		"exported":   true,
+		"count":      len(connectors),
+		"connectors": connectors,
 	})
 }

@@ -48,6 +48,7 @@ Status updates:
 
 Helper:
 - `broker/cmd/agentd-connector-status` can post and optionally repeat status updates.
+- `GET /v1/connectors/export` returns the full registry as JSON (auth required).
 
 ## Why a broker (vs exposing agentd HTTP directly)
 
