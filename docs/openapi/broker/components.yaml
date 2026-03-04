@@ -215,6 +215,48 @@ schemas:
       role: { type: string }
       trace_id: { type: string }
 
+  ConnectorInfo:
+    type: object
+    required: [id]
+    properties:
+      id: { type: string }
+      name: { type: string }
+      kind: { type: string }
+      status: { type: string }
+      description: { type: string }
+      last_seen_unix_ms: { type: integer, format: int64 }
+      last_error: { type: string }
+      meta:
+        type: object
+        additionalProperties: true
+
+  ConnectorListResponse:
+    type: object
+    required: [ok, connectors]
+    properties:
+      ok: { type: boolean }
+      count: { type: integer, format: int32 }
+      connectors:
+        type: array
+        items:
+          $ref: "#/components/schemas/ConnectorInfo"
+
+  ConnectorStatusUpdate:
+    type: object
+    required: [status]
+    properties:
+      status: { type: string }
+      last_error: { type: string }
+      ts_unix_ms: { type: integer, format: int64 }
+
+  ConnectorStatusResponse:
+    type: object
+    required: [ok, connector]
+    properties:
+      ok: { type: boolean }
+      connector:
+        $ref: "#/components/schemas/ConnectorInfo"
+
   Team:
     type: object
     required: [team_id, display_name, created_unix_ms]

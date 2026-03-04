@@ -107,6 +107,53 @@
             schema:
               $ref: "#/components/schemas/ClientPrefsResponse"
 
+/v1/connectors:
+  get:
+    tags: [connectors]
+    summary: List registered connectors
+    responses:
+      "200":
+        description: Connector registry
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectorListResponse"
+
+/v1/connectors/export:
+  get:
+    tags: [connectors]
+    summary: Export connector registry
+    responses:
+      "200":
+        description: Connector registry export
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectorListResponse"
+
+/v1/connectors/{connector_id}/status:
+  post:
+    tags: [connectors]
+    summary: Update connector status (admin)
+    parameters:
+      - in: path
+        name: connector_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ConnectorStatusUpdate"
+    responses:
+      "200":
+        description: Updated connector status
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectorStatusResponse"
+
 /v1/agents:
   get:
     tags: [agents]
