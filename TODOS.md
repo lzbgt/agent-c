@@ -210,6 +210,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-03-04: added `tools/skills/preview_skill.py` to apply skills in a temp worktree and capture diffs.
   - 2026-03-04: added `tools/skills/validate_manifest.py` and a sample skill template.
   - 2026-03-04: added `tools/skills/skill_status.py` to list applied skills from state.
+  - 2026-03-04: drafted `docs/spec/skills_system_v0.md` and linked it from the spec index.
   - 2026-02-25 check: `tools/probe_openrouter_stream_models.sh` still skips with chat 401; `tools/openrouter_auth_debug.sh` reports `chat_status=401` and `User not found` (key source `~/.env`).
   - 2026-02-19 check: `tools/openrouter_auth_debug.sh` shows `/models` ok (models_count=337) but `/chat/completions` returns 401 “User not found”.
 - [x] W=9 — Drift response policy: allow `drift_action=guidance` to emit a guidance item for operator intervention, with default human target and tests.

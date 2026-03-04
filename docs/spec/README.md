@@ -59,3 +59,7 @@ declares its own status (draft/rolling/implemented) in the document header.
 ## Integration leverage
 
 - `nanoclaw_leverage_v0.md`: NanoClaw pattern leverage map and integration steps (draft).
+
+## Developer tooling
+
+- `skills_system_v0.md`: skills system manifest + apply/preview/validate flows (draft).
