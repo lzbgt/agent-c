@@ -159,6 +159,7 @@ Sandbox mount allowlist:
 - Generate a template with `python3 tools/create_mount_allowlist.py`.
 - Diagnostics expose status in `/api/v1/diagnostics` (`sandbox_mount_allowlist`).
 - Validate mounts via `POST /api/v1/sandbox/mount_validate` (returns allow/deny + readonly decision).
+  - Example request in `docs/TOOLS.md`.
 
 ## Policy hooks (allow/deny + budget caps)
 
