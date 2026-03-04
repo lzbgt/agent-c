@@ -254,6 +254,20 @@ int main() {
   const bool custom_allowed = resp_custom.find("\"allowed\":true") != std::string::npos;
   const bool custom_reason = resp_custom.find("\"reason\":\"ok\"") != std::string::npos;
 
+  std::string resp_non_main;
+  const std::string non_main_body =
+    std::string("{\"host_path\":\"") + allow_root_str +
+    "\",\"container_path\":\"/workspace/extra/nonmain\",\"container_prefix\":\"/workspace/extra\",\"is_main\":false}";
+  if (!http_post("127.0.0.1", port, "/api/v1/sandbox/mount_validate", non_main_body, &resp_non_main)) {
+    svc.stop();
+    std::cerr << "http_post non-main failed\n";
+    return 13;
+  }
+  const bool non_main_ok_status = resp_non_main.find("200") != std::string::npos;
+  const bool non_main_ok_body = resp_non_main.find("\"ok\":true") != std::string::npos;
+  const bool non_main_allowed = resp_non_main.find("\"allowed\":true") != std::string::npos;
+  const bool non_main_readonly = resp_non_main.find("\"readonly\":true") != std::string::npos;
+
   std::string resp_bad_prefix;
   const std::string bad_prefix_body =
     std::string("{\"host_path\":\"") + allow_root_str + "\",\"container_path\":\"/data/ok\",\"container_prefix\":\"data\"}";
@@ -266,6 +280,21 @@ int main() {
   const bool bad_prefix_ok_body = resp_bad_prefix.find("\"ok\":true") != std::string::npos;
   const bool bad_prefix_denied = resp_bad_prefix.find("\"allowed\":false") != std::string::npos;
   const bool bad_prefix_reason = resp_bad_prefix.find("\"reason\":\"container_prefix_invalid\"") != std::string::npos;
+
+  std::string resp_bad_container;
+  const std::string bad_container_body =
+    std::string("{\"host_path\":\"") + allow_root_str + "\",\"container_path\":\"/workspace/extra/../etc\",\"container_prefix\":\"/workspace/extra\"}";
+  if (!http_post("127.0.0.1", port, "/api/v1/sandbox/mount_validate", bad_container_body, &resp_bad_container)) {
+    svc.stop();
+    std::cerr << "http_post bad container failed\n";
+    return 14;
+  }
+  const bool bad_container_ok_status = resp_bad_container.find("200") != std::string::npos;
+  const bool bad_container_ok_body = resp_bad_container.find("\"ok\":true") != std::string::npos;
+  const bool bad_container_denied = resp_bad_container.find("\"allowed\":false") != std::string::npos;
+  const bool bad_container_reason =
+    resp_bad_container.find("\"reason\":\"container_path_invalid\"") != std::string::npos ||
+    resp_bad_container.find("\"reason\":\"container_path_outside_prefix\"") != std::string::npos;
 
   std::string resp_missing_host;
   const std::string missing_host_body = "{}";
@@ -304,7 +333,9 @@ int main() {
       !blocked_ok_status || !blocked_ok_body || !blocked_denied || !blocked_reason ||
       !prefix_ok_status || !prefix_ok_body || !prefix_denied || !prefix_reason ||
       !custom_ok_status || !custom_ok_body || !custom_allowed || !custom_reason ||
+      !non_main_ok_status || !non_main_ok_body || !non_main_allowed || !non_main_readonly ||
       !bad_prefix_ok_status || !bad_prefix_ok_body || !bad_prefix_denied || !bad_prefix_reason ||
+      !bad_container_ok_status || !bad_container_ok_body || !bad_container_denied || !bad_container_reason ||
       !missing_host_status || !missing_host_err || !missing_container_status || !missing_container_err ||
       !invalid_json_status || !invalid_json_err) {
     std::cerr << "unexpected response:\n" << resp << "\n";
@@ -312,7 +343,9 @@ int main() {
     std::cerr << "unexpected blocked response:\n" << resp_blocked << "\n";
     std::cerr << "unexpected prefix response:\n" << resp_prefix << "\n";
     std::cerr << "unexpected custom prefix response:\n" << resp_custom << "\n";
+    std::cerr << "unexpected non-main response:\n" << resp_non_main << "\n";
     std::cerr << "unexpected bad prefix response:\n" << resp_bad_prefix << "\n";
+    std::cerr << "unexpected bad container response:\n" << resp_bad_container << "\n";
     std::cerr << "unexpected missing host response:\n" << resp_missing_host << "\n";
     std::cerr << "unexpected missing container response:\n" << resp_missing_container << "\n";
     std::cerr << "unexpected invalid json response:\n" << resp_invalid_json << "\n";
