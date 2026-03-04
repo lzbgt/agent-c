@@ -278,6 +278,13 @@ Playwright will auto-start a local Vite dev server for UI e2e runs unless
 
 The open-world harness scripts under `tests/` set these flags for you when they run.
 
+To capture a full-page Teams layout screenshot from the broker console (uses the
+mocked Playwright spec and writes the PNG to `out/`):
+
+```bash
+tools/capture_broker_team_layout.sh
+```
+
 Open-world harness entry points (stub provider, deterministic):
 
 ```bash
