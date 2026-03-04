@@ -1,6 +1,20 @@
 import React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiCancelWorkflow, apiGetWorkflow, apiListWorkflows, type WorkflowDetailResp, type WorkflowListResp } from "../api";
+import {
+  apiCancelWorkflow,
+  apiGetWorkflow,
+  apiListWorkflows,
+  apiCreateWorkflowSchedule,
+  apiDeleteWorkflowSchedule,
+  apiListWorkflowScheduleRuns,
+  apiListWorkflowSchedules,
+  apiPauseWorkflowSchedule,
+  apiResumeWorkflowSchedule,
+  type WorkflowDetailResp,
+  type WorkflowListResp,
+  type WorkflowScheduleListResp,
+  type WorkflowScheduleRunsResp,
+} from "../api";
 import type { ApiAuth } from "../api/auth";
 import useLocalStorageState from "../hooks/useLocalStorageState";
 import WorkflowComposer from "./WorkflowComposer";
@@ -32,6 +46,7 @@ type WorkflowTask = {
 };
 
 const STATUS_OPTIONS = ["running", "queued", "active", "done", "error", "cancelled", "all"];
+const SCHEDULE_STATUS_OPTIONS = ["active", "paused", "error", "all"];
 
 function normalizeTask(raw: any): WorkflowTask | null {
   if (!raw || typeof raw !== "object") return null;
@@ -159,6 +174,16 @@ function countByStatus(tasks: WorkflowTask[]) {
   return counts;
 }
 
+function extractSchedules(resp?: WorkflowScheduleListResp | null): any[] {
+  if (!resp || !Array.isArray(resp.schedules)) return [];
+  return resp.schedules;
+}
+
+function extractScheduleRuns(resp?: WorkflowScheduleRunsResp | null): any[] {
+  if (!resp || !Array.isArray(resp.runs)) return [];
+  return resp.runs;
+}
+
 export default function WorkflowPanel(props: WorkflowPanelProps) {
   const [workflowId, setWorkflowId] = useLocalStorageState("agentui.workflowLookupId", "");
   const [listStatus, setListStatus] = useLocalStorageState("agentui.workflowListStatus", "active");
@@ -171,12 +196,36 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   const [detail, setDetail] = React.useState<WorkflowDetailResp | null>(null);
   const [detailError, setDetailError] = React.useState<string | null>(null);
   const [cancelBusyId, setCancelBusyId] = React.useState<string | null>(null);
+  const [scheduleStatus, setScheduleStatus] = useLocalStorageState("agentui.workflowScheduleStatus", "active");
+  const [scheduleLimit, setScheduleLimit] = useLocalStorageState("agentui.workflowScheduleLimit", "50");
+  const [scheduleAutoRefresh, setScheduleAutoRefresh] = useLocalStorageState("agentui.workflowScheduleAutoRefresh", false);
+  const [scheduleCron, setScheduleCron] = useLocalStorageState("agentui.workflowScheduleCron", "0 9 * * 1-5");
+  const [scheduleSpec, setScheduleSpec] = useLocalStorageState("agentui.workflowScheduleSpec", "");
+  const [scheduleId, setScheduleId] = useLocalStorageState("agentui.workflowScheduleId", "");
+  const [scheduleRunsLimit, setScheduleRunsLimit] = useLocalStorageState("agentui.workflowScheduleRunsLimit", "50");
+  const [scheduleError, setScheduleError] = React.useState<string | null>(null);
+  const [scheduleBusyId, setScheduleBusyId] = React.useState<string | null>(null);
+  const [scheduleCreateBusy, setScheduleCreateBusy] = React.useState(false);
   const [copyNotice, setCopyNotice] = React.useState<string | null>(null);
   const copyTimerRef = React.useRef<number | null>(null);
 
   const normalizedListStatus = STATUS_OPTIONS.includes(String(listStatus)) ? String(listStatus) : "running";
   const limitValue = (() => {
     const n = Number(listLimit);
+    if (!Number.isFinite(n)) return 50;
+    return Math.min(Math.max(Math.trunc(n), 1), 200);
+  })();
+
+  const normalizedScheduleStatus = SCHEDULE_STATUS_OPTIONS.includes(String(scheduleStatus))
+    ? String(scheduleStatus)
+    : "active";
+  const scheduleLimitValue = (() => {
+    const n = Number(scheduleLimit);
+    if (!Number.isFinite(n)) return 50;
+    return Math.min(Math.max(Math.trunc(n), 1), 200);
+  })();
+  const scheduleRunsLimitValue = (() => {
+    const n = Number(scheduleRunsLimit);
     if (!Number.isFinite(n)) return 50;
     return Math.min(Math.max(Math.trunc(n), 1), 200);
   })();
@@ -206,6 +255,36 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
       );
     });
   }, [listFilter, listQuery.data]);
+
+  const scheduleListQuery = useQuery({
+    queryKey: ["workflow-schedules", props.baseUrl, props.authKey, normalizedScheduleStatus, scheduleLimitValue],
+    queryFn: () =>
+      apiListWorkflowSchedules(
+        props.baseUrl,
+        {
+          status: normalizedScheduleStatus === "all" ? undefined : normalizedScheduleStatus,
+          limit: scheduleLimitValue,
+          offset: 0,
+        },
+        props.auth,
+      ),
+    enabled: props.open && !!props.baseUrl,
+    staleTime: 5_000,
+    refetchInterval: scheduleAutoRefresh ? 5_000 : false,
+  });
+
+  const scheduleRunsQuery = useQuery({
+    queryKey: ["workflow-schedule-runs", props.baseUrl, props.authKey, scheduleId, scheduleRunsLimitValue],
+    queryFn: () =>
+      apiListWorkflowScheduleRuns(
+        props.baseUrl,
+        { scheduleId: String(scheduleId || ""), limit: scheduleRunsLimitValue, offset: 0 },
+        props.auth,
+      ),
+    enabled: props.open && !!props.baseUrl && String(scheduleId || "").trim().length > 0,
+    staleTime: 5_000,
+    refetchInterval: scheduleAutoRefresh ? 5_000 : false,
+  });
 
   React.useEffect(() => {
     const next = String(listFilter || "").trim();
@@ -254,6 +333,12 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
     workflowLookup.mutate(trimmed);
   };
 
+  const loadScheduleRuns = (id: string) => {
+    const trimmed = String(id || "").trim();
+    if (!trimmed) return;
+    setScheduleId(trimmed);
+  };
+
   const cancelWorkflow = async (id: string) => {
     const trimmed = String(id || "").trim();
     if (!trimmed) return;
@@ -275,6 +360,126 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
     }
     loadWorkflow(trimmed);
     void listQuery.refetch();
+  };
+
+  const createSchedule = async () => {
+    if (!props.baseUrl) {
+      setScheduleError("Base URL is not set.");
+      return;
+    }
+    const cron = String(scheduleCron || "").trim();
+    if (!cron) {
+      setScheduleError("cron is required");
+      return;
+    }
+    const specRaw = String(scheduleSpec || "").trim();
+    if (!specRaw) {
+      setScheduleError("spec JSON is required");
+      return;
+    }
+    let specObj: any = null;
+    try {
+      specObj = JSON.parse(specRaw);
+    } catch (err) {
+      setScheduleError(`spec JSON parse error: ${String(err)}`);
+      return;
+    }
+    if (!specObj || typeof specObj !== "object") {
+      setScheduleError("spec must be a JSON object");
+      return;
+    }
+    setScheduleCreateBusy(true);
+    setScheduleError(null);
+    try {
+      const resp = await apiCreateWorkflowSchedule(
+        props.baseUrl,
+        { cron, timezone: "UTC", spec: specObj },
+        props.auth,
+      );
+      if (resp && resp.ok === false) {
+        setScheduleError(resp.error || "schedule create failed");
+      } else if (resp && resp.schedule_id) {
+        setScheduleId(resp.schedule_id);
+      }
+      void scheduleListQuery.refetch();
+      void scheduleRunsQuery.refetch();
+    } catch (err) {
+      setScheduleError(String(err));
+    } finally {
+      setScheduleCreateBusy(false);
+    }
+  };
+
+  const pauseSchedule = async (id: string) => {
+    const trimmed = String(id || "").trim();
+    if (!trimmed) return;
+    if (!props.baseUrl) {
+      setScheduleError("Base URL is not set.");
+      return;
+    }
+    setScheduleBusyId(trimmed);
+    setScheduleError(null);
+    try {
+      const resp = await apiPauseWorkflowSchedule(props.baseUrl, trimmed, props.auth);
+      if (resp && resp.ok === false) setScheduleError(resp.error || "schedule pause failed");
+    } catch (err) {
+      setScheduleError(String(err));
+    } finally {
+      setScheduleBusyId(null);
+    }
+    void scheduleListQuery.refetch();
+  };
+
+  const resumeSchedule = async (id: string) => {
+    const trimmed = String(id || "").trim();
+    if (!trimmed) return;
+    if (!props.baseUrl) {
+      setScheduleError("Base URL is not set.");
+      return;
+    }
+    setScheduleBusyId(trimmed);
+    setScheduleError(null);
+    try {
+      const resp = await apiResumeWorkflowSchedule(props.baseUrl, trimmed, props.auth);
+      if (resp && resp.ok === false) setScheduleError(resp.error || "schedule resume failed");
+    } catch (err) {
+      setScheduleError(String(err));
+    } finally {
+      setScheduleBusyId(null);
+    }
+    void scheduleListQuery.refetch();
+  };
+
+  const deleteSchedule = async (id: string) => {
+    const trimmed = String(id || "").trim();
+    if (!trimmed) return;
+    if (!props.baseUrl) {
+      setScheduleError("Base URL is not set.");
+      return;
+    }
+    setScheduleBusyId(trimmed);
+    setScheduleError(null);
+    try {
+      const resp = await apiDeleteWorkflowSchedule(props.baseUrl, trimmed, props.auth);
+      if (resp && resp.ok === false) setScheduleError(resp.error || "schedule delete failed");
+    } catch (err) {
+      setScheduleError(String(err));
+    } finally {
+      setScheduleBusyId(null);
+    }
+    if (String(scheduleId || "") === trimmed) setScheduleId("");
+    void scheduleListQuery.refetch();
+    void scheduleRunsQuery.refetch();
+  };
+
+  const loadSpecFromWorkflow = () => {
+    if (detail?.spec_json) {
+      setScheduleSpec(detail.spec_json);
+      return;
+    }
+    if (detail?.spec && typeof detail.spec === "object") {
+      setScheduleSpec(JSON.stringify(detail.spec, null, 2));
+    }
   };
 
   const copyText = async (label: string, value?: string | null) => {
@@ -542,6 +747,235 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                 {String(listFilter || "").trim() ? " Clear the filter to see more." : ""}
               </div>
             ) : null}
+          </div>
+        </div>
+
+        <div className="rounded-md border border-white/10 bg-black/30 p-3">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs font-semibold text-white/70">Workflow schedules (UTC)</div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+              <label className="flex items-center gap-1">
+                status
+                <select
+                  className="rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
+                  value={normalizedScheduleStatus}
+                  onChange={(e) => setScheduleStatus(e.target.value)}
+                >
+                  {SCHEDULE_STATUS_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-1">
+                limit
+                <input
+                  className="w-[56px] rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
+                  value={String(scheduleLimit || "")}
+                  onChange={(e) => setScheduleLimit(e.target.value)}
+                />
+              </label>
+              <label className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  className="h-3 w-3"
+                  checked={!!scheduleAutoRefresh}
+                  onChange={(e) => setScheduleAutoRefresh(e.target.checked)}
+                />
+                auto
+              </label>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                type="button"
+                onClick={() => scheduleListQuery.refetch()}
+                disabled={scheduleListQuery.isFetching}
+              >
+                {scheduleListQuery.isFetching ? "Refreshing…" : "Refresh"}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <div className="grid gap-2 rounded-md border border-white/10 bg-black/40 p-2">
+              <div className="text-[11px] text-white/60">Create schedule</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  className="min-w-[160px] flex-1 rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-white/80"
+                  value={String(scheduleCron || "")}
+                  onChange={(e) => setScheduleCron(e.target.value)}
+                  placeholder="cron (e.g. 0 9 * * 1-5)"
+                />
+                <div className="rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-white/50">
+                  timezone UTC
+                </div>
+                <button
+                  className="rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-white/70 hover:bg-black/50"
+                  type="button"
+                  onClick={() => loadSpecFromWorkflow()}
+                >
+                  use loaded spec
+                </button>
+                <button
+                  className="rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-white/80 hover:bg-black/50 disabled:opacity-50"
+                  type="button"
+                  onClick={() => void createSchedule()}
+                  disabled={scheduleCreateBusy}
+                >
+                  {scheduleCreateBusy ? "Creating…" : "Create"}
+                </button>
+              </div>
+              <textarea
+                className="min-h-[120px] rounded border border-white/10 bg-black/40 px-2 py-2 text-[11px] text-white/80"
+                value={String(scheduleSpec || "")}
+                onChange={(e) => setScheduleSpec(e.target.value)}
+                placeholder='spec JSON (workflow submit payload, e.g. {"tasks":[...], "defaults":{...}})'
+              />
+              {scheduleError ? <div className="text-[11px] text-rose-200">{scheduleError}</div> : null}
+            </div>
+
+            {!props.baseUrl ? (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-100">
+                Set a daemon base URL to manage schedules.
+              </div>
+            ) : null}
+            {scheduleListQuery.isError ? (
+              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-xs text-rose-200">
+                {String(scheduleListQuery.error)}
+              </div>
+            ) : null}
+
+            <div className="grid gap-2">
+              {extractSchedules(scheduleListQuery.data).map((sched: any) => {
+                const id = String(sched.schedule_id || "").trim();
+                const status = String(sched.status || "").toLowerCase();
+                return (
+                  <div
+                    key={id || Math.random()}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/10 bg-black/40 px-2 py-2 text-left text-xs text-white/80"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!id) return;
+                        loadScheduleRuns(id);
+                      }}
+                      className="flex flex-1 flex-wrap items-center justify-between gap-2 text-left hover:text-white"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded border px-2 py-0.5 text-[10px] ${statusBadge(status)}`}>
+                          {status || "unknown"}
+                        </span>
+                        <span className="font-mono text-[11px] text-white/80">{id}</span>
+                        {sched.cron ? <span className="text-[10px] text-white/50">cron {String(sched.cron)}</span> : null}
+                        {sched.next_tick_unix_ms ? (
+                          <span className="text-[10px] text-white/50">
+                            next {formatUnixMs(sched.next_tick_unix_ms)}
+                          </span>
+                        ) : null}
+                        {sched.last_error ? (
+                          <span className="text-[10px] text-rose-200">err {String(sched.last_error)}</span>
+                        ) : null}
+                      </div>
+                      <div className="text-[10px] text-white/40">updated {formatUnixMs(sched.updated_unix_ms)}</div>
+                    </button>
+                    <div className="flex items-center gap-2">
+                      {id ? (
+                        <button
+                          className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
+                          type="button"
+                          onClick={() => void copyText("schedule id", id)}
+                        >
+                          copy id
+                        </button>
+                      ) : null}
+                      {status === "active" ? (
+                        <button
+                          className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5 disabled:opacity-50"
+                          type="button"
+                          onClick={() => void pauseSchedule(id)}
+                          disabled={scheduleBusyId === id}
+                        >
+                          pause
+                        </button>
+                      ) : (
+                        <button
+                          className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5 disabled:opacity-50"
+                          type="button"
+                          onClick={() => void resumeSchedule(id)}
+                          disabled={scheduleBusyId === id}
+                        >
+                          resume
+                        </button>
+                      )}
+                      <button
+                        className="rounded border border-rose-500/30 px-2 py-1 text-[10px] text-rose-200 hover:bg-rose-500/10 disabled:opacity-50"
+                        type="button"
+                        onClick={() => void deleteSchedule(id)}
+                        disabled={scheduleBusyId === id}
+                      >
+                        delete
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              {scheduleListQuery.isSuccess && extractSchedules(scheduleListQuery.data).length === 0 ? (
+                <div className="rounded border border-white/10 bg-black/20 px-2 py-2 text-[11px] text-white/50">
+                  No schedules yet.
+                </div>
+              ) : null}
+            </div>
+
+            <div className="grid gap-2 rounded-md border border-white/10 bg-black/40 p-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-[11px] text-white/60">Schedule runs</div>
+                <div className="flex items-center gap-2 text-[11px] text-white/60">
+                  <label className="flex items-center gap-1">
+                    limit
+                    <input
+                      className="w-[56px] rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
+                      value={String(scheduleRunsLimit || "")}
+                      onChange={(e) => setScheduleRunsLimit(e.target.value)}
+                    />
+                  </label>
+                  <button
+                    className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
+                    type="button"
+                    onClick={() => scheduleRunsQuery.refetch()}
+                    disabled={scheduleRunsQuery.isFetching || !String(scheduleId || "").trim()}
+                  >
+                    {scheduleRunsQuery.isFetching ? "Refreshing…" : "Refresh"}
+                  </button>
+                </div>
+              </div>
+              <div className="text-[10px] text-white/50">schedule_id: {scheduleId ? scheduleId : "—"}</div>
+              {scheduleRunsQuery.isError ? (
+                <div className="text-[11px] text-rose-200">{String(scheduleRunsQuery.error)}</div>
+              ) : null}
+              <div className="grid gap-2">
+                {extractScheduleRuns(scheduleRunsQuery.data).map((run: any) => (
+                  <div
+                    key={`${run.schedule_id}-${run.tick_unix_ms}-${run.workflow_id}`}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/10 bg-black/50 px-2 py-2 text-[11px] text-white/70"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded border px-2 py-0.5 text-[10px] ${statusBadge(run.status)}`}>
+                        {String(run.status || "unknown")}
+                      </span>
+                      <span className="font-mono">{String(run.workflow_id || "")}</span>
+                      <span className="text-white/50">tick {formatUnixMs(run.tick_unix_ms)}</span>
+                    </div>
+                    {run.error ? <div className="text-rose-200">{String(run.error)}</div> : null}
+                  </div>
+                ))}
+                {scheduleRunsQuery.isSuccess && extractScheduleRuns(scheduleRunsQuery.data).length === 0 ? (
+                  <div className="rounded border border-white/10 bg-black/20 px-2 py-2 text-[11px] text-white/50">
+                    No runs yet.
+                  </div>
+                ) : null}
+              </div>
+            </div>
           </div>
         </div>
 
