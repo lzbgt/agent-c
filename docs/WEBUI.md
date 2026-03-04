@@ -117,6 +117,7 @@ Preset configs:
 - Conversation history is persisted in the daemon DB and reloaded after refresh (user/assistant messages plus run tool records).
 - You can queue prompts while a run is active; queued runs execute in order and the queue count is shown in the Run/Queue button.
 - Advanced mode keeps the **conversation body clean**; tools like Memory/Trace/Workflows/Broker live in dedicated pages via the left-hand navigation, while the **Scene stays on top and Conversation below** in the main view.
+- The Broker → Connectors list highlights stale entries using the **Connector stale after (minutes)** setting (stored locally as `agentui.connectorStaleMinutes`).
 
 ## Diagnostics
 

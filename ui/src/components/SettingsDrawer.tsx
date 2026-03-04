@@ -259,6 +259,10 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const [moderatorPinnedStore, setModeratorPinnedStore] = useLocalStorageState<
     Record<string, Record<string, ModeratorEvent>>
   >("agentui.moderatorPinnedEvents", {});
+  const [connectorStaleMinutes, setConnectorStaleMinutes] = useLocalStorageState<string>(
+    "agentui.connectorStaleMinutes",
+    "10",
+  );
   const [copyNotice, setCopyNotice] = React.useState<string | null>(null);
   const [pinNotice, setPinNotice] = React.useState<string | null>(null);
   const [pinError, setPinError] = React.useState<string | null>(null);
@@ -1941,6 +1945,16 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
               checked={client.allowUnsafePageEval}
               onChange={client.setAllowUnsafePageEval}
             />
+            <div className="grid gap-1">
+              <FieldLabel>Connector stale after (minutes)</FieldLabel>
+              <input
+                className="w-32 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                value={connectorStaleMinutes}
+                onChange={(e) => setConnectorStaleMinutes(e.target.value)}
+                inputMode="numeric"
+              />
+              <div className="text-[10px] text-white/50">Used by the broker connectors list (local setting).</div>
+            </div>
           </div>
         </div>
 

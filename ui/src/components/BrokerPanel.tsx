@@ -75,6 +75,10 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     const k = String(props.authKey || "").trim() || "default";
     return `agentui.brokerPage:${b}::${k}`;
   }, [base, props.authKey]);
+  const [connectorStaleMinutes, setConnectorStaleMinutes] = useLocalStorageState<string>(
+    "agentui.connectorStaleMinutes",
+    "10",
+  );
   const brokerPages = React.useMemo(
     () => [
       { id: "teams", label: "Teams" },
@@ -101,6 +105,9 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   React.useEffect(() => {
     if (!brokerPageIds.has(brokerPage)) setBrokerPage("teams");
   }, [brokerPage, brokerPageIds, setBrokerPage]);
+  const staleMinutesValue = Number(connectorStaleMinutes);
+  const effectiveStaleMinutes = Number.isFinite(staleMinutesValue) && staleMinutesValue > 0 ? staleMinutesValue : 10;
+  const connectorStaleMs = effectiveStaleMinutes * 60 * 1000;
 
   const agentsQuery = useQuery({
     queryKey: ["brokerAgents", base, props.authKey],
@@ -1271,6 +1278,16 @@ export default function BrokerPanel(props: BrokerPanelProps) {
               {connectorsQuery.isFetching ? "Loading…" : "Refresh"}
             </button>
           </div>
+          <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+            <span>Stale after</span>
+            <input
+              className="w-16 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px]"
+              value={connectorStaleMinutes}
+              onChange={(e) => setConnectorStaleMinutes(e.target.value)}
+              inputMode="numeric"
+            />
+            <span>minutes (local)</span>
+          </div>
 
           {connectorsQuery.error ? (
             <div className="mb-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
@@ -1291,7 +1308,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                 const lastSeen = lastSeenMs ? fmtTs(lastSeenMs) : "";
                 const nowMs = Date.now();
                 const ageMs = lastSeenMs > 0 ? Math.max(0, nowMs - lastSeenMs) : 0;
-                const isStale = lastSeenMs > 0 && ageMs > 10 * 60 * 1000;
+                const isStale = lastSeenMs > 0 && ageMs > connectorStaleMs;
                 const isMissing = lastSeenMs === 0;
                 const lastError = String(connector?.last_error || "");
                 const statusTone = isMissing ? "text-amber-200" : isStale ? "text-amber-200" : "text-emerald-200";
