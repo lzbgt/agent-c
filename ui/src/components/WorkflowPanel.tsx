@@ -48,6 +48,14 @@ type WorkflowTask = {
 const STATUS_OPTIONS = ["running", "queued", "active", "done", "error", "cancelled", "all"];
 const SCHEDULE_STATUS_OPTIONS = ["active", "paused", "error", "all"];
 const SCHEDULE_RUN_STATUS_OPTIONS = ["all", "queued", "running", "done", "error"];
+const SCHEDULE_PRESETS = [
+  { label: "Every 15 min", cron: "*/15 * * * *" },
+  { label: "Hourly", cron: "0 * * * *" },
+  { label: "Daily 09:00", cron: "0 9 * * *" },
+  { label: "Weekdays 09:00", cron: "0 9 * * 1-5" },
+  { label: "Weekly Mon 09:00", cron: "0 9 * * 1" },
+  { label: "Monthly 1st 09:00", cron: "0 9 1 * *" },
+];
 
 function normalizeTask(raw: any): WorkflowTask | null {
   if (!raw || typeof raw !== "object") return null;
@@ -959,6 +967,19 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
           <div className="grid gap-2">
             <div className="grid gap-2 rounded-md border border-white/10 bg-black/40 p-2">
               <div className="text-[11px] text-white/60">Create schedule</div>
+              <div className="flex flex-wrap items-center gap-2 text-[10px] text-white/60">
+                <span>Presets</span>
+                {SCHEDULE_PRESETS.map((preset) => (
+                  <button
+                    key={preset.label}
+                    className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/70 hover:bg-white/5"
+                    type="button"
+                    onClick={() => setScheduleCron(preset.cron)}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   className="min-w-[160px] flex-1 rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-white/80"
