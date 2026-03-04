@@ -9,7 +9,10 @@ Docs quickstart:
 - Deployment checklist (agentd + broker + WebUI): `docs/DEPLOYMENT.md`
 - Daemon ops + runtime config: `docs/AGENTD.md`
 - CLI usage + tool-loop guidance: `docs/CLI.md`
-- WebUI dev/build/runtime config: `docs/WEBUI.md`
+- WebUI dev/build/runtime config
+
+
+: `docs/WEBUI.md`
 - Full docs index: `docs/README.md`
 
 Handbook guard:
@@ -17,9 +20,7 @@ Handbook guard:
 
 - ESP32 Voice Agentic Demo
 
-<video src="https://github.com/lzbgt/agent-c/raw/refs/heads/master/esp32_demo/esp32_voice_agent.mp4" controls="controls" width="50%">
-browser not supports video
-</video>
+https://github.com/user-attachments/assets/be605653-04cf-49f1-9696-4dff41796635
 
 ## Build
 
