@@ -193,6 +193,31 @@ function extractScheduleRuns(resp?: WorkflowScheduleRunsResp | null): any[] {
   return resp.runs;
 }
 
+function validateScheduleSpec(spec: any): string[] {
+  const issues: string[] = [];
+  if (!spec || typeof spec !== "object" || Array.isArray(spec)) {
+    issues.push("spec must be a JSON object");
+    return issues;
+  }
+  if (!Array.isArray(spec.tasks) || spec.tasks.length === 0) {
+    issues.push("spec.tasks must be a non-empty array");
+  } else {
+    spec.tasks.forEach((task: any, idx: number) => {
+      if (!task || typeof task !== "object") {
+        issues.push(`task[${idx}] must be an object`);
+        return;
+      }
+      if (!task.id || typeof task.id !== "string") {
+        issues.push(`task[${idx}].id is required`);
+      }
+      if (!task.kind || typeof task.kind !== "string") {
+        issues.push(`task[${idx}].kind is required`);
+      }
+    });
+  }
+  return issues;
+}
+
 export default function WorkflowPanel(props: WorkflowPanelProps) {
   const [workflowId, setWorkflowId] = useLocalStorageState("agentui.workflowLookupId", "");
   const [listStatus, setListStatus] = useLocalStorageState("agentui.workflowListStatus", "active");
@@ -222,6 +247,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   );
   const [scheduleRunsFilter, setScheduleRunsFilter] = useLocalStorageState("agentui.workflowScheduleRunsFilter", "");
   const [scheduleError, setScheduleError] = React.useState<string | null>(null);
+  const [scheduleValidation, setScheduleValidation] = React.useState<string[]>([]);
   const [scheduleBusyId, setScheduleBusyId] = React.useState<string | null>(null);
   const [scheduleCreateBusy, setScheduleCreateBusy] = React.useState(false);
   const [copyNotice, setCopyNotice] = React.useState<string | null>(null);
@@ -462,8 +488,10 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
       setScheduleError(`spec JSON parse error: ${String(err)}`);
       return;
     }
-    if (!specObj || typeof specObj !== "object") {
-      setScheduleError("spec must be a JSON object");
+    const issues = validateScheduleSpec(specObj);
+    setScheduleValidation(issues);
+    if (issues.length > 0) {
+      setScheduleError(`spec validation failed (${issues.length} issues)`);
       return;
     }
     setScheduleCreateBusy(true);
@@ -553,10 +581,17 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   const loadSpecFromWorkflow = () => {
     if (detail?.spec_json) {
       setScheduleSpec(detail.spec_json);
+      try {
+        const parsed = JSON.parse(detail.spec_json);
+        setScheduleValidation(validateScheduleSpec(parsed));
+      } catch {
+        setScheduleValidation([]);
+      }
       return;
     }
     if (detail?.spec && typeof detail.spec === "object") {
       setScheduleSpec(JSON.stringify(detail.spec, null, 2));
+      setScheduleValidation(validateScheduleSpec(detail.spec));
     }
   };
 
@@ -1013,6 +1048,13 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                 placeholder='spec JSON (workflow submit payload, e.g. {"tasks":[...], "defaults":{...}})'
               />
               {scheduleError ? <div className="text-[11px] text-rose-200">{scheduleError}</div> : null}
+              {scheduleValidation.length > 0 ? (
+                <div className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-100">
+                  {scheduleValidation.map((msg, idx) => (
+                    <div key={`${msg}-${idx}`}>{msg}</div>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             {!props.baseUrl ? (
