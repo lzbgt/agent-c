@@ -12,6 +12,10 @@ import {
   type DiagnosticsProviderTestReq,
   DiagnosticsProviderTestRespSchema,
   type DiagnosticsProviderTestResp,
+  SandboxMountValidateReqSchema,
+  type SandboxMountValidateReq,
+  SandboxMountValidateRespSchema,
+  type SandboxMountValidateResp,
   DiagnosticsProvidersSchema,
   type DiagnosticsProviders,
   DiagnosticsSchema,
@@ -92,6 +96,21 @@ export async function apiPostDiagnosticsProviderTest(
   });
   const j = await r.json();
   return DiagnosticsProviderTestRespSchema.parse(j);
+}
+
+export async function apiPostSandboxMountValidate(
+  base: string,
+  req: SandboxMountValidateReq,
+  auth?: ApiAuth,
+): Promise<SandboxMountValidateResp> {
+  const payload = SandboxMountValidateReqSchema.parse(req);
+  const r = await fetch(`${base}/api/v1/sandbox/mount_validate`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  return SandboxMountValidateRespSchema.parse(j);
 }
 
 export async function apiGetClientPrefs(

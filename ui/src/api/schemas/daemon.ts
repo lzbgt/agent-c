@@ -96,6 +96,33 @@ export const DiagnosticsProviderTestRespSchema = z
   .passthrough();
 export type DiagnosticsProviderTestResp = z.infer<typeof DiagnosticsProviderTestRespSchema>;
 
+export const SandboxMountValidateReqSchema = z
+  .object({
+    host_path: z.string().min(1),
+    container_path: z.string().min(1),
+    container_prefix: z.string().optional(),
+    is_main: z.boolean().optional(),
+  })
+  .passthrough();
+export type SandboxMountValidateReq = z.infer<typeof SandboxMountValidateReqSchema>;
+
+export const SandboxMountValidateRespSchema = z
+  .object({
+    ok: z.boolean().optional(),
+    allowed: z.boolean().optional(),
+    readonly: z.boolean().optional(),
+    reason: z.string().optional(),
+    resolved_host_path: z.string().optional(),
+    resolved_container_path: z.string().optional(),
+    matched_root: z.string().optional(),
+    blocked_pattern: z.string().optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+export type SandboxMountValidateResp = z.infer<typeof SandboxMountValidateRespSchema>;
+
 export const ClientPrefsSchema = z
   .object({
     ok: z.boolean(),

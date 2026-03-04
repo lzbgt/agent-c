@@ -11,6 +11,7 @@ import {
   apiPostModeratorDirective,
   apiPostModeratorTask,
   apiPostDiagnosticsProviderTest,
+  apiPostSandboxMountValidate,
 } from "../api";
 import type { ModeratorEvent } from "../api";
 import type { ClientSettings, ConnectionSettings, RunSettings } from "../hooks/useUiSettings";
@@ -263,6 +264,24 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
     "agentui.connectorStaleMinutes",
     "10",
   );
+  const [sandboxMountHostPath, setSandboxMountHostPath] = useLocalStorageState<string>(
+    "agentui.sandboxMountHostPath",
+    "",
+  );
+  const [sandboxMountContainerPath, setSandboxMountContainerPath] = useLocalStorageState<string>(
+    "agentui.sandboxMountContainerPath",
+    "/workspace/extra/example",
+  );
+  const [sandboxMountContainerPrefix, setSandboxMountContainerPrefix] = useLocalStorageState<string>(
+    "agentui.sandboxMountContainerPrefix",
+    "/workspace/extra",
+  );
+  const [sandboxMountIsMain, setSandboxMountIsMain] = useLocalStorageState<boolean>(
+    "agentui.sandboxMountIsMain",
+    true,
+  );
+  const [sandboxMountResult, setSandboxMountResult] = React.useState<any | null>(null);
+  const [sandboxMountError, setSandboxMountError] = React.useState<string | null>(null);
   const [copyNotice, setCopyNotice] = React.useState<string | null>(null);
   const [pinNotice, setPinNotice] = React.useState<string | null>(null);
   const [pinError, setPinError] = React.useState<string | null>(null);
@@ -468,6 +487,36 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
     queryFn: () => apiGetDiagnosticsProviders(connection.effectiveBase, connection.daemonAuth),
     enabled: props.open,
     retry: 1,
+  });
+  const sandboxMountValidate = useMutation({
+    mutationFn: async () => {
+      const hostPath = String(sandboxMountHostPath || "").trim();
+      const containerPath = String(sandboxMountContainerPath || "").trim();
+      if (!hostPath) {
+        throw new Error("host_path is required");
+      }
+      if (!containerPath) {
+        throw new Error("container_path is required");
+      }
+      return apiPostSandboxMountValidate(
+        connection.effectiveBase,
+        {
+          host_path: hostPath,
+          container_path: containerPath,
+          container_prefix: String(sandboxMountContainerPrefix || "").trim() || undefined,
+          is_main: sandboxMountIsMain,
+        },
+        connection.daemonAuth,
+      );
+    },
+    onSuccess: (resp) => {
+      setSandboxMountResult(resp);
+      setSandboxMountError(null);
+    },
+    onError: (err) => {
+      setSandboxMountResult(null);
+      setSandboxMountError(String(err));
+    },
   });
   const moderatorEventsTypes = React.useMemo(() => {
     const types: string[] = [];
@@ -2580,6 +2629,63 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                 ) : null}
               </div>
             ) : null}
+            <div className="rounded-md border border-white/10 bg-black/20 p-2">
+              <div className="text-[11px] font-semibold text-white/60">Sandbox mount validator</div>
+              <div className="mt-2 grid gap-2 text-[11px] text-white/70">
+                <label className="grid gap-1">
+                  <span className="text-white/50">host_path</span>
+                  <input
+                    className="rounded border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80"
+                    value={String(sandboxMountHostPath || "")}
+                    onChange={(e) => setSandboxMountHostPath(e.target.value)}
+                    placeholder="~/Documents/project"
+                  />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-white/50">container_path</span>
+                  <input
+                    className="rounded border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80"
+                    value={String(sandboxMountContainerPath || "")}
+                    onChange={(e) => setSandboxMountContainerPath(e.target.value)}
+                    placeholder="/workspace/extra/project"
+                  />
+                </label>
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="flex items-center gap-2 text-[11px] text-white/60">
+                    container_prefix
+                    <input
+                      className="w-[160px] rounded border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80"
+                      value={String(sandboxMountContainerPrefix || "")}
+                      onChange={(e) => setSandboxMountContainerPrefix(e.target.value)}
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 text-[11px] text-white/60">
+                    <input
+                      type="checkbox"
+                      checked={!!sandboxMountIsMain}
+                      onChange={(e) => setSandboxMountIsMain(e.target.checked)}
+                    />
+                    is_main
+                  </label>
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                    type="button"
+                    onClick={() => sandboxMountValidate.mutate()}
+                    disabled={!String(connection.effectiveBase || "").trim() || sandboxMountValidate.isPending}
+                  >
+                    {sandboxMountValidate.isPending ? "Validating…" : "Validate"}
+                  </button>
+                </div>
+                {sandboxMountError ? (
+                  <div className="text-[11px] text-rose-200">{sandboxMountError}</div>
+                ) : null}
+                {sandboxMountResult ? (
+                  <pre className="max-h-40 overflow-auto rounded border border-white/10 bg-black/30 p-2 text-[10px] text-white/70">
+                    {JSON.stringify(sandboxMountResult, null, 2)}
+                  </pre>
+                ) : null}
+              </div>
+            </div>
             {diag?.jobs && typeof diag.jobs === "object" ? (
               <div>
                 jobs total:{" "}

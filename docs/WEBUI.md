@@ -125,6 +125,7 @@ Settings → Diagnostics triggers:
 - `/api/v1/diagnostics`
 - `/api/v1/diagnostics/providers`
 - `/api/v1/diagnostics/provider_test`
+- The sandbox mount validator uses `POST /api/v1/sandbox/mount_validate` (host_path + container_path).
 
 See `docs/DIAGNOSTICS.md` for provider_test usage.
 
