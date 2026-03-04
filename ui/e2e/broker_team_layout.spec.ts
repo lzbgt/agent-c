@@ -185,10 +185,20 @@ test("broker teams layout screenshot", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
 
-  const teamSection = page.locator("section").filter({ has: page.getByText("Teams", { exact: true }) });
-  await expect(teamSection).toBeVisible();
-  await teamSection.getByTestId("team-tabs").getByRole("button", { name: "Setup" }).click();
-  await expect(teamSection.getByText("Quick team builder")).toBeVisible();
+  const brokerToolButton = page.getByRole("button", { name: "Broker Console" });
+  await expect(brokerToolButton).toBeVisible();
+  await brokerToolButton.click();
+
+  const brokerPanel = page.locator("details").filter({ has: page.getByText("Broker panel", { exact: true }) });
+  await expect(brokerPanel).toBeVisible();
+  await brokerPanel.getByRole("button", { name: "Teams" }).click();
+
+  const teamSelect = page.getByTestId("team-select");
+  await expect(teamSelect).toBeVisible();
+
+  const teamTabs = page.getByTestId("team-tabs");
+  await teamTabs.getByRole("button", { name: "Setup" }).click();
+  await expect(page.getByText("Quick team builder", { exact: true })).toBeVisible();
 
   await page.screenshot({ path: testInfo.outputPath("broker_team_layout.png"), fullPage: true });
 });
