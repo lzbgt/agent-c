@@ -391,6 +391,36 @@
             schema:
               $ref: "#/components/schemas/ErrorResponse"
 
+/api/v1/sandbox/mount_validate:
+  post:
+    tags: [sandbox]
+    summary: Validate sandbox mount against allowlist
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SandboxMountValidateRequest"
+    responses:
+      "200":
+        description: Validation decision
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SandboxMountValidateResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
 /api/v1/avm/job_scan:
   post:
     tags: [avm]

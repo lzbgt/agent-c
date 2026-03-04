@@ -88,6 +88,8 @@ Example:
 - `agentd` sandbox tool runner:
   - Add allowlist load + validation module.
   - Enforce allowlist before passing mounts to the sandbox runtime.
+- Operator tooling:
+  - Expose `POST /api/v1/sandbox/mount_validate` to test decisions without running a sandbox.
 - `caps` / config endpoint:
   - Report whether allowlist is present + loaded (boolean + path).
 - WebUI:

@@ -127,6 +127,10 @@ schemas:
     $ref: ./components/edge.yaml#/EdgeWorkflowSubmitRequest
   ToolDef:
     $ref: ./components/tools.yaml#/ToolDef
+  SandboxMountValidateRequest:
+    $ref: ./components/sandbox.yaml#/SandboxMountValidateRequest
+  SandboxMountValidateResponse:
+    $ref: ./components/sandbox.yaml#/SandboxMountValidateResponse
   RunRequest:
     $ref: ./components/run.yaml#/RunRequest
   AgentEvent:

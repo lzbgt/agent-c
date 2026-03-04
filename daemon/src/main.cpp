@@ -18,6 +18,7 @@
 #include "openrouter_models_endpoint.h"
 #include "job_stream_endpoint.h"
 #include "tools_endpoint.h"
+#include "sandbox_endpoints.h"
 #include "tool_plugins.h"
 #include "tool_servers.h"
 #include "tool_extension_mux.h"
@@ -1082,6 +1083,10 @@ int main(int argc, char** argv) {
   server.handle("GET", "/api/v1/tools", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_tools_endpoint(cur, cors_cfg, cur.sessions_root_dir, tool_ext_or_null, req, resp);
+  });
+  server.handle("POST", "/api/v1/sandbox/mount_validate", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_sandbox_mount_validate_endpoint(cur, cors_cfg, req, resp);
   });
 
   server.handle("GET", "/api/v1/openrouter/models", [&](const HttpRequest& req, HttpResponse* resp) {

@@ -1,0 +1,29 @@
+SandboxMountValidateRequest:
+  type: object
+  required: [host_path, container_path]
+  properties:
+    host_path:
+      type: string
+      description: Host filesystem path to validate.
+    container_path:
+      type: string
+      description: Container mount target path (absolute).
+    container_prefix:
+      type: string
+      description: Allowed container prefix (default: /workspace/extra).
+    is_main:
+      type: boolean
+      description: Whether this is the main sandbox (affects readonly enforcement).
+
+SandboxMountValidateResponse:
+  type: object
+  required: [ok, allowed, readonly, reason]
+  properties:
+    ok: { type: boolean }
+    allowed: { type: boolean }
+    readonly: { type: boolean }
+    reason: { type: string }
+    resolved_host_path: { type: string }
+    resolved_container_path: { type: string }
+    matched_root: { type: string }
+    blocked_pattern: { type: string }

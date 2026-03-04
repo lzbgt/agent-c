@@ -41,6 +41,7 @@
 #include "workflow_engine.h"
 #include "workflow_stream_endpoint.h"
 #include "runtime_config.h"
+#include "sandbox_endpoints.h"
 #include "sandbox_policy.h"
 #include "secrets_file.h"
 #include "session_endpoints.h"
@@ -839,6 +840,10 @@ struct AgentdService::Impl {
     server.handle("GET", "/api/v1/tools", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_tools_endpoint(cur, cors_cfg, cur.sessions_root_dir, tool_ext_or_null(), req, resp);
+    });
+    server.handle("POST", "/api/v1/sandbox/mount_validate", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_sandbox_mount_validate_endpoint(cur, cors_cfg, req, resp);
     });
     server.handle("GET", "/api/v1/approvals", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
