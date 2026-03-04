@@ -253,17 +253,32 @@ int main() {
   const bool custom_ok_body = resp_custom.find("\"ok\":true") != std::string::npos;
   const bool custom_allowed = resp_custom.find("\"allowed\":true") != std::string::npos;
   const bool custom_reason = resp_custom.find("\"reason\":\"ok\"") != std::string::npos;
+
+  std::string resp_bad_prefix;
+  const std::string bad_prefix_body =
+    std::string("{\"host_path\":\"") + allow_root_str + "\",\"container_path\":\"/data/ok\",\"container_prefix\":\"data\"}";
+  if (!http_post("127.0.0.1", port, "/api/v1/sandbox/mount_validate", bad_prefix_body, &resp_bad_prefix)) {
+    svc.stop();
+    std::cerr << "http_post bad prefix failed\n";
+    return 9;
+  }
+  const bool bad_prefix_ok_status = resp_bad_prefix.find("200") != std::string::npos;
+  const bool bad_prefix_ok_body = resp_bad_prefix.find("\"ok\":true") != std::string::npos;
+  const bool bad_prefix_denied = resp_bad_prefix.find("\"allowed\":false") != std::string::npos;
+  const bool bad_prefix_reason = resp_bad_prefix.find("\"reason\":\"container_prefix_invalid\"") != std::string::npos;
   svc.stop();
 
   if (!ok_status || !ok_body || !post_ok_status || !post_ok_body || !post_allowed || !post_readonly || !post_reason ||
       !blocked_ok_status || !blocked_ok_body || !blocked_denied || !blocked_reason ||
       !prefix_ok_status || !prefix_ok_body || !prefix_denied || !prefix_reason ||
-      !custom_ok_status || !custom_ok_body || !custom_allowed || !custom_reason) {
+      !custom_ok_status || !custom_ok_body || !custom_allowed || !custom_reason ||
+      !bad_prefix_ok_status || !bad_prefix_ok_body || !bad_prefix_denied || !bad_prefix_reason) {
     std::cerr << "unexpected response:\n" << resp << "\n";
     std::cerr << "unexpected post response:\n" << resp_post << "\n";
     std::cerr << "unexpected blocked response:\n" << resp_blocked << "\n";
     std::cerr << "unexpected prefix response:\n" << resp_prefix << "\n";
     std::cerr << "unexpected custom prefix response:\n" << resp_custom << "\n";
+    std::cerr << "unexpected bad prefix response:\n" << resp_bad_prefix << "\n";
     return 4;
   }
   return 0;
