@@ -419,6 +419,15 @@ JSON output:
 tools/hooks_status.sh --json
 ```
 
+Skill transforms (auditable repo changes):
+
+```bash
+python3 tools/skills/apply_skill.py /path/to/skill
+python3 tools/skills/apply_skill.py /path/to/skill --dry-run
+```
+
+Docs: `tools/skills/README.md` (manifest format + backups/state behavior).
+
 Fail if the vendored guard is not installed:
 
 ```bash

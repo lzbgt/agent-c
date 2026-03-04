@@ -100,7 +100,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v31)
+## Schema (v32)
 
 All timestamps are Unix milliseconds.
 
@@ -205,6 +205,7 @@ Approval queue entries for gated tool calls.
 - `tool_args_hash TEXT` (SHA256 hex of tool args JSON)
 - `required_approvals INTEGER NOT NULL`
 - `role_constraints_json TEXT` (JSON array string)
+- `require_distinct_roles INTEGER` (optional; enforce distinct approver roles)
 - `status TEXT NOT NULL` (`pending|approved|denied|expired`)
 - `created_unix_ms INTEGER NOT NULL`
 - `expires_unix_ms INTEGER` (optional)

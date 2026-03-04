@@ -13,6 +13,7 @@ Start here if you want the shortest path to the right document.
 - `docs/WEBUI.md`: WebUI dev/build/runtime config and reliability notes.
 - `docs/AGENTD.md`: daemon operations and runtime configuration.
 - `docs/CLI.md`: CLI usage and tool-loop guidance.
+- `tools/skills/README.md`: skill manifests + auditable apply workflow.
 
 ## Core runtime
 

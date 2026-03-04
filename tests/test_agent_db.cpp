@@ -406,11 +406,14 @@ int main() {
     query_i64(raw2, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='approval_requests';");
   const int64_t approval_decisions_tbl =
     query_i64(raw2, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='approval_decisions';");
+  const int64_t approval_req_distinct_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('approval_requests') WHERE name='require_distinct_roles';");
   sqlite3_close(raw2);
-  assert(ver == 31);
+  assert(ver == 32);
   assert(fairq_sessions_tbl == 1);
   assert(approval_requests_tbl == 1);
   assert(approval_decisions_tbl == 1);
+  assert(approval_req_distinct_cols == 1);
   assert(arts2 == 0);
   assert(msg_mm_json_cols == 1);
   assert(msg_mm_bytes_cols == 1);
