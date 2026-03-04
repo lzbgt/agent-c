@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"agentd-broker/internal/auth"
+	"agentd-broker/internal/connectors"
 	"agentd-broker/internal/db"
 	"agentd-broker/internal/events"
 	"agentd-broker/internal/oidc"
@@ -27,6 +28,7 @@ type Config struct {
 	ClientAuthAllowAutomation bool
 	DB                        *db.DB
 	Registry                  *registry.Registry
+	Connectors                *connectors.Registry
 	Events                    *events.Hub
 
 	AgentCNPfx              string
@@ -91,6 +93,9 @@ func New(cfg Config) (*Server, error) {
 	}
 	if cfg.Registry == nil {
 		cfg.Registry = registry.New()
+	}
+	if cfg.Connectors == nil {
+		cfg.Connectors = connectors.New()
 	}
 	if cfg.Events == nil {
 		cfg.Events = events.New()
@@ -172,6 +177,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/client_auth/status", s.handleClientAuthStatus)
 	mux.HandleFunc("/v1/client_auth/reload", s.handleClientAuthReload)
 	mux.HandleFunc("/v1/client_prefs", s.handleClientPrefs)
+	mux.HandleFunc("/v1/connectors", s.handleConnectors)
 	mux.HandleFunc("/v1/agent/connect", s.handleAgentConnect)
 	mux.HandleFunc("/v1/agents", s.handleAgents)
 	mux.HandleFunc("/v1/teams", s.handleTeams)

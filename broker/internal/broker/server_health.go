@@ -96,6 +96,15 @@ func (s *Server) handleCaps(w http.ResponseWriter, r *http.Request) {
 			"events": map[string]any{
 				"sse": true,
 			},
+			"connectors": map[string]any{
+				"enabled": true,
+				"count": func() int {
+					if s.cfg.Connectors == nil {
+						return 0
+					}
+					return s.cfg.Connectors.Count()
+				}(),
+			},
 			"audio": map[string]any{
 				"signaling": true,
 				"mode":      "webrtc",

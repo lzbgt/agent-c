@@ -14,6 +14,7 @@ The broker provides:
 3) **Management API**: list/create/delete agents, inspect status/metadata, disconnect
 4) **Secure relay API**: clients send requests to a specific agentd via broker, without directly reaching the agent network
 5) **SSE support**: broker can proxy streaming endpoints (SSE) without fragile “file path” hacks
+6) **Connector registry**: a broker-facing catalog for channel/connector plugins (discoverable via `/v1/connectors`)
 
 ## Why a broker (vs exposing agentd HTTP directly)
 

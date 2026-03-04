@@ -9,6 +9,8 @@ import {
   type BrokerMembersResp,
   BrokerMembershipAuditRespSchema,
   type BrokerMembershipAuditResp,
+  BrokerConnectorsRespSchema,
+  type BrokerConnectorsResp,
   BrokerEventsReplayRespSchema,
   type BrokerEventsReplayResp,
   BrokerOrchestratorRunRespSchema,
@@ -73,6 +75,13 @@ export async function apiBrokerListAgents(brokerBase: string, auth?: ApiAuth): P
   const r = await fetch(`${base}/v1/agents`, { headers: daemonHeaders(auth) });
   const j = await r.json();
   return BrokerAgentsRespSchema.parse(j);
+}
+
+export async function apiBrokerListConnectors(brokerBase: string, auth?: ApiAuth): Promise<BrokerConnectorsResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const r = await fetch(`${base}/v1/connectors`, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return BrokerConnectorsRespSchema.parse(j);
 }
 
 export async function apiBrokerListDeployments(

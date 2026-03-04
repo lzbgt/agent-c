@@ -6,6 +6,7 @@ import {
   apiBrokerGetMembershipAudit,
   apiBrokerGetClientPrefs,
   apiBrokerListAgents,
+  apiBrokerListConnectors,
   apiBrokerListDeployments,
   apiBrokerEventsReplay,
   apiBrokerMemoryRecapsCreateBulk,
@@ -78,6 +79,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     () => [
       { id: "teams", label: "Teams" },
       { id: "agents", label: "Agents" },
+      { id: "connectors", label: "Connectors" },
       { id: "members", label: "Member list" },
       { id: "deployments", label: "Deployments + OTA" },
       { id: "memory", label: "Memory" },
@@ -104,6 +106,12 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     queryKey: ["brokerAgents", base, props.authKey],
     enabled: false,
     queryFn: () => apiBrokerListAgents(base, props.auth),
+  });
+
+  const connectorsQuery = useQuery({
+    queryKey: ["brokerConnectors", base, props.authKey],
+    enabled: false,
+    queryFn: () => apiBrokerListConnectors(base, props.auth),
   });
 
   const membersQuery = useQuery({
@@ -1119,6 +1127,9 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   }, [props.open, canQuery, agentId, otaStatusBusy, selectedDeployments, otaStatusResults, otaStatusCachedAt]);
 
   const agents = Array.isArray((agentsQuery.data as any)?.agents) ? ((agentsQuery.data as any).agents as any[]) : [];
+  const connectors = Array.isArray((connectorsQuery.data as any)?.connectors)
+    ? ((connectorsQuery.data as any).connectors as any[])
+    : [];
   const members = Array.isArray((membersQuery.data as any)?.members) ? ((membersQuery.data as any).members as any[]) : [];
   const ownerSub = String((membersQuery.data as any)?.owner_sub || "");
   const auditRows = Array.isArray((auditQuery.data as any)?.audit) ? ((auditQuery.data as any).audit as any[]) : [];
@@ -1239,6 +1250,53 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                     >
                       {selected ? "Selected" : "Use"}
                     </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+            ) : null}
+
+            {brokerPage === "connectors" ? (
+              <section className="rounded-md border border-white/10 bg-black/20 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold text-white/80">Connector registry</div>
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+              type="button"
+              disabled={!canQuery || connectorsQuery.isFetching}
+              onClick={() => void connectorsQuery.refetch()}
+            >
+              {connectorsQuery.isFetching ? "Loading…" : "Refresh"}
+            </button>
+          </div>
+
+          {connectorsQuery.error ? (
+            <div className="mb-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+              {String(connectorsQuery.error)}
+            </div>
+          ) : null}
+
+          {connectors.length === 0 ? (
+            <div className="text-[11px] text-white/50">No connectors registered.</div>
+          ) : (
+            <div className="grid gap-2">
+              {connectors.map((connector) => {
+                const id = String(connector?.id || "");
+                const kind = String(connector?.kind || "");
+                const status = String(connector?.status || "");
+                const description = String(connector?.description || "");
+                return (
+                  <div key={id} className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1">
+                    <div className="flex flex-col">
+                      <div className="text-xs text-white/90">{id || "(unnamed)"}</div>
+                      <div className="text-[11px] text-white/50">
+                        {kind ? `kind: ${kind}` : "kind: (unspecified)"}
+                        {status ? ` · ${status}` : ""}
+                      </div>
+                      {description ? <div className="mt-1 text-[11px] text-white/60">{description}</div> : null}
+                    </div>
                   </div>
                 );
               })}

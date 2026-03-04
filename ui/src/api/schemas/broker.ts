@@ -117,6 +117,29 @@ export const BrokerMembershipAuditRespSchema = z
   .passthrough();
 export type BrokerMembershipAuditResp = z.infer<typeof BrokerMembershipAuditRespSchema>;
 
+export const BrokerConnectorSchema = z
+  .object({
+    id: z.string(),
+    name: z.string().optional(),
+    kind: z.string().optional(),
+    status: z.string().optional(),
+    description: z.string().optional(),
+    meta: z.record(z.any()).optional(),
+  })
+  .passthrough();
+
+export const BrokerConnectorsRespSchema = z
+  .object({
+    ok: z.boolean(),
+    count: z.number().optional(),
+    connectors: z.array(BrokerConnectorSchema).optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerConnectorsResp = z.infer<typeof BrokerConnectorsRespSchema>;
+
 export const BrokerEventSchema = z
   .object({
     type: z.string(),
