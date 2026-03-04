@@ -17,7 +17,7 @@ Handbook guard:
 
 - ESP32 Voice Agentic Demo
 
-<video src="./esp32_demo/esp32_voice_agent.mp4" controls="controls" width="100%">
+<video src="https://github.com/lzbgt/agent-c/raw/refs/heads/master/esp32_demo/esp32_voice_agent.mp4" controls="controls" width="50%">
 </video>
 
 ## Build
