@@ -70,6 +70,13 @@ python3 tools/skills/validate_manifest.py /path/to/skill
 python3 tools/skills/validate_manifest.py tools/skills/templates/sample-skill
 ```
 
+Show applied skills (reads `state/skills_state.json`):
+
+```bash
+python3 tools/skills/skill_status.py
+python3 tools/skills/skill_status.py --json
+```
+
 Notes:
 - Backups are stored under `out/skills/<skill>/<timestamp>/backup/`.
 - Applied records are stored in `out/skills/<skill>/<timestamp>/applied.json`.
