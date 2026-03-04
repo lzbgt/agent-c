@@ -16,6 +16,14 @@ without importing NanoClaw wholesale or diluting our SOLID boundaries.
 - `refs/nanoclaw/docs/SPEC.md`
 - `refs/nanoclaw/docs/SECURITY.md`
 - `refs/nanoclaw/docs/SDK_DEEP_DIVE.md`
+- `refs/nanoclaw/src/container-runner.ts`
+- `refs/nanoclaw/src/container-runtime.ts`
+- `refs/nanoclaw/src/env.ts`
+- `refs/nanoclaw/src/group-queue.ts`
+- `refs/nanoclaw/src/ipc.ts`
+- `refs/nanoclaw/src/mount-security.ts`
+- `refs/nanoclaw/src/db.ts`
+- `refs/nanoclaw/skills-engine/*`
 
 ## Goals
 
@@ -162,6 +170,108 @@ without importing NanoClaw wholesale or diluting our SOLID boundaries.
 3. For provider adapters that support “streaming input” semantics, keep the
    input channel open until all teammates have completed or timed out; then
    issue a coordinated shutdown sequence.
+
+### 8) External mount allowlist + read-only project root
+
+**NanoClaw pattern**
+- Additional mounts are validated against an external allowlist stored outside
+  the project (`~/.config/nanoclaw/mount-allowlist.json`), merged with blocked
+  patterns, and resolved via realpath before accepting. The main project root is
+  mounted read-only, with only required writable paths mounted separately.
+
+**Leverage in our system**
+- Add a **host tool mount allowlist** stored outside the repo, so tool sandbox
+  mounts cannot be modified by agents. Enforce blocked patterns and realpath
+  checks before mounting.
+
+**Integration steps**
+1. Add `~/.config/agent/mount-allowlist.json` (or similar) with allowed roots +
+   blocked patterns; keep it out of repo and never mount it into sandboxes.
+2. Enforce allowlist + blocked patterns before any host mount is attached to
+   a sandboxed tool runner; resolve symlinks to prevent traversal.
+3. Mount the project root read-only in sandbox mode; mount writable workspaces
+   and IPC paths explicitly to prevent code tampering.
+
+### 9) Per-group IPC namespaces + authorization
+
+**NanoClaw pattern**
+- Each group gets its own IPC directory; IPC watchers validate sender identity
+  (main vs non-main) before allowing cross-group actions.
+
+**Leverage in our system**
+- Use **per-team namespaces** and explicit authorization for internal IPC-like
+  operations (e.g., scheduled tasks, agent-to-agent messages) to prevent cross-
+  tenant access in broker/agentd.
+
+**Integration steps**
+1. Introduce per-team IPC/event namespace directories or channels for tool
+   actions that need to cross process boundaries.
+2. Enforce sender identity/role checks for cross-team operations (admin-only
+   broadcast; non-admin only within their team).
+3. Add audit logs for unauthorized attempts to surface policy violations.
+
+### 10) Group-level concurrency queue with idle preemption
+
+**NanoClaw pattern**
+- Per-group queue with a global concurrency limit; idle containers can be
+  preempted when tasks arrive.
+
+**Leverage in our system**
+- Apply **per-team concurrency gating** for run execution (especially when
+  sandboxed tools or external provider budgets are involved).
+
+**Integration steps**
+1. Add a queue layer in the broker/orchestrator that tracks active runs per
+   team and enforces a global concurrency ceiling.
+2. Allow “idle” runs to be preempted or paused when higher-priority work
+   arrives (based on run priority or SLA).
+3. Expose queue status in WebUI for operator visibility.
+
+### 11) Secret handling outside process env
+
+**NanoClaw pattern**
+- Reads `.env` directly and passes only whitelisted secrets to containers via
+  stdin; avoids populating `process.env` to reduce leak risk.
+
+**Leverage in our system**
+- Limit secrets exposure in agentd/broker by **not** injecting all secrets into
+  process env; pass only required tokens to the tool runner on-demand.
+
+**Integration steps**
+1. Add a small env reader that returns a strict allowlist for tool runs.
+2. Pass secrets to tools via ephemeral channels (stdin or short-lived files)
+   and scrub logs of secret payloads.
+3. Expand diagnostics to confirm which secrets are passed (names only).
+
+### 12) Container runtime abstraction + orphan cleanup
+
+**NanoClaw pattern**
+- Container runtime abstraction is centralized; startup checks and orphan
+  cleanup run before agent execution.
+
+**Leverage in our system**
+- Keep tool sandbox runtime logic isolated in one module and clean up orphans
+  on startup to avoid zombie sandboxes.
+
+**Integration steps**
+1. Add a `sandbox_runtime` module with `ensure_running()` and `cleanup_orphans()`.
+2. Call runtime checks from tool runner initialization.
+3. Surface runtime health status in broker diagnostics.
+
+### 13) Skill manifest + apply pipeline
+
+**NanoClaw pattern**
+- Skills are first-class artifacts with manifests, structured outcomes, and
+  apply/replay/uninstall mechanics (skills engine).
+
+**Leverage in our system**
+- Provide **auditable transformation scripts** for common changes (new provider,
+  connector, policy preset), with structured metadata and replay support.
+
+**Integration steps**
+1. Define a minimal skill manifest schema and store applied skills in state.
+2. Build a `tools/skills/apply` flow that backs up and records changes.
+3. Add a WebUI “skill” panel with diff preview before apply.
 
 ## Risks and tradeoffs
 

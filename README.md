@@ -1,6 +1,7 @@
 # agent
 
 This repo is a **production-oriented agentic platform**: a portable core plus a daemon, broker, CLI, and WebUI for durable, audited automation.
+It is **not a prototype** — the repo includes deployment checklists, verification scripts, and evidence bundles for repeatable, production-grade runs.
 
 What you get:
 - **agent_core** (portable C library): session model, compaction helpers, role utilities.
@@ -15,6 +16,7 @@ Key capabilities:
 - **Team orchestration** with role plans, approvals, runtime members, and replayable events.
 - **Memory tooling** (recaps, correlation index, trace linking) and operator-grade panels.
 - **Policy/limits hooks** for tool budgets, approvals, and automation profiles.
+- **OTA updates** (agentd + broker + WebUI) with drain + continuity checks.
 
 Docs quickstart:
 - Unified handbook (curated summary; generated): `docs/HANDBOOK.md`
@@ -25,6 +27,7 @@ Docs quickstart:
 - CLI usage + tool-loop guidance: `docs/CLI.md`
 - WebUI dev/build/runtime config: `docs/WEBUI.md`
 - Full docs index: `docs/README.md`
+- Evidence bundle capture: `tools/capture_agent_evidence_bundle.sh`
 
 Handbook guard:
 - `tools/verify_repo_guards.sh` enforces a handbook line limit via `HANDBOOK_MAX_LINES` (default: 250).
