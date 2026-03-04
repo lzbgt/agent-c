@@ -18,6 +18,7 @@ import (
 	"agentd-broker/internal/auth"
 	"agentd-broker/internal/broker"
 	"agentd-broker/internal/config"
+	"agentd-broker/internal/connectors"
 	"agentd-broker/internal/db"
 	"agentd-broker/internal/events"
 	"agentd-broker/internal/oidc"
@@ -128,6 +129,7 @@ func main() {
 	var clientAuthAllowAutomation = flag.Bool("client-auth-allow-automation", false, "allow admin client tokens to access automation endpoints (env AGENTD_BROKER_CLIENT_AUTH_ALLOW_AUTOMATION)")
 	var adminSubsCSV = flag.String("admin-subs", "", "comma-separated OIDC sub values treated as admin")
 	var authCookieName = flag.String("auth-cookie", "", "cookie name for OIDC bearer token (env AGENTD_BROKER_AUTH_COOKIE)")
+	var connectorsFile = flag.String("connectors-file", "", "path to JSON connectors registry (env AGENTD_BROKER_CONNECTORS_FILE)")
 	var corsOriginsCSV = flag.String("cors-origins", "", "comma-separated allowed CORS origins (e.g. https://ui.example.com)")
 	var corsOriginList stringListFlag
 	flag.Var(&corsOriginList, "cors-origin", "allowed CORS origin (repeatable; supports re:<regex>)")
@@ -260,6 +262,7 @@ func main() {
 	}
 
 	reg := registry.New()
+	connRegistry := connectors.New()
 	ev := events.New()
 	adminSubs := map[string]bool{}
 	for _, part := range strings.Split(*adminSubsCSV, ",") {
@@ -281,6 +284,21 @@ func main() {
 	authCookie := strings.TrimSpace(*authCookieName)
 	if authCookie == "" {
 		authCookie = strings.TrimSpace(os.Getenv("AGENTD_BROKER_AUTH_COOKIE"))
+	}
+	connectorsPath := strings.TrimSpace(*connectorsFile)
+	if connectorsPath == "" {
+		connectorsPath = strings.TrimSpace(os.Getenv("AGENTD_BROKER_CONNECTORS_FILE"))
+	}
+	if connectorsPath != "" {
+		list, err := config.LoadConnectorsFromFile(connectorsPath)
+		if err != nil {
+			log.Fatalf("connectors file load failed: %v", err)
+		}
+		for _, conn := range list {
+			if err := connRegistry.Register(conn); err != nil {
+				log.Fatalf("connectors register failed: %v", err)
+			}
+		}
 	}
 	allowedOrigins := []string{}
 	appendCSV := func(raw string) {
@@ -361,6 +379,7 @@ func main() {
 		ClientAuthAllowAutomation: allowAutomation,
 		DB:                        dbConn,
 		Registry:                  reg,
+		Connectors:                connRegistry,
 		Events:                    ev,
 		AgentCNPfx:                *agentCNPfx,
 		RequireAgentMTLS:          *requireAgentMTLS,

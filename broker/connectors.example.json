@@ -1,0 +1,19 @@
+[
+  {
+    "id": "slack",
+    "name": "Slack",
+    "kind": "chat",
+    "status": "ready",
+    "description": "Slack workspace connector",
+    "meta": {
+      "workspace": "example-workspace"
+    }
+  },
+  {
+    "id": "email",
+    "name": "Email",
+    "kind": "mail",
+    "status": "disabled",
+    "description": "SMTP/IMAP connector"
+  }
+]

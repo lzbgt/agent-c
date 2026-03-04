@@ -16,6 +16,31 @@ The broker provides:
 5) **SSE support**: broker can proxy streaming endpoints (SSE) without fragile “file path” hacks
 6) **Connector registry**: a broker-facing catalog for channel/connector plugins (discoverable via `/v1/connectors`)
 
+## Connector registry (static)
+
+The broker can load a static connector catalog at startup for discovery in the WebUI.
+
+Configure:
+- `--connectors-file /path/to/connectors.json`
+- or env `AGENTD_BROKER_CONNECTORS_FILE`
+
+Format (array or `{ "connectors": [...] }`):
+
+```json
+[
+  {
+    "id": "slack",
+    "name": "Slack",
+    "kind": "chat",
+    "status": "ready",
+    "description": "Slack workspace connector",
+    "meta": { "workspace": "example" }
+  }
+]
+```
+
+Example file: `broker/connectors.example.json`.
+
 ## Why a broker (vs exposing agentd HTTP directly)
 
 Directly exposing `agentd` is hard to secure and operate at scale:
