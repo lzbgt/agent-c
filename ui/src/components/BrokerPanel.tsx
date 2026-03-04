@@ -1299,6 +1299,23 @@ export default function BrokerPanel(props: BrokerPanelProps) {
             <div className="text-[11px] text-white/50">No connectors registered.</div>
           ) : (
             <div className="grid gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/60">
+                <div>Showing {connectors.length} connectors.</div>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
+                  type="button"
+                  onClick={() => {
+                    try {
+                      const payload = JSON.stringify(connectors, null, 2);
+                      void navigator.clipboard.writeText(payload);
+                    } catch {
+                      // ignore clipboard errors
+                    }
+                  }}
+                >
+                  Copy JSON
+                </button>
+              </div>
               {connectors.map((connector) => {
                 const id = String(connector?.id || "");
                 const kind = String(connector?.kind || "");
@@ -1313,11 +1330,20 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                 const lastError = String(connector?.last_error || "");
                 const statusTone = isMissing ? "text-amber-200" : isStale ? "text-amber-200" : "text-emerald-200";
                 const statusLabel = isMissing ? "unknown" : isStale ? "stale" : "fresh";
+                const tooltip = [
+                  id ? `id: ${id}` : null,
+                  kind ? `kind: ${kind}` : null,
+                  status ? `status: ${status}` : null,
+                  lastSeenMs ? `last_seen_ms: ${lastSeenMs}` : null,
+                  lastError ? `last_error: ${lastError}` : null,
+                ]
+                  .filter(Boolean)
+                  .join("\n");
                 return (
                   <div key={id} className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1">
                     <div className="flex flex-col">
                       <div className="text-xs text-white/90">{id || "(unnamed)"}</div>
-                      <div className="text-[11px] text-white/50">
+                      <div className="text-[11px] text-white/50" title={tooltip}>
                         {kind ? `kind: ${kind}` : "kind: (unspecified)"}
                         {status ? ` · ${status}` : ""}
                         <span className={`ml-2 ${statusTone}`}>· {statusLabel}</span>
