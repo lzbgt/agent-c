@@ -151,6 +151,28 @@ is down. Set `AGENT_DOCKER_AUTOSTART=0` to disable, or tune the wait with
 Additional broker compose smokes:
 - OIDC refresh sidecar + token file: `tests/broker_oidc_refresh_compose_smoke.sh`
 
+### Connector status (broker registry)
+
+To publish connector health into the broker registry:
+
+```bash
+curl -H "Authorization: Bearer ${BROKER_ADMIN_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"ready","last_error":"","ts_unix_ms":0}' \
+  https://broker.example.com/v1/connectors/slack/status
+```
+
+Or use the helper:
+
+```bash
+agentd-connector-status \
+  --broker-base https://broker.example.com \
+  --auth-token "$BROKER_ADMIN_TOKEN" \
+  --connector-id slack \
+  --status ready \
+  --interval 30s
+```
+
 ## Spawn adapter (orchestrator provisioning)
 
 The broker can persist spawn requests for new runtime members. The
