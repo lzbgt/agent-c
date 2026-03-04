@@ -46,6 +46,9 @@ Status updates:
 - Body: `{ "status": "ready|degraded", "last_error": "...", "ts_unix_ms": 0 }`
 - `ts_unix_ms` defaults to current time if omitted or 0.
 
+Helper:
+- `broker/cmd/agentd-connector-status` can post and optionally repeat status updates.
+
 ## Why a broker (vs exposing agentd HTTP directly)
 
 Directly exposing `agentd` is hard to secure and operate at scale:

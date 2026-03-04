@@ -9,6 +9,7 @@
   - Subscribe to broker events via SSE
 
 This directory also includes `agentd-connector`, a lightweight “bridge” that connects a local `agentd` instance to the broker.
+It also includes `agentd-connector-status`, a small helper to publish connector health to the broker registry.
 
 ## Endpoints
 
@@ -118,6 +119,27 @@ Typical flags:
 - `--local-agentd http://127.0.0.1:8123`
 - `--tls-ca`, `--tls-cert`, `--tls-key` (for `wss` + mTLS)
 - `--agent-id` (optional if derivable from cert CN)
+
+### Connector status helper (`cmd/agentd-connector-status`)
+
+Use this helper to post connector health to the broker registry:
+
+```bash
+agentd-connector-status \\
+  --broker-base https://broker.example.com \\
+  --auth-token "$BROKER_ADMIN_TOKEN" \\
+  --connector-id slack \\
+  --status ready \\
+  --interval 30s
+```
+
+Environment equivalents:
+- `AGENTD_BROKER_BASE`
+- `AGENTD_BROKER_AUTH_TOKEN`
+- `AGENTD_BROKER_CONNECTOR_ID`
+- `AGENTD_BROKER_CONNECTOR_STATUS`
+- `AGENTD_BROKER_CONNECTOR_INTERVAL`
+- `AGENTD_BROKER_TLS_CA`
 
 ## Reverse proxy notes
 
