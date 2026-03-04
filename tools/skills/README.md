@@ -57,6 +57,12 @@ Dry-run (validate and back up without applying patches/scripts):
 python3 tools/skills/apply_skill.py /path/to/skill --dry-run
 ```
 
+Preview in a temporary worktree (produces diff artifacts under `out/skills/preview/`):
+
+```bash
+python3 tools/skills/preview_skill.py /path/to/skill
+```
+
 Notes:
 - Backups are stored under `out/skills/<skill>/<timestamp>/backup/`.
 - Applied records are stored in `out/skills/<skill>/<timestamp>/applied.json`.
