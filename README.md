@@ -18,6 +18,21 @@ Key capabilities:
 - **Policy/limits hooks** for tool budgets, approvals, and automation profiles.
 - **OTA updates** (agentd + broker + WebUI) with drain + continuity checks.
 
+## NanoClaw leverage (planned)
+
+We reviewed NanoClaw (cloned under `refs/nanoclaw`) and captured a concrete
+leverage plan in `docs/spec/nanoclaw_leverage_v0.md`. Near-term, low-risk
+targets include:
+
+- Channel/connector self-registration (registry boundary).
+- Per-group workspace + memory scope isolation.
+- Optional containerized tool runner with mount allowlist enforcement.
+- First-class cron schedules for workflows.
+- Skills-style guided transforms for common upgrades.
+- Team run multi-result streaming semantics and session anchoring.
+
+These items are **targets**, not assumptions about current behavior.
+
 Docs quickstart:
 - Unified handbook (curated summary; generated): `docs/HANDBOOK.md`
 - Architecture + roadmap: `DESIGN.md` (full system map)
