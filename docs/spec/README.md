@@ -55,3 +55,7 @@ declares its own status (draft/rolling/implemented) in the document header.
 
 - `webui_workflow_graph_editor_v1.md`: drag-and-drop workflow graph editor (implemented).
 - `webui_server_prefs_v1.md`: server-side WebUI connection profile persistence (implemented).
+
+## Integration leverage
+
+- `nanoclaw_leverage_v0.md`: NanoClaw pattern leverage map and integration steps (draft).
