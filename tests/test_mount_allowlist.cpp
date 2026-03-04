@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <filesystem>
+#include <fstream>
 #include <string>
 
 #if defined(__unix__) || defined(__APPLE__)
@@ -100,6 +101,24 @@ int main() {
     const auto res = validate(&allow, outside.string(), "/workspace/extra/outside", true);
     assert(!res.allowed);
     assert(res.reason == "host_path_outside_roots");
+  }
+
+  {
+    const std::filesystem::path outside_file = outside / "secret";
+    std::filesystem::create_directories(outside_file.parent_path(), ec);
+    std::ofstream out(outside_file);
+    out << "secret";
+    out.close();
+
+    const std::filesystem::path link = root / "link";
+    std::error_code lerr;
+    std::filesystem::create_symlink(outside, link, lerr);
+    if (!lerr) {
+      const std::filesystem::path via_link = link / "secret";
+      const auto res = validate(&allow, via_link.string(), "/workspace/extra/link/secret", true);
+      assert(!res.allowed);
+      assert(res.reason == "host_path_outside_roots");
+    }
   }
 
   {
