@@ -178,6 +178,7 @@ The WebUI includes a **Workflows** panel for durable workflow inspection:
   - Copy/download JSON for schedules and schedule runs directly from the panel.
   - Schedule runs support status filtering and an errors-only toggle.
   - Schedules and runs support offset-based pagination (offset + prev/next).
+  - Schedule lists support client-side filtering by id/cron/error; run lists support filtering by workflow id.
 
 This panel includes a **Workflow composer** with JSON and Graph modes:
 - JSON templates for LLM DAG workflows (A→B/C) and `agentd_parallel` collaboration templates.

@@ -200,6 +200,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   const [scheduleStatus, setScheduleStatus] = useLocalStorageState("agentui.workflowScheduleStatus", "active");
   const [scheduleLimit, setScheduleLimit] = useLocalStorageState("agentui.workflowScheduleLimit", "50");
   const [scheduleOffset, setScheduleOffset] = useLocalStorageState("agentui.workflowScheduleOffset", "0");
+  const [scheduleFilter, setScheduleFilter] = useLocalStorageState("agentui.workflowScheduleFilter", "");
   const [scheduleAutoRefresh, setScheduleAutoRefresh] = useLocalStorageState("agentui.workflowScheduleAutoRefresh", false);
   const [scheduleCron, setScheduleCron] = useLocalStorageState("agentui.workflowScheduleCron", "0 9 * * 1-5");
   const [scheduleSpec, setScheduleSpec] = useLocalStorageState("agentui.workflowScheduleSpec", "");
@@ -211,6 +212,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
     "agentui.workflowScheduleRunsErrorsOnly",
     false,
   );
+  const [scheduleRunsFilter, setScheduleRunsFilter] = useLocalStorageState("agentui.workflowScheduleRunsFilter", "");
   const [scheduleError, setScheduleError] = React.useState<string | null>(null);
   const [scheduleBusyId, setScheduleBusyId] = React.useState<string | null>(null);
   const [scheduleCreateBusy, setScheduleCreateBusy] = React.useState(false);
@@ -358,15 +360,37 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   const graph = buildLevels(tasks);
   const scheduleList = extractSchedules(scheduleListQuery.data);
   const scheduleRuns = extractScheduleRuns(scheduleRunsQuery.data);
+  const filteredScheduleList = React.useMemo(() => {
+    const query = String(scheduleFilter || "").trim().toLowerCase();
+    if (!query) return scheduleList;
+    return scheduleList.filter((sched: any) => {
+      const scheduleId = String(sched?.schedule_id || "").toLowerCase();
+      const cron = String(sched?.cron || "").toLowerCase();
+      const timezone = String(sched?.timezone || "").toLowerCase();
+      const lastError = String(sched?.last_error || "").toLowerCase();
+      return (
+        scheduleId.includes(query) ||
+        cron.includes(query) ||
+        timezone.includes(query) ||
+        lastError.includes(query)
+      );
+    });
+  }, [scheduleList, scheduleFilter]);
   const filteredScheduleRuns = React.useMemo(() => {
     const statusFilter = normalizedScheduleRunsStatus === "all" ? "" : normalizedScheduleRunsStatus;
+    const query = String(scheduleRunsFilter || "").trim().toLowerCase();
     return scheduleRuns.filter((run: any) => {
       const status = String(run?.status || "").toLowerCase();
       if (statusFilter && status !== statusFilter) return false;
+      if (query) {
+        const workflowId = String(run?.workflow_id || "").toLowerCase();
+        const scheduleId = String(run?.schedule_id || "").toLowerCase();
+        if (!workflowId.includes(query) && !scheduleId.includes(query)) return false;
+      }
       if (scheduleRunsErrorsOnly && !String(run?.error || "").trim()) return false;
       return true;
     });
-  }, [scheduleRuns, normalizedScheduleRunsStatus, scheduleRunsErrorsOnly]);
+  }, [scheduleRuns, normalizedScheduleRunsStatus, scheduleRunsErrorsOnly, scheduleRunsFilter]);
 
   const loadWorkflow = (id: string) => {
     const trimmed = String(id || "").trim();
@@ -859,6 +883,26 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                 />
               </label>
               <label className="flex items-center gap-1">
+                filter
+                <span className="flex items-center gap-1">
+                  <input
+                    className="w-[140px] rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
+                    value={String(scheduleFilter || "")}
+                    onChange={(e) => setScheduleFilter(e.target.value)}
+                    placeholder="id/cron/error"
+                  />
+                  {String(scheduleFilter || "").trim() ? (
+                    <button
+                      className="rounded border border-white/10 px-1 py-0.5 text-[10px] text-white/60 hover:bg-white/5"
+                      type="button"
+                      onClick={() => setScheduleFilter("")}
+                    >
+                      clear
+                    </button>
+                  ) : null}
+                </span>
+              </label>
+              <label className="flex items-center gap-1">
                 <input
                   type="checkbox"
                   className="h-3 w-3"
@@ -893,22 +937,22 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
               >
                 {scheduleListQuery.isFetching ? "Refreshing…" : "Refresh"}
               </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
-                type="button"
-                onClick={() => void copyJson("schedules", scheduleList)}
-                disabled={scheduleList.length === 0}
-              >
-                Copy JSON
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
-                type="button"
-                onClick={() => downloadJson("workflow-schedules", scheduleList)}
-                disabled={scheduleList.length === 0}
-              >
-                Download JSON
-              </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
+                  type="button"
+                  onClick={() => void copyJson("schedules", filteredScheduleList)}
+                  disabled={filteredScheduleList.length === 0}
+                >
+                  Copy JSON
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
+                  type="button"
+                  onClick={() => downloadJson("workflow-schedules", filteredScheduleList)}
+                  disabled={filteredScheduleList.length === 0}
+                >
+                  Download JSON
+                </button>
             </div>
           </div>
 
@@ -962,7 +1006,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
             ) : null}
 
             <div className="grid gap-2">
-              {scheduleList.map((sched: any) => {
+              {filteredScheduleList.map((sched: any) => {
                 const id = String(sched.schedule_id || "").trim();
                 const status = String(sched.status || "").toLowerCase();
                 return (
@@ -1036,9 +1080,9 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                   </div>
                 );
               })}
-              {scheduleListQuery.isSuccess && scheduleList.length === 0 ? (
+              {scheduleListQuery.isSuccess && filteredScheduleList.length === 0 ? (
                 <div className="rounded border border-white/10 bg-black/20 px-2 py-2 text-[11px] text-white/50">
-                  No schedules yet.
+                  {scheduleList.length === 0 ? "No schedules yet." : "No schedules match the filter."}
                 </div>
               ) : null}
             </div>
@@ -1085,6 +1129,26 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                         onChange={(e) => setScheduleRunsErrorsOnly(e.target.checked)}
                       />
                       errors only
+                    </label>
+                    <label className="flex items-center gap-1">
+                      filter
+                      <span className="flex items-center gap-1">
+                        <input
+                          className="w-[120px] rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
+                          value={String(scheduleRunsFilter || "")}
+                          onChange={(e) => setScheduleRunsFilter(e.target.value)}
+                          placeholder="workflow id"
+                        />
+                        {String(scheduleRunsFilter || "").trim() ? (
+                          <button
+                            className="rounded border border-white/10 px-1 py-0.5 text-[10px] text-white/60 hover:bg-white/5"
+                            type="button"
+                            onClick={() => setScheduleRunsFilter("")}
+                          >
+                            clear
+                          </button>
+                        ) : null}
+                      </span>
                     </label>
                     <div className="flex items-center gap-1">
                       <button
