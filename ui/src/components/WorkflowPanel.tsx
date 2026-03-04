@@ -47,6 +47,7 @@ type WorkflowTask = {
 
 const STATUS_OPTIONS = ["running", "queued", "active", "done", "error", "cancelled", "all"];
 const SCHEDULE_STATUS_OPTIONS = ["active", "paused", "error", "all"];
+const SCHEDULE_RUN_STATUS_OPTIONS = ["all", "queued", "running", "done", "error"];
 
 function normalizeTask(raw: any): WorkflowTask | null {
   if (!raw || typeof raw !== "object") return null;
@@ -203,6 +204,11 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   const [scheduleSpec, setScheduleSpec] = useLocalStorageState("agentui.workflowScheduleSpec", "");
   const [scheduleId, setScheduleId] = useLocalStorageState("agentui.workflowScheduleId", "");
   const [scheduleRunsLimit, setScheduleRunsLimit] = useLocalStorageState("agentui.workflowScheduleRunsLimit", "50");
+  const [scheduleRunsStatus, setScheduleRunsStatus] = useLocalStorageState("agentui.workflowScheduleRunsStatus", "all");
+  const [scheduleRunsErrorsOnly, setScheduleRunsErrorsOnly] = useLocalStorageState(
+    "agentui.workflowScheduleRunsErrorsOnly",
+    false,
+  );
   const [scheduleError, setScheduleError] = React.useState<string | null>(null);
   const [scheduleBusyId, setScheduleBusyId] = React.useState<string | null>(null);
   const [scheduleCreateBusy, setScheduleCreateBusy] = React.useState(false);
@@ -229,6 +235,9 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
     if (!Number.isFinite(n)) return 50;
     return Math.min(Math.max(Math.trunc(n), 1), 200);
   })();
+  const normalizedScheduleRunsStatus = SCHEDULE_RUN_STATUS_OPTIONS.includes(String(scheduleRunsStatus))
+    ? String(scheduleRunsStatus)
+    : "all";
 
   const listQuery = useQuery({
     queryKey: ["workflows", props.baseUrl, props.authKey, normalizedListStatus, limitValue, listFilterDebounced],
@@ -323,6 +332,15 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   const graph = buildLevels(tasks);
   const scheduleList = extractSchedules(scheduleListQuery.data);
   const scheduleRuns = extractScheduleRuns(scheduleRunsQuery.data);
+  const filteredScheduleRuns = React.useMemo(() => {
+    const statusFilter = normalizedScheduleRunsStatus === "all" ? "" : normalizedScheduleRunsStatus;
+    return scheduleRuns.filter((run: any) => {
+      const status = String(run?.status || "").toLowerCase();
+      if (statusFilter && status !== statusFilter) return false;
+      if (scheduleRunsErrorsOnly && !String(run?.error || "").trim()) return false;
+      return true;
+    });
+  }, [scheduleRuns, normalizedScheduleRunsStatus, scheduleRunsErrorsOnly]);
 
   const loadWorkflow = (id: string) => {
     const trimmed = String(id || "").trim();
@@ -979,12 +997,35 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                   <div className="flex items-center gap-2 text-[11px] text-white/60">
                     <label className="flex items-center gap-1">
                       limit
-                    <input
-                      className="w-[56px] rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
-                      value={String(scheduleRunsLimit || "")}
-                      onChange={(e) => setScheduleRunsLimit(e.target.value)}
-                    />
-                  </label>
+                      <input
+                        className="w-[56px] rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
+                        value={String(scheduleRunsLimit || "")}
+                        onChange={(e) => setScheduleRunsLimit(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex items-center gap-1">
+                      status
+                      <select
+                        className="rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
+                        value={normalizedScheduleRunsStatus}
+                        onChange={(e) => setScheduleRunsStatus(e.target.value)}
+                      >
+                        {SCHEDULE_RUN_STATUS_OPTIONS.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex items-center gap-1">
+                      <input
+                        type="checkbox"
+                        className="h-3 w-3"
+                        checked={!!scheduleRunsErrorsOnly}
+                        onChange={(e) => setScheduleRunsErrorsOnly(e.target.checked)}
+                      />
+                      errors only
+                    </label>
                     <button
                       className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
                       type="button"
@@ -1016,7 +1057,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                 <div className="text-[11px] text-rose-200">{String(scheduleRunsQuery.error)}</div>
               ) : null}
               <div className="grid gap-2">
-                {scheduleRuns.map((run: any) => (
+                {filteredScheduleRuns.map((run: any) => (
                   <div
                     key={`${run.schedule_id}-${run.tick_unix_ms}-${run.workflow_id}`}
                     className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/10 bg-black/50 px-2 py-2 text-[11px] text-white/70"
@@ -1047,9 +1088,9 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                     {run.error ? <div className="text-rose-200">{String(run.error)}</div> : null}
                   </div>
                 ))}
-                {scheduleRunsQuery.isSuccess && scheduleRuns.length === 0 ? (
+                {scheduleRunsQuery.isSuccess && filteredScheduleRuns.length === 0 ? (
                   <div className="rounded border border-white/10 bg-black/20 px-2 py-2 text-[11px] text-white/50">
-                    No runs yet.
+                    {scheduleRuns.length === 0 ? "No runs yet." : "No runs match the filter."}
                   </div>
                 ) : null}
               </div>

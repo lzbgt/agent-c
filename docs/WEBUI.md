@@ -176,6 +176,7 @@ The WebUI includes a **Workflows** panel for durable workflow inspection:
   - Inspect schedule runs (`/api/v1/workflow_schedule/runs`).
   - Each run row can load the linked workflow into the workflow inspector.
   - Copy/download JSON for schedules and schedule runs directly from the panel.
+  - Schedule runs support status filtering and an errors-only toggle.
 
 This panel includes a **Workflow composer** with JSON and Graph modes:
 - JSON templates for LLM DAG workflows (A→B/C) and `agentd_parallel` collaboration templates.
