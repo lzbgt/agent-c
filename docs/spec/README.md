@@ -36,6 +36,7 @@ declares its own status (draft/rolling/implemented) in the document header.
 
 - `tool_plugins_sandbox_v0.md`: plugin sandboxing and host policy rules.
 - `tool_plugins_embedded_v0.md`: embedded/MCU tool plugin ABI (draft).
+- `tool_sandbox_mount_allowlist_v0.md`: host mount allowlist for sandboxed tools (draft).
 
 ## Memory
 
