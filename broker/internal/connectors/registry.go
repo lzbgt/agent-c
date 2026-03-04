@@ -8,12 +8,14 @@ import (
 )
 
 type Connector struct {
-	ID          string         `json:"id"`
-	Name        string         `json:"name,omitempty"`
-	Kind        string         `json:"kind,omitempty"`
-	Status      string         `json:"status,omitempty"`
-	Description string         `json:"description,omitempty"`
-	Meta        map[string]any `json:"meta,omitempty"`
+	ID             string         `json:"id"`
+	Name           string         `json:"name,omitempty"`
+	Kind           string         `json:"kind,omitempty"`
+	Status         string         `json:"status,omitempty"`
+	Description    string         `json:"description,omitempty"`
+	LastSeenUnixMs int64          `json:"last_seen_unix_ms,omitempty"`
+	LastError      string         `json:"last_error,omitempty"`
+	Meta           map[string]any `json:"meta,omitempty"`
 }
 
 type Registry struct {
@@ -35,6 +37,28 @@ func (r *Registry) Register(conn Connector) error {
 	r.connectors[id] = conn
 	r.mu.Unlock()
 	return nil
+}
+
+func (r *Registry) UpdateStatus(id, status, lastErr string, tsUnixMs int64) (Connector, bool) {
+	trimmed := strings.TrimSpace(id)
+	if trimmed == "" {
+		return Connector{}, false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	conn, ok := r.connectors[trimmed]
+	if !ok {
+		return Connector{}, false
+	}
+	if strings.TrimSpace(status) != "" {
+		conn.Status = strings.TrimSpace(status)
+	}
+	conn.LastError = strings.TrimSpace(lastErr)
+	if tsUnixMs > 0 {
+		conn.LastSeenUnixMs = tsUnixMs
+	}
+	r.connectors[trimmed] = conn
+	return conn, true
 }
 
 func (r *Registry) List() []Connector {

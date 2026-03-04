@@ -1287,6 +1287,8 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                 const kind = String(connector?.kind || "");
                 const status = String(connector?.status || "");
                 const description = String(connector?.description || "");
+                const lastSeen = connector?.last_seen_unix_ms ? fmtTs(connector.last_seen_unix_ms) : "";
+                const lastError = String(connector?.last_error || "");
                 return (
                   <div key={id} className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1">
                     <div className="flex flex-col">
@@ -1295,6 +1297,10 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                         {kind ? `kind: ${kind}` : "kind: (unspecified)"}
                         {status ? ` · ${status}` : ""}
                       </div>
+                      {lastSeen ? <div className="text-[11px] text-white/50">last seen: {lastSeen}</div> : null}
+                      {lastError ? (
+                        <div className="mt-1 text-[11px] text-rose-200">last error: {lastError}</div>
+                      ) : null}
                       {description ? <div className="mt-1 text-[11px] text-white/60">{description}</div> : null}
                     </div>
                   </div>

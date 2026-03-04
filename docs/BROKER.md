@@ -41,6 +41,11 @@ Format (array or `{ "connectors": [...] }`):
 
 Example file: `broker/connectors.example.json`.
 
+Status updates:
+- `POST /v1/connectors/{id}/status` (admin only)
+- Body: `{ "status": "ready|degraded", "last_error": "...", "ts_unix_ms": 0 }`
+- `ts_unix_ms` defaults to current time if omitted or 0.
+
 ## Why a broker (vs exposing agentd HTTP directly)
 
 Directly exposing `agentd` is hard to secure and operate at scale:

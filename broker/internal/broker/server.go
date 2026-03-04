@@ -178,6 +178,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/client_auth/reload", s.handleClientAuthReload)
 	mux.HandleFunc("/v1/client_prefs", s.handleClientPrefs)
 	mux.HandleFunc("/v1/connectors", s.handleConnectors)
+	mux.HandleFunc("/v1/connectors/", s.handleConnectorsSubroutes)
 	mux.HandleFunc("/v1/agent/connect", s.handleAgentConnect)
 	mux.HandleFunc("/v1/agents", s.handleAgents)
 	mux.HandleFunc("/v1/teams", s.handleTeams)

@@ -124,6 +124,8 @@ export const BrokerConnectorSchema = z
     kind: z.string().optional(),
     status: z.string().optional(),
     description: z.string().optional(),
+    last_seen_unix_ms: z.number().optional(),
+    last_error: z.string().optional(),
     meta: z.record(z.any()).optional(),
   })
   .passthrough();
