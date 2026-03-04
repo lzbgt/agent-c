@@ -1,6 +1,20 @@
-# agent (prototype)
+# agent
 
-This repo is an early scaffold for a **portable agent core** (env-free, persistence-agnostic) plus a **desktop CLI host adapter** (env/config + persistence + HTTP).
+This repo is a **production-oriented agentic platform**: a portable core plus a daemon, broker, CLI, and WebUI for durable, audited automation.
+
+What you get:
+- **agent_core** (portable C library): session model, compaction helpers, role utilities.
+- **agentd** (daemon): HTTP/SSE APIs, persistence, tool runtime, workflows, approvals, diagnostics.
+- **broker** (optional relay): auth + multi-deployment routing, audit/event replay, team runs, OTA fanout.
+- **WebUI** (advanced layout): Scene + Conversation, queued prompts, Memory/Trace/Workflows panels, broker console + teams.
+- **CLI** (`agent`): local sessions or remote daemon targeting.
+
+Key capabilities:
+- **OpenAI-compatible providers** (OpenAI/OpenRouter/DeepSeek/Moonshot, etc.) with runtime diagnostics and smoke tests.
+- **Durable workflows** (DAGs + idempotency) with restart-safe requeueing and evidence tooling.
+- **Team orchestration** with role plans, approvals, runtime members, and replayable events.
+- **Memory tooling** (recaps, correlation index, trace linking) and operator-grade panels.
+- **Policy/limits hooks** for tool budgets, approvals, and automation profiles.
 
 Docs quickstart:
 - Unified handbook (curated summary; generated): `docs/HANDBOOK.md`
