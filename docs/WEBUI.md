@@ -183,6 +183,7 @@ The WebUI includes a **Workflows** panel for durable workflow inspection:
   - Schedule creation validates spec JSON for required `tasks` fields before submit.
   - A sample spec button inserts a minimal valid workflow template.
   - Cron expressions are linted client-side for 5-field numeric ranges.
+  - Schedule rows include a copy-curl shortcut for pause requests.
 
 This panel includes a **Workflow composer** with JSON and Graph modes:
 - JSON templates for LLM DAG workflows (A→B/C) and `agentd_parallel` collaboration templates.

@@ -584,6 +584,12 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
     }
   };
 
+  const scheduleCurlSnippet = (id: string) => {
+    const base = String(props.baseUrl || "").replace(/\/$/, "");
+    const token = "$AGENTD_AUTH_TOKEN";
+    return `curl -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" -d '{"schedule_id":"${id}"}' ${base}/api/v1/workflow_schedule/pause`;
+  };
+
   const pauseSchedule = async (id: string) => {
     const trimmed = String(id || "").trim();
     if (!trimmed) return;
@@ -1204,6 +1210,15 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                           onClick={() => void copyText("schedule id", id)}
                         >
                           copy id
+                        </button>
+                      ) : null}
+                      {id ? (
+                        <button
+                          className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
+                          type="button"
+                          onClick={() => void copyText("schedule curl", scheduleCurlSnippet(id))}
+                        >
+                          copy curl
                         </button>
                       ) : null}
                       {status === "active" ? (
