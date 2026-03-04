@@ -227,13 +227,28 @@ int main() {
   const bool blocked_ok_body = resp_blocked.find("\"ok\":true") != std::string::npos;
   const bool blocked_denied = resp_blocked.find("\"allowed\":false") != std::string::npos;
   const bool blocked_reason = resp_blocked.find("\"reason\":\"blocked_pattern\"") != std::string::npos;
+
+  std::string resp_prefix;
+  const std::string prefix_body =
+    std::string("{\"host_path\":\"") + allow_root_str + "\",\"container_path\":\"/etc/passwd\"}";
+  if (!http_post("127.0.0.1", port, "/api/v1/sandbox/mount_validate", prefix_body, &resp_prefix)) {
+    svc.stop();
+    std::cerr << "http_post prefix failed\n";
+    return 7;
+  }
+  const bool prefix_ok_status = resp_prefix.find("200") != std::string::npos;
+  const bool prefix_ok_body = resp_prefix.find("\"ok\":true") != std::string::npos;
+  const bool prefix_denied = resp_prefix.find("\"allowed\":false") != std::string::npos;
+  const bool prefix_reason = resp_prefix.find("\"reason\":\"container_path_outside_prefix\"") != std::string::npos;
   svc.stop();
 
   if (!ok_status || !ok_body || !post_ok_status || !post_ok_body || !post_allowed || !post_readonly || !post_reason ||
-      !blocked_ok_status || !blocked_ok_body || !blocked_denied || !blocked_reason) {
+      !blocked_ok_status || !blocked_ok_body || !blocked_denied || !blocked_reason ||
+      !prefix_ok_status || !prefix_ok_body || !prefix_denied || !prefix_reason) {
     std::cerr << "unexpected response:\n" << resp << "\n";
     std::cerr << "unexpected post response:\n" << resp_post << "\n";
     std::cerr << "unexpected blocked response:\n" << resp_blocked << "\n";
+    std::cerr << "unexpected prefix response:\n" << resp_prefix << "\n";
     return 4;
   }
   return 0;
