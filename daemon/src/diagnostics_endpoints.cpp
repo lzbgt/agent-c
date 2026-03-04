@@ -3,6 +3,7 @@
 #include "agent_db.h"
 #include "daemon_auth.h"
 #include "json_util.h"
+#include "mount_allowlist.h"
 #include "provider_util.h"
 #include "run_endpoints.h"
 #include "secrets_file.h"
@@ -189,6 +190,18 @@ void handle_diagnostics_endpoint(
   root["checks"] = checks;
 
   Json::Value errors(Json::arrayValue);
+
+  {
+    const auto allow = mount_allowlist_status();
+    Json::Value allow_json(Json::objectValue);
+    allow_json["path"] = allow.path;
+    allow_json["present"] = allow.present;
+    allow_json["loaded"] = allow.loaded;
+    allow_json["allowed_roots"] = Json::UInt64(allow.allowed_roots);
+    allow_json["blocked_patterns"] = Json::UInt64(allow.blocked_patterns);
+    if (!allow.error.empty()) allow_json["error"] = allow.error;
+    root["sandbox_mount_allowlist"] = allow_json;
+  }
 
   Json::Value db(Json::objectValue);
   if (db_or_null) {

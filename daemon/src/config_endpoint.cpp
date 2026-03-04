@@ -7,6 +7,7 @@
 #include "policy_hooks.h"
 #include "runtime_config.h"
 #include "provider_util.h"
+#include "mount_allowlist.h"
 #include "string_util.h"
 
 #include "base64.h"
@@ -296,6 +297,17 @@ void handle_config_endpoint(
   sandbox["yolo_default"] = cfg.yolo_default;
   sandbox["host_policy"] = host_policy_to_string(cfg.host_policy);
   sandbox["system_profile"] = cfg.system_profile;
+  {
+    const auto allow = mount_allowlist_status();
+    Json::Value allow_json(Json::objectValue);
+    allow_json["path"] = allow.path;
+    allow_json["present"] = allow.present;
+    allow_json["loaded"] = allow.loaded;
+    allow_json["allowed_roots"] = Json::UInt64(allow.allowed_roots);
+    allow_json["blocked_patterns"] = Json::UInt64(allow.blocked_patterns);
+    if (!allow.error.empty()) allow_json["error"] = allow.error;
+    sandbox["mount_allowlist"] = allow_json;
+  }
   out["sandbox"] = sandbox;
 
   Json::Value policy(Json::objectValue);

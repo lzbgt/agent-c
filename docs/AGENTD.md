@@ -154,6 +154,11 @@ Memory correlation index (best-effort, on-demand or via recap/consolidation):
   - `readonly`: disables process exec and patch application (keeps only `fs_*` + `text_search`)
   - Requests can also pass `host_policy: "readonly"` to tighten permissions for that run (cannot expand beyond daemon default).
 
+Sandbox mount allowlist:
+- For sandboxed tool runners, host mounts are gated by `~/.config/agent/mount-allowlist.json`.
+- Generate a template with `python3 tools/create_mount_allowlist.py`.
+- Diagnostics expose status in `/api/v1/diagnostics` (`sandbox_mount_allowlist`).
+
 ## Policy hooks (allow/deny + budget caps)
 
 `agentd` can apply deterministic policy hooks to tool runs for auditing and enforcement:

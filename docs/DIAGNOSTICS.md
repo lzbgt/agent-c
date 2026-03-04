@@ -26,6 +26,7 @@ Returns a compact snapshot with:
 - job status counts (`jobs.by_status`)
 - workflow scheduler stats (`workflows.*`)
 - current provider selection (`active_provider`)
+- sandbox mount allowlist status (`sandbox_mount_allowlist.*`)
 
 Example:
 
@@ -42,6 +43,14 @@ Example:
   "active_provider_base_url_source": "default",
   "ready": true,
   "checks": { "db_open": true },
+  "sandbox_mount_allowlist": {
+    "path": "/Users/you/.config/agent/mount-allowlist.json",
+    "present": false,
+    "loaded": false,
+    "allowed_roots": 0,
+    "blocked_patterns": 0,
+    "error": "allowlist not found"
+  },
   "db": {
     "path": "/path/to/agentd.db",
     "size_bytes": 1234567,

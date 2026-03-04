@@ -254,6 +254,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/memory_recaps.cpp
     daemon/src/memory_endpoints.cpp
     daemon/src/moderator_endpoints.cpp
+    daemon/src/mount_allowlist.cpp
     daemon/src/runtime_config.cpp
     daemon/src/secrets_file.cpp
     daemon/src/run_client_acks.cpp
