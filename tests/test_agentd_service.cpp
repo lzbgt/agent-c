@@ -90,6 +90,62 @@ static bool http_get(const std::string& host, uint16_t port, const std::string& 
   return true;
 }
 
+static bool http_post(
+  const std::string& host,
+  uint16_t port,
+  const std::string& path,
+  const std::string& body,
+  std::string* out
+) {
+  if (out) out->clear();
+
+  addrinfo hints{};
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+
+  addrinfo* res = nullptr;
+  const std::string port_s = std::to_string(port);
+  if (::getaddrinfo(host.c_str(), port_s.c_str(), &hints, &res) != 0) {
+    return false;
+  }
+
+  int fd = -1;
+  for (addrinfo* p = res; p; p = p->ai_next) {
+    fd = ::socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+    if (fd < 0) continue;
+    if (::connect(fd, p->ai_addr, p->ai_addrlen) == 0) break;
+    ::close(fd);
+    fd = -1;
+  }
+  ::freeaddrinfo(res);
+  if (fd < 0) return false;
+
+  const std::string req =
+    "POST " + path + " HTTP/1.1\r\n" +
+    "Host: " + host + "\r\n" +
+    "Content-Type: application/json\r\n" +
+    "Content-Length: " + std::to_string(body.size()) + "\r\n" +
+    "Connection: close\r\n" +
+    "\r\n" +
+    body;
+  const ssize_t sent = ::send(fd, req.data(), req.size(), 0);
+  if (sent < 0 || (size_t)sent != req.size()) {
+    ::close(fd);
+    return false;
+  }
+
+  std::string resp;
+  char buf[4096];
+  for (;;) {
+    const ssize_t n = ::recv(fd, buf, sizeof(buf), 0);
+    if (n <= 0) break;
+    resp.append(buf, (size_t)n);
+  }
+  ::close(fd);
+  if (out) *out = resp;
+  return true;
+}
+
 int main() {
   const uint16_t port = pick_free_port_or_die();
   const std::filesystem::path tmp = std::filesystem::temp_directory_path() / "agentd_service_test";
@@ -124,10 +180,23 @@ int main() {
 
   const bool ok_status = resp.find("200") != std::string::npos;
   const bool ok_body = resp.find("\"ok\":true") != std::string::npos;
+
+  std::string resp_post;
+  const std::string body = "{\"host_path\":\"/tmp\",\"container_path\":\"/workspace/extra/tmp\"}";
+  if (!http_post("127.0.0.1", port, "/api/v1/sandbox/mount_validate", body, &resp_post)) {
+    svc.stop();
+    std::cerr << "http_post failed\n";
+    return 5;
+  }
+  const bool post_ok_status = resp_post.find("200") != std::string::npos;
+  const bool post_ok_body = resp_post.find("\"ok\":true") != std::string::npos;
+  const bool post_reason = resp_post.find("allowlist_missing") != std::string::npos ||
+                           resp_post.find("\"allowed\":false") != std::string::npos;
   svc.stop();
 
-  if (!ok_status || !ok_body) {
+  if (!ok_status || !ok_body || !post_ok_status || !post_ok_body || !post_reason) {
     std::cerr << "unexpected response:\n" << resp << "\n";
+    std::cerr << "unexpected post response:\n" << resp_post << "\n";
     return 4;
   }
   return 0;
