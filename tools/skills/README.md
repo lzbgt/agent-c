@@ -77,6 +77,12 @@ python3 tools/skills/skill_status.py
 python3 tools/skills/skill_status.py --json
 ```
 
+Create a new skill from the template:
+
+```bash
+python3 tools/skills/create_skill.py my-skill
+```
+
 Notes:
 - Backups are stored under `out/skills/<skill>/<timestamp>/backup/`.
 - Applied records are stored in `out/skills/<skill>/<timestamp>/applied.json`.
