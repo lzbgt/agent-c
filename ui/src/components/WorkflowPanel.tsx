@@ -56,6 +56,19 @@ const SCHEDULE_PRESETS = [
   { label: "Weekly Mon 09:00", cron: "0 9 * * 1" },
   { label: "Monthly 1st 09:00", cron: "0 9 1 * *" },
 ];
+const SCHEDULE_SAMPLE_SPEC = {
+  tasks: [
+    {
+      id: "task-1",
+      kind: "llm",
+      prompt: "Summarize the top 3 operational alerts from the last 24h.",
+    },
+  ],
+  defaults: {
+    model: "gpt-4o-mini",
+    max_steps: 6,
+  },
+};
 
 function normalizeTask(raw: any): WorkflowTask | null {
   if (!raw || typeof raw !== "object") return null;
@@ -1031,6 +1044,17 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                   onClick={() => loadSpecFromWorkflow()}
                 >
                   use loaded spec
+                </button>
+                <button
+                  className="rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-white/70 hover:bg-black/50"
+                  type="button"
+                  onClick={() => {
+                    const payload = JSON.stringify(SCHEDULE_SAMPLE_SPEC, null, 2);
+                    setScheduleSpec(payload);
+                    setScheduleValidation(validateScheduleSpec(SCHEDULE_SAMPLE_SPEC));
+                  }}
+                >
+                  insert sample spec
                 </button>
                 <button
                   className="rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-white/80 hover:bg-black/50 disabled:opacity-50"
