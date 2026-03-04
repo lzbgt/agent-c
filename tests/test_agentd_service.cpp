@@ -230,7 +230,7 @@ int main() {
 
   std::string resp_prefix;
   const std::string prefix_body =
-    std::string("{\"host_path\":\"") + allow_root_str + "\",\"container_path\":\"/etc/passwd\"}";
+    std::string("{\"host_path\":\"") + allow_root_str + "\",\"container_path\":\"/etc/passwd\",\"container_prefix\":\"/workspace/extra\"}";
   if (!http_post("127.0.0.1", port, "/api/v1/sandbox/mount_validate", prefix_body, &resp_prefix)) {
     svc.stop();
     std::cerr << "http_post prefix failed\n";
@@ -240,15 +240,30 @@ int main() {
   const bool prefix_ok_body = resp_prefix.find("\"ok\":true") != std::string::npos;
   const bool prefix_denied = resp_prefix.find("\"allowed\":false") != std::string::npos;
   const bool prefix_reason = resp_prefix.find("\"reason\":\"container_path_outside_prefix\"") != std::string::npos;
+
+  std::string resp_custom;
+  const std::string custom_body =
+    std::string("{\"host_path\":\"") + allow_root_str + "\",\"container_path\":\"/data/ok\",\"container_prefix\":\"/data\"}";
+  if (!http_post("127.0.0.1", port, "/api/v1/sandbox/mount_validate", custom_body, &resp_custom)) {
+    svc.stop();
+    std::cerr << "http_post custom prefix failed\n";
+    return 8;
+  }
+  const bool custom_ok_status = resp_custom.find("200") != std::string::npos;
+  const bool custom_ok_body = resp_custom.find("\"ok\":true") != std::string::npos;
+  const bool custom_allowed = resp_custom.find("\"allowed\":true") != std::string::npos;
+  const bool custom_reason = resp_custom.find("\"reason\":\"ok\"") != std::string::npos;
   svc.stop();
 
   if (!ok_status || !ok_body || !post_ok_status || !post_ok_body || !post_allowed || !post_readonly || !post_reason ||
       !blocked_ok_status || !blocked_ok_body || !blocked_denied || !blocked_reason ||
-      !prefix_ok_status || !prefix_ok_body || !prefix_denied || !prefix_reason) {
+      !prefix_ok_status || !prefix_ok_body || !prefix_denied || !prefix_reason ||
+      !custom_ok_status || !custom_ok_body || !custom_allowed || !custom_reason) {
     std::cerr << "unexpected response:\n" << resp << "\n";
     std::cerr << "unexpected post response:\n" << resp_post << "\n";
     std::cerr << "unexpected blocked response:\n" << resp_blocked << "\n";
     std::cerr << "unexpected prefix response:\n" << resp_prefix << "\n";
+    std::cerr << "unexpected custom prefix response:\n" << resp_custom << "\n";
     return 4;
   }
   return 0;
