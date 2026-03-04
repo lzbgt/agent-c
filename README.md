@@ -17,10 +17,7 @@ Handbook guard:
 
 - ESP32 Voice Agentic Demo
 
-<video width="50%" controls>
-  <source src="esp32_demo/esp32_voice_agent.mp4" type="video/mp4">
-  您的编辑器不支持内嵌视频播放。
-</video>
+![](./esp32_demo/esp32_voice_agent.mp4)
 
 
 ## Build
