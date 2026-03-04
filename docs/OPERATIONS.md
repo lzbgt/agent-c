@@ -400,6 +400,14 @@ Create a mount allowlist template (for sandboxed tool runners):
 python3 tools/create_mount_allowlist.py
 ```
 
+Validate a mount decision (daemon must be running and authenticated if required):
+
+```bash
+curl -sS -X POST "http://127.0.0.1:60306/api/v1/sandbox/mount_validate" \
+  -H "Content-Type: application/json" \
+  -d '{"host_path":"/Users/you/Documents","container_path":"/workspace/extra/docs","container_prefix":"/workspace/extra","is_main":true}'
+```
+
 Vendored guard hooks:
 
 ```bash
