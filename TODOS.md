@@ -198,6 +198,12 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-19 check: `tools/probe_openrouter_stream_models.sh` fails with 401 chat auth even with headers set.
   - 2026-02-20 check: `tools/openrouter_auth_debug.sh` with key from `~/.env` still returns 401 “User not found” on `/chat/completions`.
   - 2026-02-20 check: even with `OPENROUTER_HTTP_REFERER=http://localhost` and `OPENROUTER_X_TITLE=agentd`, `/chat/completions` returns 401 “User not found”.
+- [ ] W=11 — First-class workflow schedules (cron + timezone) with durable persistence, agentd API, and WebUI controls.
+  - Add `workflow_schedules` + `workflow_schedule_runs` tables and schema bump.
+  - Add agentd endpoints (create/list/get/pause/resume/delete + runs list).
+  - Integrate schedule tick loop into the workflow scheduler (idempotent ticks).
+  - WebUI: Schedules subpanel (list + create + pause/resume).
+  - Tests for schedule idempotency, invalid cron handling, and pause/resume.
 - [x] W=9 — Broker Team Console UX compaction: full-width panel layout + compact member builder to eliminate excessive vertical scroll in team setup/members views.
   - 2026-03-04: compacted team member/setup grids, added list scroll bounding, and widened broker panel layout.
 - [x] W=7 — Split `ui/src/components/broker/BrokerTeamConsole.tsx` into smaller subcomponents (<2000 LOC) while preserving behavior.
