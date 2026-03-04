@@ -966,6 +966,22 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                       <span className="font-mono">{String(run.workflow_id || "")}</span>
                       <span className="text-white/50">tick {formatUnixMs(run.tick_unix_ms)}</span>
                     </div>
+                    <div className="flex items-center gap-2">
+                      {run.workflow_id ? (
+                        <button
+                          className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
+                          type="button"
+                          onClick={() => {
+                            const id = String(run.workflow_id || "").trim();
+                            if (!id) return;
+                            setWorkflowId(id);
+                            loadWorkflow(id);
+                          }}
+                        >
+                          load workflow
+                        </button>
+                      ) : null}
+                    </div>
                     {run.error ? <div className="text-rose-200">{String(run.error)}</div> : null}
                   </div>
                 ))}

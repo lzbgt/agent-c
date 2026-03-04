@@ -174,6 +174,7 @@ The WebUI includes a **Workflows** panel for durable workflow inspection:
   - Create schedules by providing cron + spec JSON (`/api/v1/workflow_schedules`).
   - Pause/resume/delete schedules (`/api/v1/workflow_schedule/*`).
   - Inspect schedule runs (`/api/v1/workflow_schedule/runs`).
+  - Each run row can load the linked workflow into the workflow inspector.
 
 This panel includes a **Workflow composer** with JSON and Graph modes:
 - JSON templates for LLM DAG workflows (A→B/C) and `agentd_parallel` collaboration templates.
