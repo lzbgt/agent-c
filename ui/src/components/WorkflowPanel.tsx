@@ -321,6 +321,8 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   const summary = extractWorkflowSummary(detail);
   const taskCounts = countByStatus(tasks);
   const graph = buildLevels(tasks);
+  const scheduleList = extractSchedules(scheduleListQuery.data);
+  const scheduleRuns = extractScheduleRuns(scheduleRunsQuery.data);
 
   const loadWorkflow = (id: string) => {
     const trimmed = String(id || "").trim();
@@ -507,6 +509,34 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
       window.clearTimeout(copyTimerRef.current);
     }
     copyTimerRef.current = window.setTimeout(() => setCopyNotice(null), 2000);
+  };
+
+  const copyJson = async (label: string, payload: any) => {
+    try {
+      const text = JSON.stringify(payload, null, 2);
+      await copyText(label, text);
+    } catch {
+      setCopyNotice(`Failed to copy ${label}`);
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => setCopyNotice(null), 2000);
+    }
+  };
+
+  const downloadJson = (label: string, payload: any) => {
+    try {
+      const text = JSON.stringify(payload, null, 2);
+      const blob = new Blob([text], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${label}-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setCopyNotice(`Failed to download ${label}`);
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => setCopyNotice(null), 2000);
+    }
   };
 
   React.useEffect(
@@ -793,6 +823,22 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
               >
                 {scheduleListQuery.isFetching ? "Refreshing…" : "Refresh"}
               </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                onClick={() => void copyJson("schedules", scheduleList)}
+                disabled={scheduleList.length === 0}
+              >
+                Copy JSON
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                onClick={() => downloadJson("workflow-schedules", scheduleList)}
+                disabled={scheduleList.length === 0}
+              >
+                Download JSON
+              </button>
             </div>
           </div>
 
@@ -846,7 +892,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
             ) : null}
 
             <div className="grid gap-2">
-              {extractSchedules(scheduleListQuery.data).map((sched: any) => {
+              {scheduleList.map((sched: any) => {
                 const id = String(sched.schedule_id || "").trim();
                 const status = String(sched.status || "").toLowerCase();
                 return (
@@ -920,7 +966,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                   </div>
                 );
               })}
-              {scheduleListQuery.isSuccess && extractSchedules(scheduleListQuery.data).length === 0 ? (
+              {scheduleListQuery.isSuccess && scheduleList.length === 0 ? (
                 <div className="rounded border border-white/10 bg-black/20 px-2 py-2 text-[11px] text-white/50">
                   No schedules yet.
                 </div>
@@ -928,33 +974,49 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
             </div>
 
             <div className="grid gap-2 rounded-md border border-white/10 bg-black/40 p-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-[11px] text-white/60">Schedule runs</div>
-                <div className="flex items-center gap-2 text-[11px] text-white/60">
-                  <label className="flex items-center gap-1">
-                    limit
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-[11px] text-white/60">Schedule runs</div>
+                  <div className="flex items-center gap-2 text-[11px] text-white/60">
+                    <label className="flex items-center gap-1">
+                      limit
                     <input
                       className="w-[56px] rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
                       value={String(scheduleRunsLimit || "")}
                       onChange={(e) => setScheduleRunsLimit(e.target.value)}
                     />
                   </label>
-                  <button
-                    className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
-                    type="button"
-                    onClick={() => scheduleRunsQuery.refetch()}
-                    disabled={scheduleRunsQuery.isFetching || !String(scheduleId || "").trim()}
-                  >
-                    {scheduleRunsQuery.isFetching ? "Refreshing…" : "Refresh"}
-                  </button>
+                    <button
+                      className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
+                      type="button"
+                      onClick={() => scheduleRunsQuery.refetch()}
+                      disabled={scheduleRunsQuery.isFetching || !String(scheduleId || "").trim()}
+                    >
+                      {scheduleRunsQuery.isFetching ? "Refreshing…" : "Refresh"}
+                    </button>
+                    <button
+                      className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5 disabled:opacity-50"
+                      type="button"
+                      onClick={() => void copyJson("schedule runs", scheduleRuns)}
+                      disabled={scheduleRuns.length === 0}
+                    >
+                      Copy JSON
+                    </button>
+                    <button
+                      className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5 disabled:opacity-50"
+                      type="button"
+                      onClick={() => downloadJson("workflow-schedule-runs", scheduleRuns)}
+                      disabled={scheduleRuns.length === 0}
+                    >
+                      Download JSON
+                    </button>
+                  </div>
                 </div>
-              </div>
               <div className="text-[10px] text-white/50">schedule_id: {scheduleId ? scheduleId : "—"}</div>
               {scheduleRunsQuery.isError ? (
                 <div className="text-[11px] text-rose-200">{String(scheduleRunsQuery.error)}</div>
               ) : null}
               <div className="grid gap-2">
-                {extractScheduleRuns(scheduleRunsQuery.data).map((run: any) => (
+                {scheduleRuns.map((run: any) => (
                   <div
                     key={`${run.schedule_id}-${run.tick_unix_ms}-${run.workflow_id}`}
                     className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/10 bg-black/50 px-2 py-2 text-[11px] text-white/70"
@@ -985,7 +1047,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                     {run.error ? <div className="text-rose-200">{String(run.error)}</div> : null}
                   </div>
                 ))}
-                {scheduleRunsQuery.isSuccess && extractScheduleRuns(scheduleRunsQuery.data).length === 0 ? (
+                {scheduleRunsQuery.isSuccess && scheduleRuns.length === 0 ? (
                   <div className="rounded border border-white/10 bg-black/20 px-2 py-2 text-[11px] text-white/50">
                     No runs yet.
                   </div>
