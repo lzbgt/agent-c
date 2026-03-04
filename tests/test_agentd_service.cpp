@@ -157,8 +157,10 @@ int main() {
 
   const std::filesystem::path home_root = tmp / "home";
   const std::filesystem::path allow_root = tmp / "allow_root";
+  const std::filesystem::path blocked_path = allow_root / ".ssh";
   const std::filesystem::path allow_file = home_root / ".config" / "agent" / "mount-allowlist.json";
   std::filesystem::create_directories(allow_root, ec);
+  std::filesystem::create_directories(blocked_path, ec);
   std::filesystem::create_directories(allow_file.parent_path(), ec);
   const std::string allow_root_str = allow_root.generic_string();
   const std::string allow_json =
@@ -212,11 +214,26 @@ int main() {
   const bool post_allowed = resp_post.find("\"allowed\":true") != std::string::npos;
   const bool post_readonly = resp_post.find("\"readonly\":false") != std::string::npos;
   const bool post_reason = resp_post.find("\"reason\":\"ok\"") != std::string::npos;
+
+  std::string resp_blocked;
+  const std::string blocked_body =
+    std::string("{\"host_path\":\"") + blocked_path.generic_string() + "\",\"container_path\":\"/workspace/extra/blocked\"}";
+  if (!http_post("127.0.0.1", port, "/api/v1/sandbox/mount_validate", blocked_body, &resp_blocked)) {
+    svc.stop();
+    std::cerr << "http_post blocked failed\n";
+    return 6;
+  }
+  const bool blocked_ok_status = resp_blocked.find("200") != std::string::npos;
+  const bool blocked_ok_body = resp_blocked.find("\"ok\":true") != std::string::npos;
+  const bool blocked_denied = resp_blocked.find("\"allowed\":false") != std::string::npos;
+  const bool blocked_reason = resp_blocked.find("\"reason\":\"blocked_pattern\"") != std::string::npos;
   svc.stop();
 
-  if (!ok_status || !ok_body || !post_ok_status || !post_ok_body || !post_allowed || !post_readonly || !post_reason) {
+  if (!ok_status || !ok_body || !post_ok_status || !post_ok_body || !post_allowed || !post_readonly || !post_reason ||
+      !blocked_ok_status || !blocked_ok_body || !blocked_denied || !blocked_reason) {
     std::cerr << "unexpected response:\n" << resp << "\n";
     std::cerr << "unexpected post response:\n" << resp_post << "\n";
+    std::cerr << "unexpected blocked response:\n" << resp_blocked << "\n";
     return 4;
   }
   return 0;
