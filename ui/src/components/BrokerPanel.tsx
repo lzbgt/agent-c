@@ -1352,6 +1352,9 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                 const lastError = String(connector?.last_error || "");
                 const statusTone = isMissing ? "text-amber-200" : isStale ? "text-amber-200" : "text-emerald-200";
                 const statusLabel = isMissing ? "unknown" : isStale ? "stale" : "fresh";
+                const curlSnippet = `curl -H "Authorization: Bearer $BROKER_ADMIN_TOKEN" -H "Content-Type: application/json" -d '{"status":"${status || "ready"}","last_error":"","ts_unix_ms":0}' $BROKER_BASE/v1/connectors/${encodeURIComponent(
+                  id || "connector",
+                )}/status`;
                 const tooltip = [
                   id ? `id: ${id}` : null,
                   kind ? `kind: ${kind}` : null,
@@ -1375,6 +1378,22 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                         <div className="mt-1 text-[11px] text-rose-200">last error: {lastError}</div>
                       ) : null}
                       {description ? <div className="mt-1 text-[11px] text-white/60">{description}</div> : null}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
+                        type="button"
+                        title="Copy curl command"
+                        onClick={() => {
+                          try {
+                            void navigator.clipboard.writeText(curlSnippet);
+                          } catch {
+                            // ignore clipboard errors
+                          }
+                        }}
+                      >
+                        Copy curl
+                      </button>
                     </div>
                   </div>
                 );
