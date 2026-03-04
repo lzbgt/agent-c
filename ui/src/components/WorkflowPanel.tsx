@@ -199,11 +199,13 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   const [cancelBusyId, setCancelBusyId] = React.useState<string | null>(null);
   const [scheduleStatus, setScheduleStatus] = useLocalStorageState("agentui.workflowScheduleStatus", "active");
   const [scheduleLimit, setScheduleLimit] = useLocalStorageState("agentui.workflowScheduleLimit", "50");
+  const [scheduleOffset, setScheduleOffset] = useLocalStorageState("agentui.workflowScheduleOffset", "0");
   const [scheduleAutoRefresh, setScheduleAutoRefresh] = useLocalStorageState("agentui.workflowScheduleAutoRefresh", false);
   const [scheduleCron, setScheduleCron] = useLocalStorageState("agentui.workflowScheduleCron", "0 9 * * 1-5");
   const [scheduleSpec, setScheduleSpec] = useLocalStorageState("agentui.workflowScheduleSpec", "");
   const [scheduleId, setScheduleId] = useLocalStorageState("agentui.workflowScheduleId", "");
   const [scheduleRunsLimit, setScheduleRunsLimit] = useLocalStorageState("agentui.workflowScheduleRunsLimit", "50");
+  const [scheduleRunsOffset, setScheduleRunsOffset] = useLocalStorageState("agentui.workflowScheduleRunsOffset", "0");
   const [scheduleRunsStatus, setScheduleRunsStatus] = useLocalStorageState("agentui.workflowScheduleRunsStatus", "all");
   const [scheduleRunsErrorsOnly, setScheduleRunsErrorsOnly] = useLocalStorageState(
     "agentui.workflowScheduleRunsErrorsOnly",
@@ -230,10 +232,20 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
     if (!Number.isFinite(n)) return 50;
     return Math.min(Math.max(Math.trunc(n), 1), 200);
   })();
+  const scheduleOffsetValue = (() => {
+    const n = Number(scheduleOffset);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return Math.trunc(n);
+  })();
   const scheduleRunsLimitValue = (() => {
     const n = Number(scheduleRunsLimit);
     if (!Number.isFinite(n)) return 50;
     return Math.min(Math.max(Math.trunc(n), 1), 200);
+  })();
+  const scheduleRunsOffsetValue = (() => {
+    const n = Number(scheduleRunsOffset);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return Math.trunc(n);
   })();
   const normalizedScheduleRunsStatus = SCHEDULE_RUN_STATUS_OPTIONS.includes(String(scheduleRunsStatus))
     ? String(scheduleRunsStatus)
@@ -266,14 +278,21 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   }, [listFilter, listQuery.data]);
 
   const scheduleListQuery = useQuery({
-    queryKey: ["workflow-schedules", props.baseUrl, props.authKey, normalizedScheduleStatus, scheduleLimitValue],
+    queryKey: [
+      "workflow-schedules",
+      props.baseUrl,
+      props.authKey,
+      normalizedScheduleStatus,
+      scheduleLimitValue,
+      scheduleOffsetValue,
+    ],
     queryFn: () =>
       apiListWorkflowSchedules(
         props.baseUrl,
         {
           status: normalizedScheduleStatus === "all" ? undefined : normalizedScheduleStatus,
           limit: scheduleLimitValue,
-          offset: 0,
+          offset: scheduleOffsetValue,
         },
         props.auth,
       ),
@@ -283,11 +302,18 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   });
 
   const scheduleRunsQuery = useQuery({
-    queryKey: ["workflow-schedule-runs", props.baseUrl, props.authKey, scheduleId, scheduleRunsLimitValue],
+    queryKey: [
+      "workflow-schedule-runs",
+      props.baseUrl,
+      props.authKey,
+      scheduleId,
+      scheduleRunsLimitValue,
+      scheduleRunsOffsetValue,
+    ],
     queryFn: () =>
       apiListWorkflowScheduleRuns(
         props.baseUrl,
-        { scheduleId: String(scheduleId || ""), limit: scheduleRunsLimitValue, offset: 0 },
+        { scheduleId: String(scheduleId || ""), limit: scheduleRunsLimitValue, offset: scheduleRunsOffsetValue },
         props.auth,
       ),
     enabled: props.open && !!props.baseUrl && String(scheduleId || "").trim().length > 0,
@@ -825,6 +851,14 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                 />
               </label>
               <label className="flex items-center gap-1">
+                offset
+                <input
+                  className="w-[56px] rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
+                  value={String(scheduleOffset || "")}
+                  onChange={(e) => setScheduleOffset(e.target.value)}
+                />
+              </label>
+              <label className="flex items-center gap-1">
                 <input
                   type="checkbox"
                   className="h-3 w-3"
@@ -833,6 +867,24 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                 />
                 auto
               </label>
+              <div className="flex items-center gap-1">
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
+                  type="button"
+                  onClick={() => setScheduleOffset(String(Math.max(0, scheduleOffsetValue - scheduleLimitValue)))}
+                  disabled={scheduleOffsetValue === 0}
+                >
+                  Prev
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
+                  type="button"
+                  onClick={() => setScheduleOffset(String(scheduleOffsetValue + scheduleLimitValue))}
+                  disabled={scheduleList.length < scheduleLimitValue}
+                >
+                  Next
+                </button>
+              </div>
               <button
                 className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
                 type="button"
@@ -1004,6 +1056,14 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                       />
                     </label>
                     <label className="flex items-center gap-1">
+                      offset
+                      <input
+                        className="w-[56px] rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
+                        value={String(scheduleRunsOffset || "")}
+                        onChange={(e) => setScheduleRunsOffset(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex items-center gap-1">
                       status
                       <select
                         className="rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
@@ -1026,6 +1086,26 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                       />
                       errors only
                     </label>
+                    <div className="flex items-center gap-1">
+                      <button
+                        className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5 disabled:opacity-50"
+                        type="button"
+                        onClick={() =>
+                          setScheduleRunsOffset(String(Math.max(0, scheduleRunsOffsetValue - scheduleRunsLimitValue)))
+                        }
+                        disabled={scheduleRunsOffsetValue === 0}
+                      >
+                        Prev
+                      </button>
+                      <button
+                        className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5 disabled:opacity-50"
+                        type="button"
+                        onClick={() => setScheduleRunsOffset(String(scheduleRunsOffsetValue + scheduleRunsLimitValue))}
+                        disabled={scheduleRuns.length < scheduleRunsLimitValue}
+                      >
+                        Next
+                      </button>
+                    </div>
                     <button
                       className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
                       type="button"
