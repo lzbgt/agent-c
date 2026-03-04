@@ -584,10 +584,15 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
     }
   };
 
-  const scheduleCurlSnippet = (id: string) => {
+  const scheduleCurlSnippet = (id: string, action: "pause" | "resume" | "delete") => {
     const base = String(props.baseUrl || "").replace(/\/$/, "");
     const token = "$AGENTD_AUTH_TOKEN";
-    return `curl -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" -d '{"schedule_id":"${id}"}' ${base}/api/v1/workflow_schedule/pause`;
+    if (action === "delete") {
+      return `curl -H "Authorization: Bearer ${token}" -X DELETE ${base}/api/v1/workflow_schedule?schedule_id=${encodeURIComponent(
+        id,
+      )}`;
+    }
+    return `curl -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" -d '{"schedule_id":"${id}"}' ${base}/api/v1/workflow_schedule/${action}`;
   };
 
   const pauseSchedule = async (id: string) => {
@@ -1216,9 +1221,27 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                         <button
                           className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
                           type="button"
-                          onClick={() => void copyText("schedule curl", scheduleCurlSnippet(id))}
+                          onClick={() => void copyText("schedule pause curl", scheduleCurlSnippet(id, "pause"))}
                         >
-                          copy curl
+                          copy pause curl
+                        </button>
+                      ) : null}
+                      {id ? (
+                        <button
+                          className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
+                          type="button"
+                          onClick={() => void copyText("schedule resume curl", scheduleCurlSnippet(id, "resume"))}
+                        >
+                          copy resume curl
+                        </button>
+                      ) : null}
+                      {id ? (
+                        <button
+                          className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
+                          type="button"
+                          onClick={() => void copyText("schedule delete curl", scheduleCurlSnippet(id, "delete"))}
+                        >
+                          copy delete curl
                         </button>
                       ) : null}
                       {status === "active" ? (
