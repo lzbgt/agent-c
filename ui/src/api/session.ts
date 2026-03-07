@@ -1,4 +1,4 @@
-import { daemonHeaders, type ApiAuth } from "./auth";
+import { daemonFetchInit, type ApiAuth } from "./auth";
 import {
   AuditSchema,
   type AuditResp,
@@ -36,29 +36,28 @@ export async function apiPostSessionUpload(
   auth?: ApiAuth,
 ): Promise<SessionUploadResp> {
   const payload = SessionUploadReqSchema.parse(req);
-  const r = await fetch(`${base}/api/v1/session/upload`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/api/v1/session/upload`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return SessionUploadRespSchema.parse(j);
 }
 
 export async function apiListSessions(base: string, auth?: ApiAuth): Promise<SessionsResp> {
-  const r = await fetch(`${base}/api/v1/sessions`, { headers: daemonHeaders(auth) });
+  const r = await fetch(`${base}/api/v1/sessions`, daemonFetchInit(auth));
   const j = await r.json();
   return SessionsSchema.parse(j);
 }
 
 export async function apiGetSession(base: string, sessionId: string, auth?: ApiAuth): Promise<SessionResp> {
-  const r = await fetch(`${base}/api/v1/session?session_id=${encodeURIComponent(sessionId)}`, { headers: daemonHeaders(auth) });
+  const r = await fetch(`${base}/api/v1/session?session_id=${encodeURIComponent(sessionId)}`, daemonFetchInit(auth));
   const j = await r.json();
   return SessionSchema.parse(j);
 }
 
 export async function apiGetSessionScene(base: string, sessionId: string, auth?: ApiAuth): Promise<SessionSceneResp> {
-  const r = await fetch(`${base}/api/v1/session/scene?session_id=${encodeURIComponent(sessionId)}`, { headers: daemonHeaders(auth) });
+  const r = await fetch(`${base}/api/v1/session/scene?session_id=${encodeURIComponent(sessionId)}`, daemonFetchInit(auth));
   const j = await r.json();
   return SessionSceneSchema.parse(j);
 }
@@ -69,11 +68,10 @@ export async function apiPostSessionSceneApply(
   auth?: ApiAuth,
 ): Promise<SessionSceneApplyResp> {
   const payload = SessionSceneApplyReqSchema.parse(req);
-  const r = await fetch(`${base}/api/v1/session/scene/apply`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/api/v1/session/scene/apply`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return SessionSceneApplyRespSchema.parse(j);
 }
@@ -85,11 +83,10 @@ export async function apiPostSessionUiEvent(
 ): Promise<SessionUiEventResp> {
   const payload = SessionUiEventReqSchema.parse(req);
   // Preferred endpoint name is /session/client_event; /session/ui_event remains as a legacy alias.
-  const r = await fetch(`${base}/api/v1/session/client_event`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/api/v1/session/client_event`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return SessionUiEventRespSchema.parse(j);
 }
@@ -102,28 +99,25 @@ export async function apiNewSession(
   const payload: any = {};
   if (opts?.sessionId) payload.session_id = String(opts.sessionId);
   if (typeof opts?.createFiles === "boolean") payload.create_files = opts.createFiles;
-  const r = await fetch(`${base}/api/v1/session/new`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/api/v1/session/new`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return NewSessionRespSchema.parse(j);
 }
 
 export async function apiDeleteSession(base: string, sessionId: string, auth?: ApiAuth): Promise<DeleteSessionResp> {
-  const r = await fetch(`${base}/api/v1/session?session_id=${encodeURIComponent(sessionId)}`, {
-    method: "DELETE",
-    headers: daemonHeaders(auth),
-  });
+  const r = await fetch(`${base}/api/v1/session?session_id=${encodeURIComponent(sessionId)}`, daemonFetchInit(auth, { method: "DELETE" }));
   const j = await r.json();
   return DeleteSessionRespSchema.parse(j);
 }
 
 export async function apiGetAudit(base: string, sessionId: string, auth?: ApiAuth): Promise<AuditResp> {
-  const r = await fetch(`${base}/api/v1/session/audit?session_id=${encodeURIComponent(sessionId)}&max_bytes=1048576`, {
-    headers: daemonHeaders(auth),
-  });
+  const r = await fetch(
+    `${base}/api/v1/session/audit?session_id=${encodeURIComponent(sessionId)}&max_bytes=1048576`,
+    daemonFetchInit(auth),
+  );
   const j = await r.json();
   return AuditSchema.parse(j);
 }
@@ -137,7 +131,7 @@ export async function apiGetSessionClientEvents(
   const maxBytes = typeof opts?.maxBytes === "number" ? opts.maxBytes : 1024 * 1024;
   const r = await fetch(
     `${base}/api/v1/session/client_events?session_id=${encodeURIComponent(sessionId)}&max_bytes=${encodeURIComponent(String(maxBytes))}`,
-    { headers: daemonHeaders(auth) },
+    daemonFetchInit(auth),
   );
   const j = await r.json();
   return SessionClientEventsSchema.parse(j);
@@ -155,7 +149,7 @@ export async function apiGetSessionArtifacts(
     `${base}/api/v1/session/artifacts?session_id=${encodeURIComponent(sessionId)}&max_bytes=${encodeURIComponent(
       String(maxBytes),
     )}&max_artifacts=${encodeURIComponent(String(maxArtifacts))}`,
-    { headers: daemonHeaders(auth) },
+    daemonFetchInit(auth),
   );
   const j = await r.json();
   return SessionArtifactsSchema.parse(j);

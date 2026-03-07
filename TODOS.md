@@ -99,7 +99,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Weighted tasks (next up)
 
-- [ ] W=13 — Browser secret boundary hardening: keep broker/agentd auth tokens and provider API keys out of durable browser storage, then finish the move to HttpOnly/session-backed auth for brokered deployments.
+- [x] W=13 — Browser secret boundary hardening: keep broker/agentd auth tokens and provider API keys out of durable browser storage, then finish the move to HttpOnly/session-backed auth for brokered deployments.
   - 2026-03-07: moved WebUI broker/daemon tokens and provider API keys out of `localStorage`; they now live in browser session storage and legacy localStorage secrets are scrubbed on load.
   - 2026-03-07: connection profile persistence/server sync remains non-secret only; docs updated to reflect session-scoped secret behavior.
   - Remaining: broker-backed cookie/session exchange so browser JS does not hold long-lived broker tokens at all.

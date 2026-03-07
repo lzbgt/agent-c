@@ -1,5 +1,5 @@
 import React from "react";
-import { apiPostSessionUiEvent, daemonHeaders, type ApiAuth } from "../api";
+import { apiPostSessionUiEvent, daemonFetchInit, type ApiAuth } from "../api";
 
 function safeString(v: any): string {
   return typeof v === "string" ? v : "";
@@ -193,11 +193,7 @@ export default function ArtifactView({
         setFetchError(null);
         setContentType("");
 
-        const r = await fetch(src, {
-          method: "GET",
-          headers: daemonHeaders(daemonAuth),
-          signal: ac.signal,
-        });
+        const r = await fetch(src, daemonFetchInit(daemonAuth, { method: "GET", signal: ac.signal }));
         if (!r.ok) {
           // In YOLO mode, try an absolute resolved_path fallback.
           if (fallbackFetchPath && activeFetchPath !== fallbackFetchPath) {

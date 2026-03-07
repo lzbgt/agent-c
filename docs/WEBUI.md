@@ -36,6 +36,7 @@ Edit `ui/public/agentui-config.js` (copied to `ui/dist/agentui-config.js`) to pr
 - `connectionMode` (`direct` or `broker`)
 - `daemonBaseUrl`, `brokerBaseUrl`, `brokerAgentId`, `brokerDeploymentId`
 - `daemonAuthToken`, `brokerAuthToken` (only if you accept putting tokens in a static file)
+- `brokerCookieAuth` (`true` to prefer HttpOnly broker auth cookies over JS-held bearer tokens)
 - `model`, `baseUrl`, `proxyUrl`, `timeoutMs`
 - `tools`, `yolo`, `hostPolicy`, `verbose`
 - `automationProfile` (full|guided|strict|custom; omit for daemon default)
@@ -44,7 +45,8 @@ Edit `ui/public/agentui-config.js` (copied to `ui/dist/agentui-config.js`) to pr
 - `workflowBearerEnv` (env var name used by `agentd_call` bearer_env in templates)
 - `serverPrefsMode` (`off`, `auto`, `on`)
 
-Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`, and `VITE_AGENTUI_*` (including `VITE_AGENTUI_SERVER_PREFS_MODE`).
+Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`, and `VITE_AGENTUI_*`
+(including `VITE_AGENTUI_SERVER_PREFS_MODE` and `VITE_AGENTUI_BROKER_COOKIE_AUTH`).
 
 Preset configs:
 - `tools/agentui-config.compose.js` (compose default)
@@ -118,6 +120,9 @@ Secret handling:
   - If the browser tries `keycloak.lvh.me:<port>/v1/agents/...`, the Broker base URL is mis-set; reset Settings → Connection to the broker URL from `out/devstack_state.json`.
   - If the browser cannot reach `http://127.0.0.1:<broker_port>/v1/agents/<id>/proxy`, ensure Settings → Connection points at the broker URL from `out/devstack_state.json`.
 - If you enabled `--broker-tls`, accept the self-signed broker certificate by visiting `https://127.0.0.1:<broker_port>` directly.
+- For browser-only broker auth, enable `--auth-cookie <name>` and `--cors-allow-credentials` on the broker, then turn on
+  Settings → Connection → `Use broker auth cookie (HttpOnly)`. In this mode the WebUI sends `credentials: "include"`
+  on broker requests and no broker bearer token is required in JavaScript.
 - The WebUI runs a single **Advanced** layout: Scene on top, Conversation below, and tool panels in the sidebar.
 - Conversation history is persisted in the daemon DB and reloaded after refresh (user/assistant messages plus run tool records).
 - You can queue prompts while a run is active; queued runs execute in order and the queue count is shown in the Run/Queue button.

@@ -483,7 +483,9 @@ Per-route policies:
 
 Configure in the WebUI Settings:
 - Connection mode: `broker`
-- Broker base URL + bearer token
+- Broker base URL + either:
+  - bearer token, or
+  - `Use broker auth cookie (HttpOnly)` when the broker is started with `--auth-cookie <name>` and `--cors-allow-credentials`
 
 This enables “complex tasks” split across specialized agents:
 - one agent with full host tools on a workstation

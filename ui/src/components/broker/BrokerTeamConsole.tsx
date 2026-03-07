@@ -60,7 +60,8 @@ export type BrokerTeamConsoleProps = {
 
 export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const authToken = props.auth?.token ? String(props.auth.token).trim() : "";
-  const canQuery = props.base.length > 0 && authToken.length > 0;
+  const useCookieAuth = props.auth?.mode === "broker" && props.auth.useCookieAuth === true;
+  const canQuery = props.base.length > 0 && (authToken.length > 0 || useCookieAuth);
   const mode = props.mode ?? "full";
 
   const [teamsBusy, setTeamsBusy] = React.useState<boolean>(false);

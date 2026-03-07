@@ -1,5 +1,5 @@
 import React from "react";
-import { apiGetJob, apiGetJobProgress, daemonHeaders, type AgentEvent, type ApiAuth, type RunResponse } from "../api";
+import { apiGetJob, apiGetJobProgress, daemonFetchInit, type AgentEvent, type ApiAuth, type RunResponse } from "../api";
 import { appendLiveEvents, capLiveEvents } from "../liveEvents";
 import { readSseStream } from "../sse";
 import { sleep } from "../timeUtils";
@@ -237,10 +237,7 @@ export default function useJobStreaming(args: JobStreamingArgs) {
       setJobUpdatedMs(null);
 
       (async () => {
-        const resp = await fetch(url, {
-          headers: daemonHeaders(daemonAuth),
-          signal: controller.signal,
-        });
+        const resp = await fetch(url, daemonFetchInit(daemonAuth, { signal: controller.signal }));
         if (!resp.ok) {
           throw new Error(`SSE fetch failed: HTTP ${resp.status}`);
         }

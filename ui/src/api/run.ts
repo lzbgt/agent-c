@@ -1,4 +1,4 @@
-import { daemonHeaders, type ApiAuth } from "./auth";
+import { daemonFetchInit, type ApiAuth } from "./auth";
 import {
   JobRespSchema,
   type JobResp,
@@ -31,28 +31,26 @@ function ensureTraceId(req: RunRequest): RunRequest {
 
 export async function apiRun(base: string, req: RunRequest, auth?: ApiAuth): Promise<RunResponse> {
   const payload = ensureTraceId(RunRequestSchema.parse(req));
-  const r = await fetch(`${base}/api/v1/run`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/api/v1/run`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return RunResponseSchema.parse(j);
 }
 
 export async function apiRunAsync(base: string, req: RunRequest, auth?: ApiAuth): Promise<RunAsyncResp> {
   const payload = ensureTraceId(RunRequestSchema.parse(req));
-  const r = await fetch(`${base}/api/v1/run_async`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/api/v1/run_async`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return RunAsyncRespSchema.parse(j);
 }
 
 export async function apiGetJob(base: string, jobId: string, auth?: ApiAuth): Promise<JobResp> {
-  const r = await fetch(`${base}/api/v1/job?job_id=${encodeURIComponent(jobId)}`, { headers: daemonHeaders(auth) });
+  const r = await fetch(`${base}/api/v1/job?job_id=${encodeURIComponent(jobId)}`, daemonFetchInit(auth));
   const j = await r.json();
   return JobRespSchema.parse(j);
 }
@@ -69,17 +67,14 @@ export async function apiGetJobProgress(
     `${base}/api/v1/job?job_id=${encodeURIComponent(jobId)}&include_events=1&cursor=${encodeURIComponent(
       String(cursor),
     )}&max_events=${encodeURIComponent(String(maxEvents))}`,
-    { headers: daemonHeaders(auth) },
+    daemonFetchInit(auth),
   );
   const j = await r.json();
   return JobRespSchema.parse(j);
 }
 
 export async function apiCancelJob(base: string, jobId: string, auth?: ApiAuth): Promise<any> {
-  const r = await fetch(`${base}/api/v1/job/cancel?job_id=${encodeURIComponent(jobId)}`, {
-    method: "POST",
-    headers: daemonHeaders(auth),
-  });
+  const r = await fetch(`${base}/api/v1/job/cancel?job_id=${encodeURIComponent(jobId)}`, daemonFetchInit(auth, { method: "POST" }));
   const j = await r.json();
   return j;
 }
@@ -87,9 +82,7 @@ export async function apiCancelJob(base: string, jobId: string, auth?: ApiAuth):
 export async function apiRunReplay(base: string, runId: string, auth?: ApiAuth): Promise<RunReplayResp> {
   const rid = String(runId || "").trim();
   if (!rid) throw new Error("missing run_id");
-  const r = await fetch(`${base}/api/v1/run/replay?run_id=${encodeURIComponent(rid)}`, {
-    headers: daemonHeaders(auth),
-  });
+  const r = await fetch(`${base}/api/v1/run/replay?run_id=${encodeURIComponent(rid)}`, daemonFetchInit(auth));
   let j: any = {};
   try {
     j = await r.json();
@@ -105,9 +98,7 @@ export async function apiRunReplay(base: string, runId: string, auth?: ApiAuth):
 export async function apiRunAttestation(base: string, runId: string, auth?: ApiAuth): Promise<RunAttestationResp> {
   const rid = String(runId || "").trim();
   if (!rid) throw new Error("missing run_id");
-  const r = await fetch(`${base}/api/v1/run/attestation?run_id=${encodeURIComponent(rid)}`, {
-    headers: daemonHeaders(auth),
-  });
+  const r = await fetch(`${base}/api/v1/run/attestation?run_id=${encodeURIComponent(rid)}`, daemonFetchInit(auth));
   let j: any = {};
   try {
     j = await r.json();

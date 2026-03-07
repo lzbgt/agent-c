@@ -352,13 +352,15 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   React.useEffect(() => {
     setBrokerAgents(null);
     setBrokerAgentsError(null);
-  }, [connection.brokerBase, connection.brokerAuthToken]);
+  }, [connection.brokerBase, connection.brokerAuthToken, connection.brokerCookieAuth]);
 
   React.useEffect(() => {
     setBrokerDeployments(null);
     setBrokerDeploymentsError(null);
     setBrokerDeploymentsDefaultId(null);
-  }, [connection.brokerBase, connection.brokerAuthToken, connection.brokerAgentId]);
+  }, [connection.brokerBase, connection.brokerAuthToken, connection.brokerCookieAuth, connection.brokerAgentId]);
+
+  const brokerAuthReady = connection.brokerCookieAuth || String(connection.brokerAuthToken || "").trim().length > 0;
 
   const listBrokerAgents = React.useCallback(async () => {
     setBrokerAgentsError(null);
@@ -366,7 +368,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
     try {
       const bb = String(connection.brokerBase || "").trim().replace(/\/+$/, "");
       const withScheme = /^https?:\/\//i.test(bb) ? bb : `https://${bb}`;
-      const r = await apiBrokerListAgents(withScheme, { mode: "broker", token: connection.brokerAuthToken });
+      const r = await apiBrokerListAgents(withScheme, connection.daemonAuth);
       const agents = Array.isArray((r as any)?.agents) ? ((r as any).agents as any[]) : [];
       setBrokerAgents(agents);
       if (!String(connection.brokerAgentId || "").trim()) {
@@ -391,7 +393,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
       if (!agentId) {
         throw new Error("missing agent_id");
       }
-      const r = await apiBrokerListDeployments(withScheme, agentId, { mode: "broker", token: connection.brokerAuthToken });
+      const r = await apiBrokerListDeployments(withScheme, agentId, connection.daemonAuth);
       const deployments = Array.isArray((r as any)?.deployments) ? ((r as any).deployments as any[]) : [];
       setBrokerDeployments(deployments);
       const defaultId = typeof (r as any)?.default_deployment_id === "string" ? String((r as any).default_deployment_id) : "";
@@ -1088,6 +1090,18 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
             </div>
 
             <div className="mt-4">
+              <ToggleRow
+                label="Use broker auth cookie (HttpOnly)"
+                checked={connection.brokerCookieAuth}
+                onChange={connection.setBrokerCookieAuth}
+              />
+              <div className="mt-2 text-[11px] text-white/60">
+                Sends browser credentials to the broker instead of relying only on a JS-visible OIDC token. Enable this when the broker is configured with{" "}
+                <code className="font-mono">--auth-cookie</code> and <code className="font-mono">--cors-allow-credentials</code>.
+              </div>
+            </div>
+
+            <div className="mt-4">
               <FieldLabel>Broker auth token (OIDC)</FieldLabel>
               <input
                 className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
@@ -1097,6 +1111,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
               />
               <div className="mt-2 text-[11px] text-white/60">
                 Uses <code className="font-mono">Authorization: Bearer &lt;jwt&gt;</code> to call broker endpoints.
+                {connection.brokerCookieAuth ? " Optional when a broker auth cookie is present." : ""}
               </div>
             </div>
 
@@ -1112,9 +1127,9 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                 <button
                   className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
                   type="button"
-                  disabled={brokerAgentsBusy || String(connection.brokerAuthToken || "").trim().length === 0}
+                  disabled={brokerAgentsBusy || !brokerAuthReady}
                   onClick={() => void listBrokerAgents()}
-                  title="Fetches /v1/agents from the broker (OIDC required)."
+                  title="Fetches /v1/agents from the broker."
                 >
                   {brokerAgentsBusy ? "Listing…" : "List agents"}
                 </button>
@@ -1177,7 +1192,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                   type="button"
                   disabled={
                     brokerDeploymentsBusy ||
-                    String(connection.brokerAuthToken || "").trim().length === 0 ||
+                    !brokerAuthReady ||
                     String(connection.brokerAgentId || "").trim().length === 0
                   }
                   onClick={() => void listBrokerDeployments()}

@@ -1,6 +1,6 @@
 export type ApiAuth =
   | { mode: "direct"; token?: string }
-  | { mode: "broker"; token?: string; agentdToken?: string; deploymentId?: string };
+  | { mode: "broker"; token?: string; agentdToken?: string; deploymentId?: string; useCookieAuth?: boolean };
 
 function normalizeBearerHeader(raw?: string): string | null {
   const s = typeof raw === "string" ? raw.trim() : "";
@@ -25,4 +25,23 @@ export function daemonHeaders(auth?: ApiAuth, extra?: Record<string, string>): R
     if (dep) h["X-Agentd-Deployment"] = dep;
   }
   return h;
+}
+
+export function daemonFetchInit(
+  auth?: ApiAuth,
+  init?: RequestInit,
+  extraHeaders?: Record<string, string>,
+): RequestInit {
+  const headers = new Headers(init?.headers ?? undefined);
+  for (const [key, value] of Object.entries(daemonHeaders(auth, extraHeaders))) {
+    headers.set(key, value);
+  }
+  const next: RequestInit = {
+    ...(init ?? {}),
+    headers,
+  };
+  if (auth?.mode === "broker" && auth.useCookieAuth) {
+    next.credentials = "include";
+  }
+  return next;
 }

@@ -1,5 +1,5 @@
 import React from "react";
-import { daemonHeaders, type ApiAuth } from "../api";
+import { daemonFetchInit, daemonHeaders, type ApiAuth } from "../api";
 
 function uniq<T>(arr: T[]): T[] {
   return Array.from(new Set(arr));
@@ -44,14 +44,16 @@ export default function MediaPreviews({
   const hasAuthHeaders = React.useMemo(() => {
     return typeof hdr.Authorization === "string" || typeof (hdr as any)["X-Agentd-Authorization"] === "string";
   }, [hdr]);
+  const useCookieAuth = daemonAuth?.mode === "broker" && daemonAuth.useCookieAuth === true;
+  const needsAuthenticatedFetch = hasAuthHeaders || useCookieAuth;
   const sid = typeof sessionId === "string" ? sessionId.trim() : "";
   const sidQ = sid ? `&session_id=${encodeURIComponent(sid)}` : "";
   const [blobByPath, setBlobByPath] = React.useState<Record<string, { url: string; contentType?: string; error?: string }>>({});
 
   React.useEffect(() => {
-    // When auth is enabled, media elements cannot attach Authorization headers.
-    // Workaround: fetch with headers here and use blob: URLs.
-    if (!hasAuthHeaders) {
+    // When auth is enabled, media elements cannot reliably attach headers/cookies.
+    // Workaround: fetch here with explicit auth settings and use blob: URLs.
+    if (!needsAuthenticatedFetch) {
       // Cleanup any prior blob URLs.
       const prev = blobByPath;
       Object.values(prev).forEach((v) => {
@@ -74,7 +76,7 @@ export default function MediaPreviews({
         if (cancelled) return;
         const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(path)}&yolo=${yolo ? "1" : "0"}${sidQ}`;
         try {
-          const r = await fetch(src, { headers: hdr });
+          const r = await fetch(src, daemonFetchInit(daemonAuth, undefined, hdr));
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
           const ct = String(r.headers.get("content-type") || "").trim();
           const b = await r.blob();
@@ -100,7 +102,7 @@ export default function MediaPreviews({
       });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseUrl, hdr, hasAuthHeaders, yolo, files.join("\n")]);
+  }, [baseUrl, daemonAuth, hdr, needsAuthenticatedFetch, yolo, files.join("\n")]);
 
   return (
     <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -109,11 +111,11 @@ export default function MediaPreviews({
         if (!kind) return null;
         const directSrc = `${baseUrl}/api/v1/file?path=${encodeURIComponent(path)}&yolo=${yolo ? "1" : "0"}${sidQ}`;
         const blob = blobByPath[path];
-        const src = hasAuthHeaders ? (blob?.url || "") : directSrc;
+        const src = needsAuthenticatedFetch ? (blob?.url || "") : directSrc;
         return (
           <div key={path} className="rounded-lg border border-white/10 bg-black/20 p-3">
             <div className="mb-2 text-xs text-white/60">Preview: {path}</div>
-            {hasAuthHeaders && blob?.error ? (
+            {needsAuthenticatedFetch && blob?.error ? (
               <div className="mb-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
                 Load failed: {blob.error}
               </div>
@@ -134,7 +136,7 @@ export default function MediaPreviews({
               ) : null
             ) : null}
             <div className="mt-2 text-[11px] text-white/60">
-              {!hasAuthHeaders ? (
+              {!needsAuthenticatedFetch ? (
                 <a className="underline hover:text-white" href={directSrc} target="_blank" rel="noreferrer">
                   Open file
                 </a>

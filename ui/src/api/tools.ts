@@ -1,4 +1,4 @@
-import { daemonHeaders, type ApiAuth } from "./auth";
+import { daemonFetchInit, daemonHeaders, type ApiAuth } from "./auth";
 import { OpenRouterModelsRespSchema, type OpenRouterModelsResp, ToolDefsRespSchema, type ToolDefsResp } from "./schemas/tools";
 
 export async function apiGetTools(
@@ -11,7 +11,7 @@ export async function apiGetTools(
   if (typeof opts?.yolo === "boolean") q.set("yolo", opts.yolo ? "1" : "0");
   if (opts?.hostPolicy) q.set("host_policy", opts.hostPolicy);
   if (typeof opts?.sessionId === "string" && opts.sessionId.length > 0) q.set("session_id", opts.sessionId);
-  const r = await fetch(`${base}/api/v1/tools?${q.toString()}`, { headers: daemonHeaders(auth) });
+  const r = await fetch(`${base}/api/v1/tools?${q.toString()}`, daemonFetchInit(auth));
   const j = await r.json();
   return ToolDefsRespSchema.parse(j);
 }
@@ -46,7 +46,7 @@ export async function apiGetOpenRouterModels(
   if (opts.apiKey && opts.apiKey.trim().length > 0) {
     headers["X-OpenRouter-Key"] = opts.apiKey.trim();
   }
-  const r = await fetch(`${base}/api/v1/openrouter/models?${q.toString()}`, { headers });
+  const r = await fetch(`${base}/api/v1/openrouter/models?${q.toString()}`, daemonFetchInit(opts.daemonAuth, undefined, headers));
   const j = await r.json();
   return OpenRouterModelsRespSchema.parse(j);
 }

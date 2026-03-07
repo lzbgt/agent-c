@@ -1,4 +1,4 @@
-import { daemonHeaders, type ApiAuth } from "./auth";
+import { daemonFetchInit, type ApiAuth } from "./auth";
 import { addQueryParam } from "./query";
 import {
   MemoryCheckpointsRespSchema,
@@ -82,7 +82,7 @@ export async function apiMemoryQuery(
   addQueryParam(qs, "key_prefix", params.keyPrefix);
   addQueryParam(qs, "limit", params.limit);
   const url = qs.toString() ? `${base}/api/v1/memory/query?${qs.toString()}` : `${base}/api/v1/memory/query`;
-  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const r = await fetch(url, daemonFetchInit(auth));
   const j = await r.json();
   return MemoryQueryRespSchema.parse(j);
 }
@@ -103,7 +103,7 @@ export async function apiMemoryCorrelate(
   addQueryParam(qs, "max_entries", params.maxEntries);
   if (params.timeline) addQueryParam(qs, "timeline", "1");
   const url = `${base}/api/v1/memory/correlate?${qs.toString()}`;
-  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const r = await fetch(url, daemonFetchInit(auth));
   const j = await r.json();
   return MemoryCorrelateRespSchema.parse(j);
 }
@@ -113,11 +113,10 @@ export async function apiMemoryCorrelationIndexBuild(
   body: Record<string, any>,
   auth?: ApiAuth,
 ): Promise<MemoryCorrelationIndexResp> {
-  const r = await fetch(`${base}/api/v1/memory/correlation/index`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(body ?? {}),
-  });
+  const r = await fetch(
+    `${base}/api/v1/memory/correlation/index`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(body ?? {}) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return MemoryCorrelationIndexRespSchema.parse(j);
 }
@@ -133,7 +132,7 @@ export async function apiMemoryCheckpoints(
   addQueryParam(qs, "structured_path", params.structuredPath);
   addQueryParam(qs, "limit", params.limit);
   const url = qs.toString() ? `${base}/api/v1/memory/checkpoints?${qs.toString()}` : `${base}/api/v1/memory/checkpoints`;
-  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const r = await fetch(url, daemonFetchInit(auth));
   const j = await r.json();
   return MemoryCheckpointsRespSchema.parse(j);
 }
@@ -151,7 +150,7 @@ export async function apiMemoryIndex(
   addQueryParam(qs, "include_session", params.includeSession);
   addQueryParam(qs, "daily_days", params.dailyDays);
   const url = qs.toString() ? `${base}/api/v1/memory/index?${qs.toString()}` : `${base}/api/v1/memory/index`;
-  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const r = await fetch(url, daemonFetchInit(auth));
   const j = await r.json();
   return MemoryIndexRespSchema.parse(j);
 }
@@ -171,7 +170,7 @@ export async function apiMemorySalience(
   addQueryParam(qs, "half_life_days", params.halfLifeDays);
   addQueryParam(qs, "importance_weight", params.importanceWeight);
   const url = qs.toString() ? `${base}/api/v1/memory/salience?${qs.toString()}` : `${base}/api/v1/memory/salience`;
-  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const r = await fetch(url, daemonFetchInit(auth));
   const j = await r.json();
   return MemorySalienceRespSchema.parse(j);
 }
@@ -181,11 +180,10 @@ export async function apiMemoryRetentionEnforce(
   body: Record<string, any>,
   auth?: ApiAuth,
 ): Promise<MemoryRetentionResp> {
-  const r = await fetch(`${base}/api/v1/memory/retention/enforce`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(body ?? {}),
-  });
+  const r = await fetch(
+    `${base}/api/v1/memory/retention/enforce`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(body ?? {}) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return MemoryRetentionRespSchema.parse(j);
 }
@@ -200,7 +198,7 @@ export async function apiMemoryRecapsList(
   addQueryParam(qs, "include_summary", params.includeSummary);
   addQueryParam(qs, "kind", params.kind);
   const url = qs.toString() ? `${base}/api/v1/memory/recaps?${qs.toString()}` : `${base}/api/v1/memory/recaps`;
-  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const r = await fetch(url, daemonFetchInit(auth));
   const j = await r.json();
   return MemoryRecapsRespSchema.parse(j);
 }
@@ -210,11 +208,10 @@ export async function apiMemoryRecapsCreate(
   body: Record<string, any>,
   auth?: ApiAuth,
 ): Promise<MemoryRecapsResp> {
-  const r = await fetch(`${base}/api/v1/memory/recaps`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(body ?? {}),
-  });
+  const r = await fetch(
+    `${base}/api/v1/memory/recaps`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(body ?? {}) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return MemoryRecapsRespSchema.parse(j);
 }

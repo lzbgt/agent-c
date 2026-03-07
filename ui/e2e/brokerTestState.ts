@@ -4,6 +4,7 @@ type SeedBrokerStateOptions = {
   agentId?: string;
   brokerBase?: string;
   brokerToken?: string;
+  brokerCookieAuth?: boolean;
   daemonToken?: string;
   deploymentId?: string;
   brokerPanelOpen?: boolean;
@@ -26,6 +27,7 @@ export async function seedBrokerState(page: Page, options: SeedBrokerStateOption
         brokerBase: config.brokerBase,
         brokerAgentId: config.agentId,
         brokerDeploymentId: config.deploymentId,
+        brokerCookieAuth: config.brokerCookieAuth,
         brokerAuthToken: "",
         daemonAuthToken: "",
         runOverridesEnabled: false,
@@ -64,6 +66,7 @@ export async function seedBrokerState(page: Page, options: SeedBrokerStateOption
     agentId: options.agentId ?? "agent1",
     brokerBase: options.brokerBase ?? "https://broker.example.invalid",
     brokerToken: options.brokerToken ?? "test-token",
+    brokerCookieAuth: options.brokerCookieAuth ?? false,
     daemonToken: options.daemonToken ?? "",
     deploymentId: options.deploymentId ?? "",
     brokerPanelOpen: options.brokerPanelOpen ?? true,

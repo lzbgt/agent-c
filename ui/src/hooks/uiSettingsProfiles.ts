@@ -49,6 +49,7 @@ export type ConnectionProfile = {
   brokerBase: string;
   brokerAgentId: string;
   brokerDeploymentId: string;
+  brokerCookieAuth: boolean;
   brokerAuthToken: string;
   daemonAuthToken: string;
   runOverridesEnabled?: boolean;
@@ -63,6 +64,7 @@ export type ServerConnectionProfile = {
   brokerBase: string;
   brokerAgentId: string;
   brokerDeploymentId: string;
+  brokerCookieAuth: boolean;
 };
 
 export type ServerPrefs = {
@@ -342,6 +344,7 @@ export const normalizeProfile = (p: Partial<ConnectionProfile>, defaults: AgentU
   const brokerBase = typeof p.brokerBase === "string" ? p.brokerBase : defaults.brokerBaseUrl;
   const brokerAgentId = typeof p.brokerAgentId === "string" ? p.brokerAgentId : defaults.brokerAgentId;
   const brokerDeploymentId = typeof p.brokerDeploymentId === "string" ? p.brokerDeploymentId : defaults.brokerDeploymentId;
+  const brokerCookieAuth = typeof p.brokerCookieAuth === "boolean" ? p.brokerCookieAuth : defaults.brokerCookieAuth;
   const brokerAuthToken = typeof p.brokerAuthToken === "string" ? p.brokerAuthToken : "";
   const daemonAuthToken = typeof p.daemonAuthToken === "string" ? p.daemonAuthToken : "";
   const id = typeof p.id === "string" && p.id.trim() ? p.id : generateProfileId();
@@ -356,6 +359,7 @@ export const normalizeProfile = (p: Partial<ConnectionProfile>, defaults: AgentU
     brokerBase,
     brokerAgentId,
     brokerDeploymentId,
+    brokerCookieAuth,
     brokerAuthToken,
     daemonAuthToken,
     runOverridesEnabled,
@@ -373,6 +377,7 @@ const toServerProfile = (p: ConnectionProfile): ServerConnectionProfile => ({
   brokerBase: p.brokerBase,
   brokerAgentId: p.brokerAgentId,
   brokerDeploymentId: p.brokerDeploymentId,
+  brokerCookieAuth: p.brokerCookieAuth,
 });
 
 export const buildServerPrefs = (profiles: ConnectionProfile[], activeId: string): ServerPrefs => ({

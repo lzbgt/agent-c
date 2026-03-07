@@ -1,4 +1,4 @@
-import { daemonHeaders, type ApiAuth } from "./auth";
+import { daemonFetchInit, type ApiAuth } from "./auth";
 import {
   ModeratorDirectiveReqSchema,
   type ModeratorDirectiveReq,
@@ -16,22 +16,20 @@ export async function apiPostModeratorDirective(
   auth?: ApiAuth,
 ): Promise<ModeratorPostResp> {
   const payload = ModeratorDirectiveReqSchema.parse(req);
-  const r = await fetch(`${base}/api/v1/moderator/directive`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/api/v1/moderator/directive`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return ModeratorPostRespSchema.parse(j);
 }
 
 export async function apiPostModeratorTask(base: string, req: ModeratorTaskReq, auth?: ApiAuth): Promise<ModeratorPostResp> {
   const payload = ModeratorTaskReqSchema.parse(req);
-  const r = await fetch(`${base}/api/v1/moderator/task`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/api/v1/moderator/task`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return ModeratorPostRespSchema.parse(j);
 }
@@ -49,9 +47,7 @@ export async function apiGetModeratorEvents(
     max_bytes: String(maxBytes),
   });
   if (types) qs.set("types", types);
-  const r = await fetch(`${base}/api/v1/moderator/events?${qs.toString()}`, {
-    headers: daemonHeaders(auth),
-  });
+  const r = await fetch(`${base}/api/v1/moderator/events?${qs.toString()}`, daemonFetchInit(auth));
   const j = await r.json();
   return ModeratorEventsRespSchema.parse(j);
 }

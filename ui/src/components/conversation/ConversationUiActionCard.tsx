@@ -1,5 +1,5 @@
 import React from "react";
-import { daemonHeaders, type ApiAuth } from "../../api";
+import { daemonFetchInit, daemonHeaders, type ApiAuth } from "../../api";
 import ConversationCard from "../ConversationCard";
 import {
   clampInt,
@@ -553,10 +553,7 @@ export default function ConversationUiActionCard({
             const sidQ = sid ? `&session_id=${encodeURIComponent(sid)}` : "";
             const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${wantYolo ? "1" : "0"}${sidQ}`;
             try {
-              const r = await fetch(src, {
-                method: "GET",
-                headers: hdr,
-              });
+              const r = await fetch(src, daemonFetchInit(daemonAuth, { method: "GET" }, hdr));
               if (!r.ok) throw new Error(`file fetch failed: ${r.status}`);
               const ct = String(r.headers.get("content-type") || "").trim();
               const b = await r.blob();

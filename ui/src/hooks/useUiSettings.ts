@@ -15,6 +15,7 @@ import {
   apiBrokerPostClientPrefs,
   apiGetClientPrefs,
   apiPostClientPrefs,
+  daemonFetchInit,
   daemonHeaders,
   type ApiAuth,
   type ClientPrefs,
@@ -64,6 +65,8 @@ export type ConnectionSettings = {
   setBrokerAgentId: React.Dispatch<React.SetStateAction<string>>;
   brokerDeploymentId: string;
   setBrokerDeploymentId: React.Dispatch<React.SetStateAction<string>>;
+  brokerCookieAuth: boolean;
+  setBrokerCookieAuth: React.Dispatch<React.SetStateAction<boolean>>;
   brokerAuthToken: string;
   setBrokerAuthToken: React.Dispatch<React.SetStateAction<string>>;
   daemonAuthToken: string;
@@ -279,6 +282,7 @@ export default function useUiSettings(): UiSettings {
         brokerBase: readLegacyString("agentui.brokerBase", defaults.brokerBaseUrl),
         brokerAgentId: readLegacyString("agentui.brokerAgentId", defaults.brokerAgentId),
         brokerDeploymentId: readLegacyString("agentui.brokerDeploymentId", defaults.brokerDeploymentId),
+        brokerCookieAuth: defaults.brokerCookieAuth,
         brokerAuthToken: readLegacySecretString("agentui.brokerAuthToken", defaults.brokerAuthToken),
         daemonAuthToken: readLegacySecretString("agentui.daemonAuthToken", defaults.daemonAuthToken),
       },
@@ -322,6 +326,7 @@ export default function useUiSettings(): UiSettings {
         sp.brokerBase !== p.brokerBase ||
         sp.brokerAgentId !== p.brokerAgentId ||
         sp.brokerDeploymentId !== p.brokerDeploymentId ||
+        sp.brokerCookieAuth !== (typeof p.brokerCookieAuth === "boolean" ? p.brokerCookieAuth : defaults.brokerCookieAuth) ||
         sp.brokerAuthToken !== (p.brokerAuthToken || "") ||
         sp.daemonAuthToken !== (p.daemonAuthToken || "") ||
         sp.runOverridesEnabled !== prevOverridesEnabled ||
@@ -497,6 +502,7 @@ export default function useUiSettings(): UiSettings {
           brokerBase: defaults.brokerBaseUrl,
           brokerAgentId: defaults.brokerAgentId,
           brokerDeploymentId: defaults.brokerDeploymentId,
+          brokerCookieAuth: defaults.brokerCookieAuth,
           brokerAuthToken: defaults.brokerAuthToken,
           daemonAuthToken: defaults.daemonAuthToken,
         },
@@ -553,6 +559,7 @@ export default function useUiSettings(): UiSettings {
         brokerBase: defaults.brokerBaseUrl,
         brokerAgentId: defaults.brokerAgentId,
         brokerDeploymentId: defaults.brokerDeploymentId,
+        brokerCookieAuth: defaults.brokerCookieAuth,
         brokerAuthToken: defaults.brokerAuthToken,
         daemonAuthToken: defaults.daemonAuthToken,
       };
@@ -1006,6 +1013,7 @@ export default function useUiSettings(): UiSettings {
   const brokerBase = activeProfile.brokerBase;
   const brokerAgentId = activeProfile.brokerAgentId;
   const brokerDeploymentId = activeProfile.brokerDeploymentId;
+  const brokerCookieAuth = activeProfile.brokerCookieAuth;
   const brokerAuthToken = activeProfile.brokerAuthToken;
   const daemonAuthToken = activeProfile.daemonAuthToken;
 
@@ -1059,6 +1067,17 @@ export default function useUiSettings(): UiSettings {
         const v = typeof next === "function" ? next(prev.brokerDeploymentId) : next;
         if (v === prev.brokerDeploymentId) return prev;
         return { ...prev, brokerDeploymentId: v };
+      });
+    },
+    [updateActiveProfile],
+  );
+
+  const setBrokerCookieAuth = React.useCallback<React.Dispatch<React.SetStateAction<boolean>>>(
+    (next) => {
+      updateActiveProfile((prev) => {
+        const v = typeof next === "function" ? next(prev.brokerCookieAuth) : next;
+        if (v === prev.brokerCookieAuth) return prev;
+        return { ...prev, brokerCookieAuth: v };
       });
     },
     [updateActiveProfile],
@@ -1126,19 +1145,21 @@ export default function useUiSettings(): UiSettings {
         token: brokerAuthToken,
         agentdToken: daemonAuthToken,
         deploymentId: brokerDeploymentId,
+        useCookieAuth: brokerCookieAuth,
       };
     }
     return { mode: "direct", token: daemonAuthToken };
-  }, [brokerAuthToken, brokerDeploymentId, connectionMode, daemonAuthToken]);
+  }, [brokerAuthToken, brokerCookieAuth, brokerDeploymentId, connectionMode, daemonAuthToken]);
 
   const authKey = React.useMemo(() => {
     const mode = daemonAuth.mode;
     const t = typeof daemonAuth.token === "string" ? daemonAuth.token.trim() : "";
     const at = daemonAuth.mode === "broker" && typeof daemonAuth.agentdToken === "string" ? daemonAuth.agentdToken.trim() : "";
     const dep = daemonAuth.mode === "broker" && typeof daemonAuth.deploymentId === "string" ? daemonAuth.deploymentId.trim() : "";
+    const cookie = daemonAuth.mode === "broker" && daemonAuth.useCookieAuth ? "cookie=1" : "cookie=0";
     const pid = String(activeProfileId || "default");
     return mode === "broker"
-      ? `broker:pid=${pid}:dep=${dep}:tlen=${t.length}:alen=${at.length}`
+      ? `broker:pid=${pid}:dep=${dep}:${cookie}:tlen=${t.length}:alen=${at.length}`
       : `direct:pid=${pid}:tlen=${t.length}`;
   }, [activeProfileId, daemonAuth]);
 
@@ -1149,8 +1170,8 @@ export default function useUiSettings(): UiSettings {
     return normalizeHttpBase(base, "http://127.0.0.1:8123", "http");
   }, [base, brokerBase, connectionMode]);
 
-  const serverPrefsAuthToken = connectionMode === "broker" ? brokerAuthToken : daemonAuthToken;
-  const serverPrefsAuthReady = connectionMode !== "broker" || String(serverPrefsAuthToken || "").trim().length > 0;
+  const serverPrefsAuthReady =
+    connectionMode !== "broker" || brokerCookieAuth || String(brokerAuthToken || "").trim().length > 0;
   const serverPrefsAuto = serverPrefsDefaultMode === "auto" && !serverPrefsUserSet;
   const serverPrefsEffectiveEnabled = serverPrefsUserSet
     ? serverPrefsEnabled
@@ -1185,7 +1206,7 @@ export default function useUiSettings(): UiSettings {
       try {
         if (connectionMode === "broker") {
           const baseNoSlash = baseTrimmed.replace(/\/+$/, "");
-          const r = await fetch(`${baseNoSlash}/v1/caps`);
+          const r = await fetch(`${baseNoSlash}/v1/caps`, daemonFetchInit(daemonAuth));
           if (!r.ok) {
             throw new Error(`caps ${r.status}`);
           }
@@ -1196,7 +1217,7 @@ export default function useUiSettings(): UiSettings {
           setServerPrefsAutoStatus(enabled ? "ready" : "unsupported");
           return;
         }
-        const r = await fetch(`${baseTrimmed}/api/v1/caps`, { headers: daemonHeaders(daemonAuth) });
+        const r = await fetch(`${baseTrimmed}/api/v1/caps`, daemonFetchInit(daemonAuth));
         if (r.status === 401 || r.status === 403) {
           if (cancelled) return;
           setServerPrefsAutoEnabled(false);
@@ -1386,6 +1407,8 @@ export default function useUiSettings(): UiSettings {
       setBrokerAgentId,
       brokerDeploymentId,
       setBrokerDeploymentId,
+      brokerCookieAuth,
+      setBrokerCookieAuth,
       brokerAuthToken,
       setBrokerAuthToken,
       daemonAuthToken,

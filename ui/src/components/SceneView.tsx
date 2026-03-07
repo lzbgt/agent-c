@@ -1,7 +1,7 @@
 import React from "react";
 
 import ArtifactView from "./ArtifactView";
-import { apiPostSessionUiEvent, daemonHeaders, type ApiAuth } from "../api";
+import { apiPostSessionUiEvent, daemonFetchInit, daemonHeaders, type ApiAuth } from "../api";
 import useLocalStorageState from "../hooks/useLocalStorageState";
 
 type CanvasPoint = { x: number; y: number };
@@ -238,7 +238,7 @@ function Canvas2DEntityView({
               if (!baseUrl) throw new Error("artifact.url requires baseUrl");
               const sidQ = sid ? `&session_id=${encodeURIComponent(sid)}` : "";
               const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${yolo ? "1" : "0"}${sidQ}`;
-              const r = await fetch(src, { headers: daemonHeaders(daemonAuth) });
+              const r = await fetch(src, daemonFetchInit(daemonAuth));
               if (!r.ok) throw new Error(`file fetch failed: ${r.status}`);
               const b = await r.blob();
               const u = URL.createObjectURL(b);
@@ -512,7 +512,7 @@ function DomEntityView({
           if (!p) throw new Error("artifact.url requires path");
           const sidQ = sid ? `&session_id=${encodeURIComponent(sid)}` : "";
           const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${yolo ? "1" : "0"}${sidQ}`;
-          const r = await fetch(src, { headers: daemonHeaders(daemonAuth) });
+          const r = await fetch(src, daemonFetchInit(daemonAuth));
           if (!r.ok) throw new Error(`file fetch failed: ${r.status}`);
           const b = await r.blob();
           const u = URL.createObjectURL(b);

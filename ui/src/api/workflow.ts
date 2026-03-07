@@ -1,4 +1,4 @@
-import { daemonHeaders, type ApiAuth } from "./auth";
+import { daemonFetchInit, type ApiAuth } from "./auth";
 import { addQueryParam } from "./query";
 import {
   WorkflowDetailRespSchema,
@@ -27,7 +27,7 @@ export async function apiListWorkflows(
   addQueryParam(qs, "limit", params.limit);
   addQueryParam(qs, "q", params.query);
   const q = qs.toString();
-  const r = await fetch(`${base}/api/v1/workflows${q ? `?${q}` : ""}`, { headers: daemonHeaders(auth) });
+  const r = await fetch(`${base}/api/v1/workflows${q ? `?${q}` : ""}`, daemonFetchInit(auth));
   const j = await r.json();
   return WorkflowListRespSchema.parse(j);
 }
@@ -50,7 +50,7 @@ export async function apiGetWorkflow(
   addQueryParam(qs, "include_results", params.includeResults);
   addQueryParam(qs, "include_spec", params.includeSpec);
   const q = qs.toString();
-  const r = await fetch(`${base}/api/v1/workflow${q ? `?${q}` : ""}`, { headers: daemonHeaders(auth) });
+  const r = await fetch(`${base}/api/v1/workflow${q ? `?${q}` : ""}`, daemonFetchInit(auth));
   const j = await r.json();
   return WorkflowDetailRespSchema.parse(j);
 }
@@ -60,11 +60,10 @@ export async function apiSubmitWorkflow(
   payload: Record<string, any>,
   auth?: ApiAuth,
 ): Promise<WorkflowSubmitResp> {
-  const r = await fetch(`${base}/api/v1/workflow/submit`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/api/v1/workflow/submit`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return WorkflowSubmitRespSchema.parse(j);
 }
@@ -74,11 +73,14 @@ export async function apiCancelWorkflow(
   workflowId: string,
   auth?: ApiAuth,
 ): Promise<WorkflowCancelResp> {
-  const r = await fetch(`${base}/api/v1/workflow/cancel`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify({ workflow_id: workflowId }),
-  });
+  const r = await fetch(
+    `${base}/api/v1/workflow/cancel`,
+    daemonFetchInit(
+      auth,
+      { method: "POST", body: JSON.stringify({ workflow_id: workflowId }) },
+      { "Content-Type": "application/json" },
+    ),
+  );
   const j = await r.json();
   return WorkflowCancelRespSchema.parse(j);
 }

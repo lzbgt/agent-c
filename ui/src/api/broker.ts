@@ -1,4 +1,4 @@
-import { daemonHeaders, type ApiAuth } from "./auth";
+import { daemonFetchInit, daemonHeaders, type ApiAuth } from "./auth";
 import { addQueryParam } from "./query";
 import {
   BrokerAgentsRespSchema,
@@ -72,21 +72,21 @@ import type { MemoryRecapsListParams, MemorySalienceParams } from "./memory";
 
 export async function apiBrokerListAgents(brokerBase: string, auth?: ApiAuth): Promise<BrokerAgentsResp> {
   const base = brokerBase.replace(/\/+$/, "");
-  const r = await fetch(`${base}/v1/agents`, { headers: daemonHeaders(auth) });
+  const r = await fetch(`${base}/v1/agents`, daemonFetchInit(auth));
   const j = await r.json();
   return BrokerAgentsRespSchema.parse(j);
 }
 
 export async function apiBrokerListConnectors(brokerBase: string, auth?: ApiAuth): Promise<BrokerConnectorsResp> {
   const base = brokerBase.replace(/\/+$/, "");
-  const r = await fetch(`${base}/v1/connectors`, { headers: daemonHeaders(auth) });
+  const r = await fetch(`${base}/v1/connectors`, daemonFetchInit(auth));
   const j = await r.json();
   return BrokerConnectorsRespSchema.parse(j);
 }
 
 export async function apiBrokerExportConnectors(brokerBase: string, auth?: ApiAuth): Promise<BrokerConnectorsResp> {
   const base = brokerBase.replace(/\/+$/, "");
-  const r = await fetch(`${base}/v1/connectors/export`, { headers: daemonHeaders(auth) });
+  const r = await fetch(`${base}/v1/connectors/export`, daemonFetchInit(auth));
   const j = await r.json();
   return BrokerConnectorsRespSchema.parse(j);
 }
@@ -99,7 +99,7 @@ export async function apiBrokerListDeployments(
   const base = brokerBase.replace(/\/+$/, "");
   const id = String(agentId || "").trim();
   if (!id) throw new Error("missing agent_id");
-  const r = await fetch(`${base}/v1/agents/${encodeURIComponent(id)}/deployments`, { headers: daemonHeaders(auth) });
+  const r = await fetch(`${base}/v1/agents/${encodeURIComponent(id)}/deployments`, daemonFetchInit(auth));
   const j = await r.json();
   return BrokerDeploymentsRespSchema.parse(j);
 }
@@ -120,11 +120,10 @@ export async function apiBrokerProxyJson(
   const headers = daemonHeaders(auth, { "Content-Type": "application/json" });
   const dep = typeof deploymentId === "string" ? deploymentId.trim() : "";
   if (dep) headers["X-Agentd-Deployment"] = dep;
-  const r = await fetch(`${base}/v1/agents/${encodeURIComponent(id)}/proxy${p}`, {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const r = await fetch(
+    `${base}/v1/agents/${encodeURIComponent(id)}/proxy${p}`,
+    daemonFetchInit(auth, { method, body: body === undefined ? undefined : JSON.stringify(body) }, headers),
+  );
   let data: any = null;
   try {
     data = await r.json();
@@ -159,11 +158,10 @@ export async function apiBrokerOtaUpdateBulk(
   if (Array.isArray(deploymentIds) && deploymentIds.length > 0) {
     payload.deployment_ids = deploymentIds;
   }
-  const r = await fetch(`${base}/v1/agents/${encodeURIComponent(id)}/ota/update`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/v1/agents/${encodeURIComponent(id)}/ota/update`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, headers),
+  );
   let data: any = null;
   try {
     data = await r.json();
@@ -197,7 +195,7 @@ export async function apiBrokerOtaStatusBulk(
   }
   const qs = params.toString();
   const url = `${base}/v1/agents/${encodeURIComponent(id)}/ota/status${qs ? `?${qs}` : ""}`;
-  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const r = await fetch(url, daemonFetchInit(auth));
   let data: any = null;
   try {
     data = await r.json();
@@ -222,11 +220,10 @@ export async function apiBrokerMemoryRetentionBulk(
   if (Array.isArray(deploymentIds) && deploymentIds.length > 0) {
     payload.deployment_ids = deploymentIds;
   }
-  const r = await fetch(`${base}/v1/agents/${encodeURIComponent(id)}/memory/retention/enforce`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/v1/agents/${encodeURIComponent(id)}/memory/retention/enforce`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, headers),
+  );
   let data: any = null;
   try {
     data = await r.json();
@@ -254,7 +251,7 @@ export async function apiBrokerMemoryRecapsListBulk(
     qs.set("deployment_ids", deploymentIds.join(","));
   }
   const url = `${base}/v1/agents/${encodeURIComponent(id)}/memory/recaps${qs.toString() ? `?${qs.toString()}` : ""}`;
-  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const r = await fetch(url, daemonFetchInit(auth));
   let data: any = null;
   try {
     data = await r.json();
@@ -287,7 +284,7 @@ export async function apiBrokerMemorySalienceBulk(
     qs.set("deployment_ids", deploymentIds.join(","));
   }
   const url = `${base}/v1/agents/${encodeURIComponent(id)}/memory/salience${qs.toString() ? `?${qs.toString()}` : ""}`;
-  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const r = await fetch(url, daemonFetchInit(auth));
   let data: any = null;
   try {
     data = await r.json();
@@ -312,11 +309,10 @@ export async function apiBrokerMemoryRecapsCreateBulk(
   if (Array.isArray(deploymentIds) && deploymentIds.length > 0) {
     payload.deployment_ids = deploymentIds;
   }
-  const r = await fetch(`${base}/v1/agents/${encodeURIComponent(id)}/memory/recaps`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/v1/agents/${encodeURIComponent(id)}/memory/recaps`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, headers),
+  );
   let data: any = null;
   try {
     data = await r.json();
@@ -330,7 +326,7 @@ export async function apiBrokerGetMembers(brokerBase: string, agentId: string, a
   const base = brokerBase.replace(/\/+$/, "");
   const id = String(agentId || "").trim();
   if (!id) throw new Error("missing agent_id");
-  const r = await fetch(`${base}/v1/agents/${encodeURIComponent(id)}/members`, { headers: daemonHeaders(auth) });
+  const r = await fetch(`${base}/v1/agents/${encodeURIComponent(id)}/members`, daemonFetchInit(auth));
   const j = await r.json();
   return BrokerMembersRespSchema.parse(j);
 }
@@ -344,14 +340,20 @@ export async function apiBrokerUpsertMember(
   const base = brokerBase.replace(/\/+$/, "");
   const id = String(agentId || "").trim();
   if (!id) throw new Error("missing agent_id");
-  const r = await fetch(`${base}/v1/agents/${encodeURIComponent(id)}/members`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify({
-      user_sub: String(req?.user_sub || "").trim(),
-      role: String(req?.role || "").trim(),
-    }),
-  });
+  const r = await fetch(
+    `${base}/v1/agents/${encodeURIComponent(id)}/members`,
+    daemonFetchInit(
+      auth,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          user_sub: String(req?.user_sub || "").trim(),
+          role: String(req?.role || "").trim(),
+        }),
+      },
+      { "Content-Type": "application/json" },
+    ),
+  );
   const j = await r.json();
   if (!j || typeof j !== "object") throw new Error("bad json");
   if (j.ok === true) return { ok: true };
@@ -369,10 +371,10 @@ export async function apiBrokerDeleteMember(
   if (!id) throw new Error("missing agent_id");
   const sub = String(userSub || "").trim();
   if (!sub) throw new Error("missing user_sub");
-  const r = await fetch(`${base}/v1/agents/${encodeURIComponent(id)}/members/${encodeURIComponent(sub)}`, {
-    method: "DELETE",
-    headers: daemonHeaders(auth),
-  });
+  const r = await fetch(
+    `${base}/v1/agents/${encodeURIComponent(id)}/members/${encodeURIComponent(sub)}`,
+    daemonFetchInit(auth, { method: "DELETE" }),
+  );
   const j = await r.json();
   if (!j || typeof j !== "object") throw new Error("bad json");
   if (j.ok === true) return { ok: true };
@@ -389,9 +391,10 @@ export async function apiBrokerGetMembershipAudit(
   const id = String(agentId || "").trim();
   if (!id) throw new Error("missing agent_id");
   const lim = Number.isFinite(limit) ? Math.max(1, Math.min(limit, 500)) : 200;
-  const r = await fetch(`${base}/v1/agents/${encodeURIComponent(id)}/membership_audit?limit=${encodeURIComponent(String(lim))}`, {
-    headers: daemonHeaders(auth),
-  });
+  const r = await fetch(
+    `${base}/v1/agents/${encodeURIComponent(id)}/membership_audit?limit=${encodeURIComponent(String(lim))}`,
+    daemonFetchInit(auth),
+  );
   const j = await r.json();
   return BrokerMembershipAuditRespSchema.parse(j);
 }
@@ -420,7 +423,7 @@ export async function apiBrokerEventsReplay(
   }
   const qs = params.toString();
   const url = `${base}/v1/events/replay${qs ? `?${qs}` : ""}`;
-  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const r = await fetch(url, daemonFetchInit(auth));
   const j = await r.json();
   return BrokerEventsReplayRespSchema.parse(j);
 }
@@ -446,7 +449,7 @@ export async function apiBrokerOrchestratorRunsList(
   }
   const qs = params.toString();
   const url = `${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/runs${qs ? `?${qs}` : ""}`;
-  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const r = await fetch(url, daemonFetchInit(auth));
   const j = await r.json();
   return BrokerOrchestratorRunListRespSchema.parse(j);
 }
@@ -460,11 +463,10 @@ export async function apiBrokerOrchestratorRunCreate(
   const base = brokerBase.replace(/\/+$/, "");
   const tid = String(teamId || "").trim();
   if (!tid) throw new Error("missing team_id");
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/runs`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(body ?? {}),
-  });
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/runs`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(body ?? {}) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return BrokerOrchestratorRunRespSchema.parse(j);
 }
@@ -479,9 +481,10 @@ export async function apiBrokerOrchestratorRunGet(
   const tid = String(teamId || "").trim();
   const rid = String(runId || "").trim();
   if (!tid || !rid) throw new Error("missing team_id or run id");
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/runs/${encodeURIComponent(rid)}`, {
-    headers: daemonHeaders(auth),
-  });
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/runs/${encodeURIComponent(rid)}`,
+    daemonFetchInit(auth),
+  );
   const j = await r.json();
   return BrokerOrchestratorRunRespSchema.parse(j);
 }
@@ -497,11 +500,10 @@ export async function apiBrokerOrchestratorRunUpdate(
   const tid = String(teamId || "").trim();
   const rid = String(runId || "").trim();
   if (!tid || !rid) throw new Error("missing team_id or run id");
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/runs/${encodeURIComponent(rid)}`, {
-    method: "PATCH",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(body ?? {}),
-  });
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/runs/${encodeURIComponent(rid)}`,
+    daemonFetchInit(auth, { method: "PATCH", body: JSON.stringify(body ?? {}) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return BrokerOrchestratorRunRespSchema.parse(j);
 }
@@ -519,11 +521,7 @@ export async function apiBrokerOrchestratorRunHeartbeat(
   if (!tid || !rid) throw new Error("missing team_id or run id");
   const r = await fetch(
     `${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/runs/${encodeURIComponent(rid)}/heartbeat`,
-    {
-      method: "POST",
-      headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-      body: JSON.stringify(body ?? {}),
-    },
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(body ?? {}) }, { "Content-Type": "application/json" }),
   );
   const j = await r.json();
   return BrokerOrchestratorRunRespSchema.parse(j);
@@ -553,7 +551,7 @@ export async function apiBrokerOrchestratorSpawnRequestsList(
   }
   const qs = params.toString();
   const url = `${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/spawn_requests${qs ? `?${qs}` : ""}`;
-  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const r = await fetch(url, daemonFetchInit(auth));
   const j = await r.json();
   return BrokerOrchestratorSpawnRequestListRespSchema.parse(j);
 }
@@ -567,11 +565,10 @@ export async function apiBrokerOrchestratorSpawnRequestCreate(
   const base = brokerBase.replace(/\/+$/, "");
   const tid = String(teamId || "").trim();
   if (!tid) throw new Error("missing team_id");
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/spawn_requests`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(body ?? {}),
-  });
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/spawn_requests`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(body ?? {}) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return BrokerOrchestratorSpawnRequestRespSchema.parse(j);
 }
@@ -588,9 +585,7 @@ export async function apiBrokerOrchestratorSpawnRequestGet(
   if (!tid || !sid) throw new Error("missing team_id or spawn_request_id");
   const r = await fetch(
     `${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/spawn_requests/${encodeURIComponent(sid)}`,
-    {
-      headers: daemonHeaders(auth),
-    },
+    daemonFetchInit(auth),
   );
   const j = await r.json();
   return BrokerOrchestratorSpawnRequestRespSchema.parse(j);
@@ -609,11 +604,7 @@ export async function apiBrokerOrchestratorSpawnRequestUpdate(
   if (!tid || !sid) throw new Error("missing team_id or spawn_request_id");
   const r = await fetch(
     `${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/spawn_requests/${encodeURIComponent(sid)}`,
-    {
-      method: "PATCH",
-      headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-      body: JSON.stringify(body ?? {}),
-    },
+    daemonFetchInit(auth, { method: "PATCH", body: JSON.stringify(body ?? {}) }, { "Content-Type": "application/json" }),
   );
   const j = await r.json();
   return BrokerOrchestratorSpawnRequestRespSchema.parse(j);
@@ -627,9 +618,7 @@ export async function apiBrokerGetClientPrefs(
 ): Promise<ClientPrefs> {
   const base = brokerBase.replace(/\/+$/, "");
   const qs = new URLSearchParams({ client_id: clientId, client_kind: clientKind });
-  const r = await fetch(`${base}/v1/client_prefs?${qs.toString()}`, {
-    headers: daemonHeaders(auth),
-  });
+  const r = await fetch(`${base}/v1/client_prefs?${qs.toString()}`, daemonFetchInit(auth));
   const j = await r.json();
   return ClientPrefsSchema.parse(j);
 }
@@ -641,18 +630,17 @@ export async function apiBrokerPostClientPrefs(
 ): Promise<ClientPrefs> {
   const base = brokerBase.replace(/\/+$/, "");
   const payload = ClientPrefsUpdateReqSchema.parse(req);
-  const r = await fetch(`${base}/v1/client_prefs`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/v1/client_prefs`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return ClientPrefsSchema.parse(j);
 }
 
 export async function apiBrokerTeamList(brokerBase: string, auth?: ApiAuth): Promise<BrokerTeamListResp> {
   const base = brokerBase.replace(/\/+$/, "");
-  const r = await fetch(`${base}/v1/teams`, { headers: daemonHeaders(auth) });
+  const r = await fetch(`${base}/v1/teams`, daemonFetchInit(auth));
   const j = await r.json();
   return BrokerTeamListRespSchema.parse(j);
 }
@@ -664,11 +652,10 @@ export async function apiBrokerTeamCreate(
 ): Promise<BrokerTeamCreateResp> {
   const base = brokerBase.replace(/\/+$/, "");
   const payload = body ?? {};
-  const r = await fetch(`${base}/v1/teams`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/v1/teams`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return BrokerTeamCreateRespSchema.parse(j);
 }
@@ -682,11 +669,10 @@ export async function apiBrokerTeamUpdate(
   const base = brokerBase.replace(/\/+$/, "");
   const id = String(teamId || "").trim();
   if (!id) throw new Error("missing team_id");
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(body ?? {}),
-  });
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(id)}`,
+    daemonFetchInit(auth, { method: "PATCH", body: JSON.stringify(body ?? {}) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return BrokerTeamGetRespSchema.parse(j);
 }
@@ -699,7 +685,7 @@ export async function apiBrokerTeamGet(
   const base = brokerBase.replace(/\/+$/, "");
   const tid = String(teamId || "").trim();
   if (!tid) throw new Error("missing team_id");
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}`, { headers: daemonHeaders(auth) });
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}`, daemonFetchInit(auth));
   const j = await r.json();
   return BrokerTeamGetRespSchema.parse(j);
 }
@@ -712,10 +698,7 @@ export async function apiBrokerTeamDelete(
   const base = brokerBase.replace(/\/+$/, "");
   const tid = String(teamId || "").trim();
   if (!tid) throw new Error("missing team_id");
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}`, {
-    method: "DELETE",
-    headers: daemonHeaders(auth),
-  });
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}`, daemonFetchInit(auth, { method: "DELETE" }));
   const j = await r.json();
   return BrokerTeamDeleteRespSchema.parse(j);
 }
@@ -728,7 +711,7 @@ export async function apiBrokerTeamMembersList(
   const base = brokerBase.replace(/\/+$/, "");
   const tid = String(teamId || "").trim();
   if (!tid) throw new Error("missing team_id");
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/members`, { headers: daemonHeaders(auth) });
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/members`, daemonFetchInit(auth));
   const j = await r.json();
   return BrokerTeamMemberListRespSchema.parse(j);
 }
@@ -743,11 +726,10 @@ export async function apiBrokerTeamMembersUpsert(
   const tid = String(teamId || "").trim();
   if (!tid) throw new Error("missing team_id");
   const payload = body ?? {};
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/members`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/members`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return BrokerTeamMemberUpsertRespSchema.parse(j);
 }
@@ -764,11 +746,10 @@ export async function apiBrokerTeamMemberUpdate(
   const mid = String(memberId || "").trim();
   if (!tid) throw new Error("missing team_id");
   if (!mid) throw new Error("missing member_id");
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/members/${encodeURIComponent(mid)}`, {
-    method: "PATCH",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(body ?? {}),
-  });
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/members/${encodeURIComponent(mid)}`,
+    daemonFetchInit(auth, { method: "PATCH", body: JSON.stringify(body ?? {}) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return BrokerTeamMemberUpsertRespSchema.parse(j);
 }
@@ -784,10 +765,10 @@ export async function apiBrokerTeamMembersDelete(
   const mid = String(memberId || "").trim();
   if (!tid) throw new Error("missing team_id");
   if (!mid) throw new Error("missing member_id");
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/members/${encodeURIComponent(mid)}`, {
-    method: "DELETE",
-    headers: daemonHeaders(auth),
-  });
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/members/${encodeURIComponent(mid)}`,
+    daemonFetchInit(auth, { method: "DELETE" }),
+  );
   const j = await r.json();
   return BrokerTeamDeleteRespSchema.parse(j);
 }
@@ -816,7 +797,7 @@ export async function apiBrokerTeamGuidanceList(
   if (Number.isFinite(params?.limit ?? NaN)) qs.set("limit", String(params?.limit));
   if (Number.isFinite(params?.offset ?? NaN)) qs.set("offset", String(params?.offset));
   const url = `${base}/v1/teams/${encodeURIComponent(tid)}/guidance${qs.toString() ? `?${qs}` : ""}`;
-  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const r = await fetch(url, daemonFetchInit(auth));
   const j = await r.json();
   return BrokerGuidanceListRespSchema.parse(j);
 }
@@ -831,11 +812,10 @@ export async function apiBrokerTeamGuidanceCreate(
   const tid = String(teamId || "").trim();
   if (!tid) throw new Error("missing team_id");
   const payload = body ?? {};
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/guidance`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/guidance`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return BrokerGuidanceCreateRespSchema.parse(j);
 }
@@ -853,11 +833,10 @@ export async function apiBrokerTeamGuidanceAck(
   if (!tid) throw new Error("missing team_id");
   if (!gid) throw new Error("missing guidance_id");
   const payload = body ?? {};
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/guidance/${encodeURIComponent(gid)}/ack`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/guidance/${encodeURIComponent(gid)}/ack`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return BrokerGuidanceAckRespSchema.parse(j);
 }
@@ -879,7 +858,7 @@ export async function apiBrokerTeamGuidanceReceiptsList(
   const url = `${base}/v1/teams/${encodeURIComponent(tid)}/guidance/${encodeURIComponent(gid)}/receipts${
     qs.toString() ? `?${qs}` : ""
   }`;
-  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const r = await fetch(url, daemonFetchInit(auth));
   const j = await r.json();
   return BrokerGuidanceReceiptListRespSchema.parse(j);
 }
@@ -892,7 +871,7 @@ export async function apiBrokerTeamQuorumList(
   const base = brokerBase.replace(/\/+$/, "");
   const tid = String(teamId || "").trim();
   if (!tid) throw new Error("missing team_id");
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/quorum`, { headers: daemonHeaders(auth) });
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/quorum`, daemonFetchInit(auth));
   const j = await r.json();
   return BrokerTeamQuorumRuleListRespSchema.parse(j);
 }
@@ -907,11 +886,10 @@ export async function apiBrokerTeamQuorumUpsert(
   const tid = String(teamId || "").trim();
   if (!tid) throw new Error("missing team_id");
   const payload = body ?? {};
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/quorum`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/quorum`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return BrokerTeamQuorumRuleUpsertRespSchema.parse(j);
 }
@@ -927,10 +905,10 @@ export async function apiBrokerTeamQuorumDelete(
   const rid = String(ruleId || "").trim();
   if (!tid) throw new Error("missing team_id");
   if (!rid) throw new Error("missing rule_id");
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/quorum/${encodeURIComponent(rid)}`, {
-    method: "DELETE",
-    headers: daemonHeaders(auth),
-  });
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/quorum/${encodeURIComponent(rid)}`,
+    daemonFetchInit(auth, { method: "DELETE" }),
+  );
   const j = await r.json();
   return BrokerTeamDeleteRespSchema.parse(j);
 }
@@ -945,11 +923,10 @@ export async function apiBrokerTeamRunCreate(
   const tid = String(teamId || "").trim();
   if (!tid) throw new Error("missing team_id");
   const payload = body ?? {};
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/runs`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/runs`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return BrokerTeamRunRespSchema.parse(j);
 }
@@ -970,7 +947,7 @@ export async function apiBrokerTeamRunList(
   const qs = q.toString();
   const r = await fetch(
     `${base}/v1/teams/${encodeURIComponent(tid)}/runs${qs ? `?${qs}` : ""}`,
-    { headers: daemonHeaders(auth) },
+    daemonFetchInit(auth),
   );
   const j = await r.json();
   return BrokerTeamRunListRespSchema.parse(j);
@@ -987,9 +964,7 @@ export async function apiBrokerTeamRunGet(
   const rid = String(teamRunId || "").trim();
   if (!tid) throw new Error("missing team_id");
   if (!rid) throw new Error("missing team_run_id");
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/runs/${encodeURIComponent(rid)}`, {
-    headers: daemonHeaders(auth),
-  });
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/runs/${encodeURIComponent(rid)}`, daemonFetchInit(auth));
   const j = await r.json();
   return BrokerTeamRunStatusRespSchema.parse(j);
 }
@@ -1005,10 +980,10 @@ export async function apiBrokerTeamRunCancel(
   const rid = String(teamRunId || "").trim();
   if (!tid) throw new Error("missing team_id");
   if (!rid) throw new Error("missing team_run_id");
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/runs/${encodeURIComponent(rid)}/cancel`, {
-    method: "POST",
-    headers: daemonHeaders(auth),
-  });
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/runs/${encodeURIComponent(rid)}/cancel`,
+    daemonFetchInit(auth, { method: "POST" }),
+  );
   const j = await r.json();
   return BrokerTeamRunStatusRespSchema.parse(j);
 }
@@ -1025,11 +1000,10 @@ export async function apiBrokerTeamRunGoalUpdate(
   const rid = String(teamRunId || "").trim();
   if (!tid) throw new Error("missing team_id");
   if (!rid) throw new Error("missing team_run_id");
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/runs/${encodeURIComponent(rid)}/goal`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(body ?? {}),
-  });
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/runs/${encodeURIComponent(rid)}/goal`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(body ?? {}) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return BrokerTeamRunGoalUpdateRespSchema.parse(j);
 }
@@ -1046,11 +1020,10 @@ export async function apiBrokerTeamRunHandoff(
   const rid = String(teamRunId || "").trim();
   if (!tid) throw new Error("missing team_id");
   if (!rid) throw new Error("missing team_run_id");
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/runs/${encodeURIComponent(rid)}/handoff`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(body ?? {}),
-  });
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/runs/${encodeURIComponent(rid)}/handoff`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(body ?? {}) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return BrokerTeamRunHandoffRespSchema.parse(j);
 }
@@ -1067,11 +1040,10 @@ export async function apiBrokerTeamRunModeratorDirective(
   const rid = String(teamRunId || "").trim();
   if (!tid) throw new Error("missing team_id");
   if (!rid) throw new Error("missing team_run_id");
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/runs/${encodeURIComponent(rid)}/moderator/directive`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(body ?? {}),
-  });
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/runs/${encodeURIComponent(rid)}/moderator/directive`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(body ?? {}) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return BrokerTeamRunModeratorRespSchema.parse(j);
 }
@@ -1088,11 +1060,10 @@ export async function apiBrokerTeamRunModeratorTask(
   const rid = String(teamRunId || "").trim();
   if (!tid) throw new Error("missing team_id");
   if (!rid) throw new Error("missing team_run_id");
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/runs/${encodeURIComponent(rid)}/moderator/task`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(body ?? {}),
-  });
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/runs/${encodeURIComponent(rid)}/moderator/task`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(body ?? {}) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return BrokerTeamRunModeratorRespSchema.parse(j);
 }
@@ -1130,7 +1101,7 @@ export async function apiBrokerTeamRunModeratorEvents(
   const qs = q.toString();
   const r = await fetch(
     `${base}/v1/teams/${encodeURIComponent(tid)}/runs/${encodeURIComponent(rid)}/moderator/events${qs ? `?${qs}` : ""}`,
-    { headers: daemonHeaders(auth) },
+    daemonFetchInit(auth),
   );
   const j = await r.json();
   return BrokerTeamRunModeratorEventsRespSchema.parse(j);
@@ -1147,9 +1118,10 @@ export async function apiBrokerTeamRunApprovalsList(
   const run = String(teamRunId || "").trim();
   if (!team) throw new Error("missing team_id");
   if (!run) throw new Error("missing team_run_id");
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(team)}/runs/${encodeURIComponent(run)}/approvals`, {
-    headers: daemonHeaders(auth),
-  });
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(team)}/runs/${encodeURIComponent(run)}/approvals`,
+    daemonFetchInit(auth),
+  );
   const j = await r.json();
   return BrokerTeamRunApprovalListRespSchema.parse(j);
 }
@@ -1167,11 +1139,10 @@ export async function apiBrokerTeamRunApprovalsCreate(
   if (!team) throw new Error("missing team_id");
   if (!run) throw new Error("missing team_run_id");
   const payload = body ?? {};
-  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(team)}/runs/${encodeURIComponent(run)}/approvals`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(team)}/runs/${encodeURIComponent(run)}/approvals`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return BrokerTeamRunApprovalListRespSchema.parse(j);
 }
@@ -1191,11 +1162,7 @@ export async function apiBrokerTeamRunRuntimeMembersUpdate(
   const payload = body ?? {};
   const r = await fetch(
     `${base}/v1/teams/${encodeURIComponent(team)}/runs/${encodeURIComponent(run)}/runtime_members`,
-    {
-      method: "PATCH",
-      headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-      body: JSON.stringify(payload),
-    },
+    daemonFetchInit(auth, { method: "PATCH", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
   );
   const j = await r.json();
   return BrokerTeamRunStatusRespSchema.parse(j);

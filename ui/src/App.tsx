@@ -36,6 +36,7 @@ import {
   apiBrokerTeamRunList,
   apiBrokerTeamRunGoalUpdate,
   apiBrokerTrace,
+  daemonFetchInit,
   daemonHeaders,
   RunRequest,
   RunResponse,
@@ -329,8 +330,8 @@ export default function App() {
   const runWatchCanUse = React.useMemo(() => {
     if (!runWatchPrefsBase || !runWatchPrefsClientId) return false;
     if (daemonAuth.mode !== "broker") return true;
-    return String(brokerAuthToken || "").trim().length > 0;
-  }, [brokerAuthToken, daemonAuth.mode, runWatchPrefsBase, runWatchPrefsClientId]);
+    return connection.brokerCookieAuth || String(brokerAuthToken || "").trim().length > 0;
+  }, [brokerAuthToken, connection.brokerCookieAuth, daemonAuth.mode, runWatchPrefsBase, runWatchPrefsClientId]);
   const [runWatchServerStatus, setRunWatchServerStatus] = React.useState<"idle" | "loading" | "ready" | "error">("idle");
   const runWatchPersistRef = React.useRef<{
     timer: ReturnType<typeof setTimeout> | null;
@@ -952,7 +953,8 @@ export default function App() {
     sessions.data &&
     sessions.data.ok === false &&
     String((sessions.data as any).error || "").toLowerCase() === "unauthorized";
-  const missingBrokerAuthToken = connectionMode === "broker" && String(brokerAuthToken || "").trim().length === 0;
+  const missingBrokerAuthToken =
+    connectionMode === "broker" && !connection.brokerCookieAuth && String(brokerAuthToken || "").trim().length === 0;
   const missingDaemonAuthToken = String(daemonAuthToken || "").trim().length === 0;
   const isLocalDaemonBase = React.useMemo(() => {
     try {
@@ -2520,7 +2522,7 @@ export default function App() {
           const sidQ = sid ? `&session_id=${encodeURIComponent(sid)}` : "";
           const src = `${effectiveBase}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${yolo ? "1" : "0"}${sidQ}`;
           try {
-            const r = await fetch(src, { headers: daemonHeaders(daemonAuth) });
+            const r = await fetch(src, daemonFetchInit(daemonAuth));
             if (!r.ok) throw new Error(`file fetch failed: ${r.status}`);
             const ct = String(r.headers.get("content-type") || "").trim();
             // Consume bytes to actually verify fetchability (and avoid keeping the response open).
@@ -2664,6 +2666,15 @@ export default function App() {
                 Settings
               </button>{" "}
               (<span className="text-amber-50/90">Broker auth token</span>).
+            </>
+          ) : connectionMode === "broker" && connection.brokerCookieAuth ? (
+            <>
+              <span className="font-semibold text-amber-50/90">Unauthorized:</span> broker cookie auth is enabled, but the browser did not send a valid broker auth cookie.
+              Check the broker <code className="text-amber-50/90">--auth-cookie</code> / <code className="text-amber-50/90">--cors-allow-credentials</code> setup or disable cookie auth in{" "}
+              <button className="underline hover:text-white" onClick={() => setShowSettings(true)} type="button">
+                Settings
+              </button>
+              .
             </>
           ) : (
             <>

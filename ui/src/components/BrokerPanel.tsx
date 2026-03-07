@@ -21,7 +21,7 @@ import {
   apiBrokerPostClientPrefs,
   apiBrokerProxyJson,
   apiBrokerUpsertMember,
-  daemonHeaders,
+  daemonFetchInit,
   type ApiAuth,
   type BrokerAgentInfo,
   type BrokerConnector,
@@ -83,7 +83,8 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   const base = React.useMemo(() => normalizeBrokerBase(props.brokerBase), [props.brokerBase]);
   const agentId = String(props.brokerAgentId || "").trim();
   const authToken = props.auth?.token ? String(props.auth.token).trim() : "";
-  const canQuery = base.length > 0 && authToken.length > 0;
+  const useCookieAuth = props.auth?.mode === "broker" && props.auth.useCookieAuth === true;
+  const canQuery = base.length > 0 && (authToken.length > 0 || useCookieAuth);
   const brokerPageKey = React.useMemo(() => {
     const b = base || "default";
     const k = String(props.authKey || "").trim() || "default";
@@ -479,10 +480,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
       setBrokerEventsError(null);
       setBrokerEventsConnected(false);
       try {
-        const resp = await fetch(`${base}/v1/events`, {
-          headers: daemonHeaders(props.auth),
-          signal: controller.signal,
-        });
+        const resp = await fetch(`${base}/v1/events`, daemonFetchInit(props.auth, { signal: controller.signal }));
         if (!resp.ok) {
           throw new Error(`broker events failed (${resp.status})`);
         }
@@ -1126,7 +1124,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
           <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
             Missing broker base URL. Set it in Settings.
           </div>
-        ) : authToken.length === 0 ? (
+        ) : !useCookieAuth && authToken.length === 0 ? (
           <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
             Missing broker auth token (OIDC). Set it in Settings.
           </div>

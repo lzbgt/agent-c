@@ -1,4 +1,4 @@
-import { daemonHeaders, type ApiAuth } from "./auth";
+import { daemonFetchInit, type ApiAuth } from "./auth";
 import {
   ApprovalDecisionRespSchema,
   type ApprovalDecisionResp,
@@ -53,7 +53,7 @@ export async function apiListApprovals(
     qs.set("limit", `${query.limit}`);
   }
   const url = qs.toString() ? `${base}/api/v1/approvals?${qs.toString()}` : `${base}/api/v1/approvals`;
-  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const r = await fetch(url, daemonFetchInit(auth));
   const j = await parseJsonOrThrow(r);
   return ApprovalsListSchema.parse(j);
 }
@@ -63,7 +63,7 @@ export async function apiGetApproval(
   approvalId: string,
   auth?: ApiAuth,
 ): Promise<ApprovalDetailResp> {
-  const r = await fetch(`${base}/api/v1/approvals/${approvalId}`, { headers: daemonHeaders(auth) });
+  const r = await fetch(`${base}/api/v1/approvals/${approvalId}`, daemonFetchInit(auth));
   const j = await parseJsonOrThrow(r);
   return ApprovalDetailSchema.parse(j);
 }
@@ -80,11 +80,10 @@ export async function apiPostApprovalDecision(
     decision: req.decision,
     note: req.note ?? "",
   };
-  const r = await fetch(`${base}/api/v1/approvals/${approvalId}/decisions`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/api/v1/approvals/${approvalId}/decisions`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+  );
   const j = await parseJsonOrThrow(r);
   return ApprovalDecisionRespSchema.parse(j);
 }

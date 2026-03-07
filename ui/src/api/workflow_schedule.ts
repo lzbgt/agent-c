@@ -1,4 +1,4 @@
-import { daemonHeaders, type ApiAuth } from "./auth";
+import { daemonFetchInit, type ApiAuth } from "./auth";
 import { addQueryParam } from "./query";
 import {
   WorkflowScheduleCreateRespSchema,
@@ -29,7 +29,7 @@ export async function apiListWorkflowSchedules(
   addQueryParam(qs, "limit", params.limit);
   addQueryParam(qs, "offset", params.offset);
   const q = qs.toString();
-  const r = await fetch(`${base}/api/v1/workflow_schedules${q ? `?${q}` : ""}`, { headers: daemonHeaders(auth) });
+  const r = await fetch(`${base}/api/v1/workflow_schedules${q ? `?${q}` : ""}`, daemonFetchInit(auth));
   const j = await r.json();
   return WorkflowScheduleListRespSchema.parse(j);
 }
@@ -42,7 +42,7 @@ export async function apiGetWorkflowSchedule(
   const qs = new URLSearchParams();
   addQueryParam(qs, "schedule_id", scheduleId);
   const q = qs.toString();
-  const r = await fetch(`${base}/api/v1/workflow_schedule${q ? `?${q}` : ""}`, { headers: daemonHeaders(auth) });
+  const r = await fetch(`${base}/api/v1/workflow_schedule${q ? `?${q}` : ""}`, daemonFetchInit(auth));
   const j = await r.json();
   return WorkflowScheduleGetRespSchema.parse(j);
 }
@@ -52,11 +52,10 @@ export async function apiCreateWorkflowSchedule(
   payload: Record<string, any>,
   auth?: ApiAuth,
 ): Promise<WorkflowScheduleCreateResp> {
-  const r = await fetch(`${base}/api/v1/workflow_schedules`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
+  const r = await fetch(
+    `${base}/api/v1/workflow_schedules`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+  );
   const j = await r.json();
   return WorkflowScheduleCreateRespSchema.parse(j);
 }
@@ -69,10 +68,7 @@ export async function apiDeleteWorkflowSchedule(
   const qs = new URLSearchParams();
   addQueryParam(qs, "schedule_id", scheduleId);
   const q = qs.toString();
-  const r = await fetch(`${base}/api/v1/workflow_schedule${q ? `?${q}` : ""}`, {
-    method: "DELETE",
-    headers: daemonHeaders(auth),
-  });
+  const r = await fetch(`${base}/api/v1/workflow_schedule${q ? `?${q}` : ""}`, daemonFetchInit(auth, { method: "DELETE" }));
   const j = await r.json();
   return WorkflowScheduleUpdateRespSchema.parse(j);
 }
@@ -82,11 +78,14 @@ export async function apiPauseWorkflowSchedule(
   scheduleId: string,
   auth?: ApiAuth,
 ): Promise<WorkflowScheduleUpdateResp> {
-  const r = await fetch(`${base}/api/v1/workflow_schedule/pause`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify({ schedule_id: scheduleId }),
-  });
+  const r = await fetch(
+    `${base}/api/v1/workflow_schedule/pause`,
+    daemonFetchInit(
+      auth,
+      { method: "POST", body: JSON.stringify({ schedule_id: scheduleId }) },
+      { "Content-Type": "application/json" },
+    ),
+  );
   const j = await r.json();
   return WorkflowScheduleUpdateRespSchema.parse(j);
 }
@@ -96,11 +95,14 @@ export async function apiResumeWorkflowSchedule(
   scheduleId: string,
   auth?: ApiAuth,
 ): Promise<WorkflowScheduleUpdateResp> {
-  const r = await fetch(`${base}/api/v1/workflow_schedule/resume`, {
-    method: "POST",
-    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-    body: JSON.stringify({ schedule_id: scheduleId }),
-  });
+  const r = await fetch(
+    `${base}/api/v1/workflow_schedule/resume`,
+    daemonFetchInit(
+      auth,
+      { method: "POST", body: JSON.stringify({ schedule_id: scheduleId }) },
+      { "Content-Type": "application/json" },
+    ),
+  );
   const j = await r.json();
   return WorkflowScheduleUpdateRespSchema.parse(j);
 }
@@ -121,7 +123,7 @@ export async function apiListWorkflowScheduleRuns(
   addQueryParam(qs, "limit", params.limit);
   addQueryParam(qs, "offset", params.offset);
   const q = qs.toString();
-  const r = await fetch(`${base}/api/v1/workflow_schedule/runs${q ? `?${q}` : ""}`, { headers: daemonHeaders(auth) });
+  const r = await fetch(`${base}/api/v1/workflow_schedule/runs${q ? `?${q}` : ""}`, daemonFetchInit(auth));
   const j = await r.json();
   return WorkflowScheduleRunsRespSchema.parse(j);
 }
