@@ -123,6 +123,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-03-08: extracted `App.tsx` shell pieces into dedicated components (`AppHeader`, connection banner, tools sidebar, team hub card, advanced panel host), reducing `App.tsx` from 3307 to 2982 lines without changing broker/workflow UI behavior.
   - 2026-03-08: extracted broker team run/chat/guidance/query/queue state from `App.tsx` into `ui/src/hooks/useTeamChatOrchestration.ts`, reducing `App.tsx` from 2982 to 2324 lines while keeping the broker/workflow Playwright batch green.
   - 2026-03-08: extracted the session/admin/query plane into `ui/src/hooks/useAppDataPlane.ts` and tightened the remaining shell wiring, reducing `App.tsx` from 2324 to 1980 lines; UI build plus the 11-test broker/workflow Playwright batch stayed green.
+  - 2026-03-08: extracted direct run execution/queue logic into `ui/src/hooks/useRunExecution.ts` and trace state into `ui/src/hooks/useTraceLookup.ts`, reducing `App.tsx` from 1979 to 1742 lines; UI build plus the 11-test broker/workflow Playwright batch stayed green.
 
 - [x] W=14 — Orchestrator ownership + lease takeover: prevent split-brain while keeping automation always-on.
   - 2026-02-26: added `expected_owner` guard to orchestrator run update/heartbeat and orchestrator loop claim via `meta.orchestrator_owner`.

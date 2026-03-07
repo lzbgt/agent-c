@@ -1,5 +1,5 @@
 import React from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   apiGetCaps,
   apiGetClientPrefs,
@@ -7,15 +7,10 @@ import {
   apiPostSessionSceneApply,
   apiPostSessionUiEvent,
   apiPostClientPrefs,
-  apiRun,
-  apiRunAsync,
-  apiAgentdTrace,
   apiBrokerGetClientPrefs,
   apiBrokerPostClientPrefs,
-  apiBrokerTrace,
   daemonFetchInit,
   daemonHeaders,
-  RunRequest,
   RunResponse,
   type Caps,
   type AgentEvent,
@@ -44,15 +39,15 @@ import TeamHubCard from "./components/app/TeamHubCard";
 import useLocalStorageState from "./hooks/useLocalStorageState";
 import useAppDataPlane from "./hooks/useAppDataPlane";
 import useJobStreaming from "./hooks/useJobStreaming";
+import useRunExecution, { type QueuedRun } from "./hooks/useRunExecution";
 import useTeamChatOrchestration from "./hooks/useTeamChatOrchestration";
+import useTraceLookup from "./hooks/useTraceLookup";
 import useUiSettings from "./hooks/useUiSettings";
 import { buildWorkflowDefaults } from "./workflowDefaults";
 
 const RUN_WATCH_PREFS_KIND = "run_watch";
 const RUN_WATCH_PREFS_VERSION = 1;
 const RUN_WATCH_PERSIST_MIN_INTERVAL_MS = 5000;
-
-type QueuedRun = { prompt: string; attachments: Attachment[]; queued_unix_ms: number };
 
 export default function App() {
   const ui = useUiSettings();
@@ -224,9 +219,6 @@ export default function App() {
   const [jobNotice, setJobNotice] = React.useState<string | null>(null);
   const [jobUpdatedMs, setJobUpdatedMs] = React.useState<number | null>(null);
 
-  const [traceLookupError, setTraceLookupError] = React.useState<string | null>(null);
-  const [traceLookupAgentd, setTraceLookupAgentd] = React.useState<any | null>(null);
-  const [traceLookupBroker, setTraceLookupBroker] = React.useState<any | null>(null);
   const [liveEvents, setLiveEvents] = React.useState<AgentEvent[]>([]);
   const cursorRef = React.useRef<number>(0);
 
@@ -983,270 +975,71 @@ export default function App() {
     setPrompt,
   });
 
-  const run = useMutation({
-    mutationFn: async (vars: { prompt: string; attachments: Attachment[] }) => {
-      const maxStepsTrim = String(maxSteps ?? "").trim();
-      const parsedMaxSteps =
-        maxStepsTrim.length === 0
-          ? undefined
-          : Number.isFinite(Number(maxStepsTrim)) && Number(maxStepsTrim) >= 0
-            ? Number(maxStepsTrim)
-            : undefined;
-      const maxToolCallsTotalTrim = String(maxToolCallsTotal ?? "").trim();
-      const parsedMaxToolCallsTotal =
-        maxToolCallsTotalTrim.length === 0
-          ? undefined
-          : Number.isFinite(Number(maxToolCallsTotalTrim)) && Number(maxToolCallsTotalTrim) >= 0
-            ? Number(maxToolCallsTotalTrim)
-            : undefined;
-      const maxToolCallsPerToolTrim = String(maxToolCallsPerTool ?? "").trim();
-      const parsedMaxToolCallsPerTool =
-        maxToolCallsPerToolTrim.length === 0
-          ? undefined
-          : Number.isFinite(Number(maxToolCallsPerToolTrim)) && Number(maxToolCallsPerToolTrim) >= 0
-            ? Number(maxToolCallsPerToolTrim)
-            : undefined;
-
-      const toolCallLimitsTrim = String(toolCallLimits ?? "").trim();
-      let parsedToolCallLimits: { tool: string; max_calls: number }[] | undefined = undefined;
-      if (toolCallLimitsTrim.length > 0) {
-        const s = toolCallLimitsTrim;
-        if (s.startsWith("[") || s.startsWith("{")) {
-          try {
-            const v: any = JSON.parse(s);
-            const arr = Array.isArray(v) ? v : [v];
-            parsedToolCallLimits = arr
-              .map((item) => {
-                const tool = String(item?.tool ?? item?.name ?? "").trim();
-                const max_calls = Number(item?.max_calls ?? item?.maxCalls ?? item?.max ?? item?.limit ?? NaN);
-                if (!tool) return null;
-                if (!Number.isFinite(max_calls) || max_calls < 0) return null;
-                return { tool, max_calls: Math.floor(max_calls) };
-              })
-              .filter(Boolean) as any;
-          } catch (e) {
-            throw new Error(`Invalid tool call limits JSON: ${String(e)}`);
-          }
-        } else {
-          const parts = s
-            .split(/[,\n]+/g)
-            .map((x) => x.trim())
-            .filter((x) => x.length > 0);
-          const out: { tool: string; max_calls: number }[] = [];
-          for (const p of parts) {
-            const eq = p.indexOf("=");
-            if (eq <= 0) throw new Error(`Invalid tool call limit (expected tool=max_calls): ${p}`);
-            const tool = p.slice(0, eq).trim();
-            const n = Number(p.slice(eq + 1).trim());
-            if (!tool) throw new Error(`Invalid tool call limit tool name: ${p}`);
-            if (!Number.isFinite(n) || n < 0) throw new Error(`Invalid tool call limit value: ${p}`);
-            const max_calls = Math.floor(n);
-            const existing = out.find((x) => x.tool === tool);
-            if (existing) existing.max_calls = max_calls;
-            else out.push({ tool, max_calls });
-          }
-          parsedToolCallLimits = out;
-        }
-        if (parsedToolCallLimits && parsedToolCallLimits.length === 0) {
-          parsedToolCallLimits = undefined;
-        }
-      }
-      const memMode =
-        memoryContextMode === "search" || memoryContextMode === "index" || memoryContextMode === "salience"
-          ? memoryContextMode
-          : "files";
-      const memDailyDaysTrim = String(memoryDailyDays ?? "").trim();
-      const parsedMemDailyDays =
-        memDailyDaysTrim.length === 0
-          ? undefined
-          : Number.isFinite(Number(memDailyDaysTrim)) && Number(memDailyDaysTrim) >= 0
-            ? Number(memDailyDaysTrim)
-            : undefined;
-      const memTotalCapTrim = String(memoryTotalCap ?? "").trim();
-      const parsedMemTotalCap =
-        memTotalCapTrim.length === 0
-          ? undefined
-          : Number.isFinite(Number(memTotalCapTrim)) && Number(memTotalCapTrim) >= 0
-            ? Number(memTotalCapTrim)
-            : undefined;
-      const memSearchQueryTrim = String(memorySearchQuery ?? "").trim();
-      const memSearchMaxResultsTrim = String(memorySearchMaxResults ?? "").trim();
-      const parsedMemSearchMaxResults =
-        memSearchMaxResultsTrim.length === 0
-          ? undefined
-          : Number.isFinite(Number(memSearchMaxResultsTrim)) && Number(memSearchMaxResultsTrim) >= 0
-            ? Number(memSearchMaxResultsTrim)
-            : undefined;
-      const memSearchMaxSnippetTrim = String(memorySearchMaxSnippetChars ?? "").trim();
-      const parsedMemSearchMaxSnippetChars =
-        memSearchMaxSnippetTrim.length === 0
-          ? undefined
-          : Number.isFinite(Number(memSearchMaxSnippetTrim)) && Number(memSearchMaxSnippetTrim) >= 0
-            ? Number(memSearchMaxSnippetTrim)
-            : undefined;
-      const memSearchContextTrim = String(memorySearchContextLines ?? "").trim();
-      const parsedMemSearchContextLines =
-        memSearchContextTrim.length === 0
-          ? undefined
-          : Number.isFinite(Number(memSearchContextTrim)) && Number(memSearchContextTrim) >= 0
-            ? Number(memSearchContextTrim)
-            : undefined;
-      const req: RunRequest = {
-        prompt: vars.prompt,
-        session_id: sessionId || undefined,
-        no_session: false,
-        input_files:
-          vars.attachments.length > 0
-            ? vars.attachments.map((a) => ({
-                path: a.path,
-                name: a.name,
-                mime: a.mime,
-                kind: a.kind,
-              }))
-            : undefined,
-        client,
-        tools,
-        host_policy: tools === "host" ? hostPolicy : undefined,
-        automation_profile: automationProfileValue,
-        yolo,
-        verbose,
-        model: model || undefined,
-        summary_model: summaryModel && summaryModel.trim().length > 0 ? summaryModel.trim() : undefined,
-        summary_max_chars:
-          Number.isFinite(Number(summaryMaxChars)) && Number(summaryMaxChars) >= 0 ? Number(summaryMaxChars) : undefined,
-        base_url: baseUrl || undefined,
-        api_key: apiKey || undefined,
-        proxy: proxyUrl && proxyUrl.trim().length > 0 ? proxyUrl.trim() : undefined,
-        timeout_ms: Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0 ? Number(timeoutMs) : undefined,
-        stream_assistant: streamAssistant,
-        max_capture_bytes:
-          Number.isFinite(Number(maxCaptureBytes)) && Number(maxCaptureBytes) >= 0 ? Number(maxCaptureBytes) : undefined,
-        max_steps: parsedMaxSteps,
-        max_repeated_tool_calls:
-          Number.isFinite(Number(maxRepeatedToolCalls)) && Number(maxRepeatedToolCalls) >= 0 ? Number(maxRepeatedToolCalls) : undefined,
-        max_tool_calls_total: parsedMaxToolCallsTotal,
-        max_tool_calls_per_tool: parsedMaxToolCallsPerTool,
-        tool_call_limits: parsedToolCallLimits,
-        max_chars: Number.isFinite(Number(maxChars)) ? Number(maxChars) : 20000,
-        keep_last: Number.isFinite(Number(keepLast)) ? Number(keepLast) : 16,
-        trace,
-      };
-      if (tools === "host") {
-        req.memory_context_mode = memMode;
-        req.memory_include_structured = memoryIncludeStructured;
-        req.memory_include_core = memoryIncludeCore;
-        req.memory_include_daily = memoryIncludeDaily;
-        req.memory_include_session = memoryIncludeSession;
-        req.memory_daily_days = parsedMemDailyDays;
-        req.memory_total_cap = parsedMemTotalCap;
-        if (memSearchQueryTrim.length > 0) req.memory_search_query = memSearchQueryTrim;
-        req.memory_search_use_index = memorySearchUseIndex;
-        req.memory_search_case_sensitive = memorySearchCaseSensitive;
-        req.memory_search_fallback_to_files = memorySearchFallbackToFiles;
-        const memOrder =
-          memorySearchOrder === "newest" || memorySearchOrder === "oldest" || memorySearchOrder === "ranked"
-            ? (memorySearchOrder as "ranked" | "newest" | "oldest")
-            : "ranked";
-        if (memOrder !== "ranked") req.memory_search_order = memOrder;
-        req.memory_search_max_results = parsedMemSearchMaxResults;
-        req.memory_search_max_snippet_chars = parsedMemSearchMaxSnippetChars;
-        req.memory_search_context_lines = parsedMemSearchContextLines;
-      }
-      if (effectiveUseAsync) {
-        const job = await apiRunAsync(effectiveBase, req, daemonAuth);
-        return { mode: "async" as const, job, req };
-      }
-      const out = await apiRun(effectiveBase, req, daemonAuth);
-      return { mode: "sync" as const, out, req };
-    },
-    onSuccess: (v) => {
-      if (v.mode === "sync") {
-        setComposerTaskNonce((n) => n + 1);
-        // Only replace history once we have a new result (prevents "fetch failed" from wiping the UI).
-        lastRunPromptRef.current = v.req.prompt;
-        setLastRunPrompt(v.req.prompt);
-        setLastCompletedPrompt(v.req.prompt);
-        setResult(v.out);
-        setLiveEvents([]);
-        setJobError(null);
-        setJobNotice(null);
-        setJobStatus(null);
-        setJobUpdatedMs(null);
-        void audit.refetch();
-        void sessions.refetch();
-        return;
-      }
-      if (!v.job.ok || !v.job.job_id) {
-        setJobError(v.job.error ?? "failed to start async job");
-        setJobNotice(null);
-        return;
-      }
-      setComposerTaskNonce((n) => n + 1);
-      // Only reset/replace history after the job has been successfully created.
-      lastRunPromptRef.current = v.req.prompt;
-      setLastRunPrompt(v.req.prompt);
-      setJobError(null);
-      setJobNotice(null);
-      setJobStatus(null);
-      setJobUpdatedMs(null);
-      setLiveEvents([]);
-      cursorRef.current = 0;
-      setActiveJobId(v.job.job_id);
-      setJobStatus("queued");
-
-      const sid = String(sessionId || "").trim();
-      if (sid) {
-        writeJobsBySession((prev) => ({
-          ...prev,
-          [jobStoreKey]: { job_id: v.job.job_id, cursor: 0, started_unix_ms: Date.now() },
-        }));
-      }
-    },
-    onError: (e) => {
-      // Keep the last conversation visible when a run cannot be started.
-      setJobError(`run failed: ${String(e)}`);
-      setJobNotice(null);
-    },
+  const { handleDirectRunRequest, run } = useRunExecution({
+    activeJobId,
+    apiKey,
+    automationProfileValue,
+    baseUrl,
+    client,
+    cursorRef,
+    daemonAuth,
+    effectiveBase,
+    effectiveUseAsync,
+    hostPolicy,
+    jobStoreKey,
+    keepLast,
+    lastRunPromptRef,
+    maxCaptureBytes,
+    maxChars,
+    maxRepeatedToolCalls,
+    maxSteps,
+    maxToolCallsPerTool,
+    maxToolCallsTotal,
+    memoryContextMode,
+    memoryDailyDays,
+    memoryIncludeCore,
+    memoryIncludeDaily,
+    memoryIncludeSession,
+    memoryIncludeStructured,
+    memorySearchCaseSensitive,
+    memorySearchContextLines,
+    memorySearchFallbackToFiles,
+    memorySearchMaxResults,
+    memorySearchMaxSnippetChars,
+    memorySearchOrder,
+    memorySearchQuery,
+    memorySearchUseIndex,
+    memoryTotalCap,
+    model,
+    proxyUrl,
+    runQueue,
+    sessionId,
+    setActiveJobId,
+    setComposerTaskNonce,
+    setJobError,
+    setJobNotice,
+    setJobStatus,
+    setJobUpdatedMs,
+    setLastCompletedPrompt,
+    setLastRunPrompt,
+    setLiveEvents,
+    setPrompt,
+    setResult,
+    setRunQueue,
+    streamAssistant,
+    summaryMaxChars,
+    summaryModel,
+    timeoutMs,
+    toolCallLimits,
+    tools,
+    trace,
+    verbose,
+    writeJobsBySession,
+    yolo,
+    auditRefetch,
+    sessionsRefetch,
   });
 
-  const dequeueInFlightRef = React.useRef(false);
-
-  const enqueueRun = React.useCallback(
-    (vars: { prompt: string; attachments: Attachment[] }) => {
-      const trimmed = String(vars.prompt || "").trim();
-      if (!trimmed && vars.attachments.length === 0) {
-        setJobNotice("prompt or attachment required");
-        return;
-      }
-      setRunQueue((prev) => [
-        ...(Array.isArray(prev) ? prev : []),
-        { prompt: trimmed, attachments: vars.attachments, queued_unix_ms: Date.now() },
-      ]);
-      setPrompt("");
-      setComposerTaskNonce((n) => n + 1);
-      setJobNotice("queued");
-    },
-    [setComposerTaskNonce, setJobNotice, setPrompt, setRunQueue],
-  );
-
-  React.useEffect(() => {
-    if (activeJobId || run.isPending) return;
-    if (!Array.isArray(runQueue) || runQueue.length === 0) return;
-    if (dequeueInFlightRef.current) return;
-    const next = runQueue[0];
-    if (!next || typeof next !== "object") return;
-    dequeueInFlightRef.current = true;
-    setRunQueue((prev) => (Array.isArray(prev) ? prev.slice(1) : []));
-    run
-      .mutateAsync({ prompt: next.prompt, attachments: next.attachments || [] })
-      .catch((err) => {
-        setJobNotice(`queued run failed: ${String(err)}`);
-        setRunQueue((prev) => [next, ...(Array.isArray(prev) ? prev : [])]);
-      })
-      .finally(() => {
-        dequeueInFlightRef.current = false;
-      });
-  }, [activeJobId, run.isPending, runQueue, run, setJobNotice, setRunQueue]);
   const isTeamTarget = brokerChatAvailable && chatTarget === "team";
   const teamActionNormalized =
     teamAction === "guidance" || teamAction === "goal" ? (teamAction as "guidance" | "goal") : "run";
@@ -1256,47 +1049,21 @@ export default function App() {
         await handleTeamRunRequest(vars, teamActionNormalized);
         return;
       }
-      if (activeJobId || run.isPending) {
-        enqueueRun(vars);
-        return;
-      }
-      run.mutate(vars);
+      await handleDirectRunRequest(vars);
     },
     [
-      activeJobId,
-      enqueueRun,
+      handleDirectRunRequest,
       handleTeamRunRequest,
       isTeamTarget,
-      run,
       teamActionNormalized,
     ],
   );
 
-  const traceLookup = useMutation({
-    mutationFn: async (traceIdRaw: string) => {
-      const tid = String(traceIdRaw || "").trim();
-      if (!tid) throw new Error("missing trace_id");
-      setTraceLookupError(null);
-      setTraceLookupAgentd(null);
-      setTraceLookupBroker(null);
-
-      if (connectionMode === "broker") {
-        const bb = String(connection.brokerBase || "").trim();
-        if (!bb) throw new Error("missing broker base");
-        return { mode: "broker" as const, data: await apiBrokerTrace(bb, tid, daemonAuth) };
-      }
-      return { mode: "direct" as const, data: await apiAgentdTrace(effectiveBase, tid, daemonAuth) };
-    },
-    onSuccess: (v) => {
-      if (v.mode === "broker") {
-        setTraceLookupBroker(v.data);
-      } else {
-        setTraceLookupAgentd(v.data);
-      }
-    },
-    onError: (e) => {
-      setTraceLookupError(String(e));
-    },
+  const { clearTraceLookup, traceLookup, traceLookupAgentd, traceLookupBroker, traceLookupError } = useTraceLookup({
+    brokerBase: connection.brokerBase,
+    connectionMode,
+    daemonAuth,
+    effectiveBase,
   });
 
   // Persist job cursor while running (best-effort). This lets refresh resume from a stable point.
@@ -1836,11 +1603,7 @@ export default function App() {
                   traceId: traceLookupId,
                   onTraceIdChange: setTraceLookupId,
                   onLoad: (id) => void traceLookup.mutateAsync(id).catch(() => {}),
-                  onClear: () => {
-                    setTraceLookupError(null);
-                    setTraceLookupAgentd(null);
-                    setTraceLookupBroker(null);
-                  },
+                  onClear: clearTraceLookup,
                   loading: traceLookup.isPending,
                   error: traceLookupError,
                   connectionMode,
