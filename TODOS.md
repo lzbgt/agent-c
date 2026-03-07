@@ -120,6 +120,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-03-07: extracted typed run-watch parsing/merge helpers from `App.tsx` into `ui/src/runWatchPrefs.ts` and updated `ui/src/jobStore.ts` to use typed run-watch entries.
   - 2026-03-07: bound the broker team/member/quorum/run/orchestrator/guidance schemas to generated OpenAPI types, keeping explicit widening only for live fields still ahead of the published component contracts (for example `member_sessions` on team run status).
   - 2026-03-07: extracted team event cursor parsing and replay-event normalization from `BrokerTeamConsole.tsx` into `ui/src/components/broker/teamEventPrefs.ts`, typed broker agent/deployment state in the console, and removed additional `any` payload handling from broker event rendering.
+  - 2026-03-08: extracted `App.tsx` shell pieces into dedicated components (`AppHeader`, connection banner, tools sidebar, team hub card, advanced panel host), reducing `App.tsx` from 3307 to 2982 lines without changing broker/workflow UI behavior.
 
 - [x] W=14 — Orchestrator ownership + lease takeover: prevent split-brain while keeping automation always-on.
   - 2026-02-26: added `expected_owner` guard to orchestrator run update/heartbeat and orchestrator loop claim via `meta.orchestrator_owner`.

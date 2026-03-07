@@ -58,13 +58,12 @@ import HistoryPanel from "./components/HistoryPanel";
 import SceneView, { type SceneEntity } from "./components/SceneView";
 import PromptBar, { type Attachment } from "./components/PromptBar";
 import SettingsDrawer from "./components/SettingsDrawer";
-import TraceLookupPanel from "./components/TraceLookupPanel";
-import BrokerPanel from "./components/BrokerPanel";
 import BrokerTeamConsole from "./components/broker/BrokerTeamConsole";
-import MemoryPanel from "./components/MemoryPanel";
-import RunDiffPanel from "./components/RunDiffPanel";
-import ApprovalQueuePanel from "./components/ApprovalQueuePanel";
-import WorkflowPanel from "./components/WorkflowPanel";
+import AppConnectionBanner from "./components/app/AppConnectionBanner";
+import AppAdvancedPanel from "./components/app/AppAdvancedPanel";
+import AppHeader from "./components/app/AppHeader";
+import AppToolsSidebar from "./components/app/AppToolsSidebar";
+import TeamHubCard from "./components/app/TeamHubCard";
 import useLocalStorageState from "./hooks/useLocalStorageState";
 import useJobStreaming from "./hooks/useJobStreaming";
 import useUiSettings from "./hooks/useUiSettings";
@@ -2599,125 +2598,34 @@ export default function App() {
         ["--promptbar-h" as any]: `${promptbarHeightPx}px`,
       }}
     >
-      <header ref={topbarRef} className="sticky top-0 z-30 border-b border-white/10 bg-slate-950/80 backdrop-blur">
-        <div className="flex h-14 min-w-0 items-center justify-between px-4">
-          <div className="min-w-0">
-            <div className="text-sm font-semibold">agent UI</div>
-            <div className="text-[11px] text-white/60">
-              profile:{" "}
-              <select
-                className="ml-1 inline-block max-w-[28vw] truncate rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-mono text-[11px] text-white/70"
-                value={connection.activeProfileId}
-                onChange={(e) => connection.setActiveProfileId(e.target.value)}
-                title={profileName}
-              >
-                {connection.profiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>{" "}
-              {runSettings.profileOverridesEnabled ? (
-                <span className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
-                  run overrides
-                </span>
-              ) : null}
-              · daemon:{" "}
-              <span className="inline-block max-w-[60vw] truncate align-bottom font-mono text-[11px] text-white/70" title={effectiveBase}>
-                {effectiveBase}
-              </span>{" "}
-              {health.isSuccess ? (
-                <span className="text-emerald-300">
-                  ok ({health.data.service ?? "agentd"} {health.data.version ?? ""})
-                </span>
-              ) : health.isFetching ? (
-                <span className="text-white/60">checking…</span>
-              ) : (
-                <span className="text-rose-300">offline</span>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-              onClick={() => health.refetch()}
-              type="button"
-            >
-              Recheck
-            </button>
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-              onClick={() => setShowSettings(true)}
-              type="button"
-            >
-              Settings
-            </button>
-          </div>
-        </div>
-      </header>
+      <AppHeader
+        topbarRef={topbarRef}
+        profiles={connection.profiles}
+        activeProfileId={connection.activeProfileId}
+        profileName={profileName}
+        onProfileChange={connection.setActiveProfileId}
+        runOverridesEnabled={runSettings.profileOverridesEnabled}
+        effectiveBase={effectiveBase}
+        healthState={health.isSuccess ? "ok" : health.isFetching ? "checking" : "offline"}
+        healthService={health.data?.service}
+        healthVersion={health.data?.version}
+        onRecheck={() => health.refetch()}
+        onShowSettings={() => setShowSettings(true)}
+      />
 
-      {health.isError ? (
-        <div className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-xs text-amber-100">
-          {connectionMode === "broker" && missingBrokerAuthToken ? (
-            <>
-              <span className="font-semibold text-amber-50/90">Unauthorized:</span> the broker requires an OIDC bearer token.
-              Set it in{" "}
-              <button className="underline hover:text-white" onClick={() => setShowSettings(true)} type="button">
-                Settings
-              </button>{" "}
-              (<span className="text-amber-50/90">Broker auth token</span>).
-            </>
-          ) : connectionMode === "broker" && connection.brokerCookieAuth ? (
-            <>
-              <span className="font-semibold text-amber-50/90">Unauthorized:</span> broker cookie auth is enabled, but the browser did not send a valid broker auth cookie.
-              Check the broker <code className="text-amber-50/90">--auth-cookie</code> / <code className="text-amber-50/90">--cors-allow-credentials</code> setup or disable cookie auth in{" "}
-              <button className="underline hover:text-white" onClick={() => setShowSettings(true)} type="button">
-                Settings
-              </button>
-              .
-            </>
-          ) : (
-            <>
-              Browser cannot reach <code className="text-amber-50/90">{effectiveBase}</code> (network, TLS, or CORS).
-              {webOrigin && connectionMode === "direct" ? (
-                <>
-                  {" "}
-                  If <code className="text-amber-50/90">agentd</code> is running, allow this UI origin:{" "}
-                  <code className="text-amber-50/90">{webOrigin}</code> (start agentd with{" "}
-                  <code className="text-amber-50/90">--cors-origin {webOrigin}</code>).
-                </>
-              ) : null}
-            </>
-          )}
-        </div>
-      ) : sessionsUnauthorized && missingDaemonAuthToken ? (
-        <div className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-xs text-amber-100">
-          <span className="font-semibold text-amber-50/90">Unauthorized:</span> the daemon requires a bearer token.
-          Set it in <button className="underline hover:text-white" onClick={() => setShowSettings(true)} type="button">Settings</button>{" "}
-          (
-          <span className="text-amber-50/90">
-            {connectionMode === "broker" ? "Agentd auth token (X-Agentd-Authorization)" : "Daemon auth token"}
-          </span>
-          ).
-          <span className="text-amber-50/80">
-            {" "}
-            If you started via docker-compose, it’s typically <code className="text-amber-50/90">dev-agentd-token</code>.
-          </span>
-          {isLocalDaemonBase ? (
-            <>
-              {" "}
-              <button
-                className="ml-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-50/90 hover:bg-amber-500/15"
-                type="button"
-                onClick={() => connection.setDaemonAuthToken("dev-agentd-token")}
-                title="Convenience for local dev. For production, use a real bearer token."
-              >
-                Use dev token
-              </button>
-            </>
-          ) : null}
-        </div>
-      ) : null}
+      <AppConnectionBanner
+        healthError={health.isError}
+        sessionsUnauthorized={sessionsUnauthorized}
+        connectionMode={connectionMode}
+        missingBrokerAuthToken={missingBrokerAuthToken}
+        brokerCookieAuth={connection.brokerCookieAuth}
+        effectiveBase={effectiveBase}
+        webOrigin={webOrigin}
+        missingDaemonAuthToken={missingDaemonAuthToken}
+        isLocalDaemonBase={isLocalDaemonBase}
+        onShowSettings={() => setShowSettings(true)}
+        onUseDevToken={() => connection.setDaemonAuthToken("dev-agentd-token")}
+      />
 
       <main
         ref={(el) => {
@@ -2737,43 +2645,13 @@ export default function App() {
                 ["--tools-col" as any]: toolsCollapsed ? "72px" : "minmax(140px,12vw)",
               }}
             >
-              <aside
-                className={`rounded-lg border border-white/10 bg-black/20 ${toolsCollapsed ? "px-2 py-3" : "p-3"} lg:sticky lg:top-4 lg:self-start`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-[11px] font-semibold text-white/60">
-                    {toolsCollapsed ? "Tools" : "Tools"}
-                  </div>
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
-                    type="button"
-                    onClick={() => setToolsCollapsed((prev) => !prev)}
-                    title={toolsCollapsed ? "Expand tools" : "Collapse tools"}
-                  >
-                    {toolsCollapsed ? "»" : "«"}
-                  </button>
-                </div>
-                <div className="mt-2 grid gap-1">
-                  {advancedPages.map((page) => {
-                    const active = page.id === advancedPage;
-                    const label = page.label;
-                    const shortLabel = label.slice(0, 3).toUpperCase();
-                    return (
-                      <button
-                        key={page.id}
-                        className={`rounded-md ${toolsCollapsed ? "px-2 py-2 text-center text-[11px]" : "px-3 py-2 text-left text-sm"} ${
-                          active ? "bg-indigo-500/20 text-indigo-100" : "bg-black/20 text-white/70 hover:bg-black/30"
-                        }`}
-                        type="button"
-                        onClick={() => setAdvancedPage(page.id)}
-                        title={label}
-                      >
-                        {toolsCollapsed ? shortLabel : label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </aside>
+              <AppToolsSidebar
+                advancedPages={advancedPages}
+                advancedPage={advancedPage}
+                toolsCollapsed={toolsCollapsed}
+                setToolsCollapsed={setToolsCollapsed}
+                setAdvancedPage={setAdvancedPage}
+              />
               {showMainColumn ? (
               <section className="min-w-0">
                 <div
@@ -2809,217 +2687,66 @@ export default function App() {
                   )}
                 </div>
                 {brokerChatAvailable ? (
-                  <div className="mt-4 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <div className="text-xs font-semibold text-white/80">Team hub</div>
-                        <div className="text-[11px] text-white/60">
-                          Team <span className="text-white/80">{selectedTeamIdTrimmed}</span>
-                          {latestTeamRunId ? (
-                            <>
-                              {" "}
-                              · run <span className="text-white/80">{latestTeamRunId}</span>
-                            </>
-                          ) : null}
-                          {typeof teamChat.data?.status?.status === "string" || typeof teamChat.data?.status?.code === "string" ? (
-                            <>
-                              {" "}
-                              ·{" "}
-                              <span className="text-white/50">
-                                {typeof teamChat.data?.status?.status === "string"
-                                  ? teamChat.data?.status?.status
-                                  : teamChat.data?.status?.code}
-                              </span>
-                            </>
-                          ) : null}
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                          type="button"
-                          onClick={() => setInlineTeamSetupOpen((prev) => !prev)}
-                        >
-                          {inlineTeamSetupOpen ? "Hide setup" : "Quick setup"}
-                        </button>
-                        <button
-                          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                          type="button"
-                          onClick={() => {
-                            const el = document.getElementById("team-chat");
-                            if (el) {
-                              el.scrollIntoView({ behavior: "smooth", block: "start" });
-                            }
-                          }}
-                        >
-                          View chat
-                        </button>
-                        <button
-                          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                          type="button"
-                          onClick={() => {
-                            openTeamPanel("setup");
-                            setFocusAdvancedPanel(true);
-                          }}
-                        >
-                          Full setup
-                        </button>
-                        <button
-                          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                          type="button"
-                          onClick={() => openTeamPanel("members")}
-                        >
-                          Members
-                        </button>
-                        <button
-                          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                          type="button"
-                          onClick={() => openTeamPanel("run")}
-                        >
-                          Runs
-                        </button>
-                        <button
-                          className="rounded-md border border-indigo-400/30 bg-indigo-500/20 px-3 py-1 text-[11px] text-indigo-100 hover:bg-indigo-500/30"
-                          type="button"
-                          onClick={() => {
-                            setChatTarget("team");
-                            setTeamAction("run");
-                            if (promptbarRef.current) {
-                              promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-                            }
-                          }}
-                        >
-                          Run team
-                        </button>
-                        <button
-                          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                          type="button"
-                          onClick={() => {
-                            setChatTarget("team");
-                            setTeamAction("guidance");
-                            if (promptbarRef.current) {
-                              promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-                            }
-                          }}
-                        >
-                          Send guidance
-                        </button>
-                        <button
-                          className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                          type="button"
-                          onClick={() => {
-                            setChatTarget("team");
-                            setTeamAction("goal");
-                            if (promptbarRef.current) {
-                              promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-                            }
-                          }}
-                        >
-                          Set goal
-                        </button>
-                      </div>
-                    </div>
-                    <div className="mt-2 text-[11px] text-white/50">
-                      Prompts and attachments below are shared with all team members. Use Guidance for mid-run updates.
-                    </div>
-                    {teamConversationUsingCache ? (
-                      <div className="mt-2 text-[11px] text-amber-100">
-                        Showing cached team history
-                        {teamConversationCacheUpdatedMs
-                          ? ` (last updated ${new Date(teamConversationCacheUpdatedMs).toLocaleString()})`
-                          : ""}{" "}
-                        because live history is unavailable.
-                      </div>
-                    ) : null}
-                    {teamQueueCount > 0 ? (
-                      <div className="mt-2 rounded-md border border-indigo-400/20 bg-indigo-500/10 px-2 py-2 text-[11px] text-indigo-100">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="font-semibold text-indigo-100">Queued team actions: {teamQueueCount}</div>
-                          <button
-                            className="rounded-md border border-indigo-400/30 bg-indigo-500/20 px-2 py-0.5 text-[11px] text-indigo-100 hover:bg-indigo-500/30"
-                            type="button"
-                            onClick={() => setTeamQueue([])}
-                          >
-                            Clear queue
-                          </button>
-                        </div>
-                        {teamQueueNeedsRun ? (
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-amber-100">
-                            <span className="rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wide">
-                              needs run
-                            </span>
-                            <span className="text-[11px] text-amber-100/90">Start a run to release queued guidance/goal.</span>
-                            <button
-                              className="rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-100 hover:bg-amber-500/20"
-                              type="button"
-                              onClick={() => {
-                                setChatTarget("team");
-                                setTeamAction("run");
-                                if (promptbarRef.current) {
-                                  promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-                                }
-                              }}
-                            >
-                              Start run
-                            </button>
-                          </div>
-                        ) : null}
-                        <div className="mt-1 grid gap-1 text-indigo-100/80">
-                          {teamQueue.slice(0, 3).map((entry, idx) => {
-                            const snippet = entry.prompt.trim();
-                            const preview = snippet.length > 80 ? `${snippet.slice(0, 80)}…` : snippet || "(no prompt)";
-                            const attachmentCount = Array.isArray(entry.attachments) ? entry.attachments.length : 0;
-                            const waitingForRun = entry.action !== "run" && !latestTeamRunId;
-                            return (
-                              <div key={`team-queue-${entry.queued_unix_ms}-${idx}`} className="flex items-center gap-2">
-                                <span className="rounded-md border border-indigo-400/30 bg-indigo-500/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-indigo-100">
-                                  {entry.action}
-                                </span>
-                                <span className="text-indigo-100/80">{preview}</span>
-                                {attachmentCount > 0 ? (
-                                  <span className="rounded-md border border-indigo-400/30 bg-indigo-500/20 px-2 py-0.5 text-[10px] text-indigo-100">
-                                    +{attachmentCount} file{attachmentCount === 1 ? "" : "s"}
-                                  </span>
-                                ) : null}
-                                {waitingForRun ? (
-                                  <span className="rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-100">
-                                    waiting for run
-                                  </span>
-                                ) : null}
-                              </div>
-                            );
-                          })}
-                          {teamQueueCount > 3 ? (
-                            <div className="text-[10px] text-indigo-100/70">
-                              +{teamQueueCount - 3} more queued
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    ) : null}
-                    {teamRecentActivity.length > 0 ? (
-                      <div className="mt-2 rounded-md border border-white/10 bg-black/30 px-2 py-2 text-[11px] text-white/70">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="font-semibold text-white/70">Recent activity</div>
-                          <div className="text-[10px] text-white/40">
-                            {teamRecentActivity[0]?.ts
-                              ? new Date(teamRecentActivity[0].ts).toLocaleTimeString()
-                              : ""}
-                          </div>
-                        </div>
-                        <div className="mt-1 grid gap-1">
-                          {teamRecentActivity.map((entry) => (
-                            <div key={entry.key} className="flex flex-wrap items-baseline gap-2">
-                              <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/60">
-                                {entry.label}
-                              </span>
-                              <span className="text-white/80">{entry.preview}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
+                  <TeamHubCard
+                    selectedTeamId={selectedTeamIdTrimmed}
+                    latestTeamRunId={latestTeamRunId}
+                    teamStatus={
+                      typeof teamChat.data?.status?.status === "string"
+                        ? teamChat.data?.status?.status
+                        : typeof teamChat.data?.status?.code === "string"
+                          ? teamChat.data?.status?.code
+                          : ""
+                    }
+                    inlineTeamSetupOpen={inlineTeamSetupOpen}
+                    onToggleInlineSetup={() => setInlineTeamSetupOpen((prev) => !prev)}
+                    onViewChat={() => {
+                      const el = document.getElementById("team-chat");
+                      if (el) {
+                        el.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }
+                    }}
+                    onOpenFullSetup={() => {
+                      openTeamPanel("setup");
+                      setFocusAdvancedPanel(true);
+                    }}
+                    onOpenMembers={() => openTeamPanel("members")}
+                    onOpenRuns={() => openTeamPanel("run")}
+                    onRunTeam={() => {
+                      setChatTarget("team");
+                      setTeamAction("run");
+                      if (promptbarRef.current) {
+                        promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+                      }
+                    }}
+                    onSendGuidance={() => {
+                      setChatTarget("team");
+                      setTeamAction("guidance");
+                      if (promptbarRef.current) {
+                        promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+                      }
+                    }}
+                    onSetGoal={() => {
+                      setChatTarget("team");
+                      setTeamAction("goal");
+                      if (promptbarRef.current) {
+                        promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+                      }
+                    }}
+                    teamConversationUsingCache={teamConversationUsingCache}
+                    teamConversationCacheUpdatedMs={teamConversationCacheUpdatedMs}
+                    teamQueueCount={teamQueueCount}
+                    teamQueue={teamQueue}
+                    teamQueueNeedsRun={teamQueueNeedsRun}
+                    onClearQueue={() => setTeamQueue([])}
+                    onStartQueuedRun={() => {
+                      setChatTarget("team");
+                      setTeamAction("run");
+                      if (promptbarRef.current) {
+                        promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+                      }
+                    }}
+                    recentActivity={teamRecentActivity}
+                  />
                 ) : null}
                 {brokerChatAvailable && inlineTeamSetupOpen && advancedPage !== "broker" ? (
                   <details
@@ -3103,107 +2830,55 @@ export default function App() {
                 </div>
               </section>
               ) : null}
-              {advancedPage ? (
-                <aside className="min-w-0 overflow-x-auto rounded-lg border border-white/10 bg-black/20 p-3">
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <div className="text-[11px] font-semibold text-white/60">Panel view</div>
-                    <button
-                      className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
-                      type="button"
-                      onClick={() => setFocusAdvancedPanel((prev) => !prev)}
-                      title={
-                        focusAdvancedPanel
-                          ? "Show scene and history again"
-                          : "Hide scene + history to focus on this panel"
-                      }
-                    >
-                      {focusAdvancedPanel ? "Show main view" : "Focus panel"}
-                    </button>
-                  </div>
-                  {advancedPage === "trace" ? (
-                    <TraceLookupPanel
-                      open={true}
-                      onToggle={(open) => {
-                        if (!open) setAdvancedPage("");
-                      }}
-                      traceId={traceLookupId}
-                      onTraceIdChange={(next) => setTraceLookupId(next)}
-                      onLoad={(id) => void traceLookup.mutateAsync(id).catch(() => {})}
-                      onClear={() => {
-                        setTraceLookupError(null);
-                        setTraceLookupAgentd(null);
-                        setTraceLookupBroker(null);
-                      }}
-                      loading={traceLookup.isPending}
-                      error={traceLookupError}
-                      connectionMode={connectionMode}
-                      baseUrl={effectiveBase}
-                      yolo={yolo}
-                      agentdTrace={traceLookupAgentd}
-                      brokerTrace={traceLookupBroker}
-                    />
-                  ) : advancedPage === "run-diff" ? (
-                    <RunDiffPanel
-                      open={true}
-                      onToggle={(open) => {
-                        if (!open) setAdvancedPage("");
-                      }}
-                      baseUrl={effectiveBase}
-                      auth={daemonAuth}
-                    />
-                  ) : advancedPage === "memory" ? (
-                    <MemoryPanel
-                      open={true}
-                      onToggle={(open) => {
-                        if (!open) setAdvancedPage("");
-                      }}
-                      baseUrl={effectiveBase}
-                      auth={daemonAuth}
-                    />
-                  ) : advancedPage === "approvals" ? (
-                    <ApprovalQueuePanel
-                      open={true}
-                      onToggle={(open) => {
-                        if (!open) setAdvancedPage("");
-                      }}
-                      baseUrl={effectiveBase}
-                      auth={daemonAuth}
-                    />
-                  ) : advancedPage === "workflows" ? (
-                    <WorkflowPanel
-                      open={true}
-                      onToggle={(open) => {
-                        if (!open) setAdvancedPage("");
-                      }}
-                      baseUrl={effectiveBase}
-                      auth={daemonAuth}
-                      authKey={authKey}
-                      clientId={client.id}
-                      workflowDefaults={workflowDefaults}
-                      workflowTargets={workflowTargets}
-                      workflowBearerEnv={workflowBearerEnv}
-                      onTraceIdClick={(traceId) => {
-                        setTraceLookupId(traceId);
-                        setAdvancedPage("trace");
-                        void traceLookup.mutateAsync(traceId).catch(() => {});
-                      }}
-                    />
-                  ) : advancedPage === "broker" && connectionMode === "broker" ? (
-                    <BrokerPanel
-                      open={true}
-                      onToggle={(open) => {
-                        if (!open) setAdvancedPage("");
-                      }}
-                      brokerBase={connection.brokerBase}
-                      brokerAgentId={connection.brokerAgentId}
-                      setBrokerAgentId={connection.setBrokerAgentId}
-                      auth={daemonAuth}
-                      authKey={authKey}
-                      clientId={client.id}
-                    />
-                  ) : null}
-                </aside>
-              ) : null}
+              <AppAdvancedPanel
+                advancedPage={advancedPage}
+                focusAdvancedPanel={focusAdvancedPanel}
+                setFocusAdvancedPanel={setFocusAdvancedPanel}
+                setAdvancedPage={setAdvancedPage}
+                tracePanel={{
+                  traceId: traceLookupId,
+                  onTraceIdChange: setTraceLookupId,
+                  onLoad: (id) => void traceLookup.mutateAsync(id).catch(() => {}),
+                  onClear: () => {
+                    setTraceLookupError(null);
+                    setTraceLookupAgentd(null);
+                    setTraceLookupBroker(null);
+                  },
+                  loading: traceLookup.isPending,
+                  error: traceLookupError,
+                  connectionMode,
+                  baseUrl: effectiveBase,
+                  yolo,
+                  agentdTrace: traceLookupAgentd,
+                  brokerTrace: traceLookupBroker,
+                }}
+                runDiffPanel={{ baseUrl: effectiveBase, auth: daemonAuth }}
+                memoryPanel={{ baseUrl: effectiveBase, auth: daemonAuth }}
+                approvalsPanel={{ baseUrl: effectiveBase, auth: daemonAuth }}
+                workflowPanel={{
+                  baseUrl: effectiveBase,
+                  auth: daemonAuth,
+                  authKey,
+                  clientId: client.id,
+                  workflowDefaults,
+                  workflowTargets,
+                  workflowBearerEnv,
+                  onTraceIdClick: (traceId) => {
+                    setTraceLookupId(traceId);
+                    setAdvancedPage("trace");
+                    void traceLookup.mutateAsync(traceId).catch(() => {});
+                  },
+                }}
+                brokerPanel={{
+                  enabled: connectionMode === "broker",
+                  brokerBase: connection.brokerBase,
+                  brokerAgentId: connection.brokerAgentId,
+                  setBrokerAgentId: connection.setBrokerAgentId,
+                  auth: daemonAuth,
+                  authKey,
+                  clientId: client.id,
+                }}
+              />
           </div>
         </div>
       </main>
