@@ -1,25 +1,9 @@
 import React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
-  apiGetAudit,
   apiGetCaps,
   apiGetClientPrefs,
-  apiGetConfig,
-  apiGetDbMessages,
-  apiGetDbRun,
-  apiGetDbRuns,
-  apiGetDbUiActions,
-  apiGetDbClientEvents,
-  apiGetSessionClientEvents,
-  apiGetHealth,
   apiGetJob,
-  apiGetSessionArtifacts,
-  apiGetSessionScene,
-  apiGetTools,
-  apiUpdateDaemonConfig,
-  apiDeleteSession,
-  apiListSessions,
-  apiNewSession,
   apiPostSessionSceneApply,
   apiPostSessionUiEvent,
   apiPostClientPrefs,
@@ -58,6 +42,7 @@ import AppHeader from "./components/app/AppHeader";
 import AppToolsSidebar from "./components/app/AppToolsSidebar";
 import TeamHubCard from "./components/app/TeamHubCard";
 import useLocalStorageState from "./hooks/useLocalStorageState";
+import useAppDataPlane from "./hooks/useAppDataPlane";
 import useJobStreaming from "./hooks/useJobStreaming";
 import useTeamChatOrchestration from "./hooks/useTeamChatOrchestration";
 import useUiSettings from "./hooks/useUiSettings";
@@ -880,56 +865,88 @@ export default function App() {
     };
   }, [activeJobId, daemonAuth, effectiveBase, jobStoreKey, parseJobsBySession, sessionId, writeJobsBySession]);
 
-  const health = useQuery({
-    queryKey: ["health", effectiveBase, authKey],
-    queryFn: () => apiGetHealth(effectiveBase, daemonAuth),
-    retry: 1,
-  });
+  const onMainScroll = React.useCallback(() => {
+    const el = mainScrollRef.current;
+    if (!el) return;
+    if (mainScrollSaveRafRef.current) return;
+    mainScrollSaveRafRef.current = requestAnimationFrame(() => {
+      mainScrollSaveRafRef.current = 0;
+      const cur = el.scrollTop;
+      if (!Number.isFinite(cur)) return;
+      if (Math.abs(cur - mainScrollLastSavedRef.current) < 2) return;
+      mainScrollLastSavedRef.current = cur;
+      setMainScrollTop(cur);
+    });
+  }, [setMainScrollTop]);
 
-  const daemonConfig = useQuery({
-    queryKey: ["config", effectiveBase, authKey],
-    queryFn: () => apiGetConfig(effectiveBase, daemonAuth),
-    retry: 1,
-  });
-
-  const sessions = useQuery({
-    queryKey: ["sessions", effectiveBase, authKey],
-    queryFn: () => apiListSessions(effectiveBase, daemonAuth),
-    retry: 1,
-  });
-  const sessionsUnauthorized =
-    sessions.isSuccess &&
-    sessions.data &&
-    sessions.data.ok === false &&
-    String((sessions.data as any).error || "").toLowerCase() === "unauthorized";
-  const missingBrokerAuthToken =
-    connectionMode === "broker" && !connection.brokerCookieAuth && String(brokerAuthToken || "").trim().length === 0;
-  const missingDaemonAuthToken = String(daemonAuthToken || "").trim().length === 0;
-  const isLocalDaemonBase = React.useMemo(() => {
-    try {
-      const u = new URL(effectiveBase);
-      const host = String(u.hostname || "").toLowerCase();
-      return host === "127.0.0.1" || host === "localhost" || host === "0.0.0.0";
-    } catch {
-      return false;
+  const [result, setResult] = React.useState<RunResponse | undefined>(undefined);
+  // Incremented when a run successfully starts/completes; used to clear "next run only" UI state (e.g. attachments).
+  const [composerTaskNonce, setComposerTaskNonce] = React.useState<number>(0);
+  const lastChatTargetRef = React.useRef<string>("");
+  React.useEffect(() => {
+    if (lastChatTargetRef.current === chatTarget) return;
+    lastChatTargetRef.current = chatTarget;
+    setComposerTaskNonce((n) => n + 1);
+  }, [chatTarget]);
+  React.useEffect(() => {
+    if (chatTarget === "team" && teamAction === "goal") {
+      setComposerTaskNonce((n) => n + 1);
     }
-  }, [effectiveBase]);
+  }, [chatTarget, teamAction]);
 
-  const audit = useQuery({
-    queryKey: ["audit", effectiveBase, authKey, sessionId],
-    queryFn: () => apiGetAudit(effectiveBase, sessionId, daemonAuth),
-    enabled: !!sessionId,
-    retry: 1,
+  const {
+    audit, auditRefetch, clearAllSessions, clearAllSessionsError, clearDaemonApiKey, daemonConfig, dbClientEvents,
+    dbMessages, dbRunDetailsById, dbRuns, dbUiActions, deleteSession, deleteSessionError, health, historyEntriesDesc,
+    isLocalDaemonBase, missingBrokerAuthToken, missingDaemonAuthToken, newSession, saveDaemonApiKey,
+    saveDaemonDefaults, sessions, sessionsRefetch, sessionsUnauthorized, sessionArtifacts, sessionList,
+    updateDaemonDefaults,
+  } = useAppDataPlane({
+    activeJobId,
+    allowClientEffects,
+    allowClientRpcs,
+    apiKey,
+    authKey,
+    baseUrl,
+    brokerAuthToken,
+    brokerCookieAuth: connection.brokerCookieAuth,
+    connectionMode,
+    daemonAuth,
+    daemonAuthToken,
+    effectiveBase,
+    jobStatus,
+    jobUpdatedMs,
+    lastRunPrompt,
+    lastRunPromptRef,
+    liveEvents,
+    model,
+    proxyUrl,
+    sceneBySessionRef,
+    sceneStoreKey,
+    selectedSessionId: sessionId,
+    setActiveJobId,
+    setJobError,
+    setJobStatus,
+    setJobUpdatedMs,
+    setLastCompletedPrompt,
+    setLastRunPrompt,
+    setLiveEvents,
+    setPrompt,
+    setResult,
+    setSceneVersion,
+    setSessionId,
+    summaryMaxChars,
+    summaryModel,
+    timeoutMs,
+    touchSceneStore,
+    cursorRef,
+    lastSceneUpdatedMsRef,
   });
 
   React.useEffect(() => {
     const el = mainScrollRef.current;
     if (!el) return;
-    // Restore scroll once per (base, session) after we have initial content.
-    // This avoids the "refresh jumps me to a random place" UX for long histories.
     const restoreKey = `${effectiveBase}::${String(sessionId || "").trim()}`;
     if (mainScrollRestoredKeyRef.current === restoreKey) return;
-    // Wait until we have at least the audit fetch result (even if empty) so layout is stable-ish.
     if (!audit.isSuccess && !audit.isError) return;
     mainScrollRestoredKeyRef.current = restoreKey;
     const target = typeof mainScrollTop === "number" && Number.isFinite(mainScrollTop) ? mainScrollTop : 0;
@@ -948,372 +965,10 @@ export default function App() {
     }
   }, [audit.isError, audit.isSuccess, effectiveBase, mainScrollTop, sessionId]);
 
-  const onMainScroll = React.useCallback(() => {
-    const el = mainScrollRef.current;
-    if (!el) return;
-    if (mainScrollSaveRafRef.current) return;
-    mainScrollSaveRafRef.current = requestAnimationFrame(() => {
-      mainScrollSaveRafRef.current = 0;
-      const cur = el.scrollTop;
-      if (!Number.isFinite(cur)) return;
-      if (Math.abs(cur - mainScrollLastSavedRef.current) < 2) return;
-      mainScrollLastSavedRef.current = cur;
-      setMainScrollTop(cur);
-    });
-  }, [setMainScrollTop]);
-
-  const auditEntriesDesc = React.useMemo(() => {
-    const raw = audit.data?.ok && Array.isArray(audit.data?.entries) ? (audit.data.entries as any[]) : [];
-    const entries = raw.filter((e) => e && typeof e === "object");
-    entries.sort((a: any, b: any) => {
-      const ta = typeof a?.ts_unix_ms === "number" ? a.ts_unix_ms : 0;
-      const tb = typeof b?.ts_unix_ms === "number" ? b.ts_unix_ms : 0;
-      return tb - ta;
-    });
-    return entries;
-  }, [audit.data]);
-
-  // While an async job is running, surface its live event stream as the top "history" entry so:
-  // - the user sees progress immediately (tool calls, streaming deltas, artifacts)
-  // - client RPCs (including entity_apply) can update the Scene during the run
-  const historyEntriesDesc = React.useMemo(() => {
-    if (!activeJobId) return auditEntriesDesc;
-    const ts = typeof jobUpdatedMs === "number" && jobUpdatedMs > 0 ? jobUpdatedMs : Date.now();
-    const live = {
-      ts_unix_ms: ts,
-      prompt: lastRunPromptRef.current || lastRunPrompt || "",
-      assistant_text: "",
-      events: liveEvents,
-      ok: undefined,
-      job_id: activeJobId,
-      job_status: jobStatus ?? "running",
-      live: true,
-    };
-    return [live, ...auditEntriesDesc];
-  }, [activeJobId, auditEntriesDesc, jobStatus, jobUpdatedMs, lastRunPrompt, liveEvents]);
-
-  const sessionClientEvents = useQuery({
-    queryKey: ["session_client_events", effectiveBase, authKey, sessionId],
-    queryFn: () => apiGetSessionClientEvents(effectiveBase, sessionId, daemonAuth, { maxBytes: 1024 * 1024 }),
-    enabled: !!sessionId,
-    retry: 1,
-  });
-
-  const sessionArtifacts = useQuery({
-    queryKey: ["session_artifacts", effectiveBase, authKey, sessionId],
-    queryFn: () => apiGetSessionArtifacts(effectiveBase, sessionId, daemonAuth, { maxBytes: 2 * 1024 * 1024, maxArtifacts: 64 }),
-    enabled: !!sessionId,
-    retry: 1,
-  });
-
-  const sessionScene = useQuery({
-    queryKey: ["session_scene", effectiveBase, authKey, sessionId],
-    queryFn: () => apiGetSessionScene(effectiveBase, sessionId, daemonAuth),
-    enabled: !!sessionId,
-    refetchInterval: activeJobId ? 750 : 2500,
-    retry: 1,
-  });
-
-  // Hydrate/refresh the local Scene from the daemon-owned durable scene snapshot.
-  // This makes the Scene refresh-proof without relying on browser storage.
-  React.useEffect(() => {
-    const sid = typeof sessionId === "string" ? sessionId.trim() : "";
-    if (!sid) return;
-    if (!sessionScene.data || sessionScene.data.ok !== true) return;
-    const updated = typeof (sessionScene.data as any)?.updated_unix_ms === "number" ? (sessionScene.data as any).updated_unix_ms : 0;
-    const key = sceneStoreKey;
-    const hasPrev = Object.prototype.hasOwnProperty.call(lastSceneUpdatedMsRef.current, key);
-    const prev = hasPrev ? lastSceneUpdatedMsRef.current[key] || 0 : -1;
-    if (hasPrev && updated <= prev) return;
-
-    const scene = (sessionScene.data as any)?.scene;
-    if (!scene || typeof scene !== "object" || Array.isArray(scene)) return;
-    sceneBySessionRef.current[key] = scene as any;
-    lastSceneUpdatedMsRef.current[key] = updated;
-    touchSceneStore(key);
-    setSceneVersion((v) => v + 1);
-  }, [sceneStoreKey, sessionId, sessionScene.data, touchSceneStore]);
-
-  const dbMessages = useQuery({
-    queryKey: ["db_messages", effectiveBase, authKey, sessionId],
-    queryFn: () =>
-      apiGetDbMessages(effectiveBase, sessionId, daemonAuth, {
-        limit: 200,
-        offset: 0,
-        maxContentBytes: 64 * 1024,
-        maxMmBytes: 2 * 1024 * 1024,
-      }),
-    enabled: !!sessionId,
-    refetchInterval: activeJobId ? 1500 : 5000,
-    retry: 1,
-  });
-
-  const dbRuns = useQuery({
-    queryKey: ["db_runs", effectiveBase, authKey, sessionId],
-    queryFn: () => apiGetDbRuns(effectiveBase, sessionId, daemonAuth, { limit: 50, offset: 0 }),
-    enabled: !!sessionId,
-    refetchInterval: activeJobId ? 2000 : 8000,
-    retry: 1,
-  });
-
-  const [dbRunDetailsById, setDbRunDetailsById] = React.useState<Record<number, any>>({});
-  const dbRunDetailsByIdRef = React.useRef<Record<number, any>>({});
-  const dbRunDetailsLoadingRef = React.useRef<Record<number, boolean>>({});
-
-  React.useEffect(() => {
-    dbRunDetailsByIdRef.current = dbRunDetailsById || {};
-  }, [dbRunDetailsById]);
-
-  React.useEffect(() => {
-    const runs = dbRuns.data?.ok && Array.isArray(dbRuns.data?.runs) ? (dbRuns.data.runs as any[]) : [];
-    if (runs.length === 0) return;
-    const candidates: number[] = [];
-    for (const r of runs.slice(0, 12)) {
-      const runId = typeof r?.run_id === "number" ? r.run_id : Number(r?.run_id ?? r?.id ?? NaN);
-      if (!Number.isFinite(runId)) continue;
-      candidates.push(runId);
-    }
-    if (candidates.length === 0) return;
-
-    let cancelled = false;
-    const fetchMissing = async () => {
-      for (const runId of candidates) {
-        if (cancelled) return;
-        if (dbRunDetailsByIdRef.current[runId]) continue;
-        if (dbRunDetailsLoadingRef.current[runId]) continue;
-        dbRunDetailsLoadingRef.current[runId] = true;
-        try {
-          const resp = await apiGetDbRun(effectiveBase, runId, daemonAuth, {
-            includeTools: true,
-            includeEvents: false,
-            includeArtifacts: false,
-            includeUiActions: false,
-          });
-          if (resp.ok && resp.run) {
-            setDbRunDetailsById((prev) => ({ ...(prev || {}), [runId]: resp }));
-          }
-        } catch {
-          // ignore fetch failures; UI will fallback to run summary only
-        } finally {
-          delete dbRunDetailsLoadingRef.current[runId];
-        }
-      }
-    };
-    void fetchMissing();
-    return () => {
-      cancelled = true;
-    };
-  }, [dbRuns.data, effectiveBase, daemonAuth]);
-
-  const dbUiActions = useQuery({
-    queryKey: ["db_ui_actions", effectiveBase, authKey, sessionId],
-    queryFn: () => apiGetDbUiActions(effectiveBase, sessionId, daemonAuth, { limit: 100, offset: 0 }),
-    enabled: !!sessionId && allowClientRpcs && allowClientEffects,
-    refetchInterval: activeJobId ? 1500 : 5000,
-    retry: 1,
-  });
-
-  const dbClientEvents = useQuery({
-    queryKey: ["db_client_events", effectiveBase, authKey, sessionId],
-    queryFn: () => apiGetDbClientEvents(effectiveBase, sessionId, daemonAuth, { limit: 100, offset: 0 }),
-    enabled: !!sessionId && allowClientRpcs && allowClientEffects,
-    refetchInterval: activeJobId ? 1500 : 5000,
-    retry: 1,
-  });
-
-  const newSession = useMutation({
-    mutationFn: async () => {
-      const r = await apiNewSession(effectiveBase, daemonAuth);
-      return r;
-    },
-    onSuccess: (v) => {
-      if (v.ok && v.session_id) {
-        // New session is expected to be a "clean slate" UX.
-        // Clear run UI state and any persisted prompt so the user doesn't see stale history from a prior session.
-        setPrompt("");
-        lastRunPromptRef.current = "";
-        setLastRunPrompt("");
-        setLastCompletedPrompt("");
-        setResult(undefined);
-        setLiveEvents([]);
-        setActiveJobId(null);
-        setJobStatus(null);
-        setJobError(null);
-        setJobUpdatedMs(null);
-        cursorRef.current = 0;
-        setSessionId(v.session_id);
-        void sessions.refetch();
-        void audit.refetch();
-        void sessionClientEvents.refetch();
-        void sessionArtifacts.refetch();
-        void sessionScene.refetch();
-        void dbUiActions.refetch();
-        void dbClientEvents.refetch();
-      }
-    },
-  });
-
-  const deleteSession = useMutation({
-    mutationFn: async (sid: string) => {
-      const s = String(sid || "").trim();
-      if (!s) throw new Error("missing session id");
-      const r = await apiDeleteSession(effectiveBase, s, daemonAuth);
-      if (!r.ok) throw new Error(r.error || "delete failed");
-      return { session_id: s };
-    },
-    onSuccess: async (v) => {
-      await sessions.refetch();
-      // If we deleted the active session, move to a clean slate.
-      if (v.session_id === String(sessionId || "").trim()) {
-        await newSession.mutateAsync();
-      } else {
-        await audit.refetch();
-      }
-    },
-  });
-
-  const updateDaemonDefaults = useMutation({
-    mutationFn: async (payload: any) => {
-      const r = await apiUpdateDaemonConfig(effectiveBase, payload, daemonAuth);
-      if (!r.ok) throw new Error(r.error || "update failed");
-      return r;
-    },
-    onSuccess: async () => {
-      await daemonConfig.refetch();
-    },
-  });
-
-  const inferredProvider = React.useMemo(() => {
-    const b = String(baseUrl || "").toLowerCase();
-    if (b.includes("deepseek")) return "deepseek";
-    if (b.includes("openrouter")) return "openrouter";
-    if (b.includes("moonshot") || b.includes("kimi")) return "moonshot";
-    return "openai";
-  }, [baseUrl]);
-
-  const saveDaemonDefaults = React.useCallback(() => {
-    const tms = Number(timeoutMs);
-    const smc = Number(summaryMaxChars);
-    void updateDaemonDefaults
-      .mutateAsync({
-        base_url: baseUrl || undefined,
-        model: model || undefined,
-        summary_model: summaryModel && summaryModel.trim().length > 0 ? summaryModel.trim() : null,
-        summary_max_chars: Number.isFinite(smc) && smc >= 0 ? smc : undefined,
-        proxy_url: proxyUrl && proxyUrl.trim().length > 0 ? proxyUrl.trim() : null,
-        timeout_ms: Number.isFinite(tms) && tms > 0 ? tms : undefined,
-      })
-      .catch(() => {});
-  }, [baseUrl, model, proxyUrl, summaryMaxChars, summaryModel, timeoutMs, updateDaemonDefaults]);
-
-  const saveDaemonApiKey = React.useCallback(() => {
-    void updateDaemonDefaults
-      .mutateAsync({
-        provider: inferredProvider,
-        api_key: String(apiKey || "").trim(),
-      })
-      .catch(() => {});
-  }, [apiKey, inferredProvider, updateDaemonDefaults]);
-
-  const clearDaemonApiKey = React.useCallback(() => {
-    if (!confirm(`Clear daemon-stored key for provider '${inferredProvider}'?`)) return;
-    void updateDaemonDefaults
-      .mutateAsync({
-        provider: inferredProvider,
-        api_key: "",
-      })
-      .catch(() => {});
-  }, [inferredProvider, updateDaemonDefaults]);
-
-  const clearAllSessions = useMutation({
-    mutationFn: async () => {
-      const r = await apiListSessions(effectiveBase, daemonAuth);
-      if (!r.ok) throw new Error(r.error || "failed to list sessions");
-      const ids = (r.sessions ?? []).slice();
-      // Delete deterministically (serial) to keep daemon load predictable and to make failures clear.
-      for (const sid of ids) {
-        const d = await apiDeleteSession(effectiveBase, sid, daemonAuth);
-        if (!d.ok) throw new Error(d.error || `failed to delete session: ${sid}`);
-      }
-      return { deleted: ids.length };
-    },
-    onSuccess: async () => {
-      await sessions.refetch();
-      await newSession.mutateAsync();
-    },
-  });
-
-  const autoSessionInitRef = React.useRef(false);
-  React.useEffect(() => {
-    if (autoSessionInitRef.current) return;
-    if (!sessions.isSuccess) return;
-    const ids = sessions.data?.sessions ?? [];
-    // If the UI is still on the historical "default" placeholder but no such session exists,
-    // create a new unique session id to avoid collisions across tabs/clients.
-    if (sessionId === "default" && !ids.includes("default")) {
-      autoSessionInitRef.current = true;
-      void newSession.mutateAsync().catch(() => {
-        // keep default; user can retry via button
-      });
-    }
-  }, [sessionId, sessions.isSuccess, sessions.data?.sessions, newSession]);
-
-  // `useQuery` return objects are not stable across renders; depending on them in other effects can
-  // cause accidental teardown/reconnect loops (notably for long-lived SSE streams).
-  const auditRefetch = audit.refetch;
-  const sessionsRefetch = sessions.refetch;
-  const sessionList = sessions.data?.sessions ?? [];
-  const deleteSessionError = deleteSession.isError ? String(deleteSession.error) : null;
-  const clearAllSessionsError = clearAllSessions.isError ? String(clearAllSessions.error) : null;
-
-  const toolsDefs = useQuery({
-    queryKey: ["tools", effectiveBase, authKey, tools, yolo, hostPolicy, sessionId],
-    queryFn: () =>
-      apiGetTools(effectiveBase, daemonAuth, {
-        tools,
-        yolo,
-        hostPolicy: tools === "host" ? hostPolicy : undefined,
-        sessionId,
-      }),
-    enabled: !!effectiveBase,
-    staleTime: 30_000,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    retry: 2,
-    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10_000),
-  });
-
-  const [result, setResult] = React.useState<RunResponse | undefined>(undefined);
-  // Incremented when a run successfully starts/completes; used to clear "next run only" UI state (e.g. attachments).
-  const [composerTaskNonce, setComposerTaskNonce] = React.useState<number>(0);
-  const lastChatTargetRef = React.useRef<string>("");
-  React.useEffect(() => {
-    if (lastChatTargetRef.current === chatTarget) return;
-    lastChatTargetRef.current = chatTarget;
-    setComposerTaskNonce((n) => n + 1);
-  }, [chatTarget]);
-  React.useEffect(() => {
-    if (chatTarget === "team" && teamAction === "goal") {
-      setComposerTaskNonce((n) => n + 1);
-    }
-  }, [chatTarget, teamAction]);
-
   const {
-    clearTeamQueue,
-    handleTeamRunRequest,
-    latestTeamRunCreatedMs,
-    latestTeamRunId,
-    openTeamPanel,
-    teamConversationCacheUpdatedMs,
-    teamConversationItems,
-    teamConversationUsingCache,
-    teamConversationWarnings,
-    teamQueue,
-    teamQueueCount,
-    teamQueueNeedsRun,
-    teamRecentActivity,
-    teamRunCreate,
-    teamStatus,
+    clearTeamQueue, handleTeamRunRequest, latestTeamRunCreatedMs, latestTeamRunId, openTeamPanel,
+    teamConversationCacheUpdatedMs, teamConversationItems, teamConversationUsingCache, teamConversationWarnings,
+    teamQueue, teamQueueCount, teamQueueNeedsRun, teamRecentActivity, teamRunCreate, teamStatus,
   } = useTeamChatOrchestration({
     authKey,
     brokerAgentId: String(connection.brokerAgentId || "").trim(),
