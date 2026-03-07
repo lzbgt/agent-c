@@ -41,8 +41,6 @@ export type AppDataPlaneArgs = {
   liveEvents: AgentEvent[];
   model: string;
   proxyUrl: string;
-  sceneBySessionRef: React.MutableRefObject<Record<string, any>>;
-  sceneStoreKey: string;
   selectedSessionId: string;
   setActiveJobId: React.Dispatch<React.SetStateAction<string | null>>;
   setJobError: React.Dispatch<React.SetStateAction<string | null>>;
@@ -53,14 +51,11 @@ export type AppDataPlaneArgs = {
   setLiveEvents: React.Dispatch<React.SetStateAction<AgentEvent[]>>;
   setPrompt: React.Dispatch<React.SetStateAction<string>>;
   setResult: React.Dispatch<React.SetStateAction<RunResponse | undefined>>;
-  setSceneVersion: React.Dispatch<React.SetStateAction<number>>;
   setSessionId: (sid: string) => void;
   summaryMaxChars: string;
   summaryModel: string;
   timeoutMs: string;
-  touchSceneStore: (key: string) => void;
   cursorRef: React.MutableRefObject<number>;
-  lastSceneUpdatedMsRef: React.MutableRefObject<Record<string, number>>;
 };
 
 export default function useAppDataPlane(args: AppDataPlaneArgs) {
@@ -84,8 +79,6 @@ export default function useAppDataPlane(args: AppDataPlaneArgs) {
     liveEvents,
     model,
     proxyUrl,
-    sceneBySessionRef,
-    sceneStoreKey,
     selectedSessionId,
     setActiveJobId,
     setJobError,
@@ -96,14 +89,11 @@ export default function useAppDataPlane(args: AppDataPlaneArgs) {
     setLiveEvents,
     setPrompt,
     setResult,
-    setSceneVersion,
     setSessionId,
     summaryMaxChars,
     summaryModel,
     timeoutMs,
-    touchSceneStore,
     cursorRef,
-    lastSceneUpdatedMsRef,
   } = args;
 
   const health = useQuery({
@@ -203,24 +193,6 @@ export default function useAppDataPlane(args: AppDataPlaneArgs) {
     refetchInterval: activeJobId ? 750 : 2500,
     retry: 1,
   });
-
-  React.useEffect(() => {
-    const sid = typeof selectedSessionId === "string" ? selectedSessionId.trim() : "";
-    if (!sid) return;
-    if (!sessionScene.data || sessionScene.data.ok !== true) return;
-    const updated = typeof (sessionScene.data as any)?.updated_unix_ms === "number" ? (sessionScene.data as any).updated_unix_ms : 0;
-    const key = sceneStoreKey;
-    const hasPrev = Object.prototype.hasOwnProperty.call(lastSceneUpdatedMsRef.current, key);
-    const prev = hasPrev ? lastSceneUpdatedMsRef.current[key] || 0 : -1;
-    if (hasPrev && updated <= prev) return;
-
-    const scene = (sessionScene.data as any)?.scene;
-    if (!scene || typeof scene !== "object" || Array.isArray(scene)) return;
-    sceneBySessionRef.current[key] = scene as any;
-    lastSceneUpdatedMsRef.current[key] = updated;
-    touchSceneStore(key);
-    setSceneVersion((version) => version + 1);
-  }, [lastSceneUpdatedMsRef, sceneBySessionRef, sceneStoreKey, selectedSessionId, sessionScene.data, setSceneVersion, touchSceneStore]);
 
   const dbMessages = useQuery({
     queryKey: ["db_messages", effectiveBase, authKey, selectedSessionId],
@@ -469,6 +441,7 @@ export default function useAppDataPlane(args: AppDataPlaneArgs) {
     sessionsRefetch,
     sessionsUnauthorized,
     sessionArtifacts,
+    sessionScene,
     sessionList,
     clearDaemonApiKey,
     updateDaemonDefaults,

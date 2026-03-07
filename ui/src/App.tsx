@@ -2,32 +2,15 @@ import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   apiGetCaps,
-  apiGetClientPrefs,
-  apiGetJob,
-  apiPostSessionSceneApply,
-  apiPostSessionUiEvent,
-  apiPostClientPrefs,
-  apiBrokerGetClientPrefs,
-  apiBrokerPostClientPrefs,
-  daemonFetchInit,
-  daemonHeaders,
   RunResponse,
   type Caps,
   type AgentEvent,
 } from "./api";
 import { loadJson } from "./jsonUtils";
-import { pruneJobsBySession } from "./jobStore";
-import {
-  extractRunWatchByScope,
-  mergeRunWatchByScope,
-  runWatchMapsEqual,
-  type RunWatchByScope,
-} from "./runWatchPrefs";
-import { SCENE_STORE_MAX, touchSceneStoreKey } from "./sceneCache";
 import { buildScopedSessionKey, buildSessionScopeKey } from "./sessionScope";
 import { brokerBaseFromProxy } from "./utils/brokerBase";
 import HistoryPanel from "./components/HistoryPanel";
-import SceneView, { type SceneEntity } from "./components/SceneView";
+import SceneView from "./components/SceneView";
 import PromptBar, { type Attachment } from "./components/PromptBar";
 import SettingsDrawer from "./components/SettingsDrawer";
 import BrokerTeamConsole from "./components/broker/BrokerTeamConsole";
@@ -40,14 +23,11 @@ import useLocalStorageState from "./hooks/useLocalStorageState";
 import useAppDataPlane from "./hooks/useAppDataPlane";
 import useJobStreaming from "./hooks/useJobStreaming";
 import useRunExecution, { type QueuedRun } from "./hooks/useRunExecution";
+import useRuntimePlane from "./hooks/useRuntimePlane";
 import useTeamChatOrchestration from "./hooks/useTeamChatOrchestration";
 import useTraceLookup from "./hooks/useTraceLookup";
 import useUiSettings from "./hooks/useUiSettings";
 import { buildWorkflowDefaults } from "./workflowDefaults";
-
-const RUN_WATCH_PREFS_KIND = "run_watch";
-const RUN_WATCH_PREFS_VERSION = 1;
-const RUN_WATCH_PERSIST_MIN_INTERVAL_MS = 5000;
 
 export default function App() {
   const ui = useUiSettings();
@@ -240,13 +220,6 @@ export default function App() {
     if (phase === 0) return "idle";
     return "";
   }, [lastHeartbeat]);
-  // Persist job_id + cursor so a browser refresh can reliably resume a running session.
-  // Stored per session_id (since multiple sessions can exist and the UI allows switching).
-  const [jobsBySessionJson, setJobsBySessionJson] = useLocalStorageState("agentui.jobsBySession", "{}");
-  const jobsBySessionJsonRef = React.useRef(jobsBySessionJson);
-  React.useEffect(() => {
-    jobsBySessionJsonRef.current = jobsBySessionJson;
-  }, [jobsBySessionJson]);
   const runWatchPrefsBase = React.useMemo(() => {
     const base = String(effectiveBase || "").trim();
     if (!base) return "";
@@ -258,28 +231,10 @@ export default function App() {
     if (daemonAuth.mode !== "broker") return true;
     return connection.brokerCookieAuth || String(brokerAuthToken || "").trim().length > 0;
   }, [brokerAuthToken, connection.brokerCookieAuth, daemonAuth.mode, runWatchPrefsBase, runWatchPrefsClientId]);
-  const [runWatchServerStatus, setRunWatchServerStatus] = React.useState<"idle" | "loading" | "ready" | "error">("idle");
-  const runWatchPersistRef = React.useRef<{
-    timer: ReturnType<typeof setTimeout> | null;
-    pending: RunWatchByScope | null;
-    lastSentAt: number;
-  }>({ timer: null, pending: null, lastSentAt: 0 });
-  const runWatchLoadKeyRef = React.useRef<string>("");
-  const runWatchMode = React.useMemo(() => {
-    if (!runWatchCanUse) return "local";
-    if (runWatchServerStatus === "error") return "local";
-    if (runWatchServerStatus === "loading") return "server:loading";
-    if (runWatchServerStatus === "ready") return "server";
-    return "server";
-  }, [runWatchCanUse, runWatchServerStatus]);
   const topbarRef = React.useRef<HTMLElement | null>(null);
   const promptbarRef = React.useRef<HTMLDivElement | null>(null);
   const [topbarHeightPx, setTopbarHeightPx] = React.useState<number>(56);
   const [promptbarHeightPx, setPromptbarHeightPx] = React.useState<number>(220);
-  // Session-scoped client-side scene entities (collaboration surface objects).
-  const sceneBySessionRef = React.useRef<Record<string, Record<string, SceneEntity>>>({});
-  const [sceneVersion, setSceneVersion] = React.useState<number>(0);
-  const sceneStoreOrderRef = React.useRef<string[]>([]);
   const sessionScopeKey = React.useMemo(
     () =>
       buildSessionScopeKey({
@@ -409,12 +364,7 @@ export default function App() {
     () => buildScopedSessionKey(sessionScopeKey, sessionId),
     [sessionId, sessionScopeKey],
   );
-  const sceneStoreKey = scopedSessionKey;
   const jobStoreKey = scopedSessionKey;
-  const sceneEntities = React.useMemo(() => {
-    const m = sceneBySessionRef.current[sceneStoreKey] || {};
-    return Object.values(m);
-  }, [sceneStoreKey, sceneVersion]);
 
   // Migration: older UI versions stored sessions by base URL or a single global session id.
   // If present, use them as initial values for the current scope.
@@ -445,275 +395,6 @@ export default function App() {
     if (!legacyTrim) return;
     setSessionId(legacyTrim);
   }, [effectiveBase, sessionByBaseJson, sessionByScopeJson, sessionScopeKey, setSessionId]);
-
-  const parseJobsBySession = React.useCallback(() => {
-    const v = loadJson(jobsBySessionJsonRef.current);
-    const jobs = v && typeof v === "object" ? (v as Record<string, any>) : {};
-    const pruned = pruneJobsBySession(Date.now(), jobs);
-    if (pruned.changed) {
-      try {
-        setJobsBySessionJson(JSON.stringify(pruned.next));
-      } catch {
-        // ignore
-      }
-    }
-    return pruned.next;
-  }, [setJobsBySessionJson]);
-
-  const pushServerRunWatch = React.useCallback(
-    async (nextMap: RunWatchByScope) => {
-      if (!runWatchCanUse) return;
-      const payload = {
-        client_id: runWatchPrefsClientId,
-        client_kind: RUN_WATCH_PREFS_KIND,
-        prefs: { run_watch: { version: RUN_WATCH_PREFS_VERSION, by_scope: nextMap } },
-      };
-      const resp =
-        daemonAuth.mode === "broker"
-          ? await apiBrokerPostClientPrefs(runWatchPrefsBase, payload, daemonAuth)
-          : await apiPostClientPrefs(runWatchPrefsBase, payload, daemonAuth);
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "run watch prefs update failed");
-      }
-      runWatchPersistRef.current.lastSentAt = Date.now();
-      setRunWatchServerStatus("ready");
-    },
-    [daemonAuth, runWatchCanUse, runWatchPrefsBase, runWatchPrefsClientId],
-  );
-
-  const scheduleRunWatchPersist = React.useCallback(
-    (nextMap: RunWatchByScope) => {
-      if (!runWatchCanUse) return;
-      if (runWatchServerStatus === "error") return;
-      runWatchPersistRef.current.pending = nextMap;
-      if (runWatchPersistRef.current.timer) return;
-      const now = Date.now();
-      const since = now - runWatchPersistRef.current.lastSentAt;
-      const delay = Math.max(RUN_WATCH_PERSIST_MIN_INTERVAL_MS - since, 0);
-      runWatchPersistRef.current.timer = setTimeout(() => {
-        const pending = runWatchPersistRef.current.pending;
-        runWatchPersistRef.current.pending = null;
-        runWatchPersistRef.current.timer = null;
-        if (!pending) return;
-        pushServerRunWatch(pending).catch(() => {
-          setRunWatchServerStatus("error");
-        });
-      }, delay);
-    },
-    [pushServerRunWatch, runWatchCanUse, runWatchServerStatus],
-  );
-
-  const loadServerRunWatch = React.useCallback(async () => {
-    if (!runWatchCanUse) return;
-    setRunWatchServerStatus("loading");
-    try {
-      const resp =
-        daemonAuth.mode === "broker"
-          ? await apiBrokerGetClientPrefs(runWatchPrefsBase, runWatchPrefsClientId, RUN_WATCH_PREFS_KIND, daemonAuth)
-          : await apiGetClientPrefs(runWatchPrefsBase, runWatchPrefsClientId, RUN_WATCH_PREFS_KIND, daemonAuth);
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "run watch prefs fetch failed");
-      }
-      const now = Date.now();
-      const remoteMap = pruneJobsBySession(now, extractRunWatchByScope(resp.prefs)).next;
-      const localMap = parseJobsBySession();
-      const merged = mergeRunWatchByScope(localMap, remoteMap);
-      if (!runWatchMapsEqual(merged, localMap)) {
-        try {
-          setJobsBySessionJson(JSON.stringify(merged));
-        } catch {
-          // ignore
-        }
-      }
-      if (!runWatchMapsEqual(merged, remoteMap)) {
-        scheduleRunWatchPersist(merged);
-      }
-      setRunWatchServerStatus("ready");
-    } catch {
-      setRunWatchServerStatus("error");
-    }
-  }, [
-    daemonAuth,
-    parseJobsBySession,
-    runWatchCanUse,
-    runWatchPrefsBase,
-    runWatchPrefsClientId,
-    scheduleRunWatchPersist,
-    setJobsBySessionJson,
-  ]);
-  const loadServerRunWatchRef = React.useRef(loadServerRunWatch);
-
-  React.useEffect(() => {
-    if (!runWatchCanUse) return;
-    const nextKey = `${runWatchPrefsBase}::${runWatchPrefsClientId}::${daemonAuth.mode}::${authKey}`;
-    if (runWatchLoadKeyRef.current === nextKey) return;
-    runWatchLoadKeyRef.current = nextKey;
-    void loadServerRunWatchRef.current();
-  }, [authKey, daemonAuth.mode, runWatchCanUse, runWatchPrefsBase, runWatchPrefsClientId]);
-
-  React.useEffect(() => {
-    loadServerRunWatchRef.current = loadServerRunWatch;
-  }, [loadServerRunWatch]);
-
-  React.useEffect(() => {
-    if (runWatchCanUse) return;
-    runWatchLoadKeyRef.current = "";
-  }, [runWatchCanUse]);
-
-  React.useEffect(
-    () => () => {
-      if (runWatchPersistRef.current.timer) {
-        try {
-          clearTimeout(runWatchPersistRef.current.timer);
-        } catch {
-          // ignore
-        }
-      }
-      runWatchPersistRef.current.timer = null;
-    },
-    [],
-  );
-
-  const writeJobsBySession = React.useCallback(
-    (mutate: (prev: Record<string, any>) => Record<string, any>) => {
-      setJobsBySessionJson((prevRaw) => {
-        const prev = (loadJson(String(prevRaw || "")) as Record<string, any>) || {};
-        const next = mutate(prev);
-        scheduleRunWatchPersist(next);
-        try {
-          return JSON.stringify(next);
-        } catch {
-          return JSON.stringify(prev);
-        }
-      });
-    },
-    [scheduleRunWatchPersist, setJobsBySessionJson],
-  );
-
-  // Track the last observed daemon-updated scene timestamp per session so refresh/polling is stable.
-  const lastSceneUpdatedMsRef = React.useRef<Record<string, number>>({});
-  const touchSceneStore = React.useCallback(
-    (key: string) => {
-      touchSceneStoreKey(sceneBySessionRef.current, sceneStoreOrderRef.current, lastSceneUpdatedMsRef.current, key, SCENE_STORE_MAX);
-    },
-    [],
-  );
-
-  const applySceneOps = React.useCallback(
-    (sid: string, ops: any[]) => {
-      const sessionId = String(sid || "").trim();
-      if (!sessionId) throw new Error("missing session_id for scene ops");
-      const storeKey = `${sessionScopeKey}::${sessionId}`;
-      if (!sceneBySessionRef.current[storeKey]) sceneBySessionRef.current[storeKey] = {};
-      const store = sceneBySessionRef.current[storeKey];
-      touchSceneStore(storeKey);
-
-      const now = Date.now();
-      const results: any[] = [];
-      const genId = () => `ent-${now}-${Math.random().toString(16).slice(2)}`;
-
-      const getOpKind = (op: any): string => {
-        const k = typeof op?.op === "string" ? op.op : typeof op?.kind === "string" ? op.kind : "";
-        return String(k || "").trim();
-      };
-
-      const getCreateKind = (op: any): string => {
-        const k = typeof op?.entity_kind === "string" ? op.entity_kind : typeof op?.entityKind === "string" ? op.entityKind : "";
-        return String(k || "").trim();
-      };
-
-      // WebUI safety: never persist a "clear" op to the daemon (it would wipe durable DB state).
-      const persistOps = (Array.isArray(ops) ? ops : []).filter((op) => getOpKind(op) !== "clear");
-
-      for (const opRaw of (Array.isArray(ops) ? ops : []).slice(0, 100)) {
-        try {
-          const op = opRaw && typeof opRaw === "object" ? opRaw : {};
-          const kind = getOpKind(op);
-          if (!kind) throw new Error("missing op");
-          if (kind === "create") {
-            const id = String(op.id ?? "").trim() || genId();
-            const entityKind = getCreateKind(op);
-            if (!entityKind) throw new Error("create requires entity_kind");
-            const ent: SceneEntity = {
-              id,
-              kind: entityKind,
-              title: typeof op.title === "string" ? op.title : undefined,
-              props: op.props ?? {},
-              created_ms: now,
-              updated_ms: now,
-            };
-            store[id] = ent;
-            results.push({ ok: true, op: "create", id });
-            continue;
-          }
-          if (kind === "update") {
-            const id = String(op.id ?? "").trim();
-            if (!id) throw new Error("update requires id");
-            const existing = store[id];
-            if (!existing) throw new Error("entity not found");
-            const patch = op.props ?? {};
-            existing.props = { ...(existing.props ?? {}), ...(patch ?? {}) };
-            existing.updated_ms = now;
-            results.push({ ok: true, op: "update", id });
-            continue;
-          }
-          if (kind === "delete" || kind === "remove") {
-            const id = String(op.id ?? "").trim();
-            if (!id) throw new Error("delete requires id");
-            const existed = !!store[id];
-            delete store[id];
-            results.push({ ok: true, op: "delete", id, existed });
-            continue;
-          }
-          if (kind === "clear") {
-            results.push({ ok: false, op: "clear", error: "scene clear is disabled in WebUI" });
-            continue;
-          }
-          if (kind === "action") {
-            const id = String(op.id ?? "").trim();
-            const action = String(op.action ?? "").trim();
-            if (!id) throw new Error("action requires id");
-            if (!action) throw new Error("action requires action");
-            const existing = store[id];
-            if (!existing) throw new Error("entity not found");
-            // Intentionally generic: actions are *data*, not hardcoded behavior.
-            // If the client wants to interpret actions, it can do so in the renderer (e.g. execute JS script in a canvas entity).
-            existing.props = {
-              ...(existing.props ?? {}),
-              last_action: { name: action, args: op.args ?? {}, ts_unix_ms: now },
-            };
-            existing.updated_ms = now;
-            results.push({ ok: true, op: "action", id, action });
-            continue;
-          }
-          throw new Error(`unsupported op: ${kind}`);
-        } catch (e) {
-          results.push({ ok: false, error: String(e) });
-        }
-      }
-
-      setSceneVersion((v) => v + 1);
-      // Best-effort: persist to daemon so the Scene is durable across refresh.
-      if (persistOps.length > 0) {
-        void apiPostSessionSceneApply(effectiveBase, { session_id: sessionId, ops: persistOps }, daemonAuth)
-          .then((r) => {
-            if (!r || r.ok !== true) return;
-            const updated = typeof r.updated_unix_ms === "number" ? r.updated_unix_ms : 0;
-            if (updated > 0) lastSceneUpdatedMsRef.current[storeKey] = Math.max(lastSceneUpdatedMsRef.current[storeKey] || 0, updated);
-            // If the daemon returns a scene snapshot, prefer it (authoritative).
-            const scene = r.scene && typeof r.scene === "object" && !Array.isArray(r.scene) ? (r.scene as any) : null;
-            if (scene) {
-              sceneBySessionRef.current[storeKey] = scene;
-              touchSceneStore(storeKey);
-              setSceneVersion((v) => v + 1);
-            }
-          })
-          .catch(() => {});
-      }
-      return { ok: true, results, count: Object.keys(store).length };
-    },
-    [daemonAuth, effectiveBase, sessionScopeKey, setSceneVersion, touchSceneStore],
-  );
 
   // Keep layout CSS vars in sync with actual measured bars (so Scene can truly fill the viewport).
   React.useLayoutEffect(() => {
@@ -748,115 +429,6 @@ export default function App() {
     };
   }, []);
 
-  const postedCapsRef = React.useRef<Record<string, boolean>>({});
-  React.useEffect(() => {
-    const sid = typeof sessionId === "string" ? sessionId.trim() : "";
-    if (!sid) return;
-    const key = `${effectiveBase}::${sid}`;
-    if (postedCapsRef.current[key]) return;
-    postedCapsRef.current[key] = true;
-    void apiPostSessionUiEvent(
-      effectiveBase,
-      {
-        session_id: sid,
-        type: "client_capabilities",
-        client,
-        data: {
-          rpcs: [
-            { kind: "dom_query", side_effects: false, description: "Read-only DOM query (selector + bounded fields)." },
-            { kind: "media_snapshot", side_effects: false, description: "Snapshot audio/video elements (paused/currentTime/duration)." },
-            { kind: "location", side_effects: false, description: "Browser location (href/origin/path/search; query redacted)." },
-            { kind: "state_snapshot", side_effects: false, description: "Combined snapshot (location + media_snapshot)." },
-            { kind: "entity_query", side_effects: false, description: "Query client-side entities (scene objects)." },
-            { kind: "entity_apply", side_effects: true, description: "Create/update/delete/action client-side entities (scene objects)." },
-            { kind: "dom_apply", side_effects: true, description: "Apply a DOM patch (create/edit/delete/dispatch) by selector." },
-            { kind: "dom_click", side_effects: true, description: "Click a DOM element by selector (side effects)." },
-            { kind: "dom_set_value", side_effects: true, description: "Set input/textarea value by selector (side effects)." },
-            { kind: "media_play", side_effects: true, description: "Attempt to play audio/video by selector (browser policies apply)." },
-            { kind: "media_observe", side_effects: true, description: "Attach media listeners and emit correlated progress events." },
-            { kind: "media_unobserve", side_effects: false, description: "Detach media listeners created by media_observe (by rpc_id or all=true)." },
-            { kind: "navigate", side_effects: true, description: "Navigate the browser to a new URL (likely reloads the app)." },
-            { kind: "open_url", side_effects: true, description: "Open an external URL in a new tab after explicit user confirmation." },
-            {
-              kind: "artifact_url",
-              side_effects: false,
-              description:
-                "Resolve a daemon-served artifact path (out/...) to a browser-usable URL. Returns blob: URL when daemon auth is enabled.",
-            },
-            { kind: "script_eval", side_effects: false, description: "Run agent-provided script code in a killable worker with a DOM/media/location API bridge." },
-            { kind: "page_eval", side_effects: true, description: "UNSAFE: run agent-provided JS on the main thread with access to DOM via an API bridge (cooperative async only)." },
-          ],
-          // Legacy alias (probe-only clients); kept small and read-only.
-          probes: [
-            { kind: "dom_query", description: "Read-only DOM query (selector + bounded fields)." },
-            { kind: "media_snapshot", description: "Snapshot audio/video elements." },
-            { kind: "location", description: "Browser location." },
-          ],
-        },
-        append_to_session: false,
-      },
-      daemonAuth,
-    ).catch(() => {});
-  }, [client, daemonAuth, effectiveBase, sessionId]);
-
-  // Restore a running job after a browser refresh (best-effort).
-  React.useEffect(() => {
-    if (activeJobId) return;
-    const sid = typeof sessionId === "string" ? sessionId.trim() : "";
-    if (!sid) return;
-    const jobs = parseJobsBySession();
-    const rec = jobs[jobStoreKey] || jobs[sid];
-    const jobId = typeof rec?.job_id === "string" ? rec.job_id : "";
-    if (!jobId) return;
-    const cursor = typeof rec?.cursor === "number" && Number.isFinite(rec.cursor) && rec.cursor >= 0 ? Math.floor(rec.cursor) : 0;
-
-    if (!jobs[jobStoreKey] && jobs[sid]) {
-      writeJobsBySession((prev) => {
-        if (prev[jobStoreKey]) return prev;
-        const next = { ...prev, [jobStoreKey]: prev[sid] };
-        delete next[sid];
-        return next;
-      });
-    }
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const job = await apiGetJob(effectiveBase, jobId, daemonAuth);
-        if (cancelled) return;
-        if (!job.ok) {
-          writeJobsBySession((prev) => {
-            const next = { ...prev };
-            delete next[jobStoreKey];
-            return next;
-          });
-          return;
-        }
-        const st = typeof job.status === "string" ? job.status : "";
-        if (st === "queued" || st === "running") {
-          cursorRef.current = cursor;
-          setJobError(null);
-          setJobStatus(st);
-          setJobUpdatedMs(typeof job.updated_unix_ms === "number" ? job.updated_unix_ms : null);
-          setLiveEvents([]);
-          setActiveJobId(jobId);
-          return;
-        }
-        // Job already finished; clear persisted pointer.
-        writeJobsBySession((prev) => {
-          const next = { ...prev };
-          delete next[jobStoreKey];
-          return next;
-        });
-      } catch {
-        // ignore; user can retry by reloading or the daemon UI.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeJobId, daemonAuth, effectiveBase, jobStoreKey, parseJobsBySession, sessionId, writeJobsBySession]);
-
   const onMainScroll = React.useCallback(() => {
     const el = mainScrollRef.current;
     if (!el) return;
@@ -889,9 +461,8 @@ export default function App() {
   const {
     audit, auditRefetch, clearAllSessions, clearAllSessionsError, clearDaemonApiKey, daemonConfig, dbClientEvents,
     dbMessages, dbRunDetailsById, dbRuns, dbUiActions, deleteSession, deleteSessionError, health, historyEntriesDesc,
-    isLocalDaemonBase, missingBrokerAuthToken, missingDaemonAuthToken, newSession, saveDaemonApiKey,
-    saveDaemonDefaults, sessions, sessionsRefetch, sessionsUnauthorized, sessionArtifacts, sessionList,
-    updateDaemonDefaults,
+    isLocalDaemonBase, missingBrokerAuthToken, missingDaemonAuthToken, newSession, saveDaemonApiKey, saveDaemonDefaults,
+    sessionsRefetch, sessionsUnauthorized, sessionArtifacts, sessionList, sessionScene, updateDaemonDefaults,
   } = useAppDataPlane({
     activeJobId,
     allowClientEffects,
@@ -912,8 +483,6 @@ export default function App() {
     liveEvents,
     model,
     proxyUrl,
-    sceneBySessionRef,
-    sceneStoreKey,
     selectedSessionId: sessionId,
     setActiveJobId,
     setJobError,
@@ -924,14 +493,38 @@ export default function App() {
     setLiveEvents,
     setPrompt,
     setResult,
-    setSceneVersion,
     setSessionId,
     summaryMaxChars,
     summaryModel,
     timeoutMs,
-    touchSceneStore,
     cursorRef,
-    lastSceneUpdatedMsRef,
+  });
+
+  const { applySceneOps, runWatchMode, sceneEntities, writeJobsBySession } = useRuntimePlane({
+    activeJobId,
+    allowClientEffects,
+    allowClientRpcs,
+    authKey,
+    client,
+    cursorRef,
+    daemonAuth,
+    effectiveBase,
+    jobStoreKey,
+    runWatchCanUse,
+    runWatchPrefsBase,
+    runWatchPrefsClientId,
+    sessionId,
+    sessionScopeKey,
+    setActiveJobId,
+    setJobError,
+    setJobStatus,
+    setJobUpdatedMs,
+    setLiveEvents,
+    yolo,
+    dbClientEventsData: dbClientEvents.data,
+    dbUiActionsData: dbUiActions.data,
+    sessionArtifactsData: sessionArtifacts.data,
+    sessionSceneData: sessionScene.data,
   });
 
   React.useEffect(() => {
@@ -1065,275 +658,6 @@ export default function App() {
     daemonAuth,
     effectiveBase,
   });
-
-  // Persist job cursor while running (best-effort). This lets refresh resume from a stable point.
-  React.useEffect(() => {
-    if (!activeJobId) return;
-    const sid = String(sessionId || "").trim();
-    if (!sid) return;
-    const jobId = activeJobId;
-
-    const t = window.setInterval(() => {
-      const cursor = cursorRef.current;
-      writeJobsBySession((prev) => {
-        const cur = prev[jobStoreKey];
-        if (!cur || cur.job_id !== jobId) return prev;
-        if (cur.cursor === cursor) return prev;
-        return { ...prev, [jobStoreKey]: { ...cur, cursor, updated_unix_ms: Date.now() } };
-      });
-    }, 1000);
-    return () => {
-      try {
-        window.clearInterval(t);
-      } catch {
-        // ignore
-      }
-    };
-  }, [activeJobId, jobStoreKey, sessionId, writeJobsBySession]);
-
-  // Execute any persisted entity_apply RPCs from DB ui_actions that have not yet been acknowledged.
-  // This makes client RPC execution reliable across refreshes and SSE dropouts.
-  const appliedUiActionIdsRef = React.useRef<Record<string, number>>({});
-  const appliedUiActionLimit = 2000;
-  React.useEffect(() => {
-    if (!allowClientRpcs || !allowClientEffects) return;
-    const sid = String(sessionId || "").trim();
-    if (!sid) return;
-    const actionsRaw = dbUiActions.data?.ok && Array.isArray(dbUiActions.data?.ui_actions) ? (dbUiActions.data.ui_actions as any[]) : [];
-    const clientEventsRaw =
-      dbClientEvents.data?.ok && Array.isArray(dbClientEvents.data?.client_events) ? (dbClientEvents.data.client_events as any[]) : [];
-
-    const ackedRpcIds = new Set<string>();
-    for (const ce of clientEventsRaw) {
-      const t = typeof ce?.type === "string" ? ce.type : "";
-      if (t !== "client_rpc_result") continue;
-      const data = ce?.data ?? ce?.data_json ?? {};
-      const rpcId = typeof data?.rpc_id === "string" ? data.rpc_id : typeof data?.probe_id === "string" ? data.probe_id : "";
-      if (rpcId) ackedRpcIds.add(rpcId);
-    }
-
-    // DB endpoint sorts desc; apply older first so patches are deterministic.
-    const actions = actionsRaw
-      .slice()
-      .reverse()
-      .filter((a) => a && typeof a === "object");
-
-    const safeObject = (v: any) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
-    const entityApplyArgsToOps = (args: any): any[] => {
-      if (Array.isArray(args?.ops)) return args.ops.slice(0, 100);
-      if (Array.isArray(args?.operations)) return args.operations.slice(0, 100);
-      if (Array.isArray(args?.entities)) {
-        const ops: any[] = [];
-        for (const ent of (args.entities as any[]).slice(0, 50)) {
-          if (!ent || typeof ent !== "object") continue;
-          const id = String(ent?.id ?? "").slice(0, 200);
-          const entityKind = String(ent?.entity_kind ?? ent?.entityKind ?? ent?.type ?? ent?.kind ?? "").slice(0, 100);
-          if (!id || !entityKind) continue;
-          const title = typeof ent?.title === "string" ? String(ent.title).slice(0, 200) : undefined;
-          const props = safeObject(ent?.props ?? ent ?? {});
-          ops.push({ op: "create", id, entity_kind: entityKind, title, props });
-        }
-        return ops;
-      }
-      return [];
-    };
-
-    const postClientEvent = async (type: string, data: any) => {
-      await apiPostSessionUiEvent(
-        effectiveBase,
-        {
-          session_id: sid,
-          type,
-          client,
-          data,
-          append_to_session: true,
-        },
-        daemonAuth,
-      );
-    };
-
-    const markApplied = (key: string) => {
-      appliedUiActionIdsRef.current[key] = Date.now();
-      const appliedKeys = Object.keys(appliedUiActionIdsRef.current);
-      if (appliedKeys.length <= appliedUiActionLimit) return;
-      const items = appliedKeys
-        .map((k) => ({ k, ts: appliedUiActionIdsRef.current[k] || 0 }))
-        .sort((a, b) => a.ts - b.ts);
-      const overflow = items.length - appliedUiActionLimit;
-      for (let i = 0; i < overflow; i += 1) {
-        delete appliedUiActionIdsRef.current[items[i].k];
-      }
-    };
-
-    for (const row of actions) {
-      const id = typeof row?.id === "number" ? row.id : Number(row?.id ?? NaN);
-      if (!Number.isFinite(id)) continue;
-      const key = `${sid}::ui_action_id::${id}`;
-      if (appliedUiActionIdsRef.current[key]) continue;
-
-      const action = row?.action ?? {};
-      const atype = typeof action?.type === "string" ? action.type : "";
-      if (atype !== "client_rpc" && atype !== "collab_rpc" && atype !== "client_probe") continue;
-      const toolCallId = typeof row?.tool_call_id === "string" ? String(row.tool_call_id) : "";
-      const rpcId = String(action?.rpc_id ?? action?.probe_id ?? toolCallId ?? "").trim();
-      if (!rpcId) continue;
-      if (ackedRpcIds.has(rpcId)) {
-        markApplied(key);
-        continue;
-      }
-      const rpc = action?.rpc ?? action?.probe ?? {};
-      const rpcKind = String(rpc?.kind ?? "").trim();
-      if (rpcKind !== "entity_apply") continue;
-      const autoRunRequested =
-        typeof action?.auto_run === "boolean" ? action.auto_run : typeof action?.auto === "boolean" ? action.auto : true;
-      if (!autoRunRequested) continue;
-
-      const args = typeof rpc?.args === "object" && rpc?.args ? rpc.args : rpc;
-      const ops = entityApplyArgsToOps(args);
-      if (!Array.isArray(ops) || ops.length === 0) continue;
-
-      // Mark before executing to prevent loops if the apply throws (we still want to send a failure).
-      markApplied(key);
-      const t0 = Date.now();
-      try {
-        const result = applySceneOps(sid, ops);
-        void postClientEvent("client_rpc_result", {
-          rpc_id: rpcId,
-          request_tool_call_id: toolCallId,
-          rpc_kind: rpcKind,
-          ok: true,
-          elapsed_ms: Date.now() - t0,
-          result,
-        }).catch(() => {});
-      } catch (e) {
-        void postClientEvent("client_rpc_result", {
-          rpc_id: rpcId,
-          request_tool_call_id: toolCallId,
-          rpc_kind: rpcKind,
-          ok: false,
-          elapsed_ms: Date.now() - t0,
-          error: String(e),
-        }).catch(() => {});
-      }
-    }
-  }, [
-    allowClientEffects,
-    allowClientRpcs,
-    applySceneOps,
-    client,
-    daemonAuth,
-    dbClientEvents.data,
-    dbUiActions.data,
-    effectiveBase,
-    sessionId,
-  ]);
-
-  // Note: artifacts are mirrored into the durable Scene by the daemon itself (server-side),
-  // so the WebUI does not need to synthesize them into client-only scene state.
-
-  // Reliability: post artifact_rendered / artifact_render_failed acknowledgements even when the History panel is collapsed.
-  //
-  // Agents often use `client_wait_event(type="artifact_rendered", data_match={tool_call_id:...})` as a deterministic DoD.
-  // If acknowledgements depend on whether an ArtifactView component is mounted (History expanded), runs can time out.
-  // This effect ensures new artifacts are fetch-verified and acknowledged promptly based on session_artifacts polling.
-  const artifactAckedRef = React.useRef<Record<string, boolean>>({});
-  React.useEffect(() => {
-    const sid = String(sessionId || "").trim();
-    if (!sid) return;
-    const rows = sessionArtifacts.data?.ok && Array.isArray(sessionArtifacts.data?.artifacts) ? (sessionArtifacts.data.artifacts as any[]) : [];
-    if (rows.length === 0) return;
-
-    const safeString = (v: any) => (typeof v === "string" ? v : "");
-    const isAbsoluteLikePath = (p: string): boolean => {
-      const s = (p || "").trim();
-      if (!s) return false;
-      if (s.startsWith("/")) return true;
-      if (/^[a-zA-Z]:[\\/]/.test(s)) return true;
-      if (s.startsWith("\\\\")) return true;
-      return false;
-    };
-
-    const post = async (etype: string, data: any) => {
-      await apiPostSessionUiEvent(
-        effectiveBase,
-        {
-          session_id: sid,
-          type: etype,
-          client,
-          data,
-          append_to_session: false,
-        },
-        daemonAuth,
-      );
-    };
-
-    // Keep bounded: only try to ack a small number of newest artifacts per poll cycle.
-    const candidates = rows
-      .slice(0, 32)
-      .map((rec: any) => {
-        const data = rec?.data ?? {};
-        const artifact = data?.artifact ?? rec?.artifact ?? {};
-        const toolCallId = typeof data?.tool_call_id === "string" ? data.tool_call_id : typeof rec?.tool_call_id === "string" ? rec.tool_call_id : "";
-        return { artifact, toolCallId };
-      })
-      .filter((x) => x.toolCallId && x.artifact && typeof x.artifact === "object")
-      .slice(0, 8);
-
-    candidates.forEach((c) => {
-      const toolCallId = String(c.toolCallId || "").trim();
-      if (!toolCallId) return;
-      const key = `${effectiveBase}::${sid}::${toolCallId}`;
-      if (artifactAckedRef.current[key]) return;
-      artifactAckedRef.current[key] = true;
-
-      const artifact: any = c.artifact;
-      const path = safeString(artifact?.path);
-      const resolvedPath = safeString(artifact?.resolved_path);
-      const kind = safeString(artifact?.kind);
-      const title = safeString(artifact?.title) || path || "artifact";
-
-      const preferredFetchPath = path && !isAbsoluteLikePath(path) ? path : yolo && resolvedPath ? resolvedPath : path;
-      const fallbackFetchPath =
-        yolo && preferredFetchPath === path && path && !isAbsoluteLikePath(path) && resolvedPath && isAbsoluteLikePath(resolvedPath) ? resolvedPath : "";
-
-      void (async () => {
-        const tryPaths = [preferredFetchPath, fallbackFetchPath].filter((p) => typeof p === "string" && p.trim().length > 0);
-        let lastErr: any = null;
-        for (const p of tryPaths) {
-          const sidQ = sid ? `&session_id=${encodeURIComponent(sid)}` : "";
-          const src = `${effectiveBase}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${yolo ? "1" : "0"}${sidQ}`;
-          try {
-            const r = await fetch(src, daemonFetchInit(daemonAuth));
-            if (!r.ok) throw new Error(`file fetch failed: ${r.status}`);
-            const ct = String(r.headers.get("content-type") || "").trim();
-            // Consume bytes to actually verify fetchability (and avoid keeping the response open).
-            await r.arrayBuffer();
-            await post("artifact_rendered", {
-              path,
-              resolved_path: resolvedPath || undefined,
-              fetch_path: p,
-              kind,
-              title,
-              tool_call_id: toolCallId,
-              content_type: ct || undefined,
-            });
-            return;
-          } catch (e) {
-            lastErr = e;
-          }
-        }
-        await post("artifact_render_failed", {
-          path,
-          resolved_path: resolvedPath || undefined,
-          fetch_path: preferredFetchPath || undefined,
-          kind,
-          title,
-          tool_call_id: toolCallId,
-          error: String(lastErr || "failed"),
-        });
-      })().catch(() => {});
-    });
-  }, [client, daemonAuth, effectiveBase, sessionArtifacts.data, sessionId, yolo]);
 
   useJobStreaming({
     activeJobId,
