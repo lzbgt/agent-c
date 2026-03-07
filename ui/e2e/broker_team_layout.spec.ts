@@ -1,26 +1,14 @@
 import { test, expect } from "@playwright/test";
 import fs from "fs/promises";
 import path from "path";
+import { seedBrokerState } from "./brokerTestState";
 
 test("broker teams layout screenshot", async ({ page }, testInfo) => {
   const teamId = "team-alpha";
   const agentId = "agent1";
   const now = Date.now();
 
-  await page.addInitScript(() => {
-    try {
-      window.localStorage.setItem("agentui.connectionMode", JSON.stringify("broker"));
-      window.localStorage.setItem("agentui.brokerBase", "https://broker.example.invalid");
-      window.localStorage.setItem("agentui.brokerAuthToken", "test-token");
-      window.localStorage.setItem("agentui.brokerAgentId", "agent1");
-      window.localStorage.setItem("agentui.brokerPanelOpen", "true");
-      window.localStorage.setItem("agentui.showSettings", "false");
-      window.localStorage.setItem("agentui.allowClientRpcs", "true");
-      window.localStorage.setItem("agentui.allowClientEffects", "true");
-    } catch {
-      // ignore
-    }
-  });
+  await seedBrokerState(page);
 
   await page.route("**/v1/**", async (route, request) => {
     const url = new URL(request.url());
@@ -32,7 +20,17 @@ test("broker teams layout screenshot", async ({ page }, testInfo) => {
         contentType: "application/json",
         body: JSON.stringify({
           ok: true,
-          agents: [{ agent_id: agentId, display_name: "Agent One", connected: true }],
+          agents: [
+            {
+              agent_id: agentId,
+              display_name: "Agent One",
+              enabled: true,
+              created_unix_ms: now,
+              owner_sub: "owner",
+              connected: true,
+              deployments: [{ deployment_id: "default", connected: true }],
+            },
+          ],
         }),
       });
       return;
@@ -79,7 +77,7 @@ test("broker teams layout screenshot", async ({ page }, testInfo) => {
           ok: true,
           agent_id: agentId,
           default_deployment_id: "default",
-          deployments: [{ deployment_id: "default", status: "ready" }],
+          deployments: [{ deployment_id: "default", connected: true }],
         }),
       });
       return;
@@ -165,9 +163,9 @@ test("broker teams layout screenshot", async ({ page }, testInfo) => {
           ok: true,
           team_id: teamId,
           members: [
-            { member_id: "planner-1", role: "planner", status: "active", weight: 1 },
-            { member_id: "executor-1", role: "executor", status: "active", weight: 1 },
-            { member_id: "critic-1", role: "critic", status: "active", weight: 1 },
+            { member_id: "planner-1", team_id: teamId, role: "planner", status: "active", weight: 1, created_unix_ms: now },
+            { member_id: "executor-1", team_id: teamId, role: "executor", status: "active", weight: 1, created_unix_ms: now },
+            { member_id: "critic-1", team_id: teamId, role: "critic", status: "active", weight: 1, created_unix_ms: now },
           ],
         }),
       });

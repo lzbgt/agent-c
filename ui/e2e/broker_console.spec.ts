@@ -1,21 +1,8 @@
 import { test, expect } from "@playwright/test";
+import { seedBrokerState } from "./brokerTestState";
 
 test("broker console shows members + audit panels", async ({ page }) => {
-  await page.addInitScript(() => {
-    try {
-      window.localStorage.setItem("agentui.simpleMode", "false");
-      window.localStorage.setItem("agentui.connectionMode", JSON.stringify("broker"));
-      window.localStorage.setItem("agentui.brokerBase", "https://broker.example.invalid");
-      window.localStorage.setItem("agentui.brokerAuthToken", "test-token");
-      window.localStorage.setItem("agentui.brokerAgentId", "agent1");
-      window.localStorage.setItem("agentui.brokerPanelOpen", "true");
-      window.localStorage.setItem("agentui.showSettings", "false");
-      window.localStorage.setItem("agentui.allowClientRpcs", "true");
-      window.localStorage.setItem("agentui.allowClientEffects", "true");
-    } catch {
-      // ignore
-    }
-  });
+  await seedBrokerState(page);
 
   await page.goto("/");
 

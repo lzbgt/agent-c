@@ -1,24 +1,28 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
+import { seedBrokerState } from "./brokerTestState";
+
+async function refreshTeams(page: Page): Promise<Locator> {
+  await page.getByRole("button", { name: "Teams", exact: true }).click();
+  const teamSection = page.locator("section").filter({ has: page.getByText("Teams", { exact: true }) });
+  await teamSection.getByRole("button", { name: "Refresh" }).first().click();
+  return teamSection;
+}
+
+async function openTeamTab(teamSection: Locator, tab: "run" | "members" | "settings"): Promise<void> {
+  await teamSection.getByTestId(`team-tab-${tab}`).click();
+}
+
+async function openRunDetails(runSection: Locator, title: string): Promise<void> {
+  await runSection.locator("summary").filter({ hasText: title }).click();
+}
 
 test("broker team run submits inline approvals", async ({ page }) => {
   const teamId = "team-alpha";
   const runId = "run-123";
+  const now = Date.now();
   let runPayload: any = null;
 
-  await page.addInitScript(() => {
-    try {
-      window.localStorage.setItem("agentui.connectionMode", JSON.stringify("broker"));
-      window.localStorage.setItem("agentui.brokerBase", "https://broker.example.invalid");
-      window.localStorage.setItem("agentui.brokerAuthToken", "test-token");
-      window.localStorage.setItem("agentui.brokerAgentId", "agent1");
-      window.localStorage.setItem("agentui.brokerPanelOpen", "true");
-      window.localStorage.setItem("agentui.showSettings", "false");
-      window.localStorage.setItem("agentui.allowClientRpcs", "true");
-      window.localStorage.setItem("agentui.allowClientEffects", "true");
-    } catch {
-      // ignore
-    }
-  });
+  await seedBrokerState(page);
 
   await page.route("**/v1/teams**", async (route, request) => {
     const url = new URL(request.url());
@@ -27,7 +31,7 @@ test("broker team run submits inline approvals", async ({ page }) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ ok: true, teams: [{ team_id: teamId, display_name: "Team Alpha" }] }),
+        body: JSON.stringify({ ok: true, teams: [{ team_id: teamId, display_name: "Team Alpha", created_unix_ms: now }] }),
       });
       return;
     }
@@ -35,7 +39,10 @@ test("broker team run submits inline approvals", async ({ page }) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ ok: true, team: { team_id: teamId, owner_sub: "owner" } }),
+        body: JSON.stringify({
+          ok: true,
+          team: { team_id: teamId, display_name: "Team Alpha", owner_sub: "owner", created_unix_ms: now },
+        }),
       });
       return;
     }
@@ -46,7 +53,7 @@ test("broker team run submits inline approvals", async ({ page }) => {
         body: JSON.stringify({
           ok: true,
           team_id: teamId,
-          members: [{ member_id: "member-1", role: "executor" }],
+          members: [{ member_id: "member-1", team_id: teamId, role: "executor", status: "active", created_unix_ms: now }],
         }),
       });
       return;
@@ -93,16 +100,17 @@ test("broker team run submits inline approvals", async ({ page }) => {
 
   await page.goto("/");
 
-  const teamSection = page.locator("section").filter({ has: page.getByText("Teams", { exact: true }) });
-  await teamSection.getByRole("button", { name: "Refresh" }).first().click();
+  const teamSection = await refreshTeams(page);
 
   const teamSelect = teamSection.getByTestId("team-select");
   await expect(teamSelect).toHaveValue(teamId);
+  await openTeamTab(teamSection, "run");
 
   const runSection = page.locator("section").filter({ has: page.getByText("Team run", { exact: true }) });
   await runSection.getByPlaceholder("Summarize today’s alerts").fill("Check inline approvals");
 
   const inlineApprovals = runSection.getByTestId("team-inline-approvals");
+  await openRunDetails(runSection, "Inline approvals (optional)");
   await inlineApprovals.getByPlaceholder("member id").fill("member-1");
   await inlineApprovals.locator("select").selectOption("approve");
   const optionalInputs = inlineApprovals.locator("input[placeholder=\"optional\"]");
@@ -130,22 +138,10 @@ test("broker team run submits inline approvals", async ({ page }) => {
 test("broker team run runtime members update submits patch", async ({ page }) => {
   const teamId = "team-alpha";
   const runId = "run-789";
+  const now = Date.now();
   let updatePayload: any = null;
 
-  await page.addInitScript(() => {
-    try {
-      window.localStorage.setItem("agentui.connectionMode", JSON.stringify("broker"));
-      window.localStorage.setItem("agentui.brokerBase", "https://broker.example.invalid");
-      window.localStorage.setItem("agentui.brokerAuthToken", "test-token");
-      window.localStorage.setItem("agentui.brokerAgentId", "agent1");
-      window.localStorage.setItem("agentui.brokerPanelOpen", "true");
-      window.localStorage.setItem("agentui.showSettings", "false");
-      window.localStorage.setItem("agentui.allowClientRpcs", "true");
-      window.localStorage.setItem("agentui.allowClientEffects", "true");
-    } catch {
-      // ignore
-    }
-  });
+  await seedBrokerState(page);
 
   await page.route("**/v1/teams**", async (route, request) => {
     const url = new URL(request.url());
@@ -154,7 +150,7 @@ test("broker team run runtime members update submits patch", async ({ page }) =>
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ ok: true, teams: [{ team_id: teamId, display_name: "Team Alpha" }] }),
+        body: JSON.stringify({ ok: true, teams: [{ team_id: teamId, display_name: "Team Alpha", created_unix_ms: now }] }),
       });
       return;
     }
@@ -162,7 +158,10 @@ test("broker team run runtime members update submits patch", async ({ page }) =>
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ ok: true, team: { team_id: teamId, owner_sub: "owner" } }),
+        body: JSON.stringify({
+          ok: true,
+          team: { team_id: teamId, display_name: "Team Alpha", owner_sub: "owner", created_unix_ms: now },
+        }),
       });
       return;
     }
@@ -219,9 +218,9 @@ test("broker team run runtime members update submits patch", async ({ page }) =>
 
   await page.goto("/");
 
-  const teamSection = page.locator("section").filter({ has: page.getByText("Teams", { exact: true }) });
-  await teamSection.getByRole("button", { name: "Refresh" }).first().click();
+  const teamSection = await refreshTeams(page);
 
+  await openTeamTab(teamSection, "run");
   const runSection = page.locator("section").filter({ has: page.getByText("Team run", { exact: true }) });
   await runSection.getByPlaceholder("team_run_id").fill(runId);
   await runSection.getByRole("button", { name: "Get status" }).click();
@@ -234,7 +233,9 @@ test("broker team run runtime members update submits patch", async ({ page }) =>
     null,
     2,
   );
+  await openRunDetails(runSection, "Runtime members (optional)");
   await runSection.getByTestId("team-run-runtime-json").fill(runtimeJson);
+  await openRunDetails(runSection, "Operations & approvals");
   await runSection.getByTestId("team-run-runtime-mode").selectOption("merge");
   await runSection.getByTestId("team-run-runtime-update").click();
 
@@ -251,22 +252,10 @@ test("broker team run runtime members update submits patch", async ({ page }) =>
 test("broker team run runtime member toggle submits patch", async ({ page }) => {
   const teamId = "team-alpha";
   const runId = "run-900";
+  const now = Date.now();
   let updatePayload: any = null;
 
-  await page.addInitScript(() => {
-    try {
-      window.localStorage.setItem("agentui.connectionMode", JSON.stringify("broker"));
-      window.localStorage.setItem("agentui.brokerBase", "https://broker.example.invalid");
-      window.localStorage.setItem("agentui.brokerAuthToken", "test-token");
-      window.localStorage.setItem("agentui.brokerAgentId", "agent1");
-      window.localStorage.setItem("agentui.brokerPanelOpen", "true");
-      window.localStorage.setItem("agentui.showSettings", "false");
-      window.localStorage.setItem("agentui.allowClientRpcs", "true");
-      window.localStorage.setItem("agentui.allowClientEffects", "true");
-    } catch {
-      // ignore
-    }
-  });
+  await seedBrokerState(page);
 
   await page.route("**/v1/teams**", async (route, request) => {
     const url = new URL(request.url());
@@ -275,7 +264,7 @@ test("broker team run runtime member toggle submits patch", async ({ page }) => 
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ ok: true, teams: [{ team_id: teamId, display_name: "Team Alpha" }] }),
+        body: JSON.stringify({ ok: true, teams: [{ team_id: teamId, display_name: "Team Alpha", created_unix_ms: now }] }),
       });
       return;
     }
@@ -283,7 +272,10 @@ test("broker team run runtime member toggle submits patch", async ({ page }) => 
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ ok: true, team: { team_id: teamId, owner_sub: "owner" } }),
+        body: JSON.stringify({
+          ok: true,
+          team: { team_id: teamId, display_name: "Team Alpha", owner_sub: "owner", created_unix_ms: now },
+        }),
       });
       return;
     }
@@ -343,9 +335,9 @@ test("broker team run runtime member toggle submits patch", async ({ page }) => 
 
   await page.goto("/");
 
-  const teamSection = page.locator("section").filter({ has: page.getByText("Teams", { exact: true }) });
-  await teamSection.getByRole("button", { name: "Refresh" }).first().click();
+  const teamSection = await refreshTeams(page);
 
+  await openTeamTab(teamSection, "run");
   const runSection = page.locator("section").filter({ has: page.getByText("Team run", { exact: true }) });
   await runSection.getByPlaceholder("team_run_id").fill(runId);
   await runSection.getByRole("button", { name: "Get status" }).click();
@@ -365,34 +357,24 @@ test("broker team run runtime member toggle submits patch", async ({ page }) => 
 test("broker team member inline edit submits patch", async ({ page }) => {
   const teamId = "team-alpha";
   const memberId = "member-1";
+  const now = Date.now();
   let updatePayload: any = null;
   const members: any[] = [
     {
       member_id: memberId,
+      team_id: teamId,
       role: "executor",
       status: "active",
       agent_id: "agent-a",
       deployment_id: "dep-a",
       weight: 1,
       capabilities: ["vision"],
+      created_unix_ms: now,
       meta: { backend_label: "openrouter-main" },
     },
   ];
 
-  await page.addInitScript(() => {
-    try {
-      window.localStorage.setItem("agentui.connectionMode", JSON.stringify("broker"));
-      window.localStorage.setItem("agentui.brokerBase", "https://broker.example.invalid");
-      window.localStorage.setItem("agentui.brokerAuthToken", "test-token");
-      window.localStorage.setItem("agentui.brokerAgentId", "agent1");
-      window.localStorage.setItem("agentui.brokerPanelOpen", "true");
-      window.localStorage.setItem("agentui.showSettings", "false");
-      window.localStorage.setItem("agentui.allowClientRpcs", "true");
-      window.localStorage.setItem("agentui.allowClientEffects", "true");
-    } catch {
-      // ignore
-    }
-  });
+  await seedBrokerState(page);
 
   await page.route("**/v1/teams**", async (route, request) => {
     const url = new URL(request.url());
@@ -401,7 +383,7 @@ test("broker team member inline edit submits patch", async ({ page }) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ ok: true, teams: [{ team_id: teamId, display_name: "Team Alpha" }] }),
+        body: JSON.stringify({ ok: true, teams: [{ team_id: teamId, display_name: "Team Alpha", created_unix_ms: now }] }),
       });
       return;
     }
@@ -409,7 +391,10 @@ test("broker team member inline edit submits patch", async ({ page }) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ ok: true, team: { team_id: teamId, owner_sub: "owner", display_name: "Team Alpha" } }),
+        body: JSON.stringify({
+          ok: true,
+          team: { team_id: teamId, owner_sub: "owner", display_name: "Team Alpha", created_unix_ms: now },
+        }),
       });
       return;
     }
@@ -450,8 +435,22 @@ test("broker team member inline edit submits patch", async ({ page }) => {
       body: JSON.stringify({
         ok: true,
         agents: [
-          { agent_id: "agent-a", connected: true, deployments: [{ deployment_id: "dep-a" }] },
-          { agent_id: "agent-b", connected: true, deployments: [{ deployment_id: "dep-b" }] },
+          {
+            agent_id: "agent-a",
+            enabled: true,
+            created_unix_ms: now,
+            owner_sub: "owner",
+            connected: true,
+            deployments: [{ deployment_id: "dep-a", connected: true }],
+          },
+          {
+            agent_id: "agent-b",
+            enabled: true,
+            created_unix_ms: now,
+            owner_sub: "owner",
+            connected: true,
+            deployments: [{ deployment_id: "dep-b", connected: true }],
+          },
         ],
       }),
     });
@@ -459,10 +458,11 @@ test("broker team member inline edit submits patch", async ({ page }) => {
 
   await page.goto("/");
 
-  const teamSection = page.locator("section").filter({ has: page.getByText("Teams", { exact: true }) });
-  await teamSection.getByRole("button", { name: "Refresh" }).first().click();
+  const teamSection = await refreshTeams(page);
+  await openTeamTab(teamSection, "members");
 
   const membersSection = page.locator("section").filter({ has: page.getByText("Team members", { exact: true }) });
+  await membersSection.locator("summary").first().click();
   await expect(membersSection.getByText(memberId)).toBeVisible();
 
   await membersSection.getByRole("button", { name: "Edit" }).first().click();
@@ -473,7 +473,9 @@ test("broker team member inline edit submits patch", async ({ page }) => {
   await editPanel.getByTestId("team-member-edit-role").fill("reviewer");
   await editPanel.getByTestId("team-member-edit-status").selectOption("paused");
   await editPanel.getByTestId("team-member-edit-weight").fill("2");
+  await editPanel.locator("summary").filter({ hasText: "Advanced overrides" }).click();
   await editPanel.getByTestId("team-member-edit-caps").fill("vision,audio");
+  await expect(editPanel.locator('option[value="agent-b"]')).toHaveCount(1);
   await editPanel.getByTestId("team-member-edit-agent-pick").selectOption("agent-b");
   await editPanel.getByTestId("team-member-edit-deployment").selectOption("dep-b");
   await editPanel.getByTestId("team-member-edit-backend").fill("new-backend");
@@ -510,22 +512,10 @@ test("broker team member inline edit submits patch", async ({ page }) => {
 
 test("broker team settings update submits patch", async ({ page }) => {
   const teamId = "team-alpha";
+  const now = Date.now();
   let updatePayload: any = null;
 
-  await page.addInitScript(() => {
-    try {
-      window.localStorage.setItem("agentui.connectionMode", JSON.stringify("broker"));
-      window.localStorage.setItem("agentui.brokerBase", "https://broker.example.invalid");
-      window.localStorage.setItem("agentui.brokerAuthToken", "test-token");
-      window.localStorage.setItem("agentui.brokerAgentId", "agent1");
-      window.localStorage.setItem("agentui.brokerPanelOpen", "true");
-      window.localStorage.setItem("agentui.showSettings", "false");
-      window.localStorage.setItem("agentui.allowClientRpcs", "true");
-      window.localStorage.setItem("agentui.allowClientEffects", "true");
-    } catch {
-      // ignore
-    }
-  });
+  await seedBrokerState(page);
 
   await page.route("**/v1/teams**", async (route, request) => {
     const url = new URL(request.url());
@@ -534,7 +524,7 @@ test("broker team settings update submits patch", async ({ page }) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ ok: true, teams: [{ team_id: teamId, display_name: "Team Alpha" }] }),
+        body: JSON.stringify({ ok: true, teams: [{ team_id: teamId, display_name: "Team Alpha", created_unix_ms: now }] }),
       });
       return;
     }
@@ -548,6 +538,7 @@ test("broker team settings update submits patch", async ({ page }) => {
             team_id: teamId,
             owner_sub: "owner",
             display_name: "Team Alpha",
+            created_unix_ms: now,
             tags: ["ops"],
             policy_ref: "policy:old",
             shared_memory_scope_id: "scope-old",
@@ -588,9 +579,11 @@ test("broker team settings update submits patch", async ({ page }) => {
 
   await page.goto("/");
 
-  const teamSection = page.locator("section").filter({ has: page.getByText("Teams", { exact: true }) });
-  await teamSection.getByRole("button", { name: "Refresh" }).first().click();
+  const teamSection = await refreshTeams(page);
+  await openTeamTab(teamSection, "settings");
 
+  const settingsSection = page.locator("section").filter({ has: page.getByText("Team settings", { exact: true }) });
+  await settingsSection.locator("summary").first().click();
   const teamSettings = page.getByTestId("team-settings");
   const teamNameInput = teamSettings.getByPlaceholder("Team display name");
   await expect(teamNameInput).toHaveValue("Team Alpha");
@@ -610,6 +603,6 @@ test("broker team settings update submits patch", async ({ page }) => {
     tags: ["ops", "security"],
     policy_ref: "policy:new",
     shared_memory_scope_id: "scope-new",
-    meta: { owner_notes: "tier-1", priority: "high" },
+    meta: { owner_notes: "tier-1", priority: "high", shared_memory_mode: "read_write" },
   });
 });

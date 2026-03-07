@@ -1,6 +1,7 @@
 import React from "react";
 import useAutoplayUnlock from "./useAutoplayUnlock";
 import useLocalStorageState from "./useLocalStorageState";
+import useSessionStorageState from "./useSessionStorageState";
 import {
   getUiDefaults,
   type AgentUIDefaults,
@@ -18,6 +19,31 @@ import {
   type ApiAuth,
   type ClientPrefs,
 } from "../api";
+import {
+  CONNECTION_PROFILE_SECRETS_KEY,
+  LEGACY_SECRET_KEYS,
+  buildServerPrefs,
+  extractProfileSecrets,
+  generateProfileId,
+  mergeProfileSecrets,
+  mergeServerPrefs,
+  normalizeHttpBase,
+  normalizeProfile,
+  normalizeSecretMap,
+  profileNameDefault,
+  readLegacyMode,
+  readLegacySecretString,
+  readLegacyString,
+  safeParse,
+  sanitizeProfileForPersistence,
+  secretsEqual,
+  stripSecretRunOverrides,
+  type ConnectionProfile,
+  type ConnectionProfileSecretMap,
+  type ConnectionProfileSecretState,
+  type RunProfileOverrides,
+  type ServerPrefs,
+} from "./uiSettingsProfiles";
 
 export type ConnectionSettings = {
   profiles: ConnectionProfile[];
@@ -62,78 +88,6 @@ export type ConnectionSettings = {
 };
 
 type ServerPrefsAutoStatus = "idle" | "checking" | "ready" | "unsupported" | "auth_required" | "error";
-
-export type RunProfileOverrides = {
-  tools?: ToolMode;
-  yolo?: boolean;
-  hostPolicy?: HostPolicy;
-  automationProfile?: string;
-  verbose?: boolean;
-  model?: string;
-  summaryModel?: string;
-  summaryMaxChars?: string;
-  baseUrl?: string;
-  apiKey?: string;
-  proxyUrl?: string;
-  timeoutMs?: string;
-  maxCaptureBytes?: string;
-  streamAssistant?: boolean;
-  trace?: boolean;
-  useAsync?: boolean;
-  maxSteps?: string;
-  maxRepeatedToolCalls?: string;
-  maxToolCallsTotal?: string;
-  maxToolCallsPerTool?: string;
-  toolCallLimits?: string;
-  maxChars?: string;
-  keepLast?: string;
-  memoryContextMode?: string;
-  memoryIncludeStructured?: boolean;
-  memoryIncludeCore?: boolean;
-  memoryIncludeDaily?: boolean;
-  memoryIncludeSession?: boolean;
-  memoryDailyDays?: string;
-  memoryTotalCap?: string;
-  memorySearchQuery?: string;
-  memorySearchOrder?: string;
-  memorySearchUseIndex?: boolean;
-  memorySearchCaseSensitive?: boolean;
-  memorySearchFallbackToFiles?: boolean;
-  memorySearchMaxResults?: string;
-  memorySearchMaxSnippetChars?: string;
-  memorySearchContextLines?: string;
-};
-
-export type ConnectionProfile = {
-  id: string;
-  name: string;
-  mode: ConnectionMode;
-  base: string;
-  brokerBase: string;
-  brokerAgentId: string;
-  brokerDeploymentId: string;
-  brokerAuthToken: string;
-  daemonAuthToken: string;
-  runOverridesEnabled?: boolean;
-  runOverrides?: RunProfileOverrides;
-};
-
-type ServerConnectionProfile = {
-  id: string;
-  name: string;
-  mode: ConnectionMode;
-  base: string;
-  brokerBase: string;
-  brokerAgentId: string;
-  brokerDeploymentId: string;
-};
-
-type ServerPrefs = {
-  connection: {
-    active_profile_id: string;
-    profiles: ServerConnectionProfile[];
-  };
-};
 
 export type RunSettings = {
   profileOverridesEnabled: boolean;
@@ -254,249 +208,6 @@ export type UiSettings = {
   setBrokerPanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
 };
 
-const normalizeHttpBase = (raw: string, fallback: string, defaultScheme: "http" | "https") => {
-  const b = String(raw || "").trim();
-  if (b.length === 0) return fallback;
-  if (/^https?:\/\//i.test(b)) return b.replace(/\/+$/, "");
-
-  const hostPart = b.split("/")[0] || "";
-  const host =
-    hostPart.startsWith("[") && hostPart.includes("]")
-      ? hostPart.slice(1, hostPart.indexOf("]"))
-      : hostPart.split(":")[0] || "";
-  const hostLower = host.toLowerCase();
-  const isLoopback = hostLower === "localhost" || hostLower === "::1" || hostLower.startsWith("127.");
-  let scheme = defaultScheme;
-  if (isLoopback && typeof window !== "undefined") {
-    const proto = String(window.location?.protocol || "").toLowerCase();
-    if (proto === "http:" || proto === "https:") scheme = proto.slice(0, -1) as "http" | "https";
-  }
-
-  return `${scheme}://${b}`.replace(/\/+$/, "");
-};
-
-const safeParse = <T,>(raw: string | null): T | undefined => {
-  if (!raw) return undefined;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return undefined;
-  }
-};
-
-const readLegacyString = (key: string, fallback: string): string => {
-  if (typeof window === "undefined") return fallback;
-  const raw = window.localStorage.getItem(key);
-  if (raw === null) return fallback;
-  const parsed = safeParse<string>(raw);
-  if (typeof parsed === "string") return parsed;
-  if (typeof parsed === "number" && Number.isFinite(parsed)) return String(parsed);
-  if (typeof parsed === "boolean") return parsed ? "true" : "false";
-  const trimmed = raw.trim();
-  return trimmed ? trimmed : fallback;
-};
-
-const readLegacyMode = (key: string, fallback: ConnectionMode): ConnectionMode => {
-  const raw = readLegacyString(key, fallback);
-  return raw === "broker" ? "broker" : "direct";
-};
-
-const hostLabel = (raw: string, fallback: string, scheme: "http" | "https") => {
-  const norm = normalizeHttpBase(raw, fallback, scheme);
-  try {
-    const u = new URL(norm);
-    return u.port ? `${u.hostname}:${u.port}` : u.hostname;
-  } catch {
-    return norm;
-  }
-};
-
-const generateProfileId = () => {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const g: any = typeof globalThis !== "undefined" ? globalThis : {};
-    if (g.crypto && typeof g.crypto.randomUUID === "function") {
-      return `profile-${g.crypto.randomUUID()}`;
-    }
-  } catch {
-    // ignore
-  }
-  return `profile-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-};
-
-const profileNameDefault = (p: ConnectionProfile) => {
-  if (p.mode === "broker") {
-    const agent = String(p.brokerAgentId || "").trim();
-    const dep = String(p.brokerDeploymentId || "").trim();
-    if (agent) return dep ? `broker:${agent}@${dep}` : `broker:${agent}`;
-    return `broker:${hostLabel(p.brokerBase, "https://127.0.0.1:8443", "https")}`;
-  }
-  return `daemon:${hostLabel(p.base, "http://127.0.0.1:8123", "http")}`;
-};
-
-const normalizeRunOverrides = (raw: unknown): RunProfileOverrides | undefined => {
-  if (!raw || typeof raw !== "object") return undefined;
-  const v = raw as Record<string, unknown>;
-  const out: RunProfileOverrides = {};
-  const readString = (val: unknown): string | undefined => {
-    if (typeof val === "string") return val;
-    if (typeof val === "number" && Number.isFinite(val)) return String(val);
-    return undefined;
-  };
-
-  if (v.tools === "host" || v.tools === "basic" || v.tools === "none") out.tools = v.tools;
-  if (typeof v.yolo === "boolean") out.yolo = v.yolo;
-  if (v.hostPolicy === "full" || v.hostPolicy === "readonly") out.hostPolicy = v.hostPolicy;
-  const automationProfile = readString(v.automationProfile);
-  if (automationProfile !== undefined) {
-    const trimmed = automationProfile.trim();
-    if (
-      trimmed === "" ||
-      trimmed === "full" ||
-      trimmed === "guided" ||
-      trimmed === "strict" ||
-      trimmed === "custom"
-    ) {
-      out.automationProfile = trimmed;
-    }
-  }
-  if (typeof v.verbose === "boolean") out.verbose = v.verbose;
-  const model = readString(v.model);
-  if (model !== undefined) out.model = model;
-  const summaryModel = readString(v.summaryModel);
-  if (summaryModel !== undefined) out.summaryModel = summaryModel;
-  const summaryMaxChars = readString(v.summaryMaxChars);
-  if (summaryMaxChars !== undefined) out.summaryMaxChars = summaryMaxChars;
-  const baseUrl = readString(v.baseUrl);
-  if (baseUrl !== undefined) out.baseUrl = baseUrl;
-  const apiKey = readString(v.apiKey);
-  if (apiKey !== undefined) out.apiKey = apiKey;
-  const proxyUrl = readString(v.proxyUrl);
-  if (proxyUrl !== undefined) out.proxyUrl = proxyUrl;
-  const timeoutMs = readString(v.timeoutMs);
-  if (timeoutMs !== undefined) out.timeoutMs = timeoutMs;
-  const maxCaptureBytes = readString(v.maxCaptureBytes);
-  if (maxCaptureBytes !== undefined) out.maxCaptureBytes = maxCaptureBytes;
-  if (typeof v.streamAssistant === "boolean") out.streamAssistant = v.streamAssistant;
-  if (typeof v.trace === "boolean") out.trace = v.trace;
-  if (typeof v.useAsync === "boolean") out.useAsync = v.useAsync;
-  const maxSteps = readString(v.maxSteps);
-  if (maxSteps !== undefined) out.maxSteps = maxSteps;
-  const maxRepeatedToolCalls = readString(v.maxRepeatedToolCalls);
-  if (maxRepeatedToolCalls !== undefined) out.maxRepeatedToolCalls = maxRepeatedToolCalls;
-  const maxToolCallsTotal = readString(v.maxToolCallsTotal);
-  if (maxToolCallsTotal !== undefined) out.maxToolCallsTotal = maxToolCallsTotal;
-  const maxToolCallsPerTool = readString(v.maxToolCallsPerTool);
-  if (maxToolCallsPerTool !== undefined) out.maxToolCallsPerTool = maxToolCallsPerTool;
-  const toolCallLimits = readString(v.toolCallLimits);
-  if (toolCallLimits !== undefined) out.toolCallLimits = toolCallLimits;
-  const maxChars = readString(v.maxChars);
-  if (maxChars !== undefined) out.maxChars = maxChars;
-  const keepLast = readString(v.keepLast);
-  if (keepLast !== undefined) out.keepLast = keepLast;
-  const memoryContextMode = readString(v.memoryContextMode);
-  if (memoryContextMode === "files" || memoryContextMode === "search" || memoryContextMode === "index" || memoryContextMode === "salience") {
-    out.memoryContextMode = memoryContextMode;
-  }
-  if (typeof v.memoryIncludeStructured === "boolean") out.memoryIncludeStructured = v.memoryIncludeStructured;
-  if (typeof v.memoryIncludeCore === "boolean") out.memoryIncludeCore = v.memoryIncludeCore;
-  if (typeof v.memoryIncludeDaily === "boolean") out.memoryIncludeDaily = v.memoryIncludeDaily;
-  if (typeof v.memoryIncludeSession === "boolean") out.memoryIncludeSession = v.memoryIncludeSession;
-  const memoryDailyDays = readString(v.memoryDailyDays);
-  if (memoryDailyDays !== undefined) out.memoryDailyDays = memoryDailyDays;
-  const memoryTotalCap = readString(v.memoryTotalCap);
-  if (memoryTotalCap !== undefined) out.memoryTotalCap = memoryTotalCap;
-  const memorySearchQuery = readString(v.memorySearchQuery);
-  if (memorySearchQuery !== undefined) out.memorySearchQuery = memorySearchQuery;
-  const memorySearchOrder = readString(v.memorySearchOrder);
-  if (memorySearchOrder !== undefined) out.memorySearchOrder = memorySearchOrder;
-  if (typeof v.memorySearchUseIndex === "boolean") out.memorySearchUseIndex = v.memorySearchUseIndex;
-  if (typeof v.memorySearchCaseSensitive === "boolean") out.memorySearchCaseSensitive = v.memorySearchCaseSensitive;
-  if (typeof v.memorySearchFallbackToFiles === "boolean") out.memorySearchFallbackToFiles = v.memorySearchFallbackToFiles;
-  const memorySearchMaxResults = readString(v.memorySearchMaxResults);
-  if (memorySearchMaxResults !== undefined) out.memorySearchMaxResults = memorySearchMaxResults;
-  const memorySearchMaxSnippetChars = readString(v.memorySearchMaxSnippetChars);
-  if (memorySearchMaxSnippetChars !== undefined) out.memorySearchMaxSnippetChars = memorySearchMaxSnippetChars;
-  const memorySearchContextLines = readString(v.memorySearchContextLines);
-  if (memorySearchContextLines !== undefined) out.memorySearchContextLines = memorySearchContextLines;
-
-  return Object.keys(out).length > 0 ? out : undefined;
-};
-
-const normalizeProfile = (p: Partial<ConnectionProfile>, defaults: AgentUIDefaults): ConnectionProfile => {
-  const mode = p.mode === "broker" ? "broker" : "direct";
-  const base = typeof p.base === "string" ? p.base : defaults.daemonBaseUrl;
-  const brokerBase = typeof p.brokerBase === "string" ? p.brokerBase : defaults.brokerBaseUrl;
-  const brokerAgentId = typeof p.brokerAgentId === "string" ? p.brokerAgentId : defaults.brokerAgentId;
-  const brokerDeploymentId = typeof p.brokerDeploymentId === "string" ? p.brokerDeploymentId : defaults.brokerDeploymentId;
-  const brokerAuthToken = typeof p.brokerAuthToken === "string" ? p.brokerAuthToken : defaults.brokerAuthToken;
-  const daemonAuthToken = typeof p.daemonAuthToken === "string" ? p.daemonAuthToken : defaults.daemonAuthToken;
-  const id = typeof p.id === "string" && p.id.trim() ? p.id : generateProfileId();
-  const name = typeof p.name === "string" ? p.name.trim() : "";
-  const runOverridesEnabled = typeof p.runOverridesEnabled === "boolean" ? p.runOverridesEnabled : false;
-  const runOverrides = normalizeRunOverrides(p.runOverrides);
-  const out: ConnectionProfile = {
-    id,
-    name: name || "",
-    mode,
-    base,
-    brokerBase,
-    brokerAgentId,
-    brokerDeploymentId,
-    brokerAuthToken,
-    daemonAuthToken,
-    runOverridesEnabled,
-    runOverrides,
-  };
-  if (!out.name) out.name = profileNameDefault(out);
-  return out;
-};
-
-const toServerProfile = (p: ConnectionProfile): ServerConnectionProfile => ({
-  id: p.id,
-  name: p.name,
-  mode: p.mode,
-  base: p.base,
-  brokerBase: p.brokerBase,
-  brokerAgentId: p.brokerAgentId,
-  brokerDeploymentId: p.brokerDeploymentId,
-});
-
-const buildServerPrefs = (profiles: ConnectionProfile[], activeId: string): ServerPrefs => ({
-  connection: {
-    active_profile_id: activeId,
-    profiles: profiles.map(toServerProfile),
-  },
-});
-
-const mergeServerPrefs = (
-  prefs: ServerPrefs,
-  localProfiles: ConnectionProfile[],
-  defaults: AgentUIDefaults,
-): { profiles: ConnectionProfile[]; activeProfileId: string } => {
-  const incoming = Array.isArray(prefs?.connection?.profiles) ? prefs.connection.profiles : [];
-  if (incoming.length === 0) {
-    return { profiles: localProfiles, activeProfileId: localProfiles[0]?.id || "" };
-  }
-  const localById = new Map(localProfiles.map((p) => [p.id, p]));
-  const merged = incoming.map((p) => {
-    const local = localById.get(p.id);
-    return normalizeProfile(
-      {
-        ...p,
-        brokerAuthToken: local?.brokerAuthToken,
-        daemonAuthToken: local?.daemonAuthToken,
-        runOverridesEnabled: local?.runOverridesEnabled,
-        runOverrides: local?.runOverrides,
-      },
-      defaults,
-    );
-  });
-  const desiredActive = typeof prefs?.connection?.active_profile_id === "string" ? prefs.connection.active_profile_id : "";
-  const activeProfileId = merged.some((p) => p.id === desiredActive) ? desiredActive : merged[0]?.id || "";
-  return { profiles: merged, activeProfileId };
-};
-
 export default function useUiSettings(): UiSettings {
   const defaults = React.useMemo(() => getUiDefaults(), []);
   const initialClientId = React.useMemo(() => {
@@ -520,6 +231,10 @@ export default function useUiSettings(): UiSettings {
   const [connectionProfiles, setConnectionProfiles] = useLocalStorageState<ConnectionProfile[]>(
     "agentui.connectionProfiles",
     [],
+  );
+  const [connectionProfileSecrets, setConnectionProfileSecrets] = useSessionStorageState<ConnectionProfileSecretMap>(
+    CONNECTION_PROFILE_SECRETS_KEY,
+    {},
   );
   const [activeProfileId, setActiveProfileId] = useLocalStorageState("agentui.connectionProfileActive", "");
   const serverPrefsDefaultMode: ServerPrefsMode = defaults.serverPrefsMode;
@@ -553,6 +268,7 @@ export default function useUiSettings(): UiSettings {
   const [serverPrefsLastSyncMs, setServerPrefsLastSyncMs] = React.useState<number | null>(null);
   const serverPrefsLastPayloadRef = React.useRef<string>("");
   const serverPrefsPullInFlightRef = React.useRef(false);
+  const initialApiKey = React.useMemo(() => readLegacySecretString("agentui.apiKey", defaults.apiKey), [defaults.apiKey]);
 
   const buildLegacyProfile = React.useCallback((): ConnectionProfile => {
     const mode = readLegacyMode("agentui.connectionMode", defaults.connectionMode);
@@ -563,8 +279,8 @@ export default function useUiSettings(): UiSettings {
         brokerBase: readLegacyString("agentui.brokerBase", defaults.brokerBaseUrl),
         brokerAgentId: readLegacyString("agentui.brokerAgentId", defaults.brokerAgentId),
         brokerDeploymentId: readLegacyString("agentui.brokerDeploymentId", defaults.brokerDeploymentId),
-        brokerAuthToken: readLegacyString("agentui.brokerAuthToken", defaults.brokerAuthToken),
-        daemonAuthToken: readLegacyString("agentui.daemonAuthToken", defaults.daemonAuthToken),
+        brokerAuthToken: readLegacySecretString("agentui.brokerAuthToken", defaults.brokerAuthToken),
+        daemonAuthToken: readLegacySecretString("agentui.daemonAuthToken", defaults.daemonAuthToken),
       },
       defaults,
     );
@@ -573,38 +289,75 @@ export default function useUiSettings(): UiSettings {
   React.useEffect(() => {
     if (connectionProfiles.length === 0) {
       const legacy = buildLegacyProfile();
-      setConnectionProfiles([legacy]);
+      const secret = extractProfileSecrets(legacy);
+      setConnectionProfiles([sanitizeProfileForPersistence(legacy)]);
+      if (Object.keys(secret).length > 0) {
+        setConnectionProfileSecrets((prev) => ({ ...normalizeSecretMap(prev), [legacy.id]: secret }));
+      }
       setActiveProfileId(legacy.id);
       return;
     }
     let changed = false;
+    let secretsChanged = false;
+    const nextSecrets = { ...normalizeSecretMap(connectionProfileSecrets) };
     const normalized = connectionProfiles.map((p) => {
       const np = normalizeProfile(p, defaults);
-      const prevOverridesJson = JSON.stringify((p as ConnectionProfile).runOverrides ?? null);
-      const nextOverridesJson = JSON.stringify(np.runOverrides ?? null);
+      const extracted = extractProfileSecrets(p);
+      if (Object.keys(extracted).length > 0) {
+        const mergedSecret = { ...(nextSecrets[np.id] || {}), ...extracted };
+        if (!secretsEqual(nextSecrets[np.id], mergedSecret)) {
+          nextSecrets[np.id] = mergedSecret;
+          secretsChanged = true;
+        }
+      }
+      const sp = sanitizeProfileForPersistence(np);
+      const prevOverridesJson = JSON.stringify(stripSecretRunOverrides((p as ConnectionProfile).runOverrides) ?? null);
+      const nextOverridesJson = JSON.stringify(sp.runOverrides ?? null);
       const prevOverridesEnabled = typeof p.runOverridesEnabled === "boolean" ? p.runOverridesEnabled : false;
       if (
-        np.id !== p.id ||
-        np.name !== p.name ||
-        np.mode !== p.mode ||
-        np.base !== p.base ||
-        np.brokerBase !== p.brokerBase ||
-        np.brokerAgentId !== p.brokerAgentId ||
-        np.brokerDeploymentId !== p.brokerDeploymentId ||
-        np.brokerAuthToken !== p.brokerAuthToken ||
-        np.daemonAuthToken !== p.daemonAuthToken ||
-        np.runOverridesEnabled !== prevOverridesEnabled ||
+        sp.id !== p.id ||
+        sp.name !== p.name ||
+        sp.mode !== p.mode ||
+        sp.base !== p.base ||
+        sp.brokerBase !== p.brokerBase ||
+        sp.brokerAgentId !== p.brokerAgentId ||
+        sp.brokerDeploymentId !== p.brokerDeploymentId ||
+        sp.brokerAuthToken !== (p.brokerAuthToken || "") ||
+        sp.daemonAuthToken !== (p.daemonAuthToken || "") ||
+        sp.runOverridesEnabled !== prevOverridesEnabled ||
         prevOverridesJson !== nextOverridesJson
       ) {
         changed = true;
       }
-      return np;
+      return sp;
     });
     if (changed) setConnectionProfiles(normalized);
+    if (secretsChanged) setConnectionProfileSecrets(nextSecrets);
     if (!normalized.some((p) => p.id === activeProfileId)) {
       setActiveProfileId(normalized[0]?.id || "");
     }
-  }, [activeProfileId, buildLegacyProfile, connectionProfiles, defaults, setActiveProfileId, setConnectionProfiles]);
+  }, [
+    activeProfileId,
+    buildLegacyProfile,
+    connectionProfileSecrets,
+    connectionProfiles,
+    defaults,
+    setActiveProfileId,
+    setConnectionProfileSecrets,
+    setConnectionProfiles,
+  ]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    for (const key of LEGACY_SECRET_KEYS) {
+      try {
+        window.localStorage.removeItem(key);
+        window.sessionStorage.removeItem(key);
+      } catch {
+        // ignore storage failures
+      }
+    }
+  }, []);
 
   const [toolsGlobal, setToolsGlobal] = useLocalStorageState<ToolMode>("agentui.tools", defaults.tools);
   const [yoloGlobal, setYoloGlobal] = useLocalStorageState("agentui.yolo", defaults.yolo);
@@ -621,7 +374,7 @@ export default function useUiSettings(): UiSettings {
   const [summaryModelGlobal, setSummaryModelGlobal] = useLocalStorageState("agentui.summaryModel", "");
   const [summaryMaxCharsGlobal, setSummaryMaxCharsGlobal] = useLocalStorageState("agentui.summaryMaxChars", "1200");
   const [baseUrlGlobal, setBaseUrlGlobal] = useLocalStorageState("agentui.baseUrl", defaults.baseUrl);
-  const [apiKeyGlobal, setApiKeyGlobal] = useLocalStorageState("agentui.apiKey", defaults.apiKey);
+  const [apiKeyGlobal, setApiKeyGlobal] = useSessionStorageState("agentui.apiKey", initialApiKey);
   const [proxyUrlGlobal, setProxyUrlGlobal] = useLocalStorageState("agentui.proxyUrl", defaults.proxyUrl);
   const [timeoutMsGlobal, setTimeoutMsGlobal] = useLocalStorageState("agentui.timeoutMs", defaults.timeoutMs);
   const [maxCaptureBytesGlobal, setMaxCaptureBytesGlobal] = useLocalStorageState("agentui.maxCaptureBytes", "65536");
@@ -755,24 +508,39 @@ export default function useUiSettings(): UiSettings {
   const activeProfile = React.useMemo(() => {
     if (connectionProfiles.length === 0) return fallbackProfile;
     const found = connectionProfiles.find((p) => p.id === activeProfileId);
-    return found || connectionProfiles[0];
-  }, [activeProfileId, connectionProfiles, fallbackProfile]);
+    const baseProfile = found || connectionProfiles[0];
+    return mergeProfileSecrets(baseProfile, connectionProfileSecrets[baseProfile.id]);
+  }, [activeProfileId, connectionProfileSecrets, connectionProfiles, fallbackProfile]);
 
   const updateActiveProfile = React.useCallback(
     (update: (prev: ConnectionProfile) => ConnectionProfile) => {
+      let nextSecretId = "";
+      let nextSecretState: ConnectionProfileSecretState | null = null;
       setConnectionProfiles((prev) => {
         if (prev.length === 0) return prev;
         const idx = prev.findIndex((p) => p.id === activeProfileId);
         const useIdx = idx >= 0 ? idx : 0;
-        const cur = prev[useIdx];
-        const next = update(cur);
-        if (next === cur) return prev;
+        const curPersisted = normalizeProfile(prev[useIdx], defaults);
+        const cur = mergeProfileSecrets(curPersisted, connectionProfileSecrets[curPersisted.id]);
+        const next = normalizeProfile(update(cur), defaults);
+        nextSecretId = next.id;
+        nextSecretState = extractProfileSecrets(next);
+        const sanitized = sanitizeProfileForPersistence(next);
+        if (JSON.stringify(sanitized) === JSON.stringify(prev[useIdx])) return prev;
         const out = prev.slice();
-        out[useIdx] = normalizeProfile(next, defaults);
+        out[useIdx] = sanitized;
         return out;
       });
+      if (nextSecretId) {
+        setConnectionProfileSecrets((prev) => {
+          const next = { ...normalizeSecretMap(prev) };
+          if (nextSecretState && Object.keys(nextSecretState).length > 0) next[nextSecretId] = nextSecretState;
+          else delete next[nextSecretId];
+          return next;
+        });
+      }
     },
-    [activeProfileId, defaults, setConnectionProfiles],
+    [activeProfileId, connectionProfileSecrets, defaults, setConnectionProfileSecrets, setConnectionProfiles],
   );
 
   const addProfile = React.useCallback(
@@ -789,10 +557,14 @@ export default function useUiSettings(): UiSettings {
         daemonAuthToken: defaults.daemonAuthToken,
       };
       const profile = normalizeProfile(seed, defaults);
-      setConnectionProfiles((prev) => [...prev, profile]);
+      const secret = extractProfileSecrets(profile);
+      setConnectionProfiles((prev) => [...prev, sanitizeProfileForPersistence(profile)]);
+      if (Object.keys(secret).length > 0) {
+        setConnectionProfileSecrets((prev) => ({ ...normalizeSecretMap(prev), [id]: secret }));
+      }
       setActiveProfileId(id);
     },
-    [defaults, setActiveProfileId, setConnectionProfiles],
+    [defaults, setActiveProfileId, setConnectionProfileSecrets, setConnectionProfiles],
   );
 
   const duplicateProfile = React.useCallback(() => {
@@ -805,9 +577,13 @@ export default function useUiSettings(): UiSettings {
       },
       defaults,
     );
-    setConnectionProfiles((prev) => [...prev, copy]);
+    const secret = extractProfileSecrets(copy);
+    setConnectionProfiles((prev) => [...prev, sanitizeProfileForPersistence(copy)]);
+    if (Object.keys(secret).length > 0) {
+      setConnectionProfileSecrets((prev) => ({ ...normalizeSecretMap(prev), [id]: secret }));
+    }
     setActiveProfileId(id);
-  }, [activeProfile, defaults, setActiveProfileId, setConnectionProfiles]);
+  }, [activeProfile, defaults, setActiveProfileId, setConnectionProfileSecrets, setConnectionProfiles]);
 
   const deleteProfile = React.useCallback(
     (id: string) => {
@@ -819,9 +595,14 @@ export default function useUiSettings(): UiSettings {
         if (id === activeProfileId) nextActive = next[0].id;
         return next;
       });
+      setConnectionProfileSecrets((prev) => {
+        const next = { ...normalizeSecretMap(prev) };
+        delete next[id];
+        return next;
+      });
       if (nextActive) setActiveProfileId(nextActive);
     },
-    [activeProfileId, setActiveProfileId, setConnectionProfiles],
+    [activeProfileId, setActiveProfileId, setConnectionProfileSecrets, setConnectionProfiles],
   );
 
   const runOverridesEnabled = !!activeProfile.runOverridesEnabled;
@@ -1460,10 +1241,10 @@ export default function useUiSettings(): UiSettings {
   );
   const serverPrefsClientKind = "webui";
   const serverPrefsCanUse = serverPrefsEffectiveEnabled && String(serverPrefsBase || "").trim().length > 0;
-  const connectionProfilesRef = React.useRef(connectionProfiles);
+  const connectionProfilesRef = React.useRef(connectionProfiles.map((p) => mergeProfileSecrets(p, connectionProfileSecrets[p.id])));
   React.useEffect(() => {
-    connectionProfilesRef.current = connectionProfiles;
-  }, [connectionProfiles]);
+    connectionProfilesRef.current = connectionProfiles.map((p) => mergeProfileSecrets(p, connectionProfileSecrets[p.id]));
+  }, [connectionProfileSecrets, connectionProfiles]);
 
   const pullServerPrefs = React.useCallback(async () => {
     if (!serverPrefsCanUse) return;
