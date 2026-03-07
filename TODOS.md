@@ -37,7 +37,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
    - [x] Diagnostics reference doc: `docs/DIAGNOSTICS.md` with usage examples.
    - [x] WebUI diagnostics panel + provider tests (DeepSeek/Moonshot) to confirm keys and run health checks.
    - [x] WebUI run settings panel (model/base_url/proxy/timeout, run limits, OpenRouter picker).
-   - [x] WebUI App.tsx refactor (<2000 LOC) with modular panels/hooks.
+   - [x] WebUI App.tsx modular panels/hooks decomposition started.
    - [x] Refactor oversized daemon/edge/db + CLI host toolset files into SOLID submodules (<2000 LOC each).
    - [x] Tool-loop guard: `max_tool_call_args_chars` (daemon default + run override + core limit event).
   - [x] Broker proxy forwarding sets `X-Request-ID` and `X-Trace-ID` when missing (trace correlation).
@@ -121,6 +121,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-03-07: bound the broker team/member/quorum/run/orchestrator/guidance schemas to generated OpenAPI types, keeping explicit widening only for live fields still ahead of the published component contracts (for example `member_sessions` on team run status).
   - 2026-03-07: extracted team event cursor parsing and replay-event normalization from `BrokerTeamConsole.tsx` into `ui/src/components/broker/teamEventPrefs.ts`, typed broker agent/deployment state in the console, and removed additional `any` payload handling from broker event rendering.
   - 2026-03-08: extracted `App.tsx` shell pieces into dedicated components (`AppHeader`, connection banner, tools sidebar, team hub card, advanced panel host), reducing `App.tsx` from 3307 to 2982 lines without changing broker/workflow UI behavior.
+  - 2026-03-08: extracted broker team run/chat/guidance/query/queue state from `App.tsx` into `ui/src/hooks/useTeamChatOrchestration.ts`, reducing `App.tsx` from 2982 to 2324 lines while keeping the broker/workflow Playwright batch green.
 
 - [x] W=14 — Orchestrator ownership + lease takeover: prevent split-brain while keeping automation always-on.
   - 2026-02-26: added `expected_owner` guard to orchestrator run update/heartbeat and orchestrator loop claim via `meta.orchestrator_owner`.

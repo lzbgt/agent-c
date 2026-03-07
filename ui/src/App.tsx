@@ -28,13 +28,6 @@ import {
   apiAgentdTrace,
   apiBrokerGetClientPrefs,
   apiBrokerPostClientPrefs,
-  apiBrokerProxyJson,
-  apiBrokerTeamGuidanceCreate,
-  apiBrokerTeamGuidanceList,
-  apiBrokerTeamRunCreate,
-  apiBrokerTeamRunGet,
-  apiBrokerTeamRunList,
-  apiBrokerTeamRunGoalUpdate,
   apiBrokerTrace,
   daemonFetchInit,
   daemonHeaders,
@@ -66,6 +59,7 @@ import AppToolsSidebar from "./components/app/AppToolsSidebar";
 import TeamHubCard from "./components/app/TeamHubCard";
 import useLocalStorageState from "./hooks/useLocalStorageState";
 import useJobStreaming from "./hooks/useJobStreaming";
+import useTeamChatOrchestration from "./hooks/useTeamChatOrchestration";
 import useUiSettings from "./hooks/useUiSettings";
 import { buildWorkflowDefaults } from "./workflowDefaults";
 
@@ -74,19 +68,6 @@ const RUN_WATCH_PREFS_VERSION = 1;
 const RUN_WATCH_PERSIST_MIN_INTERVAL_MS = 5000;
 
 type QueuedRun = { prompt: string; attachments: Attachment[]; queued_unix_ms: number };
-type TeamQueuedAction = {
-  prompt: string;
-  attachments: Attachment[];
-  queued_unix_ms: number;
-  action: "run" | "guidance" | "goal";
-};
-type TeamActivity = {
-  ts: number;
-  prompt: string;
-  run_id?: string;
-  kind?: "prompt" | "guidance" | "goal";
-  payload?: any;
-};
 
 export default function App() {
   const ui = useUiSettings();
@@ -124,37 +105,6 @@ export default function App() {
       setTeamAction("run");
     }
   }, [chatTarget, teamAction, setTeamAction]);
-  const [teamPromptHistory, setTeamPromptHistory] = useLocalStorageState<Record<string, TeamActivity[]>>(
-    "agentui.teamPrompts",
-    {},
-  );
-  const [teamRunSessionsByKey, setTeamRunSessionsByKey] = useLocalStorageState<
-    Record<
-      string,
-      {
-        sessions: Record<string, string>;
-        members: Record<string, { role?: string; agent_id?: string; deployment_id?: string }>;
-        updated_unix_ms: number;
-      }
-    >
-  >("agentui.teamRunSessions", {});
-  const teamQueueKey = React.useMemo(() => {
-    const base = String(connection.brokerBase || "").trim() || "default";
-    const tid = selectedTeamIdTrimmed || "none";
-    return `agentui.teamQueue:${base}::${tid}`;
-  }, [connection.brokerBase, selectedTeamIdTrimmed]);
-  const [teamQueue, setTeamQueue] = useLocalStorageState<TeamQueuedAction[]>(teamQueueKey, []);
-  const teamQueueCount = Array.isArray(teamQueue) ? teamQueue.length : 0;
-  const teamConversationCacheKey = React.useMemo(() => {
-    const base = String(connection.brokerBase || "").trim() || "default";
-    const tid = selectedTeamIdTrimmed || "none";
-    return `agentui.teamChatCache:${base}::${tid}`;
-  }, [connection.brokerBase, selectedTeamIdTrimmed]);
-  const [teamConversationCache, setTeamConversationCache] = useLocalStorageState<{ items: any[]; updated_ms: number }>(
-    teamConversationCacheKey,
-    { items: [], updated_ms: 0 },
-  );
-  const cachedTeamConversationItems = Array.isArray(teamConversationCache?.items) ? teamConversationCache.items : [];
   const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "");
   const [capsCache, setCapsCache] = useLocalStorageState<Record<string, { caps: Caps; ts: number }>>(
     "agentui.capsByBase",
@@ -1106,289 +1056,6 @@ export default function App() {
     retry: 1,
   });
 
-  const brokerBase = String(connection.brokerBase || "").trim();
-  const teamRunList = useQuery({
-    queryKey: ["broker_team_runs", brokerBase, authKey, selectedTeamIdTrimmed],
-    queryFn: () => apiBrokerTeamRunList(brokerBase, selectedTeamIdTrimmed, daemonAuth, { limit: 6, offset: 0 }),
-    enabled: brokerChatAvailable && !!brokerBase && selectedTeamIdTrimmed.length > 0,
-    refetchInterval: brokerChatAvailable ? 6000 : false,
-    retry: 1,
-  });
-
-  const latestTeamRunId = React.useMemo(() => {
-    const runs = teamRunList.data?.ok && Array.isArray(teamRunList.data?.runs) ? (teamRunList.data.runs as any[]) : [];
-    if (runs.length === 0) return "";
-    const sorted = runs
-      .slice()
-      .sort((a, b) => (Number(b?.created_unix_ms || 0) || 0) - (Number(a?.created_unix_ms || 0) || 0));
-    return String(sorted[0]?.team_run_id || "").trim();
-  }, [teamRunList.data]);
-  const latestTeamRunCreatedMs = React.useMemo(() => {
-    const runs = teamRunList.data?.ok && Array.isArray(teamRunList.data?.runs) ? (teamRunList.data.runs as any[]) : [];
-    if (runs.length === 0) return 0;
-    const sorted = runs
-      .slice()
-      .sort((a, b) => (Number(b?.created_unix_ms || 0) || 0) - (Number(a?.created_unix_ms || 0) || 0));
-    return Number(sorted[0]?.created_unix_ms || 0) || 0;
-  }, [teamRunList.data]);
-  const teamRunSessionKey = React.useMemo(() => {
-    if (!brokerBase || !selectedTeamIdTrimmed || !latestTeamRunId) return "";
-    return `${brokerBase}::${selectedTeamIdTrimmed}::${latestTeamRunId}`;
-  }, [brokerBase, selectedTeamIdTrimmed, latestTeamRunId]);
-
-  const teamChat = useQuery({
-    queryKey: ["broker_team_chat", brokerBase, authKey, selectedTeamIdTrimmed, latestTeamRunId],
-    queryFn: async () => {
-      if (!latestTeamRunId) {
-        return { status: null as any, items: [] as any[], warnings: [] as string[] };
-      }
-      const storedSnapshot =
-        teamRunSessionKey && teamRunSessionsByKey[teamRunSessionKey] ? teamRunSessionsByKey[teamRunSessionKey] : undefined;
-      const status = await apiBrokerTeamRunGet(brokerBase, selectedTeamIdTrimmed, latestTeamRunId, daemonAuth);
-      if (!status.ok) {
-        return { status, items: [] as any[], warnings: [status.error || status.err || status.code || "team run failed"] };
-      }
-      const rawMemberSessions =
-        status.member_sessions && typeof status.member_sessions === "object" ? status.member_sessions : {};
-      const members = Array.isArray(status.members) ? status.members : [];
-      const memberJobs = Array.isArray(status.member_jobs) ? status.member_jobs : [];
-      const memberMeta: Record<string, { role?: string; agent_id?: string; deployment_id?: string }> = {};
-      const hasStatusMembers = members.length > 0 || memberJobs.length > 0;
-      const hasStatusSessions = Object.keys(rawMemberSessions).length > 0;
-      for (const m of members) {
-        const id = String((m as any)?.member_id || "").trim();
-        if (!id) continue;
-        memberMeta[id] = {
-          role: String((m as any)?.role || "").trim() || undefined,
-          agent_id: String((m as any)?.agent_id || "").trim() || undefined,
-          deployment_id: String((m as any)?.deployment_id || "").trim() || undefined,
-        };
-      }
-      for (const job of memberJobs) {
-        const id = String((job as any)?.member_id || "").trim();
-        if (!id) continue;
-        const prev = memberMeta[id] || {};
-        memberMeta[id] = {
-          role: prev.role,
-          agent_id: String((job as any)?.agent_id || prev.agent_id || "").trim() || undefined,
-          deployment_id: String((job as any)?.deployment_id || prev.deployment_id || "").trim() || undefined,
-        };
-      }
-      const memberSessions = hasStatusSessions
-        ? (rawMemberSessions as Record<string, string>)
-        : storedSnapshot?.sessions || {};
-      const mergedMemberMeta = hasStatusMembers ? memberMeta : storedSnapshot?.members || {};
-      if (teamRunSessionKey && (hasStatusSessions || hasStatusMembers)) {
-        setTeamRunSessionsByKey((prev) => ({
-          ...prev,
-          [teamRunSessionKey]: {
-            sessions: hasStatusSessions ? (rawMemberSessions as Record<string, string>) : storedSnapshot?.sessions || {},
-            members: hasStatusMembers ? memberMeta : storedSnapshot?.members || {},
-            updated_unix_ms: Date.now(),
-          },
-        }));
-      }
-
-      const warnings: string[] = [];
-      const entries = Object.entries(memberSessions as Record<string, string>);
-      const items: any[] = [];
-      await Promise.all(
-        entries.map(async ([memberId, sessionId]) => {
-          const sid = String(sessionId || "").trim();
-          if (!sid) return;
-          const meta = mergedMemberMeta[String(memberId || "").trim()] || {};
-          const agentId = meta.agent_id || String(connection.brokerAgentId || "").trim();
-          if (!agentId) {
-            warnings.push(`missing agent_id for member ${memberId}`);
-            return;
-          }
-          const depId = meta.deployment_id;
-          const path = `/api/v1/db/messages?session_id=${encodeURIComponent(sid)}&limit=80&offset=0&max_content_bytes=65536&max_mm_bytes=0`;
-          try {
-            const resp = await apiBrokerProxyJson(brokerBase, agentId, path, "GET", undefined, daemonAuth, depId);
-            const data = resp?.data;
-            const msgs = data?.ok && Array.isArray(data?.messages) ? (data.messages as any[]) : [];
-            for (const m of msgs) {
-              const ts = typeof m?.created_unix_ms === "number" ? m.created_unix_ms : 0;
-              if (!ts) continue;
-              items.push({
-                ts,
-                message: m,
-                meta: {
-                  member_id: memberId,
-                  role: meta.role,
-                  agent_id: agentId,
-                  session_id: sid,
-                  run_id: latestTeamRunId || undefined,
-                },
-              });
-            }
-          } catch (err) {
-            warnings.push(`failed to load messages for ${memberId}: ${String(err)}`);
-          }
-        }),
-      );
-      items.sort((a, b) => a.ts - b.ts);
-      return { status, items, warnings };
-    },
-    enabled: brokerChatAvailable && !!brokerBase && !!latestTeamRunId,
-    refetchInterval: brokerChatAvailable ? 5000 : false,
-    retry: 1,
-  });
-
-  const teamGuidance = useQuery({
-    queryKey: ["broker_team_guidance", brokerBase, authKey, selectedTeamIdTrimmed, latestTeamRunId],
-    queryFn: () =>
-      apiBrokerTeamGuidanceList(
-        brokerBase,
-        selectedTeamIdTrimmed,
-        { teamRunId: latestTeamRunId, limit: 50, offset: 0 },
-        daemonAuth,
-      ),
-    enabled: brokerChatAvailable && !!brokerBase && selectedTeamIdTrimmed.length > 0,
-    refetchInterval: brokerChatAvailable ? 6000 : false,
-    retry: 1,
-  });
-  const teamQueueNeedsRun =
-    teamQueueCount > 0 && !latestTeamRunId && teamQueue.some((entry) => entry.action !== "run");
-
-  const teamConversationLiveCount = React.useMemo(() => {
-    const items = Array.isArray(teamChat.data?.items) ? teamChat.data.items : [];
-    const guidance = Array.isArray(teamGuidance.data?.guidance) ? teamGuidance.data.guidance : [];
-    const prompts = teamPromptHistory[selectedTeamIdTrimmed] || [];
-    return items.length + guidance.length + prompts.length;
-  }, [teamChat.data, teamGuidance.data, teamPromptHistory, selectedTeamIdTrimmed]);
-
-  const teamConversationItems = React.useMemo(() => {
-    const out: any[] = [];
-    const items = Array.isArray(teamChat.data?.items) ? (teamChat.data?.items as any[]) : [];
-    for (const item of items) {
-      const msg = item?.message;
-      if (!msg || typeof msg !== "object") continue;
-      const ts = typeof item?.ts === "number" ? item.ts : 0;
-      if (!ts) continue;
-      out.push({
-        kind: "message",
-        ts,
-        message: msg,
-        meta: item?.meta ?? {},
-      });
-    }
-    const guidanceRows =
-      teamGuidance.data?.ok && Array.isArray(teamGuidance.data?.guidance) ? (teamGuidance.data.guidance as any[]) : [];
-    for (const g of guidanceRows) {
-      const ts = typeof g?.created_unix_ms === "number" ? g.created_unix_ms : 0;
-      const message = typeof g?.message === "string" ? g.message : "";
-      if (!ts || !message) continue;
-      out.push({
-        kind: "guidance",
-        ts,
-        message: { role: "guidance", content: message },
-        meta: {
-          guidance_id: g?.guidance_id,
-          kind: g?.kind,
-          priority: g?.priority,
-          status: g?.status,
-          run_id: g?.team_run_id,
-          payload: g?.payload,
-        },
-      });
-    }
-    const prompts = teamPromptHistory[selectedTeamIdTrimmed] || [];
-    for (const p of prompts) {
-      if (!p || typeof p !== "object") continue;
-      const ts = typeof p.ts === "number" ? p.ts : 0;
-      const prompt = String((p as any).prompt || "").trim();
-      if (!ts || !prompt) continue;
-      const kind = typeof (p as any).kind === "string" ? (p as any).kind : "prompt";
-      if (kind === "guidance") {
-        out.push({
-          kind: "guidance",
-          ts,
-          message: { role: "guidance", content: prompt },
-          meta: { run_id: (p as any).run_id || undefined, payload: (p as any).payload },
-        });
-      } else if (kind === "goal") {
-        out.push({
-          kind: "goal",
-          ts,
-          message: { role: "goal", content: prompt },
-          meta: { run_id: (p as any).run_id || undefined, payload: (p as any).payload },
-        });
-      } else {
-        out.push({
-          kind: "prompt",
-          ts,
-          message: { role: "user", content: prompt },
-          meta: { run_id: (p as any).run_id || undefined },
-        });
-      }
-    }
-    out.sort((a, b) => a.ts - b.ts);
-    const deduped: any[] = [];
-    const seenPromptKeys = new Set<string>();
-    for (const item of out) {
-      const role = String(item?.message?.role || "");
-      const content = String(item?.message?.content || "");
-      if (role === "user" && content) {
-        const key = content.slice(0, 200);
-        if (seenPromptKeys.has(key)) continue;
-        seenPromptKeys.add(key);
-      }
-      deduped.push(item);
-    }
-    return deduped.length > 0 ? deduped : cachedTeamConversationItems;
-  }, [teamChat.data, teamGuidance.data, teamPromptHistory, selectedTeamIdTrimmed, cachedTeamConversationItems]);
-
-  const teamConversationUsingCache =
-    teamConversationLiveCount === 0 && cachedTeamConversationItems.length > 0;
-  const teamConversationCacheUpdatedMs =
-    typeof teamConversationCache?.updated_ms === "number" ? teamConversationCache.updated_ms : 0;
-  const teamRecentActivity = React.useMemo(() => {
-    const items = Array.isArray(teamConversationItems) ? teamConversationItems : [];
-    const out: Array<{ key: string; label: string; preview: string; ts: number }> = [];
-    for (let i = items.length - 1; i >= 0 && out.length < 3; i -= 1) {
-      const item = items[i];
-      const ts = typeof item?.ts === "number" ? item.ts : 0;
-      const role = String(item?.message?.role || "").trim() || "message";
-      const meta = item?.meta ?? {};
-      const agentLabel = typeof meta?.agent_id === "string" ? meta.agent_id : "";
-      const label =
-        role === "guidance"
-          ? "guidance"
-          : role === "goal"
-            ? "goal"
-            : role === "user"
-              ? "you"
-              : agentLabel || role;
-      const content = String(item?.message?.content || "").trim();
-      if (!content) continue;
-      const preview = content.length > 140 ? `${content.slice(0, 140)}…` : content;
-      out.push({ key: `${ts}-${i}`, label, preview, ts });
-    }
-    return out;
-  }, [teamConversationItems]);
-
-  React.useEffect(() => {
-    if (teamConversationLiveCount === 0) return;
-    if (!Array.isArray(teamConversationItems) || teamConversationItems.length === 0) return;
-    setTeamConversationCache({
-      items: teamConversationItems.slice(-200),
-      updated_ms: Date.now(),
-    });
-  }, [setTeamConversationCache, teamConversationItems, teamConversationLiveCount]);
-
-  const teamRunCreate = useMutation({
-    mutationFn: async (vars: { prompt: string }) => {
-      const trimmed = String(vars.prompt || "").trim();
-      if (!trimmed) throw new Error("prompt required");
-      if (!brokerChatAvailable) throw new Error("team chat unavailable");
-      if (!brokerBase) throw new Error("missing broker base");
-      if (!selectedTeamIdTrimmed) throw new Error("missing team_id");
-      return apiBrokerTeamRunCreate(brokerBase, selectedTeamIdTrimmed, { prompt: trimmed }, daemonAuth);
-    },
-  });
-
   const [dbRunDetailsById, setDbRunDetailsById] = React.useState<Record<number, any>>({});
   const dbRunDetailsByIdRef = React.useRef<Record<number, any>>({});
   const dbRunDetailsLoadingRef = React.useRef<Record<number, boolean>>({});
@@ -1631,6 +1298,36 @@ export default function App() {
     }
   }, [chatTarget, teamAction]);
 
+  const {
+    clearTeamQueue,
+    handleTeamRunRequest,
+    latestTeamRunCreatedMs,
+    latestTeamRunId,
+    openTeamPanel,
+    teamConversationCacheUpdatedMs,
+    teamConversationItems,
+    teamConversationUsingCache,
+    teamConversationWarnings,
+    teamQueue,
+    teamQueueCount,
+    teamQueueNeedsRun,
+    teamRecentActivity,
+    teamRunCreate,
+    teamStatus,
+  } = useTeamChatOrchestration({
+    authKey,
+    brokerAgentId: String(connection.brokerAgentId || "").trim(),
+    brokerBase: connection.brokerBase,
+    brokerChatAvailable,
+    connectionMode,
+    daemonAuth,
+    selectedTeamId: selectedTeamIdTrimmed,
+    setAdvancedPage,
+    setComposerTaskNonce,
+    setJobNotice,
+    setPrompt,
+  });
+
   const run = useMutation({
     mutationFn: async (vars: { prompt: string; attachments: Attachment[] }) => {
       const maxStepsTrim = String(maxSteps ?? "").trim();
@@ -1858,7 +1555,6 @@ export default function App() {
   });
 
   const dequeueInFlightRef = React.useRef(false);
-  const teamQueueBusyRef = React.useRef(false);
 
   const enqueueRun = React.useCallback(
     (vars: { prompt: string; attachments: Attachment[] }) => {
@@ -1876,24 +1572,6 @@ export default function App() {
       setJobNotice("queued");
     },
     [setComposerTaskNonce, setJobNotice, setPrompt, setRunQueue],
-  );
-
-  const enqueueTeamAction = React.useCallback(
-    (vars: { prompt: string; attachments: Attachment[] }, action: "run" | "guidance" | "goal") => {
-      const trimmed = String(vars.prompt || "").trim();
-      if (!trimmed && vars.attachments.length === 0) {
-        setJobNotice("prompt or attachment required");
-        return;
-      }
-      setTeamQueue((prev) => [
-        ...(Array.isArray(prev) ? prev : []),
-        { prompt: trimmed, attachments: vars.attachments, queued_unix_ms: Date.now(), action },
-      ]);
-      setPrompt("");
-      setComposerTaskNonce((n) => n + 1);
-      setJobNotice(`queued team ${action}`);
-    },
-    [setComposerTaskNonce, setJobNotice, setPrompt, setTeamQueue],
   );
 
   React.useEffect(() => {
@@ -1914,328 +1592,13 @@ export default function App() {
         dequeueInFlightRef.current = false;
       });
   }, [activeJobId, run.isPending, runQueue, run, setJobNotice, setRunQueue]);
-
-
   const isTeamTarget = brokerChatAvailable && chatTarget === "team";
   const teamActionNormalized =
     teamAction === "guidance" || teamAction === "goal" ? (teamAction as "guidance" | "goal") : "run";
-  const openTeamPanel = React.useCallback(
-    (tab: string) => {
-      if (connectionMode !== "broker") return;
-      try {
-        if (selectedTeamIdTrimmed) {
-          window.localStorage.setItem("agentui.brokerTeamId", selectedTeamIdTrimmed);
-        }
-        if (tab) {
-          window.localStorage.setItem("agentui.teamTab", tab);
-        }
-      } catch {
-        // ignore localStorage failures
-      }
-      setAdvancedPage("broker");
-    },
-    [connectionMode, selectedTeamIdTrimmed, setAdvancedPage],
-  );
-
-  const addTeamActivity = React.useCallback(
-    (entry: TeamActivity) => {
-      const tid = selectedTeamIdTrimmed;
-      if (!tid) return;
-      setTeamPromptHistory((prev) => {
-        const cur = Array.isArray(prev[tid]) ? prev[tid] : [];
-        return { ...prev, [tid]: [...cur, entry] };
-      });
-    },
-    [selectedTeamIdTrimmed, setTeamPromptHistory],
-  );
-
-  const buildGoalContractFromPrompt = (promptRaw: string) => {
-    const lines = String(promptRaw || "")
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
-    if (lines.length === 0) return null;
-    const [goal, ...rest] = lines;
-    const contract: Record<string, any> = { goal };
-    if (rest.length > 0) contract.success_criteria = rest;
-    return contract;
-  };
-
-  const collectTeamUploadFiles = (attachments: Attachment[]) => {
-    return (attachments || []).filter((a) => typeof a?.data_base64 === "string" && a.data_base64.length > 0);
-  };
-
-  const waitForTeamMemberSessions = React.useCallback(
-    async (runId: string) => {
-      let lastStatus: any = null;
-      for (let attempt = 0; attempt < 10; attempt += 1) {
-        const status = await apiBrokerTeamRunGet(brokerBase, selectedTeamIdTrimmed, runId, daemonAuth);
-        lastStatus = status;
-        const sessions = status?.member_sessions;
-        if (sessions && typeof sessions === "object" && Object.keys(sessions).length > 0) {
-          return status;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 750));
-      }
-      return lastStatus;
-    },
-    [brokerBase, daemonAuth, selectedTeamIdTrimmed],
-  );
-
-  const broadcastTeamUploads = React.useCallback(
-    async (status: any, attachments: Attachment[]) => {
-      const uploads = collectTeamUploadFiles(attachments);
-      if (uploads.length === 0) return { uploads: [], errors: [] as string[] };
-      const memberSessions = status?.member_sessions && typeof status.member_sessions === "object" ? status.member_sessions : {};
-      const members = Array.isArray(status?.members) ? status.members : [];
-      const memberJobs = Array.isArray(status?.member_jobs) ? status.member_jobs : [];
-      const memberMeta: Record<string, { agent_id?: string; deployment_id?: string }> = {};
-      for (const m of members) {
-        const id = String((m as any)?.member_id || "").trim();
-        if (!id) continue;
-        memberMeta[id] = {
-          agent_id: String((m as any)?.agent_id || "").trim() || undefined,
-          deployment_id: String((m as any)?.deployment_id || "").trim() || undefined,
-        };
-      }
-      for (const job of memberJobs) {
-        const id = String((job as any)?.member_id || "").trim();
-        if (!id) continue;
-        memberMeta[id] = {
-          agent_id: String((job as any)?.agent_id || memberMeta[id]?.agent_id || "").trim() || undefined,
-          deployment_id: String((job as any)?.deployment_id || memberMeta[id]?.deployment_id || "").trim() || undefined,
-        };
-      }
-
-      const errors: string[] = [];
-      const uploadResults: any[] = [];
-      const entries = Object.entries(memberSessions as Record<string, string>);
-      for (const [memberIdRaw, sessionIdRaw] of entries) {
-        const memberId = String(memberIdRaw || "").trim();
-        const sid = String(sessionIdRaw || "").trim();
-        if (!memberId || !sid) continue;
-        const meta = memberMeta[memberId] || {};
-        const agentId = meta.agent_id || String(connection.brokerAgentId || "").trim();
-        if (!agentId) {
-          errors.push(`missing agent_id for member ${memberId}`);
-          continue;
-        }
-        const depId = meta.deployment_id;
-        const body = {
-          session_id: sid,
-          files: uploads.map((f) => ({
-            name: f.name || "upload.bin",
-            mime: f.mime,
-            data_base64: f.data_base64,
-          })),
-        };
-        const resp = await apiBrokerProxyJson(
-          brokerBase,
-          agentId,
-          "/api/v1/session/upload",
-          "POST",
-          body,
-          daemonAuth,
-          depId,
-        );
-        if (!resp?.data?.ok) {
-          errors.push(`upload failed for member ${memberId}`);
-          continue;
-        }
-        const files = Array.isArray(resp?.data?.files) ? resp.data.files : [];
-        uploadResults.push({ member_id: memberId, session_id: sid, agent_id: agentId, deployment_id: depId, files });
-      }
-      return { uploads: uploadResults, errors };
-    },
-    [brokerBase, daemonAuth, connection.brokerAgentId],
-  );
-
-  const runTeamAction = React.useCallback(
-    async (vars: { prompt: string; attachments: Attachment[] }, action: "run" | "guidance" | "goal") => {
-      const trimmed = String(vars.prompt || "").trim();
-      if (!trimmed) {
-        setJobNotice("prompt required");
-        return;
-      }
-
-      if (action === "goal" && !latestTeamRunId) {
-        setJobNotice("start a team run before setting a goal");
-        return;
-      }
-
-      if (action === "guidance") {
-        const uploads = collectTeamUploadFiles(vars.attachments);
-        if (uploads.length > 0 && !latestTeamRunId) {
-          setJobNotice("start a team run before attaching files");
-          return;
-        }
-      }
-
-      teamQueueBusyRef.current = true;
-      try {
-        if (action === "goal") {
-          const contract = buildGoalContractFromPrompt(trimmed);
-          if (!contract) {
-            setJobNotice("goal required");
-            return;
-          }
-          try {
-            const resp = await apiBrokerTeamRunGoalUpdate(
-              brokerBase,
-              selectedTeamIdTrimmed,
-              latestTeamRunId,
-              { goal_contract: contract },
-              daemonAuth,
-            );
-            if (!resp?.ok) throw new Error(resp?.error || resp?.err || "goal update failed");
-            addTeamActivity({ ts: Date.now(), prompt: trimmed, run_id: latestTeamRunId, kind: "goal", payload: contract });
-            setPrompt("");
-            setComposerTaskNonce((n) => n + 1);
-            setJobNotice("goal updated");
-          } catch (err) {
-            setJobNotice(`goal update failed: ${String(err)}`);
-          }
-          return;
-        }
-
-        if (action === "guidance") {
-          try {
-            const runId = latestTeamRunId || "";
-            const uploads = collectTeamUploadFiles(vars.attachments);
-            let uploadPayload: any = null;
-            if (uploads.length > 0) {
-              if (!runId) {
-                setJobNotice("start a team run before attaching files");
-                return;
-              }
-              setJobNotice("sharing attachments with the team…");
-              const status = await waitForTeamMemberSessions(runId);
-              const uploadResult = await broadcastTeamUploads(status, uploads);
-              uploadPayload = { uploads: uploadResult.uploads };
-              if (uploadResult.errors.length > 0) {
-                setJobNotice(`shared with errors: ${uploadResult.errors[0]}`);
-              }
-            }
-            const body: Record<string, any> = {
-              kind: "note",
-              priority: "normal",
-              message: trimmed,
-            };
-            if (runId) body.team_run_id = runId;
-            if (uploadPayload) body.payload = uploadPayload;
-            const resp = await apiBrokerTeamGuidanceCreate(brokerBase, selectedTeamIdTrimmed, body, daemonAuth);
-            if (!resp?.ok) throw new Error(resp?.error || resp?.err || "guidance failed");
-            addTeamActivity({ ts: Date.now(), prompt: trimmed, run_id: runId || undefined, kind: "guidance", payload: uploadPayload });
-            setPrompt("");
-            setComposerTaskNonce((n) => n + 1);
-            setJobNotice("guidance sent");
-            if (teamGuidance.refetch) void teamGuidance.refetch();
-          } catch (err) {
-            setJobNotice(`guidance failed: ${String(err)}`);
-          }
-          return;
-        }
-
-        try {
-          const resp = await teamRunCreate.mutateAsync({ prompt: trimmed });
-          if (!resp?.ok) throw new Error(resp?.error || resp?.err || resp?.code || "team run failed");
-          const runId = String(resp?.team_run_id || "").trim();
-          addTeamActivity({ ts: Date.now(), prompt: trimmed, run_id: runId || undefined, kind: "prompt" });
-          setPrompt("");
-          setComposerTaskNonce((n) => n + 1);
-          setJobNotice(runId ? `team run ${runId} started` : "team run started");
-          if (teamRunList.refetch) void teamRunList.refetch();
-          const uploads = collectTeamUploadFiles(vars.attachments);
-          if (uploads.length > 0) {
-            if (!runId) {
-              setJobNotice("team run id missing; attachments not shared");
-              return;
-            }
-            setJobNotice("sharing attachments with the team…");
-            const status = await waitForTeamMemberSessions(runId);
-            const uploadResult = await broadcastTeamUploads(status, uploads);
-            const fileNames = uploads.map((f) => f.name || "file").join(", ");
-            const guidanceMsg = `Shared files: ${fileNames}`;
-            const guidanceBody: Record<string, any> = {
-              kind: "resource",
-              priority: "normal",
-              message: guidanceMsg,
-              team_run_id: runId,
-              payload: { uploads: uploadResult.uploads },
-            };
-            const gResp = await apiBrokerTeamGuidanceCreate(brokerBase, selectedTeamIdTrimmed, guidanceBody, daemonAuth);
-            if (gResp?.ok) {
-              addTeamActivity({
-                ts: Date.now(),
-                prompt: guidanceMsg,
-                run_id: runId,
-                kind: "guidance",
-                payload: guidanceBody.payload,
-              });
-            }
-            if (uploadResult.errors.length > 0) {
-              setJobNotice(`shared with errors: ${uploadResult.errors[0]}`);
-            } else {
-              setJobNotice("attachments shared");
-            }
-            setComposerTaskNonce((n) => n + 1);
-            if (teamGuidance.refetch) void teamGuidance.refetch();
-          }
-        } catch (err) {
-          setJobNotice(`team run failed: ${String(err)}`);
-        }
-      } finally {
-        teamQueueBusyRef.current = false;
-      }
-    },
-    [
-      addTeamActivity,
-      apiBrokerTeamGuidanceCreate,
-      apiBrokerTeamRunGoalUpdate,
-      brokerBase,
-      broadcastTeamUploads,
-      buildGoalContractFromPrompt,
-      collectTeamUploadFiles,
-      daemonAuth,
-      latestTeamRunId,
-      selectedTeamIdTrimmed,
-      setComposerTaskNonce,
-      setJobNotice,
-      setPrompt,
-      teamGuidance,
-      teamRunCreate,
-      teamRunList,
-      waitForTeamMemberSessions,
-    ],
-  );
-
-  React.useEffect(() => {
-    if (!brokerChatAvailable) return;
-    if (teamQueueBusyRef.current) return;
-    if (!Array.isArray(teamQueue) || teamQueue.length === 0) return;
-    const next = teamQueue[0];
-    if (!next) return;
-    if (next.action !== "run" && !latestTeamRunId) return;
-    setTeamQueue((prev) => (Array.isArray(prev) ? prev.slice(1) : []));
-    runTeamAction({ prompt: next.prompt, attachments: next.attachments }, next.action)
-      .catch((err) => {
-        setJobNotice(`queued team ${next.action} failed: ${String(err)}`);
-        setTeamQueue((prev) => [next, ...(Array.isArray(prev) ? prev : [])]);
-      })
-      .finally(() => {
-        teamQueueBusyRef.current = false;
-      });
-  }, [brokerChatAvailable, latestTeamRunId, runTeamAction, setJobNotice, setTeamQueue, teamQueue]);
-
   const handleRunRequest = React.useCallback(
     async (vars: { prompt: string; attachments: Attachment[] }) => {
       if (isTeamTarget) {
-        const action = teamActionNormalized;
-        if (teamQueueBusyRef.current || teamRunCreate.isPending) {
-          enqueueTeamAction(vars, action);
-          return;
-        }
-        await runTeamAction(vars, action);
+        await handleTeamRunRequest(vars, teamActionNormalized);
         return;
       }
       if (activeJobId || run.isPending) {
@@ -2246,14 +1609,11 @@ export default function App() {
     },
     [
       activeJobId,
-      enqueueTeamAction,
       enqueueRun,
+      handleTeamRunRequest,
       isTeamTarget,
       run,
-      runTeamAction,
-      setJobNotice,
       teamActionNormalized,
-      teamRunCreate,
     ],
   );
 
@@ -2690,13 +2050,7 @@ export default function App() {
                   <TeamHubCard
                     selectedTeamId={selectedTeamIdTrimmed}
                     latestTeamRunId={latestTeamRunId}
-                    teamStatus={
-                      typeof teamChat.data?.status?.status === "string"
-                        ? teamChat.data?.status?.status
-                        : typeof teamChat.data?.status?.code === "string"
-                          ? teamChat.data?.status?.code
-                          : ""
-                    }
+                    teamStatus={teamStatus}
                     inlineTeamSetupOpen={inlineTeamSetupOpen}
                     onToggleInlineSetup={() => setInlineTeamSetupOpen((prev) => !prev)}
                     onViewChat={() => {
@@ -2737,7 +2091,7 @@ export default function App() {
                     teamQueueCount={teamQueueCount}
                     teamQueue={teamQueue}
                     teamQueueNeedsRun={teamQueueNeedsRun}
-                    onClearQueue={() => setTeamQueue([])}
+                    onClearQueue={clearTeamQueue}
                     onStartQueuedRun={() => {
                       setChatTarget("team");
                       setTeamAction("run");
@@ -2812,20 +2166,8 @@ export default function App() {
                     teamId={selectedTeamIdTrimmed}
                     teamRunId={latestTeamRunId}
                     teamRunCreatedMs={latestTeamRunCreatedMs}
-                    teamRunStatus={
-                      typeof teamChat.data?.status?.status === "string"
-                        ? teamChat.data?.status?.status
-                        : typeof teamChat.data?.status?.code === "string"
-                          ? teamChat.data?.status?.code
-                          : ""
-                    }
-                    teamConversationWarnings={[
-                      ...(Array.isArray(teamChat.data?.warnings) ? teamChat.data?.warnings : []),
-                      ...(teamGuidance.isError ? [String(teamGuidance.error)] : []),
-                      ...(teamGuidance.data?.ok === false
-                        ? [teamGuidance.data?.error || teamGuidance.data?.err || teamGuidance.data?.code || "guidance error"]
-                        : []),
-                    ].filter(Boolean)}
+                    teamRunStatus={teamStatus}
+                    teamConversationWarnings={teamConversationWarnings}
                   />
                 </div>
               </section>
