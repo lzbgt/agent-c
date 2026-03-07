@@ -34,14 +34,14 @@ while [[ $# -gt 0 ]]; do
 Usage: tools/verify_repo_guards.sh [--strict] [--max-total-gb N] [--max-file-mb N] [--max-untracked-mb N]
 
 Runs repo hygiene guards:
-  - repo size guard (max 5 GiB, excludes .git)
+  - repo size guard (max 5 GiB)
   - stub file scan
   - handbook bundle sync check
   - tracked file size guard (10 MiB)
   - skill template manifest validation
 
 Options:
-  --strict   Also fail on nested .git dirs (matches CI guard).
+  --strict   Count the full workspace size and fail on nested .git dirs (matches CI guard).
   --max-total-gb N  Override repo size limit in GiB (default: 5).
   --max-file-mb N   Override tracked file size limit in MiB (default: 10).
   --max-untracked-mb N Override untracked file size limit in MiB (default: 100).
@@ -68,6 +68,9 @@ done
 args=(--exclude .git --max-total-gb "${MAX_TOTAL_GB}" --depth 2 --top 20)
 if [[ "${STRICT}" == "1" ]]; then
   args+=(--fail-on-nested-git)
+else
+  # Local verification should focus on repo content drift, not transient build/cache bulk.
+  args+=(--exclude-defaults)
 fi
 
 python3 tools/repo_size_report.py "${args[@]}"

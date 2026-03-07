@@ -394,6 +394,10 @@ tools/verify_repo_guards.sh --max-total-gb 2 --max-file-mb 5
 tools/verify_repo_guards.sh --max-untracked-mb 200
 ```
 
+Notes:
+- `tools/verify_repo_guards.sh` excludes common generated bulk from the repo-size check by default (`build/`, `out/`, caches, state dirs, `ui/node_modules`, etc.) so local runs do not fail just because verification artifacts are present.
+- `tools/verify_repo_guards.sh --strict` matches CI behavior: full workspace size counts toward the 5 GiB limit and nested vendored `.git` directories fail the guard.
+
 Create a mount allowlist template (for sandboxed tool runners):
 
 ```bash

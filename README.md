@@ -77,6 +77,8 @@ Include repo hygiene guards:
 tools/verify.sh --repo-guards
 ```
 
+For a CI-equivalent workspace-size check, run `tools/verify_repo_guards.sh --strict`.
+
 Source `${HOME}/.env` before verification (provider keys for smokes):
 
 ```bash
