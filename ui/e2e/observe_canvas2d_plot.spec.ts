@@ -42,7 +42,7 @@ test("observe: canvas2d function-expression scripts execute (open-world)", async
       window.localStorage.setItem("agentui.base", JSON.stringify(cfg.agentdBase));
       if (cfg.providerBaseUrl) window.localStorage.setItem("agentui.baseUrl", JSON.stringify(cfg.providerBaseUrl));
       if (cfg.providerModel) window.localStorage.setItem("agentui.model", JSON.stringify(cfg.providerModel));
-      if (cfg.providerApiKey) window.localStorage.setItem("agentui.apiKey", JSON.stringify(cfg.providerApiKey));
+      if (cfg.providerApiKey) window.sessionStorage.setItem("agentui.apiKey", JSON.stringify(cfg.providerApiKey));
       window.localStorage.setItem("agentui.allowClientRpcs", "true");
       window.localStorage.setItem("agentui.allowClientEffects", "true");
       window.localStorage.setItem("agentui.allowUnsafePageEval", "true");

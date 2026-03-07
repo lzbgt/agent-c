@@ -18,14 +18,15 @@ ClientPrefsConnection:
     profiles:
       type: array
       items:
-        $ref: "#/ClientPrefsConnectionProfile"
+        $ref: "#/components/schemas/ClientPrefsConnectionProfile"
 
 ClientPrefs:
   type: object
-  required: [connection]
+  description: Client-scoped preference bag. Shape varies by client_kind and feature.
+  additionalProperties: true
   properties:
     connection:
-      $ref: "#/ClientPrefsConnection"
+      $ref: "#/components/schemas/ClientPrefsConnection"
 
 ClientPrefsUpdateRequest:
   type: object
@@ -34,7 +35,7 @@ ClientPrefsUpdateRequest:
     client_id: { type: string }
     client_kind: { type: string, default: webui }
     prefs:
-      $ref: "#/ClientPrefs"
+      $ref: "#/components/schemas/ClientPrefs"
 
 ClientPrefsResponse:
   type: object
@@ -47,7 +48,7 @@ ClientPrefsResponse:
     version: { type: integer }
     updated_utc_ms: { type: integer, format: int64 }
     prefs:
-      $ref: "#/ClientPrefs"
+      $ref: "#/components/schemas/ClientPrefs"
     error: { type: string }
     err: { type: string }
     code: { type: string }

@@ -50,6 +50,11 @@ Preset configs:
 - `tools/agentui-config.compose.js` (compose default)
 - `tools/agentui-config.automouse.js` (full automation preset)
 
+Secret handling:
+- The WebUI no longer persists broker tokens, agentd tokens, or provider API keys in `localStorage`.
+- These values are session-scoped in the browser; closing the tab/browser clears them unless you prefill them again via runtime config.
+- Connection profiles and server-side prefs only persist non-secret fields (URLs, ids, names, non-secret run settings).
+
 ## Broker mode and profiles
 
 - The WebUI caches multiple **connection profiles** (direct or broker-backed) locally and can persist them server-side.
@@ -106,7 +111,7 @@ Preset configs:
   - Default: **auto** (syncs when the server advertises client prefs and auth allows; broker requires OIDC token).
   - The client prefs id defaults to `webui` and can be changed in Settings → Connection.
   - Toggle “Sync connection profiles to daemon/broker” in Settings → Connection to force on/off.
-  - Only non-secret fields are stored (URLs/ids/profile names). Auth tokens remain local.
+  - Only non-secret fields are stored (URLs/ids/profile names). Auth tokens and provider API keys remain browser-session local.
 - Devstack OIDC helper: `tools/devstack_oidc_token.sh --state out/devstack_state.json` (prints a bearer token; auto-falls back to `http://127.0.0.1:<keycloak_port>` or `http://[::1]:<keycloak_port>` if `keycloak.lvh.me` is unreachable).
 - Devstack writes the broker OIDC token into `ui/dist/agentui-config.js` on startup so the WebUI can connect without manual Settings edits; refresh the page if you change/refresh tokens.
 - See `docs/DEVSTACK_NETWORK_AUTH.md` for the end-to-end network/auth workflow and troubleshooting.

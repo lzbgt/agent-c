@@ -10,7 +10,7 @@ SandboxMountValidateRequest:
       description: Container mount target path (absolute).
     container_prefix:
       type: string
-      description: Allowed container prefix (default: /workspace/extra).
+      description: "Allowed container prefix (default: /workspace/extra)."
     is_main:
       type: boolean
       description: Whether this is the main sandbox (affects readonly enforcement).

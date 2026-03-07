@@ -13,6 +13,10 @@ schemas:
     $ref: ./components/diagnostics.yaml#/DiagnosticsProviderTestRequest
   DiagnosticsProviderTestResponse:
     $ref: ./components/diagnostics.yaml#/DiagnosticsProviderTestResponse
+  ClientPrefsConnectionProfile:
+    $ref: ./components/client_prefs.yaml#/ClientPrefsConnectionProfile
+  ClientPrefsConnection:
+    $ref: ./components/client_prefs.yaml#/ClientPrefsConnection
   ClientPrefs:
     $ref: ./components/client_prefs.yaml#/ClientPrefs
   ClientPrefsUpdateRequest:
@@ -137,6 +141,8 @@ schemas:
     $ref: ./components/run.yaml#/AgentEvent
   RunResponse:
     $ref: ./components/run.yaml#/RunResponse
+  PolicyApprovalRule:
+    $ref: ./components/run.yaml#/PolicyApprovalRule
   RunReplayBundle:
     $ref: ./components/run.yaml#/RunReplayBundle
   RunReplayResponse:

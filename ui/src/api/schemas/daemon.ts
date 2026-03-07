@@ -1,9 +1,25 @@
 import { z } from "zod";
+import type { components as AgentdComponents, paths as AgentdPaths } from "../generated/agentd-openapi";
 
-export const HealthSchema = z.object({
+export type Health = AgentdPaths["/api/v1/health"]["get"]["responses"][200]["content"]["application/json"];
+export type Caps = AgentdComponents["schemas"]["CapsResponse"];
+export type Diagnostics = AgentdComponents["schemas"]["DiagnosticsResponse"];
+export type DiagnosticsProviders = AgentdComponents["schemas"]["DiagnosticsProvidersResponse"];
+export type DiagnosticsProviderTestReq = AgentdComponents["schemas"]["DiagnosticsProviderTestRequest"];
+export type SandboxMountValidateReq = AgentdComponents["schemas"]["SandboxMountValidateRequest"];
+export type SandboxMountValidateResp = AgentdComponents["schemas"]["SandboxMountValidateResponse"];
+type ClientPrefsConnectionProfile = AgentdComponents["schemas"]["ClientPrefsConnectionProfile"];
+type ClientPrefsConnection = AgentdComponents["schemas"]["ClientPrefsConnection"];
+type ClientPrefsPayload = AgentdComponents["schemas"]["ClientPrefs"];
+export type ClientPrefs = AgentdComponents["schemas"]["ClientPrefsResponse"];
+export type ClientPrefsUpdateReq = AgentdComponents["schemas"]["ClientPrefsUpdateRequest"];
+
+const UnknownRecordSchema = z.record(z.string(), z.unknown());
+
+export const HealthSchema: z.ZodType<Health> = z.object({
   ok: z.boolean(),
-  service: z.string().optional(),
-  version: z.string().optional(),
+  service: z.string(),
+  version: z.string(),
   ready: z.boolean().optional(),
   now_unix_ms: z.number().int().nonnegative().optional(),
   uptime_ms: z.number().int().nonnegative().optional(),
@@ -13,52 +29,49 @@ export const HealthSchema = z.object({
     })
     .optional(),
 });
-export type Health = z.infer<typeof HealthSchema>;
 
-export const CapsSchema = z
+export const CapsSchema: z.ZodType<Caps> = z
   .object({
     ok: z.boolean(),
-    service: z.string().optional(),
-    version: z.string().optional(),
-    api_version: z.string().optional(),
+    service: z.string(),
+    version: z.string(),
+    api_version: z.string(),
     now_unix_ms: z.number().int().nonnegative().optional(),
     uptime_ms: z.number().int().nonnegative().optional(),
-    features: z.any().optional(),
-    limits: z.any().optional(),
+    features: UnknownRecordSchema.optional(),
+    limits: UnknownRecordSchema.optional(),
   })
   .passthrough();
-export type Caps = z.infer<typeof CapsSchema>;
 
-export const DiagnosticsSchema = z
+export const DiagnosticsSchema: z.ZodType<Diagnostics> = z
   .object({
     ok: z.boolean(),
-    service: z.string().optional(),
-    version: z.string().optional(),
-    ready: z.boolean().optional(),
-    now_unix_ms: z.number().int().nonnegative().optional(),
-    uptime_ms: z.number().int().nonnegative().optional(),
-    checks: z.any().optional(),
-    db: z.any().optional(),
-    jobs: z.any().optional(),
-    workflows: z.any().optional(),
+    service: z.string(),
+    version: z.string(),
+    ready: z.boolean(),
+    now_unix_ms: z.number().int().nonnegative(),
+    uptime_ms: z.number().int().nonnegative(),
+    checks: UnknownRecordSchema.optional(),
+    db: UnknownRecordSchema.optional(),
+    sandbox_mount_allowlist: UnknownRecordSchema.optional(),
+    jobs: UnknownRecordSchema.optional(),
+    workflows: UnknownRecordSchema.optional(),
     warnings: z.array(z.string()).optional(),
   })
   .passthrough();
-export type Diagnostics = z.infer<typeof DiagnosticsSchema>;
 
-export const DiagnosticsProvidersSchema = z
+export const DiagnosticsProvidersSchema: z.ZodType<DiagnosticsProviders> = z
   .object({
     ok: z.boolean(),
-    service: z.string().optional(),
-    version: z.string().optional(),
-    now_unix_ms: z.number().int().nonnegative().optional(),
-    uptime_ms: z.number().int().nonnegative().optional(),
-    providers: z.any().optional(),
+    service: z.string(),
+    version: z.string(),
+    now_unix_ms: z.number().int().nonnegative(),
+    uptime_ms: z.number().int().nonnegative(),
+    providers: UnknownRecordSchema,
   })
   .passthrough();
-export type DiagnosticsProviders = z.infer<typeof DiagnosticsProvidersSchema>;
 
-export const DiagnosticsProviderTestReqSchema = z
+export const DiagnosticsProviderTestReqSchema: z.ZodType<DiagnosticsProviderTestReq> = z
   .object({
     provider: z.string().min(1),
     base_url: z.string().optional(),
@@ -72,11 +85,11 @@ export const DiagnosticsProviderTestReqSchema = z
     max_tool_calls_total: z.number().int().nonnegative().optional(),
     max_tool_calls_per_tool: z.number().int().nonnegative().optional(),
     max_tool_call_args_chars: z.number().int().nonnegative().optional(),
+    max_tool_result_chars: z.number().int().nonnegative().optional(),
     max_repeated_tool_calls: z.number().int().nonnegative().optional(),
     include_run: z.boolean().optional(),
   })
   .passthrough();
-export type DiagnosticsProviderTestReq = z.infer<typeof DiagnosticsProviderTestReqSchema>;
 
 export const DiagnosticsProviderTestRespSchema = z
   .object({
@@ -91,12 +104,12 @@ export const DiagnosticsProviderTestRespSchema = z
     err: z.string().optional(),
     code: z.string().optional(),
     http_status: z.number().optional(),
-    run: z.any().optional(),
+    run: UnknownRecordSchema.optional(),
   })
   .passthrough();
 export type DiagnosticsProviderTestResp = z.infer<typeof DiagnosticsProviderTestRespSchema>;
 
-export const SandboxMountValidateReqSchema = z
+export const SandboxMountValidateReqSchema: z.ZodType<SandboxMountValidateReq> = z
   .object({
     host_path: z.string().min(1),
     container_path: z.string().min(1),
@@ -104,14 +117,13 @@ export const SandboxMountValidateReqSchema = z
     is_main: z.boolean().optional(),
   })
   .passthrough();
-export type SandboxMountValidateReq = z.infer<typeof SandboxMountValidateReqSchema>;
 
-export const SandboxMountValidateRespSchema = z
+export const SandboxMountValidateRespSchema: z.ZodType<SandboxMountValidateResp> = z
   .object({
-    ok: z.boolean().optional(),
-    allowed: z.boolean().optional(),
-    readonly: z.boolean().optional(),
-    reason: z.string().optional(),
+    ok: z.boolean(),
+    allowed: z.boolean(),
+    readonly: z.boolean(),
+    reason: z.string(),
     resolved_host_path: z.string().optional(),
     resolved_container_path: z.string().optional(),
     matched_root: z.string().optional(),
@@ -121,32 +133,50 @@ export const SandboxMountValidateRespSchema = z
     code: z.string().optional(),
   })
   .passthrough();
-export type SandboxMountValidateResp = z.infer<typeof SandboxMountValidateRespSchema>;
 
-export const ClientPrefsSchema = z
+const ClientPrefsConnectionProfileSchema: z.ZodType<ClientPrefsConnectionProfile> = z.object({
+  id: z.string(),
+  name: z.string(),
+  mode: z.enum(["direct", "broker"]),
+  base: z.string(),
+  brokerBase: z.string(),
+  brokerAgentId: z.string(),
+  brokerDeploymentId: z.string(),
+});
+
+const ClientPrefsConnectionSchema: z.ZodType<ClientPrefsConnection> = z.object({
+  active_profile_id: z.string(),
+  profiles: z.array(ClientPrefsConnectionProfileSchema),
+});
+
+const ClientPrefsPayloadSchema: z.ZodType<ClientPrefsPayload> = z
+  .object({
+    connection: ClientPrefsConnectionSchema.optional(),
+  })
+  .catchall(z.unknown());
+
+export const ClientPrefsSchema: z.ZodType<ClientPrefs> = z
   .object({
     ok: z.boolean(),
-    found: z.boolean().optional(),
-    client_id: z.string().optional(),
-    client_kind: z.string().optional(),
+    found: z.boolean(),
+    client_id: z.string(),
+    client_kind: z.string(),
     version: z.number().int().optional(),
     updated_utc_ms: z.number().int().nonnegative().optional(),
-    prefs: z.any().optional(),
+    prefs: ClientPrefsPayloadSchema.optional(),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
   })
   .passthrough();
-export type ClientPrefs = z.infer<typeof ClientPrefsSchema>;
 
 export const ClientPrefsUpdateReqSchema = z
   .object({
     client_id: z.string().min(1),
-    client_kind: z.string().optional(),
-    prefs: z.any(),
+    client_kind: z.string().default("webui"),
+    prefs: ClientPrefsPayloadSchema,
   })
   .passthrough();
-export type ClientPrefsUpdateReq = z.infer<typeof ClientPrefsUpdateReqSchema>;
 
 export const DaemonConfigSchema = z
   .object({

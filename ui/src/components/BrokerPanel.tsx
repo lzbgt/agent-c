@@ -23,11 +23,27 @@ import {
   apiBrokerUpsertMember,
   daemonHeaders,
   type ApiAuth,
+  type BrokerAgentInfo,
+  type BrokerConnector,
+  type BrokerDeploymentInfo,
+  type BrokerMembersResp,
+  type BrokerMembershipAuditResp,
 } from "../api";
 import FieldLabel from "./FieldLabel";
 import useLocalStorageState from "../hooks/useLocalStorageState";
 import BrokerTeamConsole from "./broker/BrokerTeamConsole";
 import type { BrokerEventRow } from "./broker/types";
+import {
+  asFiniteNumber,
+  asObjectRecord,
+  extractBrokerEventsCursorByScope,
+  normalizeBrokerEventRow,
+  normalizeBrokerFanoutResults,
+  normalizeBrokerReplayEvents,
+  normalizeDeploymentId,
+  type BrokerCursorByScope,
+  type BrokerFanoutResult,
+} from "./broker/brokerPanelUtils";
 import { readSseStream } from "../sse";
 
 const normalizeBrokerBase = (raw: string) => {
@@ -49,11 +65,8 @@ const fmtTs = (ms?: number | null) => {
 const BROKER_EVENTS_MAX = 200;
 const BROKER_EVENTS_PREFS_KIND = "webui-broker-events";
 const BROKER_EVENTS_PREFS_VERSION = 1;
-
-type BrokerCursorEntry = {
-  cursor_ts?: number;
-  updated_unix_ms?: number;
-};
+type BrokerMember = BrokerMembersResp["members"][number];
+type BrokerMembershipAuditRow = BrokerMembershipAuditResp["audit"][number];
 
 export type BrokerPanelProps = {
   open: boolean;
@@ -134,11 +147,6 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     queryFn: () => apiBrokerListDeployments(base, agentId, props.auth),
   });
 
-  const normalizeDeploymentId = (raw: unknown) => {
-    const id = String(raw || "").trim();
-    return id || "default";
-  };
-
   const [selectedDeployments, setSelectedDeployments] = React.useState<string[]>([]);
   const [otaUrl, setOtaUrl] = React.useState<string>("");
   const [otaSha256, setOtaSha256] = React.useState<string>("");
@@ -147,10 +155,10 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   const [otaReason, setOtaReason] = React.useState<string>("");
   const [otaBusy, setOtaBusy] = React.useState<boolean>(false);
   const [otaError, setOtaError] = React.useState<string | null>(null);
-  const [otaResults, setOtaResults] = React.useState<any[] | null>(null);
+  const [otaResults, setOtaResults] = React.useState<BrokerFanoutResult[] | null>(null);
   const [otaStatusBusy, setOtaStatusBusy] = React.useState<boolean>(false);
   const [otaStatusError, setOtaStatusError] = React.useState<string | null>(null);
-  const [otaStatusResults, setOtaStatusResults] = React.useState<any[] | null>(null);
+  const [otaStatusResults, setOtaStatusResults] = React.useState<BrokerFanoutResult[] | null>(null);
   const [otaStatusCachedAt, setOtaStatusCachedAt] = React.useState<string | null>(null);
 
   const [retentionDryRun, setRetentionDryRun] = React.useState<boolean>(true);
@@ -162,7 +170,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   const [retentionStructuredDeprecateMaxEntries, setRetentionStructuredDeprecateMaxEntries] = React.useState<string>("50");
   const [retentionBusy, setRetentionBusy] = React.useState<boolean>(false);
   const [retentionError, setRetentionError] = React.useState<string | null>(null);
-  const [retentionResults, setRetentionResults] = React.useState<any[] | null>(null);
+  const [retentionResults, setRetentionResults] = React.useState<BrokerFanoutResult[] | null>(null);
 
   const [recapsLimit, setRecapsLimit] = React.useState<string>("20");
   const [recapsIncludeSummary, setRecapsIncludeSummary] = React.useState<boolean>(false);
@@ -183,11 +191,11 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   const [recapsListBusy, setRecapsListBusy] = React.useState<boolean>(false);
   const [recapsGenerateBusy, setRecapsGenerateBusy] = React.useState<boolean>(false);
   const [recapsError, setRecapsError] = React.useState<string | null>(null);
-  const [recapsResults, setRecapsResults] = React.useState<any[] | null>(null);
+  const [recapsResults, setRecapsResults] = React.useState<BrokerFanoutResult[] | null>(null);
 
   const [salienceBusy, setSalienceBusy] = React.useState<boolean>(false);
   const [salienceError, setSalienceError] = React.useState<string | null>(null);
-  const [salienceResults, setSalienceResults] = React.useState<any[] | null>(null);
+  const [salienceResults, setSalienceResults] = React.useState<BrokerFanoutResult[] | null>(null);
 
   const [auditLimit, setAuditLimit] = React.useState<string>("200");
   const [brokerEvents, setBrokerEvents] = React.useState<BrokerEventRow[]>([]);
@@ -201,14 +209,14 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   const [brokerEventsCursorTs, setBrokerEventsCursorTs] = React.useState<number>(0);
   const brokerEventsCursorRef = React.useRef<number>(0);
   const brokerEventsReplayKeyRef = React.useRef<string>("");
-  const [brokerEventsCursorByScope, setBrokerEventsCursorByScope] = React.useState<Record<string, BrokerCursorEntry>>({});
+  const [brokerEventsCursorByScope, setBrokerEventsCursorByScope] = React.useState<BrokerCursorByScope>({});
   const [brokerEventsCursorStatus, setBrokerEventsCursorStatus] = React.useState<"idle" | "loading" | "ready" | "error">(
     "idle",
   );
   const brokerEventsLoadKeyRef = React.useRef<string>("");
   const brokerEventsCursorPersistRef = React.useRef<{
     timer: ReturnType<typeof setTimeout> | null;
-    pending: Record<string, BrokerCursorEntry> | null;
+    pending: BrokerCursorByScope | null;
   }>({ timer: null, pending: null });
 
   const brokerEventsCursorKey = React.useMemo(() => {
@@ -221,31 +229,13 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   }, [base, props.authKey]);
   const brokerPrefsClientId = React.useMemo(() => String(props.clientId || "webui"), [props.clientId]);
   const brokerPrefsBase = base;
-  const extractBrokerEventsCursorByScope = React.useCallback((prefs: any): Record<string, BrokerCursorEntry> => {
-    if (!prefs || typeof prefs !== "object") return {};
-    const raw = (prefs as any).broker_events_cursor;
-    if (!raw || typeof raw !== "object") return {};
-    const byScope = (raw as any).by_scope;
-    if (!byScope || typeof byScope !== "object") return {};
-    const out: Record<string, BrokerCursorEntry> = {};
-    for (const [key, value] of Object.entries(byScope)) {
-      if (!value || typeof value !== "object") continue;
-      const cursor = (value as any).cursor_ts;
-      if (typeof cursor !== "number" || !Number.isFinite(cursor) || cursor <= 0) continue;
-      out[key] = {
-        cursor_ts: cursor,
-        updated_unix_ms: typeof (value as any).updated_unix_ms === "number" ? (value as any).updated_unix_ms : undefined,
-      };
-    }
-    return out;
-  }, []);
 
   React.useEffect(() => {
     brokerEventsCursorRef.current = brokerEventsCursorTs;
   }, [brokerEventsCursorTs]);
 
   const pushBrokerEventsCursor = React.useCallback(
-    async (nextMap: Record<string, BrokerCursorEntry>) => {
+    async (nextMap: BrokerCursorByScope) => {
       if (!brokerPrefsBase || !brokerPrefsClientId || !brokerEventsScopeKey) return;
       const payload = {
         client_id: brokerPrefsClientId,
@@ -267,7 +257,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   );
 
   const scheduleBrokerEventsCursorPersist = React.useCallback(
-    (nextMap: Record<string, BrokerCursorEntry>) => {
+    (nextMap: BrokerCursorByScope) => {
       if (!brokerPrefsBase || !brokerPrefsClientId || !brokerEventsScopeKey) return;
       if (brokerEventsCursorStatus === "error") return;
       brokerEventsCursorPersistRef.current.pending = nextMap;
@@ -390,20 +380,6 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     scheduleBrokerEventsCursorPersist,
   ]);
 
-  const buildBrokerEventRow = React.useCallback((parsed: any, fallbackType?: string): BrokerEventRow | null => {
-    if (!parsed && !fallbackType) return null;
-    const eventType = String(parsed?.type || fallbackType || "message");
-    if (!eventType) return null;
-    const row: BrokerEventRow = {
-      type: eventType,
-      ts_unix_ms: Number(parsed?.ts_unix_ms || 0) || undefined,
-      event_id: parsed?.event_id ? String(parsed.event_id) : undefined,
-      trace_id: parsed?.trace_id ? String(parsed.trace_id) : undefined,
-      payload: parsed?.payload && typeof parsed.payload === "object" ? parsed.payload : undefined,
-    };
-    return row;
-  }, []);
-
   const appendBrokerEvents = React.useCallback((rows: BrokerEventRow[]) => {
     if (rows.length === 0) return;
     setBrokerEvents((prev) => {
@@ -445,10 +421,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
       if (!resp.ok) {
         throw new Error(resp.error || resp.err || resp.code || "events replay failed");
       }
-      const items = Array.isArray(resp.events) ? resp.events : [];
-      const rows = items
-        .map((ev) => buildBrokerEventRow(ev, ev?.type))
-        .filter((row): row is BrokerEventRow => !!row);
+      const rows = normalizeBrokerReplayEvents(resp.events);
       appendBrokerEvents(rows);
       if (typeof resp.next_since_ts === "number") {
         updateBrokerEventsCursor(undefined, resp.next_since_ts);
@@ -463,7 +436,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     } finally {
       setBrokerEventsReplayBusy(false);
     }
-  }, [appendBrokerEvents, base, buildBrokerEventRow, canQuery, props.auth, updateBrokerEventsCursor]);
+  }, [appendBrokerEvents, base, canQuery, props.auth, updateBrokerEventsCursor]);
   const limitValue = React.useMemo(() => {
     const n = Number.parseInt(String(auditLimit || ""), 10);
     if (!Number.isFinite(n) || n <= 0) return 200;
@@ -516,13 +489,13 @@ export default function BrokerPanel(props: BrokerPanelProps) {
         setBrokerEventsConnected(true);
         await readSseStream(resp, (ev) => {
           if (controller.signal.aborted) return;
-          let parsed: any = null;
+          let parsed: unknown = null;
           try {
             parsed = ev.data ? JSON.parse(ev.data) : null;
           } catch {
             parsed = null;
           }
-          const row = buildBrokerEventRow(parsed, ev.event);
+          const row = normalizeBrokerEventRow(parsed, ev.event);
           if (!row) return;
           appendBrokerEvents([row]);
           updateBrokerEventsCursor(row.ts_unix_ms);
@@ -535,7 +508,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     };
     void run();
     return () => controller.abort();
-  }, [props.open, canQuery, base, props.authKey, brokerEventsActive, appendBrokerEvents, buildBrokerEventRow, updateBrokerEventsCursor]);
+  }, [props.open, canQuery, base, props.authKey, brokerEventsActive, appendBrokerEvents, updateBrokerEventsCursor]);
 
   React.useEffect(() => {
     if (!props.open || !canQuery || !brokerEventsActive || !base) return;
@@ -572,7 +545,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
         setOtaStatusCachedAt(null);
         return;
       }
-      const rows = Array.isArray(parsed?.results) ? parsed.results : null;
+      const rows = normalizeBrokerFanoutResults(parsed?.results);
       if (!rows) return;
       setOtaStatusResults(rows);
       setOtaStatusCachedAt(fmtTs(ts));
@@ -581,7 +554,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     }
   }, [otaStatusCacheKey, otaStatusCacheTtlMs]);
 
-  const persistOtaStatusCache = (rows: any[]) => {
+  const persistOtaStatusCache = (rows: BrokerFanoutResult[]) => {
     if (!otaStatusCacheKey) return;
     if (typeof window === "undefined") return;
     try {
@@ -610,9 +583,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
       setSelectedDeployments([]);
       return;
     }
-    const deployments = Array.isArray((deploymentsQuery.data as any)?.deployments)
-      ? (((deploymentsQuery.data as any).deployments as any[]) ?? [])
-      : [];
+    const deployments = deploymentsQuery.data?.deployments ?? [];
     if (deployments.length === 0) {
       setSelectedDeployments([]);
       return;
@@ -698,19 +669,6 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     setSelectedDeployments(connected.length > 0 ? connected : deployments.map((d) => normalizeDeploymentId(d?.deployment_id)));
   };
 
-  const normalizeFanoutResults = (rows: any[], fallbackIds?: string[]) => {
-    if (!Array.isArray(rows)) return null;
-    return rows.map((row, idx) => {
-      const rec = row ?? {};
-      const dep =
-        normalizeDeploymentId(rec?.deployment_id ?? rec?.deploymentId ?? rec?.deployment ?? fallbackIds?.[idx] ?? "");
-      const statusRaw = rec?.status;
-      const status = typeof statusRaw === "number" ? statusRaw : Number(statusRaw || 0);
-      const data = rec?.data ?? rec?.response ?? rec?.body ?? rec;
-      return { deployment_id: dep, status, data };
-    });
-  };
-
   const parseOptionalInt = (raw: string, min = 0) => {
     const s = String(raw || "").trim();
     if (!s) return undefined;
@@ -747,7 +705,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     }
     const drainMs = Number.parseInt(String(otaDrainMs || ""), 10);
     const drainTimeout = Number.isFinite(drainMs) && drainMs >= 0 ? drainMs : undefined;
-    const body: Record<string, any> = {
+    const body: Record<string, unknown> = {
       url,
     };
     const sha = String(otaSha256 || "").trim();
@@ -787,7 +745,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
         const err = bulk.data?.error ? String(bulk.data.error) : `broker error (${bulk.status})`;
         throw new Error(err);
       }
-      const results = normalizeFanoutResults(bulk.data?.results, selectedDeployments);
+      const results = normalizeBrokerFanoutResults(bulk.data?.results, selectedDeployments);
       if (!results) {
         throw new Error("unexpected broker response");
       }
@@ -840,7 +798,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
         const err = bulk.data?.error ? String(bulk.data.error) : `broker error (${bulk.status})`;
         throw new Error(err);
       }
-      const results = normalizeFanoutResults(bulk.data?.results, selectedDeployments);
+      const results = normalizeBrokerFanoutResults(bulk.data?.results, selectedDeployments);
       if (!results) {
         throw new Error("unexpected broker response");
       }
@@ -864,7 +822,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
       setRetentionError("select at least one deployment");
       return;
     }
-    const payload: Record<string, any> = {
+    const payload: Record<string, unknown> = {
       dry_run: retentionDryRun,
     };
     const dailyDays = parseOptionalInt(retentionDailyMaxDays, 0);
@@ -909,7 +867,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
         const err = bulk.data?.error ? String(bulk.data.error) : `broker error (${bulk.status})`;
         throw new Error(err);
       }
-      const results = normalizeFanoutResults(bulk.data?.results, selectedDeployments);
+      const results = normalizeBrokerFanoutResults(bulk.data?.results, selectedDeployments);
       if (!results) throw new Error("unexpected broker response");
       setRetentionResults(results);
     } catch (e) {
@@ -970,7 +928,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
         const err = bulk.data?.error ? String(bulk.data.error) : `broker error (${bulk.status})`;
         throw new Error(err);
       }
-      const results = normalizeFanoutResults(bulk.data?.results, selectedDeployments);
+      const results = normalizeBrokerFanoutResults(bulk.data?.results, selectedDeployments);
       if (!results) throw new Error("unexpected broker response");
       setRecapsResults(results);
     } catch (e) {
@@ -991,7 +949,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
       setRecapsError("select at least one deployment");
       return;
     }
-    const payload: Record<string, any> = {
+    const payload: Record<string, unknown> = {
       dry_run: recapsDryRun,
       write_file: recapsWriteFile,
       include_structured: recapsIncludeStructured,
@@ -1045,7 +1003,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
         const err = bulk.data?.error ? String(bulk.data.error) : `broker error (${bulk.status})`;
         throw new Error(err);
       }
-      const results = normalizeFanoutResults(bulk.data?.results, selectedDeployments);
+      const results = normalizeBrokerFanoutResults(bulk.data?.results, selectedDeployments);
       if (!results) throw new Error("unexpected broker response");
       setRecapsResults(results);
     } catch (e) {
@@ -1116,7 +1074,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
         const err = bulk.data?.error ? String(bulk.data.error) : `broker error (${bulk.status})`;
         throw new Error(err);
       }
-      const results = normalizeFanoutResults(bulk.data?.results, selectedDeployments);
+      const results = normalizeBrokerFanoutResults(bulk.data?.results, selectedDeployments);
       if (!results) throw new Error("unexpected broker response");
       setSalienceResults(results);
     } catch (e) {
@@ -1134,23 +1092,19 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     void runOtaStatus();
   }, [props.open, canQuery, agentId, otaStatusBusy, selectedDeployments, otaStatusResults, otaStatusCachedAt]);
 
-  const agents = Array.isArray((agentsQuery.data as any)?.agents) ? ((agentsQuery.data as any).agents as any[]) : [];
-  const connectors = Array.isArray((connectorsQuery.data as any)?.connectors)
-    ? ((connectorsQuery.data as any).connectors as any[])
-    : [];
-  const members = Array.isArray((membersQuery.data as any)?.members) ? ((membersQuery.data as any).members as any[]) : [];
-  const ownerSub = String((membersQuery.data as any)?.owner_sub || "");
-  const auditRows = Array.isArray((auditQuery.data as any)?.audit) ? ((auditQuery.data as any).audit as any[]) : [];
+  const agents: BrokerAgentInfo[] = agentsQuery.data?.agents ?? [];
+  const connectors: BrokerConnector[] = connectorsQuery.data?.connectors ?? [];
+  const members: BrokerMember[] = membersQuery.data?.members ?? [];
+  const ownerSub = String(membersQuery.data?.owner_sub || "");
+  const auditRows: BrokerMembershipAuditRow[] = auditQuery.data?.audit ?? [];
   const brokerEventRows = React.useMemo(() => {
     const rows = brokerEventsQuorumOnly
       ? brokerEvents.filter((ev) => String(ev?.type || "").startsWith("team_quorum"))
       : brokerEvents;
     return rows.slice().reverse();
   }, [brokerEvents, brokerEventsQuorumOnly]);
-  const deployments = Array.isArray((deploymentsQuery.data as any)?.deployments)
-    ? (((deploymentsQuery.data as any).deployments as any[]) ?? [])
-    : [];
-  const defaultDeploymentIdRaw = (deploymentsQuery.data as any)?.default_deployment_id;
+  const deployments: BrokerDeploymentInfo[] = deploymentsQuery.data?.deployments ?? [];
+  const defaultDeploymentIdRaw = deploymentsQuery.data?.default_deployment_id;
   const defaultDeploymentId = defaultDeploymentIdRaw ? normalizeDeploymentId(defaultDeploymentIdRaw) : "";
   const selectedDeploymentSet = new Set(selectedDeployments);
 
@@ -1710,9 +1664,9 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                     const status = row?.status;
                     const ok = row?.data?.ok === true;
                     const planStatus = row?.data?.status || "unknown";
-                    const updated = fmtTs(row?.data?.updated_unix_ms);
+                    const updated = fmtTs(asFiniteNumber(row?.data?.updated_unix_ms));
                     const drainActive = row?.data?.drain_active === true;
-                    const drainUntil = fmtTs(row?.data?.drain_until_unix_ms);
+                    const drainUntil = fmtTs(asFiniteNumber(row?.data?.drain_until_unix_ms));
                     const drainReason = row?.data?.drain_reason;
                     const otaId = row?.data?.ota_id;
                     const jobsRunning = row?.data?.jobs_running;
@@ -2197,7 +2151,10 @@ export default function BrokerPanel(props: BrokerPanelProps) {
             <div className="grid gap-2">
               {brokerEventRows.map((row, idx) => {
                 const type = String(row?.type || "");
-                const payload = row?.payload ?? {};
+                const payload =
+                  row?.payload && typeof row.payload === "object"
+                    ? (row.payload as Record<string, unknown>)
+                    : {};
                 const ts = fmtTs(row?.ts_unix_ms);
                 const traceId = row?.trace_id ? String(row.trace_id) : "";
                 let summary = "";
@@ -2212,7 +2169,10 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                   const required = payload?.required_approvals;
                   summary = `${decision} · ${approvals ?? "?"}/${required ?? "?"}`;
                 } else if (type === "team_goal_progress" || type === "team_goal_drift" || type === "team_goal_spawn_validation") {
-                  const ev = payload?.event ?? {};
+                  const ev =
+                    payload?.event && typeof payload.event === "object"
+                      ? (payload.event as Record<string, unknown>)
+                      : {};
                   const msg = ev?.message ? String(ev.message) : "";
                   const label =
                     type === "team_goal_progress"
@@ -2222,7 +2182,10 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                         : "spawn validation";
                   summary = `${label}${msg ? ` · ${msg}` : ""}`;
                 } else if (type === "team_handoff") {
-                  const ev = payload?.event ?? {};
+                  const ev =
+                    payload?.event && typeof payload.event === "object"
+                      ? (payload.event as Record<string, unknown>)
+                      : {};
                   const fromRole = ev?.from_role ? String(ev.from_role) : "";
                   const toRole = ev?.to_role ? String(ev.to_role) : "";
                   const reason = ev?.reason ? String(ev.reason) : "";

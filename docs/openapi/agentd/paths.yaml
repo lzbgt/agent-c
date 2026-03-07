@@ -136,12 +136,6 @@
           application/json:
             schema:
               $ref: "#/components/schemas/ErrorResponse"
-      "401":
-        description: Unauthorized
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ErrorResponse"
 
 /api/v1/config:
   get:
@@ -2282,7 +2276,7 @@
         name: types
         schema: { type: string }
         required: false
-        description: Comma-separated event types to include (default: moderator_directive, moderator_task_published)
+        description: "Comma-separated event types to include (default: moderator_directive, moderator_task_published)"
     responses:
       "200":
         description: OK

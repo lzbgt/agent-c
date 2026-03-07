@@ -99,6 +99,26 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Weighted tasks (next up)
 
+- [ ] W=13 — Browser secret boundary hardening: keep broker/agentd auth tokens and provider API keys out of durable browser storage, then finish the move to HttpOnly/session-backed auth for brokered deployments.
+  - 2026-03-07: moved WebUI broker/daemon tokens and provider API keys out of `localStorage`; they now live in browser session storage and legacy localStorage secrets are scrubbed on load.
+  - 2026-03-07: connection profile persistence/server sync remains non-secret only; docs updated to reflect session-scoped secret behavior.
+  - Remaining: broker-backed cookie/session exchange so browser JS does not hold long-lived broker tokens at all.
+- [ ] W=12 — Authoritative host CI: add Linux/macOS jobs that run `tools/verify.sh --ui-install --repo-guards`, gate DB/OpenAPI/docs drift, and promote compose broker smokes into a reliable required lane.
+  - 2026-03-07: current local verify drift found `docs_sanity_tests` red due `docs/DB.md` schema lag; fixed header to `v33` to restore the first failing gate.
+  - 2026-03-07: added GitHub Actions host verify matrix (`ubuntu-latest`, `macos-14`) that runs `tools/verify.sh --ui-install --repo-guards` with network-provider smokes disabled.
+  - Remaining: add GitHub Actions coverage for host build/ctest/UI build and stabilize compose-required tests.
+- [ ] W=10 — Contract generation + UI decomposition: generate typed WebUI clients/schemas from OpenAPI, then split `useUiSettings` / `App.tsx` around connection state, run state, and team orchestration state.
+  - 2026-03-07: review identified duplicated manual contracts and `any`-heavy UI state as the main velocity risk after security/CI.
+  - 2026-03-07: extracted connection-profile normalization/secret merge helpers from `useUiSettings.ts` into `ui/src/hooks/uiSettingsProfiles.ts`; UI build stayed green.
+  - 2026-03-07: fixed OpenAPI bundle issues blocking codegen (broken internal `$ref`s, missing exported schemas, invalid duplicate/quoted YAML entries).
+  - 2026-03-07: added `tools/generate_ui_openapi_types.sh`, pinned `openapi-typescript`, and wired `npm run openapi:types:check` into `tools/verify.sh`.
+  - 2026-03-07: corrected `client_prefs` OpenAPI to match real generic server behavior (connection profiles plus workflow/run-watch/team cursor prefs) and added missing diagnostics `sandbox_mount_allowlist` contract.
+  - 2026-03-07: bound `ui/src/api/schemas/daemon.ts` to generated agentd types for health/caps/diagnostics/client-prefs/sandbox validation and removed several `any` fields.
+  - 2026-03-07: bound the high-traffic broker list/replay schemas (`agents`, `deployments`, `members`, `membership_audit`, `connectors`, `events/replay`) to generated broker types.
+  - 2026-03-07: extracted typed run-watch parsing/merge helpers from `App.tsx` into `ui/src/runWatchPrefs.ts` and updated `ui/src/jobStore.ts` to use typed run-watch entries.
+  - 2026-03-07: bound the broker team/member/quorum/run/orchestrator/guidance schemas to generated OpenAPI types, keeping explicit widening only for live fields still ahead of the published component contracts (for example `member_sessions` on team run status).
+  - 2026-03-07: extracted team event cursor parsing and replay-event normalization from `BrokerTeamConsole.tsx` into `ui/src/components/broker/teamEventPrefs.ts`, typed broker agent/deployment state in the console, and removed additional `any` payload handling from broker event rendering.
+
 - [x] W=14 — Orchestrator ownership + lease takeover: prevent split-brain while keeping automation always-on.
   - 2026-02-26: added `expected_owner` guard to orchestrator run update/heartbeat and orchestrator loop claim via `meta.orchestrator_owner`.
   - 2026-02-26: orchestrator loop can take over stale/missing leases when `allow_takeover=true`.

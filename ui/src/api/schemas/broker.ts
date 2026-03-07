@@ -1,490 +1,230 @@
 import { z } from "zod";
+import type { components as BrokerComponents, paths as BrokerPaths } from "../generated/broker-openapi";
 
-export const BrokerAgentsRespSchema = z
+type BrokerErrorFields = {
+  error?: string;
+  err?: string;
+  code?: string;
+};
+
+export type BrokerAgentsResp =
+  BrokerPaths["/v1/agents"]["get"]["responses"][200]["content"]["application/json"] & BrokerErrorFields;
+export type BrokerDeploymentsResp = BrokerComponents["schemas"]["AgentDeploymentsResponse"] & BrokerErrorFields;
+export type BrokerMembersResp =
+  BrokerPaths["/v1/agents/{agent_id}/members"]["get"]["responses"][200]["content"]["application/json"] & BrokerErrorFields;
+export type BrokerMembershipAuditResp =
+  BrokerPaths["/v1/agents/{agent_id}/membership_audit"]["get"]["responses"][200]["content"]["application/json"] &
+    BrokerErrorFields;
+export type BrokerConnector = BrokerComponents["schemas"]["ConnectorInfo"];
+export type BrokerConnectorsResp = BrokerComponents["schemas"]["ConnectorListResponse"] & BrokerErrorFields;
+export type BrokerEvent = BrokerComponents["schemas"]["BrokerEvent"];
+export type BrokerEventsReplayResp = BrokerComponents["schemas"]["BrokerEventsReplayResponse"] & BrokerErrorFields;
+
+type AgentInfo = BrokerComponents["schemas"]["AgentInfo"];
+type DeploymentInfo = BrokerComponents["schemas"]["DeploymentInfo"];
+type AgentMember = BrokerComponents["schemas"]["AgentMember"];
+type MembershipAuditRow = BrokerComponents["schemas"]["MembershipAuditRow"];
+export type BrokerAgentInfo = AgentInfo;
+export type BrokerDeploymentInfo = DeploymentInfo;
+type BrokerTeamRunGoalContract = BrokerComponents["schemas"]["TeamRunGoalContract"];
+type BrokerTeamRunGoalEvent = BrokerComponents["schemas"]["TeamRunGoalEvent"];
+type BrokerTeamRunHandoffEvent = BrokerComponents["schemas"]["TeamRunHandoffEvent"];
+export type BrokerOrchestratorRun = BrokerComponents["schemas"]["OrchestratorRun"];
+export type BrokerOrchestratorRunResp = BrokerComponents["schemas"]["OrchestratorRunResponse"] & BrokerErrorFields;
+export type BrokerOrchestratorRunListResp = BrokerComponents["schemas"]["OrchestratorRunListResponse"] & BrokerErrorFields;
+export type BrokerOrchestratorSpawnRequest = BrokerComponents["schemas"]["OrchestratorSpawnRequest"];
+export type BrokerOrchestratorSpawnRequestResp =
+  BrokerComponents["schemas"]["OrchestratorSpawnRequestResponse"] & BrokerErrorFields;
+export type BrokerOrchestratorSpawnRequestListResp =
+  BrokerComponents["schemas"]["OrchestratorSpawnRequestListResponse"] & BrokerErrorFields;
+export type BrokerTeam = BrokerComponents["schemas"]["Team"];
+export type BrokerTeamListResp = BrokerComponents["schemas"]["TeamListResponse"] & BrokerErrorFields;
+export type BrokerTeamCreateResp = BrokerComponents["schemas"]["TeamCreateResponse"] & BrokerErrorFields;
+export type BrokerTeamGetResp = BrokerComponents["schemas"]["TeamGetResponse"] & BrokerErrorFields;
+export type BrokerTeamDeleteResp = BrokerComponents["schemas"]["TeamDeleteResponse"] & BrokerErrorFields;
+export type BrokerTeamMember = BrokerComponents["schemas"]["TeamMember"];
+export type BrokerTeamMemberListResp = BrokerComponents["schemas"]["TeamMemberListResponse"] & BrokerErrorFields;
+export type BrokerTeamMemberUpsertResp = BrokerComponents["schemas"]["TeamMemberUpsertResponse"] & BrokerErrorFields;
+export type BrokerTeamQuorumRule = BrokerComponents["schemas"]["TeamQuorumRule"];
+export type BrokerTeamQuorumRuleListResp =
+  BrokerComponents["schemas"]["TeamQuorumRuleListResponse"] & BrokerErrorFields;
+export type BrokerTeamQuorumRuleUpsertResp =
+  BrokerComponents["schemas"]["TeamQuorumRuleUpsertResponse"] & BrokerErrorFields;
+type BrokerTeamRunRuntimeMember = BrokerComponents["schemas"]["TeamRunRuntimeMember"];
+type BrokerTeamRunMemberJob = BrokerComponents["schemas"]["TeamRunMemberJob"];
+type BrokerTeamRunMemberJobSummary = BrokerComponents["schemas"]["TeamRunMemberJobSummary"];
+type BrokerTeamRunCancelResult = BrokerComponents["schemas"]["TeamRunCancelResult"];
+type BrokerTeamRunDispatchError = BrokerComponents["schemas"]["TeamRunDispatchError"];
+export type BrokerTeamRunResp = BrokerComponents["schemas"]["TeamRunResponse"] & BrokerErrorFields;
+export type BrokerTeamRunSummary = BrokerComponents["schemas"]["TeamRunSummary"];
+export type BrokerTeamRunListResp = BrokerComponents["schemas"]["TeamRunListResponse"] & BrokerErrorFields;
+export type BrokerTeamRunStatusResp = BrokerComponents["schemas"]["TeamRunStatusResponse"] & {
+  member_sessions?: Record<string, string>;
+  goal_updated_unix_ms?: number;
+  goal_events_updated_unix_ms?: number;
+  handoff_events_updated_unix_ms?: number;
+} & BrokerErrorFields;
+export type BrokerTeamRunGoalUpdateResp = BrokerComponents["schemas"]["TeamRunGoalUpdateResponse"] & BrokerErrorFields;
+export type BrokerTeamRunHandoffResp = BrokerComponents["schemas"]["TeamRunHandoffUpdateResponse"] & BrokerErrorFields;
+type BrokerTeamRunModeratorDispatch = BrokerComponents["schemas"]["TeamRunModeratorDispatch"];
+type BrokerTeamRunModeratorSkipped = BrokerComponents["schemas"]["TeamRunModeratorSkipped"];
+type BrokerTeamRunModeratorEvent = BrokerComponents["schemas"]["TeamRunModeratorEvent"];
+export type BrokerTeamRunModeratorResp = BrokerComponents["schemas"]["TeamRunModeratorResponse"] & BrokerErrorFields;
+export type BrokerTeamRunModeratorEventsResp =
+  BrokerComponents["schemas"]["TeamRunModeratorEventsResponse"] & BrokerErrorFields;
+export type BrokerTeamRunApproval = BrokerComponents["schemas"]["TeamRunApproval"];
+export type BrokerTeamRunApprovalListResp =
+  BrokerComponents["schemas"]["TeamRunApprovalListResponse"] & BrokerErrorFields;
+export type BrokerGuidanceEvent = BrokerComponents["schemas"]["GuidanceEvent"];
+export type BrokerGuidanceReceipt = BrokerComponents["schemas"]["GuidanceReceipt"];
+
+const UnknownRecordSchema = z.record(z.string(), z.unknown());
+const DeploymentInfoSchema: z.ZodType<DeploymentInfo> = z
+  .object({
+    deployment_id: z.string(),
+    connected: z.boolean(),
+    connected_unix_ms: z.number().int().nonnegative().optional(),
+    last_seen_unix_ms: z.number().int().nonnegative().optional(),
+    remote_addr: z.string().optional(),
+    meta: UnknownRecordSchema.optional(),
+  })
+  .passthrough();
+
+const AgentInfoSchema: z.ZodType<AgentInfo> = z
+  .object({
+    agent_id: z.string(),
+    enabled: z.boolean(),
+    created_unix_ms: z.number().int().nonnegative(),
+    owner_sub: z.string(),
+    connected: z.boolean(),
+    connected_unix_ms: z.number().int().nonnegative().optional(),
+    last_seen_unix_ms: z.number().int().nonnegative().optional(),
+    remote_addr: z.string().optional(),
+    labels: UnknownRecordSchema.optional(),
+    meta: UnknownRecordSchema.optional(),
+    deployments: z.array(DeploymentInfoSchema).optional(),
+  })
+  .passthrough();
+
+const AgentMemberSchema: z.ZodType<AgentMember> = z
+  .object({
+    user_sub: z.string(),
+    role: z.string(),
+    created_unix_ms: z.number().int().nonnegative(),
+  })
+  .passthrough();
+
+const MembershipAuditRowSchema: z.ZodType<MembershipAuditRow> = z
+  .object({
+    ts_unix_ms: z.number().int().nonnegative(),
+    actor_sub: z.string(),
+    target_sub: z.string(),
+    agent_id: z.string(),
+    action: z.string(),
+    role: z.string().optional(),
+    trace_id: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerAgentsRespSchema: z.ZodType<BrokerAgentsResp> = z
   .object({
     ok: z.boolean(),
-    agents: z
-      .array(
-        z
-          .object({
-            agent_id: z.string(),
-            enabled: z.boolean().optional(),
-            created_unix_ms: z.number().optional(),
-            owner_sub: z.string().optional(),
-            connected: z.boolean().optional(),
-            connected_unix_ms: z.number().optional(),
-            last_seen_unix_ms: z.number().optional(),
-            remote_addr: z.string().optional(),
-            labels: z.record(z.any()).optional(),
-            meta: z.record(z.any()).optional(),
-            deployments: z
-              .array(
-                z
-                  .object({
-                    deployment_id: z.string().optional(),
-                    connected: z.boolean().optional(),
-                    connected_unix_ms: z.number().optional(),
-                    last_seen_unix_ms: z.number().optional(),
-                    remote_addr: z.string().optional(),
-                    meta: z.record(z.any()).optional(),
-                  })
-                  .passthrough(),
-              )
-              .optional(),
-          })
-          .passthrough(),
-      )
-      .optional(),
+    agents: z.array(AgentInfoSchema),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
   })
   .passthrough();
-export type BrokerAgentsResp = z.infer<typeof BrokerAgentsRespSchema>;
 
-export const BrokerDeploymentsRespSchema = z
+export const BrokerDeploymentsRespSchema: z.ZodType<BrokerDeploymentsResp> = z
   .object({
     ok: z.boolean(),
-    agent_id: z.string().optional(),
+    agent_id: z.string(),
     default_deployment_id: z.string().optional(),
-    deployments: z
-      .array(
-        z
-          .object({
-            deployment_id: z.string().optional(),
-            connected: z.boolean().optional(),
-            connected_unix_ms: z.number().optional(),
-            last_seen_unix_ms: z.number().optional(),
-            remote_addr: z.string().optional(),
-            meta: z.record(z.any()).optional(),
-          })
-          .passthrough(),
-      )
-      .optional(),
+    deployments: z.array(DeploymentInfoSchema),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
   })
   .passthrough();
-export type BrokerDeploymentsResp = z.infer<typeof BrokerDeploymentsRespSchema>;
 
-export const BrokerMembersRespSchema = z
+export const BrokerMembersRespSchema: z.ZodType<BrokerMembersResp> = z
   .object({
     ok: z.boolean(),
-    agent_id: z.string().optional(),
-    owner_sub: z.string().optional(),
-    members: z
-      .array(
-        z
-          .object({
-            user_sub: z.string(),
-            role: z.string().optional(),
-            created_unix_ms: z.number().optional(),
-          })
-          .passthrough(),
-      )
-      .optional(),
+    agent_id: z.string(),
+    owner_sub: z.string(),
+    members: z.array(AgentMemberSchema),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
   })
   .passthrough();
-export type BrokerMembersResp = z.infer<typeof BrokerMembersRespSchema>;
 
-export const BrokerMembershipAuditRespSchema = z
+export const BrokerMembershipAuditRespSchema: z.ZodType<BrokerMembershipAuditResp> = z
   .object({
     ok: z.boolean(),
-    agent_id: z.string().optional(),
-    owner_sub: z.string().optional(),
-    audit: z
-      .array(
-        z
-          .object({
-            ts_unix_ms: z.number().optional(),
-            actor_sub: z.string().optional(),
-            target_sub: z.string().optional(),
-            action: z.string().optional(),
-            role: z.string().optional(),
-            trace_id: z.string().optional(),
-          })
-          .passthrough(),
-      )
-      .optional(),
+    agent_id: z.string(),
+    owner_sub: z.string(),
+    audit: z.array(MembershipAuditRowSchema),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
   })
   .passthrough();
-export type BrokerMembershipAuditResp = z.infer<typeof BrokerMembershipAuditRespSchema>;
 
-export const BrokerConnectorSchema = z
+export const BrokerConnectorSchema: z.ZodType<BrokerConnector> = z
   .object({
     id: z.string(),
     name: z.string().optional(),
     kind: z.string().optional(),
     status: z.string().optional(),
     description: z.string().optional(),
-    last_seen_unix_ms: z.number().optional(),
+    last_seen_unix_ms: z.number().int().nonnegative().optional(),
     last_error: z.string().optional(),
-    meta: z.record(z.any()).optional(),
+    meta: UnknownRecordSchema.optional(),
   })
   .passthrough();
 
-export const BrokerConnectorsRespSchema = z
+export const BrokerConnectorsRespSchema: z.ZodType<BrokerConnectorsResp> = z
   .object({
     ok: z.boolean(),
-    count: z.number().optional(),
-    connectors: z.array(BrokerConnectorSchema).optional(),
+    count: z.number().int().nonnegative().optional(),
+    connectors: z.array(BrokerConnectorSchema),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
   })
   .passthrough();
-export type BrokerConnectorsResp = z.infer<typeof BrokerConnectorsRespSchema>;
 
-export const BrokerEventSchema = z
+export const BrokerEventSchema: z.ZodType<BrokerEvent> = z
   .object({
     type: z.string(),
-    ts_unix_ms: z.number().optional(),
+    ts_unix_ms: z.number().int().nonnegative(),
     agent_id: z.string().optional(),
     user_sub: z.string().optional(),
     event_id: z.string().optional(),
     trace_id: z.string().optional(),
-    payload: z.record(z.any()).optional(),
-    extra: z.record(z.any()).optional(),
+    payload: UnknownRecordSchema.optional(),
+    extra: UnknownRecordSchema.optional(),
   })
   .passthrough();
-export type BrokerEvent = z.infer<typeof BrokerEventSchema>;
 
-export const BrokerEventsReplayRespSchema = z
+export const BrokerEventsReplayRespSchema: z.ZodType<BrokerEventsReplayResp> = z
   .object({
     ok: z.boolean(),
     user_sub: z.string().optional(),
-    since_ts: z.number().optional(),
-    next_since_ts: z.number().optional(),
-    limit: z.number().optional(),
-    count: z.number().optional(),
-    events: z.array(BrokerEventSchema).optional(),
+    since_ts: z.number().int().nonnegative().optional(),
+    next_since_ts: z.number().int().nonnegative().optional(),
+    limit: z.number().int().nonnegative().optional(),
+    count: z.number().int().nonnegative().optional(),
+    events: z.array(BrokerEventSchema),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
   })
   .passthrough();
-export type BrokerEventsReplayResp = z.infer<typeof BrokerEventsReplayRespSchema>;
 
-export const BrokerOrchestratorRunSchema = z
-  .object({
-    orchestrator_run_id: z.string(),
-    team_id: z.string().optional(),
-    status: z.string().optional(),
-    goal: z.string().optional(),
-    created_by: z.string().optional(),
-    created_unix_ms: z.number().optional(),
-    updated_unix_ms: z.number().optional(),
-    last_heartbeat_unix_ms: z.number().optional(),
-    heartbeat_age_ms: z.number().optional(),
-    lease_timeout_ms: z.number().optional(),
-    lease_status: z.string().optional(),
-    goal_contract: z.record(z.any()).optional(),
-    role_plan_snapshot: z.record(z.any()).optional(),
-    meta: z.record(z.any()).optional(),
-  })
-  .passthrough();
-export type BrokerOrchestratorRun = z.infer<typeof BrokerOrchestratorRunSchema>;
-
-export const BrokerOrchestratorRunRespSchema = z
-  .object({
-    ok: z.boolean(),
-    team_id: z.string().optional(),
-    run: BrokerOrchestratorRunSchema.optional(),
-    error: z.string().optional(),
-    err: z.string().optional(),
-    code: z.string().optional(),
-  })
-  .passthrough();
-export type BrokerOrchestratorRunResp = z.infer<typeof BrokerOrchestratorRunRespSchema>;
-
-export const BrokerOrchestratorRunListRespSchema = z
-  .object({
-    ok: z.boolean(),
-    team_id: z.string().optional(),
-    runs: z.array(BrokerOrchestratorRunSchema).optional(),
-    limit: z.number().optional(),
-    offset: z.number().optional(),
-    status: z.string().optional(),
-    error: z.string().optional(),
-    err: z.string().optional(),
-    code: z.string().optional(),
-  })
-  .passthrough();
-export type BrokerOrchestratorRunListResp = z.infer<typeof BrokerOrchestratorRunListRespSchema>;
-
-export const BrokerOrchestratorSpawnRequestSchema = z
-  .object({
-    spawn_request_id: z.string(),
-    team_id: z.string().optional(),
-    orchestrator_run_id: z.string().optional(),
-    role: z.string().optional(),
-    count: z.number().optional(),
-    status: z.string().optional(),
-    requirements: z.record(z.any()).optional(),
-    assigned_members: z.array(z.record(z.any())).optional(),
-    error: z.string().optional(),
-    created_by: z.string().optional(),
-    created_unix_ms: z.number().optional(),
-    updated_unix_ms: z.number().optional(),
-    meta: z.record(z.any()).optional(),
-  })
-  .passthrough();
-export type BrokerOrchestratorSpawnRequest = z.infer<typeof BrokerOrchestratorSpawnRequestSchema>;
-
-export const BrokerOrchestratorSpawnRequestRespSchema = z
-  .object({
-    ok: z.boolean(),
-    team_id: z.string().optional(),
-    spawn_request: BrokerOrchestratorSpawnRequestSchema.optional(),
-    error: z.string().optional(),
-    err: z.string().optional(),
-    code: z.string().optional(),
-  })
-  .passthrough();
-export type BrokerOrchestratorSpawnRequestResp = z.infer<typeof BrokerOrchestratorSpawnRequestRespSchema>;
-
-export const BrokerOrchestratorSpawnRequestListRespSchema = z
-  .object({
-    ok: z.boolean(),
-    team_id: z.string().optional(),
-    spawn_requests: z.array(BrokerOrchestratorSpawnRequestSchema).optional(),
-    limit: z.number().optional(),
-    offset: z.number().optional(),
-    status: z.string().optional(),
-    orchestrator_run_id: z.string().optional(),
-    error: z.string().optional(),
-    err: z.string().optional(),
-    code: z.string().optional(),
-  })
-  .passthrough();
-export type BrokerOrchestratorSpawnRequestListResp = z.infer<typeof BrokerOrchestratorSpawnRequestListRespSchema>;
-
-export const BrokerTeamSchema = z
-  .object({
-    team_id: z.string(),
-    owner_sub: z.string().optional(),
-    display_name: z.string().optional(),
-    created_unix_ms: z.number().optional(),
-    tags: z.array(z.string()).optional(),
-    policy_ref: z.string().optional(),
-    shared_memory_scope_id: z.string().optional(),
-    meta: z.record(z.any()).optional(),
-  })
-  .passthrough();
-export type BrokerTeam = z.infer<typeof BrokerTeamSchema>;
-
-export const BrokerTeamListRespSchema = z
-  .object({
-    ok: z.boolean(),
-    teams: z.array(BrokerTeamSchema).optional(),
-    error: z.string().optional(),
-    err: z.string().optional(),
-    code: z.string().optional(),
-  })
-  .passthrough();
-export type BrokerTeamListResp = z.infer<typeof BrokerTeamListRespSchema>;
-
-export const BrokerTeamCreateRespSchema = z
-  .object({
-    ok: z.boolean(),
-    team: BrokerTeamSchema.optional(),
-    error: z.string().optional(),
-    err: z.string().optional(),
-    code: z.string().optional(),
-  })
-  .passthrough();
-export type BrokerTeamCreateResp = z.infer<typeof BrokerTeamCreateRespSchema>;
-
-export const BrokerTeamGetRespSchema = z
-  .object({
-    ok: z.boolean(),
-    team: BrokerTeamSchema.optional(),
-    error: z.string().optional(),
-    err: z.string().optional(),
-    code: z.string().optional(),
-  })
-  .passthrough();
-export type BrokerTeamGetResp = z.infer<typeof BrokerTeamGetRespSchema>;
-
-export const BrokerTeamDeleteRespSchema = z
-  .object({
-    ok: z.boolean(),
-    error: z.string().optional(),
-    err: z.string().optional(),
-    code: z.string().optional(),
-  })
-  .passthrough();
-export type BrokerTeamDeleteResp = z.infer<typeof BrokerTeamDeleteRespSchema>;
-
-export const BrokerTeamMemberSchema = z
-  .object({
-    member_id: z.string(),
-    team_id: z.string().optional(),
-    deployment_id: z.string().optional(),
-    agent_id: z.string().optional(),
-    role: z.string().optional(),
-    capabilities: z.array(z.string()).optional(),
-    status: z.string().optional(),
-    weight: z.number().optional(),
-    created_unix_ms: z.number().optional(),
-    meta: z.record(z.any()).optional(),
-  })
-  .passthrough();
-export type BrokerTeamMember = z.infer<typeof BrokerTeamMemberSchema>;
-
-export const BrokerTeamMemberListRespSchema = z
-  .object({
-    ok: z.boolean(),
-    team_id: z.string().optional(),
-    members: z.array(BrokerTeamMemberSchema).optional(),
-    error: z.string().optional(),
-    err: z.string().optional(),
-    code: z.string().optional(),
-  })
-  .passthrough();
-export type BrokerTeamMemberListResp = z.infer<typeof BrokerTeamMemberListRespSchema>;
-
-export const BrokerTeamMemberUpsertRespSchema = z
-  .object({
-    ok: z.boolean(),
-    member: BrokerTeamMemberSchema.optional(),
-    error: z.string().optional(),
-    err: z.string().optional(),
-    code: z.string().optional(),
-  })
-  .passthrough();
-export type BrokerTeamMemberUpsertResp = z.infer<typeof BrokerTeamMemberUpsertRespSchema>;
-
-export const BrokerTeamQuorumRuleSchema = z
-  .object({
-    rule_id: z.string(),
-    team_id: z.string().optional(),
-    action: z.string().optional(),
-    tool_names: z.array(z.string()).optional(),
-    min_approvals: z.number().optional(),
-    role_allowlist: z.array(z.string()).optional(),
-    require_distinct_roles: z.boolean().optional(),
-    timeout_ms: z.number().optional(),
-    quorum_mode: z.string().optional(),
-    created_unix_ms: z.number().optional(),
-    meta: z.record(z.any()).optional(),
-  })
-  .passthrough();
-export type BrokerTeamQuorumRule = z.infer<typeof BrokerTeamQuorumRuleSchema>;
-
-export const BrokerTeamQuorumRuleListRespSchema = z
-  .object({
-    ok: z.boolean(),
-    team_id: z.string().optional(),
-    rules: z.array(BrokerTeamQuorumRuleSchema).optional(),
-    error: z.string().optional(),
-    err: z.string().optional(),
-    code: z.string().optional(),
-  })
-  .passthrough();
-export type BrokerTeamQuorumRuleListResp = z.infer<typeof BrokerTeamQuorumRuleListRespSchema>;
-
-export const BrokerTeamQuorumRuleUpsertRespSchema = z
-  .object({
-    ok: z.boolean(),
-    rule: BrokerTeamQuorumRuleSchema.optional(),
-    error: z.string().optional(),
-    err: z.string().optional(),
-    code: z.string().optional(),
-  })
-  .passthrough();
-export type BrokerTeamQuorumRuleUpsertResp = z.infer<typeof BrokerTeamQuorumRuleUpsertRespSchema>;
-
-export const BrokerTeamRunMemberJobSchema = z
-  .object({
-    member_id: z.string().optional(),
-    agent_id: z.string().optional(),
-    deployment_id: z.string().optional(),
-    job_id: z.string().optional(),
-    status: z.string().optional(),
-    ok: z.boolean().optional(),
-    error: z.string().optional(),
-    http_status: z.number().optional(),
-    updated_unix_ms: z.number().optional(),
-    dispatch_error: z.string().optional(),
-  })
-  .passthrough();
-
-export const BrokerTeamRunMemberJobSummarySchema = z
-  .object({
-    total: z.number().optional(),
-    queued: z.number().optional(),
-    running: z.number().optional(),
-    done: z.number().optional(),
-    error: z.number().optional(),
-    cancelled: z.number().optional(),
-    interrupted: z.number().optional(),
-    unknown: z.number().optional(),
-    ok: z.number().optional(),
-    failed: z.number().optional(),
-    dispatch_errors: z.number().optional(),
-  })
-  .passthrough();
-
-export const BrokerTeamRunCancelResultSchema = z
-  .object({
-    member_id: z.string().optional(),
-    agent_id: z.string().optional(),
-    deployment_id: z.string().optional(),
-    job_id: z.string().optional(),
-    ok: z.boolean().optional(),
-    error: z.string().optional(),
-    http_status: z.number().optional(),
-  })
-  .passthrough();
-
-export const BrokerTeamRunDispatchErrorSchema = z
-  .object({
-    member_id: z.string().optional(),
-    agent_id: z.string().optional(),
-    error: z.string().optional(),
-  })
-  .passthrough();
-
-export const BrokerTeamRunRespSchema = z
-  .object({
-    ok: z.boolean(),
-    team_id: z.string().optional(),
-    team_run_id: z.string().optional(),
-    status: z.string().optional(),
-    mode: z.string().optional(),
-    created_unix_ms: z.number().optional(),
-    member_jobs: z.array(BrokerTeamRunMemberJobSchema).optional(),
-    dispatch_errors: z.array(BrokerTeamRunDispatchErrorSchema).optional(),
-    member_job_summary: BrokerTeamRunMemberJobSummarySchema.optional(),
-    error: z.string().optional(),
-    err: z.string().optional(),
-    code: z.string().optional(),
-  })
-  .passthrough();
-export type BrokerTeamRunResp = z.infer<typeof BrokerTeamRunRespSchema>;
-
-export const BrokerTeamRunSummarySchema = z
-  .object({
-    team_id: z.string().optional(),
-    team_run_id: z.string().optional(),
-    status: z.string().optional(),
-    mode: z.string().optional(),
-    created_by: z.string().optional(),
-    created_unix_ms: z.number().optional(),
-    member_job_summary: BrokerTeamRunMemberJobSummarySchema.optional(),
-  })
-  .passthrough();
-export type BrokerTeamRunSummary = z.infer<typeof BrokerTeamRunSummarySchema>;
-
-export const BrokerTeamRunGoalContractSchema = z
+export const BrokerTeamRunGoalContractSchema: z.ZodType<BrokerTeamRunGoalContract> = z
   .object({
     goal: z.string().optional(),
     success_criteria: z.array(z.string()).optional(),
@@ -492,264 +232,534 @@ export const BrokerTeamRunGoalContractSchema = z
   })
   .passthrough();
 
-export const BrokerTeamRunGoalEventSchema = z
+export const BrokerTeamRunGoalEventSchema: z.ZodType<BrokerTeamRunGoalEvent> = z
   .object({
-    type: z.string().optional(),
-    ts_unix_ms: z.number().optional(),
+    type: z.string(),
+    ts_unix_ms: z.number().int().nonnegative(),
     message: z.string().optional(),
-    event_index: z.number().optional(),
-    data: z.record(z.any()).optional(),
+    event_index: z.number().int().nonnegative().optional(),
+    data: UnknownRecordSchema.optional(),
   })
   .passthrough();
 
-export const BrokerTeamRunHandoffEventSchema = z
+export const BrokerTeamRunHandoffEventSchema: z.ZodType<BrokerTeamRunHandoffEvent> = z
   .object({
-    from_role: z.string().optional(),
-    to_role: z.string().optional(),
+    from_role: z.string(),
+    to_role: z.string(),
     reason: z.string().optional(),
     message: z.string().optional(),
-    ts_unix_ms: z.number().optional(),
-    event_index: z.number().optional(),
-    data: z.record(z.any()).optional(),
+    ts_unix_ms: z.number().int().nonnegative(),
+    event_index: z.number().int().nonnegative().optional(),
+    data: UnknownRecordSchema.optional(),
   })
   .passthrough();
 
-export const BrokerTeamRunListRespSchema = z
+export const BrokerOrchestratorRunSchema: z.ZodType<BrokerOrchestratorRun> = z
+  .object({
+    orchestrator_run_id: z.string(),
+    team_id: z.string(),
+    status: z.string(),
+    goal: z.string().optional(),
+    created_by: z.string().optional(),
+    created_unix_ms: z.number().int().nonnegative().optional(),
+    updated_unix_ms: z.number().int().nonnegative().optional(),
+    last_heartbeat_unix_ms: z.number().int().nonnegative().optional(),
+    heartbeat_age_ms: z.number().int().nonnegative().optional(),
+    lease_timeout_ms: z.number().int().nonnegative().optional(),
+    lease_status: z.enum(["ok", "stale", "missing", "unknown"]).optional(),
+    goal_contract: z.lazy(() => BrokerTeamRunGoalContractSchema).optional(),
+    role_plan_snapshot: UnknownRecordSchema.optional(),
+    meta: UnknownRecordSchema.optional(),
+  })
+  .passthrough();
+
+export const BrokerOrchestratorRunRespSchema: z.ZodType<BrokerOrchestratorRunResp> = z
   .object({
     ok: z.boolean(),
-    team_id: z.string().optional(),
-    limit: z.number().optional(),
-    offset: z.number().optional(),
-    status: z.string().optional(),
-    runs: z.array(BrokerTeamRunSummarySchema).optional(),
+    team_id: z.string(),
+    run: BrokerOrchestratorRunSchema,
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
   })
   .passthrough();
-export type BrokerTeamRunListResp = z.infer<typeof BrokerTeamRunListRespSchema>;
 
-export const BrokerTeamRunStatusRespSchema = z
+export const BrokerOrchestratorRunListRespSchema: z.ZodType<BrokerOrchestratorRunListResp> = z
   .object({
     ok: z.boolean(),
-    team_id: z.string().optional(),
-    team_run_id: z.string().optional(),
+    team_id: z.string(),
+    runs: z.array(BrokerOrchestratorRunSchema),
+    limit: z.number().int().nonnegative().optional(),
+    offset: z.number().int().nonnegative().optional(),
     status: z.string().optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerOrchestratorSpawnRequestSchema: z.ZodType<BrokerOrchestratorSpawnRequest> = z
+  .object({
+    spawn_request_id: z.string(),
+    team_id: z.string(),
+    orchestrator_run_id: z.string().optional(),
+    role: z.string(),
+    count: z.number().int().nonnegative(),
+    status: z.string(),
+    requirements: UnknownRecordSchema.optional(),
+    assigned_members: z.array(UnknownRecordSchema).optional(),
+    error: z.string().optional(),
+    created_by: z.string().optional(),
+    created_unix_ms: z.number().int().nonnegative().optional(),
+    updated_unix_ms: z.number().int().nonnegative().optional(),
+    meta: UnknownRecordSchema.optional(),
+  })
+  .passthrough();
+
+export const BrokerOrchestratorSpawnRequestRespSchema: z.ZodType<BrokerOrchestratorSpawnRequestResp> = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string(),
+    spawn_request: BrokerOrchestratorSpawnRequestSchema,
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerOrchestratorSpawnRequestListRespSchema: z.ZodType<BrokerOrchestratorSpawnRequestListResp> = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string(),
+    spawn_requests: z.array(BrokerOrchestratorSpawnRequestSchema),
+    limit: z.number().int().nonnegative().optional(),
+    offset: z.number().int().nonnegative().optional(),
+    status: z.string().optional(),
+    orchestrator_run_id: z.string().optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamSchema: z.ZodType<BrokerTeam> = z
+  .object({
+    team_id: z.string(),
+    display_name: z.string(),
+    created_by: z.string().optional(),
+    created_unix_ms: z.number().int().nonnegative(),
+    tags: z.array(z.string()).optional(),
+    policy_ref: z.string().optional(),
+    shared_memory_scope_id: z.string().optional(),
+    meta: UnknownRecordSchema.optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamListRespSchema: z.ZodType<BrokerTeamListResp> = z
+  .object({
+    ok: z.boolean(),
+    teams: z.array(BrokerTeamSchema),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamCreateRespSchema: z.ZodType<BrokerTeamCreateResp> = z
+  .object({
+    ok: z.boolean(),
+    team: BrokerTeamSchema,
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamGetRespSchema: z.ZodType<BrokerTeamGetResp> = z
+  .object({
+    ok: z.boolean(),
+    team: BrokerTeamSchema,
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamDeleteRespSchema: z.ZodType<BrokerTeamDeleteResp> = z
+  .object({
+    ok: z.boolean(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamMemberSchema: z.ZodType<BrokerTeamMember> = z
+  .object({
+    member_id: z.string(),
+    team_id: z.string(),
+    deployment_id: z.string().optional(),
+    agent_id: z.string().optional(),
+    role: z.string(),
+    capabilities: z.array(z.string()).optional(),
+    status: z.string(),
+    weight: z.number().int().optional(),
+    created_unix_ms: z.number().int().nonnegative(),
+    meta: UnknownRecordSchema.optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamMemberListRespSchema: z.ZodType<BrokerTeamMemberListResp> = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string(),
+    members: z.array(BrokerTeamMemberSchema),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamMemberUpsertRespSchema: z.ZodType<BrokerTeamMemberUpsertResp> = z
+  .object({
+    ok: z.boolean(),
+    member: BrokerTeamMemberSchema,
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamQuorumRuleSchema: z.ZodType<BrokerTeamQuorumRule> = z
+  .object({
+    rule_id: z.string(),
+    team_id: z.string(),
+    action: z.string(),
+    tool_names: z.array(z.string()).optional(),
+    min_approvals: z.number().int().nonnegative(),
+    role_allowlist: z.array(z.string()).optional(),
+    require_distinct_roles: z.boolean().optional(),
+    timeout_ms: z.number().int().nonnegative().optional(),
+    quorum_mode: z.string(),
+    created_unix_ms: z.number().int().nonnegative().optional(),
+    meta: UnknownRecordSchema.optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamQuorumRuleListRespSchema: z.ZodType<BrokerTeamQuorumRuleListResp> = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string(),
+    rules: z.array(BrokerTeamQuorumRuleSchema),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamQuorumRuleUpsertRespSchema: z.ZodType<BrokerTeamQuorumRuleUpsertResp> = z
+  .object({
+    ok: z.boolean(),
+    rule: BrokerTeamQuorumRuleSchema,
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamRunRuntimeMemberSchema: z.ZodType<BrokerTeamRunRuntimeMember> = z
+  .object({
+    member_id: z.string().optional(),
+    agent_id: z.string(),
+    deployment_id: z.string().optional(),
+    role: z.string(),
+    capabilities: z.array(z.string()).optional(),
+    status: z.string().optional(),
+    weight: z.number().int().optional(),
+    meta: UnknownRecordSchema.optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamRunMemberJobSchema: z.ZodType<BrokerTeamRunMemberJob> = z
+  .object({
+    member_id: z.string().optional(),
+    agent_id: z.string().optional(),
+    deployment_id: z.string().optional(),
+    job_id: z.string().optional(),
+    status: z.string().optional(),
+    ok: z.boolean().optional(),
+    error: z.string().optional(),
+    http_status: z.number().int().nonnegative().optional(),
+    updated_unix_ms: z.number().int().nonnegative().optional(),
+    dispatch_error: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamRunMemberJobSummarySchema: z.ZodType<BrokerTeamRunMemberJobSummary> = z
+  .object({
+    total: z.number().int().nonnegative().optional(),
+    queued: z.number().int().nonnegative().optional(),
+    running: z.number().int().nonnegative().optional(),
+    done: z.number().int().nonnegative().optional(),
+    error: z.number().int().nonnegative().optional(),
+    cancelled: z.number().int().nonnegative().optional(),
+    interrupted: z.number().int().nonnegative().optional(),
+    unknown: z.number().int().nonnegative().optional(),
+    ok: z.number().int().nonnegative().optional(),
+    failed: z.number().int().nonnegative().optional(),
+    dispatch_errors: z.number().int().nonnegative().optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamRunCancelResultSchema: z.ZodType<BrokerTeamRunCancelResult> = z
+  .object({
+    member_id: z.string().optional(),
+    agent_id: z.string().optional(),
+    deployment_id: z.string().optional(),
+    job_id: z.string().optional(),
+    ok: z.boolean().optional(),
+    error: z.string().optional(),
+    http_status: z.number().int().nonnegative().optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamRunDispatchErrorSchema: z.ZodType<BrokerTeamRunDispatchError> = z
+  .object({
+    member_id: z.string().optional(),
+    agent_id: z.string().optional(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamRunRespSchema: z.ZodType<BrokerTeamRunResp> = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string(),
+    team_run_id: z.string(),
+    status: z.string(),
     mode: z.string().optional(),
-    created_unix_ms: z.number().optional(),
+    created_unix_ms: z.number().int().nonnegative().optional(),
+    member_jobs: z.array(BrokerTeamRunMemberJobSchema).optional(),
+    member_sessions: z.record(z.string()).optional(),
+    dispatch_errors: z.array(BrokerTeamRunDispatchErrorSchema).optional(),
+    member_job_summary: BrokerTeamRunMemberJobSummarySchema.optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamRunSummarySchema: z.ZodType<BrokerTeamRunSummary> = z
+  .object({
+    team_id: z.string(),
+    team_run_id: z.string(),
+    status: z.string(),
+    mode: z.string().optional(),
+    created_by: z.string().optional(),
+    created_unix_ms: z.number().int().nonnegative().optional(),
+    member_job_summary: BrokerTeamRunMemberJobSummarySchema.optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamRunListRespSchema: z.ZodType<BrokerTeamRunListResp> = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string(),
+    limit: z.number().int().nonnegative().optional(),
+    offset: z.number().int().nonnegative().optional(),
+    status: z.string().optional(),
+    runs: z.array(BrokerTeamRunSummarySchema),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamRunStatusRespSchema: z.ZodType<BrokerTeamRunStatusResp> = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string(),
+    team_run_id: z.string(),
+    status: z.string(),
+    mode: z.string().optional(),
+    created_unix_ms: z.number().int().nonnegative().optional(),
+    run_overrides_mode: z.string().optional(),
+    shared_memory_scope_id: z.string().optional(),
+    shared_memory_mode: z.string().optional(),
+    auto_allocate_roles: z.boolean().optional(),
+    auto_allocate_allocated_roles: z.array(z.string()).optional(),
+    auto_allocate_missing_roles: z.array(z.string()).optional(),
+    auto_allocate_warning: z.string().optional(),
+    goal_contract: BrokerTeamRunGoalContractSchema.optional(),
+    goal_events: z.array(BrokerTeamRunGoalEventSchema).optional(),
+    handoff_events: z.array(BrokerTeamRunHandoffEventSchema).optional(),
+    role_overrides_applied: UnknownRecordSchema.optional(),
+    member_overrides_applied: UnknownRecordSchema.optional(),
+    role_graph: UnknownRecordSchema.optional(),
+    role_instructions: z.record(z.string(), z.unknown()).optional(),
+    role_prompt_mode: z.string().optional(),
     members: z.array(BrokerTeamMemberSchema).optional(),
     member_sessions: z.record(z.string()).optional(),
+    runtime_members: z.array(BrokerTeamRunRuntimeMemberSchema).optional(),
     member_jobs: z.array(BrokerTeamRunMemberJobSchema).optional(),
     dispatch_errors: z.array(BrokerTeamRunDispatchErrorSchema).optional(),
     member_job_summary: BrokerTeamRunMemberJobSummarySchema.optional(),
-    cancel_requested_unix_ms: z.number().optional(),
+    cancel_requested_unix_ms: z.number().int().nonnegative().optional(),
     cancel_results: z.array(BrokerTeamRunCancelResultSchema).optional(),
-    run_overrides_mode: z.string().optional(),
-    role_overrides_applied: z.record(z.any()).optional(),
-    member_overrides_applied: z.record(z.any()).optional(),
-    role_graph: z.any().optional(),
-    role_instructions: z.record(z.any()).optional(),
-    role_prompt_mode: z.string().optional(),
-    runtime_members: z.array(z.record(z.any())).optional(),
-    goal_contract: BrokerTeamRunGoalContractSchema.optional(),
-    goal_updated_unix_ms: z.number().optional(),
-    goal_events: z.array(BrokerTeamRunGoalEventSchema).optional(),
-    goal_events_updated_unix_ms: z.number().optional(),
-    handoff_events: z.array(BrokerTeamRunHandoffEventSchema).optional(),
-    handoff_events_updated_unix_ms: z.number().optional(),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
   })
   .passthrough();
-export type BrokerTeamRunStatusResp = z.infer<typeof BrokerTeamRunStatusRespSchema>;
 
-export const BrokerTeamRunGoalUpdateRespSchema = z
+export const BrokerTeamRunGoalUpdateRespSchema: z.ZodType<BrokerTeamRunGoalUpdateResp> = z
   .object({
     ok: z.boolean(),
-    team_id: z.string().optional(),
-    team_run_id: z.string().optional(),
+    team_id: z.string(),
+    team_run_id: z.string(),
     goal_contract: BrokerTeamRunGoalContractSchema.optional(),
     goal_events: z.array(BrokerTeamRunGoalEventSchema).optional(),
-    goal_event_count: z.number().optional(),
+    goal_event_count: z.number().int().nonnegative().optional(),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
   })
   .passthrough();
-export type BrokerTeamRunGoalUpdateResp = z.infer<typeof BrokerTeamRunGoalUpdateRespSchema>;
 
-export const BrokerTeamRunHandoffRespSchema = z
+export const BrokerTeamRunHandoffRespSchema: z.ZodType<BrokerTeamRunHandoffResp> = z
   .object({
     ok: z.boolean(),
-    team_id: z.string().optional(),
-    team_run_id: z.string().optional(),
+    team_id: z.string(),
+    team_run_id: z.string(),
     handoff_events: z.array(BrokerTeamRunHandoffEventSchema).optional(),
-    handoff_event_count: z.number().optional(),
+    handoff_event_count: z.number().int().nonnegative().optional(),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
   })
   .passthrough();
-export type BrokerTeamRunHandoffResp = z.infer<typeof BrokerTeamRunHandoffRespSchema>;
 
-export const BrokerTeamRunModeratorRespSchema = z
+const BrokerTeamRunModeratorDispatchSchema: z.ZodType<BrokerTeamRunModeratorDispatch> = z
   .object({
-    ok: z.boolean(),
-    team_id: z.string().optional(),
-    team_run_id: z.string().optional(),
-    dispatched: z
-      .array(
-        z
-          .object({
-            member_id: z.string().optional(),
-            agent_id: z.string().optional(),
-            deployment_id: z.string().optional(),
-            session_id: z.string().optional(),
-            ok: z.boolean().optional(),
-            http_status: z.number().optional(),
-            error: z.string().optional(),
-          })
-          .passthrough(),
-      )
-      .optional(),
-    skipped: z
-      .array(
-        z
-          .object({
-            member_id: z.string().optional(),
-            agent_id: z.string().optional(),
-            reason: z.string().optional(),
-          })
-          .passthrough(),
-      )
-      .optional(),
-    error: z.string().optional(),
-    err: z.string().optional(),
-    code: z.string().optional(),
-  })
-  .passthrough();
-export type BrokerTeamRunModeratorResp = z.infer<typeof BrokerTeamRunModeratorRespSchema>;
-
-export const BrokerTeamRunModeratorEventsRespSchema = z
-  .object({
-    ok: z.boolean(),
-    team_id: z.string().optional(),
-    team_run_id: z.string().optional(),
-    events: z
-      .array(
-        z
-          .object({
-            member_id: z.string().optional(),
-            agent_id: z.string().optional(),
-            deployment_id: z.string().optional(),
-            session_id: z.string().optional(),
-            type: z.string().optional(),
-            ts_unix_ms: z.number().optional(),
-            event: z.record(z.any()).optional(),
-          })
-          .passthrough(),
-      )
-      .optional(),
-    errors: z
-      .array(
-        z
-          .object({
-            member_id: z.string().optional(),
-            agent_id: z.string().optional(),
-            deployment_id: z.string().optional(),
-            session_id: z.string().optional(),
-            ok: z.boolean().optional(),
-            http_status: z.number().optional(),
-            error: z.string().optional(),
-          })
-          .passthrough(),
-      )
-      .optional(),
-    skipped: z
-      .array(
-        z
-          .object({
-            member_id: z.string().optional(),
-            agent_id: z.string().optional(),
-            reason: z.string().optional(),
-          })
-          .passthrough(),
-      )
-      .optional(),
-    error: z.string().optional(),
-    err: z.string().optional(),
-    code: z.string().optional(),
-  })
-  .passthrough();
-export type BrokerTeamRunModeratorEventsResp = z.infer<typeof BrokerTeamRunModeratorEventsRespSchema>;
-
-export const BrokerTeamRunApprovalSchema = z
-  .object({
-    approval_id: z.string().optional(),
-    team_id: z.string().optional(),
-    team_run_id: z.string().optional(),
-    rule_id: z.string().optional(),
     member_id: z.string().optional(),
-    role: z.string().optional(),
-    decision: z.string().optional(),
+    agent_id: z.string().optional(),
+    deployment_id: z.string().optional(),
+    session_id: z.string().optional(),
+    ok: z.boolean().optional(),
+    http_status: z.number().int().nonnegative().optional(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+
+const BrokerTeamRunModeratorSkippedSchema: z.ZodType<BrokerTeamRunModeratorSkipped> = z
+  .object({
+    member_id: z.string().optional(),
+    agent_id: z.string().optional(),
+    reason: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamRunModeratorRespSchema: z.ZodType<BrokerTeamRunModeratorResp> = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string(),
+    team_run_id: z.string(),
+    dispatched: z.array(BrokerTeamRunModeratorDispatchSchema),
+    skipped: z.array(BrokerTeamRunModeratorSkippedSchema).optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+const BrokerTeamRunModeratorEventSchema: z.ZodType<BrokerTeamRunModeratorEvent> = z
+  .object({
+    member_id: z.string().optional(),
+    agent_id: z.string().optional(),
+    deployment_id: z.string().optional(),
+    session_id: z.string().optional(),
+    type: z.string().optional(),
+    ts_unix_ms: z.number().int().nonnegative().optional(),
+    event: UnknownRecordSchema.optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamRunModeratorEventsRespSchema: z.ZodType<BrokerTeamRunModeratorEventsResp> = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string(),
+    team_run_id: z.string(),
+    events: z.array(BrokerTeamRunModeratorEventSchema),
+    errors: z.array(BrokerTeamRunModeratorDispatchSchema).optional(),
+    skipped: z.array(BrokerTeamRunModeratorSkippedSchema).optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamRunApprovalSchema: z.ZodType<BrokerTeamRunApproval> = z
+  .object({
+    approval_id: z.string(),
+    team_id: z.string(),
+    team_run_id: z.string(),
+    rule_id: z.string(),
+    member_id: z.string(),
+    role: z.string(),
+    decision: z.string(),
     reason: z.string().optional(),
     created_by: z.string().optional(),
-    created_unix_ms: z.number().optional(),
+    created_unix_ms: z.number().int().nonnegative(),
   })
   .passthrough();
-export type BrokerTeamRunApproval = z.infer<typeof BrokerTeamRunApprovalSchema>;
 
-export const BrokerTeamRunApprovalListRespSchema = z
+export const BrokerTeamRunApprovalListRespSchema: z.ZodType<BrokerTeamRunApprovalListResp> = z
   .object({
     ok: z.boolean(),
-    team_id: z.string().optional(),
-    team_run_id: z.string().optional(),
-    approvals: z.array(BrokerTeamRunApprovalSchema).optional(),
+    team_id: z.string(),
+    team_run_id: z.string(),
+    approvals: z.array(BrokerTeamRunApprovalSchema),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
   })
   .passthrough();
-export type BrokerTeamRunApprovalListResp = z.infer<typeof BrokerTeamRunApprovalListRespSchema>;
 
-export const BrokerGuidanceEventSchema = z
+export const BrokerGuidanceEventSchema: z.ZodType<BrokerGuidanceEvent> = z
   .object({
-    guidance_id: z.string().optional(),
-    team_id: z.string().optional(),
+    guidance_id: z.string(),
+    team_id: z.string(),
     team_run_id: z.string().optional(),
-    kind: z.string().optional(),
-    priority: z.string().optional(),
-    message: z.string().optional(),
-    payload: z.record(z.any()).optional(),
+    kind: z.string(),
+    priority: z.string(),
+    message: z.string(),
+    payload: UnknownRecordSchema.optional(),
     target_roles: z.array(z.string()).optional(),
     target_member_ids: z.array(z.string()).optional(),
     target_agent_ids: z.array(z.string()).optional(),
     target_orchestrator_id: z.string().optional(),
     created_by: z.string().optional(),
     created_sub: z.string().optional(),
-    created_unix_ms: z.number().optional(),
-    expires_unix_ms: z.number().optional(),
-    status: z.string().optional(),
+    created_unix_ms: z.number().int().nonnegative(),
+    expires_unix_ms: z.number().int().nonnegative().optional(),
+    status: z.string(),
     acked_by: z.string().optional(),
-    acked_unix_ms: z.number().optional(),
+    acked_unix_ms: z.number().int().nonnegative().optional(),
     ack_note: z.string().optional(),
   })
   .passthrough();
-export type BrokerGuidanceEvent = z.infer<typeof BrokerGuidanceEventSchema>;
 
-export const BrokerGuidanceReceiptSchema = z
+export const BrokerGuidanceReceiptSchema: z.ZodType<BrokerGuidanceReceipt> = z
   .object({
-    id: z.number().optional(),
-    guidance_id: z.string().optional(),
-    ack_by: z.string().optional(),
+    id: z.number().int().nonnegative(),
+    guidance_id: z.string(),
+    ack_by: z.string(),
     ack_role: z.string().optional(),
-    ack_source: z.string().optional(),
+    ack_source: z.string(),
     ack_note: z.string().optional(),
-    acked_unix_ms: z.number().optional(),
+    acked_unix_ms: z.number().int().nonnegative(),
   })
   .passthrough();
-export type BrokerGuidanceReceipt = z.infer<typeof BrokerGuidanceReceiptSchema>;
 
 export const BrokerGuidanceListRespSchema = z
   .object({

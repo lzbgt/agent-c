@@ -23,3 +23,15 @@ For consumers that do not resolve `$ref` values, use:
 tools/openapi_bundle.py docs/openapi/agentd.yaml -o out/agentd.openapi.yaml
 tools/openapi_bundle.py docs/openapi/broker.yaml -o out/broker.openapi.yaml
 ```
+
+## WebUI generated types
+
+The WebUI now keeps generated TypeScript types under `ui/src/api/generated/`.
+Refresh them from the repo root with:
+
+```bash
+cd ui && npm run openapi:types
+```
+
+CI/local verification checks these files with `npm run openapi:types:check`,
+so OpenAPI edits need regenerated UI types in the same change.

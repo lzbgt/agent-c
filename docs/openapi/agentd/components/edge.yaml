@@ -49,7 +49,7 @@ EdgeTaskAssignRequest:
   properties:
     trace:
       type: object
-      description: Optional trace correlation object (best-effort). Recommended field: trace_id.
+      description: "Optional trace correlation object (best-effort). Recommended field: trace_id."
       additionalProperties: true
     node_id:
       type: string

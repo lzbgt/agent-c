@@ -21,7 +21,7 @@ ModeratorDirectiveRequest:
       type: object
       additionalProperties: true
     actor:
-      $ref: "#/ModeratorActor"
+      $ref: "#/components/schemas/ModeratorActor"
     append_to_session: { type: boolean }
     ts_unix_ms: { type: integer, format: int64 }
 
@@ -44,7 +44,7 @@ ModeratorTaskRequest:
       additionalProperties: true
     status: { type: string }
     actor:
-      $ref: "#/ModeratorActor"
+      $ref: "#/components/schemas/ModeratorActor"
     append_to_session: { type: boolean }
     ts_unix_ms: { type: integer, format: int64 }
 
@@ -54,7 +54,7 @@ ModeratorEvent:
     type: { type: string }
     ts_unix_ms: { type: integer, format: int64 }
     actor:
-      $ref: "#/ModeratorActor"
+      $ref: "#/components/schemas/ModeratorActor"
     data:
       type: object
       additionalProperties: true
@@ -69,7 +69,7 @@ ModeratorPostResponse:
     appended_to_session: { type: boolean }
     logged_to_client_events: { type: boolean }
     event:
-      $ref: "#/ModeratorEvent"
+      $ref: "#/components/schemas/ModeratorEvent"
 
 ModeratorEventsResponse:
   type: object
@@ -82,5 +82,5 @@ ModeratorEventsResponse:
     events:
       type: array
       items:
-        $ref: "#/ModeratorEvent"
+        $ref: "#/components/schemas/ModeratorEvent"
     error: { type: string }

@@ -78,7 +78,7 @@ export type BrokerTeamMembersPanelProps = {
   onDeleteMember: (memberId: string) => void;
   onSaveMemberEdit: () => void;
   onCancelMemberEdit: () => void;
-  onSetAllMemberStatus: (status: string) => void;
+  onSetAllMemberStatus: (status: "active" | "paused") => void;
   onRemovePausedMembers: () => void;
 };
 

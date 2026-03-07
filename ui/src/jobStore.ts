@@ -1,15 +1,17 @@
+import type { RunWatchByScope, RunWatchEntry } from "./runWatchPrefs";
+
 export const JOB_STORE_MAX = 64;
 export const JOB_STORE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function pruneJobsBySession(
   nowMs: number,
-  jobs: Record<string, any>,
+  jobs: RunWatchByScope,
   maxEntries: number = JOB_STORE_MAX,
   ttlMs: number = JOB_STORE_TTL_MS,
-): { next: Record<string, any>; changed: boolean } {
-  const entries: Array<{ key: string; value: any; ts: number }> = [];
+): { next: RunWatchByScope; changed: boolean } {
+  const entries: Array<{ key: string; value: RunWatchEntry; ts: number }> = [];
   for (const [key, value] of Object.entries(jobs)) {
-    if (!value || typeof value !== "object") continue;
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
     const tsRaw =
       typeof value.updated_unix_ms === "number"
         ? value.updated_unix_ms
@@ -19,7 +21,7 @@ export function pruneJobsBySession(
     entries.push({ key, value, ts: Number.isFinite(tsRaw) ? tsRaw : 0 });
   }
 
-  const next: Record<string, any> = {};
+  const next: RunWatchByScope = {};
   let changed = false;
 
   for (const e of entries) {

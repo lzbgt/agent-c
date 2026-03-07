@@ -17,6 +17,10 @@ import {
   apiBrokerTeamQuorumUpsert,
   apiBrokerTeamUpdate,
   type ApiAuth,
+  type BrokerAgentInfo,
+  type BrokerDeploymentInfo,
+  type BrokerEvent,
+  type BrokerTeam,
 } from "../../api";
 import useLocalStorageState from "../../hooks/useLocalStorageState";
 import FieldLabel from "../FieldLabel";
@@ -37,6 +41,7 @@ import {
   type RoleGraphEdge,
 } from "./teamRunUtils";
 import { GUIDANCE_EVENT_TYPES, ORCHESTRATOR_EVENT_TYPES, TEAM_RUN_EVENT_TYPES } from "./teamRunUtils";
+import { extractTeamEventsCursorByScope, normalizeBrokerReplayEvents } from "./teamEventPrefs";
 import type { BrokerEventRow, TeamCursorEntry, TeamMemberRow, TeamQuorumRuleRow } from "./types";
 
 const TEAM_EVENTS_MAX = 200;
@@ -60,22 +65,13 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
 
   const [teamsBusy, setTeamsBusy] = React.useState<boolean>(false);
   const [teamsError, setTeamsError] = React.useState<string | null>(null);
-  type TeamRow = {
-    team_id?: string;
-    display_name?: string;
-    owner_sub?: string;
-    created_unix_ms?: number;
-    tags?: string[];
-    policy_ref?: string;
-    shared_memory_scope_id?: string;
-    meta?: Record<string, any>;
-  };
+  type TeamRow = BrokerTeam & { owner_sub?: string };
 
   const [teams, setTeams] = React.useState<TeamRow[] | null>(null);
   const [teamId, setTeamId] = useLocalStorageState<string>("agentui.brokerTeamId", "");
   const [newTeamId, setNewTeamId] = React.useState<string>("");
   const [newTeamName, setNewTeamName] = React.useState<string>("");
-  const [teamDetails, setTeamDetails] = React.useState<any | null>(null);
+  const [teamDetails, setTeamDetails] = React.useState<TeamRow | null>(null);
   const [teamEditName, setTeamEditName] = React.useState<string>("");
   const [teamEditTags, setTeamEditTags] = React.useState<string>("");
   const [teamEditPolicyRef, setTeamEditPolicyRef] = React.useState<string>("");
@@ -212,7 +208,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [memberEditError, setMemberEditError] = React.useState<string | null>(null);
   const [memberAgentsBusy, setMemberAgentsBusy] = React.useState<boolean>(false);
   const [memberAgentsError, setMemberAgentsError] = React.useState<string | null>(null);
-  const [memberAgents, setMemberAgents] = React.useState<any[] | null>(null);
+  const [memberAgents, setMemberAgents] = React.useState<BrokerAgentInfo[] | null>(null);
 
   const [rulesBusy, setRulesBusy] = React.useState<boolean>(false);
   const [rulesError, setRulesError] = React.useState<string | null>(null);
@@ -237,24 +233,6 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   }, [props.authKey, props.base, teamIdTrimmed]);
   const teamPrefsClientId = React.useMemo(() => String(props.clientId || "webui"), [props.clientId]);
   const teamPrefsBase = React.useMemo(() => String(props.base || "").trim(), [props.base]);
-  const extractTeamEventsCursorByScope = React.useCallback((prefs: any): Record<string, TeamCursorEntry> => {
-    if (!prefs || typeof prefs !== "object") return {};
-    const raw = (prefs as any).team_events_cursor;
-    if (!raw || typeof raw !== "object") return {};
-    const byScope = (raw as any).by_scope;
-    if (!byScope || typeof byScope !== "object") return {};
-    const out: Record<string, TeamCursorEntry> = {};
-    for (const [key, value] of Object.entries(byScope)) {
-      if (!value || typeof value !== "object") continue;
-      const cursor = (value as any).cursor_ts;
-      if (typeof cursor !== "number" || !Number.isFinite(cursor) || cursor <= 0) continue;
-      out[key] = {
-        cursor_ts: cursor,
-        updated_unix_ms: typeof (value as any).updated_unix_ms === "number" ? (value as any).updated_unix_ms : undefined,
-      };
-    }
-    return out;
-  }, []);
   React.useEffect(() => {
     teamEventsCursorRef.current = teamEventsCursor;
   }, [teamEventsCursor]);
@@ -374,18 +352,18 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     (agent) => String(agent?.agent_id || "") === String(memberAgentId || "").trim(),
   );
   const memberAgentDeployments = Array.isArray(memberSelectedAgent?.deployments)
-    ? (memberSelectedAgent?.deployments as any[])
+    ? (memberSelectedAgent.deployments as BrokerDeploymentInfo[])
     : [];
   const memberEditSelectedAgent = memberAgentOptions.find(
     (agent) => String(agent?.agent_id || "") === String(memberEditAgentId || "").trim(),
   );
   const memberEditAgentDeployments = Array.isArray(memberEditSelectedAgent?.deployments)
-    ? (memberEditSelectedAgent?.deployments as any[])
+    ? (memberEditSelectedAgent.deployments as BrokerDeploymentInfo[])
     : [];
   const eventTeamId = React.useCallback((row?: BrokerEventRow | null) => {
     const payload = row?.payload;
     if (!payload || typeof payload !== "object") return "";
-    return String((payload as any).team_id || "");
+    return String((payload as { team_id?: unknown }).team_id || "");
   }, []);
 
   const isTeamEvent = React.useCallback(
@@ -538,14 +516,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         throw new Error(resp.error || resp.err || resp.code || "team events replay failed");
       }
       const items = Array.isArray(resp.events) ? resp.events : [];
-      const rows = items
-        .map((ev: any) => ({
-          type: String(ev?.type || ""),
-          ts_unix_ms: typeof ev?.ts_unix_ms === "number" ? ev.ts_unix_ms : undefined,
-          event_id: ev?.event_id ? String(ev.event_id) : undefined,
-          trace_id: ev?.trace_id ? String(ev.trace_id) : undefined,
-          payload: ev?.payload && typeof ev.payload === "object" ? (ev.payload as Record<string, any>) : undefined,
-        }));
+      const rows = normalizeBrokerReplayEvents(items as BrokerEvent[]);
       setTeamReplayEvents(rows.filter((row) => isTeamEvent(row)));
       setOrchestratorReplayEvents(rows.filter((row) => isOrchestratorEvent(row)));
       let nextCursor = teamEventsCursorRef.current || 0;

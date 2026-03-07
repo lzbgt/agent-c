@@ -199,6 +199,7 @@ fi
 
 ui_log="${log_dir}/verify_${ts}_ui_build.log"
 ui_install_log="${log_dir}/verify_${ts}_ui_install.log"
+ui_openapi_log="${log_dir}/verify_${ts}_ui_openapi_types.log"
 ui_cache_env="NPM_CONFIG_CACHE=./.npm-cache"
 
 if [[ "${UI_INSTALL}" == "1" ]]; then
@@ -211,4 +212,5 @@ if [[ ! -d "${ROOT}/ui/node_modules" ]]; then
   exit 0
 fi
 
+run_logged "ui: npm run openapi:types:check" "${ui_openapi_log}" bash -lc "cd ui && ${ui_cache_env} npm run openapi:types:check"
 run_logged "ui: npm run build" "${ui_log}" bash -lc "cd ui && ${ui_cache_env} npm run build"

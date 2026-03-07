@@ -3,7 +3,7 @@ export type BrokerEventRow = {
   ts_unix_ms?: number;
   event_id?: string;
   trace_id?: string;
-  payload?: Record<string, any>;
+  payload?: Record<string, unknown>;
 };
 
 export type TeamMemberRow = {
@@ -15,7 +15,7 @@ export type TeamMemberRow = {
   created_unix_ms?: number;
   weight?: number;
   capabilities?: string[];
-  meta?: Record<string, any>;
+  meta?: Record<string, unknown>;
 };
 
 export type TeamQuorumRuleRow = {

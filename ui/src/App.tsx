@@ -44,6 +44,12 @@ import {
 } from "./api";
 import { loadJson } from "./jsonUtils";
 import { pruneJobsBySession } from "./jobStore";
+import {
+  extractRunWatchByScope,
+  mergeRunWatchByScope,
+  runWatchMapsEqual,
+  type RunWatchByScope,
+} from "./runWatchPrefs";
 import { SCENE_STORE_MAX, touchSceneStoreKey } from "./sceneCache";
 import { buildScopedSessionKey, buildSessionScopeKey } from "./sessionScope";
 import { brokerBaseFromProxy } from "./utils/brokerBase";
@@ -67,7 +73,6 @@ const RUN_WATCH_PREFS_KIND = "run_watch";
 const RUN_WATCH_PREFS_VERSION = 1;
 const RUN_WATCH_PERSIST_MIN_INTERVAL_MS = 5000;
 
-type RunWatchByScope = Record<string, any>;
 type QueuedRun = { prompt: string; attachments: Attachment[]; queued_unix_ms: number };
 type TeamQueuedAction = {
   prompt: string;
@@ -81,46 +86,6 @@ type TeamActivity = {
   run_id?: string;
   kind?: "prompt" | "guidance" | "goal";
   payload?: any;
-};
-
-const extractRunWatchByScope = (prefs: any): RunWatchByScope => {
-  const root = prefs && typeof prefs === "object" ? prefs.run_watch : null;
-  const byScope = root && typeof root === "object" ? root.by_scope : null;
-  return byScope && typeof byScope === "object" ? (byScope as RunWatchByScope) : {};
-};
-
-const runWatchTs = (value: any): number => {
-  const updated = typeof value?.updated_unix_ms === "number" ? value.updated_unix_ms : 0;
-  if (Number.isFinite(updated) && updated > 0) return updated;
-  const started = typeof value?.started_unix_ms === "number" ? value.started_unix_ms : 0;
-  return Number.isFinite(started) ? started : 0;
-};
-
-const mergeRunWatchByScope = (local: RunWatchByScope, remote: RunWatchByScope): RunWatchByScope => {
-  const next: RunWatchByScope = { ...(local || {}) };
-  for (const [key, value] of Object.entries(remote || {})) {
-    if (!value || typeof value !== "object") continue;
-    const cur = next[key];
-    if (!cur || runWatchTs(value) >= runWatchTs(cur)) {
-      next[key] = value;
-    }
-  }
-  return next;
-};
-
-const runWatchMapsEqual = (a: RunWatchByScope, b: RunWatchByScope): boolean => {
-  const keysA = Object.keys(a || {});
-  const keysB = Object.keys(b || {});
-  if (keysA.length !== keysB.length) return false;
-  for (const key of keysA) {
-    const av = a[key];
-    const bv = b[key];
-    if (!bv) return false;
-    if ((av?.job_id || "") !== (bv?.job_id || "")) return false;
-    if ((av?.cursor || 0) !== (bv?.cursor || 0)) return false;
-    if (runWatchTs(av) !== runWatchTs(bv)) return false;
-  }
-  return true;
 };
 
 export default function App() {
