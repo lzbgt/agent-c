@@ -26,11 +26,13 @@ import {
   type BrokerAgentInfo,
   type BrokerConnector,
   type BrokerDeploymentInfo,
-  type BrokerMembersResp,
-  type BrokerMembershipAuditResp,
 } from "../api";
 import FieldLabel from "./FieldLabel";
 import useLocalStorageState from "../hooks/useLocalStorageState";
+import BrokerAgentsSection from "./broker/BrokerAgentsSection";
+import BrokerAuditSection from "./broker/BrokerAuditSection";
+import BrokerConnectorsSection from "./broker/BrokerConnectorsSection";
+import BrokerMembersSection from "./broker/BrokerMembersSection";
 import BrokerTeamConsole from "./broker/BrokerTeamConsole";
 import type { BrokerEventRow } from "./broker/types";
 import {
@@ -65,8 +67,6 @@ const fmtTs = (ms?: number | null) => {
 const BROKER_EVENTS_MAX = 200;
 const BROKER_EVENTS_PREFS_KIND = "webui-broker-events";
 const BROKER_EVENTS_PREFS_VERSION = 1;
-type BrokerMember = BrokerMembersResp["members"][number];
-type BrokerMembershipAuditRow = BrokerMembershipAuditResp["audit"][number];
 
 export type BrokerPanelProps = {
   open: boolean;
@@ -1092,9 +1092,9 @@ export default function BrokerPanel(props: BrokerPanelProps) {
 
   const agents: BrokerAgentInfo[] = agentsQuery.data?.agents ?? [];
   const connectors: BrokerConnector[] = connectorsQuery.data?.connectors ?? [];
-  const members: BrokerMember[] = membersQuery.data?.members ?? [];
+  const members = membersQuery.data?.members ?? [];
   const ownerSub = String(membersQuery.data?.owner_sub || "");
-  const auditRows: BrokerMembershipAuditRow[] = auditQuery.data?.audit ?? [];
+  const auditRows = auditQuery.data?.audit ?? [];
   const brokerEventRows = React.useMemo(() => {
     const rows = brokerEventsQuorumOnly
       ? brokerEvents.filter((ev) => String(ev?.type || "").startsWith("team_quorum"))
@@ -1163,308 +1163,86 @@ export default function BrokerPanel(props: BrokerPanelProps) {
             ) : null}
 
             {brokerPage === "agents" ? (
-              <section className="rounded-md border border-white/10 bg-black/20 p-3">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="text-xs font-semibold text-white/80">Agent list</div>
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-              type="button"
-              disabled={!canQuery || agentsQuery.isFetching}
-              onClick={() => void agentsQuery.refetch()}
-            >
-              {agentsQuery.isFetching ? "Loading…" : "Refresh"}
-            </button>
-          </div>
-
-          {agentsQuery.error ? (
-            <div className="mb-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
-              {String(agentsQuery.error)}
-            </div>
-          ) : null}
-
-          {agents.length === 0 ? (
-            <div className="text-[11px] text-white/50">No agents returned.</div>
-          ) : (
-            <div className="grid gap-2">
-              {agents.map((agent) => {
-                const id = String(agent?.agent_id || "");
-                const connected = agent?.connected === true;
-                const selected = id && id === agentId;
-                return (
-                  <div key={id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1">
-                    <div className="flex flex-col">
-                      <div className="text-xs text-white/90">{id}</div>
-                      <div className="text-[11px] text-white/50">
-                        {connected ? "connected" : "disconnected"}
-                        {agent?.owner_sub ? ` · owner ${String(agent.owner_sub)}` : ""}
-                      </div>
-                    </div>
-                    <button
-                      className={
-                        selected
-                          ? "rounded-md border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-100"
-                          : "rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                      }
-                      type="button"
-                      onClick={() => props.setBrokerAgentId(id)}
-                    >
-                      {selected ? "Selected" : "Use"}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
+              <BrokerAgentsSection
+                canQuery={canQuery}
+                isFetching={agentsQuery.isFetching}
+                error={agentsQuery.error}
+                agents={agents}
+                agentId={agentId}
+                onRefresh={() => void agentsQuery.refetch()}
+                onSelectAgent={props.setBrokerAgentId}
+              />
             ) : null}
 
             {brokerPage === "connectors" ? (
-              <section className="rounded-md border border-white/10 bg-black/20 p-3">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="text-xs font-semibold text-white/80">Connector registry</div>
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-              type="button"
-              disabled={!canQuery || connectorsQuery.isFetching}
-              onClick={() => void connectorsQuery.refetch()}
-            >
-              {connectorsQuery.isFetching ? "Loading…" : "Refresh"}
-            </button>
-          </div>
-          <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-            <span>Stale after</span>
-            <input
-              className="w-16 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px]"
-              value={connectorStaleMinutes}
-              onChange={(e) => setConnectorStaleMinutes(e.target.value)}
-              inputMode="numeric"
-            />
-            <span>minutes (local)</span>
-          </div>
-
-          {connectorsQuery.error ? (
-            <div className="mb-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
-              {String(connectorsQuery.error)}
-            </div>
-          ) : null}
-
-          {connectors.length === 0 ? (
-            <div className="text-[11px] text-white/50">No connectors registered.</div>
-          ) : (
-            <div className="grid gap-2">
-              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/60">
-                <div>Showing {connectors.length} connectors.</div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
-                    type="button"
-                    onClick={() => {
-                      try {
-                        const payload = JSON.stringify(connectors, null, 2);
-                        void navigator.clipboard.writeText(payload);
-                      } catch {
-                        // ignore clipboard errors
-                      }
-                    }}
-                  >
-                    Copy JSON
-                  </button>
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
-                    type="button"
-                    onClick={() => {
-                      try {
-                        const download = (payload: any) => {
-                          const text = JSON.stringify(payload, null, 2);
-                          const blob = new Blob([text], { type: "application/json" });
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement("a");
-                          a.href = url;
-                          a.download = `broker-connectors-${Date.now()}.json`;
-                          a.click();
-                          URL.revokeObjectURL(url);
-                        };
-                        if (!canQuery) {
+              <BrokerConnectorsSection
+                canQuery={canQuery}
+                isFetching={connectorsQuery.isFetching}
+                error={connectorsQuery.error}
+                connectors={connectors}
+                connectorStaleMinutes={connectorStaleMinutes}
+                setConnectorStaleMinutes={setConnectorStaleMinutes}
+                connectorStaleMs={connectorStaleMs}
+                onRefresh={() => void connectorsQuery.refetch()}
+                onCopyJson={() => {
+                  try {
+                    const payload = JSON.stringify(connectors, null, 2);
+                    void navigator.clipboard.writeText(payload);
+                  } catch {
+                    // ignore clipboard errors
+                  }
+                }}
+                onDownloadJson={() => {
+                  try {
+                    const download = (payload: any) => {
+                      const text = JSON.stringify(payload, null, 2);
+                      const blob = new Blob([text], { type: "application/json" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `broker-connectors-${Date.now()}.json`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    };
+                    if (!canQuery) {
+                      download(connectors);
+                      return;
+                    }
+                    apiBrokerExportConnectors(base, props.auth)
+                      .then((resp) => {
+                        if (resp?.ok && Array.isArray(resp.connectors)) {
+                          download(resp.connectors);
+                        } else {
                           download(connectors);
-                          return;
                         }
-                        apiBrokerExportConnectors(base, props.auth)
-                          .then((resp) => {
-                            if (resp?.ok && Array.isArray(resp.connectors)) {
-                              download(resp.connectors);
-                            } else {
-                              download(connectors);
-                            }
-                          })
-                          .catch(() => download(connectors));
-                      } catch {
-                        // ignore download errors
-                      }
-                    }}
-                  >
-                    Download JSON
-                  </button>
-                </div>
-              </div>
-              {connectors.map((connector) => {
-                const id = String(connector?.id || "");
-                const kind = String(connector?.kind || "");
-                const status = String(connector?.status || "");
-                const description = String(connector?.description || "");
-                const lastSeenMs = typeof connector?.last_seen_unix_ms === "number" ? connector.last_seen_unix_ms : 0;
-                const lastSeen = lastSeenMs ? fmtTs(lastSeenMs) : "";
-                const nowMs = Date.now();
-                const ageMs = lastSeenMs > 0 ? Math.max(0, nowMs - lastSeenMs) : 0;
-                const isStale = lastSeenMs > 0 && ageMs > connectorStaleMs;
-                const isMissing = lastSeenMs === 0;
-                const lastError = String(connector?.last_error || "");
-                const statusTone = isMissing ? "text-amber-200" : isStale ? "text-amber-200" : "text-emerald-200";
-                const statusLabel = isMissing ? "unknown" : isStale ? "stale" : "fresh";
-                const curlSnippet = `curl -H "Authorization: Bearer $BROKER_ADMIN_TOKEN" -H "Content-Type: application/json" -d '{"status":"${status || "ready"}","last_error":"","ts_unix_ms":0}' $BROKER_BASE/v1/connectors/${encodeURIComponent(
-                  id || "connector",
-                )}/status`;
-                const tooltip = [
-                  id ? `id: ${id}` : null,
-                  kind ? `kind: ${kind}` : null,
-                  status ? `status: ${status}` : null,
-                  lastSeenMs ? `last_seen_ms: ${lastSeenMs}` : null,
-                  lastError ? `last_error: ${lastError}` : null,
-                ]
-                  .filter(Boolean)
-                  .join("\n");
-                return (
-                  <div key={id} className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1">
-                    <div className="flex flex-col">
-                      <div className="text-xs text-white/90">{id || "(unnamed)"}</div>
-                      <div className="text-[11px] text-white/50" title={tooltip}>
-                        {kind ? `kind: ${kind}` : "kind: (unspecified)"}
-                        {status ? ` · ${status}` : ""}
-                        <span className={`ml-2 ${statusTone}`}>· {statusLabel}</span>
-                      </div>
-                      {lastSeen ? <div className="text-[11px] text-white/50">last seen: {lastSeen}</div> : null}
-                      {lastError ? (
-                        <div className="mt-1 text-[11px] text-rose-200">last error: {lastError}</div>
-                      ) : null}
-                      {description ? <div className="mt-1 text-[11px] text-white/60">{description}</div> : null}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
-                        type="button"
-                        title="Copy curl command"
-                        onClick={() => {
-                          try {
-                            void navigator.clipboard.writeText(curlSnippet);
-                          } catch {
-                            // ignore clipboard errors
-                          }
-                        }}
-                      >
-                        Copy curl
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
+                      })
+                      .catch(() => download(connectors));
+                  } catch {
+                    // ignore download errors
+                  }
+                }}
+              />
             ) : null}
 
             {brokerPage === "members" ? (
-              <section className="rounded-md border border-white/10 bg-black/20 p-3">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="text-xs font-semibold text-white/80">Members</div>
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-              type="button"
-              disabled={!canQuery || !agentId || membersQuery.isFetching}
-              onClick={() => void membersQuery.refetch()}
-            >
-              {membersQuery.isFetching ? "Loading…" : "Refresh"}
-            </button>
-          </div>
-
-          {!agentId ? (
-            <div className="text-[11px] text-white/50">Select an agent to manage membership.</div>
-          ) : membersQuery.error ? (
-            <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
-              {String(membersQuery.error)}
-            </div>
-          ) : (
-            <>
-              <div className="mb-2 text-[11px] text-white/50">Owner: {ownerSub || "(unknown)"}</div>
-              <div className="grid gap-2">
-                {members.length === 0 ? (
-                  <div className="text-[11px] text-white/50">No members.</div>
-                ) : (
-                  members.map((member) => {
-                    const userSub = String(member?.user_sub || "");
-                    const role = String(member?.role || "user");
-                    const created = fmtTs(member?.created_unix_ms);
-                    const isOwner = role === "owner" || userSub === ownerSub;
-                    return (
-                      <div
-                        key={`${userSub}-${role}`}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1"
-                      >
-                        <div className="flex flex-col">
-                          <div className="text-xs text-white/90">{userSub}</div>
-                          <div className="text-[11px] text-white/50">
-                            role: {role}
-                            {created ? ` · added ${created}` : ""}
-                          </div>
-                        </div>
-                        <button
-                          className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
-                          type="button"
-                          disabled={isOwner || deleteMutation.isPending}
-                          title={isOwner ? "Owner cannot be removed." : "Remove member"}
-                          onClick={() => onDelete(userSub)}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              <div className="mt-3 grid gap-2">
-                <FieldLabel>Add / update member</FieldLabel>
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
-                    placeholder="user_sub"
-                    value={newUserSub}
-                    onChange={(e) => setNewUserSub(e.target.value)}
-                  />
-                  <select
-                    className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
-                    value={newRole}
-                    onChange={(e) => setNewRole(e.target.value)}
-                  >
-                    <option value="user">user</option>
-                    <option value="admin">admin</option>
-                  </select>
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
-                    type="button"
-                    disabled={!canQuery || !agentId || upsertMutation.isPending}
-                    onClick={() => void onUpsert()}
-                  >
-                    {upsertMutation.isPending ? "Saving…" : "Save"}
-                  </button>
-                </div>
-                {actionError ? (
-                  <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
-                    {actionError}
-                  </div>
-                ) : null}
-              </div>
-            </>
-          )}
-        </section>
+              <BrokerMembersSection
+                canQuery={canQuery}
+                agentId={agentId}
+                isFetching={membersQuery.isFetching}
+                error={membersQuery.error}
+                members={members}
+                ownerSub={ownerSub}
+                deletePending={deleteMutation.isPending}
+                upsertPending={upsertMutation.isPending}
+                newUserSub={newUserSub}
+                newRole={newRole}
+                actionError={actionError}
+                setNewUserSub={setNewUserSub}
+                setNewRole={setNewRole}
+                onRefresh={() => void membersQuery.refetch()}
+                onUpsert={() => void onUpsert()}
+                onDelete={(userSub) => void onDelete(userSub)}
+              />
             ) : null}
 
             {brokerPage === "deployments" ? (
@@ -2031,63 +1809,16 @@ export default function BrokerPanel(props: BrokerPanelProps) {
             ) : null}
 
             {brokerPage === "audit" ? (
-              <section className="rounded-md border border-white/10 bg-black/20 p-3">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="text-xs font-semibold text-white/80">Membership audit log</div>
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-              type="button"
-              disabled={!canQuery || !agentId || auditQuery.isFetching}
-              onClick={() => void auditQuery.refetch()}
-            >
-              {auditQuery.isFetching ? "Loading…" : "Refresh"}
-            </button>
-          </div>
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <FieldLabel>Limit</FieldLabel>
-            <input
-              className="w-24 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-              value={auditLimit}
-              onChange={(e) => setAuditLimit(e.target.value)}
-            />
-            <span className="text-[11px] text-white/50">(1-500)</span>
-          </div>
-
-          {!agentId ? (
-            <div className="text-[11px] text-white/50">Select an agent to view audit history.</div>
-          ) : auditQuery.error ? (
-            <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
-              {String(auditQuery.error)}
-            </div>
-          ) : auditRows.length === 0 ? (
-            <div className="text-[11px] text-white/50">No audit rows.</div>
-          ) : (
-            <div className="grid gap-2">
-              {auditRows.map((row, idx) => {
-                const action = String(row?.action || "");
-                const actor = String(row?.actor_sub || "");
-                const target = String(row?.target_sub || "");
-                const role = String(row?.role || "");
-                const traceId = String(row?.trace_id || "");
-                const ts = fmtTs(row?.ts_unix_ms);
-                return (
-                  <div
-                    key={`${actor}-${target}-${action}-${idx}`}
-                    className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70"
-                  >
-                    <div className="text-xs text-white/90">{action || "update"}</div>
-                    <div className="text-[11px] text-white/50">
-                      actor {actor} → target {target}
-                      {role ? ` · role ${role}` : ""}
-                      {traceId ? ` · trace ${traceId}` : ""}
-                      {ts ? ` · ${ts}` : ""}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
+              <BrokerAuditSection
+                canQuery={canQuery}
+                agentId={agentId}
+                isFetching={auditQuery.isFetching}
+                error={auditQuery.error}
+                auditLimit={auditLimit}
+                setAuditLimit={setAuditLimit}
+                auditRows={auditRows}
+                onRefresh={() => void auditQuery.refetch()}
+              />
             ) : null}
 
             {brokerPage === "events" ? (
