@@ -38,6 +38,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
    - [x] WebUI diagnostics panel + provider tests (DeepSeek/Moonshot) to confirm keys and run health checks.
    - [x] WebUI run settings panel (model/base_url/proxy/timeout, run limits, OpenRouter picker).
    - [x] WebUI App.tsx refactor (<2000 LOC) with modular panels/hooks.
+   - 2026-03-08: split `ui/src/components/SettingsDrawer.tsx` into dedicated settings section components so the drawer dropped below the 2000 LOC hygiene bar without changing UI behavior.
    - [x] Refactor oversized daemon/edge/db + CLI host toolset files into SOLID submodules (<2000 LOC each).
    - [x] Tool-loop guard: `max_tool_call_args_chars` (daemon default + run override + core limit event).
   - [x] Broker proxy forwarding sets `X-Request-ID` and `X-Trace-ID` when missing (trace correlation).
