@@ -398,6 +398,16 @@ Notes:
 - `tools/verify_repo_guards.sh` excludes common generated bulk from the repo-size check by default (`build/`, `out/`, caches, state dirs, `ui/node_modules`, etc.) so local runs do not fail just because verification artifacts are present.
 - `tools/verify_repo_guards.sh --strict` matches CI behavior: full workspace size counts toward the 5 GiB limit and nested vendored `.git` directories fail the guard.
 
+Compose broker smoke batch:
+
+```bash
+tools/verify_compose_broker_smokes.sh
+```
+
+Notes:
+- This starts one compose stack via `tools/verify_compose_stack.sh`, then reuses it for a compact broker smoke batch (`broker_team_runs`, `broker_team_runs_quorum`, `broker_team_run_events_sse`) before tearing the stack down.
+- The dedicated GitHub Actions workflow `compose-broker-smoke` runs this batch on `ubuntu-latest`.
+
 Create a mount allowlist template (for sandboxed tool runners):
 
 ```bash

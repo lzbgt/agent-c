@@ -79,6 +79,8 @@ tools/verify.sh --repo-guards
 
 For a CI-equivalent workspace-size check, run `tools/verify_repo_guards.sh --strict`.
 
+For the Docker broker lane, run `tools/verify_compose_broker_smokes.sh`.
+
 Source `${HOME}/.env` before verification (provider keys for smokes):
 
 ```bash

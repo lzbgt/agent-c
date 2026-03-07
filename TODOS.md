@@ -107,7 +107,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-03-07: current local verify drift found `docs_sanity_tests` red due `docs/DB.md` schema lag; fixed header to `v33` to restore the first failing gate.
   - 2026-03-07: added GitHub Actions host verify matrix (`ubuntu-latest`, `macos-14`) that runs `tools/verify.sh --ui-install --repo-guards` with network-provider smokes disabled.
   - 2026-03-08: local repo guards now exclude generated build/output/cache bulk by default; `--strict` keeps the CI/full-workspace size gate.
-  - Remaining: add GitHub Actions coverage for host build/ctest/UI build and stabilize compose-required tests.
+  - 2026-03-08: added a dedicated `compose-broker-smoke` GitHub Actions workflow plus `tools/verify_compose_broker_smokes.sh` so CI can bootstrap one compose stack and reuse it across a compact broker smoke batch.
+  - Remaining: mark the compose broker workflow as required in branch protection and expand the batch only after the current lane proves stable.
 - [ ] W=10 — Contract generation + UI decomposition: generate typed WebUI clients/schemas from OpenAPI, then split `useUiSettings` / `App.tsx` around connection state, run state, and team orchestration state.
   - 2026-03-07: review identified duplicated manual contracts and `any`-heavy UI state as the main velocity risk after security/CI.
   - 2026-03-07: extracted connection-profile normalization/secret merge helpers from `useUiSettings.ts` into `ui/src/hooks/uiSettingsProfiles.ts`; UI build stayed green.
