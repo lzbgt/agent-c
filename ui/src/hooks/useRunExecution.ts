@@ -2,10 +2,9 @@ import React from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRun, apiRunAsync, type ApiAuth, type RunRequest, type RunResponse, type AgentEvent } from "../api";
 import type { Attachment } from "../components/PromptBar";
+import type { JobStoreWriter } from "./runtimePlaneTypes";
 
 export type QueuedRun = { prompt: string; attachments: Attachment[]; queued_unix_ms: number };
-
-type JobStoreWriter = (mutate: (prev: Record<string, any>) => Record<string, any>) => void;
 
 export type RunExecutionArgs = {
   activeJobId: string | null;

@@ -3,8 +3,7 @@ import { apiGetJob, apiGetJobProgress, daemonFetchInit, type AgentEvent, type Ap
 import { appendLiveEvents, capLiveEvents } from "../liveEvents";
 import { readSseStream } from "../sse";
 import { sleep } from "../timeUtils";
-
-type JobStoreWriter = (mutate: (prev: Record<string, any>) => Record<string, any>) => void;
+import type { JobStoreWriter } from "./runtimePlaneTypes";
 
 export type JobStreamingArgs = {
   activeJobId: string | null;
