@@ -29,10 +29,33 @@ def ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
 
+def load_devstack_state(path: str) -> Dict[str, Any]:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def state_value(payload: Dict[str, Any], key: str) -> str:
+    value = payload.get(key)
+    if value is None:
+        return ""
+    return str(value)
+
+
+def default_http_base(host: str, port: str, tls: bool) -> str:
+    scheme = "https" if tls else "http"
+    return f"{scheme}://{host}:{port}"
+
+
 def render_template(value: str, ctx: Dict[str, str]) -> str:
     def repl(match: re.Match) -> str:
         key = match.group(1).strip()
         if key.startswith("env."):
+            if key in ctx:
+                return ctx.get(key, "")
             return os.environ.get(key[4:], "")
         if key in ctx:
             return ctx.get(key, "")
@@ -315,8 +338,27 @@ def run_scenario(path: str, out_dir: str) -> None:
         "scenario": str(data.get("name") or "scenario"),
         "evidence_dir": "",
     }
-    ctx["env.BROKER_PUBLISHED_PORT"] = os.environ.get("BROKER_PUBLISHED_PORT") or "8443"
-    ctx["env.AGENTD_PUBLISHED_PORT"] = os.environ.get("AGENTD_PUBLISHED_PORT") or "8123"
+    state_path = os.environ.get("AGENT_DEVSTACK_STATE") or os.path.join(
+        os.path.dirname(__file__), "..", "out", "devstack_state.json"
+    )
+    state = load_devstack_state(state_path)
+
+    agentd_port = os.environ.get("AGENTD_PUBLISHED_PORT") or state_value(state, "agentd_port") or "8123"
+    broker_port = os.environ.get("BROKER_PUBLISHED_PORT") or state_value(state, "broker_port") or "8443"
+    agentd_base = os.environ.get("AGENTD_BASE") or state_value(state, "agentd_base") or default_http_base("127.0.0.1", agentd_port, False)
+
+    broker_tls_raw = os.environ.get("BROKER_TLS") or state_value(state, "broker_tls")
+    broker_tls = broker_tls_raw.lower() in ("1", "true", "yes", "on")
+    broker_base = os.environ.get("BROKER_BASE") or state_value(state, "broker_base") or default_http_base("127.0.0.1", broker_port, broker_tls or broker_port == "8443")
+    agentd_auth_token = os.environ.get("AGENTD_AUTH_TOKEN") or ("dev-agentd-token" if state else "")
+
+    ctx["env.AGENTD_PUBLISHED_PORT"] = agentd_port
+    ctx["env.BROKER_PUBLISHED_PORT"] = broker_port
+    ctx["env.AGENTD_BASE"] = agentd_base
+    ctx["env.BROKER_BASE"] = broker_base
+    ctx["env.WEBUI_BASE"] = os.environ.get("WEBUI_BASE") or state_value(state, "webui_base")
+    ctx["env.AGENTD_AUTH_TOKEN"] = agentd_auth_token
+    ctx["env.BROKER_AUTH_TOKEN"] = os.environ.get("BROKER_AUTH_TOKEN") or ""
 
     for idx, raw in enumerate(steps, start=1):
         if not isinstance(raw, dict):

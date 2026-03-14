@@ -366,6 +366,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-25: Verified `tests/run_attestation_bundle_tool_smoke.sh` + `tests/agentd_run_attestation_ed25519_smoke.sh` (logs in `out/`).
 - [x] W=8 — Evaluation + regression gating: canonical eval packs, deterministic scoring, and CI baselines to catch model/version drift.
   - 2026-03-15: Added canonical tracked baselines under `ref/eval_packs/`, normalized baseline writes in `tools/eval_pack.py`, default baseline gating in `tools/verify.sh`, CI baseline checks for self-contained smoke packs, and smoke coverage for baseline compare/update behavior.
+  - 2026-03-15: Made scenario/eval packs devstack-aware by default via `out/devstack_state.json`, added canonical tracked baselines for `basic_agentd_smoke` and `broker_smoke`, and added a baseline refresh helper.
   - 2026-02-25: Added eval pack baseline compare/update flags to `tools/eval_pack.py` with spec + ops docs.
   - 2026-02-19: Added eval pack spec (`docs/spec/eval_pack_v0.md`) and runner (`tools/eval_pack.py`) with a minimal example pack.
   - 2026-02-19: Added `eval_pack_smoke` test (self-contained, no agentd required).

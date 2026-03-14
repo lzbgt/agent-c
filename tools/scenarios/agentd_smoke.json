@@ -4,19 +4,25 @@
     {
       "type": "http",
       "name": "agentd_health",
-      "url": "http://127.0.0.1:{{env.AGENTD_PUBLISHED_PORT}}/api/v1/health",
+      "url": "{{env.AGENTD_BASE}}/api/v1/health",
       "expect_status": 200
     },
     {
       "type": "http",
       "name": "agentd_diagnostics",
-      "url": "http://127.0.0.1:{{env.AGENTD_PUBLISHED_PORT}}/api/v1/diagnostics",
+      "url": "{{env.AGENTD_BASE}}/api/v1/diagnostics",
+      "headers": {
+        "Authorization": "Bearer {{env.AGENTD_AUTH_TOKEN}}"
+      },
       "expect_status": 200
     },
     {
       "type": "capture_evidence",
       "name": "evidence",
-      "args": ["--agentd-base", "http://127.0.0.1:{{env.AGENTD_PUBLISHED_PORT}}"]
+      "args": [
+        "--agentd-base", "{{env.AGENTD_BASE}}",
+        "--agentd-token", "{{env.AGENTD_AUTH_TOKEN}}"
+      ]
     }
   ]
 }

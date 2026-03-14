@@ -30,6 +30,8 @@ Optional: run eval pack smoke after build/tests:
 
 ```bash
 tools/verify.sh --eval-pack
+tools/verify.sh --eval-pack --eval-pack-file tools/eval_packs/basic_agentd_smoke.json
+tools/verify.sh --eval-pack --eval-pack-file tools/eval_packs/broker_smoke.json
 ```
 
 Eval pack regression gating can compare to a stored baseline:
@@ -50,6 +52,10 @@ tools/verify.sh --eval-pack-baseline ref/eval_packs/eval_pack_smoke.summary.json
 ```
 
 Canonical repo baselines live under `ref/eval_packs/`. Baseline update writes a normalized summary so git-tracked baselines do not churn on timestamps or absolute paths.
+Use `tools/update_eval_baselines.sh` to refresh the tracked baseline set; it updates the
+self-contained packs unconditionally and the live-stack packs when the canonical devstack
+from `out/devstack_state.json` is available. `broker_smoke` is only refreshed when
+`tools/devstack_status.sh --require-ready` succeeds.
 
 Include repo hygiene guards:
 

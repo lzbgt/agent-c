@@ -14,6 +14,7 @@ UI_INSTALL=0
 REPO_GUARDS=0
 REPO_GUARDS_STRICT=0
 EVAL_PACK=0
+EVAL_PACK_FILE=""
 EVAL_PACK_BASELINE=""
 EVAL_PACK_UPDATE=0
 INCLUDE_COMPOSE_TESTS=0
@@ -50,6 +51,11 @@ while [[ $# -gt 0 ]]; do
       EVAL_PACK_BASELINE="${2:-}"
       shift 2
       ;;
+    --eval-pack-file)
+      EVAL_PACK=1
+      EVAL_PACK_FILE="${2:-}"
+      shift 2
+      ;;
     --eval-pack-update-baseline)
       EVAL_PACK_UPDATE=1
       shift 1
@@ -60,7 +66,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     -h|--help)
       cat <<'EOF'
-Usage: tools/verify.sh [--core-only] [--skip-ui] [--ui-install] [--repo-guards] [--repo-guards-strict] [--eval-pack] [--eval-pack-baseline <path|auto>] [--eval-pack-update-baseline] [--include-compose-tests]
+Usage: tools/verify.sh [--core-only] [--skip-ui] [--ui-install] [--repo-guards] [--repo-guards-strict] [--eval-pack] [--eval-pack-file <path>] [--eval-pack-baseline <path|auto>] [--eval-pack-update-baseline] [--include-compose-tests]
 
 Runs a local verification pass with timestamped logs under ./build/.
 
@@ -78,7 +84,8 @@ Guards:
   --repo-guards-strict Run repo hygiene guards in strict mode (nested .git detection).
 
 Eval:
-  --eval-pack  Run eval pack smoke after build/tests and compare against the canonical baseline by default.
+  --eval-pack  Run the selected eval pack after build/tests and compare against the canonical baseline by default.
+  --eval-pack-file <path>  Eval pack file to run (default: tools/eval_packs/eval_pack_smoke.json).
   --eval-pack-baseline <path|auto>  Compare eval pack summary to a baseline, or use 'auto' for ref/eval_packs/<pack>.summary.json.
   --eval-pack-update-baseline  Write current eval pack baseline (defaults to canonical baseline when path omitted).
 EOF
@@ -201,7 +208,8 @@ fi
 
 if [[ "${EVAL_PACK}" == "1" ]]; then
   eval_log="${log_dir}/verify_${ts}_eval_pack.log"
-  eval_args=(--file "${ROOT}/tools/eval_packs/eval_pack_smoke.json")
+  eval_pack_file="${EVAL_PACK_FILE:-${ROOT}/tools/eval_packs/eval_pack_smoke.json}"
+  eval_args=(--file "${eval_pack_file}")
   if [[ -n "${EVAL_PACK_BASELINE}" ]]; then
     eval_args+=(--baseline "${EVAL_PACK_BASELINE}")
   else

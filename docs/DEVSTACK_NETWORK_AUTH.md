@@ -106,7 +106,11 @@ Do one of the following:
 ## Troubleshooting
 
 - **Need to see whether the canonical stack is still alive**:
-  - Run `tools/devstack_status.sh` for a concise broker/WebUI liveness summary.
+- Run `tools/devstack_status.sh` for a concise stack summary.
+  - `status=live`: broker/WebUI processes are alive and `agentd /health`, broker `/healthz`, and broker `/readyz` are all returning `200`.
+  - `status=degraded`: the browser-facing processes are alive but one of those readiness probes is failing.
+  - `tools/devstack_status.sh --require-live` only requires the canonical broker/WebUI processes to exist.
+  - `tools/devstack_status.sh --require-ready` requires the full stack to be ready for broker-backed testing.
 - **Need to replace the current stack intentionally**:
   - Run `tools/devstack_agent.sh --restart` or stop it first with
     `tools/devstack_agent_down.sh --state out/devstack_state.json`.

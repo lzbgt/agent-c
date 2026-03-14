@@ -12,6 +12,13 @@ python3 tools/scenario_runner.py --file tools/scenarios/agentd_smoke.json
 Output directory is printed on success (default: `out/scenario_<ts>/`).
 Logs are written under `out/scenario_<ts>/logs/`.
 
+By default, `scenario_runner.py` reads `out/devstack_state.json` when present and
+uses that canonical live stack for `{{env.AGENTD_BASE}}`, `{{env.BROKER_BASE}}`,
+`{{env.AGENTD_PUBLISHED_PORT}}`, and `{{env.BROKER_PUBLISHED_PORT}}`.
+Override the state path with `AGENT_DEVSTACK_STATE=/path/to/devstack_state.json`.
+When a devstack state file is present, `{{env.AGENTD_AUTH_TOKEN}}` defaults to
+`dev-agentd-token` unless you override `AGENTD_AUTH_TOKEN` explicitly.
+
 ## Scenario format
 
 ```json
@@ -41,6 +48,12 @@ Template variables:
 - `{{scenario}}` (scenario name)
 - `{{evidence_dir}}` (last evidence bundle dir)
 - `{{env.VAR}}` (environment variable)
+- Built-in endpoint defaults:
+  - `{{env.AGENTD_BASE}}`
+  - `{{env.BROKER_BASE}}`
+  - `{{env.WEBUI_BASE}}`
+  - `{{env.AGENTD_PUBLISHED_PORT}}`
+  - `{{env.BROKER_PUBLISHED_PORT}}`
 
 HTTP proxy behavior:
 - By default, `http` steps honor standard proxy env vars, but bypass proxies for localhost/127.0.0.1.

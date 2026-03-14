@@ -4,14 +4,14 @@
     {
       "type": "http",
       "name": "broker_healthz",
-      "url": "https://127.0.0.1:{{env.BROKER_PUBLISHED_PORT}}/healthz",
+      "url": "{{env.BROKER_BASE}}/healthz",
       "insecure": true,
       "expect_status": 200
     },
     {
       "type": "http",
       "name": "broker_readyz",
-      "url": "https://127.0.0.1:{{env.BROKER_PUBLISHED_PORT}}/readyz",
+      "url": "{{env.BROKER_BASE}}/readyz",
       "insecure": true,
       "expect_status": 200
     },
@@ -19,8 +19,9 @@
       "type": "capture_evidence",
       "name": "evidence",
       "args": [
-        "--agentd-base", "http://127.0.0.1:{{env.AGENTD_PUBLISHED_PORT}}",
-        "--broker-base", "https://127.0.0.1:{{env.BROKER_PUBLISHED_PORT}}",
+        "--agentd-base", "{{env.AGENTD_BASE}}",
+        "--agentd-token", "{{env.AGENTD_AUTH_TOKEN}}",
+        "--broker-base", "{{env.BROKER_BASE}}",
         "--broker-agent-id", "agent1",
         "--agentd-via-broker"
       ]

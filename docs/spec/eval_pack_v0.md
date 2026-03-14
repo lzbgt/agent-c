@@ -172,6 +172,7 @@ Validates the length of a JSON array/object/string. Supports `equals`, `min`, an
 CLI options:
 - `--baseline <path|auto>`: compare current summary against a saved baseline summary. `auto` resolves repo packs in `tools/eval_packs/` to `ref/eval_packs/<pack>.summary.json`.
 - `--update-baseline`: write a normalized baseline summary to the baseline path. If `--baseline` is omitted, the canonical `auto` path is used.
+- Repo scenarios may also consume a canonical live stack from `out/devstack_state.json` via `AGENT_DEVSTACK_STATE`, which keeps live-stack eval packs deterministic about which agentd/broker deployment they exercise.
 
 Example:
 

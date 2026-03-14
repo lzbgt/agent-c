@@ -79,6 +79,59 @@ run_logged() {
   echo "[devstack] OK: ${label} (log: ${log})"
 }
 
+spawn_detached() {
+  local log="$1"
+  shift
+  if command -v setsid >/dev/null 2>&1; then
+    local pid_file
+    pid_file="$(mktemp "${TMPDIR:-/tmp}/devstack_spawn_pid.XXXXXX")"
+    (
+      setsid "$@" >>"${log}" 2>&1 < /dev/null &
+      echo $! >"${pid_file}"
+    )
+    local pid=""
+    if [[ -f "${pid_file}" ]]; then
+      pid="$(tr -d '\r\n' < "${pid_file}")"
+      rm -f "${pid_file}"
+    fi
+    echo "${pid}"
+    return 0
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "${log}" "$@" <<'PY'
+import os
+import subprocess
+import sys
+
+log_path = sys.argv[1]
+cmd = sys.argv[2:]
+with open(log_path, "ab", buffering=0) as log:
+    proc = subprocess.Popen(
+        cmd,
+        stdin=subprocess.DEVNULL,
+        stdout=log,
+        stderr=log,
+        start_new_session=True,
+        env=os.environ.copy(),
+    )
+print(proc.pid)
+PY
+  else
+    local pid_file
+    pid_file="$(mktemp "${TMPDIR:-/tmp}/devstack_spawn_pid.XXXXXX")"
+    (
+      nohup "$@" >>"${log}" 2>&1 < /dev/null &
+      echo $! >"${pid_file}"
+    )
+    local pid=""
+    if [[ -f "${pid_file}" ]]; then
+      pid="$(tr -d '\r\n' < "${pid_file}")"
+      rm -f "${pid_file}"
+    fi
+    echo "${pid}"
+  fi
+}
+
 KEEP=1
 RESTART=0
 SKIP_UI=0
@@ -363,33 +416,40 @@ for idx in "${!AGENT_IDS[@]}"; do
   log="${LOG_DIR}/agentd_${agent_id}.log"
   AGENTD_LOGS+=("${log}")
   if [[ "${idx}" -eq 0 && "${WORKFLOW_HTTP}" -eq 1 ]]; then
-    AGENTD_CALL_BEARER="${AGENTD_AUTH_TOKEN}" nohup "${AGENTD_BIN}" \
-      --host 127.0.0.1 \
-      --port "${port}" \
-      --auth-token "${AGENTD_AUTH_TOKEN}" \
-      --tools "${AGENTD_TOOLS}" \
-      --host-policy full \
-      --yolo \
-      --state-dir "${agent_state}" \
-      --db-path "${agent_state}/agentd.db" \
-      --cors-origin "http://127.0.0.1:${WEBUI_PORT}" \
-      --cors-origin "http://localhost:${WEBUI_PORT}" \
-      --workflow-enable-http-tasks \
-      --workflow-http-allow-host 127.0.0.1 >"${log}" 2>&1 &
+    AGENTD_PIDS+=("$(
+      spawn_detached "${log}" \
+        env AGENTD_CALL_BEARER="${AGENTD_AUTH_TOKEN}" \
+        "${AGENTD_BIN}" \
+        --host 127.0.0.1 \
+        --port "${port}" \
+        --auth-token "${AGENTD_AUTH_TOKEN}" \
+        --tools "${AGENTD_TOOLS}" \
+        --host-policy full \
+        --yolo \
+        --state-dir "${agent_state}" \
+        --db-path "${agent_state}/agentd.db" \
+        --cors-origin "http://127.0.0.1:${WEBUI_PORT}" \
+        --cors-origin "http://localhost:${WEBUI_PORT}" \
+        --workflow-enable-http-tasks \
+        --workflow-http-allow-host 127.0.0.1
+    )")
   else
-    AGENTD_CALL_BEARER="${AGENTD_AUTH_TOKEN}" nohup "${AGENTD_BIN}" \
-      --host 127.0.0.1 \
-      --port "${port}" \
-      --auth-token "${AGENTD_AUTH_TOKEN}" \
-      --tools "${AGENTD_TOOLS}" \
-      --host-policy full \
-      --yolo \
-      --state-dir "${agent_state}" \
-      --db-path "${agent_state}/agentd.db" \
-      --cors-origin "http://127.0.0.1:${WEBUI_PORT}" \
-      --cors-origin "http://localhost:${WEBUI_PORT}" >"${log}" 2>&1 &
+    AGENTD_PIDS+=("$(
+      spawn_detached "${log}" \
+        env AGENTD_CALL_BEARER="${AGENTD_AUTH_TOKEN}" \
+        "${AGENTD_BIN}" \
+        --host 127.0.0.1 \
+        --port "${port}" \
+        --auth-token "${AGENTD_AUTH_TOKEN}" \
+        --tools "${AGENTD_TOOLS}" \
+        --host-policy full \
+        --yolo \
+        --state-dir "${agent_state}" \
+        --db-path "${agent_state}/agentd.db" \
+        --cors-origin "http://127.0.0.1:${WEBUI_PORT}" \
+        --cors-origin "http://localhost:${WEBUI_PORT}"
+    )")
   fi
-  AGENTD_PIDS+=("$!")
 done
 
 AGENTD_PORT="${AGENTD_PORTS[0]}"
@@ -420,14 +480,16 @@ broker_curl() {
   fi
 }
 
-nohup "${BROKER_BIN}" \
-  --listen "127.0.0.1:${BROKER_PORT}" \
-  "${BROKER_TLS_ARGS[@]}" \
-  --db-dsn "${BROKER_DB_DSN}" \
-  --oidc-issuer "${KEYCLOAK_BASE}/realms/agentd" \
-  --oidc-audience "agentd-broker-dev" \
-  --cors-origins "http://127.0.0.1:${WEBUI_PORT},http://localhost:${WEBUI_PORT}" >"${LOG_BROKER}" 2>&1 &
-BROKER_PID=$!
+BROKER_PID="$(
+  spawn_detached "${LOG_BROKER}" \
+    "${BROKER_BIN}" \
+    --listen "127.0.0.1:${BROKER_PORT}" \
+    "${BROKER_TLS_ARGS[@]}" \
+    --db-dsn "${BROKER_DB_DSN}" \
+    --oidc-issuer "${KEYCLOAK_BASE}/realms/agentd" \
+    --oidc-audience "agentd-broker-dev" \
+    --cors-origins "http://127.0.0.1:${WEBUI_PORT},http://localhost:${WEBUI_PORT}"
+)"
 
 for idx in "${!AGENT_IDS[@]}"; do
   agent_id="${AGENT_IDS[$idx]}"
@@ -435,22 +497,27 @@ for idx in "${!AGENT_IDS[@]}"; do
   log="${LOG_DIR}/connector_${agent_id}.log"
   CONNECTOR_LOGS+=("${log}")
   if [[ "${BROKER_TLS}" -eq 1 ]]; then
-    nohup "${CONNECTOR_BIN}" \
-      --broker "${BROKER_CONNECT_URL}" \
-      --local-agentd "${base}" \
-      --tls-ca "${MTLS_DIR}/ca.pem" \
-      --tls-cert "${MTLS_DIR}/client_${agent_id}.pem" \
-      --tls-key "${MTLS_DIR}/client_${agent_id}.key.pem" \
-      --agent-cn-prefix "agentd-" \
-      --agent-id "${agent_id}" >"${log}" 2>&1 &
+    CONNECTOR_PIDS+=("$(
+      spawn_detached "${log}" \
+        "${CONNECTOR_BIN}" \
+        --broker "${BROKER_CONNECT_URL}" \
+        --local-agentd "${base}" \
+        --tls-ca "${MTLS_DIR}/ca.pem" \
+        --tls-cert "${MTLS_DIR}/client_${agent_id}.pem" \
+        --tls-key "${MTLS_DIR}/client_${agent_id}.key.pem" \
+        --agent-cn-prefix "agentd-" \
+        --agent-id "${agent_id}"
+    )")
   else
-    nohup "${CONNECTOR_BIN}" \
-      --broker "${BROKER_CONNECT_URL}" \
-      --local-agentd "${base}" \
-      --agent-cn-prefix "agentd-" \
-      --agent-id "${agent_id}" >"${log}" 2>&1 &
+    CONNECTOR_PIDS+=("$(
+      spawn_detached "${log}" \
+        "${CONNECTOR_BIN}" \
+        --broker "${BROKER_CONNECT_URL}" \
+        --local-agentd "${base}" \
+        --agent-cn-prefix "agentd-" \
+        --agent-id "${agent_id}"
+    )")
   fi
-  CONNECTOR_PIDS+=("$!")
 done
 LOG_CONNECTOR="${CONNECTOR_LOGS[0]}"
 CONNECTOR_PID="${CONNECTOR_PIDS[0]}"
@@ -496,8 +563,10 @@ window.__AGENT_UI_CONFIG__ = {
 };
 CFG
   if http_server_cmd="$(python_http_server_cmd "${WEBUI_PORT}")"; then
-    bash -lc "cd '${ROOT}/ui/dist' && exec ${http_server_cmd}" >"${LOG_WEBUI}" 2>&1 &
-    WEBUI_PID=$!
+    WEBUI_PID="$(
+      spawn_detached "${LOG_WEBUI}" \
+        bash -lc "cd '${ROOT}/ui/dist' && exec ${http_server_cmd}"
+    )"
   else
     echo "[devstack] python not found; skipping WebUI serve" >&2
     SKIP_UI=1

@@ -1,0 +1,39 @@
+{
+  "baseline_version": "eval_pack_baseline_v1",
+  "name": "broker_smoke",
+  "version": "eval_pack_v0",
+  "pack": "tools/eval_packs/broker_smoke.json",
+  "results": [
+    {
+      "id": "broker_smoke",
+      "ok": true,
+      "score": 1.0,
+      "checks": [
+        {
+          "type": "file_exists",
+          "ok": true,
+          "message": "exists: meta.json"
+        },
+        {
+          "type": "json_path",
+          "ok": true,
+          "message": "json equals ok: scenario"
+        },
+        {
+          "type": "log_contains",
+          "ok": true,
+          "message": "contains matched: logs/01_broker_healthz.log"
+        }
+      ]
+    }
+  ],
+  "total_score": 1.0,
+  "max_score": 1.0,
+  "pass_rate": 1.0,
+  "threshold": {
+    "min_score": 1.0,
+    "min_pass_rate": 1.0
+  },
+  "failed": [],
+  "ok": true
+}

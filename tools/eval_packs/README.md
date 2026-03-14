@@ -19,6 +19,10 @@ python3 tools/eval_pack.py --file tools/eval_packs/broker_team_run_events_sse_co
 
 Outputs are written under `out/eval_pack_<ts>/summary.json`.
 
+For live-stack packs such as `basic_agentd_smoke.json` and `broker_smoke.json`,
+the scenario runner now defaults to the canonical stack from `out/devstack_state.json`
+when present. Override with `AGENT_DEVSTACK_STATE=/path/to/devstack_state.json`.
+
 Notes:
 - `broker_team_runs_quorum_compose_smoke.json` requires Docker + Docker Compose (it brings up the broker stack if needed).
 - `broker_team_runs_runtime_members_compose_smoke.json` requires Docker + Docker Compose (it brings up the broker stack if needed).
@@ -26,6 +30,7 @@ Notes:
 - `broker_team_runtime_members_events_sse_compose_smoke.json` requires Docker + Docker Compose (it brings up the broker stack if needed).
 - `broker_team_quorum_events_sse_compose_smoke.json` requires Docker + Docker Compose (it brings up the broker stack if needed).
 - `broker_team_run_events_sse_compose_smoke.json` requires Docker + Docker Compose (it brings up the broker stack if needed).
+- `broker_smoke.json` and `basic_agentd_smoke.json` are intended for an already-live stack, typically the canonical devstack.
 
 Baseline regression gating:
 
@@ -39,3 +44,8 @@ python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --bas
 Notes:
 - `--baseline auto` resolves repo packs under `tools/eval_packs/` to tracked canonical baselines under `ref/eval_packs/`.
 - `--update-baseline` writes a normalized baseline summary without run timestamps or absolute paths, so tracked baselines stay stable in git.
+- Refresh the canonical tracked baselines with:
+
+```bash
+tools/update_eval_baselines.sh
+```
