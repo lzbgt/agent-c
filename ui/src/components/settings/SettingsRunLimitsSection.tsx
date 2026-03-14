@@ -1,5 +1,5 @@
 import React from "react";
-import type { RunSettings } from "../../hooks/useUiSettings";
+import type { RunSettings } from "../../hooks/uiSettingsTypes";
 import FieldLabel from "../FieldLabel";
 
 type SettingsRunLimitsSectionProps = {

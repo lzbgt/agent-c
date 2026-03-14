@@ -1,6 +1,6 @@
 import React from "react";
 import type { DaemonConfigResp } from "../../api";
-import type { ClientSettings, ConnectionSettings, RunSettings } from "../../hooks/useUiSettings";
+import type { ClientSettings, ConnectionSettings, RunSettings } from "../../hooks/uiSettingsTypes";
 import FieldLabel from "../FieldLabel";
 import { SectionHeader, ToggleRow } from "./SettingsControls";
 

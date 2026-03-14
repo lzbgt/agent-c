@@ -1,5 +1,5 @@
 import React from "react";
-import type { ClientSettings } from "../../hooks/useUiSettings";
+import type { ClientSettings } from "../../hooks/uiSettingsTypes";
 import FieldLabel from "../FieldLabel";
 import { SectionHeader, ToggleRow } from "./SettingsControls";
 

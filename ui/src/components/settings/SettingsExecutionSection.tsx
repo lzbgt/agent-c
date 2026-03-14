@@ -1,6 +1,6 @@
 import React from "react";
 import type { Caps, DaemonConfigResp } from "../../api";
-import type { ClientSettings, ConnectionSettings, RunSettings } from "../../hooks/useUiSettings";
+import type { ClientSettings, ConnectionSettings, RunSettings } from "../../hooks/uiSettingsTypes";
 import SettingsCapabilitiesSection from "./SettingsCapabilitiesSection";
 import SettingsClientPreferencesSection from "./SettingsClientPreferencesSection";
 import SettingsDaemonDefaultsSection from "./SettingsDaemonDefaultsSection";

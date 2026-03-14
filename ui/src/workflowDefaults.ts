@@ -1,4 +1,4 @@
-import type { RunSettings } from "./hooks/useUiSettings";
+import type { RunSettings } from "./hooks/uiSettingsTypes";
 
 const parseNumber = (raw: string, min = 0): number | undefined => {
   const s = String(raw ?? "").trim();

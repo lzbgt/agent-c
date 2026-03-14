@@ -1,6 +1,6 @@
 import React from "react";
 import type { ModeratorEvent } from "../../api";
-import type { ConnectionSettings } from "../../hooks/useUiSettings";
+import type { ConnectionSettings } from "../../hooks/uiSettingsTypes";
 import { SectionHeader } from "./SettingsControls";
 import SettingsModeratorEventsSection from "./SettingsModeratorEventsSection";
 import SettingsModeratorPublishSection from "./SettingsModeratorPublishSection";

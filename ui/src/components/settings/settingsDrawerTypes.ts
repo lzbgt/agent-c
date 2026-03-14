@@ -1,5 +1,5 @@
 import type { Caps, DaemonConfigResp, SessionInfo } from "../../api";
-import type { ClientSettings, ConnectionSettings, RunSettings } from "../../hooks/useUiSettings";
+import type { ClientSettings, ConnectionSettings, RunSettings } from "../../hooks/uiSettingsTypes";
 
 export type SettingsDrawerProps = {
   open: boolean;

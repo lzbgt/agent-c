@@ -1,5 +1,5 @@
 import React from "react";
-import type { ConnectionSettings } from "../../hooks/useUiSettings";
+import type { ConnectionSettings } from "../../hooks/uiSettingsTypes";
 import FieldLabel from "../FieldLabel";
 
 type SettingsModeratorPublishSectionProps = {

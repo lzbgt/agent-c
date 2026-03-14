@@ -1,4 +1,4 @@
-import type { ClientSettings, ConnectionSettings, RunSettings } from "../../hooks/useUiSettings";
+import type { ClientSettings, ConnectionSettings, RunSettings } from "../../hooks/uiSettingsTypes";
 
 export type SessionSettings = {
   id: string;
