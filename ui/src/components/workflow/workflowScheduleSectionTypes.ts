@@ -1,0 +1,86 @@
+export type WorkflowQueryState = {
+  isFetching: boolean;
+  isError: boolean;
+  isSuccess: boolean;
+  error?: unknown;
+  refetch: () => Promise<unknown> | unknown;
+};
+
+export type WorkflowScheduleRow = {
+  schedule_id?: string;
+  status?: string;
+  cron?: string;
+  timezone?: string;
+  next_tick_unix_ms?: number;
+  updated_unix_ms?: number;
+  last_error?: string;
+};
+
+export type WorkflowScheduleRunRow = {
+  schedule_id?: string;
+  tick_unix_ms?: number;
+  workflow_id?: string;
+  status?: string;
+  error?: string;
+};
+
+export type WorkflowSchedulesSectionProps = {
+  baseUrl: string;
+  normalizedScheduleStatus: string;
+  scheduleStatus: string;
+  setScheduleStatus: (value: string) => void;
+  scheduleLimit: string;
+  setScheduleLimit: (value: string) => void;
+  scheduleOffset: string;
+  setScheduleOffset: (value: string) => void;
+  scheduleFilter: string;
+  setScheduleFilter: (value: string) => void;
+  scheduleAutoRefresh: boolean;
+  setScheduleAutoRefresh: (value: boolean) => void;
+  scheduleLimitValue: number;
+  scheduleOffsetValue: number;
+  scheduleRunsLimit: string;
+  setScheduleRunsLimit: (value: string) => void;
+  scheduleRunsOffset: string;
+  setScheduleRunsOffset: (value: string) => void;
+  scheduleRunsStatus: string;
+  setScheduleRunsStatus: (value: string) => void;
+  scheduleRunsErrorsOnly: boolean;
+  setScheduleRunsErrorsOnly: (value: boolean) => void;
+  scheduleRunsFilter: string;
+  setScheduleRunsFilter: (value: string) => void;
+  normalizedScheduleRunsStatus: string;
+  scheduleRunsLimitValue: number;
+  scheduleRunsOffsetValue: number;
+  scheduleCron: string;
+  setScheduleCron: (value: string) => void;
+  scheduleSpec: string;
+  setScheduleSpec: (value: string) => void;
+  scheduleId: string;
+  scheduleError: string | null;
+  setScheduleError: (value: string | null) => void;
+  scheduleValidation: string[];
+  setScheduleValidation: (value: string[]) => void;
+  scheduleCronValidation: string[];
+  setScheduleCronValidation: (value: string[]) => void;
+  scheduleBusyId: string | null;
+  scheduleCreateBusy: boolean;
+  scheduleListQuery: WorkflowQueryState;
+  scheduleRunsQuery: WorkflowQueryState;
+  scheduleList: WorkflowScheduleRow[];
+  scheduleRuns: WorkflowScheduleRunRow[];
+  filteredScheduleList: WorkflowScheduleRow[];
+  filteredScheduleRuns: WorkflowScheduleRunRow[];
+  onCopyText: (label: string, value?: string | null) => Promise<void> | void;
+  onCopyJson: (label: string, payload: unknown) => Promise<void> | void;
+  onDownloadJson: (label: string, payload: unknown) => void;
+  onLoadScheduleRuns: (id: string) => void;
+  onLoadWorkflowFromRun: (id: string) => void;
+  onCreateSchedule: () => Promise<void> | void;
+  onPauseSchedule: (id: string) => Promise<void> | void;
+  onResumeSchedule: (id: string) => Promise<void> | void;
+  onDeleteSchedule: (id: string) => Promise<void> | void;
+  onLoadSpecFromWorkflow: () => void;
+  scheduleCurlSnippet: (id: string, action: "pause" | "resume" | "delete") => string;
+  scheduleCreateCurlSnippet: (cron: string, spec: unknown) => string;
+};
