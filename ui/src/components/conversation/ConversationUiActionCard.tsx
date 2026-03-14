@@ -10,25 +10,9 @@ import {
   safeTrunc,
   tryParseUrl,
 } from "./utils";
+import type { ConversationRpcRuntime } from "./conversationViewTypes";
 
 const Card = ConversationCard;
-
-export type RpcCleanupEntry = {
-  cleanups: Array<() => void>;
-  kind: string;
-  createdMs: number;
-  lastActiveMs: number;
-};
-
-export type ConversationRpcRuntime = {
-  pendingAutoRunsRef: React.MutableRefObject<Record<string, () => void>>;
-  probeRanRef: React.MutableRefObject<Record<string, number>>;
-  rpcCleanupRef: React.MutableRefObject<Record<string, RpcCleanupEntry>>;
-  artifactBlobUrlsRef: React.MutableRefObject<string[]>;
-  cleanupRpcEntry: (id: string) => boolean;
-  markSeenWithLimit: (store: Record<string, number>, key: string, limit: number) => void;
-  localUiActionLimit: number;
-};
 
 export type ConversationUiActionCardProps = {
   baseUrl: string;

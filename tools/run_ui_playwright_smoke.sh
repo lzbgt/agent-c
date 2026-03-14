@@ -89,6 +89,7 @@ AGENT_E2E_UI_BASE_URL="${AGENT_E2E_UI_BASE_URL}" \
 AGENT_E2E_OUTPUT_DIR="${pw_artifacts_dir}" \
   bash -lc "cd ui && npx playwright test \
     e2e/agentd_host_smoke.spec.ts \
+    e2e/conversation_client_rpc.spec.ts \
     e2e/memory_panel.spec.ts \
     e2e/run_diff_panel.spec.ts \
     e2e/workflow_schedules.spec.ts \
