@@ -20,6 +20,7 @@ Usage: tools/devstack_agent.sh [options]
 Options:
   --keep           Keep services running after checks (default).
   --no-keep        Stop services after checks.
+  --restart        Stop any live canonical devstack before starting a new one.
   --skip-ui        Skip WebUI build/serve.
   --ui-install     Run npm ci before building UI (default: 1).
   --agent-count    Number of agentd instances to start (default: 1).
@@ -49,6 +50,8 @@ fi
 source "${ROOT}/tools/lib/docker_preflight.sh"
 # shellcheck source=tools/lib/python_helpers.sh
 source "${ROOT}/tools/lib/python_helpers.sh"
+# shellcheck source=tools/lib/devstack_state.sh
+source "${ROOT}/tools/lib/devstack_state.sh"
 if ! docker_compose_preflight "devstack"; then
   exit 77
 fi
@@ -77,6 +80,7 @@ run_logged() {
 }
 
 KEEP=1
+RESTART=0
 SKIP_UI=0
 UI_INSTALL=1
 AGENTD_TOOLS="host"
@@ -90,24 +94,27 @@ POSTGRES_PORT=""
 KEYCLOAK_PORT=""
 OUT_DIR=""
 AGENTD_STATE_DIR=""
+STATE_LINK="${ROOT}/out/devstack_state.json"
+TOPOLOGY_OVERRIDES=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --keep) KEEP=1; shift ;;
     --no-keep) KEEP=0; shift ;;
+    --restart) RESTART=1; shift ;;
     --skip-ui) SKIP_UI=1; shift ;;
     --ui-install) UI_INSTALL=1; shift ;;
-    --agent-count) AGENT_COUNT="$2"; shift 2 ;;
-    --workflow-http) WORKFLOW_HTTP=1; shift ;;
-    --agentd-tools) AGENTD_TOOLS="$2"; shift 2 ;;
-    --agentd-port) AGENTD_PORT="$2"; shift 2 ;;
-    --broker-port) BROKER_PORT="$2"; shift 2 ;;
-    --broker-tls) BROKER_TLS=1; shift ;;
-    --webui-port) WEBUI_PORT="$2"; shift 2 ;;
-    --postgres-port) POSTGRES_PORT="$2"; shift 2 ;;
-    --keycloak-port) KEYCLOAK_PORT="$2"; shift 2 ;;
-    --out-dir) OUT_DIR="$2"; shift 2 ;;
-    --state-dir) AGENTD_STATE_DIR="$2"; shift 2 ;;
+    --agent-count) AGENT_COUNT="$2"; TOPOLOGY_OVERRIDES+=("$1"); shift 2 ;;
+    --workflow-http) WORKFLOW_HTTP=1; TOPOLOGY_OVERRIDES+=("$1"); shift ;;
+    --agentd-tools) AGENTD_TOOLS="$2"; TOPOLOGY_OVERRIDES+=("$1"); shift 2 ;;
+    --agentd-port) AGENTD_PORT="$2"; TOPOLOGY_OVERRIDES+=("$1"); shift 2 ;;
+    --broker-port) BROKER_PORT="$2"; TOPOLOGY_OVERRIDES+=("$1"); shift 2 ;;
+    --broker-tls) BROKER_TLS=1; TOPOLOGY_OVERRIDES+=("$1"); shift ;;
+    --webui-port) WEBUI_PORT="$2"; TOPOLOGY_OVERRIDES+=("$1"); shift 2 ;;
+    --postgres-port) POSTGRES_PORT="$2"; TOPOLOGY_OVERRIDES+=("$1"); shift 2 ;;
+    --keycloak-port) KEYCLOAK_PORT="$2"; TOPOLOGY_OVERRIDES+=("$1"); shift 2 ;;
+    --out-dir) OUT_DIR="$2"; TOPOLOGY_OVERRIDES+=("$1"); shift 2 ;;
+    --state-dir) AGENTD_STATE_DIR="$2"; TOPOLOGY_OVERRIDES+=("$1"); shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown arg: $1" >&2; usage; exit 1 ;;
   esac
@@ -129,6 +136,28 @@ fi
 if [[ "${BROKER_TLS}" != "0" && "${BROKER_TLS}" != "1" ]]; then
   echo "[devstack] invalid BROKER_TLS (expected 0 or 1): ${BROKER_TLS}" >&2
   exit 2
+fi
+
+if [[ -f "${STATE_LINK}" ]]; then
+  if devstack_state_is_live "${STATE_LINK}"; then
+    if [[ "${RESTART}" -eq 1 ]]; then
+      echo "[devstack] restarting live canonical stack from ${STATE_LINK}"
+      "${ROOT}/tools/devstack_agent_down.sh" --state "${STATE_LINK}"
+    elif [[ "${#TOPOLOGY_OVERRIDES[@]}" -gt 0 ]]; then
+      echo "[devstack] live canonical stack already running; refusing to start a second broker/WebUI" >&2
+      echo "[devstack] requested topology flags: ${TOPOLOGY_OVERRIDES[*]}" >&2
+      echo "[devstack] rerun with --restart or stop the current stack first:" >&2
+      echo "  tools/devstack_agent_down.sh --state ${STATE_LINK}" >&2
+      exit 2
+    else
+      echo "[devstack] reusing live canonical stack from ${STATE_LINK}"
+      "${ROOT}/tools/devstack_status.sh" --state "${STATE_LINK}" || true
+      exit 0
+    fi
+  else
+    echo "[devstack] cleaning stale canonical state from ${STATE_LINK}"
+    devstack_state_cleanup_stale "${ROOT}" "${STATE_LINK}"
+  fi
 fi
 
 AGENT_IDS=()
@@ -467,7 +496,7 @@ window.__AGENT_UI_CONFIG__ = {
 };
 CFG
   if http_server_cmd="$(python_http_server_cmd "${WEBUI_PORT}")"; then
-    (cd "${ROOT}/ui/dist" && nohup ${http_server_cmd} >"${LOG_WEBUI}" 2>&1) &
+    bash -lc "cd '${ROOT}/ui/dist' && exec ${http_server_cmd}" >"${LOG_WEBUI}" 2>&1 &
     WEBUI_PID=$!
   else
     echo "[devstack] python not found; skipping WebUI serve" >&2
@@ -643,7 +672,7 @@ print(json.dumps({
   "logs_dir": "${LOG_DIR}",
 }, indent=2))
 PY
-ln -sf "${STATE_PATH}" "${ROOT}/out/devstack_state.json"
+ln -sf "${STATE_PATH}" "${STATE_LINK}"
 
 if [[ "${KEEP}" -eq 1 ]]; then
   CLEAN_ON_EXIT=0

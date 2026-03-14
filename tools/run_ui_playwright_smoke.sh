@@ -16,6 +16,7 @@ mkdir -p "${log_dir}"
 ui_log="${log_dir}/ui_dev_${ts}.log"
 pw_install_log="${log_dir}/playwright_install_${ts}.log"
 pw_log="${log_dir}/playwright_${ts}.log"
+pw_artifacts_dir="${ROOT}/ui/test-results/smoke_${ts}_$$"
 
 cleanup() {
   set +e
@@ -85,6 +86,7 @@ echo "[playwright] ensuring chromium is installed (log: ${pw_install_log})"
 
 echo "[playwright] running smoke specs (log: ${pw_log})"
 AGENT_E2E_UI_BASE_URL="${AGENT_E2E_UI_BASE_URL}" \
+AGENT_E2E_OUTPUT_DIR="${pw_artifacts_dir}" \
   bash -lc "cd ui && npx playwright test \
     e2e/agentd_host_smoke.spec.ts \
     e2e/workflow_schedules.spec.ts \
@@ -98,4 +100,4 @@ AGENT_E2E_UI_BASE_URL="${AGENT_E2E_UI_BASE_URL}" \
 
 echo "[playwright] OK"
 echo "[playwright] logs: ${pw_log}"
-echo "[playwright] artifacts: ${ROOT}/ui/test-results/"
+echo "[playwright] artifacts: ${pw_artifacts_dir}"

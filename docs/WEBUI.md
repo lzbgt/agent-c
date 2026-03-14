@@ -117,6 +117,7 @@ Secret handling:
 - Devstack OIDC helper: `tools/devstack_oidc_token.sh --state out/devstack_state.json` (prints a bearer token; auto-falls back to `http://127.0.0.1:<keycloak_port>` or `http://[::1]:<keycloak_port>` if `keycloak.lvh.me` is unreachable).
 - Devstack writes the broker OIDC token into `ui/dist/agentui-config.js` on startup so the WebUI can connect without manual Settings edits; refresh the page if you change/refresh tokens.
 - Playwright now reuses the existing devstack WebUI from `out/devstack_state.json` when that stack is live, so broker/WebUI tests do not spin up a second browser-facing server by default.
+- `tools/devstack_agent.sh` also reuses that same canonical live stack by default; use `tools/devstack_status.sh` to inspect it and `tools/devstack_agent.sh --restart` if you need to replace it intentionally.
 - See `docs/DEVSTACK_NETWORK_AUTH.md` for the end-to-end network/auth workflow and troubleshooting.
   - If the browser tries `keycloak.lvh.me:<port>/v1/agents/...`, the Broker base URL is mis-set; reset Settings → Connection to the broker URL from `out/devstack_state.json`.
   - If the browser cannot reach `http://127.0.0.1:<broker_port>/v1/agents/<id>/proxy`, ensure Settings → Connection points at the broker URL from `out/devstack_state.json`.

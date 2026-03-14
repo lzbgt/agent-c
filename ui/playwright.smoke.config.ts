@@ -14,10 +14,16 @@ function readDevstackUiBase(): string {
   }
 }
 
+function resolveOutputDir(): string {
+  if (process.env.AGENT_E2E_OUTPUT_DIR) return process.env.AGENT_E2E_OUTPUT_DIR;
+  return path.resolve(process.cwd(), "test-results", `run-${process.pid}`);
+}
+
 const baseURL = process.env.AGENT_E2E_UI_BASE_URL || readDevstackUiBase() || "http://127.0.0.1:5173";
 
 export default defineConfig({
   testDir: "./e2e",
+  outputDir: resolveOutputDir(),
   timeout: 10 * 60 * 1000,
   expect: { timeout: 60 * 1000 },
   retries: 0,

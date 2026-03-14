@@ -15,6 +15,9 @@ Enable HTTPS + mTLS with `tools/devstack_agent.sh --broker-tls`.
 Ports are chosen at runtime and written to `out/devstack_state.json`.
 The compose project name matches the WebUI port by default
 (`agent_devstack_<webui_port>`).
+`tools/devstack_agent.sh` now treats that state file as the canonical singleton
+stack: if the recorded broker/WebUI are still alive it reuses them instead of
+starting a second stack, and `--restart` replaces the live stack explicitly.
 
 Example (from `out/devstack_state.json`):
 - agentd: `http://127.0.0.1:<agentd_port>`
@@ -101,6 +104,12 @@ Do one of the following:
 3) If you refreshed tokens, refresh the page so the WebUI reloads config.
 
 ## Troubleshooting
+
+- **Need to see whether the canonical stack is still alive**:
+  - Run `tools/devstack_status.sh` for a concise broker/WebUI liveness summary.
+- **Need to replace the current stack intentionally**:
+  - Run `tools/devstack_agent.sh --restart` or stop it first with
+    `tools/devstack_agent_down.sh --state out/devstack_state.json`.
 
 - **Keycloak not reachable**:
   - Try `http://127.0.0.1:<keycloak_port>` or `http://[::1]:<keycloak_port>`.

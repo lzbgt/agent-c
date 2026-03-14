@@ -468,10 +468,13 @@ Run all scenarios and validate evidence bundles:
 
 Bring up agentd + broker + connector + WebUI on the host (Postgres + Keycloak via Docker), then run smoke checks + capture evidence:
 - `tools/devstack_agent.sh`
+  - Re-running it now reuses the canonical live stack from `out/devstack_state.json` instead of starting a second broker/WebUI.
+  - Use `tools/devstack_agent.sh --restart` when you intentionally want to replace the current canonical stack.
 
 Stop the stack:
 - `tools/devstack_agent_down.sh` (use `--wipe-volumes` to reset Keycloak and invalidate existing tokens)
   - Edit that file to adjust broker URL, agent id, or pass-through daemon token for local dev.
+- Inspect the live/stale state quickly with `tools/devstack_status.sh`.
 - WebUI serving in `tools/devstack_agent.sh` and `tools/verify_mac_full_stack_host.sh` uses `python -m http.server`.
   If no Python is available, the scripts skip WebUI serve and continue.
 - For a one-command macOS verification run, use: `tools/verify_mac_full_stack.sh`.
