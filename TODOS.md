@@ -129,6 +129,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-03-08: extracted the runtime plane into `ui/src/hooks/useRuntimePlane.ts` so run-watch persistence, scene state/apply, job resume, client-RPC replay, and artifact acknowledgements no longer live in `App.tsx`; `App.tsx` dropped from 1742 to 1066 lines and the same 11-test broker/workflow Playwright batch stayed green.
   - 2026-03-14: extracted `useUiSettings` into `useUiConnectionSettings.ts`, `useUiRunSettings.ts`, and `useUiClientSettings.ts`, shrinking the composition shell from 1628 to 36 lines; UI build plus direct/broker Playwright coverage stayed green.
   - 2026-03-14: extracted `SettingsDrawer` moderator, diagnostics, and sessions panes into dedicated section components, reducing `SettingsDrawer.tsx` from 1905 to 941 lines; UI build plus direct/broker Playwright coverage stayed green.
+  - 2026-03-14: extracted `SettingsModeratorSection.tsx` publish/events/pins concerns into dedicated subcomponents plus shared moderator utilities, reducing the section from 872 lines to a thin shell and removing duplicated moderator event-summary logic from `SettingsDrawer.tsx`.
 
 - [x] W=14 — Orchestrator ownership + lease takeover: prevent split-brain while keeping automation always-on.
   - 2026-02-26: added `expected_owner` guard to orchestrator run update/heartbeat and orchestrator loop claim via `meta.orchestrator_owner`.

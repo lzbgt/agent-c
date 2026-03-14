@@ -21,6 +21,7 @@ import SettingsDiagnosticsSection from "./settings/SettingsDiagnosticsSection";
 import SettingsExecutionSection from "./settings/SettingsExecutionSection";
 import SettingsModeratorSection from "./settings/SettingsModeratorSection";
 import SettingsSessionsSection from "./settings/SettingsSessionsSection";
+import { formatModeratorEventSummary } from "./settings/moderatorUtils";
 
 function formatDuration(ms?: number | null) {
   if (!ms || !Number.isFinite(ms) || ms <= 0) return "";
@@ -31,21 +32,6 @@ function formatDuration(ms?: number | null) {
   if (h > 0) return `${h}h ${m}m ${rem}s`;
   if (m > 0) return `${m}m ${rem}s`;
   return `${rem}s`;
-}
-
-function formatModeratorEventSummary(event: ModeratorEvent) {
-  const type = typeof event?.type === "string" ? event.type : "";
-  const data = event?.data && typeof event.data === "object" ? (event.data as any) : {};
-  if (type === "moderator_directive") {
-    const directive = typeof data?.directive === "string" ? data.directive : "";
-    return directive || "(directive)";
-  }
-  if (type === "moderator_task_published") {
-    const task = data?.task && typeof data.task === "object" ? data.task : {};
-    const title = typeof task?.title === "string" ? task.title : "";
-    return title || "(task)";
-  }
-  return "";
 }
 
 function parseCsvList(raw: string) {
@@ -826,7 +812,6 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
 
         <SettingsModeratorSection
           connection={connection}
-          client={client}
           sessionId={props.session.id}
           moderatorDirective={moderatorDirective}
           setModeratorDirective={setModeratorDirective}
