@@ -157,6 +157,10 @@ schemas:
     $ref: ./components/workflow.yaml#/WorkflowTaskSpec
   WorkflowTaskRunSpec:
     $ref: ./components/workflow.yaml#/WorkflowTaskRunSpec
+  AvmCapsuleMountRequest:
+    $ref: ./components/workflow.yaml#/AvmCapsuleMountRequest
+  AvmCapsuleMountResult:
+    $ref: ./components/workflow.yaml#/AvmCapsuleMountResult
   WorkflowTaskAvmCapsuleSpec:
     $ref: ./components/workflow.yaml#/WorkflowTaskAvmCapsuleSpec
   WorkflowTaskAggregateSpec:

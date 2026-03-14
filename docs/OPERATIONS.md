@@ -434,6 +434,11 @@ curl -sS -X POST "http://127.0.0.1:60306/api/v1/sandbox/mount_validate" \
   -d '{"host_path":"/Users/you/Documents","container_path":"/workspace/extra/docs","container_prefix":"/workspace/extra","is_main":true}'
 ```
 
+AVM capsule execution can reuse the same allowlist by passing `mounts` under
+`capsule` to `/api/v1/avm/capsule_run` or workflow `avm_capsule` tasks. The
+daemon validates those mounts first and forwards only the validated, normalized
+mount metadata to the subprocess environment.
+
 Vendored guard hooks:
 
 ```bash

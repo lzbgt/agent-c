@@ -1560,6 +1560,50 @@ AvmCapsuleRunArgs:
     allow_domains:
       type: string
       description: CSV allowlist passed to AVM `--allow-domains` (still virtualized by capsule defaults)
+    mounts:
+      type: array
+      description: |
+        Optional additional host mounts for AVM-aware capsule runners. Each mount is validated against
+        the daemon sandbox mount allowlist before execution; missing or rejected allowlists fail closed.
+      items:
+        $ref: "#/components/schemas/AvmCapsuleMountRequest"
+
+AvmCapsuleMountRequest:
+  type: object
+  required: [host_path, container_path]
+  properties:
+    host_path:
+      type: string
+      description: Host filesystem path to expose to the capsule runner.
+    container_path:
+      type: string
+      description: Absolute target path inside the capsule runtime.
+    container_prefix:
+      type: string
+      description: Allowed prefix for container_path validation (default `/workspace/extra`).
+    is_main:
+      type: boolean
+      description: Whether this mount should be treated as main-sandbox access for readonly enforcement.
+
+AvmCapsuleMountResult:
+  type: object
+  required: [host_path, container_path, readonly, is_main]
+  properties:
+    host_path:
+      type: string
+      description: Canonicalized host path that passed allowlist validation.
+    container_path:
+      type: string
+      description: Normalized container target path that passed prefix validation.
+    readonly:
+      type: boolean
+      description: Effective readonly decision after allowlist policy.
+    is_main:
+      type: boolean
+      description: Main-sandbox flag used during validation.
+    matched_root:
+      type: string
+      description: Canonical allowlist root that authorized the mount.
 
 
 WorkflowSubmitRequest:

@@ -30,6 +30,26 @@ LOG_DIR="$(agentd_smoke_log_dir)"
 TMP_DIR="${LOG_DIR}/agentd_workflow_avm_capsule_smoke_${PORT_DAEMON}.tmp"
 mkdir -p "${TMP_DIR}"
 
+HOME_ROOT="${TMP_DIR}/home"
+ALLOW_ROOT="${TMP_DIR}/allow_root"
+OUTSIDE_ROOT="${TMP_DIR}/outside_root"
+mkdir -p "${HOME_ROOT}/.config/agent" "${ALLOW_ROOT}/allowed" "${OUTSIDE_ROOT}/blocked"
+cat > "${HOME_ROOT}/.config/agent/mount-allowlist.json" <<JSON
+{
+  "allowed_roots": [
+    { "path": "${ALLOW_ROOT}", "readonly": false }
+  ],
+  "blocked_patterns": [],
+  "non_main_readonly": true
+}
+JSON
+
+export HOME="${HOME_ROOT}"
+export EXPECTED_ALLOWED_HOST="${ALLOW_ROOT}/allowed"
+export EXPECTED_ALLOWED_CONTAINER="/workspace/extra/allowed"
+export EXPECTED_ALLOWED_MATCHED_ROOT="${ALLOW_ROOT}"
+export EXPECTED_ALLOWED_READONLY="0"
+
 # Deterministic AVM stub runner (out-of-process).
 AVM_STUB_BIN="${TMP_DIR}/avm_stub.sh"
 cat > "${AVM_STUB_BIN}" <<'SH'
@@ -74,6 +94,48 @@ fi
 
 case "${mode}" in
   --print-run-json)
+    mount_count="${AGENTD_AVM_MOUNT_COUNT:-0}"
+    if [[ "${mount_count}" != "0" ]]; then
+      if [[ "${mount_count}" != "1" ]]; then
+        echo "unexpected mount_count=${mount_count}" >&2
+        exit 2
+      fi
+      if [[ "${AGENTD_AVM_MOUNT_0_HOST_PATH:-}" != "${EXPECTED_ALLOWED_HOST:-}" ]]; then
+        echo "unexpected host path ${AGENTD_AVM_MOUNT_0_HOST_PATH:-}" >&2
+        exit 2
+      fi
+      if [[ "${AGENTD_AVM_MOUNT_0_CONTAINER_PATH:-}" != "${EXPECTED_ALLOWED_CONTAINER:-}" ]]; then
+        echo "unexpected container path ${AGENTD_AVM_MOUNT_0_CONTAINER_PATH:-}" >&2
+        exit 2
+      fi
+      if [[ "${AGENTD_AVM_MOUNT_0_MATCHED_ROOT:-}" != "${EXPECTED_ALLOWED_MATCHED_ROOT:-}" ]]; then
+        echo "unexpected matched root ${AGENTD_AVM_MOUNT_0_MATCHED_ROOT:-}" >&2
+        exit 2
+      fi
+      if [[ "${AGENTD_AVM_MOUNT_0_READONLY:-}" != "${EXPECTED_ALLOWED_READONLY:-}" ]]; then
+        echo "unexpected readonly ${AGENTD_AVM_MOUNT_0_READONLY:-}" >&2
+        exit 2
+      fi
+      python3 - <<'PY'
+import json, os, sys
+mounts = json.loads(os.environ.get("AGENTD_AVM_MOUNTS_JSON", "[]"))
+if len(mounts) != 1:
+  print("unexpected mounts json", mounts, file=sys.stderr)
+  raise SystemExit(1)
+mount = mounts[0]
+expected = {
+  "host_path": os.environ["EXPECTED_ALLOWED_HOST"],
+  "container_path": os.environ["EXPECTED_ALLOWED_CONTAINER"],
+  "matched_root": os.environ["EXPECTED_ALLOWED_MATCHED_ROOT"],
+  "readonly": False,
+  "is_main": True,
+}
+for key, value in expected.items():
+  if mount.get(key) != value:
+    print(f"unexpected mount field {key}: {mount.get(key)!r}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+    fi
     echo '{"schema":"avm.run.v1","exit_code":0,"gas_executed":10,"wall_elapsed_ns":1000,"has_result":true,"result_type":"string","result":"ok"}'
     echo "RESULT_HASH stubresulthash"
     echo "TRACE_HASH stubtracehash"
@@ -163,7 +225,7 @@ submit_resp="$(curl -fsS --noproxy "*" --max-time 20 \
   -d "$(python3 - <<PY
 import json
 tasks = [
-  {"task_id":"AVM","kind":"avm_capsule","capsule":{"obc_base64":"${obc_b64}","timeout_ms":1000,"gas":1000,"mem_bytes":64000,"io_bytes":0,"log_bytes":0,"deterministic":True}},
+  {"task_id":"AVM","kind":"avm_capsule","capsule":{"obc_base64":"${obc_b64}","timeout_ms":1000,"gas":1000,"mem_bytes":64000,"io_bytes":0,"log_bytes":0,"deterministic":True,"mounts":[{"host_path":"${ALLOW_ROOT}/allowed","container_path":"/workspace/extra/allowed","is_main":True}]}},
   {"task_id":"B","depends_on":["AVM"],"request":{"prompt":"B got \${task.AVM.json:/assistant_text}","no_session":True,"tools":"none","base_url":"${STUB_BASE}","api_key":"dummy","model":"stub","trace":False}},
 ]
 print(json.dumps({"tasks": tasks, "allow_inline_api_keys": True}))
@@ -235,6 +297,20 @@ run = avm.get("run") or {}
 if run.get("schema") != "avm.run.v1":
   print("unexpected avm.run.schema", run.get("schema"), file=sys.stderr)
   raise SystemExit(1)
+mounts = avm.get("mounts") or []
+if len(mounts) != 1:
+  print("unexpected AVM mounts", mounts, file=sys.stderr)
+  raise SystemExit(1)
+mount = mounts[0]
+if mount.get("host_path") != "${ALLOW_ROOT}/allowed":
+  print("unexpected AVM mount host_path", mount.get("host_path"), file=sys.stderr)
+  raise SystemExit(1)
+if mount.get("container_path") != "/workspace/extra/allowed":
+  print("unexpected AVM mount container_path", mount.get("container_path"), file=sys.stderr)
+  raise SystemExit(1)
+if mount.get("readonly") is not False:
+  print("unexpected AVM mount readonly", mount.get("readonly"), file=sys.stderr)
+  raise SystemExit(1)
 if avm.get("result_hash") != "stubresulthash":
   print("unexpected result_hash", avm.get("result_hash"), file=sys.stderr)
   raise SystemExit(1)
@@ -255,5 +331,76 @@ if "B got stubresulthash" not in (r_b.get("assistant_text") or ""):
   raise SystemExit(1)
 PY
 
-echo "agentd_workflow_avm_capsule_smoke OK"
+submit_bad_resp="$(curl -fsS --noproxy "*" --max-time 20 \
+  -H "Authorization: Bearer ${AUTH_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "$(python3 - <<PY
+import json
+tasks = [
+  {"task_id":"AVM_BAD","kind":"avm_capsule","capsule":{"obc_base64":"${obc_b64}","timeout_ms":1000,"mounts":[{"host_path":"${OUTSIDE_ROOT}/blocked","container_path":"/workspace/extra/blocked","is_main":True}]}}
+]
+print(json.dumps({"tasks": tasks, "allow_inline_api_keys": True}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/workflow/submit")"
 
+workflow_bad_id="$(python3 - <<PY
+import json
+obj = json.loads(r'''${submit_bad_resp}''')
+print(obj.get("workflow_id",""))
+PY
+)"
+if [[ -z "${workflow_bad_id}" ]]; then
+  echo "failed to get bad workflow_id: ${submit_bad_resp}" >&2
+  exit 1
+fi
+
+final_bad=""
+for _ in $(seq 1 200); do
+  final_bad="$(curl -fsS --noproxy "*" --max-time 5 \
+    -H "Authorization: Bearer ${AUTH_TOKEN}" \
+    "${DAEMON_URL}/api/v1/workflow?workflow_id=${workflow_bad_id}&include_tasks=1&include_results=1")"
+  if python3 - <<PY >/dev/null 2>&1
+import json, sys
+obj = json.loads(r'''${final_bad}''')
+w = obj.get("workflow") or {}
+st = w.get("status")
+if st in ("done","error","cancelled"):
+  raise SystemExit(0)
+raise SystemExit(1)
+PY
+  then
+    break
+  fi
+  sleep 0.1
+done
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${final_bad}''')
+if not obj.get("ok"):
+  print("workflow get failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+w = obj.get("workflow") or {}
+if w.get("status") != "error":
+  print("expected workflow status error", w, file=sys.stderr)
+  raise SystemExit(1)
+tasks = obj.get("tasks") or []
+by_id = {t.get("task_id"): t for t in tasks if isinstance(t, dict)}
+task = by_id.get("AVM_BAD") or {}
+if task.get("status") != "error":
+  print("expected AVM_BAD task error", task, file=sys.stderr)
+  raise SystemExit(1)
+result = obj.get("result") or {}
+by_task = result.get("results_by_task") or {}
+r_bad = by_task.get("AVM_BAD") or {}
+if r_bad.get("ok") is not False:
+  print("expected AVM_BAD result ok=false", r_bad, file=sys.stderr)
+  raise SystemExit(1)
+err = (r_bad.get("error") or "") + " " + ((r_bad.get("avm") or {}).get("error") or "")
+if "host_path_outside_roots" not in err:
+  print("unexpected AVM_BAD error", err, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+echo "agentd_workflow_avm_capsule_smoke OK"

@@ -1161,6 +1161,8 @@ export interface paths {
                             result_hash?: string;
                             trace_hash?: string;
                             state_hash?: string;
+                            /** @description Validated additional mounts forwarded to the capsule runner. */
+                            mounts?: components["schemas"]["AvmCapsuleMountResult"][];
                             /** Format: int32 */
                             exit_code: number;
                             timed_out: boolean;
@@ -5823,6 +5825,28 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        AvmCapsuleMountRequest: {
+            /** @description Host filesystem path to expose to the capsule runner. */
+            host_path: string;
+            /** @description Absolute target path inside the capsule runtime. */
+            container_path: string;
+            /** @description Allowed prefix for container_path validation (default `/workspace/extra`). */
+            container_prefix?: string;
+            /** @description Whether this mount should be treated as main-sandbox access for readonly enforcement. */
+            is_main?: boolean;
+        };
+        AvmCapsuleMountResult: {
+            /** @description Canonicalized host path that passed allowlist validation. */
+            host_path: string;
+            /** @description Normalized container target path that passed prefix validation. */
+            container_path: string;
+            /** @description Effective readonly decision after allowlist policy. */
+            readonly: boolean;
+            /** @description Main-sandbox flag used during validation. */
+            is_main: boolean;
+            /** @description Canonical allowlist root that authorized the mount. */
+            matched_root?: string;
+        };
         WorkflowTaskAvmCapsuleSpec: {
             task_id: string;
             /** @description If true, task failure does not fail the workflow (soft-fail). */
@@ -7089,6 +7113,11 @@ export interface components {
             time_start_ns?: number;
             /** @description CSV allowlist passed to AVM `--allow-domains` (still virtualized by capsule defaults) */
             allow_domains?: string;
+            /**
+             * @description Optional additional host mounts for AVM-aware capsule runners. Each mount is validated against
+             *     the daemon sandbox mount allowlist before execution; missing or rejected allowlists fail closed.
+             */
+            mounts?: components["schemas"]["AvmCapsuleMountRequest"][];
         };
         WorkflowSubmitRequest: {
             workflow_id?: string;

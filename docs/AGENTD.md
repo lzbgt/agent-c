@@ -160,6 +160,10 @@ Sandbox mount allowlist:
 - Diagnostics expose status in `/api/v1/diagnostics` (`sandbox_mount_allowlist`).
 - Validate mounts via `POST /api/v1/sandbox/mount_validate` (returns allow/deny + readonly decision).
   - Example request in `docs/TOOLS.md`.
+- `POST /api/v1/avm/capsule_run` and workflow tasks with `kind: avm_capsule` can optionally include `capsule.mounts`.
+  - Each mount is validated against the same allowlist before launch.
+  - Allowed mounts are forwarded to the AVM subprocess via `AGENTD_AVM_MOUNTS_JSON` plus `AGENTD_AVM_MOUNT_<n>_*` env vars.
+  - If the allowlist is missing, invalid, or rejects a requested mount, execution fails closed before the subprocess starts.
 
 ## Policy hooks (allow/deny + budget caps)
 

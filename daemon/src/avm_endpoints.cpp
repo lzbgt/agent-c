@@ -3,6 +3,7 @@
 #include "daemon_auth.h"
 #include "http_util.h"
 #include "json_util.h"
+#include "mount_allowlist.h"
 #include "string_util.h"
 
 #include "base64.h"
@@ -14,6 +15,7 @@
 #include <cstring>
 #include <filesystem>
 #include <optional>
+#include <unordered_set>
 #include <unordered_map>
 #include <string>
 #include <vector>
@@ -146,6 +148,14 @@ struct ExecResult {
   bool timed_out = false;
   bool truncated = false;
   std::string output;
+};
+
+struct AvmValidatedMount {
+  std::string resolved_host_path;
+  std::string resolved_container_path;
+  std::string matched_root;
+  bool readonly = true;
+  bool is_main = true;
 };
 
 static std::string json_stringify_compact(const Json::Value& v) {
@@ -367,6 +377,142 @@ static std::optional<AvmReady> avm_require_ready(
 }
 
 static bool parse_obc_from_args(const Json::Value& args, std::string* out_obc_bytes, std::string* out_error);
+
+static std::string mount_reason_to_error_kind(const std::string& reason) {
+  if (
+    reason == "allowlist_missing" || reason == "host_path_outside_roots" || reason == "blocked_pattern"
+  ) {
+    return "forbidden";
+  }
+  return "bad_request";
+}
+
+static std::string format_mount_error(
+  size_t index,
+  const MountAllowlistDecision& decision,
+  const MountAllowlistStatus& status
+) {
+  std::string err = "mounts[" + std::to_string((unsigned long long)index) + "] rejected: " + decision.reason;
+  if (!decision.blocked_pattern.empty()) err += " (" + decision.blocked_pattern + ")";
+  if (decision.reason == "allowlist_missing" && !status.error.empty()) err += ": " + status.error;
+  return err;
+}
+
+static Json::Value avm_mounts_to_json(const std::vector<AvmValidatedMount>& mounts) {
+  Json::Value arr(Json::arrayValue);
+  for (const auto& mount : mounts) {
+    Json::Value row(Json::objectValue);
+    row["host_path"] = mount.resolved_host_path;
+    row["container_path"] = mount.resolved_container_path;
+    row["readonly"] = mount.readonly;
+    row["is_main"] = mount.is_main;
+    if (!mount.matched_root.empty()) row["matched_root"] = mount.matched_root;
+    arr.append(row);
+  }
+  return arr;
+}
+
+static bool parse_capsule_mounts(
+  const Json::Value& args,
+  std::vector<AvmValidatedMount>* out_mounts,
+  std::string* out_error_kind,
+  std::string* out_error
+) {
+  if (out_mounts) out_mounts->clear();
+  if (out_error_kind) out_error_kind->clear();
+  if (out_error) out_error->clear();
+  if (!args.isMember("mounts")) return true;
+  if (!args["mounts"].isArray()) {
+    if (out_error_kind) *out_error_kind = "bad_request";
+    if (out_error) *out_error = "mounts must be an array";
+    return false;
+  }
+
+  const Json::Value& mounts = args["mounts"];
+  if (mounts.empty()) return true;
+  if (mounts.size() > 16) {
+    if (out_error_kind) *out_error_kind = "bad_request";
+    if (out_error) *out_error = "mounts may contain at most 16 entries";
+    return false;
+  }
+
+  const MountAllowlist* allow = mount_allowlist_or_null();
+  const MountAllowlistStatus allow_status = mount_allowlist_status();
+  std::unordered_set<std::string> seen_container_paths;
+  std::vector<AvmValidatedMount> parsed;
+  parsed.reserve(mounts.size());
+
+  for (Json::ArrayIndex i = 0; i < mounts.size(); ++i) {
+    const Json::Value& mount = mounts[i];
+    if (!mount.isObject()) {
+      if (out_error_kind) *out_error_kind = "bad_request";
+      if (out_error) *out_error = "mounts[" + std::to_string((unsigned long long)i) + "] must be an object";
+      return false;
+    }
+    if (mount.isMember("host_path") && !mount["host_path"].isString()) {
+      if (out_error_kind) *out_error_kind = "bad_request";
+      if (out_error) *out_error = "mounts[" + std::to_string((unsigned long long)i) + "].host_path must be string";
+      return false;
+    }
+    if (mount.isMember("container_path") && !mount["container_path"].isString()) {
+      if (out_error_kind) *out_error_kind = "bad_request";
+      if (out_error) *out_error = "mounts[" + std::to_string((unsigned long long)i) + "].container_path must be string";
+      return false;
+    }
+    if (mount.isMember("container_prefix") && !mount["container_prefix"].isString()) {
+      if (out_error_kind) *out_error_kind = "bad_request";
+      if (out_error) *out_error = "mounts[" + std::to_string((unsigned long long)i) + "].container_prefix must be string";
+      return false;
+    }
+
+    const std::string host_path =
+      mount.isMember("host_path") && mount["host_path"].isString() ? trim_copy(mount["host_path"].asString()) : "";
+    const std::string container_path =
+      mount.isMember("container_path") && mount["container_path"].isString() ? trim_copy(mount["container_path"].asString()) : "";
+    const std::string container_prefix =
+      mount.isMember("container_prefix") && mount["container_prefix"].isString() ? trim_copy(mount["container_prefix"].asString()) : "";
+    bool is_main = true;
+    if (mount.isMember("is_main")) {
+      if (!mount["is_main"].isBool()) {
+        if (out_error_kind) *out_error_kind = "bad_request";
+        if (out_error) *out_error = "mounts[" + std::to_string((unsigned long long)i) + "].is_main must be boolean";
+        return false;
+      }
+      is_main = mount["is_main"].asBool();
+    }
+
+    MountAllowlistInput input;
+    input.host_path = host_path;
+    input.container_path = container_path;
+    input.container_prefix = container_prefix;
+    input.is_main = is_main;
+    const MountAllowlistDecision decision = mount_allowlist_validate(allow, input);
+    if (!decision.allowed) {
+      if (out_error_kind) *out_error_kind = mount_reason_to_error_kind(decision.reason);
+      if (out_error) *out_error = format_mount_error((size_t)i, decision, allow_status);
+      return false;
+    }
+    if (!seen_container_paths.insert(decision.resolved_container_path).second) {
+      if (out_error_kind) *out_error_kind = "bad_request";
+      if (out_error) {
+        *out_error =
+          "mounts contain duplicate container_path after normalization: " + decision.resolved_container_path;
+      }
+      return false;
+    }
+
+    AvmValidatedMount validated;
+    validated.resolved_host_path = decision.resolved_host_path;
+    validated.resolved_container_path = decision.resolved_container_path;
+    validated.matched_root = decision.matched_root;
+    validated.readonly = decision.readonly;
+    validated.is_main = is_main;
+    parsed.push_back(std::move(validated));
+  }
+
+  if (out_mounts) *out_mounts = std::move(parsed);
+  return true;
+}
 
 static bool parse_obc_from_request_body(const std::string& body, std::string* out_obc_bytes, Json::Value* out_args, std::string* out_error) {
   if (out_error) out_error->clear();
@@ -597,6 +743,19 @@ bool avm_capsule_run_to_json(
     return true;
   }
 
+  std::vector<AvmValidatedMount> mounts;
+  std::string mount_error_kind;
+  std::string mount_error;
+  if (!parse_capsule_mounts(args, &mounts, &mount_error_kind, &mount_error)) {
+    const std::string err = mount_error.empty() ? "invalid mounts" : mount_error;
+    if (out_error) *out_error = err;
+    o["ok"] = false;
+    o["error_kind"] = mount_error_kind.empty() ? "bad_request" : mount_error_kind;
+    o["error"] = err;
+    *out = o;
+    return true;
+  }
+
   auto clamp_i64 = [](int64_t v, int64_t lo, int64_t hi) -> int64_t {
     if (v < lo) return lo;
     if (v > hi) return hi;
@@ -676,7 +835,7 @@ bool avm_capsule_run_to_json(
   avm_argv.push_back(tmp->string());
 
   std::vector<std::pair<std::string, std::string>> env_overrides;
-  env_overrides.reserve(8);
+  env_overrides.reserve(10 + mounts.size() * 5);
   env_overrides.push_back({"AVM_GAS", std::to_string((long long)gas)});
   env_overrides.push_back({"AVM_MEM_BYTES", std::to_string((long long)mem_bytes)});
   env_overrides.push_back({"AVM_IO_BYTES", std::to_string((long long)io_bytes)});
@@ -684,6 +843,20 @@ bool avm_capsule_run_to_json(
   env_overrides.push_back({"AVM_DETERMINISTIC", deterministic ? "1" : "0"});
   if (have_rng_seed) env_overrides.push_back({"AVM_RNG_SEED", std::to_string((long long)rng_seed)});
   if (have_time_start_ns) env_overrides.push_back({"AVM_TIME_START_NS", std::to_string((long long)time_start_ns)});
+  if (!mounts.empty()) {
+    const Json::Value mounts_json = avm_mounts_to_json(mounts);
+    env_overrides.push_back({"AGENTD_AVM_MOUNT_COUNT", std::to_string((unsigned long long)mounts.size())});
+    env_overrides.push_back({"AGENTD_AVM_MOUNTS_JSON", json_stringify_compact(mounts_json)});
+    for (size_t i = 0; i < mounts.size(); ++i) {
+      const auto& mount = mounts[i];
+      const std::string pfx = "AGENTD_AVM_MOUNT_" + std::to_string((unsigned long long)i) + "_";
+      env_overrides.push_back({pfx + "HOST_PATH", mount.resolved_host_path});
+      env_overrides.push_back({pfx + "CONTAINER_PATH", mount.resolved_container_path});
+      env_overrides.push_back({pfx + "READONLY", mount.readonly ? "1" : "0"});
+      env_overrides.push_back({pfx + "IS_MAIN", mount.is_main ? "1" : "0"});
+      env_overrides.push_back({pfx + "MATCHED_ROOT", mount.matched_root});
+    }
+  }
 
   const int outer_timeout_ms = (int)clamp_i64(timeout_ms + 1000, 1, 65000);
   const size_t max_out = 1024 * 1024;
@@ -696,6 +869,7 @@ bool avm_capsule_run_to_json(
   o["timed_out"] = r.timed_out;
   o["truncated"] = r.truncated;
   o["stdout"] = r.output;
+  if (!mounts.empty()) o["mounts"] = avm_mounts_to_json(mounts);
 
   if (r.timed_out) {
     o["ok"] = false;

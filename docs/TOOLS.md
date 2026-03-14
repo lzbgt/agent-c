@@ -129,6 +129,12 @@ curl -sS -X POST "http://127.0.0.1:60306/api/v1/sandbox/mount_validate" \
 This endpoint does not execute a sandbox; it returns an allow/deny decision and
 whether the mount must be read-only.
 
+The same allowlist is enforced for AVM capsule execution when `capsule.mounts`
+is present on `/api/v1/avm/capsule_run` or an `avm_capsule` workflow task.
+Validated mounts are forwarded to AVM-aware runners through
+`AGENTD_AVM_MOUNTS_JSON` and `AGENTD_AVM_MOUNT_<n>_*` env vars; if the runner
+ignores those vars, no host mount is exposed.
+
 ### Deterministic testing
 
 ctest includes agentd_tool_server_smoke, which routes a forced tool call to a

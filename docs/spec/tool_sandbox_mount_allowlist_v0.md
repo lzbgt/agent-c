@@ -88,6 +88,10 @@ Example:
 - `agentd` sandbox tool runner:
   - Add allowlist load + validation module.
   - Enforce allowlist before passing mounts to the sandbox runtime.
+- `agentd` AVM capsule runner:
+  - `POST /api/v1/avm/capsule_run` and workflow `avm_capsule` tasks now validate `mounts`
+    against the allowlist before spawning the subprocess.
+  - Validated mounts are forwarded as normalized metadata in the subprocess environment.
 - Operator tooling:
   - Expose `POST /api/v1/sandbox/mount_validate` to test decisions without running a sandbox.
 - `caps` / config endpoint:
@@ -109,3 +113,4 @@ Example:
 
 - Spec linked from `docs/spec/README.md`.
 - TODO entry added for implementation milestones.
+- Runtime enforcement exists for at least one real sandboxed execution path.

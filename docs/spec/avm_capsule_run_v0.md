@@ -65,6 +65,9 @@ Optional (budgets / determinism):
 Optional (allowlist hints, still virtualized):
 
 - `allow_domains: string` — CSV passed to AVM `--allow-domains` (default empty)
+- `mounts: [{ host_path, container_path, container_prefix?, is_main? }]` — optional host
+  mounts for AVM-aware runners. `agentd` validates every entry against the sandbox mount allowlist
+  before launch and fails closed if validation rejects the request.
 
 ### Response JSON (v0)
 
@@ -75,6 +78,7 @@ Success response fields:
 - `result_hash: string?` — parsed token `RESULT_HASH <hex>`
 - `trace_hash: string?` — parsed token `TRACE_HASH <hex>`
 - `state_hash: string?` — parsed token `STATE_HASH <hex>`
+- `mounts: array?` — validated/canonicalized mounts forwarded to the capsule runner
 - `exit_code: int`
 - `timed_out: bool`
 - `truncated: bool`
@@ -95,6 +99,9 @@ Failure response:
 - Capture stdout+stderr into a bounded buffer (default cap 1MB).
 - Parse the first JSON object found in output as the `run` value.
 - Parse hash tokens from remaining output as best-effort fields.
+- When `mounts` is present, validate against `~/.config/agent/mount-allowlist.json` before launch.
+- Forward validated mounts through `AGENTD_AVM_MOUNTS_JSON`, `AGENTD_AVM_MOUNT_COUNT`,
+  and `AGENTD_AVM_MOUNT_<n>_*` env vars. If the runner ignores these vars, no host mount is exposed.
 
 ## 6) Fast bring-up (developer workflow)
 
@@ -122,7 +129,7 @@ This produces an `{"task_id":"AVM","kind":"avm_capsule","capsule":{...}}` object
 Durable workflows support deterministic capsule tasks (no LLM required):
 
 - Task kind: `avm_capsule`
-- Task payload: `capsule: { obc_base64, timeout_ms, gas, mem_bytes, ... }`
+- Task payload: `capsule: { obc_base64, timeout_ms, gas, mem_bytes, mounts?, ... }`
 - Execution: agentd runs the configured AVM binary out-of-process under the same operator gates as `/api/v1/avm/capsule_run`.
 
 Minimal example:
