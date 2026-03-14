@@ -447,6 +447,7 @@ if(AGENT_BUILD_HOST)
   add_test(NAME docs_sanity_tests COMMAND docs_sanity_tests ${CMAKE_CURRENT_SOURCE_DIR}/docs/DB.md)
   add_test(NAME eval_pack_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/eval_pack_smoke.sh)
   add_test(NAME eval_pack_checks_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/eval_pack_checks_smoke.sh)
+  add_test(NAME eval_pack_set_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/eval_pack_set_smoke.sh)
   add_test(NAME scenario_runner_devstack_state_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/scenario_runner_devstack_state_smoke.sh)
 
   add_executable(openapi_sanity_tests

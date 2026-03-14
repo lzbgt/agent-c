@@ -14,12 +14,9 @@ Usage: tools/update_eval_baselines.sh [--state <path>] [--require-live] [pack...
 Refresh canonical eval-pack baselines under ref/eval_packs/.
 
 Defaults:
-  - always updates self-contained packs:
-      tools/eval_packs/eval_pack_smoke.json
-      tools/eval_packs/eval_pack_checks_smoke.json
-  - when the canonical devstack is live, also updates:
-      tools/eval_packs/basic_agentd_smoke.json
-      tools/eval_packs/broker_smoke.json
+  - updates the canonical eval-pack set:
+      self-contained packs always
+      live-stack packs when the canonical devstack is live
 
 Options:
   --state <path>    devstack_state.json path (default: out/devstack_state.json)
@@ -49,30 +46,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-self_contained=(
-  "${ROOT}/tools/eval_packs/eval_pack_smoke.json"
-  "${ROOT}/tools/eval_packs/eval_pack_checks_smoke.json"
-)
-live_packs=(
-  "${ROOT}/tools/eval_packs/basic_agentd_smoke.json"
-  "${ROOT}/tools/eval_packs/broker_smoke.json"
-)
-
 if [[ ${#PACKS[@]} -eq 0 ]]; then
-  PACKS=("${self_contained[@]}")
-  if "${ROOT}/tools/devstack_status.sh" --state "${STATE_PATH}" --require-live >/dev/null 2>&1; then
-    PACKS+=("${ROOT}/tools/eval_packs/basic_agentd_smoke.json")
-    if "${ROOT}/tools/devstack_status.sh" --state "${STATE_PATH}" --require-ready >/dev/null 2>&1; then
-      PACKS+=("${ROOT}/tools/eval_packs/broker_smoke.json")
-    else
-      echo "[eval-baselines] skipping broker_smoke; canonical devstack broker is not ready (${STATE_PATH})"
-    fi
-  elif [[ "${REQUIRE_LIVE}" == "1" ]]; then
-    echo "live devstack required but unavailable: ${STATE_PATH}" >&2
-    exit 1
-  else
-    echo "[eval-baselines] skipping live-stack packs; devstack not live (${STATE_PATH})"
+  args=(--set canonical --state "${STATE_PATH}" --update-baseline)
+  if [[ "${REQUIRE_LIVE}" == "1" ]]; then
+    args+=(--require-live)
   fi
+  exec "${ROOT}/tools/run_eval_pack_set.sh" "${args[@]}"
 fi
 
 for pack in "${PACKS[@]}"; do

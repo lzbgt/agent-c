@@ -166,6 +166,7 @@ Validates the length of a JSON array/object/string. Supports `equals`, `min`, an
 ## 6) Reference tooling
 
 - Runner: `tools/eval_pack.py`
+- Canonical set helper: `tools/run_eval_pack_set.sh`
 - Example pack: `tools/eval_packs/basic_agentd_smoke.json`
 - Scenarios: `tools/scenarios/`
 
@@ -179,6 +180,8 @@ Example:
 ```bash
 python3 tools/eval_pack.py --file tools/eval_packs/eval_pack_smoke.json --baseline auto
 python3 tools/eval_pack.py --file tools/eval_packs/eval_pack_smoke.json --update-baseline
+tools/run_eval_pack_set.sh --set self-contained --baseline auto
+tools/run_eval_pack_set.sh --set canonical --baseline auto
 python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline ref/eval_packs/basic_agentd_smoke.summary.json
 python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline ref/eval_packs/basic_agentd_smoke.summary.json --update-baseline
 ```

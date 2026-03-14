@@ -15,10 +15,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Run eval pack smoke against canonical baseline
-        run: python3 tools/eval_pack.py --file tools/eval_packs/eval_pack_smoke.json --baseline auto
-      - name: Run eval pack checks smoke against canonical baseline
-        run: python3 tools/eval_pack.py --file tools/eval_packs/eval_pack_checks_smoke.json --baseline auto
+      - name: Run self-contained eval-pack set against canonical baselines
+        run: tools/run_eval_pack_set.sh --set self-contained --baseline auto
 
   eval-pack-docker:
     runs-on: ubuntu-latest

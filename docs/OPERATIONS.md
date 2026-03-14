@@ -30,23 +30,29 @@ Optional: run eval pack smoke after build/tests:
 
 ```bash
 tools/verify.sh --eval-pack
+tools/verify.sh --eval-pack --eval-pack-set live
 tools/verify.sh --eval-pack --eval-pack-file tools/eval_packs/basic_agentd_smoke.json
 tools/verify.sh --eval-pack --eval-pack-file tools/eval_packs/broker_smoke.json
 ```
 
+By default, `tools/verify.sh --eval-pack` runs the canonical self-contained eval-pack set. Use
+`--eval-pack-set canonical` to include live-stack packs when the canonical devstack is available, or
+`--eval-pack-set live` / `--eval-pack-set all` when you want the verifier to require a live devstack.
+
 Eval pack regression gating can compare to a stored baseline:
 
 ```bash
-python3 tools/eval_pack.py --file tools/eval_packs/eval_pack_smoke.json --baseline auto
-python3 tools/eval_pack.py --file tools/eval_packs/eval_pack_smoke.json --update-baseline
-python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline ref/eval_packs/basic_agentd_smoke.summary.json
-python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline ref/eval_packs/basic_agentd_smoke.summary.json --update-baseline
+tools/run_eval_pack_set.sh --set self-contained --baseline auto
+tools/run_eval_pack_set.sh --set canonical --baseline auto
+python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline auto
+python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --update-baseline
 ```
 
 Or via the verifier:
 
 ```bash
 tools/verify.sh --eval-pack
+tools/verify.sh --eval-pack --eval-pack-set canonical
 tools/verify.sh --eval-pack-baseline auto --eval-pack-update-baseline
 tools/verify.sh --eval-pack-baseline ref/eval_packs/eval_pack_smoke.summary.json
 ```
@@ -54,8 +60,9 @@ tools/verify.sh --eval-pack-baseline ref/eval_packs/eval_pack_smoke.summary.json
 Canonical repo baselines live under `ref/eval_packs/`. Baseline update writes a normalized summary so git-tracked baselines do not churn on timestamps or absolute paths.
 Use `tools/update_eval_baselines.sh` to refresh the tracked baseline set; it updates the
 self-contained packs unconditionally and the live-stack packs when the canonical devstack
-from `out/devstack_state.json` is available. `broker_smoke` is only refreshed when
-`tools/devstack_status.sh --require-ready` succeeds.
+from `out/devstack_state.json` is available. That script now delegates to the same canonical
+set helper used by CI and `tools/verify.sh`, so pack selection stays consistent. `broker_smoke`
+is only refreshed when `tools/devstack_status.sh --require-ready` succeeds.
 
 Include repo hygiene guards:
 

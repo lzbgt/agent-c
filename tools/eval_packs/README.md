@@ -19,6 +19,14 @@ python3 tools/eval_pack.py --file tools/eval_packs/broker_team_run_events_sse_co
 
 Outputs are written under `out/eval_pack_<ts>/summary.json`.
 
+Run a canonical pack set:
+
+```bash
+tools/run_eval_pack_set.sh --set self-contained
+tools/run_eval_pack_set.sh --set canonical
+tools/run_eval_pack_set.sh --set live
+```
+
 For live-stack packs such as `basic_agentd_smoke.json` and `broker_smoke.json`,
 the scenario runner now defaults to the canonical stack from `out/devstack_state.json`
 when present. Override with `AGENT_DEVSTACK_STATE=/path/to/devstack_state.json`.
@@ -35,17 +43,15 @@ Notes:
 Baseline regression gating:
 
 ```bash
-python3 tools/eval_pack.py --file tools/eval_packs/eval_pack_smoke.json --baseline auto
-python3 tools/eval_pack.py --file tools/eval_packs/eval_pack_smoke.json --update-baseline
-python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline ref/eval_packs/basic_agentd_smoke.summary.json
-python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline ref/eval_packs/basic_agentd_smoke.summary.json --update-baseline
+tools/run_eval_pack_set.sh --set self-contained --baseline auto
+tools/run_eval_pack_set.sh --set canonical --baseline auto
+python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline auto
+tools/update_eval_baselines.sh
 ```
 
 Notes:
 - `--baseline auto` resolves repo packs under `tools/eval_packs/` to tracked canonical baselines under `ref/eval_packs/`.
 - `--update-baseline` writes a normalized baseline summary without run timestamps or absolute paths, so tracked baselines stay stable in git.
-- Refresh the canonical tracked baselines with:
-
-```bash
-tools/update_eval_baselines.sh
-```
+- `tools/run_eval_pack_set.sh --set canonical` runs self-contained packs always, plus live-stack packs when the canonical devstack is available.
+- `tools/run_eval_pack_set.sh --set all` requires a live canonical devstack and runs both self-contained and live-stack packs.
+- `tools/update_eval_baselines.sh` refreshes the canonical tracked baselines using the same canonical set selection logic.
