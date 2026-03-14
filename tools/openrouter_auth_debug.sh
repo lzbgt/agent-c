@@ -21,6 +21,14 @@ fi
 BASE_URL="${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}"
 SOURCE_HINT="$(agent_test_get_key_source openrouter 2>/dev/null || true)"
 MODEL_OVERRIDE="${AGENT_TEST_OPENROUTER_MODEL:-}"
+HOME_ENV_KEY_MATCH="0"
+HOME_ENV="$(agent_env_dotenv_path || true)"
+if [[ -n "${HOME_ENV}" && -f "${HOME_ENV}" ]]; then
+  HOME_ENV_KEY="$(agent_test_get_key_from_file "${HOME_ENV}" openrouter 2>/dev/null || true)"
+  if [[ -n "${HOME_ENV_KEY}" && "${HOME_ENV_KEY}" == "${OPENROUTER_KEY}" ]]; then
+    HOME_ENV_KEY_MATCH="1"
+  fi
+fi
 HEADERS=(-H "Authorization: Bearer ${OPENROUTER_KEY}")
 if [[ -n "${OPENROUTER_HTTP_REFERER:-}" ]]; then
   HEADERS+=(-H "HTTP-Referer: ${OPENROUTER_HTTP_REFERER}")
@@ -33,6 +41,7 @@ echo "base_url=${BASE_URL}"
 if [[ -n "${SOURCE_HINT}" ]]; then
   echo "key_source=${SOURCE_HINT}"
 fi
+echo "key_matches_home_env=${HOME_ENV_KEY_MATCH}"
 if [[ -n "${OPENROUTER_HTTP_REFERER:-}" ]]; then
   echo "http_referer_set=1"
 else
@@ -42,6 +51,9 @@ if [[ -n "${OPENROUTER_X_TITLE:-}" ]]; then
   echo "x_title_set=1"
 else
   echo "x_title_set=0"
+fi
+if [[ -z "${OPENROUTER_HTTP_REFERER:-}" && -z "${OPENROUTER_X_TITLE:-}" ]]; then
+  echo "headers_hint=set OPENROUTER_HTTP_REFERER and OPENROUTER_X_TITLE in shell, .not_in_repo, project.local.md, or ~/.env"
 fi
 if [[ -n "${MODEL_OVERRIDE}" ]]; then
   echo "model_override=${MODEL_OVERRIDE}"
@@ -255,6 +267,17 @@ if msg or code:
     print(f"chat_error_code={code}")
     print(f"chat_error_message={msg}")
 PY
+
+if [[ "${chat_status}" == "401" || "${chat_status}" == "403" ]]; then
+  if [[ "${HOME_ENV_KEY_MATCH}" == "1" ]]; then
+    echo "chat_auth_hint=current OPENROUTER_API_KEY matches ~/.env and is rejected by /chat/completions"
+  else
+    echo "chat_auth_hint=current OPENROUTER_API_KEY is rejected by /chat/completions"
+  fi
+  if [[ -z "${OPENROUTER_HTTP_REFERER:-}" && -z "${OPENROUTER_X_TITLE:-}" ]]; then
+    echo "chat_headers_hint=no optional OpenRouter headers are configured"
+  fi
+fi
 
 if [[ "${chat_status}" -ge 400 || "${chat_status}" == "000" ]]; then
   exit 77

@@ -131,6 +131,10 @@ The quick check prints a hint to run the debug helper when it fails. The debug h
 `streaming_pins.json` metadata it finds (pinned models and list sizes), including `stream_pins_present`
 and `pins_empty` flags when the file is missing or has no usable entries, plus the `stream_pins_source`
 and path used; when pins are missing/empty it prints a `stream_pins_hint` line with the probe command.
+It also reports whether the current `OPENROUTER_API_KEY` matches the key in `~/.env` and whether optional
+OpenRouter headers are configured. If `chat_status=401` with `chat_error_message=User not found.`, the
+current key is being rejected by `/chat/completions`; that is an auth/key issue, not evidence that the
+pin selection itself is wrong.
 
 If you need to skip the chat-completions preflight (e.g., keys that can list models but cannot chat), set:
 
