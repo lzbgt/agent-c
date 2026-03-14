@@ -1,0 +1,54 @@
+import type { ApiAuth, BrokerGuidanceEvent, BrokerGuidanceReceipt } from "../../api";
+import type { BrokerEventRow } from "./types";
+
+export type BrokerTeamGuidancePanelProps = {
+  base: string;
+  auth: ApiAuth;
+  canQuery: boolean;
+  teamId: string;
+  events?: BrokerEventRow[];
+};
+
+export type BrokerTeamGuidanceState = {
+  canQuery: boolean;
+  teamIdTrimmed: string;
+  guidanceEvents: BrokerEventRow[];
+  guidanceRows: BrokerGuidanceEvent[];
+  listBusy: boolean;
+  listError: string | null;
+  statusFilter: string;
+  teamRunFilter: string;
+  kind: string;
+  priority: string;
+  message: string;
+  payloadJson: string;
+  targetRoles: string;
+  targetOrchestrator: string;
+  expiresUnixMs: string;
+  createBusy: boolean;
+  createError: string | null;
+  ackNote: string;
+  ackBusyId: string;
+  ackError: string | null;
+  receiptsByGuidanceId: Record<string, BrokerGuidanceReceipt[]>;
+  receiptsBusyId: string;
+  receiptsErrorByGuidanceId: Record<string, string>;
+  receiptsOpenByGuidanceId: Record<string, boolean>;
+  briefingOpenByGuidanceId: Record<string, boolean>;
+  setStatusFilter: (next: string) => void;
+  setTeamRunFilter: (next: string) => void;
+  setKind: (next: string) => void;
+  setPriority: (next: string) => void;
+  setMessage: (next: string) => void;
+  setPayloadJson: (next: string) => void;
+  setTargetRoles: (next: string) => void;
+  setTargetOrchestrator: (next: string) => void;
+  setExpiresUnixMs: (next: string) => void;
+  setAckNote: (next: string) => void;
+  loadGuidance: () => Promise<void>;
+  handleCreate: () => Promise<void>;
+  handleAck: (guidanceId: string) => Promise<void>;
+  loadReceipts: (guidanceId: string) => Promise<void>;
+  toggleReceipts: (guidanceId: string) => void;
+  toggleBriefing: (guidanceId: string) => void;
+};
