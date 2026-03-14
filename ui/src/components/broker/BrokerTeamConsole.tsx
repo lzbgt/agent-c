@@ -1,43 +1,20 @@
 import React from "react";
-import {
-  apiBrokerTeamCreate,
-  apiBrokerTeamDelete,
-  apiBrokerTeamGet,
-  apiBrokerTeamList,
-  apiBrokerTeamMembersDelete,
-  apiBrokerTeamMembersList,
-  apiBrokerTeamMembersUpsert,
-  apiBrokerTeamMemberUpdate,
-  apiBrokerListAgents,
-  apiBrokerTeamQuorumDelete,
-  apiBrokerTeamQuorumList,
-  apiBrokerTeamQuorumUpsert,
-  apiBrokerTeamUpdate,
-  type ApiAuth,
-  type BrokerAgentInfo,
-  type BrokerDeploymentInfo,
-  type BrokerTeam,
-} from "../../api";
+import type { ApiAuth } from "../../api";
 import useLocalStorageState from "../../hooks/useLocalStorageState";
 import FieldLabel from "../FieldLabel";
-import BrokerTeamRunPanel from "./BrokerTeamRunPanel";
 import BrokerOrchestratorRunPanel from "./BrokerOrchestratorRunPanel";
 import BrokerOrchestratorSpawnPanel from "./BrokerOrchestratorSpawnPanel";
 import BrokerTeamGuidancePanel from "./BrokerTeamGuidancePanel";
 import BrokerTeamMembersPanel from "./BrokerTeamMembersPanel";
-import BrokerTeamSetupPanel from "./BrokerTeamSetupPanel";
+import BrokerTeamRunPanel from "./BrokerTeamRunPanel";
 import SectionCard from "./BrokerTeamSectionCard";
 import BrokerTeamSettingsPanel from "./BrokerTeamSettingsPanel";
+import BrokerTeamSetupPanel from "./BrokerTeamSetupPanel";
+import useBrokerTeamControlState from "./useBrokerTeamControlState";
 import useBrokerTeamEventsState from "./useBrokerTeamEventsState";
-import {
-  fmtTs,
-  normalizeRoleGraphEdges,
-  normalizeRoleInstructionMap,
-  normalizeRolePromptMode,
-  normalizeSharedMemoryMode,
-  type RoleGraphEdge,
-} from "./teamRunUtils";
-import type { BrokerEventRow, TeamMemberRow, TeamQuorumRuleRow } from "./types";
+import useBrokerTeamSetupState from "./useBrokerTeamSetupState";
+import { fmtTs } from "./teamRunUtils";
+import type { BrokerEventRow } from "./types";
 
 export type BrokerTeamConsoleProps = {
   base: string;
@@ -55,28 +32,12 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const canQuery = props.base.length > 0 && (authToken.length > 0 || useCookieAuth);
   const mode = props.mode ?? "full";
 
-  const [teamsBusy, setTeamsBusy] = React.useState<boolean>(false);
-  const [teamsError, setTeamsError] = React.useState<string | null>(null);
-  type TeamRow = BrokerTeam & { owner_sub?: string };
+  const setupState = useBrokerTeamSetupState({
+    base: props.base,
+    auth: props.auth,
+    canQuery,
+  });
 
-  const [teams, setTeams] = React.useState<TeamRow[] | null>(null);
-  const [teamId, setTeamId] = useLocalStorageState<string>("agentui.brokerTeamId", "");
-  const [newTeamId, setNewTeamId] = React.useState<string>("");
-  const [newTeamName, setNewTeamName] = React.useState<string>("");
-  const [teamDetails, setTeamDetails] = React.useState<TeamRow | null>(null);
-  const [teamEditName, setTeamEditName] = React.useState<string>("");
-  const [teamEditTags, setTeamEditTags] = React.useState<string>("");
-  const [teamEditPolicyRef, setTeamEditPolicyRef] = React.useState<string>("");
-  const [teamEditSharedScope, setTeamEditSharedScope] = React.useState<string>("");
-  const [teamEditSharedMode, setTeamEditSharedMode] = React.useState<string>("read_write");
-  const [teamEditMetaJson, setTeamEditMetaJson] = React.useState<string>("");
-  const [teamEditRoleOverridesJson, setTeamEditRoleOverridesJson] = React.useState<string>("");
-  const [teamRoleInstructions, setTeamRoleInstructions] = React.useState<Record<string, string>>({});
-  const [teamRolePromptMode, setTeamRolePromptMode] = React.useState<string>("prepend");
-  const [teamRoleGraphEdges, setTeamRoleGraphEdges] = React.useState<RoleGraphEdge[]>([]);
-  const [teamRolePlanTouched, setTeamRolePlanTouched] = React.useState<boolean>(false);
-  const [teamEditBusy, setTeamEditBusy] = React.useState<boolean>(false);
-  const [teamEditError, setTeamEditError] = React.useState<string | null>(null);
   const teamTabs = React.useMemo(
     () => [
       { id: "run", label: "Run" },
@@ -88,1044 +49,37 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     [],
   );
   const [teamTab, setTeamTab] = useLocalStorageState<string>("agentui.teamTab", "run");
-  const teamTabIds = React.useMemo(() => new Set(teamTabs.map((t) => t.id)), [teamTabs]);
+  const teamTabIds = React.useMemo(() => new Set(teamTabs.map((tab) => tab.id)), [teamTabs]);
   const forcedTab = props.forcedTab && teamTabIds.has(props.forcedTab) ? props.forcedTab : "";
   const activeTab = forcedTab || teamTab;
+
   React.useEffect(() => {
     if (!teamTabIds.has(teamTab)) setTeamTab("run");
-  }, [teamTab, teamTabIds, setTeamTab]);
+  }, [setTeamTab, teamTab, teamTabIds]);
 
-  const [membersBusy, setMembersBusy] = React.useState<boolean>(false);
-  const [membersError, setMembersError] = React.useState<string | null>(null);
-
-  const [quickTeamName, setQuickTeamName] = React.useState<string>("");
-  const [quickTeamId, setQuickTeamId] = React.useState<string>("");
-  const [quickTeamGoal, setQuickTeamGoal] = React.useState<string>("");
-  const [quickBuilderError, setQuickBuilderError] = React.useState<string | null>(null);
-  const [quickBuilderBusy, setQuickBuilderBusy] = React.useState<boolean>(false);
-  const [quickTemplate, setQuickTemplate] = React.useState<string>("standard");
-  type QuickMember = {
-    id: string;
-    role: string;
-    provider: string;
-    model: string;
-    baseUrl: string;
-    agentId: string;
-    deploymentId: string;
-  };
-  const providerDefaults: Record<string, string> = {
-    openai: "https://api.openai.com/v1",
-    anthropic: "https://api.anthropic.com",
-    deepseek: "https://api.deepseek.com",
-    moonshot: "https://api.moonshot.cn/v1",
-    kimi: "https://api.moonshot.cn/v1",
-    glm: "https://open.bigmodel.cn/api/paas/v4",
-    local: "",
-    custom: "",
-  };
-  const providerModelDefaults: Record<string, string> = {
-    openai: "gpt-4.1",
-    anthropic: "claude-3-7-sonnet-20250219",
-    deepseek: "deepseek-reasoner",
-    moonshot: "kimi-k2.5",
-    kimi: "kimi-k2.5",
-    glm: "glm-4",
-    local: "",
-    custom: "",
-  };
-  const makeQuickMembers = React.useCallback((template: string): QuickMember[] => {
-    const mk = (role: string): QuickMember => ({
-      id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      role,
-      provider: "openai",
-      model: providerModelDefaults.openai,
-      baseUrl: providerDefaults.openai,
-      agentId: "",
-      deploymentId: "",
-    });
-    if (template === "planner_executor") return [mk("planner"), mk("executor")];
-    if (template === "research_team") return [mk("researcher"), mk("executor"), mk("critic")];
-    return [mk("planner"), mk("executor"), mk("critic")];
-  }, []);
-  const [quickMembers, setQuickMembers] = React.useState<QuickMember[]>(() => makeQuickMembers("standard"));
-
-  const [members, setMembers] = React.useState<TeamMemberRow[] | null>(null);
-  const [memberId, setMemberId] = React.useState<string>("");
-  const [memberRole, setMemberRole] = React.useState<string>("executor");
-  const [memberStatus, setMemberStatus] = React.useState<string>("active");
-  const [memberWeight, setMemberWeight] = React.useState<string>("1");
-  const [memberCapabilities, setMemberCapabilities] = React.useState<string>("");
-  const [memberAgentId, setMemberAgentId] = React.useState<string>("");
-  const [memberDeploymentId, setMemberDeploymentId] = React.useState<string>("");
-  const [memberBackendLabel, setMemberBackendLabel] = React.useState<string>("");
-  const [memberModel, setMemberModel] = React.useState<string>("");
-  const [memberBaseUrl, setMemberBaseUrl] = React.useState<string>("");
-  const [memberSummaryModel, setMemberSummaryModel] = React.useState<string>("");
-  const [memberTools, setMemberTools] = React.useState<string>("");
-  const [memberTimeoutMs, setMemberTimeoutMs] = React.useState<string>("");
-  const [memberEditId, setMemberEditId] = React.useState<string>("");
-  const [memberEditRole, setMemberEditRole] = React.useState<string>("");
-  const [memberEditStatus, setMemberEditStatus] = React.useState<string>("");
-  const [memberEditWeight, setMemberEditWeight] = React.useState<string>("");
-  const [memberEditCapabilities, setMemberEditCapabilities] = React.useState<string>("");
-  const [memberEditMetaJson, setMemberEditMetaJson] = React.useState<string>("");
-  const [memberEditBackendLabel, setMemberEditBackendLabel] = React.useState<string>("");
-  const [memberEditModel, setMemberEditModel] = React.useState<string>("");
-  const [memberEditBaseUrl, setMemberEditBaseUrl] = React.useState<string>("");
-  const [memberEditSummaryModel, setMemberEditSummaryModel] = React.useState<string>("");
-  const [memberEditTools, setMemberEditTools] = React.useState<string>("");
-  const [memberEditTimeoutMs, setMemberEditTimeoutMs] = React.useState<string>("");
-  const [memberEditAgentId, setMemberEditAgentId] = React.useState<string>("");
-  const [memberEditDeploymentId, setMemberEditDeploymentId] = React.useState<string>("");
-  const [memberEditBusy, setMemberEditBusy] = React.useState<boolean>(false);
-  const [memberEditError, setMemberEditError] = React.useState<string | null>(null);
-  const [memberAgentsBusy, setMemberAgentsBusy] = React.useState<boolean>(false);
-  const [memberAgentsError, setMemberAgentsError] = React.useState<string | null>(null);
-  const [memberAgents, setMemberAgents] = React.useState<BrokerAgentInfo[] | null>(null);
-
-  const [rulesBusy, setRulesBusy] = React.useState<boolean>(false);
-  const [rulesError, setRulesError] = React.useState<string | null>(null);
-  const [rules, setRules] = React.useState<TeamQuorumRuleRow[] | null>(null);
-  const [ruleAction, setRuleAction] = React.useState<string>("team_run");
-  const [ruleMinApprovals, setRuleMinApprovals] = React.useState<string>("1");
-  const [ruleMode, setRuleMode] = React.useState<string>("strict");
-
-  const teamList = Array.isArray(teams) ? teams : [];
-  const teamIdTrimmed = String(teamId || "").trim();
   React.useEffect(() => {
-    if (teamList.length === 0 && teamTab !== "setup") {
+    if (setupState.teamList.length === 0 && teamTab !== "setup") {
       setTeamTab("setup");
     }
-  }, [teamList.length, teamTab, setTeamTab]);
-  const membersList = Array.isArray(members) ? members : [];
-  const rolePlanOptions = React.useMemo(() => {
-    const set = new Set<string>();
-    for (const member of membersList) {
-      const role = String(member?.role || "").trim().toLowerCase();
-      if (role) set.add(role);
-    }
-    try {
-      const parsed = JSON.parse(String(teamEditRoleOverridesJson || "").trim() || "{}");
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        for (const key of Object.keys(parsed)) {
-          const role = String(key || "").trim().toLowerCase();
-          if (role) set.add(role);
-        }
-      }
-    } catch {
-      // ignore invalid JSON; handled elsewhere
-    }
-    for (const role of Object.keys(teamRoleInstructions)) {
-      const r = String(role || "").trim().toLowerCase();
-      if (r) set.add(r);
-    }
-    for (const edge of teamRoleGraphEdges) {
-      const from = String(edge?.from_role || "").trim().toLowerCase();
-      const to = String(edge?.to_role || "").trim().toLowerCase();
-      if (from) set.add(from);
-      if (to) set.add(to);
-    }
-    return Array.from(set).filter(Boolean).sort();
-  }, [membersList, teamEditRoleOverridesJson, teamRoleInstructions, teamRoleGraphEdges]);
-  const rulesList = Array.isArray(rules) ? rules : [];
-  const memberAgentOptions = Array.isArray(memberAgents) ? memberAgents : [];
-  const memberSelectedAgent = memberAgentOptions.find(
-    (agent) => String(agent?.agent_id || "") === String(memberAgentId || "").trim(),
-  );
-  const memberAgentDeployments = Array.isArray(memberSelectedAgent?.deployments)
-    ? (memberSelectedAgent.deployments as BrokerDeploymentInfo[])
-    : [];
-  const memberEditSelectedAgent = memberAgentOptions.find(
-    (agent) => String(agent?.agent_id || "") === String(memberEditAgentId || "").trim(),
-  );
-  const memberEditAgentDeployments = Array.isArray(memberEditSelectedAgent?.deployments)
-    ? (memberEditSelectedAgent.deployments as BrokerDeploymentInfo[])
-    : [];
+  }, [setTeamTab, setupState.teamList.length, teamTab]);
+
+  const controlState = useBrokerTeamControlState({
+    base: props.base,
+    auth: props.auth,
+    canQuery,
+    teamIdTrimmed: setupState.teamIdTrimmed,
+    memberAgents: setupState.memberAgents,
+  });
+
   const teamEventsState = useBrokerTeamEventsState({
     base: props.base,
     auth: props.auth,
     authKey: props.authKey,
     clientId: props.clientId,
     canQuery,
-    teamIdTrimmed,
+    teamIdTrimmed: setupState.teamIdTrimmed,
     quorumEvents: props.quorumEvents,
   });
-
-  const refreshTeams = async () => {
-    if (!canQuery) return;
-    setTeamsError(null);
-    setTeamsBusy(true);
-    try {
-      const resp = await apiBrokerTeamList(props.base, props.auth);
-      const rows = Array.isArray(resp?.teams) ? resp.teams : [];
-      setTeams(rows);
-      if (!teamIdTrimmed && rows.length > 0) {
-        setTeamId(String(rows[0]?.team_id || ""));
-      }
-    } catch (err) {
-      setTeamsError(String(err));
-    } finally {
-      setTeamsBusy(false);
-    }
-  };
-
-  const refreshTeamDetails = async (id: string) => {
-    const tid = String(id || "").trim();
-    if (!canQuery || !tid) return;
-    try {
-      const resp = await apiBrokerTeamGet(props.base, tid, props.auth);
-      setTeamDetails(resp?.team ?? null);
-    } catch {
-      setTeamDetails(null);
-    }
-  };
-
-  const refreshMembers = async (id: string) => {
-    const tid = String(id || "").trim();
-    if (!canQuery || !tid) return;
-    setMembersError(null);
-    setMembersBusy(true);
-    try {
-      const resp = await apiBrokerTeamMembersList(props.base, tid, props.auth);
-      setMembers(Array.isArray(resp?.members) ? resp.members : []);
-    } catch (err) {
-      setMembersError(String(err));
-    } finally {
-      setMembersBusy(false);
-    }
-  };
-
-  const refreshMemberAgents = async () => {
-    if (!canQuery) return;
-    setMemberAgentsError(null);
-    setMemberAgentsBusy(true);
-    try {
-      const resp = await apiBrokerListAgents(props.base, props.auth);
-      const rows = Array.isArray(resp?.agents) ? resp.agents : [];
-      setMemberAgents(rows);
-    } catch (err) {
-      setMemberAgentsError(String(err));
-    } finally {
-      setMemberAgentsBusy(false);
-    }
-  };
-
-  const refreshRules = async (id: string) => {
-    const tid = String(id || "").trim();
-    if (!canQuery || !tid) return;
-    setRulesError(null);
-    setRulesBusy(true);
-    try {
-      const resp = await apiBrokerTeamQuorumList(props.base, tid, props.auth);
-      setRules(Array.isArray(resp?.rules) ? resp.rules : []);
-    } catch (err) {
-      setRulesError(String(err));
-    } finally {
-      setRulesBusy(false);
-    }
-  };
-
-  const handleCreateTeam = async () => {
-    const tid = String(newTeamId || "").trim();
-    if (!tid) {
-      setTeamsError("team_id required");
-      return;
-    }
-    setTeamsError(null);
-    setTeamsBusy(true);
-    try {
-      await apiBrokerTeamCreate(props.base, { team_id: tid, display_name: String(newTeamName || "").trim() }, props.auth);
-      setNewTeamId("");
-      setNewTeamName("");
-      await refreshTeams();
-      setTeamId(tid);
-    } catch (err) {
-      setTeamsError(String(err));
-    } finally {
-      setTeamsBusy(false);
-    }
-  };
-
-  const slugifyTeamId = (name: string): string => {
-    const base = String(name || "")
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-    return base || `team-${Date.now()}`;
-  };
-
-  const handleQuickBuilderApplyTemplate = React.useCallback(
-    (template: string) => {
-      setQuickTemplate(template);
-      setQuickMembers(makeQuickMembers(template));
-    },
-    [makeQuickMembers],
-  );
-
-  const handleQuickMemberUpdate = (id: string, patch: Partial<QuickMember>) => {
-    setQuickMembers((prev) =>
-      prev.map((m) => {
-        if (m.id !== id) return m;
-        const next = { ...m, ...patch };
-        if (patch.provider !== undefined) {
-          const def = providerDefaults[patch.provider] ?? "";
-          const modelDef = providerModelDefaults[patch.provider] ?? "";
-          if (!next.baseUrl || next.baseUrl === providerDefaults[m.provider]) {
-            next.baseUrl = def;
-          }
-          if (!next.model || next.model === providerModelDefaults[m.provider]) {
-            next.model = modelDef;
-          }
-        }
-        return next;
-      }),
-    );
-  };
-
-  const handleQuickAddMember = () => {
-    setQuickMembers((prev) => [
-      ...prev,
-      {
-        id: `member-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        role: "executor",
-        provider: "openai",
-        model: providerModelDefaults.openai,
-        baseUrl: providerDefaults.openai,
-        agentId: "",
-        deploymentId: "",
-      },
-    ]);
-  };
-
-  const handleQuickRemoveMember = (id: string) => {
-    setQuickMembers((prev) => prev.filter((m) => m.id !== id));
-  };
-
-  const handleQuickCreateTeam = async () => {
-    if (!canQuery) return;
-    setQuickBuilderError(null);
-    setQuickBuilderBusy(true);
-    try {
-      const name = String(quickTeamName || "").trim();
-      if (!name) throw new Error("team name required");
-      const id = String(quickTeamId || "").trim() || slugifyTeamId(name);
-      const goal = String(quickTeamGoal || "").trim();
-      const meta: Record<string, any> = {};
-      if (goal) meta.goal = goal;
-      const payload: Record<string, any> = { team_id: id, display_name: name };
-      if (Object.keys(meta).length > 0) payload.meta = meta;
-      const createResp = await apiBrokerTeamCreate(props.base, payload, props.auth);
-      if (!createResp.ok) throw new Error(createResp.error || createResp.err || createResp.code || "team create failed");
-
-      for (const member of quickMembers) {
-        const role = String(member.role || "").trim();
-        if (!role) continue;
-        const memberPayload: Record<string, any> = { role };
-        const agentId = String(member.agentId || "").trim();
-        const deploymentId = String(member.deploymentId || "").trim();
-        if (agentId) memberPayload.agent_id = agentId;
-        if (deploymentId) memberPayload.deployment_id = deploymentId;
-        const metaMember: Record<string, any> = {};
-        const provider = String(member.provider || "").trim();
-        if (provider) metaMember.provider = provider;
-        const runOverrides: Record<string, any> = {};
-        const model = String(member.model || "").trim();
-        if (model) runOverrides.model = model;
-        const baseUrl = String(member.baseUrl || "").trim();
-        if (baseUrl) runOverrides.base_url = baseUrl;
-        if (Object.keys(runOverrides).length > 0) metaMember.run_overrides = runOverrides;
-        if (Object.keys(metaMember).length > 0) memberPayload.meta = metaMember;
-        const upsertResp = await apiBrokerTeamMembersUpsert(props.base, id, memberPayload, props.auth);
-        if (!upsertResp.ok) {
-          throw new Error(upsertResp.error || upsertResp.err || upsertResp.code || "member create failed");
-        }
-      }
-
-      setQuickTeamId(id);
-      setTeamId(id);
-      await refreshTeams();
-      await refreshTeamDetails(id);
-      await refreshMembers(id);
-    } catch (err) {
-      setQuickBuilderError(String(err));
-    } finally {
-      setQuickBuilderBusy(false);
-    }
-  };
-
-  const handleDeleteTeam = async () => {
-    const tid = teamIdTrimmed;
-    if (!tid) return;
-    if (!window.confirm(`Delete team "${tid}"?`)) return;
-    setTeamsError(null);
-    setTeamsBusy(true);
-    try {
-      await apiBrokerTeamDelete(props.base, tid, props.auth);
-      setTeamId("");
-      setTeamDetails(null);
-      await refreshTeams();
-    } catch (err) {
-      setTeamsError(String(err));
-    } finally {
-      setTeamsBusy(false);
-    }
-  };
-
-  const loadTeamEditsFromDetails = (details: any | null) => {
-    if (!details) {
-      setTeamEditName("");
-      setTeamEditTags("");
-      setTeamEditPolicyRef("");
-      setTeamEditSharedScope("");
-      setTeamEditSharedMode("read_write");
-      setTeamEditMetaJson("");
-      setTeamEditRoleOverridesJson("");
-      return;
-    }
-    setTeamEditName(String(details?.display_name || ""));
-    const tags = Array.isArray(details?.tags) ? details.tags : [];
-    setTeamEditTags(tags.map((t: any) => String(t)).filter(Boolean).join(", "));
-    setTeamEditPolicyRef(String(details?.policy_ref || ""));
-    setTeamEditSharedScope(String(details?.shared_memory_scope_id || ""));
-    if (details?.meta && typeof details.meta === "object") {
-      try {
-        setTeamEditMetaJson(JSON.stringify(details.meta, null, 2));
-      } catch {
-        setTeamEditMetaJson("");
-      }
-    } else {
-      setTeamEditMetaJson("");
-    }
-    const metaObj = details?.meta && typeof details.meta === "object" ? (details.meta as Record<string, any>) : null;
-    setTeamEditSharedMode(
-      normalizeSharedMemoryMode(metaObj?.shared_memory_mode ?? metaObj?.memory_scope_mode ?? "read_write"),
-    );
-    if (metaObj?.role_overrides && typeof metaObj.role_overrides === "object") {
-      try {
-        setTeamEditRoleOverridesJson(JSON.stringify(metaObj.role_overrides, null, 2));
-      } catch {
-        setTeamEditRoleOverridesJson("");
-      }
-    } else {
-      setTeamEditRoleOverridesJson("");
-    }
-    if (metaObj) {
-      setTeamRoleInstructions(normalizeRoleInstructionMap(metaObj.role_instructions));
-      setTeamRolePromptMode(normalizeRolePromptMode(metaObj.role_prompt_mode));
-      setTeamRoleGraphEdges(normalizeRoleGraphEdges(metaObj.role_graph));
-    } else {
-      setTeamRoleInstructions({});
-      setTeamRolePromptMode("prepend");
-      setTeamRoleGraphEdges([]);
-    }
-    setTeamRolePlanTouched(false);
-  };
-
-  const handleRoleInstructionsChange = (next: Record<string, string>) => {
-    setTeamRolePlanTouched(true);
-    setTeamRoleInstructions(next);
-  };
-
-  const handleRolePromptModeChange = (next: string) => {
-    setTeamRolePlanTouched(true);
-    setTeamRolePromptMode(next);
-  };
-
-  const handleRoleGraphEdgesChange = (next: RoleGraphEdge[]) => {
-    setTeamRolePlanTouched(true);
-    setTeamRoleGraphEdges(next);
-  };
-
-  const handleUpdateTeam = async () => {
-    const tid = teamIdTrimmed;
-    if (!tid) return;
-    const displayName = String(teamEditName || "").trim();
-    if (!displayName) {
-      setTeamEditError("display_name required");
-      return;
-    }
-    const tagsRaw = String(teamEditTags || "").trim();
-    const tags =
-      tagsRaw.length === 0
-        ? []
-        : tagsRaw
-            .split(",")
-            .map((t) => t.trim())
-            .filter(Boolean);
-    const policyRef = String(teamEditPolicyRef || "").trim();
-    const sharedScope = String(teamEditSharedScope || "").trim();
-    const sharedModeRaw = String(teamEditSharedMode || "").trim().toLowerCase();
-    if (
-      sharedModeRaw &&
-      sharedModeRaw !== "read_only" &&
-      sharedModeRaw !== "read_write" &&
-      sharedModeRaw !== "readonly" &&
-      sharedModeRaw !== "readwrite"
-    ) {
-      setTeamEditError("shared memory mode must be read_only or read_write");
-      return;
-    }
-    const sharedMode = normalizeSharedMemoryMode(sharedModeRaw);
-    const metaRaw = String(teamEditMetaJson || "").trim();
-    let meta: Record<string, any> = {};
-    if (metaRaw) {
-      try {
-        const parsed = JSON.parse(metaRaw);
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          meta = parsed;
-        } else {
-          setTeamEditError("meta must be a JSON object");
-          return;
-        }
-      } catch (err) {
-        setTeamEditError(`invalid meta json: ${String(err)}`);
-        return;
-      }
-    }
-    const roleOverridesRaw = String(teamEditRoleOverridesJson || "").trim();
-    if (roleOverridesRaw) {
-      try {
-        const parsed = JSON.parse(roleOverridesRaw);
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          meta.role_overrides = parsed;
-        } else {
-          setTeamEditError("role overrides must be a JSON object keyed by role");
-          return;
-        }
-      } catch (err) {
-        setTeamEditError(`invalid role overrides json: ${String(err)}`);
-        return;
-      }
-    }
-    if (teamRolePlanTouched) {
-      if (Object.keys(teamRoleInstructions).length > 0) {
-        meta.role_instructions = teamRoleInstructions;
-        meta.role_prompt_mode = normalizeRolePromptMode(teamRolePromptMode);
-      } else {
-        delete meta.role_instructions;
-        delete meta.role_prompt_mode;
-      }
-      if (teamRoleGraphEdges.length > 0) {
-        meta.role_graph = { edges: teamRoleGraphEdges };
-      } else {
-        delete meta.role_graph;
-      }
-    }
-    if (sharedScope) {
-      meta.shared_memory_mode = sharedMode || "read_write";
-    } else {
-      delete meta.shared_memory_mode;
-    }
-    setTeamEditError(null);
-    setTeamEditBusy(true);
-    try {
-      const resp = await apiBrokerTeamUpdate(
-        props.base,
-        tid,
-        {
-          display_name: displayName,
-          tags,
-          policy_ref: policyRef,
-          shared_memory_scope_id: sharedScope,
-          meta,
-        },
-        props.auth,
-      );
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "update team failed");
-      }
-      setTeamDetails(resp?.team ?? null);
-      await refreshTeams();
-      loadTeamEditsFromDetails(resp?.team ?? null);
-    } catch (err) {
-      setTeamEditError(String(err));
-    } finally {
-      setTeamEditBusy(false);
-    }
-  };
-
-  const handleAddMember = async () => {
-    const tid = teamIdTrimmed;
-    if (!tid) return;
-    const role = String(memberRole || "").trim();
-    if (!role) {
-      setMembersError("role required");
-      return;
-    }
-    setMembersError(null);
-    setMembersBusy(true);
-    try {
-      const payload: Record<string, any> = { role };
-      const mid = String(memberId || "").trim();
-      if (mid) payload.member_id = mid;
-      const aid = String(memberAgentId || "").trim();
-      if (aid) payload.agent_id = aid;
-      const dep = String(memberDeploymentId || "").trim();
-      if (dep) payload.deployment_id = dep;
-      const status = String(memberStatus || "").trim();
-      if (status) payload.status = status;
-      const w = Number.parseInt(String(memberWeight || ""), 10);
-      if (Number.isFinite(w)) payload.weight = w;
-      const caps = String(memberCapabilities || "")
-        .split(",")
-        .map((c) => c.trim())
-        .filter(Boolean);
-      if (caps.length > 0) payload.capabilities = caps;
-      const meta: Record<string, any> = {};
-      const backendLabel = String(memberBackendLabel || "").trim();
-      if (backendLabel) meta.backend_label = backendLabel;
-      const runOverrides: Record<string, any> = {};
-      const model = String(memberModel || "").trim();
-      if (model) runOverrides.model = model;
-      const baseUrl = String(memberBaseUrl || "").trim();
-      if (baseUrl) runOverrides.base_url = baseUrl;
-      const summaryModel = String(memberSummaryModel || "").trim();
-      if (summaryModel) runOverrides.summary_model = summaryModel;
-      const tools = String(memberTools || "").trim();
-      if (tools) runOverrides.tools = tools;
-      const timeoutMs = Number.parseInt(String(memberTimeoutMs || "").trim(), 10);
-      if (Number.isFinite(timeoutMs)) runOverrides.timeout_ms = timeoutMs;
-      if (Object.keys(runOverrides).length > 0) meta.run_overrides = runOverrides;
-      if (Object.keys(meta).length > 0) payload.meta = meta;
-      await apiBrokerTeamMembersUpsert(props.base, tid, payload, props.auth);
-      setMemberId("");
-      await refreshMembers(tid);
-    } catch (err) {
-      setMembersError(String(err));
-    } finally {
-      setMembersBusy(false);
-    }
-  };
-
-  const handleToggleMemberStatus = async (member: TeamMemberRow) => {
-    const tid = teamIdTrimmed;
-    if (!tid) return;
-    const mid = String(member?.member_id || "").trim();
-    if (!mid) return;
-    const current = String(member?.status || "active").toLowerCase();
-    const next = current === "paused" ? "active" : "paused";
-    setMembersError(null);
-    setMembersBusy(true);
-    try {
-      const resp = await apiBrokerTeamMemberUpdate(props.base, tid, mid, { status: next }, props.auth);
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "update member failed");
-      }
-      await refreshMembers(tid);
-    } catch (err) {
-      setMembersError(String(err));
-    } finally {
-      setMembersBusy(false);
-    }
-  };
-
-  const handleSetAllMemberStatus = async (status: "active" | "paused") => {
-    const tid = teamIdTrimmed;
-    if (!tid) return;
-    if (membersList.length === 0) {
-      setMembersError("no team members loaded");
-      return;
-    }
-    if (!window.confirm(`Set ${membersList.length} member(s) to ${status}?`)) return;
-    setMembersError(null);
-    setMembersBusy(true);
-    try {
-      for (const member of membersList) {
-        const mid = String(member?.member_id || "").trim();
-        if (!mid) continue;
-        const current = String(member?.status || "active").toLowerCase();
-        if (current === status) continue;
-        const resp = await apiBrokerTeamMemberUpdate(props.base, tid, mid, { status }, props.auth);
-        if (!resp.ok) {
-          throw new Error(resp.error || resp.err || resp.code || "update member failed");
-        }
-      }
-      await refreshMembers(tid);
-    } catch (err) {
-      setMembersError(String(err));
-    } finally {
-      setMembersBusy(false);
-    }
-  };
-
-  const handleRemovePausedMembers = async () => {
-    const tid = teamIdTrimmed;
-    if (!tid) return;
-    const paused = membersList.filter(
-      (m) => String(m?.status || "").trim().toLowerCase() === "paused",
-    );
-    if (paused.length === 0) {
-      setMembersError("no paused members to remove");
-      return;
-    }
-    if (!window.confirm(`Remove ${paused.length} paused member(s) from the team?`)) return;
-    setMembersError(null);
-    setMembersBusy(true);
-    try {
-      for (const member of paused) {
-        const mid = String(member?.member_id || "").trim();
-        if (!mid) continue;
-        await apiBrokerTeamMembersDelete(props.base, tid, mid, props.auth);
-      }
-      await refreshMembers(tid);
-    } catch (err) {
-      setMembersError(String(err));
-    } finally {
-      setMembersBusy(false);
-    }
-  };
-
-  const handleEditMember = (member: TeamMemberRow) => {
-    const mid = String(member?.member_id || "").trim();
-    if (!mid) return;
-    setMemberEditId(mid);
-    setMemberEditRole(String(member?.role || ""));
-    setMemberEditStatus(String(member?.status || "active"));
-    setMemberEditAgentId(String(member?.agent_id || ""));
-    setMemberEditDeploymentId(String(member?.deployment_id || ""));
-    setMemberEditWeight(
-      typeof member?.weight === "number" && Number.isFinite(member.weight) ? String(member.weight) : "",
-    );
-    const caps = Array.isArray(member?.capabilities)
-      ? member.capabilities.map((c) => String(c).trim()).filter(Boolean)
-      : [];
-    setMemberEditCapabilities(caps.join(", "));
-    let metaObj: Record<string, any> | null = null;
-    if (member?.meta && typeof member.meta === "object") {
-      metaObj = member.meta as Record<string, any>;
-      try {
-        setMemberEditMetaJson(JSON.stringify(member.meta, null, 2));
-      } catch {
-        setMemberEditMetaJson("");
-      }
-    } else {
-      setMemberEditMetaJson("");
-    }
-    const backendLabel = metaObj?.backend_label ? String(metaObj.backend_label) : "";
-    setMemberEditBackendLabel(backendLabel);
-    const overridesRaw =
-      metaObj?.run_overrides && typeof metaObj.run_overrides === "object"
-        ? (metaObj.run_overrides as Record<string, any>)
-        : null;
-    setMemberEditModel(overridesRaw?.model ? String(overridesRaw.model) : "");
-    setMemberEditBaseUrl(overridesRaw?.base_url ? String(overridesRaw.base_url) : "");
-    setMemberEditSummaryModel(overridesRaw?.summary_model ? String(overridesRaw.summary_model) : "");
-    setMemberEditTools(overridesRaw?.tools ? String(overridesRaw.tools) : "");
-    const timeoutRaw = overridesRaw?.timeout_ms;
-    if (typeof timeoutRaw === "number" && Number.isFinite(timeoutRaw)) {
-      setMemberEditTimeoutMs(String(timeoutRaw));
-    } else if (typeof timeoutRaw === "string" && timeoutRaw.trim().length > 0) {
-      setMemberEditTimeoutMs(timeoutRaw.trim());
-    } else {
-      setMemberEditTimeoutMs("");
-    }
-    setMemberEditError(null);
-  };
-
-  const handleCancelMemberEdit = () => {
-    setMemberEditId("");
-    setMemberEditRole("");
-    setMemberEditStatus("");
-    setMemberEditAgentId("");
-    setMemberEditDeploymentId("");
-    setMemberEditWeight("");
-    setMemberEditCapabilities("");
-    setMemberEditMetaJson("");
-    setMemberEditBackendLabel("");
-    setMemberEditModel("");
-    setMemberEditBaseUrl("");
-    setMemberEditSummaryModel("");
-    setMemberEditTools("");
-    setMemberEditTimeoutMs("");
-    setMemberEditError(null);
-  };
-
-  const handleSaveMemberEdit = async () => {
-    const tid = teamIdTrimmed;
-    const mid = String(memberEditId || "").trim();
-    if (!tid || !mid) return;
-    const role = String(memberEditRole || "").trim();
-    if (!role) {
-      setMemberEditError("role required");
-      return;
-    }
-    const status = String(memberEditStatus || "").trim() || "active";
-    const agentId = String(memberEditAgentId || "").trim();
-    const deploymentId = String(memberEditDeploymentId || "").trim();
-    const caps = String(memberEditCapabilities || "")
-      .split(",")
-      .map((c) => c.trim())
-      .filter(Boolean);
-    const weightRaw = String(memberEditWeight || "").trim();
-    let weightValue: number | undefined = undefined;
-    if (weightRaw.length > 0) {
-      const parsed = Number.parseInt(weightRaw, 10);
-      if (!Number.isFinite(parsed)) {
-        setMemberEditError("weight must be a number");
-        return;
-      }
-      weightValue = parsed;
-    }
-    let meta: Record<string, any> = {};
-    let hasMeta = false;
-    const metaRaw = String(memberEditMetaJson || "").trim();
-    if (metaRaw) {
-      try {
-        const parsed = JSON.parse(metaRaw);
-        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-          setMemberEditError("meta must be a JSON object");
-          return;
-        }
-        meta = parsed as Record<string, any>;
-        hasMeta = true;
-      } catch (err) {
-        setMemberEditError(`invalid meta json: ${String(err)}`);
-        return;
-      }
-    }
-    const backendLabel = String(memberEditBackendLabel || "").trim();
-    if (backendLabel) {
-      meta.backend_label = backendLabel;
-      hasMeta = true;
-    } else if (meta && Object.prototype.hasOwnProperty.call(meta, "backend_label")) {
-      delete meta.backend_label;
-      hasMeta = true;
-    }
-    const runOverrides: Record<string, any> =
-      meta && meta.run_overrides && typeof meta.run_overrides === "object" ? { ...meta.run_overrides } : {};
-    const model = String(memberEditModel || "").trim();
-    if (model) runOverrides.model = model;
-    else if (Object.prototype.hasOwnProperty.call(runOverrides, "model")) delete runOverrides.model;
-    const baseUrl = String(memberEditBaseUrl || "").trim();
-    if (baseUrl) runOverrides.base_url = baseUrl;
-    else if (Object.prototype.hasOwnProperty.call(runOverrides, "base_url")) delete runOverrides.base_url;
-    const summaryModel = String(memberEditSummaryModel || "").trim();
-    if (summaryModel) runOverrides.summary_model = summaryModel;
-    else if (Object.prototype.hasOwnProperty.call(runOverrides, "summary_model")) delete runOverrides.summary_model;
-    const tools = String(memberEditTools || "").trim();
-    if (tools) runOverrides.tools = tools;
-    else if (Object.prototype.hasOwnProperty.call(runOverrides, "tools")) delete runOverrides.tools;
-    const timeoutMsRaw = String(memberEditTimeoutMs || "").trim();
-    if (timeoutMsRaw.length > 0) {
-      const parsed = Number.parseInt(timeoutMsRaw, 10);
-      if (!Number.isFinite(parsed)) {
-        setMemberEditError("timeout_ms must be a number");
-        return;
-      }
-      runOverrides.timeout_ms = parsed;
-    } else if (Object.prototype.hasOwnProperty.call(runOverrides, "timeout_ms")) {
-      delete runOverrides.timeout_ms;
-    }
-    if (Object.keys(runOverrides).length > 0) {
-      meta.run_overrides = runOverrides;
-      hasMeta = true;
-    } else if (meta && Object.prototype.hasOwnProperty.call(meta, "run_overrides")) {
-      delete meta.run_overrides;
-      hasMeta = true;
-    }
-    setMemberEditError(null);
-    setMemberEditBusy(true);
-    try {
-      const payload: Record<string, any> = {
-        role,
-        status,
-        capabilities: caps,
-      };
-      if (hasMeta) payload.meta = meta;
-      payload.agent_id = agentId;
-      payload.deployment_id = deploymentId;
-      if (weightValue !== undefined) payload.weight = weightValue;
-      const resp = await apiBrokerTeamMemberUpdate(props.base, tid, mid, payload, props.auth);
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "update member failed");
-      }
-      await refreshMembers(tid);
-      handleCancelMemberEdit();
-    } catch (err) {
-      setMemberEditError(String(err));
-    } finally {
-      setMemberEditBusy(false);
-    }
-  };
-
-  const handleAddConnectedAgentsToTeam = async () => {
-    const tid = teamIdTrimmed;
-    if (!tid) return;
-    if (!canQuery) return;
-    if (!memberRole.trim()) {
-      setMembersError("role required");
-      return;
-    }
-    const agentOptions = Array.isArray(memberAgents) ? memberAgents : [];
-    if (agentOptions.length === 0) {
-      setMembersError("load agents before bulk add");
-      return;
-    }
-    const role = String(memberRole || "").trim() || "executor";
-    const existingAgentIds = new Set<string>();
-    for (const m of membersList) {
-      const aid = String(m?.agent_id || "").trim();
-      if (aid) existingAgentIds.add(aid);
-    }
-    const payloads: Record<string, any>[] = [];
-    for (const agent of agentOptions) {
-      const aid = String(agent?.agent_id || "").trim();
-      if (!aid || existingAgentIds.has(aid)) continue;
-      const deployments = Array.isArray(agent?.deployments) ? agent.deployments : [];
-      const connected = agent?.connected === true || deployments.length > 0;
-      if (!connected) continue;
-      const payload: Record<string, any> = { role, agent_id: aid };
-      if (deployments.length > 0) {
-        const depId = deployments[0]?.deployment_id ? String(deployments[0].deployment_id) : "";
-        if (depId) payload.deployment_id = depId;
-      }
-      payloads.push(payload);
-      existingAgentIds.add(aid);
-    }
-    if (payloads.length === 0) {
-      setMembersError("no connected agents to add (already in team)");
-      return;
-    }
-    if (!window.confirm(`Add ${payloads.length} connected agent(s) to team?`)) return;
-    setMembersError(null);
-    setMembersBusy(true);
-    try {
-      for (const payload of payloads) {
-        await apiBrokerTeamMembersUpsert(props.base, tid, payload, props.auth);
-      }
-      await refreshMembers(tid);
-    } catch (err) {
-      setMembersError(String(err));
-    } finally {
-      setMembersBusy(false);
-    }
-  };
-
-  const handleDeleteMember = async (memberIdRaw: string) => {
-    const tid = teamIdTrimmed;
-    const mid = String(memberIdRaw || "").trim();
-    if (!tid || !mid) return;
-    if (!window.confirm(`Remove member "${mid}"?`)) return;
-    setMembersError(null);
-    setMembersBusy(true);
-    try {
-      await apiBrokerTeamMembersDelete(props.base, tid, mid, props.auth);
-      await refreshMembers(tid);
-    } catch (err) {
-      setMembersError(String(err));
-    } finally {
-      setMembersBusy(false);
-    }
-  };
-
-  const handleAddRule = async () => {
-    const tid = teamIdTrimmed;
-    if (!tid) return;
-    const action = String(ruleAction || "").trim();
-    const min = Number.parseInt(String(ruleMinApprovals || ""), 10);
-    const mode = String(ruleMode || "").trim();
-    if (!action) {
-      setRulesError("action required");
-      return;
-    }
-    if (!Number.isFinite(min) || min <= 0) {
-      setRulesError("min approvals must be > 0");
-      return;
-    }
-    if (!mode) {
-      setRulesError("quorum mode required");
-      return;
-    }
-    setRulesError(null);
-    setRulesBusy(true);
-    try {
-      await apiBrokerTeamQuorumUpsert(props.base, tid, { action, min_approvals: min, quorum_mode: mode }, props.auth);
-      await refreshRules(tid);
-    } catch (err) {
-      setRulesError(String(err));
-    } finally {
-      setRulesBusy(false);
-    }
-  };
-
-  const handleDeleteRule = async (ruleIdRaw: string) => {
-    const tid = teamIdTrimmed;
-    const rid = String(ruleIdRaw || "").trim();
-    if (!tid || !rid) return;
-    if (!window.confirm(`Delete quorum rule "${rid}"?`)) return;
-    setRulesError(null);
-    setRulesBusy(true);
-    try {
-      await apiBrokerTeamQuorumDelete(props.base, tid, rid, props.auth);
-      await refreshRules(tid);
-    } catch (err) {
-      setRulesError(String(err));
-    } finally {
-      setRulesBusy(false);
-    }
-  };
-
-  React.useEffect(() => {
-    if (!canQuery || teamList.length === 0) return;
-    if (!teamIdTrimmed) {
-      setTeamId(String(teamList[0]?.team_id || ""));
-      return;
-    }
-    void refreshTeamDetails(teamIdTrimmed);
-  }, [canQuery, teamIdTrimmed, teamList.length]);
-
-  React.useEffect(() => {
-    if (!teamIdTrimmed) {
-      loadTeamEditsFromDetails(null);
-      return;
-    }
-    loadTeamEditsFromDetails(teamDetails);
-  }, [teamDetails, teamIdTrimmed]);
-
-  React.useEffect(() => {
-    if (!canQuery || !teamIdTrimmed) return;
-    void refreshMembers(teamIdTrimmed);
-    void refreshRules(teamIdTrimmed);
-  }, [canQuery, teamIdTrimmed]);
-
-  React.useEffect(() => {
-    if (!canQuery) return;
-    if (memberAgentsBusy || (memberAgents && memberAgents.length > 0)) return;
-    void refreshMemberAgents();
-  }, [canQuery, memberAgentsBusy, memberAgents, refreshMemberAgents]);
-
-  React.useEffect(() => {
-    if (!memberAgentId) {
-      if (memberDeploymentId) {
-        setMemberDeploymentId("");
-      }
-      return;
-    }
-    if (memberDeploymentId) return;
-    if (memberAgentDeployments.length === 0) return;
-    const first = memberAgentDeployments[0];
-    const depId = first?.deployment_id ? String(first.deployment_id) : "";
-    if (depId) {
-      setMemberDeploymentId(depId);
-    }
-  }, [memberAgentId, memberDeploymentId, memberAgentDeployments]);
-
-  React.useEffect(() => {
-    if (!memberEditAgentId) {
-      if (memberEditDeploymentId) {
-        setMemberEditDeploymentId("");
-      }
-      return;
-    }
-    if (memberEditDeploymentId) return;
-    if (memberEditAgentDeployments.length === 0) return;
-    const first = memberEditAgentDeployments[0];
-    const depId = first?.deployment_id ? String(first.deployment_id) : "";
-    if (depId) {
-      setMemberEditDeploymentId(depId);
-    }
-  }, [memberEditAgentId, memberEditDeploymentId, memberEditAgentDeployments]);
 
   return (
     <section className={`rounded-md border border-white/10 bg-black/20 ${mode === "inline" ? "p-2" : "p-3"}`}>
@@ -1135,16 +89,16 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
           <button
             className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
             type="button"
-            disabled={!canQuery || teamsBusy}
-            onClick={() => void refreshTeams()}
+            disabled={!canQuery || setupState.teamsBusy}
+            onClick={() => void setupState.refreshTeams()}
           >
-            {teamsBusy ? "Loading…" : "Refresh"}
+            {setupState.teamsBusy ? "Loading…" : "Refresh"}
           </button>
           <button
             className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
             type="button"
-            disabled={!canQuery || teamsBusy || !teamIdTrimmed}
-            onClick={() => void handleDeleteTeam()}
+            disabled={!canQuery || setupState.teamsBusy || !setupState.teamIdTrimmed}
+            onClick={() => void setupState.handleDeleteTeam()}
           >
             Delete
           </button>
@@ -1158,22 +112,22 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
           <select
             className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
             data-testid="team-select"
-            value={teamIdTrimmed}
-            onChange={(e) => setTeamId(e.target.value)}
-            disabled={teamList.length === 0}
+            value={setupState.teamIdTrimmed}
+            onChange={(event) => setupState.setTeamId(event.target.value)}
+            disabled={setupState.teamList.length === 0}
           >
-            {teamList.length === 0 ? <option value="">(no teams)</option> : null}
-            {teamList.map((t) => (
-              <option key={String(t?.team_id)} value={String(t?.team_id)}>
-                {String(t?.display_name || t?.team_id || "")}
+            {setupState.teamList.length === 0 ? <option value="">(no teams)</option> : null}
+            {setupState.teamList.map((team) => (
+              <option key={String(team?.team_id)} value={String(team?.team_id)}>
+                {String(team?.display_name || team?.team_id || "")}
               </option>
             ))}
           </select>
         </div>
-        {teamDetails ? (
+        {controlState.teamDetails ? (
           <div className="text-[11px] text-white/50">
-            owner {String(teamDetails?.owner_sub || "unknown")}
-            {teamDetails?.created_unix_ms ? ` · ${fmtTs(teamDetails.created_unix_ms)}` : ""}
+            owner {String(controlState.teamDetails?.owner_sub || "unknown")}
+            {controlState.teamDetails?.created_unix_ms ? ` · ${fmtTs(controlState.teamDetails.created_unix_ms)}` : ""}
           </div>
         ) : null}
       </div>
@@ -1205,13 +159,17 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             base={props.base}
             auth={props.auth}
             canQuery={canQuery}
-            teamId={teamIdTrimmed}
-            members={membersList}
-            rules={rulesList}
+            teamId={setupState.teamIdTrimmed}
+            members={controlState.membersList}
+            rules={controlState.rulesList}
             quorumEvents={teamEventsState.mergedTeamEvents}
-            teamMeta={teamDetails?.meta && typeof teamDetails.meta === "object" ? (teamDetails.meta as Record<string, any>) : null}
-            onMembersRefresh={refreshMembers}
-            onTeamSelect={setTeamId}
+            teamMeta={
+              controlState.teamDetails?.meta && typeof controlState.teamDetails.meta === "object"
+                ? (controlState.teamDetails.meta as Record<string, any>)
+                : null
+            }
+            onMembersRefresh={controlState.refreshMembers}
+            onTeamSelect={setupState.setTeamId}
           />
         </SectionCard>
       ) : null}
@@ -1220,33 +178,33 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         <SectionCard title="Team settings" description="Name, tags, shared memory, and role graph defaults.">
           <BrokerTeamSettingsPanel
             canQuery={canQuery}
-            teamId={teamIdTrimmed}
-            teamDetails={teamDetails}
-            teamEditName={teamEditName}
-            teamEditTags={teamEditTags}
-            teamEditPolicyRef={teamEditPolicyRef}
-            teamEditSharedScope={teamEditSharedScope}
-            teamEditSharedMode={teamEditSharedMode}
-            teamEditMetaJson={teamEditMetaJson}
-            teamEditRoleOverridesJson={teamEditRoleOverridesJson}
-            teamRoleInstructions={teamRoleInstructions}
-            teamRolePromptMode={teamRolePromptMode}
-            teamRoleGraphEdges={teamRoleGraphEdges}
-            rolePlanOptions={rolePlanOptions}
-            teamEditBusy={teamEditBusy}
-            teamEditError={teamEditError}
-            onLoadTeamEdits={() => loadTeamEditsFromDetails(teamDetails)}
-            onTeamEditNameChange={setTeamEditName}
-            onTeamEditTagsChange={setTeamEditTags}
-            onTeamEditPolicyRefChange={setTeamEditPolicyRef}
-            onTeamEditSharedScopeChange={setTeamEditSharedScope}
-            onTeamEditSharedModeChange={setTeamEditSharedMode}
-            onTeamEditMetaJsonChange={setTeamEditMetaJson}
-            onTeamEditRoleOverridesJsonChange={setTeamEditRoleOverridesJson}
-            onRoleInstructionsChange={handleRoleInstructionsChange}
-            onRolePromptModeChange={handleRolePromptModeChange}
-            onRoleGraphEdgesChange={handleRoleGraphEdgesChange}
-            onUpdateTeam={() => void handleUpdateTeam()}
+            teamId={setupState.teamIdTrimmed}
+            teamDetails={controlState.teamDetails}
+            teamEditName={controlState.teamEditName}
+            teamEditTags={controlState.teamEditTags}
+            teamEditPolicyRef={controlState.teamEditPolicyRef}
+            teamEditSharedScope={controlState.teamEditSharedScope}
+            teamEditSharedMode={controlState.teamEditSharedMode}
+            teamEditMetaJson={controlState.teamEditMetaJson}
+            teamEditRoleOverridesJson={controlState.teamEditRoleOverridesJson}
+            teamRoleInstructions={controlState.teamRoleInstructions}
+            teamRolePromptMode={controlState.teamRolePromptMode}
+            teamRoleGraphEdges={controlState.teamRoleGraphEdges}
+            rolePlanOptions={controlState.rolePlanOptions}
+            teamEditBusy={controlState.teamEditBusy}
+            teamEditError={controlState.teamEditError}
+            onLoadTeamEdits={() => controlState.loadTeamEditsFromDetails(controlState.teamDetails)}
+            onTeamEditNameChange={controlState.setTeamEditName}
+            onTeamEditTagsChange={controlState.setTeamEditTags}
+            onTeamEditPolicyRefChange={controlState.setTeamEditPolicyRef}
+            onTeamEditSharedScopeChange={controlState.setTeamEditSharedScope}
+            onTeamEditSharedModeChange={controlState.setTeamEditSharedMode}
+            onTeamEditMetaJsonChange={controlState.setTeamEditMetaJson}
+            onTeamEditRoleOverridesJsonChange={controlState.setTeamEditRoleOverridesJson}
+            onRoleInstructionsChange={controlState.handleRoleInstructionsChange}
+            onRolePromptModeChange={controlState.handleRolePromptModeChange}
+            onRoleGraphEdgesChange={controlState.handleRoleGraphEdgesChange}
+            onUpdateTeam={() => void controlState.handleUpdateTeam()}
           />
         </SectionCard>
       ) : null}
@@ -1254,240 +212,250 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       {activeTab === "setup" ? (
         <BrokerTeamSetupPanel
           canQuery={canQuery}
-          teamsBusy={teamsBusy}
-          memberAgentsBusy={memberAgentsBusy}
-          quickTeamName={quickTeamName}
-          quickTeamId={quickTeamId}
-          quickTeamGoal={quickTeamGoal}
-          quickTemplate={quickTemplate}
-          quickMembers={quickMembers}
-          quickBuilderBusy={quickBuilderBusy}
-          quickBuilderError={quickBuilderError}
-          providerDefaults={providerDefaults}
-          providerModelDefaults={providerModelDefaults}
-          memberAgents={memberAgents || []}
-          newTeamId={newTeamId}
-          newTeamName={newTeamName}
-          onQuickTeamNameChange={setQuickTeamName}
-          onQuickTeamIdChange={setQuickTeamId}
-          onQuickTeamGoalChange={setQuickTeamGoal}
-          onQuickMemberUpdate={handleQuickMemberUpdate}
-          onQuickAddMember={handleQuickAddMember}
-          onQuickRemoveMember={handleQuickRemoveMember}
-          onQuickCreateTeam={() => void handleQuickCreateTeam()}
-          onQuickApplyTemplate={handleQuickBuilderApplyTemplate}
-          onRefreshMemberAgents={() => void refreshMemberAgents()}
-          onNewTeamIdChange={setNewTeamId}
-          onNewTeamNameChange={setNewTeamName}
-          onCreateTeam={() => void handleCreateTeam()}
+          teamsBusy={setupState.teamsBusy}
+          memberAgentsBusy={setupState.memberAgentsBusy}
+          quickTeamName={setupState.quickTeamName}
+          quickTeamId={setupState.quickTeamId}
+          quickTeamGoal={setupState.quickTeamGoal}
+          quickTemplate={setupState.quickTemplate}
+          quickMembers={setupState.quickMembers}
+          quickBuilderBusy={setupState.quickBuilderBusy}
+          quickBuilderError={setupState.quickBuilderError}
+          providerDefaults={setupState.providerDefaults}
+          providerModelDefaults={setupState.providerModelDefaults}
+          memberAgents={setupState.memberAgents || []}
+          newTeamId={setupState.newTeamId}
+          newTeamName={setupState.newTeamName}
+          onQuickTeamNameChange={setupState.setQuickTeamName}
+          onQuickTeamIdChange={setupState.setQuickTeamId}
+          onQuickTeamGoalChange={setupState.setQuickTeamGoal}
+          onQuickMemberUpdate={setupState.handleQuickMemberUpdate}
+          onQuickAddMember={setupState.handleQuickAddMember}
+          onQuickRemoveMember={setupState.handleQuickRemoveMember}
+          onQuickCreateTeam={() =>
+            void setupState.handleQuickCreateTeam({
+              onCreated: async (teamId) => {
+                await controlState.refreshTeamDetails(teamId);
+                await controlState.refreshMembers(teamId);
+              },
+            })
+          }
+          onQuickApplyTemplate={setupState.handleQuickBuilderApplyTemplate}
+          onRefreshMemberAgents={() => void setupState.refreshMemberAgents()}
+          onNewTeamIdChange={setupState.setNewTeamId}
+          onNewTeamNameChange={setupState.setNewTeamName}
+          onCreateTeam={() => void setupState.handleCreateTeam()}
         />
       ) : null}
 
       {activeTab === "members" ? (
         <BrokerTeamMembersPanel
           canQuery={canQuery}
-          teamIdTrimmed={teamIdTrimmed}
-          membersBusy={membersBusy}
-          membersError={membersError}
-          members={members}
-          memberAgentsBusy={memberAgentsBusy}
-          memberAgentsError={memberAgentsError}
-          memberAgentOptions={memberAgentOptions}
-          memberAgentDeployments={memberAgentDeployments}
-          memberEditAgentDeployments={memberEditAgentDeployments}
-          memberId={memberId}
-          memberRole={memberRole}
-          memberStatus={memberStatus}
-          memberWeight={memberWeight}
-          memberCapabilities={memberCapabilities}
-          memberAgentId={memberAgentId}
-          memberDeploymentId={memberDeploymentId}
-          memberBackendLabel={memberBackendLabel}
-          memberModel={memberModel}
-          memberBaseUrl={memberBaseUrl}
-          memberSummaryModel={memberSummaryModel}
-          memberTools={memberTools}
-          memberTimeoutMs={memberTimeoutMs}
-          memberEditId={memberEditId}
-          memberEditRole={memberEditRole}
-          memberEditStatus={memberEditStatus}
-          memberEditWeight={memberEditWeight}
-          memberEditCapabilities={memberEditCapabilities}
-          memberEditMetaJson={memberEditMetaJson}
-          memberEditBackendLabel={memberEditBackendLabel}
-          memberEditModel={memberEditModel}
-          memberEditBaseUrl={memberEditBaseUrl}
-          memberEditSummaryModel={memberEditSummaryModel}
-          memberEditTools={memberEditTools}
-          memberEditTimeoutMs={memberEditTimeoutMs}
-          memberEditAgentId={memberEditAgentId}
-          memberEditDeploymentId={memberEditDeploymentId}
-          memberEditBusy={memberEditBusy}
-          memberEditError={memberEditError}
-          onMemberIdChange={setMemberId}
-          onMemberRoleChange={setMemberRole}
-          onMemberStatusChange={setMemberStatus}
-          onMemberWeightChange={setMemberWeight}
-          onMemberCapabilitiesChange={setMemberCapabilities}
-          onMemberAgentIdChange={setMemberAgentId}
-          onMemberDeploymentIdChange={setMemberDeploymentId}
-          onMemberBackendLabelChange={setMemberBackendLabel}
-          onMemberModelChange={setMemberModel}
-          onMemberBaseUrlChange={setMemberBaseUrl}
-          onMemberSummaryModelChange={setMemberSummaryModel}
-          onMemberToolsChange={setMemberTools}
-          onMemberTimeoutMsChange={setMemberTimeoutMs}
-          onMemberEditRoleChange={setMemberEditRole}
-          onMemberEditStatusChange={setMemberEditStatus}
-          onMemberEditWeightChange={setMemberEditWeight}
-          onMemberEditCapabilitiesChange={setMemberEditCapabilities}
-          onMemberEditBackendLabelChange={setMemberEditBackendLabel}
-          onMemberEditModelChange={setMemberEditModel}
-          onMemberEditBaseUrlChange={setMemberEditBaseUrl}
-          onMemberEditSummaryModelChange={setMemberEditSummaryModel}
-          onMemberEditToolsChange={setMemberEditTools}
-          onMemberEditTimeoutMsChange={setMemberEditTimeoutMs}
-          onMemberEditMetaJsonChange={setMemberEditMetaJson}
-          onMemberEditAgentIdChange={setMemberEditAgentId}
-          onMemberEditDeploymentIdChange={setMemberEditDeploymentId}
-          onRefreshMembers={() => void refreshMembers(teamIdTrimmed)}
-          onAddMember={() => void handleAddMember()}
-          onRefreshMemberAgents={() => void refreshMemberAgents()}
-          onAddConnectedAgents={() => void handleAddConnectedAgentsToTeam()}
-          onToggleMemberStatus={(member) => void handleToggleMemberStatus(member as TeamMemberRow)}
-          onEditMember={(member) => handleEditMember(member as TeamMemberRow)}
-          onDeleteMember={(id) => void handleDeleteMember(id)}
-          onSaveMemberEdit={() => void handleSaveMemberEdit()}
-          onCancelMemberEdit={() => handleCancelMemberEdit()}
-          onSetAllMemberStatus={(status) => void handleSetAllMemberStatus(status)}
-          onRemovePausedMembers={() => void handleRemovePausedMembers()}
+          teamIdTrimmed={setupState.teamIdTrimmed}
+          membersBusy={controlState.membersBusy}
+          membersError={controlState.membersError}
+          members={controlState.members}
+          memberAgentsBusy={setupState.memberAgentsBusy}
+          memberAgentsError={setupState.memberAgentsError}
+          memberAgentOptions={controlState.memberAgentOptions}
+          memberAgentDeployments={controlState.memberAgentDeployments}
+          memberEditAgentDeployments={controlState.memberEditAgentDeployments}
+          memberId={controlState.memberId}
+          memberRole={controlState.memberRole}
+          memberStatus={controlState.memberStatus}
+          memberWeight={controlState.memberWeight}
+          memberCapabilities={controlState.memberCapabilities}
+          memberAgentId={controlState.memberAgentId}
+          memberDeploymentId={controlState.memberDeploymentId}
+          memberBackendLabel={controlState.memberBackendLabel}
+          memberModel={controlState.memberModel}
+          memberBaseUrl={controlState.memberBaseUrl}
+          memberSummaryModel={controlState.memberSummaryModel}
+          memberTools={controlState.memberTools}
+          memberTimeoutMs={controlState.memberTimeoutMs}
+          memberEditId={controlState.memberEditId}
+          memberEditRole={controlState.memberEditRole}
+          memberEditStatus={controlState.memberEditStatus}
+          memberEditWeight={controlState.memberEditWeight}
+          memberEditCapabilities={controlState.memberEditCapabilities}
+          memberEditMetaJson={controlState.memberEditMetaJson}
+          memberEditBackendLabel={controlState.memberEditBackendLabel}
+          memberEditModel={controlState.memberEditModel}
+          memberEditBaseUrl={controlState.memberEditBaseUrl}
+          memberEditSummaryModel={controlState.memberEditSummaryModel}
+          memberEditTools={controlState.memberEditTools}
+          memberEditTimeoutMs={controlState.memberEditTimeoutMs}
+          memberEditAgentId={controlState.memberEditAgentId}
+          memberEditDeploymentId={controlState.memberEditDeploymentId}
+          memberEditBusy={controlState.memberEditBusy}
+          memberEditError={controlState.memberEditError}
+          onMemberIdChange={controlState.setMemberId}
+          onMemberRoleChange={controlState.setMemberRole}
+          onMemberStatusChange={controlState.setMemberStatus}
+          onMemberWeightChange={controlState.setMemberWeight}
+          onMemberCapabilitiesChange={controlState.setMemberCapabilities}
+          onMemberAgentIdChange={controlState.setMemberAgentId}
+          onMemberDeploymentIdChange={controlState.setMemberDeploymentId}
+          onMemberBackendLabelChange={controlState.setMemberBackendLabel}
+          onMemberModelChange={controlState.setMemberModel}
+          onMemberBaseUrlChange={controlState.setMemberBaseUrl}
+          onMemberSummaryModelChange={controlState.setMemberSummaryModel}
+          onMemberToolsChange={controlState.setMemberTools}
+          onMemberTimeoutMsChange={controlState.setMemberTimeoutMs}
+          onMemberEditRoleChange={controlState.setMemberEditRole}
+          onMemberEditStatusChange={controlState.setMemberEditStatus}
+          onMemberEditWeightChange={controlState.setMemberEditWeight}
+          onMemberEditCapabilitiesChange={controlState.setMemberEditCapabilities}
+          onMemberEditBackendLabelChange={controlState.setMemberEditBackendLabel}
+          onMemberEditModelChange={controlState.setMemberEditModel}
+          onMemberEditBaseUrlChange={controlState.setMemberEditBaseUrl}
+          onMemberEditSummaryModelChange={controlState.setMemberEditSummaryModel}
+          onMemberEditToolsChange={controlState.setMemberEditTools}
+          onMemberEditTimeoutMsChange={controlState.setMemberEditTimeoutMs}
+          onMemberEditMetaJsonChange={controlState.setMemberEditMetaJson}
+          onMemberEditAgentIdChange={controlState.setMemberEditAgentId}
+          onMemberEditDeploymentIdChange={controlState.setMemberEditDeploymentId}
+          onRefreshMembers={() => void controlState.refreshMembers(setupState.teamIdTrimmed)}
+          onAddMember={() => void controlState.handleAddMember()}
+          onRefreshMemberAgents={() => void setupState.refreshMemberAgents()}
+          onAddConnectedAgents={() => void controlState.handleAddConnectedAgentsToTeam()}
+          onToggleMemberStatus={(member) => void controlState.handleToggleMemberStatus(member as any)}
+          onEditMember={(member) => controlState.handleEditMember(member as any)}
+          onDeleteMember={(memberId) => void controlState.handleDeleteMember(memberId)}
+          onSaveMemberEdit={() => void controlState.handleSaveMemberEdit()}
+          onCancelMemberEdit={controlState.handleCancelMemberEdit}
+          onSetAllMemberStatus={(status) => void controlState.handleSetAllMemberStatus(status)}
+          onRemovePausedMembers={() => void controlState.handleRemovePausedMembers()}
         />
       ) : null}
 
-      {teamTab === "advanced" ? (
+      {activeTab === "advanced" ? (
         <>
           <SectionCard title="Quorum rules" description="Approvals and quorum settings.">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-xs font-semibold text-white/80">Quorum rules</div>
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-            type="button"
-            disabled={!canQuery || !teamIdTrimmed || rulesBusy}
-            onClick={() => void refreshRules(teamIdTrimmed)}
-          >
-            {rulesBusy ? "Loading…" : "Refresh"}
-          </button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <FieldLabel>Action</FieldLabel>
-          <input
-            className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={ruleAction}
-            onChange={(e) => setRuleAction(e.target.value)}
-          />
-          <FieldLabel>Min approvals</FieldLabel>
-          <input
-            className="w-20 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={ruleMinApprovals}
-            onChange={(e) => setRuleMinApprovals(e.target.value)}
-          />
-          <FieldLabel>Mode</FieldLabel>
-          <input
-            className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={ruleMode}
-            onChange={(e) => setRuleMode(e.target.value)}
-          />
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-            type="button"
-            disabled={!canQuery || !teamIdTrimmed || rulesBusy}
-            onClick={() => void handleAddRule()}
-          >
-            Add rule
-          </button>
-        </div>
-        {rulesError ? (
-          <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
-            {rulesError}
-          </div>
-        ) : null}
-        {rules && rules.length > 0 ? (
-          <div className="grid gap-2">
-            {rules.map((r, idx) => {
-              const rid = String(r?.rule_id || "");
-              return (
-                <div
-                  key={`rule-${rid}-${idx}`}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70"
-                >
-                  <div className="text-[11px] text-white/70">
-                    <span className="text-white/90">{r?.action || "team_run"}</span>
-                    {r?.min_approvals ? ` · min ${r.min_approvals}` : ""}
-                    {r?.quorum_mode ? ` · ${r.quorum_mode}` : ""}
-                    {r?.created_unix_ms ? ` · ${fmtTs(r.created_unix_ms)}` : ""}
-                  </div>
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                    type="button"
-                    onClick={() => void handleDeleteRule(rid)}
-                  >
-                    Remove
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-xs font-semibold text-white/80">Quorum rules</div>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={!canQuery || !setupState.teamIdTrimmed || controlState.rulesBusy}
+                onClick={() => void controlState.refreshRules(setupState.teamIdTrimmed)}
+              >
+                {controlState.rulesBusy ? "Loading…" : "Refresh"}
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <FieldLabel>Action</FieldLabel>
+              <input
+                className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                value={controlState.ruleAction}
+                onChange={(event) => controlState.setRuleAction(event.target.value)}
+              />
+              <FieldLabel>Min approvals</FieldLabel>
+              <input
+                className="w-20 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                value={controlState.ruleMinApprovals}
+                onChange={(event) => controlState.setRuleMinApprovals(event.target.value)}
+              />
+              <FieldLabel>Mode</FieldLabel>
+              <input
+                className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                value={controlState.ruleMode}
+                onChange={(event) => controlState.setRuleMode(event.target.value)}
+              />
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={!canQuery || !setupState.teamIdTrimmed || controlState.rulesBusy}
+                onClick={() => void controlState.handleAddRule()}
+              >
+                Add rule
+              </button>
+            </div>
+            {controlState.rulesError ? (
+              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+                {controlState.rulesError}
+              </div>
+            ) : null}
+            {controlState.rules && controlState.rules.length > 0 ? (
+              <div className="grid gap-2">
+                {controlState.rules.map((rule, idx) => {
+                  const ruleId = String(rule?.rule_id || "");
+                  return (
+                    <div
+                      key={`rule-${ruleId}-${idx}`}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70"
+                    >
+                      <div className="text-[11px] text-white/70">
+                        <span className="text-white/90">{rule?.action || "team_run"}</span>
+                        {rule?.min_approvals ? ` · min ${rule.min_approvals}` : ""}
+                        {rule?.quorum_mode ? ` · ${rule.quorum_mode}` : ""}
+                        {rule?.created_unix_ms ? ` · ${fmtTs(rule.created_unix_ms)}` : ""}
+                      </div>
+                      <button
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                        type="button"
+                        onClick={() => void controlState.handleDeleteRule(ruleId)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
           </SectionCard>
 
           <SectionCard title="Team event replay" description="Replay recent events for auditing." defaultOpen={false}>
-        <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
-            type="button"
-            disabled={!canQuery || !teamIdTrimmed || teamEventsState.teamReplayBusy}
-            onClick={() => void teamEventsState.loadTeamReplay()}
-          >
-            {teamEventsState.teamReplayBusy ? "Replaying…" : "Replay"}
-          </button>
-          {teamEventsState.teamReplayNote ? <span className="text-emerald-200">{teamEventsState.teamReplayNote}</span> : null}
-          {teamEventsState.teamReplayError ? <span className="text-rose-200">{teamEventsState.teamReplayError}</span> : null}
-        </div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={!canQuery || !setupState.teamIdTrimmed || teamEventsState.teamReplayBusy}
+                onClick={() => void teamEventsState.loadTeamReplay()}
+              >
+                {teamEventsState.teamReplayBusy ? "Replaying…" : "Replay"}
+              </button>
+              {teamEventsState.teamReplayNote ? <span className="text-emerald-200">{teamEventsState.teamReplayNote}</span> : null}
+              {teamEventsState.teamReplayError ? <span className="text-rose-200">{teamEventsState.teamReplayError}</span> : null}
+            </div>
           </SectionCard>
 
           <SectionCard title="Orchestrator runs" description="Low-level orchestrator controls." defaultOpen={false}>
-        <BrokerOrchestratorRunPanel
-          base={props.base}
-          auth={props.auth}
-          canQuery={canQuery}
-          teamId={teamIdTrimmed}
-          teamMeta={teamDetails?.meta && typeof teamDetails.meta === "object" ? (teamDetails.meta as Record<string, any>) : null}
-          events={teamEventsState.mergedOrchestratorEvents}
-        />
+            <BrokerOrchestratorRunPanel
+              base={props.base}
+              auth={props.auth}
+              canQuery={canQuery}
+              teamId={setupState.teamIdTrimmed}
+              teamMeta={
+                controlState.teamDetails?.meta && typeof controlState.teamDetails.meta === "object"
+                  ? (controlState.teamDetails.meta as Record<string, any>)
+                  : null
+              }
+              events={teamEventsState.mergedOrchestratorEvents}
+            />
           </SectionCard>
 
           <SectionCard title="Guidance" description="Send guidance and review receipts." defaultOpen={false}>
-        <BrokerTeamGuidancePanel
-          base={props.base}
-          auth={props.auth}
-          canQuery={canQuery}
-          teamId={teamIdTrimmed}
-          events={teamEventsState.mergedGuidanceEvents}
-        />
+            <BrokerTeamGuidancePanel
+              base={props.base}
+              auth={props.auth}
+              canQuery={canQuery}
+              teamId={setupState.teamIdTrimmed}
+              events={teamEventsState.mergedGuidanceEvents}
+            />
           </SectionCard>
 
           <SectionCard title="Spawn requests" description="Monitor orchestrator spawn requests." defaultOpen={false}>
-        <BrokerOrchestratorSpawnPanel
-          base={props.base}
-          auth={props.auth}
-          canQuery={canQuery}
-          teamId={teamIdTrimmed}
-          events={teamEventsState.mergedOrchestratorEvents}
-        />
+            <BrokerOrchestratorSpawnPanel
+              base={props.base}
+              auth={props.auth}
+              canQuery={canQuery}
+              teamId={setupState.teamIdTrimmed}
+              events={teamEventsState.mergedOrchestratorEvents}
+            />
           </SectionCard>
         </>
       ) : null}
-
     </section>
   );
 }
