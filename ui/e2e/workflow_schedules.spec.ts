@@ -162,6 +162,7 @@ test("workflow schedules panel can create, pause, resume, delete, and inspect ru
 
   await page.goto("/");
 
+  await page.getByRole("button", { name: "Workflows" }).click();
   await expect(page.getByTestId("workflow-schedules-panel")).toBeVisible();
   await expect(page.getByTestId("workflow-schedule-row-sched-1")).toBeVisible();
 

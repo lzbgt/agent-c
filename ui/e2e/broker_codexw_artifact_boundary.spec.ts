@@ -121,8 +121,10 @@ test("broker codexw history keeps artifact UX explicit when catalog route is uns
   await page.goto("/");
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByTestId("session-id-input").fill(sessionId);
-  await expect(page.getByText("Artifact references")).toBeVisible();
-  await expect(page.getByText("Broker connector mode does not expose a stable artifact catalog here.")).toBeVisible();
+  await expect(page.getByTestId("history-artifact-heading")).toHaveText("Artifact references");
+  await expect(page.getByTestId("history-artifact-unsupported-note")).toContainText(
+    "Broker connector mode does not expose a stable artifact catalog here.",
+  );
   await expect(page.getByText("Use transcript, shell output, session events, and service metadata as the current result surfaces")).toBeVisible();
   await expect(page.getByText("No artifacts captured yet.")).toHaveCount(0);
 });

@@ -349,7 +349,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
 
       <div className="mb-4">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <div className="text-sm font-semibold text-white/80">
+          <div data-testid="history-artifact-heading" className="text-sm font-semibold text-white/80">
             {artifactCatalogMode === "direct" ? "Artifacts" : "Artifact references"}
           </div>
           <div className="text-[11px] text-white/50">
@@ -361,7 +361,10 @@ export default function HistoryPanel(props: HistoryPanelProps) {
           </div>
         </div>
         {artifactCatalogMode === "unsupported" ? (
-          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-xs text-amber-100">
+          <div
+            data-testid="history-artifact-unsupported-note"
+            className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-xs text-amber-100"
+          >
             Broker connector mode does not expose a stable artifact catalog here. Use transcript, shell output, session
             events, and service metadata as the current result surfaces, and treat richer artifact browsing as a separate
             requirement.
