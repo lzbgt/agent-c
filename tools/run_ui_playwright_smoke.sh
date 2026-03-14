@@ -66,6 +66,7 @@ echo "[playwright] running smoke specs (log: ${pw_log})"
 AGENT_E2E_UI_BASE_URL="${AGENT_E2E_UI_BASE_URL}" \
   bash -lc "cd ui && npx playwright test \
     e2e/agentd_host_smoke.spec.ts \
+    e2e/workflow_schedules.spec.ts \
     e2e/broker_console.spec.ts \
     e2e/broker_membership_flow.spec.ts \
     e2e/broker_trace_lookup.spec.ts \

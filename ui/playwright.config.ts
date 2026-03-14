@@ -1,6 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
-const baseURL = process.env.AGENT_E2E_UI_BASE_URL || "http://127.0.0.1:5173";
+const defaultPort = process.env.AGENT_E2E_UI_PORT || "4173";
+const baseURL = process.env.AGENT_E2E_UI_BASE_URL || `http://127.0.0.1:${defaultPort}`;
 const useExistingServer = Boolean(process.env.AGENT_E2E_UI_BASE_URL);
 
 export default defineConfig({
@@ -18,9 +19,9 @@ export default defineConfig({
   webServer: useExistingServer
     ? undefined
     : {
-        command: "npm run dev -- --host 127.0.0.1 --port 5173",
+        command: `npm run dev -- --host 127.0.0.1 --port ${defaultPort} --strictPort`,
         url: baseURL,
-        reuseExistingServer: true,
+        reuseExistingServer: false,
         timeout: 120 * 1000,
       },
   reporter: [["list"]],

@@ -10,7 +10,7 @@
     "build": "tsc -p . && vite build",
     "preview": "vite preview",
     "e2e": "playwright test",
-    "e2e:agentd": "playwright test e2e/agentd_host_smoke.spec.ts",
+    "e2e:agentd": "playwright test e2e/agentd_host_smoke.spec.ts e2e/workflow_schedules.spec.ts",
     "e2e:broker": "playwright test e2e/broker_console.spec.ts e2e/broker_membership_flow.spec.ts e2e/broker_trace_lookup.spec.ts e2e/broker_team_inline_approvals.spec.ts"
   },
   "dependencies": {

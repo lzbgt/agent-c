@@ -185,6 +185,8 @@ fi
 if [[ "${MODE}" == "host" ]]; then
   smoke_log="${log_dir}/verify_${ts}_workflow_list_query_smoke.log"
   run_logged "workflow list query smoke" "${smoke_log}" bash -lc "${ROOT}/tests/agentd_workflow_list_query_smoke.sh ${build_dir}/agentd"
+  schedule_smoke_log="${log_dir}/verify_${ts}_workflow_schedule_smoke.log"
+  run_logged "workflow schedule smoke" "${schedule_smoke_log}" bash -lc "${ROOT}/tests/agentd_workflow_schedule_smoke.sh ${build_dir}/agentd"
 fi
 
 if [[ ! -f "${ROOT}/ui/package.json" ]]; then

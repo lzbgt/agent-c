@@ -438,11 +438,15 @@ curl http://127.0.0.1:8123/api/v1/health
 ### WebUI Playwright smoke (optional)
 
 From `ui/`:
-- `npm run e2e:agentd` (agentd host UI smoke)
+- `npm run e2e:agentd` (agentd host UI smoke, including workflow schedules)
 - `npm run e2e:broker` (broker console UI smoke)
 
 From repo root (headless capture + traces/videos/screenshots):
 - `tools/run_ui_playwright_smoke.sh`
+
+Playwright auto-starts an isolated local Vite server for these UI runs unless
+`AGENT_E2E_UI_BASE_URL` is set. The default auto-start port is `4173`; override
+it with `AGENT_E2E_UI_PORT=<port>` if you need a different local port.
 
 ### Evidence bundles (optional)
 

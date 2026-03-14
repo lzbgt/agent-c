@@ -275,6 +275,9 @@ The Playwright suite includes heavier flows that are opt-in via env flags:
 
 Playwright will auto-start a local Vite dev server for UI e2e runs unless
 `AGENT_E2E_UI_BASE_URL` is set (use that env var to target an existing server).
+The default auto-start port is `4173` to avoid silently reusing an unrelated
+app that may already be serving on Vite's common `5173`; override the auto-start
+port with `AGENT_E2E_UI_PORT=<port>` when needed.
 
 The open-world harness scripts under `tests/` set these flags for you when they run.
 
