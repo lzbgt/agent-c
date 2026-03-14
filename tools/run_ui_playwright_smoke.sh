@@ -101,6 +101,7 @@ AGENT_E2E_OUTPUT_DIR="${pw_artifacts_dir}" \
     e2e/broker_membership_flow.spec.ts \
     e2e/broker_team_cross_deployment_handoff.spec.ts \
     e2e/broker_trace_lookup.spec.ts \
+    e2e/workflow_detail_panel.spec.ts \
     e2e/workflow_graph_editor.spec.ts \
     --config playwright.smoke.config.ts" >"${pw_log}" 2>&1
 

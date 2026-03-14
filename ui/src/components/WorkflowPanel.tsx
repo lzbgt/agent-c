@@ -1,25 +1,12 @@
 import React from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import {
-  apiCancelWorkflow,
-  apiGetWorkflow,
-  apiListWorkflows,
-  apiCreateWorkflowSchedule,
-  apiDeleteWorkflowSchedule,
-  apiListWorkflowScheduleRuns,
-  apiListWorkflowSchedules,
-  apiPauseWorkflowSchedule,
-  apiResumeWorkflowSchedule,
-  type WorkflowDetailResp,
-  type WorkflowListResp,
-  type WorkflowScheduleListResp,
-  type WorkflowScheduleRunsResp,
-} from "../api";
 import type { ApiAuth } from "../api/auth";
-import useLocalStorageState from "../hooks/useLocalStorageState";
 import WorkflowComposer from "./WorkflowComposer";
+import WorkflowDetailSection from "./workflow/WorkflowDetailSection";
+import WorkflowListSection from "./workflow/WorkflowListSection";
+import WorkflowSchedulesSection from "./workflow/WorkflowSchedulesSection";
+import useWorkflowPanelState from "./workflow/useWorkflowPanelState";
 
-type WorkflowPanelProps = {
+export type WorkflowPanelProps = {
   open: boolean;
   onToggle: (open: boolean) => void;
   baseUrl: string;
@@ -32,716 +19,13 @@ type WorkflowPanelProps = {
   workflowBearerEnv?: string;
 };
 
-type WorkflowTask = {
-  task_id: string;
-  status?: string;
-  depends_on: string[];
-  allow_error?: boolean;
-  attempt?: number;
-  max_attempts?: number;
-  error?: string;
-  ready_unix_ms?: number;
-  started_unix_ms?: number;
-  finished_unix_ms?: number;
-};
-
-const STATUS_OPTIONS = ["running", "queued", "active", "done", "error", "cancelled", "all"];
-const SCHEDULE_STATUS_OPTIONS = ["active", "paused", "error", "all"];
-const SCHEDULE_RUN_STATUS_OPTIONS = ["all", "queued", "running", "done", "error"];
-const SCHEDULE_PRESETS = [
-  { label: "Every 15 min", cron: "*/15 * * * *" },
-  { label: "Hourly", cron: "0 * * * *" },
-  { label: "Daily 09:00", cron: "0 9 * * *" },
-  { label: "Weekdays 09:00", cron: "0 9 * * 1-5" },
-  { label: "Weekly Mon 09:00", cron: "0 9 * * 1" },
-  { label: "Monthly 1st 09:00", cron: "0 9 1 * *" },
-];
-const SCHEDULE_SAMPLE_SPEC = {
-  tasks: [
-    {
-      id: "task-1",
-      kind: "llm",
-      prompt: "Summarize the top 3 operational alerts from the last 24h.",
-    },
-  ],
-  defaults: {
-    model: "gpt-4o-mini",
-    max_steps: 6,
-  },
-};
-
-function normalizeTask(raw: any): WorkflowTask | null {
-  if (!raw || typeof raw !== "object") return null;
-  const taskId = typeof raw.task_id === "string" ? raw.task_id : "";
-  if (!taskId) return null;
-  const deps = Array.isArray(raw.depends_on) ? raw.depends_on.filter((d: any) => typeof d === "string") : [];
-  return {
-    task_id: taskId,
-    status: typeof raw.status === "string" ? raw.status : undefined,
-    depends_on: deps,
-    allow_error: typeof raw.allow_error === "boolean" ? raw.allow_error : undefined,
-    attempt: typeof raw.attempt === "number" ? raw.attempt : undefined,
-    max_attempts: typeof raw.max_attempts === "number" ? raw.max_attempts : undefined,
-    error: typeof raw.error === "string" ? raw.error : undefined,
-    ready_unix_ms: typeof raw.ready_unix_ms === "number" ? raw.ready_unix_ms : undefined,
-    started_unix_ms: typeof raw.started_unix_ms === "number" ? raw.started_unix_ms : undefined,
-    finished_unix_ms: typeof raw.finished_unix_ms === "number" ? raw.finished_unix_ms : undefined,
-  };
-}
-
-function formatUnixMs(ms?: number): string {
-  if (!ms || !Number.isFinite(ms)) return "—";
-  try {
-    return new Date(ms).toLocaleString();
-  } catch {
-    return String(ms);
-  }
-}
-
-function statusBadge(status?: string) {
-  const s = String(status || "").toLowerCase();
-  if (s === "done") return "bg-emerald-500/15 text-emerald-200 border-emerald-500/30";
-  if (s === "running") return "bg-sky-500/15 text-sky-200 border-sky-500/30";
-  if (s === "queued") return "bg-amber-500/15 text-amber-200 border-amber-500/30";
-  if (s === "error") return "bg-rose-500/15 text-rose-200 border-rose-500/30";
-  if (s === "cancelled") return "bg-slate-500/20 text-slate-200 border-slate-500/30";
-  return "bg-white/10 text-white/70 border-white/10";
-}
-
-function canCancelStatus(status?: string) {
-  const s = String(status || "").toLowerCase();
-  return s === "running" || s === "queued";
-}
-
-function buildLevels(tasks: WorkflowTask[]) {
-  const ids = new Set(tasks.map((t) => t.task_id));
-  const depsMap = new Map<string, string[]>();
-  const missingDeps = new Set<string>();
-  for (const task of tasks) {
-    const deps = task.depends_on.filter((d) => ids.has(d));
-    for (const d of task.depends_on) {
-      if (!ids.has(d)) missingDeps.add(d);
-    }
-    depsMap.set(task.task_id, deps);
-  }
-
-  const levels = new Map<string, number>();
-  const visiting = new Set<string>();
-  let hasCycle = false;
-
-  const computeLevel = (id: string): number => {
-    if (levels.has(id)) return levels.get(id) ?? 0;
-    if (visiting.has(id)) {
-      hasCycle = true;
-      return 0;
-    }
-    visiting.add(id);
-    const deps = depsMap.get(id) ?? [];
-    let maxDep = -1;
-    for (const dep of deps) {
-      maxDep = Math.max(maxDep, computeLevel(dep));
-    }
-    visiting.delete(id);
-    const level = maxDep + 1;
-    levels.set(id, level);
-    return level;
-  };
-
-  tasks.forEach((t) => computeLevel(t.task_id));
-
-  const buckets = new Map<number, WorkflowTask[]>();
-  for (const task of tasks) {
-    const lvl = levels.get(task.task_id) ?? 0;
-    const arr = buckets.get(lvl) ?? [];
-    arr.push(task);
-    buckets.set(lvl, arr);
-  }
-  const maxLevel = Math.max(0, ...Array.from(buckets.keys()));
-  const orderedLevels = [];
-  for (let i = 0; i <= maxLevel; i += 1) {
-    const arr = buckets.get(i) ?? [];
-    arr.sort((a, b) => a.task_id.localeCompare(b.task_id));
-    orderedLevels.push(arr);
-  }
-
-  return { levels: orderedLevels, hasCycle, missingDeps: Array.from(missingDeps).sort() };
-}
-
-function extractWorkflows(resp?: WorkflowListResp | null) {
-  if (!resp || !resp.ok || !Array.isArray(resp.workflows)) return [];
-  return resp.workflows.filter((wf: any) => wf && typeof wf === "object");
-}
-
-function extractTasks(resp?: WorkflowDetailResp | null): WorkflowTask[] {
-  if (!resp || !Array.isArray(resp.tasks)) return [];
-  const out: WorkflowTask[] = [];
-  for (const t of resp.tasks) {
-    const norm = normalizeTask(t);
-    if (norm) out.push(norm);
-  }
-  return out;
-}
-
-function extractWorkflowSummary(resp?: WorkflowDetailResp | null): Record<string, any> {
-  if (!resp || !resp.workflow || typeof resp.workflow !== "object") return {};
-  return resp.workflow as Record<string, any>;
-}
-
-function countByStatus(tasks: WorkflowTask[]) {
-  const counts: Record<string, number> = {};
-  for (const task of tasks) {
-    const s = String(task.status || "unknown").toLowerCase();
-    counts[s] = (counts[s] ?? 0) + 1;
-  }
-  return counts;
-}
-
-function extractSchedules(resp?: WorkflowScheduleListResp | null): any[] {
-  if (!resp || !Array.isArray(resp.schedules)) return [];
-  return resp.schedules;
-}
-
-function extractScheduleRuns(resp?: WorkflowScheduleRunsResp | null): any[] {
-  if (!resp || !Array.isArray(resp.runs)) return [];
-  return resp.runs;
-}
-
-function validateCronExpr(expr: string): string[] {
-  const issues: string[] = [];
-  const trimmed = String(expr || "").trim();
-  if (!trimmed) {
-    issues.push("cron is required");
-    return issues;
-  }
-  const parts = trimmed.split(/\s+/);
-  if (parts.length !== 5) {
-    issues.push("cron must have 5 fields (min hour day month weekday)");
-    return issues;
-  }
-  const ranges: Array<[number, number, string]> = [
-    [0, 59, "minute"],
-    [0, 23, "hour"],
-    [1, 31, "day of month"],
-    [1, 12, "month"],
-    [0, 7, "weekday"],
-  ];
-  const parseAtom = (token: string, min: number, max: number, label: string): string | null => {
-    if (token === "*") return null;
-    const stepMatch = token.match(/^\*\/(\d+)$/);
-    if (stepMatch) {
-      const step = Number(stepMatch[1]);
-      if (!Number.isFinite(step) || step <= 0) return `${label} step must be > 0`;
-      return null;
-    }
-    const rangeMatch = token.match(/^(\d+)-(\d+)$/);
-    if (rangeMatch) {
-      const start = Number(rangeMatch[1]);
-      const end = Number(rangeMatch[2]);
-      if (!Number.isFinite(start) || !Number.isFinite(end)) return `${label} range must be numeric`;
-      if (start > end) return `${label} range start must be <= end`;
-      if (start < min || end > max) return `${label} range must be within ${min}-${max}`;
-      return null;
-    }
-    const single = Number(token);
-    if (!Number.isFinite(single)) return `${label} entry "${token}" is invalid`;
-    if (single < min || single > max) return `${label} entry must be within ${min}-${max}`;
-    return null;
-  };
-  parts.forEach((part, idx) => {
-    const [min, max, label] = ranges[idx];
-    const tokens = part.split(",");
-    tokens.forEach((token) => {
-      const issue = parseAtom(token, min, max, label);
-      if (issue) issues.push(issue);
-    });
-  });
-  return issues;
-}
-
-function validateScheduleSpec(spec: any): string[] {
-  const issues: string[] = [];
-  if (!spec || typeof spec !== "object" || Array.isArray(spec)) {
-    issues.push("spec must be a JSON object");
-    return issues;
-  }
-  if (!Array.isArray(spec.tasks) || spec.tasks.length === 0) {
-    issues.push("spec.tasks must be a non-empty array");
-  } else {
-    spec.tasks.forEach((task: any, idx: number) => {
-      if (!task || typeof task !== "object") {
-        issues.push(`task[${idx}] must be an object`);
-        return;
-      }
-      if (!task.id || typeof task.id !== "string") {
-        issues.push(`task[${idx}].id is required`);
-      }
-      if (!task.kind || typeof task.kind !== "string") {
-        issues.push(`task[${idx}].kind is required`);
-      }
-    });
-  }
-  return issues;
-}
-
 export default function WorkflowPanel(props: WorkflowPanelProps) {
-  const [workflowId, setWorkflowId] = useLocalStorageState("agentui.workflowLookupId", "");
-  const [listStatus, setListStatus] = useLocalStorageState("agentui.workflowListStatus", "active");
-  const [listLimit, setListLimit] = useLocalStorageState("agentui.workflowListLimit", "50");
-  const [listFilter, setListFilter] = useLocalStorageState("agentui.workflowListFilter", "");
-  const [listFilterDebounced, setListFilterDebounced] = React.useState(listFilter);
-  const [listAutoRefresh, setListAutoRefresh] = useLocalStorageState("agentui.workflowListAutoRefresh", false);
-  const [includeResults, setIncludeResults] = useLocalStorageState("agentui.workflowIncludeResults", false);
-  const [includeSpec, setIncludeSpec] = useLocalStorageState("agentui.workflowIncludeSpec", false);
-  const [detail, setDetail] = React.useState<WorkflowDetailResp | null>(null);
-  const [detailError, setDetailError] = React.useState<string | null>(null);
-  const [cancelBusyId, setCancelBusyId] = React.useState<string | null>(null);
-  const [scheduleStatus, setScheduleStatus] = useLocalStorageState("agentui.workflowScheduleStatus", "active");
-  const [scheduleLimit, setScheduleLimit] = useLocalStorageState("agentui.workflowScheduleLimit", "50");
-  const [scheduleOffset, setScheduleOffset] = useLocalStorageState("agentui.workflowScheduleOffset", "0");
-  const [scheduleFilter, setScheduleFilter] = useLocalStorageState("agentui.workflowScheduleFilter", "");
-  const [scheduleAutoRefresh, setScheduleAutoRefresh] = useLocalStorageState("agentui.workflowScheduleAutoRefresh", false);
-  const [scheduleCron, setScheduleCron] = useLocalStorageState("agentui.workflowScheduleCron", "0 9 * * 1-5");
-  const [scheduleSpec, setScheduleSpec] = useLocalStorageState("agentui.workflowScheduleSpec", "");
-  const [scheduleId, setScheduleId] = useLocalStorageState("agentui.workflowScheduleId", "");
-  const [scheduleRunsLimit, setScheduleRunsLimit] = useLocalStorageState("agentui.workflowScheduleRunsLimit", "50");
-  const [scheduleRunsOffset, setScheduleRunsOffset] = useLocalStorageState("agentui.workflowScheduleRunsOffset", "0");
-  const [scheduleRunsStatus, setScheduleRunsStatus] = useLocalStorageState("agentui.workflowScheduleRunsStatus", "all");
-  const [scheduleRunsErrorsOnly, setScheduleRunsErrorsOnly] = useLocalStorageState(
-    "agentui.workflowScheduleRunsErrorsOnly",
-    false,
-  );
-  const [scheduleRunsFilter, setScheduleRunsFilter] = useLocalStorageState("agentui.workflowScheduleRunsFilter", "");
-  const [scheduleError, setScheduleError] = React.useState<string | null>(null);
-  const [scheduleValidation, setScheduleValidation] = React.useState<string[]>([]);
-  const [scheduleCronValidation, setScheduleCronValidation] = React.useState<string[]>([]);
-  const [scheduleBusyId, setScheduleBusyId] = React.useState<string | null>(null);
-  const [scheduleCreateBusy, setScheduleCreateBusy] = React.useState(false);
-  const [copyNotice, setCopyNotice] = React.useState<string | null>(null);
-  const copyTimerRef = React.useRef<number | null>(null);
-
-  const normalizedListStatus = STATUS_OPTIONS.includes(String(listStatus)) ? String(listStatus) : "running";
-  const limitValue = (() => {
-    const n = Number(listLimit);
-    if (!Number.isFinite(n)) return 50;
-    return Math.min(Math.max(Math.trunc(n), 1), 200);
-  })();
-
-  const normalizedScheduleStatus = SCHEDULE_STATUS_OPTIONS.includes(String(scheduleStatus))
-    ? String(scheduleStatus)
-    : "active";
-  const scheduleLimitValue = (() => {
-    const n = Number(scheduleLimit);
-    if (!Number.isFinite(n)) return 50;
-    return Math.min(Math.max(Math.trunc(n), 1), 200);
-  })();
-  const scheduleOffsetValue = (() => {
-    const n = Number(scheduleOffset);
-    if (!Number.isFinite(n) || n < 0) return 0;
-    return Math.trunc(n);
-  })();
-  const scheduleRunsLimitValue = (() => {
-    const n = Number(scheduleRunsLimit);
-    if (!Number.isFinite(n)) return 50;
-    return Math.min(Math.max(Math.trunc(n), 1), 200);
-  })();
-  const scheduleRunsOffsetValue = (() => {
-    const n = Number(scheduleRunsOffset);
-    if (!Number.isFinite(n) || n < 0) return 0;
-    return Math.trunc(n);
-  })();
-  const normalizedScheduleRunsStatus = SCHEDULE_RUN_STATUS_OPTIONS.includes(String(scheduleRunsStatus))
-    ? String(scheduleRunsStatus)
-    : "all";
-
-  const listQuery = useQuery({
-    queryKey: ["workflows", props.baseUrl, props.authKey, normalizedListStatus, limitValue, listFilterDebounced],
-    queryFn: () =>
-      apiListWorkflows(props.baseUrl, { status: normalizedListStatus, limit: limitValue, query: listFilterDebounced }, props.auth),
-    enabled: props.open && !!props.baseUrl,
-    staleTime: 5_000,
-    refetchInterval: listAutoRefresh ? 5_000 : false,
+  const workflowState = useWorkflowPanelState({
+    open: props.open,
+    baseUrl: props.baseUrl,
+    auth: props.auth,
+    authKey: props.authKey,
   });
-  const filteredWorkflows = React.useMemo(() => {
-    const workflows = extractWorkflows(listQuery.data);
-    const query = String(listFilter || "").trim().toLowerCase();
-    if (!query) return workflows;
-    return workflows.filter((wf: any) => {
-      const workflowId = String(wf.workflow_id || "").toLowerCase();
-      const traceId = String(wf.trace_id || "").toLowerCase();
-      const sessionId = String(wf.session_id || "").toLowerCase();
-      const idempotencyKey = String(wf.idempotency_key || "").toLowerCase();
-      return (
-        workflowId.includes(query) ||
-        traceId.includes(query) ||
-        sessionId.includes(query) ||
-        idempotencyKey.includes(query)
-      );
-    });
-  }, [listFilter, listQuery.data]);
-
-  const scheduleListQuery = useQuery({
-    queryKey: [
-      "workflow-schedules",
-      props.baseUrl,
-      props.authKey,
-      normalizedScheduleStatus,
-      scheduleLimitValue,
-      scheduleOffsetValue,
-    ],
-    queryFn: () =>
-      apiListWorkflowSchedules(
-        props.baseUrl,
-        {
-          status: normalizedScheduleStatus === "all" ? undefined : normalizedScheduleStatus,
-          limit: scheduleLimitValue,
-          offset: scheduleOffsetValue,
-        },
-        props.auth,
-      ),
-    enabled: props.open && !!props.baseUrl,
-    staleTime: 5_000,
-    refetchInterval: scheduleAutoRefresh ? 5_000 : false,
-  });
-
-  const scheduleRunsQuery = useQuery({
-    queryKey: [
-      "workflow-schedule-runs",
-      props.baseUrl,
-      props.authKey,
-      scheduleId,
-      scheduleRunsLimitValue,
-      scheduleRunsOffsetValue,
-    ],
-    queryFn: () =>
-      apiListWorkflowScheduleRuns(
-        props.baseUrl,
-        { scheduleId: String(scheduleId || ""), limit: scheduleRunsLimitValue, offset: scheduleRunsOffsetValue },
-        props.auth,
-      ),
-    enabled: props.open && !!props.baseUrl && String(scheduleId || "").trim().length > 0,
-    staleTime: 5_000,
-    refetchInterval: scheduleAutoRefresh ? 5_000 : false,
-  });
-
-  React.useEffect(() => {
-    const next = String(listFilter || "").trim();
-    const handle = window.setTimeout(() => {
-      setListFilterDebounced(next);
-    }, 300);
-    return () => window.clearTimeout(handle);
-  }, [listFilter]);
-
-  const workflowLookup = useMutation({
-    mutationFn: async (id: string) =>
-      apiGetWorkflow(
-        props.baseUrl,
-        {
-          workflowId: id,
-          includeTasks: true,
-          includeResults,
-          includeSpec,
-        },
-        props.auth,
-      ),
-    onSuccess: (resp) => {
-      setDetail(resp);
-      setDetailError(resp && resp.ok === false ? resp.error || "workflow lookup failed" : null);
-    },
-    onError: (err) => {
-      setDetail(null);
-      setDetailError(String(err));
-    },
-  });
-
-  const canLoad = String(workflowId || "").trim().length > 0;
-  const tasks = extractTasks(detail);
-  const summary = extractWorkflowSummary(detail);
-  const taskCounts = countByStatus(tasks);
-  const graph = buildLevels(tasks);
-  const scheduleList = extractSchedules(scheduleListQuery.data);
-  const scheduleRuns = extractScheduleRuns(scheduleRunsQuery.data);
-  const filteredScheduleList = React.useMemo(() => {
-    const query = String(scheduleFilter || "").trim().toLowerCase();
-    if (!query) return scheduleList;
-    return scheduleList.filter((sched: any) => {
-      const scheduleId = String(sched?.schedule_id || "").toLowerCase();
-      const cron = String(sched?.cron || "").toLowerCase();
-      const timezone = String(sched?.timezone || "").toLowerCase();
-      const lastError = String(sched?.last_error || "").toLowerCase();
-      return (
-        scheduleId.includes(query) ||
-        cron.includes(query) ||
-        timezone.includes(query) ||
-        lastError.includes(query)
-      );
-    });
-  }, [scheduleList, scheduleFilter]);
-  const filteredScheduleRuns = React.useMemo(() => {
-    const statusFilter = normalizedScheduleRunsStatus === "all" ? "" : normalizedScheduleRunsStatus;
-    const query = String(scheduleRunsFilter || "").trim().toLowerCase();
-    return scheduleRuns.filter((run: any) => {
-      const status = String(run?.status || "").toLowerCase();
-      if (statusFilter && status !== statusFilter) return false;
-      if (query) {
-        const workflowId = String(run?.workflow_id || "").toLowerCase();
-        const scheduleId = String(run?.schedule_id || "").toLowerCase();
-        if (!workflowId.includes(query) && !scheduleId.includes(query)) return false;
-      }
-      if (scheduleRunsErrorsOnly && !String(run?.error || "").trim()) return false;
-      return true;
-    });
-  }, [scheduleRuns, normalizedScheduleRunsStatus, scheduleRunsErrorsOnly, scheduleRunsFilter]);
-
-  const loadWorkflow = (id: string) => {
-    const trimmed = String(id || "").trim();
-    if (!trimmed) return;
-    if (!props.baseUrl) {
-      setDetailError("Base URL is not set.");
-      return;
-    }
-    setDetailError(null);
-    workflowLookup.mutate(trimmed);
-  };
-
-  const loadScheduleRuns = (id: string) => {
-    const trimmed = String(id || "").trim();
-    if (!trimmed) return;
-    setScheduleId(trimmed);
-  };
-
-  const cancelWorkflow = async (id: string) => {
-    const trimmed = String(id || "").trim();
-    if (!trimmed) return;
-    if (!props.baseUrl) {
-      setDetailError("Base URL is not set.");
-      return;
-    }
-    setCancelBusyId(trimmed);
-    setDetailError(null);
-    try {
-      const resp = await apiCancelWorkflow(props.baseUrl, trimmed, props.auth);
-      if (resp && resp.ok === false) {
-        setDetailError(resp.error || "Workflow cancel failed");
-      }
-    } catch (err) {
-      setDetailError(String(err));
-    } finally {
-      setCancelBusyId(null);
-    }
-    loadWorkflow(trimmed);
-    void listQuery.refetch();
-  };
-
-  const createSchedule = async () => {
-    if (!props.baseUrl) {
-      setScheduleError("Base URL is not set.");
-      return;
-    }
-    const cron = String(scheduleCron || "").trim();
-    const cronIssues = validateCronExpr(cron);
-    setScheduleCronValidation(cronIssues);
-    if (cronIssues.length > 0) {
-      setScheduleError("cron validation failed");
-      return;
-    }
-    const specRaw = String(scheduleSpec || "").trim();
-    if (!specRaw) {
-      setScheduleError("spec JSON is required");
-      return;
-    }
-    let specObj: any = null;
-    try {
-      specObj = JSON.parse(specRaw);
-    } catch (err) {
-      setScheduleError(`spec JSON parse error: ${String(err)}`);
-      return;
-    }
-    const issues = validateScheduleSpec(specObj);
-    setScheduleValidation(issues);
-    if (issues.length > 0) {
-      setScheduleError(`spec validation failed (${issues.length} issues)`);
-      return;
-    }
-    setScheduleCreateBusy(true);
-    setScheduleError(null);
-    try {
-      const resp = await apiCreateWorkflowSchedule(
-        props.baseUrl,
-        { cron, timezone: "UTC", spec: specObj },
-        props.auth,
-      );
-      if (resp && resp.ok === false) {
-        setScheduleError(resp.error || "schedule create failed");
-      } else if (resp && resp.schedule_id) {
-        setScheduleId(resp.schedule_id);
-      }
-      void scheduleListQuery.refetch();
-      void scheduleRunsQuery.refetch();
-    } catch (err) {
-      setScheduleError(String(err));
-    } finally {
-      setScheduleCreateBusy(false);
-    }
-  };
-
-  const scheduleCurlSnippet = (id: string, action: "pause" | "resume" | "delete") => {
-    const base = String(props.baseUrl || "").replace(/\/$/, "");
-    const token = "$AGENTD_AUTH_TOKEN";
-    if (action === "delete") {
-      return `curl -H "Authorization: Bearer ${token}" -X DELETE ${base}/api/v1/workflow_schedule?schedule_id=${encodeURIComponent(
-        id,
-      )}`;
-    }
-    return `curl -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" -d '{"schedule_id":"${id}"}' ${base}/api/v1/workflow_schedule/${action}`;
-  };
-
-  const scheduleCreateCurlSnippet = (cron: string, spec: any) => {
-    const base = String(props.baseUrl || "").replace(/\/$/, "");
-    const token = "$AGENTD_AUTH_TOKEN";
-    const payload = JSON.stringify({ cron, timezone: "UTC", spec });
-    return `curl -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" -d '${payload}' ${base}/api/v1/workflow_schedules`;
-  };
-
-  const pauseSchedule = async (id: string) => {
-    const trimmed = String(id || "").trim();
-    if (!trimmed) return;
-    if (!props.baseUrl) {
-      setScheduleError("Base URL is not set.");
-      return;
-    }
-    setScheduleBusyId(trimmed);
-    setScheduleError(null);
-    try {
-      const resp = await apiPauseWorkflowSchedule(props.baseUrl, trimmed, props.auth);
-      if (resp && resp.ok === false) setScheduleError(resp.error || "schedule pause failed");
-    } catch (err) {
-      setScheduleError(String(err));
-    } finally {
-      setScheduleBusyId(null);
-    }
-    void scheduleListQuery.refetch();
-  };
-
-  const resumeSchedule = async (id: string) => {
-    const trimmed = String(id || "").trim();
-    if (!trimmed) return;
-    if (!props.baseUrl) {
-      setScheduleError("Base URL is not set.");
-      return;
-    }
-    setScheduleBusyId(trimmed);
-    setScheduleError(null);
-    try {
-      const resp = await apiResumeWorkflowSchedule(props.baseUrl, trimmed, props.auth);
-      if (resp && resp.ok === false) setScheduleError(resp.error || "schedule resume failed");
-    } catch (err) {
-      setScheduleError(String(err));
-    } finally {
-      setScheduleBusyId(null);
-    }
-    void scheduleListQuery.refetch();
-  };
-
-  const deleteSchedule = async (id: string) => {
-    const trimmed = String(id || "").trim();
-    if (!trimmed) return;
-    if (!props.baseUrl) {
-      setScheduleError("Base URL is not set.");
-      return;
-    }
-    setScheduleBusyId(trimmed);
-    setScheduleError(null);
-    try {
-      const resp = await apiDeleteWorkflowSchedule(props.baseUrl, trimmed, props.auth);
-      if (resp && resp.ok === false) setScheduleError(resp.error || "schedule delete failed");
-    } catch (err) {
-      setScheduleError(String(err));
-    } finally {
-      setScheduleBusyId(null);
-    }
-    if (String(scheduleId || "") === trimmed) setScheduleId("");
-    void scheduleListQuery.refetch();
-    void scheduleRunsQuery.refetch();
-  };
-
-  const loadSpecFromWorkflow = () => {
-    if (detail?.spec_json) {
-      setScheduleSpec(detail.spec_json);
-      try {
-        const parsed = JSON.parse(detail.spec_json);
-        setScheduleValidation(validateScheduleSpec(parsed));
-      } catch {
-        setScheduleValidation([]);
-      }
-      return;
-    }
-    if (detail?.spec && typeof detail.spec === "object") {
-      setScheduleSpec(JSON.stringify(detail.spec, null, 2));
-      setScheduleValidation(validateScheduleSpec(detail.spec));
-    }
-  };
-
-  const copyText = async (label: string, value?: string | null) => {
-    const text = String(value || "").trim();
-    if (!text) return;
-    try {
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const textarea = document.createElement("textarea");
-        textarea.value = text;
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-        document.execCommand("copy");
-        document.body.removeChild(textarea);
-      }
-      setCopyNotice(`${label} copied`);
-    } catch {
-      setCopyNotice(`Failed to copy ${label}`);
-    }
-    if (copyTimerRef.current) {
-      window.clearTimeout(copyTimerRef.current);
-    }
-    copyTimerRef.current = window.setTimeout(() => setCopyNotice(null), 2000);
-  };
-
-  const copyJson = async (label: string, payload: any) => {
-    try {
-      const text = JSON.stringify(payload, null, 2);
-      await copyText(label, text);
-    } catch {
-      setCopyNotice(`Failed to copy ${label}`);
-      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
-      copyTimerRef.current = window.setTimeout(() => setCopyNotice(null), 2000);
-    }
-  };
-
-  const downloadJson = (label: string, payload: any) => {
-    try {
-      const text = JSON.stringify(payload, null, 2);
-      const blob = new Blob([text], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${label}-${Date.now()}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      setCopyNotice(`Failed to download ${label}`);
-      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
-      copyTimerRef.current = window.setTimeout(() => setCopyNotice(null), 2000);
-    }
-  };
-
-  React.useEffect(
-    () => () => {
-      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
-    },
-    [],
-  );
 
   return (
     <details
@@ -760,31 +44,28 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
           <input
             className="min-w-[260px] flex-1 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
             placeholder="workflow_id (e.g. wf_...)"
-            value={workflowId}
-            onChange={(e) => setWorkflowId(e.target.value)}
+            value={workflowState.workflowId}
+            onChange={(e) => workflowState.setWorkflowId(e.target.value)}
           />
           <button
             className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
             type="button"
-            disabled={workflowLookup.isPending || !canLoad}
-            onClick={() => loadWorkflow(workflowId)}
+            disabled={workflowState.workflowLookup.isPending || !workflowState.canLoad}
+            onClick={() => workflowState.loadWorkflow(workflowState.workflowId)}
           >
-            {workflowLookup.isPending ? "Loading…" : "Load"}
+            {workflowState.workflowLookup.isPending ? "Loading…" : "Load"}
           </button>
           <button
             className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
             type="button"
-            disabled={workflowLookup.isPending}
-            onClick={() => {
-              setDetail(null);
-              setDetailError(null);
-            }}
+            disabled={workflowState.workflowLookup.isPending}
+            onClick={() => workflowState.clearWorkflow()}
           >
             Clear
           </button>
         </div>
-        {copyNotice ? <div className="text-[10px] text-white/50">{copyNotice}</div> : null}
-        {copyNotice ? (
+        {workflowState.copyNotice ? <div className="text-[10px] text-white/50">{workflowState.copyNotice}</div> : null}
+        {workflowState.copyNotice ? (
           <div className="text-[10px] text-white/50">Tip: use the copy buttons in the workflow list rows for quick sharing.</div>
         ) : null}
 
@@ -793,883 +74,127 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
             <input
               type="checkbox"
               className="h-3 w-3"
-              checked={includeResults}
-              onChange={(e) => setIncludeResults(e.target.checked)}
+              checked={workflowState.includeResults}
+              onChange={(e) => workflowState.setIncludeResults(e.target.checked)}
             />
             include results
           </label>
           <label className="flex items-center gap-1">
-            <input type="checkbox" className="h-3 w-3" checked={includeSpec} onChange={(e) => setIncludeSpec(e.target.checked)} />
+            <input
+              type="checkbox"
+              className="h-3 w-3"
+              checked={workflowState.includeSpec}
+              onChange={(e) => workflowState.setIncludeSpec(e.target.checked)}
+            />
             include spec
           </label>
         </div>
 
-        <div className="rounded-md border border-white/10 bg-black/30 p-3" data-testid="workflow-list-panel">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <div className="text-xs font-semibold text-white/70">Recent workflows</div>
-            <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-              <label className="flex items-center gap-1">
-                status
-                <select
-                  className="rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
-                  value={normalizedListStatus}
-                  onChange={(e) => setListStatus(e.target.value)}
-                >
-                  {STATUS_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex items-center gap-1">
-                limit
-                <input
-                  className="w-[56px] rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
-                  value={String(listLimit || "")}
-                  onChange={(e) => setListLimit(e.target.value)}
-                />
-              </label>
-              <label className="flex items-center gap-1">
-                filter
-                <span className="flex items-center gap-1">
-                  <input
-                    className="w-[140px] rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
-                    value={String(listFilter || "")}
-                    onChange={(e) => setListFilter(e.target.value)}
-                    placeholder="id/trace/session"
-                  />
-                  {String(listFilter || "").trim() ? (
-                    <button
-                      className="rounded border border-white/10 px-1 py-0.5 text-[10px] text-white/60 hover:bg-white/5"
-                      type="button"
-                      onClick={() => setListFilter("")}
-                    >
-                      clear
-                    </button>
-                  ) : null}
-                </span>
-              </label>
-              <label className="flex items-center gap-1">
-                <input
-                  type="checkbox"
-                  className="h-3 w-3"
-                  checked={!!listAutoRefresh}
-                  onChange={(e) => setListAutoRefresh(e.target.checked)}
-                />
-                auto
-              </label>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                type="button"
-                onClick={() => listQuery.refetch()}
-                disabled={listQuery.isFetching}
-              >
-                {listQuery.isFetching ? "Refreshing…" : "Refresh"}
-              </button>
-            </div>
-          </div>
-          {!props.baseUrl ? (
-            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-100">
-              Set a daemon base URL to list workflows.
-            </div>
-          ) : null}
-          {listQuery.isError ? (
-            <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-xs text-rose-200">
-              {String(listQuery.error)}
-            </div>
-          ) : null}
-          <div className="grid gap-2">
-            {filteredWorkflows.map((wf: any) => {
-              const id = String(wf.workflow_id || "").trim();
-              const canCancel = canCancelStatus(wf.status);
-              return (
-                <div
-                  key={String(wf.workflow_id || Math.random())}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/10 bg-black/40 px-2 py-2 text-left text-xs text-white/80"
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!id) return;
-                      setWorkflowId(id);
-                      loadWorkflow(id);
-                    }}
-                    className="flex flex-1 flex-wrap items-center justify-between gap-2 text-left hover:text-white"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={`rounded border px-2 py-0.5 text-[10px] ${statusBadge(wf.status)}`}>
-                        {wf.status ?? "unknown"}
-                      </span>
-                      {wf.cancel_requested ? (
-                        <span className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[9px] text-amber-100">
-                          cancel requested
-                        </span>
-                      ) : null}
-                      <span className="font-mono text-[11px] text-white/80">{wf.workflow_id}</span>
-                      {wf.trace_id ? <span className="text-[10px] text-white/50">trace {String(wf.trace_id)}</span> : null}
-                      {wf.session_id ? (
-                        <span className="text-[10px] text-white/50">session {String(wf.session_id)}</span>
-                      ) : null}
-                      {wf.idempotency_key ? (
-                        <span className="text-[10px] text-white/50">idk {String(wf.idempotency_key)}</span>
-                      ) : null}
-                    </div>
-                    <div className="text-[10px] text-white/40">updated {formatUnixMs(wf.updated_unix_ms)}</div>
-                  </button>
-                  <div className="flex items-center gap-2">
-                    {id ? (
-                      <button
-                        className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
-                        type="button"
-                        onClick={() => void copyText("workflow id", id)}
-                      >
-                        copy id
-                      </button>
-                    ) : null}
-                    {wf.trace_id ? (
-                      <button
-                        className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
-                        type="button"
-                        onClick={() => void copyText("trace id", wf.trace_id)}
-                      >
-                        copy trace
-                      </button>
-                    ) : null}
-                    {wf.session_id ? (
-                      <button
-                        className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
-                        type="button"
-                        onClick={() => void copyText("session id", wf.session_id)}
-                      >
-                        copy session
-                      </button>
-                    ) : null}
-                    {wf.idempotency_key ? (
-                      <button
-                        className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
-                        type="button"
-                        onClick={() => void copyText("idempotency key", wf.idempotency_key)}
-                      >
-                        copy idk
-                      </button>
-                    ) : null}
-                    {canCancel ? (
-                      <button
-                        className="rounded-md border border-rose-400/30 bg-rose-400/10 px-2 py-1 text-[10px] text-rose-100 hover:bg-rose-400/20 disabled:opacity-50"
-                        type="button"
-                        onClick={() => void cancelWorkflow(id)}
-                        disabled={!id || cancelBusyId === id}
-                      >
-                        {cancelBusyId === id ? "Canceling…" : "Cancel"}
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-            {listQuery.isSuccess && filteredWorkflows.length === 0 ? (
-              <div className="text-xs text-white/50">
-                No workflows found for status "{normalizedListStatus}".
-                {String(listFilter || "").trim() ? " Clear the filter to see more." : ""}
-              </div>
-            ) : null}
-          </div>
-        </div>
+        <WorkflowListSection
+          baseUrl={props.baseUrl}
+          normalizedListStatus={workflowState.normalizedListStatus}
+          listStatus={workflowState.listStatus}
+          setListStatus={workflowState.setListStatus}
+          listLimit={workflowState.listLimit}
+          setListLimit={workflowState.setListLimit}
+          listFilter={workflowState.listFilter}
+          setListFilter={workflowState.setListFilter}
+          listAutoRefresh={workflowState.listAutoRefresh}
+          setListAutoRefresh={workflowState.setListAutoRefresh}
+          listQuery={workflowState.listQuery}
+          filteredWorkflows={workflowState.filteredWorkflows}
+          cancelBusyId={workflowState.cancelBusyId}
+          onSelectWorkflow={(id) => {
+            workflowState.setWorkflowId(id);
+            workflowState.loadWorkflow(id);
+          }}
+          onCopyText={workflowState.copyText}
+          onCancelWorkflow={workflowState.cancelWorkflow}
+        />
 
-        <div className="rounded-md border border-white/10 bg-black/30 p-3" data-testid="workflow-schedules-panel">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <div className="text-xs font-semibold text-white/70">Workflow schedules (UTC)</div>
-            <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-              <label className="flex items-center gap-1">
-                status
-                <select
-                  className="rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
-                  value={normalizedScheduleStatus}
-                  onChange={(e) => setScheduleStatus(e.target.value)}
-                >
-                  {SCHEDULE_STATUS_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex items-center gap-1">
-                limit
-                <input
-                  className="w-[56px] rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
-                  value={String(scheduleLimit || "")}
-                  onChange={(e) => setScheduleLimit(e.target.value)}
-                />
-              </label>
-              <label className="flex items-center gap-1">
-                offset
-                <input
-                  className="w-[56px] rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
-                  value={String(scheduleOffset || "")}
-                  onChange={(e) => setScheduleOffset(e.target.value)}
-                />
-              </label>
-              <label className="flex items-center gap-1">
-                filter
-                <span className="flex items-center gap-1">
-                  <input
-                    className="w-[140px] rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
-                    value={String(scheduleFilter || "")}
-                    onChange={(e) => setScheduleFilter(e.target.value)}
-                    placeholder="id/cron/error"
-                  />
-                  {String(scheduleFilter || "").trim() ? (
-                    <button
-                      className="rounded border border-white/10 px-1 py-0.5 text-[10px] text-white/60 hover:bg-white/5"
-                      type="button"
-                      onClick={() => setScheduleFilter("")}
-                    >
-                      clear
-                    </button>
-                  ) : null}
-                </span>
-              </label>
-              <label className="flex items-center gap-1">
-                <input
-                  type="checkbox"
-                  className="h-3 w-3"
-                  checked={!!scheduleAutoRefresh}
-                  onChange={(e) => setScheduleAutoRefresh(e.target.checked)}
-                />
-                auto
-              </label>
-              <div className="flex items-center gap-1">
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
-                  type="button"
-                  onClick={() => setScheduleOffset(String(Math.max(0, scheduleOffsetValue - scheduleLimitValue)))}
-                  disabled={scheduleOffsetValue === 0}
-                >
-                  Prev
-                </button>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
-                  type="button"
-                  onClick={() => setScheduleOffset(String(scheduleOffsetValue + scheduleLimitValue))}
-                  disabled={scheduleList.length < scheduleLimitValue}
-                >
-                  Next
-                </button>
-              </div>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                type="button"
-                onClick={() => scheduleListQuery.refetch()}
-                disabled={scheduleListQuery.isFetching}
-              >
-                {scheduleListQuery.isFetching ? "Refreshing…" : "Refresh"}
-              </button>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
-                  type="button"
-                  onClick={() => void copyJson("schedules", filteredScheduleList)}
-                  disabled={filteredScheduleList.length === 0}
-                >
-                  Copy JSON
-                </button>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
-                  type="button"
-                  onClick={() => downloadJson("workflow-schedules", filteredScheduleList)}
-                  disabled={filteredScheduleList.length === 0}
-                >
-                  Download JSON
-                </button>
-            </div>
-          </div>
+        <WorkflowSchedulesSection
+          baseUrl={props.baseUrl}
+          normalizedScheduleStatus={workflowState.normalizedScheduleStatus}
+          scheduleStatus={workflowState.scheduleStatus}
+          setScheduleStatus={workflowState.setScheduleStatus}
+          scheduleLimit={workflowState.scheduleLimit}
+          setScheduleLimit={workflowState.setScheduleLimit}
+          scheduleOffset={workflowState.scheduleOffset}
+          setScheduleOffset={workflowState.setScheduleOffset}
+          scheduleFilter={workflowState.scheduleFilter}
+          setScheduleFilter={workflowState.setScheduleFilter}
+          scheduleAutoRefresh={workflowState.scheduleAutoRefresh}
+          setScheduleAutoRefresh={workflowState.setScheduleAutoRefresh}
+          scheduleLimitValue={workflowState.scheduleLimitValue}
+          scheduleOffsetValue={workflowState.scheduleOffsetValue}
+          scheduleRunsLimit={workflowState.scheduleRunsLimit}
+          setScheduleRunsLimit={workflowState.setScheduleRunsLimit}
+          scheduleRunsOffset={workflowState.scheduleRunsOffset}
+          setScheduleRunsOffset={workflowState.setScheduleRunsOffset}
+          scheduleRunsStatus={workflowState.scheduleRunsStatus}
+          setScheduleRunsStatus={workflowState.setScheduleRunsStatus}
+          scheduleRunsErrorsOnly={workflowState.scheduleRunsErrorsOnly}
+          setScheduleRunsErrorsOnly={workflowState.setScheduleRunsErrorsOnly}
+          scheduleRunsFilter={workflowState.scheduleRunsFilter}
+          setScheduleRunsFilter={workflowState.setScheduleRunsFilter}
+          normalizedScheduleRunsStatus={workflowState.normalizedScheduleRunsStatus}
+          scheduleRunsLimitValue={workflowState.scheduleRunsLimitValue}
+          scheduleRunsOffsetValue={workflowState.scheduleRunsOffsetValue}
+          scheduleCron={workflowState.scheduleCron}
+          setScheduleCron={workflowState.setScheduleCron}
+          scheduleSpec={workflowState.scheduleSpec}
+          setScheduleSpec={workflowState.setScheduleSpec}
+          scheduleId={workflowState.scheduleId}
+          scheduleError={workflowState.scheduleError}
+          setScheduleError={workflowState.setScheduleError}
+          scheduleValidation={workflowState.scheduleValidation}
+          setScheduleValidation={workflowState.setScheduleValidation}
+          scheduleCronValidation={workflowState.scheduleCronValidation}
+          setScheduleCronValidation={workflowState.setScheduleCronValidation}
+          scheduleBusyId={workflowState.scheduleBusyId}
+          scheduleCreateBusy={workflowState.scheduleCreateBusy}
+          scheduleListQuery={workflowState.scheduleListQuery}
+          scheduleRunsQuery={workflowState.scheduleRunsQuery}
+          scheduleList={workflowState.scheduleList}
+          scheduleRuns={workflowState.scheduleRuns}
+          filteredScheduleList={workflowState.filteredScheduleList}
+          filteredScheduleRuns={workflowState.filteredScheduleRuns}
+          onCopyText={workflowState.copyText}
+          onCopyJson={workflowState.copyJson}
+          onDownloadJson={workflowState.downloadJson}
+          onLoadScheduleRuns={workflowState.loadScheduleRuns}
+          onLoadWorkflowFromRun={(id) => {
+            workflowState.setWorkflowId(id);
+            workflowState.loadWorkflow(id);
+          }}
+          onCreateSchedule={workflowState.createSchedule}
+          onPauseSchedule={workflowState.pauseSchedule}
+          onResumeSchedule={workflowState.resumeSchedule}
+          onDeleteSchedule={workflowState.deleteSchedule}
+          onLoadSpecFromWorkflow={workflowState.loadSpecFromWorkflow}
+          scheduleCurlSnippet={workflowState.scheduleCurlSnippet}
+          scheduleCreateCurlSnippet={workflowState.scheduleCreateCurlSnippet}
+        />
 
-          <div className="grid gap-2">
-            <div className="grid gap-2 rounded-md border border-white/10 bg-black/40 p-2">
-              <div className="text-[11px] text-white/60">Create schedule</div>
-              <div className="flex flex-wrap items-center gap-2 text-[10px] text-white/60">
-                <span>Presets</span>
-                {SCHEDULE_PRESETS.map((preset) => (
-                  <button
-                    key={preset.label}
-                    className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/70 hover:bg-white/5"
-                    type="button"
-                    onClick={() => setScheduleCron(preset.cron)}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  data-testid="workflow-schedule-cron"
-                  className="min-w-[160px] flex-1 rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-white/80"
-                  value={String(scheduleCron || "")}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    setScheduleCron(next);
-                    if (scheduleError) setScheduleError(null);
-                    setScheduleCronValidation(validateCronExpr(next));
-                  }}
-                  placeholder="cron (e.g. 0 9 * * 1-5)"
-                />
-                <div className="rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-white/50">
-                  timezone UTC
-                </div>
-                <button
-                  className="rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-white/70 hover:bg-black/50"
-                  type="button"
-                  onClick={() => loadSpecFromWorkflow()}
-                >
-                  use loaded spec
-                </button>
-                <button
-                  className="rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-white/70 hover:bg-black/50"
-                  type="button"
-                  onClick={() => {
-                    const payload = JSON.stringify(SCHEDULE_SAMPLE_SPEC, null, 2);
-                    setScheduleSpec(payload);
-                    setScheduleValidation(validateScheduleSpec(SCHEDULE_SAMPLE_SPEC));
-                  }}
-                >
-                  insert sample spec
-                </button>
-                <button
-                  data-testid="workflow-schedule-create"
-                  className="rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-white/80 hover:bg-black/50 disabled:opacity-50"
-                  type="button"
-                  onClick={() => void createSchedule()}
-                  disabled={scheduleCreateBusy}
-                >
-                  {scheduleCreateBusy ? "Creating…" : "Create"}
-                </button>
-                <button
-                  className="rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-white/80 hover:bg-black/50"
-                  type="button"
-                  onClick={() => {
-                    const cron = String(scheduleCron || "").trim();
-                    const cronIssues = validateCronExpr(cron);
-                    if (cronIssues.length > 0) {
-                      setScheduleCronValidation(cronIssues);
-                      setScheduleError("cron validation failed");
-                      return;
-                    }
-                    const specRaw = String(scheduleSpec || "").trim();
-                    if (!specRaw) {
-                      setScheduleError("spec JSON is required");
-                      return;
-                    }
-                    try {
-                      const parsed = JSON.parse(specRaw);
-                      const issues = validateScheduleSpec(parsed);
-                      setScheduleValidation(issues);
-                      if (issues.length > 0) {
-                        setScheduleError("spec validation failed");
-                        return;
-                      }
-                      void copyText("schedule create curl", scheduleCreateCurlSnippet(cron, parsed));
-                    } catch (err) {
-                      setScheduleError(`spec JSON parse error: ${String(err)}`);
-                    }
-                  }}
-                >
-                  copy create curl
-                </button>
-              </div>
-              <textarea
-                data-testid="workflow-schedule-spec"
-                className="min-h-[120px] rounded border border-white/10 bg-black/40 px-2 py-2 text-[11px] text-white/80"
-                value={String(scheduleSpec || "")}
-                onChange={(e) => {
-                  setScheduleSpec(e.target.value);
-                  if (scheduleError) setScheduleError(null);
-                }}
-                placeholder='spec JSON (workflow submit payload, e.g. {"tasks":[...], "defaults":{...}})'
-              />
-              {scheduleError ? <div className="text-[11px] text-rose-200">{scheduleError}</div> : null}
-              {scheduleCronValidation.length > 0 ? (
-                <div className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-100">
-                  {scheduleCronValidation.map((msg, idx) => (
-                    <div key={`cron-${msg}-${idx}`}>{msg}</div>
-                  ))}
-                </div>
-              ) : null}
-              {scheduleValidation.length > 0 ? (
-                <div className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-100">
-                  {scheduleValidation.map((msg, idx) => (
-                    <div key={`${msg}-${idx}`}>{msg}</div>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-
-            {!props.baseUrl ? (
-              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-100">
-                Set a daemon base URL to manage schedules.
-              </div>
-            ) : null}
-            {scheduleListQuery.isError ? (
-              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-xs text-rose-200">
-                {String(scheduleListQuery.error)}
-              </div>
-            ) : null}
-
-            <div className="grid gap-2">
-              {filteredScheduleList.map((sched: any) => {
-                const id = String(sched.schedule_id || "").trim();
-                const status = String(sched.status || "").toLowerCase();
-                return (
-                  <div
-                    data-testid={`workflow-schedule-row-${id}`}
-                    key={id || Math.random()}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/10 bg-black/40 px-2 py-2 text-left text-xs text-white/80"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!id) return;
-                        loadScheduleRuns(id);
-                      }}
-                      className="flex flex-1 flex-wrap items-center justify-between gap-2 text-left hover:text-white"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`rounded border px-2 py-0.5 text-[10px] ${statusBadge(status)}`}>
-                          {status || "unknown"}
-                        </span>
-                        <span className="font-mono text-[11px] text-white/80">{id}</span>
-                        {sched.cron ? <span className="text-[10px] text-white/50">cron {String(sched.cron)}</span> : null}
-                        {sched.next_tick_unix_ms ? (
-                          <span className="text-[10px] text-white/50">
-                            next {formatUnixMs(sched.next_tick_unix_ms)}
-                          </span>
-                        ) : null}
-                        {sched.last_error ? (
-                          <span className="text-[10px] text-rose-200">err {String(sched.last_error)}</span>
-                        ) : null}
-                      </div>
-                      <div className="text-[10px] text-white/40">updated {formatUnixMs(sched.updated_unix_ms)}</div>
-                    </button>
-                    <div className="flex items-center gap-2">
-                      {id ? (
-                        <button
-                          className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
-                          type="button"
-                          onClick={() => void copyText("schedule id", id)}
-                        >
-                          copy id
-                        </button>
-                      ) : null}
-                      {id ? (
-                        <button
-                          className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
-                          type="button"
-                          onClick={() => void copyText("schedule pause curl", scheduleCurlSnippet(id, "pause"))}
-                        >
-                          copy pause curl
-                        </button>
-                      ) : null}
-                      {id ? (
-                        <button
-                          className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
-                          type="button"
-                          onClick={() => void copyText("schedule resume curl", scheduleCurlSnippet(id, "resume"))}
-                        >
-                          copy resume curl
-                        </button>
-                      ) : null}
-                      {id ? (
-                        <button
-                          className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
-                          type="button"
-                          onClick={() => void copyText("schedule delete curl", scheduleCurlSnippet(id, "delete"))}
-                        >
-                          copy delete curl
-                        </button>
-                      ) : null}
-                      {status === "active" ? (
-                        <button
-                          className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5 disabled:opacity-50"
-                          type="button"
-                          onClick={() => void pauseSchedule(id)}
-                          disabled={scheduleBusyId === id}
-                        >
-                          pause
-                        </button>
-                      ) : (
-                        <button
-                          className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5 disabled:opacity-50"
-                          type="button"
-                          onClick={() => void resumeSchedule(id)}
-                          disabled={scheduleBusyId === id}
-                        >
-                          resume
-                        </button>
-                      )}
-                      <button
-                        className="rounded border border-rose-500/30 px-2 py-1 text-[10px] text-rose-200 hover:bg-rose-500/10 disabled:opacity-50"
-                        type="button"
-                        onClick={() => void deleteSchedule(id)}
-                        disabled={scheduleBusyId === id}
-                      >
-                        delete
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-              {scheduleListQuery.isSuccess && filteredScheduleList.length === 0 ? (
-                <div className="rounded border border-white/10 bg-black/20 px-2 py-2 text-[11px] text-white/50">
-                  {scheduleList.length === 0 ? "No schedules yet." : "No schedules match the filter."}
-                </div>
-              ) : null}
-            </div>
-
-            <div className="grid gap-2 rounded-md border border-white/10 bg-black/40 p-2" data-testid="workflow-schedule-runs-panel">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-[11px] text-white/60">Schedule runs</div>
-                  <div className="flex items-center gap-2 text-[11px] text-white/60">
-                    <label className="flex items-center gap-1">
-                      limit
-                      <input
-                        className="w-[56px] rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
-                        value={String(scheduleRunsLimit || "")}
-                        onChange={(e) => setScheduleRunsLimit(e.target.value)}
-                      />
-                    </label>
-                    <label className="flex items-center gap-1">
-                      offset
-                      <input
-                        className="w-[56px] rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
-                        value={String(scheduleRunsOffset || "")}
-                        onChange={(e) => setScheduleRunsOffset(e.target.value)}
-                      />
-                    </label>
-                    <label className="flex items-center gap-1">
-                      status
-                      <select
-                        className="rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
-                        value={normalizedScheduleRunsStatus}
-                        onChange={(e) => setScheduleRunsStatus(e.target.value)}
-                      >
-                        {SCHEDULE_RUN_STATUS_OPTIONS.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="flex items-center gap-1">
-                      <input
-                        type="checkbox"
-                        className="h-3 w-3"
-                        checked={!!scheduleRunsErrorsOnly}
-                        onChange={(e) => setScheduleRunsErrorsOnly(e.target.checked)}
-                      />
-                      errors only
-                    </label>
-                    <label className="flex items-center gap-1">
-                      filter
-                      <span className="flex items-center gap-1">
-                        <input
-                          className="w-[120px] rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
-                          value={String(scheduleRunsFilter || "")}
-                          onChange={(e) => setScheduleRunsFilter(e.target.value)}
-                          placeholder="workflow id"
-                        />
-                        {String(scheduleRunsFilter || "").trim() ? (
-                          <button
-                            className="rounded border border-white/10 px-1 py-0.5 text-[10px] text-white/60 hover:bg-white/5"
-                            type="button"
-                            onClick={() => setScheduleRunsFilter("")}
-                          >
-                            clear
-                          </button>
-                        ) : null}
-                      </span>
-                    </label>
-                    <div className="flex items-center gap-1">
-                      <button
-                        className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5 disabled:opacity-50"
-                        type="button"
-                        onClick={() =>
-                          setScheduleRunsOffset(String(Math.max(0, scheduleRunsOffsetValue - scheduleRunsLimitValue)))
-                        }
-                        disabled={scheduleRunsOffsetValue === 0}
-                      >
-                        Prev
-                      </button>
-                      <button
-                        className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5 disabled:opacity-50"
-                        type="button"
-                        onClick={() => setScheduleRunsOffset(String(scheduleRunsOffsetValue + scheduleRunsLimitValue))}
-                        disabled={scheduleRuns.length < scheduleRunsLimitValue}
-                      >
-                        Next
-                      </button>
-                    </div>
-                    <button
-                      className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
-                      type="button"
-                      onClick={() => scheduleRunsQuery.refetch()}
-                      disabled={scheduleRunsQuery.isFetching || !String(scheduleId || "").trim()}
-                    >
-                      {scheduleRunsQuery.isFetching ? "Refreshing…" : "Refresh"}
-                    </button>
-                    <button
-                      className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5 disabled:opacity-50"
-                      type="button"
-                      onClick={() => void copyJson("schedule runs", scheduleRuns)}
-                      disabled={scheduleRuns.length === 0}
-                    >
-                      Copy JSON
-                    </button>
-                    <button
-                      className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5 disabled:opacity-50"
-                      type="button"
-                      onClick={() => downloadJson("workflow-schedule-runs", scheduleRuns)}
-                      disabled={scheduleRuns.length === 0}
-                    >
-                      Download JSON
-                    </button>
-                  </div>
-                </div>
-              <div className="text-[10px] text-white/50">schedule_id: {scheduleId ? scheduleId : "—"}</div>
-              {scheduleRunsQuery.isError ? (
-                <div className="text-[11px] text-rose-200">{String(scheduleRunsQuery.error)}</div>
-              ) : null}
-              <div className="grid gap-2">
-                {filteredScheduleRuns.map((run: any) => (
-                  <div
-                    key={`${run.schedule_id}-${run.tick_unix_ms}-${run.workflow_id}`}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/10 bg-black/50 px-2 py-2 text-[11px] text-white/70"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={`rounded border px-2 py-0.5 text-[10px] ${statusBadge(run.status)}`}>
-                        {String(run.status || "unknown")}
-                      </span>
-                      <span className="font-mono">{String(run.workflow_id || "")}</span>
-                      <span className="text-white/50">tick {formatUnixMs(run.tick_unix_ms)}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {run.workflow_id ? (
-                        <button
-                          className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
-                          type="button"
-                          onClick={() => {
-                            const id = String(run.workflow_id || "").trim();
-                            if (!id) return;
-                            setWorkflowId(id);
-                            loadWorkflow(id);
-                          }}
-                        >
-                          load workflow
-                        </button>
-                      ) : null}
-                    </div>
-                    {run.error ? <div className="text-rose-200">{String(run.error)}</div> : null}
-                  </div>
-                ))}
-                {scheduleRunsQuery.isSuccess && filteredScheduleRuns.length === 0 ? (
-                  <div className="rounded border border-white/10 bg-black/20 px-2 py-2 text-[11px] text-white/50">
-                    {scheduleRuns.length === 0 ? "No runs yet." : "No runs match the filter."}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {detailError ? (
+        {workflowState.detailError ? (
           <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-            {detailError}
+            {workflowState.detailError}
           </div>
         ) : null}
 
-        {detail && summary.workflow_id ? (
-          <div className="grid gap-3">
-            <div className="rounded-md border border-white/10 bg-black/30 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-xs font-semibold text-white/70">Workflow summary</div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                    type="button"
-                    onClick={() => loadWorkflow(summary.workflow_id)}
-                    disabled={workflowLookup.isPending}
-                  >
-                    {workflowLookup.isPending ? "Reloading…" : "Reload"}
-                  </button>
-                  {canCancelStatus(summary.status) ? (
-                    <button
-                      className="rounded-md border border-rose-400/30 bg-rose-400/10 px-2 py-1 text-[11px] text-rose-100 hover:bg-rose-400/20 disabled:opacity-50"
-                      type="button"
-                      onClick={() => void cancelWorkflow(summary.workflow_id)}
-                      disabled={cancelBusyId === summary.workflow_id}
-                    >
-                      {cancelBusyId === summary.workflow_id ? "Canceling…" : "Cancel"}
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-              <div className="mt-2 grid gap-2 text-[11px] text-white/70">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className={`rounded border px-2 py-0.5 text-[10px] ${statusBadge(summary.status)}`}>
-                    {summary.status ?? "unknown"}
-                  </span>
-                  <span className="font-mono text-[11px] text-white/80">{summary.workflow_id}</span>
-                  {summary.workflow_id ? (
-                    <button
-                      type="button"
-                      className="rounded border border-white/10 px-2 py-0.5 text-[10px] text-white/60 hover:bg-white/5"
-                      onClick={() => void copyText("workflow id", summary.workflow_id)}
-                    >
-                      copy id
-                    </button>
-                  ) : null}
-                  {summary.trace_id ? (
-                    <span className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        className="rounded border border-white/10 px-2 py-0.5 text-[10px] text-white/70 hover:bg-white/5"
-                        onClick={() => props.onTraceIdClick?.(String(summary.trace_id))}
-                      >
-                        trace {String(summary.trace_id)}
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded border border-white/10 px-2 py-0.5 text-[10px] text-white/60 hover:bg-white/5"
-                        onClick={() => void copyText("trace id", summary.trace_id)}
-                      >
-                        copy trace
-                      </button>
-                    </span>
-                  ) : null}
-                </div>
-                <div className="grid gap-1 sm:grid-cols-2">
-                  <div>priority: {summary.priority ?? "—"}</div>
-                  <div>session: {summary.session_id || "—"}</div>
-                  <div>idempotency: {summary.idempotency_key || "—"}</div>
-                  <div>created: {formatUnixMs(summary.created_unix_ms)}</div>
-                  <div>updated: {formatUnixMs(summary.updated_unix_ms)}</div>
-                  <div>deadline: {formatUnixMs(summary.deadline_unix_ms)}</div>
-                  <div>cancel requested: {String(summary.cancel_requested ?? false)}</div>
-                </div>
-                {summary.error ? (
-                  <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
-                    {String(summary.error)}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="rounded-md border border-white/10 bg-black/30 p-3">
-              <div className="text-xs font-semibold text-white/70">Workflow DAG</div>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-                <span>tasks: {tasks.length}</span>
-                {Object.keys(taskCounts).map((k) => (
-                  <span key={k} className={`rounded border px-2 py-0.5 ${statusBadge(k)}`}>
-                    {k}: {taskCounts[k]}
-                  </span>
-                ))}
-              </div>
-              {graph.hasCycle ? (
-                <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-100">
-                  Dependency cycle detected; layout may be approximate.
-                </div>
-              ) : null}
-              {graph.missingDeps.length > 0 ? (
-                <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-100">
-                  Missing dependency references: {graph.missingDeps.join(", ")}
-                </div>
-              ) : null}
-              <div className="mt-3 grid gap-3 overflow-x-auto">
-                <div className="grid min-w-[640px] auto-cols-[minmax(200px,1fr)] grid-flow-col gap-3">
-                  {graph.levels.map((levelTasks, idx) => (
-                    <div key={`level-${idx}`} className="rounded-md border border-white/10 bg-black/20 p-2">
-                      <div className="text-[10px] uppercase text-white/40">Level {idx}</div>
-                      <div className="mt-2 grid gap-2">
-                        {levelTasks.length === 0 ? (
-                          <div className="text-[11px] text-white/40">—</div>
-                        ) : null}
-                        {levelTasks.map((task) => (
-                          <div key={task.task_id} className="rounded-md border border-white/10 bg-black/40 px-2 py-1">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="font-mono text-[11px] text-white/80">{task.task_id}</span>
-                              <span className={`rounded border px-1.5 py-0.5 text-[9px] ${statusBadge(task.status)}`}>
-                                {task.status ?? "unknown"}
-                              </span>
-                            </div>
-                            <div className="mt-1 text-[10px] text-white/50">
-                              deps: {task.depends_on.length ? task.depends_on.join(", ") : "none"}
-                            </div>
-                            <div className="mt-1 text-[10px] text-white/40">
-                              attempt {task.attempt ?? 0}/{task.max_attempts ?? 1}
-                              {task.allow_error ? " · allow_error" : ""}
-                            </div>
-                            {task.error ? (
-                              <div className="mt-1 text-[10px] text-rose-200">error: {task.error}</div>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {(detail.workflow_limits || detail.workflow_usage || detail.workflow_remaining) && (
-              <div className="rounded-md border border-white/10 bg-black/30 p-3">
-                <div className="text-xs font-semibold text-white/70">Budgets</div>
-                <div className="mt-2 grid gap-2 text-[11px] text-white/70">
-                  {detail.workflow_limits ? (
-                    <div>
-                      <div className="text-white/50">limits</div>
-                      <pre className="mt-1 max-h-40 overflow-auto rounded bg-black/40 p-2 text-[10px] text-white/70">
-                        {JSON.stringify(detail.workflow_limits, null, 2)}
-                      </pre>
-                    </div>
-                  ) : null}
-                  {detail.workflow_usage ? (
-                    <div>
-                      <div className="text-white/50">usage</div>
-                      <pre className="mt-1 max-h-40 overflow-auto rounded bg-black/40 p-2 text-[10px] text-white/70">
-                        {JSON.stringify(detail.workflow_usage, null, 2)}
-                      </pre>
-                    </div>
-                  ) : null}
-                  {detail.workflow_remaining ? (
-                    <div>
-                      <div className="text-white/50">remaining</div>
-                      <pre className="mt-1 max-h-40 overflow-auto rounded bg-black/40 p-2 text-[10px] text-white/70">
-                        {JSON.stringify(detail.workflow_remaining, null, 2)}
-                      </pre>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            )}
-
-            {detail.result ? (
-              <div className="rounded-md border border-white/10 bg-black/30 p-3">
-                <div className="text-xs font-semibold text-white/70">Workflow result</div>
-                <pre className="mt-2 max-h-80 overflow-auto rounded bg-black/40 p-2 text-[10px] text-white/70">
-                  {JSON.stringify(detail.result, null, 2)}
-                </pre>
-              </div>
-            ) : null}
-
-            {detail.spec || detail.spec_json ? (
-              <div className="rounded-md border border-white/10 bg-black/30 p-3">
-                <div className="text-xs font-semibold text-white/70">Workflow spec</div>
-                <pre className="mt-2 max-h-80 overflow-auto rounded bg-black/40 p-2 text-[10px] text-white/70">
-                  {detail.spec ? JSON.stringify(detail.spec, null, 2) : detail.spec_json}
-                </pre>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+        <WorkflowDetailSection
+          detail={workflowState.detail}
+          summary={workflowState.summary}
+          tasks={workflowState.tasks}
+          taskCounts={workflowState.taskCounts}
+          graph={workflowState.graph}
+          cancelBusyId={workflowState.cancelBusyId}
+          workflowLookupPending={workflowState.workflowLookup.isPending}
+          onReloadWorkflow={workflowState.loadWorkflow}
+          onCancelWorkflow={workflowState.cancelWorkflow}
+          onCopyText={workflowState.copyText}
+          onTraceIdClick={props.onTraceIdClick}
+        />
 
         <WorkflowComposer
           baseUrl={props.baseUrl}
@@ -1680,8 +205,8 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
           workflowTargets={props.workflowTargets}
           workflowBearerEnv={props.workflowBearerEnv}
           onSubmitted={(workflowId) => {
-            setWorkflowId(workflowId);
-            loadWorkflow(workflowId);
+            workflowState.setWorkflowId(workflowId);
+            workflowState.loadWorkflow(workflowId);
           }}
         />
       </div>
