@@ -19,7 +19,7 @@ Sets:
   smoke            tools/eval_packs/eval_pack_smoke.json
   self-contained   smoke + eval_pack_checks_smoke
   canonical        self-contained + live-stack packs when the canonical devstack is live
-  live             basic_agentd_smoke, plus broker_smoke when broker is ready
+  live             basic_agentd_smoke + broker_proxy_agentd_smoke, plus broker_smoke when broker is ready
   all              self-contained + live (requires live canonical devstack)
 
 Behavior:
@@ -74,6 +74,7 @@ smoke_pack="${ROOT}/tools/eval_packs/eval_pack_smoke.json"
 checks_pack="${ROOT}/tools/eval_packs/eval_pack_checks_smoke.json"
 agentd_pack="${ROOT}/tools/eval_packs/basic_agentd_smoke.json"
 broker_pack="${ROOT}/tools/eval_packs/broker_smoke.json"
+broker_proxy_pack="${ROOT}/tools/eval_packs/broker_proxy_agentd_smoke.json"
 
 packs=()
 
@@ -87,6 +88,7 @@ add_live_packs() {
     return 0
   fi
   packs+=("${agentd_pack}")
+  packs+=("${broker_proxy_pack}")
   if "${ROOT}/tools/devstack_status.sh" --state "${STATE_PATH}" --require-ready >/dev/null 2>&1; then
     packs+=("${broker_pack}")
   else

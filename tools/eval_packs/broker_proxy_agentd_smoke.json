@@ -1,0 +1,26 @@
+{
+  "name": "broker_proxy_agentd_smoke",
+  "version": "eval_pack_v0",
+  "threshold": {
+    "min_score": 1.0,
+    "min_pass_rate": 1.0
+  },
+  "scenarios": [
+    {
+      "id": "broker_proxy_agentd_smoke",
+      "file": "tools/scenarios/broker_proxy_agentd_smoke.json",
+      "score_weight": 1.0,
+      "checks": [
+        { "type": "file_exists", "path": "summary.json" },
+        { "type": "json_path", "path": "summary.json", "key": "scenario", "equals": "broker_proxy_agentd_smoke" },
+        { "type": "json_path", "path": "summary.json", "key": "issuer_host", "equals": "keycloak.lvh.me" },
+        { "type": "json_path", "path": "summary.json", "key": "agent_id", "equals": "agent1" },
+        { "type": "json_number", "path": "summary.json", "key": "agents_count", "min": 1 },
+        { "type": "json_path", "path": "summary.json", "key": "proxy_health_ok", "equals": true },
+        { "type": "json_path", "path": "summary.json", "key": "diagnostics_service", "equals": "agentd" },
+        { "type": "json_path", "path": "summary.json", "key": "caps_ok", "equals": true },
+        { "type": "json_path", "path": "summary.json", "key": "session_created", "equals": true }
+      ]
+    }
+  ]
+}

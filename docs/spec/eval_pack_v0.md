@@ -183,6 +183,7 @@ python3 tools/eval_pack.py --file tools/eval_packs/eval_pack_smoke.json --update
 tools/run_eval_pack_set.sh --set self-contained --baseline auto
 tools/run_eval_pack_set.sh --set canonical --baseline auto
 python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline ref/eval_packs/basic_agentd_smoke.summary.json
+python3 tools/eval_pack.py --file tools/eval_packs/broker_proxy_agentd_smoke.json --baseline ref/eval_packs/broker_proxy_agentd_smoke.summary.json
 python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline ref/eval_packs/basic_agentd_smoke.summary.json --update-baseline
 ```
 

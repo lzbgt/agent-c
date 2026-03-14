@@ -1,0 +1,69 @@
+{
+  "baseline_version": "eval_pack_baseline_v1",
+  "name": "broker_proxy_agentd_smoke",
+  "version": "eval_pack_v0",
+  "pack": "tools/eval_packs/broker_proxy_agentd_smoke.json",
+  "results": [
+    {
+      "id": "broker_proxy_agentd_smoke",
+      "ok": true,
+      "score": 1.0,
+      "checks": [
+        {
+          "type": "file_exists",
+          "ok": true,
+          "message": "exists: summary.json"
+        },
+        {
+          "type": "json_path",
+          "ok": true,
+          "message": "json equals ok: scenario"
+        },
+        {
+          "type": "json_path",
+          "ok": true,
+          "message": "json equals ok: issuer_host"
+        },
+        {
+          "type": "json_path",
+          "ok": true,
+          "message": "json equals ok: agent_id"
+        },
+        {
+          "type": "json_number",
+          "ok": true,
+          "message": "json_number ok: agents_count"
+        },
+        {
+          "type": "json_path",
+          "ok": true,
+          "message": "json equals ok: proxy_health_ok"
+        },
+        {
+          "type": "json_path",
+          "ok": true,
+          "message": "json equals ok: diagnostics_service"
+        },
+        {
+          "type": "json_path",
+          "ok": true,
+          "message": "json equals ok: caps_ok"
+        },
+        {
+          "type": "json_path",
+          "ok": true,
+          "message": "json equals ok: session_created"
+        }
+      ]
+    }
+  ],
+  "total_score": 1.0,
+  "max_score": 1.0,
+  "pass_rate": 1.0,
+  "threshold": {
+    "min_score": 1.0,
+    "min_pass_rate": 1.0
+  },
+  "failed": [],
+  "ok": true
+}

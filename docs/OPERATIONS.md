@@ -32,6 +32,7 @@ Optional: run eval pack smoke after build/tests:
 tools/verify.sh --eval-pack
 tools/verify.sh --eval-pack --eval-pack-set live
 tools/verify.sh --eval-pack --eval-pack-file tools/eval_packs/basic_agentd_smoke.json
+tools/verify.sh --eval-pack --eval-pack-file tools/eval_packs/broker_proxy_agentd_smoke.json
 tools/verify.sh --eval-pack --eval-pack-file tools/eval_packs/broker_smoke.json
 ```
 
@@ -45,6 +46,7 @@ Eval pack regression gating can compare to a stored baseline:
 tools/run_eval_pack_set.sh --set self-contained --baseline auto
 tools/run_eval_pack_set.sh --set canonical --baseline auto
 python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline auto
+python3 tools/eval_pack.py --file tools/eval_packs/broker_proxy_agentd_smoke.json --baseline auto
 python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --update-baseline
 ```
 

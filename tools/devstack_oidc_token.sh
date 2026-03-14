@@ -9,6 +9,8 @@ REALM="${OIDC_REALM:-agentd}"
 CLIENT_ID="${OIDC_CLIENT_ID:-agentd-broker-dev}"
 USERNAME="${OIDC_USERNAME:-test}"
 PASSWORD="${OIDC_PASSWORD:-test}"
+REQUEST_BASE=""
+ORIGINAL_HOST_HEADER=""
 
 usage() {
   cat <<'USAGE'
@@ -49,40 +51,45 @@ PY
   fi
 fi
 
-probe_keycloak() {
-  local base="$1"
-  curl -fsS --max-time 2 "${base}/realms/${REALM}/.well-known/openid-configuration" >/dev/null 2>&1
+curl_without_proxy() {
+  env -u HTTPS_PROXY -u https_proxy -u HTTP_PROXY -u http_proxy -u ALL_PROXY -u all_proxy "$@"
 }
 
-if [[ -n "${KEYCLOAK_BASE}" ]] && ! probe_keycloak "${KEYCLOAK_BASE}"; then
-  if [[ "${KEYCLOAK_BASE}" =~ ^http://keycloak\.lvh\.me:([0-9]+)$ ]]; then
-    port="${BASH_REMATCH[1]}"
-    for candidate in "http://127.0.0.1:${port}" "http://[::1]:${port}"; do
-      if probe_keycloak "${candidate}"; then
-        KEYCLOAK_BASE="${candidate}"
-        break
-      fi
-    done
-  elif [[ "${KEYCLOAK_BASE}" =~ ^http://127\.0\.0\.1:([0-9]+)$ ]]; then
-    port="${BASH_REMATCH[1]}"
-    candidate="http://[::1]:${port}"
-    if probe_keycloak "${candidate}"; then
-      KEYCLOAK_BASE="${candidate}"
-    fi
-  elif [[ "${KEYCLOAK_BASE}" =~ ^http://localhost:([0-9]+)$ ]]; then
-    port="${BASH_REMATCH[1]}"
-    for candidate in "http://127.0.0.1:${port}" "http://[::1]:${port}"; do
-      if probe_keycloak "${candidate}"; then
-        KEYCLOAK_BASE="${candidate}"
-        break
-      fi
-    done
-  fi
-fi
+probe_keycloak() {
+  local base="$1"
+  curl_without_proxy curl -fsS --max-time 2 "${base}/realms/${REALM}/.well-known/openid-configuration" >/dev/null 2>&1
+}
 
 if [[ -z "${KEYCLOAK_BASE}" ]]; then
   echo "missing keycloak base (set --keycloak or provide devstack_state.json)" >&2
   exit 2
+fi
+
+REQUEST_BASE="${KEYCLOAK_BASE}"
+if [[ "${KEYCLOAK_BASE}" =~ ^http://keycloak\.lvh\.me:([0-9]+)$ ]]; then
+  ORIGINAL_HOST_HEADER="Host: keycloak.lvh.me:${BASH_REMATCH[1]}"
+elif [[ "${KEYCLOAK_BASE}" =~ ^https://keycloak\.lvh\.me:([0-9]+)$ ]]; then
+  ORIGINAL_HOST_HEADER="Host: keycloak.lvh.me:${BASH_REMATCH[1]}"
+fi
+
+if ! probe_keycloak "${REQUEST_BASE}"; then
+  if [[ "${KEYCLOAK_BASE}" =~ ^http://keycloak\.lvh\.me:([0-9]+)$ ]]; then
+    port="${BASH_REMATCH[1]}"
+    for candidate in "http://127.0.0.1:${port}" "http://[::1]:${port}"; do
+      if probe_keycloak "${candidate}"; then
+        REQUEST_BASE="${candidate}"
+        break
+      fi
+    done
+  elif [[ "${KEYCLOAK_BASE}" =~ ^https://keycloak\.lvh\.me:([0-9]+)$ ]]; then
+    port="${BASH_REMATCH[1]}"
+    for candidate in "https://127.0.0.1:${port}" "https://[::1]:${port}"; do
+      if probe_keycloak "${candidate}"; then
+        REQUEST_BASE="${candidate}"
+        break
+      fi
+    done
+  fi
 fi
 
 if [[ -z "${USERNAME}" || -z "${PASSWORD}" || -z "${CLIENT_ID}" ]]; then
@@ -90,13 +97,20 @@ if [[ -z "${USERNAME}" || -z "${PASSWORD}" || -z "${CLIENT_ID}" ]]; then
   exit 2
 fi
 
-TOKEN_JSON="$(env -u HTTPS_PROXY -u https_proxy -u HTTP_PROXY -u http_proxy -u ALL_PROXY -u all_proxy \
-  curl -fsS -k \
-    -d "grant_type=password" \
-    -d "client_id=${CLIENT_ID}" \
-    -d "username=${USERNAME}" \
-    -d "password=${PASSWORD}" \
-    "${KEYCLOAK_BASE}/realms/${REALM}/protocol/openid-connect/token")"
+curl_args=(
+  curl -fsS -k
+  -d "grant_type=password"
+  -d "client_id=${CLIENT_ID}"
+  -d "username=${USERNAME}"
+  -d "password=${PASSWORD}"
+)
+if [[ -n "${ORIGINAL_HOST_HEADER}" ]]; then
+  curl_args+=(-H "${ORIGINAL_HOST_HEADER}")
+fi
+curl_args+=("${REQUEST_BASE}/realms/${REALM}/protocol/openid-connect/token")
+
+TOKEN_JSON="$(curl_without_proxy \
+  "${curl_args[@]}")"
 
 python3 - <<PY
 import json,sys

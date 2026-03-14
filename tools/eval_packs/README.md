@@ -8,6 +8,7 @@ Run a pack:
 python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json
 python3 tools/eval_pack.py --file tools/eval_packs/eval_pack_smoke.json
 python3 tools/eval_pack.py --file tools/eval_packs/eval_pack_checks_smoke.json
+python3 tools/eval_pack.py --file tools/eval_packs/broker_proxy_agentd_smoke.json
 python3 tools/eval_pack.py --file tools/eval_packs/broker_smoke.json
 python3 tools/eval_pack.py --file tools/eval_packs/broker_team_runs_quorum_compose_smoke.json
 python3 tools/eval_pack.py --file tools/eval_packs/broker_team_runs_runtime_members_compose_smoke.json
@@ -27,7 +28,7 @@ tools/run_eval_pack_set.sh --set canonical
 tools/run_eval_pack_set.sh --set live
 ```
 
-For live-stack packs such as `basic_agentd_smoke.json` and `broker_smoke.json`,
+For live-stack packs such as `basic_agentd_smoke.json`, `broker_proxy_agentd_smoke.json`, and `broker_smoke.json`,
 the scenario runner now defaults to the canonical stack from `out/devstack_state.json`
 when present. Override with `AGENT_DEVSTACK_STATE=/path/to/devstack_state.json`.
 
@@ -38,7 +39,7 @@ Notes:
 - `broker_team_runtime_members_events_sse_compose_smoke.json` requires Docker + Docker Compose (it brings up the broker stack if needed).
 - `broker_team_quorum_events_sse_compose_smoke.json` requires Docker + Docker Compose (it brings up the broker stack if needed).
 - `broker_team_run_events_sse_compose_smoke.json` requires Docker + Docker Compose (it brings up the broker stack if needed).
-- `broker_smoke.json` and `basic_agentd_smoke.json` are intended for an already-live stack, typically the canonical devstack.
+- `broker_smoke.json`, `broker_proxy_agentd_smoke.json`, and `basic_agentd_smoke.json` are intended for an already-live stack, typically the canonical devstack.
 
 Baseline regression gating:
 
@@ -46,6 +47,7 @@ Baseline regression gating:
 tools/run_eval_pack_set.sh --set self-contained --baseline auto
 tools/run_eval_pack_set.sh --set canonical --baseline auto
 python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline auto
+python3 tools/eval_pack.py --file tools/eval_packs/broker_proxy_agentd_smoke.json --baseline auto
 tools/update_eval_baselines.sh
 ```
 

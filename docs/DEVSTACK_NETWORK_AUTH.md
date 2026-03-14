@@ -64,8 +64,9 @@ Token helper:
 tools/devstack_oidc_token.sh --state out/devstack_state.json
 ```
 
-If `keycloak.lvh.me` does not resolve on your host, the helper auto-falls back to
-`http://127.0.0.1:<keycloak_port>` or `http://[::1]:<keycloak_port>`.
+If `keycloak.lvh.me` is not directly reachable on your host, the helper will try
+`127.0.0.1` / `[::1]` transport targets while preserving the original `Host`
+header so Keycloak still mints a token with the broker-expected issuer.
 
 Tokens expire. The dev realm sets `accessTokenLifespan` to 12 hours for smoother
 testing; if you still hit 401s, regenerate a token or restart Keycloak to pick
@@ -76,6 +77,15 @@ Example:
 OIDC_TOKEN="$(tools/devstack_oidc_token.sh --state out/devstack_state.json)"
 curl -H "Authorization: Bearer ${OIDC_TOKEN}" \
   http://127.0.0.1:<broker_port>/v1/agents
+```
+
+For broker proxy or broker session-alias calls that target a native `agentd`,
+also pass the daemon bearer through `X-Agentd-Authorization`:
+
+```
+curl -H "Authorization: Bearer ${OIDC_TOKEN}" \
+  -H "X-Agentd-Authorization: Bearer dev-agentd-token" \
+  http://127.0.0.1:<broker_port>/v1/agents/<agent_id>/proxy/api/v1/health
 ```
 
 ### 3) Connector mTLS (agent to broker, optional)

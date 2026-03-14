@@ -368,6 +368,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-03-15: Added canonical tracked baselines under `ref/eval_packs/`, normalized baseline writes in `tools/eval_pack.py`, default baseline gating in `tools/verify.sh`, CI baseline checks for self-contained smoke packs, and smoke coverage for baseline compare/update behavior.
   - 2026-03-15: Made scenario/eval packs devstack-aware by default via `out/devstack_state.json`, added canonical tracked baselines for `basic_agentd_smoke` and `broker_smoke`, and added a baseline refresh helper.
   - 2026-03-15: Unified canonical eval-pack set selection behind `tools/run_eval_pack_set.sh`, wired it into `tools/verify.sh`, CI, and baseline refresh, and added smoke coverage for set planning/failure semantics.
+  - 2026-03-15: Fixed `tools/devstack_oidc_token.sh` issuer preservation for devstack broker auth and added a canonical live eval pack for the broker OIDC + `X-Agentd-Authorization` proxy/session boundary.
   - 2026-02-25: Added eval pack baseline compare/update flags to `tools/eval_pack.py` with spec + ops docs.
   - 2026-02-19: Added eval pack spec (`docs/spec/eval_pack_v0.md`) and runner (`tools/eval_pack.py`) with a minimal example pack.
   - 2026-02-19: Added `eval_pack_smoke` test (self-contained, no agentd required).

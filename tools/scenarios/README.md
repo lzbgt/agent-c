@@ -63,6 +63,7 @@ HTTP proxy behavior:
 
 - `agentd_smoke.json`: checks `/api/v1/health` + `/api/v1/diagnostics`, captures evidence.
 - `broker_smoke.json`: checks `/healthz` + `/readyz` (TLS insecure), captures evidence via broker proxy.
+- `broker_proxy_agentd_smoke.json`: validates broker OIDC auth plus `X-Agentd-Authorization` proxy/session access against the canonical live stack.
 - `broker_team_runs_quorum_compose_smoke.json`: runs the broker team-run quorum compose smoke (requires Docker Compose).
 - `broker_team_runs_runtime_members_compose_smoke.json`: runs the broker team-run runtime members compose smoke (requires Docker Compose).
 - `broker_team_runs_role_overrides_compose_smoke.json`: runs the broker team-run role overrides compose smoke (requires Docker Compose).
