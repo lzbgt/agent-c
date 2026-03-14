@@ -14,6 +14,19 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Active highest goals (current focus)
 
+## codexw external integration lane
+
+These items are for the sibling `codexw` broker/WebUI integration path. Treat
+`docs/spec/codexw_broker_webui_handoff_v0.md` as the work package and upstream
+contract map.
+
+- [ ] Broker/WebUI: implement the `codexw` session lifecycle path (create / attach / inspect / renew / release) with explicit owner / observer / rival lease UX and `attachment_conflict` handling.
+- [ ] Broker/WebUI: make SSE replay/resume with `Last-Event-ID` a first-class reconnect path for `codexw` sessions instead of relying on best-effort live-only streams.
+- [ ] Broker/WebUI: ship shell-first host examination for `codexw` sessions (`shell list/start/detail/poll/send/terminate`) and keep transcript/event correlation visible.
+- [ ] Broker/WebUI: expose `codexw` service and capability surfaces as operator tooling before inventing parallel synthetic abstractions.
+- [ ] Broker/WebUI: keep artifact-centric UX explicitly separate until `codexw` provides a real artifact list/detail/content API; gather missing cases as requirements rather than faking an artifact browser.
+- [ ] Broker/WebUI: add a real codexw-to-codexw cross-deployment collaboration/handoff lane so deployment-to-deployment work transfer is broker-mediated, session-aware, and replayable instead of a manual operator convention.
+
 1) **macOS agentd host (M2)** — keep host daemon runnable/operable on macOS (Windows/Linux deferred).
    - [x] Added macOS launchd install/uninstall helper scripts for agentd.
    - [x] Added macOS broker+WebUI compose guidance.

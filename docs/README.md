@@ -35,6 +35,7 @@ Start here if you want the shortest path to the right document.
 - `docs/CLIENT.md`: client event model, UI actions, DoD, and client RPCs.
 - `docs/BROKER.md`: broker relay design, trust model, and API.
 - `docs/DOD_ACK.md`: definition-of-done acknowledgement semantics.
+- `docs/spec/codexw_broker_webui_handoff_v0.md`: concrete broker/WebUI task list for integrating with the sibling `codexw` session/event/shell surface.
 
 ## Platform and embedded
 
