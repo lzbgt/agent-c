@@ -22,7 +22,8 @@ contract map.
 
 - [x] Broker/WebUI: implement the `codexw` session lifecycle path (create / attach / inspect / renew / release) with explicit owner / observer / rival lease UX and `attachment_conflict` handling.
   - broker now exposes real `/v1/agents/{agent_id}/sessions/...` aliases, the WebUI uses them for lifecycle control, and lease conflict handling is covered by broker-backed Playwright regression.
-- [ ] Broker/WebUI: make SSE replay/resume with `Last-Event-ID` a first-class reconnect path for `codexw` sessions instead of relying on best-effort live-only streams.
+- [x] Broker/WebUI: make SSE replay/resume with `Last-Event-ID` a first-class reconnect path for `codexw` sessions instead of relying on best-effort live-only streams.
+  - WebUI now persists a bounded broker-session event buffer and replay cursor locally, rehydrates the live conversation after refresh, and reconnects through `/v1/agents/{agent_id}/sessions/{session_id}/events` with `Last-Event-ID`.
 - [ ] Broker/WebUI: ship shell-first host examination for `codexw` sessions (`shell list/start/detail/poll/send/terminate`) and keep transcript/event correlation visible.
 - [ ] Broker/WebUI: expose `codexw` service and capability surfaces as operator tooling before inventing parallel synthetic abstractions.
 - [ ] Broker/WebUI: keep artifact-centric UX explicitly separate until `codexw` provides a real artifact list/detail/content API; gather missing cases as requirements rather than faking an artifact browser.

@@ -90,6 +90,12 @@ type SettingsDrawerProps = {
     releaseAttachment: () => void;
     releasePending: boolean;
     releaseError: string | null;
+    streamStatus: "disabled" | "idle" | "connecting" | "live" | "reconnecting" | "error";
+    streamLastEventId: string;
+    streamLastEventAtMs: number | null;
+    streamUpdatedMs: number | null;
+    streamBufferedCount: number;
+    streamError: string | null;
     sessions: string[];
     refresh: () => void;
     newSession: () => void;

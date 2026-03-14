@@ -24,6 +24,7 @@ import useAppDataPlane from "./hooks/useAppDataPlane";
 import useJobStreaming from "./hooks/useJobStreaming";
 import useRunExecution, { type QueuedRun } from "./hooks/useRunExecution";
 import useRuntimePlane from "./hooks/useRuntimePlane";
+import useSessionEventStreaming from "./hooks/useSessionEventStreaming";
 import useTeamChatOrchestration from "./hooks/useTeamChatOrchestration";
 import useTraceLookup from "./hooks/useTraceLookup";
 import useUiSettings from "./hooks/useUiSettings";
@@ -688,6 +689,16 @@ export default function App() {
     sessionsRefetch,
   });
 
+  const sessionEventStream = useSessionEventStreaming({
+    activeJobId,
+    connectionMode,
+    daemonAuth,
+    effectiveBase,
+    sessionId,
+    sessionScopeKey,
+    setLiveEvents,
+  });
+
   const showMainColumn = !advancedPage || !focusAdvancedPanel;
   const advancedGridCols = focusAdvancedPanel
     ? "lg:grid-cols-[var(--tools-col)_minmax(0,1fr)]"
@@ -1047,6 +1058,12 @@ export default function App() {
           releaseAttachment: () => void releaseSessionAttachment.mutateAsync(sessionId).catch(() => {}),
           releasePending: releaseSessionAttachment.isPending,
           releaseError: releaseSessionAttachmentError,
+          streamStatus: sessionEventStream.status,
+          streamLastEventId: sessionEventStream.lastEventId,
+          streamLastEventAtMs: sessionEventStream.lastEventAtMs,
+          streamUpdatedMs: sessionEventStream.updatedMs,
+          streamBufferedCount: sessionEventStream.bufferedCount,
+          streamError: sessionEventStream.error,
           sessions: sessionList,
           refresh: () => sessionsRefetch(),
           newSession: () => newSession.mutate(),

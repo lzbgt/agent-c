@@ -41,6 +41,12 @@ type SessionSettings = {
   releaseAttachment: () => void;
   releasePending: boolean;
   releaseError: string | null;
+  streamStatus: "disabled" | "idle" | "connecting" | "live" | "reconnecting" | "error";
+  streamLastEventId: string;
+  streamLastEventAtMs: number | null;
+  streamUpdatedMs: number | null;
+  streamBufferedCount: number;
+  streamError: string | null;
 };
 
 type SettingsConnectionSectionProps = {
@@ -99,6 +105,14 @@ export default function SettingsConnectionSection(props: SettingsConnectionSecti
   const leaseExpiresLabel =
     typeof attachment?.lease_expires_at_ms === "number" && Number.isFinite(attachment.lease_expires_at_ms)
       ? new Date(attachment.lease_expires_at_ms).toLocaleString()
+      : "";
+  const streamLastEventLabel =
+    typeof session.streamLastEventAtMs === "number" && Number.isFinite(session.streamLastEventAtMs)
+      ? new Date(session.streamLastEventAtMs).toLocaleString()
+      : "";
+  const streamUpdatedLabel =
+    typeof session.streamUpdatedMs === "number" && Number.isFinite(session.streamUpdatedMs)
+      ? new Date(session.streamUpdatedMs).toLocaleString()
       : "";
   const sessionBusy = session.attachPending || session.renewPending || session.releasePending;
 
@@ -570,6 +584,22 @@ export default function SettingsConnectionSection(props: SettingsConnectionSecti
           </div>
           <div className="mt-2 text-[11px] text-white/60">
             In broker mode, these controls use the broker session attachment surface so owner/observer/rival conflicts stay explicit.
+          </div>
+          <div className="mt-2 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-white/70" data-testid="session-stream-status">
+            <div className="font-semibold text-white/80">Session event stream</div>
+            <div className="mt-1">
+              status: <span className="font-mono text-white/80">{session.streamStatus}</span>
+            </div>
+            {session.streamLastEventId ? (
+              <div className="mt-1">
+                last_event_id: <code className="font-mono text-white/80">{session.streamLastEventId}</code>
+              </div>
+            ) : null}
+            <div className="mt-1">buffered_events: {session.streamBufferedCount}</div>
+            {streamLastEventLabel ? <div className="mt-1">last_event_at: {streamLastEventLabel}</div> : null}
+            {streamUpdatedLabel ? <div className="mt-1">persisted_at: {streamUpdatedLabel}</div> : null}
+            {session.streamError ? <div className="mt-1 text-rose-200">stream error: {session.streamError}</div> : null}
+            <div className="mt-1 text-white/50">Broker session replay uses <code className="font-mono">Last-Event-ID</code> and persists a bounded event buffer locally.</div>
           </div>
           {session.attachError ? <div className="mt-2 text-[11px] text-rose-200">Attach failed: {session.attachError}</div> : null}
           {session.renewError ? <div className="mt-2 text-[11px] text-rose-200">Renew failed: {session.renewError}</div> : null}

@@ -91,6 +91,7 @@ AGENT_E2E_OUTPUT_DIR="${pw_artifacts_dir}" \
     e2e/agentd_host_smoke.spec.ts \
     e2e/workflow_schedules.spec.ts \
     e2e/broker_cookie_auth.spec.ts \
+    e2e/broker_codexw_session_events_resume.spec.ts \
     e2e/broker_codexw_session_lease.spec.ts \
     e2e/broker_console.spec.ts \
     e2e/broker_membership_flow.spec.ts \

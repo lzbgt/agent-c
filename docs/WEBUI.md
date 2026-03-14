@@ -130,6 +130,11 @@ Secret handling:
   release. When the remote runtime reports structured lease conflicts (for example `attachment_conflict` from an external
   broker-compatible adapter), the UI surfaces owner/observer state and the current lease holder instead of collapsing it into a
   generic transport error.
+- In broker mode, the WebUI now treats `/v1/agents/{agent_id}/sessions/{session_id}/events` as a first-class live runtime source.
+  It persists a bounded local event buffer plus the last acknowledged `Last-Event-ID`, reloads that stream state after refresh,
+  and reconnects through the broker session stream path instead of relying on transient live-only rendering.
+- Settings → Connection shows session stream diagnostics for the active session: stream state, buffered event count, last event id,
+  last event timestamp, and the latest reconnect error.
 - The WebUI runs a single **Advanced** layout: Scene on top, Conversation below, and tool panels in the sidebar.
 - Conversation history is persisted in the daemon DB and reloaded after refresh (user/assistant messages plus run tool records).
 - You can queue prompts while a run is active; queued runs execute in order and the queue count is shown in the Run/Queue button.

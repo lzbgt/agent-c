@@ -213,16 +213,16 @@ export default function useAppDataPlane(args: AppDataPlaneArgs) {
   }, [audit.data]);
 
   const historyEntriesDesc = React.useMemo(() => {
-    if (!activeJobId) return auditEntriesDesc;
+    if (!activeJobId && liveEvents.length === 0) return auditEntriesDesc;
     const ts = typeof jobUpdatedMs === "number" && jobUpdatedMs > 0 ? jobUpdatedMs : Date.now();
     const live = {
       ts_unix_ms: ts,
-      prompt: lastRunPromptRef.current || lastRunPrompt || "",
+      prompt: activeJobId ? lastRunPromptRef.current || lastRunPrompt || "" : "Live session event stream",
       assistant_text: "",
       events: liveEvents,
       ok: undefined,
       job_id: activeJobId,
-      job_status: jobStatus ?? "running",
+      job_status: activeJobId ? jobStatus ?? "running" : "live_session",
       live: true,
     };
     return [live, ...auditEntriesDesc];

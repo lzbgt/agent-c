@@ -53,6 +53,13 @@ function brokerAliasRootFromBase(base: string): string | null {
   return match ? match[1] : null;
 }
 
+export function buildSessionEventsStreamUrl(base: string, sessionId: string): string | null {
+  const aliasRoot = brokerAliasRootFromBase(base);
+  const sid = String(sessionId || "").trim();
+  if (!aliasRoot || !sid) return null;
+  return `${aliasRoot}/sessions/${encodeURIComponent(sid)}/events`;
+}
+
 function buildCodexwLeaseHeaders(opts?: SessionLeaseRequestOptions): Record<string, string> {
   const headers: Record<string, string> = {};
   const clientId = String(opts?.clientId || "").trim();

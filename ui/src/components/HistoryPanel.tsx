@@ -1741,7 +1741,8 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                       <span className="shrink-0 text-white/60">{when}</span>
                       {isLive ? (
                         <span className="shrink-0 text-indigo-300">
-                          running{jobSt ? ` (${jobSt})` : ""}
+                          {jobId ? "running" : "live session"}
+                          {jobSt ? ` (${jobSt})` : ""}
                           {jobId ? (
                             <>
                               {" "}
@@ -1815,7 +1816,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                         allowClientEffects={props.allowClientEffects}
                         allowUnsafePageEval={props.allowUnsafePageEval}
                         reverseOrder={false}
-                        disableAutoClientRpcs={idx !== 0}
+                        disableAutoClientRpcs={idx !== 0 || !jobId}
                         sceneEntities={props.sceneEntities}
                         onSceneApply={props.onSceneApply}
                       />
