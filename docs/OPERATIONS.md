@@ -16,6 +16,14 @@ One-command verify (configure + build + tests; logs under `build/`):
 tools/verify.sh
 ```
 
+Default host verify excludes broker compose smoke tests so it does not launch extra broker/WebUI stacks on top of the canonical devstack. Opt into that heavier lane explicitly when needed:
+
+```bash
+tools/verify.sh --include-compose-tests
+```
+
+When compose tests are excluded, `tools/verify.sh` also cleans stray `agent_*` compose projects first while preserving the canonical devstack project from `out/devstack_state.json`.
+
 Host verify also runs a lightweight workflow list query smoke (API `q` filter) after CTest.
 
 Optional: run eval pack smoke after build/tests:
@@ -27,16 +35,21 @@ tools/verify.sh --eval-pack
 Eval pack regression gating can compare to a stored baseline:
 
 ```bash
-python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline out/baselines/basic_agentd_smoke.summary.json
-python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline out/baselines/basic_agentd_smoke.summary.json --update-baseline
+python3 tools/eval_pack.py --file tools/eval_packs/eval_pack_smoke.json --baseline auto
+python3 tools/eval_pack.py --file tools/eval_packs/eval_pack_smoke.json --update-baseline
+python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline ref/eval_packs/basic_agentd_smoke.summary.json
+python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline ref/eval_packs/basic_agentd_smoke.summary.json --update-baseline
 ```
 
 Or via the verifier:
 
 ```bash
-tools/verify.sh --eval-pack-baseline out/baselines/eval_pack_smoke.summary.json
-tools/verify.sh --eval-pack-baseline out/baselines/eval_pack_smoke.summary.json --eval-pack-update-baseline
+tools/verify.sh --eval-pack
+tools/verify.sh --eval-pack-baseline auto --eval-pack-update-baseline
+tools/verify.sh --eval-pack-baseline ref/eval_packs/eval_pack_smoke.summary.json
 ```
+
+Canonical repo baselines live under `ref/eval_packs/`. Baseline update writes a normalized summary so git-tracked baselines do not churn on timestamps or absolute paths.
 
 Include repo hygiene guards:
 

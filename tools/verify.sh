@@ -3,6 +3,10 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
+if [[ -f "${ROOT}/tools/lib/devstack_state.sh" ]]; then
+  # shellcheck source=tools/lib/devstack_state.sh
+  source "${ROOT}/tools/lib/devstack_state.sh"
+fi
 
 MODE="host"   # host|core
 SKIP_UI=0
@@ -12,6 +16,7 @@ REPO_GUARDS_STRICT=0
 EVAL_PACK=0
 EVAL_PACK_BASELINE=""
 EVAL_PACK_UPDATE=0
+INCLUDE_COMPOSE_TESTS=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -49,14 +54,19 @@ while [[ $# -gt 0 ]]; do
       EVAL_PACK_UPDATE=1
       shift 1
       ;;
+    --include-compose-tests)
+      INCLUDE_COMPOSE_TESTS=1
+      shift 1
+      ;;
     -h|--help)
       cat <<'EOF'
-Usage: tools/verify.sh [--core-only] [--skip-ui] [--ui-install] [--repo-guards] [--repo-guards-strict] [--eval-pack] [--eval-pack-baseline <path>] [--eval-pack-update-baseline]
+Usage: tools/verify.sh [--core-only] [--skip-ui] [--ui-install] [--repo-guards] [--repo-guards-strict] [--eval-pack] [--eval-pack-baseline <path|auto>] [--eval-pack-update-baseline] [--include-compose-tests]
 
 Runs a local verification pass with timestamped logs under ./build/.
 
 Modes:
   --core-only   Configure/build/test core-only (AGENT_BUILD_HOST=OFF) in ./build-core/
+  --include-compose-tests  Include compose broker/WebUI smoke tests in ctest (default verify excludes them to preserve the singleton devstack).
 
 UI:
   By default, runs `npm run build` in ./ui/ only if ./ui/node_modules exists.
@@ -68,9 +78,9 @@ Guards:
   --repo-guards-strict Run repo hygiene guards in strict mode (nested .git detection).
 
 Eval:
-  --eval-pack  Run eval pack smoke after build/tests.
-  --eval-pack-baseline <path>  Compare eval pack summary to baseline.
-  --eval-pack-update-baseline  Write current eval pack summary to baseline (requires --eval-pack-baseline).
+  --eval-pack  Run eval pack smoke after build/tests and compare against the canonical baseline by default.
+  --eval-pack-baseline <path|auto>  Compare eval pack summary to a baseline, or use 'auto' for ref/eval_packs/<pack>.summary.json.
+  --eval-pack-update-baseline  Write current eval pack baseline (defaults to canonical baseline when path omitted).
 EOF
       exit 0
       ;;
@@ -110,15 +120,17 @@ run_ctest_logged_with_retry() {
   local log1="${2}"
   local log2="${3}"
   local build_dir="${4}"
+  shift 4
+  local ctest_args=("$@")
 
   echo "[verify] ${label}"
-  if ctest --test-dir "${build_dir}" --output-on-failure >"${log1}" 2>&1; then
+  if ctest --test-dir "${build_dir}" "${ctest_args[@]}" --output-on-failure >"${log1}" 2>&1; then
     echo "[verify] OK: ${label} (log: ${log1})"
     return 0
   fi
 
   echo "[verify] WARN: ${label} failed; rerun failed tests once (--rerun-failed)" >&2
-  if ctest --test-dir "${build_dir}" --rerun-failed --output-on-failure >"${log2}" 2>&1; then
+  if ctest --test-dir "${build_dir}" --rerun-failed "${ctest_args[@]}" --output-on-failure >"${log2}" 2>&1; then
     echo "[verify] OK (after rerun-failed): ${label} (log: ${log2})"
     return 0
   fi
@@ -127,6 +139,28 @@ run_ctest_logged_with_retry() {
   fail_tail "${log1}"
   fail_tail "${log2}"
   return 1
+}
+
+clean_extra_compose_stacks() {
+  local preserve_project="" state_path="${ROOT}/out/devstack_state.json" projects project
+  if ! command -v docker >/dev/null 2>&1; then
+    return 0
+  fi
+  if [[ -f "${state_path}" ]] && declare -F devstack_state_field >/dev/null 2>&1; then
+    preserve_project="$(devstack_state_field "${state_path}" "compose_project")"
+  fi
+  projects="$(
+    docker ps --format '{{.Label "com.docker.compose.project"}}' 2>/dev/null \
+      | rg -N '^agent_' \
+      | sort -u || true
+  )"
+  while IFS= read -r project; do
+    if [[ -z "${project}" || "${project}" == "${preserve_project}" ]]; then
+      continue
+    fi
+    echo "[verify] cleaning stray compose stack: ${project}"
+    docker compose -p "${project}" down -v --remove-orphans >/dev/null 2>&1 || true
+  done <<<"${projects}"
 }
 
 if [[ "${MODE}" == "core" ]]; then
@@ -148,7 +182,12 @@ else
 
   run_logged "cmake configure" "${cfg_log}" cmake -S . -B "${build_dir}"
   run_logged "cmake build" "${build_log}" cmake --build "${build_dir}" -j
-  run_ctest_logged_with_retry "ctest" "${test_log}" "${test_retry_log}" "${build_dir}"
+  ctest_args=()
+  if [[ "${INCLUDE_COMPOSE_TESTS}" != "1" ]]; then
+    clean_extra_compose_stacks
+    ctest_args=(-E 'broker_.*_compose_smoke')
+  fi
+  run_ctest_logged_with_retry "ctest" "${test_log}" "${test_retry_log}" "${build_dir}" "${ctest_args[@]}"
 fi
 
 if [[ "${REPO_GUARDS}" == "1" ]]; then
@@ -162,13 +201,11 @@ fi
 
 if [[ "${EVAL_PACK}" == "1" ]]; then
   eval_log="${log_dir}/verify_${ts}_eval_pack.log"
-  if [[ "${EVAL_PACK_UPDATE}" == "1" && -z "${EVAL_PACK_BASELINE}" ]]; then
-    echo "[verify] --eval-pack-update-baseline requires --eval-pack-baseline <path>" >&2
-    exit 2
-  fi
   eval_args=(--file "${ROOT}/tools/eval_packs/eval_pack_smoke.json")
   if [[ -n "${EVAL_PACK_BASELINE}" ]]; then
     eval_args+=(--baseline "${EVAL_PACK_BASELINE}")
+  else
+    eval_args+=(--baseline auto)
   fi
   if [[ "${EVAL_PACK_UPDATE}" == "1" ]]; then
     eval_args+=(--update-baseline)

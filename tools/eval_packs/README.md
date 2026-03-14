@@ -30,6 +30,12 @@ Notes:
 Baseline regression gating:
 
 ```bash
-python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline out/baselines/basic_agentd_smoke.summary.json
-python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline out/baselines/basic_agentd_smoke.summary.json --update-baseline
+python3 tools/eval_pack.py --file tools/eval_packs/eval_pack_smoke.json --baseline auto
+python3 tools/eval_pack.py --file tools/eval_packs/eval_pack_smoke.json --update-baseline
+python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline ref/eval_packs/basic_agentd_smoke.summary.json
+python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline ref/eval_packs/basic_agentd_smoke.summary.json --update-baseline
 ```
+
+Notes:
+- `--baseline auto` resolves repo packs under `tools/eval_packs/` to tracked canonical baselines under `ref/eval_packs/`.
+- `--update-baseline` writes a normalized baseline summary without run timestamps or absolute paths, so tracked baselines stay stable in git.

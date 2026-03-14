@@ -170,12 +170,16 @@ Validates the length of a JSON array/object/string. Supports `equals`, `min`, an
 - Scenarios: `tools/scenarios/`
 
 CLI options:
-- `--baseline <path>`: compare current summary against a saved baseline summary.
-- `--update-baseline`: write current summary to the baseline path (requires `--baseline`).
+- `--baseline <path|auto>`: compare current summary against a saved baseline summary. `auto` resolves repo packs in `tools/eval_packs/` to `ref/eval_packs/<pack>.summary.json`.
+- `--update-baseline`: write a normalized baseline summary to the baseline path. If `--baseline` is omitted, the canonical `auto` path is used.
 
 Example:
 
 ```bash
-python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline out/baselines/basic_agentd_smoke.summary.json
-python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline out/baselines/basic_agentd_smoke.summary.json --update-baseline
+python3 tools/eval_pack.py --file tools/eval_packs/eval_pack_smoke.json --baseline auto
+python3 tools/eval_pack.py --file tools/eval_packs/eval_pack_smoke.json --update-baseline
+python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline ref/eval_packs/basic_agentd_smoke.summary.json
+python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline ref/eval_packs/basic_agentd_smoke.summary.json --update-baseline
 ```
+
+Tracked baselines intentionally omit per-run timestamps and absolute paths so baseline diffs stay reviewable and deterministic in git.

@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 
 VERSION = "eval_pack_v0"
+BASELINE_VERSION = "eval_pack_baseline_v1"
 
 
 def now_ts() -> str:
@@ -21,6 +22,84 @@ def load_json(path: str) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("eval pack must be a JSON object")
     return data
+
+
+def relpath_or_abs(path: str, root: str) -> str:
+    try:
+        rel = os.path.relpath(path, root)
+    except ValueError:
+        return os.path.abspath(path)
+    if rel.startswith(".."):
+        return os.path.abspath(path)
+    return rel
+
+
+def resolve_repo_baseline_path(pack_path: str, repo_root: str) -> str:
+    packs_root = os.path.join(repo_root, "tools", "eval_packs")
+    pack_abs = os.path.abspath(pack_path)
+    if os.path.commonpath([packs_root, pack_abs]) != packs_root:
+        raise ValueError("auto baseline resolution only supports packs under tools/eval_packs/")
+    stem, ext = os.path.splitext(os.path.basename(pack_abs))
+    if ext.lower() != ".json" or not stem:
+        raise ValueError("auto baseline resolution requires a .json pack file")
+    return os.path.join(repo_root, "ref", "eval_packs", f"{stem}.summary.json")
+
+
+def resolve_baseline_path(baseline_arg: Optional[str], pack_path: str, repo_root: str, update_baseline: bool) -> Optional[str]:
+    if baseline_arg:
+        if baseline_arg == "auto":
+            return resolve_repo_baseline_path(pack_path, repo_root)
+        return os.path.abspath(baseline_arg)
+    if update_baseline:
+        return resolve_repo_baseline_path(pack_path, repo_root)
+    return None
+
+
+def baseline_result_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {
+        "id": str(row.get("id") or ""),
+        "ok": bool(row.get("ok")),
+        "score": float(row.get("score") or 0.0),
+    }
+    checks = row.get("checks")
+    if isinstance(checks, list):
+        normalized_checks: List[Dict[str, Any]] = []
+        for check in checks:
+            if not isinstance(check, dict):
+                continue
+            normalized_checks.append({
+                "type": str(check.get("type") or ""),
+                "ok": bool(check.get("ok")),
+                "message": str(check.get("message") or ""),
+            })
+        out["checks"] = normalized_checks
+    if "error" in row:
+        out["error"] = str(row.get("error") or "")
+    return out
+
+
+def make_baseline_payload(summary: Dict[str, Any], pack_path: str, repo_root: str) -> Dict[str, Any]:
+    results = summary.get("results") or []
+    normalized_results = []
+    if isinstance(results, list):
+        normalized_results = [baseline_result_row(row) for row in results if isinstance(row, dict)]
+    threshold = summary.get("threshold") or {}
+    return {
+        "baseline_version": BASELINE_VERSION,
+        "name": summary.get("name"),
+        "version": summary.get("version") or VERSION,
+        "pack": relpath_or_abs(pack_path, repo_root),
+        "results": normalized_results,
+        "total_score": float(summary.get("total_score") or 0.0),
+        "max_score": float(summary.get("max_score") or 0.0),
+        "pass_rate": float(summary.get("pass_rate") or 0.0),
+        "threshold": {
+            "min_score": float(threshold.get("min_score") or 0.0),
+            "min_pass_rate": float(threshold.get("min_pass_rate") or 0.0),
+        },
+        "failed": [str(item) for item in (summary.get("failed") or [])],
+        "ok": bool(summary.get("ok")),
+    }
 
 
 def safe_join(base: str, rel: str) -> str:
@@ -235,8 +314,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--file", required=True, help="eval pack JSON file")
     parser.add_argument("--out-dir", help="output root (default: out/eval_pack_<ts>)")
     parser.add_argument("--keep-going", action="store_true", help="continue running scenarios even if one fails")
-    parser.add_argument("--baseline", help="compare results to a baseline summary.json")
-    parser.add_argument("--update-baseline", action="store_true", help="write current summary to --baseline")
+    parser.add_argument("--baseline", help="compare results to a baseline summary.json, or use 'auto' for ref/eval_packs/<pack>.summary.json")
+    parser.add_argument("--update-baseline", action="store_true", help="write the current normalized baseline summary to --baseline (defaults to auto)")
     return parser.parse_args()
 
 
@@ -393,12 +472,14 @@ def main() -> int:
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(summary_payload, f, indent=2)
 
-    if args.baseline:
-        baseline_path = os.path.abspath(args.baseline)
+    baseline_path = resolve_baseline_path(args.baseline, pack_path, repo_root, args.update_baseline)
+    if baseline_path:
+        print(f"baseline: {baseline_path}")
         if args.update_baseline:
             os.makedirs(os.path.dirname(baseline_path), exist_ok=True)
+            baseline_payload = make_baseline_payload(summary_payload, pack_path, repo_root)
             with open(baseline_path, "w", encoding="utf-8") as f:
-                json.dump(summary_payload, f, indent=2)
+                json.dump(baseline_payload, f, indent=2)
         else:
             try:
                 with open(baseline_path, "r", encoding="utf-8") as f:

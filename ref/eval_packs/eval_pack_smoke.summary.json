@@ -1,0 +1,34 @@
+{
+  "baseline_version": "eval_pack_baseline_v1",
+  "name": "eval_pack_smoke",
+  "version": "eval_pack_v0",
+  "pack": "tools/eval_packs/eval_pack_smoke.json",
+  "results": [
+    {
+      "id": "eval_pack_smoke",
+      "ok": true,
+      "score": 1.0,
+      "checks": [
+        {
+          "type": "file_exists",
+          "ok": true,
+          "message": "exists: eval_pack_smoke.txt"
+        },
+        {
+          "type": "json_path",
+          "ok": true,
+          "message": "json equals ok: scenario"
+        }
+      ]
+    }
+  ],
+  "total_score": 1.0,
+  "max_score": 1.0,
+  "pass_rate": 1.0,
+  "threshold": {
+    "min_score": 1.0,
+    "min_pass_rate": 1.0
+  },
+  "failed": [],
+  "ok": true
+}
