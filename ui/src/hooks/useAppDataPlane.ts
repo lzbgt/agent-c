@@ -1,6 +1,7 @@
 import React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
+  apiAttachSession,
   apiDeleteSession,
   apiGetAudit,
   apiGetConfig,
@@ -12,13 +13,23 @@ import {
   apiGetHealth,
   apiGetSessionArtifacts,
   apiGetSessionClientEvents,
+  apiGetSession,
   apiGetSessionScene,
   apiListSessions,
   apiNewSession,
+  apiReleaseSessionAttachment,
+  apiRenewSessionAttachment,
   apiUpdateDaemonConfig,
+  extractSessionAttachment,
+  extractSessionErrorEnvelope,
+  extractSessionErrorMessage,
+  extractSessionIds,
+  extractSessionInfo,
   type AgentEvent,
   type ApiAuth,
   type RunResponse,
+  type SessionAttachment,
+  type SessionInfo,
 } from "../api";
 
 export type AppDataPlaneArgs = {
@@ -30,6 +41,7 @@ export type AppDataPlaneArgs = {
   baseUrl: string;
   brokerAuthToken: string;
   brokerCookieAuth: boolean;
+  clientId: string;
   connectionMode: string;
   daemonAuth: ApiAuth;
   daemonAuthToken: string;
@@ -52,11 +64,44 @@ export type AppDataPlaneArgs = {
   setPrompt: React.Dispatch<React.SetStateAction<string>>;
   setResult: React.Dispatch<React.SetStateAction<RunResponse | undefined>>;
   setSessionId: (sid: string) => void;
+  sessionLeaseSeconds: string;
   summaryMaxChars: string;
   summaryModel: string;
   timeoutMs: string;
   cursorRef: React.MutableRefObject<number>;
 };
+
+export type SessionLeaseConflict = {
+  requestedClientId: string | null;
+  currentAttachment?: SessionAttachment;
+  code: string;
+  message: string;
+  retryable: boolean;
+};
+
+function parseLeaseSeconds(raw: string): number {
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 90;
+}
+
+function buildLeaseConflict(payload: unknown): SessionLeaseConflict | null {
+  const errorEnvelope = extractSessionErrorEnvelope(payload);
+  const code = String(errorEnvelope?.code || (payload && typeof payload === "object" ? (payload as any).code : "") || "").trim();
+  if (code !== "attachment_conflict") return null;
+  const details = errorEnvelope?.details && typeof errorEnvelope.details === "object" ? errorEnvelope.details : {};
+  return {
+    requestedClientId:
+      typeof (details as any).requested_client_id === "string"
+        ? String((details as any).requested_client_id)
+        : (details as any).requested_client_id === null
+          ? null
+          : null,
+    currentAttachment: extractSessionAttachment({ attachment: (details as any).current_attachment }),
+    code,
+    message: String(errorEnvelope?.message || "active attachment lease blocks this mutation"),
+    retryable: errorEnvelope?.retryable !== false,
+  };
+}
 
 export default function useAppDataPlane(args: AppDataPlaneArgs) {
   const {
@@ -68,6 +113,7 @@ export default function useAppDataPlane(args: AppDataPlaneArgs) {
     baseUrl,
     brokerAuthToken,
     brokerCookieAuth,
+    clientId,
     connectionMode,
     daemonAuth,
     daemonAuthToken,
@@ -90,6 +136,7 @@ export default function useAppDataPlane(args: AppDataPlaneArgs) {
     setPrompt,
     setResult,
     setSessionId,
+    sessionLeaseSeconds,
     summaryMaxChars,
     summaryModel,
     timeoutMs,
@@ -140,6 +187,19 @@ export default function useAppDataPlane(args: AppDataPlaneArgs) {
     enabled: !!selectedSessionId,
     retry: 1,
   });
+
+  const sessionInfo = useQuery({
+    queryKey: ["session_info", effectiveBase, authKey, selectedSessionId],
+    queryFn: () => apiGetSession(effectiveBase, selectedSessionId, daemonAuth),
+    enabled: !!selectedSessionId,
+    retry: 1,
+  });
+
+  const [sessionLeaseConflict, setSessionLeaseConflict] = React.useState<SessionLeaseConflict | null>(null);
+  const sessionInfoData = React.useMemo<SessionInfo | undefined>(() => extractSessionInfo(sessionInfo.data), [sessionInfo.data]);
+  React.useEffect(() => {
+    setSessionLeaseConflict(null);
+  }, [clientId, selectedSessionId]);
 
   const auditEntriesDesc = React.useMemo(() => {
     const raw = audit.data?.ok && Array.isArray(audit.data?.entries) ? (audit.data.entries as any[]) : [];
@@ -283,10 +343,15 @@ export default function useAppDataPlane(args: AppDataPlaneArgs) {
 
   const newSession = useMutation({
     mutationFn: async () => {
-      return await apiNewSession(effectiveBase, daemonAuth);
+      return await apiNewSession(effectiveBase, daemonAuth, {
+        clientId,
+        leaseSeconds: parseLeaseSeconds(sessionLeaseSeconds),
+      });
     },
     onSuccess: (resp) => {
-      if (resp.ok && resp.session_id) {
+      const nextSessionId = String(resp.session?.session_id || resp.session_id || "").trim();
+      if (resp.ok && nextSessionId) {
+        setSessionLeaseConflict(null);
         setPrompt("");
         lastRunPromptRef.current = "";
         setLastRunPrompt("");
@@ -298,8 +363,9 @@ export default function useAppDataPlane(args: AppDataPlaneArgs) {
         setJobError(null);
         setJobUpdatedMs(null);
         cursorRef.current = 0;
-        setSessionId(resp.session_id);
+        setSessionId(nextSessionId);
         void sessions.refetch();
+        void sessionInfo.refetch();
         void audit.refetch();
         void sessionClientEvents.refetch();
         void sessionArtifacts.refetch();
@@ -310,12 +376,89 @@ export default function useAppDataPlane(args: AppDataPlaneArgs) {
     },
   });
 
+  const attachSession = useMutation({
+    mutationFn: async (sid: string) => {
+      const trimmed = String(sid || "").trim();
+      if (!trimmed) throw new Error("missing session id");
+      const resp = await apiAttachSession(effectiveBase, trimmed, daemonAuth, {
+        clientId,
+        leaseSeconds: parseLeaseSeconds(sessionLeaseSeconds),
+      });
+      if (!resp.ok) {
+        const conflict = buildLeaseConflict(resp);
+        if (conflict) {
+          setSessionLeaseConflict(conflict);
+          return resp;
+        }
+        throw new Error(extractSessionErrorMessage(resp) || "attach failed");
+      }
+      return resp;
+    },
+    onSuccess: async (resp, sid) => {
+      if (!resp?.ok) return;
+      setSessionLeaseConflict(null);
+      const nextSessionId = String(resp.session?.session_id || resp.session_id || sid || "").trim();
+      if (nextSessionId) setSessionId(nextSessionId);
+      await sessions.refetch();
+      await sessionInfo.refetch();
+    },
+  });
+
+  const renewSessionAttachment = useMutation({
+    mutationFn: async (sid: string) => {
+      const trimmed = String(sid || "").trim();
+      if (!trimmed) throw new Error("missing session id");
+      const resp = await apiRenewSessionAttachment(effectiveBase, trimmed, daemonAuth, {
+        clientId,
+        leaseSeconds: parseLeaseSeconds(sessionLeaseSeconds),
+      });
+      if (!resp.ok) {
+        const conflict = buildLeaseConflict(resp);
+        if (conflict) {
+          setSessionLeaseConflict(conflict);
+          return resp;
+        }
+        throw new Error(extractSessionErrorMessage(resp) || "renew failed");
+      }
+      return resp;
+    },
+    onSuccess: async (resp) => {
+      if (!resp?.ok) return;
+      setSessionLeaseConflict(null);
+      await sessionInfo.refetch();
+    },
+  });
+
+  const releaseSessionAttachment = useMutation({
+    mutationFn: async (sid: string) => {
+      const trimmed = String(sid || "").trim();
+      if (!trimmed) throw new Error("missing session id");
+      const resp = await apiReleaseSessionAttachment(effectiveBase, trimmed, daemonAuth, {
+        clientId,
+      });
+      if (!resp.ok) {
+        const conflict = buildLeaseConflict(resp);
+        if (conflict) {
+          setSessionLeaseConflict(conflict);
+          return resp;
+        }
+        throw new Error(extractSessionErrorMessage(resp) || "release failed");
+      }
+      return resp;
+    },
+    onSuccess: async (resp) => {
+      if (!resp?.ok) return;
+      setSessionLeaseConflict(null);
+      await sessionInfo.refetch();
+    },
+  });
+
   const deleteSession = useMutation({
     mutationFn: async (sid: string) => {
       const trimmed = String(sid || "").trim();
       if (!trimmed) throw new Error("missing session id");
       const resp = await apiDeleteSession(effectiveBase, trimmed, daemonAuth);
-      if (!resp.ok) throw new Error(resp.error || "delete failed");
+      if (!resp.ok) throw new Error(extractSessionErrorMessage(resp) || "delete failed");
       return { session_id: trimmed };
     },
     onSuccess: async (resp) => {
@@ -384,11 +527,11 @@ export default function useAppDataPlane(args: AppDataPlaneArgs) {
   const clearAllSessions = useMutation({
     mutationFn: async () => {
       const resp = await apiListSessions(effectiveBase, daemonAuth);
-      if (!resp.ok) throw new Error(resp.error || "failed to list sessions");
-      const ids = (resp.sessions ?? []).slice();
+      if (!resp.ok) throw new Error(extractSessionErrorMessage(resp) || "failed to list sessions");
+      const ids = extractSessionIds(resp);
       for (const sid of ids) {
         const deletion = await apiDeleteSession(effectiveBase, sid, daemonAuth);
-        if (!deletion.ok) throw new Error(deletion.error || `failed to delete session: ${sid}`);
+        if (!deletion.ok) throw new Error(extractSessionErrorMessage(deletion) || `failed to delete session: ${sid}`);
       }
       return { deleted: ids.length };
     },
@@ -402,18 +545,21 @@ export default function useAppDataPlane(args: AppDataPlaneArgs) {
   React.useEffect(() => {
     if (autoSessionInitRef.current) return;
     if (!sessions.isSuccess) return;
-    const ids = sessions.data?.sessions ?? [];
+    const ids = extractSessionIds(sessions.data);
     if (selectedSessionId === "default" && !ids.includes("default")) {
       autoSessionInitRef.current = true;
       void newSession.mutateAsync().catch(() => {});
     }
-  }, [selectedSessionId, sessions.isSuccess, sessions.data?.sessions, newSession]);
+  }, [selectedSessionId, sessions.data, sessions.isSuccess, newSession]);
 
   const auditRefetch = audit.refetch;
   const sessionsRefetch = sessions.refetch;
-  const sessionList = sessions.data?.sessions ?? [];
+  const sessionList = React.useMemo(() => extractSessionIds(sessions.data), [sessions.data]);
   const deleteSessionError = deleteSession.isError ? String(deleteSession.error) : null;
   const clearAllSessionsError = clearAllSessions.isError ? String(clearAllSessions.error) : null;
+  const attachSessionError = attachSession.isError ? String(attachSession.error) : null;
+  const renewSessionAttachmentError = renewSessionAttachment.isError ? String(renewSessionAttachment.error) : null;
+  const releaseSessionAttachmentError = releaseSessionAttachment.isError ? String(releaseSessionAttachment.error) : null;
 
   return {
     audit,
@@ -434,7 +580,17 @@ export default function useAppDataPlane(args: AppDataPlaneArgs) {
     isLocalDaemonBase,
     missingBrokerAuthToken,
     missingDaemonAuthToken,
+    sessionInfo,
+    sessionInfoData,
+    sessionLeaseConflict,
+    setSessionLeaseConflict,
     newSession,
+    attachSession,
+    attachSessionError,
+    renewSessionAttachment,
+    renewSessionAttachmentError,
+    releaseSessionAttachment,
+    releaseSessionAttachmentError,
     saveDaemonApiKey,
     saveDaemonDefaults,
     sessions,

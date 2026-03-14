@@ -1,5 +1,5 @@
 import React from "react";
-import { apiPostSessionUiEvent, type AgentEvent, type ApiAuth } from "../api";
+import { apiPostSessionUiEvent, extractSessionErrorMessage, type AgentEvent, type ApiAuth } from "../api";
 import { parseAssistantMultimodal, renderAssistantMultimodal } from "./AssistantMultimodal";
 import ConversationCard from "./ConversationCard";
 import Markdown from "./Markdown";
@@ -80,7 +80,7 @@ export default function ConversationView({
         daemonAuth,
       );
       if (!resp.ok) {
-        throw new Error(resp.error || "client_event failed");
+        throw new Error(extractSessionErrorMessage(resp) || "client_event failed");
       }
     },
     [baseUrl, client, daemonAuth, sessionId],

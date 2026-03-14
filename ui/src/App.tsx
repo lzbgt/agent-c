@@ -253,6 +253,7 @@ export default function App() {
     const sid = typeof m?.[sessionScopeKey] === "string" ? String(m[sessionScopeKey]) : "";
     return sid.trim().length > 0 ? sid.trim() : "default";
   }, [sessionByScopeJson, sessionScopeKey]);
+  const [sessionLeaseSeconds, setSessionLeaseSeconds] = useLocalStorageState<string>("agentui.sessionLeaseSeconds", "90");
 
   const [advancedPage, setAdvancedPage] = useLocalStorageState<string>(
     `agentui.advancedPage:${sessionScopeKey}`,
@@ -461,8 +462,10 @@ export default function App() {
   const {
     audit, auditRefetch, clearAllSessions, clearAllSessionsError, clearDaemonApiKey, daemonConfig, dbClientEvents,
     dbMessages, dbRunDetailsById, dbRuns, dbUiActions, deleteSession, deleteSessionError, health, historyEntriesDesc,
-    isLocalDaemonBase, missingBrokerAuthToken, missingDaemonAuthToken, newSession, saveDaemonApiKey, saveDaemonDefaults,
-    sessionsRefetch, sessionsUnauthorized, sessionArtifacts, sessionList, sessionScene, updateDaemonDefaults,
+    isLocalDaemonBase, missingBrokerAuthToken, missingDaemonAuthToken, newSession, attachSession, attachSessionError,
+    renewSessionAttachment, renewSessionAttachmentError, releaseSessionAttachment, releaseSessionAttachmentError,
+    sessionInfoData, sessionLeaseConflict, setSessionLeaseConflict, saveDaemonApiKey, saveDaemonDefaults, sessionsRefetch,
+    sessionsUnauthorized, sessionArtifacts, sessionList, sessionScene, updateDaemonDefaults,
   } = useAppDataPlane({
     activeJobId,
     allowClientEffects,
@@ -472,6 +475,7 @@ export default function App() {
     baseUrl,
     brokerAuthToken,
     brokerCookieAuth: connection.brokerCookieAuth,
+    clientId,
     connectionMode,
     daemonAuth,
     daemonAuthToken,
@@ -494,6 +498,7 @@ export default function App() {
     setPrompt,
     setResult,
     setSessionId,
+    sessionLeaseSeconds,
     summaryMaxChars,
     summaryModel,
     timeoutMs,
@@ -1028,6 +1033,20 @@ export default function App() {
         session={{
           id: sessionId,
           setId: setSessionId,
+          leaseSeconds: sessionLeaseSeconds,
+          setLeaseSeconds: setSessionLeaseSeconds,
+          info: sessionInfoData,
+          leaseConflict: sessionLeaseConflict,
+          clearLeaseConflict: () => setSessionLeaseConflict(null),
+          attach: () => void attachSession.mutateAsync(sessionId).catch(() => {}),
+          attachPending: attachSession.isPending,
+          attachError: attachSessionError,
+          renewAttachment: () => void renewSessionAttachment.mutateAsync(sessionId).catch(() => {}),
+          renewPending: renewSessionAttachment.isPending,
+          renewError: renewSessionAttachmentError,
+          releaseAttachment: () => void releaseSessionAttachment.mutateAsync(sessionId).catch(() => {}),
+          releasePending: releaseSessionAttachment.isPending,
+          releaseError: releaseSessionAttachmentError,
           sessions: sessionList,
           refresh: () => sessionsRefetch(),
           newSession: () => newSession.mutate(),

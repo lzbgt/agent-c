@@ -116,6 +116,7 @@ Secret handling:
   - Only non-secret fields are stored (URLs/ids/profile names). Auth tokens and provider API keys remain browser-session local.
 - Devstack OIDC helper: `tools/devstack_oidc_token.sh --state out/devstack_state.json` (prints a bearer token; auto-falls back to `http://127.0.0.1:<keycloak_port>` or `http://[::1]:<keycloak_port>` if `keycloak.lvh.me` is unreachable).
 - Devstack writes the broker OIDC token into `ui/dist/agentui-config.js` on startup so the WebUI can connect without manual Settings edits; refresh the page if you change/refresh tokens.
+- Playwright now reuses the existing devstack WebUI from `out/devstack_state.json` when that stack is live, so broker/WebUI tests do not spin up a second browser-facing server by default.
 - See `docs/DEVSTACK_NETWORK_AUTH.md` for the end-to-end network/auth workflow and troubleshooting.
   - If the browser tries `keycloak.lvh.me:<port>/v1/agents/...`, the Broker base URL is mis-set; reset Settings → Connection to the broker URL from `out/devstack_state.json`.
   - If the browser cannot reach `http://127.0.0.1:<broker_port>/v1/agents/<id>/proxy`, ensure Settings → Connection points at the broker URL from `out/devstack_state.json`.
@@ -124,6 +125,10 @@ Secret handling:
   Settings → Connection → `Use broker auth cookie (HttpOnly)`. With broker cookie auth enabled, the WebUI exchanges the current
   broker bearer token through `POST /v1/auth/session`, stores it as an HttpOnly cookie, then clears the browser-visible token
   from the active profile. After that, broker requests use `credentials: "include"` instead of a long-lived JS-visible bearer token.
+- Settings → Connection also exposes broker-backed session lease controls for the active `session_id`: attach/claim, renew, and
+  release. When the remote runtime reports structured lease conflicts (for example `attachment_conflict` from an external
+  broker-compatible adapter), the UI surfaces owner/observer state and the current lease holder instead of collapsing it into a
+  generic transport error.
 - The WebUI runs a single **Advanced** layout: Scene on top, Conversation below, and tool panels in the sidebar.
 - Conversation history is persisted in the daemon DB and reloaded after refresh (user/assistant messages plus run tool records).
 - You can queue prompts while a run is active; queued runs execute in order and the queue count is shown in the Run/Queue button.

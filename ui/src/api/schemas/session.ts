@@ -1,5 +1,50 @@
 import { z } from "zod";
 
+export const SessionAttachmentSchema = z
+  .object({
+    client_id: z.string().nullable().optional(),
+    lease_seconds: z.number().nullable().optional(),
+    lease_expires_at_ms: z.number().nullable().optional(),
+    lease_active: z.boolean().optional(),
+  })
+  .passthrough();
+export type SessionAttachment = z.infer<typeof SessionAttachmentSchema>;
+
+export const SessionInfoSchema = z
+  .object({
+    session_id: z.string().optional(),
+    thread_id: z.string().nullable().optional(),
+    working: z.boolean().optional(),
+    last_turn_id: z.string().nullable().optional(),
+    attachment: SessionAttachmentSchema.optional(),
+    messages: z
+      .array(
+        z.object({
+          role: z.string().optional(),
+          content: z.string().optional(),
+          mm_json: z.string().optional(),
+          mm_bytes: z.number().optional(),
+          mm_truncated: z.number().optional(),
+        }),
+      )
+      .optional(),
+  })
+  .passthrough();
+export type SessionInfo = z.infer<typeof SessionInfoSchema>;
+
+export const SessionErrorEnvelopeSchema = z
+  .object({
+    code: z.string().optional(),
+    message: z.string().optional(),
+    retryable: z.boolean().optional(),
+    details: z.record(z.any()).optional(),
+  })
+  .passthrough();
+export type SessionErrorEnvelope = z.infer<typeof SessionErrorEnvelopeSchema>;
+
+export const SessionErrorValueSchema = z.union([z.string(), SessionErrorEnvelopeSchema]);
+export type SessionErrorValue = z.infer<typeof SessionErrorValueSchema>;
+
 export const SessionUploadReqSchema = z
   .object({
     session_id: z.string().min(1),
@@ -33,7 +78,7 @@ export const SessionUploadRespSchema = z
           .passthrough(),
       )
       .optional(),
-    error: z.string().optional(),
+    error: SessionErrorValueSchema.optional(),
     err: z.string().optional(),
     code: z.string().optional(),
   })
@@ -42,31 +87,28 @@ export type SessionUploadResp = z.infer<typeof SessionUploadRespSchema>;
 
 export const SessionsSchema = z.object({
   ok: z.boolean(),
-  sessions: z.array(z.string()).optional(),
-  error: z.string().optional(),
+  sessions: z.array(z.union([z.string(), SessionInfoSchema])).optional(),
+  error: SessionErrorValueSchema.optional(),
   err: z.string().optional(),
   code: z.string().optional(),
-});
+  session: SessionInfoSchema.optional(),
+  status: z.number().optional(),
+})
+  .passthrough();
 export type SessionsResp = z.infer<typeof SessionsSchema>;
 
 export const SessionSchema = z.object({
   ok: z.boolean(),
   session_id: z.string().optional(),
-  messages: z
-    .array(
-      z.object({
-        role: z.string(),
-        content: z.string(),
-        mm_json: z.string().optional(),
-        mm_bytes: z.number().optional(),
-        mm_truncated: z.number().optional(),
-      }),
-    )
-    .optional(),
-  error: z.string().optional(),
+  messages: SessionInfoSchema.shape.messages,
+  session: SessionInfoSchema.optional(),
+  error: SessionErrorValueSchema.optional(),
   err: z.string().optional(),
   code: z.string().optional(),
-});
+  status: z.number().optional(),
+  error_detail: SessionErrorEnvelopeSchema.optional(),
+})
+  .passthrough();
 export type SessionResp = z.infer<typeof SessionSchema>;
 
 export const SessionSceneSchema = z
@@ -75,7 +117,7 @@ export const SessionSceneSchema = z
     session_id: z.string().optional(),
     updated_unix_ms: z.number().optional(),
     scene: z.record(z.any()).optional(),
-    error: z.string().optional(),
+    error: SessionErrorValueSchema.optional(),
     err: z.string().optional(),
     code: z.string().optional(),
   })
@@ -96,7 +138,7 @@ export const SessionSceneApplyRespSchema = z
     apply: z.any().optional(),
     scene: z.record(z.any()).optional(),
     warning: z.string().optional(),
-    error: z.string().optional(),
+    error: SessionErrorValueSchema.optional(),
     err: z.string().optional(),
     code: z.string().optional(),
   })
@@ -126,7 +168,7 @@ export const SessionUiEventRespSchema = z
     session_id: z.string().optional(),
     type: z.string().optional(),
     appended_to_session: z.boolean().optional(),
-    error: z.string().optional(),
+    error: SessionErrorValueSchema.optional(),
     err: z.string().optional(),
     code: z.string().optional(),
   })
@@ -138,9 +180,13 @@ export const NewSessionRespSchema = z
     ok: z.boolean(),
     session_id: z.string().optional(),
     created: z.boolean().optional(),
-    error: z.string().optional(),
+    session: SessionInfoSchema.optional(),
+    error: SessionErrorValueSchema.optional(),
     err: z.string().optional(),
     code: z.string().optional(),
+    status: z.number().optional(),
+    error_detail: SessionErrorEnvelopeSchema.optional(),
+    error_details: z.record(z.any()).optional(),
   })
   .passthrough();
 export type NewSessionResp = z.infer<typeof NewSessionRespSchema>;
@@ -149,9 +195,10 @@ export const DeleteSessionRespSchema = z
   .object({
     ok: z.boolean(),
     session_id: z.string().optional(),
-    error: z.string().optional(),
+    error: SessionErrorValueSchema.optional(),
     err: z.string().optional(),
     code: z.string().optional(),
+    status: z.number().optional(),
   })
   .passthrough();
 export type DeleteSessionResp = z.infer<typeof DeleteSessionRespSchema>;
@@ -160,10 +207,12 @@ export const AuditSchema = z.object({
   ok: z.boolean(),
   session_id: z.string().optional(),
   entries: z.array(z.any()).optional(),
-  error: z.string().optional(),
+  error: SessionErrorValueSchema.optional(),
   err: z.string().optional(),
   code: z.string().optional(),
-});
+  status: z.number().optional(),
+})
+  .passthrough();
 export type AuditResp = z.infer<typeof AuditSchema>;
 
 export const SessionClientEventsSchema = z.object({
@@ -172,10 +221,12 @@ export const SessionClientEventsSchema = z.object({
   max_bytes: z.number().optional(),
   count: z.number().optional(),
   events: z.array(z.any()).optional(),
-  error: z.string().optional(),
+  error: SessionErrorValueSchema.optional(),
   err: z.string().optional(),
   code: z.string().optional(),
-});
+  status: z.number().optional(),
+})
+  .passthrough();
 export type SessionClientEventsResp = z.infer<typeof SessionClientEventsSchema>;
 
 export const SessionArtifactsSchema = z.object({
@@ -183,8 +234,26 @@ export const SessionArtifactsSchema = z.object({
   session_id: z.string().optional(),
   count: z.number().optional(),
   artifacts: z.array(z.any()).optional(),
-  error: z.string().optional(),
+  error: SessionErrorValueSchema.optional(),
   err: z.string().optional(),
   code: z.string().optional(),
-});
+  status: z.number().optional(),
+})
+  .passthrough();
 export type SessionArtifactsResp = z.infer<typeof SessionArtifactsSchema>;
+
+export const SessionAttachmentActionRespSchema = z
+  .object({
+    ok: z.boolean(),
+    session_id: z.string().optional(),
+    session: SessionInfoSchema.optional(),
+    attachment: SessionAttachmentSchema.optional(),
+    operation: z.record(z.any()).optional(),
+    error: SessionErrorValueSchema.optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+    status: z.number().optional(),
+    error_detail: SessionErrorEnvelopeSchema.optional(),
+  })
+  .passthrough();
+export type SessionAttachmentActionResp = z.infer<typeof SessionAttachmentActionRespSchema>;

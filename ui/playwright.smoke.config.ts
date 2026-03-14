@@ -1,6 +1,20 @@
+import fs from "node:fs";
+import path from "node:path";
 import { defineConfig } from "@playwright/test";
 
-const baseURL = process.env.AGENT_E2E_UI_BASE_URL || "http://127.0.0.1:5173";
+function readDevstackUiBase(): string {
+  if (process.env.AGENT_E2E_PREFER_DEVSTACK === "0") return "";
+  try {
+    const statePath = path.resolve(process.cwd(), "..", "out", "devstack_state.json");
+    const raw = fs.readFileSync(statePath, "utf8");
+    const parsed = JSON.parse(raw) as { webui_base?: unknown };
+    return typeof parsed.webui_base === "string" ? parsed.webui_base.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+const baseURL = process.env.AGENT_E2E_UI_BASE_URL || readDevstackUiBase() || "http://127.0.0.1:5173";
 
 export default defineConfig({
   testDir: "./e2e",

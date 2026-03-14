@@ -24,6 +24,27 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ -z "${AGENT_E2E_UI_BASE_URL:-}" ]]; then
+  if [[ -f "${ROOT}/out/devstack_state.json" ]]; then
+    devstack_ui_base="$(python - <<'PY'
+import json, pathlib
+state = pathlib.Path("out/devstack_state.json")
+try:
+    data = json.loads(state.read_text())
+except Exception:
+    print("")
+else:
+    value = data.get("webui_base")
+    print(value.strip() if isinstance(value, str) else "")
+PY
+)"
+    if [[ -n "${devstack_ui_base}" ]] && curl -fsS "${devstack_ui_base}" >/dev/null 2>&1; then
+      AGENT_E2E_UI_BASE_URL="${devstack_ui_base}"
+      echo "[playwright] reusing devstack UI at ${AGENT_E2E_UI_BASE_URL}"
+    fi
+  fi
+fi
+
+if [[ -z "${AGENT_E2E_UI_BASE_URL:-}" ]]; then
   if [[ -n "${AGENT_UI_PORT:-}" ]]; then
     PORT="${AGENT_UI_PORT}"
   else
@@ -68,6 +89,7 @@ AGENT_E2E_UI_BASE_URL="${AGENT_E2E_UI_BASE_URL}" \
     e2e/agentd_host_smoke.spec.ts \
     e2e/workflow_schedules.spec.ts \
     e2e/broker_cookie_auth.spec.ts \
+    e2e/broker_codexw_session_lease.spec.ts \
     e2e/broker_console.spec.ts \
     e2e/broker_membership_flow.spec.ts \
     e2e/broker_trace_lookup.spec.ts \

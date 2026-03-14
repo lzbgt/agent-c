@@ -1,6 +1,6 @@
 import React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { Caps, DaemonConfigResp } from "../api";
+import type { Caps, DaemonConfigResp, SessionInfo } from "../api";
 import {
   apiBrokerListAgents,
   apiBrokerListDeployments,
@@ -65,6 +65,31 @@ type SettingsDrawerProps = {
   session: {
     id: string;
     setId: (next: string) => void;
+    leaseSeconds: string;
+    setLeaseSeconds: (next: string) => void;
+    info?: SessionInfo;
+    leaseConflict: {
+      requestedClientId: string | null;
+      currentAttachment?: {
+        client_id?: string | null;
+        lease_seconds?: number | null;
+        lease_expires_at_ms?: number | null;
+        lease_active?: boolean;
+      };
+      code: string;
+      message: string;
+      retryable: boolean;
+    } | null;
+    clearLeaseConflict: () => void;
+    attach: () => void;
+    attachPending: boolean;
+    attachError: string | null;
+    renewAttachment: () => void;
+    renewPending: boolean;
+    renewError: string | null;
+    releaseAttachment: () => void;
+    releasePending: boolean;
+    releaseError: string | null;
     sessions: string[];
     refresh: () => void;
     newSession: () => void;
