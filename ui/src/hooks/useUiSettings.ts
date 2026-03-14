@@ -11,6 +11,8 @@ import {
   type ToolMode,
 } from "../runtime_config";
 import {
+  apiBrokerCreateAuthSession,
+  apiBrokerDeleteAuthSession,
   apiBrokerGetClientPrefs,
   apiBrokerPostClientPrefs,
   apiGetClientPrefs,
@@ -69,6 +71,9 @@ export type ConnectionSettings = {
   setBrokerCookieAuth: React.Dispatch<React.SetStateAction<boolean>>;
   brokerAuthToken: string;
   setBrokerAuthToken: React.Dispatch<React.SetStateAction<string>>;
+  brokerCookieSessionStatus: "idle" | "exchanging" | "ready" | "error";
+  brokerCookieSessionError: string | null;
+  clearBrokerAuthCookie: () => Promise<void>;
   daemonAuthToken: string;
   setDaemonAuthToken: React.Dispatch<React.SetStateAction<string>>;
   serverPrefsEnabled: boolean;
@@ -266,11 +271,16 @@ export default function useUiSettings(): UiSettings {
   const [serverPrefsAutoEnabled, setServerPrefsAutoEnabled] = React.useState<boolean>(false);
   const [serverPrefsAutoStatus, setServerPrefsAutoStatus] = React.useState<ServerPrefsAutoStatus>("idle");
   const [serverPrefsAutoError, setServerPrefsAutoError] = React.useState<string | null>(null);
+  const [brokerCookieSessionStatus, setBrokerCookieSessionStatus] = React.useState<"idle" | "exchanging" | "ready" | "error">(
+    "idle",
+  );
+  const [brokerCookieSessionError, setBrokerCookieSessionError] = React.useState<string | null>(null);
   const [serverPrefsStatus, setServerPrefsStatus] = React.useState<"idle" | "loading" | "error" | "synced">("idle");
   const [serverPrefsError, setServerPrefsError] = React.useState<string | null>(null);
   const [serverPrefsLastSyncMs, setServerPrefsLastSyncMs] = React.useState<number | null>(null);
   const serverPrefsLastPayloadRef = React.useRef<string>("");
   const serverPrefsPullInFlightRef = React.useRef(false);
+  const brokerCookieExchangeKeyRef = React.useRef("");
   const initialApiKey = React.useMemo(() => readLegacySecretString("agentui.apiKey", defaults.apiKey), [defaults.apiKey]);
 
   const buildLegacyProfile = React.useCallback((): ConnectionProfile => {
@@ -520,33 +530,37 @@ export default function useUiSettings(): UiSettings {
 
   const updateActiveProfile = React.useCallback(
     (update: (prev: ConnectionProfile) => ConnectionProfile) => {
-      let nextSecretId = "";
-      let nextSecretState: ConnectionProfileSecretState | null = null;
+      const currentProfile = activeProfile;
+      const next = normalizeProfile(update(currentProfile), defaults);
+      const nextSecretId = next.id;
+      const nextSecretState = extractProfileSecrets(next);
+      const sanitized = sanitizeProfileForPersistence(next);
       setConnectionProfiles((prev) => {
         if (prev.length === 0) return prev;
-        const idx = prev.findIndex((p) => p.id === activeProfileId);
-        const useIdx = idx >= 0 ? idx : 0;
-        const curPersisted = normalizeProfile(prev[useIdx], defaults);
-        const cur = mergeProfileSecrets(curPersisted, connectionProfileSecrets[curPersisted.id]);
-        const next = normalizeProfile(update(cur), defaults);
-        nextSecretId = next.id;
-        nextSecretState = extractProfileSecrets(next);
-        const sanitized = sanitizeProfileForPersistence(next);
-        if (JSON.stringify(sanitized) === JSON.stringify(prev[useIdx])) return prev;
+        const idx = prev.findIndex((p) => p.id === currentProfile.id);
+        const useIdx = idx >= 0 ? idx : prev.findIndex((p) => p.id === activeProfileId);
+        const resolvedIdx = useIdx >= 0 ? useIdx : 0;
+        if (JSON.stringify(sanitized) === JSON.stringify(prev[resolvedIdx])) return prev;
         const out = prev.slice();
-        out[useIdx] = sanitized;
+        out[resolvedIdx] = sanitized;
         return out;
       });
       if (nextSecretId) {
         setConnectionProfileSecrets((prev) => {
-          const next = { ...normalizeSecretMap(prev) };
-          if (nextSecretState && Object.keys(nextSecretState).length > 0) next[nextSecretId] = nextSecretState;
-          else delete next[nextSecretId];
-          return next;
+          const nextSecrets = { ...normalizeSecretMap(prev) };
+          if (nextSecretId !== currentProfile.id) {
+            delete nextSecrets[currentProfile.id];
+          }
+          if (nextSecretState && Object.keys(nextSecretState).length > 0) nextSecrets[nextSecretId] = nextSecretState;
+          else delete nextSecrets[nextSecretId];
+          return nextSecrets;
         });
       }
+      if (next.id !== currentProfile.id) {
+        setActiveProfileId(next.id);
+      }
     },
-    [activeProfileId, connectionProfileSecrets, defaults, setConnectionProfileSecrets, setConnectionProfiles],
+    [activeProfile, activeProfileId, defaults, setActiveProfileId, setConnectionProfileSecrets, setConnectionProfiles],
   );
 
   const addProfile = React.useCallback(
@@ -1170,6 +1184,74 @@ export default function useUiSettings(): UiSettings {
     return normalizeHttpBase(base, "http://127.0.0.1:8123", "http");
   }, [base, brokerBase, connectionMode]);
 
+  React.useEffect(() => {
+    if (connectionMode !== "broker" || !brokerCookieAuth) {
+      brokerCookieExchangeKeyRef.current = "";
+      setBrokerCookieSessionStatus("idle");
+      setBrokerCookieSessionError(null);
+      return;
+    }
+    const baseTrimmed = String(serverPrefsBase || "").trim();
+    const token = String(brokerAuthToken || "").trim();
+    if (!baseTrimmed) {
+      brokerCookieExchangeKeyRef.current = "";
+      setBrokerCookieSessionStatus("idle");
+      setBrokerCookieSessionError(null);
+      return;
+    }
+    if (!token) {
+      brokerCookieExchangeKeyRef.current = "";
+      setBrokerCookieSessionError(null);
+      setBrokerCookieSessionStatus((prev) => (prev === "ready" ? prev : "idle"));
+      return;
+    }
+    const exchangeKey = `${activeProfileId}:${token}`;
+    if (brokerCookieExchangeKeyRef.current === exchangeKey) {
+      return;
+    }
+    brokerCookieExchangeKeyRef.current = exchangeKey;
+    setBrokerCookieSessionStatus("exchanging");
+    setBrokerCookieSessionError(null);
+    (async () => {
+      try {
+        await apiBrokerCreateAuthSession(baseTrimmed, { mode: "broker", token });
+        updateActiveProfile((prev) => {
+          if (prev.mode !== "broker" || !prev.brokerCookieAuth) return prev;
+          if (String(prev.brokerAuthToken || "").trim() !== token) return prev;
+          return { ...prev, brokerAuthToken: "" };
+        });
+        if (typeof window !== "undefined") {
+          try {
+            window.sessionStorage.removeItem("agentui.brokerAuthToken");
+          } catch {
+            // ignore storage failures
+          }
+        }
+        if (brokerCookieExchangeKeyRef.current === exchangeKey) {
+          brokerCookieExchangeKeyRef.current = "";
+        }
+        setBrokerCookieSessionStatus("ready");
+        setBrokerCookieSessionError(null);
+      } catch (err) {
+        if (brokerCookieExchangeKeyRef.current === exchangeKey) {
+          brokerCookieExchangeKeyRef.current = "";
+        }
+        setBrokerCookieSessionStatus("error");
+        setBrokerCookieSessionError(err instanceof Error ? err.message : String(err));
+      }
+    })();
+  }, [activeProfileId, brokerAuthToken, brokerCookieAuth, connectionMode, serverPrefsBase, updateActiveProfile]);
+
+  const clearBrokerAuthCookie = React.useCallback(async () => {
+    const baseTrimmed = String(serverPrefsBase || "").trim();
+    if (connectionMode !== "broker" || !brokerCookieAuth || !baseTrimmed) {
+      return;
+    }
+    setBrokerCookieSessionError(null);
+    await apiBrokerDeleteAuthSession(baseTrimmed, { mode: "broker", useCookieAuth: true });
+    setBrokerCookieSessionStatus("idle");
+  }, [brokerCookieAuth, connectionMode, serverPrefsBase]);
+
   const serverPrefsAuthReady =
     connectionMode !== "broker" || brokerCookieAuth || String(brokerAuthToken || "").trim().length > 0;
   const serverPrefsAuto = serverPrefsDefaultMode === "auto" && !serverPrefsUserSet;
@@ -1411,6 +1493,9 @@ export default function useUiSettings(): UiSettings {
       setBrokerCookieAuth,
       brokerAuthToken,
       setBrokerAuthToken,
+      brokerCookieSessionStatus,
+      brokerCookieSessionError,
+      clearBrokerAuthCookie,
       daemonAuthToken,
       setDaemonAuthToken,
       serverPrefsEnabled: serverPrefsEffectiveEnabled,

@@ -70,6 +70,28 @@
             schema:
               $ref: "#/components/schemas/BrokerCapsResponse"
 
+/v1/auth/session:
+  post:
+    tags: [client_auth]
+    summary: Exchange the current bearer token into an HttpOnly auth cookie
+    responses:
+      "200":
+        description: Auth cookie established
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerAuthSessionResponse"
+  delete:
+    tags: [client_auth]
+    summary: Clear the broker auth cookie for the current browser session
+    responses:
+      "200":
+        description: Auth cookie cleared
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerAuthSessionResponse"
+
 /v1/client_prefs:
   get:
     tags: [client_prefs]

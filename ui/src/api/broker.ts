@@ -2,6 +2,8 @@ import { daemonFetchInit, daemonHeaders, type ApiAuth } from "./auth";
 import { addQueryParam } from "./query";
 import {
   BrokerAgentsRespSchema,
+  BrokerAuthSessionRespSchema,
+  type BrokerAuthSessionResp,
   type BrokerAgentsResp,
   BrokerDeploymentsRespSchema,
   type BrokerDeploymentsResp,
@@ -75,6 +77,20 @@ export async function apiBrokerListAgents(brokerBase: string, auth?: ApiAuth): P
   const r = await fetch(`${base}/v1/agents`, daemonFetchInit(auth));
   const j = await r.json();
   return BrokerAgentsRespSchema.parse(j);
+}
+
+export async function apiBrokerCreateAuthSession(brokerBase: string, auth?: ApiAuth): Promise<BrokerAuthSessionResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const r = await fetch(`${base}/v1/auth/session`, daemonFetchInit(auth, { method: "POST" }));
+  const j = await r.json();
+  return BrokerAuthSessionRespSchema.parse(j);
+}
+
+export async function apiBrokerDeleteAuthSession(brokerBase: string, auth?: ApiAuth): Promise<BrokerAuthSessionResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const r = await fetch(`${base}/v1/auth/session`, daemonFetchInit(auth, { method: "DELETE" }));
+  const j = await r.json();
+  return BrokerAuthSessionRespSchema.parse(j);
 }
 
 export async function apiBrokerListConnectors(brokerBase: string, auth?: ApiAuth): Promise<BrokerConnectorsResp> {

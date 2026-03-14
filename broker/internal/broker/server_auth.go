@@ -122,7 +122,12 @@ func (s *Server) requirePrincipal(r *http.Request) (*Principal, error) {
 	}
 	cp, err := ca.AuthenticateBearer(r)
 	if err != nil {
-		return nil, err
+		if tok := authTokenFromCookie(r, s.cfg.AuthCookieName); tok != "" {
+			cp, err = ca.AuthenticateBearer(requestWithBearer(r, tok))
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
 	sub := strings.TrimSpace(cp.ClientID)
 	if sub == "" {

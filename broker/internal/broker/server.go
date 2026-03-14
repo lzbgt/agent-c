@@ -174,6 +174,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/readyz", s.handleReadyz)
 	mux.HandleFunc("/metrics", s.handleMetrics)
 	mux.HandleFunc("/v1/caps", s.handleCaps)
+	mux.HandleFunc("/v1/auth/session", s.handleAuthSession)
 	mux.HandleFunc("/v1/client_auth/status", s.handleClientAuthStatus)
 	mux.HandleFunc("/v1/client_auth/reload", s.handleClientAuthReload)
 	mux.HandleFunc("/v1/client_prefs", s.handleClientPrefs)

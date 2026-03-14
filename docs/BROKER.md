@@ -312,6 +312,11 @@ All endpoints below are served by the broker (not by agents).
 - `GET /v1/agents/{agent_id}/deployments`
   - lists connected deployments for a given `agent_id`
   - includes `default_deployment_id` (the most recent connected deployment)
+- `POST /v1/auth/session`
+  - exchanges the current `Authorization: Bearer <token>` credential into the configured broker auth cookie
+  - returns cookie metadata (`cookie_name`, `secure`, `same_site`) so browser clients can confirm cookie mode is active
+- `DELETE /v1/auth/session`
+  - clears the configured broker auth cookie for the current browser session
 
 ### Relay
 

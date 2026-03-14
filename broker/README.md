@@ -52,6 +52,7 @@ Key flags:
   - `--oidc-issuer`, `--oidc-audience`
 - Optional cookie auth (browser-friendly):
   - `--auth-cookie <name>` (env `AGENTD_BROKER_AUTH_COOKIE`)
+  - browser clients can exchange a bearer token into the cookie with `POST /v1/auth/session` and clear it with `DELETE /v1/auth/session`
 - Optional client token auth:
   - `--client-auth-file` (JSON file with static client tokens; env `AGENTD_BROKER_CLIENT_AUTH_FILE`)
   - `--client-auth-fallback` (allow client tokens when OIDC auth fails; env `AGENTD_BROKER_CLIENT_AUTH_FALLBACK=1`)

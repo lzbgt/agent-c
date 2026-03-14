@@ -36,6 +36,23 @@ schemas:
   ClientPrefsResponse:
     $ref: ./components/client_prefs.yaml#/ClientPrefsResponse
 
+  BrokerAuthSessionResponse:
+    type: object
+    required: [ok, cookie_name, http_only, secure, same_site]
+    properties:
+      ok: { type: boolean }
+      cookie_name: { type: string }
+      auth_kind:
+        type: string
+        description: Authentication kind used to authorize the session exchange.
+      cleared:
+        type: boolean
+      http_only: { type: boolean }
+      secure: { type: boolean }
+      same_site:
+        type: string
+        enum: [none, lax, strict, default]
+
   AudioSessionCreateRequest:
     type: object
     required: [agent_id]

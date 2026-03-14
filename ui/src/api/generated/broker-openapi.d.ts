@@ -174,6 +174,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Exchange the current bearer token into an HttpOnly auth cookie */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Auth cookie established */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerAuthSessionResponse"];
+                    };
+                };
+            };
+        };
+        /** Clear the broker auth cookie for the current browser session */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Auth cookie cleared */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerAuthSessionResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/client_prefs": {
         parameters: {
             query?: never;
@@ -2830,6 +2886,17 @@ export interface components {
             error?: string;
             err?: string;
             code?: string;
+        };
+        BrokerAuthSessionResponse: {
+            ok: boolean;
+            cookie_name: string;
+            /** @description Authentication kind used to authorize the session exchange. */
+            auth_kind?: string;
+            cleared?: boolean;
+            http_only: boolean;
+            secure: boolean;
+            /** @enum {string} */
+            same_site: "none" | "lax" | "strict" | "default";
         };
         AudioSessionCreateRequest: {
             agent_id: string;

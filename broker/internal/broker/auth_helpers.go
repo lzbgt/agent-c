@@ -5,6 +5,20 @@ import (
 	"strings"
 )
 
+func authTokenFromAuthorizationHeader(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	raw := strings.TrimSpace(r.Header.Get("Authorization"))
+	if raw == "" {
+		return ""
+	}
+	if strings.HasPrefix(strings.ToLower(raw), "bearer ") {
+		return strings.TrimSpace(raw[7:])
+	}
+	return strings.TrimSpace(raw)
+}
+
 func authTokenFromCookie(r *http.Request, name string) string {
 	if r == nil {
 		return ""
@@ -38,4 +52,34 @@ func requestWithBearer(r *http.Request, token string) *http.Request {
 	clone := r.Clone(r.Context())
 	clone.Header.Set("Authorization", "Bearer "+tok)
 	return clone
+}
+
+func requestIsHTTPS(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	if r.TLS != nil {
+		return true
+	}
+	if v := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); strings.EqualFold(v, "https") {
+		return true
+	}
+	if fwd := strings.TrimSpace(r.Header.Get("Forwarded")); fwd != "" {
+		for _, entry := range strings.Split(fwd, ",") {
+			for _, part := range strings.Split(entry, ";") {
+				part = strings.TrimSpace(part)
+				if strings.HasPrefix(strings.ToLower(part), "proto=") && strings.EqualFold(strings.Trim(strings.TrimSpace(part[6:]), `"`), "https") {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func authCookieSameSite(secure bool) http.SameSite {
+	if secure {
+		return http.SameSiteNoneMode
+	}
+	return http.SameSiteLaxMode
 }

@@ -257,6 +257,33 @@ export default function SettingsConnectionSection(props: SettingsConnectionSecti
               Sends browser credentials to the broker instead of relying only on a JS-visible OIDC token. Enable this when the broker is configured with{" "}
               <code className="font-mono">--auth-cookie</code> and <code className="font-mono">--cors-allow-credentials</code>.
             </div>
+            {connection.brokerCookieAuth ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-white/80 hover:bg-black/40 disabled:opacity-50"
+                  type="button"
+                  onClick={() => void connection.clearBrokerAuthCookie()}
+                  disabled={!String(connection.brokerBase || "").trim()}
+                >
+                  Clear auth cookie
+                </button>
+                {connection.brokerCookieSessionStatus === "exchanging" ? (
+                  <span className="text-sky-200" data-testid="broker-cookie-session-status">
+                    Exchanging broker bearer token for an HttpOnly cookie...
+                  </span>
+                ) : null}
+                {connection.brokerCookieSessionStatus === "ready" ? (
+                  <span className="text-emerald-200" data-testid="broker-cookie-session-status">
+                    Broker auth cookie established. The in-browser bearer token was cleared for this profile.
+                  </span>
+                ) : null}
+                {connection.brokerCookieSessionStatus === "error" && connection.brokerCookieSessionError ? (
+                  <span className="text-rose-200" data-testid="broker-cookie-session-status">
+                    Cookie exchange failed: {connection.brokerCookieSessionError}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           <div className="mt-4">

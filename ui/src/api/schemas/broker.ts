@@ -9,6 +9,8 @@ type BrokerErrorFields = {
 
 export type BrokerAgentsResp =
   BrokerPaths["/v1/agents"]["get"]["responses"][200]["content"]["application/json"] & BrokerErrorFields;
+export type BrokerAuthSessionResp =
+  BrokerPaths["/v1/auth/session"]["post"]["responses"][200]["content"]["application/json"] & BrokerErrorFields;
 export type BrokerDeploymentsResp = BrokerComponents["schemas"]["AgentDeploymentsResponse"] & BrokerErrorFields;
 export type BrokerMembersResp =
   BrokerPaths["/v1/agents/{agent_id}/members"]["get"]["responses"][200]["content"]["application/json"] & BrokerErrorFields;
@@ -130,6 +132,21 @@ export const BrokerAgentsRespSchema: z.ZodType<BrokerAgentsResp> = z
   .object({
     ok: z.boolean(),
     agents: z.array(AgentInfoSchema),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerAuthSessionRespSchema: z.ZodType<BrokerAuthSessionResp> = z
+  .object({
+    ok: z.boolean(),
+    cookie_name: z.string(),
+    auth_kind: z.string().optional(),
+    cleared: z.boolean().optional(),
+    http_only: z.boolean(),
+    secure: z.boolean(),
+    same_site: z.enum(["none", "lax", "strict", "default"]),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
