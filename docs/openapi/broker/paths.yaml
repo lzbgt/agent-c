@@ -208,6 +208,248 @@
       "200":
         description: Created
 
+/v1/agents/{agent_id}/sessions:
+  get:
+    tags: [agents]
+    summary: List connector-native sessions for an agent
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+    responses:
+      "200":
+        description: Session list
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionListResponse"
+  post:
+    tags: [agents]
+    summary: Create a connector-native session for an agent
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BrokerSessionCreateRequest"
+    responses:
+      "200":
+        description: Session created
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
+/v1/agents/{agent_id}/sessions/{session_id}:
+  get:
+    tags: [agents]
+    summary: Inspect a connector-native session
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+    responses:
+      "200":
+        description: Session detail
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+  delete:
+    tags: [agents]
+    summary: Delete a connector-native session
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+    responses:
+      "200":
+        description: Session deleted
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
+/v1/agents/{agent_id}/sessions/{session_id}/attach:
+  post:
+    tags: [agents]
+    summary: Attach to a connector-native session
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BrokerSessionAttachRequest"
+    responses:
+      "200":
+        description: Session attachment response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
+/v1/agents/{agent_id}/sessions/{session_id}/attachment/renew:
+  post:
+    tags: [agents]
+    summary: Renew a connector-native session lease
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BrokerSessionLeaseRequest"
+    responses:
+      "200":
+        description: Lease renew response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
+/v1/agents/{agent_id}/sessions/{session_id}/attachment/release:
+  post:
+    tags: [agents]
+    summary: Release a connector-native session lease
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BrokerSessionLeaseRequest"
+    responses:
+      "200":
+        description: Lease release response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
+/v1/agents/{agent_id}/sessions/{session_id}/events:
+  get:
+    tags: [agents]
+    summary: Stream connector-native session events via SSE
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+      - in: header
+        name: Last-Event-ID
+        required: false
+        schema: { type: string }
+        description: Resume token for replay/resume-aware connectors.
+    responses:
+      "200":
+        description: SSE stream
+        content:
+          text/event-stream:
+            schema:
+              type: string
+
+/v1/agents/{agent_id}/sessions/{session_id}/transcript:
+  get:
+    tags: [agents]
+    summary: Fetch a connector-native session transcript
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+    responses:
+      "200":
+        description: Transcript response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
 /v1/audio/sessions:
   post:
     tags: [audio]

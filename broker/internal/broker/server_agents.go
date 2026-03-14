@@ -154,6 +154,13 @@ func (s *Server) handleAgentsSubroutes(w http.ResponseWriter, r *http.Request) {
 	// Supported:
 	// - /v1/agents/{agent_id}/proxy/<agentd_path>
 	// - /v1/agents/{agent_id}/proxy_sse/<agentd_path>
+	// - /v1/agents/{agent_id}/sessions
+	// - /v1/agents/{agent_id}/sessions/{session_id}
+	// - /v1/agents/{agent_id}/sessions/{session_id}/attach
+	// - /v1/agents/{agent_id}/sessions/{session_id}/attachment/renew
+	// - /v1/agents/{agent_id}/sessions/{session_id}/attachment/release
+	// - /v1/agents/{agent_id}/sessions/{session_id}/events
+	// - /v1/agents/{agent_id}/sessions/{session_id}/transcript
 	// - /v1/agents/{agent_id}/disconnect
 	// - /v1/agents/{agent_id}/deployments
 	// - /v1/agents/{agent_id}/ota/update
@@ -176,6 +183,10 @@ func (s *Server) handleAgentsSubroutes(w http.ResponseWriter, r *http.Request) {
 
 	if action == "disconnect" {
 		s.handleAgentDisconnect(w, r, agentID)
+		return
+	}
+	if action == "sessions" {
+		s.handleAgentSessionsSubroutes(w, r, agentID, parts)
 		return
 	}
 	if action == "deployments" {

@@ -136,6 +136,21 @@ test("broker codexw lease controls attach renew and release through session rout
       });
       return;
     }
+    if (method === "GET" && path === `/v1/agents/${agentId}/sessions/${sessionId}`) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          session: {
+            session_id: sessionId,
+            thread_id: "thread-attach",
+            attachment: currentAttachment,
+          },
+        }),
+      });
+      return;
+    }
     if (method === "GET" && path === `/v1/agents/${agentId}/proxy/api/v1/session/${sessionId}`) {
       await route.fulfill({
         status: 200,
@@ -322,6 +337,21 @@ test("broker codexw lease conflicts surface current holder details", async ({ pa
         status: 404,
         contentType: "application/json",
         body: JSON.stringify({ ok: false, code: "not_found", error: "not found" }),
+      });
+      return;
+    }
+    if (method === "GET" && path === `/v1/agents/${agentId}/sessions/${sessionId}`) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          session: {
+            session_id: sessionId,
+            thread_id: "thread-conflict",
+            attachment: currentAttachment,
+          },
+        }),
       });
       return;
     }

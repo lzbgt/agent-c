@@ -210,9 +210,12 @@ export async function apiListSessions(base: string, auth?: ApiAuth): Promise<Ses
 }
 
 export async function apiGetSession(base: string, sessionId: string, auth?: ApiAuth): Promise<SessionResp> {
+  const aliasRoot = brokerAliasRootFromBase(base);
   const sid = encodeURIComponent(sessionId);
   const json = await fetchJsonWithFallback(
-    [`${base}/api/v1/session?session_id=${sid}`, `${base}/api/v1/session/${sid}`],
+    aliasRoot
+      ? [`${aliasRoot}/sessions/${sid}`, `${base}/api/v1/session?session_id=${sid}`, `${base}/api/v1/session/${sid}`]
+      : [`${base}/api/v1/session?session_id=${sid}`, `${base}/api/v1/session/${sid}`],
     auth,
   );
   return SessionSchema.parse(json);
@@ -273,9 +276,14 @@ export async function apiNewSession(
 }
 
 export async function apiDeleteSession(base: string, sessionId: string, auth?: ApiAuth): Promise<DeleteSessionResp> {
-  const r = await fetch(`${base}/api/v1/session?session_id=${encodeURIComponent(sessionId)}`, daemonFetchInit(auth, { method: "DELETE" }));
-  const j = await r.json();
-  return DeleteSessionRespSchema.parse(j);
+  const aliasRoot = brokerAliasRootFromBase(base);
+  const sid = encodeURIComponent(sessionId);
+  const json = await fetchJsonWithFallback(
+    aliasRoot ? [`${aliasRoot}/sessions/${sid}`, `${base}/api/v1/session?session_id=${sid}`] : [`${base}/api/v1/session?session_id=${sid}`],
+    auth,
+    { method: "DELETE" },
+  );
+  return DeleteSessionRespSchema.parse(json);
 }
 
 export async function apiGetAudit(base: string, sessionId: string, auth?: ApiAuth): Promise<AuditResp> {

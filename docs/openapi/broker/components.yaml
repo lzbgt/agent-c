@@ -151,6 +151,67 @@ schemas:
         type: array
         items:
           $ref: "#/components/schemas/DeploymentInfo"
+  BrokerSessionInfo:
+    type: object
+    properties:
+      session_id: { type: string }
+      thread_id: { type: string }
+      attachment:
+        type: object
+        additionalProperties: true
+      messages:
+        type: array
+        items:
+          type: object
+          additionalProperties: true
+    additionalProperties: true
+  BrokerSessionCreateRequest:
+    type: object
+    properties:
+      session_id: { type: string }
+      thread_id: { type: string }
+      create_files: { type: boolean }
+    additionalProperties: true
+  BrokerSessionAttachRequest:
+    type: object
+    properties:
+      session_id: { type: string }
+      thread_id: { type: string }
+    additionalProperties: true
+  BrokerSessionLeaseRequest:
+    type: object
+    properties:
+      client_id: { type: string }
+      lease_seconds: { type: integer, format: int32 }
+    additionalProperties: true
+  BrokerSessionResponse:
+    type: object
+    required: [ok]
+    properties:
+      ok: { type: boolean }
+      session_id: { type: string }
+      session:
+        $ref: "#/components/schemas/BrokerSessionInfo"
+      sessions:
+        type: array
+        items:
+          $ref: "#/components/schemas/BrokerSessionInfo"
+      attachment:
+        type: object
+        additionalProperties: true
+      operation:
+        type: object
+        additionalProperties: true
+      created: { type: boolean }
+      error: { type: string }
+      err: { type: string }
+      code: { type: string }
+    additionalProperties: true
+  BrokerSessionListResponse:
+    allOf:
+      - $ref: "#/components/schemas/BrokerSessionResponse"
+      - type: object
+        required: [ok, sessions]
   BrokerOtaUpdateRequest:
     type: object
     required: [url]

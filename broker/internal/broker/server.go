@@ -128,7 +128,7 @@ func New(cfg Config) (*Server, error) {
 		cfg.CorsMaxAgeSeconds = 600
 	}
 	if strings.TrimSpace(cfg.CorsAllowHeaders) == "" {
-		cfg.CorsAllowHeaders = "Authorization, X-Agentd-Authorization, X-Agentd-Deployment, Content-Type, X-Request-ID, X-Trace-ID, Idempotency-Key, X-Idempotency-Key"
+		cfg.CorsAllowHeaders = "Authorization, X-Agentd-Authorization, X-Agentd-Deployment, Content-Type, X-Request-ID, X-Trace-ID, Idempotency-Key, X-Idempotency-Key, Last-Event-ID"
 	}
 	if strings.TrimSpace(cfg.CorsAllowMethods) == "" {
 		cfg.CorsAllowMethods = "GET, POST, PUT, PATCH, DELETE, OPTIONS"

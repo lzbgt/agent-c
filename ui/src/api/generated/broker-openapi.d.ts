@@ -470,6 +470,359 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/agents/{agent_id}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List connector-native sessions for an agent */
+        get: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                };
+                path: {
+                    agent_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Session list */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionListResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create a connector-native session for an agent */
+        post: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                };
+                path: {
+                    agent_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["BrokerSessionCreateRequest"];
+                };
+            };
+            responses: {
+                /** @description Session created */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{agent_id}/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inspect a connector-native session */
+        get: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Session detail */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Delete a connector-native session */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Session deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{agent_id}/sessions/{session_id}/attach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach to a connector-native session */
+        post: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["BrokerSessionAttachRequest"];
+                };
+            };
+            responses: {
+                /** @description Session attachment response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{agent_id}/sessions/{session_id}/attachment/renew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Renew a connector-native session lease */
+        post: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["BrokerSessionLeaseRequest"];
+                };
+            };
+            responses: {
+                /** @description Lease renew response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{agent_id}/sessions/{session_id}/attachment/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Release a connector-native session lease */
+        post: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["BrokerSessionLeaseRequest"];
+                };
+            };
+            responses: {
+                /** @description Lease release response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{agent_id}/sessions/{session_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stream connector-native session events via SSE */
+        get: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                    /** @description Resume token for replay/resume-aware connectors. */
+                    "Last-Event-ID"?: string;
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description SSE stream */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/event-stream": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{agent_id}/sessions/{session_id}/transcript": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch a connector-native session transcript */
+        get: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Transcript response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/audio/sessions": {
         parameters: {
             query?: never;
@@ -2975,6 +3328,57 @@ export interface components {
             default_deployment_id?: string;
             deployments: components["schemas"]["DeploymentInfo"][];
         };
+        BrokerSessionInfo: {
+            session_id?: string;
+            thread_id?: string;
+            attachment?: {
+                [key: string]: unknown;
+            };
+            messages?: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
+        };
+        BrokerSessionCreateRequest: {
+            session_id?: string;
+            thread_id?: string;
+            create_files?: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        BrokerSessionAttachRequest: {
+            session_id?: string;
+            thread_id?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        BrokerSessionLeaseRequest: {
+            client_id?: string;
+            /** Format: int32 */
+            lease_seconds?: number;
+        } & {
+            [key: string]: unknown;
+        };
+        BrokerSessionResponse: {
+            ok: boolean;
+            session_id?: string;
+            session?: components["schemas"]["BrokerSessionInfo"];
+            sessions?: components["schemas"]["BrokerSessionInfo"][];
+            attachment?: {
+                [key: string]: unknown;
+            };
+            operation?: {
+                [key: string]: unknown;
+            };
+            created?: boolean;
+            error?: string;
+            err?: string;
+            code?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        BrokerSessionListResponse: components["schemas"]["BrokerSessionResponse"] & Record<string, never>;
         BrokerOtaUpdateRequest: {
             url: string;
             sha256?: string;

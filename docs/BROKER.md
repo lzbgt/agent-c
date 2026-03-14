@@ -331,6 +331,22 @@ All endpoints below are served by the broker (not by agents).
   - broker flushes chunks as they arrive from the agent connector
   - optional header `X-Agentd-Deployment: <deployment_id>` (or query `deployment_id`) to target a specific deployment
 
+- `/v1/agents/{agent_id}/sessions/...`
+  - broker-native session aliases for external-compatible connectors and browser clients that should not need to hand-assemble raw `/proxy/...` paths
+  - supported aliases:
+    - `GET  /v1/agents/{agent_id}/sessions`
+    - `POST /v1/agents/{agent_id}/sessions`
+    - `GET  /v1/agents/{agent_id}/sessions/{session_id}`
+    - `DELETE /v1/agents/{agent_id}/sessions/{session_id}`
+    - `POST /v1/agents/{agent_id}/sessions/{session_id}/attach`
+    - `POST /v1/agents/{agent_id}/sessions/{session_id}/attachment/renew`
+    - `POST /v1/agents/{agent_id}/sessions/{session_id}/attachment/release`
+    - `GET  /v1/agents/{agent_id}/sessions/{session_id}/events`
+    - `GET  /v1/agents/{agent_id}/sessions/{session_id}/transcript`
+  - `POST .../attach` injects the path `session_id` into the proxied JSON body
+  - `GET .../events` preserves `Last-Event-ID` for replay/resume
+  - deployment targeting works the same way as the proxy routes via `X-Agentd-Deployment`
+
 Idempotency (optional):
 - send `Idempotency-Key` (or `X-Idempotency-Key`) to safely retry proxied requests
 - if the same key is reused with a different request payload, the broker returns `409` (`idempotency_key_conflict`)
@@ -476,6 +492,7 @@ The broker supports CORS for browser clients with **explicit opt-in**:
 - `--cors-origin <origin>` (repeatable) or `--cors-origins <csv>`
   - accepts exact origins, `*`, or `re:<regex>`
 - `--cors-allow-headers <csv>` (default includes Authorization + tracing + idempotency headers)
+  - include `Last-Event-ID` when browser clients use SSE replay/resume
 - `--cors-allow-methods <csv>` (default: GET, POST, PUT, PATCH, DELETE, OPTIONS)
 - `--cors-allow-credentials` (enable cookie auth; requires explicit origins)
 - `--cors-max-age-seconds <n>`

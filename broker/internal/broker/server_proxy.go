@@ -26,21 +26,25 @@ func (s *Server) auditRelay(ctx context.Context, p *Principal, agentID, deployme
 		return
 	}
 	tid := traceIDFromContext(ctx)
-	_ = s.cfg.DB.InsertRelayAudit(ctx, p.Sub, agentID, method, agentPath, status, latencyMS, errStr, tid)
-	s.cfg.Events.PublishTo([]string{p.Sub}, events.Event{
-		Type:    "relay_audit",
-		AgentID: agentID,
-		UserSub: p.Sub,
-		TraceID: tid,
-		Payload: map[string]any{
-			"method":        method,
-			"path":          agentPath,
-			"deployment_id": deploymentID,
-			"status":        status,
-			"latency_ms":    latencyMS,
-			"error":         errStr,
-		},
-	})
+	if s.cfg.DB != nil {
+		_ = s.cfg.DB.InsertRelayAudit(ctx, p.Sub, agentID, method, agentPath, status, latencyMS, errStr, tid)
+	}
+	if s.cfg.Events != nil {
+		s.cfg.Events.PublishTo([]string{p.Sub}, events.Event{
+			Type:    "relay_audit",
+			AgentID: agentID,
+			UserSub: p.Sub,
+			TraceID: tid,
+			Payload: map[string]any{
+				"method":        method,
+				"path":          agentPath,
+				"deployment_id": deploymentID,
+				"status":        status,
+				"latency_ms":    latencyMS,
+				"error":         errStr,
+			},
+		})
+	}
 }
 
 func (s *Server) relayAgentHTTP(
@@ -170,6 +174,10 @@ func buildAgentForwardHeaders(r *http.Request, userSub string) map[string]string
 		if kl == "authorization" || kl == "host" || kl == "connection" || kl == "idempotency-key" || kl == "x-idempotency-key" || kl == "x-agentd-deployment" {
 			continue
 		}
+		if strings.EqualFold(k, "Last-Event-ID") {
+			headers["Last-Event-ID"] = vv[0]
+			continue
+		}
 		headers[k] = vv[0]
 	}
 	hasHeader := func(name string) bool {
@@ -230,16 +238,31 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 		writeErrorJSON(w, idemErr.Error(), http.StatusBadRequest)
 		return
 	}
+	s.relayAuthorizedAgentHTTP(w, r, p, agentID, deploymentID, r.Method, agentPath, r.URL.RawQuery, body, idemKey)
+}
+
+func (s *Server) relayAuthorizedAgentHTTP(
+	w http.ResponseWriter,
+	r *http.Request,
+	p *Principal,
+	agentID string,
+	deploymentID string,
+	method string,
+	agentPath string,
+	rawQuery string,
+	body []byte,
+	idemKey string,
+) {
 	var idemStatus db.IdempotencyStatus
 	if idemKey != "" {
-		reqHash := idempotencyRequestHash(r.Method, agentPath, r.URL.RawQuery, agentID, deploymentID, body)
+		reqHash := idempotencyRequestHash(method, agentPath, rawQuery, agentID, deploymentID, body)
 		claim, err := s.cfg.DB.ClaimIdempotency(r.Context(), db.IdempotencyRecord{
 			UserSub:       p.Sub,
 			Key:           idemKey,
 			RequestSHA256: reqHash,
-			Method:        r.Method,
+			Method:        method,
 			Path:          agentPath,
-			Query:         r.URL.RawQuery,
+			Query:         rawQuery,
 			AgentID:       agentID,
 			ExpiresAt:     time.Now().Add(s.cfg.IdempotencyTTL),
 		})
@@ -286,7 +309,7 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 	// Build agent-facing request.
 	headers := buildAgentForwardHeaders(r, p.Sub)
 
-	ro := s.relayAgentHTTP(r.Context(), p, agentID, deploymentID, r.Method, agentPath, r.URL.RawQuery, headers, body)
+	ro := s.relayAgentHTTP(r.Context(), p, agentID, deploymentID, method, agentPath, rawQuery, headers, body)
 	if ro.BrokerStatus != 0 {
 		if idemKey != "" {
 			_ = s.cfg.DB.DeleteIdempotency(r.Context(), p.Sub, idemKey)
