@@ -421,7 +421,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
 - [x] W=9 — Goal + role plan versioning: add versioned diffs for goal/role plan changes with replayable events to reduce drift and improve audits.
   - 2026-02-26: added goal/role revision history with diff keys, replayable events, SSE payloads, and WebUI revision views.
 - [ ] W=8 — Orchestrator modularization: split `agentd-orchestrator` loop into SOLID modules (scheduling, allocation, drift, guidance) to keep files <2000 LOC.
-  - 2026-03-15: extracted the drift/replan control path and the runtime allocation/handoff/retire path out of `broker/cmd/agentd-orchestrator/main.go` into dedicated modules; scheduling/main-loop extraction still remains.
+  - 2026-03-15: extracted the drift/replan control path, runtime allocation/handoff/retire path, and the run lifecycle/lease progression path out of `broker/cmd/agentd-orchestrator/main.go`; the shell is now 332 lines, with scheduling/main-loop polish still remaining.
 - [ ] W=8 — Capacity-based autoscale: spawn or retire runtime members based on backlog/latency signals (not only missing roles).
 - [ ] W=9 — Scheduling + isolation MVP: admission control, per-run budgets, and tool execution caps with evidence logs.
 - [ ] W=8 — Data governance controls: retention policy config, export/erase endpoints, and redaction-aware evidence bundles.
