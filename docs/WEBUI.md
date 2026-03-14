@@ -135,6 +135,13 @@ Secret handling:
   and reconnects through the broker session stream path instead of relying on transient live-only rendering.
 - Settings → Connection shows session stream diagnostics for the active session: stream state, buffered event count, last event id,
   last event timestamp, and the latest reconnect error.
+- Settings → Connection also includes a broker session operator section for the active `session_id`:
+  - orchestration status / workers / dependencies
+  - shell list / start / detail / poll / send / terminate
+  - service list / detail / attach / wait / run
+  - capability list / detail
+- The operator surface is intentionally shell-first and service/capability-first. It does not claim a stable artifact browser; result
+  interpretation still comes from transcript, session events, shell output, and service metadata.
 - The WebUI runs a single **Advanced** layout: Scene on top, Conversation below, and tool panels in the sidebar.
 - Conversation history is persisted in the daemon DB and reloaded after refresh (user/assistant messages plus run tool records).
 - You can queue prompts while a run is active; queued runs execute in order and the queue count is shown in the Run/Queue button.

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 )
 
@@ -88,6 +89,34 @@ func (s *Server) handleAgentSessionsSubroutes(w http.ResponseWriter, r *http.Req
 			return
 		}
 		s.handleAgentSessionTranscriptAlias(w, r, p, agentID, deploymentID, sessionID)
+		return
+	case "orchestration":
+		if len(parts) != 3 {
+			writeErrorJSON(w, "not found", http.StatusNotFound)
+			return
+		}
+		switch parts[2] {
+		case "status", "workers", "dependencies":
+			s.handleAgentSessionReadAlias(
+				w,
+				r,
+				p,
+				agentID,
+				deploymentID,
+				path.Join("/api/v1/session", sessionID, "orchestration", parts[2]),
+			)
+		default:
+			writeErrorJSON(w, "not found", http.StatusNotFound)
+		}
+		return
+	case "shells":
+		s.handleAgentSessionShellsAlias(w, r, p, agentID, deploymentID, sessionID, parts[2:])
+		return
+	case "services":
+		s.handleAgentSessionServicesAlias(w, r, p, agentID, deploymentID, sessionID, parts[2:])
+		return
+	case "capabilities":
+		s.handleAgentSessionCapabilitiesAlias(w, r, p, agentID, deploymentID, sessionID, parts[2:])
 		return
 	default:
 		writeErrorJSON(w, "not found", http.StatusNotFound)
@@ -175,16 +204,153 @@ func (s *Server) handleAgentSessionAttachmentAlias(w http.ResponseWriter, r *htt
 	s.relayAuthorizedAgentHTTP(w, r, p, agentID, deploymentID, r.Method, agentPath, r.URL.RawQuery, body, idemKey)
 }
 
+func (s *Server) handleAgentSessionReadAlias(w http.ResponseWriter, r *http.Request, p *Principal, agentID, deploymentID, agentPath string) {
+	if r.Method != "GET" {
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.relayAuthorizedAgentHTTP(w, r, p, agentID, deploymentID, r.Method, agentPath, r.URL.RawQuery, nil, "")
+}
+
 func (s *Server) handleAgentSessionEventsAlias(w http.ResponseWriter, r *http.Request, agentID, agentPath string) {
 	s.handleAgentProxySSE(w, r, agentID, agentPath)
 }
 
 func (s *Server) handleAgentSessionTranscriptAlias(w http.ResponseWriter, r *http.Request, p *Principal, agentID, deploymentID, sessionID string) {
-	if r.Method != "GET" {
-		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+	s.handleAgentSessionReadAlias(w, r, p, agentID, deploymentID, path.Join("/api/v1/session", sessionID, "transcript"))
+}
+
+func (s *Server) handleAgentSessionShellsAlias(w http.ResponseWriter, r *http.Request, p *Principal, agentID, deploymentID, sessionID string, rest []string) {
+	basePath := path.Join("/api/v1/session", sessionID, "shells")
+	if len(rest) == 0 {
+		switch r.Method {
+		case "GET":
+			s.relayAuthorizedAgentHTTP(w, r, p, agentID, deploymentID, r.Method, basePath, r.URL.RawQuery, nil, "")
+		case "POST":
+			body, ok := readAliasMutationBody(w, r, s.cfg.MaxRequestBodySize)
+			if !ok {
+				return
+			}
+			idemKey, ok := readAliasIdempotencyKey(w, r)
+			if !ok {
+				return
+			}
+			s.relayAuthorizedAgentHTTP(w, r, p, agentID, deploymentID, r.Method, path.Join(basePath, "start"), r.URL.RawQuery, body, idemKey)
+		default:
+			writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
 		return
 	}
-	s.relayAuthorizedAgentHTTP(w, r, p, agentID, deploymentID, r.Method, "/api/v1/session/"+sessionID+"/transcript", r.URL.RawQuery, nil, "")
+	jobRef, ok := decodeAliasPathSegment(w, rest[0], "invalid job_ref")
+	if !ok {
+		return
+	}
+	jobPath := path.Join(basePath, jobRef)
+	if len(rest) == 1 {
+		s.handleAgentSessionReadAlias(w, r, p, agentID, deploymentID, jobPath)
+		return
+	}
+	if len(rest) != 2 {
+		writeErrorJSON(w, "not found", http.StatusNotFound)
+		return
+	}
+	switch rest[1] {
+	case "poll", "send", "terminate":
+		body, ok := readAliasMutationBody(w, r, s.cfg.MaxRequestBodySize)
+		if !ok {
+			return
+		}
+		idemKey, ok := readAliasIdempotencyKey(w, r)
+		if !ok {
+			return
+		}
+		s.relayAuthorizedAgentHTTP(w, r, p, agentID, deploymentID, "POST", path.Join(jobPath, rest[1]), r.URL.RawQuery, body, idemKey)
+	default:
+		writeErrorJSON(w, "not found", http.StatusNotFound)
+	}
+}
+
+func (s *Server) handleAgentSessionServicesAlias(w http.ResponseWriter, r *http.Request, p *Principal, agentID, deploymentID, sessionID string, rest []string) {
+	basePath := path.Join("/api/v1/session", sessionID, "services")
+	if len(rest) == 0 {
+		s.handleAgentSessionReadAlias(w, r, p, agentID, deploymentID, basePath)
+		return
+	}
+	jobRef, ok := decodeAliasPathSegment(w, rest[0], "invalid job_ref")
+	if !ok {
+		return
+	}
+	jobPath := path.Join(basePath, jobRef)
+	if len(rest) == 1 {
+		s.handleAgentSessionReadAlias(w, r, p, agentID, deploymentID, jobPath)
+		return
+	}
+	if len(rest) != 2 {
+		writeErrorJSON(w, "not found", http.StatusNotFound)
+		return
+	}
+	switch rest[1] {
+	case "attach", "wait", "run":
+		body, ok := readAliasMutationBody(w, r, s.cfg.MaxRequestBodySize)
+		if !ok {
+			return
+		}
+		idemKey, ok := readAliasIdempotencyKey(w, r)
+		if !ok {
+			return
+		}
+		s.relayAuthorizedAgentHTTP(w, r, p, agentID, deploymentID, "POST", path.Join(jobPath, rest[1]), r.URL.RawQuery, body, idemKey)
+	default:
+		writeErrorJSON(w, "not found", http.StatusNotFound)
+	}
+}
+
+func (s *Server) handleAgentSessionCapabilitiesAlias(w http.ResponseWriter, r *http.Request, p *Principal, agentID, deploymentID, sessionID string, rest []string) {
+	basePath := path.Join("/api/v1/session", sessionID, "capabilities")
+	if len(rest) == 0 {
+		s.handleAgentSessionReadAlias(w, r, p, agentID, deploymentID, basePath)
+		return
+	}
+	if len(rest) != 1 {
+		writeErrorJSON(w, "not found", http.StatusNotFound)
+		return
+	}
+	capability, ok := decodeAliasPathSegment(w, rest[0], "invalid capability")
+	if !ok {
+		return
+	}
+	s.handleAgentSessionReadAlias(w, r, p, agentID, deploymentID, path.Join(basePath, capability))
+}
+
+func readAliasMutationBody(w http.ResponseWriter, r *http.Request, maxSize int64) ([]byte, bool) {
+	if r.Method != "POST" {
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+		return nil, false
+	}
+	body, err := readBodyBounded(r.Body, maxSize)
+	if err != nil {
+		writeErrorJSON(w, "request body too large", http.StatusRequestEntityTooLarge)
+		return nil, false
+	}
+	return body, true
+}
+
+func readAliasIdempotencyKey(w http.ResponseWriter, r *http.Request) (string, bool) {
+	idemKey, err := idempotencyKeyFromRequest(r)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return "", false
+	}
+	return idemKey, true
+}
+
+func decodeAliasPathSegment(w http.ResponseWriter, raw string, errMsg string) (string, bool) {
+	decoded, err := url.PathUnescape(raw)
+	if err != nil || strings.TrimSpace(decoded) == "" {
+		writeErrorJSON(w, errMsg, http.StatusBadRequest)
+		return "", false
+	}
+	return decoded, true
 }
 
 func injectSessionIDIntoAttachBody(body []byte, sessionID string) ([]byte, error) {

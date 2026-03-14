@@ -450,6 +450,548 @@
             schema:
               $ref: "#/components/schemas/BrokerSessionResponse"
 
+/v1/agents/{agent_id}/sessions/{session_id}/orchestration/status:
+  get:
+    tags: [agents]
+    summary: Fetch connector-native orchestration status
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+    responses:
+      "200":
+        description: Orchestration status response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
+/v1/agents/{agent_id}/sessions/{session_id}/orchestration/workers:
+  get:
+    tags: [agents]
+    summary: Fetch connector-native orchestration workers
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+    responses:
+      "200":
+        description: Orchestration workers response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
+/v1/agents/{agent_id}/sessions/{session_id}/orchestration/dependencies:
+  get:
+    tags: [agents]
+    summary: Fetch connector-native orchestration dependencies
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+    responses:
+      "200":
+        description: Orchestration dependencies response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
+/v1/agents/{agent_id}/sessions/{session_id}/shells:
+  get:
+    tags: [agents]
+    summary: List connector-native shell jobs for a session
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+    responses:
+      "200":
+        description: Shell list response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+  post:
+    tags: [agents]
+    summary: Start a connector-native shell job for a session
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+      - in: header
+        name: X-Codexw-Client-Id
+        required: false
+        schema: { type: string }
+      - in: header
+        name: X-Codexw-Lease-Seconds
+        required: false
+        schema: { type: integer, format: int32 }
+      - $ref: "#/components/parameters/IdempotencyKey"
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BrokerSessionShellStartRequest"
+    responses:
+      "200":
+        description: Shell start response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
+/v1/agents/{agent_id}/sessions/{session_id}/shells/{job_ref}:
+  get:
+    tags: [agents]
+    summary: Fetch connector-native shell job detail
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: job_ref
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+    responses:
+      "200":
+        description: Shell detail response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
+/v1/agents/{agent_id}/sessions/{session_id}/shells/{job_ref}/poll:
+  post:
+    tags: [agents]
+    summary: Poll connector-native shell state
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: job_ref
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+      - in: header
+        name: X-Codexw-Client-Id
+        required: false
+        schema: { type: string }
+      - in: header
+        name: X-Codexw-Lease-Seconds
+        required: false
+        schema: { type: integer, format: int32 }
+      - $ref: "#/components/parameters/IdempotencyKey"
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      "200":
+        description: Shell poll response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
+/v1/agents/{agent_id}/sessions/{session_id}/shells/{job_ref}/send:
+  post:
+    tags: [agents]
+    summary: Send stdin to a connector-native shell job
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: job_ref
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+      - in: header
+        name: X-Codexw-Client-Id
+        required: false
+        schema: { type: string }
+      - in: header
+        name: X-Codexw-Lease-Seconds
+        required: false
+        schema: { type: integer, format: int32 }
+      - $ref: "#/components/parameters/IdempotencyKey"
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BrokerSessionShellSendRequest"
+    responses:
+      "200":
+        description: Shell send response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
+/v1/agents/{agent_id}/sessions/{session_id}/shells/{job_ref}/terminate:
+  post:
+    tags: [agents]
+    summary: Terminate a connector-native shell job
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: job_ref
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+      - in: header
+        name: X-Codexw-Client-Id
+        required: false
+        schema: { type: string }
+      - in: header
+        name: X-Codexw-Lease-Seconds
+        required: false
+        schema: { type: integer, format: int32 }
+      - $ref: "#/components/parameters/IdempotencyKey"
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      "200":
+        description: Shell terminate response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
+/v1/agents/{agent_id}/sessions/{session_id}/services:
+  get:
+    tags: [agents]
+    summary: List connector-native services for a session
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+    responses:
+      "200":
+        description: Service list response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
+/v1/agents/{agent_id}/sessions/{session_id}/services/{job_ref}:
+  get:
+    tags: [agents]
+    summary: Fetch connector-native service detail
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: job_ref
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+    responses:
+      "200":
+        description: Service detail response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
+/v1/agents/{agent_id}/sessions/{session_id}/services/{job_ref}/attach:
+  post:
+    tags: [agents]
+    summary: Attach to a connector-native service
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: job_ref
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+      - in: header
+        name: X-Codexw-Client-Id
+        required: false
+        schema: { type: string }
+      - in: header
+        name: X-Codexw-Lease-Seconds
+        required: false
+        schema: { type: integer, format: int32 }
+      - $ref: "#/components/parameters/IdempotencyKey"
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      "200":
+        description: Service attach response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
+/v1/agents/{agent_id}/sessions/{session_id}/services/{job_ref}/wait:
+  post:
+    tags: [agents]
+    summary: Wait for a connector-native service to become ready
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: job_ref
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+      - in: header
+        name: X-Codexw-Client-Id
+        required: false
+        schema: { type: string }
+      - in: header
+        name: X-Codexw-Lease-Seconds
+        required: false
+        schema: { type: integer, format: int32 }
+      - $ref: "#/components/parameters/IdempotencyKey"
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BrokerSessionServiceWaitRequest"
+    responses:
+      "200":
+        description: Service wait response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
+/v1/agents/{agent_id}/sessions/{session_id}/services/{job_ref}/run:
+  post:
+    tags: [agents]
+    summary: Invoke a connector-native service recipe
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: job_ref
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+      - in: header
+        name: X-Codexw-Client-Id
+        required: false
+        schema: { type: string }
+      - in: header
+        name: X-Codexw-Lease-Seconds
+        required: false
+        schema: { type: integer, format: int32 }
+      - $ref: "#/components/parameters/IdempotencyKey"
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BrokerSessionServiceRunRequest"
+    responses:
+      "200":
+        description: Service run response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
+/v1/agents/{agent_id}/sessions/{session_id}/capabilities:
+  get:
+    tags: [agents]
+    summary: List connector-native capabilities for a session
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+    responses:
+      "200":
+        description: Capability list response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
+/v1/agents/{agent_id}/sessions/{session_id}/capabilities/{capability}:
+  get:
+    tags: [agents]
+    summary: Fetch connector-native capability detail
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: capability
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Agentd-Deployment
+        required: false
+        schema: { type: string }
+    responses:
+      "200":
+        description: Capability detail response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerSessionResponse"
+
 /v1/audio/sessions:
   post:
     tags: [audio]

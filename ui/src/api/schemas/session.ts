@@ -257,3 +257,15 @@ export const SessionAttachmentActionRespSchema = z
   })
   .passthrough();
 export type SessionAttachmentActionResp = z.infer<typeof SessionAttachmentActionRespSchema>;
+
+export const SessionOperatorRespSchema = z
+  .object({
+    ok: z.boolean().optional(),
+    error: SessionErrorValueSchema.optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+    status: z.number().optional(),
+    message: z.string().optional(),
+  })
+  .passthrough();
+export type SessionOperatorResp = z.infer<typeof SessionOperatorRespSchema>;

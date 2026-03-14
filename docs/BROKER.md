@@ -343,8 +343,26 @@ All endpoints below are served by the broker (not by agents).
     - `POST /v1/agents/{agent_id}/sessions/{session_id}/attachment/release`
     - `GET  /v1/agents/{agent_id}/sessions/{session_id}/events`
     - `GET  /v1/agents/{agent_id}/sessions/{session_id}/transcript`
+    - `GET  /v1/agents/{agent_id}/sessions/{session_id}/orchestration/status`
+    - `GET  /v1/agents/{agent_id}/sessions/{session_id}/orchestration/workers`
+    - `GET  /v1/agents/{agent_id}/sessions/{session_id}/orchestration/dependencies`
+    - `GET  /v1/agents/{agent_id}/sessions/{session_id}/shells`
+    - `POST /v1/agents/{agent_id}/sessions/{session_id}/shells`
+    - `GET  /v1/agents/{agent_id}/sessions/{session_id}/shells/{job_ref}`
+    - `POST /v1/agents/{agent_id}/sessions/{session_id}/shells/{job_ref}/poll`
+    - `POST /v1/agents/{agent_id}/sessions/{session_id}/shells/{job_ref}/send`
+    - `POST /v1/agents/{agent_id}/sessions/{session_id}/shells/{job_ref}/terminate`
+    - `GET  /v1/agents/{agent_id}/sessions/{session_id}/services`
+    - `GET  /v1/agents/{agent_id}/sessions/{session_id}/services/{job_ref}`
+    - `POST /v1/agents/{agent_id}/sessions/{session_id}/services/{job_ref}/attach`
+    - `POST /v1/agents/{agent_id}/sessions/{session_id}/services/{job_ref}/wait`
+    - `POST /v1/agents/{agent_id}/sessions/{session_id}/services/{job_ref}/run`
+    - `GET  /v1/agents/{agent_id}/sessions/{session_id}/capabilities`
+    - `GET  /v1/agents/{agent_id}/sessions/{session_id}/capabilities/{capability}`
   - `POST .../attach` injects the path `session_id` into the proxied JSON body
+  - `POST .../shells` maps to the connector-native shell-start route while keeping the browser-facing surface method-sensitive on `/shells`
   - `GET .../events` preserves `Last-Event-ID` for replay/resume
+  - shell/service/capability refs are percent-decoded on alias routes before the request is relayed upstream
   - deployment targeting works the same way as the proxy routes via `X-Agentd-Deployment`
 
 Idempotency (optional):

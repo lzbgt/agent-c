@@ -24,8 +24,10 @@ contract map.
   - broker now exposes real `/v1/agents/{agent_id}/sessions/...` aliases, the WebUI uses them for lifecycle control, and lease conflict handling is covered by broker-backed Playwright regression.
 - [x] Broker/WebUI: make SSE replay/resume with `Last-Event-ID` a first-class reconnect path for `codexw` sessions instead of relying on best-effort live-only streams.
   - WebUI now persists a bounded broker-session event buffer and replay cursor locally, rehydrates the live conversation after refresh, and reconnects through `/v1/agents/{agent_id}/sessions/{session_id}/events` with `Last-Event-ID`.
-- [ ] Broker/WebUI: ship shell-first host examination for `codexw` sessions (`shell list/start/detail/poll/send/terminate`) and keep transcript/event correlation visible.
-- [ ] Broker/WebUI: expose `codexw` service and capability surfaces as operator tooling before inventing parallel synthetic abstractions.
+- [x] Broker/WebUI: ship shell-first host examination for `codexw` sessions (`shell list/start/detail/poll/send/terminate`) and keep transcript/event correlation visible.
+  - broker now exposes native `/v1/agents/{agent_id}/sessions/{session_id}/shells...` and orchestration aliases, and the WebUI connection settings include a broker session operator surface for orchestration plus shell start/detail/poll/send/terminate alongside the existing session stream diagnostics.
+- [x] Broker/WebUI: expose `codexw` service and capability surfaces as operator tooling before inventing parallel synthetic abstractions.
+  - broker now exposes `/services...` and `/capabilities...` session aliases, and the WebUI operator section exposes service list/detail/attach/wait/run and capability list/detail against the current broker-backed session.
 - [ ] Broker/WebUI: keep artifact-centric UX explicitly separate until `codexw` provides a real artifact list/detail/content API; gather missing cases as requirements rather than faking an artifact browser.
 - [ ] Broker/WebUI: add a real codexw-to-codexw cross-deployment collaboration/handoff lane so deployment-to-deployment work transfer is broker-mediated, session-aware, and replayable instead of a manual operator convention.
 

@@ -38,6 +38,27 @@ func (f *fakeSessionAliasConn) WriteJSON(v any) error {
 		if req.Req.Path == "/api/v1/session/sess-123/transcript" {
 			body = []byte(`{"ok":true,"session_id":"sess-123","entries":[]}`)
 		}
+		if req.Req.Path == "/api/v1/session/sess-123/orchestration/status" {
+			body = []byte(`{"ok":true,"counts":{"workers":2,"services":1}}`)
+		}
+		if req.Req.Path == "/api/v1/session/sess-123/shells" {
+			body = []byte(`{"ok":true,"shells":[{"job_id":"bg-1","label":"build","status":"running"}]}`)
+		}
+		if req.Req.Path == "/api/v1/session/sess-123/shells/start" {
+			body = []byte(`{"ok":true,"job":{"job_id":"bg-2","label":"probe","status":"running"}}`)
+		}
+		if req.Req.Path == "/api/v1/session/sess-123/shells/@api.http/poll" {
+			body = []byte(`{"ok":true,"job":{"job_id":"bg-1","status":"running","stdout":"ready"}}`)
+		}
+		if req.Req.Path == "/api/v1/session/sess-123/services" {
+			body = []byte(`{"ok":true,"services":[{"job_id":"bg-7","label":"api","status":"ready"}]}`)
+		}
+		if req.Req.Path == "/api/v1/session/sess-123/services/@api.http/run" {
+			body = []byte(`{"ok":true,"result":{"status":"ok"}}`)
+		}
+		if req.Req.Path == "/api/v1/session/sess-123/capabilities/@api.http" {
+			body = []byte(`{"ok":true,"capability":{"name":"@api.http","providers":["bg-7"]}}`)
+		}
 		f.agent.Deliver(proto.RelayResponse{
 			Type: proto.TypeHTTPResp,
 			ID:   req.ID,
@@ -176,6 +197,121 @@ func TestHandleAgentSessionTranscriptAliasRelaysToTranscriptPath(t *testing.T) {
 	}
 	if fake.lastRelayReq.Req.Path != "/api/v1/session/sess-123/transcript" {
 		t.Fatalf("unexpected transcript path %q", fake.lastRelayReq.Req.Path)
+	}
+}
+
+func TestHandleAgentSessionOrchestrationAliasRelaysToStatusPath(t *testing.T) {
+	s, fake := newSessionAliasTestServer()
+	req := httptest.NewRequest("GET", "http://broker/v1/agents/agent1/sessions/sess-123/orchestration/status", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	w := httptest.NewRecorder()
+
+	s.handleAgentsSubroutes(w, req)
+
+	res := w.Result()
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.StatusCode)
+	}
+	if fake.lastRelayReq == nil {
+		t.Fatalf("expected relay request")
+	}
+	if fake.lastRelayReq.Req.Path != "/api/v1/session/sess-123/orchestration/status" {
+		t.Fatalf("unexpected orchestration path %q", fake.lastRelayReq.Req.Path)
+	}
+}
+
+func TestHandleAgentSessionShellStartAliasMapsToStartPath(t *testing.T) {
+	s, fake := newSessionAliasTestServer()
+	req := httptest.NewRequest("POST", "http://broker/v1/agents/agent1/sessions/sess-123/shells", strings.NewReader(`{"command":"pwd","label":"probe"}`))
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	s.handleAgentsSubroutes(w, req)
+
+	res := w.Result()
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.StatusCode)
+	}
+	if fake.lastRelayReq == nil {
+		t.Fatalf("expected relay request")
+	}
+	if fake.lastRelayReq.Req.Path != "/api/v1/session/sess-123/shells/start" {
+		t.Fatalf("unexpected shell start path %q", fake.lastRelayReq.Req.Path)
+	}
+	rawBody, err := base64.StdEncoding.DecodeString(fake.lastRelayReq.Req.BodyB64)
+	if err != nil {
+		t.Fatalf("decode proxied body: %v", err)
+	}
+	if got := string(rawBody); !strings.Contains(got, `"command":"pwd"`) || !strings.Contains(got, `"label":"probe"`) {
+		t.Fatalf("unexpected shell start body %q", got)
+	}
+}
+
+func TestHandleAgentSessionShellActionAliasDecodesJobRef(t *testing.T) {
+	s, fake := newSessionAliasTestServer()
+	req := httptest.NewRequest("POST", "http://broker/v1/agents/agent1/sessions/sess-123/shells/%40api.http/poll", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	s.handleAgentsSubroutes(w, req)
+
+	res := w.Result()
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.StatusCode)
+	}
+	if fake.lastRelayReq == nil {
+		t.Fatalf("expected relay request")
+	}
+	if fake.lastRelayReq.Req.Path != "/api/v1/session/sess-123/shells/@api.http/poll" {
+		t.Fatalf("unexpected shell action path %q", fake.lastRelayReq.Req.Path)
+	}
+}
+
+func TestHandleAgentSessionServiceRunAliasDecodesJobRef(t *testing.T) {
+	s, fake := newSessionAliasTestServer()
+	req := httptest.NewRequest("POST", "http://broker/v1/agents/agent1/sessions/sess-123/services/%40api.http/run", strings.NewReader(`{"recipe":"health"}`))
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	s.handleAgentsSubroutes(w, req)
+
+	res := w.Result()
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.StatusCode)
+	}
+	if fake.lastRelayReq == nil {
+		t.Fatalf("expected relay request")
+	}
+	if fake.lastRelayReq.Req.Path != "/api/v1/session/sess-123/services/@api.http/run" {
+		t.Fatalf("unexpected service run path %q", fake.lastRelayReq.Req.Path)
+	}
+}
+
+func TestHandleAgentSessionCapabilityAliasDecodesCapabilityRef(t *testing.T) {
+	s, fake := newSessionAliasTestServer()
+	req := httptest.NewRequest("GET", "http://broker/v1/agents/agent1/sessions/sess-123/capabilities/%40api.http", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	w := httptest.NewRecorder()
+
+	s.handleAgentsSubroutes(w, req)
+
+	res := w.Result()
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.StatusCode)
+	}
+	if fake.lastRelayReq == nil {
+		t.Fatalf("expected relay request")
+	}
+	if fake.lastRelayReq.Req.Path != "/api/v1/session/sess-123/capabilities/@api.http" {
+		t.Fatalf("unexpected capability path %q", fake.lastRelayReq.Req.Path)
 	}
 }
 

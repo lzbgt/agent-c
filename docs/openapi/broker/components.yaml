@@ -184,6 +184,34 @@ schemas:
       client_id: { type: string }
       lease_seconds: { type: integer, format: int32 }
     additionalProperties: true
+  BrokerSessionShellStartRequest:
+    type: object
+    required: [command]
+    properties:
+      command: { type: string }
+      intent: { type: string }
+      label: { type: string }
+    additionalProperties: true
+  BrokerSessionShellSendRequest:
+    type: object
+    required: [text]
+    properties:
+      text: { type: string }
+    additionalProperties: true
+  BrokerSessionServiceWaitRequest:
+    type: object
+    properties:
+      timeout_ms: { type: integer, format: int64 }
+    additionalProperties: true
+  BrokerSessionServiceRunRequest:
+    type: object
+    required: [recipe]
+    properties:
+      recipe: { type: string }
+      args:
+        type: object
+        additionalProperties: true
+    additionalProperties: true
   BrokerSessionResponse:
     type: object
     required: [ok]

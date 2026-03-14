@@ -161,6 +161,13 @@ func (s *Server) handleAgentsSubroutes(w http.ResponseWriter, r *http.Request) {
 	// - /v1/agents/{agent_id}/sessions/{session_id}/attachment/release
 	// - /v1/agents/{agent_id}/sessions/{session_id}/events
 	// - /v1/agents/{agent_id}/sessions/{session_id}/transcript
+	// - /v1/agents/{agent_id}/sessions/{session_id}/orchestration/{status|workers|dependencies}
+	// - /v1/agents/{agent_id}/sessions/{session_id}/shells
+	// - /v1/agents/{agent_id}/sessions/{session_id}/shells/{job_ref}
+	// - /v1/agents/{agent_id}/sessions/{session_id}/services
+	// - /v1/agents/{agent_id}/sessions/{session_id}/services/{job_ref}
+	// - /v1/agents/{agent_id}/sessions/{session_id}/capabilities
+	// - /v1/agents/{agent_id}/sessions/{session_id}/capabilities/{capability}
 	// - /v1/agents/{agent_id}/disconnect
 	// - /v1/agents/{agent_id}/deployments
 	// - /v1/agents/{agent_id}/ota/update

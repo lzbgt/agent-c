@@ -1,6 +1,7 @@
 import React from "react";
 import type { ClientSettings, ConnectionSettings, RunSettings } from "../../hooks/useUiSettings";
 import FieldLabel from "../FieldLabel";
+import SettingsBrokerSessionOperatorsSection from "./SettingsBrokerSessionOperatorsSection";
 import { ToggleRow } from "./SettingsControls";
 
 type SessionSettings = {
@@ -620,6 +621,9 @@ export default function SettingsConnectionSection(props: SettingsConnectionSecti
               ) : null}
             </div>
           ) : null}
+        </div>
+        <div className="col-span-2">
+          <SettingsBrokerSessionOperatorsSection connection={connection} client={client} session={session} />
         </div>
         <div>
           <FieldLabel>Tools</FieldLabel>

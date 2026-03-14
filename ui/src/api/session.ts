@@ -8,11 +8,13 @@ import {
   type NewSessionResp,
   SessionArtifactsSchema,
   SessionAttachmentActionRespSchema,
+  SessionOperatorRespSchema,
   type SessionAttachment,
   type SessionAttachmentActionResp,
   type SessionErrorEnvelope,
   type SessionInfo,
   type SessionArtifactsResp,
+  type SessionOperatorResp,
   SessionClientEventsSchema,
   type SessionClientEventsResp,
   SessionSchema,
@@ -40,6 +42,8 @@ type SessionLeaseRequestOptions = {
   leaseSeconds?: number | null;
 };
 
+type SessionOperatorMutationOptions = SessionLeaseRequestOptions;
+
 type NewSessionOptions = SessionLeaseRequestOptions & {
   sessionId?: string;
   createFiles?: boolean;
@@ -51,6 +55,18 @@ function brokerAliasRootFromBase(base: string): string | null {
   if (!trimmed) return null;
   const match = trimmed.match(/^(https?:\/\/.+\/v1\/agents\/[^/]+)\/proxy$/i);
   return match ? match[1] : null;
+}
+
+function buildSessionAliasUrl(base: string, sessionId: string, suffix?: string): string | null {
+  const aliasRoot = brokerAliasRootFromBase(base);
+  const sid = String(sessionId || "").trim();
+  if (!aliasRoot || !sid) return null;
+  const extra = String(suffix || "").trim().replace(/^\/+/, "");
+  return extra ? `${aliasRoot}/sessions/${encodeURIComponent(sid)}/${extra}` : `${aliasRoot}/sessions/${encodeURIComponent(sid)}`;
+}
+
+function encodeSessionRef(value: string): string {
+  return encodeURIComponent(String(value || "").trim());
 }
 
 export function buildSessionEventsStreamUrl(base: string, sessionId: string): string | null {
@@ -102,6 +118,29 @@ async function fetchJsonWithFallback(
     if (response.status !== 404 && response.status !== 405) return merged;
   }
   return last ?? { ok: false, error: "request failed" };
+}
+
+async function fetchSessionOperatorJson(
+  base: string,
+  sessionId: string,
+  rawPaths: string[],
+  auth?: ApiAuth,
+  init?: RequestInit,
+  extraHeaders?: Record<string, string>,
+): Promise<SessionOperatorResp> {
+  const sid = String(sessionId || "").trim();
+  if (!sid) throw new Error("missing session_id");
+  const urls: string[] = [];
+  for (const rawPath of rawPaths) {
+    const clean = String(rawPath || "").trim().replace(/^\/+/, "");
+    if (!clean) continue;
+    const aliasPath = clean.replace(/^api\/v1\/session\/[^/]+\/?/, "");
+    const aliasUrl = buildSessionAliasUrl(base, sid, aliasPath);
+    if (aliasUrl) urls.push(aliasUrl);
+    urls.push(`${base}/${clean}`);
+  }
+  const json = await fetchJsonWithFallback(urls, auth, init, extraHeaders);
+  return SessionOperatorRespSchema.parse(json);
 }
 
 function normalizeSessionId(value: unknown): string | undefined {
@@ -416,4 +455,206 @@ export async function apiReleaseSessionAttachment(
     },
   );
   return SessionAttachmentActionRespSchema.parse(json);
+}
+
+export async function apiGetSessionOrchestrationStatus(
+  base: string,
+  sessionId: string,
+  auth?: ApiAuth,
+): Promise<SessionOperatorResp> {
+  return fetchSessionOperatorJson(base, sessionId, [`api/v1/session/${encodeSessionRef(sessionId)}/orchestration/status`], auth);
+}
+
+export async function apiGetSessionOrchestrationWorkers(
+  base: string,
+  sessionId: string,
+  auth?: ApiAuth,
+): Promise<SessionOperatorResp> {
+  return fetchSessionOperatorJson(base, sessionId, [`api/v1/session/${encodeSessionRef(sessionId)}/orchestration/workers`], auth);
+}
+
+export async function apiGetSessionOrchestrationDependencies(
+  base: string,
+  sessionId: string,
+  auth?: ApiAuth,
+): Promise<SessionOperatorResp> {
+  return fetchSessionOperatorJson(base, sessionId, [`api/v1/session/${encodeSessionRef(sessionId)}/orchestration/dependencies`], auth);
+}
+
+export async function apiListSessionShells(base: string, sessionId: string, auth?: ApiAuth): Promise<SessionOperatorResp> {
+  return fetchSessionOperatorJson(base, sessionId, [`api/v1/session/${encodeSessionRef(sessionId)}/shells`], auth);
+}
+
+export async function apiStartSessionShell(
+  base: string,
+  sessionId: string,
+  body: { command: string; intent?: string; label?: string },
+  auth?: ApiAuth,
+  opts?: SessionOperatorMutationOptions,
+): Promise<SessionOperatorResp> {
+  const sid = encodeSessionRef(sessionId);
+  const aliasUrl = buildSessionAliasUrl(base, sessionId, "shells");
+  const urls = aliasUrl ? [aliasUrl, `${base}/api/v1/session/${sid}/shells/start`] : [`${base}/api/v1/session/${sid}/shells/start`];
+  const json = await fetchJsonWithFallback(
+    urls,
+    auth,
+    { method: "POST", body: JSON.stringify(body ?? {}) },
+    { "Content-Type": "application/json", ...buildCodexwLeaseHeaders(opts) },
+  );
+  return SessionOperatorRespSchema.parse(json);
+}
+
+export async function apiGetSessionShell(
+  base: string,
+  sessionId: string,
+  jobRef: string,
+  auth?: ApiAuth,
+): Promise<SessionOperatorResp> {
+  return fetchSessionOperatorJson(
+    base,
+    sessionId,
+    [`api/v1/session/${encodeSessionRef(sessionId)}/shells/${encodeSessionRef(jobRef)}`],
+    auth,
+  );
+}
+
+export async function apiPollSessionShell(
+  base: string,
+  sessionId: string,
+  jobRef: string,
+  auth?: ApiAuth,
+  opts?: SessionOperatorMutationOptions,
+): Promise<SessionOperatorResp> {
+  return fetchSessionOperatorJson(
+    base,
+    sessionId,
+    [`api/v1/session/${encodeSessionRef(sessionId)}/shells/${encodeSessionRef(jobRef)}/poll`],
+    auth,
+    { method: "POST", body: JSON.stringify({}) },
+    { "Content-Type": "application/json", ...buildCodexwLeaseHeaders(opts) },
+  );
+}
+
+export async function apiSendSessionShell(
+  base: string,
+  sessionId: string,
+  jobRef: string,
+  text: string,
+  auth?: ApiAuth,
+  opts?: SessionOperatorMutationOptions,
+): Promise<SessionOperatorResp> {
+  return fetchSessionOperatorJson(
+    base,
+    sessionId,
+    [`api/v1/session/${encodeSessionRef(sessionId)}/shells/${encodeSessionRef(jobRef)}/send`],
+    auth,
+    { method: "POST", body: JSON.stringify({ text }) },
+    { "Content-Type": "application/json", ...buildCodexwLeaseHeaders(opts) },
+  );
+}
+
+export async function apiTerminateSessionShell(
+  base: string,
+  sessionId: string,
+  jobRef: string,
+  auth?: ApiAuth,
+  opts?: SessionOperatorMutationOptions,
+): Promise<SessionOperatorResp> {
+  return fetchSessionOperatorJson(
+    base,
+    sessionId,
+    [`api/v1/session/${encodeSessionRef(sessionId)}/shells/${encodeSessionRef(jobRef)}/terminate`],
+    auth,
+    { method: "POST", body: JSON.stringify({}) },
+    { "Content-Type": "application/json", ...buildCodexwLeaseHeaders(opts) },
+  );
+}
+
+export async function apiListSessionServices(base: string, sessionId: string, auth?: ApiAuth): Promise<SessionOperatorResp> {
+  return fetchSessionOperatorJson(base, sessionId, [`api/v1/session/${encodeSessionRef(sessionId)}/services`], auth);
+}
+
+export async function apiGetSessionService(
+  base: string,
+  sessionId: string,
+  jobRef: string,
+  auth?: ApiAuth,
+): Promise<SessionOperatorResp> {
+  return fetchSessionOperatorJson(
+    base,
+    sessionId,
+    [`api/v1/session/${encodeSessionRef(sessionId)}/services/${encodeSessionRef(jobRef)}`],
+    auth,
+  );
+}
+
+export async function apiAttachSessionService(
+  base: string,
+  sessionId: string,
+  jobRef: string,
+  auth?: ApiAuth,
+  opts?: SessionOperatorMutationOptions,
+): Promise<SessionOperatorResp> {
+  return fetchSessionOperatorJson(
+    base,
+    sessionId,
+    [`api/v1/session/${encodeSessionRef(sessionId)}/services/${encodeSessionRef(jobRef)}/attach`],
+    auth,
+    { method: "POST", body: JSON.stringify({}) },
+    { "Content-Type": "application/json", ...buildCodexwLeaseHeaders(opts) },
+  );
+}
+
+export async function apiWaitSessionService(
+  base: string,
+  sessionId: string,
+  jobRef: string,
+  auth?: ApiAuth,
+  body?: { timeout_ms?: number },
+  opts?: SessionOperatorMutationOptions,
+): Promise<SessionOperatorResp> {
+  return fetchSessionOperatorJson(
+    base,
+    sessionId,
+    [`api/v1/session/${encodeSessionRef(sessionId)}/services/${encodeSessionRef(jobRef)}/wait`],
+    auth,
+    { method: "POST", body: JSON.stringify(body ?? {}) },
+    { "Content-Type": "application/json", ...buildCodexwLeaseHeaders(opts) },
+  );
+}
+
+export async function apiRunSessionService(
+  base: string,
+  sessionId: string,
+  jobRef: string,
+  body: { recipe: string; args?: Record<string, unknown> },
+  auth?: ApiAuth,
+  opts?: SessionOperatorMutationOptions,
+): Promise<SessionOperatorResp> {
+  return fetchSessionOperatorJson(
+    base,
+    sessionId,
+    [`api/v1/session/${encodeSessionRef(sessionId)}/services/${encodeSessionRef(jobRef)}/run`],
+    auth,
+    { method: "POST", body: JSON.stringify(body ?? {}) },
+    { "Content-Type": "application/json", ...buildCodexwLeaseHeaders(opts) },
+  );
+}
+
+export async function apiListSessionCapabilities(base: string, sessionId: string, auth?: ApiAuth): Promise<SessionOperatorResp> {
+  return fetchSessionOperatorJson(base, sessionId, [`api/v1/session/${encodeSessionRef(sessionId)}/capabilities`], auth);
+}
+
+export async function apiGetSessionCapability(
+  base: string,
+  sessionId: string,
+  capability: string,
+  auth?: ApiAuth,
+): Promise<SessionOperatorResp> {
+  return fetchSessionOperatorJson(
+    base,
+    sessionId,
+    [`api/v1/session/${encodeSessionRef(sessionId)}/capabilities/${encodeSessionRef(capability)}`],
+    auth,
+  );
 }

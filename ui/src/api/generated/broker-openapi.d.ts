@@ -823,6 +823,738 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/agents/{agent_id}/sessions/{session_id}/orchestration/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch connector-native orchestration status */
+        get: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Orchestration status response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{agent_id}/sessions/{session_id}/orchestration/workers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch connector-native orchestration workers */
+        get: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Orchestration workers response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{agent_id}/sessions/{session_id}/orchestration/dependencies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch connector-native orchestration dependencies */
+        get: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Orchestration dependencies response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{agent_id}/sessions/{session_id}/shells": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List connector-native shell jobs for a session */
+        get: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Shell list response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Start a connector-native shell job for a session */
+        post: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                    "X-Codexw-Client-Id"?: string;
+                    "X-Codexw-Lease-Seconds"?: number;
+                    /**
+                     * @description Optional idempotency key for safe retries. Allowed characters: [A-Za-z0-9-_.:@], max length 128.
+                     *     Alias header: X-Idempotency-Key.
+                     */
+                    "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["BrokerSessionShellStartRequest"];
+                };
+            };
+            responses: {
+                /** @description Shell start response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{agent_id}/sessions/{session_id}/shells/{job_ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch connector-native shell job detail */
+        get: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                    job_ref: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Shell detail response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{agent_id}/sessions/{session_id}/shells/{job_ref}/poll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Poll connector-native shell state */
+        post: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                    "X-Codexw-Client-Id"?: string;
+                    "X-Codexw-Lease-Seconds"?: number;
+                    /**
+                     * @description Optional idempotency key for safe retries. Allowed characters: [A-Za-z0-9-_.:@], max length 128.
+                     *     Alias header: X-Idempotency-Key.
+                     */
+                    "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                    job_ref: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            responses: {
+                /** @description Shell poll response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{agent_id}/sessions/{session_id}/shells/{job_ref}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send stdin to a connector-native shell job */
+        post: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                    "X-Codexw-Client-Id"?: string;
+                    "X-Codexw-Lease-Seconds"?: number;
+                    /**
+                     * @description Optional idempotency key for safe retries. Allowed characters: [A-Za-z0-9-_.:@], max length 128.
+                     *     Alias header: X-Idempotency-Key.
+                     */
+                    "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                    job_ref: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["BrokerSessionShellSendRequest"];
+                };
+            };
+            responses: {
+                /** @description Shell send response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{agent_id}/sessions/{session_id}/shells/{job_ref}/terminate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Terminate a connector-native shell job */
+        post: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                    "X-Codexw-Client-Id"?: string;
+                    "X-Codexw-Lease-Seconds"?: number;
+                    /**
+                     * @description Optional idempotency key for safe retries. Allowed characters: [A-Za-z0-9-_.:@], max length 128.
+                     *     Alias header: X-Idempotency-Key.
+                     */
+                    "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                    job_ref: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            responses: {
+                /** @description Shell terminate response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{agent_id}/sessions/{session_id}/services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List connector-native services for a session */
+        get: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Service list response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{agent_id}/sessions/{session_id}/services/{job_ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch connector-native service detail */
+        get: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                    job_ref: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Service detail response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{agent_id}/sessions/{session_id}/services/{job_ref}/attach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach to a connector-native service */
+        post: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                    "X-Codexw-Client-Id"?: string;
+                    "X-Codexw-Lease-Seconds"?: number;
+                    /**
+                     * @description Optional idempotency key for safe retries. Allowed characters: [A-Za-z0-9-_.:@], max length 128.
+                     *     Alias header: X-Idempotency-Key.
+                     */
+                    "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                    job_ref: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            responses: {
+                /** @description Service attach response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{agent_id}/sessions/{session_id}/services/{job_ref}/wait": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Wait for a connector-native service to become ready */
+        post: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                    "X-Codexw-Client-Id"?: string;
+                    "X-Codexw-Lease-Seconds"?: number;
+                    /**
+                     * @description Optional idempotency key for safe retries. Allowed characters: [A-Za-z0-9-_.:@], max length 128.
+                     *     Alias header: X-Idempotency-Key.
+                     */
+                    "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                    job_ref: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["BrokerSessionServiceWaitRequest"];
+                };
+            };
+            responses: {
+                /** @description Service wait response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{agent_id}/sessions/{session_id}/services/{job_ref}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Invoke a connector-native service recipe */
+        post: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                    "X-Codexw-Client-Id"?: string;
+                    "X-Codexw-Lease-Seconds"?: number;
+                    /**
+                     * @description Optional idempotency key for safe retries. Allowed characters: [A-Za-z0-9-_.:@], max length 128.
+                     *     Alias header: X-Idempotency-Key.
+                     */
+                    "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                    job_ref: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["BrokerSessionServiceRunRequest"];
+                };
+            };
+            responses: {
+                /** @description Service run response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{agent_id}/sessions/{session_id}/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List connector-native capabilities for a session */
+        get: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Capability list response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{agent_id}/sessions/{session_id}/capabilities/{capability}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch connector-native capability detail */
+        get: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "X-Agentd-Deployment"?: string;
+                };
+                path: {
+                    agent_id: string;
+                    session_id: string;
+                    capability: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Capability detail response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrokerSessionResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/audio/sessions": {
         parameters: {
             query?: never;
@@ -3357,6 +4089,32 @@ export interface components {
             client_id?: string;
             /** Format: int32 */
             lease_seconds?: number;
+        } & {
+            [key: string]: unknown;
+        };
+        BrokerSessionShellStartRequest: {
+            command: string;
+            intent?: string;
+            label?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        BrokerSessionShellSendRequest: {
+            text: string;
+        } & {
+            [key: string]: unknown;
+        };
+        BrokerSessionServiceWaitRequest: {
+            /** Format: int64 */
+            timeout_ms?: number;
+        } & {
+            [key: string]: unknown;
+        };
+        BrokerSessionServiceRunRequest: {
+            recipe: string;
+            args?: {
+                [key: string]: unknown;
+            };
         } & {
             [key: string]: unknown;
         };
