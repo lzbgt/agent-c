@@ -127,6 +127,7 @@ Secret handling:
   Settings → Connection → `Use broker auth cookie (HttpOnly)`. With broker cookie auth enabled, the WebUI exchanges the current
   broker bearer token through `POST /v1/auth/session`, stores it as an HttpOnly cookie, then clears the browser-visible token
   from the active profile. After that, broker requests use `credentials: "include"` instead of a long-lived JS-visible bearer token.
+  Use `Clear auth cookie` in the same section to send `DELETE /v1/auth/session` and drop the current browser-side broker auth session.
 - Settings → Connection also exposes broker-backed session lease controls for the active `session_id`: attach/claim, renew, and
   release. When the remote runtime reports structured lease conflicts (for example `attachment_conflict` from an external
   broker-compatible adapter), the UI surfaces owner/observer state and the current lease holder instead of collapsing it into a

@@ -123,7 +123,7 @@ contract map.
 - [x] W=13 — Browser secret boundary hardening: keep broker/agentd auth tokens and provider API keys out of durable browser storage, then finish the move to HttpOnly/session-backed auth for brokered deployments.
   - 2026-03-07: moved WebUI broker/daemon tokens and provider API keys out of `localStorage`; they now live in browser session storage and legacy localStorage secrets are scrubbed on load.
   - 2026-03-07: connection profile persistence/server sync remains non-secret only; docs updated to reflect session-scoped secret behavior.
-  - Remaining: broker-backed cookie/session exchange so browser JS does not hold long-lived broker tokens at all.
+  - 2026-03-15: verified the broker-backed cookie/session exchange lane is complete in source: the WebUI exchanges the bearer token through `POST /v1/auth/session`, scrubs the profile/session token afterward, exposes explicit cookie-clear control, and Playwright coverage now checks both exchange and delete flows.
 - [x] W=12 — Authoritative host CI: add Linux/macOS jobs that run `tools/verify.sh --ui-install --repo-guards`, gate DB/OpenAPI/docs drift, and promote compose broker smokes into a reliable required lane.
   - 2026-03-07: current local verify drift found `docs_sanity_tests` red due `docs/DB.md` schema lag; fixed header to `v33` to restore the first failing gate.
   - 2026-03-07: added GitHub Actions host verify matrix (`ubuntu-latest`, `macos-14`) that runs `tools/verify.sh --ui-install --repo-guards` with network-provider smokes disabled.

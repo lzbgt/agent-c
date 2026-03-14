@@ -223,6 +223,16 @@ test("broker cookie auth exchanges a bearer token into a cookie and scrubs the J
       return;
     }
 
+    if (req.method === "DELETE" && path === "/v1/auth/session") {
+      res.writeHead(200, {
+        ...corsHeaders,
+        "Content-Type": "application/json",
+        "Set-Cookie": "broker_auth=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax",
+      });
+      res.end(JSON.stringify({ ok: true, cleared: true }));
+      return;
+    }
+
     if (req.method === "GET" && path === "/v1/agents") {
       res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
       res.end(
@@ -302,6 +312,7 @@ test("broker cookie auth exchanges a bearer token into a cookie and scrubs the J
       const state = {
         authSessionExchangeCount: 0,
         authSessionAuthorizationHeader: "",
+        authSessionDeleteCount: 0,
       };
       Object.defineProperty(window, "__brokerCookieAuthMock", {
         value: state,
@@ -318,6 +329,24 @@ test("broker cookie auth exchanges a bearer token into a cookie and scrubs the J
           return new Response(
             JSON.stringify({
               ok: true,
+              cookie_name: "broker_auth",
+              auth_kind: "oidc",
+              http_only: true,
+              secure: false,
+              same_site: "lax",
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            },
+          );
+        }
+        if (url === `${mockBase}/v1/auth/session` && method === "DELETE") {
+          state.authSessionDeleteCount += 1;
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              cleared: true,
               cookie_name: "broker_auth",
               auth_kind: "oidc",
               http_only: true,
@@ -373,6 +402,18 @@ test("broker cookie auth exchanges a bearer token into a cookie and scrubs the J
         return mock?.authSessionAuthorizationHeader || "";
       }),
     ).toBe("Bearer seed-token");
+
+    await page.getByRole("button", { name: "Clear auth cookie" }).click();
+    await expect(page.getByTestId("broker-cookie-session-status")).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const mock = (window as any).__brokerCookieAuthMock;
+          return mock?.authSessionDeleteCount ?? 0;
+        }),
+      )
+      .toBe(1);
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
