@@ -1,39 +1,15 @@
 import React from "react";
-import {
-  apiBrokerListAgents,
-  apiBrokerTeamMembersUpsert,
-  apiBrokerTeamRunApprovalsCreate,
-  apiBrokerTeamRunApprovalsList,
-  apiBrokerTeamRunCancel,
-  apiBrokerTeamRunCreate,
-  apiBrokerTeamRunGet,
-  apiBrokerTeamRunList,
-  apiBrokerTeamRunModeratorDirective,
-  apiBrokerTeamRunModeratorEvents,
-  apiBrokerTeamRunModeratorTask,
-  apiBrokerTeamRunRuntimeMembersUpdate,
-  type ApiAuth,
-} from "../../api";
-import useLocalStorageState from "../../hooks/useLocalStorageState";
 import FieldLabel from "../FieldLabel";
-import TeamRunCreatePanel, { type InlineApproval } from "./TeamRunCreatePanel";
+import TeamRunCreatePanel from "./TeamRunCreatePanel";
 import TeamRunModeratorPanel from "./TeamRunModeratorPanel";
 import TeamRunOpsPanel from "./TeamRunOpsPanel";
 import TeamRunRecentRunsPanel from "./TeamRunRecentRunsPanel";
 import TeamRunStatusPanel from "./TeamRunStatusPanel";
-import {
-  TEAM_RUN_EVENT_TYPES,
-  buildRoleAllocatedRuntimeMembers,
-  buildRuntimeAgentAdditions,
-  fmtSummary,
-  fmtTs,
-  normalizeRoleInstructionMap,
-  normalizeRolePromptMode,
-  normalizeSharedMemoryMode,
-  parseCsvList,
-} from "./teamRunUtils";
+import { fmtSummary, fmtTs } from "./teamRunUtils";
+import useBrokerTeamRunControlState from "./useBrokerTeamRunControlState";
+import useBrokerTeamRunCreateState from "./useBrokerTeamRunCreateState";
 import type { BrokerEventRow, TeamMemberRow, TeamQuorumRuleRow } from "./types";
-
+import type { ApiAuth } from "../../api";
 
 export type BrokerTeamRunPanelProps = {
   base: string;
@@ -46,38 +22,6 @@ export type BrokerTeamRunPanelProps = {
   teamMeta?: Record<string, any> | null;
   onMembersRefresh?: (teamId: string) => Promise<void> | void;
   onTeamSelect?: (teamId: string) => void;
-};
-
-type QuorumRuleEval = {
-  rule_id?: string;
-  action?: string;
-  quorum_mode?: string;
-  min_approvals?: number;
-  approved?: number;
-  missing?: number;
-  ok?: boolean;
-  role_allowlist?: string[];
-  require_distinct_roles?: boolean;
-  approved_member_ids?: string[];
-  approved_roles?: string[];
-};
-
-type QuorumEval = {
-  strict_ok?: boolean;
-  rules?: QuorumRuleEval[];
-};
-
-type TeamRunApprovalRow = {
-  approval_id?: string;
-  team_id?: string;
-  team_run_id?: string;
-  rule_id?: string;
-  member_id?: string;
-  role?: string;
-  decision?: string;
-  reason?: string;
-  created_by?: string;
-  created_unix_ms?: number;
 };
 
 type RunSectionProps = {
@@ -104,1622 +48,166 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const teamIdTrimmed = String(props.teamId || "").trim();
   const membersList = Array.isArray(props.members) ? props.members : [];
   const rulesList = Array.isArray(props.rules) ? props.rules : [];
-  const quorumRequestRows = React.useMemo(() => {
-    const rows = Array.isArray(props.quorumEvents) ? props.quorumEvents : [];
-    const filtered = rows.filter((ev) => ev?.type === "team_quorum_request");
-    if (!teamIdTrimmed) return filtered.slice(0, 6);
-    return filtered.filter((ev) => String(ev?.payload?.team_id || "") === teamIdTrimmed).slice(0, 6);
-  }, [props.quorumEvents, teamIdTrimmed]);
-
-  const [runPrompt, setRunPrompt] = React.useState<string>("");
-  const [runModel, setRunModel] = React.useState<string>("");
-  const [runTools, setRunTools] = React.useState<string>("host");
-  const [runMode, setRunMode] = React.useState<string>("async");
-  const [runRole, setRunRole] = React.useState<string>("");
-  const [runRoles, setRunRoles] = React.useState<string>("");
-  const [runConcurrency, setRunConcurrency] = React.useState<string>("1");
-  const [runTimeoutMs, setRunTimeoutMs] = React.useState<string>("60000");
-  const [runSharedMemoryScope, setRunSharedMemoryScope] = React.useState<string>("");
-  const [runSharedMemoryMode, setRunSharedMemoryMode] = React.useState<string>("read_write");
-  const [runAutoAllocateRoles, setRunAutoAllocateRoles] = React.useState<boolean>(false);
-  const [runAutoAllocateMaxMembers, setRunAutoAllocateMaxMembers] = React.useState<string>("");
-  const [runQuorumMode, setRunQuorumMode] = React.useState<string>("auto");
-  const [runOverridesMode, setRunOverridesMode] = React.useState<string>("member_meta");
-  const [runMemberOverridesJson, setRunMemberOverridesJson] = React.useState<string>("");
-  const [runRoleOverridesJson, setRunRoleOverridesJson] = React.useState<string>("");
-  const [runRoleInstructionsOverride, setRunRoleInstructionsOverride] = React.useState<boolean>(false);
-  const [runRoleInstructions, setRunRoleInstructions] = React.useState<Record<string, string>>({});
-  const [runRolePromptMode, setRunRolePromptMode] = React.useState<string>("prepend");
-  const [runRuntimeMembersJson, setRunRuntimeMembersJson] = React.useState<string>("");
-  const [runtimeMemberId, setRuntimeMemberId] = React.useState<string>("");
-  const [runtimeMemberAgentId, setRuntimeMemberAgentId] = React.useState<string>("");
-  const [runtimeMemberDeploymentId, setRuntimeMemberDeploymentId] = React.useState<string>("");
-  const [runtimeMemberRole, setRuntimeMemberRole] = React.useState<string>("executor");
-  const [runtimeMemberCapabilities, setRuntimeMemberCapabilities] = React.useState<string>("");
-  const [runtimeMemberBackendLabel, setRuntimeMemberBackendLabel] = React.useState<string>("");
-  const [runtimeMemberModel, setRuntimeMemberModel] = React.useState<string>("");
-  const [runtimeMemberBaseUrl, setRuntimeMemberBaseUrl] = React.useState<string>("");
-  const [runtimeMemberSummaryModel, setRuntimeMemberSummaryModel] = React.useState<string>("");
-  const [runtimeMemberTools, setRuntimeMemberTools] = React.useState<string>("");
-  const [runtimeMemberTimeoutMs, setRuntimeMemberTimeoutMs] = React.useState<string>("");
-  const [runtimeAgentsBusy, setRuntimeAgentsBusy] = React.useState<boolean>(false);
-  const [runtimeAgentsError, setRuntimeAgentsError] = React.useState<string | null>(null);
-  const [runtimeAgents, setRuntimeAgents] = React.useState<any[] | null>(null);
-  const [runtimeSaveBusy, setRuntimeSaveBusy] = React.useState<boolean>(false);
-  const [runtimeSaveError, setRuntimeSaveError] = React.useState<string | null>(null);
-  const runtimeImportRef = React.useRef<HTMLInputElement | null>(null);
-  const [runtimeImportMerge, setRuntimeImportMerge] = React.useState<boolean>(true);
-  const [runtimeUpdateMode, setRuntimeUpdateMode] = React.useState<string>("replace");
-  const [runtimeUpdateBusy, setRuntimeUpdateBusy] = React.useState<boolean>(false);
-  const [runtimeUpdateError, setRuntimeUpdateError] = React.useState<string | null>(null);
-  const [runtimeUpdateNote, setRuntimeUpdateNote] = React.useState<string>("");
-
   const teamMetaObj = props.teamMeta && typeof props.teamMeta === "object" ? props.teamMeta : null;
-  const teamRoleOverridesDefaults =
-    teamMetaObj?.role_overrides && typeof teamMetaObj.role_overrides === "object"
-      ? (teamMetaObj.role_overrides as Record<string, any>)
-      : null;
-  const teamRoleOverrideKeys = teamRoleOverridesDefaults
-    ? Object.keys(teamRoleOverridesDefaults).map((k) => String(k)).filter(Boolean)
-    : [];
-  const teamRoleInstructionsDefaults = normalizeRoleInstructionMap(teamMetaObj?.role_instructions);
-  const teamRoleInstructionKeys = Object.keys(teamRoleInstructionsDefaults);
-  const teamRolePromptModeDefault = normalizeRolePromptMode(teamMetaObj?.role_prompt_mode);
-  const teamSharedMemoryScopeDefault = teamMetaObj?.shared_memory_scope_id
-    ? String(teamMetaObj.shared_memory_scope_id).trim()
-    : "";
-  const teamSharedMemoryModeDefault = normalizeSharedMemoryMode(
-    teamMetaObj?.shared_memory_mode ?? teamMetaObj?.memory_scope_mode ?? "read_write",
-  );
-  const runRolePlanOptions = React.useMemo(() => {
-    const set = new Set<string>();
-    for (const role of teamRoleOverrideKeys) {
-      const r = String(role || "").trim().toLowerCase();
-      if (r) set.add(r);
-    }
-    for (const role of teamRoleInstructionKeys) {
-      const r = String(role || "").trim().toLowerCase();
-      if (r) set.add(r);
-    }
-    for (const member of membersList) {
-      const r = String(member?.role || "").trim().toLowerCase();
-      if (r) set.add(r);
-    }
-    return Array.from(set).filter(Boolean).sort();
-  }, [teamRoleOverrideKeys, teamRoleInstructionKeys, membersList]);
 
-  const runtimeMembersPreview = React.useMemo(() => {
-    const raw = String(runRuntimeMembersJson || "").trim();
-    if (!raw) return { items: [] as any[], error: "" };
-    try {
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) {
-        return { items: [] as any[], error: "runtime_members must be a JSON array" };
-      }
-      return { items: parsed, error: "" };
-    } catch (err) {
-      return { items: [] as any[], error: `invalid runtime_members json: ${String(err)}` };
-    }
-  }, [runRuntimeMembersJson]);
-
-  const runtimeAgentOptions = Array.isArray(runtimeAgents) ? runtimeAgents : [];
-  const runtimeSelectedAgent = runtimeAgentOptions.find(
-    (agent) => String(agent?.agent_id || "") === String(runtimeMemberAgentId || "").trim(),
-  );
-  const runtimeAgentDeployments = Array.isArray(runtimeSelectedAgent?.deployments)
-    ? (runtimeSelectedAgent?.deployments as any[])
-    : [];
-
-  const runtimeSavePreview = React.useMemo(() => {
-    const existingIDs = new Set<string>();
-    for (const m of membersList) {
-      const id = String(m?.member_id || "").trim();
-      if (id) existingIDs.add(id);
-    }
-    const items = runtimeMembersPreview.items;
-    if (!Array.isArray(items) || items.length === 0) {
-      return { newMembers: [] as any[], skipped: [] as any[], invalid: [] as any[] };
-    }
-    const newMembers: any[] = [];
-    const skipped: any[] = [];
-    const invalid: any[] = [];
-    for (const item of items) {
-      const memberId = item?.member_id ? String(item.member_id).trim() : "";
-      const agentId = item?.agent_id ? String(item.agent_id).trim() : "";
-      const role = item?.role ? String(item.role).trim() : "";
-      if (!agentId || !role) {
-        invalid.push({
-          item,
-          reason: !agentId && !role ? "missing agent_id and role" : !agentId ? "missing agent_id" : "missing role",
-        });
-        continue;
-      }
-      if (memberId && existingIDs.has(memberId)) {
-        skipped.push({ item, reason: "member_id already exists" });
-        continue;
-      }
-      newMembers.push({ item, reason: "new" });
-    }
-    return { newMembers, skipped, invalid };
-  }, [membersList, runtimeMembersPreview.items]);
-
-  const runtimeTeamDiff = React.useMemo(() => {
-    const runtimeItems = runtimeMembersPreview.items;
-    if (!Array.isArray(runtimeItems)) {
-      return { runtimeOnly: [] as any[], teamOnly: [] as TeamMemberRow[], mismatched: [] as any[] };
-    }
-    const teamByMemberId = new Map<string, TeamMemberRow>();
-    const teamByAgentId = new Map<string, TeamMemberRow>();
-    for (const member of membersList) {
-      const mid = String(member?.member_id || "").trim();
-      const aid = String(member?.agent_id || "").trim();
-      if (mid) teamByMemberId.set(mid, member);
-      if (aid) teamByAgentId.set(aid, member);
-    }
-    const matched = new Set<string>();
-    const runtimeOnly: any[] = [];
-    const mismatched: any[] = [];
-    for (const item of runtimeItems) {
-      const memberId = item?.member_id ? String(item.member_id).trim() : "";
-      const agentId = item?.agent_id ? String(item.agent_id).trim() : "";
-      const teamMatch =
-        (memberId && teamByMemberId.get(memberId)) || (agentId && teamByAgentId.get(agentId));
-      if (!teamMatch) {
-        runtimeOnly.push(item);
-        continue;
-      }
-      if (teamMatch?.member_id) matched.add(String(teamMatch.member_id));
-      if (!teamMatch?.member_id && teamMatch?.agent_id) matched.add(String(teamMatch.agent_id));
-      const diffs: string[] = [];
-      const runtimeRole = item?.role ? String(item.role) : "";
-      const runtimeAgent = agentId;
-      const runtimeDep = item?.deployment_id ? String(item.deployment_id) : "";
-      const runtimeStatus = item?.status ? String(item.status) : "";
-      if (runtimeRole && teamMatch?.role && runtimeRole !== teamMatch.role) diffs.push("role");
-      if (runtimeAgent && teamMatch?.agent_id && runtimeAgent !== teamMatch.agent_id) diffs.push("agent_id");
-      if (runtimeDep && teamMatch?.deployment_id && runtimeDep !== teamMatch.deployment_id) {
-        diffs.push("deployment_id");
-      }
-      if (runtimeStatus && teamMatch?.status && runtimeStatus !== teamMatch.status) diffs.push("status");
-      if (diffs.length > 0) {
-        mismatched.push({ item, team: teamMatch, diffs });
-      }
-    }
-    const teamOnly = membersList.filter((member) => {
-      const mid = String(member?.member_id || "").trim();
-      const aid = String(member?.agent_id || "").trim();
-      if (mid && matched.has(mid)) return false;
-      if (!mid && aid && matched.has(aid)) return false;
-      if (!mid && !aid) return false;
-      return true;
-    });
-    return { runtimeOnly, teamOnly, mismatched };
-  }, [membersList, runtimeMembersPreview.items]);
-
-  const [runApprovals, setRunApprovals] = React.useState<InlineApproval[]>([]);
-  const [runApprovalMemberId, setRunApprovalMemberId] = React.useState<string>("");
-  const [runApprovalRuleId, setRunApprovalRuleId] = React.useState<string>("");
-  const [runApprovalDecision, setRunApprovalDecision] = React.useState<"approve" | "deny">("approve");
-  const [runApprovalReason, setRunApprovalReason] = React.useState<string>("");
-  const [runBusy, setRunBusy] = React.useState<boolean>(false);
-  const [runError, setRunError] = React.useState<string | null>(null);
-  const [runResult, setRunResult] = React.useState<any | null>(null);
-  const [runQuorum, setRunQuorum] = React.useState<QuorumEval | null>(null);
-  const [runLookupByTeam, setRunLookupByTeam] = useLocalStorageState<Record<string, string>>(
-    "agentui.teamRunLookupByTeam",
-    {},
-  );
-  const [runLookupId, setRunLookupIdState] = React.useState<string>("");
-  const [runLookupBusy, setRunLookupBusy] = React.useState<boolean>(false);
-  const [runLookupError, setRunLookupError] = React.useState<string | null>(null);
-  const [runLookupResult, setRunLookupResult] = React.useState<any | null>(null);
-  const [runCancelBusy, setRunCancelBusy] = React.useState<boolean>(false);
-  const [runCancelError, setRunCancelError] = React.useState<string | null>(null);
-  const [runCancelNote, setRunCancelNote] = React.useState<string>("");
-  const [autoRefreshRunLookup, setAutoRefreshRunLookup] = useLocalStorageState<boolean>(
-    "agentui.teamRunLookupAuto",
-    true,
-  );
-  const [autoResumeRunLookup, setAutoResumeRunLookup] = useLocalStorageState<boolean>(
-    "agentui.teamRunLookupResume",
-    true,
-  );
-  const [runLookupLastEvent, setRunLookupLastEvent] = React.useState<string>("");
-  const [moderatorDirective, setModeratorDirective] = React.useState<string>("");
-  const [moderatorDirectiveScope, setModeratorDirectiveScope] = React.useState<string>("");
-  const [moderatorTaskTitle, setModeratorTaskTitle] = React.useState<string>("");
-  const [moderatorTaskDetail, setModeratorTaskDetail] = React.useState<string>("");
-  const [moderatorTaskStatus, setModeratorTaskStatus] = React.useState<string>("");
-  const [moderatorTargetRoles, setModeratorTargetRoles] = React.useState<string>("");
-  const [moderatorTargetMembers, setModeratorTargetMembers] = React.useState<string>("");
-  const [moderatorTargetAgents, setModeratorTargetAgents] = React.useState<string>("");
-  const [moderatorAssignees, setModeratorAssignees] = React.useState<string>("");
-  const [moderatorAppendToSession, setModeratorAppendToSession] = React.useState<boolean>(false);
-  const [moderatorBusy, setModeratorBusy] = React.useState<boolean>(false);
-  const [moderatorError, setModeratorError] = React.useState<string | null>(null);
-  const [moderatorSuccess, setModeratorSuccess] = React.useState<string | null>(null);
-  const [moderatorEvents, setModeratorEvents] = React.useState<any[]>([]);
-  const [moderatorEventsBusy, setModeratorEventsBusy] = React.useState<boolean>(false);
-  const [moderatorEventsError, setModeratorEventsError] = React.useState<string | null>(null);
-  const [moderatorEventsTypes, setModeratorEventsTypes] = React.useState<string>(
-    "moderator_directive,moderator_task_published",
-  );
-  const [moderatorEventsMaxBytes, setModeratorEventsMaxBytes] = React.useState<string>("1048576");
-  const [moderatorEventsLimit, setModeratorEventsLimit] = React.useState<string>("200");
-  const [moderatorEventsExpanded, setModeratorEventsExpanded] = React.useState<boolean>(false);
-  const [approvalsBusy, setApprovalsBusy] = React.useState<boolean>(false);
-  const [approvalsError, setApprovalsError] = React.useState<string | null>(null);
-  const [approvals, setApprovals] = React.useState<TeamRunApprovalRow[] | null>(null);
-  const [approvalsLastSyncMs, setApprovalsLastSyncMs] = React.useState<number | null>(null);
-  const [approvalRunId, setApprovalRunId] = React.useState<string>("");
-  const [approvalMemberId, setApprovalMemberId] = React.useState<string>("");
-  const [approvalRuleId, setApprovalRuleId] = React.useState<string>("");
-  const [approvalDecision, setApprovalDecision] = React.useState<string>("approve");
-  const [approvalReason, setApprovalReason] = React.useState<string>("");
-  const lastAutoApprovalRunIdRef = React.useRef<string>("");
-  const [recentRuns, setRecentRuns] = React.useState<any[]>([]);
-  const [recentRunsBusy, setRecentRunsBusy] = React.useState<boolean>(false);
-  const [recentRunsError, setRecentRunsError] = React.useState<string | null>(null);
-  const [recentRunsLive, setRecentRunsLive] = useLocalStorageState<boolean>("agentui.teamRunListAuto", false);
-  const [recentRunsLimit, setRecentRunsLimit] = useLocalStorageState<number>("agentui.teamRunListLimit", 10);
-  const [recentRunsStatus, setRecentRunsStatus] = useLocalStorageState<string>("agentui.teamRunListStatus", "");
-  const recentRunsEventRef = React.useRef<string>("");
-  const autoResumeKeyRef = React.useRef<string>("");
-
-  React.useEffect(() => {
-    if (!teamIdTrimmed) {
-      setRunLookupIdState("");
-      return;
-    }
-    const next = runLookupByTeam[teamIdTrimmed] || "";
-    setRunLookupIdState(next);
-  }, [teamIdTrimmed, runLookupByTeam]);
-
-  const setRunLookupId = React.useCallback(
-    (next: string) => {
-      setRunLookupIdState(next);
-      if (!teamIdTrimmed) return;
-      setRunLookupByTeam((prev) => ({ ...prev, [teamIdTrimmed]: next }));
-    },
-    [teamIdTrimmed, setRunLookupByTeam],
-  );
-
-  const approvalRunIdTrimmed = String(approvalRunId || runLookupId || "").trim();
-  const recentRunsItems = Array.isArray(recentRuns) ? recentRuns : [];
-  const runMemberSessions = React.useMemo(() => {
-    const raw = runLookupResult?.member_sessions;
-    if (!raw || typeof raw !== "object") return [] as Array<{ memberId: string; sessionId: string }>;
-    return Object.entries(raw as Record<string, any>)
-      .map(([memberId, sessionId]) => ({
-        memberId: String(memberId || ""),
-        sessionId: String(sessionId || ""),
-      }))
-      .filter((row) => row.memberId && row.sessionId);
-  }, [runLookupResult]);
-  const runMemberOptions = React.useMemo(() => {
-    const out = new Set<string>();
-    const members = Array.isArray(runLookupResult?.members) ? runLookupResult.members : [];
-    const runtime = Array.isArray(runLookupResult?.runtime_members) ? runLookupResult.runtime_members : [];
-    for (const m of members) {
-      const mid = String(m?.member_id || "").trim();
-      if (mid) out.add(mid);
-    }
-    for (const m of runtime) {
-      const mid = String(m?.member_id || "").trim();
-      if (mid) out.add(mid);
-    }
-    return Array.from(out);
-  }, [runLookupResult]);
-  const runAgentOptions = React.useMemo(() => {
-    const out = new Set<string>();
-    const members = Array.isArray(runLookupResult?.members) ? runLookupResult.members : [];
-    const runtime = Array.isArray(runLookupResult?.runtime_members) ? runLookupResult.runtime_members : [];
-    for (const m of members) {
-      const aid = String(m?.agent_id || "").trim();
-      if (aid) out.add(aid);
-    }
-    for (const m of runtime) {
-      const aid = String(m?.agent_id || "").trim();
-      if (aid) out.add(aid);
-    }
-    return Array.from(out);
-  }, [runLookupResult]);
-  const runRoleOptions = React.useMemo(() => {
-    const out = new Set<string>();
-    const members = Array.isArray(runLookupResult?.members) ? runLookupResult.members : [];
-    const runtime = Array.isArray(runLookupResult?.runtime_members) ? runLookupResult.runtime_members : [];
-    for (const m of members) {
-      const role = String(m?.role || "").trim();
-      if (role) out.add(role);
-    }
-    for (const m of runtime) {
-      const role = String(m?.role || "").trim();
-      if (role) out.add(role);
-    }
-    return Array.from(out);
-  }, [runLookupResult]);
-
-  React.useEffect(() => {
-    if (!approvalRunId && runResult?.team_run_id) {
-      setApprovalRunId(String(runResult.team_run_id));
-    }
-  }, [approvalRunId, runResult]);
-
-  React.useEffect(() => {
-    setRunRoleInstructionsOverride(false);
-    setRunRoleInstructions({});
-    setRunRolePromptMode("prepend");
-    setRunSharedMemoryScope(teamSharedMemoryScopeDefault);
-    setRunSharedMemoryMode(teamSharedMemoryModeDefault);
-    setRunAutoAllocateRoles(false);
-    setRunAutoAllocateMaxMembers("");
-  }, [teamIdTrimmed]);
-
-  React.useEffect(() => {
-    if (!approvalRunId && runLookupResult?.team_run_id) {
-      setApprovalRunId(String(runLookupResult.team_run_id));
-    }
-  }, [approvalRunId, runLookupResult]);
-
-  React.useEffect(() => {
-    setApprovals(null);
-    setApprovalsError(null);
-    setApprovalsLastSyncMs(null);
-  }, [approvalRunIdTrimmed, teamIdTrimmed]);
-
-  const handleAddRunApproval = () => {
-    const memberId = String(runApprovalMemberId || "").trim();
-    const decision = String(runApprovalDecision || "").trim().toLowerCase();
-    const ruleId = String(runApprovalRuleId || "").trim();
-    const reason = String(runApprovalReason || "").trim();
-    if (!memberId) {
-      setRunError("approval member_id required");
-      return;
-    }
-    if (decision !== "approve" && decision !== "deny") {
-      setRunError("approval decision must be approve or deny");
-      return;
-    }
-    setRunError(null);
-    const entry: InlineApproval = {
-      member_id: memberId,
-      decision: decision === "deny" ? "deny" : "approve",
-    };
-    if (ruleId) entry.rule_id = ruleId;
-    if (reason) entry.reason = reason;
-    setRunApprovals((prev) => [...prev, entry]);
-    setRunApprovalMemberId("");
-    setRunApprovalRuleId("");
-    setRunApprovalReason("");
-  };
-
-  const handleCreateRun = async () => {
-    if (!teamIdTrimmed) return;
-    const prompt = String(runPrompt || "").trim();
-    if (!prompt) {
-      setRunError("prompt required");
-      return;
-    }
-    setRunError(null);
-    setRunQuorum(null);
-    setRunBusy(true);
-    try {
-      const runPayload: Record<string, any> = { prompt };
-      const model = String(runModel || "").trim();
-      if (model) runPayload.model = model;
-      const tools = String(runTools || "").trim();
-      if (tools) runPayload.tools = tools;
-      const sharedScope = String(runSharedMemoryScope || "").trim();
-      if (sharedScope) {
-        runPayload.memory_scope_id = sharedScope;
-        runPayload.memory_scope_mode = normalizeSharedMemoryMode(runSharedMemoryMode);
-      }
-      const teamPayload: Record<string, any> = {};
-      const role = String(runRole || "").trim();
-      if (role) teamPayload.role = role;
-      const rolesCsv = String(runRoles || "").trim();
-      if (rolesCsv) teamPayload.roles = rolesCsv.split(",").map((r) => r.trim()).filter(Boolean);
-      const conc = Number.parseInt(String(runConcurrency || ""), 10);
-      if (Number.isFinite(conc)) teamPayload.max_concurrency = conc;
-      const timeout = Number.parseInt(String(runTimeoutMs || ""), 10);
-      if (Number.isFinite(timeout)) teamPayload.timeout_ms = timeout;
-      const mode = String(runMode || "").trim();
-      if (mode) teamPayload.mode = mode;
-      const qmode = String(runQuorumMode || "").trim();
-      if (qmode) teamPayload.quorum_policy = { mode: qmode };
-      if (runAutoAllocateRoles) {
-        teamPayload.auto_allocate_roles = true;
-        const maxMembers = Number.parseInt(String(runAutoAllocateMaxMembers || "").trim(), 10);
-        if (Number.isFinite(maxMembers)) {
-          teamPayload.auto_allocate_max_members = maxMembers;
-        }
-      }
-      const overridesMode = String(runOverridesMode || "").trim();
-      if (overridesMode) teamPayload.run_overrides_mode = overridesMode;
-      if (overridesMode === "explicit") {
-        const rawOverrides = String(runMemberOverridesJson || "").trim();
-        if (rawOverrides) {
-          let parsed: any = null;
-          try {
-            parsed = JSON.parse(rawOverrides);
-          } catch (err) {
-            setRunError(`invalid member_overrides json: ${String(err)}`);
-            return;
-          }
-          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-            setRunError("member_overrides must be an object keyed by member_id");
-            return;
-          }
-          teamPayload.member_overrides = parsed;
-        }
-      }
-      const roleOverridesRaw = String(runRoleOverridesJson || "").trim();
-      if (roleOverridesRaw) {
-        let parsed: any = null;
-        try {
-          parsed = JSON.parse(roleOverridesRaw);
-        } catch (err) {
-          setRunError(`invalid role_overrides json: ${String(err)}`);
-          return;
-        }
-        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-          setRunError("role_overrides must be an object keyed by role");
-          return;
-        }
-        teamPayload.role_overrides = parsed;
-      }
-      if (runRoleInstructionsOverride) {
-        teamPayload.role_instructions = runRoleInstructions;
-        const mode = String(runRolePromptMode || "").trim();
-        if (mode) teamPayload.role_prompt_mode = mode;
-      }
-      const runtimeMembersRaw = String(runRuntimeMembersJson || "").trim();
-      if (runtimeMembersRaw) {
-        let parsed: any = null;
-        try {
-          parsed = JSON.parse(runtimeMembersRaw);
-        } catch (err) {
-          setRunError(`invalid runtime_members json: ${String(err)}`);
-          return;
-        }
-        if (!Array.isArray(parsed)) {
-          setRunError("runtime_members must be a JSON array of member objects");
-          return;
-        }
-        teamPayload.runtime_members = parsed;
-      }
-      if (runApprovals.length > 0) {
-        teamPayload.approvals = runApprovals;
-      }
-      const resp = await apiBrokerTeamRunCreate(props.base, teamIdTrimmed, { run: runPayload, team: teamPayload }, props.auth);
-      if (!resp.ok) {
-        setRunResult(null);
-        setRunError(resp.error || resp.err || resp.code || "team run failed");
-        const quorum = (resp as any)?.quorum;
-        if (quorum && typeof quorum === "object") {
-          setRunQuorum(quorum as QuorumEval);
-        }
-        return;
-      }
-      setRunResult(resp);
-      setRunQuorum(null);
-      if (resp?.team_run_id) setRunLookupId(String(resp.team_run_id));
-      setRunApprovals([]);
-      setRunApprovalMemberId("");
-      setRunApprovalRuleId("");
-      setRunApprovalReason("");
-    } catch (err) {
-      setRunError(String(err));
-    } finally {
-      setRunBusy(false);
-    }
-  };
-
-  const handleSeedRoleOverrides = () => {
-    if (!teamRoleOverridesDefaults) return;
-    try {
-      setRunRoleOverridesJson(JSON.stringify(teamRoleOverridesDefaults, null, 2));
-    } catch {
-      setRunRoleOverridesJson("");
-    }
-  };
-
-  const handleSeedRoleInstructions = () => {
-    if (teamRoleInstructionKeys.length === 0) return;
-    setRunRoleInstructionsOverride(true);
-    setRunRoleInstructions({ ...teamRoleInstructionsDefaults });
-    setRunRolePromptMode(teamRolePromptModeDefault || "prepend");
-  };
-
-  const fetchRunStatus = React.useCallback(
-    async (runId: string) => {
-      if (!teamIdTrimmed || !runId) {
-        setRunLookupError("missing team_id or run id");
-        return;
-      }
-      setRunLookupError(null);
-      setRunLookupBusy(true);
-      try {
-        const resp = await apiBrokerTeamRunGet(props.base, teamIdTrimmed, runId, props.auth);
-        setRunLookupResult(resp);
-      } catch (err) {
-        setRunLookupError(String(err));
-      } finally {
-        setRunLookupBusy(false);
-      }
-    },
-    [teamIdTrimmed, props.base, props.auth],
-  );
-
-  const handleRunLookup = async () => {
-    const runId = String(runLookupId || "").trim();
-    await fetchRunStatus(runId);
-  };
-
-  React.useEffect(() => {
-    if (!autoResumeRunLookup || !props.canQuery) return;
-    const runId = String(runLookupId || "").trim();
-    if (!teamIdTrimmed || !runId) return;
-    const key = `${teamIdTrimmed}:${runId}`;
-    if (autoResumeKeyRef.current === key) return;
-    autoResumeKeyRef.current = key;
-    void fetchRunStatus(runId);
-  }, [autoResumeRunLookup, props.canQuery, runLookupId, teamIdTrimmed, fetchRunStatus]);
-
-  const loadRecentRuns = React.useCallback(async () => {
-    if (!teamIdTrimmed) {
-      setRecentRuns([]);
-      return;
-    }
-    setRecentRunsBusy(true);
-    setRecentRunsError(null);
-    try {
-      const resp = await apiBrokerTeamRunList(props.base, teamIdTrimmed, props.auth, {
-        limit: recentRunsLimit,
-        status: recentRunsStatus.trim() ? recentRunsStatus.trim() : undefined,
-      });
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "team runs list failed");
-      }
-      setRecentRuns(Array.isArray(resp.runs) ? resp.runs : []);
-    } catch (err) {
-      setRecentRunsError(String(err));
-    } finally {
-      setRecentRunsBusy(false);
-    }
-  }, [teamIdTrimmed, props.base, props.auth, recentRunsLimit, recentRunsStatus]);
-
-  React.useEffect(() => {
-    if (!teamIdTrimmed) {
-      setRecentRuns([]);
-      return;
-    }
-    void loadRecentRuns();
-  }, [teamIdTrimmed, loadRecentRuns]);
-
-  React.useEffect(() => {
-    if (!recentRunsLive || !props.canQuery) return;
-    const rows = Array.isArray(props.quorumEvents) ? props.quorumEvents : [];
-    if (rows.length === 0) return;
-    let nextKey = "";
-    for (let i = rows.length - 1; i >= 0; i -= 1) {
-      const ev = rows[i];
-      if (!ev) continue;
-      const type = String(ev?.type || "");
-      if (!TEAM_RUN_EVENT_TYPES.has(type)) continue;
-      const evTeamId = String(ev?.payload?.team_id || "");
-      if (teamIdTrimmed && evTeamId && evTeamId !== teamIdTrimmed) continue;
-      const evRunId = String(ev?.payload?.team_run_id || "");
-      nextKey = ev?.event_id
-        ? `id:${String(ev.event_id)}`
-        : `ts:${Number(ev?.ts_unix_ms || 0)}|type:${type}|run:${evRunId}`;
-      break;
-    }
-    if (!nextKey) return;
-    if (recentRunsEventRef.current === nextKey) return;
-    recentRunsEventRef.current = nextKey;
-    void loadRecentRuns();
-  }, [recentRunsLive, props.canQuery, props.quorumEvents, teamIdTrimmed, loadRecentRuns]);
-
-  React.useEffect(() => {
-    if (!autoRefreshRunLookup || !props.canQuery) return;
-    const runId = resolveRunId();
-    if (!runId) return;
-    const rows = Array.isArray(props.quorumEvents) ? props.quorumEvents : [];
-    if (rows.length === 0) return;
-    let nextKey = "";
-    for (let i = rows.length - 1; i >= 0; i -= 1) {
-      const ev = rows[i];
-      if (!ev) continue;
-      const type = String(ev?.type || "");
-      if (!TEAM_RUN_EVENT_TYPES.has(type)) continue;
-      const evTeamId = String(ev?.payload?.team_id || "");
-      if (teamIdTrimmed && evTeamId && evTeamId !== teamIdTrimmed) continue;
-      const evRunId = String(ev?.payload?.team_run_id || "");
-      if (evRunId && evRunId !== runId) continue;
-      nextKey = ev?.event_id
-        ? `id:${String(ev.event_id)}`
-        : `ts:${Number(ev?.ts_unix_ms || 0)}|type:${type}|run:${evRunId}`;
-      break;
-    }
-    if (!nextKey) return;
-    if (runLookupLastEvent === nextKey) return;
-    setRunLookupLastEvent(nextKey);
-    void fetchRunStatus(runId);
-  }, [
-    autoRefreshRunLookup,
-    props.canQuery,
-    props.quorumEvents,
+  const createState = useBrokerTeamRunCreateState({
+    base: props.base,
+    auth: props.auth,
+    canQuery: props.canQuery,
     teamIdTrimmed,
-    runLookupLastEvent,
-    fetchRunStatus,
-  ]);
+    membersList,
+    teamMeta: teamMetaObj,
+    onMembersRefresh: props.onMembersRefresh,
+  });
 
-  const handleRunCancel = async () => {
-    const runId = resolveRunId();
-    if (!teamIdTrimmed || !runId) {
-      setRunCancelError("missing team_id or run id");
-      return;
-    }
-    setRunCancelError(null);
-    setRunCancelNote("");
-    setRunCancelBusy(true);
-    try {
-      const resp = await apiBrokerTeamRunCancel(props.base, teamIdTrimmed, runId, props.auth);
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "team run cancel failed");
-      }
-      setRunLookupResult(resp);
-      if (resp?.team_run_id) setRunLookupId(String(resp.team_run_id));
-      setRunCancelNote("cancel requested");
-    } catch (err) {
-      setRunCancelError(String(err));
-    } finally {
-      setRunCancelBusy(false);
-    }
-  };
-
-  const buildModeratorTargets = React.useCallback(() => {
-    const roles = parseCsvList(moderatorTargetRoles).map((r) => r.toLowerCase());
-    const members = parseCsvList(moderatorTargetMembers);
-    const agents = parseCsvList(moderatorTargetAgents);
-    if (roles.length === 0 && members.length === 0 && agents.length === 0) return undefined;
-    return { roles, member_ids: members, agent_ids: agents };
-  }, [moderatorTargetRoles, moderatorTargetMembers, moderatorTargetAgents]);
-
-  const handleModeratorDirectivePublish = async () => {
-    const runId = resolveRunId();
-    if (!teamIdTrimmed || !runId) {
-      setModeratorError("missing team_id or run id");
-      return;
-    }
-    const directive = String(moderatorDirective || "").trim();
-    if (!directive) {
-      setModeratorError("directive required");
-      return;
-    }
-    setModeratorBusy(true);
-    setModeratorError(null);
-    setModeratorSuccess(null);
-    try {
-      const payload: Record<string, any> = {
-        directive,
-        scope: String(moderatorDirectiveScope || "").trim() || undefined,
-        assignees: parseCsvList(moderatorAssignees),
-        targets: buildModeratorTargets(),
-        append_to_session: moderatorAppendToSession,
-      };
-      if (!payload.scope) delete payload.scope;
-      if (!payload.assignees.length) delete payload.assignees;
-      if (!payload.targets) delete payload.targets;
-      const resp = await apiBrokerTeamRunModeratorDirective(props.base, teamIdTrimmed, runId, payload, props.auth);
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "moderator directive failed");
-      }
-      const dispatched = Array.isArray(resp.dispatched) ? resp.dispatched.length : 0;
-      const skipped = Array.isArray(resp.skipped) ? resp.skipped.length : 0;
-      setModeratorSuccess(`directive dispatched to ${dispatched}${skipped ? ` (skipped ${skipped})` : ""}`);
-      setModeratorDirective("");
-      setModeratorDirectiveScope("");
-    } catch (err) {
-      setModeratorError(String(err));
-    } finally {
-      setModeratorBusy(false);
-    }
-  };
-
-  const handleModeratorTaskPublish = async () => {
-    const runId = resolveRunId();
-    if (!teamIdTrimmed || !runId) {
-      setModeratorError("missing team_id or run id");
-      return;
-    }
-    const title = String(moderatorTaskTitle || "").trim();
-    if (!title) {
-      setModeratorError("task title required");
-      return;
-    }
-    setModeratorBusy(true);
-    setModeratorError(null);
-    setModeratorSuccess(null);
-    try {
-      const payload: Record<string, any> = {
-        title,
-        detail: String(moderatorTaskDetail || "").trim() || undefined,
-        status: String(moderatorTaskStatus || "").trim() || undefined,
-        assignees: parseCsvList(moderatorAssignees),
-        targets: buildModeratorTargets(),
-        append_to_session: moderatorAppendToSession,
-      };
-      if (!payload.detail) delete payload.detail;
-      if (!payload.status) delete payload.status;
-      if (!payload.assignees.length) delete payload.assignees;
-      if (!payload.targets) delete payload.targets;
-      const resp = await apiBrokerTeamRunModeratorTask(props.base, teamIdTrimmed, runId, payload, props.auth);
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "moderator task failed");
-      }
-      const dispatched = Array.isArray(resp.dispatched) ? resp.dispatched.length : 0;
-      const skipped = Array.isArray(resp.skipped) ? resp.skipped.length : 0;
-      setModeratorSuccess(`task dispatched to ${dispatched}${skipped ? ` (skipped ${skipped})` : ""}`);
-      setModeratorTaskTitle("");
-      setModeratorTaskDetail("");
-      setModeratorTaskStatus("");
-    } catch (err) {
-      setModeratorError(String(err));
-    } finally {
-      setModeratorBusy(false);
-    }
-  };
-
-  const handleModeratorEventsLoad = async () => {
-    const runId = resolveRunId();
-    if (!teamIdTrimmed || !runId) {
-      setModeratorEventsError("missing team_id or run id");
-      return;
-    }
-    setModeratorEventsBusy(true);
-    setModeratorEventsError(null);
-    try {
-      const maxBytesRaw = Number.parseInt(String(moderatorEventsMaxBytes || ""), 10);
-      const limitRaw = Number.parseInt(String(moderatorEventsLimit || ""), 10);
-      const resp = await apiBrokerTeamRunModeratorEvents(
-        props.base,
-        teamIdTrimmed,
-        runId,
-        {
-          types: String(moderatorEventsTypes || "").trim(),
-          maxBytes: Number.isFinite(maxBytesRaw) ? maxBytesRaw : undefined,
-          limit: Number.isFinite(limitRaw) ? limitRaw : undefined,
-          roles: String(moderatorTargetRoles || "").trim(),
-          memberIds: String(moderatorTargetMembers || "").trim(),
-          agentIds: String(moderatorTargetAgents || "").trim(),
-        },
-        props.auth,
-      );
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "moderator events failed");
-      }
-      setModeratorEvents(Array.isArray(resp.events) ? resp.events : []);
-      if (resp.skipped && Array.isArray(resp.skipped) && resp.skipped.length > 0) {
-        setModeratorSuccess(`loaded ${resp.events?.length ?? 0} events (skipped ${resp.skipped.length})`);
-      } else {
-        setModeratorSuccess(`loaded ${resp.events?.length ?? 0} events`);
-      }
-    } catch (err) {
-      setModeratorEventsError(String(err));
-    } finally {
-      setModeratorEventsBusy(false);
-    }
-  };
-
-  const handleRuntimeMembersLoadFromRun = () => {
-    const runtimeMembers = runLookupResult?.runtime_members;
-    if (!Array.isArray(runtimeMembers) || runtimeMembers.length === 0) {
-      setRuntimeUpdateError("no runtime members to load");
-      return;
-    }
-    setRunRuntimeMembersJson(JSON.stringify(runtimeMembers, null, 2));
-    setRuntimeUpdateError(null);
-  };
-
-  const resolveRunId = () =>
-    String(runLookupResult?.team_run_id || runLookupId || runResult?.team_run_id || "").trim();
-
-  const applyRuntimeMembersUpdate = async (members: any[], mode: string) => {
-    const runId = resolveRunId();
-    if (!teamIdTrimmed || !runId) {
-      setRuntimeUpdateError("missing team_id or run id");
-      return;
-    }
-    setRuntimeUpdateError(null);
-    setRuntimeUpdateNote("");
-    setRuntimeUpdateBusy(true);
-    try {
-      const resp = await apiBrokerTeamRunRuntimeMembersUpdate(
-        props.base,
-        teamIdTrimmed,
-        runId,
-        { mode, runtime_members: members },
-        props.auth,
-      );
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "runtime members update failed");
-      }
-      setRunLookupResult(resp);
-      if (Array.isArray(resp.runtime_members)) {
-        setRunRuntimeMembersJson(JSON.stringify(resp.runtime_members, null, 2));
-        setRuntimeUpdateNote(`updated ${resp.runtime_members.length} runtime members`);
-      } else {
-        setRunRuntimeMembersJson(JSON.stringify(members, null, 2));
-        setRuntimeUpdateNote(`updated ${members.length} runtime members`);
-      }
-    } catch (err) {
-      setRuntimeUpdateError(String(err));
-    } finally {
-      setRuntimeUpdateBusy(false);
-    }
-  };
-
-  const handleRuntimeMembersUpdate = async () => {
-    const raw = String(runRuntimeMembersJson || "").trim();
-    if (!raw) {
-      setRuntimeUpdateError("runtime members json required");
-      return;
-    }
-    let parsed: any = null;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (err) {
-      setRuntimeUpdateError(`invalid runtime_members json: ${String(err)}`);
-      return;
-    }
-    if (!Array.isArray(parsed)) {
-      setRuntimeUpdateError("runtime_members must be a JSON array of member objects");
-      return;
-    }
-    const mode = String(runtimeUpdateMode || "").trim() || "replace";
-    await applyRuntimeMembersUpdate(parsed, mode);
-  };
-
-  const handleRuntimeMemberToggle = async (member: any) => {
-    const runtimeMembers = Array.isArray(runLookupResult?.runtime_members) ? runLookupResult.runtime_members : [];
-    if (runtimeMembers.length === 0) {
-      setRuntimeUpdateError("load run status first");
-      return;
-    }
-    const memberId = String(member?.member_id || "").trim();
-    const agentId = String(member?.agent_id || "").trim();
-    if (!memberId && !agentId) {
-      setRuntimeUpdateError("runtime member missing id");
-      return;
-    }
-    const updated = runtimeMembers.map((item: any) => {
-      const mid = String(item?.member_id || "").trim();
-      const aid = String(item?.agent_id || "").trim();
-      const match = memberId ? mid === memberId : aid === agentId;
-      if (!match) return item;
-      const current = String(item?.status || "active").toLowerCase();
-      const next = current === "paused" ? "active" : "paused";
-      return { ...item, status: next };
-    });
-    await applyRuntimeMembersUpdate(updated, "replace");
-  };
-
-  const handleRuntimeMemberRemove = async (member: any) => {
-    const runtimeMembers = Array.isArray(runLookupResult?.runtime_members) ? runLookupResult.runtime_members : [];
-    if (runtimeMembers.length === 0) {
-      setRuntimeUpdateError("load run status first");
-      return;
-    }
-    const memberId = String(member?.member_id || "").trim();
-    const agentId = String(member?.agent_id || "").trim();
-    if (!memberId && !agentId) {
-      setRuntimeUpdateError("runtime member missing id");
-      return;
-    }
-    const updated = runtimeMembers.filter((item: any) => {
-      const mid = String(item?.member_id || "").trim();
-      const aid = String(item?.agent_id || "").trim();
-      if (memberId) return mid !== memberId;
-      return aid !== agentId;
-    });
-    await applyRuntimeMembersUpdate(updated, "replace");
-  };
-
-  const handleApprovalsRefresh = async () => {
-    const runId = approvalRunIdTrimmed;
-    if (!teamIdTrimmed || !runId) {
-      setApprovalsError("missing team_id or run id");
-      return;
-    }
-    setApprovalsError(null);
-    setApprovalsBusy(true);
-    try {
-      const resp = await apiBrokerTeamRunApprovalsList(props.base, teamIdTrimmed, runId, props.auth);
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "approvals fetch failed");
-      }
-      const rows = Array.isArray(resp?.approvals) ? resp.approvals : [];
-      setApprovals(rows);
-      setApprovalsLastSyncMs(Date.now());
-    } catch (err) {
-      setApprovalsError(String(err));
-    } finally {
-      setApprovalsBusy(false);
-    }
-  };
-
-  const handleApprovalSubmit = async () => {
-    const runId = approvalRunIdTrimmed;
-    const memberId = String(approvalMemberId || "").trim();
-    const decision = String(approvalDecision || "").trim().toLowerCase();
-    const ruleId = String(approvalRuleId || "").trim();
-    const reason = String(approvalReason || "").trim();
-    if (!teamIdTrimmed || !runId) {
-      setApprovalsError("missing team_id or run id");
-      return;
-    }
-    if (!memberId) {
-      setApprovalsError("member_id required");
-      return;
-    }
-    if (!decision) {
-      setApprovalsError("decision required");
-      return;
-    }
-    setApprovalsError(null);
-    setApprovalsBusy(true);
-    try {
-      const payload: Record<string, any> = { member_id: memberId, decision };
-      if (ruleId) payload.rule_id = ruleId;
-      if (reason) payload.reason = reason;
-      const resp = await apiBrokerTeamRunApprovalsCreate(props.base, teamIdTrimmed, runId, payload, props.auth);
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "approvals update failed");
-      }
-      const rows = Array.isArray(resp?.approvals) ? resp.approvals : [];
-      setApprovals(rows);
-      setApprovalsLastSyncMs(Date.now());
-      setApprovalReason("");
-    } catch (err) {
-      setApprovalsError(String(err));
-    } finally {
-      setApprovalsBusy(false);
-    }
-  };
-
-  const refreshRuntimeAgents = async () => {
-    if (!props.canQuery) return;
-    setRuntimeAgentsError(null);
-    setRuntimeAgentsBusy(true);
-    try {
-      const resp = await apiBrokerListAgents(props.base, props.auth);
-      const rows = Array.isArray(resp?.agents) ? resp.agents : [];
-      setRuntimeAgents(rows);
-    } catch (err) {
-      setRuntimeAgentsError(String(err));
-    } finally {
-      setRuntimeAgentsBusy(false);
-    }
-  };
-
-  const handleAddRuntimeMember = () => {
-    const agentId = String(runtimeMemberAgentId || "").trim();
-    if (!agentId) {
-      setRunError("runtime member agent_id required");
-      return;
-    }
-    const role = String(runtimeMemberRole || "").trim();
-    if (!role) {
-      setRunError("runtime member role required");
-      return;
-    }
-    const entry: Record<string, any> = { agent_id: agentId, role };
-    const memberId = String(runtimeMemberId || "").trim();
-    if (memberId) entry.member_id = memberId;
-    const deploymentId = String(runtimeMemberDeploymentId || "").trim();
-    if (deploymentId) entry.deployment_id = deploymentId;
-    const caps = String(runtimeMemberCapabilities || "")
-      .split(",")
-      .map((c) => c.trim())
-      .filter(Boolean);
-    if (caps.length > 0) entry.capabilities = caps;
-    const meta: Record<string, any> = {};
-    const backendLabel = String(runtimeMemberBackendLabel || "").trim();
-    if (backendLabel) meta.backend_label = backendLabel;
-    const runOverrides: Record<string, any> = {};
-    const model = String(runtimeMemberModel || "").trim();
-    if (model) runOverrides.model = model;
-    const baseUrl = String(runtimeMemberBaseUrl || "").trim();
-    if (baseUrl) runOverrides.base_url = baseUrl;
-    const summaryModel = String(runtimeMemberSummaryModel || "").trim();
-    if (summaryModel) runOverrides.summary_model = summaryModel;
-    const tools = String(runtimeMemberTools || "").trim();
-    if (tools) runOverrides.tools = tools;
-    const timeoutMs = Number.parseInt(String(runtimeMemberTimeoutMs || "").trim(), 10);
-    if (Number.isFinite(timeoutMs)) runOverrides.timeout_ms = timeoutMs;
-    if (Object.keys(runOverrides).length > 0) meta.run_overrides = runOverrides;
-    if (Object.keys(meta).length > 0) entry.meta = meta;
-
-    let items: any[] = [];
-    const raw = String(runRuntimeMembersJson || "").trim();
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          items = parsed;
-        } else {
-          setRunError("runtime_members json must be an array");
-          return;
-        }
-      } catch (err) {
-        setRunError(`invalid runtime_members json: ${String(err)}`);
-        return;
-      }
-    }
-    items.push(entry);
-    setRunRuntimeMembersJson(JSON.stringify(items, null, 2));
-    setRunError(null);
-    setRuntimeMemberId("");
-    setRuntimeMemberAgentId("");
-    setRuntimeMemberDeploymentId("");
-    setRuntimeMemberCapabilities("");
-    setRuntimeMemberBackendLabel("");
-    setRuntimeMemberModel("");
-    setRuntimeMemberBaseUrl("");
-    setRuntimeMemberSummaryModel("");
-    setRuntimeMemberTools("");
-    setRuntimeMemberTimeoutMs("");
-  };
-
-  const handleRemoveRuntimeMember = (idx: number) => {
-    const rawItems = runtimeMembersPreview.items;
-    if (!Array.isArray(rawItems) || idx < 0 || idx >= rawItems.length) return;
-    const next = rawItems.filter((_, i) => i !== idx);
-    setRunRuntimeMembersJson(next.length > 0 ? JSON.stringify(next, null, 2) : "");
-  };
-
-  const handleToggleRuntimeMemberStatus = (idx: number) => {
-    const rawItems = runtimeMembersPreview.items;
-    if (!Array.isArray(rawItems) || idx < 0 || idx >= rawItems.length) return;
-    const next = rawItems.map((item, i) => {
-      if (i !== idx) return item;
-      const statusRaw = item?.status ? String(item.status).toLowerCase() : "";
-      const nextStatus = statusRaw === "paused" ? "active" : "paused";
-      return { ...item, status: nextStatus };
-    });
-    setRunRuntimeMembersJson(JSON.stringify(next, null, 2));
-  };
-
-  const handleSetAllRuntimeStatus = (status: "active" | "paused") => {
-    const rawItems = runtimeMembersPreview.items;
-    if (!Array.isArray(rawItems) || rawItems.length === 0) return;
-    const next = rawItems.map((item) => ({ ...item, status }));
-    setRunRuntimeMembersJson(JSON.stringify(next, null, 2));
-  };
-
-  const handleRemovePausedRuntimeMembers = () => {
-    const rawItems = runtimeMembersPreview.items;
-    if (!Array.isArray(rawItems) || rawItems.length === 0) return;
-    const filtered = rawItems.filter((item) => {
-      const statusRaw = item?.status ? String(item.status).toLowerCase() : "active";
-      return statusRaw !== "paused";
-    });
-    setRunRuntimeMembersJson(filtered.length > 0 ? JSON.stringify(filtered, null, 2) : "");
-  };
-
-  const handleCompactRuntimeMembers = () => {
-    if (runtimeMembersPreview.error) {
-      setRunError(runtimeMembersPreview.error);
-      return;
-    }
-    const rawItems = runtimeMembersPreview.items;
-    if (!Array.isArray(rawItems) || rawItems.length === 0) return;
-    const compacted = rawItems
-      .map((item) => {
-        const out: Record<string, any> = {};
-        const memberId = item?.member_id ? String(item.member_id).trim() : "";
-        const agentId = item?.agent_id ? String(item.agent_id).trim() : "";
-        const deploymentId = item?.deployment_id ? String(item.deployment_id).trim() : "";
-        const role = item?.role ? String(item.role).trim() : "";
-        const status = item?.status ? String(item.status).trim().toLowerCase() : "";
-        if (memberId) out.member_id = memberId;
-        if (agentId) out.agent_id = agentId;
-        if (deploymentId) out.deployment_id = deploymentId;
-        if (role) out.role = role;
-        if (status && status !== "active") out.status = status;
-        if (Array.isArray(item?.capabilities)) {
-          const caps = item.capabilities.map((c: any) => String(c).trim()).filter(Boolean);
-          if (caps.length > 0) out.capabilities = caps;
-        }
-        if (typeof item?.weight === "number") out.weight = item.weight;
-        if (item?.meta && typeof item.meta === "object") {
-          const meta: Record<string, any> = {};
-          for (const [k, v] of Object.entries(item.meta as Record<string, any>)) {
-            if (v === null || v === undefined) continue;
-            if (typeof v === "string" && v.trim() === "") continue;
-            if (Array.isArray(v) && v.length === 0) continue;
-            if (typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0) continue;
-            meta[k] = v;
-          }
-          if (Object.keys(meta).length > 0) out.meta = meta;
-        }
-        return out;
-      })
-      .filter((item) => Object.keys(item).length > 0);
-    setRunRuntimeMembersJson(compacted.length > 0 ? JSON.stringify(compacted, null, 2) : "");
-  };
-
-  const handleCopyRuntimeMembers = async () => {
-    const payload = String(runRuntimeMembersJson || "").trim();
-    if (!payload) {
-      setRunError("runtime members json is empty");
-      return;
-    }
-    if (runtimeMembersPreview.error) {
-      setRunError(runtimeMembersPreview.error);
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(payload);
-      setRunError(null);
-    } catch (err) {
-      setRunError(`copy failed: ${String(err)}`);
-    }
-  };
-
-  const handleImportRuntimeMembers = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const trimmed = text.trim();
-      if (!runtimeImportMerge) {
-        setRunRuntimeMembersJson(trimmed);
-      } else {
-        let incoming: any = null;
-        try {
-          incoming = JSON.parse(trimmed);
-        } catch {
-          setRunRuntimeMembersJson(trimmed);
-          setRunError(null);
-          return;
-        }
-        const existing = runtimeMembersPreview.items;
-        if (!Array.isArray(incoming)) {
-          setRunRuntimeMembersJson(trimmed);
-          setRunError(null);
-          return;
-        }
-        const merged = Array.isArray(existing) ? [...existing] : [];
-        for (const item of incoming) {
-          const agentId = item?.agent_id ? String(item.agent_id).trim() : "";
-          const memberId = item?.member_id ? String(item.member_id).trim() : "";
-          const exists = merged.some((m: any) => {
-            const mid = m?.member_id ? String(m.member_id).trim() : "";
-            const aid = m?.agent_id ? String(m.agent_id).trim() : "";
-            if (memberId && mid) return memberId === mid;
-            if (agentId && aid) return agentId === aid;
-            return false;
-          });
-          if (!exists) {
-            merged.push(item);
-          }
-        }
-        setRunRuntimeMembersJson(merged.length > 0 ? JSON.stringify(merged, null, 2) : "");
-      }
-      setRunError(null);
-    } catch (err) {
-      setRunError(`import failed: ${String(err)}`);
-    } finally {
-      event.target.value = "";
-    }
-  };
-
-  const handleDownloadRuntimeMembers = () => {
-    const payload = String(runRuntimeMembersJson || "").trim();
-    if (!payload) {
-      setRunError("runtime members json is empty");
-      return;
-    }
-    const blob = new Blob([payload], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "runtime_members.json";
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-    setRunError(null);
-  };
-
-  const handleExportTeamMembers = () => {
-    if (membersList.length === 0) {
-      setRunError("no team members to export");
-      return;
-    }
-    const payload = membersList.map((m) => {
-      const entry: Record<string, any> = {};
-      const memberId = String(m?.member_id || "").trim();
-      const agentId = String(m?.agent_id || "").trim();
-      const deploymentId = String(m?.deployment_id || "").trim();
-      const role = String(m?.role || "").trim();
-      const status = String(m?.status || "").trim();
-      if (memberId) entry.member_id = memberId;
-      if (agentId) entry.agent_id = agentId;
-      if (deploymentId) entry.deployment_id = deploymentId;
-      if (role) entry.role = role;
-      if (status && status !== "active") entry.status = status;
-      if (typeof m?.weight === "number") entry.weight = m.weight;
-      if (Array.isArray(m?.capabilities)) {
-        const caps = m.capabilities.map((c) => String(c).trim()).filter(Boolean);
-        if (caps.length > 0) entry.capabilities = caps;
-      }
-      if (m?.meta && typeof m.meta === "object") {
-        const meta: Record<string, any> = {};
-        for (const [k, v] of Object.entries(m.meta)) {
-          if (v === null || v === undefined) continue;
-          if (typeof v === "string" && v.trim() === "") continue;
-          if (Array.isArray(v) && v.length === 0) continue;
-          if (typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0) continue;
-          meta[k] = v;
-        }
-        if (Object.keys(meta).length > 0) entry.meta = meta;
-      }
-      return entry;
-    });
-    setRunRuntimeMembersJson(JSON.stringify(payload, null, 2));
-    setRunError(null);
-  };
-
-  const handleSeedExplicitOverrides = () => {
-    if (membersList.length === 0) {
-      setRunError("no team members loaded");
-      return;
-    }
-    const seed: Record<string, any> = {};
-    for (const member of membersList) {
-      const mid = String(member?.member_id || "").trim();
-      if (!mid) continue;
-      const meta = member?.meta && typeof member.meta === "object" ? (member.meta as Record<string, any>) : null;
-      const overridesRaw =
-        meta?.run_overrides && typeof meta.run_overrides === "object" ? (meta.run_overrides as Record<string, any>) : null;
-      const entry: Record<string, any> = {};
-      if (overridesRaw) {
-        const model = overridesRaw.model ? String(overridesRaw.model) : "";
-        const baseUrl = overridesRaw.base_url ? String(overridesRaw.base_url) : "";
-        const summaryModel = overridesRaw.summary_model ? String(overridesRaw.summary_model) : "";
-        const tools = overridesRaw.tools ? String(overridesRaw.tools) : "";
-        const timeoutMs = overridesRaw.timeout_ms;
-        const maxSteps = overridesRaw.max_steps;
-        const streamAssistant = overridesRaw.stream_assistant;
-        if (model) entry.model = model;
-        if (baseUrl) entry.base_url = baseUrl;
-        if (summaryModel) entry.summary_model = summaryModel;
-        if (tools) entry.tools = tools;
-        if (Number.isFinite(timeoutMs)) entry.timeout_ms = timeoutMs;
-        if (Number.isFinite(maxSteps)) entry.max_steps = maxSteps;
-        if (typeof streamAssistant === "boolean") entry.stream_assistant = streamAssistant;
-      }
-      if (Object.keys(entry).length > 0) {
-        seed[mid] = entry;
-      }
-    }
-    setRunOverridesMode("explicit");
-    setRunMemberOverridesJson(JSON.stringify(seed, null, 2));
-    setRunError(null);
-  };
-
-  const handleFixInvalidRuntimeMembers = () => {
-    if (runtimeMembersPreview.error) {
-      setRunError(runtimeMembersPreview.error);
-      return;
-    }
-    const items = runtimeMembersPreview.items;
-    if (!Array.isArray(items) || items.length === 0) return;
-    const roleDefault = String(runtimeMemberRole || "").trim() || "executor";
-    const fixed: any[] = [];
-    for (const item of items) {
-      const agentId = item?.agent_id ? String(item.agent_id).trim() : "";
-      const role = item?.role ? String(item.role).trim() : "";
-      if (!agentId) {
-        continue;
-      }
-      if (!role) {
-        fixed.push({ ...item, role: roleDefault });
-      } else {
-        fixed.push(item);
-      }
-    }
-    setRunRuntimeMembersJson(fixed.length > 0 ? JSON.stringify(fixed, null, 2) : "");
-  };
-
-  const handleAddConnectedAgents = () => {
-    if (runtimeMembersPreview.error) {
-      setRunError(runtimeMembersPreview.error);
-      return;
-    }
-    const role = String(runtimeMemberRole || "").trim() || "executor";
-    const { additions, error } = buildRuntimeAgentAdditions({
-      runtimeAgentOptions,
-      existingRuntime: runtimeMembersPreview.items,
-      membersList,
-      role,
-    });
-    if (error) {
-      setRunError(error);
-      return;
-    }
-    setRunRuntimeMembersJson(JSON.stringify([...runtimeMembersPreview.items, ...additions], null, 2));
-    setRunError(null);
-  };
-
-  const handleAllocateRoleRuntimeMembers = () => {
-    if (runtimeMembersPreview.error) {
-      setRunError(runtimeMembersPreview.error);
-      return;
-    }
-    const { additions, warning, error } = buildRoleAllocatedRuntimeMembers({
-      runtimeAgentOptions,
-      existingRuntime: runtimeMembersPreview.items,
-      membersList,
-      roles: runRolePlanOptions,
-    });
-    if (error) {
-      setRunError(error);
-      return;
-    }
-    setRunRuntimeMembersJson(JSON.stringify([...runtimeMembersPreview.items, ...additions], null, 2));
-    setRunError(warning ?? null);
-  };
-
-  const handleSaveRuntimeMembers = async () => {
-    if (!teamIdTrimmed) {
-      setRuntimeSaveError("select a team first");
-      return;
-    }
-    if (runtimeMembersPreview.error) {
-      setRuntimeSaveError(runtimeMembersPreview.error);
-      return;
-    }
-    const items = runtimeMembersPreview.items;
-    if (!Array.isArray(items) || items.length === 0) {
-      setRuntimeSaveError("no runtime members to save");
-      return;
-    }
-    const payloads: Record<string, any>[] = [];
-    const invalid: string[] = [];
-    for (const row of runtimeSavePreview.newMembers) {
-      const item = row?.item ?? {};
-      const memberId = item?.member_id ? String(item.member_id).trim() : "";
-      const agentId = item?.agent_id ? String(item.agent_id).trim() : "";
-      const role = item?.role ? String(item.role).trim() : "";
-      if (!agentId || !role) {
-        invalid.push(memberId || agentId || "runtime");
-        continue;
-      }
-      const payload: Record<string, any> = { role, agent_id: agentId };
-      if (memberId) payload.member_id = memberId;
-      if (item?.deployment_id) payload.deployment_id = String(item.deployment_id);
-      if (Array.isArray(item?.capabilities)) payload.capabilities = item.capabilities;
-      if (item?.status) payload.status = String(item.status);
-      if (typeof item?.weight === "number") payload.weight = item.weight;
-      if (item?.meta && typeof item.meta === "object") payload.meta = item.meta;
-      payloads.push(payload);
-    }
-    if (payloads.length === 0) {
-      setRuntimeSaveError(invalid.length > 0 ? "runtime members missing agent_id or role" : "no new members to save");
-      return;
-    }
-    if (!window.confirm(`Save ${payloads.length} runtime member(s) to team?`)) {
-      return;
-    }
-    setRuntimeSaveError(null);
-    setRuntimeSaveBusy(true);
-    try {
-      for (const payload of payloads) {
-        await apiBrokerTeamMembersUpsert(props.base, teamIdTrimmed, payload, props.auth);
-      }
-      if (props.onMembersRefresh) {
-        await props.onMembersRefresh(teamIdTrimmed);
-      }
-    } catch (err) {
-      setRuntimeSaveError(String(err));
-    } finally {
-      setRuntimeSaveBusy(false);
-    }
-  };
-
-  React.useEffect(() => {
-    if (!teamIdTrimmed) return;
-    setRunResult(null);
-    setRunError(null);
-    setRunQuorum(null);
-    setRunLookupResult(null);
-    setRunLookupError(null);
-    setRunLookupId("");
-    setRunApprovals([]);
-    setRunApprovalMemberId("");
-    setRunApprovalRuleId("");
-    setRunApprovalReason("");
-    setApprovalRunId("");
-    setApprovals(null);
-    setApprovalsError(null);
-    lastAutoApprovalRunIdRef.current = "";
-  }, [teamIdTrimmed]);
-
-  React.useEffect(() => {
-    if (!approvalRunIdTrimmed) {
-      lastAutoApprovalRunIdRef.current = "";
-      return;
-    }
-    if (!props.canQuery || !teamIdTrimmed) return;
-    if (approvalsBusy || approvals !== null) return;
-    if (lastAutoApprovalRunIdRef.current === approvalRunIdTrimmed) return;
-    lastAutoApprovalRunIdRef.current = approvalRunIdTrimmed;
-    void handleApprovalsRefresh();
-  }, [approvalRunIdTrimmed, approvals, approvalsBusy, props.canQuery, handleApprovalsRefresh, teamIdTrimmed]);
-
-  React.useEffect(() => {
-    if (!props.canQuery) return;
-    if (runtimeAgentsBusy || (runtimeAgents && runtimeAgents.length > 0)) return;
-    void refreshRuntimeAgents();
-  }, [props.canQuery, runtimeAgentsBusy, runtimeAgents, refreshRuntimeAgents]);
-
-  React.useEffect(() => {
-    if (!runtimeMemberAgentId) {
-      if (runtimeMemberDeploymentId) {
-        setRuntimeMemberDeploymentId("");
-      }
-      return;
-    }
-    if (runtimeMemberDeploymentId) return;
-    if (runtimeAgentDeployments.length === 0) return;
-    const first = runtimeAgentDeployments[0];
-    const depId = first?.deployment_id ? String(first.deployment_id) : "";
-    if (depId) {
-      setRuntimeMemberDeploymentId(depId);
-    }
-  }, [runtimeMemberAgentId, runtimeMemberDeploymentId, runtimeAgentDeployments]);
+  const controlState = useBrokerTeamRunControlState({
+    base: props.base,
+    auth: props.auth,
+    canQuery: props.canQuery,
+    teamIdTrimmed,
+    quorumEvents: props.quorumEvents,
+    runResult: createState.runResult,
+    runRuntimeMembersJson: createState.runRuntimeMembersJson,
+    setRunRuntimeMembersJson: createState.setRunRuntimeMembersJson,
+  });
 
   return (
     <div className="mt-4 grid gap-3">
       <TeamRunCreatePanel
         canQuery={props.canQuery}
         teamId={teamIdTrimmed}
-        runPrompt={runPrompt}
-        setRunPrompt={setRunPrompt}
-        runModel={runModel}
-        setRunModel={setRunModel}
-        runTools={runTools}
-        setRunTools={setRunTools}
-        runRole={runRole}
-        setRunRole={setRunRole}
-        runRoles={runRoles}
-        setRunRoles={setRunRoles}
-        runConcurrency={runConcurrency}
-        setRunConcurrency={setRunConcurrency}
-        runTimeoutMs={runTimeoutMs}
-        setRunTimeoutMs={setRunTimeoutMs}
-        runSharedMemoryScope={runSharedMemoryScope}
-        setRunSharedMemoryScope={setRunSharedMemoryScope}
-        runSharedMemoryMode={runSharedMemoryMode}
-        setRunSharedMemoryMode={setRunSharedMemoryMode}
-        runAutoAllocateRoles={runAutoAllocateRoles}
-        setRunAutoAllocateRoles={setRunAutoAllocateRoles}
-        runAutoAllocateMaxMembers={runAutoAllocateMaxMembers}
-        setRunAutoAllocateMaxMembers={setRunAutoAllocateMaxMembers}
-        runMode={runMode}
-        setRunMode={setRunMode}
-        runQuorumMode={runQuorumMode}
-        setRunQuorumMode={setRunQuorumMode}
-        runBusy={runBusy}
-        onCreateRun={handleCreateRun}
-        runOverridesMode={runOverridesMode}
-        setRunOverridesMode={setRunOverridesMode}
-        runMemberOverridesJson={runMemberOverridesJson}
-        setRunMemberOverridesJson={setRunMemberOverridesJson}
-        onSeedExplicitOverrides={handleSeedExplicitOverrides}
-        runRoleOverridesJson={runRoleOverridesJson}
-        setRunRoleOverridesJson={setRunRoleOverridesJson}
-        teamRoleOverrideKeys={teamRoleOverrideKeys}
-        onSeedRoleOverrides={handleSeedRoleOverrides}
-        runRoleInstructionsOverride={runRoleInstructionsOverride}
-        setRunRoleInstructionsOverride={setRunRoleInstructionsOverride}
-        runRoleInstructions={runRoleInstructions}
-        setRunRoleInstructions={setRunRoleInstructions}
-        runRolePromptMode={runRolePromptMode}
-        setRunRolePromptMode={setRunRolePromptMode}
-        teamRoleInstructionKeys={teamRoleInstructionKeys}
-        onSeedRoleInstructions={handleSeedRoleInstructions}
-        runRolePlanOptions={runRolePlanOptions}
-        runRuntimeMembersJson={runRuntimeMembersJson}
-        setRunRuntimeMembersJson={setRunRuntimeMembersJson}
-        runtimeMembersPreview={runtimeMembersPreview}
-        runtimeTeamDiff={runtimeTeamDiff}
-        handleSetAllRuntimeStatus={handleSetAllRuntimeStatus}
-        handleRemovePausedRuntimeMembers={handleRemovePausedRuntimeMembers}
-        handleCompactRuntimeMembers={handleCompactRuntimeMembers}
-        handleCopyRuntimeMembers={handleCopyRuntimeMembers}
-        runtimeImportRef={runtimeImportRef}
-        runtimeImportMerge={runtimeImportMerge}
-        setRuntimeImportMerge={setRuntimeImportMerge}
-        handleDownloadRuntimeMembers={handleDownloadRuntimeMembers}
-        handleExportTeamMembers={handleExportTeamMembers}
-        handleImportRuntimeMembers={handleImportRuntimeMembers}
-        handleToggleRuntimeMemberStatus={handleToggleRuntimeMemberStatus}
-        handleRemoveRuntimeMember={handleRemoveRuntimeMember}
-        runtimeMemberId={runtimeMemberId}
-        setRuntimeMemberId={setRuntimeMemberId}
-        runtimeMemberAgentId={runtimeMemberAgentId}
-        setRuntimeMemberAgentId={setRuntimeMemberAgentId}
-        runtimeMemberRole={runtimeMemberRole}
-        setRuntimeMemberRole={setRuntimeMemberRole}
-        runtimeAgentOptions={runtimeAgentOptions}
-        runtimeAgentsBusy={runtimeAgentsBusy}
-        refreshRuntimeAgents={refreshRuntimeAgents}
-        handleAddConnectedAgents={handleAddConnectedAgents}
-        handleAllocateRoleRuntimeMembers={handleAllocateRoleRuntimeMembers}
-        runtimeSaveBusy={runtimeSaveBusy}
-        handleSaveRuntimeMembers={handleSaveRuntimeMembers}
-        runtimeAgentsError={runtimeAgentsError}
-        runtimeSaveError={runtimeSaveError}
-        runtimeSavePreview={runtimeSavePreview}
-        handleFixInvalidRuntimeMembers={handleFixInvalidRuntimeMembers}
-        runtimeMemberDeploymentId={runtimeMemberDeploymentId}
-        setRuntimeMemberDeploymentId={setRuntimeMemberDeploymentId}
-        runtimeAgentDeployments={runtimeAgentDeployments}
-        runtimeMemberCapabilities={runtimeMemberCapabilities}
-        setRuntimeMemberCapabilities={setRuntimeMemberCapabilities}
-        runtimeMemberBackendLabel={runtimeMemberBackendLabel}
-        setRuntimeMemberBackendLabel={setRuntimeMemberBackendLabel}
-        runtimeMemberModel={runtimeMemberModel}
-        setRuntimeMemberModel={setRuntimeMemberModel}
-        runtimeMemberBaseUrl={runtimeMemberBaseUrl}
-        setRuntimeMemberBaseUrl={setRuntimeMemberBaseUrl}
-        runtimeMemberSummaryModel={runtimeMemberSummaryModel}
-        setRuntimeMemberSummaryModel={setRuntimeMemberSummaryModel}
-        runtimeMemberTools={runtimeMemberTools}
-        setRuntimeMemberTools={setRuntimeMemberTools}
-        runtimeMemberTimeoutMs={runtimeMemberTimeoutMs}
-        setRuntimeMemberTimeoutMs={setRuntimeMemberTimeoutMs}
-        handleAddRuntimeMember={handleAddRuntimeMember}
-        runApprovalMemberId={runApprovalMemberId}
-        setRunApprovalMemberId={setRunApprovalMemberId}
-        runApprovalDecision={runApprovalDecision}
-        setRunApprovalDecision={setRunApprovalDecision}
-        runApprovalRuleId={runApprovalRuleId}
-        setRunApprovalRuleId={setRunApprovalRuleId}
-        runApprovalReason={runApprovalReason}
-        setRunApprovalReason={setRunApprovalReason}
-        runApprovals={runApprovals}
-        setRunApprovals={setRunApprovals}
-        handleAddRunApproval={handleAddRunApproval}
-        runError={runError}
-        runQuorum={runQuorum}
-        runResult={runResult}
+        runPrompt={createState.runPrompt}
+        setRunPrompt={createState.setRunPrompt}
+        runModel={createState.runModel}
+        setRunModel={createState.setRunModel}
+        runTools={createState.runTools}
+        setRunTools={createState.setRunTools}
+        runRole={createState.runRole}
+        setRunRole={createState.setRunRole}
+        runRoles={createState.runRoles}
+        setRunRoles={createState.setRunRoles}
+        runConcurrency={createState.runConcurrency}
+        setRunConcurrency={createState.setRunConcurrency}
+        runTimeoutMs={createState.runTimeoutMs}
+        setRunTimeoutMs={createState.setRunTimeoutMs}
+        runSharedMemoryScope={createState.runSharedMemoryScope}
+        setRunSharedMemoryScope={createState.setRunSharedMemoryScope}
+        runSharedMemoryMode={createState.runSharedMemoryMode}
+        setRunSharedMemoryMode={createState.setRunSharedMemoryMode}
+        runAutoAllocateRoles={createState.runAutoAllocateRoles}
+        setRunAutoAllocateRoles={createState.setRunAutoAllocateRoles}
+        runAutoAllocateMaxMembers={createState.runAutoAllocateMaxMembers}
+        setRunAutoAllocateMaxMembers={createState.setRunAutoAllocateMaxMembers}
+        runMode={createState.runMode}
+        setRunMode={createState.setRunMode}
+        runQuorumMode={createState.runQuorumMode}
+        setRunQuorumMode={createState.setRunQuorumMode}
+        runBusy={createState.runBusy}
+        onCreateRun={() => void createState.handleCreateRun(controlState.setRunLookupId)}
+        runOverridesMode={createState.runOverridesMode}
+        setRunOverridesMode={createState.setRunOverridesMode}
+        runMemberOverridesJson={createState.runMemberOverridesJson}
+        setRunMemberOverridesJson={createState.setRunMemberOverridesJson}
+        onSeedExplicitOverrides={createState.handleSeedExplicitOverrides}
+        runRoleOverridesJson={createState.runRoleOverridesJson}
+        setRunRoleOverridesJson={createState.setRunRoleOverridesJson}
+        teamRoleOverrideKeys={createState.teamRoleOverrideKeys}
+        onSeedRoleOverrides={createState.handleSeedRoleOverrides}
+        runRoleInstructionsOverride={createState.runRoleInstructionsOverride}
+        setRunRoleInstructionsOverride={createState.setRunRoleInstructionsOverride}
+        runRoleInstructions={createState.runRoleInstructions}
+        setRunRoleInstructions={createState.setRunRoleInstructions}
+        runRolePromptMode={createState.runRolePromptMode}
+        setRunRolePromptMode={createState.setRunRolePromptMode}
+        teamRoleInstructionKeys={createState.teamRoleInstructionKeys}
+        onSeedRoleInstructions={createState.handleSeedRoleInstructions}
+        runRolePlanOptions={createState.runRolePlanOptions}
+        runRuntimeMembersJson={createState.runRuntimeMembersJson}
+        setRunRuntimeMembersJson={createState.setRunRuntimeMembersJson}
+        runtimeMembersPreview={createState.runtimeMembersPreview}
+        runtimeTeamDiff={createState.runtimeTeamDiff}
+        handleSetAllRuntimeStatus={createState.handleSetAllRuntimeStatus}
+        handleRemovePausedRuntimeMembers={createState.handleRemovePausedRuntimeMembers}
+        handleCompactRuntimeMembers={createState.handleCompactRuntimeMembers}
+        handleCopyRuntimeMembers={createState.handleCopyRuntimeMembers}
+        runtimeImportRef={createState.runtimeImportRef}
+        runtimeImportMerge={createState.runtimeImportMerge}
+        setRuntimeImportMerge={createState.setRuntimeImportMerge}
+        handleDownloadRuntimeMembers={createState.handleDownloadRuntimeMembers}
+        handleExportTeamMembers={createState.handleExportTeamMembers}
+        handleImportRuntimeMembers={createState.handleImportRuntimeMembers}
+        handleToggleRuntimeMemberStatus={createState.handleToggleRuntimeMemberStatus}
+        handleRemoveRuntimeMember={createState.handleRemoveRuntimeMember}
+        runtimeMemberId={createState.runtimeMemberId}
+        setRuntimeMemberId={createState.setRuntimeMemberId}
+        runtimeMemberAgentId={createState.runtimeMemberAgentId}
+        setRuntimeMemberAgentId={createState.setRuntimeMemberAgentId}
+        runtimeMemberRole={createState.runtimeMemberRole}
+        setRuntimeMemberRole={createState.setRuntimeMemberRole}
+        runtimeAgentOptions={createState.runtimeAgentOptions}
+        runtimeAgentsBusy={createState.runtimeAgentsBusy}
+        refreshRuntimeAgents={createState.refreshRuntimeAgents}
+        handleAddConnectedAgents={createState.handleAddConnectedAgents}
+        handleAllocateRoleRuntimeMembers={createState.handleAllocateRoleRuntimeMembers}
+        runtimeSaveBusy={createState.runtimeSaveBusy}
+        handleSaveRuntimeMembers={createState.handleSaveRuntimeMembers}
+        runtimeAgentsError={createState.runtimeAgentsError}
+        runtimeSaveError={createState.runtimeSaveError}
+        runtimeSavePreview={createState.runtimeSavePreview}
+        handleFixInvalidRuntimeMembers={createState.handleFixInvalidRuntimeMembers}
+        runtimeMemberDeploymentId={createState.runtimeMemberDeploymentId}
+        setRuntimeMemberDeploymentId={createState.setRuntimeMemberDeploymentId}
+        runtimeAgentDeployments={createState.runtimeAgentDeployments}
+        runtimeMemberCapabilities={createState.runtimeMemberCapabilities}
+        setRuntimeMemberCapabilities={createState.setRuntimeMemberCapabilities}
+        runtimeMemberBackendLabel={createState.runtimeMemberBackendLabel}
+        setRuntimeMemberBackendLabel={createState.setRuntimeMemberBackendLabel}
+        runtimeMemberModel={createState.runtimeMemberModel}
+        setRuntimeMemberModel={createState.setRuntimeMemberModel}
+        runtimeMemberBaseUrl={createState.runtimeMemberBaseUrl}
+        setRuntimeMemberBaseUrl={createState.setRuntimeMemberBaseUrl}
+        runtimeMemberSummaryModel={createState.runtimeMemberSummaryModel}
+        setRuntimeMemberSummaryModel={createState.setRuntimeMemberSummaryModel}
+        runtimeMemberTools={createState.runtimeMemberTools}
+        setRuntimeMemberTools={createState.setRuntimeMemberTools}
+        runtimeMemberTimeoutMs={createState.runtimeMemberTimeoutMs}
+        setRuntimeMemberTimeoutMs={createState.setRuntimeMemberTimeoutMs}
+        handleAddRuntimeMember={createState.handleAddRuntimeMember}
+        runApprovalMemberId={createState.runApprovalMemberId}
+        setRunApprovalMemberId={createState.setRunApprovalMemberId}
+        runApprovalDecision={createState.runApprovalDecision}
+        setRunApprovalDecision={createState.setRunApprovalDecision}
+        runApprovalRuleId={createState.runApprovalRuleId}
+        setRunApprovalRuleId={createState.setRunApprovalRuleId}
+        runApprovalReason={createState.runApprovalReason}
+        setRunApprovalReason={createState.setRunApprovalReason}
+        runApprovals={createState.runApprovals}
+        setRunApprovals={createState.setRunApprovals}
+        handleAddRunApproval={createState.handleAddRunApproval}
+        runError={createState.runError}
+        runQuorum={createState.runQuorum}
+        runResult={createState.runResult}
       />
+
       <RunSection title="Recent runs" defaultOpen={false}>
         <TeamRunRecentRunsPanel
           canQuery={props.canQuery}
           teamId={teamIdTrimmed}
-          recentRunsLimit={recentRunsLimit}
-          setRecentRunsLimit={setRecentRunsLimit}
-          recentRunsStatus={recentRunsStatus}
-          setRecentRunsStatus={setRecentRunsStatus}
-          recentRunsLive={recentRunsLive}
-          setRecentRunsLive={setRecentRunsLive}
-          recentRunsBusy={recentRunsBusy}
-          onRefresh={loadRecentRuns}
-          recentRunsError={recentRunsError}
-          recentRunsItems={recentRunsItems}
+          recentRunsLimit={controlState.recentRunsLimit}
+          setRecentRunsLimit={controlState.setRecentRunsLimit}
+          recentRunsStatus={controlState.recentRunsStatus}
+          setRecentRunsStatus={controlState.setRecentRunsStatus}
+          recentRunsLive={controlState.recentRunsLive}
+          setRecentRunsLive={controlState.setRecentRunsLive}
+          recentRunsBusy={controlState.recentRunsBusy}
+          onRefresh={controlState.loadRecentRuns}
+          recentRunsError={controlState.recentRunsError}
+          recentRunsItems={controlState.recentRunsItems}
           fmtTs={fmtTs}
           fmtSummary={fmtSummary}
           onLoadRun={(runId) => {
-            setRunLookupId(runId);
-            void fetchRunStatus(runId);
+            controlState.setRunLookupId(runId);
+            void controlState.fetchRunStatus(runId);
           }}
         />
       </RunSection>
@@ -1729,25 +217,25 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
           <FieldLabel>Run ID</FieldLabel>
           <input
             className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={runLookupId}
-            onChange={(e) => setRunLookupId(e.target.value)}
+            value={controlState.runLookupId}
+            onChange={(event) => controlState.setRunLookupId(event.target.value)}
             placeholder="team_run_id"
           />
           <button
             className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
             type="button"
-            disabled={!props.canQuery || !teamIdTrimmed || runLookupBusy}
-            onClick={() => void handleRunLookup()}
+            disabled={!props.canQuery || !teamIdTrimmed || controlState.runLookupBusy}
+            onClick={() => void controlState.handleRunLookup()}
           >
-            {runLookupBusy ? "Loading…" : "Get status"}
+            {controlState.runLookupBusy ? "Loading…" : "Get status"}
           </button>
           <button
             className="rounded-md border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-[11px] text-amber-100 hover:bg-amber-500/20 disabled:opacity-50"
             type="button"
-            disabled={!props.canQuery || runCancelBusy || !resolveRunId()}
-            onClick={() => void handleRunCancel()}
+            disabled={!props.canQuery || controlState.runCancelBusy || !controlState.resolveRunId()}
+            onClick={() => void controlState.handleRunCancel()}
           >
-            {runCancelBusy ? "Cancelling…" : "Cancel run"}
+            {controlState.runCancelBusy ? "Cancelling…" : "Cancel run"}
           </button>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -1755,8 +243,8 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
             <input
               type="checkbox"
               className="rounded border-white/20 bg-black/40"
-              checked={autoResumeRunLookup}
-              onChange={(e) => setAutoResumeRunLookup(e.target.checked)}
+              checked={controlState.autoResumeRunLookup}
+              onChange={(event) => controlState.setAutoResumeRunLookup(event.target.checked)}
             />
             Auto resume saved run on reload
           </label>
@@ -1764,83 +252,89 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
             <input
               type="checkbox"
               className="rounded border-white/20 bg-black/40"
-              checked={autoRefreshRunLookup}
-              onChange={(e) => setAutoRefreshRunLookup(e.target.checked)}
+              checked={controlState.autoRefreshRunLookup}
+              onChange={(event) => controlState.setAutoRefreshRunLookup(event.target.checked)}
             />
             Auto refresh run status on team run events
           </label>
         </div>
-        {runLookupError ? (
-          <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">{runLookupError}</div>
+        {controlState.runLookupError ? (
+          <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+            {controlState.runLookupError}
+          </div>
         ) : null}
-        {runCancelError ? (
-          <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">{runCancelError}</div>
+        {controlState.runCancelError ? (
+          <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+            {controlState.runCancelError}
+          </div>
         ) : null}
-        {runCancelNote ? (
-          <div className="rounded-md border border-amber-400/20 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-100">{runCancelNote}</div>
+        {controlState.runCancelNote ? (
+          <div className="rounded-md border border-amber-400/20 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-100">
+            {controlState.runCancelNote}
+          </div>
         ) : null}
         <TeamRunStatusPanel
           base={props.base}
           auth={props.auth}
           canQuery={props.canQuery}
           teamId={teamIdTrimmed}
-          runId={resolveRunId()}
-          runLookupResult={runLookupResult}
+          runId={controlState.resolveRunId()}
+          runLookupResult={controlState.runLookupResult}
           fmtTs={fmtTs}
           fmtSummary={fmtSummary}
-          runtimeUpdateBusy={runtimeUpdateBusy}
-          memberSessions={runMemberSessions}
-          onRuntimeMemberToggle={handleRuntimeMemberToggle}
-          onRuntimeMemberRemove={handleRuntimeMemberRemove}
-          onRefreshRun={(runId) => fetchRunStatus(runId)}
+          runtimeUpdateBusy={controlState.runtimeUpdateBusy}
+          memberSessions={controlState.runMemberSessions}
+          onRuntimeMemberToggle={controlState.handleRuntimeMemberToggle}
+          onRuntimeMemberRemove={controlState.handleRuntimeMemberRemove}
+          onRefreshRun={controlState.fetchRunStatus}
         />
       </RunSection>
 
       <RunSection title="Moderator actions" defaultOpen={false}>
         <TeamRunModeratorPanel
           canQuery={props.canQuery}
-          runId={resolveRunId()}
-          memberSessions={runMemberSessions}
-          roleOptions={runRoleOptions}
-          memberOptions={runMemberOptions}
-          agentOptions={runAgentOptions}
-          directive={moderatorDirective}
-          directiveScope={moderatorDirectiveScope}
-          taskTitle={moderatorTaskTitle}
-          taskDetail={moderatorTaskDetail}
-          taskStatus={moderatorTaskStatus}
-          targetRoles={moderatorTargetRoles}
-          targetMembers={moderatorTargetMembers}
-          targetAgents={moderatorTargetAgents}
-          assignees={moderatorAssignees}
-          appendToSession={moderatorAppendToSession}
-          busy={moderatorBusy}
-          error={moderatorError}
-          success={moderatorSuccess}
-          events={moderatorEvents}
-          eventsBusy={moderatorEventsBusy}
-          eventsError={moderatorEventsError}
-          eventsTypes={moderatorEventsTypes}
-          eventsMaxBytes={moderatorEventsMaxBytes}
-          eventsLimit={moderatorEventsLimit}
-          eventsExpanded={moderatorEventsExpanded}
-          onDirectiveChange={setModeratorDirective}
-          onDirectiveScopeChange={setModeratorDirectiveScope}
-          onTaskTitleChange={setModeratorTaskTitle}
-          onTaskDetailChange={setModeratorTaskDetail}
-          onTaskStatusChange={setModeratorTaskStatus}
-          onTargetRolesChange={setModeratorTargetRoles}
-          onTargetMembersChange={setModeratorTargetMembers}
-          onTargetAgentsChange={setModeratorTargetAgents}
-          onAssigneesChange={setModeratorAssignees}
-          onAppendToSessionChange={setModeratorAppendToSession}
-          onPublishDirective={() => void handleModeratorDirectivePublish()}
-          onPublishTask={() => void handleModeratorTaskPublish()}
-          onEventsTypesChange={setModeratorEventsTypes}
-          onEventsMaxBytesChange={setModeratorEventsMaxBytes}
-          onEventsLimitChange={setModeratorEventsLimit}
-          onEventsLoad={() => void handleModeratorEventsLoad()}
-          onEventsToggleExpanded={() => setModeratorEventsExpanded((prev) => !prev)}
+          runId={controlState.resolveRunId()}
+          memberSessions={controlState.runMemberSessions}
+          roleOptions={controlState.runRoleOptions}
+          memberOptions={controlState.runMemberOptions}
+          agentOptions={controlState.runAgentOptions}
+          directive={controlState.moderatorDirective}
+          directiveScope={controlState.moderatorDirectiveScope}
+          taskTitle={controlState.moderatorTaskTitle}
+          taskDetail={controlState.moderatorTaskDetail}
+          taskStatus={controlState.moderatorTaskStatus}
+          targetRoles={controlState.moderatorTargetRoles}
+          targetMembers={controlState.moderatorTargetMembers}
+          targetAgents={controlState.moderatorTargetAgents}
+          assignees={controlState.moderatorAssignees}
+          appendToSession={controlState.moderatorAppendToSession}
+          busy={controlState.moderatorBusy}
+          error={controlState.moderatorError}
+          success={controlState.moderatorSuccess}
+          events={controlState.moderatorEvents}
+          eventsBusy={controlState.moderatorEventsBusy}
+          eventsError={controlState.moderatorEventsError}
+          eventsTypes={controlState.moderatorEventsTypes}
+          eventsMaxBytes={controlState.moderatorEventsMaxBytes}
+          eventsLimit={controlState.moderatorEventsLimit}
+          eventsExpanded={controlState.moderatorEventsExpanded}
+          onDirectiveChange={controlState.setModeratorDirective}
+          onDirectiveScopeChange={controlState.setModeratorDirectiveScope}
+          onTaskTitleChange={controlState.setModeratorTaskTitle}
+          onTaskDetailChange={controlState.setModeratorTaskDetail}
+          onTaskStatusChange={controlState.setModeratorTaskStatus}
+          onTargetRolesChange={controlState.setModeratorTargetRoles}
+          onTargetMembersChange={controlState.setModeratorTargetMembers}
+          onTargetAgentsChange={controlState.setModeratorTargetAgents}
+          onAssigneesChange={controlState.setModeratorAssignees}
+          onAppendToSessionChange={controlState.setModeratorAppendToSession}
+          onPublishDirective={() => void controlState.handleModeratorDirectivePublish()}
+          onPublishTask={() => void controlState.handleModeratorTaskPublish()}
+          onEventsTypesChange={controlState.setModeratorEventsTypes}
+          onEventsMaxBytesChange={controlState.setModeratorEventsMaxBytes}
+          onEventsLimitChange={controlState.setModeratorEventsLimit}
+          onEventsLoad={() => void controlState.handleModeratorEventsLoad()}
+          onEventsToggleExpanded={() => controlState.setModeratorEventsExpanded((prev) => !prev)}
         />
       </RunSection>
 
@@ -1848,35 +342,35 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
         <TeamRunOpsPanel
           canQuery={props.canQuery}
           teamId={teamIdTrimmed}
-          runtimeUpdateMode={runtimeUpdateMode}
-          setRuntimeUpdateMode={setRuntimeUpdateMode}
-          runtimeUpdateBusy={runtimeUpdateBusy}
-          runtimeUpdateError={runtimeUpdateError}
-          runtimeUpdateNote={runtimeUpdateNote}
-          onRuntimeMembersLoadFromRun={handleRuntimeMembersLoadFromRun}
-          onRuntimeMembersUpdate={handleRuntimeMembersUpdate}
-          approvalsLastSyncMs={approvalsLastSyncMs}
+          runtimeUpdateMode={controlState.runtimeUpdateMode}
+          setRuntimeUpdateMode={controlState.setRuntimeUpdateMode}
+          runtimeUpdateBusy={controlState.runtimeUpdateBusy}
+          runtimeUpdateError={controlState.runtimeUpdateError}
+          runtimeUpdateNote={controlState.runtimeUpdateNote}
+          onRuntimeMembersLoadFromRun={controlState.handleRuntimeMembersLoadFromRun}
+          onRuntimeMembersUpdate={() => void controlState.handleRuntimeMembersUpdate()}
+          approvalsLastSyncMs={controlState.approvalsLastSyncMs}
           fmtTs={fmtTs}
-          quorumRequestRows={quorumRequestRows}
+          quorumRequestRows={controlState.quorumRequestRows}
           onTeamSelect={props.onTeamSelect}
-          setApprovalRunId={setApprovalRunId}
-          setRunLookupId={setRunLookupId}
-          approvalRunId={approvalRunId}
-          approvalsBusy={approvalsBusy}
-          onApprovalsRefresh={handleApprovalsRefresh}
+          setApprovalRunId={controlState.setApprovalRunId}
+          setRunLookupId={controlState.setRunLookupId}
+          approvalRunId={controlState.approvalRunId}
+          approvalsBusy={controlState.approvalsBusy}
+          onApprovalsRefresh={() => void controlState.handleApprovalsRefresh()}
           membersList={membersList}
-          approvalMemberId={approvalMemberId}
-          setApprovalMemberId={setApprovalMemberId}
-          approvalDecision={approvalDecision}
-          setApprovalDecision={setApprovalDecision}
-          approvalRuleId={approvalRuleId}
-          setApprovalRuleId={setApprovalRuleId}
+          approvalMemberId={controlState.approvalMemberId}
+          setApprovalMemberId={controlState.setApprovalMemberId}
+          approvalDecision={controlState.approvalDecision}
+          setApprovalDecision={controlState.setApprovalDecision}
+          approvalRuleId={controlState.approvalRuleId}
+          setApprovalRuleId={controlState.setApprovalRuleId}
           rulesList={rulesList}
-          approvalReason={approvalReason}
-          setApprovalReason={setApprovalReason}
-          onApprovalSubmit={handleApprovalSubmit}
-          approvalsError={approvalsError}
-          approvals={approvals}
+          approvalReason={controlState.approvalReason}
+          setApprovalReason={controlState.setApprovalReason}
+          onApprovalSubmit={() => void controlState.handleApprovalSubmit()}
+          approvalsError={controlState.approvalsError}
+          approvals={controlState.approvals}
         />
       </RunSection>
     </div>
