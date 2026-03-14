@@ -98,6 +98,7 @@ AGENT_E2E_OUTPUT_DIR="${pw_artifacts_dir}" \
     e2e/scene_view.spec.ts \
     e2e/workflow_schedules.spec.ts \
     e2e/workflow_wait_persisted_ui.spec.ts \
+    e2e/approval_queue_panel.spec.ts \
     e2e/broker_cookie_auth.spec.ts \
     e2e/broker_codexw_artifact_boundary.spec.ts \
     e2e/broker_codexw_session_events_resume.spec.ts \
