@@ -96,6 +96,7 @@ AGENT_E2E_OUTPUT_DIR="${pw_artifacts_dir}" \
     e2e/broker_codexw_session_lease.spec.ts \
     e2e/broker_codexw_session_operators.spec.ts \
     e2e/broker_console.spec.ts \
+    e2e/broker_orchestrator_run_panel.spec.ts \
     e2e/broker_panel_persistence.spec.ts \
     e2e/broker_membership_flow.spec.ts \
     e2e/broker_team_cross_deployment_handoff.spec.ts \
