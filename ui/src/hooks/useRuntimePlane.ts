@@ -49,6 +49,7 @@ export type RuntimePlaneArgs = {
   setJobUpdatedMs: React.Dispatch<React.SetStateAction<number | null>>;
   setLiveEvents: React.Dispatch<React.SetStateAction<any[]>>;
   yolo: boolean;
+  artifactCatalogSupported: boolean;
   dbClientEventsData: any;
   dbUiActionsData: any;
   sessionArtifactsData: any;
@@ -77,6 +78,7 @@ export default function useRuntimePlane(args: RuntimePlaneArgs) {
     setJobUpdatedMs,
     setLiveEvents,
     yolo,
+    artifactCatalogSupported,
     dbClientEventsData,
     dbUiActionsData,
     sessionArtifactsData,
@@ -634,6 +636,7 @@ export default function useRuntimePlane(args: RuntimePlaneArgs) {
 
   const artifactAckedRef = React.useRef<Record<string, boolean>>({});
   React.useEffect(() => {
+    if (!artifactCatalogSupported) return;
     const sid = String(sessionId || "").trim();
     if (!sid) return;
     const rows =
@@ -728,7 +731,7 @@ export default function useRuntimePlane(args: RuntimePlaneArgs) {
           });
         })().catch(() => {});
       });
-  }, [client, daemonAuth, effectiveBase, sessionArtifactsData, sessionId, yolo]);
+  }, [artifactCatalogSupported, client, daemonAuth, effectiveBase, sessionArtifactsData, sessionId, yolo]);
 
   return {
     applySceneOps,

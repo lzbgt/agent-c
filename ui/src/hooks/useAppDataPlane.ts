@@ -246,6 +246,23 @@ export default function useAppDataPlane(args: AppDataPlaneArgs) {
     retry: 1,
   });
 
+  const sessionArtifactsUnsupported = React.useMemo(() => {
+    if (connectionMode !== "broker") return false;
+    const payload = sessionArtifacts.data;
+    if (!payload || typeof payload !== "object") return false;
+    const status = typeof (payload as any).status === "number" ? (payload as any).status : 0;
+    const code = String((payload as any).code || "").trim().toLowerCase();
+    const message = String(extractSessionErrorMessage(payload) || "").trim().toLowerCase();
+    return (
+      status === 404 ||
+      status === 405 ||
+      code === "not_found" ||
+      code === "method_not_allowed" ||
+      message === "not found" ||
+      message === "method not allowed"
+    );
+  }, [connectionMode, sessionArtifacts.data]);
+
   const sessionScene = useQuery({
     queryKey: ["session_scene", effectiveBase, authKey, selectedSessionId],
     queryFn: () => apiGetSessionScene(effectiveBase, selectedSessionId, daemonAuth),
@@ -597,6 +614,7 @@ export default function useAppDataPlane(args: AppDataPlaneArgs) {
     sessionsRefetch,
     sessionsUnauthorized,
     sessionArtifacts,
+    sessionArtifactsUnsupported,
     sessionScene,
     sessionList,
     clearDaemonApiKey,

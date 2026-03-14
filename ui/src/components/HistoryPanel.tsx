@@ -64,6 +64,7 @@ export type HistoryPanelProps = {
   dbRuns?: any[];
   dbRunDetailsById?: Record<number, any>;
   sessionArtifacts?: any[];
+  artifactCatalogMode?: "direct" | "broker_reference" | "unsupported";
   effectiveBase: string;
   yolo: boolean;
   sessionId: string;
@@ -92,6 +93,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
   const dbRunDetailsById =
     props.dbRunDetailsById && typeof props.dbRunDetailsById === "object" ? props.dbRunDetailsById : {};
   const sessionArtifacts = Array.isArray(props.sessionArtifacts) ? props.sessionArtifacts : [];
+  const artifactCatalogMode = props.artifactCatalogMode || "direct";
   const teamConversationItems = Array.isArray(props.teamConversationItems) ? props.teamConversationItems : [];
   const teamId = String(props.teamId || "").trim();
   const teamRunId = String(props.teamRunId || "").trim();
@@ -1604,14 +1606,23 @@ export default function HistoryPanel(props: HistoryPanelProps) {
       </div>
       <div className="mb-4">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <div className="text-sm font-semibold text-white/80">Artifacts</div>
+          <div className="text-sm font-semibold text-white/80">
+            {artifactCatalogMode === "direct" ? "Artifacts" : "Artifact references"}
+          </div>
           <div className="text-[11px] text-white/50">
-            {sessionArtifacts.length > 0 ? `${sessionArtifacts.length} items` : "none"}
+            {artifactCatalogMode === "unsupported" ? "connector-managed" : sessionArtifacts.length > 0 ? `${sessionArtifacts.length} items` : "none"}
           </div>
         </div>
-        {sessionArtifacts.length === 0 ? (
+        {artifactCatalogMode === "unsupported" ? (
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-xs text-amber-100">
+            Broker connector mode does not expose a stable artifact catalog here. Use transcript, shell output, session events,
+            and service metadata as the current result surfaces, and treat richer artifact browsing as a separate requirement.
+          </div>
+        ) : sessionArtifacts.length === 0 ? (
           <div className="rounded-md border border-white/10 bg-black/20 px-3 py-3 text-xs text-white/60">
-            No artifacts captured yet.
+            {artifactCatalogMode === "broker_reference"
+              ? "No broker artifact references are currently available from the session artifact surface."
+              : "No artifacts captured yet."}
           </div>
         ) : (
           <div className="grid gap-2">

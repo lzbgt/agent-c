@@ -142,6 +142,9 @@ Secret handling:
   - capability list / detail
 - The operator surface is intentionally shell-first and service/capability-first. It does not claim a stable artifact browser; result
   interpretation still comes from transcript, session events, shell output, and service metadata.
+- In broker mode, the history panel now treats the session artifact list as a conditional reference surface rather than an assumed catalog.
+  If the broker-backed runtime returns `404`/`405` for `/api/v1/session/artifacts`, the UI shows an explicit artifact-boundary note
+  instead of the misleading “No artifacts captured yet” browser-style empty state.
 - The WebUI runs a single **Advanced** layout: Scene on top, Conversation below, and tool panels in the sidebar.
 - Conversation history is persisted in the daemon DB and reloaded after refresh (user/assistant messages plus run tool records).
 - You can queue prompts while a run is active; queued runs execute in order and the queue count is shown in the Run/Queue button.

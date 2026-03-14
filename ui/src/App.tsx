@@ -466,7 +466,7 @@ export default function App() {
     isLocalDaemonBase, missingBrokerAuthToken, missingDaemonAuthToken, newSession, attachSession, attachSessionError,
     renewSessionAttachment, renewSessionAttachmentError, releaseSessionAttachment, releaseSessionAttachmentError,
     sessionInfoData, sessionLeaseConflict, setSessionLeaseConflict, saveDaemonApiKey, saveDaemonDefaults, sessionsRefetch,
-    sessionsUnauthorized, sessionArtifacts, sessionList, sessionScene, updateDaemonDefaults,
+    sessionsUnauthorized, sessionArtifacts, sessionArtifactsUnsupported, sessionList, sessionScene, updateDaemonDefaults,
   } = useAppDataPlane({
     activeJobId,
     allowClientEffects,
@@ -527,6 +527,7 @@ export default function App() {
     setJobUpdatedMs,
     setLiveEvents,
     yolo,
+    artifactCatalogSupported: !sessionArtifactsUnsupported,
     dbClientEventsData: dbClientEvents.data,
     dbUiActionsData: dbUiActions.data,
     sessionArtifactsData: sessionArtifacts.data,
@@ -903,9 +904,14 @@ export default function App() {
                     dbRuns={dbRuns.data?.ok && Array.isArray(dbRuns.data?.runs) ? dbRuns.data.runs : []}
                     dbRunDetailsById={dbRunDetailsById}
                     sessionArtifacts={
-                      sessionArtifacts.data?.ok && Array.isArray(sessionArtifacts.data?.artifacts)
+                      !sessionArtifactsUnsupported &&
+                      sessionArtifacts.data?.ok &&
+                      Array.isArray(sessionArtifacts.data?.artifacts)
                         ? sessionArtifacts.data.artifacts
                         : []
+                    }
+                    artifactCatalogMode={
+                      sessionArtifactsUnsupported ? "unsupported" : connectionMode === "broker" ? "broker_reference" : "direct"
                     }
                     effectiveBase={effectiveBase}
                     yolo={yolo}
