@@ -16,23 +16,11 @@ import {
 import type { ModeratorEvent } from "../api";
 import type { ClientSettings, ConnectionSettings, RunSettings } from "../hooks/useUiSettings";
 import useLocalStorageState from "../hooks/useLocalStorageState";
-import FieldLabel from "./FieldLabel";
 import SettingsConnectionSection from "./settings/SettingsConnectionSection";
-import { SectionHeader } from "./settings/SettingsControls";
+import SettingsDiagnosticsSection from "./settings/SettingsDiagnosticsSection";
 import SettingsExecutionSection from "./settings/SettingsExecutionSection";
-
-function formatBytes(n?: number | null) {
-  if (!n || !Number.isFinite(n) || n <= 0) return "";
-  const units = ["B", "KB", "MB", "GB"];
-  let idx = 0;
-  let v = n;
-  while (v >= 1024 && idx < units.length - 1) {
-    v /= 1024;
-    idx++;
-  }
-  const rounded = idx === 0 ? v.toFixed(0) : v.toFixed(2);
-  return `${rounded} ${units[idx]}`;
-}
+import SettingsModeratorSection from "./settings/SettingsModeratorSection";
+import SettingsSessionsSection from "./settings/SettingsSessionsSection";
 
 function formatDuration(ms?: number | null) {
   if (!ms || !Number.isFinite(ms) || ms <= 0) return "";
@@ -43,57 +31,6 @@ function formatDuration(ms?: number | null) {
   if (h > 0) return `${h}h ${m}m ${rem}s`;
   if (m > 0) return `${m}m ${rem}s`;
   return `${rem}s`;
-}
-
-function truncateText(value: string, maxLen: number) {
-  if (value.length <= maxLen) return value;
-  return `${value.slice(0, Math.max(0, maxLen - 1))}…`;
-}
-
-function formatDiffValue(value: unknown) {
-  if (value === undefined) return "(undefined)";
-  if (value === null) return "null";
-  if (typeof value === "string") return truncateText(JSON.stringify(value), 200);
-  try {
-    return truncateText(JSON.stringify(value), 200);
-  } catch {
-    return truncateText(String(value), 200);
-  }
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
-type JsonDiffEntry = { path: string; a: unknown; b: unknown };
-
-function collectJsonDiffs(a: unknown, b: unknown, path: string, out: JsonDiffEntry[], maxDiffs: number) {
-  if (out.length >= maxDiffs) return;
-  if (a === b) return;
-  const aIsArr = Array.isArray(a);
-  const bIsArr = Array.isArray(b);
-  if (aIsArr || bIsArr) {
-    if (!aIsArr || !bIsArr) {
-      out.push({ path: path || "<root>", a, b });
-      return;
-    }
-    const max = Math.max(a.length, b.length);
-    for (let i = 0; i < max; i += 1) {
-      collectJsonDiffs(a[i], b[i], `${path}[${i}]`, out, maxDiffs);
-      if (out.length >= maxDiffs) return;
-    }
-    return;
-  }
-  if (isPlainObject(a) && isPlainObject(b)) {
-    const keys = new Set<string>([...Object.keys(a), ...Object.keys(b)]);
-    for (const key of keys) {
-      const nextPath = path ? `${path}.${key}` : key;
-      collectJsonDiffs(a[key], b[key], nextPath, out, maxDiffs);
-      if (out.length >= maxDiffs) return;
-    }
-    return;
-  }
-  out.push({ path: path || "<root>", a, b });
 }
 
 function formatModeratorEventSummary(event: ModeratorEvent) {
@@ -109,33 +46,6 @@ function formatModeratorEventSummary(event: ModeratorEvent) {
     return title || "(task)";
   }
   return "";
-}
-
-async function copyTextToClipboard(text: string): Promise<boolean> {
-  if (!text) return false;
-  try {
-    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // fallback below
-  }
-  try {
-    const el = document.createElement("textarea");
-    el.value = text;
-    el.setAttribute("readonly", "true");
-    el.style.position = "absolute";
-    el.style.left = "-9999px";
-    document.body.appendChild(el);
-    el.select();
-    const ok = document.execCommand("copy");
-    document.body.removeChild(el);
-    return ok;
-  } catch {
-    // ignore
-  }
-  return false;
 }
 
 function parseCsvList(raw: string) {
@@ -265,7 +175,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const [pinnedCompareDiffOnly, setPinnedCompareDiffOnly] = React.useState<boolean>(false);
   const copyNoticeTimeoutRef = React.useRef<number>(0);
   const pinNoticeTimeoutRef = React.useRef<number>(0);
-  const pinImportRef = React.useRef<HTMLInputElement | null>(null);
+  const pinImportRef = React.useRef<HTMLInputElement>(null);
   const serverPrefsBase = String(connection.serverPrefsBase || "").trim();
   const serverPrefsCanSync = serverPrefsBase.length > 0;
   const serverPrefsTarget = connection.mode === "broker" ? "broker" : "daemon";
@@ -742,13 +652,6 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
       return `${prev}\\n\\n${template}`;
     });
   }, [buildRuntimeMemberTaskTemplate]);
-  const diagProviders = diagnosticsProviders.data;
-  const providerEntries = diagProviders && diagProviders.providers && typeof diagProviders.providers === "object"
-    ? (diagProviders.providers as Record<string, any>)
-    : {};
-  const deepseekKeyPresent = providerEntries?.deepseek?.key_present === true;
-  const moonshotKeyPresent = providerEntries?.moonshot?.key_present === true;
-  const glmKeyPresent = providerEntries?.glm?.key_present === true;
   const moderatorEventsData = moderatorEvents.data;
   const moderatorEventsError = moderatorEvents.isError ? String(moderatorEvents.error || "failed to load events") : null;
   const moderatorEventsList = Array.isArray(moderatorEventsData?.events) ? (moderatorEventsData?.events as ModeratorEvent[]) : [];
@@ -770,7 +673,32 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   );
   const handleCopy = React.useCallback(
     async (label: string, text: string) => {
-      const ok = await copyTextToClipboard(text);
+      let ok = false;
+      if (text) {
+        try {
+          if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+            await navigator.clipboard.writeText(text);
+            ok = true;
+          }
+        } catch {
+          // fallback below
+        }
+        if (!ok) {
+          try {
+            const el = document.createElement("textarea");
+            el.value = text;
+            el.setAttribute("readonly", "true");
+            el.style.position = "absolute";
+            el.style.left = "-9999px";
+            document.body.appendChild(el);
+            el.select();
+            ok = document.execCommand("copy");
+            document.body.removeChild(el);
+          } catch {
+            ok = false;
+          }
+        }
+      }
       showCopyNotice(label, ok);
     },
     [showCopyNotice],
@@ -896,656 +824,77 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
           automationOverrideAllowed={automationOverrideAllowed}
         />
 
-        <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
-          <SectionHeader title="Moderator" />
-          <div className="mt-2 grid gap-3 text-[11px] text-white/70">
-            <div>
-              <FieldLabel>Directive</FieldLabel>
-              <textarea
-                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                placeholder="Publish a nonblocking moderator directive"
-                rows={3}
-                value={moderatorDirective}
-                onChange={(e) => setModeratorDirective(e.target.value)}
-              />
-            </div>
-            <div>
-              <FieldLabel>Directive scope (optional)</FieldLabel>
-              <input
-                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                placeholder="e.g. all, team:ops, agent:planner"
-                value={moderatorDirectiveScope}
-                onChange={(e) => setModeratorDirectiveScope(e.target.value)}
-              />
-              <div className="mt-1 text-[11px] text-white/50">
-                Scope is an advisory label used by collaborating agents to route directives.
-              </div>
-            </div>
-            <div>
-              <FieldLabel>Directive assignees (comma-separated, optional)</FieldLabel>
-              <input
-                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                placeholder="agent-a, agent-b, role:planner"
-                value={moderatorDirectiveAssignees}
-                onChange={(e) => setModeratorDirectiveAssignees(e.target.value)}
-              />
-              <div className="mt-1 text-[11px] text-white/50">
-                Leave empty to broadcast to all listening agents.
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-                <span>Quick roles:</span>
-                {moderatorRolePresets.map((role) => (
-                  <button
-                    key={`moderator-directive-role-${role}`}
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                    type="button"
-                    onClick={() => addDirectiveAssignee(role)}
-                  >
-                    {role}
-                  </button>
-                ))}
-              </div>
-              {connection.mode === "broker" ? (
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-                  <select
-                    className="min-w-[200px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                    value={moderatorDirectivePick}
-                    onChange={(e) => setModeratorDirectivePick(e.target.value)}
-                    disabled={brokerAgentOptions.length === 0}
-                  >
-                    <option value="">(pick broker agent)</option>
-                    {brokerAgentOptions.map((opt) => (
-                      <option key={`moderator-directive-agent-${opt.id}`} value={opt.id}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-                    type="button"
-                    onClick={() => addDirectiveAssignee(moderatorDirectivePick)}
-                    disabled={!moderatorDirectivePick}
-                  >
-                    Add
-                  </button>
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-                    type="button"
-                    onClick={() => void listBrokerAgents()}
-                    disabled={brokerAgentsBusy}
-                  >
-                    {brokerAgentsBusy ? "Refreshing…" : "Refresh agents"}
-                  </button>
-                </div>
-              ) : null}
-            </div>
-            <div>
-              <FieldLabel>Task</FieldLabel>
-              <input
-                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                placeholder="Task title"
-                value={moderatorTaskTitle}
-                onChange={(e) => setModeratorTaskTitle(e.target.value)}
-              />
-              <textarea
-                className="mt-2 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                placeholder="Task detail (optional)"
-                rows={2}
-                value={moderatorTaskDetail}
-                onChange={(e) => setModeratorTaskDetail(e.target.value)}
-              />
-              <div className="mt-2">
-                <FieldLabel>Task assignees (comma-separated, optional)</FieldLabel>
-                <input
-                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                  placeholder="agent-a, agent-b, role:executor"
-                  value={moderatorTaskAssignees}
-                  onChange={(e) => setModeratorTaskAssignees(e.target.value)}
-                />
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-                  <span>Quick roles:</span>
-                  {moderatorRolePresets.map((role) => (
-                    <button
-                      key={`moderator-task-role-${role}`}
-                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                      type="button"
-                      onClick={() => addTaskAssignee(role)}
-                    >
-                      {role}
-                    </button>
-                  ))}
-                </div>
-                {connection.mode === "broker" ? (
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-                    <select
-                      className="min-w-[200px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-                      value={moderatorTaskPick}
-                      onChange={(e) => setModeratorTaskPick(e.target.value)}
-                      disabled={brokerAgentOptions.length === 0}
-                    >
-                      <option value="">(pick broker agent)</option>
-                      {brokerAgentOptions.map((opt) => (
-                        <option key={`moderator-task-agent-${opt.id}`} value={opt.id}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-                      type="button"
-                      onClick={() => addTaskAssignee(moderatorTaskPick)}
-                      disabled={!moderatorTaskPick}
-                    >
-                      Add
-                    </button>
-                    <button
-                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-                      type="button"
-                      onClick={() => void listBrokerAgents()}
-                      disabled={brokerAgentsBusy}
-                    >
-                      {brokerAgentsBusy ? "Refreshing…" : "Refresh agents"}
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                  type="button"
-                  onClick={() => applyRuntimeMemberTaskTemplate()}
-                  disabled={moderatorBusy || !moderatorTasksEnabled}
-                >
-                  Insert runtime member update template
-                </button>
-              </div>
-            </div>
-            <label className="flex items-center justify-between gap-2">
-              <span>Append to session history</span>
-              <input
-                type="checkbox"
-                checked={moderatorAppendToSession}
-                onChange={(e) => setModeratorAppendToSession(e.target.checked)}
-              />
-            </label>
-            <div className="flex flex-wrap gap-2">
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                type="button"
-                onClick={() => void publishModeratorDirective()}
-                disabled={moderatorBusy || !props.session.id.trim() || !moderatorDirectivesEnabled}
-              >
-                Publish directive
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                type="button"
-                onClick={() => void publishModeratorTask()}
-                disabled={moderatorBusy || !props.session.id.trim() || !moderatorTasksEnabled}
-              >
-                Publish task
-              </button>
-              {moderatorBusy ? <span className="text-white/50">publishing…</span> : null}
-            </div>
-            {!moderatorDirectivesEnabled || !moderatorTasksEnabled ? (
-              <div className="text-amber-200">Moderator publishing disabled by daemon caps.</div>
-            ) : null}
-            {moderatorError ? <div className="text-rose-200">moderator error: {moderatorError}</div> : null}
-            {moderatorSuccess ? <div className="text-emerald-200">{moderatorSuccess}</div> : null}
-            <div className="mt-3 rounded-md border border-white/10 bg-black/30 p-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-xs font-semibold text-white/70">Moderator events</div>
-                <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-                    type="button"
-                    onClick={() => void moderatorEvents.refetch()}
-                    disabled={!moderatorEventsEnabled || !props.session.id.trim() || moderatorEvents.isFetching}
-                  >
-                    {moderatorEvents.isFetching ? "Loading…" : "Load"}
-                  </button>
-                  <label className="flex items-center gap-2">
-                    <span>auto</span>
-                    <input
-                      type="checkbox"
-                      checked={moderatorEventsAuto}
-                      onChange={(e) => setModeratorEventsAuto(e.target.checked)}
-                      disabled={!moderatorEventsEnabled || !props.session.id.trim()}
-                    />
-                  </label>
-                </div>
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={moderatorEventsIncludeDirectives}
-                    onChange={(e) => setModeratorEventsIncludeDirectives(e.target.checked)}
-                  />
-                  directives
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={moderatorEventsIncludeTasks}
-                    onChange={(e) => setModeratorEventsIncludeTasks(e.target.checked)}
-                  />
-                  tasks
-                </label>
-                <label className="flex items-center gap-2">
-                  <span>max bytes</span>
-                  <input
-                    className="w-28 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
-                    value={moderatorEventsMaxBytes}
-                    onChange={(e) => setModeratorEventsMaxBytes(e.target.value)}
-                  />
-                </label>
-                <label className="flex items-center gap-2">
-                  <span>filter</span>
-                  <input
-                    className="w-40 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
-                    value={moderatorEventsFilter}
-                    onChange={(e) => setModeratorEventsFilter(e.target.value)}
-                    placeholder="type/actor/text"
-                  />
-                </label>
-                {moderatorEventsFilterValue ? (
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                    type="button"
-                    onClick={() => setModeratorEventsFilter("")}
-                  >
-                    Clear
-                  </button>
-                ) : null}
-              </div>
-              {moderatorPinnedEntries.length > 0 ? (
-                <div className="mt-2 rounded-md border border-white/10 bg-black/20 p-2">
-                  <div className="flex items-center justify-between gap-2 text-[11px] text-white/70">
-                    <span>Pinned events ({moderatorPinnedEntries.length})</span>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                        type="button"
-                        onClick={() => {
-                          try {
-                            const payload = JSON.stringify(moderatorPinnedEvents, null, 2);
-                            const blob = new Blob([payload], { type: "application/json" });
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement("a");
-                            a.href = url;
-                            a.download = `moderator_pins_${Date.now()}.json`;
-                            a.click();
-                            URL.revokeObjectURL(url);
-                            showPinNotice("Exported pins", true);
-                          } catch (err: any) {
-                            showPinNotice(String(err?.message || "export failed"), false);
-                          }
-                        }}
-                      >
-                        Export pins
-                      </button>
-                      <button
-                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                        type="button"
-                        onClick={() => pinImportRef.current?.click()}
-                      >
-                        Import pins
-                      </button>
-                      <button
-                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                        type="button"
-                        onClick={() => updateModeratorPinnedEvents({})}
-                      >
-                        Clear pins
-                      </button>
-                    </div>
-                  </div>
-                  <input
-                    ref={pinImportRef}
-                    type="file"
-                    accept="application/json"
-                    className="hidden"
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      try {
-                        const text = await file.text();
-                        const parsed = JSON.parse(text);
-                        let nextPins: Record<string, ModeratorEvent> = {};
-                        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-                          for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-                            if (v && typeof v === "object") {
-                              nextPins[k] = v as ModeratorEvent;
-                            }
-                          }
-                        } else if (Array.isArray(parsed)) {
-                          parsed.forEach((ev, idx) => {
-                            if (ev && typeof ev === "object") {
-                              nextPins[`import-${idx}`] = ev as ModeratorEvent;
-                            }
-                          });
-                        }
-                        updateModeratorPinnedEvents(nextPins);
-                        showPinNotice("Imported pins", true);
-                      } catch (err: any) {
-                        showPinNotice(String(err?.message || "import failed"), false);
-                      } finally {
-                        if (pinImportRef.current) pinImportRef.current.value = "";
-                      }
-                    }}
-                  />
-                  <div className="mt-2 grid gap-2">
-                    {moderatorPinnedEntries.map(([key, event]) => {
-                      const type = typeof event?.type === "string" ? event.type : "event";
-                      const ts = typeof event?.ts_unix_ms === "number" ? new Date(event.ts_unix_ms).toLocaleString() : "";
-                      const actor = event?.actor && typeof event.actor === "object" ? (event.actor as any) : {};
-                      const actorId = typeof actor?.id === "string" ? actor.id : "";
-                      const summary = formatModeratorEventSummary(event);
-                      return (
-                        <div key={`pinned-${key}`} className="rounded-md border border-white/5 bg-black/30 p-2 text-[11px] text-white/70">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="text-white/80">
-                              {type}
-                              {actorId ? ` · ${actorId}` : ""}
-                            </div>
-                            <div className="text-white/40">{ts}</div>
-                          </div>
-                          {summary ? <div className="text-white/60">{summary}</div> : null}
-                          <div className="mt-1 flex flex-wrap items-center gap-2">
-                            {summary ? (
-                              <button
-                                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
-                                type="button"
-                                onClick={() => void handleCopy("summary", summary)}
-                              >
-                                Copy summary
-                              </button>
-                            ) : null}
-                            <button
-                              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
-                              type="button"
-                              onClick={() => void handleCopy("JSON", JSON.stringify(event, null, 2))}
-                            >
-                              Copy JSON
-                            </button>
-                            <button
-                              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
-                              type="button"
-                              onClick={() =>
-                                updateModeratorPinnedEvents((prev) => {
-                                  const next = { ...prev };
-                                  delete next[key];
-                                  return next;
-                                })
-                              }
-                            >
-                              Unpin
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {moderatorPinnedEntries.length > 1 ? (
-                    <div className="mt-3 rounded-md border border-white/10 bg-black/20 p-2">
-                      <div className="text-[11px] text-white/70">Compare pinned events</div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-                        <label className="flex items-center gap-2">
-                          <span>A</span>
-                          <select
-                            className="min-w-[220px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
-                            value={pinnedCompareA}
-                            onChange={(e) => setPinnedCompareA(e.target.value)}
-                          >
-                            {pinnedCompareOptions.map((opt) => (
-                              <option key={`pin-a-${opt.key}`} value={opt.key}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="flex items-center gap-2">
-                          <span>B</span>
-                          <select
-                            className="min-w-[220px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
-                            value={pinnedCompareB}
-                            onChange={(e) => setPinnedCompareB(e.target.value)}
-                          >
-                            {pinnedCompareOptions.map((opt) => (
-                              <option key={`pin-b-${opt.key}`} value={opt.key}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <button
-                          className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
-                          type="button"
-                          onClick={() => {
-                            setPinnedCompareA(pinnedCompareB);
-                            setPinnedCompareB(pinnedCompareA);
-                          }}
-                          disabled={!pinnedCompareA || !pinnedCompareB}
-                        >
-                          Swap
-                        </button>
-                      </div>
-                      {pinnedCompareA && pinnedCompareB ? (
-                        (() => {
-                            const evA = moderatorPinnedEvents[pinnedCompareA];
-                            const evB = moderatorPinnedEvents[pinnedCompareB];
-                            const jsonA = JSON.stringify(evA, null, 2);
-                            const jsonB = JSON.stringify(evB, null, 2);
-                            const same = jsonA === jsonB;
-                            const diffText = JSON.stringify({ a: evA, b: evB }, null, 2);
-                            const diffs: JsonDiffEntry[] = [];
-                            if (!same) {
-                              collectJsonDiffs(evA, evB, "", diffs, 200);
-                            }
-                            return (
-                              <div className="mt-2 grid gap-2">
-                                <div className={`text-[11px] ${same ? "text-emerald-200" : "text-amber-200"}`}>
-                                  {same ? "Pinned events are identical." : "Pinned events differ."}
-                                </div>
-                                <label className="flex items-center gap-2 text-[11px] text-white/60">
-                                  <input
-                                    type="checkbox"
-                                    checked={pinnedCompareDiffOnly}
-                                    onChange={(e) => setPinnedCompareDiffOnly(e.target.checked)}
-                                  />
-                                  Diff-only view
-                                </label>
-                                <div className="grid gap-2 md:grid-cols-2">
-                                  <div className="rounded-md border border-white/10 bg-black/30 p-2">
-                                    <div className="flex items-center justify-between gap-2 text-[10px] text-white/60">
-                                      <span>Event A</span>
-                                      <button
-                                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
-                                        type="button"
-                                        onClick={() => void handleCopy("JSON A", jsonA)}
-                                      >
-                                        Copy JSON A
-                                      </button>
-                                    </div>
-                                    {!pinnedCompareDiffOnly ? (
-                                      <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-[10px] text-white/70">
-                                        {jsonA}
-                                      </pre>
-                                    ) : null}
-                                  </div>
-                                  <div className="rounded-md border border-white/10 bg-black/30 p-2">
-                                    <div className="flex items-center justify-between gap-2 text-[10px] text-white/60">
-                                      <span>Event B</span>
-                                      <button
-                                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
-                                        type="button"
-                                        onClick={() => void handleCopy("JSON B", jsonB)}
-                                      >
-                                        Copy JSON B
-                                      </button>
-                                    </div>
-                                    {!pinnedCompareDiffOnly ? (
-                                      <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-[10px] text-white/70">
-                                        {jsonB}
-                                      </pre>
-                                    ) : null}
-                                  </div>
-                                </div>
-                                {pinnedCompareDiffOnly ? (
-                                  <div className="rounded-md border border-white/10 bg-black/30 p-2">
-                                    <div className="flex items-center justify-between gap-2 text-[10px] text-white/60">
-                                      <span>Combined diff view</span>
-                                      <button
-                                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
-                                        type="button"
-                                        onClick={() => void handleCopy("diff JSON", diffText)}
-                                      >
-                                        Copy diff JSON
-                                      </button>
-                                    </div>
-                                    <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-[10px] text-white/70">
-                                      {diffText}
-                                    </pre>
-                                  </div>
-                                ) : null}
-                                {pinnedCompareDiffOnly ? (
-                                  <div className="rounded-md border border-white/10 bg-black/30 p-2">
-                                    <div className="flex items-center justify-between gap-2 text-[10px] text-white/60">
-                                      <span>Key diffs</span>
-                                      <span>{diffs.length} changes</span>
-                                    </div>
-                                    {diffs.length === 0 ? (
-                                      <div className="mt-2 text-[10px] text-white/40">No key-level differences detected.</div>
-                                    ) : (
-                                      <div className="mt-2 max-h-64 overflow-auto">
-                                        {diffs.slice(0, 200).map((diff, idx) => (
-                                          <div key={`diff-${idx}`} className="border-b border-white/5 py-1 last:border-b-0">
-                                            <div className="text-[10px] text-white/70">{diff.path}</div>
-                                            <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px]">
-                                              <span className="rounded-md bg-emerald-500/10 px-2 py-1 text-emerald-200">
-                                                A: {formatDiffValue(diff.a)}
-                                              </span>
-                                              <span className="rounded-md bg-amber-500/10 px-2 py-1 text-amber-200">
-                                                B: {formatDiffValue(diff.b)}
-                                              </span>
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                    {diffs.length >= 200 ? (
-                                      <div className="mt-2 text-[10px] text-white/40">Diffs truncated at 200 entries.</div>
-                                    ) : null}
-                                  </div>
-                                ) : null}
-                              </div>
-                            );
-                          })()
-                        ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-              {moderatorEventsError ? <div className="mt-2 text-[11px] text-rose-200">{moderatorEventsError}</div> : null}
-              {copyNotice ? <div className="mt-2 text-[11px] text-emerald-200">{copyNotice}</div> : null}
-              {pinNotice ? <div className="mt-2 text-[11px] text-emerald-200">{pinNotice}</div> : null}
-              {pinError ? <div className="mt-2 text-[11px] text-rose-200">{pinError}</div> : null}
-              {!moderatorEventsEnabled ? (
-                <div className="mt-2 text-[11px] text-amber-200">Moderator events disabled by daemon caps.</div>
-              ) : null}
-              {props.session.id.trim().length === 0 ? (
-                <div className="mt-2 text-[11px] text-amber-200">Set a session id to read events.</div>
-              ) : null}
-              <div className="mt-2 max-h-48 overflow-auto rounded-md border border-white/10 bg-black/20 p-2 text-[11px] text-white/70">
-                {moderatorEventsFiltered.length === 0 ? (
-                  <div className="text-white/40">
-                    {moderatorEventsList.length === 0 ? "No events loaded yet." : "No events match the filter."}
-                  </div>
-                ) : (
-                  moderatorEventsFiltered.map((event, idx) => {
-                    const type = typeof event?.type === "string" ? event.type : "event";
-                    const ts = typeof event?.ts_unix_ms === "number" ? new Date(event.ts_unix_ms).toLocaleString() : "";
-                    const actor = event?.actor && typeof event.actor === "object" ? (event.actor as any) : {};
-                    const actorId = typeof actor?.id === "string" ? actor.id : "";
-                    const summary = formatModeratorEventSummary(event);
-                    const key = `${type}-${event?.ts_unix_ms ?? "0"}-${idx}`;
-                    const isPinned = !!moderatorPinnedEvents[key];
-                    const isExpanded = moderatorEventsExpanded[key] === true;
-                    return (
-                      <div key={key} className="border-b border-white/5 py-1 last:border-b-0">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="text-white/80">
-                            {type}
-                            {actorId ? ` · ${actorId}` : ""}
-                          </div>
-                          <div className="flex items-center gap-2 text-white/40">
-                            <span>{ts}</span>
-                            {summary ? (
-                              <button
-                                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
-                                type="button"
-                                onClick={() => void handleCopy("summary", summary)}
-                              >
-                                Copy summary
-                              </button>
-                            ) : null}
-                            <button
-                              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
-                              type="button"
-                              onClick={() => void handleCopy("JSON", JSON.stringify(event, null, 2))}
-                            >
-                              Copy JSON
-                            </button>
-                            <button
-                              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
-                              type="button"
-                              onClick={() =>
-                                updateModeratorPinnedEvents((prev) => {
-                                  const next = { ...prev };
-                                  if (next[key]) {
-                                    delete next[key];
-                                  } else {
-                                    next[key] = event;
-                                  }
-                                  return next;
-                                })
-                              }
-                            >
-                              {isPinned ? "Unpin" : "Pin"}
-                            </button>
-                            <button
-                              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
-                              type="button"
-                              onClick={() =>
-                                setModeratorEventsExpanded((prev) => ({
-                                  ...prev,
-                                  [key]: !isExpanded,
-                                }))
-                              }
-                            >
-                              {isExpanded ? "Hide JSON" : "Show JSON"}
-                            </button>
-                          </div>
-                        </div>
-                        {summary ? <div className="text-white/60">{summary}</div> : null}
-                        {isExpanded ? (
-                          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/40 p-2 text-[10px] text-white/70">
-                            {JSON.stringify(event, null, 2)}
-                          </pre>
-                        ) : null}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-            <div className="text-[11px] text-white/50">
-              Moderator directives/tasks are stored as client events. Assignees and scope are advisory hints; empty assignees
-              broadcast to all listening agents.
-            </div>
-          </div>
-        </div>
+        <SettingsModeratorSection
+          connection={connection}
+          client={client}
+          sessionId={props.session.id}
+          moderatorDirective={moderatorDirective}
+          setModeratorDirective={setModeratorDirective}
+          moderatorDirectiveScope={moderatorDirectiveScope}
+          setModeratorDirectiveScope={setModeratorDirectiveScope}
+          moderatorDirectiveAssignees={moderatorDirectiveAssignees}
+          setModeratorDirectiveAssignees={setModeratorDirectiveAssignees}
+          moderatorDirectivePick={moderatorDirectivePick}
+          setModeratorDirectivePick={setModeratorDirectivePick}
+          moderatorTaskTitle={moderatorTaskTitle}
+          setModeratorTaskTitle={setModeratorTaskTitle}
+          moderatorTaskDetail={moderatorTaskDetail}
+          setModeratorTaskDetail={setModeratorTaskDetail}
+          moderatorTaskAssignees={moderatorTaskAssignees}
+          setModeratorTaskAssignees={setModeratorTaskAssignees}
+          moderatorTaskPick={moderatorTaskPick}
+          setModeratorTaskPick={setModeratorTaskPick}
+          moderatorAppendToSession={moderatorAppendToSession}
+          setModeratorAppendToSession={setModeratorAppendToSession}
+          moderatorBusy={moderatorBusy}
+          moderatorError={moderatorError}
+          moderatorSuccess={moderatorSuccess}
+          moderatorEventsAuto={moderatorEventsAuto}
+          setModeratorEventsAuto={setModeratorEventsAuto}
+          moderatorEventsMaxBytes={moderatorEventsMaxBytes}
+          setModeratorEventsMaxBytes={setModeratorEventsMaxBytes}
+          moderatorEventsIncludeDirectives={moderatorEventsIncludeDirectives}
+          setModeratorEventsIncludeDirectives={setModeratorEventsIncludeDirectives}
+          moderatorEventsIncludeTasks={moderatorEventsIncludeTasks}
+          setModeratorEventsIncludeTasks={setModeratorEventsIncludeTasks}
+          moderatorEventsFilter={moderatorEventsFilter}
+          setModeratorEventsFilter={setModeratorEventsFilter}
+          moderatorEventsExpanded={moderatorEventsExpanded}
+          setModeratorEventsExpanded={setModeratorEventsExpanded}
+          brokerAgentOptions={brokerAgentOptions}
+          brokerAgentsBusy={brokerAgentsBusy}
+          listBrokerAgents={listBrokerAgents}
+          moderatorRolePresets={moderatorRolePresets}
+          addDirectiveAssignee={addDirectiveAssignee}
+          addTaskAssignee={addTaskAssignee}
+          applyRuntimeMemberTaskTemplate={applyRuntimeMemberTaskTemplate}
+          publishModeratorDirective={publishModeratorDirective}
+          publishModeratorTask={publishModeratorTask}
+          moderatorEventsEnabled={moderatorEventsEnabled}
+          moderatorEventsRefetch={() => void moderatorEvents.refetch()}
+          moderatorEventsFetching={moderatorEvents.isFetching}
+          moderatorEventsError={moderatorEventsError}
+          moderatorEventsList={moderatorEventsList}
+          moderatorEventsFiltered={moderatorEventsFiltered}
+          moderatorPinnedEvents={moderatorPinnedEvents}
+          moderatorPinnedEntries={moderatorPinnedEntries}
+          updateModeratorPinnedEvents={updateModeratorPinnedEvents}
+          pinImportRef={pinImportRef}
+          showPinNotice={showPinNotice}
+          handleCopy={handleCopy}
+          pinnedCompareOptions={pinnedCompareOptions}
+          pinnedCompareA={pinnedCompareA}
+          setPinnedCompareA={setPinnedCompareA}
+          pinnedCompareB={pinnedCompareB}
+          setPinnedCompareB={setPinnedCompareB}
+          pinnedCompareDiffOnly={pinnedCompareDiffOnly}
+          setPinnedCompareDiffOnly={setPinnedCompareDiffOnly}
+          copyNotice={copyNotice}
+          pinNotice={pinNotice}
+          pinError={pinError}
+          moderatorDirectivesEnabled={moderatorDirectivesEnabled}
+          moderatorTasksEnabled={moderatorTasksEnabled}
+        />
 
         <SettingsExecutionSection
           connection={connection}
@@ -1567,338 +916,40 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
           openrouterModels={openrouterModels}
         />
 
-        <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
-          <SectionHeader
-            title="Diagnostics"
-            action={
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-                type="button"
-                disabled={diagnostics.isFetching || diagnosticsProviders.isFetching}
-                onClick={() => {
-                  void diagnostics.refetch();
-                  void diagnosticsProviders.refetch();
-                }}
-              >
-                Refresh
-              </button>
-            }
-          />
-          <div className="mt-2 grid gap-2 text-[11px] text-white/70">
-            <div>
-              ready:{" "}
-              <span className={diag?.ready ? "text-emerald-200" : "text-rose-200"}>
-                {typeof diag?.ready === "boolean" ? String(diag.ready) : "unknown"}
-              </span>
-              {diag?.uptime_ms ? (
-                <span className="text-white/50"> · uptime {formatDuration(diag.uptime_ms)}</span>
-              ) : null}
-            </div>
-            <div>
-              db:{" "}
-              <code className="text-white/70">
-                {typeof diag?.db?.path === "string" ? diag.db.path : "(unknown)"}
-              </code>
-              {typeof diag?.db?.size_bytes === "number" ? (
-                <span className="text-white/50"> · {formatBytes(diag.db.size_bytes)}</span>
-              ) : null}
-            </div>
-            {diag?.sandbox_mount_allowlist && typeof diag.sandbox_mount_allowlist === "object" ? (
-              <div>
-                mount allowlist:{" "}
-                <code className="text-white/70">
-                  {typeof (diag.sandbox_mount_allowlist as any).path === "string"
-                    ? (diag.sandbox_mount_allowlist as any).path
-                    : "(unknown)"}
-                </code>
-                <span className="text-white/50">
-                  {" "}
-                  · present {String((diag.sandbox_mount_allowlist as any).present ?? false)} · loaded{" "}
-                  {String((diag.sandbox_mount_allowlist as any).loaded ?? false)}
-                </span>
-                {typeof (diag.sandbox_mount_allowlist as any).allowed_roots === "number" ? (
-                  <span className="text-white/50">
-                    {" "}
-                    · roots {(diag.sandbox_mount_allowlist as any).allowed_roots}
-                  </span>
-                ) : null}
-                {typeof (diag.sandbox_mount_allowlist as any).blocked_patterns === "number" ? (
-                  <span className="text-white/50">
-                    {" "}
-                    · blocked {(diag.sandbox_mount_allowlist as any).blocked_patterns}
-                  </span>
-                ) : null}
-                {typeof (diag.sandbox_mount_allowlist as any).error === "string" &&
-                (diag.sandbox_mount_allowlist as any).error ? (
-                  <div className="text-rose-200">allowlist error: {(diag.sandbox_mount_allowlist as any).error}</div>
-                ) : null}
-              </div>
-            ) : null}
-            <div className="rounded-md border border-white/10 bg-black/20 p-2">
-              <div className="text-[11px] font-semibold text-white/60">Sandbox mount validator</div>
-              <div className="mt-2 grid gap-2 text-[11px] text-white/70">
-                <label className="grid gap-1">
-                  <span className="text-white/50">host_path</span>
-                  <input
-                    className="rounded border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80"
-                    value={String(sandboxMountHostPath || "")}
-                    onChange={(e) => setSandboxMountHostPath(e.target.value)}
-                    placeholder="~/Documents/project"
-                  />
-                </label>
-                <label className="grid gap-1">
-                  <span className="text-white/50">container_path</span>
-                  <input
-                    className="rounded border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80"
-                    value={String(sandboxMountContainerPath || "")}
-                    onChange={(e) => setSandboxMountContainerPath(e.target.value)}
-                    placeholder="/workspace/extra/project"
-                  />
-                </label>
-                <div className="flex flex-wrap items-center gap-3">
-                  <label className="flex items-center gap-2 text-[11px] text-white/60">
-                    container_prefix
-                    <input
-                      className="w-[160px] rounded border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80"
-                      value={String(sandboxMountContainerPrefix || "")}
-                      onChange={(e) => setSandboxMountContainerPrefix(e.target.value)}
-                    />
-                  </label>
-                  <label className="flex items-center gap-2 text-[11px] text-white/60">
-                    <input
-                      type="checkbox"
-                      checked={!!sandboxMountIsMain}
-                      onChange={(e) => setSandboxMountIsMain(e.target.checked)}
-                    />
-                    is_main
-                  </label>
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-                    type="button"
-                    onClick={() => sandboxMountValidate.mutate()}
-                    disabled={!String(connection.effectiveBase || "").trim() || sandboxMountValidate.isPending}
-                  >
-                    {sandboxMountValidate.isPending ? "Validating…" : "Validate"}
-                  </button>
-                </div>
-                {sandboxMountError ? (
-                  <div className="text-[11px] text-rose-200">{sandboxMountError}</div>
-                ) : null}
-                {sandboxMountResult ? (
-                  <pre className="max-h-40 overflow-auto rounded border border-white/10 bg-black/30 p-2 text-[10px] text-white/70">
-                    {JSON.stringify(sandboxMountResult, null, 2)}
-                  </pre>
-                ) : null}
-              </div>
-            </div>
-            {diag?.jobs && typeof diag.jobs === "object" ? (
-              <div>
-                jobs total:{" "}
-                <code className="text-white/70">{String((diag.jobs as any).total ?? "(unknown)")}</code>
-              </div>
-            ) : null}
-            {diag?.workflows && typeof diag.workflows === "object" ? (
-              <div>
-                workflows queued:{" "}
-                <code className="text-white/70">
-                  {String((diag.workflows as any).tasks_queued_ready ?? "(unknown)")}
-                </code>
-              </div>
-            ) : null}
-            {Array.isArray(diag?.warnings) && diag?.warnings.length > 0 ? (
-              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-100">
-                {diag.warnings.join("; ")}
-              </div>
-            ) : null}
-            {diagnostics.isError ? (
-              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-rose-200">
-                diagnostics failed: {String(diagnostics.error)}
-              </div>
-            ) : null}
-            {diagnosticsProviders.isError ? (
-              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-rose-200">
-                provider status failed: {String(diagnosticsProviders.error)}
-              </div>
-            ) : null}
-          </div>
+        <SettingsDiagnosticsSection
+          diagnostics={diag}
+          diagnosticsProviders={diagnosticsProviders.data}
+          diagnosticsFetching={diagnostics.isFetching}
+          diagnosticsProvidersFetching={diagnosticsProviders.isFetching}
+          diagnosticsError={diagnostics.isError ? String(diagnostics.error) : null}
+          diagnosticsProvidersError={diagnosticsProviders.isError ? String(diagnosticsProviders.error) : null}
+          onRefresh={() => {
+            void diagnostics.refetch();
+            void diagnosticsProviders.refetch();
+          }}
+          sandboxMountHostPath={String(sandboxMountHostPath || "")}
+          setSandboxMountHostPath={setSandboxMountHostPath}
+          sandboxMountContainerPath={String(sandboxMountContainerPath || "")}
+          setSandboxMountContainerPath={setSandboxMountContainerPath}
+          sandboxMountContainerPrefix={String(sandboxMountContainerPrefix || "")}
+          setSandboxMountContainerPrefix={setSandboxMountContainerPrefix}
+          sandboxMountIsMain={sandboxMountIsMain}
+          setSandboxMountIsMain={setSandboxMountIsMain}
+          sandboxMountPending={sandboxMountValidate.isPending}
+          sandboxMountError={sandboxMountError}
+          sandboxMountResult={sandboxMountResult}
+          onValidateSandboxMount={() => sandboxMountValidate.mutate()}
+          canValidateSandboxMount={!!String(connection.effectiveBase || "").trim()}
+          providerTests={providerTests}
+          onRunProviderTest={(provider) => void runProviderTest(provider)}
+        />
 
-          <div className="mt-3">
-            <div className="text-[11px] font-semibold text-white/60">Providers</div>
-            <div className="mt-2 rounded-md border border-white/10 bg-black/20">
-              {["deepseek", "moonshot", "glm", "openrouter", "openai"].map((name) => {
-                const p = providerEntries[name] || {};
-                const keyPresent = p.key_present === true;
-                const label =
-                  name === "moonshot"
-                    ? "Kimi (Moonshot CN)"
-                    : name === "glm"
-                      ? "GLM (Zhipu)"
-                      : name;
-                const source = p.source && typeof p.source === "object"
-                  ? `${p.source.kind ?? "source"}:${p.source.label ?? "unknown"}`
-                  : "";
-                const baseUrl = typeof p.base_url === "string" ? p.base_url : "";
-                const model = typeof p.model === "string" ? p.model : "";
-                const modelDefault = typeof p.model_default === "string" ? p.model_default : "";
-                const warning = typeof p.warning === "string" ? p.warning : "";
-                return (
-                  <div key={name} className="border-t border-white/5 px-3 py-2 text-[11px] text-white/70 first:border-t-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono text-white/80">{label}</span>
-                      <span className={keyPresent ? "text-emerald-200" : "text-rose-200"}>
-                        key={keyPresent ? "present" : "missing"}
-                      </span>
-                    </div>
-                    {source ? <div className="text-white/50">source: {source}</div> : null}
-                    {baseUrl ? <div className="text-white/50">base_url: {baseUrl}</div> : null}
-                    {model ? <div className="text-white/50">model: {model}</div> : null}
-                    {modelDefault ? <div className="text-white/40">default: {modelDefault}</div> : null}
-                    {warning ? <div className="text-amber-200/80">warning: {warning}</div> : null}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-white/70">
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-              type="button"
-              onClick={() => void runProviderTest("deepseek")}
-              disabled={!deepseekKeyPresent}
-              title={deepseekKeyPresent ? "Run DeepSeek provider test" : "DeepSeek key missing"}
-            >
-              Test DeepSeek
-            </button>
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-              type="button"
-              onClick={() => void runProviderTest("moonshot")}
-              disabled={!moonshotKeyPresent}
-              title={moonshotKeyPresent ? "Run Kimi (Moonshot) provider test" : "Kimi key missing"}
-            >
-              Test Kimi
-            </button>
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-              type="button"
-              onClick={() => void runProviderTest("glm")}
-              disabled={!glmKeyPresent}
-              title={glmKeyPresent ? "Run GLM provider test" : "GLM key missing"}
-            >
-              Test GLM
-            </button>
-            <span>
-              DeepSeek: {providerStatus("deepseek")} · Kimi: {providerStatus("moonshot")} · GLM: {providerStatus("glm")}
-            </span>
-          </div>
-          {Object.entries(providerTests).map(([name, entry]) => {
-            if (!entry || !entry.error) return null;
-            return (
-              <div
-                key={`provider-error-${name}`}
-                className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200"
-              >
-                {name} test error: {String(entry.error)}
-              </div>
-            );
-          })}
-          <div className="mt-2 text-[11px] text-white/50">
-            Provider tests use the diagnostics endpoint and will not persist keys in the browser.
-          </div>
-        </div>
-
-        <div className="mt-4">
-          <div className="text-xs font-semibold text-white/70">Sessions</div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-              onClick={() => props.session.refresh()}
-              type="button"
-            >
-              Refresh
-            </button>
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
-              onClick={() => props.session.newSession()}
-              type="button"
-              data-testid="new-session"
-              disabled={props.session.newSessionPending}
-            >
-              New session
-            </button>
-            <button
-              className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200 hover:bg-rose-500/15 disabled:opacity-50"
-              onClick={() => {
-                const ids = props.session.sessions ?? [];
-                const n = ids.length;
-                if (n === 0) return;
-                if (!clearAllArmed) {
-                  setClearAllArmed(true);
-                  try {
-                    if (clearAllArmTimeoutRef.current) window.clearTimeout(clearAllArmTimeoutRef.current);
-                  } catch {
-                    // ignore
-                  }
-                  clearAllArmTimeoutRef.current = window.setTimeout(() => setClearAllArmed(false), 8000);
-                  return;
-                }
-                setClearAllArmed(false);
-                props.session.clearAll();
-              }}
-              type="button"
-              disabled={props.session.clearAllPending}
-              title="Danger: deletes all sessions on the daemon."
-            >
-              {clearAllArmed ? `Confirm clear all (${props.session.sessions.length})` : "Clear all"}
-            </button>
-            {clearAllArmed ? (
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-                type="button"
-                onClick={() => setClearAllArmed(false)}
-              >
-                Cancel
-              </button>
-            ) : null}
-          </div>
-          <div className="mt-2 max-h-64 overflow-auto rounded-md border border-white/10 bg-black/20">
-            {(props.session.sessions ?? []).map((sid) => {
-              const selected = sid === props.session.id;
-              return (
-                <div
-                  key={sid}
-                  className={`flex items-center justify-between gap-2 px-3 py-2 text-xs ${selected ? "bg-white/10" : ""}`}
-                >
-                  <button className="flex-1 text-left hover:underline" onClick={() => props.session.setId(sid)} type="button">
-                    {sid}
-                  </button>
-                  <button
-                    className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200 hover:bg-rose-500/15 disabled:opacity-50"
-                    type="button"
-                    disabled={props.session.deletePending}
-                    onClick={() => {
-                      if (!confirm(`Delete session '${sid}'?`)) return;
-                      props.session.deleteSession(sid);
-                    }}
-                  >
-                    Delete
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-          {props.session.deleteError ? (
-            <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-              Delete failed: {props.session.deleteError}
-            </div>
-          ) : null}
-          {props.session.clearAllError ? (
-            <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-              Clear all failed: {props.session.clearAllError}
-            </div>
-          ) : null}
-        </div>
+        <SettingsSessionsSection
+          session={props.session}
+          clearAllArmed={clearAllArmed}
+          setClearAllArmed={setClearAllArmed}
+          clearAllArmTimeoutRef={clearAllArmTimeoutRef}
+        />
       </div>
     </div>
   );
