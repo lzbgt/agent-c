@@ -6,21 +6,20 @@ import {
   type Caps,
   type AgentEvent,
 } from "./api";
-import { loadJson } from "./jsonUtils";
-import { buildScopedSessionKey, buildSessionScopeKey } from "./sessionScope";
 import { brokerBaseFromProxy } from "./utils/brokerBase";
 import HistoryPanel from "./components/HistoryPanel";
 import SceneView from "./components/SceneView";
 import PromptBar, { type Attachment } from "./components/PromptBar";
 import SettingsDrawer from "./components/SettingsDrawer";
 import BrokerTeamConsole from "./components/broker/BrokerTeamConsole";
+import AppMainColumn from "./components/app/AppMainColumn";
 import AppConnectionBanner from "./components/app/AppConnectionBanner";
 import AppAdvancedPanel from "./components/app/AppAdvancedPanel";
 import AppHeader from "./components/app/AppHeader";
 import AppToolsSidebar from "./components/app/AppToolsSidebar";
-import TeamHubCard from "./components/app/TeamHubCard";
 import useLocalStorageState from "./hooks/useLocalStorageState";
 import useAppDataPlane from "./hooks/useAppDataPlane";
+import useAppShellState from "./hooks/useAppShellState";
 import useJobStreaming from "./hooks/useJobStreaming";
 import useRunExecution, { type QueuedRun } from "./hooks/useRunExecution";
 import useRuntimePlane from "./hooks/useRuntimePlane";
@@ -43,34 +42,58 @@ export default function App() {
   const connectionMode = connection.mode;
   const brokerAuthToken = connection.brokerAuthToken;
   const daemonAuthToken = connection.daemonAuthToken;
-  const [selectedTeamId, setSelectedTeamId] = useLocalStorageState<string>("agentui.brokerTeamId", "");
-  const selectedTeamIdTrimmed = String(selectedTeamId || "").trim();
-  const brokerChatAvailable = connectionMode === "broker" && selectedTeamIdTrimmed.length > 0;
-  const [chatTarget, setChatTarget] = useLocalStorageState<string>(
-    "agentui.chatTarget",
-    brokerChatAvailable ? "team" : "session",
-  );
-  React.useEffect(() => {
-    if (connectionMode !== "broker" && chatTarget !== "session") {
-      setChatTarget("session");
-    }
-  }, [chatTarget, connectionMode, setChatTarget]);
-  React.useEffect(() => {
-    if (chatTarget === "team" && !brokerChatAvailable) {
-      setChatTarget("session");
-    }
-  }, [brokerChatAvailable, chatTarget, setChatTarget]);
-  const [teamAction, setTeamAction] = useLocalStorageState<string>("agentui.teamAction", "run");
-  React.useEffect(() => {
-    if (chatTarget !== "team" && teamAction !== "run") {
-      setTeamAction("run");
-    }
-  }, [chatTarget, teamAction, setTeamAction]);
   const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "");
   const [capsCache, setCapsCache] = useLocalStorageState<Record<string, { caps: Caps; ts: number }>>(
     "agentui.capsByBase",
     {},
   );
+  const shell = useAppShellState({
+    profileId,
+    effectiveBase,
+    connectionMode,
+    brokerDeploymentId: connection.brokerDeploymentId,
+    brokerPanelOpen,
+  });
+  const {
+    selectedTeamIdTrimmed,
+    brokerChatAvailable,
+    chatTarget,
+    setChatTarget,
+    teamAction,
+    setTeamAction,
+    topbarRef,
+    promptbarRef,
+    topbarHeightPx,
+    promptbarHeightPx,
+    sessionScopeKey,
+    sessionId,
+    setSessionId,
+    sessionLeaseSeconds,
+    setSessionLeaseSeconds,
+    scopedSessionKey,
+    advancedPages,
+    advancedPage,
+    setAdvancedPage,
+    toolsCollapsed,
+    setToolsCollapsed,
+    runQueueKey,
+    showAllHistoryEntries,
+    setShowAllHistoryEntries,
+    showHistoryMessages,
+    setShowHistoryMessages,
+    historyExpandedByKey,
+    setHistoryExpandedByKey,
+    sceneCollapsed,
+    setSceneCollapsed,
+    focusAdvancedPanel,
+    setFocusAdvancedPanel,
+    inlineTeamSetupOpen,
+    setInlineTeamSetupOpen,
+    mainScrollTop,
+    mainScrollRef,
+    mainScrollRestoredKeyRef,
+    onMainScroll,
+  } = shell;
 
   const webOrigin = React.useMemo(() => {
     try {
@@ -232,218 +255,8 @@ export default function App() {
     if (daemonAuth.mode !== "broker") return true;
     return connection.brokerCookieAuth || String(brokerAuthToken || "").trim().length > 0;
   }, [brokerAuthToken, connection.brokerCookieAuth, daemonAuth.mode, runWatchPrefsBase, runWatchPrefsClientId]);
-  const topbarRef = React.useRef<HTMLElement | null>(null);
-  const promptbarRef = React.useRef<HTMLDivElement | null>(null);
-  const [topbarHeightPx, setTopbarHeightPx] = React.useState<number>(56);
-  const [promptbarHeightPx, setPromptbarHeightPx] = React.useState<number>(220);
-  const sessionScopeKey = React.useMemo(
-    () =>
-      buildSessionScopeKey({
-        profileId,
-        base: effectiveBase,
-        mode: connection.mode,
-        deploymentId: connection.brokerDeploymentId,
-      }),
-    [connection.brokerDeploymentId, connection.mode, effectiveBase, profileId],
-  );
-  // Session selection is scoped by profile id (or base URL as fallback), with deployment id included when set.
-  const [sessionByScopeJson, setSessionByScopeJson] = useLocalStorageState("agentui.sessionByScope", "{}");
-  const [sessionByBaseJson] = useLocalStorageState("agentui.sessionByBase", "{}");
-  const sessionId = React.useMemo(() => {
-    const m = (loadJson(sessionByScopeJson) as Record<string, any>) || {};
-    const sid = typeof m?.[sessionScopeKey] === "string" ? String(m[sessionScopeKey]) : "";
-    return sid.trim().length > 0 ? sid.trim() : "default";
-  }, [sessionByScopeJson, sessionScopeKey]);
-  const [sessionLeaseSeconds, setSessionLeaseSeconds] = useLocalStorageState<string>("agentui.sessionLeaseSeconds", "90");
-
-  const [advancedPage, setAdvancedPage] = useLocalStorageState<string>(
-    `agentui.advancedPage:${sessionScopeKey}`,
-    "",
-  );
-  const legacyTraceLookupCheckedRef = React.useRef<boolean>(false);
-  const legacyWorkflowPanelCheckedRef = React.useRef<boolean>(false);
-  const [toolsCollapsed, setToolsCollapsed] = useLocalStorageState<boolean>(
-    `agentui.toolsCollapsed:${sessionScopeKey}`,
-    false,
-  );
-  const advancedPages = React.useMemo(() => {
-    const pages = [
-      { id: "memory", label: "Memory" },
-      { id: "trace", label: "Trace" },
-      { id: "workflows", label: "Workflows" },
-      { id: "approvals", label: "Approvals" },
-      { id: "run-diff", label: "Run Diff" },
-    ];
-    if (connectionMode === "broker") pages.push({ id: "broker", label: "Broker Console" });
-    return pages;
-  }, [connectionMode]);
-  const advancedPageIds = React.useMemo(() => new Set(advancedPages.map((p) => p.id)), [advancedPages]);
-  React.useEffect(() => {
-    if (advancedPage && !advancedPageIds.has(advancedPage)) setAdvancedPage("");
-  }, [advancedPage, advancedPageIds, setAdvancedPage]);
-  React.useEffect(() => {
-    if (legacyTraceLookupCheckedRef.current) return;
-    legacyTraceLookupCheckedRef.current = true;
-    try {
-      const raw = window.localStorage.getItem("agentui.traceLookupOpen");
-      if (raw === "true" || raw === "1") setAdvancedPage("trace");
-    } catch {
-      // ignore
-    }
-  }, [setAdvancedPage]);
-  React.useEffect(() => {
-    if (legacyWorkflowPanelCheckedRef.current) return;
-    legacyWorkflowPanelCheckedRef.current = true;
-    try {
-      const raw = window.localStorage.getItem("agentui.workflowPanelOpen");
-      if (raw === "true" || raw === "1") setAdvancedPage("workflows");
-    } catch {
-      // ignore
-    }
-  }, [setAdvancedPage]);
-  React.useEffect(() => {
-    if (!brokerPanelOpen || connectionMode !== "broker") return;
-    if (advancedPage !== "broker") setAdvancedPage("broker");
-  }, [advancedPage, brokerPanelOpen, connectionMode, setAdvancedPage]);
-
-  const historyUiKey = React.useMemo(() => {
-    const sid = String(sessionId || "").trim();
-    return `agentui.historyUi:${sessionScopeKey}::${sid}`;
-  }, [sessionId, sessionScopeKey]);
-  const runQueueKey = React.useMemo(() => {
-    const baseKey = String(effectiveBase || "").trim() || "default";
-    const sidKey = String(sessionId || "").trim() || "default";
-    return `agentui.runQueue:${baseKey}::${sidKey}`;
-  }, [effectiveBase, sessionId]);
   const [runQueue, setRunQueue] = useLocalStorageState<QueuedRun[]>(runQueueKey, []);
-  const [showAllHistoryEntries, setShowAllHistoryEntries] = useLocalStorageState<boolean>(`${historyUiKey}:showAll`, false);
-  const [showHistoryMessages, setShowHistoryMessages] = useLocalStorageState<boolean>(`${historyUiKey}:showMessages`, false);
-  const [historyExpandedByKey, setHistoryExpandedByKey] = useLocalStorageState<Record<string, boolean>>(
-    `${historyUiKey}:expandedByKey`,
-    {},
-  );
-  const [sceneCollapsed, setSceneCollapsed] = useLocalStorageState<boolean>(`${historyUiKey}:sceneCollapsed`, false);
-  const [focusAdvancedPanel, setFocusAdvancedPanel] = useLocalStorageState<boolean>("agentui.focusAdvancedPanel", false);
-  const [inlineTeamSetupOpen, setInlineTeamSetupOpen] = useLocalStorageState<boolean>(
-    "agentui.inlineTeamSetupOpen",
-    false,
-  );
-  const [mainScrollTop, setMainScrollTop] = useLocalStorageState<number>(`${historyUiKey}:scrollTop`, 0);
-  const mainScrollRef = React.useRef<HTMLElement | null>(null);
-  const mainScrollRestoredKeyRef = React.useRef<string>("");
-  const mainScrollSaveRafRef = React.useRef<number>(0);
-  const mainScrollLastSavedRef = React.useRef<number>(-1);
-
-  React.useEffect(() => {
-    return () => {
-      if (mainScrollSaveRafRef.current) {
-        try {
-          cancelAnimationFrame(mainScrollSaveRafRef.current);
-        } catch {
-          // ignore
-        }
-      }
-      mainScrollSaveRafRef.current = 0;
-    };
-  }, []);
-  const setSessionId = React.useCallback(
-    (sid: string) => {
-      const nextSid = String(sid || "").trim() || "default";
-      setSessionByScopeJson((prevRaw) => {
-        const prev = (loadJson(String(prevRaw || "")) as Record<string, any>) || {};
-        const next = { ...prev, [sessionScopeKey]: nextSid };
-        try {
-          return JSON.stringify(next);
-        } catch {
-          return JSON.stringify(prev);
-        }
-      });
-    },
-    [sessionScopeKey, setSessionByScopeJson],
-  );
-
-  const scopedSessionKey = React.useMemo(
-    () => buildScopedSessionKey(sessionScopeKey, sessionId),
-    [sessionId, sessionScopeKey],
-  );
   const jobStoreKey = scopedSessionKey;
-
-  // Migration: older UI versions stored sessions by base URL or a single global session id.
-  // If present, use them as initial values for the current scope.
-  React.useEffect(() => {
-    if (typeof window === "undefined" || !window.localStorage) return;
-    const scopeMap = (loadJson(String(sessionByScopeJson || "")) as Record<string, any>) || {};
-    const have = typeof scopeMap?.[sessionScopeKey] === "string" && String(scopeMap[sessionScopeKey]).trim().length > 0;
-    if (have) return;
-
-    const baseMap = (loadJson(String(sessionByBaseJson || "")) as Record<string, any>) || {};
-    const legacyBase = typeof baseMap?.[effectiveBase] === "string" ? String(baseMap[effectiveBase]) : "";
-    const legacyBaseTrim = legacyBase.trim();
-    if (legacyBaseTrim) {
-      setSessionId(legacyBaseTrim);
-      return;
-    }
-
-    const raw = window.localStorage.getItem("agentui.sessionId");
-    if (!raw) return;
-    let legacy = "";
-    try {
-      const v = JSON.parse(raw);
-      if (typeof v === "string") legacy = v;
-    } catch {
-      // ignore
-    }
-    const legacyTrim = String(legacy || "").trim();
-    if (!legacyTrim) return;
-    setSessionId(legacyTrim);
-  }, [effectiveBase, sessionByBaseJson, sessionByScopeJson, sessionScopeKey, setSessionId]);
-
-  // Keep layout CSS vars in sync with actual measured bars (so Scene can truly fill the viewport).
-  React.useLayoutEffect(() => {
-    const measure = () => {
-      try {
-        const th = topbarRef.current?.getBoundingClientRect().height;
-        const ph = promptbarRef.current?.getBoundingClientRect().height;
-        if (typeof th === "number" && Number.isFinite(th) && th > 0) setTopbarHeightPx(Math.round(th));
-        if (typeof ph === "number" && Number.isFinite(ph) && ph > 0) setPromptbarHeightPx(Math.round(ph));
-      } catch {
-        // ignore
-      }
-    };
-
-    measure();
-
-    let ro: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== "undefined") {
-      ro = new ResizeObserver(() => measure());
-      if (topbarRef.current) ro.observe(topbarRef.current);
-      if (promptbarRef.current) ro.observe(promptbarRef.current);
-    }
-
-    window.addEventListener("resize", measure);
-    return () => {
-      window.removeEventListener("resize", measure);
-      try {
-        ro?.disconnect();
-      } catch {
-        // ignore
-      }
-    };
-  }, []);
-
-  const onMainScroll = React.useCallback(() => {
-    const el = mainScrollRef.current;
-    if (!el) return;
-    if (mainScrollSaveRafRef.current) return;
-    mainScrollSaveRafRef.current = requestAnimationFrame(() => {
-      mainScrollSaveRafRef.current = 0;
-      const cur = el.scrollTop;
-      if (!Number.isFinite(cur)) return;
-      if (Math.abs(cur - mainScrollLastSavedRef.current) < 2) return;
-      mainScrollLastSavedRef.current = cur;
-      setMainScrollTop(cur);
-    });
-  }, [setMainScrollTop]);
 
   const [result, setResult] = React.useState<RunResponse | undefined>(undefined);
   // Incremented when a run successfully starts/completes; used to clear "next run only" UI state (e.g. attachments).
@@ -776,169 +589,128 @@ export default function App() {
                 setAdvancedPage={setAdvancedPage}
               />
               {showMainColumn ? (
-              <section className="min-w-0">
-                <div
-                  className={`rounded-lg border border-white/10 bg-black/20 p-3 ${
-                    sceneCollapsed ? "" : "flex h-[calc(100vh-var(--topbar-h)-var(--promptbar-h)-56px)] min-h-0 flex-col"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-semibold text-white/80">Scene</div>
-                    <button
-                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                      type="button"
-                      onClick={() => setSceneCollapsed((prev) => !prev)}
-                    >
-                      {sceneCollapsed ? "Show scene" : "Collapse"}
-                    </button>
-                  </div>
-                  {sceneCollapsed ? (
-                    <div className="mt-2 text-xs text-white/50">Scene is hidden to save space.</div>
-                  ) : (
-                    <div className="mt-3 min-h-0 flex-1">
-                      <SceneView
-                        baseUrl={effectiveBase}
-                        yolo={yolo}
-                        allowAutoplay={allowAutoplay}
-                        client={client}
-                        daemonAuth={daemonAuth}
-                        sessionId={sessionId}
-                        entities={sceneEntities}
-                        className="h-full"
-                      />
-                    </div>
-                  )}
-                </div>
-                {brokerChatAvailable ? (
-                  <TeamHubCard
-                    selectedTeamId={selectedTeamIdTrimmed}
-                    latestTeamRunId={latestTeamRunId}
-                    teamStatus={teamStatus}
-                    inlineTeamSetupOpen={inlineTeamSetupOpen}
-                    onToggleInlineSetup={() => setInlineTeamSetupOpen((prev) => !prev)}
-                    onViewChat={() => {
-                      const el = document.getElementById("team-chat");
-                      if (el) {
-                        el.scrollIntoView({ behavior: "smooth", block: "start" });
-                      }
-                    }}
-                    onOpenFullSetup={() => {
-                      openTeamPanel("setup");
-                      setFocusAdvancedPanel(true);
-                    }}
-                    onOpenMembers={() => openTeamPanel("members")}
-                    onOpenRuns={() => openTeamPanel("run")}
-                    onRunTeam={() => {
-                      setChatTarget("team");
-                      setTeamAction("run");
-                      if (promptbarRef.current) {
-                        promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-                      }
-                    }}
-                    onSendGuidance={() => {
-                      setChatTarget("team");
-                      setTeamAction("guidance");
-                      if (promptbarRef.current) {
-                        promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-                      }
-                    }}
-                    onSetGoal={() => {
-                      setChatTarget("team");
-                      setTeamAction("goal");
-                      if (promptbarRef.current) {
-                        promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-                      }
-                    }}
-                    teamConversationUsingCache={teamConversationUsingCache}
-                    teamConversationCacheUpdatedMs={teamConversationCacheUpdatedMs}
-                    teamQueueCount={teamQueueCount}
-                    teamQueue={teamQueue}
-                    teamQueueNeedsRun={teamQueueNeedsRun}
-                    onClearQueue={clearTeamQueue}
-                    onStartQueuedRun={() => {
-                      setChatTarget("team");
-                      setTeamAction("run");
-                      if (promptbarRef.current) {
-                        promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-                      }
-                    }}
-                    recentActivity={teamRecentActivity}
-                  />
-                ) : null}
-                {brokerChatAvailable && inlineTeamSetupOpen && advancedPage !== "broker" ? (
-                  <details
-                    className="mt-3 rounded-lg border border-white/10 bg-black/20 p-3"
-                    open={inlineTeamSetupOpen}
-                    onToggle={(event) =>
-                      setInlineTeamSetupOpen((event.currentTarget as HTMLDetailsElement).open)
+              <AppMainColumn
+                sceneCollapsed={sceneCollapsed}
+                setSceneCollapsed={setSceneCollapsed}
+                effectiveBase={effectiveBase}
+                yolo={yolo}
+                allowAutoplay={allowAutoplay}
+                client={client}
+                daemonAuth={daemonAuth}
+                sessionId={sessionId}
+                sceneEntities={sceneEntities}
+                onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
+                brokerChatAvailable={brokerChatAvailable}
+                teamHubProps={{
+                  selectedTeamId: selectedTeamIdTrimmed,
+                  latestTeamRunId,
+                  teamStatus,
+                  inlineTeamSetupOpen,
+                  onToggleInlineSetup: () => setInlineTeamSetupOpen((prev) => !prev),
+                  onViewChat: () => {
+                    const el = document.getElementById("team-chat");
+                    if (el) {
+                      el.scrollIntoView({ behavior: "smooth", block: "start" });
                     }
-                  >
-                    <summary className="cursor-pointer select-none text-xs font-semibold text-white/80">
-                      Inline team setup
-                    </summary>
-                    <div className="mt-2 text-[11px] text-white/60">
-                      Configure the team without leaving the chat. Attachments and prompts below are shared once you run.
-                    </div>
-                    <div className="mt-3">
-                      <BrokerTeamConsole
-                        mode="inline"
-                        forcedTab="setup"
-                        base={connection.brokerBase}
-                        auth={daemonAuth}
-                        authKey={authKey}
-                        clientId={client.id}
-                      />
-                    </div>
-                  </details>
-                ) : null}
-                <div className="mt-4">
-                  <HistoryPanel
-                    entries={historyEntriesDesc}
-                    showAllEntries={showAllHistoryEntries}
-                    setShowAllEntries={setShowAllHistoryEntries}
-                    showMessages={showHistoryMessages}
-                    setShowMessages={setShowHistoryMessages}
-                    historyExpandedByKey={historyExpandedByKey}
-                    setHistoryExpandedByKey={setHistoryExpandedByKey}
-                    dbMessages={dbMessages.data?.ok && Array.isArray(dbMessages.data?.messages) ? dbMessages.data.messages : []}
-                    dbRuns={dbRuns.data?.ok && Array.isArray(dbRuns.data?.runs) ? dbRuns.data.runs : []}
-                    dbRunDetailsById={dbRunDetailsById}
-                    sessionArtifacts={
-                      !sessionArtifactsUnsupported &&
-                      sessionArtifacts.data?.ok &&
-                      Array.isArray(sessionArtifacts.data?.artifacts)
-                        ? sessionArtifacts.data.artifacts
-                        : []
+                  },
+                  onOpenFullSetup: () => {
+                    openTeamPanel("setup");
+                    setFocusAdvancedPanel(true);
+                  },
+                  onOpenMembers: () => openTeamPanel("members"),
+                  onOpenRuns: () => openTeamPanel("run"),
+                  onRunTeam: () => {
+                    setChatTarget("team");
+                    setTeamAction("run");
+                    if (promptbarRef.current) {
+                      promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
                     }
-                    artifactCatalogMode={
-                      sessionArtifactsUnsupported ? "unsupported" : connectionMode === "broker" ? "broker_reference" : "direct"
+                  },
+                  onSendGuidance: () => {
+                    setChatTarget("team");
+                    setTeamAction("guidance");
+                    if (promptbarRef.current) {
+                      promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
                     }
-                    effectiveBase={effectiveBase}
-                    yolo={yolo}
-                    sessionId={sessionId}
-                    client={client}
-                    daemonAuth={daemonAuth}
-                    showDebugInConversation={showDebugInConversation}
-                    allowAutoplay={allowAutoplay}
-                    allowClientRpcs={allowClientRpcs}
-                    allowClientEffects={allowClientEffects}
-                    allowUnsafePageEval={allowUnsafePageEval}
-                    sceneEntities={sceneEntities}
-                    onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
-                    onTraceIdClick={(traceId) => {
-                      setTraceLookupId(traceId);
-                      setAdvancedPage("trace");
-                      void traceLookup.mutateAsync(traceId).catch(() => {});
-                    }}
-                    teamConversationItems={teamConversationItems}
-                    teamId={selectedTeamIdTrimmed}
-                    teamRunId={latestTeamRunId}
-                    teamRunCreatedMs={latestTeamRunCreatedMs}
-                    teamRunStatus={teamStatus}
-                    teamConversationWarnings={teamConversationWarnings}
-                  />
-                </div>
-              </section>
+                  },
+                  onSetGoal: () => {
+                    setChatTarget("team");
+                    setTeamAction("goal");
+                    if (promptbarRef.current) {
+                      promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+                    }
+                  },
+                  teamConversationUsingCache,
+                  teamConversationCacheUpdatedMs,
+                  teamQueueCount,
+                  teamQueue,
+                  teamQueueNeedsRun,
+                  onClearQueue: clearTeamQueue,
+                  onStartQueuedRun: () => {
+                    setChatTarget("team");
+                    setTeamAction("run");
+                    if (promptbarRef.current) {
+                      promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+                    }
+                  },
+                  recentActivity: teamRecentActivity,
+                }}
+                inlineTeamSetupOpen={inlineTeamSetupOpen}
+                setInlineTeamSetupOpen={setInlineTeamSetupOpen}
+                advancedPage={advancedPage}
+                inlineTeamConsoleProps={{
+                  mode: "inline",
+                  forcedTab: "setup",
+                  base: connection.brokerBase,
+                  auth: daemonAuth,
+                  authKey,
+                  clientId: client.id,
+                }}
+                promptbarRef={promptbarRef}
+                historyPanelProps={{
+                  entries: historyEntriesDesc,
+                  showAllEntries: showAllHistoryEntries,
+                  setShowAllEntries: setShowAllHistoryEntries,
+                  showMessages: showHistoryMessages,
+                  setShowMessages: setShowHistoryMessages,
+                  historyExpandedByKey,
+                  setHistoryExpandedByKey,
+                  dbMessages: dbMessages.data?.ok && Array.isArray(dbMessages.data?.messages) ? dbMessages.data.messages : [],
+                  dbRuns: dbRuns.data?.ok && Array.isArray(dbRuns.data?.runs) ? dbRuns.data.runs : [],
+                  dbRunDetailsById,
+                  sessionArtifacts:
+                    !sessionArtifactsUnsupported &&
+                    sessionArtifacts.data?.ok &&
+                    Array.isArray(sessionArtifacts.data?.artifacts)
+                      ? sessionArtifacts.data.artifacts
+                      : [],
+                  artifactCatalogMode:
+                    sessionArtifactsUnsupported ? "unsupported" : connectionMode === "broker" ? "broker_reference" : "direct",
+                  effectiveBase,
+                  yolo,
+                  sessionId,
+                  client,
+                  daemonAuth,
+                  showDebugInConversation,
+                  allowAutoplay,
+                  allowClientRpcs,
+                  allowClientEffects,
+                  allowUnsafePageEval,
+                  sceneEntities,
+                  onSceneApply: (ops) => applySceneOps(String(sessionId || "").trim(), ops),
+                  onTraceIdClick: (traceId) => {
+                    setTraceLookupId(traceId);
+                    setAdvancedPage("trace");
+                    void traceLookup.mutateAsync(traceId).catch(() => {});
+                  },
+                  teamConversationItems,
+                  teamId: selectedTeamIdTrimmed,
+                  teamRunId: latestTeamRunId,
+                  teamRunCreatedMs: latestTeamRunCreatedMs,
+                  teamRunStatus: teamStatus,
+                  teamConversationWarnings,
+                }}
+              />
               ) : null}
               <AppAdvancedPanel
                 advancedPage={advancedPage}
