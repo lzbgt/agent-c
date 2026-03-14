@@ -2,12 +2,16 @@ import { test, expect } from "@playwright/test";
 
 test("workflow wait resume controls show for persisted wait", async ({ page }) => {
   const base = "http://127.0.0.1:8123";
-  const waitKey = `${base}::direct:pid=test-profile:tlen=0`;
+  const waitKey = `${base}::direct:pid=default:tlen=0`;
   const now = Date.now();
 
   await page.addInitScript(({ key, ts }) => {
     try {
-      window.localStorage.setItem("agentui.workflowPanelOpen", JSON.stringify(true));
+      window.localStorage.setItem("agentui.simpleMode", "false");
+      window.localStorage.setItem("agentui.connectionMode", JSON.stringify("direct"));
+      window.localStorage.setItem("agentui.base", "http://127.0.0.1:8123");
+      window.localStorage.setItem("agentui.connectionProfileActive", "default");
+      window.localStorage.setItem("agentui.showSettings", "false");
       window.localStorage.setItem(
         "agentui.workflowWaitByScope",
         JSON.stringify({
@@ -40,6 +44,7 @@ test("workflow wait resume controls show for persisted wait", async ({ page }) =
   await page.goto("/");
 
   await expect(page.getByText("Workflows", { exact: true })).toBeVisible();
+  await page.getByText("Workflows", { exact: true }).click();
   await expect(page.getByText(/Resume wait: wf-test/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Resume" })).toBeVisible();
   await expect(page.getByText(/Resume wait: wf-test/).locator("..").getByRole("button", { name: "Clear" })).toBeVisible();

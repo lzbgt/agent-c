@@ -94,6 +94,7 @@ AGENT_E2E_OUTPUT_DIR="${pw_artifacts_dir}" \
     e2e/prompt_bar.spec.ts \
     e2e/memory_panel.spec.ts \
     e2e/run_diff_panel.spec.ts \
+    e2e/scene_view.spec.ts \
     e2e/workflow_schedules.spec.ts \
     e2e/workflow_wait_persisted_ui.spec.ts \
     e2e/broker_cookie_auth.spec.ts \
