@@ -4,14 +4,11 @@ import {
   apiBrokerTeamDelete,
   apiBrokerTeamGet,
   apiBrokerTeamList,
-  apiBrokerGetClientPrefs,
-  apiBrokerPostClientPrefs,
   apiBrokerTeamMembersDelete,
   apiBrokerTeamMembersList,
   apiBrokerTeamMembersUpsert,
   apiBrokerTeamMemberUpdate,
   apiBrokerListAgents,
-  apiBrokerEventsReplay,
   apiBrokerTeamQuorumDelete,
   apiBrokerTeamQuorumList,
   apiBrokerTeamQuorumUpsert,
@@ -19,7 +16,6 @@ import {
   type ApiAuth,
   type BrokerAgentInfo,
   type BrokerDeploymentInfo,
-  type BrokerEvent,
   type BrokerTeam,
 } from "../../api";
 import useLocalStorageState from "../../hooks/useLocalStorageState";
@@ -32,6 +28,7 @@ import BrokerTeamMembersPanel from "./BrokerTeamMembersPanel";
 import BrokerTeamSetupPanel from "./BrokerTeamSetupPanel";
 import SectionCard from "./BrokerTeamSectionCard";
 import BrokerTeamSettingsPanel from "./BrokerTeamSettingsPanel";
+import useBrokerTeamEventsState from "./useBrokerTeamEventsState";
 import {
   fmtTs,
   normalizeRoleGraphEdges,
@@ -40,13 +37,7 @@ import {
   normalizeSharedMemoryMode,
   type RoleGraphEdge,
 } from "./teamRunUtils";
-import { GUIDANCE_EVENT_TYPES, ORCHESTRATOR_EVENT_TYPES, TEAM_RUN_EVENT_TYPES } from "./teamRunUtils";
-import { extractTeamEventsCursorByScope, normalizeBrokerReplayEvents } from "./teamEventPrefs";
-import type { BrokerEventRow, TeamCursorEntry, TeamMemberRow, TeamQuorumRuleRow } from "./types";
-
-const TEAM_EVENTS_MAX = 200;
-const TEAM_EVENTS_PREFS_KIND = "webui-team-events";
-const TEAM_EVENTS_PREFS_VERSION = 1;
+import type { BrokerEventRow, TeamMemberRow, TeamQuorumRuleRow } from "./types";
 
 export type BrokerTeamConsoleProps = {
   base: string;
@@ -103,25 +94,6 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   React.useEffect(() => {
     if (!teamTabIds.has(teamTab)) setTeamTab("run");
   }, [teamTab, teamTabIds, setTeamTab]);
-
-  const [teamReplayEvents, setTeamReplayEvents] = React.useState<BrokerEventRow[]>([]);
-  const [orchestratorReplayEvents, setOrchestratorReplayEvents] = React.useState<BrokerEventRow[]>([]);
-  const [teamReplayBusy, setTeamReplayBusy] = React.useState<boolean>(false);
-  const [teamReplayError, setTeamReplayError] = React.useState<string | null>(null);
-  const [teamReplayNote, setTeamReplayNote] = React.useState<string | null>(null);
-  const [teamEventsCursorByTeam, setTeamEventsCursorByTeam] = useLocalStorageState<Record<string, number>>(
-    "agentui.teamEventsCursorByTeam",
-    {},
-  );
-  const teamEventsCursorRef = React.useRef<number>(0);
-  const [teamEventsCursorByScope, setTeamEventsCursorByScope] = React.useState<Record<string, TeamCursorEntry>>({});
-  const [teamEventsCursorStatus, setTeamEventsCursorStatus] = React.useState<"idle" | "loading" | "ready" | "error">(
-    "idle",
-  );
-  const teamEventsCursorPersistRef = React.useRef<{
-    timer: ReturnType<typeof setTimeout> | null;
-    pending: Record<string, TeamCursorEntry> | null;
-  }>({ timer: null, pending: null });
 
   const [membersBusy, setMembersBusy] = React.useState<boolean>(false);
   const [membersError, setMembersError] = React.useState<string | null>(null);
@@ -225,98 +197,6 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       setTeamTab("setup");
     }
   }, [teamList.length, teamTab, setTeamTab]);
-  const teamEventsCursor = teamIdTrimmed ? teamEventsCursorByTeam[teamIdTrimmed] || 0 : 0;
-  const teamEventsScopeKey = React.useMemo(() => {
-    if (!teamIdTrimmed) return "";
-    const base = String(props.base || "").trim();
-    const key = String(props.authKey || "").trim();
-    return `${base}::${key}::${teamIdTrimmed}`;
-  }, [props.authKey, props.base, teamIdTrimmed]);
-  const teamPrefsClientId = React.useMemo(() => String(props.clientId || "webui"), [props.clientId]);
-  const teamPrefsBase = React.useMemo(() => String(props.base || "").trim(), [props.base]);
-  React.useEffect(() => {
-    teamEventsCursorRef.current = teamEventsCursor;
-  }, [teamEventsCursor]);
-
-  const pushTeamEventsCursor = React.useCallback(
-    async (nextMap: Record<string, TeamCursorEntry>) => {
-      if (!teamPrefsBase || !teamPrefsClientId || !teamEventsScopeKey) return;
-      const payload = {
-        client_id: teamPrefsClientId,
-        client_kind: TEAM_EVENTS_PREFS_KIND,
-        prefs: {
-          team_events_cursor: {
-            version: TEAM_EVENTS_PREFS_VERSION,
-            by_scope: nextMap,
-          },
-        },
-      };
-      const resp = await apiBrokerPostClientPrefs(teamPrefsBase, payload, props.auth);
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "team events prefs update failed");
-      }
-      setTeamEventsCursorStatus("ready");
-    },
-    [props.auth, teamEventsScopeKey, teamPrefsBase, teamPrefsClientId],
-  );
-
-  const scheduleTeamEventsCursorPersist = React.useCallback(
-    (nextMap: Record<string, TeamCursorEntry>) => {
-      if (!teamPrefsBase || !teamPrefsClientId || !teamEventsScopeKey) return;
-      if (teamEventsCursorStatus === "error") return;
-      teamEventsCursorPersistRef.current.pending = nextMap;
-      if (teamEventsCursorPersistRef.current.timer) return;
-      teamEventsCursorPersistRef.current.timer = setTimeout(() => {
-        const pending = teamEventsCursorPersistRef.current.pending;
-        teamEventsCursorPersistRef.current.pending = null;
-        teamEventsCursorPersistRef.current.timer = null;
-        if (!pending) return;
-        pushTeamEventsCursor(pending).catch(() => {
-          setTeamEventsCursorStatus("error");
-        });
-      }, 1500);
-    },
-    [teamEventsCursorStatus, teamEventsScopeKey, teamPrefsBase, teamPrefsClientId, pushTeamEventsCursor],
-  );
-
-  const loadTeamEventsCursor = React.useCallback(async () => {
-    if (!canQuery || !teamPrefsBase || !teamPrefsClientId || !teamEventsScopeKey) return;
-    setTeamEventsCursorStatus("loading");
-    try {
-      const resp = await apiBrokerGetClientPrefs(teamPrefsBase, teamPrefsClientId, TEAM_EVENTS_PREFS_KIND, props.auth);
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "team events prefs fetch failed");
-      }
-      const remoteMap = extractTeamEventsCursorByScope(resp.prefs);
-      setTeamEventsCursorByScope(remoteMap);
-      const remoteTs = remoteMap[teamEventsScopeKey]?.cursor_ts || 0;
-      const localTs = teamEventsCursorRef.current || 0;
-      const merged = Math.max(localTs, remoteTs);
-      if (merged > localTs && teamIdTrimmed) {
-        setTeamEventsCursorByTeam((prev) => ({ ...prev, [teamIdTrimmed]: merged }));
-      }
-      if (merged > remoteTs) {
-        const nextMap = {
-          ...remoteMap,
-          [teamEventsScopeKey]: { cursor_ts: merged, updated_unix_ms: Date.now() },
-        };
-        setTeamEventsCursorByScope(nextMap);
-        scheduleTeamEventsCursorPersist(nextMap);
-      }
-      setTeamEventsCursorStatus("ready");
-    } catch {
-      setTeamEventsCursorStatus("error");
-    }
-  }, [
-    canQuery,
-    extractTeamEventsCursorByScope,
-    props.auth,
-    scheduleTeamEventsCursorPersist,
-    teamEventsScopeKey,
-    teamIdTrimmed,
-    teamPrefsBase,
-    teamPrefsClientId,
-  ]);
   const membersList = Array.isArray(members) ? members : [];
   const rolePlanOptions = React.useMemo(() => {
     const set = new Set<string>();
@@ -361,231 +241,15 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const memberEditAgentDeployments = Array.isArray(memberEditSelectedAgent?.deployments)
     ? (memberEditSelectedAgent.deployments as BrokerDeploymentInfo[])
     : [];
-  const eventTeamId = React.useCallback((row?: BrokerEventRow | null) => {
-    const payload = row?.payload;
-    if (!payload || typeof payload !== "object") return "";
-    return String((payload as { team_id?: unknown }).team_id || "");
-  }, []);
-
-  const isTeamEvent = React.useCallback(
-    (row?: BrokerEventRow | null) => {
-      if (!row) return false;
-      const type = String(row.type || "");
-      if (!TEAM_RUN_EVENT_TYPES.has(type)) return false;
-      if (!teamIdTrimmed) return true;
-      return eventTeamId(row) === teamIdTrimmed;
-    },
-    [eventTeamId, teamIdTrimmed],
-  );
-
-  const isGuidanceEvent = React.useCallback(
-    (row?: BrokerEventRow | null) => {
-      if (!row) return false;
-      const type = String(row.type || "");
-      if (!GUIDANCE_EVENT_TYPES.has(type)) return false;
-      if (!teamIdTrimmed) return true;
-      return eventTeamId(row) === teamIdTrimmed;
-    },
-    [eventTeamId, teamIdTrimmed],
-  );
-
-  const isOrchestratorEvent = React.useCallback(
-    (row?: BrokerEventRow | null) => {
-      if (!row) return false;
-      const type = String(row.type || "");
-      if (!ORCHESTRATOR_EVENT_TYPES.has(type)) return false;
-      if (!teamIdTrimmed) return true;
-      return eventTeamId(row) === teamIdTrimmed;
-    },
-    [eventTeamId, teamIdTrimmed],
-  );
-
-  const buildEventKey = (row: BrokerEventRow) =>
-    row.event_id || `${row.type || ""}:${row.ts_unix_ms || 0}:${row.trace_id || ""}`;
-
-  const mergeTeamEvents = React.useCallback(
-    (live: BrokerEventRow[], replay: BrokerEventRow[]) => {
-      const seen = new Set<string>();
-      const out: BrokerEventRow[] = [];
-      const push = (row: BrokerEventRow) => {
-        const key = buildEventKey(row);
-        if (seen.has(key)) return;
-        seen.add(key);
-        out.push(row);
-      };
-      for (const row of replay) {
-        if (!isTeamEvent(row)) continue;
-        push(row);
-      }
-      for (const row of live) {
-        if (!isTeamEvent(row)) continue;
-        push(row);
-      }
-      out.sort((a, b) => (a.ts_unix_ms || 0) - (b.ts_unix_ms || 0));
-      if (out.length > TEAM_EVENTS_MAX) {
-        return out.slice(out.length - TEAM_EVENTS_MAX);
-      }
-      return out;
-    },
-    [isTeamEvent],
-  );
-
-  const mergeOrchestratorEvents = React.useCallback(
-    (live: BrokerEventRow[], replay: BrokerEventRow[]) => {
-      const seen = new Set<string>();
-      const out: BrokerEventRow[] = [];
-      const push = (row: BrokerEventRow) => {
-        const key = buildEventKey(row);
-        if (seen.has(key)) return;
-        seen.add(key);
-        out.push(row);
-      };
-      for (const row of replay) {
-        if (!isOrchestratorEvent(row)) continue;
-        push(row);
-      }
-      for (const row of live) {
-        if (!isOrchestratorEvent(row)) continue;
-        push(row);
-      }
-      out.sort((a, b) => (a.ts_unix_ms || 0) - (b.ts_unix_ms || 0));
-      if (out.length > TEAM_EVENTS_MAX) {
-        return out.slice(out.length - TEAM_EVENTS_MAX);
-      }
-      return out;
-    },
-    [isOrchestratorEvent],
-  );
-
-  const mergeGuidanceEvents = React.useCallback(
-    (live: BrokerEventRow[], replay: BrokerEventRow[]) => {
-      const seen = new Set<string>();
-      const out: BrokerEventRow[] = [];
-      const push = (row: BrokerEventRow) => {
-        const key = buildEventKey(row);
-        if (seen.has(key)) return;
-        seen.add(key);
-        out.push(row);
-      };
-      for (const row of replay) {
-        if (!isGuidanceEvent(row)) continue;
-        push(row);
-      }
-      for (const row of live) {
-        if (!isGuidanceEvent(row)) continue;
-        push(row);
-      }
-      out.sort((a, b) => (a.ts_unix_ms || 0) - (b.ts_unix_ms || 0));
-      if (out.length > TEAM_EVENTS_MAX) {
-        return out.slice(out.length - TEAM_EVENTS_MAX);
-      }
-      return out;
-    },
-    [isGuidanceEvent],
-  );
-
-  const liveEvents = Array.isArray(props.quorumEvents) ? props.quorumEvents : [];
-  const mergedTeamEvents = React.useMemo(
-    () => mergeTeamEvents(liveEvents, teamReplayEvents),
-    [liveEvents, teamReplayEvents, mergeTeamEvents],
-  );
-  const mergedOrchestratorEvents = React.useMemo(
-    () => mergeOrchestratorEvents(liveEvents, orchestratorReplayEvents),
-    [liveEvents, orchestratorReplayEvents, mergeOrchestratorEvents],
-  );
-  const mergedGuidanceEvents = React.useMemo(
-    () => mergeGuidanceEvents(liveEvents, teamReplayEvents),
-    [liveEvents, teamReplayEvents, mergeGuidanceEvents],
-  );
-
-  React.useEffect(() => {
-    void loadTeamEventsCursor();
-  }, [loadTeamEventsCursor]);
-
-  const loadTeamReplay = React.useCallback(async () => {
-    if (!canQuery || !teamIdTrimmed) return;
-    setTeamReplayBusy(true);
-    setTeamReplayError(null);
-    setTeamReplayNote(null);
-    try {
-      const resp = await apiBrokerEventsReplay(props.base, props.auth, {
-        sinceTs: teamEventsCursorRef.current || 0,
-        limit: TEAM_EVENTS_MAX,
-        types: Array.from(new Set([...TEAM_RUN_EVENT_TYPES, ...ORCHESTRATOR_EVENT_TYPES, ...GUIDANCE_EVENT_TYPES])),
-      });
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "team events replay failed");
-      }
-      const items = Array.isArray(resp.events) ? resp.events : [];
-      const rows = normalizeBrokerReplayEvents(items as BrokerEvent[]);
-      setTeamReplayEvents(rows.filter((row) => isTeamEvent(row)));
-      setOrchestratorReplayEvents(rows.filter((row) => isOrchestratorEvent(row)));
-      let nextCursor = teamEventsCursorRef.current || 0;
-      if (typeof resp.next_since_ts === "number") {
-        nextCursor = Math.max(nextCursor, resp.next_since_ts);
-      }
-      for (const row of rows) {
-        if (row.ts_unix_ms && row.ts_unix_ms > nextCursor) nextCursor = row.ts_unix_ms;
-      }
-      if (teamIdTrimmed && nextCursor > (teamEventsCursorByTeam[teamIdTrimmed] || 0)) {
-        setTeamEventsCursorByTeam((prev) => ({ ...prev, [teamIdTrimmed]: nextCursor }));
-      }
-      setTeamReplayNote(`replay +${rows.length}`);
-    } catch (err) {
-      setTeamReplayError(String(err));
-    } finally {
-      setTeamReplayBusy(false);
-    }
-  }, [
+  const teamEventsState = useBrokerTeamEventsState({
+    base: props.base,
+    auth: props.auth,
+    authKey: props.authKey,
+    clientId: props.clientId,
     canQuery,
     teamIdTrimmed,
-    props.base,
-    props.auth,
-    isTeamEvent,
-    teamEventsCursorByTeam,
-    setTeamEventsCursorByTeam,
-  ]);
-
-  React.useEffect(() => {
-    if (!teamIdTrimmed) {
-      setTeamReplayEvents([]);
-      setTeamReplayError(null);
-      setTeamReplayNote(null);
-      return;
-    }
-    void loadTeamReplay();
-  }, [teamIdTrimmed, loadTeamReplay]);
-
-  React.useEffect(() => {
-    if (!teamIdTrimmed) return;
-    const rows = Array.isArray(props.quorumEvents) ? props.quorumEvents : [];
-    let maxTs = teamEventsCursorRef.current || 0;
-    for (const row of rows) {
-      if (!isTeamEvent(row)) continue;
-      const ts = row.ts_unix_ms || 0;
-      if (ts > maxTs) maxTs = ts;
-    }
-    if (maxTs > (teamEventsCursorByTeam[teamIdTrimmed] || 0)) {
-      setTeamEventsCursorByTeam((prev) => ({ ...prev, [teamIdTrimmed]: maxTs }));
-    }
-  }, [props.quorumEvents, teamIdTrimmed, isTeamEvent, teamEventsCursorByTeam, setTeamEventsCursorByTeam]);
-
-  React.useEffect(() => {
-    if (!teamEventsScopeKey || teamEventsCursor <= 0) return;
-    const current = teamEventsCursorByScope[teamEventsScopeKey]?.cursor_ts || 0;
-    if (teamEventsCursor <= current) return;
-    const nextMap = {
-      ...teamEventsCursorByScope,
-      [teamEventsScopeKey]: { cursor_ts: teamEventsCursor, updated_unix_ms: Date.now() },
-    };
-    setTeamEventsCursorByScope(nextMap);
-    scheduleTeamEventsCursorPersist(nextMap);
-  }, [
-    scheduleTeamEventsCursorPersist,
-    teamEventsCursor,
-    teamEventsCursorByScope,
-    teamEventsScopeKey,
-  ]);
+    quorumEvents: props.quorumEvents,
+  });
 
   const refreshTeams = async () => {
     if (!canQuery) return;
@@ -1544,7 +1208,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             teamId={teamIdTrimmed}
             members={membersList}
             rules={rulesList}
-            quorumEvents={mergedTeamEvents}
+            quorumEvents={teamEventsState.mergedTeamEvents}
             teamMeta={teamDetails?.meta && typeof teamDetails.meta === "object" ? (teamDetails.meta as Record<string, any>) : null}
             onMembersRefresh={refreshMembers}
             onTeamSelect={setTeamId}
@@ -1781,13 +1445,13 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
           <button
             className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
             type="button"
-            disabled={!canQuery || !teamIdTrimmed || teamReplayBusy}
-            onClick={() => void loadTeamReplay()}
+            disabled={!canQuery || !teamIdTrimmed || teamEventsState.teamReplayBusy}
+            onClick={() => void teamEventsState.loadTeamReplay()}
           >
-            {teamReplayBusy ? "Replaying…" : "Replay"}
+            {teamEventsState.teamReplayBusy ? "Replaying…" : "Replay"}
           </button>
-          {teamReplayNote ? <span className="text-emerald-200">{teamReplayNote}</span> : null}
-          {teamReplayError ? <span className="text-rose-200">{teamReplayError}</span> : null}
+          {teamEventsState.teamReplayNote ? <span className="text-emerald-200">{teamEventsState.teamReplayNote}</span> : null}
+          {teamEventsState.teamReplayError ? <span className="text-rose-200">{teamEventsState.teamReplayError}</span> : null}
         </div>
           </SectionCard>
 
@@ -1798,7 +1462,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
           canQuery={canQuery}
           teamId={teamIdTrimmed}
           teamMeta={teamDetails?.meta && typeof teamDetails.meta === "object" ? (teamDetails.meta as Record<string, any>) : null}
-          events={mergedOrchestratorEvents}
+          events={teamEventsState.mergedOrchestratorEvents}
         />
           </SectionCard>
 
@@ -1808,7 +1472,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
           auth={props.auth}
           canQuery={canQuery}
           teamId={teamIdTrimmed}
-          events={mergedGuidanceEvents}
+          events={teamEventsState.mergedGuidanceEvents}
         />
           </SectionCard>
 
@@ -1818,7 +1482,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
           auth={props.auth}
           canQuery={canQuery}
           teamId={teamIdTrimmed}
-          events={mergedOrchestratorEvents}
+          events={teamEventsState.mergedOrchestratorEvents}
         />
           </SectionCard>
         </>

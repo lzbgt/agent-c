@@ -4,12 +4,10 @@ import {
   apiBrokerDeleteMember,
   apiBrokerGetMembers,
   apiBrokerGetMembershipAudit,
-  apiBrokerGetClientPrefs,
   apiBrokerListAgents,
   apiBrokerExportConnectors,
   apiBrokerListConnectors,
   apiBrokerListDeployments,
-  apiBrokerEventsReplay,
   apiBrokerMemoryRecapsCreateBulk,
   apiBrokerMemoryRecapsListBulk,
   apiBrokerMemorySalienceBulk,
@@ -18,10 +16,8 @@ import {
   apiBrokerOtaStatusBulk,
   apiBrokerOtaUpdate,
   apiBrokerOtaUpdateBulk,
-  apiBrokerPostClientPrefs,
   apiBrokerProxyJson,
   apiBrokerUpsertMember,
-  daemonFetchInit,
   type ApiAuth,
   type BrokerAgentInfo,
   type BrokerConnector,
@@ -34,19 +30,13 @@ import BrokerAuditSection from "./broker/BrokerAuditSection";
 import BrokerConnectorsSection from "./broker/BrokerConnectorsSection";
 import BrokerMembersSection from "./broker/BrokerMembersSection";
 import BrokerTeamConsole from "./broker/BrokerTeamConsole";
-import type { BrokerEventRow } from "./broker/types";
 import {
   asFiniteNumber,
-  asObjectRecord,
-  extractBrokerEventsCursorByScope,
-  normalizeBrokerEventRow,
   normalizeBrokerFanoutResults,
-  normalizeBrokerReplayEvents,
   normalizeDeploymentId,
-  type BrokerCursorByScope,
   type BrokerFanoutResult,
 } from "./broker/brokerPanelUtils";
-import { readSseStream } from "../sse";
+import useBrokerEventsState from "./broker/useBrokerEventsState";
 
 const normalizeBrokerBase = (raw: string) => {
   const base = String(raw || "").trim();
@@ -63,10 +53,6 @@ const fmtTs = (ms?: number | null) => {
     return String(ms);
   }
 };
-
-const BROKER_EVENTS_MAX = 200;
-const BROKER_EVENTS_PREFS_KIND = "webui-broker-events";
-const BROKER_EVENTS_PREFS_VERSION = 1;
 
 export type BrokerPanelProps = {
   open: boolean;
@@ -199,245 +185,6 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   const [salienceResults, setSalienceResults] = React.useState<BrokerFanoutResult[] | null>(null);
 
   const [auditLimit, setAuditLimit] = React.useState<string>("200");
-  const [brokerEvents, setBrokerEvents] = React.useState<BrokerEventRow[]>([]);
-  const [brokerEventsError, setBrokerEventsError] = React.useState<string | null>(null);
-  const [brokerEventsActive, setBrokerEventsActive] = React.useState<boolean>(true);
-  const [brokerEventsConnected, setBrokerEventsConnected] = React.useState<boolean>(false);
-  const [brokerEventsQuorumOnly, setBrokerEventsQuorumOnly] = React.useState<boolean>(true);
-  const [brokerEventsReplayBusy, setBrokerEventsReplayBusy] = React.useState<boolean>(false);
-  const [brokerEventsReplayError, setBrokerEventsReplayError] = React.useState<string | null>(null);
-  const [brokerEventsReplayNote, setBrokerEventsReplayNote] = React.useState<string | null>(null);
-  const [brokerEventsCursorTs, setBrokerEventsCursorTs] = React.useState<number>(0);
-  const brokerEventsCursorRef = React.useRef<number>(0);
-  const brokerEventsReplayKeyRef = React.useRef<string>("");
-  const [brokerEventsCursorByScope, setBrokerEventsCursorByScope] = React.useState<BrokerCursorByScope>({});
-  const [brokerEventsCursorStatus, setBrokerEventsCursorStatus] = React.useState<"idle" | "loading" | "ready" | "error">(
-    "idle",
-  );
-  const brokerEventsLoadKeyRef = React.useRef<string>("");
-  const brokerEventsCursorPersistRef = React.useRef<{
-    timer: ReturnType<typeof setTimeout> | null;
-    pending: BrokerCursorByScope | null;
-  }>({ timer: null, pending: null });
-
-  const brokerEventsCursorKey = React.useMemo(() => {
-    if (!base || !props.authKey) return "";
-    return `agentd:broker:eventsCursor:${base}:${props.authKey}`;
-  }, [base, props.authKey]);
-  const brokerEventsScopeKey = React.useMemo(() => {
-    if (!base) return "";
-    return `${base}::${String(props.authKey || "").trim()}`;
-  }, [base, props.authKey]);
-  const brokerPrefsClientId = React.useMemo(() => String(props.clientId || "webui"), [props.clientId]);
-  const brokerPrefsBase = base;
-
-  React.useEffect(() => {
-    brokerEventsCursorRef.current = brokerEventsCursorTs;
-  }, [brokerEventsCursorTs]);
-
-  const pushBrokerEventsCursor = React.useCallback(
-    async (nextMap: BrokerCursorByScope) => {
-      if (!brokerPrefsBase || !brokerPrefsClientId || !brokerEventsScopeKey) return;
-      const payload = {
-        client_id: brokerPrefsClientId,
-        client_kind: BROKER_EVENTS_PREFS_KIND,
-        prefs: {
-          broker_events_cursor: {
-            version: BROKER_EVENTS_PREFS_VERSION,
-            by_scope: nextMap,
-          },
-        },
-      };
-      const resp = await apiBrokerPostClientPrefs(brokerPrefsBase, payload, props.auth);
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "broker events prefs update failed");
-      }
-      setBrokerEventsCursorStatus("ready");
-    },
-    [brokerPrefsBase, brokerPrefsClientId, brokerEventsScopeKey, props.auth],
-  );
-
-  const scheduleBrokerEventsCursorPersist = React.useCallback(
-    (nextMap: BrokerCursorByScope) => {
-      if (!brokerPrefsBase || !brokerPrefsClientId || !brokerEventsScopeKey) return;
-      if (brokerEventsCursorStatus === "error") return;
-      brokerEventsCursorPersistRef.current.pending = nextMap;
-      if (brokerEventsCursorPersistRef.current.timer) return;
-      brokerEventsCursorPersistRef.current.timer = setTimeout(() => {
-        const pending = brokerEventsCursorPersistRef.current.pending;
-        brokerEventsCursorPersistRef.current.pending = null;
-        brokerEventsCursorPersistRef.current.timer = null;
-        if (!pending) return;
-        pushBrokerEventsCursor(pending).catch(() => {
-          setBrokerEventsCursorStatus("error");
-        });
-      }, 1500);
-    },
-    [brokerPrefsBase, brokerPrefsClientId, brokerEventsScopeKey, brokerEventsCursorStatus, pushBrokerEventsCursor],
-  );
-
-  const loadBrokerEventsCursor = React.useCallback(async () => {
-    if (!canQuery || !brokerPrefsBase || !brokerPrefsClientId || !brokerEventsScopeKey) return;
-    setBrokerEventsCursorStatus("loading");
-    try {
-      const resp = await apiBrokerGetClientPrefs(brokerPrefsBase, brokerPrefsClientId, BROKER_EVENTS_PREFS_KIND, props.auth);
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "broker events prefs fetch failed");
-      }
-      const remoteMap = extractBrokerEventsCursorByScope(resp.prefs);
-      setBrokerEventsCursorByScope(remoteMap);
-      const remoteTs = remoteMap[brokerEventsScopeKey]?.cursor_ts || 0;
-      const localTs = brokerEventsCursorRef.current || 0;
-      const merged = Math.max(localTs, remoteTs);
-      if (merged > localTs) {
-        setBrokerEventsCursorTs(merged);
-      }
-      if (merged > remoteTs) {
-        const nextMap = {
-          ...remoteMap,
-          [brokerEventsScopeKey]: { cursor_ts: merged, updated_unix_ms: Date.now() },
-        };
-        setBrokerEventsCursorByScope(nextMap);
-        scheduleBrokerEventsCursorPersist(nextMap);
-      }
-      setBrokerEventsCursorStatus("ready");
-    } catch {
-      setBrokerEventsCursorStatus("error");
-    }
-  }, [
-    canQuery,
-    brokerPrefsBase,
-    brokerPrefsClientId,
-    brokerEventsScopeKey,
-    props.auth,
-    extractBrokerEventsCursorByScope,
-    scheduleBrokerEventsCursorPersist,
-  ]);
-  const loadBrokerEventsCursorRef = React.useRef(loadBrokerEventsCursor);
-
-  React.useEffect(() => {
-    setBrokerEvents([]);
-    setBrokerEventsError(null);
-    setBrokerEventsReplayError(null);
-    setBrokerEventsReplayNote(null);
-    setBrokerEventsCursorTs(0);
-    brokerEventsReplayKeyRef.current = "";
-    if (!brokerEventsCursorKey || typeof window === "undefined") return;
-    try {
-      const raw = window.localStorage.getItem(brokerEventsCursorKey);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      const ts = typeof parsed?.ts === "number" ? parsed.ts : 0;
-      if (ts > 0) setBrokerEventsCursorTs(ts);
-    } catch {
-      // ignore cache errors
-    }
-  }, [brokerEventsCursorKey]);
-
-  React.useEffect(() => {
-    loadBrokerEventsCursorRef.current = loadBrokerEventsCursor;
-  }, [loadBrokerEventsCursor]);
-
-  React.useEffect(() => {
-    if (!canQuery || !brokerPrefsBase || !brokerPrefsClientId || !props.authKey) return;
-    const nextKey = `${brokerPrefsBase}::${brokerPrefsClientId}::${props.authKey}`;
-    if (brokerEventsLoadKeyRef.current === nextKey) return;
-    brokerEventsLoadKeyRef.current = nextKey;
-    void loadBrokerEventsCursorRef.current();
-  }, [brokerPrefsBase, brokerPrefsClientId, canQuery, props.authKey]);
-
-  React.useEffect(() => {
-    if (canQuery) return;
-    brokerEventsLoadKeyRef.current = "";
-  }, [canQuery]);
-
-  React.useEffect(() => {
-    if (!brokerEventsCursorKey || typeof window === "undefined") return;
-    if (brokerEventsCursorTs <= 0) return;
-    try {
-      window.localStorage.setItem(
-        brokerEventsCursorKey,
-        JSON.stringify({ ts: brokerEventsCursorTs, updated: Date.now() }),
-      );
-    } catch {
-      // ignore cache errors
-    }
-  }, [brokerEventsCursorKey, brokerEventsCursorTs]);
-
-  React.useEffect(() => {
-    if (!brokerEventsScopeKey || brokerEventsCursorTs <= 0) return;
-    const current = brokerEventsCursorByScope[brokerEventsScopeKey]?.cursor_ts || 0;
-    if (brokerEventsCursorTs <= current) return;
-    const nextMap = {
-      ...brokerEventsCursorByScope,
-      [brokerEventsScopeKey]: { cursor_ts: brokerEventsCursorTs, updated_unix_ms: Date.now() },
-    };
-    setBrokerEventsCursorByScope(nextMap);
-    scheduleBrokerEventsCursorPersist(nextMap);
-  }, [
-    brokerEventsCursorByScope,
-    brokerEventsCursorTs,
-    brokerEventsScopeKey,
-    scheduleBrokerEventsCursorPersist,
-  ]);
-
-  const appendBrokerEvents = React.useCallback((rows: BrokerEventRow[]) => {
-    if (rows.length === 0) return;
-    setBrokerEvents((prev) => {
-      const seen = new Set<string>();
-      for (const ev of prev) {
-        const key = ev?.event_id || `${ev?.type || ""}:${ev?.ts_unix_ms || 0}:${ev?.trace_id || ""}`;
-        seen.add(key);
-      }
-      const next = prev.slice();
-      for (const row of rows) {
-        const key = row?.event_id || `${row?.type || ""}:${row?.ts_unix_ms || 0}:${row?.trace_id || ""}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        next.push(row);
-      }
-      if (next.length <= BROKER_EVENTS_MAX) return next;
-      return next.slice(next.length - BROKER_EVENTS_MAX);
-    });
-  }, []);
-
-  const updateBrokerEventsCursor = React.useCallback((rowTs?: number, nextSince?: number) => {
-    const current = brokerEventsCursorRef.current || 0;
-    const candidate = Math.max(current, rowTs || 0, nextSince || 0);
-    if (candidate > current) {
-      setBrokerEventsCursorTs(candidate);
-    }
-  }, []);
-
-  const loadBrokerEventsReplay = React.useCallback(async () => {
-    if (!canQuery || !base) return;
-    setBrokerEventsReplayBusy(true);
-    setBrokerEventsReplayError(null);
-    try {
-      const sinceTs = brokerEventsCursorRef.current || 0;
-      const resp = await apiBrokerEventsReplay(base, props.auth, {
-        sinceTs,
-        limit: BROKER_EVENTS_MAX,
-      });
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "events replay failed");
-      }
-      const rows = normalizeBrokerReplayEvents(resp.events);
-      appendBrokerEvents(rows);
-      if (typeof resp.next_since_ts === "number") {
-        updateBrokerEventsCursor(undefined, resp.next_since_ts);
-      } else {
-        for (const row of rows) {
-          updateBrokerEventsCursor(row.ts_unix_ms);
-        }
-      }
-      setBrokerEventsReplayNote(`replay +${rows.length}`);
-    } catch (err) {
-      setBrokerEventsReplayError(String(err));
-    } finally {
-      setBrokerEventsReplayBusy(false);
-    }
-  }, [appendBrokerEvents, base, canQuery, props.auth, updateBrokerEventsCursor]);
   const limitValue = React.useMemo(() => {
     const n = Number.parseInt(String(auditLimit || ""), 10);
     if (!Number.isFinite(n) || n <= 0) return 200;
@@ -470,51 +217,14 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     }
   }, [props.open, canQuery, agentId, membersQuery, auditQuery, deploymentsQuery]);
 
-  React.useEffect(() => {
-    if (!props.open || !canQuery || !brokerEventsActive) {
-      setBrokerEventsConnected(false);
-      return;
-    }
-    const controller = new AbortController();
-    const run = async () => {
-      setBrokerEventsError(null);
-      setBrokerEventsConnected(false);
-      try {
-        const resp = await fetch(`${base}/v1/events`, daemonFetchInit(props.auth, { signal: controller.signal }));
-        if (!resp.ok) {
-          throw new Error(`broker events failed (${resp.status})`);
-        }
-        setBrokerEventsConnected(true);
-        await readSseStream(resp, (ev) => {
-          if (controller.signal.aborted) return;
-          let parsed: unknown = null;
-          try {
-            parsed = ev.data ? JSON.parse(ev.data) : null;
-          } catch {
-            parsed = null;
-          }
-          const row = normalizeBrokerEventRow(parsed, ev.event);
-          if (!row) return;
-          appendBrokerEvents([row]);
-          updateBrokerEventsCursor(row.ts_unix_ms);
-        });
-      } catch (err) {
-        if (controller.signal.aborted) return;
-        setBrokerEventsConnected(false);
-        setBrokerEventsError(String(err));
-      }
-    };
-    void run();
-    return () => controller.abort();
-  }, [props.open, canQuery, base, props.authKey, brokerEventsActive, appendBrokerEvents, updateBrokerEventsCursor]);
-
-  React.useEffect(() => {
-    if (!props.open || !canQuery || !brokerEventsActive || !base) return;
-    const key = `${base}::${props.authKey}:${brokerEventsActive ? "on" : "off"}`;
-    if (brokerEventsReplayKeyRef.current === key) return;
-    brokerEventsReplayKeyRef.current = key;
-    void loadBrokerEventsReplay();
-  }, [props.open, canQuery, brokerEventsActive, base, props.authKey, loadBrokerEventsReplay]);
+  const brokerEventsState = useBrokerEventsState({
+    base,
+    auth: props.auth,
+    authKey: props.authKey,
+    clientId: props.clientId,
+    open: props.open,
+    canQuery,
+  });
 
   const otaStatusCacheKey = React.useMemo(() => {
     if (!base || !agentId) return "";
@@ -1095,12 +805,6 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   const members = membersQuery.data?.members ?? [];
   const ownerSub = String(membersQuery.data?.owner_sub || "");
   const auditRows = auditQuery.data?.audit ?? [];
-  const brokerEventRows = React.useMemo(() => {
-    const rows = brokerEventsQuorumOnly
-      ? brokerEvents.filter((ev) => String(ev?.type || "").startsWith("team_quorum"))
-      : brokerEvents;
-    return rows.slice().reverse();
-  }, [brokerEvents, brokerEventsQuorumOnly]);
   const deployments: BrokerDeploymentInfo[] = deploymentsQuery.data?.deployments ?? [];
   const defaultDeploymentIdRaw = deploymentsQuery.data?.default_deployment_id;
   const defaultDeploymentId = defaultDeploymentIdRaw ? normalizeDeploymentId(defaultDeploymentIdRaw) : "";
@@ -1158,7 +862,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                 auth={props.auth}
                 authKey={props.authKey}
                 clientId={props.clientId}
-                quorumEvents={brokerEvents}
+                quorumEvents={brokerEventsState.brokerEvents}
               />
             ) : null}
 
@@ -1826,25 +1530,25 @@ export default function BrokerPanel(props: BrokerPanelProps) {
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="text-xs font-semibold text-white/80">Live broker events</div>
             <div className="flex items-center gap-2">
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                type="button"
-                onClick={() => setBrokerEventsActive((prev) => !prev)}
-              >
-                {brokerEventsActive ? "Pause" : "Resume"}
-              </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                  type="button"
+                  onClick={() => brokerEventsState.setBrokerEventsActive((prev) => !prev)}
+                >
+                  {brokerEventsState.brokerEventsActive ? "Pause" : "Resume"}
+                </button>
               <button
                 className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
                 type="button"
-                disabled={!canQuery || brokerEventsReplayBusy}
-                onClick={() => void loadBrokerEventsReplay()}
+                disabled={!canQuery || brokerEventsState.brokerEventsReplayBusy}
+                onClick={() => void brokerEventsState.loadBrokerEventsReplay()}
               >
-                {brokerEventsReplayBusy ? "Replaying…" : "Replay"}
+                {brokerEventsState.brokerEventsReplayBusy ? "Replaying…" : "Replay"}
               </button>
               <button
                 className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
                 type="button"
-                onClick={() => setBrokerEvents([])}
+                onClick={() => brokerEventsState.clearBrokerEvents()}
               >
                 Clear
               </button>
@@ -1852,33 +1556,37 @@ export default function BrokerPanel(props: BrokerPanelProps) {
           </div>
           <div className="mb-2 flex flex-wrap items-center gap-3 text-[11px] text-white/50">
             <span>
-              {brokerEventsActive ? (brokerEventsConnected ? "Connected" : "Connecting…") : "Paused"}
+              {brokerEventsState.brokerEventsActive
+                ? brokerEventsState.brokerEventsConnected
+                  ? "Connected"
+                  : "Connecting…"
+                : "Paused"}
             </span>
-            {brokerEventsReplayNote ? <span>{brokerEventsReplayNote}</span> : null}
+            {brokerEventsState.brokerEventsReplayNote ? <span>{brokerEventsState.brokerEventsReplayNote}</span> : null}
             <label className="flex items-center gap-1">
               <input
                 type="checkbox"
-                checked={brokerEventsQuorumOnly}
-                onChange={(e) => setBrokerEventsQuorumOnly(e.target.checked)}
+                checked={brokerEventsState.brokerEventsQuorumOnly}
+                onChange={(e) => brokerEventsState.setBrokerEventsQuorumOnly(e.target.checked)}
               />
               Quorum only
             </label>
-            <span>{brokerEvents.length} events</span>
+            <span>{brokerEventsState.brokerEvents.length} events</span>
           </div>
-          {brokerEventsReplayError ? (
+          {brokerEventsState.brokerEventsReplayError ? (
             <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-100">
-              {brokerEventsReplayError}
+              {brokerEventsState.brokerEventsReplayError}
             </div>
           ) : null}
-          {brokerEventsError ? (
+          {brokerEventsState.brokerEventsError ? (
             <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
-              {brokerEventsError}
+              {brokerEventsState.brokerEventsError}
             </div>
-          ) : brokerEventRows.length === 0 ? (
+          ) : brokerEventsState.brokerEventRows.length === 0 ? (
             <div className="text-[11px] text-white/50">No events yet.</div>
           ) : (
             <div className="grid gap-2">
-              {brokerEventRows.map((row, idx) => {
+              {brokerEventsState.brokerEventRows.map((row, idx) => {
                 const type = String(row?.type || "");
                 const payload =
                   row?.payload && typeof row.payload === "object"
