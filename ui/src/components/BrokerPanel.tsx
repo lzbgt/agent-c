@@ -1915,10 +1915,18 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                     payload?.event && typeof payload.event === "object"
                       ? (payload.event as Record<string, unknown>)
                       : {};
+                  const kind = ev?.kind ? String(ev.kind).trim().toLowerCase() : "role";
+                  const state = ev?.state ? String(ev.state).trim().toLowerCase() : "proposed";
                   const fromRole = ev?.from_role ? String(ev.from_role) : "";
                   const toRole = ev?.to_role ? String(ev.to_role) : "";
                   const reason = ev?.reason ? String(ev.reason) : "";
-                  summary = `handoff ${fromRole || "role"} -> ${toRole || "role"}${reason ? ` · ${reason}` : ""}`;
+                  if (kind === "cross_deployment") {
+                    const sourceDeployment = ev?.source_deployment_id ? String(ev.source_deployment_id) : "";
+                    const targetDeployment = ev?.target_deployment_id ? String(ev.target_deployment_id) : "";
+                    summary = `${state} handoff ${fromRole || "role"} -> ${toRole || "role"}${sourceDeployment || targetDeployment ? ` · ${sourceDeployment || "src"} -> ${targetDeployment || "dst"}` : ""}${reason ? ` · ${reason}` : ""}`;
+                  } else {
+                    summary = `handoff ${fromRole || "role"} -> ${toRole || "role"}${reason ? ` · ${reason}` : ""}`;
+                  }
                 } else if (payload && Object.keys(payload).length > 0) {
                   try {
                     summary = JSON.stringify(payload);

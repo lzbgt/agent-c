@@ -261,10 +261,17 @@ export const BrokerTeamRunGoalEventSchema: z.ZodType<BrokerTeamRunGoalEvent> = z
 
 export const BrokerTeamRunHandoffEventSchema: z.ZodType<BrokerTeamRunHandoffEvent> = z
   .object({
+    handoff_id: z.string().optional(),
+    kind: z.enum(["role", "cross_deployment"]).optional(),
+    state: z.enum(["proposed", "accepted", "declined", "cancelled"]).optional(),
     from_role: z.string(),
     to_role: z.string(),
     reason: z.string().optional(),
     message: z.string().optional(),
+    source_deployment_id: z.string().optional(),
+    source_session_id: z.string().optional(),
+    target_deployment_id: z.string().optional(),
+    target_session_id: z.string().optional(),
     ts_unix_ms: z.number().int().nonnegative(),
     event_index: z.number().int().nonnegative().optional(),
     data: UnknownRecordSchema.optional(),

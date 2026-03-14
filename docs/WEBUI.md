@@ -107,6 +107,7 @@ Secret handling:
 - Team run status lookup surfaces applied overrides (`role_overrides_applied` / `member_overrides_applied`) with an expand toggle.
 - Team run status lookup supports auto refresh on team run SSE events.
 - Team run status lookup surfaces `member_sessions` for moderator broadcasts and includes a moderator panel to publish directives/tasks to selected roles or members.
+- Team run status lookup now includes an explicit **cross-deployment handoff** lane: operators can emit replayable proposal records with source/target deployment + session IDs and then accept/decline those handoffs from the same panel.
 - Team run moderator panel can load aggregated moderator events across member sessions (reload-safe).
 - Broker console event replay cursors (global + team) persist to broker client prefs when available, falling back to localStorage to avoid gaps after refresh.
 - Server-side sync prefers the **daemon** (direct mode) or **broker** (broker mode) when supported.

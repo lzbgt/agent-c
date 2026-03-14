@@ -281,7 +281,10 @@ All endpoints below are served by the broker (not by agents).
   - updates the goal contract and/or appends a goal event (`progress` or `drift`)
   - events are stored in the run payload (bounded) and emitted as SSE (`team_goal_progress`, `team_goal_drift`, `team_goal_spawn_validation`)
 - `POST /v1/teams/{team_id}/runs/{team_run_id}/handoff`
-  - appends a role handoff event (`from_role` → `to_role`) and emits SSE (`team_handoff`)
+  - appends a replayable handoff event and emits SSE (`team_handoff`)
+  - supports plain role handoffs plus explicit `kind:"cross_deployment"` records
+  - cross-deployment records can carry `handoff_id`, `state`, `source_deployment_id`, `source_session_id`, `target_deployment_id`, and `target_session_id`
+  - acceptance / decline is modeled as another append against the same `handoff_id`, so replay preserves the full proposal and resolution history
 - `POST /v1/teams/{team_id}/runtime_members/allocate`
   - allocates runtime members for missing roles using connected agents
   - request accepts `roles` plus optional `existing_runtime_members`, `exclude_team_members`, and `max_members`

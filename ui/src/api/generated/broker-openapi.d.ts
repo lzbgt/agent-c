@@ -2925,7 +2925,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Append a team role handoff event */
+        /** Append a replayable team handoff event */
         post: {
             parameters: {
                 query?: never;
@@ -4713,10 +4713,19 @@ export interface components {
             goal_event_count?: number;
         };
         TeamRunHandoffEvent: {
+            handoff_id?: string;
+            /** @enum {string} */
+            kind?: "role" | "cross_deployment";
+            /** @enum {string} */
+            state?: "proposed" | "accepted" | "declined" | "cancelled";
             from_role: string;
             to_role: string;
             reason?: string;
             message?: string;
+            source_deployment_id?: string;
+            source_session_id?: string;
+            target_deployment_id?: string;
+            target_session_id?: string;
             /** Format: int64 */
             ts_unix_ms: number;
             data?: {
@@ -4725,8 +4734,28 @@ export interface components {
             /** Format: int32 */
             event_index?: number;
         };
+        TeamRunHandoffEventInput: {
+            handoff_id?: string;
+            /** @enum {string} */
+            kind?: "role" | "cross_deployment";
+            /** @enum {string} */
+            state?: "proposed" | "accepted" | "declined" | "cancelled";
+            from_role?: string;
+            to_role?: string;
+            reason?: string;
+            message?: string;
+            source_deployment_id?: string;
+            source_session_id?: string;
+            target_deployment_id?: string;
+            target_session_id?: string;
+            /** Format: int64 */
+            ts_unix_ms?: number;
+            data?: {
+                [key: string]: unknown;
+            };
+        };
         TeamRunHandoffUpdateRequest: {
-            event: components["schemas"]["TeamRunHandoffEvent"];
+            event: components["schemas"]["TeamRunHandoffEventInput"];
         };
         TeamRunHandoffUpdateResponse: {
             ok: boolean;

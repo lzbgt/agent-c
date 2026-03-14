@@ -30,7 +30,8 @@ contract map.
   - broker now exposes `/services...` and `/capabilities...` session aliases, and the WebUI operator section exposes service list/detail/attach/wait/run and capability list/detail against the current broker-backed session.
 - [x] Broker/WebUI: keep artifact-centric UX explicitly separate until `codexw` provides a real artifact list/detail/content API; gather missing cases as requirements rather than faking an artifact browser.
   - broker mode now treats the session artifact list as conditional; when `/api/v1/session/artifacts` is unsupported, the history panel shows an explicit artifact-boundary note instead of a fake empty artifact browser, and broker runtime ack flow skips artifact-catalog assumptions on that path.
-- [ ] Broker/WebUI: add a real codexw-to-codexw cross-deployment collaboration/handoff lane so deployment-to-deployment work transfer is broker-mediated, session-aware, and replayable instead of a manual operator convention.
+- [x] Broker/WebUI: add a real codexw-to-codexw cross-deployment collaboration/handoff lane so deployment-to-deployment work transfer is broker-mediated, session-aware, and replayable instead of a manual operator convention.
+  - team run handoff events now support explicit replayable cross-deployment records (`handoff_id`, state, source/target deployment, source/target session), and the WebUI team run status panel can emit plus accept/decline those handoffs directly.
 
 1) **macOS agentd host (M2)** — keep host daemon runnable/operable on macOS (Windows/Linux deferred).
    - [x] Added macOS launchd install/uninstall helper scripts for agentd.

@@ -1028,22 +1028,56 @@ schemas:
     type: object
     required: [from_role, to_role, ts_unix_ms]
     properties:
+      handoff_id: { type: string }
+      kind:
+        type: string
+        enum: [role, cross_deployment]
+      state:
+        type: string
+        enum: [proposed, accepted, declined, cancelled]
       from_role: { type: string }
       to_role: { type: string }
       reason: { type: string }
       message: { type: string }
+      source_deployment_id: { type: string }
+      source_session_id: { type: string }
+      target_deployment_id: { type: string }
+      target_session_id: { type: string }
       ts_unix_ms: { type: integer, format: int64 }
       data:
         type: object
         additionalProperties: true
       event_index: { type: integer, format: int32 }
 
+  TeamRunHandoffEventInput:
+    type: object
+    properties:
+      handoff_id: { type: string }
+      kind:
+        type: string
+        enum: [role, cross_deployment]
+      state:
+        type: string
+        enum: [proposed, accepted, declined, cancelled]
+      from_role: { type: string }
+      to_role: { type: string }
+      reason: { type: string }
+      message: { type: string }
+      source_deployment_id: { type: string }
+      source_session_id: { type: string }
+      target_deployment_id: { type: string }
+      target_session_id: { type: string }
+      ts_unix_ms: { type: integer, format: int64 }
+      data:
+        type: object
+        additionalProperties: true
+
   TeamRunHandoffUpdateRequest:
     type: object
     required: [event]
     properties:
       event:
-        $ref: "#/components/schemas/TeamRunHandoffEvent"
+        $ref: "#/components/schemas/TeamRunHandoffEventInput"
 
   TeamRunHandoffUpdateResponse:
     type: object

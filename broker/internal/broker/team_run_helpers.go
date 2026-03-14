@@ -115,12 +115,19 @@ type teamGoalEventInput struct {
 const maxGoalEvents = 200
 
 type teamHandoffEventInput struct {
+	HandoffID          string
+	Kind               string
+	State              string
 	FromRole string
 	ToRole   string
 	Reason   string
 	Message  string
-	Data     map[string]any
-	TSUnixMS int64
+	SourceDeploymentID string
+	SourceSessionID    string
+	TargetDeploymentID string
+	TargetSessionID    string
+	Data               map[string]any
+	TSUnixMS           int64
 }
 
 const maxHandoffEvents = 200
@@ -400,11 +407,54 @@ func parseHandoffEvent(raw any) (teamHandoffEventInput, error) {
 	if !ok {
 		return teamHandoffEventInput{}, fmt.Errorf("handoff event must be object")
 	}
+	handoffID := ""
+	if v, ok := obj["handoff_id"]; ok {
+		if s, ok := v.(string); ok {
+			handoffID = strings.TrimSpace(s)
+		} else {
+			return teamHandoffEventInput{}, fmt.Errorf("handoff event handoff_id must be string")
+		}
+	}
+	kind := ""
+	if v, ok := obj["kind"]; ok {
+		if s, ok := v.(string); ok {
+			kind = strings.ToLower(strings.TrimSpace(s))
+		} else {
+			return teamHandoffEventInput{}, fmt.Errorf("handoff event kind must be string")
+		}
+	}
+	state := ""
+	if v, ok := obj["state"]; ok {
+		if s, ok := v.(string); ok {
+			state = strings.ToLower(strings.TrimSpace(s))
+		} else {
+			return teamHandoffEventInput{}, fmt.Errorf("handoff event state must be string")
+		}
+	}
 	fromRole, _ := obj["from_role"].(string)
 	toRole, _ := obj["to_role"].(string)
 	fromRole = strings.ToLower(strings.TrimSpace(fromRole))
 	toRole = strings.ToLower(strings.TrimSpace(toRole))
-	if fromRole == "" || toRole == "" {
+	if kind == "" {
+		if stringField(obj["source_deployment_id"]) != "" ||
+			stringField(obj["source_session_id"]) != "" ||
+			stringField(obj["target_deployment_id"]) != "" ||
+			stringField(obj["target_session_id"]) != "" {
+			kind = "cross_deployment"
+		} else {
+			kind = "role"
+		}
+	}
+	if kind != "role" && kind != "cross_deployment" {
+		return teamHandoffEventInput{}, fmt.Errorf("handoff event kind must be role or cross_deployment")
+	}
+	if state == "" {
+		state = "proposed"
+	}
+	if state != "proposed" && state != "accepted" && state != "declined" && state != "cancelled" {
+		return teamHandoffEventInput{}, fmt.Errorf("handoff event state must be proposed, accepted, declined, or cancelled")
+	}
+	if handoffID == "" && (fromRole == "" || toRole == "") {
 		return teamHandoffEventInput{}, fmt.Errorf("handoff event requires from_role and to_role")
 	}
 	reason := ""
@@ -431,6 +481,22 @@ func parseHandoffEvent(raw any) (teamHandoffEventInput, error) {
 		}
 		data = m
 	}
+	sourceDeploymentID, err := optionalStringField(obj, "source_deployment_id", "handoff event")
+	if err != nil {
+		return teamHandoffEventInput{}, err
+	}
+	sourceSessionID, err := optionalStringField(obj, "source_session_id", "handoff event")
+	if err != nil {
+		return teamHandoffEventInput{}, err
+	}
+	targetDeploymentID, err := optionalStringField(obj, "target_deployment_id", "handoff event")
+	if err != nil {
+		return teamHandoffEventInput{}, err
+	}
+	targetSessionID, err := optionalStringField(obj, "target_session_id", "handoff event")
+	if err != nil {
+		return teamHandoffEventInput{}, err
+	}
 	ts := int64(0)
 	if v, ok := obj["ts_unix_ms"]; ok {
 		if n, ok := asInt(v); ok {
@@ -440,21 +506,25 @@ func parseHandoffEvent(raw any) (teamHandoffEventInput, error) {
 		}
 	}
 	return teamHandoffEventInput{
-		FromRole: fromRole,
-		ToRole:   toRole,
-		Reason:   reason,
-		Message:  message,
-		Data:     data,
-		TSUnixMS: ts,
+		HandoffID:          handoffID,
+		Kind:               kind,
+		State:              state,
+		FromRole:           fromRole,
+		ToRole:             toRole,
+		Reason:             reason,
+		Message:            message,
+		SourceDeploymentID: sourceDeploymentID,
+		SourceSessionID:    sourceSessionID,
+		TargetDeploymentID: targetDeploymentID,
+		TargetSessionID:    targetSessionID,
+		Data:               data,
+		TSUnixMS:           ts,
 	}, nil
 }
 
 func appendHandoffEvent(teamMeta map[string]any, event teamHandoffEventInput, maxEvents int) ([]map[string]any, error) {
 	if teamMeta == nil {
 		return nil, fmt.Errorf("missing team meta")
-	}
-	if event.FromRole == "" || event.ToRole == "" {
-		return nil, fmt.Errorf("handoff event requires from_role and to_role")
 	}
 	if maxEvents <= 0 {
 		maxEvents = maxHandoffEvents
@@ -474,17 +544,80 @@ func appendHandoffEvent(teamMeta map[string]any, event teamHandoffEventInput, ma
 			return nil, fmt.Errorf("handoff_events must be array")
 		}
 	}
+	if event.HandoffID != "" {
+		for i := len(events) - 1; i >= 0; i-- {
+			prev := events[i]
+			if strings.TrimSpace(stringField(prev["handoff_id"])) != event.HandoffID {
+				continue
+			}
+			if event.Kind == "" {
+				event.Kind = strings.ToLower(strings.TrimSpace(stringField(prev["kind"])))
+			}
+			if event.FromRole == "" {
+				event.FromRole = strings.ToLower(strings.TrimSpace(stringField(prev["from_role"])))
+			}
+			if event.ToRole == "" {
+				event.ToRole = strings.ToLower(strings.TrimSpace(stringField(prev["to_role"])))
+			}
+			if event.SourceDeploymentID == "" {
+				event.SourceDeploymentID = strings.TrimSpace(stringField(prev["source_deployment_id"]))
+			}
+			if event.SourceSessionID == "" {
+				event.SourceSessionID = strings.TrimSpace(stringField(prev["source_session_id"]))
+			}
+			if event.TargetDeploymentID == "" {
+				event.TargetDeploymentID = strings.TrimSpace(stringField(prev["target_deployment_id"]))
+			}
+			if event.TargetSessionID == "" {
+				event.TargetSessionID = strings.TrimSpace(stringField(prev["target_session_id"]))
+			}
+			break
+		}
+	}
+	if event.HandoffID == "" {
+		event.HandoffID = "th_" + newID()[:12]
+	}
+	if event.Kind == "" {
+		event.Kind = "role"
+	}
+	if event.State == "" {
+		event.State = "proposed"
+	}
+	if event.FromRole == "" || event.ToRole == "" {
+		return nil, fmt.Errorf("handoff event requires from_role and to_role")
+	}
+	if event.Kind == "cross_deployment" {
+		if event.SourceDeploymentID == "" || event.TargetDeploymentID == "" ||
+			event.SourceSessionID == "" || event.TargetSessionID == "" {
+			return nil, fmt.Errorf("cross_deployment handoff requires source/target deployment_id and session_id")
+		}
+	}
 	ts := event.TSUnixMS
 	if ts <= 0 {
 		ts = time.Now().UTC().UnixMilli()
 	}
 	entry := map[string]any{
+		"handoff_id":  event.HandoffID,
+		"kind":        event.Kind,
+		"state":       event.State,
 		"from_role":   event.FromRole,
 		"to_role":     event.ToRole,
 		"ts_unix_ms":  ts,
 		"reason":      event.Reason,
 		"message":     event.Message,
 		"event_index": len(events) + 1,
+	}
+	if event.SourceDeploymentID != "" {
+		entry["source_deployment_id"] = event.SourceDeploymentID
+	}
+	if event.SourceSessionID != "" {
+		entry["source_session_id"] = event.SourceSessionID
+	}
+	if event.TargetDeploymentID != "" {
+		entry["target_deployment_id"] = event.TargetDeploymentID
+	}
+	if event.TargetSessionID != "" {
+		entry["target_session_id"] = event.TargetSessionID
 	}
 	if event.Data != nil {
 		entry["data"] = event.Data
@@ -495,6 +628,28 @@ func appendHandoffEvent(teamMeta map[string]any, event teamHandoffEventInput, ma
 	}
 	teamMeta["handoff_events"] = events
 	return events, nil
+}
+
+func optionalStringField(obj map[string]any, key, prefix string) (string, error) {
+	if obj == nil {
+		return "", nil
+	}
+	v, ok := obj[key]
+	if !ok || v == nil {
+		return "", nil
+	}
+	s, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("%s %s must be string", prefix, key)
+	}
+	return strings.TrimSpace(s), nil
+}
+
+func stringField(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
 }
 
 func allocateRuntimeMembersByRole(

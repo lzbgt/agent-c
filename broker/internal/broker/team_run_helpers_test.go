@@ -261,6 +261,21 @@ func TestParseHandoffEvent(t *testing.T) {
 	}
 }
 
+func TestParseHandoffEventCrossDeploymentResolution(t *testing.T) {
+	ev, err := parseHandoffEvent(map[string]any{
+		"handoff_id": "th_existing",
+		"kind":       "cross_deployment",
+		"state":      "accepted",
+		"message":    "target accepted",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ev.HandoffID != "th_existing" || ev.Kind != "cross_deployment" || ev.State != "accepted" {
+		t.Fatalf("unexpected handoff event: %+v", ev)
+	}
+}
+
 func TestAppendHandoffEventCapped(t *testing.T) {
 	meta := map[string]any{}
 	for i := 0; i < 5; i++ {
@@ -279,5 +294,57 @@ func TestAppendHandoffEventCapped(t *testing.T) {
 	events, _ := meta["handoff_events"].([]map[string]any)
 	if len(events) != 2 {
 		t.Fatalf("expected 2 events, got %d", len(events))
+	}
+}
+
+func TestAppendHandoffEventHydratesCrossDeploymentResolution(t *testing.T) {
+	meta := map[string]any{}
+	events, err := appendHandoffEvent(meta, teamHandoffEventInput{
+		Kind:               "cross_deployment",
+		FromRole:           "planner",
+		ToRole:             "executor",
+		SourceDeploymentID: "dep-a",
+		SourceSessionID:    "sess-a",
+		TargetDeploymentID: "dep-b",
+		TargetSessionID:    "sess-b",
+		Message:            "please continue there",
+	}, 10)
+	if err != nil {
+		t.Fatalf("proposal append failed: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	handoffID, _ := events[0]["handoff_id"].(string)
+	if handoffID == "" {
+		t.Fatal("expected generated handoff_id")
+	}
+	events, err = appendHandoffEvent(meta, teamHandoffEventInput{
+		HandoffID: handoffID,
+		Kind:      "cross_deployment",
+		State:     "accepted",
+		Message:   "accepted",
+	}, 10)
+	if err != nil {
+		t.Fatalf("resolution append failed: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(events))
+	}
+	last := events[len(events)-1]
+	if last["handoff_id"] != handoffID {
+		t.Fatalf("expected handoff_id %q, got %#v", handoffID, last["handoff_id"])
+	}
+	if last["state"] != "accepted" {
+		t.Fatalf("expected accepted state, got %#v", last["state"])
+	}
+	if last["source_deployment_id"] != "dep-a" || last["target_deployment_id"] != "dep-b" {
+		t.Fatalf("expected deployment hydration, got %#v", last)
+	}
+	if last["source_session_id"] != "sess-a" || last["target_session_id"] != "sess-b" {
+		t.Fatalf("expected session hydration, got %#v", last)
+	}
+	if last["from_role"] != "planner" || last["to_role"] != "executor" {
+		t.Fatalf("expected role hydration, got %#v", last)
 	}
 }

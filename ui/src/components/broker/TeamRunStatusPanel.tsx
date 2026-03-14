@@ -35,6 +35,50 @@ const parseLineList = (raw: string): string[] =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+const HANDOFF_STATES = new Set(["proposed", "accepted", "declined", "cancelled"]);
+
+type TeamRunHandoffEventRecord = {
+  handoff_id?: string;
+  kind?: string;
+  state?: string;
+  from_role?: string;
+  to_role?: string;
+  reason?: string;
+  message?: string;
+  source_deployment_id?: string;
+  source_session_id?: string;
+  target_deployment_id?: string;
+  target_session_id?: string;
+  ts_unix_ms?: number;
+  event_index?: number;
+  data?: Record<string, unknown>;
+};
+
+function normalizeHandoffEventRecord(raw: any): TeamRunHandoffEventRecord {
+  if (!raw || typeof raw !== "object") return {};
+  const obj = raw as Record<string, unknown>;
+  const kind = typeof obj.kind === "string" && obj.kind.trim() ? obj.kind.trim().toLowerCase() : "role";
+  const state = typeof obj.state === "string" && obj.state.trim() ? obj.state.trim().toLowerCase() : "proposed";
+  return {
+    handoff_id: typeof obj.handoff_id === "string" ? obj.handoff_id.trim() : undefined,
+    kind,
+    state: HANDOFF_STATES.has(state) ? state : "proposed",
+    from_role: typeof obj.from_role === "string" ? obj.from_role.trim() : undefined,
+    to_role: typeof obj.to_role === "string" ? obj.to_role.trim() : undefined,
+    reason: typeof obj.reason === "string" ? obj.reason.trim() : undefined,
+    message: typeof obj.message === "string" ? obj.message.trim() : undefined,
+    source_deployment_id:
+      typeof obj.source_deployment_id === "string" ? obj.source_deployment_id.trim() : undefined,
+    source_session_id: typeof obj.source_session_id === "string" ? obj.source_session_id.trim() : undefined,
+    target_deployment_id:
+      typeof obj.target_deployment_id === "string" ? obj.target_deployment_id.trim() : undefined,
+    target_session_id: typeof obj.target_session_id === "string" ? obj.target_session_id.trim() : undefined,
+    ts_unix_ms: typeof obj.ts_unix_ms === "number" ? obj.ts_unix_ms : undefined,
+    event_index: typeof obj.event_index === "number" ? obj.event_index : undefined,
+    data: obj.data && typeof obj.data === "object" && !Array.isArray(obj.data) ? (obj.data as Record<string, unknown>) : undefined,
+  };
+}
+
 export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
   const run = props.runLookupResult;
   const runId = String(props.runId || run?.team_run_id || "").trim();
@@ -96,9 +140,14 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
 
   const [handoffFromRole, setHandoffFromRole] = React.useState<string>("");
   const [handoffToRole, setHandoffToRole] = React.useState<string>("");
+  const [handoffKind, setHandoffKind] = React.useState<string>("role");
   const [handoffReason, setHandoffReason] = React.useState<string>("");
   const [handoffMessage, setHandoffMessage] = React.useState<string>("");
   const [handoffData, setHandoffData] = React.useState<string>("");
+  const [handoffSourceDeployment, setHandoffSourceDeployment] = React.useState<string>("");
+  const [handoffSourceSession, setHandoffSourceSession] = React.useState<string>("");
+  const [handoffTargetDeployment, setHandoffTargetDeployment] = React.useState<string>("");
+  const [handoffTargetSession, setHandoffTargetSession] = React.useState<string>("");
   const [handoffBusy, setHandoffBusy] = React.useState<boolean>(false);
   const [handoffError, setHandoffError] = React.useState<string | null>(null);
   const [handoffNote, setHandoffNote] = React.useState<string | null>(null);
@@ -118,6 +167,17 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
     setHandoffError(null);
     setHandoffNote(null);
   }, [runId, goalContract]);
+
+  const handoffLatestById = React.useMemo(() => {
+    const latest = new Map<string, TeamRunHandoffEventRecord>();
+    for (const raw of handoffEvents) {
+      const ev = normalizeHandoffEventRecord(raw);
+      const hid = String(ev.handoff_id || "").trim();
+      if (!hid) continue;
+      latest.set(hid, ev);
+    }
+    return latest;
+  }, [handoffEvents]);
 
   const handleGoalContractUpdate = async () => {
     setGoalUpdateError(null);
@@ -200,21 +260,31 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
     }
   };
 
-  const handleHandoffEvent = async () => {
+  const emitHandoffEvent = async (
+    mode: "manual" | "transition",
+    nextState: "proposed" | "accepted" | "declined" | "cancelled" = "proposed",
+    seed?: TeamRunHandoffEventRecord,
+  ) => {
     setHandoffError(null);
     setHandoffNote(null);
     if (!canWrite) {
       setHandoffError("missing team or run id");
       return;
     }
-    const fromRole = handoffFromRole.trim();
-    const toRole = handoffToRole.trim();
-    if (!fromRole || !toRole) {
+    const fromRole = (mode === "manual" ? handoffFromRole : seed?.from_role || "").trim();
+    const toRole = (mode === "manual" ? handoffToRole : seed?.to_role || "").trim();
+    const kind = (mode === "manual" ? handoffKind : seed?.kind || "role").trim().toLowerCase();
+    const handoffId = (mode === "manual" ? "" : seed?.handoff_id || "").trim();
+    if (!handoffId && (!fromRole || !toRole)) {
       setHandoffError("handoff requires from_role and to_role");
       return;
     }
+    if (kind !== "role" && kind !== "cross_deployment") {
+      setHandoffError("handoff kind must be role or cross_deployment");
+      return;
+    }
     let dataObj: Record<string, any> | undefined;
-    const rawData = handoffData.trim();
+    const rawData = mode === "manual" ? handoffData.trim() : "";
     if (rawData) {
       try {
         const parsed = JSON.parse(rawData);
@@ -228,11 +298,36 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
         return;
       }
     }
-    const event: Record<string, any> = { from_role: fromRole, to_role: toRole };
-    const reason = handoffReason.trim();
-    const message = handoffMessage.trim();
+    const event: Record<string, any> = {
+      kind,
+      state: nextState,
+    };
+    if (handoffId) event.handoff_id = handoffId;
+    if (fromRole) event.from_role = fromRole;
+    if (toRole) event.to_role = toRole;
+    const reason = (mode === "manual" ? handoffReason : seed?.reason || "").trim();
+    const message = (mode === "manual" ? handoffMessage : "").trim();
     if (reason) event.reason = reason;
     if (message) event.message = message;
+    else if (mode === "transition") event.message = nextState;
+    const sourceDeploymentId = (
+      mode === "manual" ? handoffSourceDeployment : seed?.source_deployment_id || ""
+    ).trim();
+    const sourceSessionId = (mode === "manual" ? handoffSourceSession : seed?.source_session_id || "").trim();
+    const targetDeploymentId = (
+      mode === "manual" ? handoffTargetDeployment : seed?.target_deployment_id || ""
+    ).trim();
+    const targetSessionId = (mode === "manual" ? handoffTargetSession : seed?.target_session_id || "").trim();
+    if (kind === "cross_deployment") {
+      if (!sourceDeploymentId || !sourceSessionId || !targetDeploymentId || !targetSessionId) {
+        setHandoffError("cross-deployment handoff requires source/target deployment and session ids");
+        return;
+      }
+      event.source_deployment_id = sourceDeploymentId;
+      event.source_session_id = sourceSessionId;
+      event.target_deployment_id = targetDeploymentId;
+      event.target_session_id = targetSessionId;
+    }
     if (dataObj) event.data = dataObj;
     setHandoffBusy(true);
     try {
@@ -241,7 +336,7 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
         setHandoffError(resp.error || resp.err || "handoff event failed");
         return;
       }
-      setHandoffNote("handoff event emitted");
+      setHandoffNote(nextState === "proposed" ? "handoff event emitted" : `handoff ${nextState}`);
       await props.onRefreshRun(runId);
     } catch (err) {
       setHandoffError(String(err));
@@ -249,6 +344,13 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
       setHandoffBusy(false);
     }
   };
+
+  const handleHandoffEvent = async () => emitHandoffEvent("manual", "proposed");
+
+  const handleHandoffTransition = async (
+    seed: TeamRunHandoffEventRecord,
+    nextState: "accepted" | "declined" | "cancelled",
+  ) => emitHandoffEvent("transition", nextState, seed);
 
   if (!run) {
     return <div className="text-[11px] text-white/50">No run loaded yet.</div>;
@@ -591,28 +693,78 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
       </div>
 
       <div className="mt-2 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
-        <div className="text-xs font-semibold text-white/80">Role handoff events</div>
+        <div className="text-xs font-semibold text-white/80">Handoff events</div>
         {handoffEventRows.length > 0 ? (
           <div className="grid gap-1 text-[11px] text-white/60">
             {handoffEventRows.map((ev: any, idx: number) => {
-              const fromRole = ev?.from_role ? String(ev.from_role) : "";
-              const toRole = ev?.to_role ? String(ev.to_role) : "";
-              const ts = typeof ev?.ts_unix_ms === "number" ? props.fmtTs(ev.ts_unix_ms) : "";
-              const reason = ev?.reason ? String(ev.reason) : "";
-              const msg = ev?.message ? String(ev.message) : "";
+              const record = normalizeHandoffEventRecord(ev);
+              const fromRole = record.from_role || "";
+              const toRole = record.to_role || "";
+              const ts = typeof record.ts_unix_ms === "number" ? props.fmtTs(record.ts_unix_ms) : "";
+              const reason = record.reason || "";
+              const msg = record.message || "";
+              const kind = record.kind || "role";
+              const state = record.state || "proposed";
+              const handoffId = record.handoff_id || "";
+              const latest = handoffId ? handoffLatestById.get(handoffId) : undefined;
+              const isLatest = !handoffId || latest?.event_index === record.event_index;
+              const canResolve = kind === "cross_deployment" && state === "proposed" && isLatest;
+              const sourceRef =
+                record.source_deployment_id || record.source_session_id
+                  ? `${record.source_deployment_id || "deployment"} / ${record.source_session_id || "session"}`
+                  : "";
+              const targetRef =
+                record.target_deployment_id || record.target_session_id
+                  ? `${record.target_deployment_id || "deployment"} / ${record.target_session_id || "session"}`
+                  : "";
               return (
-                <div key={`handoff-${ev?.event_index || idx}`} className="rounded-md border border-white/5 bg-black/20 px-2 py-1">
+                <div
+                  key={`handoff-${record.event_index || idx}`}
+                  data-testid={
+                    handoffId ? `team-run-handoff-row-${handoffId}-${record.event_index || idx}` : undefined
+                  }
+                  className="rounded-md border border-white/5 bg-black/20 px-2 py-1"
+                >
                   <div className="text-[11px] text-white/70">
                     {fromRole || "role"} {"->"} {toRole || "role"}
                     {ts ? ` · ${ts}` : ""}
-                    {ev?.event_index ? ` · #${ev.event_index}` : ""}
+                    {record.event_index ? ` · #${record.event_index}` : ""}
                   </div>
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-white/45">
+                    {kind === "cross_deployment" ? "cross-deployment" : "role"} · {state}
+                    {handoffId ? ` · ${handoffId}` : ""}
+                  </div>
+                  {kind === "cross_deployment" && sourceRef && targetRef ? (
+                    <div className="text-[11px] text-sky-100/75">
+                      {sourceRef} {"->"} {targetRef}
+                    </div>
+                  ) : null}
                   {reason ? <div className="text-[11px] text-white/60">reason: {reason}</div> : null}
                   {msg ? <div className="text-[11px] text-white/60">{msg}</div> : null}
-                  {ev?.data ? (
+                  {record.data ? (
                     <pre className="mt-1 whitespace-pre-wrap break-words text-[10px] text-white/50">
-                      {JSON.stringify(ev.data, null, 2)}
+                      {JSON.stringify(record.data, null, 2)}
                     </pre>
+                  ) : null}
+                  {canResolve ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        className="rounded-md border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-100 hover:bg-emerald-500/20 disabled:opacity-50"
+                        type="button"
+                        disabled={!canWrite || handoffBusy}
+                        onClick={() => void handleHandoffTransition(record, "accepted")}
+                      >
+                        Accept
+                      </button>
+                      <button
+                        className="rounded-md border border-rose-400/30 bg-rose-500/10 px-2 py-1 text-[10px] text-rose-100 hover:bg-rose-500/20 disabled:opacity-50"
+                        type="button"
+                        disabled={!canWrite || handoffBusy}
+                        onClick={() => void handleHandoffTransition(record, "declined")}
+                      >
+                        Decline
+                      </button>
+                    </div>
                   ) : null}
                 </div>
               );
@@ -623,11 +775,23 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
         )}
         <div className="grid gap-2">
           <div className="flex flex-wrap items-center gap-2">
+            <FieldLabel>Kind</FieldLabel>
+            <select
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={handoffKind}
+              onChange={(e) => setHandoffKind(e.target.value)}
+              data-testid="team-run-handoff-kind"
+              disabled={!canWrite || handoffBusy}
+            >
+              <option value="role">role</option>
+              <option value="cross_deployment">cross_deployment</option>
+            </select>
             <FieldLabel>From</FieldLabel>
             <input
               className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
               value={handoffFromRole}
               onChange={(e) => setHandoffFromRole(e.target.value)}
+              data-testid="team-run-handoff-from-role"
               placeholder="planner"
               disabled={!canWrite || handoffBusy}
             />
@@ -636,6 +800,7 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
               className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
               value={handoffToRole}
               onChange={(e) => setHandoffToRole(e.target.value)}
+              data-testid="team-run-handoff-to-role"
               placeholder="executor"
               disabled={!canWrite || handoffBusy}
             />
@@ -644,6 +809,7 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
               className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
               value={handoffReason}
               onChange={(e) => setHandoffReason(e.target.value)}
+              data-testid="team-run-handoff-reason"
               placeholder="optional"
               disabled={!canWrite || handoffBusy}
             />
@@ -654,10 +820,58 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
               className="min-w-[240px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
               value={handoffMessage}
               onChange={(e) => setHandoffMessage(e.target.value)}
+              data-testid="team-run-handoff-message"
               placeholder="handoff note"
               disabled={!canWrite || handoffBusy}
             />
           </div>
+          {handoffKind === "cross_deployment" ? (
+            <div className="grid gap-2 rounded-md border border-sky-400/20 bg-sky-500/5 p-2">
+              <div className="text-[11px] text-sky-100/80">
+                Cross-deployment handoff preserves source/target deployment and session identity for replayable accept/decline flow.
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <FieldLabel>Source deployment</FieldLabel>
+                <input
+                  className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                  value={handoffSourceDeployment}
+                  onChange={(e) => setHandoffSourceDeployment(e.target.value)}
+                  data-testid="team-run-handoff-source-deployment"
+                  placeholder="dep-a"
+                  disabled={!canWrite || handoffBusy}
+                />
+                <FieldLabel>Source session</FieldLabel>
+                <input
+                  className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                  value={handoffSourceSession}
+                  onChange={(e) => setHandoffSourceSession(e.target.value)}
+                  data-testid="team-run-handoff-source-session"
+                  placeholder="sess-a"
+                  disabled={!canWrite || handoffBusy}
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <FieldLabel>Target deployment</FieldLabel>
+                <input
+                  className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                  value={handoffTargetDeployment}
+                  onChange={(e) => setHandoffTargetDeployment(e.target.value)}
+                  data-testid="team-run-handoff-target-deployment"
+                  placeholder="dep-b"
+                  disabled={!canWrite || handoffBusy}
+                />
+                <FieldLabel>Target session</FieldLabel>
+                <input
+                  className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                  value={handoffTargetSession}
+                  onChange={(e) => setHandoffTargetSession(e.target.value)}
+                  data-testid="team-run-handoff-target-session"
+                  placeholder="sess-b"
+                  disabled={!canWrite || handoffBusy}
+                />
+              </div>
+            </div>
+          ) : null}
           <div className="grid gap-1">
             <FieldLabel>Data (JSON object, optional)</FieldLabel>
             <textarea
@@ -672,6 +886,7 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
             className="self-start rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
             type="button"
             disabled={!canWrite || handoffBusy}
+            data-testid="team-run-handoff-submit"
             onClick={() => void handleHandoffEvent()}
           >
             {handoffBusy ? "Sending..." : "Emit handoff"}
