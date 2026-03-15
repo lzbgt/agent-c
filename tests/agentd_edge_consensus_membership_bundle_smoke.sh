@@ -211,6 +211,10 @@ JSON
 STATUS_A_JSON="$(wait_runtime_done "${NODE_A}")"
 STATUS_B_JSON="$(wait_runtime_done "${NODE_B}")"
 STATUS_C_JSON="$(wait_runtime_done "${NODE_C}")"
+STOP_DONE_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"stop","node_id":"${NODE_B}"}
+JSON
+)")"
 
 python3 - <<PY
 import json, sys
@@ -230,6 +234,7 @@ start_c = json.loads(r'''${START_C_JSON}''')
 status_a = json.loads(r'''${STATUS_A_JSON}''')
 status_b = json.loads(r'''${STATUS_B_JSON}''')
 status_c = json.loads(r'''${STATUS_C_JSON}''')
+stop_done = json.loads(r'''${STOP_DONE_JSON}''')
 
 for label, obj in (("rotate", rotate), ("get", get_obj), ("send", send_obj), ("start_a", start_a), ("start_b", start_b), ("start_c", start_c)):
     if not obj.get("ok"):
@@ -364,6 +369,18 @@ if status_policy.get("campaign_retry_backoff_factor") != 2:
     raise SystemExit(1)
 if status_policy.get("leader_heartbeat_ms") != 240 or status_policy.get("leader_lease_ms") != 1100:
     print("runtime status missing leader freshness policy in cluster policy", status_policy, file=sys.stderr)
+    raise SystemExit(1)
+
+if not stop_done.get("ok") or stop_done.get("stopped") is not False or stop_done.get("reason") != "not_running":
+    print("stop completed runtime wrong", stop_done, file=sys.stderr)
+    raise SystemExit(1)
+stop_rt = stop_done.get("runtime") or {}
+stop_res = stop_rt.get("result") or {}
+if stop_rt.get("running"):
+    print("stop completed runtime unexpectedly running", stop_done, file=sys.stderr)
+    raise SystemExit(1)
+if stop_rt.get("runtime_kind") != "builtin" or not stop_res.get("ok"):
+    print("stop completed runtime lost final snapshot", stop_done, file=sys.stderr)
     raise SystemExit(1)
 
 print("ok")

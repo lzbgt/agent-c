@@ -866,6 +866,15 @@ void handle_edge_node_consensus_runtime_endpoint(
       resp->body = json_stringify(out);
       return;
     }
+    if (!st->running) {
+      out["ok"] = true;
+      out["stopped"] = false;
+      out["reason"] = "not_running";
+      out["runtime"] = edge_consensus_runtime_to_json(*st);
+      resp->status = 200;
+      resp->body = json_stringify(out);
+      return;
+    }
 #if defined(_WIN32)
     out["error"] = "consensus_runtime stop unsupported on Windows";
     out["runtime"] = edge_consensus_runtime_to_json(*st);

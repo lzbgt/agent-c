@@ -571,6 +571,8 @@ Notes:
 - `POST /api/v1/edge/node/consensus_runtime` now uses bounded startup confirmation for both builtin and external managed
   runtimes, so a loop/helper that dies immediately with failure returns `startup_confirmed=false` with no stale runtime
   left behind, while a runtime that commits successfully during that same window still returns success.
+- `POST /api/v1/edge/node/consensus_runtime` `action=stop` now reports `reason=not_running` when the managed runtime has
+  already completed, and includes the final runtime snapshot/result instead of claiming a live stop occurred.
 - The WebUI exposes Settings buttons to “Save defaults to daemon” and “Save API key to daemon”.
 
 Edge trust-root rotation:

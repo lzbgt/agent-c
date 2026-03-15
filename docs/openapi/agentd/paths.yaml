@@ -2542,8 +2542,10 @@
       Managed starts now also use a bounded startup confirmation window and fail
       closed if the builtin loop or external helper exits immediately with failure.
       Start requests can still return success when a managed runtime finishes very
-      quickly with a successful commit during that same confirmation window. Start
-      requests can also set
+      quickly with a successful commit during that same confirmation window. Stop
+      requests now return `reason=not_running` when the runtime already finished and
+      include the final runtime snapshot instead of reporting a false positive stop.
+      Start requests can also set
       `campaign_delay_ms` for the first election, `campaign_retry_ms` for the base
       retry interval, `campaign_retry_max_ms` for the backoff ceiling, and
       `campaign_retry_backoff_factor` for bounded exponential retry growth when

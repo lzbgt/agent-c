@@ -352,3 +352,4 @@ Planned evidence (tracked in `TODOS.md`):
   builtin vs external by default, and runtime/config metadata expose whether that current default is actually launchable.
 - Managed consensus start semantics are now fail-closed for both backend families on early failure rather than only the
   external helper seam.
+- Managed consensus stop semantics now also distinguish live teardown from already-completed runtimes.

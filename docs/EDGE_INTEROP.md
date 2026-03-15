@@ -235,6 +235,8 @@ Returns messages in ascending `outbox_id` order. The node should:
   - managed starts now use bounded startup confirmation for both builtin and external backends, so agentd fails closed
     if the in-process loop or external helper exits immediately with failure instead of reporting a false-positive
     started runtime; fast successful completion is still returned as success
+  - stop now also reflects actual runtime state: a completed runtime returns `reason=not_running` with its final
+    snapshot instead of claiming it was actively stopped
   - supports `campaign_delay_ms`, `campaign_retry_ms`, `campaign_retry_max_ms`, and `campaign_retry_backoff_factor`
     so early candidates can re-campaign with bounded exponential backoff until peers come online
   - supports `leader_heartbeat_ms` and `leader_lease_ms` so followers can expire stale leaders and candidates can
