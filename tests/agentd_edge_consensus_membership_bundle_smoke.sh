@@ -192,7 +192,7 @@ JSON
 OUTBOX_JSON="$(curl_json GET "/api/v1/edge/outbox?node_id=${TARGET_NODE}&cursor=0&limit=50")"
 
 START_A_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","node_id":"${NODE_A}","cluster_id":"${CLUSTER_ID}","manifest_sha256":"${CAPS_SHA_A}","decision_sha256":"${DECISION_SHA}","trust_roots_epoch":2,"revocations_epoch":3,"cert_roots_epoch":4,"deadline_ms":12000}
+{"action":"start","node_id":"${NODE_A}","cluster_id":"${CLUSTER_ID}","manifest_sha256":"${CAPS_SHA_A}","decision_sha256":"${DECISION_SHA}","trust_roots_epoch":2,"revocations_epoch":3,"cert_roots_epoch":4,"deadline_ms":18000}
 JSON
 )")"
 RUNNING_A_JSON="$(wait_runtime_running "${NODE_A}")"
@@ -200,11 +200,11 @@ RUNNING_A_JSON="$(wait_runtime_running "${NODE_A}")"
 sleep 1.2
 
 START_B_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","node_id":"${NODE_B}","cluster_id":"${CLUSTER_ID}","manifest_sha256":"${CAPS_SHA_B}","trust_roots_epoch":2,"revocations_epoch":3,"cert_roots_epoch":4,"deadline_ms":12000}
+{"action":"start","node_id":"${NODE_B}","cluster_id":"${CLUSTER_ID}","manifest_sha256":"${CAPS_SHA_B}","trust_roots_epoch":2,"revocations_epoch":3,"cert_roots_epoch":4,"deadline_ms":18000}
 JSON
 )")"
 START_C_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","node_id":"${NODE_C}","cluster_id":"${CLUSTER_ID}","manifest_sha256":"${CAPS_SHA_C}","trust_roots_epoch":2,"revocations_epoch":3,"cert_roots_epoch":4,"deadline_ms":12000}
+{"action":"start","node_id":"${NODE_C}","cluster_id":"${CLUSTER_ID}","manifest_sha256":"${CAPS_SHA_C}","trust_roots_epoch":2,"revocations_epoch":3,"cert_roots_epoch":4,"deadline_ms":18000}
 JSON
 )")"
 
@@ -234,6 +234,9 @@ status_c = json.loads(r'''${STATUS_C_JSON}''')
 for label, obj in (("rotate", rotate), ("get", get_obj), ("send", send_obj), ("start_a", start_a), ("start_b", start_b), ("start_c", start_c)):
     if not obj.get("ok"):
         print(label, obj, file=sys.stderr)
+        raise SystemExit(1)
+    if label.startswith("start_") and obj.get("startup_confirmed") is not True:
+        print(label, "missing startup_confirmed=true", obj, file=sys.stderr)
         raise SystemExit(1)
 
 bundle = get_obj.get("membership") or {}

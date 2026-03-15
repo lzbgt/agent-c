@@ -350,3 +350,5 @@ Planned evidence (tracked in `TODOS.md`):
 - Voice workflow loopback (end-to-end low-latency media path).
 - The managed edge-consensus lane now has explicit backend-default policy plumbing too: daemon config and env can select
   builtin vs external by default, and runtime/config metadata expose whether that current default is actually launchable.
+- Managed consensus start semantics are now fail-closed for both backend families on early failure rather than only the
+  external helper seam.

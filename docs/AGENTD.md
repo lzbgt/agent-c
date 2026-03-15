@@ -568,6 +568,9 @@ Notes:
   `daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured,peer_tool_path_configured,builtin_available,bundled_available,external_available,builtin_unavailable_reason,bundled_unavailable_reason,external_unavailable_reason,default_runtime_kind,default_runtime_kind_source,default_runtime_kind_available,default_runtime_kind_unavailable_reason,node_bin}`.
 - For the managed edge consensus helper seam, `GET /api/v1/config` exposes only
   `edge_consensus.{node_tool_path_configured,builtin_available,external_available,external_unavailable_reason,default_runtime_kind,default_runtime_kind_source,default_runtime_kind_available,default_runtime_kind_unavailable_reason,clusters_set,cluster_ids}`.
+- `POST /api/v1/edge/node/consensus_runtime` now uses bounded startup confirmation for both builtin and external managed
+  runtimes, so a loop/helper that dies immediately with failure returns `startup_confirmed=false` with no stale runtime
+  left behind, while a runtime that commits successfully during that same window still returns success.
 - The WebUI exposes Settings buttons to “Save defaults to daemon” and “Save API key to daemon”.
 
 Edge trust-root rotation:

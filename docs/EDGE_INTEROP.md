@@ -232,8 +232,9 @@ Returns messages in ascending `outbox_id` order. The node should:
     preflight whether that helper seam is launchable before attempting `runtime_kind=external`
   - config/runtime metadata also reports `default_runtime_kind_source=auto|env|config` plus `default_runtime_kind_available`
     so operator tooling can distinguish builtin auto fallback from explicit backend policy
-  - `runtime_kind=external` now also uses bounded startup confirmation, so agentd fails closed if the helper exits
-    immediately after exec instead of reporting a false-positive started runtime
+  - managed starts now use bounded startup confirmation for both builtin and external backends, so agentd fails closed
+    if the in-process loop or external helper exits immediately with failure instead of reporting a false-positive
+    started runtime; fast successful completion is still returned as success
   - supports `campaign_delay_ms`, `campaign_retry_ms`, `campaign_retry_max_ms`, and `campaign_retry_backoff_factor`
     so early candidates can re-campaign with bounded exponential backoff until peers come online
   - supports `leader_heartbeat_ms` and `leader_lease_ms` so followers can expire stale leaders and candidates can

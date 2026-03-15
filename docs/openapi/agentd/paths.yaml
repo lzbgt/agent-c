@@ -2539,8 +2539,11 @@
       actually launchable before start, and `/api/v1/config/update` can persist
       `edge_consensus.{node_tool_path,default_runtime_kind}` instead of relying only
       on `AGENTD_EDGE_CONSENSUS_NODE_TOOL` / `AGENTD_EDGE_CONSENSUS_DEFAULT_RUNTIME_KIND`.
-      External starts now also use a bounded startup confirmation window and fail
-      closed if the helper exits immediately after launch. Start requests can also set
+      Managed starts now also use a bounded startup confirmation window and fail
+      closed if the builtin loop or external helper exits immediately with failure.
+      Start requests can still return success when a managed runtime finishes very
+      quickly with a successful commit during that same confirmation window. Start
+      requests can also set
       `campaign_delay_ms` for the first election, `campaign_retry_ms` for the base
       retry interval, `campaign_retry_max_ms` for the backoff ceiling, and
       `campaign_retry_backoff_factor` for bounded exponential retry growth when

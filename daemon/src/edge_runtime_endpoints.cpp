@@ -718,7 +718,7 @@ static bool edge_consensus_runtime_kill_best_effort(std::shared_ptr<EdgeConsensu
   return true;
 }
 
-static bool edge_consensus_runtime_confirm_external_startup(
+static bool edge_consensus_runtime_confirm_startup(
   const std::shared_ptr<EdgeConsensusRuntime>& st,
   Json::Value* out_runtime,
   std::string* out_err
@@ -735,7 +735,14 @@ static bool edge_consensus_runtime_confirm_external_startup(
     {
       std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
       if (!st->running) {
+        const bool completed_ok =
+          st->exit_code == 0 ||
+          (st->last_stdout_json.isObject() &&
+           st->last_stdout_json.isMember("ok") &&
+           st->last_stdout_json["ok"].isBool() &&
+           st->last_stdout_json["ok"].asBool());
         if (out_runtime) *out_runtime = edge_consensus_runtime_to_json(*st);
+        if (completed_ok) return true;
         if (out_err) {
           *out_err = !st->last_error.empty() ? st->last_error : "consensus runtime exited before startup confirmation";
         }
@@ -952,18 +959,16 @@ void handle_edge_node_consensus_runtime_endpoint(
     resp->body = json_stringify(out);
     return;
   }
-  if (runtime_kind == "external") {
-    Json::Value startup_runtime(Json::nullValue);
-    if (!edge_consensus_runtime_confirm_external_startup(spawned, &startup_runtime, &serr)) {
-      out["error"] = serr.empty() ? "failed to start consensus runtime" : serr;
-      out["startup_confirmed"] = false;
-      out["runtime"] = startup_runtime;
-      resp->status = 500;
-      resp->body = json_stringify(out);
-      return;
-    }
-    out["startup_confirmed"] = true;
+  Json::Value startup_runtime(Json::nullValue);
+  if (!edge_consensus_runtime_confirm_startup(spawned, &startup_runtime, &serr)) {
+    out["error"] = serr.empty() ? "failed to start consensus runtime" : serr;
+    out["startup_confirmed"] = false;
+    out["runtime"] = startup_runtime;
+    resp->status = 500;
+    resp->body = json_stringify(out);
+    return;
   }
+  out["startup_confirmed"] = true;
   {
     std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
     g_edge_consensus_runtime_by_node[node_id] = spawned;

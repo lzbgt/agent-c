@@ -137,6 +137,9 @@ PY
 STOP_NODE="node_runtime_cons_stop"
 STOP_CLUSTER="lab-consensus-managed-stop"
 STOP_SHA="sha256:5555555555555555555555555555555555555555555555555555555555555555"
+FAIL_BUILTIN_NODE="node_runtime_cons_builtin_failfast"
+FAIL_BUILTIN_CLUSTER="lab-consensus-managed-builtin-failfast"
+FAIL_BUILTIN_SHA="sha256:5959595959595959595959595959595959595959595959595959595959595959"
 
 START_STOP_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
 {"action":"start","node_id":"${STOP_NODE}","cluster_id":"${STOP_CLUSTER}","manifest_sha256":"${STOP_SHA}","deadline_ms":30000,"poll_interval_ms":100}
@@ -148,6 +151,13 @@ STOP_RESP_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<
 JSON
 )")"
 STOP_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${STOP_NODE}")"
+FAIL_BUILTIN_RAW="$(curl_json_status POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"start","node_id":"${FAIL_BUILTIN_NODE}","cluster_id":"${FAIL_BUILTIN_CLUSTER}","manifest_sha256":"${FAIL_BUILTIN_SHA}","daemon_url":"http://127.0.0.1:1","deadline_ms":30000,"poll_interval_ms":100}
+JSON
+)")"
+FAIL_BUILTIN_STATUS="$(printf '%s\n' "${FAIL_BUILTIN_RAW}" | sed -n '1p')"
+FAIL_BUILTIN_JSON="$(printf '%s\n' "${FAIL_BUILTIN_RAW}" | sed '1d')"
+FAIL_BUILTIN_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${FAIL_BUILTIN_NODE}")"
 
 python3 - <<PY
 import json, sys
@@ -155,6 +165,9 @@ import json, sys
 start_stop = json.loads(r'''${START_STOP_JSON}''')
 if not start_stop.get("ok") or not isinstance(start_stop.get("runtime"), dict):
   print("start_stop wrong", start_stop, file=sys.stderr)
+  raise SystemExit(1)
+if start_stop.get("startup_confirmed") is not True:
+  print("start_stop missing startup_confirmed=true", start_stop, file=sys.stderr)
   raise SystemExit(1)
 start_rt = start_stop.get("runtime") or {}
 if start_rt.get("runtime_kind") != "builtin":
@@ -181,6 +194,24 @@ if not (running_stop.get("runtime") or {}).get("running"):
 stop_resp = json.loads(r'''${STOP_RESP_JSON}''')
 if not stop_resp.get("ok") or not stop_resp.get("stopped"):
   print("stop response wrong", stop_resp, file=sys.stderr)
+  raise SystemExit(1)
+
+fail_builtin = json.loads(r'''${FAIL_BUILTIN_JSON}''')
+if "${FAIL_BUILTIN_STATUS}" != "500":
+  print("builtin failfast returned wrong status", "${FAIL_BUILTIN_STATUS}", fail_builtin, file=sys.stderr)
+  raise SystemExit(1)
+if fail_builtin.get("startup_confirmed") is not False:
+  print("builtin failfast missing startup_confirmed=false", fail_builtin, file=sys.stderr)
+  raise SystemExit(1)
+fail_builtin_rt = fail_builtin.get("runtime") or {}
+if fail_builtin_rt.get("runtime_kind") != "builtin":
+  print("builtin failfast missing runtime snapshot", fail_builtin, file=sys.stderr)
+  raise SystemExit(1)
+if fail_builtin_rt.get("running"):
+  print("builtin failfast left runtime running", fail_builtin, file=sys.stderr)
+  raise SystemExit(1)
+if (json.loads(r'''${FAIL_BUILTIN_STATUS_JSON}''').get("runtime")) is not None:
+  print("builtin failfast left persisted runtime behind", json.loads(r'''${FAIL_BUILTIN_STATUS_JSON}'''), file=sys.stderr)
   raise SystemExit(1)
 
 stop_status = json.loads(r'''${STOP_STATUS_JSON}''')
@@ -359,6 +390,9 @@ for label, obj in (("config_set", config_set), ("config_get", config_get), ("con
 rt = start_ext.get("runtime") or {}
 if not start_ext.get("ok") or rt.get("runtime_kind") != "external":
   print("external start wrong", start_ext, file=sys.stderr)
+  raise SystemExit(1)
+if start_ext.get("startup_confirmed") is not True:
+  print("external start missing startup_confirmed=true", start_ext, file=sys.stderr)
   raise SystemExit(1)
 if rt.get("tool_path") != node_tool:
   print("external start missing tool_path", start_ext, file=sys.stderr)
