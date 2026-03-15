@@ -3286,7 +3286,9 @@
       Returns managed WebRTC media-peer runtime status. The only implemented backend
       today is `external`, which runs the shipped Node/Playwright peer as a child
       process. `builtin` is reserved for the future embedded agentd-native media
-      service and is reported as unavailable in current status responses.
+      service and is reported as unavailable in current status responses. The
+      external backend now persists runtime records and stdout logs, so status
+      can be recovered across agentd restarts with `peer.status_source=persisted`.
     parameters:
       - in: query
         name: session_id
@@ -3324,7 +3326,10 @@
       Starts or stops the managed WebRTC media peer for a session. `external` is the
       only implemented runtime backend today and launches the shipped Node/Playwright
       peer. `builtin` is reserved for a future embedded agentd-native media service
-      and currently returns a not-implemented response.
+      and currently returns a not-implemented response. If an external peer is
+      still alive after an agentd restart, `start` returns `already_running`
+      from the recovered persisted runtime record instead of requiring broker
+      parameters again.
     requestBody:
       required: true
       content:

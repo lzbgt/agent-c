@@ -385,6 +385,10 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   - `builtin_available=false`
   - `peer.runtime_kind=external`
   so the shipped Node/Playwright peer is now clearly modeled as one backend behind the API instead of an implicit implementation detail.
+- The external backend now persists runtime snapshots in the agentd DB plus a per-session stdout log, so
+  `GET /api/v1/session/voice_webrtc_peer` can recover running or stopped peer state across agentd restarts with
+  `peer.status_source=memory|persisted`, and duplicate `start` calls after restart can return `already_running`
+  without re-supplying broker parameters.
 
 ## Data governance
 

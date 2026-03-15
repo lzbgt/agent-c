@@ -1,7 +1,7 @@
 # Audio Streaming (v0)
 
 Date: 2026-02-19
-Status: implemented rolling foundation (broker signaling relay + session status APIs + WebUI voice-session controls + browser-side WebRTC negotiation client + managed agentd-side media peer runtime + RTP proof); embedded agentd-native media service still pending, but the runtime contract now exposes an explicit backend seam (`external` today, `builtin` reserved)
+Status: implemented rolling foundation (broker signaling relay + session status APIs + WebUI voice-session controls + browser-side WebRTC negotiation client + managed agentd-side media peer runtime + RTP proof); embedded agentd-native media service still pending, but the runtime contract now exposes an explicit backend seam (`external` today, `builtin` reserved) and the shipped external backend now has durable restart-aware status recovery
 
 ## Goals
 
@@ -140,6 +140,9 @@ A v0 smoke test should:
   - `default_runtime_kind=external`
   - `peer.runtime_kind=external`
   so the current shipped Node/Playwright path is a named backend rather than an implicit assumption baked into the API.
+- The shipped external backend now persists DB-backed runtime snapshots plus per-session stdout logs, so
+  `GET /api/v1/session/voice_webrtc_peer` can recover running/stopped state after agentd restart and duplicate starts
+  can return `already_running` from persisted runtime state.
 
 ## Open questions
 

@@ -548,6 +548,7 @@ streaming and plugins are stable.
   - 2026-03-15: `tools/agentd_audio_webrtc_peer.js` plus `tests/agentd_audio_webrtc_peer_smoke.sh` now prove a real browser-to-agentd-side WebRTC RTP path over broker signaling, including answer/candidate relay, inbound RTP stats, and `bye` teardown; the remaining gap is embedding that media peer into an agentd-native runtime surface.
   - 2026-03-15: agentd now manages that host-side media peer through `POST/GET /api/v1/session/voice_webrtc_peer`, with `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` proving start/status, live RTP, and managed stop/teardown against a real broker session.
   - 2026-03-15: extracted the voice-peer runtime manager out of `session_endpoints.cpp`, added explicit backend contract fields (`default_runtime_kind=external`, `builtin_available=false`, `peer.runtime_kind=external`), and promoted the voice runtime OpenAPI into reusable components so the remaining native-media gap is now a backend swap instead of an API rewrite.
+  - 2026-03-15: the shipped external voice runtime now persists DB-backed runtime snapshots plus per-session stdout logs, so `GET /api/v1/session/voice_webrtc_peer` can recover running/stopped peer state across agentd restarts and avoid duplicate starts when the external peer is still alive.
 - [x] Add binary blob storage tiering plan (`docs/DB.md#blob-storage-tiers-design--status`).
   - [x] Add edge task/node analytics exports (CSV/JSON bundles).
   - [x] Implement blob_manifest schema + local blob store v0 (upload + read + ref-count GC).

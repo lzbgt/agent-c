@@ -398,6 +398,8 @@ Current status:
 - Shipped: that agentd runtime surface now exposes explicit backend metadata (`default_runtime_kind=external`,
   `builtin_available=false`, `peer.runtime_kind=external`) and is factored away from the generic session endpoints code,
   so the future native media service can replace the backend without changing the session API shape.
+- Shipped: the external agentd media-peer runtime now persists enough state to recover status across agentd restarts
+  without forcing an immediate new broker session when the peer child is still alive.
 - Still open: replace the managed Node/Playwright child runtime with an embedded long-lived agentd-native media service.
 
 Proof:

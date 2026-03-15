@@ -303,6 +303,10 @@ async function main() {
     });
 
     for (;;) {
+      if (shuttingDown) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        continue;
+      }
       if (!streamOpened && Date.now() >= deadlineAt) {
         process.stdout.write(`${JSON.stringify({ ok: false, error: "signal stream did not open" })}\n`);
         process.exitCode = 1;
@@ -330,6 +334,11 @@ async function main() {
       if (opt.verbose) process.stderr.write(`[agentd-audio-peer] stream end: ${String(err)}\n`);
     });
   } catch (err) {
+    if (shuttingDown) {
+      if (browser) await browser.close().catch(() => {});
+      process.exitCode = 0;
+      return;
+    }
     if (page) {
       try {
         const state = await page.evaluate(() => (window.__agentdAudioGetState ? window.__agentdAudioGetState() : {}));

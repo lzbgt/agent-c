@@ -193,20 +193,60 @@ AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}" \
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_session_voice_webrtc_peer_runtime_smoke" >>"${LOG_FILE}" 2>&1
 DAEMON_URL="http://${HOST}:${PORT_DAEMON}"
 
-for _ in $(seq 1 100); do
-  if curl -fsS --noproxy "*" --max-time 10 \
-    -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-    "${DAEMON_URL}/api/v1/health" >/dev/null 2>&1; then
-    break
-  fi
-  sleep 0.1
-done
-if ! curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  "${DAEMON_URL}/api/v1/health" >/dev/null 2>&1; then
+wait_daemon_ready() {
+  for _ in $(seq 1 100); do
+    if curl -fsS --noproxy "*" --max-time 10 \
+      -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+      "${DAEMON_URL}/api/v1/health" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+  done
   echo "agentd did not become ready" >&2
-  exit 1
-fi
+  return 1
+}
+
+wait_daemon_stopped() {
+  for _ in $(seq 1 100); do
+    if ! curl -fsS --noproxy "*" --max-time 2 \
+      -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+      "${DAEMON_URL}/api/v1/health" >/dev/null 2>&1; then
+      if python3 - "${HOST}" "${PORT_DAEMON}" <<'PY'
+import socket
+import sys
+
+host = sys.argv[1]
+port = int(sys.argv[2])
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try:
+    s.bind((host, port))
+except OSError:
+    sys.exit(1)
+finally:
+    s.close()
+sys.exit(0)
+PY
+      then
+        return 0
+      fi
+    fi
+    sleep 0.1
+  done
+  echo "agentd did not stop cleanly" >&2
+  return 1
+}
+
+restart_agentd() {
+  agentd_smoke_stop
+  wait_daemon_stopped
+  AGENTD_AUDIO_WEBRTC_PEER_TOOL="${PEER_TOOL}" \
+  AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}" \
+  agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_session_voice_webrtc_peer_runtime_smoke" >>"${LOG_FILE}" 2>&1
+  wait_daemon_ready
+}
+
+wait_daemon_ready
 
 SESSION_DB_ID="agentd_session_voice_webrtc_peer_runtime_$(date +%s)_$RANDOM"
 curl -fsS --noproxy "*" --max-time 10 \
@@ -243,14 +283,14 @@ wait_voice_peer_ready() {
   local session_id="$1"
   local expect_running="${2:-1}"
   local out_var="${3:-}"
-  local status_json=""
+  local status_body=""
   for _ in $(seq 1 120); do
-    status_json="$(curl -fsS --noproxy "*" --max-time 10 \
+    status_body="$(curl -fsS --noproxy "*" --max-time 10 \
       -H "Authorization: Bearer ${DAEMON_TOKEN}" \
       "${DAEMON_URL}/api/v1/session/voice_webrtc_peer?session_id=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${session_id}")")"
     if python3 - <<PY
 import json, sys
-obj = json.loads(r'''${status_json}''')
+obj = json.loads(r'''${status_body}''')
 peer = obj.get("peer")
 expect_running = ${expect_running}
 if obj.get("builtin_available") is not False or obj.get("default_runtime_kind") != "external":
@@ -267,13 +307,13 @@ raise SystemExit(0 if not running else 1)
 PY
     then
       if [[ -n "${out_var}" ]]; then
-        printf -v "${out_var}" '%s' "${status_json}"
+        printf -v "${out_var}" '%s' "${status_body}"
       fi
       return 0
     fi
     sleep 0.1
   done
-  echo "voice peer status did not reach expected state: ${status_json}" >&2
+  echo "voice peer status did not reach expected state: ${status_body}" >&2
   return 1
 }
 
@@ -523,7 +563,7 @@ print(json.dumps({
   "broker_url": "http://127.0.0.1:${BROKER_PORT}",
   "broker_token": "audio-agentd-token",
   "sender_tag": "agentd_runtime_peer",
-  "deadline_ms": 15000,
+  "deadline_ms": 60000,
   "poll_interval_ms": 100,
   "tone_hz": 440
 }))
@@ -551,6 +591,42 @@ PY
 
 status_json=""
 wait_voice_peer_ready "${SESSION_DB_ID}" 1 status_json
+
+restart_agentd
+wait_voice_peer_ready "${SESSION_DB_ID}" 1 status_json
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${status_json}''')
+peer = obj.get("peer") or {}
+if peer.get("status_source") != "persisted":
+  print("expected persisted status source after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+if not peer.get("stdout_log_path"):
+  print("expected stdout_log_path after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("runtime_kind") != "external" or not peer.get("running") or not peer.get("ready"):
+  print("unexpected recovered runtime state after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+already_running_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${SESSION_DB_ID}\",\"action\":\"start\"}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${already_running_resp}''')
+peer = obj.get("peer") or {}
+if not obj.get("ok") or not obj.get("already_running"):
+  print("expected already_running response after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("status_source") != "persisted":
+  print("expected persisted peer on duplicate start after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
 
 run_receiver_peer "${BROKER_SESSION_ID}"
 
@@ -683,6 +759,25 @@ if peer.get("running"):
   raise SystemExit(1)
 if not last.get("stopped"):
   print("expected stopped final state after stop", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+restart_agentd
+wait_voice_peer_ready "${SESSION_DB_ID}" 0 stopped_json
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${stopped_json}''')
+peer = obj.get("peer") or {}
+last = peer.get("last_stdout") or {}
+if peer.get("status_source") != "persisted":
+  print("expected persisted stopped peer after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("running"):
+  print("peer unexpectedly running after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+if not last.get("stopped"):
+  print("expected stopped final state after restart", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 
