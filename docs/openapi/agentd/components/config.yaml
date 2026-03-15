@@ -135,6 +135,14 @@ AgentdConfigResponse:
       type: object
       additionalProperties: true
       properties:
+        node_tool_path_configured: { type: boolean }
+        builtin_available: { type: boolean, enum: [true] }
+        external_available: { type: boolean }
+        external_unavailable_reason: { type: string }
+        default_runtime_kind:
+          type: string
+          enum: [builtin]
+        default_runtime_kind_available: { type: boolean, enum: [true] }
         clusters_set: { type: integer, format: int64 }
         cluster_ids:
           type: array
@@ -337,6 +345,14 @@ AgentdConfigUpdateRequest:
           type: string
           nullable: true
           description: Node launcher binary for bundled or external managed WebRTC peers (null resets to `node`)
+    edge_consensus:
+      type: object
+      additionalProperties: false
+      properties:
+        node_tool_path:
+          type: string
+          nullable: true
+          description: External helper tool path for `runtime_kind=external` managed consensus runtimes (null clears)
     blob_store:
       $ref: "#/components/schemas/BlobStoreUpdate"
     blob_store_secrets:
@@ -417,6 +433,18 @@ AgentdConfigUpdateResponse:
         default_runtime_kind_available: { type: boolean }
         default_runtime_kind_unavailable_reason: { type: string }
         node_bin: { type: string }
+    edge_consensus:
+      type: object
+      additionalProperties: true
+      properties:
+        node_tool_path_configured: { type: boolean }
+        builtin_available: { type: boolean, enum: [true] }
+        external_available: { type: boolean }
+        external_unavailable_reason: { type: string }
+        default_runtime_kind:
+          type: string
+          enum: [builtin]
+        default_runtime_kind_available: { type: boolean, enum: [true] }
     edge_auth_required: { type: boolean }
     edge_auth_require_ts: { type: boolean }
     edge_auth_max_skew_ms: { type: integer, format: int64 }

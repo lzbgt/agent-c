@@ -6,8 +6,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/agentd_smoke_lib.sh"
 
 AGENTD_BIN="${1:-}"
-if [[ -z "${AGENTD_BIN}" ]]; then
-  echo "usage: $0 <agentd_bin>" >&2
+NODE_TOOL_BIN="${2:-}"
+if [[ -z "${AGENTD_BIN}" || -z "${NODE_TOOL_BIN}" ]]; then
+  echo "usage: $0 <agentd_bin> <agentd_edge_consensus_node_bin>" >&2
   exit 2
 fi
 
@@ -17,6 +18,11 @@ mkdir -p "${LOG_DIR}"
 PORT_DAEMON="$(agentd_smoke_pick_port)"
 HOST="127.0.0.1"
 DAEMON_TOKEN="agentd-edge-consensus-runtime-token"
+TEST_DB="${LOG_DIR}/agentd_edge_consensus_runtime.sqlite"
+TEST_STATE="${LOG_DIR}/agentd_edge_consensus_runtime.state"
+
+rm -f "${TEST_DB}"
+rm -rf "${TEST_STATE}"
 
 cleanup() {
   agentd_smoke_stop
@@ -25,6 +31,8 @@ trap cleanup EXIT
 
 AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}" \
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_edge_consensus_runtime_smoke" \
+  --db-path "${TEST_DB}" \
+  --state-dir "${TEST_STATE}" \
   --tools none
 DAEMON_URL="http://${HOST}:${PORT_DAEMON}"
 agentd_smoke_wait_health "${DAEMON_URL}" "${DAEMON_TOKEN}"
@@ -46,6 +54,35 @@ curl_json() {
       -H "Authorization: Bearer ${DAEMON_TOKEN}" \
       "${DAEMON_URL}${path}"
   fi
+}
+
+curl_json_status() {
+  local method="$1"
+  local path="$2"
+  local body="${3:-}"
+  local tmp_body
+  tmp_body="$(mktemp)"
+  local status
+  if [[ -n "${body}" ]]; then
+    status="$(curl -sS --noproxy "*" --max-time 15 \
+      -o "${tmp_body}" \
+      -w '%{http_code}' \
+      -X "${method}" \
+      -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+      -H 'Content-Type: application/json' \
+      -d "${body}" \
+      "${DAEMON_URL}${path}")"
+  else
+    status="$(curl -sS --noproxy "*" --max-time 15 \
+      -o "${tmp_body}" \
+      -w '%{http_code}' \
+      -X "${method}" \
+      -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+      "${DAEMON_URL}${path}")"
+  fi
+  printf '%s\n' "${status}"
+  cat "${tmp_body}"
+  rm -f "${tmp_body}"
 }
 
 wait_runtime_done() {
@@ -97,44 +134,12 @@ PY
   return 1
 }
 
-NODE_A="node_runtime_cons_a"
-NODE_B="node_runtime_cons_b"
-NODE_C="node_runtime_cons_c"
-CLUSTER_ID="lab-consensus-managed"
-CAPS_SHA_A="sha256:1111111111111111111111111111111111111111111111111111111111111111"
-CAPS_SHA_B="sha256:2222222222222222222222222222222222222222222222222222222222222222"
-CAPS_SHA_C="sha256:3333333333333333333333333333333333333333333333333333333333333333"
-DECISION_SHA="sha256:4444444444444444444444444444444444444444444444444444444444444444"
-
-START_A_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","node_id":"${NODE_A}","cluster_id":"${CLUSTER_ID}","manifest_sha256":"${CAPS_SHA_A}","peer_node_ids":["${NODE_B}","${NODE_C}"],"member_node_ids":["${NODE_A}","${NODE_B}","${NODE_C}"],"membership_epoch":12,"decision_sha256":"${DECISION_SHA}","campaign_delay_ms":200,"campaign_retry_ms":200,"campaign_retry_max_ms":800,"campaign_retry_backoff_factor":2,"leader_heartbeat_ms":250,"leader_lease_ms":900,"trust_roots_epoch":9,"revocations_epoch":4,"cert_roots_epoch":11,"deadline_ms":12000}
-JSON
-)")"
-RUNNING_A_JSON="$(wait_runtime_running "${NODE_A}")"
-
-sleep 1.2
-
-START_B_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","node_id":"${NODE_B}","cluster_id":"${CLUSTER_ID}","manifest_sha256":"${CAPS_SHA_B}","peer_node_ids":["${NODE_A}","${NODE_C}"],"member_node_ids":["${NODE_A}","${NODE_B}","${NODE_C}"],"membership_epoch":12,"trust_roots_epoch":9,"revocations_epoch":4,"cert_roots_epoch":11,"deadline_ms":12000}
-JSON
-)")"
-START_C_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","node_id":"${NODE_C}","cluster_id":"${CLUSTER_ID}","manifest_sha256":"${CAPS_SHA_C}","peer_node_ids":["${NODE_A}","${NODE_B}"],"member_node_ids":["${NODE_A}","${NODE_B}","${NODE_C}"],"membership_epoch":12,"trust_roots_epoch":9,"revocations_epoch":4,"cert_roots_epoch":11,"deadline_ms":12000}
-JSON
-)")"
-
-STATUS_A_JSON="$(wait_runtime_done "${NODE_A}")"
-STATUS_B_JSON="$(wait_runtime_done "${NODE_B}")"
-STATUS_C_JSON="$(wait_runtime_done "${NODE_C}")"
-NODE_A_JSON="$(curl_json GET "/api/v1/edge/node?node_id=${NODE_A}")"
-NODES_JSON="$(curl_json GET "/api/v1/edge/nodes?limit=10")"
-
 STOP_NODE="node_runtime_cons_stop"
 STOP_CLUSTER="lab-consensus-managed-stop"
 STOP_SHA="sha256:5555555555555555555555555555555555555555555555555555555555555555"
 
 START_STOP_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","node_id":"${STOP_NODE}","cluster_id":"${STOP_CLUSTER}","manifest_sha256":"${STOP_SHA}","peer_node_ids":["${NODE_A}"],"deadline_ms":30000,"poll_interval_ms":100}
+{"action":"start","node_id":"${STOP_NODE}","cluster_id":"${STOP_CLUSTER}","manifest_sha256":"${STOP_SHA}","deadline_ms":30000,"poll_interval_ms":100}
 JSON
 )")"
 RUNNING_STOP_JSON="$(wait_runtime_running "${STOP_NODE}")"
@@ -147,102 +152,23 @@ STOP_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=$
 python3 - <<PY
 import json, sys
 
-decision_sha = "${DECISION_SHA}"
-member_ids = {"${NODE_A}", "${NODE_B}", "${NODE_C}"}
-
-for label, raw in (
-  ("running_a", r'''${RUNNING_A_JSON}'''),
-  ("start_b", r'''${START_B_JSON}'''),
-  ("start_c", r'''${START_C_JSON}'''),
-  ("start_a", r'''${START_A_JSON}'''),
-  ("start_stop", r'''${START_STOP_JSON}'''),
-):
-  obj = json.loads(raw)
-  if not obj.get("ok") or not isinstance(obj.get("runtime"), dict):
-    print(label, obj, file=sys.stderr)
-    raise SystemExit(1)
-  if (obj.get("runtime") or {}).get("runtime_kind") != "builtin":
-    print(label, "runtime_kind not builtin", obj, file=sys.stderr)
-    raise SystemExit(1)
-
-if not (json.loads(r'''${RUNNING_A_JSON}''').get("runtime") or {}).get("running"):
-  print("start_a never reached running state", json.loads(r'''${RUNNING_A_JSON}'''), file=sys.stderr)
+start_stop = json.loads(r'''${START_STOP_JSON}''')
+if not start_stop.get("ok") or not isinstance(start_stop.get("runtime"), dict):
+  print("start_stop wrong", start_stop, file=sys.stderr)
   raise SystemExit(1)
-
-results = {}
-for label, raw in (
-  ("A", r'''${STATUS_A_JSON}'''),
-  ("B", r'''${STATUS_B_JSON}'''),
-  ("C", r'''${STATUS_C_JSON}'''),
-):
-  obj = json.loads(raw)
-  rt = obj.get("runtime") or {}
-  res = rt.get("result") or {}
-  if rt.get("running"):
-    print("runtime still running", label, obj, file=sys.stderr)
-    raise SystemExit(1)
-  if not res.get("ok"):
-    print("runtime missing successful result", label, obj, file=sys.stderr)
-    raise SystemExit(1)
-  if res.get("committed_decision_sha256") != decision_sha:
-    print("wrong decision", label, obj, file=sys.stderr)
-    raise SystemExit(1)
-  results[label] = res
-
-leader = results["A"].get("leader_node_id")
-if leader not in member_ids:
-  print("invalid elected leader", results, file=sys.stderr)
+start_rt = start_stop.get("runtime") or {}
+if start_rt.get("runtime_kind") != "builtin":
+  print("start_stop runtime kind not builtin", start_stop, file=sys.stderr)
   raise SystemExit(1)
-for label, res in results.items():
-  if res.get("leader_node_id") != leader:
-    print("wrong leader", label, res, file=sys.stderr)
-    raise SystemExit(1)
-
-status_a = (json.loads(r'''${STATUS_A_JSON}''').get("runtime") or {}).get("result") or {}
-loop_status = status_a.get("status") or {}
-if loop_status.get("campaign_attempts", 0) < 3:
-  print("candidate A did not retry before quorum", status_a, file=sys.stderr)
+if not start_stop.get("builtin_available") or start_stop.get("default_runtime_kind") != "builtin":
+  print("start_stop missing builtin metadata", start_stop, file=sys.stderr)
   raise SystemExit(1)
-if loop_status.get("leader_heartbeat_ms") != 250 or loop_status.get("leader_lease_ms") != 900:
-  print("candidate A missing leader freshness config", status_a, file=sys.stderr)
+if start_stop.get("external_available"):
+  print("start_stop unexpectedly reported external available", start_stop, file=sys.stderr)
   raise SystemExit(1)
-
-node = (json.loads(r'''${NODE_A_JSON}''').get("node") or {})
-rt = node.get("consensus_runtime") or {}
-if rt.get("node_id") != "${NODE_A}":
-  print("edge node missing runtime summary", node, file=sys.stderr)
+if start_stop.get("external_unavailable_reason") != "edge_consensus_node_tool_path not configured":
+  print("start_stop wrong external unavailable reason", start_stop, file=sys.stderr)
   raise SystemExit(1)
-if rt.get("runtime_kind") != "builtin":
-  print("edge node runtime summary missing builtin kind", rt, file=sys.stderr)
-  raise SystemExit(1)
-if rt.get("campaign_retry_ms") != 200:
-  print("runtime summary missing retry config", rt, file=sys.stderr)
-  raise SystemExit(1)
-if rt.get("campaign_retry_max_ms") != 800 or rt.get("campaign_retry_backoff_factor") != 2:
-  print("runtime summary missing retry backoff config", rt, file=sys.stderr)
-  raise SystemExit(1)
-if rt.get("leader_heartbeat_ms") != 250 or rt.get("leader_lease_ms") != 900:
-  print("runtime summary missing leader freshness config", rt, file=sys.stderr)
-  raise SystemExit(1)
-if rt.get("membership_epoch") != 12:
-  print("runtime summary missing membership epoch", rt, file=sys.stderr)
-  raise SystemExit(1)
-if sorted(rt.get("member_node_ids") or []) != sorted(["${NODE_A}", "${NODE_B}", "${NODE_C}"]):
-  print("runtime summary missing member set", rt, file=sys.stderr)
-  raise SystemExit(1)
-res = rt.get("result") or {}
-if res.get("leader_node_id") != leader or res.get("committed_decision_sha256") != decision_sha:
-  print("edge node runtime result mismatch", rt, file=sys.stderr)
-  raise SystemExit(1)
-
-rows = json.loads(r'''${NODES_JSON}''').get("nodes") or []
-lookup = {row.get("node_id"): row for row in rows}
-for node_id in ("${NODE_A}", "${NODE_B}", "${NODE_C}"):
-  row = lookup.get(node_id) or {}
-  rt = row.get("consensus_runtime") or {}
-  if rt.get("node_id") != node_id:
-    print("edge nodes list missing runtime summary", node_id, row, file=sys.stderr)
-    raise SystemExit(1)
 
 running_stop = json.loads(r'''${RUNNING_STOP_JSON}''')
 if not (running_stop.get("runtime") or {}).get("running"):
@@ -258,6 +184,137 @@ stop_status = json.loads(r'''${STOP_STATUS_JSON}''')
 stop_rt = stop_status.get("runtime") or {}
 if stop_rt.get("running"):
   print("stop runtime still running", stop_status, file=sys.stderr)
+  raise SystemExit(1)
+if stop_rt.get("runtime_kind") != "builtin":
+  print("stop runtime kind drifted", stop_status, file=sys.stderr)
+  raise SystemExit(1)
+if not stop_status.get("builtin_available") or stop_status.get("default_runtime_kind") != "builtin":
+  print("stop status missing builtin metadata", stop_status, file=sys.stderr)
+  raise SystemExit(1)
+if stop_status.get("external_available"):
+  print("stop status unexpectedly reported external available", stop_status, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+CONFIG_SET_JSON="$(curl_json POST "/api/v1/config/update" "$(cat <<JSON
+{"edge_consensus":{"node_tool_path":"${NODE_TOOL_BIN}"}}
+JSON
+)")"
+CONFIG_GET_JSON="$(curl_json GET "/api/v1/config")"
+
+agentd_smoke_stop
+AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}" \
+agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_edge_consensus_runtime_smoke_restart" \
+  --db-path "${TEST_DB}" \
+  --state-dir "${TEST_STATE}" \
+  --tools none
+DAEMON_URL="http://${HOST}:${PORT_DAEMON}"
+agentd_smoke_wait_health "${DAEMON_URL}" "${DAEMON_TOKEN}"
+
+CONFIG_RESTART_JSON="$(curl_json GET "/api/v1/config")"
+
+EXT_NODE="node_runtime_cons_ext"
+EXT_CLUSTER="lab-consensus-managed-ext"
+EXT_SHA="sha256:6666666666666666666666666666666666666666666666666666666666666666"
+
+START_EXT_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"start","runtime_kind":"external","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","deadline_ms":30000,"poll_interval_ms":100}
+JSON
+)")"
+RUNNING_EXT_JSON="$(wait_runtime_running "${EXT_NODE}")"
+STOP_EXT_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"stop","node_id":"${EXT_NODE}"}
+JSON
+)")"
+STOP_EXT_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${EXT_NODE}")"
+
+CLEAR_CFG_JSON="$(curl_json POST "/api/v1/config/update" "$(cat <<JSON
+{"edge_consensus":{"node_tool_path":null}}
+JSON
+)")"
+CONFIG_CLEARED_JSON="$(curl_json GET "/api/v1/config")"
+FAIL_START_RAW="$(curl_json_status POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"start","runtime_kind":"external","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","deadline_ms":30000,"poll_interval_ms":100}
+JSON
+)")"
+FAIL_START_STATUS="$(printf '%s\n' "${FAIL_START_RAW}" | sed -n '1p')"
+FAIL_START_JSON="$(printf '%s\n' "${FAIL_START_RAW}" | sed '1d')"
+FAIL_START_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${EXT_NODE}")"
+
+python3 - <<PY
+import json, sys
+
+node_tool = "${NODE_TOOL_BIN}"
+
+config_set = json.loads(r'''${CONFIG_SET_JSON}''')
+config_get = json.loads(r'''${CONFIG_GET_JSON}''')
+config_restart = json.loads(r'''${CONFIG_RESTART_JSON}''')
+start_ext = json.loads(r'''${START_EXT_JSON}''')
+running_ext = json.loads(r'''${RUNNING_EXT_JSON}''')
+stop_ext = json.loads(r'''${STOP_EXT_JSON}''')
+stop_ext_status = json.loads(r'''${STOP_EXT_STATUS_JSON}''')
+clear_cfg = json.loads(r'''${CLEAR_CFG_JSON}''')
+config_cleared = json.loads(r'''${CONFIG_CLEARED_JSON}''')
+fail_start = json.loads(r'''${FAIL_START_JSON}''')
+fail_start_status = json.loads(r'''${FAIL_START_STATUS_JSON}''')
+
+for label, obj in (("config_set", config_set), ("config_get", config_get), ("config_restart", config_restart), ("clear_cfg", clear_cfg), ("config_cleared", config_cleared)):
+  if not obj.get("ok"):
+    print(label, obj, file=sys.stderr)
+    raise SystemExit(1)
+
+for label, obj in (("config_set", config_set), ("config_get", config_get), ("config_restart", config_restart)):
+  edge = obj.get("edge_consensus") or {}
+  if not edge.get("node_tool_path_configured"):
+    print(label, "missing node_tool_path_configured", obj, file=sys.stderr)
+    raise SystemExit(1)
+  if not edge.get("external_available"):
+    print(label, "expected external_available", obj, file=sys.stderr)
+    raise SystemExit(1)
+  if edge.get("default_runtime_kind") != "builtin" or not edge.get("default_runtime_kind_available"):
+    print(label, "wrong default runtime metadata", obj, file=sys.stderr)
+    raise SystemExit(1)
+
+rt = start_ext.get("runtime") or {}
+if not start_ext.get("ok") or rt.get("runtime_kind") != "external":
+  print("external start wrong", start_ext, file=sys.stderr)
+  raise SystemExit(1)
+if rt.get("tool_path") != node_tool:
+  print("external start missing tool_path", start_ext, file=sys.stderr)
+  raise SystemExit(1)
+if not (running_ext.get("runtime") or {}).get("running"):
+  print("external runtime never entered running state", running_ext, file=sys.stderr)
+  raise SystemExit(1)
+if (running_ext.get("runtime") or {}).get("runtime_kind") != "external":
+  print("running external runtime kind mismatch", running_ext, file=sys.stderr)
+  raise SystemExit(1)
+if not stop_ext.get("ok") or not stop_ext.get("stopped"):
+  print("external stop wrong", stop_ext, file=sys.stderr)
+  raise SystemExit(1)
+if (stop_ext_status.get("runtime") or {}).get("running"):
+  print("external runtime still running after stop", stop_ext_status, file=sys.stderr)
+  raise SystemExit(1)
+
+for label, obj in (("clear_cfg", clear_cfg), ("config_cleared", config_cleared)):
+  edge = obj.get("edge_consensus") or {}
+  if edge.get("node_tool_path_configured"):
+    print(label, "expected cleared node_tool_path", obj, file=sys.stderr)
+    raise SystemExit(1)
+  if edge.get("external_available"):
+    print(label, "expected external unavailable after clear", obj, file=sys.stderr)
+    raise SystemExit(1)
+  if edge.get("external_unavailable_reason") != "edge_consensus_node_tool_path not configured":
+    print(label, "wrong unavailable reason", obj, file=sys.stderr)
+    raise SystemExit(1)
+
+if "${FAIL_START_STATUS}" != "500":
+  print("external start after clear returned wrong status", "${FAIL_START_STATUS}", fail_start, file=sys.stderr)
+  raise SystemExit(1)
+if fail_start.get("error") != "edge_consensus_node_tool_path not configured":
+  print("external start after clear wrong error", fail_start, file=sys.stderr)
+  raise SystemExit(1)
+if fail_start_status.get("runtime") is not None:
+  print("external failed start left runtime behind", fail_start_status, file=sys.stderr)
   raise SystemExit(1)
 PY
 

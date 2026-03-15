@@ -633,6 +633,7 @@ streaming and plugins are stable.
   - 2026-03-15: added signed durable cluster policy bundles (`edge_consensus_membership_v1`) with export/rotate/send APIs plus managed-runtime defaulting from stored member/retry policy; proof: `tests/agentd_edge_consensus_membership_bundle_smoke.sh`.
   - 2026-03-15: moved the normal managed runtime path in-process by adding a shared HTTP runtime core plus builtin `POST/GET /api/v1/edge/node/consensus_runtime` execution, while keeping `runtime_kind=external` for helper parity/debug; proof: `tests/agentd_edge_consensus_runtime_smoke.sh` and `tests/agentd_edge_consensus_membership_bundle_smoke.sh`.
   - 2026-03-15: added explicit leader heartbeat/lease policy (`leader_heartbeat_ms`, `leader_lease_ms`) to the reusable loop, durable cluster policy, managed runtime, and live runtime/membership proof so stale leaders can be expired deterministically before re-campaigning.
+  - 2026-03-15: the optional `runtime_kind=external` consensus helper seam is now durable daemon config too (`edge_consensus.node_tool_path`), `/api/v1/config` reports whether that helper is configured and launchable, and the runtime smoke now proves config-backed external start/stop plus fail-closed unavailability after clearing the persisted helper path.
 
 ## Deferred (after macOS stability)
 

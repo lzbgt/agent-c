@@ -25,6 +25,9 @@ Recent shipped note:
   broker cleanup problem surfaced explicitly instead of blocking local cleanup.
 - 2026-03-15: corrupt persisted `voice_webrtc_peer` runtime records now self-heal on status/start by clearing the bad
   DB record and stale local artifacts, keeping the WebRTC lane recoverable after local state corruption.
+- 2026-03-15: the optional external edge-consensus helper seam is now durable daemon config too
+  (`edge_consensus.node_tool_path`), and consensus runtime/config surfaces now report whether that external backend is
+  actually launchable before `runtime_kind=external` start attempts.
 
 Clarification: “Beyond OpenClaw” means **going past a gateway/plugin model** into a full-stack,
 durable, policy-driven agent platform with evidence-grade runs, multi-agent orchestration,

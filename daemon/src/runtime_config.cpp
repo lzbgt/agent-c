@@ -150,6 +150,15 @@ bool load_runtime_config_best_effort(
           else if (aw["node_bin"].isString()) cfg_io->audio_webrtc_peer_node_bin = trim_copy(aw["node_bin"].asString());
         }
       }
+      if (v.isMember("edge_consensus") && v["edge_consensus"].isObject()) {
+        const Json::Value& ec = v["edge_consensus"];
+        if (ec.isMember("node_tool_path")) {
+          if (ec["node_tool_path"].isNull()) cfg_io->edge_consensus_node_tool_path.clear();
+          else if (ec["node_tool_path"].isString()) {
+            cfg_io->edge_consensus_node_tool_path = trim_copy(ec["node_tool_path"].asString());
+          }
+        }
+      }
       if (should_rewrite_runtime_config) {
         std::string rewrite_err;
         if (!save_runtime_config_best_effort(db, *cfg_io, &rewrite_err) && out_error && out_error->empty()) {
@@ -765,6 +774,13 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
       ? Json::Value("node")
       : Json::Value(cfg.audio_webrtc_peer_node_bin);
     v["audio_webrtc"] = aw;
+  }
+  {
+    Json::Value ec(Json::objectValue);
+    ec["node_tool_path"] = cfg.edge_consensus_node_tool_path.empty()
+      ? Json::Value(Json::nullValue)
+      : Json::Value(cfg.edge_consensus_node_tool_path);
+    v["edge_consensus"] = ec;
   }
   v["max_steps_default"] = (Json::UInt64)cfg.max_steps_default;
   v["max_tool_calls_total_default"] = (Json::UInt64)cfg.max_tool_calls_total_default;

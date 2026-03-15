@@ -228,6 +228,8 @@ Returns messages in ascending `outbox_id` order. The node should:
 - `POST /api/v1/edge/node/consensus_runtime`
   - starts or stops the managed autonomous consensus runtime for one edge node
   - defaults to a builtin in-agentd backend; `runtime_kind=external` keeps the standalone helper for bring-up/debug parity
+  - status/start metadata now reports `external_available` plus `external_unavailable_reason`, so operator tooling can
+    preflight whether that helper seam is launchable before attempting `runtime_kind=external`
   - supports `campaign_delay_ms`, `campaign_retry_ms`, `campaign_retry_max_ms`, and `campaign_retry_backoff_factor`
     so early candidates can re-campaign with bounded exponential backoff until peers come online
   - supports `leader_heartbeat_ms` and `leader_lease_ms` so followers can expire stale leaders and candidates can
@@ -273,6 +275,8 @@ Manifest bundle note:
 - The shipped helper is no longer the only place the loop exists: the election scheduler and frame-routing logic now
   live in reusable core code (`EdgeConsensusNodeLoop`) plus a shared HTTP runtime core (`run_edge_consensus_http_runtime`),
   which is the intended stepping stone toward embedded/node-native adoption.
+- The optional external helper seam is now also durable daemon config (`edge_consensus.node_tool_path`) instead of only
+  `AGENTD_EDGE_CONSENSUS_NODE_TOOL`, so bring-up/debug parity can survive daemon restart without environment injection.
 - The managed/runtime bring-up path now includes retry timers, so a node can miss initial quorum and still converge later
   without operator restart.
 - The shared protocol/runtime foundation now also carries explicit membership versioning, so stale or non-member nodes can

@@ -501,6 +501,9 @@ and `db_path` (SQLite; canonical daemon state store). For the managed WebRTC lan
 `daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured,peer_tool_path_configured,builtin_available,bundled_available,external_available,builtin_unavailable_reason,bundled_unavailable_reason,external_unavailable_reason,default_runtime_kind,default_runtime_kind_source,default_runtime_kind_available,default_runtime_kind_unavailable_reason,node_bin}`
 so operators can verify whether caller-free voice runtime bring-up and backend selection are configured without
 exposing the token itself.
+For the managed edge consensus lane, the safe snapshot now also exposes
+`edge_consensus.{node_tool_path_configured,builtin_available,external_available,external_unavailable_reason,default_runtime_kind,default_runtime_kind_available,clusters_set,cluster_ids}`
+so operators can see whether the optional `runtime_kind=external` helper seam is configured and launchable.
 
 ## Update daemon defaults at runtime
 
@@ -549,10 +552,22 @@ curl -fsS \
   http://127.0.0.1:8123/api/v1/config/update
 ```
 
+Example (persist the operator-configured external consensus helper seam):
+
+```bash
+curl -fsS \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_AGENTD_TOKEN" \
+  -d '{"edge_consensus":{"node_tool_path":"/opt/agentd/bin/agentd_edge_consensus_node"}}' \
+  http://127.0.0.1:8123/api/v1/config/update
+```
+
 Notes:
 - The response never includes secrets. Use `GET /api/v1/config` to see booleans like `provider_keys_set`.
 - For managed voice/WebRTC broker defaults, `GET /api/v1/config` exposes only
   `daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured,peer_tool_path_configured,builtin_available,bundled_available,external_available,builtin_unavailable_reason,bundled_unavailable_reason,external_unavailable_reason,default_runtime_kind,default_runtime_kind_source,default_runtime_kind_available,default_runtime_kind_unavailable_reason,node_bin}`.
+- For the managed edge consensus helper seam, `GET /api/v1/config` exposes only
+  `edge_consensus.{node_tool_path_configured,builtin_available,external_available,external_unavailable_reason,default_runtime_kind,default_runtime_kind_available,clusters_set,cluster_ids}`.
 - The WebUI exposes Settings buttons to “Save defaults to daemon” and “Save API key to daemon”.
 
 Edge trust-root rotation:
@@ -594,6 +609,8 @@ Edge trust-root rotation:
   lifecycle ownership. The default runtime backend is now builtin, so agentd can run the same poll/process/post loop
   in-process without spawning the standalone helper; `runtime_kind=external` remains available for bring-up/debug parity.
   `GET /api/v1/edge/node/consensus_runtime?node_id=<id>` reports managed runtime status plus the latest final result JSON.
+  Both start and status now also expose `external_available` plus `external_unavailable_reason`, so operator tooling can
+  see whether the external helper seam is actually launchable before trying `runtime_kind=external`.
 - Start requests can include `campaign_delay_ms`, `campaign_retry_ms`, `campaign_retry_max_ms`, and
   `campaign_retry_backoff_factor`, plus `leader_heartbeat_ms` and `leader_lease_ms`; the reported runtime/result
   surfaces expose that same bounded retry and leader-freshness policy so operators can confirm whether a candidate
@@ -611,6 +628,9 @@ Edge trust-root rotation:
   `leader_lease_ms`, agentd now defaults those fields from the stored cluster membership bundle.
 - Operator bring-up can still set `AGENTD_EDGE_CONSENSUS_NODE_TOOL=/abs/path/to/agentd_edge_consensus_node` to force
   `runtime_kind=external`, but the normal managed path no longer depends on that helper being configured.
+- The same external helper path can now also be persisted through `POST /api/v1/config/update` as
+  `edge_consensus.node_tool_path`, and `GET /api/v1/config` reports whether that seam is configured and available
+  without exposing the literal path.
 - `GET /api/v1/edge/node` and `GET /api/v1/edge/nodes` now surface `consensus_runtime` when a node has a managed
   runtime record, so protocol-level consensus state and runtime/process state are visible together.
 - `POST /api/v1/config/update` supports `edge_confidentiality_required` and `edge_confidentiality_keys`.

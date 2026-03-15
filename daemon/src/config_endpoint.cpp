@@ -2,6 +2,7 @@
 
 #include "daemon_auth.h"
 #include "edge_confidentiality.h"
+#include "edge_runtime_endpoints.h"
 #include "edge_util.h"
 #include "http_util.h"
 #include "json_util.h"
@@ -48,6 +49,15 @@ static Json::Value config_audio_webrtc_metadata_json(const DaemonConfig& cfg) {
   out.removeMember("tool_configured");
   out.removeMember("tool_path");
   out.removeMember("bundled_tool_path");
+  return out;
+}
+
+static Json::Value config_edge_consensus_metadata_json(const DaemonConfig& cfg) {
+  Json::Value out = edge_consensus_runtime_backend_metadata_json(cfg);
+  out["node_tool_path_configured"] = out["tool_configured"];
+  out.removeMember("tool_configured");
+  out.removeMember("tool_path");
+  out.removeMember("default_daemon_url");
   return out;
 }
 
@@ -1328,6 +1338,10 @@ void handle_config_endpoint(
   out["edge_confidentiality"] = edge_confidentiality;
 
   Json::Value edge_consensus(Json::objectValue);
+  {
+    Json::Value meta = config_edge_consensus_metadata_json(cfg);
+    for (const auto& key : meta.getMemberNames()) edge_consensus[key] = meta[key];
+  }
   edge_consensus["clusters_set"] = (Json::UInt64)cfg.edge_consensus_clusters.size();
   {
     Json::Value arr(Json::arrayValue);
@@ -2092,6 +2106,35 @@ void handle_config_update_endpoint(
     }
   }
 
+  // Managed consensus runtime defaults:
+  // - edge_consensus: { "node_tool_path": "/abs/path/to/agentd_edge_consensus_node" } (null clears)
+  if (args.isMember("edge_consensus")) {
+    if (!args["edge_consensus"].isObject()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "edge_consensus must be an object";
+      resp->status = 400;
+      resp->body = json_stringify(o);
+      return;
+    }
+    const auto& ec = args["edge_consensus"];
+    if (ec.isMember("node_tool_path")) {
+      const Json::Value& v = ec["node_tool_path"];
+      if (v.isNull()) {
+        next.edge_consensus_node_tool_path.clear();
+      } else if (v.isString()) {
+        next.edge_consensus_node_tool_path = trim_copy(v.asString());
+      } else {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "edge_consensus.node_tool_path must be a string or null";
+        resp->status = 400;
+        resp->body = json_stringify(o);
+        return;
+      }
+    }
+  }
+
   // Edge auth keyring (secrets):
   // - edge_auth_hmac_keys: { "<kid>": "<secret>", ... } (null clears a kid)
   if (args.isMember("edge_auth_hmac_keys")) {
@@ -2306,6 +2349,9 @@ void handle_config_update_endpoint(
   o["proxy_url_set"] = !next.proxy_url.empty();
   {
     o["audio_webrtc"] = config_audio_webrtc_metadata_json(next);
+  }
+  {
+    o["edge_consensus"] = config_edge_consensus_metadata_json(next);
   }
   {
     Json::Value bs(Json::objectValue);

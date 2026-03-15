@@ -220,6 +220,19 @@ static std::string default_local_daemon_url(const DaemonConfig& cfg) {
   return "http://" + host + ":" + std::to_string((int)cfg.listen_port);
 }
 
+static std::string edge_consensus_external_runtime_unavailable_reason(const DaemonConfig& cfg) {
+  const std::string tool_path = trim_copy(cfg.edge_consensus_node_tool_path);
+  if (tool_path.empty()) return "edge_consensus_node_tool_path not configured";
+  if (!std::filesystem::exists(std::filesystem::path(tool_path))) return "edge_consensus_node_tool_path not found";
+  if (!is_safe_shellish_token(tool_path, 512)) return "invalid edge_consensus_node_tool_path";
+#if !defined(_WIN32)
+  if (::access(tool_path.c_str(), X_OK) != 0) {
+    return std::string("edge_consensus_node_tool_path not executable: ") + std::strerror(errno);
+  }
+#endif
+  return "";
+}
+
 static bool edge_consensus_runtime_build_config(
   const DaemonConfig& cfg,
   const Json::Value& body,
@@ -432,16 +445,9 @@ static bool edge_consensus_runtime_spawn_process(
   if (!edge_consensus_runtime_build_config(cfg, body, &run_cfg, &runtime_state, out_err)) return false;
   const std::string tool_path = trim_copy(cfg.edge_consensus_node_tool_path);
 
-  if (tool_path.empty()) {
-    if (out_err) *out_err = "edge_consensus_node_tool_path not configured";
-    return false;
-  }
-  if (!std::filesystem::exists(std::filesystem::path(tool_path))) {
-    if (out_err) *out_err = "edge_consensus_node_tool_path not found";
-    return false;
-  }
-  if (!is_safe_shellish_token(tool_path, 512)) {
-    if (out_err) *out_err = "invalid edge_consensus_node_tool_path";
+  const std::string unavailable_reason = edge_consensus_external_runtime_unavailable_reason(cfg);
+  if (!unavailable_reason.empty()) {
+    if (out_err) *out_err = unavailable_reason;
     return false;
   }
 
@@ -719,6 +725,20 @@ static Json::Value build_edge_node_consensus_summary(AgentDb* db_or_null, const 
 
 }  // namespace
 
+Json::Value edge_consensus_runtime_backend_metadata_json(const DaemonConfig& cfg) {
+  Json::Value out(Json::objectValue);
+  out["builtin_available"] = true;
+  out["default_runtime_kind"] = "builtin";
+  out["default_runtime_kind_available"] = true;
+  out["tool_configured"] = !trim_copy(cfg.edge_consensus_node_tool_path).empty();
+  if (!cfg.edge_consensus_node_tool_path.empty()) out["tool_path"] = cfg.edge_consensus_node_tool_path;
+  out["default_daemon_url"] = default_local_daemon_url(cfg);
+  const std::string external_reason = edge_consensus_external_runtime_unavailable_reason(cfg);
+  out["external_available"] = external_reason.empty();
+  if (!external_reason.empty()) out["external_unavailable_reason"] = external_reason;
+  return out;
+}
+
 Json::Value edge_consensus_runtime_status_json_for_node(const std::string& node_id) {
   std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
   auto st = edge_consensus_runtime_lookup_locked(node_id);
@@ -764,14 +784,9 @@ void handle_edge_node_consensus_runtime_endpoint(
   const std::string req_cluster_id =
     body.isMember("cluster_id") && body["cluster_id"].isString() ? trim_copy(body["cluster_id"].asString()) : "";
 
-  Json::Value out(Json::objectValue);
+  Json::Value out = edge_consensus_runtime_backend_metadata_json(cfg);
   out["ok"] = false;
   out["node_id"] = node_id;
-  out["builtin_available"] = true;
-  out["default_runtime_kind"] = "builtin";
-  out["tool_configured"] = !trim_copy(cfg.edge_consensus_node_tool_path).empty();
-  if (!cfg.edge_consensus_node_tool_path.empty()) out["tool_path"] = cfg.edge_consensus_node_tool_path;
-  out["default_daemon_url"] = default_local_daemon_url(cfg);
   const auto pol_it = cfg.edge_consensus_clusters.find(req_cluster_id);
   if (pol_it != cfg.edge_consensus_clusters.end()) out["cluster_policy"] = edge_consensus_cluster_policy_to_json(pol_it->first, pol_it->second);
 
@@ -915,14 +930,9 @@ void handle_edge_node_consensus_runtime_status_endpoint(
     return;
   }
 
-  Json::Value out(Json::objectValue);
+  Json::Value out = edge_consensus_runtime_backend_metadata_json(cfg);
   out["ok"] = true;
   out["node_id"] = *nid;
-  out["builtin_available"] = true;
-  out["default_runtime_kind"] = "builtin";
-  out["tool_configured"] = !trim_copy(cfg.edge_consensus_node_tool_path).empty();
-  if (!cfg.edge_consensus_node_tool_path.empty()) out["tool_path"] = cfg.edge_consensus_node_tool_path;
-  out["default_daemon_url"] = default_local_daemon_url(cfg);
 
   bool node_exists = false;
   Json::Value consensus = build_edge_node_consensus_summary(db_or_null, *nid, &node_exists);

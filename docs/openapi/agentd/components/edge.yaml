@@ -265,15 +265,18 @@ EdgeNodeConsensusRuntimeRequest:
 
 EdgeNodeConsensusRuntimeResponse:
   type: object
-  required: [ok, node_id, tool_configured, builtin_available, default_runtime_kind, default_daemon_url]
+  required: [ok, node_id, tool_configured, builtin_available, external_available, default_runtime_kind, default_runtime_kind_available, default_daemon_url]
   properties:
     ok: { type: boolean }
     node_id: { type: string }
     tool_configured: { type: boolean }
     builtin_available: { type: boolean }
+    external_available: { type: boolean }
+    external_unavailable_reason: { type: string }
     default_runtime_kind:
       type: string
       enum: [builtin]
+    default_runtime_kind_available: { type: boolean, enum: [true] }
     tool_path: { type: string }
     default_daemon_url: { type: string }
     started: { type: boolean }
@@ -290,15 +293,18 @@ EdgeNodeConsensusRuntimeResponse:
 
 EdgeNodeConsensusRuntimeStatusResponse:
   type: object
-  required: [ok, node_id, tool_configured, builtin_available, default_runtime_kind, default_daemon_url, node_exists, running]
+  required: [ok, node_id, tool_configured, builtin_available, external_available, default_runtime_kind, default_runtime_kind_available, default_daemon_url, node_exists, running]
   properties:
     ok: { type: boolean }
     node_id: { type: string }
     tool_configured: { type: boolean }
     builtin_available: { type: boolean }
+    external_available: { type: boolean }
+    external_unavailable_reason: { type: string }
     default_runtime_kind:
       type: string
       enum: [builtin]
+    default_runtime_kind_available: { type: boolean, enum: [true] }
     tool_path: { type: string }
     default_daemon_url: { type: string }
     node_exists: { type: boolean }
