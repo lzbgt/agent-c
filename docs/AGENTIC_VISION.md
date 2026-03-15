@@ -23,6 +23,8 @@ Recent shipped note:
   deletion, so malformed configured defaults no longer break borrowed-session teardown.
 - 2026-03-15: local voice-runtime stop/delete teardown now also survives owned broker-session deletion failure, with the
   broker cleanup problem surfaced explicitly instead of blocking local cleanup.
+- 2026-03-15: corrupt persisted `voice_webrtc_peer` runtime records now self-heal on status/start by clearing the bad
+  DB record and stale local artifacts, keeping the WebRTC lane recoverable after local state corruption.
 
 Clarification: “Beyond OpenClaw” means **going past a gateway/plugin model** into a full-stack,
 durable, policy-driven agent platform with evidence-grade runs, multi-agent orchestration,

@@ -2308,6 +2308,159 @@ curl -fsS --noproxy "*" --max-time 10 -X DELETE \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   "${DAEMON_URL}/api/v1/session?session_id=${SELF_HEAL_SESSION_ID_Q}" >/dev/null
 
+CORRUPT_RUNTIME_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_corrupt_record_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${CORRUPT_RUNTIME_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+CORRUPT_RUNTIME_DIR="${LOG_DIR}/agentd_session_voice_webrtc_peer_runtime_smoke_${PORT_DAEMON}.state/voice_webrtc_peers/${CORRUPT_RUNTIME_SESSION_ID}"
+mkdir -p "${CORRUPT_RUNTIME_DIR}"
+printf '%s\n' '{"stale":"artifact"}' > "${CORRUPT_RUNTIME_DIR}/stdout.jsonl"
+
+python3 - <<PY
+import sqlite3
+db_path = r'''${SESSION_DB_PATH}'''
+sid = r'''${CORRUPT_RUNTIME_SESSION_ID}'''
+conn = sqlite3.connect(db_path)
+try:
+    conn.execute(
+        "INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)",
+        (f"session.voice_webrtc_peer.{sid}", "{ definitely-not-json")
+    )
+    conn.commit()
+finally:
+    conn.close()
+PY
+
+CORRUPT_RUNTIME_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${CORRUPT_RUNTIME_SESSION_ID}")"
+corrupt_runtime_status="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer?session_id=${CORRUPT_RUNTIME_SESSION_ID_Q}")"
+
+python3 - <<PY
+import json, os, sqlite3, sys
+obj = json.loads(r'''${corrupt_runtime_status}''')
+cleanup = obj.get("cleanup_on_corrupt_record") or {}
+if obj.get("ok") is not True or obj.get("session_exists") is not True or obj.get("running") is not False:
+  print("expected corrupt runtime status self-heal success", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("peer") is not None:
+  print("expected corrupt runtime status peer=null after self-heal", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("persisted_record_cleared") is not True:
+  print("expected corrupt runtime status persisted_record_cleared", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("runtime_artifacts_deleted") is not True:
+  print("expected corrupt runtime status runtime_artifacts_deleted", obj, file=sys.stderr)
+  raise SystemExit(1)
+if os.path.exists(r'''${CORRUPT_RUNTIME_DIR}'''):
+  print("expected corrupt runtime artifacts removed", r'''${CORRUPT_RUNTIME_DIR}''', file=sys.stderr)
+  raise SystemExit(1)
+conn = sqlite3.connect(r'''${SESSION_DB_PATH}''')
+try:
+  row = conn.execute(
+      "SELECT value FROM meta WHERE key = ?",
+      (f"session.voice_webrtc_peer.{r'''${CORRUPT_RUNTIME_SESSION_ID}'''}",)
+  ).fetchone()
+  if row is None or row[0] != "":
+    print("expected corrupt runtime meta row cleared to empty string", row, file=sys.stderr)
+    raise SystemExit(1)
+finally:
+  conn.close()
+PY
+
+python3 - <<PY
+import sqlite3
+db_path = r'''${SESSION_DB_PATH}'''
+sid = r'''${CORRUPT_RUNTIME_SESSION_ID}'''
+conn = sqlite3.connect(db_path)
+try:
+    conn.execute(
+        "INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)",
+        (f"session.voice_webrtc_peer.{sid}", "{ definitely-not-json-again")
+    )
+    conn.commit()
+finally:
+    conn.close()
+PY
+
+corrupt_runtime_start_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${CORRUPT_RUNTIME_SESSION_ID}",
+  "action": "start",
+  "runtime_kind": "bundled",
+  "broker_url": "${VOICE_BROKER_URL}",
+  "broker_token": "${VOICE_BROKER_TOKEN}",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab-corrupt-runtime-self-heal",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 903
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${corrupt_runtime_start_resp}''')
+peer = obj.get("peer") or {}
+cleanup = obj.get("cleanup_on_corrupt_record") or {}
+if not obj.get("ok") or not obj.get("started"):
+  print("expected start to recover after corrupt runtime self-heal", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("persisted_record_cleared") is not True:
+  print("expected start response to report corrupt runtime self-heal", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("runtime_kind") != "bundled":
+  print("expected bundled runtime after corrupt runtime self-heal", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+CORRUPT_RUNTIME_BROKER_SESSION_ID="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${corrupt_runtime_start_resp}''')
+peer = obj.get("peer") or {}
+sid = str(peer.get("broker_session_id") or "").strip()
+if not sid:
+  print("missing corrupt runtime self-heal broker_session_id", file=sys.stderr)
+  raise SystemExit(1)
+print(sid)
+PY
+)"
+
+wait_voice_peer_ready "${CORRUPT_RUNTIME_SESSION_ID}" 1 status_json bundled bundled auto 1
+
+corrupt_runtime_stop_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${CORRUPT_RUNTIME_SESSION_ID}\",\"action\":\"stop\"}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${corrupt_runtime_stop_resp}''')
+if not obj.get("ok") or not obj.get("stopped"):
+  print("expected corrupt runtime self-heal stop to succeed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("broker_session_deleted") is not True:
+  print("expected corrupt runtime self-heal stop to delete broker session", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+wait_broker_session_deleted "${CORRUPT_RUNTIME_BROKER_SESSION_ID}"
+
+curl -fsS --noproxy "*" --max-time 10 -X DELETE \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session?session_id=${CORRUPT_RUNTIME_SESSION_ID_Q}" >/dev/null
+
 config_invalid_node_bin_update_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   -H 'Content-Type: application/json' \

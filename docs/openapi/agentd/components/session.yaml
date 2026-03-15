@@ -108,6 +108,9 @@ VoiceWebRtcPeerResponse:
     startup_cleanup:
       type: object
       additionalProperties: true
+    cleanup_on_corrupt_record:
+      type: object
+      additionalProperties: true
     already_running: { type: boolean }
     reason: { type: string }
     error: { type: string }
@@ -145,6 +148,9 @@ VoiceWebRtcPeerStatusResponse:
     session_exists: { type: boolean }
     running: { type: boolean }
     error: { type: string }
+    cleanup_on_corrupt_record:
+      type: object
+      additionalProperties: true
     cleanup_on_missing_session:
       type: object
       additionalProperties: true

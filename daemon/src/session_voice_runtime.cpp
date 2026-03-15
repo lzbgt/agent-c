@@ -420,10 +420,12 @@ static bool load_voice_peer_runtime_record(
   AgentDb* db,
   const std::string& session_id,
   std::shared_ptr<VoicePeerRuntime>* out_state,
+  bool* out_self_healed,
   std::string* out_err
 ) {
   if (out_err) out_err->clear();
   if (out_state) out_state->reset();
+  if (out_self_healed) *out_self_healed = false;
   if (!db) {
     if (out_err) *out_err = "db unavailable";
     return false;
@@ -434,11 +436,35 @@ static bool load_voice_peer_runtime_record(
   Json::Value parsed(Json::nullValue);
   std::string jerr;
   if (!json_parse_any(raw, &parsed, &jerr) || !parsed.isObject()) {
-    if (out_err) *out_err = jerr.empty() ? "persisted voice runtime record corrupt" : jerr;
-    return false;
+    std::string cerr;
+    if (!clear_voice_peer_runtime_record(db, session_id, &cerr)) {
+      if (out_err) {
+        *out_err = cerr.empty()
+          ? (jerr.empty() ? "persisted voice runtime record corrupt" : jerr)
+          : ("failed to clear corrupt persisted voice runtime record: " + cerr);
+      }
+      return false;
+    }
+    if (out_self_healed) *out_self_healed = true;
+    return true;
   }
   auto st = std::make_shared<VoicePeerRuntime>();
-  if (!voice_peer_runtime_from_json(parsed, st.get(), out_err)) return false;
+  if (!voice_peer_runtime_from_json(parsed, st.get(), out_err)) {
+    const std::string original_err = out_err ? *out_err : std::string("persisted voice runtime record corrupt");
+    std::string cerr;
+    if (!clear_voice_peer_runtime_record(db, session_id, &cerr)) {
+      if (out_err) {
+        *out_err = cerr.empty()
+          ? original_err
+          : ("failed to clear corrupt persisted voice runtime record: " + cerr);
+      }
+      return false;
+    }
+    if (out_state) out_state->reset();
+    if (out_self_healed) *out_self_healed = true;
+    if (out_err) out_err->clear();
+    return true;
+  }
   st->status_source = "persisted";
   refresh_voice_peer_runtime_state(st.get());
   if (out_state) *out_state = std::move(st);
@@ -1020,12 +1046,25 @@ void handle_session_voice_webrtc_peer_endpoint(
       if (st) refresh_voice_peer_runtime_state(st.get());
     }
     if (!st) {
+      bool record_self_healed = false;
       std::string lerr;
-      if (!load_voice_peer_runtime_record(db, session_id, &st, &lerr)) {
+      if (!load_voice_peer_runtime_record(db, session_id, &st, &record_self_healed, &lerr)) {
         out["error"] = lerr.empty() ? "failed to load persisted voice peer state" : lerr;
         resp->status = 500;
         resp->body = json_stringify(out);
         return;
+      }
+      if (record_self_healed) {
+        Json::Value cleanup(Json::objectValue);
+        cleanup["persisted_record_cleared"] = true;
+        bool artifacts_deleted = false;
+        std::string aerr;
+        if (remove_voice_peer_runtime_artifacts(cfg, session_id, &artifacts_deleted, &aerr)) {
+          cleanup["runtime_artifacts_deleted"] = artifacts_deleted;
+        } else if (!aerr.empty()) {
+          cleanup["runtime_artifacts_delete_error"] = aerr;
+        }
+        out["cleanup_on_corrupt_record"] = cleanup;
       }
     }
     if (!st) {
@@ -1149,12 +1188,25 @@ void handle_session_voice_webrtc_peer_endpoint(
   }
   {
     std::shared_ptr<VoicePeerRuntime> persisted;
+    bool record_self_healed = false;
     std::string lerr;
-    if (!load_voice_peer_runtime_record(db, session_id, &persisted, &lerr)) {
+    if (!load_voice_peer_runtime_record(db, session_id, &persisted, &record_self_healed, &lerr)) {
       out["error"] = lerr.empty() ? "failed to load persisted voice peer state" : lerr;
       resp->status = 500;
       resp->body = json_stringify(out);
       return;
+    }
+    if (record_self_healed) {
+      Json::Value cleanup(Json::objectValue);
+      cleanup["persisted_record_cleared"] = true;
+      bool artifacts_deleted = false;
+      std::string aerr;
+      if (remove_voice_peer_runtime_artifacts(cfg, session_id, &artifacts_deleted, &aerr)) {
+        cleanup["runtime_artifacts_deleted"] = artifacts_deleted;
+      } else if (!aerr.empty()) {
+        cleanup["runtime_artifacts_delete_error"] = aerr;
+      }
+      out["cleanup_on_corrupt_record"] = cleanup;
     }
     if (persisted && persisted->running) {
       {
@@ -1423,13 +1475,26 @@ void handle_session_voice_webrtc_peer_status_endpoint(
     if (st) refresh_voice_peer_runtime_state(st.get());
   }
   if (!st) {
+    bool record_self_healed = false;
     std::string lerr;
-    if (!load_voice_peer_runtime_record(db, *sid, &st, &lerr)) {
+    if (!load_voice_peer_runtime_record(db, *sid, &st, &record_self_healed, &lerr)) {
       resp->status = 500;
       out["ok"] = false;
       out["error"] = lerr.empty() ? "failed to load persisted voice peer state" : lerr;
       resp->body = json_stringify(out);
       return;
+    }
+    if (record_self_healed) {
+      Json::Value cleanup(Json::objectValue);
+      cleanup["persisted_record_cleared"] = true;
+      bool artifacts_deleted = false;
+      std::string aerr;
+      if (remove_voice_peer_runtime_artifacts(cfg, *sid, &artifacts_deleted, &aerr)) {
+        cleanup["runtime_artifacts_deleted"] = artifacts_deleted;
+      } else if (!aerr.empty()) {
+        cleanup["runtime_artifacts_delete_error"] = aerr;
+      }
+      out["cleanup_on_corrupt_record"] = cleanup;
     }
     if (st && st->running) {
       std::lock_guard<std::mutex> lk(g_voice_peer_mu);
@@ -1482,11 +1547,13 @@ bool cleanup_session_voice_webrtc_peer_runtime(
     if (st) refresh_voice_peer_runtime_state(st.get());
   }
   if (!st) {
+    bool record_self_healed = false;
     std::string lerr;
-    if (!load_voice_peer_runtime_record(db, session_id, &st, &lerr)) {
+    if (!load_voice_peer_runtime_record(db, session_id, &st, &record_self_healed, &lerr)) {
       if (out_err) *out_err = lerr.empty() ? "failed to load persisted voice peer state" : lerr;
       return false;
     }
+    if (record_self_healed) summary["persisted_record_self_healed"] = true;
   }
 
   if (st) {
