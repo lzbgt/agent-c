@@ -2105,7 +2105,7 @@ void handle_edge_nodes_endpoint(
         row["consensus"] = v["consensus"];
       }
     }
-    Json::Value runtime = edge_consensus_runtime_status_json_for_node(n.node_id);
+    Json::Value runtime = edge_consensus_runtime_status_json_for_node(cfg, db_or_null, n.node_id);
     if (runtime.isObject()) row["consensus_runtime"] = runtime;
     arr.append(row);
   }
@@ -2177,7 +2177,7 @@ void handle_edge_node_endpoint(
       if (v.isMember("consensus") && v["consensus"].isObject()) row["consensus"] = v["consensus"];
     }
   }
-  Json::Value runtime = edge_consensus_runtime_status_json_for_node(n.node_id);
+  Json::Value runtime = edge_consensus_runtime_status_json_for_node(cfg, db_or_null, n.node_id);
   if (runtime.isObject()) row["consensus_runtime"] = runtime;
   if (!n.manifest_json.empty()) {
     Json::Value manifest;

@@ -579,6 +579,12 @@ Notes:
   already completed, and includes the final runtime snapshot/result instead of claiming a live stop occurred.
 - `POST /api/v1/edge/node/consensus_runtime` `action=start` is now idempotent only for the same running config. If the
   same `node_id` already has a different effective running runtime config, agentd returns `409` with the existing runtime snapshot.
+- Managed consensus runtime snapshots now persist in DB meta too, so
+  `GET /api/v1/edge/node/consensus_runtime?node_id=<id>` can recover the last finished/stopped runtime after agentd
+  restart with `runtime.status_source=persisted`.
+- Persisted consensus runtime records now self-heal on read: corrupt records and stale `running=true` records from a
+  dead daemon process are cleared along with dead local runtime artifacts instead of being reported forever as live or
+  unusable managed state.
 - The WebUI exposes Settings buttons to “Save defaults to daemon” and “Save API key to daemon”.
 
 Edge trust-root rotation:
@@ -619,7 +625,8 @@ Edge trust-root rotation:
 - `POST /api/v1/edge/node/consensus_runtime` starts or stops that same autonomous consensus helper under agentd
   lifecycle ownership. The default runtime backend is now builtin, so agentd can run the same poll/process/post loop
   in-process without spawning the standalone helper; `runtime_kind=external` remains available for bring-up/debug parity.
-  `GET /api/v1/edge/node/consensus_runtime?node_id=<id>` reports managed runtime status plus the latest final result JSON.
+  `GET /api/v1/edge/node/consensus_runtime?node_id=<id>` reports managed runtime status plus the latest final result JSON,
+  and now also recovers the last finished/stopped runtime from persisted DB state after restart.
   Both start and status now also expose `external_available` plus `external_unavailable_reason`, so operator tooling can
   see whether the external helper seam is actually launchable before trying `runtime_kind=external`.
   External starts now also use bounded startup confirmation and return `startup_confirmed=false` with a `500` response

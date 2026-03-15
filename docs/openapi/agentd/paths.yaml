@@ -2551,6 +2551,12 @@
       was started. Conflict matching uses the effective runtime config, not only the
       top-level identity fields, so changed timing/member/transport inputs are also
       rejected while the runtime is active.
+      Terminal managed runtime snapshots are now persisted in agentd DB meta, so
+      `GET /api/v1/edge/node/consensus_runtime` can recover the last finished/stopped
+      runtime across agentd restart with `runtime.status_source=persisted`. Stale
+      persisted `running=true` records and corrupt persisted runtime records are now
+      self-healed by clearing the bad record and local runtime artifacts instead of
+      surfacing stale managed state forever.
       Start requests can also set
       `campaign_delay_ms` for the first election, `campaign_retry_ms` for the base
       retry interval, `campaign_retry_max_ms` for the backoff ceiling, and

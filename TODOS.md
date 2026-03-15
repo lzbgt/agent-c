@@ -640,6 +640,7 @@ streaming and plugins are stable.
   - 2026-03-15: builtin managed consensus starts now use the same bounded startup confirmation as external helpers, so immediate in-process transport failures fail closed with `startup_confirmed=false` and leave no stale runtime record behind, while fast successful commits still return success.
   - 2026-03-15: managed consensus stop now returns `reason=not_running` when a runtime already finished and preserves the final runtime snapshot/result instead of reporting a false-positive active stop.
   - 2026-03-15: managed consensus start now returns `409` when a different effective runtime config tries to reuse an already-running `node_id`, while repeated identical starts remain idempotent with `already_running=true`.
+  - 2026-03-15: managed consensus runtime snapshots now persist in DB meta too, so `GET /api/v1/edge/node/consensus_runtime` can recover finished/stopped runtime state after restart with `status_source=persisted`, and stale/corrupt persisted runtime records now self-heal by clearing the record plus dead local artifacts.
 
 ## Deferred (after macOS stability)
 

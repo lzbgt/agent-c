@@ -137,6 +137,9 @@ PY
 STOP_NODE="node_runtime_cons_stop"
 STOP_CLUSTER="lab-consensus-managed-stop"
 STOP_SHA="sha256:5555555555555555555555555555555555555555555555555555555555555555"
+STALE_NODE="node_runtime_cons_stale"
+STALE_CLUSTER="lab-consensus-managed-stale"
+STALE_SHA="sha256:5858585858585858585858585858585858585858585858585858585858585858"
 FAIL_BUILTIN_NODE="node_runtime_cons_builtin_failfast"
 FAIL_BUILTIN_CLUSTER="lab-consensus-managed-builtin-failfast"
 FAIL_BUILTIN_SHA="sha256:5959595959595959595959595959595959595959595959595959595959595959"
@@ -152,7 +155,7 @@ JSON
 )")"
 STOP_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${STOP_NODE}")"
 FAIL_BUILTIN_RAW="$(curl_json_status POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","node_id":"${FAIL_BUILTIN_NODE}","cluster_id":"${FAIL_BUILTIN_CLUSTER}","manifest_sha256":"${FAIL_BUILTIN_SHA}","daemon_url":"http://127.0.0.1:1","deadline_ms":30000,"poll_interval_ms":100}
+{"action":"start","node_id":"${FAIL_BUILTIN_NODE}","cluster_id":"${FAIL_BUILTIN_CLUSTER}","manifest_sha256":"${FAIL_BUILTIN_SHA}","daemon_url":"not-a-url","deadline_ms":30000,"poll_interval_ms":100}
 JSON
 )")"
 FAIL_BUILTIN_STATUS="$(printf '%s\n' "${FAIL_BUILTIN_RAW}" | sed -n '1p')"
@@ -232,6 +235,34 @@ if stop_status.get("external_available"):
   print("stop status unexpectedly reported external available", stop_status, file=sys.stderr)
   raise SystemExit(1)
 PY
+
+agentd_smoke_stop
+AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}" \
+agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_edge_consensus_runtime_smoke_stop_restart" \
+  --db-path "${TEST_DB}" \
+  --state-dir "${TEST_STATE}" \
+  --tools none
+DAEMON_URL="http://${HOST}:${PORT_DAEMON}"
+agentd_smoke_wait_health "${DAEMON_URL}" "${DAEMON_TOKEN}"
+
+STOP_RESTART_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${STOP_NODE}")"
+
+START_STALE_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"start","node_id":"${STALE_NODE}","cluster_id":"${STALE_CLUSTER}","manifest_sha256":"${STALE_SHA}","deadline_ms":30000,"poll_interval_ms":100}
+JSON
+)")"
+RUNNING_STALE_JSON="$(wait_runtime_running "${STALE_NODE}")"
+
+agentd_smoke_stop
+AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}" \
+agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_edge_consensus_runtime_smoke_stale_restart" \
+  --db-path "${TEST_DB}" \
+  --state-dir "${TEST_STATE}" \
+  --tools none
+DAEMON_URL="http://${HOST}:${PORT_DAEMON}"
+agentd_smoke_wait_health "${DAEMON_URL}" "${DAEMON_TOKEN}"
+
+STALE_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${STALE_NODE}")"
 
 CONFIG_SET_JSON="$(curl_json POST "/api/v1/config/update" "$(cat <<JSON
 {"edge_consensus":{"node_tool_path":"${NODE_TOOL_BIN}","default_runtime_kind":"external"}}
@@ -324,6 +355,7 @@ try:
     edge = data.setdefault("edge_consensus", {})
     edge["default_runtime_kind"] = "not-a-real-runtime-kind"
     conn.execute("UPDATE meta SET value = ? WHERE key = 'daemon.runtime_config_json'", (json.dumps(data),))
+    conn.execute("UPDATE meta SET value = ? WHERE key = ?", ('{"broken"', "edge.consensus_runtime.${STOP_NODE}"))
     conn.commit()
 finally:
     conn.close()
@@ -339,6 +371,7 @@ DAEMON_URL="http://${HOST}:${PORT_DAEMON}"
 agentd_smoke_wait_health "${DAEMON_URL}" "${DAEMON_TOKEN}"
 
 CONFIG_SELF_HEAL_JSON="$(curl_json GET "/api/v1/config")"
+STOP_CORRUPT_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${STOP_NODE}")"
 FALLBACK_NODE="node_runtime_cons_fallback"
 FALLBACK_CLUSTER="lab-consensus-managed-fallback"
 FALLBACK_SHA="sha256:7777777777777777777777777777777777777777777777777777777777777777"
@@ -360,6 +393,10 @@ node_tool = "${NODE_TOOL_BIN}"
 false_bin = "${FALSE_BIN}"
 db_path = r'''${TEST_DB}'''
 
+stop_restart_status = json.loads(r'''${STOP_RESTART_STATUS_JSON}''')
+start_stale = json.loads(r'''${START_STALE_JSON}''')
+running_stale = json.loads(r'''${RUNNING_STALE_JSON}''')
+stale_status = json.loads(r'''${STALE_STATUS_JSON}''')
 config_set = json.loads(r'''${CONFIG_SET_JSON}''')
 config_get = json.loads(r'''${CONFIG_GET_JSON}''')
 config_restart = json.loads(r'''${CONFIG_RESTART_JSON}''')
@@ -378,6 +415,7 @@ config_cleared = json.loads(r'''${CONFIG_CLEARED_JSON}''')
 fail_start = json.loads(r'''${FAIL_START_JSON}''')
 fail_start_status = json.loads(r'''${FAIL_START_STATUS_JSON}''')
 config_self_heal = json.loads(r'''${CONFIG_SELF_HEAL_JSON}''')
+stop_corrupt_status = json.loads(r'''${STOP_CORRUPT_STATUS_JSON}''')
 fallback_start = json.loads(r'''${FALLBACK_START_JSON}''')
 fallback_running = json.loads(r'''${FALLBACK_RUNNING_JSON}''')
 fallback_stop = json.loads(r'''${FALLBACK_STOP_JSON}''')
@@ -386,6 +424,27 @@ for label, obj in (("config_set", config_set), ("config_get", config_get), ("con
   if not obj.get("ok"):
     print(label, obj, file=sys.stderr)
     raise SystemExit(1)
+
+stop_restart_rt = stop_restart_status.get("runtime") or {}
+if stop_restart_rt.get("status_source") != "persisted" or stop_restart_rt.get("runtime_kind") != "builtin":
+  print("stop restart status did not recover persisted runtime snapshot", stop_restart_status, file=sys.stderr)
+  raise SystemExit(1)
+if stop_restart_rt.get("running"):
+  print("stop restart status unexpectedly recovered a running runtime", stop_restart_status, file=sys.stderr)
+  raise SystemExit(1)
+if start_stale.get("startup_confirmed") is not True or (start_stale.get("runtime") or {}).get("runtime_kind") != "builtin":
+  print("stale runtime start wrong", start_stale, file=sys.stderr)
+  raise SystemExit(1)
+if not (running_stale.get("runtime") or {}).get("running"):
+  print("stale runtime never entered running state", running_stale, file=sys.stderr)
+  raise SystemExit(1)
+cleanup_stale = stale_status.get("cleanup_on_stale_record") or {}
+if stale_status.get("runtime") is not None:
+  print("stale runtime restart unexpectedly left runtime snapshot behind", stale_status, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup_stale.get("persisted_record_cleared") is not True:
+  print("stale runtime restart did not clear stale persisted record", stale_status, file=sys.stderr)
+  raise SystemExit(1)
 
 for label, obj in (("config_set", config_set), ("config_get", config_get), ("config_restart", config_restart)):
   edge = obj.get("edge_consensus") or {}
@@ -513,6 +572,13 @@ if edge.get("default_runtime_kind_available") is not True:
 if edge.get("node_tool_path_configured"):
   print("self-heal unexpectedly restored tool path", config_self_heal, file=sys.stderr)
   raise SystemExit(1)
+cleanup_corrupt = stop_corrupt_status.get("cleanup_on_corrupt_record") or {}
+if stop_corrupt_status.get("runtime") is not None:
+  print("corrupt persisted runtime record was not cleared", stop_corrupt_status, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup_corrupt.get("persisted_record_cleared") is not True:
+  print("corrupt persisted runtime record did not self-heal", stop_corrupt_status, file=sys.stderr)
+  raise SystemExit(1)
 
 conn = sqlite3.connect(db_path)
 try:
@@ -524,6 +590,14 @@ try:
   edge_cfg = data.get("edge_consensus") or {}
   if edge_cfg.get("default_runtime_kind", "__missing__") is not None:
     print("edge consensus default_runtime_kind not rewritten to null", data, file=sys.stderr)
+    raise SystemExit(1)
+  row = conn.execute("SELECT value FROM meta WHERE key = ?", ("edge.consensus_runtime.${STOP_NODE}",)).fetchone()
+  if row is None or (row[0] or "").strip():
+    print("corrupt persisted runtime key not cleared", row, file=sys.stderr)
+    raise SystemExit(1)
+  row = conn.execute("SELECT value FROM meta WHERE key = ?", ("edge.consensus_runtime.${STALE_NODE}",)).fetchone()
+  if row is None or (row[0] or "").strip():
+    print("stale persisted runtime key not cleared", row, file=sys.stderr)
     raise SystemExit(1)
 finally:
   conn.close()

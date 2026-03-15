@@ -107,6 +107,7 @@ static Json::Value edge_consensus_cluster_policy_to_json(const std::string& clus
 
 struct EdgeConsensusRuntime {
   std::string runtime_kind = "builtin";
+  std::string status_source = "memory";
   std::string node_id;
   std::string cluster_id;
   std::string manifest_sha256;
@@ -155,6 +156,7 @@ static Json::Value edge_consensus_runtime_to_json(const EdgeConsensusRuntime& st
   Json::Value out(Json::objectValue);
   out["schema"] = "edge_node_consensus_runtime_v1";
   out["runtime_kind"] = st.runtime_kind;
+  out["status_source"] = st.status_source.empty() ? "memory" : st.status_source;
   out["node_id"] = st.node_id;
   out["cluster_id"] = st.cluster_id;
   out["manifest_sha256"] = st.manifest_sha256;
@@ -235,12 +237,36 @@ static std::shared_ptr<EdgeConsensusRuntime> edge_consensus_runtime_lookup_locke
   return it == g_edge_consensus_runtime_by_node.end() ? nullptr : it->second;
 }
 
+static std::string edge_consensus_runtime_meta_key(const std::string& node_id) {
+  return "edge.consensus_runtime." + node_id;
+}
+
 static std::filesystem::path edge_consensus_runtime_dir(const DaemonConfig& cfg, const std::string& node_id) {
   std::error_code ec;
   std::filesystem::path base =
     cfg.state_dir.empty() ? std::filesystem::temp_directory_path(ec) : std::filesystem::path(cfg.state_dir);
   if (ec) base = std::filesystem::path(".");
   return base / "edge_consensus_runtimes" / node_id;
+}
+
+static bool remove_edge_consensus_runtime_artifacts(
+  const DaemonConfig& cfg,
+  const std::string& node_id,
+  bool* out_deleted,
+  std::string* out_err
+) {
+  if (out_deleted) *out_deleted = false;
+  if (out_err) out_err->clear();
+  std::error_code ec;
+  const std::filesystem::path run_dir = edge_consensus_runtime_dir(cfg, node_id);
+  if (!std::filesystem::exists(run_dir, ec)) return true;
+  const auto removed = std::filesystem::remove_all(run_dir, ec);
+  if (ec) {
+    if (out_err) *out_err = "failed to remove edge consensus runtime artifacts";
+    return false;
+  }
+  if (out_deleted) *out_deleted = removed > 0;
+  return true;
 }
 
 static std::string default_local_daemon_url(const DaemonConfig& cfg) {
@@ -260,6 +286,170 @@ static std::string edge_consensus_external_runtime_unavailable_reason(const Daem
   }
 #endif
   return "";
+}
+
+static bool edge_consensus_runtime_from_json(const Json::Value& v, EdgeConsensusRuntime* out, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!out) {
+    if (out_err) *out_err = "runtime output missing";
+    return false;
+  }
+  if (!v.isObject()) {
+    if (out_err) *out_err = "runtime record must be an object";
+    return false;
+  }
+  EdgeConsensusRuntime st;
+  if (v.isMember("runtime_kind") && v["runtime_kind"].isString()) st.runtime_kind = trim_copy(v["runtime_kind"].asString());
+  if (st.runtime_kind != "builtin" && st.runtime_kind != "external") {
+    if (out_err) *out_err = "runtime_kind must be builtin or external";
+    return false;
+  }
+  if (v.isMember("status_source") && v["status_source"].isString()) st.status_source = trim_copy(v["status_source"].asString());
+  if (v.isMember("node_id") && v["node_id"].isString()) st.node_id = trim_copy(v["node_id"].asString());
+  if (v.isMember("cluster_id") && v["cluster_id"].isString()) st.cluster_id = trim_copy(v["cluster_id"].asString());
+  if (v.isMember("manifest_sha256") && v["manifest_sha256"].isString()) st.manifest_sha256 = trim_copy(v["manifest_sha256"].asString());
+  if (v.isMember("decision_sha256") && v["decision_sha256"].isString()) st.decision_sha256 = trim_copy(v["decision_sha256"].asString());
+  if (!edge_id_is_safe(st.node_id) || !edge_id_is_safe(st.cluster_id) || !edge_sha256_token_is_safe(st.manifest_sha256)) {
+    if (out_err) *out_err = "invalid persisted runtime identity";
+    return false;
+  }
+  if (!st.decision_sha256.empty() && !edge_sha256_token_is_safe(st.decision_sha256)) {
+    if (out_err) *out_err = "invalid persisted decision_sha256";
+    return false;
+  }
+  if (v.isMember("peer_node_ids")) {
+    if (!v["peer_node_ids"].isArray()) {
+      if (out_err) *out_err = "persisted peer_node_ids must be an array";
+      return false;
+    }
+    for (Json::ArrayIndex i = 0; i < v["peer_node_ids"].size(); i++) {
+      if (!v["peer_node_ids"][i].isString()) {
+        if (out_err) *out_err = "persisted peer_node_ids must contain strings";
+        return false;
+      }
+      st.peer_node_ids.push_back(trim_copy(v["peer_node_ids"][i].asString()));
+    }
+    st.peer_node_ids = dedupe_safe_edge_ids(st.peer_node_ids);
+  }
+  if (v.isMember("member_node_ids")) {
+    if (!v["member_node_ids"].isArray()) {
+      if (out_err) *out_err = "persisted member_node_ids must be an array";
+      return false;
+    }
+    for (Json::ArrayIndex i = 0; i < v["member_node_ids"].size(); i++) {
+      if (!v["member_node_ids"][i].isString()) {
+        if (out_err) *out_err = "persisted member_node_ids must contain strings";
+        return false;
+      }
+      st.member_node_ids.push_back(trim_copy(v["member_node_ids"][i].asString()));
+    }
+    st.member_node_ids = dedupe_safe_edge_ids(st.member_node_ids);
+  }
+  if (v.isMember("daemon_url") && v["daemon_url"].isString()) st.daemon_url = trim_copy(v["daemon_url"].asString());
+  if (v.isMember("tool_path") && v["tool_path"].isString()) st.tool_path = trim_copy(v["tool_path"].asString());
+  if (v.isMember("model") && v["model"].isString()) st.model = trim_copy(v["model"].asString());
+  if (v.isMember("fw_git_sha") && v["fw_git_sha"].isString()) st.fw_git_sha = trim_copy(v["fw_git_sha"].asString());
+  if (v.isMember("stderr_log_path") && v["stderr_log_path"].isString()) st.stderr_log_path = trim_copy(v["stderr_log_path"].asString());
+  if (v.isMember("started_unix_ms") && (v["started_unix_ms"].isInt64() || v["started_unix_ms"].isUInt64())) st.started_unix_ms = v["started_unix_ms"].asInt64();
+  if (v.isMember("ended_unix_ms") && (v["ended_unix_ms"].isInt64() || v["ended_unix_ms"].isUInt64())) st.ended_unix_ms = v["ended_unix_ms"].asInt64();
+  if (v.isMember("campaign_delay_ms") && (v["campaign_delay_ms"].isInt64() || v["campaign_delay_ms"].isUInt64())) st.campaign_delay_ms = v["campaign_delay_ms"].asInt64();
+  if (v.isMember("campaign_retry_ms") && (v["campaign_retry_ms"].isInt64() || v["campaign_retry_ms"].isUInt64())) st.campaign_retry_ms = v["campaign_retry_ms"].asInt64();
+  if (v.isMember("campaign_retry_max_ms") && (v["campaign_retry_max_ms"].isInt64() || v["campaign_retry_max_ms"].isUInt64())) st.campaign_retry_max_ms = v["campaign_retry_max_ms"].asInt64();
+  if (v.isMember("campaign_retry_backoff_factor") && (v["campaign_retry_backoff_factor"].isInt64() || v["campaign_retry_backoff_factor"].isUInt64())) st.campaign_retry_backoff_factor = v["campaign_retry_backoff_factor"].asInt64();
+  if (v.isMember("leader_heartbeat_ms") && (v["leader_heartbeat_ms"].isInt64() || v["leader_heartbeat_ms"].isUInt64())) st.leader_heartbeat_ms = v["leader_heartbeat_ms"].asInt64();
+  if (v.isMember("leader_lease_ms") && (v["leader_lease_ms"].isInt64() || v["leader_lease_ms"].isUInt64())) st.leader_lease_ms = v["leader_lease_ms"].asInt64();
+  if (v.isMember("poll_interval_ms") && (v["poll_interval_ms"].isInt64() || v["poll_interval_ms"].isUInt64())) st.poll_interval_ms = v["poll_interval_ms"].asInt64();
+  if (v.isMember("deadline_ms") && (v["deadline_ms"].isInt64() || v["deadline_ms"].isUInt64())) st.deadline_ms = v["deadline_ms"].asInt64();
+  if (v.isMember("cluster_size")) st.cluster_size = json_to_u64(v["cluster_size"], st.cluster_size);
+  if (v.isMember("outbox_limit")) st.outbox_limit = json_to_u64(v["outbox_limit"], st.outbox_limit);
+  if (v.isMember("trust_epochs") && v["trust_epochs"].isObject()) {
+    const auto& epochs = v["trust_epochs"];
+    if (epochs.isMember("trust_roots_epoch")) st.trust_roots_epoch = json_to_u64(epochs["trust_roots_epoch"], st.trust_roots_epoch);
+    if (epochs.isMember("revocations_epoch")) st.revocations_epoch = json_to_u64(epochs["revocations_epoch"], st.revocations_epoch);
+    if (epochs.isMember("cert_roots_epoch")) st.cert_roots_epoch = json_to_u64(epochs["cert_roots_epoch"], st.cert_roots_epoch);
+  }
+  if (v.isMember("membership_epoch")) st.membership_epoch = json_to_u64(v["membership_epoch"], st.membership_epoch);
+  if (v.isMember("running") && v["running"].isBool()) st.running = v["running"].asBool();
+  if (v.isMember("exit_code") && v["exit_code"].isInt()) st.exit_code = v["exit_code"].asInt();
+  if (v.isMember("exit_signal") && v["exit_signal"].isInt()) st.exit_signal = v["exit_signal"].asInt();
+  if (v.isMember("last_error") && v["last_error"].isString()) st.last_error = v["last_error"].asString();
+  if (v.isMember("last_stdout_line") && v["last_stdout_line"].isString()) st.last_stdout_line = v["last_stdout_line"].asString();
+  if (v.isMember("last_stdout") && v["last_stdout"].isObject()) st.last_stdout_json = v["last_stdout"];
+  if (v.isMember("pid") && (v["pid"].isInt64() || v["pid"].isUInt64())) st.pid = (decltype(st.pid))v["pid"].asInt64();
+  *out = std::move(st);
+  return true;
+}
+
+static bool persist_edge_consensus_runtime_record(AgentDb* db, const EdgeConsensusRuntime& st, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!db) {
+    if (out_err) *out_err = "db unavailable";
+    return false;
+  }
+  Json::Value record = edge_consensus_runtime_to_json(st);
+  record["persisted_utc_ms"] = (Json::Int64)now_unix_ms();
+  return db->meta_set(edge_consensus_runtime_meta_key(st.node_id), json_stringify(record), out_err);
+}
+
+static bool clear_edge_consensus_runtime_record(AgentDb* db, const std::string& node_id, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!db) {
+    if (out_err) *out_err = "db unavailable";
+    return false;
+  }
+  return db->meta_set(edge_consensus_runtime_meta_key(node_id), "", out_err);
+}
+
+static bool load_edge_consensus_runtime_record(
+  AgentDb* db,
+  const std::string& node_id,
+  std::shared_ptr<EdgeConsensusRuntime>* out_state,
+  bool* out_self_healed,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (out_state) out_state->reset();
+  if (out_self_healed) *out_self_healed = false;
+  if (!db) {
+    if (out_err) *out_err = "db unavailable";
+    return false;
+  }
+  std::string raw;
+  if (!db->meta_get(edge_consensus_runtime_meta_key(node_id), &raw, out_err)) return false;
+  if (trim_copy(raw).empty()) return true;
+  Json::Value parsed(Json::nullValue);
+  std::string jerr;
+  if (!json_parse_any(raw, &parsed, &jerr) || !parsed.isObject()) {
+    std::string cerr;
+    if (!clear_edge_consensus_runtime_record(db, node_id, &cerr)) {
+      if (out_err) {
+        *out_err = cerr.empty()
+          ? (jerr.empty() ? "persisted edge consensus runtime record corrupt" : jerr)
+          : ("failed to clear corrupt persisted edge consensus runtime record: " + cerr);
+      }
+      return false;
+    }
+    if (out_self_healed) *out_self_healed = true;
+    return true;
+  }
+  auto st = std::make_shared<EdgeConsensusRuntime>();
+  if (!edge_consensus_runtime_from_json(parsed, st.get(), out_err)) {
+    const std::string original_err = out_err ? *out_err : std::string("persisted edge consensus runtime record corrupt");
+    std::string cerr;
+    if (!clear_edge_consensus_runtime_record(db, node_id, &cerr)) {
+      if (out_err) {
+        *out_err = cerr.empty() ? original_err : ("failed to clear corrupt persisted edge consensus runtime record: " + cerr);
+      }
+      return false;
+    }
+    if (out_self_healed) *out_self_healed = true;
+    if (out_state) out_state->reset();
+    if (out_err) out_err->clear();
+    return true;
+  }
+  st->status_source = "persisted";
+  if (out_state) *out_state = std::move(st);
+  return true;
 }
 
 static std::string configured_default_edge_consensus_runtime_kind(const DaemonConfig& cfg) {
@@ -476,6 +666,7 @@ static bool edge_consensus_runtime_build_config(
 #if !defined(_WIN32)
 static bool edge_consensus_runtime_spawn_process(
   const DaemonConfig& cfg,
+  AgentDb* db,
   const Json::Value& body,
   std::shared_ptr<EdgeConsensusRuntime>* out_state,
   std::string* out_err
@@ -613,7 +804,7 @@ static bool edge_consensus_runtime_spawn_process(
   st->stderr_log_path = stderr_log.string();
   st->pid = pid;
 
-  std::thread([st, fd = out_pipe[0]]() {
+  std::thread([db, st, fd = out_pipe[0]]() {
     std::string buffer;
     char chunk[4096];
     for (;;) {
@@ -653,6 +844,8 @@ static bool edge_consensus_runtime_spawn_process(
     st->ended_unix_ms = now_unix_ms();
     if (WIFEXITED(status)) st->exit_code = WEXITSTATUS(status);
     else if (WIFSIGNALED(status)) st->exit_signal = WTERMSIG(status);
+    std::string perr;
+    (void)persist_edge_consensus_runtime_record(db, *st, &perr);
   }).detach();
 
   *out_state = std::move(st);
@@ -661,6 +854,7 @@ static bool edge_consensus_runtime_spawn_process(
 
 static bool edge_consensus_runtime_start_builtin(
   const DaemonConfig& cfg,
+  AgentDb* db,
   const Json::Value& body,
   std::shared_ptr<EdgeConsensusRuntime>* out_state,
   std::string* out_err
@@ -678,7 +872,7 @@ static bool edge_consensus_runtime_start_builtin(
   st->tool_path = "@builtin";
   st->stop_requested = std::make_shared<std::atomic<bool>>(false);
 
-  std::thread([st, run_cfg]() mutable {
+  std::thread([db, st, run_cfg]() mutable {
     EdgeConsensusHttpRuntimeHooks hooks;
     hooks.stop_requested = st->stop_requested.get();
     hooks.log_line = [st](const std::string& line) {
@@ -702,6 +896,8 @@ static bool edge_consensus_runtime_start_builtin(
         st->last_error = result["error"].asString();
       }
     }
+    std::string perr;
+    (void)persist_edge_consensus_runtime_record(db, *st, &perr);
   }).detach();
 
   *out_state = std::move(st);
@@ -829,10 +1025,36 @@ Json::Value edge_consensus_runtime_backend_metadata_json(const DaemonConfig& cfg
   return out;
 }
 
-Json::Value edge_consensus_runtime_status_json_for_node(const std::string& node_id) {
-  std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
-  auto st = edge_consensus_runtime_lookup_locked(node_id);
-  return st ? edge_consensus_runtime_to_json(*st) : Json::Value(Json::nullValue);
+Json::Value edge_consensus_runtime_status_json_for_node(const DaemonConfig& cfg, AgentDb* db_or_null, const std::string& node_id) {
+  {
+    std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
+    auto st = edge_consensus_runtime_lookup_locked(node_id);
+    if (st) {
+      std::string perr;
+      (void)persist_edge_consensus_runtime_record(db_or_null, *st, &perr);
+      return edge_consensus_runtime_to_json(*st);
+    }
+  }
+  if (!db_or_null || !db_or_null->is_open()) return Json::Value(Json::nullValue);
+  std::shared_ptr<EdgeConsensusRuntime> persisted;
+  bool record_self_healed = false;
+  std::string err;
+  if (!load_edge_consensus_runtime_record(db_or_null, node_id, &persisted, &record_self_healed, &err)) return Json::Value(Json::nullValue);
+  if (record_self_healed) {
+    bool artifacts_deleted = false;
+    std::string aerr;
+    (void)remove_edge_consensus_runtime_artifacts(cfg, node_id, &artifacts_deleted, &aerr);
+    return Json::Value(Json::nullValue);
+  }
+  if (persisted && persisted->running) {
+    std::string cerr;
+    (void)clear_edge_consensus_runtime_record(db_or_null, node_id, &cerr);
+    bool artifacts_deleted = false;
+    std::string aerr;
+    (void)remove_edge_consensus_runtime_artifacts(cfg, node_id, &artifacts_deleted, &aerr);
+    return Json::Value(Json::nullValue);
+  }
+  return persisted ? edge_consensus_runtime_to_json(*persisted) : Json::Value(Json::nullValue);
 }
 
 void handle_edge_node_consensus_runtime_endpoint(
@@ -887,6 +1109,47 @@ void handle_edge_node_consensus_runtime_endpoint(
       st = edge_consensus_runtime_lookup_locked(node_id);
     }
     if (!st) {
+      bool record_self_healed = false;
+      std::string lerr;
+      if (!load_edge_consensus_runtime_record(db_or_null, node_id, &st, &record_self_healed, &lerr)) {
+        out["error"] = lerr.empty() ? "failed to load persisted consensus runtime state" : lerr;
+        resp->status = 500;
+        resp->body = json_stringify(out);
+        return;
+      }
+      if (record_self_healed) {
+        Json::Value cleanup(Json::objectValue);
+        cleanup["persisted_record_cleared"] = true;
+        bool artifacts_deleted = false;
+        std::string aerr;
+        if (remove_edge_consensus_runtime_artifacts(cfg, node_id, &artifacts_deleted, &aerr)) {
+          cleanup["runtime_artifacts_deleted"] = artifacts_deleted;
+        } else if (!aerr.empty()) {
+          cleanup["runtime_artifacts_delete_error"] = aerr;
+        }
+        out["cleanup_on_corrupt_record"] = cleanup;
+      }
+    }
+    if (!st) {
+      out["ok"] = true;
+      out["stopped"] = false;
+      out["reason"] = "not_running";
+      out["runtime"] = Json::Value(Json::nullValue);
+      resp->status = 200;
+      resp->body = json_stringify(out);
+      return;
+    }
+    if (st->status_source == "persisted" && st->running) {
+      Json::Value cleanup(Json::objectValue);
+      cleanup["persisted_record_cleared"] = clear_edge_consensus_runtime_record(db_or_null, node_id, nullptr);
+      bool artifacts_deleted = false;
+      std::string aerr;
+      if (remove_edge_consensus_runtime_artifacts(cfg, node_id, &artifacts_deleted, &aerr)) {
+        cleanup["runtime_artifacts_deleted"] = artifacts_deleted;
+      } else if (!aerr.empty()) {
+        cleanup["runtime_artifacts_delete_error"] = aerr;
+      }
+      out["cleanup_on_stale_record"] = cleanup;
       out["ok"] = true;
       out["stopped"] = false;
       out["reason"] = "not_running";
@@ -896,6 +1159,8 @@ void handle_edge_node_consensus_runtime_endpoint(
       return;
     }
     if (!st->running) {
+      std::string perr;
+      (void)persist_edge_consensus_runtime_record(db_or_null, *st, &perr);
       out["ok"] = true;
       out["stopped"] = false;
       out["reason"] = "not_running";
@@ -927,6 +1192,8 @@ void handle_edge_node_consensus_runtime_endpoint(
       std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
       out["runtime"] = edge_consensus_runtime_to_json(*st);
     }
+    std::string perr;
+    (void)persist_edge_consensus_runtime_record(db_or_null, *st, &perr);
     out["ok"] = true;
     out["stopped"] = true;
     resp->status = 200;
@@ -997,6 +1264,41 @@ void handle_edge_node_consensus_runtime_endpoint(
     }
     if (st && !st->running) g_edge_consensus_runtime_by_node.erase(node_id);
   }
+  {
+    std::shared_ptr<EdgeConsensusRuntime> persisted;
+    bool record_self_healed = false;
+    std::string lerr;
+    if (!load_edge_consensus_runtime_record(db_or_null, node_id, &persisted, &record_self_healed, &lerr)) {
+      out["error"] = lerr.empty() ? "failed to load persisted consensus runtime state" : lerr;
+      resp->status = 500;
+      resp->body = json_stringify(out);
+      return;
+    }
+    if (record_self_healed) {
+      Json::Value cleanup(Json::objectValue);
+      cleanup["persisted_record_cleared"] = true;
+      bool artifacts_deleted = false;
+      std::string aerr;
+      if (remove_edge_consensus_runtime_artifacts(cfg, node_id, &artifacts_deleted, &aerr)) {
+        cleanup["runtime_artifacts_deleted"] = artifacts_deleted;
+      } else if (!aerr.empty()) {
+        cleanup["runtime_artifacts_delete_error"] = aerr;
+      }
+      out["cleanup_on_corrupt_record"] = cleanup;
+    }
+    if (persisted && persisted->running) {
+      Json::Value cleanup(Json::objectValue);
+      cleanup["persisted_record_cleared"] = clear_edge_consensus_runtime_record(db_or_null, node_id, nullptr);
+      bool artifacts_deleted = false;
+      std::string aerr;
+      if (remove_edge_consensus_runtime_artifacts(cfg, node_id, &artifacts_deleted, &aerr)) {
+        cleanup["runtime_artifacts_deleted"] = artifacts_deleted;
+      } else if (!aerr.empty()) {
+        cleanup["runtime_artifacts_delete_error"] = aerr;
+      }
+      out["cleanup_on_stale_record"] = cleanup;
+    }
+  }
 
 #if defined(_WIN32)
   out["error"] = "consensus_runtime start unsupported on Windows";
@@ -1007,8 +1309,8 @@ void handle_edge_node_consensus_runtime_endpoint(
   std::shared_ptr<EdgeConsensusRuntime> spawned;
   std::string serr;
   const bool started = runtime_kind == "external"
-    ? edge_consensus_runtime_spawn_process(cfg, body, &spawned, &serr)
-    : edge_consensus_runtime_start_builtin(cfg, body, &spawned, &serr);
+    ? edge_consensus_runtime_spawn_process(cfg, db_or_null, body, &spawned, &serr)
+    : edge_consensus_runtime_start_builtin(cfg, db_or_null, body, &spawned, &serr);
   if (!started) {
     out["error"] = serr.empty() ? "failed to start consensus runtime" : serr;
     out["startup_confirmed"] = false;
@@ -1021,6 +1323,8 @@ void handle_edge_node_consensus_runtime_endpoint(
     out["error"] = serr.empty() ? "failed to start consensus runtime" : serr;
     out["startup_confirmed"] = false;
     out["runtime"] = startup_runtime;
+    std::string cerr;
+    (void)clear_edge_consensus_runtime_record(db_or_null, node_id, &cerr);
     resp->status = 500;
     resp->body = json_stringify(out);
     return;
@@ -1031,6 +1335,8 @@ void handle_edge_node_consensus_runtime_endpoint(
     g_edge_consensus_runtime_by_node[node_id] = spawned;
     out["runtime"] = edge_consensus_runtime_to_json(*spawned);
   }
+  std::string perr;
+  (void)persist_edge_consensus_runtime_record(db_or_null, *spawned, &perr);
   out["ok"] = true;
   out["started"] = true;
   resp->status = 200;
@@ -1070,9 +1376,51 @@ void handle_edge_node_consensus_runtime_status_endpoint(
   out["node_exists"] = node_exists;
   if (consensus.isObject()) out["node_consensus"] = consensus;
 
-  std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
-  auto st = edge_consensus_runtime_lookup_locked(*nid);
+  std::shared_ptr<EdgeConsensusRuntime> st;
+  {
+    std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
+    st = edge_consensus_runtime_lookup_locked(*nid);
+  }
+  bool record_self_healed = false;
+  if (!st) {
+    std::string lerr;
+    if (!load_edge_consensus_runtime_record(db_or_null, *nid, &st, &record_self_healed, &lerr)) {
+      out["error"] = lerr.empty() ? "failed to load persisted consensus runtime state" : lerr;
+      resp->status = 500;
+      resp->body = json_stringify(out);
+      return;
+    }
+  }
+  if (record_self_healed) {
+    Json::Value cleanup(Json::objectValue);
+    cleanup["persisted_record_cleared"] = true;
+    bool artifacts_deleted = false;
+    std::string aerr;
+    if (remove_edge_consensus_runtime_artifacts(cfg, *nid, &artifacts_deleted, &aerr)) {
+      cleanup["runtime_artifacts_deleted"] = artifacts_deleted;
+    } else if (!aerr.empty()) {
+      cleanup["runtime_artifacts_delete_error"] = aerr;
+    }
+    out["cleanup_on_corrupt_record"] = cleanup;
+  }
+  if (st && st->status_source == "persisted" && st->running) {
+    Json::Value cleanup(Json::objectValue);
+    cleanup["persisted_record_cleared"] = clear_edge_consensus_runtime_record(db_or_null, *nid, nullptr);
+    bool artifacts_deleted = false;
+    std::string aerr;
+    if (remove_edge_consensus_runtime_artifacts(cfg, *nid, &artifacts_deleted, &aerr)) {
+      cleanup["runtime_artifacts_deleted"] = artifacts_deleted;
+    } else if (!aerr.empty()) {
+      cleanup["runtime_artifacts_delete_error"] = aerr;
+    }
+    out["cleanup_on_stale_record"] = cleanup;
+    st.reset();
+  }
   out["runtime"] = st ? edge_consensus_runtime_to_json(*st) : Json::Value(Json::nullValue);
+  if (st) {
+    std::string perr;
+    (void)persist_edge_consensus_runtime_record(db_or_null, *st, &perr);
+  }
   if (st) {
     const auto pol_it = cfg.edge_consensus_clusters.find(st->cluster_id);
     if (pol_it != cfg.edge_consensus_clusters.end()) out["cluster_policy"] = edge_consensus_cluster_policy_to_json(pol_it->first, pol_it->second);

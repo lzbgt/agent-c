@@ -110,12 +110,15 @@ EdgeConsensusClusterPolicy:
 
 EdgeNodeConsensusRuntime:
   type: object
-  required: [schema, runtime_kind, node_id, cluster_id, manifest_sha256, peer_node_ids, member_node_ids, daemon_url, tool_path, started_unix_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, leader_heartbeat_ms, leader_lease_ms, poll_interval_ms, deadline_ms, cluster_size, outbox_limit, trust_epochs, membership_epoch, running]
+  required: [schema, runtime_kind, status_source, node_id, cluster_id, manifest_sha256, peer_node_ids, member_node_ids, daemon_url, tool_path, started_unix_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, leader_heartbeat_ms, leader_lease_ms, poll_interval_ms, deadline_ms, cluster_size, outbox_limit, trust_epochs, membership_epoch, running]
   properties:
     schema: { type: string, enum: [edge_node_consensus_runtime_v1] }
     runtime_kind:
       type: string
       enum: [builtin, external]
+    status_source:
+      type: string
+      enum: [memory, persisted]
     node_id: { type: string }
     cluster_id: { type: string }
     manifest_sha256: { type: string }
@@ -293,6 +296,12 @@ EdgeNodeConsensusRuntimeResponse:
       nullable: true
       allOf:
         - $ref: "#/components/schemas/EdgeNodeConsensusRuntime"
+    cleanup_on_corrupt_record:
+      type: object
+      additionalProperties: true
+    cleanup_on_stale_record:
+      type: object
+      additionalProperties: true
     cluster_policy:
       $ref: "#/components/schemas/EdgeConsensusClusterPolicy"
 
@@ -324,6 +333,12 @@ EdgeNodeConsensusRuntimeStatusResponse:
       nullable: true
       allOf:
         - $ref: "#/components/schemas/EdgeNodeConsensusRuntime"
+    cleanup_on_corrupt_record:
+      type: object
+      additionalProperties: true
+    cleanup_on_stale_record:
+      type: object
+      additionalProperties: true
     cluster_policy:
       $ref: "#/components/schemas/EdgeConsensusClusterPolicy"
 
