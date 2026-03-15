@@ -381,11 +381,13 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
 - `POST /api/v1/session/voice_webrtc_peer` starts or stops the managed WebRTC media peer for a session.
 - `GET /api/v1/session/voice_webrtc_peer?session_id=<id>` reports managed media-peer runtime status, readiness, and final result.
 - The current implementation exposes an explicit backend seam:
-  - `default_runtime_kind=external`
+  - `default_runtime_kind=bundled` when the shipped repo helper is discoverable
   - `builtin_available=false`
-  - `peer.runtime_kind=external`
-  so the shipped Node/Playwright peer is now clearly modeled as one backend behind the API instead of an implicit implementation detail.
-- The external backend now persists runtime snapshots in the agentd DB plus a per-session stdout log, so
+  - `bundled_available=true|false`
+  - `peer.runtime_kind=bundled|external`
+  so the shipped Node/Playwright peer is now clearly modeled as a default bundled backend with an explicit `external`
+  override path instead of an implicit implementation detail.
+- The bundled/external backends now persist runtime snapshots in the agentd DB plus a per-session stdout log, so
   `GET /api/v1/session/voice_webrtc_peer` can recover running or stopped peer state across agentd restarts with
   `peer.status_source=memory|persisted`, and duplicate `start` calls after restart can return `already_running`
   without re-supplying broker parameters.

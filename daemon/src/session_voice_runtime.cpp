@@ -13,6 +13,7 @@
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -158,6 +159,47 @@ static bool read_last_nonempty_line(const std::string& path, std::string* out_li
   return true;
 }
 
+static std::string bundled_audio_peer_tool_name() {
+  return "agentd_audio_webrtc_peer.js";
+}
+
+static std::string normalized_path_string(const std::filesystem::path& p) {
+  std::error_code ec;
+  const std::filesystem::path abs = std::filesystem::absolute(p, ec);
+  return (ec ? p : abs).lexically_normal().string();
+}
+
+static std::string discover_bundled_audio_peer_tool_path(const DaemonConfig& cfg) {
+  std::vector<std::filesystem::path> candidates;
+  std::error_code ec;
+  const auto cwd = std::filesystem::current_path(ec);
+  if (!ec && !cwd.empty()) {
+    candidates.push_back(cwd / "tools" / bundled_audio_peer_tool_name());
+    candidates.push_back(cwd.parent_path() / "tools" / bundled_audio_peer_tool_name());
+  }
+  if (!cfg.state_dir.empty()) {
+    const std::filesystem::path state_root = std::filesystem::path(cfg.state_dir).lexically_normal();
+    candidates.push_back(state_root / "tools" / bundled_audio_peer_tool_name());
+    candidates.push_back(state_root.parent_path() / "tools" / bundled_audio_peer_tool_name());
+    candidates.push_back(state_root.parent_path().parent_path() / "tools" / bundled_audio_peer_tool_name());
+  }
+
+  std::set<std::string> seen;
+  for (const auto& candidate : candidates) {
+    const std::string normalized = normalized_path_string(candidate);
+    if (!seen.insert(normalized).second) continue;
+    std::error_code fsec;
+    if (std::filesystem::exists(candidate, fsec) && std::filesystem::is_regular_file(candidate, fsec)) {
+      return normalized;
+    }
+  }
+  return "";
+}
+
+static std::string default_voice_peer_runtime_kind(const DaemonConfig& cfg) {
+  return discover_bundled_audio_peer_tool_path(cfg).empty() ? "external" : "bundled";
+}
+
 #if !defined(_WIN32)
 static bool pid_is_running(pid_t pid) {
   if (pid <= 0) return false;
@@ -270,16 +312,60 @@ static bool load_voice_peer_runtime_record(
 
 static void voice_peer_add_runtime_metadata(const DaemonConfig& cfg, Json::Value* out) {
   if (!out) return;
+  const std::string bundled_tool_path = discover_bundled_audio_peer_tool_path(cfg);
   (*out)["builtin_available"] = false;
-  (*out)["default_runtime_kind"] = "external";
+  (*out)["bundled_available"] = !bundled_tool_path.empty();
+  (*out)["default_runtime_kind"] = default_voice_peer_runtime_kind(cfg);
   (*out)["tool_configured"] = !trim_copy(cfg.audio_webrtc_peer_tool_path).empty();
   if (!cfg.audio_webrtc_peer_tool_path.empty()) (*out)["tool_path"] = cfg.audio_webrtc_peer_tool_path;
+  if (!bundled_tool_path.empty()) (*out)["bundled_tool_path"] = bundled_tool_path;
   (*out)["node_bin"] = cfg.audio_webrtc_peer_node_bin.empty() ? "node" : cfg.audio_webrtc_peer_node_bin;
+}
+
+static bool resolve_voice_peer_backend(
+  const DaemonConfig& cfg,
+  const std::string& runtime_kind,
+  std::string* out_tool_path,
+  std::string* out_node_bin,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (out_tool_path) out_tool_path->clear();
+  const std::string kind = lower_copy(trim_copy(runtime_kind));
+  const std::string node_bin = trim_copy(cfg.audio_webrtc_peer_node_bin.empty() ? std::string("node") : cfg.audio_webrtc_peer_node_bin);
+  if (!is_safe_shellish_token(node_bin, 256)) {
+    if (out_err) *out_err = "invalid audio_webrtc_peer_node_bin";
+    return false;
+  }
+  if (out_node_bin) *out_node_bin = node_bin;
+  if (kind == "bundled") {
+    const std::string bundled = discover_bundled_audio_peer_tool_path(cfg);
+    if (bundled.empty()) {
+      if (out_err) *out_err = "bundled voice_webrtc_peer tool unavailable";
+      return false;
+    }
+    if (out_tool_path) *out_tool_path = bundled;
+    return true;
+  }
+  if (kind == "external") {
+    const std::string tool_path = trim_copy(cfg.audio_webrtc_peer_tool_path);
+    if (tool_path.empty()) {
+      if (out_err) *out_err = "audio_webrtc_peer_tool_path not configured";
+      return false;
+    }
+    if (out_tool_path) *out_tool_path = tool_path;
+    return true;
+  }
+  if (out_err) *out_err = "runtime_kind must be bundled, external, or builtin";
+  return false;
 }
 
 #if !defined(_WIN32)
 static bool voice_peer_spawn_process(
   const DaemonConfig& cfg,
+  const std::string& runtime_kind,
+  const std::string& tool_path,
+  const std::string& node_bin,
   const std::string& session_id,
   const std::string& broker_session_id,
   const std::string& broker_url,
@@ -295,18 +381,12 @@ static bool voice_peer_spawn_process(
   if (!out_state) return false;
   out_state->reset();
 
-  const std::string tool_path = trim_copy(cfg.audio_webrtc_peer_tool_path);
-  const std::string node_bin = trim_copy(cfg.audio_webrtc_peer_node_bin.empty() ? std::string("node") : cfg.audio_webrtc_peer_node_bin);
   if (tool_path.empty()) {
-    if (out_err) *out_err = "audio_webrtc_peer_tool_path not configured";
+    if (out_err) *out_err = "audio_webrtc_peer tool path not configured";
     return false;
   }
   if (!std::filesystem::exists(std::filesystem::path(tool_path))) {
-    if (out_err) *out_err = "audio_webrtc_peer_tool_path not found";
-    return false;
-  }
-  if (!is_safe_shellish_token(node_bin, 256)) {
-    if (out_err) *out_err = "invalid audio_webrtc_peer_node_bin";
+    if (out_err) *out_err = "audio_webrtc_peer tool path not found";
     return false;
   }
 
@@ -396,7 +476,7 @@ static bool voice_peer_spawn_process(
   close(stderr_fd);
 
   auto st = std::make_shared<VoicePeerRuntime>();
-  st->runtime_kind = "external";
+  st->runtime_kind = runtime_kind;
   st->session_id = session_id;
   st->broker_session_id = broker_session_id;
   st->broker_url = broker_url;
@@ -518,11 +598,12 @@ void handle_session_voice_webrtc_peer_endpoint(
   out["session_id"] = session_id;
   voice_peer_add_runtime_metadata(cfg, &out);
 
-  const std::string runtime_kind =
-    body.isMember("runtime_kind") && body["runtime_kind"].isString() ? lower_copy(trim_copy(body["runtime_kind"].asString())) : "external";
-  if (runtime_kind != "external" && runtime_kind != "builtin") {
+  const std::string runtime_kind = body.isMember("runtime_kind") && body["runtime_kind"].isString()
+    ? lower_copy(trim_copy(body["runtime_kind"].asString()))
+    : default_voice_peer_runtime_kind(cfg);
+  if (runtime_kind != "external" && runtime_kind != "bundled" && runtime_kind != "builtin") {
     resp->status = 400;
-    resp->body = json_error_body("runtime_kind must be external or builtin");
+    resp->body = json_error_body("runtime_kind must be bundled, external, or builtin");
     return;
   }
   if (runtime_kind == "builtin") {
@@ -690,10 +771,21 @@ void handle_session_voice_webrtc_peer_endpoint(
   resp->body = json_stringify(out);
   return;
 #else
-  std::shared_ptr<VoicePeerRuntime> spawned;
   std::string serr;
+  std::string tool_path;
+  std::string node_bin;
+  if (!resolve_voice_peer_backend(cfg, runtime_kind, &tool_path, &node_bin, &serr)) {
+    out["error"] = serr.empty() ? "failed to resolve voice peer backend" : serr;
+    resp->status = 500;
+    resp->body = json_stringify(out);
+    return;
+  }
+  std::shared_ptr<VoicePeerRuntime> spawned;
   if (!voice_peer_spawn_process(
         cfg,
+        runtime_kind,
+        tool_path,
+        node_bin,
         session_id,
         broker_session_id,
         broker_url,

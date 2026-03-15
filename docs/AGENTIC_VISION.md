@@ -220,8 +220,9 @@ These are the most leveraged next steps grounded in current architecture:
 4) **Voice workflow spec**
    - Audio streaming protocol and loopback/relay foundations are shipped.
    - Completed 2026-03-15: browser-side WebRTC workflow controls, a host-side agentd media peer RTP proof, and an agentd-managed media-peer runtime surface are shipped.
-   - Completed 2026-03-15: that media-peer runtime surface now exposes an explicit backend contract (`external` today,
-     `builtin` reserved), so the future native media service can replace the backend without rewriting the session API.
+   - Completed 2026-03-15: that media-peer runtime surface now exposes an explicit backend contract (`bundled` by
+     default when the repo helper is present, `external` as override, `builtin` reserved), so the future native media
+     service can replace the backend without rewriting the session API.
    - Remaining gap: replace the managed Node/Playwright child with an embedded long-lived agentd-native media service.
 
 5) **Node consensus**

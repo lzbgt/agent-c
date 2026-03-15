@@ -137,10 +137,12 @@ A v0 smoke test should:
   including start/status, inbound RTP proof against a live browser peer, and managed stop/teardown.
 - The managed runtime contract now explicitly reports:
   - `builtin_available=false`
-  - `default_runtime_kind=external`
-  - `peer.runtime_kind=external`
-  so the current shipped Node/Playwright path is a named backend rather than an implicit assumption baked into the API.
-- The shipped external backend now persists DB-backed runtime snapshots plus per-session stdout logs, so
+  - `bundled_available=true|false`
+  - `default_runtime_kind=bundled|external`
+  - `peer.runtime_kind=bundled|external`
+  so the current shipped Node/Playwright path is a named bundled backend with an explicit `external` override rather
+  than an implicit assumption baked into the API.
+- The shipped bundled/external backend now persists DB-backed runtime snapshots plus per-session stdout logs, so
   `GET /api/v1/session/voice_webrtc_peer` can recover running/stopped state after agentd restart and duplicate starts
   can return `already_running` from persisted runtime state.
 

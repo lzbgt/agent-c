@@ -5,7 +5,7 @@ VoiceWebRtcPeerRuntime:
     schema: { type: string, enum: [session_voice_webrtc_peer_runtime_v1] }
     runtime_kind:
       type: string
-      enum: [external]
+      enum: [bundled, external]
     status_source:
       type: string
       enum: [memory, persisted]
@@ -45,8 +45,8 @@ VoiceWebRtcPeerRequest:
       enum: [start, stop]
     runtime_kind:
       type: string
-      enum: [builtin, external]
-      description: Optional backend selector. `external` is the only implemented backend today; `builtin` is reserved for the future embedded agentd-native media service.
+      enum: [builtin, bundled, external]
+      description: Optional backend selector. `bundled` uses the shipped repo-local Node/Playwright peer when discoverable, `external` uses an operator-configured helper path, and `builtin` is reserved for the future embedded agentd-native media service.
     broker_session_id: { type: string }
     broker_url: { type: string }
     broker_token: { type: string }
@@ -57,15 +57,17 @@ VoiceWebRtcPeerRequest:
 
 VoiceWebRtcPeerResponse:
   type: object
-  required: [ok, session_id, tool_configured, builtin_available, default_runtime_kind, node_bin]
+  required: [ok, session_id, tool_configured, builtin_available, bundled_available, default_runtime_kind, node_bin]
   properties:
     ok: { type: boolean }
     session_id: { type: string }
     tool_configured: { type: boolean }
     builtin_available: { type: boolean, enum: [false] }
+    bundled_available: { type: boolean }
     default_runtime_kind:
       type: string
-      enum: [external]
+      enum: [bundled, external]
+    bundled_tool_path: { type: string }
     tool_path: { type: string }
     node_bin: { type: string }
     started: { type: boolean }
@@ -80,15 +82,17 @@ VoiceWebRtcPeerResponse:
 
 VoiceWebRtcPeerStatusResponse:
   type: object
-  required: [ok, session_id, tool_configured, builtin_available, default_runtime_kind, node_bin, session_exists, running]
+  required: [ok, session_id, tool_configured, builtin_available, bundled_available, default_runtime_kind, node_bin, session_exists, running]
   properties:
     ok: { type: boolean }
     session_id: { type: string }
     tool_configured: { type: boolean }
     builtin_available: { type: boolean, enum: [false] }
+    bundled_available: { type: boolean }
     default_runtime_kind:
       type: string
-      enum: [external]
+      enum: [bundled, external]
+    bundled_tool_path: { type: string }
     tool_path: { type: string }
     node_bin: { type: string }
     session_exists: { type: boolean }

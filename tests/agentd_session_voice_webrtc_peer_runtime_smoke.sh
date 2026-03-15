@@ -188,7 +188,6 @@ fi
 
 HOST="127.0.0.1"
 DAEMON_TOKEN="agentd-audio-runtime-token"
-AGENTD_AUDIO_WEBRTC_PEER_TOOL="${PEER_TOOL}" \
 AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}" \
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_session_voice_webrtc_peer_runtime_smoke" >>"${LOG_FILE}" 2>&1
 DAEMON_URL="http://${HOST}:${PORT_DAEMON}"
@@ -240,7 +239,6 @@ PY
 restart_agentd() {
   agentd_smoke_stop
   wait_daemon_stopped
-  AGENTD_AUDIO_WEBRTC_PEER_TOOL="${PEER_TOOL}" \
   AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}" \
   agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_session_voice_webrtc_peer_runtime_smoke" >>"${LOG_FILE}" 2>&1
   wait_daemon_ready
@@ -293,11 +291,11 @@ import json, sys
 obj = json.loads(r'''${status_body}''')
 peer = obj.get("peer")
 expect_running = ${expect_running}
-if obj.get("builtin_available") is not False or obj.get("default_runtime_kind") != "external":
+if obj.get("builtin_available") is not False or obj.get("bundled_available") is not True or obj.get("default_runtime_kind") != "bundled":
   raise SystemExit(1)
 if not isinstance(peer, dict):
   raise SystemExit(1)
-if peer.get("runtime_kind") != "external":
+if peer.get("runtime_kind") != "bundled":
   raise SystemExit(1)
 running = bool(peer.get("running"))
 ready = bool(peer.get("ready"))
@@ -577,11 +575,11 @@ obj = json.loads(r'''${start_resp}''')
 if not obj.get("ok") or not obj.get("started"):
   print("voice_webrtc_peer start failed", obj, file=sys.stderr)
   raise SystemExit(1)
-if obj.get("builtin_available") is not False or obj.get("default_runtime_kind") != "external":
+if obj.get("builtin_available") is not False or obj.get("bundled_available") is not True or obj.get("default_runtime_kind") != "bundled":
   print("unexpected runtime defaults", obj, file=sys.stderr)
   raise SystemExit(1)
 peer = obj.get("peer") or {}
-if peer.get("runtime_kind") != "external":
+if peer.get("runtime_kind") != "bundled":
   print("unexpected peer runtime_kind", obj, file=sys.stderr)
   raise SystemExit(1)
 if not peer.get("running"):
@@ -605,7 +603,7 @@ if peer.get("status_source") != "persisted":
 if not peer.get("stdout_log_path"):
   print("expected stdout_log_path after restart", obj, file=sys.stderr)
   raise SystemExit(1)
-if peer.get("runtime_kind") != "external" or not peer.get("running") or not peer.get("ready"):
+if peer.get("runtime_kind") != "bundled" or not peer.get("running") or not peer.get("ready"):
   print("unexpected recovered runtime state after restart", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
@@ -688,11 +686,34 @@ fi
 python3 - <<PY
 import json, sys
 obj = json.load(open(r'''${builtin_resp_body}''', 'r', encoding='utf-8'))
-if obj.get("builtin_available") is not False or obj.get("default_runtime_kind") != "external":
+if obj.get("builtin_available") is not False or obj.get("bundled_available") is not True or obj.get("default_runtime_kind") != "bundled":
   print("unexpected builtin contract response", obj, file=sys.stderr)
   raise SystemExit(1)
 if "not implemented" not in str(obj.get("error", "")):
   print("expected builtin not implemented error", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+external_resp_headers="${LOG_DIR}/voice_webrtc_peer_external_headers.txt"
+external_resp_body="${LOG_DIR}/voice_webrtc_peer_external_body.json"
+external_status="$(curl -sS --noproxy "*" --max-time 10 -o "${external_resp_body}" -D "${external_resp_headers}" -w '%{http_code}' \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${SESSION_DB_ID}\",\"action\":\"start\",\"runtime_kind\":\"external\",\"broker_session_id\":\"${BROKER_SESSION_ID}\",\"broker_url\":\"http://127.0.0.1:${BROKER_PORT}\",\"broker_token\":\"audio-agentd-token\"}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+if [[ "${external_status}" != "500" ]]; then
+  echo "expected explicit external runtime request to return 500 without configured tool, got ${external_status}" >&2
+  cat "${external_resp_body}" >&2
+  exit 1
+fi
+python3 - <<PY
+import json, sys
+obj = json.load(open(r'''${external_resp_body}''', 'r', encoding='utf-8'))
+if obj.get("builtin_available") is not False or obj.get("bundled_available") is not True or obj.get("default_runtime_kind") != "bundled":
+  print("unexpected external contract response", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "not configured" not in str(obj.get("error", "")):
+  print("expected external not configured error", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 
@@ -723,7 +744,7 @@ obj = json.loads(r'''${start_resp2}''')
 if not obj.get("ok") or not obj.get("started"):
   print("voice_webrtc_peer second start failed", obj, file=sys.stderr)
   raise SystemExit(1)
-if (obj.get("peer") or {}).get("runtime_kind") != "external":
+if (obj.get("peer") or {}).get("runtime_kind") != "bundled":
   print("unexpected second peer runtime_kind", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
@@ -742,7 +763,7 @@ obj = json.loads(r'''${stop_resp}''')
 if not obj.get("ok") or not obj.get("stopped"):
   print("voice_webrtc_peer stop failed", obj, file=sys.stderr)
   raise SystemExit(1)
-if (obj.get("peer") or {}).get("runtime_kind") != "external":
+if (obj.get("peer") or {}).get("runtime_kind") != "bundled":
   print("unexpected stopped peer runtime_kind", obj, file=sys.stderr)
   raise SystemExit(1)
 PY

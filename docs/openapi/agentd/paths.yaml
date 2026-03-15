@@ -3284,12 +3284,13 @@
     tags: [sessions]
     summary: Inspect the managed session-scoped WebRTC media peer runtime
     description: |
-      Returns managed WebRTC media-peer runtime status. The only implemented backend
-      today is `external`, which runs the shipped Node/Playwright peer as a child
-      process. `builtin` is reserved for the future embedded agentd-native media
-      service and is reported as unavailable in current status responses. The
-      external backend now persists runtime records and stdout logs, so status
-      can be recovered across agentd restarts with `peer.status_source=persisted`.
+      Returns managed WebRTC media-peer runtime status. The default shipped backend
+      is now `bundled`, which discovers the repo-local Node/Playwright peer helper
+      without requiring `AGENTD_AUDIO_WEBRTC_PEER_TOOL`. `external` remains available
+      for operator-configured helper paths, and `builtin` is still reserved for the
+      future embedded agentd-native media service. Bundled/external runtimes persist
+      runtime records and stdout logs, so status can be recovered across agentd
+      restarts with `peer.status_source=persisted`.
     parameters:
       - in: query
         name: session_id
@@ -3324,11 +3325,12 @@
     tags: [sessions]
     summary: Start or stop the managed session-scoped WebRTC media peer runtime
     description: |
-      Starts or stops the managed WebRTC media peer for a session. `external` is the
-      only implemented runtime backend today and launches the shipped Node/Playwright
-      peer. `builtin` is reserved for a future embedded agentd-native media service
-      and currently returns a not-implemented response. If an external peer is
-      still alive after an agentd restart, `start` returns `already_running`
+      Starts or stops the managed WebRTC media peer for a session. `bundled` is the
+      default shipped backend and launches the repo-local Node/Playwright peer when
+      discoverable. `external` remains available for operator-configured helper
+      paths. `builtin` is reserved for a future embedded agentd-native media service
+      and currently returns a not-implemented response. If a bundled/external peer
+      is still alive after an agentd restart, `start` returns `already_running`
       from the recovered persisted runtime record instead of requiring broker
       parameters again.
     requestBody:
