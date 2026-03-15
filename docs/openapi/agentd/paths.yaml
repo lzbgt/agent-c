@@ -716,6 +716,8 @@
                 result_hash: { type: string }
                 trace_hash: { type: string }
                 state_hash: { type: string }
+                host_effects:
+                  $ref: "#/components/schemas/AvmCapsuleHostEffects"
                 mounts:
                   type: array
                   description: Validated additional mounts forwarded to the capsule runner.

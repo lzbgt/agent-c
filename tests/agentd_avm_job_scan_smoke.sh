@@ -130,6 +130,18 @@ case "${mode}" in
         echo "unexpected readonly ${AGENTD_AVM_MOUNT_0_READONLY:-}" >&2
         exit 2
       fi
+      if [[ "${AGENTD_AVM_HOST_EFFECT_FS:-}" != "1" ]]; then
+        echo "unexpected host effect fs ${AGENTD_AVM_HOST_EFFECT_FS:-}" >&2
+        exit 2
+      fi
+      if [[ "${AGENTD_AVM_HOST_EFFECT_PROC:-}" != "0" ]]; then
+        echo "unexpected host effect proc ${AGENTD_AVM_HOST_EFFECT_PROC:-}" >&2
+        exit 2
+      fi
+      if [[ "${AGENTD_AVM_HOST_EFFECT_NET:-}" != "0" ]]; then
+        echo "unexpected host effect net ${AGENTD_AVM_HOST_EFFECT_NET:-}" >&2
+        exit 2
+      fi
       python3 - <<'PY'
 import json, os, sys
 mounts = json.loads(os.environ.get("AGENTD_AVM_MOUNTS_JSON", "[]"))
@@ -168,6 +180,7 @@ chmod +x "${AVM_STUB_BIN}"
 
 export AGENTD_AVM_BIN="${AVM_STUB_BIN}"
 export AGENTD_AVM_EXEC=1
+export AGENTD_AVM_ALLOW_FS=1
 
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT}" "agentd_avm_job_scan_smoke" \
   --auth-token "${AUTH_TOKEN}" \
@@ -319,6 +332,7 @@ print(json.dumps({
   "io_bytes": 0,
   "log_bytes": 0,
   "deterministic": True,
+  "host_effects": {"fs": True},
   "mounts": [
     {
       "host_path": "${ALLOW_ROOT}/allowed",
@@ -358,6 +372,10 @@ if hashes.get("result_hash") != "stubresulthash" or hashes.get("trace_hash") != 
 if "RESULT_HASH stubresulthash" not in (out.get("residual_text") or ""):
   print("missing residual hash lines", out, file=sys.stderr)
   raise SystemExit(1)
+host_effects = obj.get("host_effects") or {}
+if host_effects.get("fs") is not True or host_effects.get("proc") is not False or host_effects.get("net") is not False:
+  print("unexpected host_effects", host_effects, file=sys.stderr)
+  raise SystemExit(1)
 mounts = obj.get("mounts") or []
 if len(mounts) != 1:
   print("unexpected mounts:", mounts, file=sys.stderr)
@@ -385,6 +403,7 @@ import json
 print(json.dumps({
   "obc_base64": "${obc_b64}",
   "timeout_ms": 1000,
+  "host_effects": {"fs": True},
   "mounts": [
     {
       "host_path": "${OUTSIDE_ROOT}/blocked",
@@ -414,6 +433,45 @@ if obj.get("error_kind") != "forbidden":
   raise SystemExit(1)
 err = obj.get("error") or ""
 if "host_path_outside_roots" not in err:
+  print("unexpected error", err, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+resp_run_bad_net_file="${TMP_DIR}/avm_capsule_run_bad_net.json"
+resp_run_bad_net_status="$(curl -sS --noproxy "*" --max-time 5 \
+  -o "${resp_run_bad_net_file}" \
+  -w "%{http_code}" \
+  -H "Authorization: Bearer ${AUTH_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "obc_base64": "${obc_b64}",
+  "timeout_ms": 1000,
+  "host_effects": {"net": True},
+  "allow_domains": "api.example.test",
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/avm/capsule_run")"
+
+if [[ "${resp_run_bad_net_status}" != "403" ]]; then
+  echo "expected 403 for forbidden host_effects.net, got ${resp_run_bad_net_status}" >&2
+  cat "${resp_run_bad_net_file}" >&2
+  exit 1
+fi
+
+python3 - <<PY
+import json, pathlib, sys
+obj = json.loads(pathlib.Path(r'''${resp_run_bad_net_file}''').read_text())
+if obj.get("ok") is not False:
+  print("expected ok=false", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("error_kind") != "forbidden":
+  print("unexpected error_kind", obj.get("error_kind"), file=sys.stderr)
+  raise SystemExit(1)
+err = obj.get("error") or ""
+if "AGENTD_AVM_ALLOW_NET" not in err:
   print("unexpected error", err, file=sys.stderr)
   raise SystemExit(1)
 PY

@@ -167,8 +167,15 @@ struct AvmValidatedMount {
   bool is_main = true;
 };
 
+struct AvmHostEffectsPolicy {
+  bool fs = false;
+  bool proc = false;
+  bool net = false;
+};
+
 static AvmOutputEvidence build_avm_output_evidence(const std::string& output);
 static Json::Value avm_output_evidence_to_json(const AvmOutputEvidence& ev);
+static Json::Value avm_host_effects_to_json(const AvmHostEffectsPolicy& policy);
 
 static std::string json_stringify_compact(const Json::Value& v) {
   Json::StreamWriterBuilder wb;
@@ -424,6 +431,38 @@ static Json::Value avm_mounts_to_json(const std::vector<AvmValidatedMount>& moun
   return arr;
 }
 
+static Json::Value avm_host_effects_to_json(const AvmHostEffectsPolicy& policy) {
+  Json::Value out(Json::objectValue);
+  out["fs"] = policy.fs;
+  out["proc"] = policy.proc;
+  out["net"] = policy.net;
+  return out;
+}
+
+static AvmHostEffectsPolicy avm_host_effects_allowed_from_env() {
+  AvmHostEffectsPolicy allowed;
+  allowed.fs = env_truthy(getenv_string("AGENTD_AVM_ALLOW_FS"));
+  allowed.proc = env_truthy(getenv_string("AGENTD_AVM_ALLOW_PROC"));
+  allowed.net = env_truthy(getenv_string("AGENTD_AVM_ALLOW_NET"));
+  return allowed;
+}
+
+static bool parse_host_effect_bool_member(
+  const Json::Value& obj,
+  const char* key,
+  bool* out_value,
+  std::string* out_error
+) {
+  if (!out_value) return false;
+  if (!obj.isMember(key)) return true;
+  if (!obj[key].isBool()) {
+    if (out_error) *out_error = std::string("host_effects.") + key + " must be boolean";
+    return false;
+  }
+  *out_value = obj[key].asBool();
+  return true;
+}
+
 static bool parse_capsule_mounts(
   const Json::Value& args,
   std::vector<AvmValidatedMount>* out_mounts,
@@ -523,6 +562,67 @@ static bool parse_capsule_mounts(
   }
 
   if (out_mounts) *out_mounts = std::move(parsed);
+  return true;
+}
+
+static bool parse_capsule_host_effects(
+  const Json::Value& args,
+  const std::vector<AvmValidatedMount>& mounts,
+  const std::string& allow_domains,
+  AvmHostEffectsPolicy* out_policy,
+  std::string* out_error_kind,
+  std::string* out_error
+) {
+  if (out_policy) *out_policy = AvmHostEffectsPolicy{};
+  if (out_error_kind) out_error_kind->clear();
+  if (out_error) out_error->clear();
+
+  AvmHostEffectsPolicy requested;
+  if (args.isMember("host_effects")) {
+    if (!args["host_effects"].isObject()) {
+      if (out_error_kind) *out_error_kind = "bad_request";
+      if (out_error) *out_error = "host_effects must be an object";
+      return false;
+    }
+    std::string parse_error;
+    if (!parse_host_effect_bool_member(args["host_effects"], "fs", &requested.fs, &parse_error) ||
+        !parse_host_effect_bool_member(args["host_effects"], "proc", &requested.proc, &parse_error) ||
+        !parse_host_effect_bool_member(args["host_effects"], "net", &requested.net, &parse_error)) {
+      if (out_error_kind) *out_error_kind = "bad_request";
+      if (out_error) *out_error = parse_error;
+      return false;
+    }
+  }
+
+  if (!mounts.empty() && !requested.fs) {
+    if (out_error_kind) *out_error_kind = "bad_request";
+    if (out_error) *out_error = "mounts require host_effects.fs=true";
+    return false;
+  }
+  if (!allow_domains.empty() && !requested.net) {
+    if (out_error_kind) *out_error_kind = "bad_request";
+    if (out_error) *out_error = "allow_domains requires host_effects.net=true";
+    return false;
+  }
+
+  const AvmHostEffectsPolicy allowed = avm_host_effects_allowed_from_env();
+  if (requested.fs && !allowed.fs) {
+    if (out_error_kind) *out_error_kind = "forbidden";
+    if (out_error) *out_error = "host_effects.fs requested but AGENTD_AVM_ALLOW_FS is not enabled";
+    return false;
+  }
+  if (requested.proc && !allowed.proc) {
+    if (out_error_kind) *out_error_kind = "forbidden";
+    if (out_error) *out_error = "host_effects.proc requested but AGENTD_AVM_ALLOW_PROC is not enabled";
+    return false;
+  }
+  if (requested.net && !allowed.net) {
+    if (out_error_kind) *out_error_kind = "forbidden";
+    if (out_error) *out_error = "host_effects.net requested but AGENTD_AVM_ALLOW_NET is not enabled";
+    return false;
+  }
+
+  if (out_policy) *out_policy = requested;
   return true;
 }
 
@@ -856,6 +956,19 @@ bool avm_capsule_run_to_json(
   const std::string allow_domains =
     args.isMember("allow_domains") && args["allow_domains"].isString() ? trim_copy(args["allow_domains"].asString()) : "";
 
+  AvmHostEffectsPolicy host_effects;
+  std::string host_effects_error_kind;
+  std::string host_effects_error;
+  if (!parse_capsule_host_effects(args, mounts, allow_domains, &host_effects, &host_effects_error_kind, &host_effects_error)) {
+    const std::string err = host_effects_error.empty() ? "invalid host_effects" : host_effects_error;
+    if (out_error) *out_error = err;
+    o["ok"] = false;
+    o["error_kind"] = host_effects_error_kind.empty() ? "bad_request" : host_effects_error_kind;
+    o["error"] = err;
+    *out = o;
+    return true;
+  }
+
   const bool have_rng_seed =
     args.isMember("rng_seed") && (args["rng_seed"].isInt64() || args["rng_seed"].isUInt64() || args["rng_seed"].isInt());
   const int64_t rng_seed = have_rng_seed ? args["rng_seed"].asInt64() : 0;
@@ -899,6 +1012,9 @@ bool avm_capsule_run_to_json(
   env_overrides.push_back({"AVM_IO_BYTES", std::to_string((long long)io_bytes)});
   env_overrides.push_back({"AVM_LOG_BYTES", std::to_string((long long)log_bytes)});
   env_overrides.push_back({"AVM_DETERMINISTIC", deterministic ? "1" : "0"});
+  env_overrides.push_back({"AGENTD_AVM_HOST_EFFECT_FS", host_effects.fs ? "1" : "0"});
+  env_overrides.push_back({"AGENTD_AVM_HOST_EFFECT_PROC", host_effects.proc ? "1" : "0"});
+  env_overrides.push_back({"AGENTD_AVM_HOST_EFFECT_NET", host_effects.net ? "1" : "0"});
   if (have_rng_seed) env_overrides.push_back({"AVM_RNG_SEED", std::to_string((long long)rng_seed)});
   if (have_time_start_ns) env_overrides.push_back({"AVM_TIME_START_NS", std::to_string((long long)time_start_ns)});
   if (!mounts.empty()) {
@@ -929,6 +1045,7 @@ bool avm_capsule_run_to_json(
   o["truncated"] = r.truncated;
   o["stdout"] = r.output;
   o["output"] = avm_output_evidence_to_json(ev);
+  o["host_effects"] = avm_host_effects_to_json(host_effects);
   if (!mounts.empty()) o["mounts"] = avm_mounts_to_json(mounts);
 
   if (r.timed_out) {

@@ -1560,6 +1560,8 @@ AvmCapsuleRunArgs:
     allow_domains:
       type: string
       description: CSV allowlist passed to AVM `--allow-domains` (still virtualized by capsule defaults)
+    host_effects:
+      $ref: "#/components/schemas/AvmCapsuleHostEffects"
     mounts:
       type: array
       description: |
@@ -1567,6 +1569,24 @@ AvmCapsuleRunArgs:
         the daemon sandbox mount allowlist before execution; missing or rejected allowlists fail closed.
       items:
         $ref: "#/components/schemas/AvmCapsuleMountRequest"
+
+AvmCapsuleHostEffects:
+  type: object
+  description: |
+    Explicit host-effect requests for AVM capsule execution. Effects are denied by default and only
+    become usable when both the request asks for them and the operator enables the corresponding
+    daemon env gate (`AGENTD_AVM_ALLOW_FS`, `AGENTD_AVM_ALLOW_PROC`, `AGENTD_AVM_ALLOW_NET`).
+    Additional mounts require `fs=true`. `allow_domains` requires `net=true`.
+  properties:
+    fs:
+      type: boolean
+      description: Request filesystem host effects. Required when `mounts` is non-empty.
+    proc:
+      type: boolean
+      description: Request host process interaction effects.
+    net:
+      type: boolean
+      description: Request host network effects. Required when `allow_domains` is set.
 
 AvmCapsuleMountRequest:
   type: object

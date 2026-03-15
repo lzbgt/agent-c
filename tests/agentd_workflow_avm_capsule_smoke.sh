@@ -116,6 +116,18 @@ case "${mode}" in
         echo "unexpected readonly ${AGENTD_AVM_MOUNT_0_READONLY:-}" >&2
         exit 2
       fi
+      if [[ "${AGENTD_AVM_HOST_EFFECT_FS:-}" != "1" ]]; then
+        echo "unexpected host effect fs ${AGENTD_AVM_HOST_EFFECT_FS:-}" >&2
+        exit 2
+      fi
+      if [[ "${AGENTD_AVM_HOST_EFFECT_PROC:-}" != "0" ]]; then
+        echo "unexpected host effect proc ${AGENTD_AVM_HOST_EFFECT_PROC:-}" >&2
+        exit 2
+      fi
+      if [[ "${AGENTD_AVM_HOST_EFFECT_NET:-}" != "0" ]]; then
+        echo "unexpected host effect net ${AGENTD_AVM_HOST_EFFECT_NET:-}" >&2
+        exit 2
+      fi
       python3 - <<'PY'
 import json, os, sys
 mounts = json.loads(os.environ.get("AGENTD_AVM_MOUNTS_JSON", "[]"))
@@ -151,6 +163,7 @@ chmod +x "${AVM_STUB_BIN}"
 
 export AGENTD_AVM_BIN="${AVM_STUB_BIN}"
 export AGENTD_AVM_EXEC=1
+export AGENTD_AVM_ALLOW_FS=1
 
 # OpenAI-compatible stub:
 # - echoes user prompt as assistant content
@@ -225,7 +238,7 @@ submit_resp="$(curl -fsS --noproxy "*" --max-time 20 \
   -d "$(python3 - <<PY
 import json
 tasks = [
-  {"task_id":"AVM","kind":"avm_capsule","capsule":{"obc_base64":"${obc_b64}","timeout_ms":1000,"gas":1000,"mem_bytes":64000,"io_bytes":0,"log_bytes":0,"deterministic":True,"mounts":[{"host_path":"${ALLOW_ROOT}/allowed","container_path":"/workspace/extra/allowed","is_main":True}]}},
+  {"task_id":"AVM","kind":"avm_capsule","capsule":{"obc_base64":"${obc_b64}","timeout_ms":1000,"gas":1000,"mem_bytes":64000,"io_bytes":0,"log_bytes":0,"deterministic":True,"host_effects":{"fs":True},"mounts":[{"host_path":"${ALLOW_ROOT}/allowed","container_path":"/workspace/extra/allowed","is_main":True}]}},
   {"task_id":"B","depends_on":["AVM"],"request":{"prompt":"B got \${task.AVM.json:/assistant_text}","no_session":True,"tools":"none","base_url":"${STUB_BASE}","api_key":"dummy","model":"stub","trace":False}},
 ]
 print(json.dumps({"tasks": tasks, "allow_inline_api_keys": True}))
@@ -331,6 +344,10 @@ if hashes.get("result_hash") != "stubresulthash" or hashes.get("trace_hash") != 
 if "RESULT_HASH stubresulthash" not in (out.get("residual_text") or ""):
   print("missing avm.output.residual_text hash lines", out, file=sys.stderr)
   raise SystemExit(1)
+host_effects = avm.get("host_effects") or {}
+if host_effects.get("fs") is not True or host_effects.get("proc") is not False or host_effects.get("net") is not False:
+  print("unexpected AVM host_effects", host_effects, file=sys.stderr)
+  raise SystemExit(1)
 
 if (r_avm.get("assistant_text") or "").strip() != "stubresulthash":
   print("unexpected AVM assistant_text", r_avm.get("assistant_text"), file=sys.stderr)
@@ -348,7 +365,7 @@ submit_bad_resp="$(curl -fsS --noproxy "*" --max-time 20 \
   -d "$(python3 - <<PY
 import json
 tasks = [
-  {"task_id":"AVM_BAD","kind":"avm_capsule","capsule":{"obc_base64":"${obc_b64}","timeout_ms":1000,"mounts":[{"host_path":"${OUTSIDE_ROOT}/blocked","container_path":"/workspace/extra/blocked","is_main":True}]}}
+  {"task_id":"AVM_BAD","kind":"avm_capsule","capsule":{"obc_base64":"${obc_b64}","timeout_ms":1000,"host_effects":{"fs":True},"mounts":[{"host_path":"${OUTSIDE_ROOT}/blocked","container_path":"/workspace/extra/blocked","is_main":True}]}}
 ]
 print(json.dumps({"tasks": tasks, "allow_inline_api_keys": True}))
 PY

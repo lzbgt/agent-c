@@ -157,6 +157,9 @@ If you want to maximize leverage *now* with minimal time:
    - persist a governance bundle object (scan/inspect/verify/run) keyed by hashes
    - carry record/replay logs as durable evidence, not only subprocess stdout
    - add explicit host-effects policy surfaces beyond mount validation
+     2026-03-15: shipped request-time `host_effects.{fs,proc,net}` with fail-closed operator env gates
+     and AVM runner pass-through (`AGENTD_AVM_HOST_EFFECT_*`); durable governance bundles and replay
+     artifacts still remain open.
 
 The draft for this boundary is `docs/spec/agent_vm_port_v0.md`.
 

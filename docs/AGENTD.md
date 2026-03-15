@@ -162,7 +162,13 @@ Sandbox mount allowlist:
   - Example request in `docs/TOOLS.md`.
 - `POST /api/v1/avm/capsule_run` and workflow tasks with `kind: avm_capsule` can optionally include `capsule.mounts`.
   - Each mount is validated against the same allowlist before launch.
+  - `capsule.host_effects` is an explicit request surface for AVM host capabilities:
+    - `fs` gated by `AGENTD_AVM_ALLOW_FS=1`
+    - `proc` gated by `AGENTD_AVM_ALLOW_PROC=1`
+    - `net` gated by `AGENTD_AVM_ALLOW_NET=1`
+  - `capsule.mounts` requires `capsule.host_effects.fs=true`; `capsule.allow_domains` requires `capsule.host_effects.net=true`.
   - Allowed mounts are forwarded to the AVM subprocess via `AGENTD_AVM_MOUNTS_JSON` plus `AGENTD_AVM_MOUNT_<n>_*` env vars.
+  - Explicit host-effect policy is forwarded to the AVM subprocess via `AGENTD_AVM_HOST_EFFECT_{FS,PROC,NET}`.
   - If the allowlist is missing, invalid, or rejects a requested mount, execution fails closed before the subprocess starts.
 
 ## Policy hooks (allow/deny + budget caps)

@@ -83,6 +83,12 @@ Optional (budgets / determinism):
 Optional (allowlist hints, still virtualized):
 
 - `allow_domains: string` — CSV passed to AVM `--allow-domains` (default empty)
+- `host_effects: { fs?, proc?, net? }` — explicit host-effect request surface. Effects are fail-closed and
+  require both request-time opt-in and operator env gates:
+  - `AGENTD_AVM_ALLOW_FS=1`
+  - `AGENTD_AVM_ALLOW_PROC=1`
+  - `AGENTD_AVM_ALLOW_NET=1`
+  Additional mounts require `host_effects.fs=true`. `allow_domains` requires `host_effects.net=true`.
 - `mounts: [{ host_path, container_path, container_prefix?, is_main? }]` — optional host
   mounts for AVM-aware runners. `agentd` validates every entry against the sandbox mount allowlist
   before launch and fails closed if validation rejects the request.
@@ -97,6 +103,10 @@ Success response fields:
 - `result_hash: string?` — parsed token `RESULT_HASH <hex>`
 - `trace_hash: string?` — parsed token `TRACE_HASH <hex>`
 - `state_hash: string?` — parsed token `STATE_HASH <hex>`
+- `host_effects: object` — effective explicit host-effect policy forwarded to the runner:
+  - `fs: bool`
+  - `proc: bool`
+  - `net: bool`
 - `mounts: array?` — validated/canonicalized mounts forwarded to the capsule runner
 - `exit_code: int`
 - `timed_out: bool`
@@ -130,6 +140,11 @@ Failure response:
 - When `mounts` is present, validate against `~/.config/agent/mount-allowlist.json` before launch.
 - Forward validated mounts through `AGENTD_AVM_MOUNTS_JSON`, `AGENTD_AVM_MOUNT_COUNT`,
   and `AGENTD_AVM_MOUNT_<n>_*` env vars. If the runner ignores these vars, no host mount is exposed.
+- Forward explicit host-effect policy through:
+  - `AGENTD_AVM_HOST_EFFECT_FS`
+  - `AGENTD_AVM_HOST_EFFECT_PROC`
+  - `AGENTD_AVM_HOST_EFFECT_NET`
+  so AVM-aware runners can honor the same fail-closed policy at execution time.
 
 ## 7) Fast bring-up (developer workflow)
 
@@ -176,5 +191,8 @@ curl -fsS -H "Content-Type: application/json" -d '{
   - verifies scan/inspect/verify/trace-hash plus direct `capsule_run`
 - `tests/agentd_workflow_avm_capsule_smoke.sh`
   - verifies durable workflow execution + mount allowlist enforcement
+- `tests/agentd_avm_job_scan_smoke.sh`
+  and `tests/agentd_workflow_avm_capsule_smoke.sh`
+  now also verify explicit host-effect policy propagation and fail-closed denials for disallowed effects
 - `tests/agentd_workflow_aggregate_quorum_smoke.sh`
   - verifies deterministic quorum checks across `/avm/result_hash` and `/avm/trace_hash`
