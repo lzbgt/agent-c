@@ -6,9 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/agentd_smoke_lib.sh"
 
 AGENTD_BIN="${1:-}"
-CONS_TOOL_BIN="${2:-}"
-if [[ -z "${AGENTD_BIN}" || -z "${CONS_TOOL_BIN}" ]]; then
-  echo "usage: $0 <agentd_bin> <agentd_edge_consensus_node_bin>" >&2
+if [[ -z "${AGENTD_BIN}" ]]; then
+  echo "usage: $0 <agentd_bin>" >&2
   exit 2
 fi
 
@@ -25,7 +24,6 @@ cleanup() {
 trap cleanup EXIT
 
 export AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}"
-export AGENTD_EDGE_CONSENSUS_NODE_TOOL="${CONS_TOOL_BIN}"
 export AGENTD_RUN_ATTEST_HMAC_KID="edge-consensus-membership-k0"
 export AGENTD_RUN_ATTEST_HMAC_KEY="edge-consensus-membership-secret"
 
@@ -267,6 +265,9 @@ if delivered.get("cluster_id") != cluster_id or delivered.get("membership_epoch"
 rt_a = start_a.get("runtime") or {}
 if sorted(rt_a.get("member_node_ids") or []) != members:
     print("runtime A did not default member set from policy", rt_a, file=sys.stderr)
+    raise SystemExit(1)
+if rt_a.get("runtime_kind") != "builtin":
+    print("runtime A did not use builtin runtime", rt_a, file=sys.stderr)
     raise SystemExit(1)
 if sorted(rt_a.get("peer_node_ids") or []) != sorted(["${NODE_B}", "${NODE_C}"]):
     print("runtime A did not default peer set from policy", rt_a, file=sys.stderr)

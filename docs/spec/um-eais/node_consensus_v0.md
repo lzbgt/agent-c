@@ -102,9 +102,13 @@ The shipped autonomous host-loop proof adds:
 - signed/durable cluster policy bundles via `edge_consensus_membership_v1`, including outbox delivery as
   `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE`
 - managed runtime defaulting from the stored cluster policy when explicit member-set / retry fields are omitted
+- builtin managed-runtime execution inside agentd by default, with the standalone helper retained only as an explicit
+  `runtime_kind=external` fallback/debug backend
+- shared HTTP poll/process/post loop code (`run_edge_consensus_http_runtime`) reused by both the builtin runtime and the
+  standalone helper so transport behavior is no longer stranded in the helper binary
 
 ## Still open
 
 This document does **not** claim production-complete embedded consensus is complete. Remaining work:
-- replace the current host-managed helper with embedded / firmware-native adoption
+- replace the current builtin daemon-hosted runtime with embedded / firmware-native adoption
 - extend the shipped durable membership bundle into richer long-lived recovery policy for multi-hour or partition-heavy deployments

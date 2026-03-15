@@ -611,6 +611,7 @@ streaming and plugins are stable.
   - 2026-03-15: added retry-capable campaign timers (`campaign_retry_ms`) to the reusable loop, host helper, and managed runtime, with late-peer convergence proved in `tests/agentd_edge_consensus_runtime_smoke.sh`.
   - 2026-03-15: added explicit membership versioning/member sets (`membership_epoch`, `member_node_ids`) to the shared consensus core, host helper, and managed runtime, with unit/runtime proof for stale/non-member rejection.
   - 2026-03-15: added signed durable cluster policy bundles (`edge_consensus_membership_v1`) with export/rotate/send APIs plus managed-runtime defaulting from stored member/retry policy; proof: `tests/agentd_edge_consensus_membership_bundle_smoke.sh`.
+  - 2026-03-15: moved the normal managed runtime path in-process by adding a shared HTTP runtime core plus builtin `POST/GET /api/v1/edge/node/consensus_runtime` execution, while keeping `runtime_kind=external` for helper parity/debug; proof: `tests/agentd_edge_consensus_runtime_smoke.sh` and `tests/agentd_edge_consensus_membership_bundle_smoke.sh`.
 
 ## Deferred (after macOS stability)
 

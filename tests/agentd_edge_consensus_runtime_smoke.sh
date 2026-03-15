@@ -6,9 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/agentd_smoke_lib.sh"
 
 AGENTD_BIN="${1:-}"
-CONS_TOOL_BIN="${2:-}"
-if [[ -z "${AGENTD_BIN}" || -z "${CONS_TOOL_BIN}" ]]; then
-  echo "usage: $0 <agentd_bin> <agentd_edge_consensus_node_bin>" >&2
+if [[ -z "${AGENTD_BIN}" ]]; then
+  echo "usage: $0 <agentd_bin>" >&2
   exit 2
 fi
 
@@ -24,7 +23,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-AGENTD_EDGE_CONSENSUS_NODE_TOOL="${CONS_TOOL_BIN}" \
 AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}" \
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_edge_consensus_runtime_smoke" \
   --tools none
@@ -163,6 +161,9 @@ for label, raw in (
   if not obj.get("ok") or not isinstance(obj.get("runtime"), dict):
     print(label, obj, file=sys.stderr)
     raise SystemExit(1)
+  if (obj.get("runtime") or {}).get("runtime_kind") != "builtin":
+    print(label, "runtime_kind not builtin", obj, file=sys.stderr)
+    raise SystemExit(1)
 
 if not (json.loads(r'''${RUNNING_A_JSON}''').get("runtime") or {}).get("running"):
   print("start_a never reached running state", json.loads(r'''${RUNNING_A_JSON}'''), file=sys.stderr)
@@ -199,6 +200,9 @@ node = (json.loads(r'''${NODE_A_JSON}''').get("node") or {})
 rt = node.get("consensus_runtime") or {}
 if rt.get("node_id") != leader:
   print("edge node missing runtime summary", node, file=sys.stderr)
+  raise SystemExit(1)
+if rt.get("runtime_kind") != "builtin":
+  print("edge node runtime summary missing builtin kind", rt, file=sys.stderr)
   raise SystemExit(1)
 if rt.get("campaign_retry_ms") != 500:
   print("runtime summary missing retry config", rt, file=sys.stderr)

@@ -499,8 +499,9 @@ Edge trust-root rotation:
   The repo’s host bring-up tool `agentd_edge_consensus_node` consumes that same outbox path and turns it into an
   autonomous vote/commit loop, covered by `tests/agentd_edge_consensus_autonomous_smoke.sh`.
 - `POST /api/v1/edge/node/consensus_runtime` starts or stops that same autonomous consensus helper under agentd
-  lifecycle ownership, and `GET /api/v1/edge/node/consensus_runtime?node_id=<id>` reports managed runtime status plus
-  the latest final result JSON emitted by the helper.
+  lifecycle ownership. The default runtime backend is now builtin, so agentd can run the same poll/process/post loop
+  in-process without spawning the standalone helper; `runtime_kind=external` remains available for bring-up/debug parity.
+  `GET /api/v1/edge/node/consensus_runtime?node_id=<id>` reports managed runtime status plus the latest final result JSON.
 - Start requests can include `campaign_delay_ms` and `campaign_retry_ms`, and the reported runtime/result surfaces
   expose the same retry policy so operators can confirm whether a candidate re-campaigned before quorum formed.
 - The same runtime start surface also accepts `membership_epoch` and `member_node_ids`, and the emitted runtime/result
@@ -512,8 +513,8 @@ Edge trust-root rotation:
   `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE`, so non-HTTP nodes can poll membership policy through the shipped UM-BMP lane.
 - When a managed consensus runtime start omits `membership_epoch`, `member_node_ids`, `campaign_delay_ms`, or
   `campaign_retry_ms`, agentd now defaults those fields from the stored cluster membership bundle.
-- Operator bring-up sets `AGENTD_EDGE_CONSENSUS_NODE_TOOL=/abs/path/to/agentd_edge_consensus_node` so agentd can spawn
-  the shipped helper directly.
+- Operator bring-up can still set `AGENTD_EDGE_CONSENSUS_NODE_TOOL=/abs/path/to/agentd_edge_consensus_node` to force
+  `runtime_kind=external`, but the normal managed path no longer depends on that helper being configured.
 - `GET /api/v1/edge/node` and `GET /api/v1/edge/nodes` now surface `consensus_runtime` when a node has a managed
   runtime record, so protocol-level consensus state and runtime/process state are visible together.
 - `POST /api/v1/config/update` supports `edge_confidentiality_required` and `edge_confidentiality_keys`.

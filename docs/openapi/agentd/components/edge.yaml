@@ -106,9 +106,12 @@ EdgeConsensusClusterPolicy:
 
 EdgeNodeConsensusRuntime:
   type: object
-  required: [schema, node_id, cluster_id, manifest_sha256, peer_node_ids, member_node_ids, daemon_url, tool_path, started_unix_ms, campaign_delay_ms, campaign_retry_ms, poll_interval_ms, deadline_ms, cluster_size, outbox_limit, trust_epochs, membership_epoch, running]
+  required: [schema, runtime_kind, node_id, cluster_id, manifest_sha256, peer_node_ids, member_node_ids, daemon_url, tool_path, started_unix_ms, campaign_delay_ms, campaign_retry_ms, poll_interval_ms, deadline_ms, cluster_size, outbox_limit, trust_epochs, membership_epoch, running]
   properties:
     schema: { type: string, enum: [edge_node_consensus_runtime_v1] }
+    runtime_kind:
+      type: string
+      enum: [builtin, external]
     node_id: { type: string }
     cluster_id: { type: string }
     manifest_sha256: { type: string }
@@ -215,6 +218,10 @@ EdgeNodeConsensusRuntimeRequest:
   required: [action, node_id]
   properties:
     action: { type: string, enum: [start, stop] }
+    runtime_kind:
+      type: string
+      enum: [builtin, external]
+      description: Optional runtime backend selector. Defaults to `builtin`; `external` keeps using the standalone helper for bring-up/debug.
     node_id: { type: string }
     cluster_id: { type: string }
     manifest_sha256: { type: string }
@@ -246,11 +253,15 @@ EdgeNodeConsensusRuntimeRequest:
 
 EdgeNodeConsensusRuntimeResponse:
   type: object
-  required: [ok, node_id, tool_configured, default_daemon_url]
+  required: [ok, node_id, tool_configured, builtin_available, default_runtime_kind, default_daemon_url]
   properties:
     ok: { type: boolean }
     node_id: { type: string }
     tool_configured: { type: boolean }
+    builtin_available: { type: boolean }
+    default_runtime_kind:
+      type: string
+      enum: [builtin]
     tool_path: { type: string }
     default_daemon_url: { type: string }
     started: { type: boolean }
@@ -267,11 +278,15 @@ EdgeNodeConsensusRuntimeResponse:
 
 EdgeNodeConsensusRuntimeStatusResponse:
   type: object
-  required: [ok, node_id, tool_configured, default_daemon_url, node_exists, running]
+  required: [ok, node_id, tool_configured, builtin_available, default_runtime_kind, default_daemon_url, node_exists, running]
   properties:
     ok: { type: boolean }
     node_id: { type: string }
     tool_configured: { type: boolean }
+    builtin_available: { type: boolean }
+    default_runtime_kind:
+      type: string
+      enum: [builtin]
     tool_path: { type: string }
     default_daemon_url: { type: string }
     node_exists: { type: boolean }

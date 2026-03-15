@@ -1,6 +1,7 @@
 #include "edge_runtime_endpoints.h"
 
 #include "daemon_auth.h"
+#include "edge_consensus_http_runtime.h"
 #include "edge_util.h"
 #include "http_util.h"
 #include "json_util.h"
@@ -9,6 +10,7 @@
 #include <json/json.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <memory>
@@ -100,6 +102,7 @@ static Json::Value edge_consensus_cluster_policy_to_json(const std::string& clus
 }
 
 struct EdgeConsensusRuntime {
+  std::string runtime_kind = "builtin";
   std::string node_id;
   std::string cluster_id;
   std::string manifest_sha256;
@@ -129,6 +132,7 @@ struct EdgeConsensusRuntime {
   std::string last_error;
   std::string last_stdout_line;
   Json::Value last_stdout_json = Json::Value(Json::nullValue);
+  std::shared_ptr<std::atomic<bool>> stop_requested;
 #if defined(_WIN32)
   intptr_t pid = 0;
 #else
@@ -142,6 +146,7 @@ static std::unordered_map<std::string, std::shared_ptr<EdgeConsensusRuntime>> g_
 static Json::Value edge_consensus_runtime_to_json(const EdgeConsensusRuntime& st) {
   Json::Value out(Json::objectValue);
   out["schema"] = "edge_node_consensus_runtime_v1";
+  out["runtime_kind"] = st.runtime_kind;
   out["node_id"] = st.node_id;
   out["cluster_id"] = st.cluster_id;
   out["manifest_sha256"] = st.manifest_sha256;
@@ -203,16 +208,18 @@ static std::string default_local_daemon_url(const DaemonConfig& cfg) {
   return "http://" + host + ":" + std::to_string((int)cfg.listen_port);
 }
 
-#if !defined(_WIN32)
-static bool edge_consensus_runtime_spawn_process(
+static bool edge_consensus_runtime_build_config(
   const DaemonConfig& cfg,
   const Json::Value& body,
-  std::shared_ptr<EdgeConsensusRuntime>* out_state,
+  EdgeConsensusHttpRuntimeConfig* out_cfg,
+  EdgeConsensusRuntime* out_state,
   std::string* out_err
 ) {
   if (out_err) out_err->clear();
-  if (!out_state) return false;
-  out_state->reset();
+  if (!out_cfg || !out_state) {
+    if (out_err) *out_err = "internal error";
+    return false;
+  }
 
   const std::string node_id = body.isMember("node_id") && body["node_id"].isString() ? trim_copy(body["node_id"].asString()) : "";
   const std::string cluster_id = body.isMember("cluster_id") && body["cluster_id"].isString() ? trim_copy(body["cluster_id"].asString()) : "";
@@ -228,28 +235,15 @@ static bool edge_consensus_runtime_spawn_process(
     body.isMember("model") && body["model"].isString() ? trim_copy(body["model"].asString()) : std::string("edge_consensus_node");
   const std::string fw_git_sha =
     body.isMember("fw_git_sha") && body["fw_git_sha"].isString() ? trim_copy(body["fw_git_sha"].asString()) : std::string("agentd_managed_runtime");
-  const std::string tool_path = trim_copy(cfg.edge_consensus_node_tool_path);
   const auto pol_it = cfg.edge_consensus_clusters.find(cluster_id);
   const EdgeConsensusClusterPolicy* cluster_policy = pol_it == cfg.edge_consensus_clusters.end() ? nullptr : &pol_it->second;
 
-  if (tool_path.empty()) {
-    if (out_err) *out_err = "edge_consensus_node_tool_path not configured";
-    return false;
-  }
-  if (!std::filesystem::exists(std::filesystem::path(tool_path))) {
-    if (out_err) *out_err = "edge_consensus_node_tool_path not found";
-    return false;
-  }
   if (!edge_id_is_safe(node_id) || !edge_id_is_safe(cluster_id) || !edge_sha256_token_is_safe(manifest_sha256)) {
     if (out_err) *out_err = "invalid node runtime identity";
     return false;
   }
   if (!decision_sha256.empty() && !edge_sha256_token_is_safe(decision_sha256)) {
     if (out_err) *out_err = "invalid decision_sha256";
-    return false;
-  }
-  if (!is_safe_shellish_token(tool_path, 512)) {
-    if (out_err) *out_err = "invalid edge_consensus_node_tool_path";
     return false;
   }
   if (!is_safe_printable_field(daemon_url, 2048)) {
@@ -301,15 +295,11 @@ static bool edge_consensus_runtime_spawn_process(
         if (out_err) *out_err = "invalid member_node_id";
         return false;
       }
-      if (std::find(member_node_ids.begin(), member_node_ids.end(), member) == member_node_ids.end()) {
-        member_node_ids.push_back(member);
-      }
+      if (std::find(member_node_ids.begin(), member_node_ids.end(), member) == member_node_ids.end()) member_node_ids.push_back(member);
     }
   }
   if (member_node_ids.empty() && cluster_policy) member_node_ids = dedupe_safe_edge_ids(cluster_policy->member_node_ids);
-  if (std::find(member_node_ids.begin(), member_node_ids.end(), node_id) == member_node_ids.end()) {
-    member_node_ids.push_back(node_id);
-  }
+  if (std::find(member_node_ids.begin(), member_node_ids.end(), node_id) == member_node_ids.end()) member_node_ids.push_back(node_id);
   member_node_ids = dedupe_safe_edge_ids(member_node_ids);
   if (peer_node_ids.empty() && !member_node_ids.empty()) {
     for (const auto& member : member_node_ids) if (member != node_id) peer_node_ids.push_back(member);
@@ -344,8 +334,83 @@ static bool edge_consensus_runtime_spawn_process(
     ? json_to_u64(body["membership_epoch"], 0)
     : (cluster_policy && cluster_policy->membership_epoch >= 0 ? (uint64_t)cluster_policy->membership_epoch : 0);
 
+  out_cfg->daemon_url = daemon_url;
+  out_cfg->auth_token = auth_token;
+  out_cfg->node_id = node_id;
+  out_cfg->cluster_id = cluster_id;
+  out_cfg->manifest_sha256 = manifest_sha256;
+  out_cfg->model = model;
+  out_cfg->fw_git_sha = fw_git_sha;
+  out_cfg->decision_sha256 = decision_sha256;
+  out_cfg->peer_node_ids = peer_node_ids;
+  out_cfg->member_node_ids = member_node_ids;
+  out_cfg->cluster_size = (size_t)cluster_size;
+  out_cfg->outbox_limit = (size_t)outbox_limit;
+  out_cfg->campaign_delay_ms = campaign_delay_ms;
+  out_cfg->campaign_retry_ms = campaign_retry_ms;
+  out_cfg->poll_interval_ms = poll_interval_ms;
+  out_cfg->deadline_ms = deadline_ms;
+  out_cfg->trust_roots_epoch = trust_roots_epoch;
+  out_cfg->revocations_epoch = revocations_epoch;
+  out_cfg->cert_roots_epoch = cert_roots_epoch;
+  out_cfg->membership_epoch = membership_epoch;
+
+  *out_state = EdgeConsensusRuntime{};
+  out_state->node_id = node_id;
+  out_state->cluster_id = cluster_id;
+  out_state->manifest_sha256 = manifest_sha256;
+  out_state->decision_sha256 = decision_sha256;
+  out_state->peer_node_ids = peer_node_ids;
+  out_state->member_node_ids = member_node_ids;
+  out_state->daemon_url = daemon_url;
+  out_state->model = model;
+  out_state->fw_git_sha = fw_git_sha;
+  out_state->started_unix_ms = now_unix_ms();
+  out_state->campaign_delay_ms = campaign_delay_ms;
+  out_state->campaign_retry_ms = campaign_retry_ms;
+  out_state->poll_interval_ms = poll_interval_ms;
+  out_state->deadline_ms = deadline_ms;
+  out_state->cluster_size = cluster_size;
+  out_state->outbox_limit = outbox_limit;
+  out_state->trust_roots_epoch = trust_roots_epoch;
+  out_state->revocations_epoch = revocations_epoch;
+  out_state->cert_roots_epoch = cert_roots_epoch;
+  out_state->membership_epoch = membership_epoch;
+  out_state->running = true;
+  return true;
+}
+
+#if !defined(_WIN32)
+static bool edge_consensus_runtime_spawn_process(
+  const DaemonConfig& cfg,
+  const Json::Value& body,
+  std::shared_ptr<EdgeConsensusRuntime>* out_state,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (!out_state) return false;
+  out_state->reset();
+
+  EdgeConsensusHttpRuntimeConfig run_cfg;
+  EdgeConsensusRuntime runtime_state;
+  if (!edge_consensus_runtime_build_config(cfg, body, &run_cfg, &runtime_state, out_err)) return false;
+  const std::string tool_path = trim_copy(cfg.edge_consensus_node_tool_path);
+
+  if (tool_path.empty()) {
+    if (out_err) *out_err = "edge_consensus_node_tool_path not configured";
+    return false;
+  }
+  if (!std::filesystem::exists(std::filesystem::path(tool_path))) {
+    if (out_err) *out_err = "edge_consensus_node_tool_path not found";
+    return false;
+  }
+  if (!is_safe_shellish_token(tool_path, 512)) {
+    if (out_err) *out_err = "invalid edge_consensus_node_tool_path";
+    return false;
+  }
+
   std::error_code ec;
-  const std::filesystem::path run_dir = edge_consensus_runtime_dir(cfg, node_id);
+  const std::filesystem::path run_dir = edge_consensus_runtime_dir(cfg, runtime_state.node_id);
   std::filesystem::create_directories(run_dir, ec);
   if (ec) {
     if (out_err) *out_err = "failed to create edge consensus runtime dir";
@@ -389,50 +454,50 @@ static bool edge_consensus_runtime_spawn_process(
     std::vector<std::string> args;
     args.push_back(tool_path);
     args.push_back("--daemon-url");
-    args.push_back(daemon_url);
+    args.push_back(run_cfg.daemon_url);
     args.push_back("--node-id");
-    args.push_back(node_id);
+    args.push_back(runtime_state.node_id);
     args.push_back("--cluster-id");
-    args.push_back(cluster_id);
+    args.push_back(runtime_state.cluster_id);
     args.push_back("--manifest-sha256");
-    args.push_back(manifest_sha256);
+    args.push_back(runtime_state.manifest_sha256);
     args.push_back("--cluster-size");
-    args.push_back(std::to_string((unsigned long long)cluster_size));
+    args.push_back(std::to_string((unsigned long long)runtime_state.cluster_size));
     args.push_back("--outbox-limit");
-    args.push_back(std::to_string((unsigned long long)outbox_limit));
+    args.push_back(std::to_string((unsigned long long)runtime_state.outbox_limit));
     args.push_back("--campaign-delay-ms");
-    args.push_back(std::to_string((long long)campaign_delay_ms));
+    args.push_back(std::to_string((long long)runtime_state.campaign_delay_ms));
     args.push_back("--campaign-retry-ms");
-    args.push_back(std::to_string((long long)campaign_retry_ms));
+    args.push_back(std::to_string((long long)runtime_state.campaign_retry_ms));
     args.push_back("--poll-interval-ms");
-    args.push_back(std::to_string((long long)poll_interval_ms));
+    args.push_back(std::to_string((long long)runtime_state.poll_interval_ms));
     args.push_back("--deadline-ms");
-    args.push_back(std::to_string((long long)deadline_ms));
+    args.push_back(std::to_string((long long)runtime_state.deadline_ms));
     args.push_back("--trust-roots-epoch");
-    args.push_back(std::to_string((unsigned long long)trust_roots_epoch));
+    args.push_back(std::to_string((unsigned long long)runtime_state.trust_roots_epoch));
     args.push_back("--revocations-epoch");
-    args.push_back(std::to_string((unsigned long long)revocations_epoch));
+    args.push_back(std::to_string((unsigned long long)runtime_state.revocations_epoch));
     args.push_back("--cert-roots-epoch");
-    args.push_back(std::to_string((unsigned long long)cert_roots_epoch));
+    args.push_back(std::to_string((unsigned long long)runtime_state.cert_roots_epoch));
     args.push_back("--membership-epoch");
-    args.push_back(std::to_string((unsigned long long)membership_epoch));
+    args.push_back(std::to_string((unsigned long long)runtime_state.membership_epoch));
     args.push_back("--model");
-    args.push_back(model);
+    args.push_back(runtime_state.model);
     args.push_back("--fw-git-sha");
-    args.push_back(fw_git_sha);
-    if (!decision_sha256.empty()) {
+    args.push_back(runtime_state.fw_git_sha);
+    if (!runtime_state.decision_sha256.empty()) {
       args.push_back("--decision-sha256");
-      args.push_back(decision_sha256);
+      args.push_back(runtime_state.decision_sha256);
     }
-    if (!auth_token.empty()) {
+    if (!run_cfg.auth_token.empty()) {
       args.push_back("--auth-token");
-      args.push_back(auth_token);
+      args.push_back(run_cfg.auth_token);
     }
-    for (const auto& peer : peer_node_ids) {
+    for (const auto& peer : runtime_state.peer_node_ids) {
       args.push_back("--peer-node-id");
       args.push_back(peer);
     }
-    for (const auto& member : member_node_ids) {
+    for (const auto& member : runtime_state.member_node_ids) {
       args.push_back("--member-node-id");
       args.push_back(member);
     }
@@ -448,30 +513,10 @@ static bool edge_consensus_runtime_spawn_process(
   close(out_pipe[1]);
   close(stderr_fd);
 
-  auto st = std::make_shared<EdgeConsensusRuntime>();
-  st->node_id = node_id;
-  st->cluster_id = cluster_id;
-  st->manifest_sha256 = manifest_sha256;
-  st->decision_sha256 = decision_sha256;
-  st->peer_node_ids = peer_node_ids;
-  st->member_node_ids = member_node_ids;
-  st->daemon_url = daemon_url;
+  auto st = std::make_shared<EdgeConsensusRuntime>(std::move(runtime_state));
+  st->runtime_kind = "external";
   st->tool_path = tool_path;
-  st->model = model;
-  st->fw_git_sha = fw_git_sha;
   st->stderr_log_path = stderr_log.string();
-  st->started_unix_ms = now_unix_ms();
-  st->campaign_delay_ms = campaign_delay_ms;
-  st->campaign_retry_ms = campaign_retry_ms;
-  st->poll_interval_ms = poll_interval_ms;
-  st->deadline_ms = deadline_ms;
-  st->cluster_size = cluster_size;
-  st->outbox_limit = outbox_limit;
-  st->trust_roots_epoch = trust_roots_epoch;
-  st->revocations_epoch = revocations_epoch;
-  st->cert_roots_epoch = cert_roots_epoch;
-  st->membership_epoch = membership_epoch;
-  st->running = true;
   st->pid = pid;
 
   std::thread([st, fd = out_pipe[0]]() {
@@ -520,10 +565,73 @@ static bool edge_consensus_runtime_spawn_process(
   return true;
 }
 
+static bool edge_consensus_runtime_start_builtin(
+  const DaemonConfig& cfg,
+  const Json::Value& body,
+  std::shared_ptr<EdgeConsensusRuntime>* out_state,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (!out_state) return false;
+  out_state->reset();
+
+  EdgeConsensusHttpRuntimeConfig run_cfg;
+  EdgeConsensusRuntime runtime_state;
+  if (!edge_consensus_runtime_build_config(cfg, body, &run_cfg, &runtime_state, out_err)) return false;
+
+  auto st = std::make_shared<EdgeConsensusRuntime>(std::move(runtime_state));
+  st->runtime_kind = "builtin";
+  st->tool_path = "@builtin";
+  st->stop_requested = std::make_shared<std::atomic<bool>>(false);
+
+  std::thread([st, run_cfg]() mutable {
+    EdgeConsensusHttpRuntimeHooks hooks;
+    hooks.stop_requested = st->stop_requested.get();
+    hooks.log_line = [st](const std::string& line) {
+      std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
+      st->last_stdout_line = line;
+    };
+    Json::Value result(Json::nullValue);
+    std::string err;
+    const bool ok = run_edge_consensus_http_runtime(run_cfg, hooks, &result, &err);
+    std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
+    st->running = false;
+    st->ended_unix_ms = now_unix_ms();
+    st->last_stdout_json = result;
+    if (!result.isNull()) st->last_stdout_line = json_stringify(result);
+    if (!ok) {
+      st->exit_code = 1;
+      st->last_error = err;
+    } else {
+      st->exit_code = result.isObject() && result.isMember("ok") && result["ok"].asBool() ? 0 : 1;
+      if (result.isObject() && result.isMember("error") && result["error"].isString()) {
+        st->last_error = result["error"].asString();
+      }
+    }
+  }).detach();
+
+  *out_state = std::move(st);
+  return true;
+}
+
 static bool edge_consensus_runtime_kill_best_effort(std::shared_ptr<EdgeConsensusRuntime> st, std::string* out_err) {
   if (out_err) out_err->clear();
   if (!st) return false;
   if (!st->running) return true;
+  if (st->runtime_kind == "builtin") {
+    if (st->stop_requested) st->stop_requested->store(true);
+    const int64_t deadline = now_unix_ms() + 4000;
+    for (;;) {
+      {
+        std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
+        if (!st->running) return true;
+      }
+      if (now_unix_ms() >= deadline) break;
+      std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    }
+    if (out_err) *out_err = "builtin runtime stop timeout";
+    return false;
+  }
   if (::kill(st->pid, SIGTERM) != 0) {
     if (errno == ESRCH) return true;
     if (out_err) *out_err = std::string("kill(SIGTERM) failed: ") + std::strerror(errno);
@@ -615,6 +723,8 @@ void handle_edge_node_consensus_runtime_endpoint(
   Json::Value out(Json::objectValue);
   out["ok"] = false;
   out["node_id"] = node_id;
+  out["builtin_available"] = true;
+  out["default_runtime_kind"] = "builtin";
   out["tool_configured"] = !trim_copy(cfg.edge_consensus_node_tool_path).empty();
   if (!cfg.edge_consensus_node_tool_path.empty()) out["tool_path"] = cfg.edge_consensus_node_tool_path;
   out["default_daemon_url"] = default_local_daemon_url(cfg);
@@ -668,6 +778,13 @@ void handle_edge_node_consensus_runtime_endpoint(
   }
 
   const std::string cluster_id = req_cluster_id;
+  const std::string runtime_kind =
+    body.isMember("runtime_kind") && body["runtime_kind"].isString() ? lower_copy(trim_copy(body["runtime_kind"].asString())) : "builtin";
+  if (runtime_kind != "builtin" && runtime_kind != "external") {
+    resp->status = 400;
+    resp->body = json_error_body("runtime_kind must be builtin or external");
+    return;
+  }
   const std::string manifest_sha256 =
     body.isMember("manifest_sha256") && body["manifest_sha256"].isString() ? trim_copy(body["manifest_sha256"].asString()) : "";
   if (!edge_id_is_safe(cluster_id)) {
@@ -710,7 +827,10 @@ void handle_edge_node_consensus_runtime_endpoint(
 #else
   std::shared_ptr<EdgeConsensusRuntime> spawned;
   std::string serr;
-  if (!edge_consensus_runtime_spawn_process(cfg, body, &spawned, &serr)) {
+  const bool started = runtime_kind == "external"
+    ? edge_consensus_runtime_spawn_process(cfg, body, &spawned, &serr)
+    : edge_consensus_runtime_start_builtin(cfg, body, &spawned, &serr);
+  if (!started) {
     out["error"] = serr.empty() ? "failed to start consensus runtime" : serr;
     resp->status = 500;
     resp->body = json_stringify(out);
@@ -754,6 +874,8 @@ void handle_edge_node_consensus_runtime_status_endpoint(
   Json::Value out(Json::objectValue);
   out["ok"] = true;
   out["node_id"] = *nid;
+  out["builtin_available"] = true;
+  out["default_runtime_kind"] = "builtin";
   out["tool_configured"] = !trim_copy(cfg.edge_consensus_node_tool_path).empty();
   if (!cfg.edge_consensus_node_tool_path.empty()) out["tool_path"] = cfg.edge_consensus_node_tool_path;
   out["default_daemon_url"] = default_local_daemon_url(cfg);

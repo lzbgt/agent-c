@@ -232,6 +232,8 @@ These are the most leveraged next steps grounded in current architecture:
      `agentd_edge_consensus_node` plus `agentd_edge_consensus_autonomous_smoke`.
    - Completed 2026-03-15: agentd can now own that loop as a managed runtime via
      `/api/v1/edge/node/consensus_runtime`, with runtime visibility surfaced on node-read APIs.
+   - Completed 2026-03-15: the managed runtime now defaults to a builtin in-agentd backend, so normal operation no
+     longer depends on the standalone host helper being configured.
    - Completed 2026-03-15: the autonomous election/commit loop is now factored into reusable core code instead of
      living only inside the host CLI helper, which materially lowers the gap to embedded/node-native adoption.
    - Completed 2026-03-15: the shipped host/runtime harness now supports retry-capable election timers, so candidates
@@ -241,8 +243,8 @@ These are the most leveraged next steps grounded in current architecture:
    - Completed 2026-03-15: cluster membership/retry policy is now a signed durable control-plane artifact
      (`edge_consensus_membership_v1`) with outbox delivery and managed-runtime defaulting, so operator policy is no
      longer stranded in one-off runtime start bodies.
-   - Still open: replace the current host-managed helper with embedded node-native adoption plus richer long-lived
-     membership and recovery policy beyond the current durable bundle fields.
+   - Still open: replace the current builtin daemon-hosted runtime with embedded node-native adoption plus richer
+     long-lived membership and recovery policy beyond the current durable bundle fields.
 
 6) **Scheduling + isolation MVP**
    - Completed 2026-03-15: admission control + per-run budgets + tool execution caps landed with
