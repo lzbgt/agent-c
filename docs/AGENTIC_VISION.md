@@ -221,15 +221,19 @@ These are the most leveraged next steps grounded in current architecture:
    - Audio streaming protocol and loopback/relay foundations are shipped.
    - Full voice-session UX and end-to-end WebRTC workflow controls remain open.
 
-5) **Scheduling + isolation MVP**
+5) **Node consensus**
+   - Centralized platform-led quorum and coordination are shipped.
+   - True node-native decentralized consensus remains future work and needs its own deterministic simulation harness.
+
+6) **Scheduling + isolation MVP**
    - Completed 2026-03-15: admission control + per-run budgets + tool execution caps landed with
      evidence logs and host-smoke coverage.
 
-6) **Data governance controls**
+7) **Data governance controls**
    - Completed 2026-03-15: retention enforcement, session erase + analytics export endpoints, and
      redaction-aware replay/attestation evidence are implemented with host-smoke coverage.
 
-7) **Run comparison + evidence diff UX**
+8) **Run comparison + evidence diff UX**
    - Completed 2026-03-15: side-by-side run diffs (replay + DB evidence + attestation)
      and browser-stored regression baselines are shipped in WebUI.
 

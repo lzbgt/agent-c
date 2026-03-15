@@ -44,6 +44,13 @@ Previously out-of-scope; now explicit goals for this spec and implementation pla
 - **Audio streaming / codec protocols** (Opus/WebRTC). Voice should be first-class on top of these primitives.
 - **Distributed consensus between nodes** (nodes negotiating among themselves without a platform coordinator).
 
+Current implementation note:
+- The shipped platform surface in this repo still uses **platform-led coordination** as the system of record.
+- Deterministic quorum/join behavior is implemented for workflows and broker team runs, but that is **not**
+  decentralized node-native consensus.
+- True node-to-node consensus remains future work and should be specified separately from the centralized
+  UM-EAIS execution path described here.
+
 ### 0.3 Design stance (important)
 This spec assumes the platform/broker is the **primary coordinator**:
 - Platform decomposes a user goal into a workflow graph.

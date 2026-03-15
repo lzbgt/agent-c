@@ -500,18 +500,17 @@ streaming and plugins are stable.
   - [x] Job + run event envelopes attach payload schema identifiers for common types.
   - [x] Run-event fixtures now require schema identifiers for common payloads.
   - [x] Workflow + edge workflow event payload schemas + schema tags across event endpoints/streams.
-- [ ] Streaming: core-layer streaming interface + provider compatibility matrix with full variant coverage.
-  - [x] Core SSE parser (`agent_sse_parser_t`) shared by CLI/daemon streaming paths.
-  - [x] Core stream decoder (`agent_stream_decoder_t`) + unit tests (`tests/test_stream_decoder.c`).
-  - [x] Compatibility matrix for streaming variants + provider coverage in `docs/STREAMING.md`.
-  - [x] OpenRouter + Moonshot streaming assistant smoke tests (key-gated).
-  - [x] OpenRouter + Moonshot streaming tool-call smoke tests (key-gated).
-  - [x] DeepSeek streaming tool-call smoke test (key-gated).
-  - [x] OpenRouter streaming probe script to discover stable models.
-  - [x] OpenRouter streaming probe can emit `ref/openrouter/streaming_pins.json`; smoke tests prefer the pin file.
-  - [ ] Populate OpenRouter streaming pins with a verified key (current key returns 401 “User not found” on chat preflight across candidates).
-  - [x] Draft core streaming interface spec (`docs/spec/streaming/core_stream_v1.md`).
-  - [x] Wire CLI/daemon streaming through core stream decoder (replace duplicated host logic).
+- [ ] Streaming stability: finish verified provider pins and remaining live-provider upkeep on top of the shipped core interface.
+  - [x] Core SSE parser (`agent_sse_parser_t`) is shared by CLI/daemon streaming paths.
+  - [x] Core stream decoder (`agent_stream_decoder_t`) + unit tests (`tests/test_stream_decoder.c`) are shipped.
+  - [x] CLI/daemon streaming is wired through the core decoder, replacing duplicated host logic.
+  - [x] Compatibility matrix + core interface spec are present in `docs/STREAMING.md` and `docs/spec/streaming/core_stream_v1.md`.
+  - [x] Local deterministic streaming coverage exists via `agent_local_stream_assistant_smoke`, `agent_local_stream_tool_loop_smoke`, and `agentd_local_stream_assistant_smoke`.
+  - [x] Live-provider assistant/tool-call streaming smokes exist for DeepSeek, Moonshot, and OpenRouter (key-gated).
+  - [x] OpenRouter probe/pin workflow exists; smoke tests already prefer `ref/openrouter/streaming_pins.json` when populated.
+  - [ ] Populate OpenRouter streaming pins with a verified key; current available key still returns 401 “User not found” on chat preflight across candidates.
+  - [ ] Re-verify live-provider usage/variant coverage when a working OpenRouter key is available, then commit the resulting pins file.
+  - 2026-03-15: narrowed the stale umbrella item after re-verifying the shipped core decoder, local stream smokes, and provider-matrix docs.
 - [x] Memory architecture: dynamic retention policy (decay/salience/recaps) informed by claude-mem research + docs.
   - [x] Memory retention policy enforcement (daily logs + checkpoints) + endpoint + background engine.
   - [x] Structured memory deprecate pass (policy-driven; bounded) with broker fan-out.
@@ -574,7 +573,13 @@ streaming and plugins are stable.
   - [ ] Add explicit host-effects policy surfaces beyond mounts (FS/PROC/NET capability gating).
   - [ ] Carry node identity / attestation material through quorum votes for multi-node correctness.
   - 2026-03-15: narrowed the stale umbrella item after re-verifying the shipped runner/scan/quorum surfaces in `agentd_avm_job_scan_smoke`, `agentd_workflow_avm_capsule_smoke`, and `agentd_workflow_aggregate_quorum_smoke`.
-- [ ] Node consensus: decentralized coordination protocol with conflict resolution + deterministic simulation tests.
+- [ ] Node consensus: add true peer-to-peer node-native consensus and deterministic partition/conflict simulation on top of the shipped centralized quorum surfaces.
+  - [x] Centralized platform-owned coordination is already the implemented design stance for UM-EAIS and broker team orchestration.
+  - [x] Deterministic quorum/join surfaces are already shipped for workflows and broker team runs.
+  - [ ] Define a peer protocol for node-native elections/conflict resolution without relying on the platform coordinator.
+  - [ ] Carry node identity / trust-root material through decentralized votes and partition recovery.
+  - [ ] Add deterministic multi-node simulation tests for split-brain, duplicate delivery, and quorum recovery.
+  - 2026-03-15: narrowed the stale umbrella item after re-verifying shipped centralized quorum coverage (`agentd_workflow_aggregate_quorum*`, `agentd_workflow_*quorum_hashes*`, `broker_team_runs_quorum_compose_smoke`, `broker_team_quorum_events_sse_compose_smoke`).
 
 ## Deferred (after macOS stability)
 

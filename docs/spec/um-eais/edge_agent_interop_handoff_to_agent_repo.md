@@ -49,6 +49,12 @@ platform-owned, not distributed across nodes.
 
 This avoids distributed consensus complexity and makes idempotency + retries enforceable.
 
+Current status in this repo:
+- This platform-first stance is now the shipped behavior: broker team orchestration, workflow aggregate quorum,
+  and edge/workflow quorum hash joins already exist and are exercised by dedicated smokes.
+- A future decentralized/node-native consensus layer should be treated as a new subsystem, not conflated with
+  the current centralized coordinator path.
+
 ---
 
 ## 3) Current status in `urine_monitor` (node-side already working)
@@ -191,4 +197,3 @@ Moonshot/Kimi special constraint (must support):
 - reasoning must be replayed across subsequent tool-calling turns
 
 This is already implemented in `../agent`’s provider code and was required on-device too.
-

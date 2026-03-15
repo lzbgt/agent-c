@@ -9,6 +9,10 @@ and the shared implementation used by:
 - daemon `agentd` (`stream_assistant: true`)
 - the host tool provider (`cli/src/openai_tool_provider.cpp`) for tool-loop steps
 
+Current status:
+- Shipped: the shared SSE/core decoder path, local deterministic streaming smokes, and the provider compatibility matrix.
+- Still open: committing verified OpenRouter model pins and refreshing live-provider evidence with a chat-capable key.
+
 ## Goals
 
 - **Single source of truth** for parsing SSE `data: { ... }` JSON chunks into:
