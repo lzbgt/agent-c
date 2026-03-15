@@ -159,6 +159,8 @@ A v0 smoke test should:
   delete a managed broker audio session itself after an ungraceful peer death that skipped the child's `bye`.
 - Stop and session-delete cleanup now validate broker tokens lazily, so borrowed broker-session runtimes can still be
   stopped or erased even if the daemon's configured default broker token is malformed.
+- When the runtime owns the broker audio session and broker deletion fails, agentd now still completes local
+  stop/session-delete teardown and reports the broker cleanup failure explicitly instead of failing the local cleanup.
 - `DELETE /api/v1/session?session_id=...&broker_token=...` now also cleans up the managed voice runtime for that session:
   the peer is stopped, persisted runtime artifacts are removed, and the owned broker audio session is deleted.
 - `GET /api/v1/session/voice_webrtc_peer` now also self-heals stale local runtime state if the canonical session row

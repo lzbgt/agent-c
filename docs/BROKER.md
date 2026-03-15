@@ -399,6 +399,9 @@ Current status:
   ignore mismatched backend values and operate on the real managed runtime for that session.
 - Shipped: stop/delete cleanup now validates broker tokens only when agentd actually needs to delete an owned broker
   audio session, so malformed configured defaults no longer block borrowed-session teardown.
+- Shipped: when owned broker-session deletion does fail, local stop/session-delete teardown still completes and reports
+  the broker failure explicitly (`broker_session_deleted=false`, `broker_session_delete_error`) instead of aborting the
+  local runtime cleanup.
 - Shipped: when that agentd endpoint is given `broker_agent_id` instead of a pre-created `broker_session_id`,
   agentd now creates the broker audio session itself and records that ownership in runtime status as
   `peer.managed_broker_session=true`.

@@ -21,6 +21,8 @@ Recent shipped note:
   behavior with ignored selector values.
 - 2026-03-15: voice-runtime stop/delete cleanup now validates broker tokens only when agentd actually needs broker-side
   deletion, so malformed configured defaults no longer break borrowed-session teardown.
+- 2026-03-15: local voice-runtime stop/delete teardown now also survives owned broker-session deletion failure, with the
+  broker cleanup problem surfaced explicitly instead of blocking local cleanup.
 
 Clarification: “Beyond OpenClaw” means **going past a gateway/plugin model** into a full-stack,
 durable, policy-driven agent platform with evidence-grade runs, multi-agent orchestration,

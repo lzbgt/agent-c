@@ -440,6 +440,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   session itself if the peer died before delivering `bye`.
 - The stop/delete cleanup path now validates broker tokens lazily: a malformed configured default broker token no longer
   blocks stop or session delete for borrowed broker sessions where agentd does not own broker-session deletion.
+- If agentd does own the broker audio session but broker deletion fails, stop/session delete now still complete local
+  teardown and surface the broker cleanup failure in `broker_session_deleted=false` plus
+  `broker_session_delete_error`, instead of failing the whole local teardown path.
 
 ## Data governance
 

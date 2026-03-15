@@ -1562,6 +1562,205 @@ if not obj.get("ok"):
   raise SystemExit(1)
 PY
 
+MANAGED_BAD_STOP_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_managed_bad_stop_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${MANAGED_BAD_STOP_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+managed_bad_stop_start_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${MANAGED_BAD_STOP_SESSION_ID}",
+  "action": "start",
+  "runtime_kind": "external",
+  "broker_url": "${VOICE_BROKER_URL}",
+  "broker_token": "${VOICE_BROKER_TOKEN}",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab-managed-bad-stop",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 779
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${managed_bad_stop_start_resp}''')
+peer = obj.get("peer") or {}
+if not obj.get("ok") or not obj.get("started"):
+  print("managed bad-stop runtime start failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("managed_broker_session") is not True:
+  print("expected managed bad-stop runtime to own broker session", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("runtime_kind") != "external":
+  print("expected managed bad-stop runtime_kind=external", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+MANAGED_BAD_STOP_BROKER_SESSION_ID="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${managed_bad_stop_start_resp}''')
+peer = obj.get("peer") or {}
+sid = str(peer.get("broker_session_id") or "").strip()
+if not sid:
+  print("missing managed bad-stop broker_session_id", file=sys.stderr)
+  raise SystemExit(1)
+print(sid)
+PY
+)"
+
+wait_voice_peer_ready "${MANAGED_BAD_STOP_SESSION_ID}" 1 status_json external external config 1
+
+managed_bad_stop_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${MANAGED_BAD_STOP_SESSION_ID}\",\"action\":\"stop\"}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${managed_bad_stop_resp}''')
+peer = obj.get("peer") or {}
+if not obj.get("ok") or not obj.get("stopped"):
+  print("managed runtime stop should still succeed when broker deletion fails", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("broker_session_deleted") is not False:
+  print("expected managed bad-stop broker_session_deleted=false", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "invalid configured audio_webrtc_broker_token" not in str(obj.get("broker_session_delete_error", "")):
+  print("expected managed bad-stop broker_session_delete_error", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("managed_broker_session") is not True or peer.get("running"):
+  print("expected managed bad-stop peer to be stopped locally", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+managed_bad_stop_broker_status="$(curl -sS --noproxy "*" --max-time 10 -o /dev/null -w '%{http_code}' \
+  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${MANAGED_BAD_STOP_BROKER_SESSION_ID}" \
+  -H "Authorization: Bearer audio-webui-token")"
+if [[ "${managed_bad_stop_broker_status}" != "200" && "${managed_bad_stop_broker_status}" != "404" ]]; then
+  echo "expected managed bad-stop broker session inspect to return 200 or 404, got ${managed_bad_stop_broker_status}" >&2
+  exit 1
+fi
+
+managed_bad_stop_delete_status="$(curl -sS --noproxy "*" --max-time 10 -o /dev/null -w '%{http_code}' -X DELETE \
+  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${MANAGED_BAD_STOP_BROKER_SESSION_ID}" \
+  -H "Authorization: Bearer audio-webui-token")"
+if [[ "${managed_bad_stop_delete_status}" != "200" && "${managed_bad_stop_delete_status}" != "404" ]]; then
+  echo "expected managed bad-stop broker session delete to return 200 or 404, got ${managed_bad_stop_delete_status}" >&2
+  exit 1
+fi
+
+MANAGED_BAD_DELETE_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_managed_bad_delete_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${MANAGED_BAD_DELETE_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+managed_bad_delete_start_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${MANAGED_BAD_DELETE_SESSION_ID}",
+  "action": "start",
+  "runtime_kind": "external",
+  "broker_url": "${VOICE_BROKER_URL}",
+  "broker_token": "${VOICE_BROKER_TOKEN}",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab-managed-bad-delete",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 780
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${managed_bad_delete_start_resp}''')
+peer = obj.get("peer") or {}
+if not obj.get("ok") or not obj.get("started"):
+  print("managed bad-delete runtime start failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("managed_broker_session") is not True:
+  print("expected managed bad-delete runtime to own broker session", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+MANAGED_BAD_DELETE_BROKER_SESSION_ID="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${managed_bad_delete_start_resp}''')
+peer = obj.get("peer") or {}
+sid = str(peer.get("broker_session_id") or "").strip()
+if not sid:
+  print("missing managed bad-delete broker_session_id", file=sys.stderr)
+  raise SystemExit(1)
+print(sid)
+PY
+)"
+
+wait_voice_peer_ready "${MANAGED_BAD_DELETE_SESSION_ID}" 1 status_json external external config 1
+
+MANAGED_BAD_DELETE_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${MANAGED_BAD_DELETE_SESSION_ID}")"
+managed_bad_delete_resp="$(curl -fsS --noproxy "*" --max-time 10 -X DELETE \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session?session_id=${MANAGED_BAD_DELETE_SESSION_ID_Q}")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${managed_bad_delete_resp}''')
+cleanup = obj.get("voice_runtime_cleanup") or {}
+peer = cleanup.get("peer") or {}
+if not obj.get("ok") or obj.get("deleted_from_db") is not True:
+  print("managed delete should still succeed when broker deletion fails", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("runtime_present") is not True or cleanup.get("stopped") is not True:
+  print("expected managed bad-delete runtime cleanup summary", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("broker_session_delete_attempted") is not True:
+  print("expected managed bad-delete broker_session_delete_attempted=true", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("broker_session_deleted") is not False:
+  print("expected managed bad-delete broker_session_deleted=false", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "invalid configured audio_webrtc_broker_token" not in str(cleanup.get("broker_session_delete_error", "")):
+  print("expected managed bad-delete broker_session_delete_error", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("managed_broker_session") is not True:
+  print("expected managed bad-delete cleanup peer managed_broker_session=true", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+managed_bad_delete_broker_status="$(curl -sS --noproxy "*" --max-time 10 -o /dev/null -w '%{http_code}' \
+  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${MANAGED_BAD_DELETE_BROKER_SESSION_ID}" \
+  -H "Authorization: Bearer audio-webui-token")"
+if [[ "${managed_bad_delete_broker_status}" != "200" && "${managed_bad_delete_broker_status}" != "404" ]]; then
+  echo "expected managed bad-delete broker session inspect to return 200 or 404, got ${managed_bad_delete_broker_status}" >&2
+  exit 1
+fi
+
+managed_bad_delete_delete_status="$(curl -sS --noproxy "*" --max-time 10 -o /dev/null -w '%{http_code}' -X DELETE \
+  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${MANAGED_BAD_DELETE_BROKER_SESSION_ID}" \
+  -H "Authorization: Bearer audio-webui-token")"
+if [[ "${managed_bad_delete_delete_status}" != "200" && "${managed_bad_delete_delete_status}" != "404" ]]; then
+  echo "expected managed bad-delete broker session delete to return 200 or 404, got ${managed_bad_delete_delete_status}" >&2
+  exit 1
+fi
+
 BORROWED_STOP_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_borrowed_stop_$(date +%s)_$RANDOM"
 curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \

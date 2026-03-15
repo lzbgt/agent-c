@@ -1063,19 +1063,10 @@ void handle_session_voice_webrtc_peer_endpoint(
     bool cleanup_deleted = false;
     const std::string broker_token = effective_voice_broker_token(cfg, request_broker_token);
     if (st->managed_broker_session && !trim_copy(st->broker_session_id).empty() && !broker_token.empty()) {
-      if (!validate_voice_broker_token_if_present(broker_token, &cleanup_err)) {
-        out["error"] = cleanup_err;
-        {
-          std::lock_guard<std::mutex> lk(g_voice_peer_mu);
-          refresh_voice_peer_runtime_state(st.get());
-          out["peer"] = voice_peer_runtime_to_json(*st);
-        }
-        resp->status = 500;
-        resp->body = json_stringify(out);
-        return;
-      }
       cleanup_attempted = true;
-      cleanup_deleted = broker_delete_audio_session(st->broker_url, broker_token, st->broker_session_id, &cleanup_err);
+      if (validate_voice_broker_token_if_present(broker_token, &cleanup_err)) {
+        cleanup_deleted = broker_delete_audio_session(st->broker_url, broker_token, st->broker_session_id, &cleanup_err);
+      }
     }
     {
       std::lock_guard<std::mutex> lk(g_voice_peer_mu);
@@ -1535,18 +1526,12 @@ bool cleanup_session_voice_webrtc_peer_runtime(
   const std::string broker_token_effective = effective_voice_broker_token(cfg, broker_token);
   if (st && st->managed_broker_session && !trim_copy(st->broker_session_id).empty() && !broker_token_effective.empty()) {
     std::string berr;
-    if (!validate_voice_broker_token_if_present(broker_token_effective, &berr)) {
-      if (out_err) *out_err = berr;
-      return false;
-    }
-    broker_deleted = broker_delete_audio_session(st->broker_url, broker_token_effective, st->broker_session_id, &berr);
     summary["broker_session_delete_attempted"] = true;
+    if (validate_voice_broker_token_if_present(broker_token_effective, &berr)) {
+      broker_deleted = broker_delete_audio_session(st->broker_url, broker_token_effective, st->broker_session_id, &berr);
+    }
     summary["broker_session_deleted"] = broker_deleted;
     if (!broker_deleted && !berr.empty()) summary["broker_session_delete_error"] = berr;
-    if (!broker_deleted) {
-      if (out_err) *out_err = berr.empty() ? "failed to delete managed broker audio session" : berr;
-      return false;
-    }
   } else {
     summary["broker_session_delete_attempted"] = false;
   }
