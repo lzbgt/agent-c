@@ -143,8 +143,9 @@ From `DESIGN.md` and current docs:
 - Broker with mTLS for connectors and OIDC/JWT for clients.
 - WebUI and CLI clients; tool servers and plugin support.
 - Memory retention + salience + recap architecture, with progressive disclosure.
-- Replay bundles + event schema validation for deterministic runs (in progress).
-- Broker team registry CRUD (teams, members, quorum rules) plus synchronous team run fan-out; run-level quorum gating (action `team_run`) enforced via inline approvals. Tool-level quorum enforcement still pending.
+- Replay bundles, signed attestation bundles, and WebUI run-diff evidence views for deterministic runs.
+- Broker team registry CRUD (teams, members, quorum rules), sync/async team runs, persisted team-run approvals, and WebUI approval/run status surfaces.
+- Agentd tool-level quorum enforcement with approval request/update/resolved events and approval queue APIs.
 - Server-side run attestation signing for `/api/v1/run/attestation` (HMAC-SHA256 or Ed25519) with verification tooling and an Ed25519 smoke test.
 
 ---
@@ -197,7 +198,8 @@ These are the most leveraged next steps grounded in current architecture:
 
 1) **Team + role orchestration spec**
    - Define agent group model, shared memory, and quorum semantics.
-   - Extend quorum enforcement with persisted approvals + async team runs + WebUI approvals.
+   - Completed core v0 surface: persisted approvals + async team runs + WebUI approvals shipped.
+   - Remaining work is deeper autonomy/policy layering on top of the shipped team surface.
 
 2) **Policy hook MVP (implemented 2026-02-19)**
    - Deterministic policy hook interface (pre/post run + tool call).
@@ -212,13 +214,12 @@ These are the most leveraged next steps grounded in current architecture:
    - Auto-retire idle agents and persist a run-time team roster so the user only intervenes on drift.
 
 3) **Attestation bundle format**
-   - Canonical JSON hashing (`agent_json_c14n_v1`) for replay bundles.
-   - Draft spec + tool for signed replay references (`docs/spec/run_attestation_bundle_v1.md`,
-     `run_attestation_bundle_tool`).
+   - Completed 2026-03-15: canonical replay hashing (`agent_json_c14n_v1`), signed
+     attestation bundles, verification tooling, and host-smoke coverage are shipped.
 
 4) **Voice workflow spec**
-   - Audio streaming protocol, broker relay plan, and UI controls.
-   - Minimal loopback verification harness.
+   - Audio streaming protocol and loopback/relay foundations are shipped.
+   - Full voice-session UX and end-to-end WebRTC workflow controls remain open.
 
 5) **Scheduling + isolation MVP**
    - Completed 2026-03-15: admission control + per-run budgets + tool execution caps landed with
@@ -229,12 +230,12 @@ These are the most leveraged next steps grounded in current architecture:
      redaction-aware replay/attestation evidence are implemented with host-smoke coverage.
 
 7) **Run comparison + evidence diff UX**
-   - Side-by-side run diffs (events, artifacts, costs) with evidence bundle links.
-   - Regression baselines tied to model/provider versions.
+   - Completed 2026-03-15: side-by-side run diffs (replay + DB evidence + attestation)
+     and browser-stored regression baselines are shipped in WebUI.
 
 8) **Approval queues + tool-level quorum gating**
-   - WebUI approval queues with role/quorum context.
-   - Tool-level quorum enforcement (not just run-level).
+   - Completed 2026-03-15: WebUI approval queues, run-level quorum approvals, and
+     agentd tool-level quorum enforcement are shipped.
 
 These are tracked in `TODOS.md` with weighted priorities.
 
@@ -248,16 +249,27 @@ Below are concrete “evidence” tests that either exist now or are planned in 
 Implemented evidence (facts):
 - Policy hook enforcement + audit smoke: `tests/agentd_policy_hooks_smoke.sh`.
 - Replay bundle sanity: `tests/agentd_run_replay_smoke.sh`.
+- Replay attestation verification: `tests/agentd_run_attestation_ed25519_smoke.sh`.
+- Team registry + team-run fan-out/quorum coverage:
+  `tests/broker_team_runs_compose_smoke.sh`,
+  `tests/broker_team_runs_quorum_compose_smoke.sh`,
+  `tests/broker_team_run_events_sse_compose_smoke.sh`,
+  `tests/broker_team_quorum_events_sse_compose_smoke.sh`.
+- Tool-level approval gating:
+  `tests/agentd_approval_rules_smoke.sh`,
+  `tests/agentd_approval_roles_smoke.sh`,
+  `ui/e2e/approval_queue_panel.spec.ts`.
+- Run-diff evidence UX:
+  `ui/e2e/run_diff_panel.spec.ts`.
 - Durable workflow + budget guards: `tests/agentd_workflow_*_smoke.sh`.
 - Memory timeline + search surfaces: `tests/agentd_workflow_memory_timeline_smoke.sh`,
   `tests/agentd_workflow_memory_search_smoke.sh`.
+- Data governance:
+  `tests/agentd_memory_retention_smoke.sh`,
+  `tests/agentd_session_delete_governance_smoke.sh`,
+  `tests/agentd_db_analytics_export_governance_smoke.sh`.
 - OTA continuity: `tools/verify_ota_continuity.sh`.
 
 Planned evidence (tracked in `TODOS.md`):
-- Team registry CRUD smoke (teams + members + quorum rules).
-- Team run fan-out smoke (sync fan-out with role filter + status).
 - Multi-agent team orchestration smoke (roles, shared memory, quorum gates).
-- Attestation bundle signing + verification smoke.
-- Run diff + evidence comparison smoke.
-- Approval queue + tool-level quorum gating smoke.
 - Voice workflow loopback (end-to-end low-latency media path).

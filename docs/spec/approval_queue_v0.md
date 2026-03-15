@@ -1,14 +1,14 @@
 # Approval Queue + Tool-Level Quorum v0
 
 Date: 2026-02-20
-Status: draft
+Status: v0.9 (agentd tool-level approval gating, broker team-run approvals, SSE schemas, and WebUI approval queue shipped)
 
 ## Summary
 
-Add a unified approval queue for sensitive actions and tool calls, with
-team- and role-based quorum rules. Tool execution pauses until the
-approval is resolved; strict gates fail on timeout, while best-effort
-gates continue after timeout.
+This document records the shipped v0 approval surface for sensitive
+actions and tool calls, with team- and role-based quorum rules. Tool
+execution pauses until the approval is resolved; strict gates fail on
+timeout, while best-effort gates continue after timeout.
 
 ## Goals
 
@@ -112,10 +112,16 @@ Payload fields (v0):
 
 ## Evidence tests
 
-- Tool call pauses on approval requirement.
-- Approval resolves tool call deterministically.
-- Timeout leads to denied/expired status.
-- SSE events include approval lifecycle transitions.
+- Agentd tool-level approval gating:
+  - `tests/agentd_approval_rules_smoke.sh`
+  - `tests/agentd_approval_roles_smoke.sh`
+- Broker team-run quorum approvals:
+  - `tests/broker_team_runs_quorum_compose_smoke.sh`
+  - `tests/broker_team_quorum_events_sse_compose_smoke.sh`
+- WebUI approval queue:
+  - `ui/e2e/approval_queue_panel.spec.ts`
+- SSE schema + payload validation:
+  - `tests/test_run_events_spec_sanity.cpp`
 
 ## References
 

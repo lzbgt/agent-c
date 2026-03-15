@@ -1,7 +1,7 @@
 # Run Diff + Evidence Comparison v0
 
 Date: 2026-02-20
-Status: v0.2 (client-side replay + DB evidence diff shipped; server diff endpoints planned)
+Status: v0.3 (client-side replay + DB evidence + attestation diff UX shipped; server-side persisted diff endpoints still planned)
 
 ## Summary
 
@@ -17,6 +17,7 @@ machine-checkable and UI-friendly.
 - WebUI surfaces **attestation bundles** (`/api/v1/run/attestation`) as signed evidence metadata.
 - The diff output is UI-facing only (not persisted in agentd yet).
 - Baselines are stored in the browser (per base URL) for quick reuse.
+- Direct browser regression coverage exists in `ui/e2e/run_diff_panel.spec.ts`.
 
 ## Goals
 
@@ -95,6 +96,7 @@ Top-level fields:
 - Fixture bundles with known diffs (events + artifacts).
 - Hash stability check: same input bundles produce identical diff.
 - CI gate: diff must be generated with `status=done` and no schema errors.
+- Current shipped UI regression: `ui/e2e/run_diff_panel.spec.ts`
 
 ## References
 

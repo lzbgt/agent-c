@@ -1,12 +1,13 @@
 # Team Orchestration v0 (agentd + broker)
 
 Date: 2026-02-19
-Status: v0.9 (broker team registry CRUD + sync/async team runs + quorum enforcement + runtime member updates + run list implemented; shared memory scope wiring shipped; team-run session mapping + moderator fan-out underway)
+Status: v1.0-ish shipped surface (broker team registry CRUD + sync/async team runs + quorum enforcement + runtime member updates + run list + shared memory scope wiring shipped; newer moderator/orchestrator layers continue to evolve in their own specs)
 
 This spec defines a **team orchestration model** for multi-agent runs that goes beyond
 single-run tool loops. It formalizes agent groups, roles, shared memory scopes, and
-quorum gating for sensitive actions. This is a **design target**; endpoints and schemas
-listed below are proposed and only partially implemented today (team registry CRUD + sync/async team runs).
+quorum gating for sensitive actions. The core broker surface described here is now
+substantially implemented; newer moderator/orchestrator/autoscale layers are layered on
+top and continue evolving in `autonomous_orchestrator_v0.md`.
 
 ---
 
