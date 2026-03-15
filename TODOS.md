@@ -110,6 +110,7 @@ contract map.
   - [x] AgentdApi request-path job GC to keep embedded/relay job state bounded without a dedicated GC thread.
   - [x] Job stream event payloads capped with `data_truncated` metadata to prevent unbounded in-memory growth.
   - [x] Key discovery falls back to passwd-derived home when HOME is missing (service contexts).
+  - 2026-03-15: safe `/api/v1/config` now exposes WebRTC backend availability (`builtin_available`, `bundled_available`, `external_available`, `default_runtime_kind_available`), and the main runtime smoke proves the configured-but-unavailable `default_runtime_kind=external` case before start-time failure.
 3) **Next-gen contract foundation (agent-core + agentd + broker + WebUI)** — make interop explicit and replayable.
   - [x] Add a unified capability descriptor (`/api/v1/caps`) with protocol versions + limits (agentd + WebUI + broker proxy).
   - [x] WebUI: use `/api/v1/caps` to hide/disable unsupported features and cache last-known caps.

@@ -420,6 +420,9 @@ Current status:
   `audio_webrtc.node_bin`, `audio_webrtc.default_runtime_kind`), and the runtime smoke now proves both an explicit
   config-backed `runtime_kind=external` start/stop path and a no-request config-defaulted external launch path; daemon
   startup also honors `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND` with `default_runtime_kind_source=env`.
+- Shipped: safe daemon config now reports `builtin_available`, `bundled_available`, `external_available`, and
+  `default_runtime_kind_available` for that managed runtime, so operators can detect a configured-but-unavailable
+  default backend before attempting a start.
 - Shipped: if the persisted daemon runtime config is corrupted to an invalid WebRTC default backend, agentd now
   rewrites that value back to `auto` on load and the runtime smoke proves the fallback returns to bundled default
   behavior rather than surfacing stale impossible state.

@@ -413,6 +413,12 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `peer_tool_path` for `runtime_kind=external`, `node_bin` for bundled/external peer launch, and
   `default_runtime_kind` for no-request backend selection, so operators no longer have to rely only on process
   environment or implicit autodetect behavior to keep the managed WebRTC backend wired correctly across restarts.
+- `GET /api/v1/config` and `POST /api/v1/config/update` now expose the same safe backend-availability facts for that
+  managed WebRTC lane:
+  `builtin_available=false`, `bundled_available=true|false`, `external_available=true|false`,
+  and `default_runtime_kind_available=true|false`. That lets operators see when
+  `default_runtime_kind=external` is persisted but currently unusable because the external helper seam is not
+  configured.
 - Daemon startup also honors `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND=bundled|external`; runtime/config status then
   reports `default_runtime_kind_source=env` until a persisted daemon config override takes precedence.
 - If persisted runtime config is corrupted to an invalid `audio_webrtc.default_runtime_kind`, agentd now self-heals it
@@ -475,7 +481,7 @@ For debugging client/daemon mismatches (CORS, sandbox defaults, job GC), `agentd
 This endpoint requires auth when `--auth-token` is set. It intentionally does not include secrets.
 The WebUI surfaces this snapshot in Settings as “Daemon config”, including `state_dir`, `sessions_root_dir`,
 and `db_path` (SQLite; canonical daemon state store). For the managed WebRTC lane, the safe snapshot now also exposes
-`daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured,peer_tool_path_configured,default_runtime_kind,default_runtime_kind_source,node_bin}`
+`daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured,peer_tool_path_configured,builtin_available,bundled_available,external_available,default_runtime_kind,default_runtime_kind_source,default_runtime_kind_available,node_bin}`
 so operators can verify whether caller-free voice runtime bring-up and backend selection are configured without
 exposing the token itself.
 
@@ -529,7 +535,7 @@ curl -fsS \
 Notes:
 - The response never includes secrets. Use `GET /api/v1/config` to see booleans like `provider_keys_set`.
 - For managed voice/WebRTC broker defaults, `GET /api/v1/config` exposes only
-  `daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured,peer_tool_path_configured,default_runtime_kind,default_runtime_kind_source,node_bin}`.
+  `daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured,peer_tool_path_configured,builtin_available,bundled_available,external_available,default_runtime_kind,default_runtime_kind_source,default_runtime_kind_available,node_bin}`.
 - The WebUI exposes Settings buttons to “Save defaults to daemon” and “Save API key to daemon”.
 
 Edge trust-root rotation:

@@ -9,6 +9,7 @@
 #include "runtime_config.h"
 #include "provider_util.h"
 #include "mount_allowlist.h"
+#include "session_voice_runtime.h"
 #include "string_util.h"
 
 #include "agent/ed25519.h"
@@ -34,6 +35,21 @@
 namespace agentd {
 
 namespace {
+
+static Json::Value config_audio_webrtc_metadata_json(const DaemonConfig& cfg) {
+  Json::Value out = session_voice_webrtc_backend_metadata_json(cfg);
+  out["default_runtime_kind"] = cfg.audio_webrtc_default_runtime_kind.empty()
+    ? Json::Value(Json::nullValue)
+    : Json::Value(cfg.audio_webrtc_default_runtime_kind);
+  out["default_runtime_kind_source"] = cfg.audio_webrtc_default_runtime_kind.empty()
+    ? Json::Value("auto")
+    : Json::Value(cfg.audio_webrtc_default_runtime_kind_from_env ? "env" : "config");
+  out["peer_tool_path_configured"] = out["tool_configured"];
+  out.removeMember("tool_configured");
+  out.removeMember("tool_path");
+  out.removeMember("bundled_tool_path");
+  return out;
+}
 
 static bool is_safe_tool_name(const std::string& s_in) {
   const std::string s = trim_copy(s_in);
@@ -1115,18 +1131,7 @@ void handle_config_endpoint(
   daemon["state_dir"] = cfg.state_dir.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.state_dir);
   daemon["sessions_root_dir"] = cfg.sessions_root_dir.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.sessions_root_dir);
   {
-    Json::Value aw(Json::objectValue);
-    aw["broker_url_default_configured"] = !trim_copy(cfg.audio_webrtc_broker_url).empty();
-    aw["broker_token_default_configured"] = !trim_copy(cfg.audio_webrtc_broker_token).empty();
-    aw["peer_tool_path_configured"] = !trim_copy(cfg.audio_webrtc_peer_tool_path).empty();
-    aw["default_runtime_kind"] = cfg.audio_webrtc_default_runtime_kind.empty()
-      ? Json::Value(Json::nullValue)
-      : Json::Value(cfg.audio_webrtc_default_runtime_kind);
-    aw["default_runtime_kind_source"] = cfg.audio_webrtc_default_runtime_kind.empty()
-      ? Json::Value("auto")
-      : Json::Value(cfg.audio_webrtc_default_runtime_kind_from_env ? "env" : "config");
-    aw["node_bin"] = cfg.audio_webrtc_peer_node_bin.empty() ? Json::Value("node") : Json::Value(cfg.audio_webrtc_peer_node_bin);
-    daemon["audio_webrtc"] = aw;
+    daemon["audio_webrtc"] = config_audio_webrtc_metadata_json(cfg);
   }
   daemon["upload_max_bytes"] = (Json::UInt64)cfg.upload_max_bytes;
   {
@@ -2300,18 +2305,7 @@ void handle_config_update_endpoint(
   }
   o["proxy_url_set"] = !next.proxy_url.empty();
   {
-    Json::Value aw(Json::objectValue);
-    aw["broker_url_default_configured"] = !trim_copy(next.audio_webrtc_broker_url).empty();
-    aw["broker_token_default_configured"] = !trim_copy(next.audio_webrtc_broker_token).empty();
-    aw["peer_tool_path_configured"] = !trim_copy(next.audio_webrtc_peer_tool_path).empty();
-    aw["default_runtime_kind"] = next.audio_webrtc_default_runtime_kind.empty()
-      ? Json::Value(Json::nullValue)
-      : Json::Value(next.audio_webrtc_default_runtime_kind);
-    aw["default_runtime_kind_source"] = next.audio_webrtc_default_runtime_kind.empty()
-      ? Json::Value("auto")
-      : Json::Value(next.audio_webrtc_default_runtime_kind_from_env ? "env" : "config");
-    aw["node_bin"] = next.audio_webrtc_peer_node_bin.empty() ? Json::Value("node") : Json::Value(next.audio_webrtc_peer_node_bin);
-    o["audio_webrtc"] = aw;
+    o["audio_webrtc"] = config_audio_webrtc_metadata_json(next);
   }
   {
     Json::Value bs(Json::objectValue);

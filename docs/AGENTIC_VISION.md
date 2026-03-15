@@ -240,6 +240,9 @@ These are the most leveraged next steps grounded in current architecture:
      makes default backend source/availability explicit.
    - Completed 2026-03-15: corrupted persisted WebRTC default-backend policy now self-heals back to `auto` on daemon
      load, so status/config no longer expose impossible backend choices after direct DB corruption.
+   - Completed 2026-03-15: safe daemon config now exposes WebRTC backend availability
+     (`builtin_available`, `bundled_available`, `external_available`, `default_runtime_kind_available`), and the main
+     runtime smoke proves the configured-but-unavailable `default_runtime_kind=external` case before start-time failure.
    - Remaining gap: replace the managed Node/Playwright child with an embedded long-lived agentd-native media service.
 
 5) **Node consensus**

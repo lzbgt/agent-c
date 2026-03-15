@@ -166,6 +166,9 @@ A v0 smoke test should:
   `audio_webrtc.node_bin`, `audio_webrtc.default_runtime_kind`) rather than env-only, and the main runtime smoke proves
   both an explicit config-backed external path and a no-request config-defaulted external launch path. Daemon startup
   also honors `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND`, which surfaces as `default_runtime_kind_source=env`.
+- Safe daemon config now reports the same backend availability facts (`builtin_available`, `bundled_available`,
+  `external_available`, `default_runtime_kind_available`) so a configured default such as `external` can be seen as
+  unavailable before start-time failure.
 - If persisted daemon config is corrupted to an invalid `audio_webrtc.default_runtime_kind`, agentd now self-heals that
   field back to `auto` on load and rewrites the SQLite runtime-config record instead of surfacing impossible state.
 

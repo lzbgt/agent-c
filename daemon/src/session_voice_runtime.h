@@ -9,6 +9,8 @@
 
 namespace agentd {
 
+Json::Value session_voice_webrtc_backend_metadata_json(const DaemonConfig& cfg);
+
 void handle_session_voice_webrtc_peer_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,

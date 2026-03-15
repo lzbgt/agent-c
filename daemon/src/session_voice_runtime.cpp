@@ -378,22 +378,31 @@ static bool load_voice_peer_runtime_record(
   return true;
 }
 
-static void voice_peer_add_runtime_metadata(const DaemonConfig& cfg, Json::Value* out) {
-  if (!out) return;
+static Json::Value session_voice_webrtc_backend_metadata_json_impl(const DaemonConfig& cfg) {
   const std::string bundled_tool_path = discover_bundled_audio_peer_tool_path(cfg);
   const std::string default_runtime_kind = default_voice_peer_runtime_kind(cfg);
-  (*out)["builtin_available"] = false;
-  (*out)["bundled_available"] = !bundled_tool_path.empty();
-  (*out)["external_available"] = !trim_copy(cfg.audio_webrtc_peer_tool_path).empty();
-  (*out)["default_runtime_kind"] = default_runtime_kind;
-  (*out)["default_runtime_kind_source"] = default_voice_peer_runtime_kind_source(cfg);
-  (*out)["default_runtime_kind_available"] = voice_peer_backend_available(cfg, default_runtime_kind);
-  (*out)["tool_configured"] = !trim_copy(cfg.audio_webrtc_peer_tool_path).empty();
-  (*out)["broker_url_default_configured"] = !trim_copy(cfg.audio_webrtc_broker_url).empty();
-  (*out)["broker_token_default_configured"] = !trim_copy(cfg.audio_webrtc_broker_token).empty();
-  if (!cfg.audio_webrtc_peer_tool_path.empty()) (*out)["tool_path"] = cfg.audio_webrtc_peer_tool_path;
-  if (!bundled_tool_path.empty()) (*out)["bundled_tool_path"] = bundled_tool_path;
-  (*out)["node_bin"] = cfg.audio_webrtc_peer_node_bin.empty() ? "node" : cfg.audio_webrtc_peer_node_bin;
+  Json::Value out(Json::objectValue);
+  out["builtin_available"] = false;
+  out["bundled_available"] = !bundled_tool_path.empty();
+  out["external_available"] = !trim_copy(cfg.audio_webrtc_peer_tool_path).empty();
+  out["default_runtime_kind"] = default_runtime_kind;
+  out["default_runtime_kind_source"] = default_voice_peer_runtime_kind_source(cfg);
+  out["default_runtime_kind_available"] = voice_peer_backend_available(cfg, default_runtime_kind);
+  out["tool_configured"] = !trim_copy(cfg.audio_webrtc_peer_tool_path).empty();
+  out["broker_url_default_configured"] = !trim_copy(cfg.audio_webrtc_broker_url).empty();
+  out["broker_token_default_configured"] = !trim_copy(cfg.audio_webrtc_broker_token).empty();
+  if (!cfg.audio_webrtc_peer_tool_path.empty()) out["tool_path"] = cfg.audio_webrtc_peer_tool_path;
+  if (!bundled_tool_path.empty()) out["bundled_tool_path"] = bundled_tool_path;
+  out["node_bin"] = cfg.audio_webrtc_peer_node_bin.empty() ? "node" : cfg.audio_webrtc_peer_node_bin;
+  return out;
+}
+
+static void voice_peer_add_runtime_metadata(const DaemonConfig& cfg, Json::Value* out) {
+  if (!out) return;
+  const Json::Value meta = session_voice_webrtc_backend_metadata_json_impl(cfg);
+  for (const auto& name : meta.getMemberNames()) {
+    (*out)[name] = meta[name];
+  }
 }
 
 static bool resolve_voice_peer_backend(
@@ -793,6 +802,10 @@ static bool remove_voice_peer_runtime_artifacts(
 }
 
 }  // namespace
+
+Json::Value session_voice_webrtc_backend_metadata_json(const DaemonConfig& cfg) {
+  return session_voice_webrtc_backend_metadata_json_impl(cfg);
+}
 
 void handle_session_voice_webrtc_peer_endpoint(
   const DaemonConfig& cfg,

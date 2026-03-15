@@ -1419,6 +1419,177 @@ curl -fsS --noproxy "*" --max-time 10 -X DELETE \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   "${DAEMON_URL}/api/v1/session?session_id=${EXTERNAL_SESSION_ID_Q}" >/dev/null
 
+unavailable_default_config_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "audio_webrtc": {
+    "peer_tool_path": None,
+    "default_runtime_kind": "external",
+    "node_bin": "node"
+  }
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/config/update")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${unavailable_default_config_resp}''')
+audio = obj.get("audio_webrtc") or {}
+if not obj.get("ok"):
+  print("config update for unavailable external default failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("peer_tool_path_configured") is not False:
+  print("expected cleared peer_tool_path_configured", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("builtin_available") is not False or audio.get("bundled_available") is not True:
+  print("unexpected bundled/builtin availability after clearing external tool", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("external_available") is not False:
+  print("expected external_available=false after clearing external tool", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("default_runtime_kind") != "external" or audio.get("default_runtime_kind_source") != "config":
+  print("expected config-backed external default to remain selected", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("default_runtime_kind_available") is not False:
+  print("expected config-backed external default to be unavailable", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("node_bin") != "node":
+  print("expected node_bin=node after clearing external tool", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+restart_agentd_without_voice_defaults
+
+unavailable_default_config_get="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/config")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${unavailable_default_config_get}''')
+daemon = obj.get("daemon") or {}
+audio = daemon.get("audio_webrtc") or {}
+if audio.get("peer_tool_path_configured") is not False:
+  print("expected persisted cleared peer_tool_path_configured", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("builtin_available") is not False or audio.get("bundled_available") is not True:
+  print("unexpected bundled/builtin availability after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("external_available") is not False:
+  print("expected persisted external_available=false after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("default_runtime_kind") != "external" or audio.get("default_runtime_kind_source") != "config":
+  print("expected persisted external default after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("default_runtime_kind_available") is not False:
+  print("expected persisted default_runtime_kind_available=false after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+UNAVAILABLE_DEFAULT_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_default_unavailable_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${UNAVAILABLE_DEFAULT_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+set +e
+unavailable_default_start_resp="$(curl -sS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${UNAVAILABLE_DEFAULT_SESSION_ID}",
+  "action": "start",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab-default-unavailable",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 903
+}))
+PY
+)" \
+  -w $'\n%{http_code}' \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+unavailable_default_start_curl_rc=$?
+set -e
+if [[ ${unavailable_default_start_curl_rc} -ne 0 ]]; then
+  echo "voice_webrtc_peer unavailable-default start request failed to complete" >&2
+  exit 1
+fi
+
+unavailable_default_start_code="$(printf '%s' "${unavailable_default_start_resp}" | tail -n 1)"
+unavailable_default_start_body="$(printf '%s' "${unavailable_default_start_resp}" | sed '$d')"
+if [[ "${unavailable_default_start_code}" != "500" ]]; then
+  echo "expected unavailable external default start to return http 500, got ${unavailable_default_start_code}" >&2
+  exit 1
+fi
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${unavailable_default_start_body}''')
+if obj.get("ok") is not False:
+  print("expected unavailable external default start to fail", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("builtin_available") is not False or obj.get("bundled_available") is not True:
+  print("unexpected bundled/builtin availability on unavailable default start", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("external_available") is not False:
+  print("expected external_available=false on unavailable default start", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("default_runtime_kind") != "external" or obj.get("default_runtime_kind_source") != "config":
+  print("expected config-backed external default on unavailable default start", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("default_runtime_kind_available") is not False:
+  print("expected unavailable default_runtime_kind_available=false on start failure", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "audio_webrtc_peer_tool_path not configured" not in str(obj.get("error") or ""):
+  print("expected missing peer tool path error on unavailable default start", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+UNAVAILABLE_DEFAULT_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${UNAVAILABLE_DEFAULT_SESSION_ID}")"
+curl -fsS --noproxy "*" --max-time 10 -X DELETE \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session?session_id=${UNAVAILABLE_DEFAULT_SESSION_ID_Q}" >/dev/null
+
+restored_external_default_config_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "audio_webrtc": {
+    "peer_tool_path": "${PEER_TOOL}",
+    "default_runtime_kind": "external",
+    "node_bin": "node"
+  }
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/config/update")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${restored_external_default_config_resp}''')
+audio = obj.get("audio_webrtc") or {}
+if not obj.get("ok"):
+  print("failed to restore external default config after unavailable-default test", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("peer_tool_path_configured") is not True:
+  print("expected restored peer_tool_path_configured", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("external_available") is not True or audio.get("default_runtime_kind_available") is not True:
+  print("expected restored external availability after unavailable-default test", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 python3 - <<PY
 import json, sqlite3
 db_path = r'''${SESSION_DB_PATH}'''
