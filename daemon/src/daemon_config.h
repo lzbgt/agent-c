@@ -79,6 +79,14 @@ struct DaemonConfig {
   // Durable trust-root rotation metadata for edge envelope auth control-plane operations.
   int64_t edge_auth_trust_roots_epoch = 0;
   int64_t edge_auth_trust_roots_updated_utc_ms = 0;
+  // Optional PEM certificate-root control plane.
+  //
+  // This is a durable distribution surface for certificate-chain material that can be signed and
+  // delivered over the UM-BMP outbox path. It does not, by itself, imply full X.509 path validation
+  // is already enforced for envelope auth.
+  std::map<std::string, std::string> edge_auth_cert_roots_pem; // kid -> PEM certificate/root chain blob
+  int64_t edge_auth_cert_roots_epoch = 0;
+  int64_t edge_auth_cert_roots_updated_utc_ms = 0;
   // Durable revocation metadata for edge envelope auth.
   //
   // Revocation is enforced against both envelope auth and node attestation verification:

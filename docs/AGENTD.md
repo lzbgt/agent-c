@@ -465,6 +465,10 @@ Edge trust-root rotation:
   HMAC / Ed25519 trust-root set in the durable runtime config.
 - `POST /api/v1/edge/auth/trust_roots/send` enqueues that same signed trust-root bundle to a recipient node’s
   outbox as `PLATFORM_TRUST_ROOTS_BUNDLE`.
+- `GET /api/v1/edge/auth/cert_roots` returns the durable PEM certificate-root bundle with optional
+  server-side attestation, and `POST /api/v1/edge/auth/cert_roots/rotate` updates it with a monotonic epoch.
+- `POST /api/v1/edge/auth/cert_roots/send` enqueues that same signed certificate-root bundle to a recipient node’s
+  outbox as `PLATFORM_CERT_ROOTS_BUNDLE`.
 - `GET /api/v1/edge/auth/revocations` returns the durable revoked-`kid` / revoked-node bundle, with optional
   server-side attestation when run-attestation signing is configured.
 - `POST /api/v1/edge/auth/revocations/update` applies a monotonic revocation epoch and updates the current

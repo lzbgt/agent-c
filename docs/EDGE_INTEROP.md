@@ -23,7 +23,8 @@ Current status:
   - `POST /api/v1/edge/node/manifest_bundle/send`
   - `POST /api/v1/edge/auth/trust_roots/send`
   - `POST /api/v1/edge/auth/revocations/send`
-- Still open: certificate-chain PKI and confidentiality beyond authenticity-only envelopes.
+  - `POST /api/v1/edge/auth/cert_roots/send`
+- Still open: certificate-chain validation and confidentiality beyond authenticity-only envelopes.
 
 Executable contract artifacts (this repo):
 - Schemas: `docs/spec/um-eais/schema/` (envelope + core + platform extensions)
@@ -135,6 +136,10 @@ Envelope authenticity (optional, UM‑BMP auth v0.4):
     - `GET /api/v1/edge/auth/trust_roots` returns a safe bundle with `rotation_epoch`, `hmac_kids`, `ed25519_pubkeys`, and optional `attest`
     - `POST /api/v1/edge/auth/trust_roots/rotate` applies a monotonic rotation epoch and updates the HMAC / Ed25519 trust-root set (`mode:"merge"` or `mode:"replace"`)
     - `POST /api/v1/edge/auth/trust_roots/send` enqueues the same signed trust-root bundle to a recipient node’s outbox as `PLATFORM_TRUST_ROOTS_BUNDLE`
+  - Certificate-root control plane:
+    - `GET /api/v1/edge/auth/cert_roots` returns the durable PEM certificate-root bundle with optional `attest`
+    - `POST /api/v1/edge/auth/cert_roots/rotate` applies a monotonic certificate-root epoch and updates the current PEM root-chain set
+    - `POST /api/v1/edge/auth/cert_roots/send` enqueues the same signed certificate-root bundle to a recipient node’s outbox as `PLATFORM_CERT_ROOTS_BUNDLE`
   - Per-node provisioning helpers:
     - `GET /api/v1/edge/auth/node_binding?node_id=...` shows the effective `kid_policy` match set for one node
     - `POST /api/v1/edge/auth/provision_node` provisions HMAC / Ed25519 trust roots for one node while enforcing the active `edge_auth_kid_policy`
@@ -189,6 +194,9 @@ Returns messages in ascending `outbox_id` order. The node should:
 - `GET /api/v1/edge/node/manifest_bundle?node_id=...`
 - `POST /api/v1/edge/node/manifest_bundle/send`
 - `POST /api/v1/edge/auth/trust_roots/send`
+- `GET /api/v1/edge/auth/cert_roots`
+- `POST /api/v1/edge/auth/cert_roots/rotate`
+- `POST /api/v1/edge/auth/cert_roots/send`
 - `POST /api/v1/edge/auth/revocations/send`
 
 Manifest bundle note:
@@ -203,6 +211,9 @@ Manifest bundle note:
 - The edge-auth send helpers enqueue the current signed trust-root and revocation bundles as
   `PLATFORM_TRUST_ROOTS_BUNDLE` and `PLATFORM_REVOCATIONS_BUNDLE`, so nodes can poll
   control-plane trust changes through the same outbox transport instead of relying on a direct HTTP pull.
+- The certificate-root helper does the same for PEM certificate-root bundles via
+  `PLATFORM_CERT_ROOTS_BUNDLE`, giving operators a durable signed distribution lane for
+  X.509-style root material even before full certificate-chain validation is enforced in envelope auth.
 
 ### Platform helper: enqueue TASK_ASSIGN
 

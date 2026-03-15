@@ -88,6 +88,9 @@ AgentdConfigResponse:
         ed25519_pubkeys_set: { type: integer, format: int64 }
         trust_roots_epoch: { type: integer, format: int64 }
         trust_roots_updated_utc_ms: { type: integer, format: int64 }
+        cert_roots_set: { type: integer, format: int64 }
+        cert_roots_epoch: { type: integer, format: int64 }
+        cert_roots_updated_utc_ms: { type: integer, format: int64 }
         revoked_kids_set: { type: integer, format: int64 }
         revoked_node_ids_set: { type: integer, format: int64 }
         revocations_epoch: { type: integer, format: int64 }
@@ -293,7 +296,7 @@ AgentdConfigUpdateRequest:
 
 AgentdConfigUpdateResponse:
   type: object
-  required: [ok, base_url, model, system_profile, summary_max_chars, timeout_ms, proxy_url_set, provider_keys_set, edge_auth_required, edge_auth_hmac_keys_set, edge_auth_ed25519_pubkeys_set, edge_attest_required, edge_attest_require_sig]
+  required: [ok, base_url, model, system_profile, summary_max_chars, timeout_ms, proxy_url_set, provider_keys_set, edge_auth_required, edge_auth_hmac_keys_set, edge_auth_ed25519_pubkeys_set, edge_auth_cert_roots_set, edge_attest_required, edge_attest_require_sig]
   properties:
     ok: { type: boolean }
     base_url: { type: string }
@@ -323,6 +326,8 @@ AgentdConfigUpdateResponse:
     edge_auth_kid_policy: { type: string }
     edge_auth_trust_roots_epoch: { type: integer, format: int64 }
     edge_auth_trust_roots_updated_utc_ms: { type: integer, format: int64 }
+    edge_auth_cert_roots_epoch: { type: integer, format: int64 }
+    edge_auth_cert_roots_updated_utc_ms: { type: integer, format: int64 }
     edge_attest_required: { type: boolean }
     edge_attest_require_sig: { type: boolean }
     memory:
@@ -357,6 +362,10 @@ AgentdConfigUpdateResponse:
       type: integer
       format: int64
       description: Number of Ed25519 pubkeys currently provisioned (pubkeys are not returned)
+    edge_auth_cert_roots_set:
+      type: integer
+      format: int64
+      description: Number of PEM certificate-root bundles currently provisioned
     engines:
       type: object
       additionalProperties: true
@@ -482,6 +491,100 @@ EdgeAuthTrustRootsRotateResponse:
     edge_auth_ed25519_pubkeys_set: { type: integer, format: int64 }
     trust_roots:
       $ref: "#/components/schemas/EdgeAuthTrustRootsBundle"
+
+
+EdgeAuthCertRootsAttestation:
+  type: object
+  required: [schema, ts_utc_ms, rotation_epoch, signing_schema, alg, kid, sig]
+  properties:
+    schema: { type: string, enum: [edge_auth_cert_roots_attest_v1] }
+    ts_utc_ms: { type: integer, format: int64 }
+    rotation_epoch: { type: integer, format: int64 }
+    signing_schema: { type: string, enum: [edge_auth_cert_roots_v1] }
+    alg: { type: string, enum: [hmac-sha256, ed25519] }
+    kid: { type: string }
+    pubkey:
+      type: string
+      description: Present for Ed25519 signatures
+    sig: { type: string }
+
+
+EdgeAuthCertRootsBundle:
+  type: object
+  required: [schema, created_utc_ms, rotation_epoch, updated_utc_ms, cert_roots_pem]
+  properties:
+    schema: { type: string, enum: [edge_auth_cert_roots_v1] }
+    created_utc_ms: { type: integer, format: int64 }
+    rotation_epoch: { type: integer, format: int64 }
+    updated_utc_ms: { type: integer, format: int64 }
+    cert_roots_pem:
+      type: object
+      additionalProperties: { type: string }
+    attest:
+      $ref: "#/components/schemas/EdgeAuthCertRootsAttestation"
+
+
+EdgeAuthCertRootsResponse:
+  type: object
+  required: [ok, cert_roots]
+  properties:
+    ok: { type: boolean }
+    cert_roots:
+      $ref: "#/components/schemas/EdgeAuthCertRootsBundle"
+
+
+EdgeAuthCertRootsRotateRequest:
+  type: object
+  additionalProperties: false
+  required: [edge_auth_cert_roots_pem]
+  properties:
+    mode:
+      type: string
+      enum: [merge, replace]
+      description: Whether to merge into or replace the current certificate-root set
+    rotation_epoch:
+      type: integer
+      format: int64
+      description: Optional explicit monotonic certificate-root epoch; defaults to current+1
+    edge_auth_cert_roots_pem:
+      type: object
+      additionalProperties:
+        type: string
+        nullable: true
+      description: Map of `kid` → PEM certificate/root-chain blob (null clears that kid)
+
+
+EdgeAuthCertRootsRotateResponse:
+  type: object
+  required: [ok, rotation_epoch, updated_utc_ms, edge_auth_cert_roots_set, cert_roots]
+  properties:
+    ok: { type: boolean }
+    rotation_epoch: { type: integer, format: int64 }
+    updated_utc_ms: { type: integer, format: int64 }
+    edge_auth_cert_roots_set: { type: integer, format: int64 }
+    cert_roots:
+      $ref: "#/components/schemas/EdgeAuthCertRootsBundle"
+
+
+EdgeAuthCertRootsSendRequest:
+  type: object
+  additionalProperties: false
+  required: [target_node_id]
+  properties:
+    target_node_id:
+      type: string
+      description: Recipient node that will receive the certificate-root bundle via outbox
+
+
+EdgeAuthCertRootsSendResponse:
+  type: object
+  required: [ok, target_node_id, outbox_id, cert_roots]
+  properties:
+    ok: { type: boolean }
+    target_node_id: { type: string }
+    outbox_id: { type: integer, format: int64 }
+    cert_roots:
+      $ref: "#/components/schemas/EdgeAuthCertRootsBundle"
 
 
 EdgeAuthNodeBinding:

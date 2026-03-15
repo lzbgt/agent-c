@@ -429,6 +429,29 @@ bool load_runtime_config_best_effort(
           ? v["edge_auth_trust_roots_updated_utc_ms"].asInt64()
           : (int64_t)v["edge_auth_trust_roots_updated_utc_ms"].asUInt64();
       }
+      if (v.isMember("edge_auth_cert_roots_pem") && v["edge_auth_cert_roots_pem"].isObject()) {
+        cfg_io->edge_auth_cert_roots_pem.clear();
+        const Json::Value& ek = v["edge_auth_cert_roots_pem"];
+        for (const auto& kid : ek.getMemberNames()) {
+          if (!is_safe_edge_id_token(kid)) continue;
+          const Json::Value& kv = ek[kid];
+          if (!kv.isString()) continue;
+          const std::string s = trim_copy(kv.asString());
+          if (!s.empty()) cfg_io->edge_auth_cert_roots_pem[kid] = s;
+        }
+      }
+      if (v.isMember("edge_auth_cert_roots_epoch") &&
+          (v["edge_auth_cert_roots_epoch"].isInt64() || v["edge_auth_cert_roots_epoch"].isUInt64())) {
+        cfg_io->edge_auth_cert_roots_epoch = v["edge_auth_cert_roots_epoch"].isInt64()
+          ? v["edge_auth_cert_roots_epoch"].asInt64()
+          : (int64_t)v["edge_auth_cert_roots_epoch"].asUInt64();
+      }
+      if (v.isMember("edge_auth_cert_roots_updated_utc_ms") &&
+          (v["edge_auth_cert_roots_updated_utc_ms"].isInt64() || v["edge_auth_cert_roots_updated_utc_ms"].isUInt64())) {
+        cfg_io->edge_auth_cert_roots_updated_utc_ms = v["edge_auth_cert_roots_updated_utc_ms"].isInt64()
+          ? v["edge_auth_cert_roots_updated_utc_ms"].asInt64()
+          : (int64_t)v["edge_auth_cert_roots_updated_utc_ms"].asUInt64();
+      }
       if (v.isMember("edge_auth_revoked_kids") && v["edge_auth_revoked_kids"].isArray()) {
         cfg_io->edge_auth_revoked_kids.clear();
         for (const auto& item : v["edge_auth_revoked_kids"]) {
@@ -663,6 +686,16 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   v["edge_auth_kid_policy"] = cfg.edge_auth_kid_policy;
   v["edge_auth_trust_roots_epoch"] = (Json::Int64)cfg.edge_auth_trust_roots_epoch;
   v["edge_auth_trust_roots_updated_utc_ms"] = (Json::Int64)cfg.edge_auth_trust_roots_updated_utc_ms;
+  if (!cfg.edge_auth_cert_roots_pem.empty()) {
+    Json::Value ek(Json::objectValue);
+    for (const auto& p : cfg.edge_auth_cert_roots_pem) {
+      if (p.first.empty() || p.second.empty()) continue;
+      ek[p.first] = p.second;
+    }
+    if (!ek.empty()) v["edge_auth_cert_roots_pem"] = ek;
+  }
+  v["edge_auth_cert_roots_epoch"] = (Json::Int64)cfg.edge_auth_cert_roots_epoch;
+  v["edge_auth_cert_roots_updated_utc_ms"] = (Json::Int64)cfg.edge_auth_cert_roots_updated_utc_ms;
   {
     Json::Value arr(Json::arrayValue);
     for (const auto& s : cfg.edge_auth_revoked_kids) if (!s.empty()) arr.append(s);

@@ -310,6 +310,107 @@
             schema:
               $ref: "#/components/schemas/ErrorResponse"
 
+/api/v1/edge/auth/cert_roots:
+  get:
+    tags: [config, edge]
+    summary: Get safe edge auth certificate-root bundle
+    description: |
+      Returns the current durable PEM certificate-root bundle as a first-class signed artifact.
+
+      Notes:
+      - This is a control-plane distribution surface for certificate/root-chain material.
+      - It does not imply full X.509 path validation is already enforced for UM-BMP envelopes.
+    responses:
+      "200":
+        description: Certificate-root bundle
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeAuthCertRootsResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
+/api/v1/edge/auth/cert_roots/rotate:
+  post:
+    tags: [config, edge]
+    summary: Rotate durable edge auth certificate roots
+    description: |
+      Applies a monotonic certificate-root epoch and updates the current PEM certificate-root set.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EdgeAuthCertRootsRotateRequest"
+    responses:
+      "200":
+        description: Rotation acknowledged
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeAuthCertRootsRotateResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "409":
+        description: Rotation epoch conflict
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
+/api/v1/edge/auth/cert_roots/send:
+  post:
+    tags: [config, edge]
+    summary: Enqueue the signed certificate-root bundle to one node outbox
+    description: |
+      Builds the current signed `edge_auth_cert_roots_v1` bundle and enqueues it to the
+      recipient node as a `PLATFORM_CERT_ROOTS_BUNDLE` outbox message.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EdgeAuthCertRootsSendRequest"
+    responses:
+      "200":
+        description: Bundle queued for node delivery
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeAuthCertRootsSendResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "404":
+        description: Target node not found
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
 /api/v1/edge/auth/node_binding:
   get:
     tags: [config, edge]

@@ -48,6 +48,29 @@ void handle_edge_auth_trust_roots_send_endpoint(
   HttpResponse* resp
 );
 
+void handle_edge_auth_cert_roots_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
+void handle_edge_auth_cert_roots_rotate_endpoint(
+  DaemonConfigStore* cfg_store,
+  AgentDb* db,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
+void handle_edge_auth_cert_roots_send_endpoint(
+  const DaemonConfig& cfg,
+  AgentDb* db,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
 void handle_edge_auth_node_binding_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
