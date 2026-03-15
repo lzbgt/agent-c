@@ -416,6 +416,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   stop, and later starts now self-heal that stale snapshot too: agentd clears the persisted record, removes stale
   local runtime artifacts, exposes the recovery in `cleanup_on_stale_record`, and treats the runtime as not running
   instead of surfacing a fake persisted stopped peer.
+- `POST /api/v1/session/voice_webrtc_peer` `action=stop` now also reports actual local teardown semantics: when the
+  peer already exited, the response returns `stopped=false` and `reason=not_running` instead of claiming a live stop,
+  while still attempting owned broker-session cleanup when applicable.
 - `POST /api/v1/session/voice_webrtc_peer` no longer requires callers to pre-create the broker audio session:
   if `broker_session_id` is omitted and `broker_agent_id` is provided, agentd now creates the broker audio session,
   launches the peer against it, and reports `peer.managed_broker_session=true` plus the chosen

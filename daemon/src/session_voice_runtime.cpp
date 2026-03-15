@@ -1156,15 +1156,14 @@ void handle_session_voice_webrtc_peer_endpoint(
       resp->body = json_stringify(out);
       return;
     }
-#if defined(_WIN32)
-    out["error"] = "voice_webrtc_peer stop unsupported on Windows";
-    out["peer"] = voice_peer_runtime_to_json(*st);
-    resp->status = 501;
-    resp->body = json_stringify(out);
-    return;
-#else
+    {
+      std::lock_guard<std::mutex> lk(g_voice_peer_mu);
+      refresh_voice_peer_runtime_state(st.get());
+    }
+    const bool was_running = st->running;
+#if !defined(_WIN32)
     std::string serr;
-    if (!voice_peer_kill_best_effort(st, &serr)) {
+    if (was_running && !voice_peer_kill_best_effort(st, &serr)) {
       out["error"] = serr.empty() ? "failed to stop voice peer" : serr;
       {
         std::lock_guard<std::mutex> lk(g_voice_peer_mu);
@@ -1175,8 +1174,21 @@ void handle_session_voice_webrtc_peer_endpoint(
       resp->body = json_stringify(out);
       return;
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    const bool stopped = wait_for_voice_peer_stop(st, 2000);
+    bool stopped = false;
+    if (was_running) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      stopped = wait_for_voice_peer_stop(st, 2000);
+    }
+#else
+    if (was_running) {
+      out["error"] = "voice_webrtc_peer stop unsupported on Windows";
+      out["peer"] = voice_peer_runtime_to_json(*st);
+      resp->status = 501;
+      resp->body = json_stringify(out);
+      return;
+    }
+    const bool stopped = false;
+#endif
     std::string cleanup_err;
     bool cleanup_attempted = false;
     bool cleanup_deleted = false;
@@ -1196,6 +1208,7 @@ void handle_session_voice_webrtc_peer_endpoint(
     (void)persist_voice_peer_runtime_record(db, *st, &perr);
     out["ok"] = true;
     out["stopped"] = stopped;
+    if (!was_running) out["reason"] = "not_running";
     if (cleanup_attempted) {
       out["broker_session_deleted"] = cleanup_deleted;
       if (!cleanup_deleted && !cleanup_err.empty()) out["broker_session_delete_error"] = cleanup_err;
@@ -1203,7 +1216,6 @@ void handle_session_voice_webrtc_peer_endpoint(
     resp->status = 200;
     resp->body = json_stringify(out);
     return;
-#endif
   }
 
   const std::string runtime_kind = body.isMember("runtime_kind") && body["runtime_kind"].isString()

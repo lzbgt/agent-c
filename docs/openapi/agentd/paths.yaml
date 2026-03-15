@@ -3391,7 +3391,9 @@
       instead of leaving an orphan behind. If the only recovered runtime state is a
       stale persisted `running=true` record from a dead daemon process, `stop`
       returns `reason=not_running` and `start` first clears that stale record via
-      `cleanup_on_stale_record` before proceeding.
+      `cleanup_on_stale_record` before proceeding. If the runtime record exists but
+      the peer has already exited, `stop` now also returns `reason=not_running`
+      while still attempting owned broker-session cleanup when applicable.
     requestBody:
       required: true
       content:

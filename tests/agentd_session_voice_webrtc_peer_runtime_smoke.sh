@@ -1094,12 +1094,15 @@ stop_resp="$(curl -fsS --noproxy "*" --max-time 10 \
 python3 - <<PY
 import json, sys
 obj = json.loads(r'''${stop_resp}''')
-if not obj.get("ok") or not obj.get("stopped"):
+if not obj.get("ok"):
   print("voice_webrtc_peer stop failed", obj, file=sys.stderr)
   raise SystemExit(1)
 peer = obj.get("peer") or {}
 if peer.get("runtime_kind") != "bundled":
   print("unexpected stopped peer runtime_kind", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("stopped") is not False or obj.get("reason") != "not_running":
+  print("expected stop to report not_running for already-exited peer", obj, file=sys.stderr)
   raise SystemExit(1)
 if obj.get("broker_session_deleted") is not True:
   print("expected broker_session_deleted cleanup result", obj, file=sys.stderr)

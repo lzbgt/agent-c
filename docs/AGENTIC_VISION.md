@@ -256,6 +256,8 @@ These are the most leveraged next steps grounded in current architecture:
    - Completed 2026-03-15: stale persisted `voice_webrtc_peer` records that still claim `running=true` after a dead
      daemon restart are now self-healed on status/stop/start, so the runtime surface clears stale artifacts instead of
      reporting a fake recovered peer.
+   - Completed 2026-03-15: `voice_webrtc_peer action=stop` now reports `reason=not_running` when the peer already
+     exited, while still allowing agentd-owned broker session cleanup for that finished runtime.
    - Completed 2026-03-15: managed voice-runtime start now fails closed if the child exits before ready, and agentd
      cleans up any owned broker audio session created for that failed start instead of reporting a false-positive start.
    - Completed 2026-03-15: the operator-configured `external` backend seam is now durable daemon config
