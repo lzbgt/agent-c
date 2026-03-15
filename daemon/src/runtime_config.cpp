@@ -39,6 +39,20 @@ static bool is_safe_tool_name(const std::string& s_in) {
   return true;
 }
 
+static bool is_safe_edge_id_token(const std::string& s_in) {
+  const std::string s = trim_copy(s_in);
+  if (s.empty() || s.size() > 64) return false;
+  for (const char c : s) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') ||
+      c == '-' || c == '_' || c == '.' || c == ':';
+    if (!ok) return false;
+  }
+  return true;
+}
+
 static void upsert_tool_call_limit(std::vector<std::pair<std::string, size_t>>* limits, std::string tool, size_t max_calls) {
   if (!limits || tool.empty()) return;
   for (auto& kv : *limits) {
@@ -415,6 +429,34 @@ bool load_runtime_config_best_effort(
           ? v["edge_auth_trust_roots_updated_utc_ms"].asInt64()
           : (int64_t)v["edge_auth_trust_roots_updated_utc_ms"].asUInt64();
       }
+      if (v.isMember("edge_auth_revoked_kids") && v["edge_auth_revoked_kids"].isArray()) {
+        cfg_io->edge_auth_revoked_kids.clear();
+        for (const auto& item : v["edge_auth_revoked_kids"]) {
+          if (!item.isString()) continue;
+          const std::string s = trim_copy(item.asString());
+          if (!s.empty() && is_safe_edge_id_token(s)) cfg_io->edge_auth_revoked_kids.push_back(s);
+        }
+      }
+      if (v.isMember("edge_auth_revoked_node_ids") && v["edge_auth_revoked_node_ids"].isArray()) {
+        cfg_io->edge_auth_revoked_node_ids.clear();
+        for (const auto& item : v["edge_auth_revoked_node_ids"]) {
+          if (!item.isString()) continue;
+          const std::string s = trim_copy(item.asString());
+          if (!s.empty() && is_safe_edge_id_token(s)) cfg_io->edge_auth_revoked_node_ids.push_back(s);
+        }
+      }
+      if (v.isMember("edge_auth_revocations_epoch") &&
+          (v["edge_auth_revocations_epoch"].isInt64() || v["edge_auth_revocations_epoch"].isUInt64())) {
+        cfg_io->edge_auth_revocations_epoch = v["edge_auth_revocations_epoch"].isInt64()
+          ? v["edge_auth_revocations_epoch"].asInt64()
+          : (int64_t)v["edge_auth_revocations_epoch"].asUInt64();
+      }
+      if (v.isMember("edge_auth_revocations_updated_utc_ms") &&
+          (v["edge_auth_revocations_updated_utc_ms"].isInt64() || v["edge_auth_revocations_updated_utc_ms"].isUInt64())) {
+        cfg_io->edge_auth_revocations_updated_utc_ms = v["edge_auth_revocations_updated_utc_ms"].isInt64()
+          ? v["edge_auth_revocations_updated_utc_ms"].asInt64()
+          : (int64_t)v["edge_auth_revocations_updated_utc_ms"].asUInt64();
+      }
       if (v.isMember("edge_attest_required") && v["edge_attest_required"].isBool()) {
         cfg_io->edge_attest_required = v["edge_attest_required"].asBool();
       }
@@ -621,6 +663,18 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   v["edge_auth_kid_policy"] = cfg.edge_auth_kid_policy;
   v["edge_auth_trust_roots_epoch"] = (Json::Int64)cfg.edge_auth_trust_roots_epoch;
   v["edge_auth_trust_roots_updated_utc_ms"] = (Json::Int64)cfg.edge_auth_trust_roots_updated_utc_ms;
+  {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : cfg.edge_auth_revoked_kids) if (!s.empty()) arr.append(s);
+    v["edge_auth_revoked_kids"] = arr;
+  }
+  {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : cfg.edge_auth_revoked_node_ids) if (!s.empty()) arr.append(s);
+    v["edge_auth_revoked_node_ids"] = arr;
+  }
+  v["edge_auth_revocations_epoch"] = (Json::Int64)cfg.edge_auth_revocations_epoch;
+  v["edge_auth_revocations_updated_utc_ms"] = (Json::Int64)cfg.edge_auth_revocations_updated_utc_ms;
   v["edge_attest_required"] = cfg.edge_attest_required;
   v["edge_attest_require_sig"] = cfg.edge_attest_require_sig;
   v["workflow_admit_max_inflight_tasks_per_session"] = cfg.workflow_admit_max_inflight_tasks_per_session;

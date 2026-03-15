@@ -36,9 +36,30 @@ bool fixed_time_eq32(const uint8_t a[32], const uint8_t b[32]) {
   return diff == 0;
 }
 
-static std::string to_lower_copy(std::string s) {
-  std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return (char)std::tolower(c); });
-  return s;
+static bool string_vec_contains(const std::vector<std::string>& haystack, const std::string& needle) {
+  if (needle.empty()) return false;
+  for (const auto& item : haystack) {
+    if (item == needle) return true;
+  }
+  return false;
+}
+
+bool edge_auth_is_revoked(
+  const DaemonConfig& cfg,
+  const std::string& node_id,
+  const std::string& kid,
+  std::string* out_reason
+) {
+  if (out_reason) out_reason->clear();
+  if (!node_id.empty() && string_vec_contains(cfg.edge_auth_revoked_node_ids, node_id)) {
+    if (out_reason) *out_reason = "revoked_node_id";
+    return true;
+  }
+  if (!kid.empty() && string_vec_contains(cfg.edge_auth_revoked_kids, kid)) {
+    if (out_reason) *out_reason = "revoked_kid";
+    return true;
+  }
+  return false;
 }
 
 std::string umbmp_result_attest_input_v0_1(
@@ -234,8 +255,9 @@ bool verify_edge_envelope_auth_best_effort(
 
   // Optional per-node key selection policy.
   // This is checked only when we can bind the envelope to a node identity (`from:"node:<node_id>"`).
+  std::string node_id_from;
   if (from_id.rfind("node:", 0) == 0 && from_id.size() > 5) {
-    const std::string node_id_from = trim_copy(from_id.substr(5));
+    node_id_from = trim_copy(from_id.substr(5));
     if (!node_id_from.empty() && edge_id_is_safe(node_id_from)) {
       const std::string pol = cfg.edge_auth_kid_policy.empty() ? "any" : cfg.edge_auth_kid_policy;
       if (pol == "match_node") {
@@ -254,6 +276,13 @@ bool verify_edge_envelope_auth_best_effort(
         }
       }
     }
+  }
+
+  std::string revoke_reason;
+  if (edge_auth_is_revoked(cfg, node_id_from, kid, &revoke_reason)) {
+    resp->status = 401;
+    resp->body = json_error_body(revoke_reason == "revoked_node_id" ? "revoked edge node_id" : "revoked envelope.auth.kid");
+    return false;
   }
 
   std::string sig_bytes;

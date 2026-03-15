@@ -88,6 +88,10 @@ AgentdConfigResponse:
         ed25519_pubkeys_set: { type: integer, format: int64 }
         trust_roots_epoch: { type: integer, format: int64 }
         trust_roots_updated_utc_ms: { type: integer, format: int64 }
+        revoked_kids_set: { type: integer, format: int64 }
+        revoked_node_ids_set: { type: integer, format: int64 }
+        revocations_epoch: { type: integer, format: int64 }
+        revocations_updated_utc_ms: { type: integer, format: int64 }
     edge_attest:
       type: object
       additionalProperties: true
@@ -462,18 +466,27 @@ EdgeAuthTrustRootsRotateResponse:
 EdgeAuthNodeBinding:
   type: object
   required:
-    [node_id, kid_policy, trust_roots_epoch, trust_roots_updated_utc_ms, recommended_hmac_kid, recommended_ed25519_kid, matching_hmac_kids, matching_ed25519_kids, kid_policy_satisfied]
+    [node_id, kid_policy, trust_roots_epoch, trust_roots_updated_utc_ms, revocations_epoch, revocations_updated_utc_ms, recommended_hmac_kid, recommended_ed25519_kid, node_id_revoked, matching_hmac_kids, matching_ed25519_kids, revoked_matching_hmac_kids, revoked_matching_ed25519_kids, kid_policy_satisfied]
   properties:
     node_id: { type: string }
     kid_policy: { type: string }
     trust_roots_epoch: { type: integer, format: int64 }
     trust_roots_updated_utc_ms: { type: integer, format: int64 }
+    revocations_epoch: { type: integer, format: int64 }
+    revocations_updated_utc_ms: { type: integer, format: int64 }
     recommended_hmac_kid: { type: string }
     recommended_ed25519_kid: { type: string }
+    node_id_revoked: { type: boolean }
     matching_hmac_kids:
       type: array
       items: { type: string }
     matching_ed25519_kids:
+      type: array
+      items: { type: string }
+    revoked_matching_hmac_kids:
+      type: array
+      items: { type: string }
+    revoked_matching_ed25519_kids:
       type: array
       items: { type: string }
     kid_policy_satisfied: { type: boolean }
@@ -534,3 +547,77 @@ EdgeAuthProvisionNodeResponse:
       $ref: "#/components/schemas/EdgeAuthNodeBinding"
     trust_roots:
       $ref: "#/components/schemas/EdgeAuthTrustRootsBundle"
+
+
+EdgeAuthRevocationsAttest:
+  type: object
+  required: [schema, ts_utc_ms, rotation_epoch, signing_schema, alg, kid, sig]
+  properties:
+    schema: { type: string, enum: [edge_auth_revocations_attest_v1] }
+    ts_utc_ms: { type: integer, format: int64 }
+    rotation_epoch: { type: integer, format: int64 }
+    signing_schema: { type: string, enum: [edge_auth_revocations_v1] }
+    alg: { type: string, enum: [hmac-sha256, ed25519] }
+    kid: { type: string }
+    pubkey: { type: string }
+    sig: { type: string }
+
+
+EdgeAuthRevocationsBundle:
+  type: object
+  required: [schema, created_utc_ms, rotation_epoch, updated_utc_ms, revoked_kids, revoked_node_ids]
+  properties:
+    schema: { type: string, enum: [edge_auth_revocations_v1] }
+    created_utc_ms: { type: integer, format: int64 }
+    rotation_epoch: { type: integer, format: int64 }
+    updated_utc_ms: { type: integer, format: int64 }
+    revoked_kids:
+      type: array
+      items: { type: string }
+    revoked_node_ids:
+      type: array
+      items: { type: string }
+    attest:
+      $ref: "#/components/schemas/EdgeAuthRevocationsAttest"
+
+
+EdgeAuthRevocationsResponse:
+  type: object
+  required: [ok, revocations]
+  properties:
+    ok: { type: boolean }
+    revocations:
+      $ref: "#/components/schemas/EdgeAuthRevocationsBundle"
+
+
+EdgeAuthRevocationsUpdateRequest:
+  type: object
+  additionalProperties: false
+  properties:
+    mode:
+      type: string
+      enum: [merge, replace]
+      description: Whether to merge into or replace the current revocation set
+    rotation_epoch:
+      type: integer
+      format: int64
+      description: Optional explicit monotonic revocation epoch; defaults to current+1
+    revoked_kids:
+      type: array
+      items: { type: string }
+    revoked_node_ids:
+      type: array
+      items: { type: string }
+
+
+EdgeAuthRevocationsUpdateResponse:
+  type: object
+  required: [ok, rotation_epoch, updated_utc_ms, revoked_kids_set, revoked_node_ids_set, revocations]
+  properties:
+    ok: { type: boolean }
+    rotation_epoch: { type: integer, format: int64 }
+    updated_utc_ms: { type: integer, format: int64 }
+    revoked_kids_set: { type: integer, format: int64 }
+    revoked_node_ids_set: { type: integer, format: int64 }
+    revocations:
+      $ref: "#/components/schemas/EdgeAuthRevocationsBundle"

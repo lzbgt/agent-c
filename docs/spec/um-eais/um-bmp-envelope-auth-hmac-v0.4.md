@@ -1,7 +1,7 @@
 # UM‑BMP Envelope Auth — Profile v0.4
 
 Date: 2026-02-05
-Status: implemented rolling core with durable trust-root rotation; certificate-chain PKI / confidentiality and node-native manifest distribution still open
+Status: implemented rolling core with durable trust-root rotation and revocation control; certificate-chain PKI / confidentiality and node-native manifest distribution still open
 
 This document defines an optional envelope authenticity mechanism for UM‑BMP messages
 in constrained IoT/edge systems, intended for:
@@ -19,8 +19,8 @@ This profile is transport-agnostic and applies to both JSON and CBOR wire mappin
 ## Additional goals
 
 - Confidentiality (payload encryption in addition to transport security when available).
-- Certificate chains / PKI with rotation and revocation support.
-- Certificate-chain / revocation PKI and node-native signed manifest / identity distribution so trust roots do not rely
+- Certificate chains / PKI beyond the current signed trust-root + revocation control plane.
+- Certificate-chain PKI and node-native signed manifest / identity distribution so trust roots do not rely
   only on operator-provisioned key maps.
 
 ## Envelope fields
@@ -142,6 +142,8 @@ Operator config:
 - `POST /api/v1/edge/auth/trust_roots/rotate` updates the durable trust-root set with a strictly increasing rotation epoch.
 - `GET /api/v1/edge/auth/node_binding?node_id=...` returns the effective binding summary for one node under the current `kid_policy`.
 - `POST /api/v1/edge/auth/provision_node` provisions HMAC / Ed25519 trust roots for a specific node and rejects `kid` values that violate the active `kid_policy`.
+- `GET /api/v1/edge/auth/revocations` returns the durable revoked-`kid` / revoked-node bundle with optional server-side `attest`.
+- `POST /api/v1/edge/auth/revocations/update` updates the durable revocation set with a strictly increasing revocation epoch.
 
 When `edge_auth_required=true`:
 - Missing `auth` => reject with HTTP 401
@@ -153,6 +155,7 @@ When `edge_auth_required=true`:
  - If `edge_auth_kid_policy != "any"` and `from:"node:<node_id>"`:
    - `match_node`: require `auth.kid == <node_id>`
    - `node_prefix`: require `auth.kid == <node_id>` OR `auth.kid` starts with `<node_id>:`
+ - If `auth.kid` is revoked or the source `node_id` is revoked: reject with HTTP 401 even if the signature would otherwise verify.
 
 When `edge_auth_required=false`:
 - Missing `auth` => accept (legacy bring-up)
@@ -167,6 +170,7 @@ When `edge_auth_required=false`:
 - `ctest` includes `agentd_edge_auth_hmac_smoke` and `agentd_edge_auth_ed25519_smoke`
   for authenticated JSON ingress and operator enforcement.
 - `ctest` includes `agentd_edge_auth_provision_node_smoke` for node-scoped provisioning and binding inspection.
+- `ctest` includes `agentd_edge_auth_revocations_smoke` for signed revocation bundle export and live ingress enforcement.
 - `ctest` includes `agentd_edge_auth_trust_roots_rotate_smoke` for live trust-root rotation and signed bundle export.
 - `ctest` includes `agentd_edge_manifest_bundle_smoke` for the platform-signed manifest bundle
   export surface (`GET /api/v1/edge/node/manifest_bundle`).

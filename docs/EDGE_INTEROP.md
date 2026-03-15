@@ -16,8 +16,10 @@ Current status:
   `edge_attest_required` / `edge_attest_require_sig` policy, and platform-signed
   node manifest bundle export via `GET /api/v1/edge/node/manifest_bundle`, plus durable
   trust-root rotation via `GET /api/v1/edge/auth/trust_roots` and
-  `POST /api/v1/edge/auth/trust_roots/rotate`.
-- Still open: certificate-chain / revocation PKI, node-native signed manifest distribution, and
+  `POST /api/v1/edge/auth/trust_roots/rotate`, per-node provisioning via
+  `POST /api/v1/edge/auth/provision_node`, and revocation bundle/control via
+  `GET /api/v1/edge/auth/revocations` plus `POST /api/v1/edge/auth/revocations/update`.
+- Still open: certificate-chain PKI, node-native signed manifest distribution, and
   confidentiality beyond authenticity-only envelopes.
 
 Executable contract artifacts (this repo):
@@ -132,9 +134,13 @@ Envelope authenticity (optional, UM‑BMP auth v0.4):
   - Per-node provisioning helpers:
     - `GET /api/v1/edge/auth/node_binding?node_id=...` shows the effective `kid_policy` match set for one node
     - `POST /api/v1/edge/auth/provision_node` provisions HMAC / Ed25519 trust roots for one node while enforcing the active `edge_auth_kid_policy`
+  - Revocation control plane:
+    - `GET /api/v1/edge/auth/revocations` returns the durable revoked-`kid` / revoked-node bundle with optional `attest`
+    - `POST /api/v1/edge/auth/revocations/update` applies a monotonic revocation epoch and updates the revoked `kid` / node-id set (`mode:"merge"` or `mode:"replace"`)
   - Behavior:
     - If `edge_auth_required=true`: missing/invalid `auth` is rejected with HTTP 401 (no inbox persistence).
     - If `edge_auth_required=false`: unsigned envelopes are accepted, but if `auth` is present it must verify.
+    - Revoked `auth.kid` values and revoked `from:"node:<node_id>"` identities are rejected even if the underlying key material is still configured.
 
 Task-loop correctness note (recommended, enforced by platform for known `TASK_*` types):
 - Nodes SHOULD echo `idempotency_key` for all task lifecycle messages (`TASK_ACK/TASK_EVENT/TASK_DONE/TASK_FAILED`),
@@ -263,6 +269,7 @@ Proof:
 - `ctest` includes `agentd_edge_interop_smoke` and `agentd_edge_workflow_submit_message_smoke`.
 - `ctest` includes `agentd_edge_auth_hmac_smoke`.
 - `ctest` includes `agentd_edge_auth_provision_node_smoke`.
+- `ctest` includes `agentd_edge_auth_revocations_smoke`.
 - `ctest` includes `agentd_edge_auth_trust_roots_rotate_smoke`.
 - `ctest` includes `agentd_edge_auth_ed25519_smoke`.
 - `ctest` includes `agentd_edge_auth_hmac_cbor_wire_smoke`.

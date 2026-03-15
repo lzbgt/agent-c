@@ -827,6 +827,18 @@ void handle_edge_message_endpoint(
         }
 
         if (!d.isMember("_attest_sig_ok")) {
+          std::string node_id_from;
+          if (from_id.rfind("node:", 0) == 0 && from_id.size() > 5) {
+            node_id_from = trim_copy(from_id.substr(5));
+          }
+          std::string revoke_reason;
+          if (edge_auth_is_revoked(cfg, node_id_from, kid, &revoke_reason)) {
+            d["_attest_sig_ok"] = false;
+            d["_attest_sig_error"] = revoke_reason;
+          }
+        }
+
+        if (!d.isMember("_attest_sig_ok")) {
           const std::string alg_l = lower_copy(alg);
           const std::string input = umbmp_result_attest_input_v0_1(task_id, step_id, got_idem, rsha, ats);
 

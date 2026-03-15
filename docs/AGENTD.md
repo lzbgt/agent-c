@@ -463,6 +463,12 @@ Edge trust-root rotation:
   HMAC `kid` list, Ed25519 public keys, and optional server-side attestation.
 - `POST /api/v1/edge/auth/trust_roots/rotate` applies a monotonic rotation epoch and updates the current
   HMAC / Ed25519 trust-root set in the durable runtime config.
+- `GET /api/v1/edge/auth/revocations` returns the durable revoked-`kid` / revoked-node bundle, with optional
+  server-side attestation when run-attestation signing is configured.
+- `POST /api/v1/edge/auth/revocations/update` applies a monotonic revocation epoch and updates the current
+  revoked `kid` / node-id set in the durable runtime config.
+- `GET /api/v1/edge/auth/node_binding?node_id=...` shows the effective binding and revocation status for one node,
+  and `POST /api/v1/edge/auth/provision_node` remains the per-node bootstrap/rotation helper.
 
 ## Client prefs (WebUI connection profiles)
 

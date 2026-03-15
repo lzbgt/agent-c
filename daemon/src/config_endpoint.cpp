@@ -285,30 +285,48 @@ static bool edge_kid_policy_allows(const std::string& policy_in, const std::stri
   return false;
 }
 
+static bool string_vec_contains(const std::vector<std::string>& haystack, const std::string& needle) {
+  if (needle.empty()) return false;
+  for (const auto& item : haystack) {
+    if (item == needle) return true;
+  }
+  return false;
+}
+
 static Json::Value edge_auth_node_binding_json(const DaemonConfig& cfg, const std::string& node_id) {
   Json::Value out(Json::objectValue);
   out["node_id"] = node_id;
   out["kid_policy"] = cfg.edge_auth_kid_policy;
   out["trust_roots_epoch"] = (Json::Int64)cfg.edge_auth_trust_roots_epoch;
   out["trust_roots_updated_utc_ms"] = (Json::Int64)cfg.edge_auth_trust_roots_updated_utc_ms;
+  out["revocations_epoch"] = (Json::Int64)cfg.edge_auth_revocations_epoch;
+  out["revocations_updated_utc_ms"] = (Json::Int64)cfg.edge_auth_revocations_updated_utc_ms;
   out["recommended_hmac_kid"] = node_id;
   out["recommended_ed25519_kid"] = node_id;
+  const bool node_revoked = string_vec_contains(cfg.edge_auth_revoked_node_ids, node_id);
+  out["node_id_revoked"] = node_revoked;
 
   Json::Value hmac_matches(Json::arrayValue);
   Json::Value ed_matches(Json::arrayValue);
+  Json::Value revoked_hmac_matches(Json::arrayValue);
+  Json::Value revoked_ed_matches(Json::arrayValue);
   for (const auto& it : cfg.edge_auth_hmac_keys) {
     if (!it.first.empty() && !it.second.empty() && edge_kid_policy_allows(cfg.edge_auth_kid_policy, node_id, it.first)) {
-      hmac_matches.append(it.first);
+      if (string_vec_contains(cfg.edge_auth_revoked_kids, it.first)) revoked_hmac_matches.append(it.first);
+      else hmac_matches.append(it.first);
     }
   }
   for (const auto& it : cfg.edge_auth_ed25519_pubkeys) {
     if (!it.first.empty() && !it.second.empty() && edge_kid_policy_allows(cfg.edge_auth_kid_policy, node_id, it.first)) {
-      ed_matches.append(it.first);
+      if (string_vec_contains(cfg.edge_auth_revoked_kids, it.first)) revoked_ed_matches.append(it.first);
+      else ed_matches.append(it.first);
     }
   }
   out["matching_hmac_kids"] = hmac_matches;
   out["matching_ed25519_kids"] = ed_matches;
-  out["kid_policy_satisfied"] = (hmac_matches.size() > 0 || ed_matches.size() > 0);
+  out["revoked_matching_hmac_kids"] = revoked_hmac_matches;
+  out["revoked_matching_ed25519_kids"] = revoked_ed_matches;
+  out["kid_policy_satisfied"] = !node_revoked && (hmac_matches.size() > 0 || ed_matches.size() > 0);
   return out;
 }
 
@@ -378,6 +396,91 @@ static bool build_edge_auth_trust_roots_bundle(
   att["ts_utc_ms"] = (Json::Int64)now_utc_ms();
   att["rotation_epoch"] = (Json::Int64)cfg.edge_auth_trust_roots_epoch;
   att["signing_schema"] = "edge_auth_trust_roots_v1";
+
+  if (hmac_kid_set) {
+    std::array<uint8_t, 32> mac{};
+    agent_hmac_sha256(cfg.run_attest_hmac_key.data(), cfg.run_attest_hmac_key.size(), canon.data(), canon.size(), mac.data());
+    att["alg"] = "hmac-sha256";
+    att["kid"] = cfg.run_attest_hmac_kid;
+    att["sig"] = base64_encode(reinterpret_cast<const char*>(mac.data()), mac.size());
+  } else {
+    std::vector<uint8_t> seed;
+    std::string serr;
+    if (!parse_seed_bytes(cfg.run_attest_ed25519_seed, &seed, &serr)) {
+      if (out_error) *out_error = std::string("attest_sign_failed: ") + (serr.empty() ? "invalid_ed25519_seed" : serr);
+      return false;
+    }
+    uint8_t pk[32] = {0};
+    uint8_t sig_bytes[64] = {0};
+    agent_ed25519_publickey(seed.data(), pk);
+    agent_ed25519_sign(canon.data(), canon.size(), seed.data(), pk, sig_bytes);
+    att["alg"] = "ed25519";
+    att["kid"] = cfg.run_attest_ed25519_kid;
+    att["pubkey"] = base64_encode(reinterpret_cast<const char*>(pk), sizeof(pk));
+    att["sig"] = base64_encode(reinterpret_cast<const char*>(sig_bytes), sizeof(sig_bytes));
+  }
+  bundle["attest"] = att;
+  *out_bundle = bundle;
+  return true;
+}
+
+static bool build_edge_auth_revocations_bundle(
+  const DaemonConfig& cfg,
+  Json::Value* out_bundle,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (!out_bundle) return false;
+
+  Json::Value bundle(Json::objectValue);
+  bundle["schema"] = "edge_auth_revocations_v1";
+  bundle["created_utc_ms"] = (Json::Int64)now_utc_ms();
+  bundle["rotation_epoch"] = (Json::Int64)cfg.edge_auth_revocations_epoch;
+  bundle["updated_utc_ms"] = (Json::Int64)cfg.edge_auth_revocations_updated_utc_ms;
+  {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : cfg.edge_auth_revoked_kids) if (!s.empty()) arr.append(s);
+    bundle["revoked_kids"] = arr;
+  }
+  {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : cfg.edge_auth_revoked_node_ids) if (!s.empty()) arr.append(s);
+    bundle["revoked_node_ids"] = arr;
+  }
+
+  const bool hmac_kid_set = !cfg.run_attest_hmac_kid.empty();
+  const bool hmac_key_set = !cfg.run_attest_hmac_key.empty();
+  const bool ed_kid_set = !cfg.run_attest_ed25519_kid.empty();
+  const bool ed_seed_set = !cfg.run_attest_ed25519_seed.empty();
+  const int sign_modes = (hmac_kid_set || hmac_key_set ? 1 : 0) + (ed_kid_set || ed_seed_set ? 1 : 0);
+  if (sign_modes == 0) {
+    *out_bundle = bundle;
+    return true;
+  }
+  if (sign_modes > 1) {
+    if (out_error) *out_error = "attest_sign_config_invalid: multiple signing modes configured";
+    return false;
+  }
+  if ((hmac_kid_set || hmac_key_set) && (!hmac_kid_set || !hmac_key_set)) {
+    if (out_error) *out_error = "attest_sign_config_invalid: missing AGENTD_RUN_ATTEST_HMAC_KID or AGENTD_RUN_ATTEST_HMAC_KEY";
+    return false;
+  }
+  if ((ed_kid_set || ed_seed_set) && (!ed_kid_set || !ed_seed_set)) {
+    if (out_error) *out_error = "attest_sign_config_invalid: missing AGENTD_RUN_ATTEST_ED25519_KID or AGENTD_RUN_ATTEST_ED25519_SEED";
+    return false;
+  }
+
+  std::string canon;
+  std::string cerr;
+  if (!canonical_json_bytes(bundle, &canon, &cerr)) {
+    if (out_error) *out_error = std::string("attest_sign_failed: ") + (cerr.empty() ? "c14n_failed" : cerr);
+    return false;
+  }
+  Json::Value att(Json::objectValue);
+  att["schema"] = "edge_auth_revocations_attest_v1";
+  att["ts_utc_ms"] = (Json::Int64)now_utc_ms();
+  att["rotation_epoch"] = (Json::Int64)cfg.edge_auth_revocations_epoch;
+  att["signing_schema"] = "edge_auth_revocations_v1";
 
   if (hmac_kid_set) {
     std::array<uint8_t, 32> mac{};
@@ -636,6 +739,10 @@ void handle_config_endpoint(
   edge_auth["ed25519_pubkeys_set"] = (Json::UInt64)cfg.edge_auth_ed25519_pubkeys.size();
   edge_auth["trust_roots_epoch"] = (Json::Int64)cfg.edge_auth_trust_roots_epoch;
   edge_auth["trust_roots_updated_utc_ms"] = (Json::Int64)cfg.edge_auth_trust_roots_updated_utc_ms;
+  edge_auth["revoked_kids_set"] = (Json::UInt64)cfg.edge_auth_revoked_kids.size();
+  edge_auth["revoked_node_ids_set"] = (Json::UInt64)cfg.edge_auth_revoked_node_ids.size();
+  edge_auth["revocations_epoch"] = (Json::Int64)cfg.edge_auth_revocations_epoch;
+  edge_auth["revocations_updated_utc_ms"] = (Json::Int64)cfg.edge_auth_revocations_updated_utc_ms;
   out["edge_auth"] = edge_auth;
 
   Json::Value edge_attest(Json::objectValue);
@@ -1996,6 +2103,188 @@ void handle_edge_auth_provision_node_endpoint(
   o["provisioned"] = provisioned;
   o["binding"] = edge_auth_node_binding_json(next, node_id);
   o["trust_roots"] = bundle;
+  resp->body = json_stringify(o);
+}
+
+void handle_edge_auth_revocations_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  Json::Value bundle;
+  std::string berr;
+  if (!build_edge_auth_revocations_bundle(cfg, &bundle, &berr)) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    if (berr.rfind("attest_sign_config_invalid:", 0) == 0) {
+      o["error"] = "attest_sign_config_invalid";
+      o["details"] = trim_copy(berr.substr(std::string("attest_sign_config_invalid:").size()));
+    } else if (berr.rfind("attest_sign_failed:", 0) == 0) {
+      o["error"] = "attest_sign_failed";
+      o["details"] = trim_copy(berr.substr(std::string("attest_sign_failed:").size()));
+    } else {
+      o["error"] = berr.empty() ? "revocations_unavailable" : berr;
+    }
+    resp->status = 500;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  Json::Value o(Json::objectValue);
+  o["ok"] = true;
+  o["revocations"] = bundle;
+  resp->body = json_stringify(o);
+}
+
+void handle_edge_auth_revocations_update_endpoint(
+  DaemonConfigStore* cfg_store,
+  AgentDb* db,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!cfg_store || !db || !db->is_open()) {
+    resp->status = 503;
+    resp->body = json_error_body("db not available");
+    return;
+  }
+
+  const DaemonConfig cur = cfg_store->snapshot();
+  if (!daemon_require_auth(cur, req, resp)) return;
+
+  Json::Value args;
+  std::string perr;
+  if (!json_parse_object(req.body, &args, &perr)) {
+    resp->status = 400;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = std::string("invalid JSON: ") + perr;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  const std::string mode = args.isMember("mode") && args["mode"].isString() ? trim_copy(args["mode"].asString()) : "merge";
+  if (mode != "merge" && mode != "replace") {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = "mode must be merge or replace";
+    resp->status = 400;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  int64_t new_epoch = cur.edge_auth_revocations_epoch + 1;
+  if (args.isMember("rotation_epoch")) {
+    if (!args["rotation_epoch"].isInt64() && !args["rotation_epoch"].isUInt64()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "rotation_epoch must be an integer";
+      resp->status = 400;
+      resp->body = json_stringify(o);
+      return;
+    }
+    new_epoch = args["rotation_epoch"].isInt64() ? args["rotation_epoch"].asInt64() : (int64_t)args["rotation_epoch"].asUInt64();
+  }
+  if (new_epoch <= cur.edge_auth_revocations_epoch) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = "rotation_epoch must be strictly greater than current epoch";
+    o["current_epoch"] = (Json::Int64)cur.edge_auth_revocations_epoch;
+    resp->status = 409;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  auto parse_safe_id_array = [&](const char* field, std::vector<std::string>* out) -> bool {
+    out->clear();
+    if (!args.isMember(field)) return true;
+    if (!args[field].isArray()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = std::string(field) + " must be an array";
+      resp->status = 400;
+      resp->body = json_stringify(o);
+      return false;
+    }
+    for (const auto& item : args[field]) {
+      if (!item.isString()) {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = std::string(field) + " entries must be strings";
+        resp->status = 400;
+        resp->body = json_stringify(o);
+        return false;
+      }
+      const std::string s = trim_copy(item.asString());
+      if (s.empty() || s.size() > 64 || !edge_id_is_safe(s)) {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = std::string("invalid ") + field + " entry";
+        o["value"] = s;
+        resp->status = 400;
+        resp->body = json_stringify(o);
+        return false;
+      }
+      if (!string_vec_contains(*out, s)) out->push_back(s);
+    }
+    return true;
+  };
+
+  std::vector<std::string> revoked_kids;
+  std::vector<std::string> revoked_node_ids;
+  if (!parse_safe_id_array("revoked_kids", &revoked_kids)) return;
+  if (!parse_safe_id_array("revoked_node_ids", &revoked_node_ids)) return;
+
+  DaemonConfig next = cur;
+  if (mode == "replace") {
+    next.edge_auth_revoked_kids.clear();
+    next.edge_auth_revoked_node_ids.clear();
+  }
+  for (const auto& kid : revoked_kids) {
+    if (!string_vec_contains(next.edge_auth_revoked_kids, kid)) next.edge_auth_revoked_kids.push_back(kid);
+  }
+  for (const auto& node_id : revoked_node_ids) {
+    if (!string_vec_contains(next.edge_auth_revoked_node_ids, node_id)) next.edge_auth_revoked_node_ids.push_back(node_id);
+  }
+  next.edge_auth_revocations_epoch = new_epoch;
+  next.edge_auth_revocations_updated_utc_ms = now_utc_ms();
+
+  std::string werr;
+  if (!save_runtime_config_best_effort(*db, next, &werr)) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = werr.empty() ? "failed to persist runtime config" : werr;
+    resp->status = 500;
+    resp->body = json_stringify(o);
+    return;
+  }
+  cfg_store->replace(next);
+
+  Json::Value bundle;
+  std::string berr;
+  if (!build_edge_auth_revocations_bundle(next, &bundle, &berr)) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = berr.empty() ? "revocations_unavailable" : berr;
+    resp->status = 500;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  Json::Value o(Json::objectValue);
+  o["ok"] = true;
+  o["rotation_epoch"] = (Json::Int64)next.edge_auth_revocations_epoch;
+  o["updated_utc_ms"] = (Json::Int64)next.edge_auth_revocations_updated_utc_ms;
+  o["revoked_kids_set"] = (Json::UInt64)next.edge_auth_revoked_kids.size();
+  o["revoked_node_ids_set"] = (Json::UInt64)next.edge_auth_revoked_node_ids.size();
+  o["revocations"] = bundle;
   resp->body = json_stringify(o);
 }
 

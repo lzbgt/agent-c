@@ -1070,6 +1070,13 @@ int main(int argc, char** argv) {
   server.handle("POST", "/api/v1/edge/auth/provision_node", [&](const HttpRequest& req, HttpResponse* resp) {
     handle_edge_auth_provision_node_endpoint(&cfg_store, db_or_null, cors_cfg, req, resp);
   });
+  server.handle("GET", "/api/v1/edge/auth/revocations", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_auth_revocations_endpoint(cur, cors_cfg, req, resp);
+  });
+  server.handle("POST", "/api/v1/edge/auth/revocations/update", [&](const HttpRequest& req, HttpResponse* resp) {
+    handle_edge_auth_revocations_update_endpoint(&cfg_store, db_or_null, cors_cfg, req, resp);
+  });
 
   server.handle("GET", "/api/v1/client/prefs", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();

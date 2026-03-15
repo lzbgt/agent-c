@@ -13,6 +13,13 @@ namespace agentd {
 
 bool fixed_time_eq32(const uint8_t a[32], const uint8_t b[32]);
 
+bool edge_auth_is_revoked(
+  const DaemonConfig& cfg,
+  const std::string& node_id,
+  const std::string& kid,
+  std::string* out_reason
+);
+
 std::string umbmp_result_attest_input_v0_1(
   const std::string& task_id,
   const std::string& step_id,

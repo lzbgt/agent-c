@@ -340,6 +340,73 @@
             schema:
               $ref: "#/components/schemas/ErrorResponse"
 
+/api/v1/edge/auth/revocations:
+  get:
+    tags: [config, edge]
+    summary: Get safe edge auth revocation bundle
+    description: |
+      Returns the durable edge-auth revocation set as a first-class bundle.
+
+      Notes:
+      - Revoked kids and revoked node ids are returned.
+      - When run-attestation signing keys are configured, the bundle includes an `attest` block.
+    responses:
+      "200":
+        description: Revocation bundle
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeAuthRevocationsResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
+/api/v1/edge/auth/revocations/update:
+  post:
+    tags: [config, edge]
+    summary: Update durable edge auth revocations
+    description: |
+      Applies a monotonic revocation epoch and updates the current revoked kid / revoked node set.
+
+      Notes:
+      - Requires Bearer auth when daemon auth is enabled.
+      - `mode:"replace"` clears the current revocation set before applying the request body.
+      - `rotation_epoch` must be strictly greater than the current epoch.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EdgeAuthRevocationsUpdateRequest"
+    responses:
+      "200":
+        description: Revocation update acknowledged
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeAuthRevocationsUpdateResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "409":
+        description: Revocation epoch conflict
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
 /api/v1/client/prefs:
   get:
     tags: [client]

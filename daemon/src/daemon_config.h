@@ -79,6 +79,15 @@ struct DaemonConfig {
   // Durable trust-root rotation metadata for edge envelope auth control-plane operations.
   int64_t edge_auth_trust_roots_epoch = 0;
   int64_t edge_auth_trust_roots_updated_utc_ms = 0;
+  // Durable revocation metadata for edge envelope auth.
+  //
+  // Revocation is enforced against both envelope auth and node attestation verification:
+  // - revoked kids are rejected even if the underlying key material is still configured
+  // - revoked node ids are rejected even when a fresh per-node key is provisioned later
+  std::vector<std::string> edge_auth_revoked_kids;
+  std::vector<std::string> edge_auth_revoked_node_ids;
+  int64_t edge_auth_revocations_epoch = 0;
+  int64_t edge_auth_revocations_updated_utc_ms = 0;
   // Optional attestation enforcement for edge TASK_DONE results (UM-EAIS v0.x).
   //
   // When enabled, agentd enforces that invoke-mode edge tasks include a `result.attest` blob
