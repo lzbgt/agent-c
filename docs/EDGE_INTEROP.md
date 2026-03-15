@@ -114,6 +114,12 @@ This stores the envelope durably (`edge_inbox_messages`) and updates platform st
 
 If the platform sees a new/unknown `caps_sha256`, it queues a `PLATFORM_CAPS_REQ` to the node outbox.
 
+The repo now also ships a host-side node bring-up loop:
+- `tools/agentd_edge_consensus_node.cpp` polls `GET /api/v1/edge/outbox`, processes relayed
+  `CONSENSUS_FRAME` messages through the deterministic consensus core, and posts generated
+  vote/commit frames back through `POST /api/v1/edge/message`
+- `tests/agentd_edge_consensus_autonomous_smoke.sh` proves multi-node autonomous election/commit over that path
+
 Envelope authenticity (optional, UM‑BMP auth v0.4):
 - Envelopes MAY include an `auth` object:
   - `auth.alg` (string):

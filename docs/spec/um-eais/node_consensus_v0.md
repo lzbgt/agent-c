@@ -1,6 +1,6 @@
 # Node Consensus v0
 
-Status: implemented rolling foundation (deterministic host-side state machine + live UM-BMP relay/observability)
+Status: implemented rolling foundation (deterministic state machine + live UM-BMP relay/observability + autonomous host-side node loop)
 
 Purpose:
 - define the first peer-to-peer node-native consensus protocol surface without relying on the platform coordinator
@@ -11,6 +11,8 @@ Implemented proof:
 - `tests/test_edge_node_consensus.cpp`
 - `edge_node_consensus_tests`
 - `tests/agentd_edge_consensus_transport_smoke.sh`
+- `tools/agentd_edge_consensus_node.cpp`
+- `tests/agentd_edge_consensus_autonomous_smoke.sh`
 
 Source surface:
 - `daemon/src/edge_node_consensus.h`
@@ -82,9 +84,14 @@ The shipped live transport smoke proves:
 - relay to recipient node outboxes through `GET /api/v1/edge/outbox`
 - sender-side consensus summaries through `GET /api/v1/edge/node` and `GET /api/v1/edge/nodes`
 
+The shipped autonomous host-loop proof adds:
+- a real node-side poll/process/post loop on top of `EdgeConsensusReplica`
+- autonomous `vote_request -> vote_grant -> leader_commit` progression over the live platform relay path
+- per-node committed leader/decision proof from the node-loop stdout plus platform-side consensus summaries
+
 ## Still open
 
-This document does **not** claim fully autonomous node-native consensus is complete. Remaining work:
-- move from platform-relayed frame transport to node-executed control loops using the same frame format
+This document does **not** claim production-complete embedded consensus is complete. Remaining work:
+- embed the shipped autonomous loop into long-lived node firmware/runtime rather than only the host bring-up tool
 - add stronger operator/debug control surfaces beyond the current node-read summaries
-- connect the consensus core to durable node-side agents that originate and consume the relayed frames
+- define membership, liveness, and retry timers for multi-hour or partition-heavy deployments

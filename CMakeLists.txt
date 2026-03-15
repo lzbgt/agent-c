@@ -393,6 +393,14 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
   )
   target_link_libraries(agentd_audio_signal_loopback PRIVATE agentd_lib)
 
+  add_executable(agentd_edge_consensus_node
+    tools/agentd_edge_consensus_node.cpp
+  )
+  target_compile_options(agentd_edge_consensus_node PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_link_libraries(agentd_edge_consensus_node PRIVATE agentd_lib)
+
   add_executable(edge_confidentiality_tool
     tools/edge_confidentiality_tool.cpp
   )
@@ -743,6 +751,7 @@ if(AGENT_BUILD_HOST)
 				    add_test(NAME agentd_edge_auth_bundle_send_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_bundle_send_smoke.sh $<TARGET_FILE:agentd> $<TARGET_FILE:edge_confidentiality_tool>)
 				    add_test(NAME agentd_edge_confidential_body_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_confidential_body_smoke.sh $<TARGET_FILE:agentd> $<TARGET_FILE:edge_confidentiality_tool>)
 				    add_test(NAME agentd_edge_consensus_transport_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_consensus_transport_smoke.sh $<TARGET_FILE:agentd>)
+				    add_test(NAME agentd_edge_consensus_autonomous_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_consensus_autonomous_smoke.sh $<TARGET_FILE:agentd> $<TARGET_FILE:agentd_edge_consensus_node>)
 				    add_test(
 				      NAME agentd_edge_auth_cert_roots_verify_chain_smoke
 				      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_cert_roots_verify_chain_smoke.sh

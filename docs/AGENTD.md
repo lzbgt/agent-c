@@ -491,6 +491,8 @@ Edge trust-root rotation:
 - `POST /api/v1/edge/message` now also accepts `CONSENSUS_FRAME` relay traffic:
   validated `edge_node_consensus_frame_v1` bodies are forwarded to recipient node outboxes as platform-relayed
   peer frames, and sender consensus summaries are surfaced through `GET /api/v1/edge/node` and `GET /api/v1/edge/nodes`.
+  The repo’s host bring-up tool `agentd_edge_consensus_node` consumes that same outbox path and turns it into an
+  autonomous vote/commit loop, covered by `tests/agentd_edge_consensus_autonomous_smoke.sh`.
 - `POST /api/v1/config/update` supports `edge_confidentiality_required` and `edge_confidentiality_keys`.
   When enabled, `/api/v1/edge/message` rejects plaintext `body` and requires AES-GCM `body_enc`.
 - `POST /api/v1/edge/auth/trust_roots/send`, `.../cert_roots/send`, `.../revocations/send`, and

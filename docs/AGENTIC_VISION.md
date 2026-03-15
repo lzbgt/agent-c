@@ -227,7 +227,10 @@ These are the most leveraged next steps grounded in current architecture:
      vote/commit protocol definition, duplicate suppression, trust-epoch compatibility, split-brain, and quorum recovery.
    - Completed 2026-03-15: live UM-BMP relay/observability for `edge_node_consensus_frame_v1` is shipped through
      `/api/v1/edge/message`, `/api/v1/edge/outbox`, and node-read consensus summaries.
-   - Still open: node-executed autonomous control loops that originate/consume those frames without platform-side relay logic.
+   - Completed 2026-03-15: autonomous node-side control loops are shipped in the host bring-up path via
+     `agentd_edge_consensus_node` plus `agentd_edge_consensus_autonomous_smoke`.
+   - Still open: embed that loop into long-lived node firmware/runtime with membership timers and recovery policy beyond
+     the current host-side bring-up harness.
 
 6) **Scheduling + isolation MVP**
    - Completed 2026-03-15: admission control + per-run budgets + tool execution caps landed with
