@@ -501,6 +501,8 @@ Edge trust-root rotation:
 - `POST /api/v1/edge/node/consensus_runtime` starts or stops that same autonomous consensus helper under agentd
   lifecycle ownership, and `GET /api/v1/edge/node/consensus_runtime?node_id=<id>` reports managed runtime status plus
   the latest final result JSON emitted by the helper.
+- Start requests can include `campaign_delay_ms` and `campaign_retry_ms`, and the reported runtime/result surfaces
+  expose the same retry policy so operators can confirm whether a candidate re-campaigned before quorum formed.
 - Operator bring-up sets `AGENTD_EDGE_CONSENSUS_NODE_TOOL=/abs/path/to/agentd_edge_consensus_node` so agentd can spawn
   the shipped helper directly.
 - `GET /api/v1/edge/node` and `GET /api/v1/edge/nodes` now surface `consensus_runtime` when a node has a managed

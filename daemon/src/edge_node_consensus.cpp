@@ -129,6 +129,7 @@ EdgeConsensusNodeLoop::EdgeConsensusNodeLoop(const EdgeConsensusNodeLoopConfig& 
   if (cfg_.cluster_size == 0) cfg_.cluster_size = cfg_.peer_node_ids.size() + 1;
   if (cfg_.cluster_size < 1) cfg_.cluster_size = 1;
   if (cfg_.campaign_delay_ms < 0) cfg_.campaign_delay_ms = 0;
+  if (cfg_.campaign_retry_ms < 0) cfg_.campaign_retry_ms = 0;
 }
 
 void EdgeConsensusReplica::set_trust_epochs(const EdgeConsensusEpochs& epochs) {
@@ -267,10 +268,20 @@ bool EdgeConsensusReplica::handle_frame(
 std::vector<EdgeConsensusFrame> EdgeConsensusNodeLoop::tick(int64_t now_utc_ms) {
   std::vector<EdgeConsensusFrame> out;
   if (started_utc_ms_ == 0) started_utc_ms_ = now_utc_ms;
-  if (election_started_ || trim_copy(cfg_.decision_sha256).empty()) return out;
-  if (now_utc_ms - started_utc_ms_ < cfg_.campaign_delay_ms) return out;
+  if (trim_copy(cfg_.decision_sha256).empty()) return out;
+  if (!trim_copy(replica_.committed_decision_sha256()).empty()) return out;
+  if (!election_started_) {
+    if (now_utc_ms - started_utc_ms_ < cfg_.campaign_delay_ms) return out;
+  } else {
+    if (cfg_.campaign_retry_ms <= 0) return out;
+    if (last_campaign_started_utc_ms_ > 0 && now_utc_ms - last_campaign_started_utc_ms_ < cfg_.campaign_retry_ms) {
+      return out;
+    }
+  }
   out.push_back(replica_.start_election(cfg_.decision_sha256));
   election_started_ = true;
+  last_campaign_started_utc_ms_ = now_utc_ms;
+  campaign_attempts_ += 1;
   return out;
 }
 
@@ -298,8 +309,16 @@ Json::Value EdgeConsensusNodeLoop::status_to_json() const {
   out["self"] = edge_consensus_identity_to_json(cfg_.self);
   out["cluster_size"] = Json::UInt64(cfg_.cluster_size);
   out["campaign_delay_ms"] = (Json::Int64)cfg_.campaign_delay_ms;
+  out["campaign_retry_ms"] = (Json::Int64)cfg_.campaign_retry_ms;
   if (!cfg_.decision_sha256.empty()) out["decision_sha256"] = cfg_.decision_sha256;
   out["election_started"] = election_started_;
+  out["campaign_attempts"] = Json::UInt64(campaign_attempts_);
+  if (last_campaign_started_utc_ms_ > 0) {
+    out["last_campaign_started_utc_ms"] = (Json::Int64)last_campaign_started_utc_ms_;
+    if (cfg_.campaign_retry_ms > 0 && trim_copy(replica_.committed_decision_sha256()).empty()) {
+      out["next_campaign_utc_ms"] = (Json::Int64)(last_campaign_started_utc_ms_ + cfg_.campaign_retry_ms);
+    }
+  }
   Json::Value peers(Json::arrayValue);
   for (const auto& peer : cfg_.peer_node_ids) peers.append(peer);
   out["peer_node_ids"] = peers;

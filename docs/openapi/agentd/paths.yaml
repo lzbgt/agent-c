@@ -2402,6 +2402,10 @@
   post:
     tags: [edge]
     summary: Start or stop a managed autonomous consensus-node runtime
+    description: |
+      Starts or stops the managed host-side consensus helper. Start requests can
+      set `campaign_delay_ms` for the first election and `campaign_retry_ms` for
+      repeated campaigns when quorum is not reached before peers arrive.
     requestBody:
       required: true
       content:
@@ -2436,6 +2440,9 @@
   get:
     tags: [edge]
     summary: Inspect managed autonomous consensus-node runtime status
+    description: |
+      Returns managed-process state plus the latest structured result emitted by the
+      helper, including loop status fields such as campaign attempts and retry timing.
     parameters:
       - in: query
         name: node_id

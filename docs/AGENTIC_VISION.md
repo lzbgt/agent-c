@@ -234,7 +234,9 @@ These are the most leveraged next steps grounded in current architecture:
      `/api/v1/edge/node/consensus_runtime`, with runtime visibility surfaced on node-read APIs.
    - Completed 2026-03-15: the autonomous election/commit loop is now factored into reusable core code instead of
      living only inside the host CLI helper, which materially lowers the gap to embedded/node-native adoption.
-   - Still open: replace the current host-managed helper with embedded node-native adoption plus membership timers and
+   - Completed 2026-03-15: the shipped host/runtime harness now supports retry-capable election timers, so candidates
+     can converge after peers arrive late instead of stalling after a single failed round.
+   - Still open: replace the current host-managed helper with embedded node-native adoption plus richer membership and
      recovery policy beyond the current bring-up/runtime harness.
 
 6) **Scheduling + isolation MVP**

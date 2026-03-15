@@ -92,7 +92,7 @@ EdgeNodeConsensusStatus:
 
 EdgeNodeConsensusRuntime:
   type: object
-  required: [schema, node_id, cluster_id, manifest_sha256, peer_node_ids, daemon_url, tool_path, started_unix_ms, campaign_delay_ms, poll_interval_ms, deadline_ms, cluster_size, outbox_limit, trust_epochs, running]
+  required: [schema, node_id, cluster_id, manifest_sha256, peer_node_ids, daemon_url, tool_path, started_unix_ms, campaign_delay_ms, campaign_retry_ms, poll_interval_ms, deadline_ms, cluster_size, outbox_limit, trust_epochs, running]
   properties:
     schema: { type: string, enum: [edge_node_consensus_runtime_v1] }
     node_id: { type: string }
@@ -110,6 +110,7 @@ EdgeNodeConsensusRuntime:
     started_unix_ms: { type: integer, format: int64 }
     ended_unix_ms: { type: integer, format: int64 }
     campaign_delay_ms: { type: integer, format: int64 }
+    campaign_retry_ms: { type: integer, format: int64 }
     poll_interval_ms: { type: integer, format: int64 }
     deadline_ms: { type: integer, format: int64 }
     cluster_size: { type: integer, format: int64 }
@@ -206,6 +207,7 @@ EdgeNodeConsensusRuntimeRequest:
     cluster_size: { type: integer, format: int64 }
     outbox_limit: { type: integer, format: int64 }
     campaign_delay_ms: { type: integer, format: int64 }
+    campaign_retry_ms: { type: integer, format: int64 }
     poll_interval_ms: { type: integer, format: int64 }
     deadline_ms: { type: integer, format: int64 }
     trust_roots_epoch: { type: integer, format: int64 }

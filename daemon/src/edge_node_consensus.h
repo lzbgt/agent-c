@@ -41,6 +41,7 @@ struct EdgeConsensusNodeLoopConfig {
   std::vector<std::string> peer_node_ids;
   size_t cluster_size = 0;
   int64_t campaign_delay_ms = 0;
+  int64_t campaign_retry_ms = 0;
   std::string decision_sha256;
 };
 
@@ -84,8 +85,9 @@ class EdgeConsensusNodeLoop {
   explicit EdgeConsensusNodeLoop(const EdgeConsensusNodeLoopConfig& cfg);
 
   const EdgeConsensusNodeLoopConfig& config() const { return cfg_; }
-  const EdgeConsensusReplica& replica() const { return replica_; }
+ const EdgeConsensusReplica& replica() const { return replica_; }
   bool election_started() const { return election_started_; }
+  uint64_t campaign_attempts() const { return campaign_attempts_; }
   const std::string& leader_node_id() const { return replica_.leader_node_id(); }
   const std::string& committed_decision_sha256() const { return replica_.committed_decision_sha256(); }
 
@@ -98,7 +100,9 @@ class EdgeConsensusNodeLoop {
   EdgeConsensusNodeLoopConfig cfg_;
   EdgeConsensusReplica replica_;
   int64_t started_utc_ms_ = 0;
+  int64_t last_campaign_started_utc_ms_ = 0;
   bool election_started_ = false;
+  uint64_t campaign_attempts_ = 0;
 };
 
 Json::Value edge_consensus_epochs_to_json(const EdgeConsensusEpochs& epochs);

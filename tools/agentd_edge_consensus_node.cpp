@@ -30,6 +30,7 @@ struct Options {
   size_t cluster_size = 0;
   size_t outbox_limit = 128;
   int64_t campaign_delay_ms = 0;
+  int64_t campaign_retry_ms = 1500;
   int64_t poll_interval_ms = 100;
   int64_t deadline_ms = 10000;
   uint64_t trust_roots_epoch = 0;
@@ -107,6 +108,7 @@ static void print_usage(const char* argv0) {
     << "  [--cluster-size <n>]\n"
     << "  [--decision-sha256 <sha256:...>]\n"
     << "  [--campaign-delay-ms <ms>]\n"
+    << "  [--campaign-retry-ms <ms>]\n"
     << "  [--poll-interval-ms <ms>]\n"
     << "  [--deadline-ms <ms>]\n"
     << "  [--trust-roots-epoch <n>]\n"
@@ -176,6 +178,11 @@ static bool parse_args(int argc, char** argv, Options* out) {
     } else if (a == "--campaign-delay-ms" && i + 1 < argc) {
       if (!parse_i64_arg(argv[++i], &opt.campaign_delay_ms) || opt.campaign_delay_ms < 0) {
         std::cerr << "invalid --campaign-delay-ms\n";
+        return false;
+      }
+    } else if (a == "--campaign-retry-ms" && i + 1 < argc) {
+      if (!parse_i64_arg(argv[++i], &opt.campaign_retry_ms) || opt.campaign_retry_ms < 0) {
+        std::cerr << "invalid --campaign-retry-ms\n";
         return false;
       }
     } else if (a == "--poll-interval-ms" && i + 1 < argc) {
@@ -365,6 +372,7 @@ int main(int argc, char** argv) {
   loop_cfg.peer_node_ids = opt.peer_node_ids;
   loop_cfg.cluster_size = opt.cluster_size;
   loop_cfg.campaign_delay_ms = opt.campaign_delay_ms;
+  loop_cfg.campaign_retry_ms = opt.campaign_retry_ms;
   loop_cfg.decision_sha256 = opt.decision_sha256;
   EdgeConsensusNodeLoop loop(loop_cfg);
   const int64_t started_ms = now_utc_ms();

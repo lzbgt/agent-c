@@ -94,9 +94,11 @@ The shipped autonomous host-loop proof adds:
 - agentd-managed long-lived host runtime ownership of the same loop, including explicit start/status/stop control
 - a reusable transport-agnostic node loop core (`EdgeConsensusNodeLoop`) so the election/commit state machine is no
   longer stranded inside the host CLI helper
+- retry-capable campaign timers (`campaign_delay_ms` + `campaign_retry_ms`) so a candidate can start before peers are
+  online and still converge later without manual restart
 
 ## Still open
 
 This document does **not** claim production-complete embedded consensus is complete. Remaining work:
 - replace the current host-managed helper with embedded / firmware-native adoption
-- define membership, liveness, and retry timers for multi-hour or partition-heavy deployments
+- define membership and recovery policy for multi-hour or partition-heavy deployments beyond the shipped bring-up retry timers

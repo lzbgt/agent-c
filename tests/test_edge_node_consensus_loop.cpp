@@ -28,13 +28,15 @@ static EdgeConsensusNodeLoop make_loop(
   const std::string& node_id,
   const std::vector<std::string>& peers,
   const std::string& decision_sha256,
-  int64_t campaign_delay_ms = 0
+  int64_t campaign_delay_ms = 0,
+  int64_t campaign_retry_ms = 0
 ) {
   EdgeConsensusNodeLoopConfig cfg;
   cfg.self = make_identity(node_id);
   cfg.peer_node_ids = peers;
   cfg.cluster_size = peers.size() + 1;
   cfg.campaign_delay_ms = campaign_delay_ms;
+  cfg.campaign_retry_ms = campaign_retry_ms;
   cfg.decision_sha256 = decision_sha256;
   return EdgeConsensusNodeLoop(cfg);
 }
@@ -76,6 +78,32 @@ static void test_tick_emits_election_once_after_delay() {
 
   frames = loop.tick(1300);
   assert(frames.empty());
+}
+
+static void test_tick_retries_election_after_retry_delay() {
+  auto loop = make_loop(
+    "node-a",
+    {"node-b", "node-c"},
+    "sha256:abababababababababababababababababababababababababababababababab",
+    100,
+    250
+  );
+
+  std::vector<EdgeConsensusFrame> frames = loop.tick(1000);
+  assert(frames.empty());
+  frames = loop.tick(1100);
+  assert(frames.size() == 1);
+  assert(frames[0].kind == "vote_request");
+  assert(frames[0].term == 1);
+  assert(loop.campaign_attempts() == 1);
+
+  frames = loop.tick(1349);
+  assert(frames.empty());
+  frames = loop.tick(1350);
+  assert(frames.size() == 1);
+  assert(frames[0].kind == "vote_request");
+  assert(frames[0].term == 2);
+  assert(loop.campaign_attempts() == 2);
 }
 
 static void test_vote_grant_routes_back_to_candidate() {
@@ -146,16 +174,21 @@ static void test_status_surfaces_loop_config() {
     "node-z",
     {"node-y", "node-x"},
     "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-    50
+    50,
+    250
   );
   (void)loop.tick(1000);
   (void)loop.tick(1050);
   const Json::Value status = loop.status_to_json();
   assert(status["self"]["node_id"].asString() == "node-z");
   assert(status["campaign_delay_ms"].asInt64() == 50);
+  assert(status["campaign_retry_ms"].asInt64() == 250);
   assert(status["peer_node_ids"].isArray());
   assert(status["peer_node_ids"].size() == 2);
   assert(status["election_started"].asBool());
+  assert(status["campaign_attempts"].asUInt64() == 1);
+  assert(status["last_campaign_started_utc_ms"].asInt64() == 1050);
+  assert(status["next_campaign_utc_ms"].asInt64() == 1300);
   assert(status["replica"]["campaign_decision_sha256"].asString() ==
          "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd");
 }
@@ -164,6 +197,7 @@ static void test_status_surfaces_loop_config() {
 
 int main() {
   test_tick_emits_election_once_after_delay();
+  test_tick_retries_election_after_retry_delay();
   test_vote_grant_routes_back_to_candidate();
   test_quorum_commit_emits_leader_commit();
   test_status_surfaces_loop_config();
