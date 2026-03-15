@@ -221,6 +221,11 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   replan_prev_goal: string                 # previous goal captured before resume
   replan_prev_goal_contract: { ... }       # previous goal contract captured before resume
   replan_prev_role_plan_snapshot: { ... }  # previous role plan snapshot captured before resume
+  replan_team_goal_team_run_id: string     # active team run patched with revised goal contract
+  replan_team_goal_applied_unix_ms: integer # when active team goal contract was patched
+  replan_team_goal_error: string           # active team goal patch error, if any
+  replan_role_plan_deferred_team_run_id: string # active run still on previous role plan
+  replan_role_plan_deferred_unix_ms: integer    # when deferred-role-plan evidence was recorded
   replan_prev_team_run_id: string          # previous run id when new run requested
   replan_new_run_requested_unix_ms: integer # when new run requested
   replan_cancel_unix_ms: integer           # when active run cancel issued
@@ -294,6 +299,12 @@ Notes:
   - On resume, the loop snapshots the previous goal/contract/role plan into
     `replan_prev_*` fields and includes `prev_goal`/`goal` in the
     `replan_resume` event payload when available.
+  - If `replan_create_new_run` is false and `replan_goal_contract` is provided,
+    the loop patches the active team run goal contract immediately and records
+    `replan_team_goal_*` evidence.
+  - `replan_resume` evidence now carries previous + revised goal contract and
+    role plan snapshot. Role-plan overrides are recorded even when they cannot
+    be applied to the active run in place.
   - When `replan_ack_min` or receipt filters are set, the loop waits for enough
     guidance receipts before resuming.
   - If `replan_create_new_run` is true, the loop clears `active_team_run_id` so

@@ -408,8 +408,9 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-19: Added broker_smoke eval pack (health/ready + evidence) and templated scenario ports.
 - [x] W=9 — Drift remediation actions: pause/cancel policies after drift, with audit fields and docs/tests.
   - 2026-02-26: drift_action supports guidance/pause/cancel with meta audit fields + tests.
-- [ ] W=8 — Drift replanning workflows: orchestrator-driven goal revision after drift, with approval hooks and evidence.
-  - 2026-02-26: added `drift_action=replan` to pause and emit replan guidance, auto-resume after ack, optional new run + goal overrides (no auto goal update yet).
+- [x] W=8 — Drift replanning workflows: orchestrator-driven goal revision after drift, with approval hooks and evidence.
+  - 2026-03-15: replan ack now patches the active team run goal contract when staying in-place, records deferred role-plan evidence when a new run is still required, and emits richer `replan_resume` evidence with previous + revised goal/contract/role-plan fields.
+  - 2026-02-26: added `drift_action=replan` to pause and emit replan guidance, auto-resume after ack, and support optional new run + goal overrides.
   - 2026-02-26: added receipt-based approval thresholds for replan resume (`replan_ack_*`).
   - 2026-02-26: emit `replan_resume` goal event with receipt summary for evidence.
   - 2026-02-26: allow `replan_resume` goal events and SSE `team_goal_replan_resume`.

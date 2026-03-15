@@ -365,19 +365,20 @@ func maybeHandleReplanAck(
 	activeRunID := strings.TrimSpace(asString(meta["active_team_run_id"]))
 	goal := strings.TrimSpace(asString(meta["replan_goal"]))
 	var goalPtr *string
+	appliedUnixMS := time.Now().UTC().UnixMilli()
 	if goal != "" {
 		goalPtr = &goal
-		meta["replan_goal_applied_unix_ms"] = time.Now().UTC().UnixMilli()
+		meta["replan_goal_applied_unix_ms"] = appliedUnixMS
 	}
 	var goalContract map[string]any
 	if raw, ok := meta["replan_goal_contract"].(map[string]any); ok && len(raw) > 0 {
 		goalContract = raw
-		meta["replan_goal_contract_applied_unix_ms"] = time.Now().UTC().UnixMilli()
+		meta["replan_goal_contract_applied_unix_ms"] = appliedUnixMS
 	}
 	var rolePlan map[string]any
 	if raw, ok := meta["replan_role_plan_snapshot"].(map[string]any); ok && len(raw) > 0 {
 		rolePlan = raw
-		meta["replan_role_plan_snapshot_applied_unix_ms"] = time.Now().UTC().UnixMilli()
+		meta["replan_role_plan_snapshot_applied_unix_ms"] = appliedUnixMS
 	}
 	createNew := false
 	if v, ok := asBool(meta["replan_create_new_run"]); ok {
@@ -404,39 +405,68 @@ func maybeHandleReplanAck(
 		eventRunID = strings.TrimSpace(asString(meta["replan_prev_team_run_id"]))
 	}
 	if eventRunID != "" {
+		eventData := map[string]any{
+			"guidance_id": guidanceID,
+		}
+		if v, ok := meta["replan_ack_count"]; ok {
+			eventData["ack_count"] = v
+		}
+		if v, ok := meta["replan_ack_roles_seen"]; ok {
+			eventData["ack_roles"] = v
+		}
+		if v, ok := meta["replan_ack_sources_seen"]; ok {
+			eventData["ack_sources"] = v
+		}
+		if guidance.AckedBy != "" {
+			eventData["acked_by"] = guidance.AckedBy
+		}
+		if guidance.AckNote != "" {
+			eventData["ack_note"] = guidance.AckNote
+		}
+		if guidance.AckedUnixMS > 0 {
+			eventData["ack_unix_ms"] = guidance.AckedUnixMS
+		}
+		if prevGoal, ok := meta["replan_prev_goal"]; ok {
+			eventData["prev_goal"] = prevGoal
+		}
+		if prevGoalContract, ok := meta["replan_prev_goal_contract"]; ok {
+			eventData["prev_goal_contract"] = prevGoalContract
+		}
+		if prevRolePlan, ok := meta["replan_prev_role_plan_snapshot"]; ok {
+			eventData["prev_role_plan_snapshot"] = prevRolePlan
+		}
+		if goalPtr != nil {
+			eventData["goal"] = *goalPtr
+		}
+		if goalContract != nil {
+			eventData["goal_contract"] = goalContract
+		}
+		if rolePlan != nil {
+			eventData["role_plan_snapshot"] = rolePlan
+			if !createNew {
+				eventData["role_plan_requires_new_run"] = true
+				meta["replan_role_plan_deferred_team_run_id"] = eventRunID
+				meta["replan_role_plan_deferred_unix_ms"] = appliedUnixMS
+			}
+		}
 		event := map[string]any{
 			"type":       "replan_resume",
 			"message":    "replan guidance acked",
-			"ts_unix_ms": time.Now().UTC().UnixMilli(),
-			"data": map[string]any{
-				"guidance_id": guidanceID,
-			},
+			"ts_unix_ms": appliedUnixMS,
+			"data":       eventData,
 		}
-		if v, ok := meta["replan_ack_count"]; ok {
-			event["data"].(map[string]any)["ack_count"] = v
-		}
-		if v, ok := meta["replan_ack_roles_seen"]; ok {
-			event["data"].(map[string]any)["ack_roles"] = v
-		}
-		if v, ok := meta["replan_ack_sources_seen"]; ok {
-			event["data"].(map[string]any)["ack_sources"] = v
-		}
-		if guidance.AckedBy != "" {
-			event["data"].(map[string]any)["acked_by"] = guidance.AckedBy
-		}
-		if guidance.AckNote != "" {
-			event["data"].(map[string]any)["ack_note"] = guidance.AckNote
-		}
-		if guidance.AckedUnixMS > 0 {
-			event["data"].(map[string]any)["ack_unix_ms"] = guidance.AckedUnixMS
-		}
-		if prevGoal, ok := meta["replan_prev_goal"]; ok {
-			event["data"].(map[string]any)["prev_goal"] = prevGoal
-		}
-		if goalPtr != nil {
-			event["data"].(map[string]any)["goal"] = *goalPtr
-		}
-		if err := emitTeamRunGoalEvent(ctx, client, cfg, teamID, eventRunID, event); err != nil {
+		if !createNew && goalContract != nil {
+			if err := updateTeamRunGoalState(ctx, client, cfg, teamID, eventRunID, goalContract, event); err != nil {
+				meta["replan_team_goal_error"] = err.Error()
+				meta["replan_event_error"] = err.Error()
+			} else {
+				meta["replan_team_goal_team_run_id"] = eventRunID
+				meta["replan_team_goal_applied_unix_ms"] = appliedUnixMS
+				meta["replan_event_unix_ms"] = event["ts_unix_ms"]
+				delete(meta, "replan_team_goal_error")
+				delete(meta, "replan_event_error")
+			}
+		} else if err := emitTeamRunGoalEvent(ctx, client, cfg, teamID, eventRunID, event); err != nil {
 			meta["replan_event_error"] = err.Error()
 		} else {
 			meta["replan_event_unix_ms"] = event["ts_unix_ms"]

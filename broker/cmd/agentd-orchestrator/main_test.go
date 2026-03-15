@@ -1327,8 +1327,12 @@ func TestMaybeHandleReplanAckResumesRun(t *testing.T) {
 		"drift_action":             "replan",
 		"drift_replan_guidance_id": "g-replan",
 		"replan_goal":              "new goal",
-		"replan_create_new_run":    true,
-		"active_team_run_id":       "run1",
+		"replan_goal_contract":     map[string]any{"scope": "next"},
+		"replan_role_plan_snapshot": map[string]any{
+			"role": "next",
+		},
+		"replan_create_new_run": true,
+		"active_team_run_id":    "run1",
 	}
 	run := orchestratorRun{
 		Goal:             "old goal",
@@ -1388,8 +1392,118 @@ func TestMaybeHandleReplanAckResumesRun(t *testing.T) {
 	if data["goal"] != "new goal" {
 		t.Fatalf("expected goal=new goal, got %#v", data["goal"])
 	}
+	if exp := map[string]any{"scope": "next"}; !reflect.DeepEqual(data["goal_contract"], exp) {
+		t.Fatalf("expected goal_contract %#v, got %#v", exp, data["goal_contract"])
+	}
+	if exp := map[string]any{"role": "next"}; !reflect.DeepEqual(data["role_plan_snapshot"], exp) {
+		t.Fatalf("expected role_plan_snapshot %#v, got %#v", exp, data["role_plan_snapshot"])
+	}
 	if meta["active_team_run_id"] != "" {
 		t.Fatalf("expected active_team_run_id cleared, got %#v", meta["active_team_run_id"])
+	}
+}
+
+func TestMaybeHandleReplanAckPatchesActiveTeamGoalContract(t *testing.T) {
+	type state struct {
+		mu          sync.Mutex
+		patchBody   map[string]any
+		goalPayload map[string]any
+	}
+	st := &state{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/teams/team1/guidance/g-replan":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","guidance":{"guidance_id":"g-replan","status":"acked","acked_by":"human","acked_unix_ms":123,"ack_note":"ship it"}}`)
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/teams/team1/runs/run1/goal":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			st.mu.Lock()
+			st.goalPayload = payload
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"goal_contract":{"scope":"next"}}`)
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/teams/team1/orchestrator/runs/orun1":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			st.mu.Lock()
+			st.patchBody = payload
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","run":{"orchestrator_run_id":"orun1","status":"running"}}`)
+		default:
+			http.Error(w, "unexpected", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	cfg := config{brokerBase: server.URL, oidcToken: "token", orchestratorID: "orch1"}
+	meta := map[string]any{
+		"drift_action":             "replan",
+		"drift_replan_guidance_id": "g-replan",
+		"replan_goal":              "new goal",
+		"replan_goal_contract":     map[string]any{"scope": "next"},
+		"replan_role_plan_snapshot": map[string]any{
+			"role": "next",
+		},
+		"active_team_run_id": "run1",
+	}
+	run := orchestratorRun{
+		Goal:             "old goal",
+		GoalContract:     map[string]any{"scope": "prev"},
+		RolePlanSnapshot: map[string]any{"role": "plan"},
+	}
+	updated, err := maybeHandleReplanAck(context.Background(), server.Client(), cfg, "team1", "orun1", "orch1", run, meta)
+	if err != nil {
+		t.Fatalf("maybeHandleReplanAck error: %v", err)
+	}
+	if !updated {
+		t.Fatalf("expected replan ack to update run")
+	}
+	if got := meta["replan_team_goal_team_run_id"]; got != "run1" {
+		t.Fatalf("expected replan_team_goal_team_run_id=run1, got %#v", got)
+	}
+	if _, ok := meta["replan_team_goal_applied_unix_ms"]; !ok {
+		t.Fatalf("expected replan_team_goal_applied_unix_ms to be set")
+	}
+	if got := meta["replan_role_plan_deferred_team_run_id"]; got != "run1" {
+		t.Fatalf("expected replan_role_plan_deferred_team_run_id=run1, got %#v", got)
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.patchBody == nil || st.patchBody["status"] != "running" {
+		t.Fatalf("expected status=running, got %#v", st.patchBody)
+	}
+	if exp := map[string]any{"scope": "next"}; !reflect.DeepEqual(st.patchBody["goal_contract"], exp) {
+		t.Fatalf("expected orchestrator goal_contract %#v, got %#v", exp, st.patchBody["goal_contract"])
+	}
+	if st.goalPayload == nil {
+		t.Fatalf("expected goal payload, got nil")
+	}
+	if exp := map[string]any{"scope": "next"}; !reflect.DeepEqual(st.goalPayload["goal_contract"], exp) {
+		t.Fatalf("expected team goal_contract %#v, got %#v", exp, st.goalPayload["goal_contract"])
+	}
+	event, ok := st.goalPayload["event"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected event payload map, got %#v", st.goalPayload["event"])
+	}
+	data, ok := event["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected event data map, got %#v", event["data"])
+	}
+	if data["goal"] != "new goal" {
+		t.Fatalf("expected goal=new goal, got %#v", data["goal"])
+	}
+	if exp := map[string]any{"scope": "next"}; !reflect.DeepEqual(data["goal_contract"], exp) {
+		t.Fatalf("expected goal_contract %#v, got %#v", exp, data["goal_contract"])
+	}
+	if exp := map[string]any{"role": "next"}; !reflect.DeepEqual(data["role_plan_snapshot"], exp) {
+		t.Fatalf("expected role_plan_snapshot %#v, got %#v", exp, data["role_plan_snapshot"])
+	}
+	if required, ok := data["role_plan_requires_new_run"].(bool); !ok || !required {
+		t.Fatalf("expected role_plan_requires_new_run=true, got %#v", data["role_plan_requires_new_run"])
 	}
 }
 

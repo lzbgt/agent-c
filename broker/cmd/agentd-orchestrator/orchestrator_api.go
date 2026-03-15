@@ -8,9 +8,13 @@ import (
 	"strings"
 )
 
-func emitTeamRunGoalEvent(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, event map[string]any) error {
-	payload := map[string]any{
-		"event": event,
+func updateTeamRunGoalState(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, goalContract map[string]any, event map[string]any) error {
+	payload := map[string]any{}
+	if goalContract != nil {
+		payload["goal_contract"] = goalContract
+	}
+	if event != nil {
+		payload["event"] = event
 	}
 	url := fmt.Sprintf("%s/v1/teams/%s/runs/%s/goal", cfg.brokerBase, teamID, teamRunID)
 	var resp map[string]any
@@ -18,6 +22,10 @@ func emitTeamRunGoalEvent(ctx context.Context, client *http.Client, cfg config, 
 		return err
 	}
 	return nil
+}
+
+func emitTeamRunGoalEvent(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, event map[string]any) error {
+	return updateTeamRunGoalState(ctx, client, cfg, teamID, teamRunID, nil, event)
 }
 
 func emitTeamRunHandoffEvent(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, event map[string]any) error {
