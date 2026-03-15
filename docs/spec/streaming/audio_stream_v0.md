@@ -1,7 +1,7 @@
 # Audio Streaming (v0)
 
 Date: 2026-02-19
-Status: implemented rolling foundation (broker signaling relay + session status APIs + WebUI voice-session controls + browser-side WebRTC negotiation client); end-to-end agentd media peer path pending
+Status: implemented rolling foundation (broker signaling relay + session status APIs + WebUI voice-session controls + browser-side WebRTC negotiation client + host-side agentd media peer RTP proof); agentd-native embedding still pending
 
 ## Goals
 
@@ -126,13 +126,16 @@ A v0 smoke test should:
   cover the current browser voice-presentation harness, which is artifact/scene driven rather than
   a full WebRTC session.
 - `ui/e2e/broker_audio_panel.spec.ts` covers the browser-side WebRTC control flow against a deterministic mocked peer.
+- `tests/agentd_audio_webrtc_peer_smoke.sh` plus `tools/agentd_audio_webrtc_peer.js` cover a real browser-to-agentd-side
+  RTP path over broker signaling, including offer/answer exchange, ICE candidates, inbound audio stats, and `bye`
+  teardown against a live headless Chromium peer.
 
 ## Open questions
 
 - Should signaling use WebSocket instead of SSE+POST for bidirectional framing?
 - Do we need a broker-issued ephemeral token for direct agentd signaling as a fallback?
 - How should the broker authenticate agentd participation (mTLS vs bearer)?
-- How should the agentd-side media peer surface evolve so the shipped browser WebRTC client can complete a real end-to-end RTP path?
+- How should the shipped host-side media peer be embedded into a first-class agentd/session runtime surface instead of a standalone bring-up tool?
 
 ## References
 

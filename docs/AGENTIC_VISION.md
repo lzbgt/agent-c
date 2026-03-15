@@ -219,7 +219,8 @@ These are the most leveraged next steps grounded in current architecture:
 
 4) **Voice workflow spec**
    - Audio streaming protocol and loopback/relay foundations are shipped.
-   - Full voice-session UX and end-to-end WebRTC workflow controls remain open.
+   - Completed 2026-03-15: browser-side WebRTC workflow controls and a host-side agentd media peer RTP proof are shipped.
+   - Remaining gap: embed that voice/media path into a first-class long-lived agentd runtime surface.
 
 5) **Node consensus**
    - Centralized platform-led quorum and coordination are shipped.
