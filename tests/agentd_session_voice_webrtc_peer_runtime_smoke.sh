@@ -265,17 +265,6 @@ restart_agentd_without_voice_defaults() {
   wait_daemon_ready
 }
 
-restart_agentd_with_invalid_peer_node_bin() {
-  agentd_smoke_stop
-  wait_daemon_stopped
-  AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}" \
-  AGENTD_AUDIO_WEBRTC_BROKER_URL="${VOICE_BROKER_URL}" \
-  AGENTD_AUDIO_WEBRTC_BROKER_TOKEN="${VOICE_BROKER_TOKEN}" \
-  AGENTD_AUDIO_WEBRTC_PEER_NODE_BIN="definitely-not-a-real-node-binary" \
-  agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_session_voice_webrtc_peer_runtime_smoke" >>"${LOG_FILE}" 2>&1
-  wait_daemon_ready
-}
-
 wait_daemon_ready
 
 config_env_defaults="$(curl -fsS --noproxy "*" --max-time 10 \
@@ -306,6 +295,7 @@ wait_voice_peer_ready() {
   local session_id="$1"
   local expect_running="${2:-1}"
   local out_var="${3:-}"
+  local expected_runtime_kind="${4:-bundled}"
   local status_body=""
   for _ in $(seq 1 120); do
     status_body="$(curl -fsS --noproxy "*" --max-time 10 \
@@ -316,13 +306,14 @@ import json, sys
 obj = json.loads(r'''${status_body}''')
 peer = obj.get("peer")
 expect_running = ${expect_running}
+expected_runtime_kind = r'''${expected_runtime_kind}'''
 if obj.get("builtin_available") is not False or obj.get("bundled_available") is not True or obj.get("default_runtime_kind") != "bundled":
   raise SystemExit(1)
 if obj.get("broker_url_default_configured") is not True or obj.get("broker_token_default_configured") is not True:
   raise SystemExit(1)
 if not isinstance(peer, dict):
   raise SystemExit(1)
-if peer.get("runtime_kind") != "bundled":
+if peer.get("runtime_kind") != expected_runtime_kind:
   raise SystemExit(1)
 running = bool(peer.get("running"))
 ready = bool(peer.get("ready"))
@@ -1150,7 +1141,9 @@ import json
 print(json.dumps({
   "audio_webrtc": {
     "broker_url": "${VOICE_BROKER_URL}",
-    "broker_token": "${VOICE_BROKER_TOKEN}"
+    "broker_token": "${VOICE_BROKER_TOKEN}",
+    "peer_tool_path": "${PEER_TOOL}",
+    "node_bin": "node"
   }
 }))
 PY
@@ -1170,6 +1163,12 @@ if audio.get("broker_url_default_configured") is not True:
 if audio.get("broker_token_default_configured") is not True:
   print("expected updated broker_token_default_configured", obj, file=sys.stderr)
   raise SystemExit(1)
+if audio.get("peer_tool_path_configured") is not True:
+  print("expected updated peer_tool_path_configured", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("node_bin") != "node":
+  print("expected updated node_bin=node", obj, file=sys.stderr)
+  raise SystemExit(1)
 PY
 
 restart_agentd_without_voice_defaults
@@ -1188,6 +1187,12 @@ if audio.get("broker_url_default_configured") is not True:
   raise SystemExit(1)
 if audio.get("broker_token_default_configured") is not True:
   print("expected persisted broker_token_default_configured after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("peer_tool_path_configured") is not True:
+  print("expected persisted peer_tool_path_configured after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("node_bin") != "node":
+  print("expected persisted node_bin=node after restart", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 
@@ -1270,7 +1275,117 @@ curl -fsS --noproxy "*" --max-time 10 -X DELETE \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   "${DAEMON_URL}/api/v1/session?session_id=${CONFIG_SESSION_ID_Q}" >/dev/null
 
-restart_agentd_with_invalid_peer_node_bin
+EXTERNAL_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_external_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${EXTERNAL_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+external_config_start_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${EXTERNAL_SESSION_ID}",
+  "action": "start",
+  "runtime_kind": "external",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab-external-config",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 901
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${external_config_start_resp}''')
+peer = obj.get("peer") or {}
+if not obj.get("ok") or not obj.get("started"):
+  print("voice_webrtc_peer external config-backed start failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("runtime_kind") != "external":
+  print("expected external runtime_kind", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("managed_broker_session") is not True or peer.get("broker_deployment_id") != "lab-external-config":
+  print("unexpected external managed broker session fields", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+EXTERNAL_BROKER_SESSION_ID="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${external_config_start_resp}''')
+peer = obj.get("peer") or {}
+sid = str(peer.get("broker_session_id") or "").strip()
+if not sid:
+  print("missing external broker_session_id", file=sys.stderr)
+  raise SystemExit(1)
+print(sid)
+PY
+)"
+
+wait_voice_peer_ready "${EXTERNAL_SESSION_ID}" 1 status_json external
+
+external_config_stop_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${EXTERNAL_SESSION_ID}\",\"action\":\"stop\"}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${external_config_stop_resp}''')
+peer = obj.get("peer") or {}
+if not obj.get("ok") or not obj.get("stopped"):
+  print("voice_webrtc_peer external config-backed stop failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("runtime_kind") != "external":
+  print("expected external runtime_kind during stop", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("broker_session_deleted") is not True:
+  print("expected broker_session_deleted on external config-backed stop", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+wait_broker_session_deleted "${EXTERNAL_BROKER_SESSION_ID}"
+
+EXTERNAL_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${EXTERNAL_SESSION_ID}")"
+curl -fsS --noproxy "*" --max-time 10 -X DELETE \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session?session_id=${EXTERNAL_SESSION_ID_Q}" >/dev/null
+
+config_failfast_update_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "audio_webrtc": {
+    "node_bin": "definitely-not-a-real-node-binary"
+  }
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/config/update")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${config_failfast_update_resp}''')
+audio = obj.get("audio_webrtc") or {}
+if not obj.get("ok"):
+  print("config update for fail-fast node_bin failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("node_bin") != "definitely-not-a-real-node-binary":
+  print("expected persisted invalid node_bin for fail-fast test", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+restart_agentd_without_voice_defaults
 
 FAIL_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_fail_$(date +%s)_$RANDOM"
 curl -fsS --noproxy "*" --max-time 10 \

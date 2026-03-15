@@ -39,6 +39,8 @@ AgentdConfigResponse:
           properties:
             broker_url_default_configured: { type: boolean }
             broker_token_default_configured: { type: boolean }
+            peer_tool_path_configured: { type: boolean }
+            node_bin: { type: string }
         max_steps_default: { type: integer, format: int64 }
         max_tool_calls_total_default: { type: integer, format: int64 }
         max_tool_calls_per_tool_default: { type: integer, format: int64 }
@@ -307,6 +309,14 @@ AgentdConfigUpdateRequest:
           type: string
           nullable: true
           description: Default broker bearer token for managed WebRTC voice runtimes (null clears)
+        peer_tool_path:
+          type: string
+          nullable: true
+          description: External helper tool path for `runtime_kind=external` (null clears)
+        node_bin:
+          type: string
+          nullable: true
+          description: Node launcher binary for bundled or external managed WebRTC peers (null resets to `node`)
     blob_store:
       $ref: "#/components/schemas/BlobStoreUpdate"
     blob_store_secrets:
@@ -370,6 +380,8 @@ AgentdConfigUpdateResponse:
       properties:
         broker_url_default_configured: { type: boolean }
         broker_token_default_configured: { type: boolean }
+        peer_tool_path_configured: { type: boolean }
+        node_bin: { type: string }
     edge_auth_required: { type: boolean }
     edge_auth_require_ts: { type: boolean }
     edge_auth_max_skew_ms: { type: integer, format: int64 }

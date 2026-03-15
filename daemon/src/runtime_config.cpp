@@ -118,6 +118,16 @@ bool load_runtime_config_best_effort(
           if (aw["broker_url"].isNull()) cfg_io->audio_webrtc_broker_url.clear();
           else if (aw["broker_url"].isString()) cfg_io->audio_webrtc_broker_url = trim_copy(aw["broker_url"].asString());
         }
+        if (aw.isMember("peer_tool_path")) {
+          if (aw["peer_tool_path"].isNull()) cfg_io->audio_webrtc_peer_tool_path.clear();
+          else if (aw["peer_tool_path"].isString()) {
+            cfg_io->audio_webrtc_peer_tool_path = trim_copy(aw["peer_tool_path"].asString());
+          }
+        }
+        if (aw.isMember("node_bin")) {
+          if (aw["node_bin"].isNull()) cfg_io->audio_webrtc_peer_node_bin = "node";
+          else if (aw["node_bin"].isString()) cfg_io->audio_webrtc_peer_node_bin = trim_copy(aw["node_bin"].asString());
+        }
       }
       uint64_t n_u64 = 0;
       if (json_get_u64_nonneg(v, "max_steps_default", &n_u64)) {
@@ -718,6 +728,12 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
     Json::Value aw(Json::objectValue);
     aw["broker_url"] =
       cfg.audio_webrtc_broker_url.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.audio_webrtc_broker_url);
+    aw["peer_tool_path"] = cfg.audio_webrtc_peer_tool_path.empty()
+      ? Json::Value(Json::nullValue)
+      : Json::Value(cfg.audio_webrtc_peer_tool_path);
+    aw["node_bin"] = cfg.audio_webrtc_peer_node_bin.empty()
+      ? Json::Value("node")
+      : Json::Value(cfg.audio_webrtc_peer_node_bin);
     v["audio_webrtc"] = aw;
   }
   v["max_steps_default"] = (Json::UInt64)cfg.max_steps_default;

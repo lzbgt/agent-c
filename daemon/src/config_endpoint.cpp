@@ -1118,6 +1118,8 @@ void handle_config_endpoint(
     Json::Value aw(Json::objectValue);
     aw["broker_url_default_configured"] = !trim_copy(cfg.audio_webrtc_broker_url).empty();
     aw["broker_token_default_configured"] = !trim_copy(cfg.audio_webrtc_broker_token).empty();
+    aw["peer_tool_path_configured"] = !trim_copy(cfg.audio_webrtc_peer_tool_path).empty();
+    aw["node_bin"] = cfg.audio_webrtc_peer_node_bin.empty() ? Json::Value("node") : Json::Value(cfg.audio_webrtc_peer_node_bin);
     daemon["audio_webrtc"] = aw;
   }
   daemon["upload_max_bytes"] = (Json::UInt64)cfg.upload_max_bytes;
@@ -1980,7 +1982,7 @@ void handle_config_update_endpoint(
   }
 
   // Managed voice/WebRTC defaults:
-  // - audio_webrtc: { "broker_url": "...", "broker_token": "..." } (null clears)
+  // - audio_webrtc: { "broker_url": "...", "broker_token": "...", "peer_tool_path": "...", "node_bin": "..." } (null clears)
   if (args.isMember("audio_webrtc")) {
     if (!args["audio_webrtc"].isObject()) {
       Json::Value o(Json::objectValue);
@@ -2016,6 +2018,36 @@ void handle_config_update_endpoint(
         Json::Value o(Json::objectValue);
         o["ok"] = false;
         o["error"] = "audio_webrtc.broker_token must be a string or null";
+        resp->status = 400;
+        resp->body = json_stringify(o);
+        return;
+      }
+    }
+    if (aw.isMember("peer_tool_path")) {
+      const Json::Value& v = aw["peer_tool_path"];
+      if (v.isNull()) {
+        next.audio_webrtc_peer_tool_path.clear();
+      } else if (v.isString()) {
+        next.audio_webrtc_peer_tool_path = trim_copy(v.asString());
+      } else {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "audio_webrtc.peer_tool_path must be a string or null";
+        resp->status = 400;
+        resp->body = json_stringify(o);
+        return;
+      }
+    }
+    if (aw.isMember("node_bin")) {
+      const Json::Value& v = aw["node_bin"];
+      if (v.isNull()) {
+        next.audio_webrtc_peer_node_bin = "node";
+      } else if (v.isString()) {
+        next.audio_webrtc_peer_node_bin = trim_copy(v.asString());
+      } else {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "audio_webrtc.node_bin must be a string or null";
         resp->status = 400;
         resp->body = json_stringify(o);
         return;
@@ -2239,6 +2271,8 @@ void handle_config_update_endpoint(
     Json::Value aw(Json::objectValue);
     aw["broker_url_default_configured"] = !trim_copy(next.audio_webrtc_broker_url).empty();
     aw["broker_token_default_configured"] = !trim_copy(next.audio_webrtc_broker_token).empty();
+    aw["peer_tool_path_configured"] = !trim_copy(next.audio_webrtc_peer_tool_path).empty();
+    aw["node_bin"] = next.audio_webrtc_peer_node_bin.empty() ? Json::Value("node") : Json::Value(next.audio_webrtc_peer_node_bin);
     o["audio_webrtc"] = aw;
   }
   {

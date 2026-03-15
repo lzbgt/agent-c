@@ -406,6 +406,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `AGENTD_AUDIO_WEBRTC_BROKER_URL` and `AGENTD_AUDIO_WEBRTC_BROKER_TOKEN` or `/api/v1/config/update`, so callers may
   omit `broker_url` / `broker_token` when those defaults are configured. Runtime status also reports
   `broker_url_default_configured` / `broker_token_default_configured`.
+- That same daemon-level `audio_webrtc` config now also persists the `external` backend seam itself:
+  `peer_tool_path` for `runtime_kind=external` and `node_bin` for bundled/external peer launch, so operators no longer
+  have to rely only on process environment to keep the managed WebRTC backend wired correctly across restarts.
 - `POST /api/v1/session/voice_webrtc_peer` now also performs bounded startup confirmation. If the managed peer process
   exits before it ever reaches ready, agentd returns a failed start instead of `started=true`, reports
   `startup_confirmed=false`, and cleans up any owned broker audio session before returning.
@@ -504,10 +507,20 @@ curl -fsS \
   http://127.0.0.1:8123/api/v1/config/update
 ```
 
+Example (persist the operator-configured external peer backend seam):
+
+```bash
+curl -fsS \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_AGENTD_TOKEN" \
+  -d '{"audio_webrtc":{"peer_tool_path":"/opt/agentd/tools/agentd_audio_webrtc_peer.js","node_bin":"node"}}' \
+  http://127.0.0.1:8123/api/v1/config/update
+```
+
 Notes:
 - The response never includes secrets. Use `GET /api/v1/config` to see booleans like `provider_keys_set`.
 - For managed voice/WebRTC broker defaults, `GET /api/v1/config` exposes only
-  `daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured}`.
+  `daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured,peer_tool_path_configured,node_bin}`.
 - The WebUI exposes Settings buttons to “Save defaults to daemon” and “Save API key to daemon”.
 
 Edge trust-root rotation:

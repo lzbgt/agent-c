@@ -234,6 +234,8 @@ These are the most leveraged next steps grounded in current architecture:
      outside the normal erase path, instead of surfacing orphaned peer/runtime residue indefinitely.
    - Completed 2026-03-15: managed voice-runtime start now fails closed if the child exits before ready, and agentd
      cleans up any owned broker audio session created for that failed start instead of reporting a false-positive start.
+   - Completed 2026-03-15: the operator-configured `external` backend seam is now durable daemon config
+     (`audio_webrtc.peer_tool_path`, `audio_webrtc.node_bin`) instead of env-only process wiring.
    - Remaining gap: replace the managed Node/Playwright child with an embedded long-lived agentd-native media service.
 
 5) **Node consensus**

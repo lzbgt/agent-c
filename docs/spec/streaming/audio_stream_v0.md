@@ -159,6 +159,8 @@ A v0 smoke test should:
   broker-owned audio sessions. Safe config and runtime status expose only boolean presence, not the token itself.
 - That managed runtime now also performs bounded startup confirmation and fails closed when the child exits before ready,
   cleaning up any agentd-owned broker audio session created for the failed start.
+- The operator-configured `external` backend seam is now also durable daemon config (`audio_webrtc.peer_tool_path`,
+  `audio_webrtc.node_bin`) rather than env-only, and the main runtime smoke proves that config-backed external path.
 
 ## Open questions
 

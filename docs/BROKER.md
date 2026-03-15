@@ -415,6 +415,8 @@ Current status:
   and clean up broker-owned audio sessions.
 - Shipped: managed voice-runtime start now fails closed if the child dies before reaching ready, and agentd cleans up
   any broker audio session it created for that failed start instead of leaving an orphaned broker-side session behind.
+- Shipped: the `external` backend seam is now also durable daemon config (`audio_webrtc.peer_tool_path` plus
+  `audio_webrtc.node_bin`), and the runtime smoke now proves a config-backed `runtime_kind=external` start/stop path.
 - Still open: replace the managed Node/Playwright child runtime with an embedded long-lived agentd-native media service.
 
 Proof:
