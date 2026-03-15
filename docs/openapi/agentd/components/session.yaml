@@ -74,19 +74,24 @@ VoiceWebRtcPeerRequest:
 
 VoiceWebRtcPeerResponse:
   type: object
-  required: [ok, session_id, tool_configured, builtin_available, bundled_available, default_runtime_kind, node_bin]
+  required: [ok, session_id, tool_configured, builtin_available, bundled_available, external_available, default_runtime_kind, default_runtime_kind_source, default_runtime_kind_available, node_bin]
   properties:
     ok: { type: boolean }
     session_id: { type: string }
     tool_configured: { type: boolean }
     builtin_available: { type: boolean, enum: [false] }
     bundled_available: { type: boolean }
+    external_available: { type: boolean }
     broker_url_default_configured: { type: boolean }
     broker_token_default_configured: { type: boolean }
     startup_confirmed: { type: boolean }
     default_runtime_kind:
       type: string
       enum: [bundled, external]
+    default_runtime_kind_source:
+      type: string
+      enum: [auto, config]
+    default_runtime_kind_available: { type: boolean }
     bundled_tool_path: { type: string }
     tool_path: { type: string }
     node_bin: { type: string }
@@ -107,18 +112,23 @@ VoiceWebRtcPeerResponse:
 
 VoiceWebRtcPeerStatusResponse:
   type: object
-  required: [ok, session_id, tool_configured, builtin_available, bundled_available, default_runtime_kind, node_bin, session_exists, running]
+  required: [ok, session_id, tool_configured, builtin_available, bundled_available, external_available, default_runtime_kind, default_runtime_kind_source, default_runtime_kind_available, node_bin, session_exists, running]
   properties:
     ok: { type: boolean }
     session_id: { type: string }
     tool_configured: { type: boolean }
     builtin_available: { type: boolean, enum: [false] }
     bundled_available: { type: boolean }
+    external_available: { type: boolean }
     broker_url_default_configured: { type: boolean }
     broker_token_default_configured: { type: boolean }
     default_runtime_kind:
       type: string
       enum: [bundled, external]
+    default_runtime_kind_source:
+      type: string
+      enum: [auto, config]
+    default_runtime_kind_available: { type: boolean }
     bundled_tool_path: { type: string }
     tool_path: { type: string }
     node_bin: { type: string }

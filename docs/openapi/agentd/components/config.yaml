@@ -40,6 +40,13 @@ AgentdConfigResponse:
             broker_url_default_configured: { type: boolean }
             broker_token_default_configured: { type: boolean }
             peer_tool_path_configured: { type: boolean }
+            default_runtime_kind:
+              type: string
+              nullable: true
+              enum: [bundled, external]
+            default_runtime_kind_source:
+              type: string
+              enum: [auto, config]
             node_bin: { type: string }
         max_steps_default: { type: integer, format: int64 }
         max_tool_calls_total_default: { type: integer, format: int64 }
@@ -313,6 +320,11 @@ AgentdConfigUpdateRequest:
           type: string
           nullable: true
           description: External helper tool path for `runtime_kind=external` (null clears)
+        default_runtime_kind:
+          type: string
+          nullable: true
+          enum: [bundled, external]
+          description: Preferred default managed WebRTC backend when callers omit `runtime_kind` (null resets to auto selection)
         node_bin:
           type: string
           nullable: true
@@ -381,6 +393,13 @@ AgentdConfigUpdateResponse:
         broker_url_default_configured: { type: boolean }
         broker_token_default_configured: { type: boolean }
         peer_tool_path_configured: { type: boolean }
+        default_runtime_kind:
+          type: string
+          nullable: true
+          enum: [bundled, external]
+        default_runtime_kind_source:
+          type: string
+          enum: [auto, config]
         node_bin: { type: string }
     edge_auth_required: { type: boolean }
     edge_auth_require_ts: { type: boolean }

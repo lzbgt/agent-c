@@ -399,9 +399,10 @@ Current status:
   agentd now creates the broker audio session itself and records that ownership in runtime status as
   `peer.managed_broker_session=true`.
 - Shipped: that agentd runtime surface now exposes explicit backend metadata (`default_runtime_kind=bundled` when the
-  repo helper is present, `bundled_available=true|false`, `builtin_available=false`, `peer.runtime_kind=bundled|external`)
-  and is factored away from the generic session endpoints code, so the future native media service can replace the backend
-  without changing the session API shape.
+  repo helper is present, `default_runtime_kind_source=auto|config`, `default_runtime_kind_available=true|false`,
+  `bundled_available=true|false`, `external_available=true|false`, `builtin_available=false`,
+  `peer.runtime_kind=bundled|external`) and is factored away from the generic session endpoints code, so the future
+  native media service can replace the backend without changing the session API shape.
 - Shipped: the bundled/external agentd media-peer runtime now persists enough state to recover status across agentd restarts
   without forcing an immediate new broker session when the peer child is still alive.
 - Shipped: that runtime can now also take `broker_token` on `action=stop` and directly delete an agentd-owned broker
@@ -415,8 +416,9 @@ Current status:
   and clean up broker-owned audio sessions.
 - Shipped: managed voice-runtime start now fails closed if the child dies before reaching ready, and agentd cleans up
   any broker audio session it created for that failed start instead of leaving an orphaned broker-side session behind.
-- Shipped: the `external` backend seam is now also durable daemon config (`audio_webrtc.peer_tool_path` plus
-  `audio_webrtc.node_bin`), and the runtime smoke now proves a config-backed `runtime_kind=external` start/stop path.
+- Shipped: the `external` backend seam is now also durable daemon config (`audio_webrtc.peer_tool_path`,
+  `audio_webrtc.node_bin`, `audio_webrtc.default_runtime_kind`), and the runtime smoke now proves both an explicit
+  config-backed `runtime_kind=external` start/stop path and a no-request config-defaulted external launch path.
 - Still open: replace the managed Node/Playwright child runtime with an embedded long-lived agentd-native media service.
 
 Proof:

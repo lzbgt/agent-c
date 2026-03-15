@@ -218,8 +218,27 @@ static std::string discover_bundled_audio_peer_tool_path(const DaemonConfig& cfg
   return "";
 }
 
+static std::string configured_default_voice_peer_runtime_kind(const DaemonConfig& cfg) {
+  const std::string kind = lower_copy(trim_copy(cfg.audio_webrtc_default_runtime_kind));
+  if (kind == "bundled" || kind == "external") return kind;
+  return "";
+}
+
+static std::string default_voice_peer_runtime_kind_source(const DaemonConfig& cfg) {
+  return configured_default_voice_peer_runtime_kind(cfg).empty() ? "auto" : "config";
+}
+
 static std::string default_voice_peer_runtime_kind(const DaemonConfig& cfg) {
+  const std::string configured = configured_default_voice_peer_runtime_kind(cfg);
+  if (!configured.empty()) return configured;
   return discover_bundled_audio_peer_tool_path(cfg).empty() ? "external" : "bundled";
+}
+
+static bool voice_peer_backend_available(const DaemonConfig& cfg, const std::string& runtime_kind) {
+  const std::string kind = lower_copy(trim_copy(runtime_kind));
+  if (kind == "bundled") return !discover_bundled_audio_peer_tool_path(cfg).empty();
+  if (kind == "external") return !trim_copy(cfg.audio_webrtc_peer_tool_path).empty();
+  return false;
 }
 
 static std::string effective_voice_broker_url(const DaemonConfig& cfg, const std::string& request_broker_url) {
@@ -361,9 +380,13 @@ static bool load_voice_peer_runtime_record(
 static void voice_peer_add_runtime_metadata(const DaemonConfig& cfg, Json::Value* out) {
   if (!out) return;
   const std::string bundled_tool_path = discover_bundled_audio_peer_tool_path(cfg);
+  const std::string default_runtime_kind = default_voice_peer_runtime_kind(cfg);
   (*out)["builtin_available"] = false;
   (*out)["bundled_available"] = !bundled_tool_path.empty();
-  (*out)["default_runtime_kind"] = default_voice_peer_runtime_kind(cfg);
+  (*out)["external_available"] = !trim_copy(cfg.audio_webrtc_peer_tool_path).empty();
+  (*out)["default_runtime_kind"] = default_runtime_kind;
+  (*out)["default_runtime_kind_source"] = default_voice_peer_runtime_kind_source(cfg);
+  (*out)["default_runtime_kind_available"] = voice_peer_backend_available(cfg, default_runtime_kind);
   (*out)["tool_configured"] = !trim_copy(cfg.audio_webrtc_peer_tool_path).empty();
   (*out)["broker_url_default_configured"] = !trim_copy(cfg.audio_webrtc_broker_url).empty();
   (*out)["broker_token_default_configured"] = !trim_copy(cfg.audio_webrtc_broker_token).empty();

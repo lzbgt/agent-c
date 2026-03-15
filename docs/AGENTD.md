@@ -384,12 +384,15 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
 - `POST /api/v1/session/voice_webrtc_peer` starts or stops the managed WebRTC media peer for a session.
 - `GET /api/v1/session/voice_webrtc_peer?session_id=<id>` reports managed media-peer runtime status, readiness, and final result.
 - The current implementation exposes an explicit backend seam:
-  - `default_runtime_kind=bundled` when the shipped repo helper is discoverable
+  - `default_runtime_kind=bundled|external`
+  - `default_runtime_kind_source=auto|config`
+  - `default_runtime_kind_available=true|false`
   - `builtin_available=false`
   - `bundled_available=true|false`
+  - `external_available=true|false`
   - `peer.runtime_kind=bundled|external`
-  so the shipped Node/Playwright peer is now clearly modeled as a default bundled backend with an explicit `external`
-  override path instead of an implicit implementation detail.
+  so the shipped Node/Playwright peer is now clearly modeled as an explicit backend family with durable default
+  selection rather than an implicit implementation detail.
 - The bundled/external backends now persist runtime snapshots in the agentd DB plus a per-session stdout log, so
   `GET /api/v1/session/voice_webrtc_peer` can recover running or stopped peer state across agentd restarts with
   `peer.status_source=memory|persisted`, and duplicate `start` calls after restart can return `already_running`
@@ -407,8 +410,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   omit `broker_url` / `broker_token` when those defaults are configured. Runtime status also reports
   `broker_url_default_configured` / `broker_token_default_configured`.
 - That same daemon-level `audio_webrtc` config now also persists the `external` backend seam itself:
-  `peer_tool_path` for `runtime_kind=external` and `node_bin` for bundled/external peer launch, so operators no longer
-  have to rely only on process environment to keep the managed WebRTC backend wired correctly across restarts.
+  `peer_tool_path` for `runtime_kind=external`, `node_bin` for bundled/external peer launch, and
+  `default_runtime_kind` for no-request backend selection, so operators no longer have to rely only on process
+  environment or implicit autodetect behavior to keep the managed WebRTC backend wired correctly across restarts.
 - `POST /api/v1/session/voice_webrtc_peer` now also performs bounded startup confirmation. If the managed peer process
   exits before it ever reaches ready, agentd returns a failed start instead of `started=true`, reports
   `startup_confirmed=false`, and cleans up any owned broker audio session before returning.
@@ -467,8 +471,9 @@ For debugging client/daemon mismatches (CORS, sandbox defaults, job GC), `agentd
 This endpoint requires auth when `--auth-token` is set. It intentionally does not include secrets.
 The WebUI surfaces this snapshot in Settings as “Daemon config”, including `state_dir`, `sessions_root_dir`,
 and `db_path` (SQLite; canonical daemon state store). For the managed WebRTC lane, the safe snapshot now also exposes
-`daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured}` so operators can verify whether
-caller-free voice runtime bring-up is configured without exposing the token itself.
+`daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured,peer_tool_path_configured,default_runtime_kind,default_runtime_kind_source,node_bin}`
+so operators can verify whether caller-free voice runtime bring-up and backend selection are configured without
+exposing the token itself.
 
 ## Update daemon defaults at runtime
 
@@ -513,14 +518,14 @@ Example (persist the operator-configured external peer backend seam):
 curl -fsS \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_AGENTD_TOKEN" \
-  -d '{"audio_webrtc":{"peer_tool_path":"/opt/agentd/tools/agentd_audio_webrtc_peer.js","node_bin":"node"}}' \
+  -d '{"audio_webrtc":{"peer_tool_path":"/opt/agentd/tools/agentd_audio_webrtc_peer.js","default_runtime_kind":"external","node_bin":"node"}}' \
   http://127.0.0.1:8123/api/v1/config/update
 ```
 
 Notes:
 - The response never includes secrets. Use `GET /api/v1/config` to see booleans like `provider_keys_set`.
 - For managed voice/WebRTC broker defaults, `GET /api/v1/config` exposes only
-  `daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured,peer_tool_path_configured,node_bin}`.
+  `daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured,peer_tool_path_configured,default_runtime_kind,default_runtime_kind_source,node_bin}`.
 - The WebUI exposes Settings buttons to “Save defaults to daemon” and “Save API key to daemon”.
 
 Edge trust-root rotation:

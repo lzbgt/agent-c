@@ -124,6 +124,12 @@ bool load_runtime_config_best_effort(
             cfg_io->audio_webrtc_peer_tool_path = trim_copy(aw["peer_tool_path"].asString());
           }
         }
+        if (aw.isMember("default_runtime_kind")) {
+          if (aw["default_runtime_kind"].isNull()) cfg_io->audio_webrtc_default_runtime_kind.clear();
+          else if (aw["default_runtime_kind"].isString()) {
+            cfg_io->audio_webrtc_default_runtime_kind = lower_copy(trim_copy(aw["default_runtime_kind"].asString()));
+          }
+        }
         if (aw.isMember("node_bin")) {
           if (aw["node_bin"].isNull()) cfg_io->audio_webrtc_peer_node_bin = "node";
           else if (aw["node_bin"].isString()) cfg_io->audio_webrtc_peer_node_bin = trim_copy(aw["node_bin"].asString());
@@ -731,6 +737,9 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
     aw["peer_tool_path"] = cfg.audio_webrtc_peer_tool_path.empty()
       ? Json::Value(Json::nullValue)
       : Json::Value(cfg.audio_webrtc_peer_tool_path);
+    aw["default_runtime_kind"] = cfg.audio_webrtc_default_runtime_kind.empty()
+      ? Json::Value(Json::nullValue)
+      : Json::Value(cfg.audio_webrtc_default_runtime_kind);
     aw["node_bin"] = cfg.audio_webrtc_peer_node_bin.empty()
       ? Json::Value("node")
       : Json::Value(cfg.audio_webrtc_peer_node_bin);

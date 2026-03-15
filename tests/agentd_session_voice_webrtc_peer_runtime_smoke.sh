@@ -282,6 +282,9 @@ if audio.get("broker_url_default_configured") is not True:
 if audio.get("broker_token_default_configured") is not True:
   print("expected broker_token_default_configured from daemon env", obj, file=sys.stderr)
   raise SystemExit(1)
+if audio.get("default_runtime_kind") is not None or audio.get("default_runtime_kind_source") != "auto":
+  print("expected auto default_runtime_kind before runtime config override", obj, file=sys.stderr)
+  raise SystemExit(1)
 PY
 
 SESSION_DB_ID="agentd_session_voice_webrtc_peer_runtime_$(date +%s)_$RANDOM"
@@ -296,6 +299,9 @@ wait_voice_peer_ready() {
   local expect_running="${2:-1}"
   local out_var="${3:-}"
   local expected_runtime_kind="${4:-bundled}"
+  local expected_default_runtime_kind="${5:-bundled}"
+  local expected_default_runtime_kind_source="${6:-auto}"
+  local expected_external_available="${7:-0}"
   local status_body=""
   for _ in $(seq 1 120); do
     status_body="$(curl -fsS --noproxy "*" --max-time 10 \
@@ -307,7 +313,18 @@ obj = json.loads(r'''${status_body}''')
 peer = obj.get("peer")
 expect_running = ${expect_running}
 expected_runtime_kind = r'''${expected_runtime_kind}'''
-if obj.get("builtin_available") is not False or obj.get("bundled_available") is not True or obj.get("default_runtime_kind") != "bundled":
+expected_default_runtime_kind = r'''${expected_default_runtime_kind}'''
+expected_default_runtime_kind_source = r'''${expected_default_runtime_kind_source}'''
+expected_external_available = bool(${expected_external_available})
+if obj.get("builtin_available") is not False or obj.get("bundled_available") is not True:
+  raise SystemExit(1)
+if obj.get("external_available") is not expected_external_available:
+  raise SystemExit(1)
+if obj.get("default_runtime_kind") != expected_default_runtime_kind:
+  raise SystemExit(1)
+if obj.get("default_runtime_kind_source") != expected_default_runtime_kind_source:
+  raise SystemExit(1)
+if obj.get("default_runtime_kind_available") is not True:
   raise SystemExit(1)
 if obj.get("broker_url_default_configured") is not True or obj.get("broker_token_default_configured") is not True:
   raise SystemExit(1)
@@ -586,7 +603,13 @@ obj = json.loads(r'''${start_resp}''')
 if not obj.get("ok") or not obj.get("started"):
   print("voice_webrtc_peer start failed", obj, file=sys.stderr)
   raise SystemExit(1)
-if obj.get("builtin_available") is not False or obj.get("bundled_available") is not True or obj.get("default_runtime_kind") != "bundled":
+if obj.get("builtin_available") is not False or obj.get("bundled_available") is not True:
+  print("unexpected runtime defaults", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("external_available") is not False or obj.get("default_runtime_kind") != "bundled":
+  print("unexpected runtime defaults", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("default_runtime_kind_source") != "auto" or obj.get("default_runtime_kind_available") is not True:
   print("unexpected runtime defaults", obj, file=sys.stderr)
   raise SystemExit(1)
 if obj.get("broker_url_default_configured") is not True or obj.get("broker_token_default_configured") is not True:
@@ -724,7 +747,13 @@ fi
 python3 - <<PY
 import json, sys
 obj = json.load(open(r'''${builtin_resp_body}''', 'r', encoding='utf-8'))
-if obj.get("builtin_available") is not False or obj.get("bundled_available") is not True or obj.get("default_runtime_kind") != "bundled":
+if obj.get("builtin_available") is not False or obj.get("bundled_available") is not True:
+  print("unexpected builtin contract response", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("external_available") is not False or obj.get("default_runtime_kind") != "bundled":
+  print("unexpected builtin contract response", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("default_runtime_kind_source") != "auto" or obj.get("default_runtime_kind_available") is not True:
   print("unexpected builtin contract response", obj, file=sys.stderr)
   raise SystemExit(1)
 if obj.get("broker_url_default_configured") is not True or obj.get("broker_token_default_configured") is not True:
@@ -750,7 +779,13 @@ fi
 python3 - <<PY
 import json, sys
 obj = json.load(open(r'''${external_resp_body}''', 'r', encoding='utf-8'))
-if obj.get("builtin_available") is not False or obj.get("bundled_available") is not True or obj.get("default_runtime_kind") != "bundled":
+if obj.get("builtin_available") is not False or obj.get("bundled_available") is not True:
+  print("unexpected external contract response", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("external_available") is not False or obj.get("default_runtime_kind") != "bundled":
+  print("unexpected external contract response", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("default_runtime_kind_source") != "auto" or obj.get("default_runtime_kind_available") is not True:
   print("unexpected external contract response", obj, file=sys.stderr)
   raise SystemExit(1)
 if obj.get("broker_url_default_configured") is not True or obj.get("broker_token_default_configured") is not True:
@@ -1143,6 +1178,7 @@ print(json.dumps({
     "broker_url": "${VOICE_BROKER_URL}",
     "broker_token": "${VOICE_BROKER_TOKEN}",
     "peer_tool_path": "${PEER_TOOL}",
+    "default_runtime_kind": "external",
     "node_bin": "node"
   }
 }))
@@ -1165,6 +1201,9 @@ if audio.get("broker_token_default_configured") is not True:
   raise SystemExit(1)
 if audio.get("peer_tool_path_configured") is not True:
   print("expected updated peer_tool_path_configured", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("default_runtime_kind") != "external" or audio.get("default_runtime_kind_source") != "config":
+  print("expected updated default_runtime_kind=external", obj, file=sys.stderr)
   raise SystemExit(1)
 if audio.get("node_bin") != "node":
   print("expected updated node_bin=node", obj, file=sys.stderr)
@@ -1190,6 +1229,9 @@ if audio.get("broker_token_default_configured") is not True:
   raise SystemExit(1)
 if audio.get("peer_tool_path_configured") is not True:
   print("expected persisted peer_tool_path_configured after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("default_runtime_kind") != "external" or audio.get("default_runtime_kind_source") != "config":
+  print("expected persisted default_runtime_kind=external after restart", obj, file=sys.stderr)
   raise SystemExit(1)
 if audio.get("node_bin") != "node":
   print("expected persisted node_bin=node after restart", obj, file=sys.stderr)
@@ -1232,6 +1274,15 @@ if not obj.get("ok") or not obj.get("started"):
 if obj.get("broker_url_default_configured") is not True or obj.get("broker_token_default_configured") is not True:
   print("expected config-backed broker defaults", obj, file=sys.stderr)
   raise SystemExit(1)
+if obj.get("external_available") is not True or obj.get("default_runtime_kind") != "external":
+  print("expected config-backed external default runtime", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("default_runtime_kind_source") != "config" or obj.get("default_runtime_kind_available") is not True:
+  print("expected config-backed default runtime metadata", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("runtime_kind") != "external":
+  print("expected config-backed start to resolve external runtime", obj, file=sys.stderr)
+  raise SystemExit(1)
 if peer.get("managed_broker_session") is not True or peer.get("broker_deployment_id") != "lab-config":
   print("unexpected config-backed managed broker session fields", obj, file=sys.stderr)
   raise SystemExit(1)
@@ -1249,7 +1300,7 @@ print(sid)
 PY
 )"
 
-wait_voice_peer_ready "${CONFIG_SESSION_ID}" 1 status_json
+wait_voice_peer_ready "${CONFIG_SESSION_ID}" 1 status_json external external config 1
 
 config_stop_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
@@ -1329,7 +1380,7 @@ print(sid)
 PY
 )"
 
-wait_voice_peer_ready "${EXTERNAL_SESSION_ID}" 1 status_json external
+wait_voice_peer_ready "${EXTERNAL_SESSION_ID}" 1 status_json external external config 1
 
 external_config_stop_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \

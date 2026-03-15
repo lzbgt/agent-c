@@ -146,6 +146,9 @@ struct DaemonConfig {
   // This remains a host-side helper, but agentd can own its lifecycle through a first-class API.
   std::string audio_webrtc_peer_tool_path;
   std::string audio_webrtc_peer_node_bin = "node";
+  // Optional durable preferred backend for managed WebRTC runtime selection.
+  // Empty means "auto" (prefer bundled when discoverable, else external).
+  std::string audio_webrtc_default_runtime_kind;
   // Optional default broker settings for the managed voice/WebRTC runtime.
   std::string audio_webrtc_broker_url;
   std::string audio_webrtc_broker_token;

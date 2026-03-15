@@ -1119,6 +1119,12 @@ void handle_config_endpoint(
     aw["broker_url_default_configured"] = !trim_copy(cfg.audio_webrtc_broker_url).empty();
     aw["broker_token_default_configured"] = !trim_copy(cfg.audio_webrtc_broker_token).empty();
     aw["peer_tool_path_configured"] = !trim_copy(cfg.audio_webrtc_peer_tool_path).empty();
+    aw["default_runtime_kind"] = cfg.audio_webrtc_default_runtime_kind.empty()
+      ? Json::Value(Json::nullValue)
+      : Json::Value(cfg.audio_webrtc_default_runtime_kind);
+    aw["default_runtime_kind_source"] = cfg.audio_webrtc_default_runtime_kind.empty()
+      ? Json::Value("auto")
+      : Json::Value("config");
     aw["node_bin"] = cfg.audio_webrtc_peer_node_bin.empty() ? Json::Value("node") : Json::Value(cfg.audio_webrtc_peer_node_bin);
     daemon["audio_webrtc"] = aw;
   }
@@ -1982,7 +1988,7 @@ void handle_config_update_endpoint(
   }
 
   // Managed voice/WebRTC defaults:
-  // - audio_webrtc: { "broker_url": "...", "broker_token": "...", "peer_tool_path": "...", "node_bin": "..." } (null clears)
+  // - audio_webrtc: { "broker_url": "...", "broker_token": "...", "peer_tool_path": "...", "default_runtime_kind": "bundled|external", "node_bin": "..." } (null clears)
   if (args.isMember("audio_webrtc")) {
     if (!args["audio_webrtc"].isObject()) {
       Json::Value o(Json::objectValue);
@@ -2033,6 +2039,30 @@ void handle_config_update_endpoint(
         Json::Value o(Json::objectValue);
         o["ok"] = false;
         o["error"] = "audio_webrtc.peer_tool_path must be a string or null";
+        resp->status = 400;
+        resp->body = json_stringify(o);
+        return;
+      }
+    }
+    if (aw.isMember("default_runtime_kind")) {
+      const Json::Value& v = aw["default_runtime_kind"];
+      if (v.isNull()) {
+        next.audio_webrtc_default_runtime_kind.clear();
+      } else if (v.isString()) {
+        const std::string kind = lower_copy(trim_copy(v.asString()));
+        if (kind != "bundled" && kind != "external") {
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "audio_webrtc.default_runtime_kind must be bundled, external, or null";
+          resp->status = 400;
+          resp->body = json_stringify(o);
+          return;
+        }
+        next.audio_webrtc_default_runtime_kind = kind;
+      } else {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "audio_webrtc.default_runtime_kind must be a string or null";
         resp->status = 400;
         resp->body = json_stringify(o);
         return;
@@ -2272,6 +2302,12 @@ void handle_config_update_endpoint(
     aw["broker_url_default_configured"] = !trim_copy(next.audio_webrtc_broker_url).empty();
     aw["broker_token_default_configured"] = !trim_copy(next.audio_webrtc_broker_token).empty();
     aw["peer_tool_path_configured"] = !trim_copy(next.audio_webrtc_peer_tool_path).empty();
+    aw["default_runtime_kind"] = next.audio_webrtc_default_runtime_kind.empty()
+      ? Json::Value(Json::nullValue)
+      : Json::Value(next.audio_webrtc_default_runtime_kind);
+    aw["default_runtime_kind_source"] = next.audio_webrtc_default_runtime_kind.empty()
+      ? Json::Value("auto")
+      : Json::Value("config");
     aw["node_bin"] = next.audio_webrtc_peer_node_bin.empty() ? Json::Value("node") : Json::Value(next.audio_webrtc_peer_node_bin);
     o["audio_webrtc"] = aw;
   }
