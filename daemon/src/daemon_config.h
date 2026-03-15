@@ -88,6 +88,12 @@ struct DaemonConfig {
   int64_t edge_auth_cert_roots_epoch = 0;
   int64_t edge_auth_cert_roots_updated_utc_ms = 0;
   bool edge_auth_require_manifest_cert_chain = false;
+  // Optional symmetric envelope confidentiality profile.
+  //
+  // When enabled, `/api/v1/edge/message` requires `body_enc` instead of plaintext `body`, and
+  // platform bundle delivery endpoints can emit encrypted outbox envelopes keyed by `confidential_kid`.
+  bool edge_confidentiality_required = false;
+  std::map<std::string, std::string> edge_confidentiality_keys; // kid -> shared secret
   // Durable revocation metadata for edge envelope auth.
   //
   // Revocation is enforced against both envelope auth and node attestation verification:

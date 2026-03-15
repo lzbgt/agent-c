@@ -6,8 +6,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/agentd_smoke_lib.sh"
 
 AGENTD_BIN="${1:-}"
+CONF_TOOL_BIN="${2:-}"
 if [[ -z "${AGENTD_BIN}" ]]; then
   echo "missing agentd binary path arg" >&2
+  exit 2
+fi
+if [[ -z "${CONF_TOOL_BIN}" ]]; then
+  echo "missing edge_confidentiality_tool binary path arg" >&2
   exit 2
 fi
 
@@ -32,6 +37,8 @@ agentd_smoke_wait_health "${DAEMON_URL}"
 
 TARGET_NODE_ID="node_auth_bundle_target_1"
 TARGET_CAPS_SHA="sha256:cececececececececececececececececececececececececececececececece"
+CONF_KID="${TARGET_NODE_ID}:enc"
+CONF_SECRET="edge-auth-bundle-confidential-secret"
 
 register_target_node() {
   local hello_json
@@ -146,6 +153,19 @@ PY
 )" \
   "${DAEMON_URL}/api/v1/edge/auth/revocations/update" >/dev/null
 
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "edge_confidentiality_keys": {
+    "${CONF_KID}": "${CONF_SECRET}"
+  }
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/config/update" >/dev/null
+
 trust_send_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Content-Type: application/json" \
   -d "$(python3 - <<PY
@@ -191,6 +211,117 @@ for name, obj, field in [
 print("ok")
 PY
 
+trust_send_conf_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "target_node_id": "${TARGET_NODE_ID}",
+  "confidential_kid": "${CONF_KID}",
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/edge/auth/trust_roots/send")"
+
+revoke_send_conf_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "target_node_id": "${TARGET_NODE_ID}",
+  "confidential_kid": "${CONF_KID}",
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/edge/auth/revocations/send")"
+
+python3 - <<PY
+import json, sys
+trust = json.loads(r'''${trust_send_conf_resp}''')
+revoke = json.loads(r'''${revoke_send_conf_resp}''')
+for name, obj in [("trust", trust), ("revoke", revoke)]:
+  if not obj.get("ok"):
+    print(f"{name} encrypted send not ok", obj, file=sys.stderr)
+    raise SystemExit(1)
+  if obj.get("confidential_kid") != "${CONF_KID}":
+    print(f"{name} missing confidential_kid echo", obj, file=sys.stderr)
+    raise SystemExit(1)
+print("ok")
+PY
+
+conf_outbox_json="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/edge/outbox?node_id=${TARGET_NODE_ID}&cursor=0&limit=100")"
+
+conf_payloads_json="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${conf_outbox_json}''')
+msgs = obj.get("messages") or []
+out = {}
+for row in msgs:
+  candidate = row.get("msg") or {}
+  body_enc = candidate.get("body_enc")
+  if not (isinstance(body_enc, dict) and body_enc.get("kid") == "${CONF_KID}"):
+    continue
+  if candidate.get("type") == "PLATFORM_TRUST_ROOTS_BUNDLE":
+    out["trust"] = body_enc
+  elif candidate.get("type") == "PLATFORM_REVOCATIONS_BUNDLE":
+    out["revoke"] = body_enc
+if "trust" not in out or "revoke" not in out:
+  print("missing encrypted auth bundles", msgs, file=sys.stderr)
+  raise SystemExit(1)
+print(json.dumps(out))
+PY
+)"
+
+trust_opened_json="$(python3 - <<PY
+import json, subprocess, sys
+payload = json.loads(r'''${conf_payloads_json}''')
+p = subprocess.run(
+  ["${CONF_TOOL_BIN}", "--open", "--key", "${CONF_KID}=${CONF_SECRET}"],
+  input=json.dumps(payload["trust"]).encode("utf-8"),
+  stdout=subprocess.PIPE,
+  stderr=subprocess.PIPE,
+  check=True,
+)
+sys.stdout.write(p.stdout.decode("utf-8"))
+PY
+)"
+
+revoke_opened_json="$(python3 - <<PY
+import json, subprocess, sys
+payload = json.loads(r'''${conf_payloads_json}''')
+p = subprocess.run(
+  ["${CONF_TOOL_BIN}", "--open", "--key", "${CONF_KID}=${CONF_SECRET}"],
+  input=json.dumps(payload["revoke"]).encode("utf-8"),
+  stdout=subprocess.PIPE,
+  stderr=subprocess.PIPE,
+  check=True,
+)
+sys.stdout.write(p.stdout.decode("utf-8"))
+PY
+)"
+
+python3 - <<PY
+import json, sys
+trust_body = json.loads(r'''${trust_opened_json}''')
+revoke_body = json.loads(r'''${revoke_opened_json}''')
+trust_bundle = trust_body.get("trust_roots") or {}
+revoke_bundle = revoke_body.get("revocations") or {}
+if trust_bundle.get("schema") != "edge_auth_trust_roots_v1":
+  print("wrong decrypted trust bundle schema", trust_body, file=sys.stderr)
+  raise SystemExit(1)
+if trust_bundle.get("rotation_epoch") != 7:
+  print("wrong decrypted trust bundle epoch", trust_bundle, file=sys.stderr)
+  raise SystemExit(1)
+if revoke_bundle.get("schema") != "edge_auth_revocations_v1":
+  print("wrong decrypted revocation bundle schema", revoke_body, file=sys.stderr)
+  raise SystemExit(1)
+if revoke_bundle.get("rotation_epoch") != 5:
+  print("wrong decrypted revocation bundle epoch", revoke_bundle, file=sys.stderr)
+  raise SystemExit(1)
+print("ok")
+PY
+
 outbox_json="$(curl -fsS --noproxy "*" --max-time 10 \
   "${DAEMON_URL}/api/v1/edge/outbox?node_id=${TARGET_NODE_ID}&cursor=0&limit=50")"
 
@@ -205,9 +336,9 @@ trust_msg = None
 revoke_msg = None
 for row in msgs:
   candidate = row.get("msg") or {}
-  if candidate.get("type") == "PLATFORM_TRUST_ROOTS_BUNDLE":
+  if candidate.get("type") == "PLATFORM_TRUST_ROOTS_BUNDLE" and isinstance((candidate.get("body") or {}).get("trust_roots"), dict):
     trust_msg = candidate
-  if candidate.get("type") == "PLATFORM_REVOCATIONS_BUNDLE":
+  if candidate.get("type") == "PLATFORM_REVOCATIONS_BUNDLE" and isinstance((candidate.get("body") or {}).get("revocations"), dict):
     revoke_msg = candidate
 if trust_msg is None:
   print("missing trust-roots outbox message", msgs, file=sys.stderr)

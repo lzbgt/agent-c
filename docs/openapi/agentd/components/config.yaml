@@ -1,6 +1,6 @@
 AgentdConfigResponse:
   type: object
-  required: [ok, service, version, daemon, engines, edge_auth, edge_attest]
+  required: [ok, service, version, daemon, engines, edge_auth, edge_confidentiality, edge_attest]
   properties:
     ok: { type: boolean }
     service: { type: string }
@@ -102,6 +102,12 @@ AgentdConfigResponse:
       properties:
         required: { type: boolean }
         require_sig: { type: boolean }
+    edge_confidentiality:
+      type: object
+      additionalProperties: true
+      properties:
+        required: { type: boolean }
+        keys_set: { type: integer, format: int64 }
     memory:
       type: object
       additionalProperties: true
@@ -157,6 +163,9 @@ AgentdConfigUpdateRequest:
     edge_auth_require_manifest_cert_chain:
       type: boolean
       description: When true, `NODE_CAPS_RSP.body.manifest.identity.{cert_pem,cert_chain_pem}` must verify against the stored PEM cert-root set
+    edge_confidentiality_required:
+      type: boolean
+      description: When true, `/api/v1/edge/message` requires encrypted `body_enc` instead of plaintext `body`
     edge_auth_trust_roots_epoch:
       type: integer
       format: int64
@@ -173,6 +182,12 @@ AgentdConfigUpdateRequest:
         type: string
         nullable: true
       description: Map of `kid` → base64(pubkey32) for Ed25519 edge envelope auth (null clears that kid)
+    edge_confidentiality_keys:
+      type: object
+      additionalProperties:
+        type: string
+        nullable: true
+      description: Map of `kid` → shared secret for AES-GCM encrypted `body_enc` payloads (null clears that kid)
     base_url:
       type: string
       description: Default base_url (used for provider inference and some clients)
@@ -300,7 +315,7 @@ AgentdConfigUpdateRequest:
 
 AgentdConfigUpdateResponse:
   type: object
-  required: [ok, base_url, model, system_profile, summary_max_chars, timeout_ms, proxy_url_set, provider_keys_set, edge_auth_required, edge_auth_hmac_keys_set, edge_auth_ed25519_pubkeys_set, edge_auth_cert_roots_set, edge_attest_required, edge_attest_require_sig]
+  required: [ok, base_url, model, system_profile, summary_max_chars, timeout_ms, proxy_url_set, provider_keys_set, edge_auth_required, edge_auth_hmac_keys_set, edge_auth_ed25519_pubkeys_set, edge_auth_cert_roots_set, edge_confidentiality_required, edge_confidentiality_keys_set, edge_attest_required, edge_attest_require_sig]
   properties:
     ok: { type: boolean }
     base_url: { type: string }
@@ -332,6 +347,7 @@ AgentdConfigUpdateResponse:
     edge_auth_trust_roots_updated_utc_ms: { type: integer, format: int64 }
     edge_auth_cert_roots_epoch: { type: integer, format: int64 }
     edge_auth_cert_roots_updated_utc_ms: { type: integer, format: int64 }
+    edge_confidentiality_required: { type: boolean }
     edge_attest_required: { type: boolean }
     edge_attest_require_sig: { type: boolean }
     memory:
@@ -370,6 +386,10 @@ AgentdConfigUpdateResponse:
       type: integer
       format: int64
       description: Number of PEM certificate-root bundles currently provisioned
+    edge_confidentiality_keys_set:
+      type: integer
+      format: int64
+      description: Number of confidentiality keys currently provisioned (secrets are not returned)
     engines:
       type: object
       additionalProperties: true
@@ -445,6 +465,9 @@ EdgeAuthTrustRootsSendRequest:
     target_node_id:
       type: string
       description: Recipient node that will receive the trust-root bundle via outbox
+    confidential_kid:
+      type: string
+      description: Optional configured confidentiality `kid`; when set, the outbox envelope is emitted with `body_enc`
 
 
 EdgeAuthTrustRootsSendResponse:
@@ -454,6 +477,7 @@ EdgeAuthTrustRootsSendResponse:
     ok: { type: boolean }
     target_node_id: { type: string }
     outbox_id: { type: integer, format: int64 }
+    confidential_kid: { type: string }
     trust_roots:
       $ref: "#/components/schemas/EdgeAuthTrustRootsBundle"
 
@@ -578,6 +602,9 @@ EdgeAuthCertRootsSendRequest:
     target_node_id:
       type: string
       description: Recipient node that will receive the certificate-root bundle via outbox
+    confidential_kid:
+      type: string
+      description: Optional configured confidentiality `kid`; when set, the outbox envelope is emitted with `body_enc`
 
 
 EdgeAuthCertRootsSendResponse:
@@ -587,6 +614,7 @@ EdgeAuthCertRootsSendResponse:
     ok: { type: boolean }
     target_node_id: { type: string }
     outbox_id: { type: integer, format: int64 }
+    confidential_kid: { type: string }
     cert_roots:
       $ref: "#/components/schemas/EdgeAuthCertRootsBundle"
 
@@ -775,6 +803,9 @@ EdgeAuthRevocationsSendRequest:
     target_node_id:
       type: string
       description: Recipient node that will receive the revocation bundle via outbox
+    confidential_kid:
+      type: string
+      description: Optional configured confidentiality `kid`; when set, the outbox envelope is emitted with `body_enc`
 
 
 EdgeAuthRevocationsSendResponse:
@@ -784,6 +815,7 @@ EdgeAuthRevocationsSendResponse:
     ok: { type: boolean }
     target_node_id: { type: string }
     outbox_id: { type: integer, format: int64 }
+    confidential_kid: { type: string }
     revocations:
       $ref: "#/components/schemas/EdgeAuthRevocationsBundle"
 

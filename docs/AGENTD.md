@@ -488,6 +488,11 @@ Edge trust-root rotation:
   and `POST /api/v1/edge/auth/provision_node` remains the per-node bootstrap/rotation helper.
 - `POST /api/v1/edge/node/manifest_bundle/send` enqueues a signed `PLATFORM_MANIFEST_BUNDLE` to a recipient node’s
   outbox so peer manifest/identity material can travel over the same UM-BMP poll path as other node traffic.
+- `POST /api/v1/config/update` supports `edge_confidentiality_required` and `edge_confidentiality_keys`.
+  When enabled, `/api/v1/edge/message` rejects plaintext `body` and requires AES-GCM `body_enc`.
+- `POST /api/v1/edge/auth/trust_roots/send`, `.../cert_roots/send`, `.../revocations/send`, and
+  `POST /api/v1/edge/node/manifest_bundle/send` accept `confidential_kid` to emit encrypted outbox
+  envelopes instead of plaintext bundle bodies.
 
 ## Client prefs (WebUI connection profiles)
 

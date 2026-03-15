@@ -1,6 +1,7 @@
 #include "edge_interop_endpoints.h"
 #include "edge_interop_auth.h"
 #include "config_endpoint.h"
+#include "edge_confidentiality.h"
 
 #include "cbor_decode.h"
 #include "cbor_encode.h"
@@ -500,12 +501,33 @@ void handle_edge_message_endpoint(
       return;
     }
   }
-  const Json::Value body = env.isMember("body") ? env["body"] : Json::Value(Json::nullValue);
+  Json::Value body(Json::nullValue);
+  std::string ccode;
+  std::string cerr;
+  if (!edge_confidentiality_extract_envelope_body(
+        env,
+        cfg.edge_confidentiality_keys,
+        cfg.edge_confidentiality_required,
+        &body,
+        nullptr,
+        nullptr,
+        &ccode,
+        &cerr)) {
+    if (ccode == "confidentiality_required" || ccode == "unknown_confidential_kid" || ccode == "decrypt_failed") {
+      resp->status = 401;
+    } else if (ccode == "internal") {
+      resp->status = 500;
+    } else {
+      resp->status = 400;
+    }
+    resp->body = json_error_body(cerr.empty() ? "invalid envelope body" : cerr);
+    return;
+  }
   const Json::Value trace = env.isMember("trace") && env["trace"].isObject() ? env["trace"] : Json::Value(Json::nullValue);
 
   if (msg_id.empty() || type.empty() || !body.isObject()) {
     resp->status = 400;
-    resp->body = json_error_body("invalid envelope (missing msg_id/type/body)");
+    resp->body = json_error_body("invalid envelope (missing msg_id/type/body_or_body_enc)");
     return;
   }
   if (!edge_id_is_safe(type) || msg_id.size() > 128) {
@@ -2103,9 +2125,16 @@ void handle_edge_node_manifest_bundle_send_endpoint(
     args.isMember("target_node_id") && args["target_node_id"].isString() ? trim_copy(args["target_node_id"].asString()) : "";
   const std::string subject_node_id =
     args.isMember("subject_node_id") && args["subject_node_id"].isString() ? trim_copy(args["subject_node_id"].asString()) : "";
+  const std::string confidential_kid =
+    args.isMember("confidential_kid") && args["confidential_kid"].isString() ? trim_copy(args["confidential_kid"].asString()) : "";
   if (target_node_id.empty() || !edge_id_is_safe(target_node_id) || subject_node_id.empty() || !edge_id_is_safe(subject_node_id)) {
     resp->status = 400;
     resp->body = json_error_body("missing/invalid target_node_id or subject_node_id");
+    return;
+  }
+  if (!confidential_kid.empty() && (confidential_kid.size() > 64 || !edge_id_is_safe(confidential_kid))) {
+    resp->status = 400;
+    resp->body = json_error_body("missing/invalid confidential_kid");
     return;
   }
 
@@ -2143,6 +2172,16 @@ void handle_edge_node_manifest_bundle_send_endpoint(
   body["subject_node_id"] = subject_node_id;
   body["bundle"] = bundle;
   env["body"] = body;
+  if (!confidential_kid.empty()) {
+    std::string ecode;
+    std::string eerr;
+    if (!edge_confidentiality_wrap_envelope_body(
+          &env, cfg.edge_confidentiality_keys, confidential_kid, &ecode, &eerr)) {
+      resp->status = (ecode == "unknown_confidential_kid") ? 400 : 500;
+      resp->body = json_error_body(eerr.empty() ? "failed to encrypt manifest bundle" : eerr);
+      return;
+    }
+  }
 
   AgentDb::EdgeOutboxMessageRow orow;
   orow.node_id = target_node_id;
@@ -2164,6 +2203,7 @@ void handle_edge_node_manifest_bundle_send_endpoint(
   o["target_node_id"] = target_node_id;
   o["subject_node_id"] = subject_node_id;
   o["outbox_id"] = (Json::Int64)outbox_id;
+  if (!confidential_kid.empty()) o["confidential_kid"] = confidential_kid;
   o["bundle"] = bundle;
   resp->body = edge_json_stringify_compact(o);
 }

@@ -1,6 +1,24 @@
+EdgeEncryptedBody:
+  type: object
+  required: [schema, alg, kid, iv, tag, ct, content_type]
+  properties:
+    schema: { type: string, enum: [umbmp_body_enc_v1] }
+    alg: { type: string, enum: [aes-256-gcm] }
+    kid: { type: string }
+    iv:
+      type: string
+      description: Base64 of a 12-byte AES-GCM IV
+    tag:
+      type: string
+      description: Base64 of a 16-byte AES-GCM authentication tag
+    ct:
+      type: string
+      description: Base64 ciphertext of the compact JSON body object
+    content_type: { type: string, enum: [application/json] }
+
 EdgeMessageEnvelope:
   type: object
-  required: [msg_id, ts_utc_ms, type, from, to, body]
+  required: [msg_id, ts_utc_ms, type, from, to]
   properties:
     msg_id: { type: string }
     ts_utc_ms: { type: integer, format: int64 }
@@ -13,6 +31,9 @@ EdgeMessageEnvelope:
     body:
       type: object
       additionalProperties: true
+      description: Plaintext UM-BMP body object. Mutually exclusive with `body_enc`.
+    body_enc:
+      $ref: "#/components/schemas/EdgeEncryptedBody"
     auth:
       type: object
       additionalProperties: true
@@ -130,6 +151,9 @@ EdgeNodeManifestBundleSendRequest:
     subject_node_id:
       type: string
       description: Node whose manifest bundle will be signed and delivered
+    confidential_kid:
+      type: string
+      description: Optional configured confidentiality `kid`; when set, the outbox envelope is emitted with `body_enc`
 
 
 EdgeNodeManifestBundleSendResponse:
@@ -140,6 +164,7 @@ EdgeNodeManifestBundleSendResponse:
     target_node_id: { type: string }
     subject_node_id: { type: string }
     outbox_id: { type: integer, format: int64 }
+    confidential_kid: { type: string }
     bundle:
       $ref: "#/components/schemas/EdgeNodeManifestBundle"
 

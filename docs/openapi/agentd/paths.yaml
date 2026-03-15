@@ -277,7 +277,8 @@
     summary: Enqueue the signed trust-root bundle to one node outbox
     description: |
       Builds the current signed `edge_auth_trust_roots_v1` bundle and enqueues it to the
-      recipient node as a `PLATFORM_TRUST_ROOTS_BUNDLE` outbox message.
+      recipient node as a `PLATFORM_TRUST_ROOTS_BUNDLE` outbox message. When
+      `confidential_kid` is set, the outbox envelope uses `body_enc` instead of plaintext `body`.
     requestBody:
       required: true
       content:
@@ -378,7 +379,8 @@
     summary: Enqueue the signed certificate-root bundle to one node outbox
     description: |
       Builds the current signed `edge_auth_cert_roots_v1` bundle and enqueues it to the
-      recipient node as a `PLATFORM_CERT_ROOTS_BUNDLE` outbox message.
+      recipient node as a `PLATFORM_CERT_ROOTS_BUNDLE` outbox message. When
+      `confidential_kid` is set, the outbox envelope uses `body_enc` instead of plaintext `body`.
     requestBody:
       required: true
       content:
@@ -590,7 +592,8 @@
     summary: Enqueue the signed revocation bundle to one node outbox
     description: |
       Builds the current signed `edge_auth_revocations_v1` bundle and enqueues it to the
-      recipient node as a `PLATFORM_REVOCATIONS_BUNDLE` outbox message.
+      recipient node as a `PLATFORM_REVOCATIONS_BUNDLE` outbox message. When
+      `confidential_kid` is set, the outbox envelope uses `body_enc` instead of plaintext `body`.
     requestBody:
       required: true
       content:
@@ -2305,6 +2308,9 @@
   post:
     tags: [edge]
     summary: Ingest an UM-BMP message envelope (edge interop)
+    description: |
+      Accepts either plaintext `body` or AES-GCM encrypted `body_enc`. When
+      `edge_confidentiality_required=true`, plaintext `body` is rejected and callers must send `body_enc`.
     requestBody:
       required: true
       content:
@@ -2426,7 +2432,8 @@
     summary: Send a platform-signed node manifest bundle to another node via outbox
     description: |
       Builds the signed manifest bundle for `subject_node_id` and enqueues it to the
-      UM-BMP outbox of `target_node_id` as `PLATFORM_MANIFEST_BUNDLE`.
+      UM-BMP outbox of `target_node_id` as `PLATFORM_MANIFEST_BUNDLE`. When
+      `confidential_kid` is set, the outbox envelope uses `body_enc` instead of plaintext `body`.
     requestBody:
       required: true
       content:

@@ -30,8 +30,11 @@ Current status:
 - Shipped: optional inline manifest identity certificate-chain enforcement on `NODE_CAPS_RSP`
   via `edge_auth_require_manifest_cert_chain`, backed by the same durable PEM root bundle and
   surfaced through node/manifest reads as `identity_cert_verify`.
-- Still open: confidentiality beyond authenticity-only envelopes, plus certificate-bound transport /
-  envelope identity beyond manifest-ingest verification.
+- Shipped: AES-GCM encrypted UM-BMP body support (`body_enc`) with fail-closed ingress enforcement
+  via `edge_confidentiality_required`, configured key slots via `edge_confidentiality_keys`, and
+  encrypted outbox delivery on the manifest/trust-root/revocation/cert-root send helpers via
+  `confidential_kid`.
+- Still open: certificate-bound transport / envelope identity beyond manifest-ingest verification.
 
 Executable contract artifacts (this repo):
 - Schemas: `docs/spec/um-eais/schema/` (envelope + core + platform extensions)
@@ -44,6 +47,11 @@ Executable contract artifacts (this repo):
 UM‑BMP defines:
 - the **message envelope** (`msg_id`, `ts_utc_ms`, `type`, `from`, `to`, `body`)
 - the **semantics** for discovery + tasking + events
+
+`agentd` also ships an encrypted-body profile on top of that envelope:
+- callers may send `body_enc` (`umbmp_body_enc_v1`, AES-256-GCM) instead of plaintext `body`
+- `/api/v1/config/update` can enforce that profile with `edge_confidentiality_required=true`
+- the platform’s bundle send helpers can emit `body_enc` by supplying `confidential_kid`
 
 UM‑BMP does *not* mandate a transport. `agentd` provides a simple, robust mapping:
 
@@ -137,6 +145,8 @@ Envelope authenticity (optional, UM‑BMP auth v0.4):
     - `edge_auth_kid_policy: "any"|"match_node"|"node_prefix"` (best-effort binding between `from:"node:<id>"` and `auth.kid`)
     - `edge_auth_hmac_keys: { "<kid>": "<secret>", "<kid2>": null }` (null clears)
     - `edge_auth_ed25519_pubkeys: { "<kid>": "<base64(pubkey32)>", "<kid2>": null }` (null clears)
+    - `edge_confidentiality_required: true|false` (when true, `/api/v1/edge/message` requires encrypted `body_enc`)
+    - `edge_confidentiality_keys: { "<kid>": "<secret>", "<kid2>": null }` (null clears)
     - `edge_attest_required: true|false` (when true, invoke-mode `TASK_DONE` must include `result.attest` with a matching `result_sha256`)
     - `edge_attest_require_sig: true|false` (when true, invoke-mode `TASK_DONE` attestation signatures must verify)
   - Trust-root rotation control plane:
@@ -149,6 +159,9 @@ Envelope authenticity (optional, UM‑BMP auth v0.4):
     - `POST /api/v1/edge/auth/cert_roots/send` enqueues the same signed certificate-root bundle to a recipient node’s outbox as `PLATFORM_CERT_ROOTS_BUNDLE`
     - `edge_auth_require_manifest_cert_chain: true|false` requires `NODE_CAPS_RSP.body.manifest.identity.cert_pem`
       plus optional `cert_chain_pem[]` to verify against the stored PEM root set before the manifest is accepted
+  - Confidential payload profile:
+    - `body_enc` (`umbmp_body_enc_v1`) carries an AES-256-GCM encrypted JSON body object
+    - `confidential_kid` on the manifest/trust-root/revocation/cert-root send helpers emits encrypted outbox envelopes
   - Per-node provisioning helpers:
     - `GET /api/v1/edge/auth/node_binding?node_id=...` shows the effective `kid_policy` match set for one node
     - `POST /api/v1/edge/auth/provision_node` provisions HMAC / Ed25519 trust roots for one node while enforcing the active `edge_auth_kid_policy`
@@ -159,6 +172,7 @@ Envelope authenticity (optional, UM‑BMP auth v0.4):
   - Behavior:
     - If `edge_auth_required=true`: missing/invalid `auth` is rejected with HTTP 401 (no inbox persistence).
     - If `edge_auth_required=false`: unsigned envelopes are accepted, but if `auth` is present it must verify.
+    - If `edge_confidentiality_required=true`: plaintext `body` is rejected with HTTP 401 and callers must supply valid `body_enc`.
     - Revoked `auth.kid` values and revoked `from:"node:<node_id>"` identities are rejected even if the underlying key material is still configured.
 
 Task-loop correctness note (recommended, enforced by platform for known `TASK_*` types):
@@ -224,8 +238,11 @@ Manifest bundle note:
 - The certificate-root helper does the same for PEM certificate-root bundles via
   `PLATFORM_CERT_ROOTS_BUNDLE`, giving operators a durable signed distribution lane for
   X.509-style root material even before full inline certificate-chain validation is enforced in envelope auth.
+- Those same send helpers accept `confidential_kid`, which emits the outbox envelope with AES-GCM
+  `body_enc` instead of plaintext `body` for peer/control-plane payload confidentiality.
 - Operators can inspect those bundles, emit a CA file, and run `openssl verify` against candidate
   leaf/intermediate certs with `tools/edge_cert_roots_tool.py`.
+- Operators can seal/open AES-GCM `body_enc` payloads with `tools/edge_confidentiality_tool`.
 - `POST /api/v1/edge/auth/cert_roots/verify_chain` exposes the same current-root verification lane
   through `agentd` itself, returning structured success/failure metadata for candidate PEM chains.
 - When a node manifest carries `manifest.identity.cert_pem` and optional `cert_chain_pem`, both

@@ -455,6 +455,9 @@ bool load_runtime_config_best_effort(
       if (v.isMember("edge_auth_require_manifest_cert_chain") && v["edge_auth_require_manifest_cert_chain"].isBool()) {
         cfg_io->edge_auth_require_manifest_cert_chain = v["edge_auth_require_manifest_cert_chain"].asBool();
       }
+      if (v.isMember("edge_confidentiality_required") && v["edge_confidentiality_required"].isBool()) {
+        cfg_io->edge_confidentiality_required = v["edge_confidentiality_required"].asBool();
+      }
       if (v.isMember("edge_auth_revoked_kids") && v["edge_auth_revoked_kids"].isArray()) {
         cfg_io->edge_auth_revoked_kids.clear();
         for (const auto& item : v["edge_auth_revoked_kids"]) {
@@ -585,6 +588,16 @@ bool load_runtime_config_best_effort(
           cfg_io->edge_auth_ed25519_pubkeys[kid] = s;
         }
       }
+      if (v.isMember("edge_confidentiality_keys") && v["edge_confidentiality_keys"].isObject()) {
+        cfg_io->edge_confidentiality_keys.clear();
+        const Json::Value& ek = v["edge_confidentiality_keys"];
+        for (const auto& kid : ek.getMemberNames()) {
+          if (!ek[kid].isString()) continue;
+          const std::string s = ek[kid].asString();
+          if (s.empty()) continue;
+          cfg_io->edge_confidentiality_keys[kid] = s;
+        }
+      }
 
       // Blob store secrets (object store credentials).
       if (v.isMember("blob_store") && v["blob_store"].isObject()) {
@@ -700,6 +713,7 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   v["edge_auth_cert_roots_epoch"] = (Json::Int64)cfg.edge_auth_cert_roots_epoch;
   v["edge_auth_cert_roots_updated_utc_ms"] = (Json::Int64)cfg.edge_auth_cert_roots_updated_utc_ms;
   v["edge_auth_require_manifest_cert_chain"] = cfg.edge_auth_require_manifest_cert_chain;
+  v["edge_confidentiality_required"] = cfg.edge_confidentiality_required;
   {
     Json::Value arr(Json::arrayValue);
     for (const auto& s : cfg.edge_auth_revoked_kids) if (!s.empty()) arr.append(s);
@@ -774,6 +788,14 @@ bool save_runtime_secrets_best_effort(AgentDb& db, const DaemonConfig& cfg, std:
       ek[p.first] = p.second;
     }
     if (!ek.empty()) v["edge_auth_ed25519_pubkeys"] = ek;
+  }
+  if (!cfg.edge_confidentiality_keys.empty()) {
+    Json::Value ek(Json::objectValue);
+    for (const auto& p : cfg.edge_confidentiality_keys) {
+      if (p.first.empty() || p.second.empty()) continue;
+      ek[p.first] = p.second;
+    }
+    if (!ek.empty()) v["edge_confidentiality_keys"] = ek;
   }
   if (!cfg.blob_store_access_key.empty() || !cfg.blob_store_secret_key.empty() || !cfg.blob_store_session_token.empty()) {
     Json::Value bs(Json::objectValue);

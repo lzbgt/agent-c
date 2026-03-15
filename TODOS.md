@@ -556,7 +556,7 @@ streaming and plugins are stable.
 - [x] Memory privacy tags (`<private>`) to keep sensitive content out of durable storage (claude-mem inspired).
 - [x] Memory progressive disclosure + citation surfacing for dynamic context assembly (claude-mem inspired).
 - [x] Memory observations + timeline retrieval tools to mirror claude-mem search workflows.
-- [ ] Interop/attestation: finish inline certificate-chain enforcement and confidentiality beyond authenticated envelopes.
+- [x] Interop/attestation: finish inline certificate-chain enforcement and confidentiality beyond authenticated envelopes.
   - [x] Canonical JSON hashing (`agent_json_c14n_v1`) is wired into replay/attestation bundles and edge result hashing.
   - [x] Run replay + signed attestation bundles are implemented and verified via `run_attestation_bundle_tool_smoke` and `agentd_run_attestation_ed25519_smoke`.
   - [x] UM-BMP envelope authenticity is implemented for JSON/CBOR wire with HMAC + Ed25519, operator enforcement knobs, and MCU bring-up vectors.
@@ -571,7 +571,7 @@ streaming and plugins are stable.
   - [x] 2026-03-15: added operator-side cert-root bundle inspection and OpenSSL chain verification tooling (`tools/edge_cert_roots_tool.py`) backed by Ed25519 bundle verification support in `agent_ed25519_tool`; proof: `tests/agentd_edge_auth_cert_chain_verify_smoke.sh`.
   - [x] 2026-03-15: added server-side chain verification over the stored cert-root set (`POST /api/v1/edge/auth/cert_roots/verify_chain`) so agentd now exposes structured X.509 verification results over the live root bundle, including a fail-closed negative path; proof: `tests/agentd_edge_auth_cert_roots_verify_chain_smoke.sh`.
   - [x] 2026-03-15: added optional fail-closed manifest identity certificate-chain enforcement on `NODE_CAPS_RSP` (`edge_auth_require_manifest_cert_chain`) plus best-effort `identity_cert_verify` surfacing on node/manifest reads; proof: `tests/agentd_edge_manifest_identity_cert_enforce_smoke.sh`.
-  - [ ] Add envelope confidentiality / encrypted payload profile beyond authenticity-only signing.
+  - [x] 2026-03-15: added AES-GCM encrypted UM-BMP body support (`body_enc`) with fail-closed ingress enforcement (`edge_confidentiality_required`), configured key slots (`edge_confidentiality_keys`), a host bring-up helper (`tools/edge_confidentiality_tool.cpp`), and encrypted outbox delivery via `confidential_kid` on manifest/trust-root/revocation/cert-root send endpoints; proof: `tests/agentd_edge_confidential_body_smoke.sh`, `tests/agentd_edge_auth_bundle_send_smoke.sh`, and `tests/agentd_edge_manifest_bundle_send_smoke.sh`.
   - 2026-03-15: narrowed the stale umbrella item after re-verifying `umbmp_auth_vectors_tests`, `agentd_edge_auth_hmac_cbor_wire_smoke`, `agentd_edge_auth_ed25519_cbor_wire_smoke`, `agentd_edge_task_attest_required_smoke`, and `agentd_run_attestation_ed25519_smoke`.
 - [x] AVM: persist governance bundles/record-replay artifacts, add explicit host-effects policy, and carry quorum/attestation identity through deterministic VM results.
   - [x] Non-exec AVM governance endpoints: `/api/v1/avm/job_scan`, `/policy_scan`, `/inspect`, `/verify_strict`, `/trace_hash`.

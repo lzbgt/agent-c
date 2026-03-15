@@ -6,8 +6,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/agentd_smoke_lib.sh"
 
 AGENTD_BIN="${1:-}"
+CONF_TOOL_BIN="${2:-}"
 if [[ -z "${AGENTD_BIN}" ]]; then
   echo "missing agentd binary path arg" >&2
+  exit 2
+fi
+if [[ -z "${CONF_TOOL_BIN}" ]]; then
+  echo "missing edge_confidentiality_tool binary path arg" >&2
   exit 2
 fi
 
@@ -34,6 +39,8 @@ SUBJECT_NODE_ID="node_manifest_subject_1"
 TARGET_NODE_ID="node_manifest_target_1"
 SUBJECT_CAPS_SHA="sha256:abababababababababababababababababababababababababababababababab"
 TARGET_CAPS_SHA="sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc"
+CONF_KID="${TARGET_NODE_ID}:enc"
+CONF_SECRET="manifest-send-confidential-secret"
 
 register_node() {
   local node_id="$1"
@@ -112,6 +119,19 @@ PY
 register_node "${SUBJECT_NODE_ID}" "${SUBJECT_CAPS_SHA}" "sensor.temp.read" "room:lobby" "sensor.temp" "subjectf00d"
 register_node "${TARGET_NODE_ID}" "${TARGET_CAPS_SHA}" "sensor.humidity.read" "room:hall" "sensor.humidity" "targetf00d"
 
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "edge_confidentiality_keys": {
+    "${CONF_KID}": "${CONF_SECRET}"
+  }
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/config/update" >/dev/null
+
 send_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Content-Type: application/json" \
   -d "$(python3 - <<PY
@@ -135,6 +155,70 @@ if obj.get("target_node_id") != "${TARGET_NODE_ID}" or obj.get("subject_node_id"
   raise SystemExit(1)
 if not isinstance(obj.get("outbox_id"), int) or obj.get("outbox_id") <= 0:
   print("missing outbox_id", obj, file=sys.stderr)
+  raise SystemExit(1)
+print("ok")
+PY
+
+enc_send_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "target_node_id": "${TARGET_NODE_ID}",
+  "subject_node_id": "${SUBJECT_NODE_ID}",
+  "confidential_kid": "${CONF_KID}",
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/edge/node/manifest_bundle/send")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${enc_send_resp}''')
+if not obj.get("ok"):
+  print("encrypted send response not ok", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("confidential_kid") != "${CONF_KID}":
+  print("missing confidential_kid echo", obj, file=sys.stderr)
+  raise SystemExit(1)
+print("ok")
+PY
+
+enc_outbox_json="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/edge/outbox?node_id=${TARGET_NODE_ID}&cursor=0&limit=100")"
+
+enc_body_json="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${enc_outbox_json}''')
+msgs = obj.get("messages") or []
+for row in msgs:
+  candidate = row.get("msg") or {}
+  if candidate.get("type") != "PLATFORM_MANIFEST_BUNDLE":
+    continue
+  body_enc = candidate.get("body_enc")
+  if isinstance(body_enc, dict) and body_enc.get("kid") == "${CONF_KID}":
+    print(json.dumps(body_enc))
+    raise SystemExit(0)
+print("missing encrypted PLATFORM_MANIFEST_BUNDLE", file=sys.stderr)
+raise SystemExit(1)
+PY
+)"
+
+opened_body_json="$(printf '%s\n' "${enc_body_json}" | "${CONF_TOOL_BIN}" --open --key "${CONF_KID}=${CONF_SECRET}")"
+
+python3 - <<PY
+import json, sys
+body = json.loads(r'''${opened_body_json}''')
+if body.get("subject_node_id") != "${SUBJECT_NODE_ID}":
+  print("wrong decrypted subject_node_id", body, file=sys.stderr)
+  raise SystemExit(1)
+bundle = body.get("bundle") or {}
+if bundle.get("node_id") != "${SUBJECT_NODE_ID}":
+  print("wrong decrypted bundle node_id", bundle, file=sys.stderr)
+  raise SystemExit(1)
+tool_names = [t.get("name") for t in (bundle.get("tools") or []) if isinstance(t, dict)]
+if "sensor.temp.read" not in tool_names:
+  print("missing tool in decrypted manifest bundle", bundle, file=sys.stderr)
   raise SystemExit(1)
 print("ok")
 PY

@@ -18,7 +18,6 @@ This profile is transport-agnostic and applies to both JSON and CBOR wire mappin
 
 ## Additional goals
 
-- Confidentiality (payload encryption in addition to transport security when available).
 - Inline certificate-chain / PKI enforcement beyond the current signed trust-root + revocation control plane.
 - Certificate-chain PKI so trust roots do not rely only on operator-provisioned key maps.
 
@@ -143,6 +142,10 @@ Operator config:
 - `GET /api/v1/edge/auth/cert_roots` returns the durable PEM certificate-root bundle with optional server-side `attest`.
 - `POST /api/v1/edge/auth/cert_roots/rotate` updates the durable certificate-root set with a strictly increasing rotation epoch.
 - `POST /api/v1/edge/auth/cert_roots/send` enqueues a signed `PLATFORM_CERT_ROOTS_BUNDLE` to a target node’s outbox.
+- `edge_confidentiality_required: bool` (default false) requires encrypted `body_enc` on `/api/v1/edge/message`
+  and rejects plaintext `body`.
+- `edge_confidentiality_keys: { kid -> secret }` (secrets; not exposed in config snapshots) provide
+  AES-256-GCM keys for the `umbmp_body_enc_v1` encrypted payload profile.
 - `edge_auth_require_manifest_cert_chain: bool` (default false) requires
   `NODE_CAPS_RSP.body.manifest.identity.cert_pem` plus optional `cert_chain_pem[]` to verify against
   the current PEM root bundle before the manifest is accepted.
@@ -153,6 +156,8 @@ Operator config:
 - `POST /api/v1/edge/auth/revocations/send` enqueues a signed `PLATFORM_REVOCATIONS_BUNDLE` to a target node’s outbox.
 - `POST /api/v1/edge/node/manifest_bundle/send` enqueues a signed `PLATFORM_MANIFEST_BUNDLE` to a target node’s outbox so
   node transports can receive peer manifest/identity material without an out-of-band HTTP pull.
+- `confidential_kid` on the bundle send helpers emits the outbox envelope with encrypted `body_enc`
+  instead of plaintext `body`.
 
 When `edge_auth_required=true`:
 - Missing `auth` => reject with HTTP 401
@@ -189,3 +194,6 @@ When `edge_auth_required=false`:
   export surface (`GET /api/v1/edge/node/manifest_bundle`).
 - `ctest` includes `agentd_edge_manifest_bundle_send_smoke` for outbox-backed signed manifest distribution
   (`POST /api/v1/edge/node/manifest_bundle/send`).
+- `ctest` includes `agentd_edge_confidential_body_smoke`, plus encrypted assertions inside
+  `agentd_edge_auth_bundle_send_smoke` and `agentd_edge_manifest_bundle_send_smoke`, for the AES-GCM
+  encrypted payload profile.

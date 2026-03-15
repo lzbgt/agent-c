@@ -1,6 +1,7 @@
 #include "config_endpoint.h"
 
 #include "daemon_auth.h"
+#include "edge_confidentiality.h"
 #include "edge_util.h"
 #include "http_util.h"
 #include "json_util.h"
@@ -879,6 +880,8 @@ static bool enqueue_edge_platform_bundle(
   const std::string& msg_type,
   const char* body_field,
   const Json::Value& bundle,
+  const std::map<std::string, std::string>* confidentiality_keys_or_null,
+  const std::string& confidential_kid,
   int64_t* out_outbox_id,
   std::string* out_error
 ) {
@@ -913,6 +916,20 @@ static bool enqueue_edge_platform_bundle(
   Json::Value body(Json::objectValue);
   body[body_field] = bundle;
   env["body"] = body;
+  if (!confidential_kid.empty()) {
+    std::string ecode;
+    std::string eerr;
+    const std::map<std::string, std::string> empty_keys;
+    if (!edge_confidentiality_wrap_envelope_body(
+          &env,
+          confidentiality_keys_or_null ? *confidentiality_keys_or_null : empty_keys,
+          confidential_kid,
+          &ecode,
+          &eerr)) {
+      if (out_error) *out_error = eerr.empty() ? ecode : eerr;
+      return false;
+    }
+  }
 
   AgentDb::EdgeOutboxMessageRow orow;
   orow.node_id = target_node_id;
@@ -1175,6 +1192,11 @@ void handle_config_endpoint(
   edge_auth["revocations_epoch"] = (Json::Int64)cfg.edge_auth_revocations_epoch;
   edge_auth["revocations_updated_utc_ms"] = (Json::Int64)cfg.edge_auth_revocations_updated_utc_ms;
   out["edge_auth"] = edge_auth;
+
+  Json::Value edge_confidentiality(Json::objectValue);
+  edge_confidentiality["required"] = cfg.edge_confidentiality_required;
+  edge_confidentiality["keys_set"] = (Json::UInt64)cfg.edge_confidentiality_keys.size();
+  out["edge_confidentiality"] = edge_confidentiality;
 
   Json::Value edge_attest(Json::objectValue);
   edge_attest["required"] = cfg.edge_attest_required;
@@ -1589,6 +1611,9 @@ void handle_config_update_endpoint(
   if (args.isMember("edge_auth_require_manifest_cert_chain") && args["edge_auth_require_manifest_cert_chain"].isBool()) {
     next.edge_auth_require_manifest_cert_chain = args["edge_auth_require_manifest_cert_chain"].asBool();
   }
+  if (args.isMember("edge_confidentiality_required") && args["edge_confidentiality_required"].isBool()) {
+    next.edge_confidentiality_required = args["edge_confidentiality_required"].asBool();
+  }
   if (args.isMember("edge_auth_trust_roots_epoch")) {
     if (!args["edge_auth_trust_roots_epoch"].isInt64() && !args["edge_auth_trust_roots_epoch"].isUInt64()) {
       Json::Value o(Json::objectValue);
@@ -1898,6 +1923,47 @@ void handle_config_update_endpoint(
     }
   }
 
+  // Edge confidentiality shared secrets (secrets):
+  // - edge_confidentiality_keys: { "<kid>": "<secret>", ... } (null clears a kid)
+  if (args.isMember("edge_confidentiality_keys")) {
+    if (!args["edge_confidentiality_keys"].isObject()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "edge_confidentiality_keys must be an object";
+      resp->status = 400;
+      resp->body = json_stringify(o);
+      return;
+    }
+    const auto& ek = args["edge_confidentiality_keys"];
+    for (const auto& kid : ek.getMemberNames()) {
+      const Json::Value& v = ek[kid];
+      if (kid.empty() || kid.size() > 64 || !edge_id_is_safe(kid)) {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "invalid edge_confidentiality_keys kid";
+        o["kid"] = kid;
+        resp->status = 400;
+        resp->body = json_stringify(o);
+        return;
+      }
+      if (v.isNull()) {
+        next.edge_confidentiality_keys.erase(kid);
+      } else if (v.isString()) {
+        const std::string s = trim_copy(v.asString());
+        if (s.empty()) next.edge_confidentiality_keys.erase(kid);
+        else next.edge_confidentiality_keys[kid] = s;
+      } else {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "edge_confidentiality_keys values must be strings or null";
+        o["kid"] = kid;
+        resp->status = 400;
+        resp->body = json_stringify(o);
+        return;
+      }
+    }
+  }
+
   // Blob store credentials (secrets):
   // - blob_store_secrets: { "access_key": "...", "secret_key": "...", "session_token": "..." }
   if (args.isMember("blob_store_secrets")) {
@@ -2058,6 +2124,7 @@ void handle_config_update_endpoint(
   o["edge_auth_cert_roots_epoch"] = (Json::Int64)next.edge_auth_cert_roots_epoch;
   o["edge_auth_cert_roots_updated_utc_ms"] = (Json::Int64)next.edge_auth_cert_roots_updated_utc_ms;
   o["edge_auth_require_manifest_cert_chain"] = next.edge_auth_require_manifest_cert_chain;
+  o["edge_confidentiality_required"] = next.edge_confidentiality_required;
   o["edge_attest_required"] = next.edge_attest_required;
   o["edge_attest_require_sig"] = next.edge_attest_require_sig;
   {
@@ -2100,6 +2167,7 @@ void handle_config_update_endpoint(
   o["edge_auth_hmac_keys_set"] = (Json::UInt64)next.edge_auth_hmac_keys.size();
   o["edge_auth_ed25519_pubkeys_set"] = (Json::UInt64)next.edge_auth_ed25519_pubkeys.size();
   o["edge_auth_cert_roots_set"] = (Json::UInt64)next.edge_auth_cert_roots_pem.size();
+  o["edge_confidentiality_keys_set"] = (Json::UInt64)next.edge_confidentiality_keys.size();
   resp->body = json_stringify(o);
   return;
 }
@@ -2163,9 +2231,16 @@ void handle_edge_auth_trust_roots_send_endpoint(
 
   const std::string target_node_id =
     args.isMember("target_node_id") && args["target_node_id"].isString() ? trim_copy(args["target_node_id"].asString()) : "";
+  const std::string confidential_kid =
+    args.isMember("confidential_kid") && args["confidential_kid"].isString() ? trim_copy(args["confidential_kid"].asString()) : "";
   if (target_node_id.empty() || !edge_id_is_safe(target_node_id)) {
     resp->status = 400;
     resp->body = json_error_body("missing/invalid target_node_id");
+    return;
+  }
+  if (!confidential_kid.empty() && (confidential_kid.size() > 64 || !edge_id_is_safe(confidential_kid))) {
+    resp->status = 400;
+    resp->body = json_error_body("missing/invalid confidential_kid");
     return;
   }
 
@@ -2196,6 +2271,8 @@ void handle_edge_auth_trust_roots_send_endpoint(
         "PLATFORM_TRUST_ROOTS_BUNDLE",
         "trust_roots",
         bundle,
+        &cfg.edge_confidentiality_keys,
+        confidential_kid,
         &outbox_id,
         &oerr)) {
     if (oerr == "db not available") {
@@ -2205,6 +2282,11 @@ void handle_edge_auth_trust_roots_send_endpoint(
     }
     if (oerr == "target node not found") {
       resp->status = 404;
+      resp->body = json_error_body(oerr);
+      return;
+    }
+    if (oerr == "unknown confidentiality kid") {
+      resp->status = 400;
       resp->body = json_error_body(oerr);
       return;
     }
@@ -2220,6 +2302,7 @@ void handle_edge_auth_trust_roots_send_endpoint(
   o["ok"] = true;
   o["target_node_id"] = target_node_id;
   o["outbox_id"] = (Json::Int64)outbox_id;
+  if (!confidential_kid.empty()) o["confidential_kid"] = confidential_kid;
   o["trust_roots"] = bundle;
   resp->body = json_stringify(o);
 }
@@ -2433,9 +2516,16 @@ void handle_edge_auth_cert_roots_send_endpoint(
 
   const std::string target_node_id =
     args.isMember("target_node_id") && args["target_node_id"].isString() ? trim_copy(args["target_node_id"].asString()) : "";
+  const std::string confidential_kid =
+    args.isMember("confidential_kid") && args["confidential_kid"].isString() ? trim_copy(args["confidential_kid"].asString()) : "";
   if (target_node_id.empty() || !edge_id_is_safe(target_node_id)) {
     resp->status = 400;
     resp->body = json_error_body("missing/invalid target_node_id");
+    return;
+  }
+  if (!confidential_kid.empty() && (confidential_kid.size() > 64 || !edge_id_is_safe(confidential_kid))) {
+    resp->status = 400;
+    resp->body = json_error_body("missing/invalid confidential_kid");
     return;
   }
 
@@ -2466,6 +2556,8 @@ void handle_edge_auth_cert_roots_send_endpoint(
         "PLATFORM_CERT_ROOTS_BUNDLE",
         "cert_roots",
         bundle,
+        &cfg.edge_confidentiality_keys,
+        confidential_kid,
         &outbox_id,
         &oerr)) {
     if (oerr == "db not available") {
@@ -2475,6 +2567,11 @@ void handle_edge_auth_cert_roots_send_endpoint(
     }
     if (oerr == "target node not found") {
       resp->status = 404;
+      resp->body = json_error_body(oerr);
+      return;
+    }
+    if (oerr == "unknown confidentiality kid") {
+      resp->status = 400;
       resp->body = json_error_body(oerr);
       return;
     }
@@ -2490,6 +2587,7 @@ void handle_edge_auth_cert_roots_send_endpoint(
   o["ok"] = true;
   o["target_node_id"] = target_node_id;
   o["outbox_id"] = (Json::Int64)outbox_id;
+  if (!confidential_kid.empty()) o["confidential_kid"] = confidential_kid;
   o["cert_roots"] = bundle;
   resp->body = json_stringify(o);
 }
@@ -3046,9 +3144,16 @@ void handle_edge_auth_revocations_send_endpoint(
 
   const std::string target_node_id =
     args.isMember("target_node_id") && args["target_node_id"].isString() ? trim_copy(args["target_node_id"].asString()) : "";
+  const std::string confidential_kid =
+    args.isMember("confidential_kid") && args["confidential_kid"].isString() ? trim_copy(args["confidential_kid"].asString()) : "";
   if (target_node_id.empty() || !edge_id_is_safe(target_node_id)) {
     resp->status = 400;
     resp->body = json_error_body("missing/invalid target_node_id");
+    return;
+  }
+  if (!confidential_kid.empty() && (confidential_kid.size() > 64 || !edge_id_is_safe(confidential_kid))) {
+    resp->status = 400;
+    resp->body = json_error_body("missing/invalid confidential_kid");
     return;
   }
 
@@ -3079,6 +3184,8 @@ void handle_edge_auth_revocations_send_endpoint(
         "PLATFORM_REVOCATIONS_BUNDLE",
         "revocations",
         bundle,
+        &cfg.edge_confidentiality_keys,
+        confidential_kid,
         &outbox_id,
         &oerr)) {
     if (oerr == "db not available") {
@@ -3088,6 +3195,11 @@ void handle_edge_auth_revocations_send_endpoint(
     }
     if (oerr == "target node not found") {
       resp->status = 404;
+      resp->body = json_error_body(oerr);
+      return;
+    }
+    if (oerr == "unknown confidentiality kid") {
+      resp->status = 400;
       resp->body = json_error_body(oerr);
       return;
     }
@@ -3103,6 +3215,7 @@ void handle_edge_auth_revocations_send_endpoint(
   o["ok"] = true;
   o["target_node_id"] = target_node_id;
   o["outbox_id"] = (Json::Int64)outbox_id;
+  if (!confidential_kid.empty()) o["confidential_kid"] = confidential_kid;
   o["revocations"] = bundle;
   resp->body = json_stringify(o);
 }
