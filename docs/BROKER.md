@@ -406,6 +406,8 @@ Current status:
   without forcing an immediate new broker session when the peer child is still alive.
 - Shipped: that runtime can now also take `broker_token` on `action=stop` and directly delete an agentd-owned broker
   audio session after an ungraceful peer death that never delivered `bye`.
+- Shipped: `DELETE /api/v1/session?session_id=...&broker_token=...` now treats session erase as a real lifecycle boundary
+  for voice: it stops the managed peer, clears persisted runtime artifacts, and deletes the owned broker audio session.
 - Still open: replace the managed Node/Playwright child runtime with an embedded long-lived agentd-native media service.
 
 Proof:

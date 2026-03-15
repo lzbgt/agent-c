@@ -5,6 +5,8 @@
 #include "cors.h"
 #include "daemon_config.h"
 
+#include <json/json.h>
+
 namespace agentd {
 
 void handle_session_voice_webrtc_peer_endpoint(
@@ -21,6 +23,15 @@ void handle_session_voice_webrtc_peer_status_endpoint(
   AgentDb* db,
   const HttpRequest& req,
   HttpResponse* resp
+);
+
+bool cleanup_session_voice_webrtc_peer_runtime(
+  const DaemonConfig& cfg,
+  AgentDb* db,
+  const std::string& session_id,
+  const std::string& broker_token,
+  Json::Value* out_summary,
+  std::string* out_err
 );
 
 }  // namespace agentd

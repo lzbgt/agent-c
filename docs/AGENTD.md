@@ -373,7 +373,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
 - `GET /api/v1/sessions` lists known sessions.
 - `GET /api/v1/session?session_id=<id>` returns the message history.
 - `DELETE /api/v1/session?session_id=<id>` erases the canonical SQLite-backed session record and its
-  dependent runs/messages/tool records/events/artifacts via DB cascade.
+  dependent runs/messages/tool records/events/artifacts via DB cascade. If the session currently owns a managed
+  `voice_webrtc_peer` runtime, agentd now also stops that peer, clears its persisted runtime/log artifacts, and can
+  delete the owned broker audio session when `broker_token` is supplied on the delete request.
 - `GET /api/v1/session/audit?session_id=<id>&include_rotated=0|1` returns recent per-run audit entries.
 - `POST /api/v1/session/voice_control` persists minimal session-scoped `media_play` / `media_pause` / `media_snapshot`
   control requests for browser clients.
@@ -406,7 +408,8 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   structured checkpoints, with `dry_run` and per-call overrides.
 - `DELETE /api/v1/session?session_id=<id>` is the primary erase surface. After a successful delete,
   session history and run-backed evidence for that session no longer resolve through
-  `GET /api/v1/session`, `GET /api/v1/run/replay`, or `GET /api/v1/run/attestation`.
+  `GET /api/v1/session`, `GET /api/v1/run/replay`, or `GET /api/v1/run/attestation`. The delete response now also
+  reports `voice_runtime_cleanup` when a managed WebRTC peer existed for the session.
 - `GET /api/v1/db/analytics/workflows/export?format=json|csv&scope=all|durable|edge` exports durable
   workflow analytics snapshots for audit/reporting.
 - `GET /api/v1/db/analytics/edge/export?format=json|csv&scope=all|edge_tasks|edge_nodes` exports edge

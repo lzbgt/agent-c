@@ -7,6 +7,7 @@
 
 #include "session_id_util.h"
 #include "session_paths.h"
+#include "session_voice_runtime.h"
 #include "scene_store.h"
 
 #include "base64.h"
@@ -1537,6 +1538,25 @@ void handle_session_delete_endpoint(
   Json::Value out(Json::objectValue);
   out["ok"] = false;
   out["session_id"] = *sid;
+
+  const auto broker_token_q = query_get(req.query, "broker_token");
+  const std::string broker_token = broker_token_q ? trim_copy(*broker_token_q) : "";
+  if (!broker_token.empty() && !is_safe_printable_field(broker_token, 1024)) {
+    resp->status = 400;
+    resp->body = json_error_body("invalid broker_token");
+    return;
+  }
+
+  Json::Value voice_cleanup(Json::objectValue);
+  std::string voice_err;
+  if (!cleanup_session_voice_webrtc_peer_runtime(cfg, db_or_null, *sid, broker_token, &voice_cleanup, &voice_err)) {
+    out["error"] = voice_err.empty() ? "failed to clean up voice runtime" : voice_err;
+    if (!voice_cleanup.empty()) out["voice_runtime_cleanup"] = voice_cleanup;
+    resp->status = 500;
+    resp->body = json_stringify(out);
+    return;
+  }
+  out["voice_runtime_cleanup"] = voice_cleanup;
 
   if (db_or_null && db_or_null->is_open()) {
     std::string db_err;

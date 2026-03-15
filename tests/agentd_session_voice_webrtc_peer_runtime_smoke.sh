@@ -842,4 +842,126 @@ PY
 
 wait_broker_session_deleted "${BROKER_SESSION_ID2}"
 
+start_resp3="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${SESSION_DB_ID}",
+  "action": "start",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab-delete",
+  "broker_url": "http://127.0.0.1:${BROKER_PORT}",
+  "broker_token": "audio-agentd-token",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 659
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${start_resp3}''')
+if not obj.get("ok") or not obj.get("started"):
+  print("voice_webrtc_peer third start failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+peer = obj.get("peer") or {}
+if peer.get("runtime_kind") != "bundled" or peer.get("managed_broker_session") is not True:
+  print("unexpected third peer runtime state", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("broker_deployment_id") != "lab-delete":
+  print("unexpected third broker deployment", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+BROKER_SESSION_ID3="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${start_resp3}''')
+peer = obj.get("peer") or {}
+sid = str(peer.get("broker_session_id") or "").strip()
+if not sid:
+  print("missing third broker_session_id in start response", file=sys.stderr)
+  raise SystemExit(1)
+print(sid)
+PY
+)"
+
+VOICE_STDOUT_LOG3="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${start_resp3}''')
+peer = obj.get("peer") or {}
+path = str(peer.get("stdout_log_path") or "").strip()
+if not path:
+  print("missing third stdout_log_path in start response", file=sys.stderr)
+  raise SystemExit(1)
+print(path)
+PY
+)"
+
+wait_voice_peer_ready "${SESSION_DB_ID}" 1 status_json
+
+SESSION_DB_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${SESSION_DB_ID}")"
+delete_resp="$(curl -fsS --noproxy "*" --max-time 10 -X DELETE \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session?session_id=${SESSION_DB_ID_Q}&broker_token=audio-agentd-token")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${delete_resp}''')
+if not obj.get("ok") or obj.get("deleted_from_db") is not True:
+  print("session delete with voice runtime cleanup failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+cleanup = obj.get("voice_runtime_cleanup") or {}
+if cleanup.get("runtime_present") is not True:
+  print("expected voice runtime cleanup to find runtime", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("runtime_was_running") is not True:
+  print("expected running runtime before session delete", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("broker_session_delete_attempted") is not True or cleanup.get("broker_session_deleted") is not True:
+  print("expected broker session deletion during session delete", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("persisted_record_cleared") is not True:
+  print("expected persisted runtime cleanup during session delete", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+session_after_delete_body="${LOG_DIR}/voice_runtime_session_after_delete.json"
+session_after_delete_status="$(curl -sS --noproxy "*" --max-time 10 \
+  -o "${session_after_delete_body}" -w '%{http_code}' \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session?session_id=${SESSION_DB_ID_Q}")"
+if [[ "${session_after_delete_status}" != "404" ]]; then
+  echo "expected deleted session to return 404, got ${session_after_delete_status}" >&2
+  cat "${session_after_delete_body}" >&2
+  exit 1
+fi
+
+status_after_delete="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer?session_id=${SESSION_DB_ID_Q}")"
+
+python3 - <<PY
+import json, os, sys
+obj = json.loads(r'''${status_after_delete}''')
+if obj.get("session_exists") is not False:
+  print("expected session_exists=false after delete", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("running") is not False:
+  print("expected running=false after delete", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("peer") is not None:
+  print("expected peer=null after delete cleanup", obj, file=sys.stderr)
+  raise SystemExit(1)
+if os.path.exists(r'''${VOICE_STDOUT_LOG3}'''):
+  print("expected stdout log to be removed after session delete", r'''${VOICE_STDOUT_LOG3}''', file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+wait_broker_session_deleted "${BROKER_SESSION_ID3}"
+
 echo "agentd_session_voice_webrtc_peer_runtime_smoke OK"

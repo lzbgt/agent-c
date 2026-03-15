@@ -553,6 +553,7 @@ streaming and plugins are stable.
   - 2026-03-15: shipped a default `bundled` voice runtime tier that auto-discovers the repo-local Node/Playwright peer without `AGENTD_AUDIO_WEBRTC_PEER_TOOL`, while keeping `runtime_kind=external` as the explicit operator-configured override and `runtime_kind=builtin` reserved for the future native media backend.
   - 2026-03-15: `POST /api/v1/session/voice_webrtc_peer` can now auto-create the broker audio session from `broker_agent_id` instead of forcing callers to pre-create `broker_session_id`; runtime status records `managed_broker_session` plus broker ownership metadata, and smoke coverage now proves the caller-free bring-up path.
   - 2026-03-15: the managed bundled/external runtime now persists child-exit state eagerly and lets `action=stop` take `broker_token` so agentd can delete an owned broker audio session itself after an ungraceful peer death that never delivered `bye`; smoke coverage now proves SIGKILL + restart + cleanup fallback.
+  - 2026-03-15: `DELETE /api/v1/session?session_id=...&broker_token=...` now treats session erase as a real voice-runtime ownership boundary: it stops the managed peer, clears persisted runtime/log artifacts, and deletes the owned broker audio session; smoke coverage now proves session-delete cleanup end to end.
 - [x] Add binary blob storage tiering plan (`docs/DB.md#blob-storage-tiers-design--status`).
   - [x] Add edge task/node analytics exports (CSV/JSON bundles).
   - [x] Implement blob_manifest schema + local blob store v0 (upload + read + ref-count GC).

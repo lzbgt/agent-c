@@ -227,6 +227,8 @@ These are the most leveraged next steps grounded in current architecture:
      `broker_agent_id`, so normal shipped bring-up no longer requires caller-side broker session creation.
    - Completed 2026-03-15: that managed runtime now also persists child-exit state eagerly and can clean up an
      agentd-owned broker audio session itself on `stop` when the child died before sending `bye`.
+   - Completed 2026-03-15: session erase now also owns the managed voice runtime lifecycle, stopping the peer and
+     removing persisted runtime artifacts (plus owned broker session cleanup when `broker_token` is supplied).
    - Remaining gap: replace the managed Node/Playwright child with an embedded long-lived agentd-native media service.
 
 5) **Node consensus**

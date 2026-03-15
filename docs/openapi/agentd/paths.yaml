@@ -3106,6 +3106,11 @@
         name: session_id
         required: true
         schema: { type: string }
+      - in: query
+        name: broker_token
+        required: false
+        schema: { type: string }
+        description: Optional broker bearer token used to clean up an agentd-owned voice broker session if the deleted session currently has a managed `voice_webrtc_peer` runtime.
     responses:
       "200":
         description: Session delete result
@@ -3120,6 +3125,9 @@
                 deleted_from_db: { type: boolean }
                 legacy_cleanup_attempted: { type: boolean }
                 legacy_any_deleted: { type: boolean }
+                voice_runtime_cleanup:
+                  type: object
+                  additionalProperties: true
                 error: { type: string }
       "400":
         description: Invalid request

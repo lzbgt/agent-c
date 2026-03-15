@@ -150,6 +150,8 @@ A v0 smoke test should:
   can return `already_running` from persisted runtime state.
 - That same runtime now persists child-exit state eagerly and lets `action=stop` take `broker_token`, so agentd can
   delete a managed broker audio session itself after an ungraceful peer death that skipped the child's `bye`.
+- `DELETE /api/v1/session?session_id=...&broker_token=...` now also cleans up the managed voice runtime for that session:
+  the peer is stopped, persisted runtime artifacts are removed, and the owned broker audio session is deleted.
 
 ## Open questions
 

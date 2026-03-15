@@ -301,6 +301,15 @@ static bool persist_voice_peer_runtime_record(AgentDb* db, const VoicePeerRuntim
   return db->meta_set(voice_peer_meta_key(st.session_id), json_stringify(record), out_err);
 }
 
+static bool clear_voice_peer_runtime_record(AgentDb* db, const std::string& session_id, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!db) {
+    if (out_err) *out_err = "db unavailable";
+    return false;
+  }
+  return db->meta_set(voice_peer_meta_key(session_id), "", out_err);
+}
+
 static bool load_voice_peer_runtime_record(
   AgentDb* db,
   const std::string& session_id,
@@ -685,6 +694,28 @@ static bool voice_peer_kill_best_effort(std::shared_ptr<VoicePeerRuntime> st, st
   return true;
 }
 #endif
+
+static bool remove_voice_peer_runtime_artifacts(
+  const DaemonConfig& cfg,
+  const std::string& session_id,
+  bool* out_any_deleted,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (out_any_deleted) *out_any_deleted = false;
+  if (trim_copy(session_id).empty()) return true;
+  std::error_code ec;
+  const std::filesystem::path run_dir = voice_peer_runtime_dir(cfg, session_id);
+  if (!std::filesystem::exists(run_dir, ec)) return true;
+  ec.clear();
+  const auto removed = std::filesystem::remove_all(run_dir, ec);
+  if (ec) {
+    if (out_err) *out_err = "failed to remove voice peer runtime artifacts";
+    return false;
+  }
+  if (out_any_deleted) *out_any_deleted = (removed > 0);
+  return true;
+}
 
 }  // namespace
 
@@ -1099,6 +1130,103 @@ void handle_session_voice_webrtc_peer_status_endpoint(
   out["running"] = st ? st->running : false;
   resp->status = 200;
   resp->body = json_stringify(out);
+}
+
+bool cleanup_session_voice_webrtc_peer_runtime(
+  const DaemonConfig& cfg,
+  AgentDb* db,
+  const std::string& session_id,
+  const std::string& broker_token,
+  Json::Value* out_summary,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  Json::Value summary(Json::objectValue);
+  summary["session_id"] = session_id;
+  summary["runtime_present"] = false;
+  summary["runtime_was_running"] = false;
+  summary["peer"] = Json::Value(Json::nullValue);
+
+  std::shared_ptr<VoicePeerRuntime> st;
+  {
+    std::lock_guard<std::mutex> lk(g_voice_peer_mu);
+    st = voice_peer_lookup_locked(session_id);
+    if (st) refresh_voice_peer_runtime_state(st.get());
+  }
+  if (!st) {
+    std::string lerr;
+    if (!load_voice_peer_runtime_record(db, session_id, &st, &lerr)) {
+      if (out_err) *out_err = lerr.empty() ? "failed to load persisted voice peer state" : lerr;
+      return false;
+    }
+  }
+
+  if (st) {
+    summary["runtime_present"] = true;
+    summary["runtime_was_running"] = st->running;
+    summary["peer"] = voice_peer_runtime_to_json(*st);
+  }
+
+#if defined(_WIN32)
+  if (st && st->running) {
+    if (out_err) *out_err = "voice_webrtc_peer cleanup unsupported on Windows";
+    return false;
+  }
+#else
+  if (st && st->running) {
+    std::string serr;
+    if (!voice_peer_kill_best_effort(st, &serr)) {
+      if (out_err) *out_err = serr.empty() ? "failed to stop voice peer during session delete" : serr;
+      return false;
+    }
+    summary["stopped"] = wait_for_voice_peer_stop(st, 2000);
+    {
+      std::lock_guard<std::mutex> lk(g_voice_peer_mu);
+      refresh_voice_peer_runtime_state(st.get());
+      summary["peer"] = voice_peer_runtime_to_json(*st);
+    }
+  } else {
+    summary["stopped"] = st ? !st->running : false;
+  }
+#endif
+
+  bool broker_deleted = false;
+  if (st && st->managed_broker_session && !trim_copy(st->broker_session_id).empty() && !trim_copy(broker_token).empty()) {
+    std::string berr;
+    broker_deleted = broker_delete_audio_session(st->broker_url, broker_token, st->broker_session_id, &berr);
+    summary["broker_session_delete_attempted"] = true;
+    summary["broker_session_deleted"] = broker_deleted;
+    if (!broker_deleted && !berr.empty()) summary["broker_session_delete_error"] = berr;
+    if (!broker_deleted) {
+      if (out_err) *out_err = berr.empty() ? "failed to delete managed broker audio session" : berr;
+      return false;
+    }
+  } else {
+    summary["broker_session_delete_attempted"] = false;
+  }
+
+  {
+    std::lock_guard<std::mutex> lk(g_voice_peer_mu);
+    g_voice_peer_by_session.erase(session_id);
+  }
+
+  std::string perr;
+  if (!clear_voice_peer_runtime_record(db, session_id, &perr)) {
+    if (out_err) *out_err = perr.empty() ? "failed to clear persisted voice peer state" : perr;
+    return false;
+  }
+  summary["persisted_record_cleared"] = true;
+
+  bool artifacts_deleted = false;
+  std::string aerr;
+  if (!remove_voice_peer_runtime_artifacts(cfg, session_id, &artifacts_deleted, &aerr)) {
+    if (out_err) *out_err = aerr.empty() ? "failed to remove voice peer runtime artifacts" : aerr;
+    return false;
+  }
+  summary["runtime_artifacts_deleted"] = artifacts_deleted;
+
+  if (out_summary) *out_summary = std::move(summary);
+  return true;
 }
 
 }  // namespace agentd
