@@ -695,6 +695,16 @@ bool AgentdApi::init(std::string* out_error) {
     const DaemonConfig cur = self->cfg_store->snapshot();
     handle_session_client_events_endpoint(cur, self->cors_cfg, &self->db, req, resp);
   });
+  impl_->route("POST", "/api/v1/session/voice_control", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_session_voice_control_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route("GET", "/api/v1/session/voice_stats", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_session_voice_stats_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
   impl_->route("GET", "/api/v1/session/clients", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();

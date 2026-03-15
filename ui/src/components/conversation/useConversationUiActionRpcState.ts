@@ -11,6 +11,7 @@ const RPC_SIDE_EFFECT_KINDS = new Set([
   "dom_apply",
   "entity_apply",
   "media_play",
+  "media_pause",
   "media_observe",
   "navigate",
   "open_url",

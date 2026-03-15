@@ -175,6 +175,68 @@ export const SessionUiEventRespSchema = z
   .passthrough();
 export type SessionUiEventResp = z.infer<typeof SessionUiEventRespSchema>;
 
+export const SessionVoiceControlReqSchema = z
+  .object({
+    session_id: z.string().min(1),
+    action: z.enum(["play", "pause", "snapshot"]),
+    selector: z.string().optional(),
+    url: z.string().optional(),
+    src: z.string().optional(),
+    path: z.string().optional(),
+    resolved_path: z.string().optional(),
+    id: z.string().optional(),
+    tag: z.string().optional(),
+    controls: z.boolean().optional(),
+    autoplay: z.boolean().optional(),
+    muted: z.boolean().optional(),
+    loop: z.boolean().optional(),
+    volume: z.number().optional(),
+    title: z.string().optional(),
+    message: z.string().optional(),
+  })
+  .passthrough();
+export type SessionVoiceControlReq = z.infer<typeof SessionVoiceControlReqSchema>;
+
+export const SessionVoiceControlRespSchema = z
+  .object({
+    ok: z.boolean(),
+    session_id: z.string().optional(),
+    action: z.enum(["play", "pause", "snapshot"]).optional(),
+    rpc_kind: z.string().optional(),
+    rpc_id: z.string().optional(),
+    tool_call_id: z.string().optional(),
+    ts_unix_ms: z.number().optional(),
+    pending_client_execution: z.boolean().optional(),
+    ui_action: z.record(z.any()).optional(),
+    error: SessionErrorValueSchema.optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+    status: z.number().optional(),
+  })
+  .passthrough();
+export type SessionVoiceControlResp = z.infer<typeof SessionVoiceControlRespSchema>;
+
+export const SessionVoiceStatsSchema = z
+  .object({
+    ok: z.boolean(),
+    session_id: z.string().optional(),
+    max_bytes: z.number().optional(),
+    scanned_events: z.number().optional(),
+    client_count: z.number().optional(),
+    result_count: z.number().optional(),
+    clients: z.array(z.any()).optional(),
+    counts: z.record(z.any()).optional(),
+    latest_result: z.record(z.any()).optional(),
+    latest_snapshot: z.record(z.any()).optional(),
+    recent_results: z.array(z.any()).optional(),
+    error: SessionErrorValueSchema.optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+    status: z.number().optional(),
+  })
+  .passthrough();
+export type SessionVoiceStatsResp = z.infer<typeof SessionVoiceStatsSchema>;
+
 export const NewSessionRespSchema = z
   .object({
     ok: z.boolean(),

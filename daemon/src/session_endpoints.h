@@ -91,6 +91,22 @@ void handle_session_client_events_endpoint(
   HttpResponse* resp
 );
 
+void handle_session_voice_control_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
+void handle_session_voice_stats_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
 // Lists distinct clients observed in the session-scoped client event log.
 void handle_session_clients_endpoint(
   const DaemonConfig& cfg,

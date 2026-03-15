@@ -4122,6 +4122,197 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/session/voice_control": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Persist a server-owned voice control ui_action for a session */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        session_id: string;
+                        /** @enum {string} */
+                        action: "play" | "pause" | "snapshot";
+                        selector?: string;
+                        url?: string;
+                        src?: string;
+                        path?: string;
+                        resolved_path?: string;
+                        id?: string;
+                        tag?: string;
+                        controls?: boolean;
+                        autoplay?: boolean;
+                        muted?: boolean;
+                        loop?: boolean;
+                        volume?: number;
+                        title?: string;
+                        message?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Voice control action persisted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok: boolean;
+                            session_id: string;
+                            /** @enum {string} */
+                            action: "play" | "pause" | "snapshot";
+                            rpc_kind: string;
+                            rpc_id: string;
+                            tool_call_id: string;
+                            /** Format: int64 */
+                            ts_unix_ms?: number;
+                            pending_client_execution: boolean;
+                            ui_action?: {
+                                [key: string]: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Persist failed */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/session/voice_stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Summarize observed voice-related client RPC results for a session */
+        get: {
+            parameters: {
+                query: {
+                    session_id: string;
+                    max_bytes?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Voice stats */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok: boolean;
+                            session_id: string;
+                            /** Format: int64 */
+                            max_bytes?: number;
+                            /** Format: int64 */
+                            scanned_events?: number;
+                            /** Format: int64 */
+                            client_count?: number;
+                            /** Format: int64 */
+                            result_count?: number;
+                            counts: {
+                                [key: string]: number;
+                            };
+                            clients: {
+                                [key: string]: unknown;
+                            }[];
+                            latest_result?: {
+                                [key: string]: unknown;
+                            };
+                            latest_snapshot?: {
+                                [key: string]: unknown;
+                            };
+                            recent_results: {
+                                [key: string]: unknown;
+                            }[];
+                        };
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Stats read failed */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/moderator/directive": {
         parameters: {
             query?: never;

@@ -1221,6 +1221,16 @@ int main(int argc, char** argv) {
     handle_session_client_events_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
+  server.handle("POST", "/api/v1/session/voice_control", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_session_voice_control_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+
+  server.handle("GET", "/api/v1/session/voice_stats", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_session_voice_stats_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+
   server.handle("GET", "/api/v1/session/clients", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_session_clients_endpoint(cur, cors_cfg, db_or_null, req, resp);

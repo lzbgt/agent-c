@@ -2430,6 +2430,145 @@
             schema:
               $ref: "#/components/schemas/ErrorResponse"
 
+/api/v1/session/voice_control:
+  post:
+    tags: [sessions]
+    summary: Persist a server-owned voice control ui_action for a session
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [session_id, action]
+            properties:
+              session_id: { type: string }
+              action:
+                type: string
+                enum: [play, pause, snapshot]
+              selector: { type: string }
+              url: { type: string }
+              src: { type: string }
+              path: { type: string }
+              resolved_path: { type: string }
+              id: { type: string }
+              tag: { type: string }
+              controls: { type: boolean }
+              autoplay: { type: boolean }
+              muted: { type: boolean }
+              loop: { type: boolean }
+              volume: { type: number }
+              title: { type: string }
+              message: { type: string }
+    responses:
+      "200":
+        description: Voice control action persisted
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok, session_id, action, rpc_kind, rpc_id, tool_call_id, pending_client_execution]
+              properties:
+                ok: { type: boolean }
+                session_id: { type: string }
+                action:
+                  type: string
+                  enum: [play, pause, snapshot]
+                rpc_kind: { type: string }
+                rpc_id: { type: string }
+                tool_call_id: { type: string }
+                ts_unix_ms: { type: integer, format: int64 }
+                pending_client_execution: { type: boolean }
+                ui_action:
+                  type: object
+                  additionalProperties: true
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "500":
+        description: Persist failed
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
+/api/v1/session/voice_stats:
+  get:
+    tags: [sessions]
+    summary: Summarize observed voice-related client RPC results for a session
+    parameters:
+      - in: query
+        name: session_id
+        required: true
+        schema: { type: string }
+      - in: query
+        name: max_bytes
+        required: false
+        schema: { type: integer, format: int64 }
+    responses:
+      "200":
+        description: Voice stats
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok, session_id, counts, recent_results, clients]
+              properties:
+                ok: { type: boolean }
+                session_id: { type: string }
+                max_bytes: { type: integer, format: int64 }
+                scanned_events: { type: integer, format: int64 }
+                client_count: { type: integer, format: int64 }
+                result_count: { type: integer, format: int64 }
+                counts:
+                  type: object
+                  additionalProperties:
+                    type: integer
+                    format: int64
+                clients:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: true
+                latest_result:
+                  type: object
+                  additionalProperties: true
+                latest_snapshot:
+                  type: object
+                  additionalProperties: true
+                recent_results:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: true
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "500":
+        description: Stats read failed
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
 /api/v1/moderator/directive:
   post:
     tags: [moderator]

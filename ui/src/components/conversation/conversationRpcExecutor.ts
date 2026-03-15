@@ -529,6 +529,26 @@ function createConversationRpcHelpers({
     }
   };
 
+  const makeMediaPause = async (args: any) => {
+    const selector = safeTrunc(String(args?.selector ?? ""), 200).trim();
+    const id = safeTrunc(String(args?.id ?? args?.element_id ?? ""), 80).trim();
+    const el = selector
+      ? (document.querySelector(selector) as any)
+      : id
+        ? (document.getElementById(id) as any)
+        : null;
+    if (!el) return { kind: "media_pause", ok: false, selector: selector || undefined, id: id || undefined, error: "no element matched" };
+    if (typeof el.pause !== "function") {
+      return { kind: "media_pause", ok: false, selector: selector || undefined, id: id || undefined, error: "element has no pause()" };
+    }
+    try {
+      el.pause();
+      return { kind: "media_pause", ok: true, selector: selector || undefined, id: id || undefined };
+    } catch (e) {
+      return { kind: "media_pause", ok: false, selector: selector || undefined, id: id || undefined, error: String(e) };
+    }
+  };
+
   const makeLocation = () => {
     const href = String(window?.location?.href ?? "");
     const u = href ? tryParseUrl(href) : null;
@@ -702,6 +722,7 @@ function createConversationRpcHelpers({
     if (kind === "dom_click") return makeDomClick(args);
     if (kind === "dom_set_value") return makeDomSetValue(args);
     if (kind === "media_play") return makeMediaPlay(args);
+    if (kind === "media_pause") return makeMediaPause(args);
     if (kind === "media_observe") return makeMediaObserve(args);
     if (kind === "media_unobserve") return makeMediaUnobserve(args);
     if (kind === "navigate") return makeNavigate(args);

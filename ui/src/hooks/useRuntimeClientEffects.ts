@@ -5,6 +5,7 @@ import {
   daemonFetchInit,
   type ApiAuth,
 } from "../api";
+import { runConversationUiActionRpc } from "../components/conversation/conversationRpcExecutor";
 import type { SceneEntity } from "../components/SceneView";
 import { SCENE_STORE_MAX, touchSceneStoreKey } from "../sceneCache";
 
@@ -183,6 +184,49 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
   }, [sceneStoreKey, sessionId, sessionSceneData, touchSceneStore]);
 
   const postedCapsRef = React.useRef<Record<string, boolean>>({});
+  const pendingAutoRunsRef = React.useRef<Record<string, () => void>>({});
+  const probeRanRef = React.useRef<Record<string, number>>({});
+  const rpcCleanupRef = React.useRef<Record<string, any>>({});
+  const artifactBlobUrlsRef = React.useRef<string[]>([]);
+  const markSeenWithLimit = React.useCallback((store: Record<string, number>, key: string, limit: number) => {
+    if (!key) return;
+    store[key] = Date.now();
+    const keys = Object.keys(store);
+    if (keys.length <= limit) return;
+    const items = keys
+      .map((item) => ({ item, ts: store[item] || 0 }))
+      .sort((a, b) => a.ts - b.ts);
+    const overflow = items.length - limit;
+    for (let i = 0; i < overflow; i += 1) {
+      delete store[items[i].item];
+    }
+  }, []);
+  const cleanupRpcEntry = React.useCallback((id: string) => {
+    const entry = rpcCleanupRef.current[id];
+    if (!entry) return false;
+    const cleanups = Array.isArray(entry?.cleanups) ? entry.cleanups : [];
+    cleanups.forEach((fn: any) => {
+      try {
+        if (typeof fn === "function") fn();
+      } catch {
+        // ignore
+      }
+    });
+    delete rpcCleanupRef.current[id];
+    return true;
+  }, []);
+  const rpcRuntime = React.useMemo(
+    () => ({
+      pendingAutoRunsRef,
+      probeRanRef,
+      rpcCleanupRef,
+      artifactBlobUrlsRef,
+      cleanupRpcEntry,
+      markSeenWithLimit,
+      localUiActionLimit: 2000,
+    }),
+    [cleanupRpcEntry, markSeenWithLimit],
+  );
   React.useEffect(() => {
     const sid = typeof sessionId === "string" ? sessionId.trim() : "";
     if (!sid) return;
@@ -207,6 +251,7 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
             { kind: "dom_click", side_effects: true, description: "Click a DOM element by selector (side effects)." },
             { kind: "dom_set_value", side_effects: true, description: "Set input/textarea value by selector (side effects)." },
             { kind: "media_play", side_effects: true, description: "Attempt to play audio/video by selector (browser policies apply)." },
+            { kind: "media_pause", side_effects: true, description: "Pause audio/video by selector or element id." },
             { kind: "media_observe", side_effects: true, description: "Attach media listeners and emit correlated progress events." },
             { kind: "media_unobserve", side_effects: false, description: "Detach media listeners created by media_observe (by rpc_id or all=true)." },
             { kind: "navigate", side_effects: true, description: "Navigate the browser to a new URL (likely reloads the app)." },
@@ -253,25 +298,6 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
     }
 
     const actions = actionsRaw.slice().reverse().filter((row) => row && typeof row === "object");
-    const safeObject = (value: any) => (value && typeof value === "object" && !Array.isArray(value) ? value : {});
-    const entityApplyArgsToOps = (args: any): any[] => {
-      if (Array.isArray(args?.ops)) return args.ops.slice(0, 100);
-      if (Array.isArray(args?.operations)) return args.operations.slice(0, 100);
-      if (Array.isArray(args?.entities)) {
-        const ops: any[] = [];
-        for (const entity of (args.entities as any[]).slice(0, 50)) {
-          if (!entity || typeof entity !== "object") continue;
-          const id = String(entity?.id ?? "").slice(0, 200);
-          const entityKind = String(entity?.entity_kind ?? entity?.entityKind ?? entity?.type ?? entity?.kind ?? "").slice(0, 100);
-          if (!id || !entityKind) continue;
-          const title = typeof entity?.title === "string" ? String(entity.title).slice(0, 200) : undefined;
-          const props = safeObject(entity?.props ?? entity ?? {});
-          ops.push({ op: "create", id, entity_kind: entityKind, title, props });
-        }
-        return ops;
-      }
-      return [];
-    };
     const postClientEvent = async (type: string, data: any) => {
       await apiPostSessionUiEvent(
         effectiveBase,
@@ -285,6 +311,7 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
         daemonAuth,
       );
     };
+    const supportedAutoRunKinds = new Set(["entity_apply", "media_play", "media_pause", "media_snapshot"]);
     const markApplied = (key: string) => {
       appliedUiActionIdsRef.current[key] = Date.now();
       const appliedKeys = Object.keys(appliedUiActionIdsRef.current);
@@ -298,55 +325,76 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
       }
     };
 
-    for (const row of actions) {
-      const id = typeof row?.id === "number" ? row.id : Number(row?.id ?? NaN);
-      if (!Number.isFinite(id)) continue;
-      const key = `${sid}::ui_action_id::${id}`;
-      if (appliedUiActionIdsRef.current[key]) continue;
-      const action = row?.action ?? {};
-      const actionType = typeof action?.type === "string" ? action.type : "";
-      if (actionType !== "client_rpc" && actionType !== "collab_rpc" && actionType !== "client_probe") continue;
-      const toolCallId = typeof row?.tool_call_id === "string" ? String(row.tool_call_id) : "";
-      const rpcId = String(action?.rpc_id ?? action?.probe_id ?? toolCallId ?? "").trim();
-      if (!rpcId) continue;
-      if (ackedRpcIds.has(rpcId)) {
-        markApplied(key);
-        continue;
-      }
-      const rpc = action?.rpc ?? action?.probe ?? {};
-      const rpcKind = String(rpc?.kind ?? "").trim();
-      if (rpcKind !== "entity_apply") continue;
-      const autoRunRequested =
-        typeof action?.auto_run === "boolean" ? action.auto_run : typeof action?.auto === "boolean" ? action.auto : true;
-      if (!autoRunRequested) continue;
-      const argsValue = typeof rpc?.args === "object" && rpc?.args ? rpc.args : rpc;
-      const ops = entityApplyArgsToOps(argsValue);
-      if (!Array.isArray(ops) || ops.length === 0) continue;
+    let cancelled = false;
+    const run = async () => {
+      for (const row of actions) {
+        if (cancelled) return;
+        const id = typeof row?.id === "number" ? row.id : Number(row?.id ?? NaN);
+        if (!Number.isFinite(id)) continue;
+        const key = `${sid}::ui_action_id::${id}`;
+        if (appliedUiActionIdsRef.current[key]) continue;
+        const action = row?.action ?? {};
+        const actionType = typeof action?.type === "string" ? action.type : "";
+        if (actionType !== "client_rpc" && actionType !== "collab_rpc" && actionType !== "client_probe") continue;
+        const toolCallId = typeof row?.tool_call_id === "string" ? String(row.tool_call_id) : "";
+        const rpcId = String(action?.rpc_id ?? action?.probe_id ?? toolCallId ?? "").trim();
+        if (!rpcId) continue;
+        if (ackedRpcIds.has(rpcId)) {
+          markApplied(key);
+          continue;
+        }
+        const rpc = action?.rpc ?? action?.probe ?? {};
+        const rpcKind = String(rpc?.kind ?? "").trim();
+        if (!supportedAutoRunKinds.has(rpcKind)) continue;
+        const autoRunRequested =
+          typeof action?.auto_run === "boolean" ? action.auto_run : typeof action?.auto === "boolean" ? action.auto : true;
+        if (!autoRunRequested) continue;
 
-      markApplied(key);
-      const started = Date.now();
-      try {
-        const result = applySceneOps(sid, ops);
-        void postClientEvent("client_rpc_result", {
-          rpc_id: rpcId,
-          request_tool_call_id: toolCallId,
-          rpc_kind: rpcKind,
-          ok: true,
-          elapsed_ms: Date.now() - started,
-          result,
-        }).catch(() => {});
-      } catch (error) {
-        void postClientEvent("client_rpc_result", {
-          rpc_id: rpcId,
-          request_tool_call_id: toolCallId,
-          rpc_kind: rpcKind,
-          ok: false,
-          elapsed_ms: Date.now() - started,
-          error: String(error),
-        }).catch(() => {});
+        markApplied(key);
+        await runConversationUiActionRpc({
+          baseUrl: effectiveBase,
+          yolo,
+          sessionId: sid,
+          daemonAuth,
+          allowClientRpcs,
+          allowClientEffects,
+          allowUnsafePageEval: false,
+          atype: actionType,
+          toolCallId,
+          rpcId,
+          rpcKind,
+          rpcArgs: typeof rpc?.args === "object" && rpc?.args ? rpc.args : rpc,
+          sideEffectsRequested:
+            rpc?.side_effects === true ||
+            action?.side_effects === true ||
+            rpcKind === "entity_apply" ||
+            rpcKind === "media_play" ||
+            rpcKind === "media_pause",
+          postClientEvent,
+          runtime: rpcRuntime,
+          sceneEntities,
+          onSceneApply: (ops: any[]) => applySceneOps(sid, ops),
+        });
       }
-    }
-  }, [allowClientEffects, allowClientRpcs, applySceneOps, client, daemonAuth, dbClientEventsData, dbUiActionsData, effectiveBase, sessionId]);
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    allowClientEffects,
+    allowClientRpcs,
+    applySceneOps,
+    client,
+    daemonAuth,
+    dbClientEventsData,
+    dbUiActionsData,
+    effectiveBase,
+    rpcRuntime,
+    sceneEntities,
+    sessionId,
+    yolo,
+  ]);
 
   const artifactAckedRef = React.useRef<Record<string, boolean>>({});
   React.useEffect(() => {

@@ -113,6 +113,11 @@ A v0 smoke test should:
   - `GET /v1/audio/sessions/{session_id}`
   - `DELETE /v1/audio/sessions/{session_id}`
 - WebUI broker panel now exposes explicit voice session create/list/select/send/delete controls with live signal inspection.
+- Agentd now exposes minimal session-scoped voice control/stats endpoints:
+  - `POST /api/v1/session/voice_control`
+  - `GET /api/v1/session/voice_stats`
+  These use durable `ui_action` + `client_event` plumbing to drive `media_play`, `media_pause`, and `media_snapshot`
+  without inventing a parallel control channel.
 - `tests/webui_observe_voice_hello_openworld.sh` and `ui/e2e/observe_voice_hello.spec.ts`
   cover the current browser voice-presentation harness, which is artifact/scene driven rather than
   a full WebRTC session.
@@ -122,7 +127,7 @@ A v0 smoke test should:
 - Should signaling use WebSocket instead of SSE+POST for bidirectional framing?
 - Do we need a broker-issued ephemeral token for direct agentd signaling as a fallback?
 - How should the broker authenticate agentd participation (mTLS vs bearer)?
-- What is the minimal agentd API surface for voice session control (start/stop, stats)?
+- How should the minimal agentd voice-control surface evolve once a real browser-to-agentd WebRTC media session exists?
 
 ## References
 

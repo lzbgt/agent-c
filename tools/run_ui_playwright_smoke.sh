@@ -92,6 +92,7 @@ AGENT_E2E_OUTPUT_DIR="${pw_artifacts_dir}" \
     e2e/conversation_client_rpc.spec.ts \
     e2e/conversation_rpc_script_eval.spec.ts \
     e2e/conversation_ui_action_ack.spec.ts \
+    e2e/session_voice_control.spec.ts \
     e2e/prompt_bar.spec.ts \
     e2e/memory_panel.spec.ts \
     e2e/run_diff_panel.spec.ts \

@@ -538,9 +538,10 @@ streaming and plugins are stable.
   - [x] WebUI open-world voice presentation harness exists via `tests/webui_observe_voice_hello_openworld.sh` and `ui/e2e/observe_voice_hello.spec.ts`.
   - [ ] Implement a real browser-to-agentd WebRTC media path instead of only signaling/loopback scaffolding.
   - [x] Add explicit voice session lifecycle/status controls in the WebUI rather than prompt-driven open-world presentation only.
-  - [ ] Define the minimal agentd API surface for voice session control/stats once real media sessions exist.
+  - [x] Define the minimal agentd API surface for voice control/stats on top of the shipped `ui_action` + `client_event` path.
   - 2026-03-15: narrowed the stale umbrella item after re-verifying broker signaling endpoints, loopback smokes, and the open-world voice observe harness.
   - 2026-03-15: broker panel now exposes explicit voice session create/list/select/send/delete controls with live signal stream inspection, backed by broker audio session status APIs and Playwright regression coverage.
+  - 2026-03-15: agentd now exposes `POST /api/v1/session/voice_control` plus `GET /api/v1/session/voice_stats`, and the WebUI runtime auto-runs DB-backed `media_play`/`media_pause`/`media_snapshot` actions through the shared client RPC executor.
 - [x] Add binary blob storage tiering plan (`docs/DB.md#blob-storage-tiers-design--status`).
   - [x] Add edge task/node analytics exports (CSV/JSON bundles).
   - [x] Implement blob_manifest schema + local blob store v0 (upload + read + ref-count GC).

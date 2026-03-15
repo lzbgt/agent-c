@@ -29,6 +29,12 @@ import {
   type SessionUiEventReq,
   SessionUiEventRespSchema,
   type SessionUiEventResp,
+  SessionVoiceControlReqSchema,
+  type SessionVoiceControlReq,
+  SessionVoiceControlRespSchema,
+  type SessionVoiceControlResp,
+  SessionVoiceStatsSchema,
+  type SessionVoiceStatsResp,
   SessionUploadReqSchema,
   type SessionUploadReq,
   SessionUploadRespSchema,
@@ -300,6 +306,35 @@ export async function apiPostSessionUiEvent(
   );
   const j = await r.json();
   return SessionUiEventRespSchema.parse(j);
+}
+
+export async function apiPostSessionVoiceControl(
+  base: string,
+  req: SessionVoiceControlReq,
+  auth?: ApiAuth,
+): Promise<SessionVoiceControlResp> {
+  const payload = SessionVoiceControlReqSchema.parse(req);
+  const r = await fetch(
+    `${base}/api/v1/session/voice_control`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+  );
+  const j = await r.json();
+  return SessionVoiceControlRespSchema.parse(j);
+}
+
+export async function apiGetSessionVoiceStats(
+  base: string,
+  sessionId: string,
+  auth?: ApiAuth,
+  opts?: { maxBytes?: number },
+): Promise<SessionVoiceStatsResp> {
+  const maxBytes = typeof opts?.maxBytes === "number" ? opts.maxBytes : 1024 * 1024;
+  const r = await fetch(
+    `${base}/api/v1/session/voice_stats?session_id=${encodeURIComponent(sessionId)}&max_bytes=${encodeURIComponent(String(maxBytes))}`,
+    daemonFetchInit(auth),
+  );
+  const j = await r.json();
+  return SessionVoiceStatsSchema.parse(j);
 }
 
 export async function apiNewSession(

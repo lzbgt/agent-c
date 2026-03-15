@@ -1015,6 +1015,16 @@ struct AgentdService::Impl {
       handle_session_client_events_endpoint(cur, cors_cfg, &db, req, resp);
     });
 
+    server.handle("POST", "/api/v1/session/voice_control", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_session_voice_control_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+
+    server.handle("GET", "/api/v1/session/voice_stats", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_session_voice_stats_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+
     server.handle("GET", "/api/v1/session/clients", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_session_clients_endpoint(cur, cors_cfg, &db, req, resp);
