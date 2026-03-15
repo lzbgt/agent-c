@@ -203,7 +203,7 @@ Embedded targets typically cannot load shared libraries. For `agent_core` builds
 compile-time plugin list that registers tool schemas into `agent_tool_registry_t` and
 dispatches via `agent_tool_executor_t`. See:
 
-- `docs/spec/tool_plugins_embedded_v0.md` (draft ABI + constraints)
+- `docs/spec/tool_plugins_embedded_v0.md` (implemented rolling ABI + constraints)
 
 ## Sandboxed execution (plugin host)
 
@@ -213,6 +213,14 @@ Use the tool server protocol to run plugins out-of-process:
   --tool-server-cmd "./build/agentd_tool_plugin_host --plugin ./build/libagentd_tool_plugin_echo.(so|dylib|dll) --plugin-config '{\"policy\":{\"limits\":{\"wall_ms\":60000,\"cpu_ms\":60000}}}'"
 
 This provides process isolation plus tool-server timeouts and line limits.
+
+Current proof points:
+- `tests/agentd_tool_plugin_smoke.sh`
+- `tests/agentd_tool_plugin_server_smoke.sh`
+- `tests/agentd_tool_plugin_big_smoke.sh`
+- `tests/agentd_tool_plugin_server_big_smoke.sh`
+- `tests/test_tool_plugin_host_limits.cpp` (Windows host-limit validation surface)
+- `tools/verify_windows_build.ps1` (Windows build/test helper for plugin loader path)
 
 ## References
 

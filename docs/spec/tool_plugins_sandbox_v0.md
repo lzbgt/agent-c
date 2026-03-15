@@ -66,8 +66,10 @@ Limits can also be supplied via the plugin config JSON:
 
 When both CLI limits and config limits are present, the host enforces the **most restrictive** (minimum) values.
 
-## Follow-up goals (tracked in `TODOS.md`)
+## Remaining follow-up goals (tracked in `TODOS.md`)
 
 - Policy-based isolation: per-plugin limits (CPU/memory), optional seccomp/AppArmor profiles (Linux).
 - Windows tool server support (CreateProcess + async pipes), enabling sandboxed plugins on Windows.
+  The in-process plugin loader already works on Windows; this remaining item is only for the
+  out-of-process sandboxed host path.
 - Explicit plugin attestation/signature checks for production deployments.

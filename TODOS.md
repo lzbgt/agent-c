@@ -522,7 +522,7 @@ streaming and plugins are stable.
   - [x] Add assistant-message hint (last assistant summary or salient response) in context headers.
   - [x] Add timeline ordering toggle for memory results (newest-first vs oldest-first).
   - [x] WebUI run settings: pass `memory_context_mode=salience` through to the daemon.
-- [ ] Tool plugins: sandbox/isolation, Windows loader, and embedded/MCU-compatible plugin path.
+- [x] Tool plugins: sandbox/isolation, Windows loader, and embedded/MCU-compatible plugin path.
   - [x] Tool plugin config JSON support (optional `*_ex` symbols + `--tool-plugin-config`) with smoke coverage.
   - [x] Windows loader for tool plugins (LoadLibrary/GetProcAddress).
   - [x] Sandbox via tool server host (`agentd_tool_plugin_host`) + smoke test.
@@ -531,6 +531,7 @@ streaming and plugins are stable.
   - [x] In-process plugin manifest/result caps (1 MiB/4 MiB) to bound memory spikes.
   - [x] Plugin host tool-result cap (4 MiB) enforced before JSON parsing.
   - [x] Plugin host oversized payload smoke coverage (ext_big).
+  - 2026-03-15: closed stale roadmap item after verifying in-process plugin loading, out-of-process isolation, embedded/MCU compile-time plugin ABI docs, and Windows loader coverage (`daemon/src/tool_plugins.cpp`, `tests/agentd_tool_plugin*_smoke.sh`, `tests/test_tool_plugin_host_limits.cpp`, `docs/PLATFORM_SUPPORT.md`, `tools/verify_windows_build.ps1`).
 - [ ] Audio streaming: Opus/WebRTC voice pipeline + broker relay + UI voice session controls.
   - [x] Add workflow DB query endpoints (`/api/v1/db/workflows`, `/api/v1/db/workflow`, `/api/v1/db/workflow_tasks`, `/api/v1/db/workflow_events`)
     with docs + smoke tests.
