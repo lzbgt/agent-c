@@ -568,11 +568,13 @@ streaming and plugins are stable.
   - [x] Durable workflow VM task: `kind:"avm_capsule"` executes out-of-process under the same guarded runner.
   - [x] Deterministic quorum joins over VM hashes via workflow aggregate pointers (`/avm/result_hash`, `/avm/trace_hash`).
   - [x] Mount allowlist enforcement for direct capsule runs and workflow `avm_capsule` tasks.
+  - [x] Structured output evidence is surfaced on direct and workflow results via `output.{raw_text,json_text,residual_text,hashes.*}`, and direct capsule runs preserve the parsed run fragment as `run_json_raw`.
   - [ ] Persist a reusable governance bundle object (scan/inspect/verify/run/log) keyed by program/job hash.
   - [ ] Expose AVM record/replay artifacts as durable evidence, not only transient subprocess stdout.
   - [ ] Add explicit host-effects policy surfaces beyond mounts (FS/PROC/NET capability gating).
   - [ ] Carry node identity / attestation material through quorum votes for multi-node correctness.
   - 2026-03-15: narrowed the stale umbrella item after re-verifying the shipped runner/scan/quorum surfaces in `agentd_avm_job_scan_smoke`, `agentd_workflow_avm_capsule_smoke`, and `agentd_workflow_aggregate_quorum_smoke`.
+  - 2026-03-15: added structured AVM output evidence to the shipped runner path so callers no longer need to scrape raw stdout for the JSON fragment and hash tokens when using direct `capsule_run` or workflow `avm_capsule`.
 - [ ] Node consensus: add true peer-to-peer node-native consensus and deterministic partition/conflict simulation on top of the shipped centralized quorum surfaces.
   - [x] Centralized platform-owned coordination is already the implemented design stance for UM-EAIS and broker team orchestration.
   - [x] Deterministic quorum/join surfaces are already shipped for workflows and broker team runs.

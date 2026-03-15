@@ -93,6 +93,7 @@ Success response fields:
 
 - `ok: bool`
 - `run: object` — parsed JSON object emitted by AVM `--print-run-json` (current AVM schema: `avm.run.v1`)
+- `run_json_raw: string?` — the exact JSON object fragment parsed into `run`
 - `result_hash: string?` — parsed token `RESULT_HASH <hex>`
 - `trace_hash: string?` — parsed token `TRACE_HASH <hex>`
 - `state_hash: string?` — parsed token `STATE_HASH <hex>`
@@ -100,7 +101,14 @@ Success response fields:
 - `exit_code: int`
 - `timed_out: bool`
 - `truncated: bool`
-- `stdout: string` — combined stdout/stderr from the AVM subprocess (bounded)
+- `stdout: string` — legacy combined stdout/stderr from the AVM subprocess (bounded)
+- `output: object` — structured output evidence extracted from the combined subprocess stream:
+  - `raw_text: string` — full bounded stdout/stderr capture
+  - `json_text: string?` — first JSON object found in the output stream
+  - `residual_text: string?` — non-JSON remainder after removing `json_text`
+  - `hashes.result_hash: string?`
+  - `hashes.trace_hash: string?`
+  - `hashes.state_hash: string?`
 
 Failure response:
 
@@ -115,8 +123,10 @@ Failure response:
 - Use `posix_spawnp` (no shell) to run the AVM binary.
 - Enforce a separate outer timeout in agentd to avoid runaway subprocesses (outer timeout slightly above `timeout_ms`).
 - Capture stdout+stderr into a bounded buffer (default cap 1MB).
-- Parse the first JSON object found in output as the `run` value.
-- Parse hash tokens from remaining output as best-effort fields.
+- Retain the full bounded stdout/stderr stream as legacy `stdout` and `output.raw_text`.
+- Parse the first JSON object found in output as the `run` value and expose the exact fragment as `run_json_raw` / `output.json_text`.
+- Parse hash tokens from the non-JSON remainder as best-effort fields and expose them both as top-level fields and `output.hashes.*`.
+- Preserve the non-JSON remainder as `output.residual_text` for debugging and evidence surfaces.
 - When `mounts` is present, validate against `~/.config/agent/mount-allowlist.json` before launch.
 - Forward validated mounts through `AGENTD_AVM_MOUNTS_JSON`, `AGENTD_AVM_MOUNT_COUNT`,
   and `AGENTD_AVM_MOUNT_<n>_*` env vars. If the runner ignores these vars, no host mount is exposed.

@@ -194,6 +194,13 @@ obj = json.loads(r'''${resp}''')
 if not obj.get("ok"):
   print(obj, file=sys.stderr)
   raise SystemExit(1)
+out = obj.get("output") or {}
+if not isinstance(out.get("raw_text"), str) or not out.get("raw_text"):
+  print("missing output.raw_text", out, file=sys.stderr)
+  raise SystemExit(1)
+if not isinstance(out.get("json_text"), str) or '"schema":"avm.job.v7"' not in out.get("json_text"):
+  print("unexpected output.json_text", out, file=sys.stderr)
+  raise SystemExit(1)
 job = obj.get("job") or {}
 if job.get("schema") != "avm.job.v7":
   print("unexpected job.schema:", job.get("schema"), file=sys.stderr)
@@ -218,6 +225,10 @@ obj = json.loads(r'''${resp_policy}''')
 if not obj.get("ok"):
   print(obj, file=sys.stderr)
   raise SystemExit(1)
+out = obj.get("output") or {}
+if not isinstance(out.get("json_text"), str) or '"schema":"avm.policy.v1"' not in out.get("json_text"):
+  print("unexpected policy output.json_text", out, file=sys.stderr)
+  raise SystemExit(1)
 pol = obj.get("policy") or {}
 if pol.get("schema") != "avm.policy.v1":
   print("unexpected policy.schema:", pol.get("schema"), file=sys.stderr)
@@ -238,6 +249,10 @@ import json, sys
 obj = json.loads(r'''${resp_inspect}''')
 if not obj.get("ok"):
   print(obj, file=sys.stderr)
+  raise SystemExit(1)
+out = obj.get("output") or {}
+if not isinstance(out.get("json_text"), str) or '"schema":"avm.inspect.v1"' not in out.get("json_text"):
+  print("unexpected inspect output.json_text", out, file=sys.stderr)
   raise SystemExit(1)
 ins = obj.get("inspect") or {}
 if ins.get("schema") != "avm.inspect.v1":
@@ -260,6 +275,10 @@ obj = json.loads(r'''${resp_verify}''')
 if not obj.get("ok"):
   print(obj, file=sys.stderr)
   raise SystemExit(1)
+out = obj.get("output") or {}
+if not isinstance(out.get("raw_text"), str):
+  print("missing verify output.raw_text", out, file=sys.stderr)
+  raise SystemExit(1)
 if obj.get("exit_code") != 0:
   print("unexpected exit_code:", obj.get("exit_code"), file=sys.stderr)
   raise SystemExit(1)
@@ -279,6 +298,11 @@ if not obj.get("ok"):
   raise SystemExit(1)
 if obj.get("trace_hash") != "stubtracehash":
   print("unexpected trace_hash:", obj.get("trace_hash"), file=sys.stderr)
+  raise SystemExit(1)
+out = obj.get("output") or {}
+hashes = out.get("hashes") or {}
+if hashes.get("trace_hash") != "stubtracehash":
+  print("unexpected trace output.hashes.trace_hash:", hashes, file=sys.stderr)
   raise SystemExit(1)
 PY
 
@@ -314,6 +338,9 @@ run = obj.get("run") or {}
 if run.get("schema") != "avm.run.v1":
   print("unexpected run.schema:", run.get("schema"), file=sys.stderr)
   raise SystemExit(1)
+if obj.get("run_json_raw", "").find('"schema":"avm.run.v1"') == -1:
+  print("missing run_json_raw", obj.get("run_json_raw"), file=sys.stderr)
+  raise SystemExit(1)
 if obj.get("result_hash") != "stubresulthash":
   print("unexpected result_hash:", obj.get("result_hash"), file=sys.stderr)
   raise SystemExit(1)
@@ -322,6 +349,14 @@ if obj.get("trace_hash") != "stubtracehash":
   raise SystemExit(1)
 if obj.get("state_hash") != "stubstatehash":
   print("unexpected state_hash:", obj.get("state_hash"), file=sys.stderr)
+  raise SystemExit(1)
+out = obj.get("output") or {}
+hashes = out.get("hashes") or {}
+if hashes.get("result_hash") != "stubresulthash" or hashes.get("trace_hash") != "stubtracehash" or hashes.get("state_hash") != "stubstatehash":
+  print("unexpected output.hashes", hashes, file=sys.stderr)
+  raise SystemExit(1)
+if "RESULT_HASH stubresulthash" not in (out.get("residual_text") or ""):
+  print("missing residual hash lines", out, file=sys.stderr)
   raise SystemExit(1)
 mounts = obj.get("mounts") or []
 if len(mounts) != 1:

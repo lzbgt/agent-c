@@ -297,6 +297,9 @@ run = avm.get("run") or {}
 if run.get("schema") != "avm.run.v1":
   print("unexpected avm.run.schema", run.get("schema"), file=sys.stderr)
   raise SystemExit(1)
+if avm.get("run_json_raw", "").find('"schema":"avm.run.v1"') == -1:
+  print("missing avm.run_json_raw", avm.get("run_json_raw"), file=sys.stderr)
+  raise SystemExit(1)
 mounts = avm.get("mounts") or []
 if len(mounts) != 1:
   print("unexpected AVM mounts", mounts, file=sys.stderr)
@@ -319,6 +322,14 @@ if avm.get("trace_hash") != "stubtracehash":
   raise SystemExit(1)
 if avm.get("state_hash") != "stubstatehash":
   print("unexpected state_hash", avm.get("state_hash"), file=sys.stderr)
+  raise SystemExit(1)
+out = avm.get("output") or {}
+hashes = out.get("hashes") or {}
+if hashes.get("result_hash") != "stubresulthash" or hashes.get("trace_hash") != "stubtracehash" or hashes.get("state_hash") != "stubstatehash":
+  print("unexpected avm.output.hashes", hashes, file=sys.stderr)
+  raise SystemExit(1)
+if "RESULT_HASH stubresulthash" not in (out.get("residual_text") or ""):
+  print("missing avm.output.residual_text hash lines", out, file=sys.stderr)
   raise SystemExit(1)
 
 if (r_avm.get("assistant_text") or "").strip() != "stubresulthash":

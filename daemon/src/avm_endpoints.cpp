@@ -150,6 +150,15 @@ struct ExecResult {
   std::string output;
 };
 
+struct AvmOutputEvidence {
+  std::string raw_text;
+  std::string json_text;
+  std::string residual_text;
+  std::optional<std::string> result_hash;
+  std::optional<std::string> trace_hash;
+  std::optional<std::string> state_hash;
+};
+
 struct AvmValidatedMount {
   std::string resolved_host_path;
   std::string resolved_container_path;
@@ -157,6 +166,9 @@ struct AvmValidatedMount {
   bool readonly = true;
   bool is_main = true;
 };
+
+static AvmOutputEvidence build_avm_output_evidence(const std::string& output);
+static Json::Value avm_output_evidence_to_json(const AvmOutputEvidence& ev);
 
 static std::string json_stringify_compact(const Json::Value& v) {
   Json::StreamWriterBuilder wb;
@@ -573,6 +585,7 @@ static Json::Value run_avm_json(const std::string& avm_bin, const std::string& a
   const int timeout_ms = 5000;
   const size_t max_out = 1024 * 1024;
   ExecResult r = run_proc_capture({avm_bin, avm_flag, obc_path.string()}, timeout_ms, max_out);
+  const AvmOutputEvidence ev = build_avm_output_evidence(r.output);
 
   Json::Value out(Json::objectValue);
   out["ok"] = (r.exit_code == 0 && !r.timed_out);
@@ -580,6 +593,7 @@ static Json::Value run_avm_json(const std::string& avm_bin, const std::string& a
   out["timed_out"] = r.timed_out;
   out["truncated"] = r.truncated;
   out["stdout"] = r.output;
+  out["output"] = avm_output_evidence_to_json(ev);
 
   if (r.timed_out) {
     out["ok"] = false;
@@ -594,7 +608,8 @@ static Json::Value run_avm_json(const std::string& avm_bin, const std::string& a
 
   Json::Value v;
   std::string jerr;
-  if (!json_parse_any(r.output, &v, &jerr)) {
+  const std::string& json_input = !ev.json_text.empty() ? ev.json_text : r.output;
+  if (!json_parse_any(json_input, &v, &jerr)) {
     out["ok"] = false;
     out["error"] = "avm output was not valid JSON";
     out["parse_error"] = jerr;
@@ -640,7 +655,14 @@ static std::optional<std::string> parse_state_hash(const std::string& output) {
   return parse_token_line(output, "STATE_HASH");
 }
 
-static bool extract_first_json_object(const std::string& s, std::string* out_json) {
+static bool extract_first_json_object_range(
+  const std::string& s,
+  size_t* out_start,
+  size_t* out_len,
+  std::string* out_json
+) {
+  if (out_start) *out_start = 0;
+  if (out_len) *out_len = 0;
   if (out_json) out_json->clear();
   if (s.empty() || !out_json) return false;
   size_t start = s.find('{');
@@ -677,12 +699,48 @@ static bool extract_first_json_object(const std::string& s, std::string* out_jso
     if (c == '}') {
       depth--;
       if (depth == 0) {
+        if (out_start) *out_start = start;
+        if (out_len) *out_len = (i - start) + 1;
         *out_json = s.substr(start, (i - start) + 1);
         return true;
       }
     }
   }
   return false;
+}
+
+static AvmOutputEvidence build_avm_output_evidence(const std::string& output) {
+  AvmOutputEvidence ev;
+  ev.raw_text = output;
+  ev.result_hash = parse_result_hash(output);
+  ev.trace_hash = parse_trace_hash(output);
+  ev.state_hash = parse_state_hash(output);
+
+  size_t json_start = 0;
+  size_t json_len = 0;
+  std::string json_text;
+  if (extract_first_json_object_range(output, &json_start, &json_len, &json_text)) {
+    ev.json_text = json_text;
+    std::string residual = output.substr(0, json_start);
+    residual.append(output.substr(json_start + json_len));
+    ev.residual_text = trim_copy(residual);
+  } else {
+    ev.residual_text = trim_copy(output);
+  }
+  return ev;
+}
+
+static Json::Value avm_output_evidence_to_json(const AvmOutputEvidence& ev) {
+  Json::Value o(Json::objectValue);
+  o["raw_text"] = ev.raw_text;
+  if (!ev.json_text.empty()) o["json_text"] = ev.json_text;
+  if (!ev.residual_text.empty()) o["residual_text"] = ev.residual_text;
+  Json::Value hashes(Json::objectValue);
+  if (ev.result_hash) hashes["result_hash"] = *ev.result_hash;
+  if (ev.trace_hash) hashes["trace_hash"] = *ev.trace_hash;
+  if (ev.state_hash) hashes["state_hash"] = *ev.state_hash;
+  if (!hashes.empty()) o["hashes"] = hashes;
+  return o;
 }
 
 }  // namespace
@@ -861,6 +919,7 @@ bool avm_capsule_run_to_json(
   const int outer_timeout_ms = (int)clamp_i64(timeout_ms + 1000, 1, 65000);
   const size_t max_out = 1024 * 1024;
   ExecResult r = run_proc_capture_env(avm_argv, outer_timeout_ms, max_out, env_overrides);
+  const AvmOutputEvidence ev = build_avm_output_evidence(r.output);
 
   std::error_code ec;
   std::filesystem::remove(*tmp, ec);
@@ -869,6 +928,7 @@ bool avm_capsule_run_to_json(
   o["timed_out"] = r.timed_out;
   o["truncated"] = r.truncated;
   o["stdout"] = r.output;
+  o["output"] = avm_output_evidence_to_json(ev);
   if (!mounts.empty()) o["mounts"] = avm_mounts_to_json(mounts);
 
   if (r.timed_out) {
@@ -879,8 +939,7 @@ bool avm_capsule_run_to_json(
     return true;
   }
 
-  std::string run_json_s;
-  if (!extract_first_json_object(r.output, &run_json_s)) {
+  if (ev.json_text.empty()) {
     o["ok"] = false;
     o["error_kind"] = "bad_gateway";
     o["error"] = "missing run JSON in avm output";
@@ -889,7 +948,7 @@ bool avm_capsule_run_to_json(
   }
   Json::Value run;
   std::string jerr;
-  if (!json_parse_any(run_json_s, &run, &jerr)) {
+  if (!json_parse_any(ev.json_text, &run, &jerr)) {
     o["ok"] = false;
     o["error_kind"] = "bad_gateway";
     o["error"] = "failed to parse run JSON from avm output";
@@ -899,9 +958,10 @@ bool avm_capsule_run_to_json(
   }
 
   o["run"] = run;
-  if (const auto h = parse_result_hash(r.output)) o["result_hash"] = *h;
-  if (const auto h = parse_trace_hash(r.output)) o["trace_hash"] = *h;
-  if (const auto h = parse_state_hash(r.output)) o["state_hash"] = *h;
+  o["run_json_raw"] = ev.json_text;
+  if (ev.result_hash) o["result_hash"] = *ev.result_hash;
+  if (ev.trace_hash) o["trace_hash"] = *ev.trace_hash;
+  if (ev.state_hash) o["state_hash"] = *ev.state_hash;
   o["ok"] = (r.exit_code == 0);
   if (!o["ok"].asBool()) {
     o["error_kind"] = "bad_gateway";
@@ -1099,6 +1159,8 @@ void handle_avm_verify_strict_endpoint(
   out["timed_out"] = r.timed_out;
   out["truncated"] = r.truncated;
   out["stdout"] = r.output;
+  const AvmOutputEvidence ev = build_avm_output_evidence(r.output);
+  out["output"] = avm_output_evidence_to_json(ev);
 
   if (r.timed_out) {
     resp->status = 504;
@@ -1152,6 +1214,7 @@ void handle_avm_trace_hash_endpoint(
   const int timeout_ms = 5000;
   const size_t max_out = 1024 * 1024;
   ExecResult r = run_proc_capture({ready->avm_bin, "--print-trace-hash", tmp->string()}, timeout_ms, max_out);
+  const AvmOutputEvidence ev = build_avm_output_evidence(r.output);
 
   std::error_code ec;
   std::filesystem::remove(*tmp, ec);
@@ -1162,6 +1225,7 @@ void handle_avm_trace_hash_endpoint(
   out["timed_out"] = r.timed_out;
   out["truncated"] = r.truncated;
   out["stdout"] = r.output;
+  out["output"] = avm_output_evidence_to_json(ev);
 
   if (r.timed_out) {
     resp->status = 504;
@@ -1178,15 +1242,14 @@ void handle_avm_trace_hash_endpoint(
     return;
   }
 
-  const auto th = parse_trace_hash(r.output);
-  if (!th) {
+  if (!ev.trace_hash) {
     resp->status = 502;
     out["ok"] = false;
     out["error"] = "TRACE_HASH not found in avm output";
     respond_json(resp, out);
     return;
   }
-  out["trace_hash"] = *th;
+  out["trace_hash"] = *ev.trace_hash;
   respond_json(resp, out);
 }
 

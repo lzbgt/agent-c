@@ -454,6 +454,19 @@
                 timed_out: { type: boolean }
                 truncated: { type: boolean }
                 stdout: { type: string }
+                output:
+                  type: object
+                  required: [raw_text]
+                  properties:
+                    raw_text: { type: string }
+                    json_text: { type: string }
+                    residual_text: { type: string }
+                    hashes:
+                      type: object
+                      properties:
+                        result_hash: { type: string }
+                        trace_hash: { type: string }
+                        state_hash: { type: string }
       "400":
         description: Invalid request
         content:
@@ -513,6 +526,19 @@
                 timed_out: { type: boolean }
                 truncated: { type: boolean }
                 stdout: { type: string }
+                output:
+                  type: object
+                  required: [raw_text]
+                  properties:
+                    raw_text: { type: string }
+                    json_text: { type: string }
+                    residual_text: { type: string }
+                    hashes:
+                      type: object
+                      properties:
+                        result_hash: { type: string }
+                        trace_hash: { type: string }
+                        state_hash: { type: string }
 
 /api/v1/avm/inspect:
   post:
@@ -548,6 +574,19 @@
                 timed_out: { type: boolean }
                 truncated: { type: boolean }
                 stdout: { type: string }
+                output:
+                  type: object
+                  required: [raw_text]
+                  properties:
+                    raw_text: { type: string }
+                    json_text: { type: string }
+                    residual_text: { type: string }
+                    hashes:
+                      type: object
+                      properties:
+                        result_hash: { type: string }
+                        trace_hash: { type: string }
+                        state_hash: { type: string }
 
 /api/v1/avm/verify_strict:
   post:
@@ -580,6 +619,19 @@
                 timed_out: { type: boolean }
                 truncated: { type: boolean }
                 stdout: { type: string }
+                output:
+                  type: object
+                  required: [raw_text]
+                  properties:
+                    raw_text: { type: string }
+                    json_text: { type: string }
+                    residual_text: { type: string }
+                    hashes:
+                      type: object
+                      properties:
+                        result_hash: { type: string }
+                        trace_hash: { type: string }
+                        state_hash: { type: string }
       "422":
         description: Strict verification failed
 
@@ -615,6 +667,19 @@
                 timed_out: { type: boolean }
                 truncated: { type: boolean }
                 stdout: { type: string }
+                output:
+                  type: object
+                  required: [raw_text]
+                  properties:
+                    raw_text: { type: string }
+                    json_text: { type: string }
+                    residual_text: { type: string }
+                    hashes:
+                      type: object
+                      properties:
+                        result_hash: { type: string }
+                        trace_hash: { type: string }
+                        state_hash: { type: string }
 
 /api/v1/avm/capsule_run:
   post:
@@ -647,6 +712,7 @@
                 run:
                   type: object
                   additionalProperties: true
+                run_json_raw: { type: string }
                 result_hash: { type: string }
                 trace_hash: { type: string }
                 state_hash: { type: string }
@@ -659,6 +725,19 @@
                 timed_out: { type: boolean }
                 truncated: { type: boolean }
                 stdout: { type: string }
+                output:
+                  type: object
+                  required: [raw_text]
+                  properties:
+                    raw_text: { type: string }
+                    json_text: { type: string }
+                    residual_text: { type: string }
+                    hashes:
+                      type: object
+                      properties:
+                        result_hash: { type: string }
+                        trace_hash: { type: string }
+                        state_hash: { type: string }
       "403":
         description: Execution disabled by policy
       "400":
