@@ -512,18 +512,20 @@ Edge trust-root rotation:
   in-process without spawning the standalone helper; `runtime_kind=external` remains available for bring-up/debug parity.
   `GET /api/v1/edge/node/consensus_runtime?node_id=<id>` reports managed runtime status plus the latest final result JSON.
 - Start requests can include `campaign_delay_ms`, `campaign_retry_ms`, `campaign_retry_max_ms`, and
-  `campaign_retry_backoff_factor`, and the reported runtime/result surfaces expose the same bounded retry policy so
-  operators can confirm whether a candidate re-campaigned before quorum formed.
+  `campaign_retry_backoff_factor`, plus `leader_heartbeat_ms` and `leader_lease_ms`; the reported runtime/result
+  surfaces expose that same bounded retry and leader-freshness policy so operators can confirm whether a candidate
+  re-campaigned before quorum formed and when follower failover should trigger.
 - The same runtime start surface also accepts `membership_epoch` and `member_node_ids`, and the emitted runtime/result
   JSON mirrors that explicit member-set view for deterministic compatibility checks.
 - `GET /api/v1/edge/consensus/membership?cluster_id=<id>` now exports a signed durable
   `edge_consensus_membership_v1` bundle for one cluster, and `POST /api/v1/edge/consensus/membership/rotate`
-  persists the monotonic membership epoch, member set, and default retry timing for that cluster.
+  persists the monotonic membership epoch, member set, default retry timing, and leader heartbeat/lease policy for
+  that cluster.
 - `POST /api/v1/edge/consensus/membership/send` enqueues that same bundle to a recipient node outbox as
   `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE`, so non-HTTP nodes can poll membership policy through the shipped UM-BMP lane.
 - When a managed consensus runtime start omits `membership_epoch`, `member_node_ids`, `campaign_delay_ms`,
-  `campaign_retry_ms`, `campaign_retry_max_ms`, or `campaign_retry_backoff_factor`, agentd now defaults those fields
-  from the stored cluster membership bundle.
+  `campaign_retry_ms`, `campaign_retry_max_ms`, `campaign_retry_backoff_factor`, `leader_heartbeat_ms`, or
+  `leader_lease_ms`, agentd now defaults those fields from the stored cluster membership bundle.
 - Operator bring-up can still set `AGENTD_EDGE_CONSENSUS_NODE_TOOL=/abs/path/to/agentd_edge_consensus_node` to force
   `runtime_kind=external`, but the normal managed path no longer depends on that helper being configured.
 - `GET /api/v1/edge/node` and `GET /api/v1/edge/nodes` now surface `consensus_runtime` when a node has a managed

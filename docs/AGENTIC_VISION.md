@@ -245,6 +245,8 @@ These are the most leveraged next steps grounded in current architecture:
    - Completed 2026-03-15: cluster membership/retry policy is now a signed durable control-plane artifact
      (`edge_consensus_membership_v1`) with outbox delivery and managed-runtime defaulting, so operator policy is no
      longer stranded in one-off runtime start bodies.
+   - Completed 2026-03-15: the durable/runtime consensus policy now includes leader heartbeat and lease timing, so
+     failover behavior is explicit and survives restarts instead of being implicit loop-local behavior.
    - Still open: replace the current builtin daemon-hosted runtime with embedded node-native adoption plus richer
      long-lived membership and recovery policy beyond the current durable bundle fields.
 

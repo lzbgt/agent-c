@@ -113,40 +113,53 @@ python3 - <<PY
 import json, sys
 
 decision_sha = "${DECISION_SHA}"
-leader = "${NODE_A}"
+member_ids = {"${NODE_A}", "${NODE_B}", "${NODE_C}"}
 
+results = {}
 for label, raw in (("A", r'''${NODE_A_JSON}'''), ("B", r'''${NODE_B_JSON}'''), ("C", r'''${NODE_C_JSON}''')):
   obj = json.loads(raw)
+  results[label] = obj
   if not obj.get("ok"):
     print(f"node {label} did not exit cleanly", obj, file=sys.stderr)
-    raise SystemExit(1)
-  if obj.get("leader_node_id") != leader:
-    print(f"node {label} wrong leader", obj, file=sys.stderr)
     raise SystemExit(1)
   if obj.get("committed_decision_sha256") != decision_sha:
     print(f"node {label} wrong committed decision", obj, file=sys.stderr)
     raise SystemExit(1)
 
+leader = results["A"].get("leader_node_id")
+if leader not in member_ids:
+  print("invalid elected leader", results, file=sys.stderr)
+  raise SystemExit(1)
+
+for label, obj in results.items():
+  if obj.get("leader_node_id") != leader:
+    print(f"node {label} wrong leader", obj, file=sys.stderr)
+    raise SystemExit(1)
+
 node_a = (json.loads(r'''${NODE_REG_A_JSON}''').get("node") or {}).get("consensus") or {}
 node_b = (json.loads(r'''${NODE_REG_B_JSON}''').get("node") or {}).get("consensus") or {}
 node_c = (json.loads(r'''${NODE_REG_C_JSON}''').get("node") or {}).get("consensus") or {}
+registry = {"${NODE_A}": node_a, "${NODE_B}": node_b, "${NODE_C}": node_c}
 
-if node_a.get("last_frame_kind") != "leader_commit" or node_a.get("leader_node_id") != leader:
-  print("node A registry consensus summary wrong", node_a, file=sys.stderr)
+leader_row = registry.get(leader) or {}
+if leader_row.get("last_frame_kind") != "leader_commit" or leader_row.get("leader_node_id") != leader:
+  print("leader registry consensus summary wrong", leader_row, file=sys.stderr)
   raise SystemExit(1)
-if node_a.get("decision_sha256") != decision_sha or node_a.get("vote_witness_count", 0) < 2:
-  print("node A registry summary missing quorum evidence", node_a, file=sys.stderr)
+if leader_row.get("decision_sha256") != decision_sha or leader_row.get("vote_witness_count", 0) < 2:
+  print("leader registry summary missing quorum evidence", leader_row, file=sys.stderr)
   raise SystemExit(1)
 
-for label, row in (("B", node_b), ("C", node_c)):
+for node_id, row in registry.items():
+  if node_id == leader:
+    continue
   if row.get("last_frame_kind") != "vote_grant":
-    print(f"node {label} registry summary missing vote_grant", row, file=sys.stderr)
+    print(f"node {node_id} registry summary missing vote_grant", row, file=sys.stderr)
     raise SystemExit(1)
   if row.get("candidate_node_id") != leader:
-    print(f"node {label} registry summary wrong candidate", row, file=sys.stderr)
+    print(f"node {node_id} registry summary wrong candidate", row, file=sys.stderr)
     raise SystemExit(1)
-  if row.get("current_term") != 1:
-    print(f"node {label} registry summary wrong term", row, file=sys.stderr)
+  if row.get("current_term", 0) < 1:
+    print(f"node {node_id} registry summary wrong term", row, file=sys.stderr)
     raise SystemExit(1)
 
 rows = json.loads(r'''${NODES_JSON}''').get("nodes") or []
@@ -155,7 +168,7 @@ for node_id in ("${NODE_A}", "${NODE_B}", "${NODE_C}"):
   if node_id not in seen:
     print("node list missing node", node_id, rows, file=sys.stderr)
     raise SystemExit(1)
-if seen["${NODE_A}"].get("leader_node_id") != leader:
+if seen[leader].get("leader_node_id") != leader:
   print("node list missing leader consensus summary", seen, file=sys.stderr)
   raise SystemExit(1)
 PY

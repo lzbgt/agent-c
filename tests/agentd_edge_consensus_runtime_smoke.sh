@@ -107,7 +107,7 @@ CAPS_SHA_C="sha256:3333333333333333333333333333333333333333333333333333333333333
 DECISION_SHA="sha256:4444444444444444444444444444444444444444444444444444444444444444"
 
 START_A_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","node_id":"${NODE_A}","cluster_id":"${CLUSTER_ID}","manifest_sha256":"${CAPS_SHA_A}","peer_node_ids":["${NODE_B}","${NODE_C}"],"member_node_ids":["${NODE_A}","${NODE_B}","${NODE_C}"],"membership_epoch":12,"decision_sha256":"${DECISION_SHA}","campaign_delay_ms":200,"campaign_retry_ms":200,"campaign_retry_max_ms":800,"campaign_retry_backoff_factor":2,"trust_roots_epoch":9,"revocations_epoch":4,"cert_roots_epoch":11,"deadline_ms":12000}
+{"action":"start","node_id":"${NODE_A}","cluster_id":"${CLUSTER_ID}","manifest_sha256":"${CAPS_SHA_A}","peer_node_ids":["${NODE_B}","${NODE_C}"],"member_node_ids":["${NODE_A}","${NODE_B}","${NODE_C}"],"membership_epoch":12,"decision_sha256":"${DECISION_SHA}","campaign_delay_ms":200,"campaign_retry_ms":200,"campaign_retry_max_ms":800,"campaign_retry_backoff_factor":2,"leader_heartbeat_ms":250,"leader_lease_ms":900,"trust_roots_epoch":9,"revocations_epoch":4,"cert_roots_epoch":11,"deadline_ms":12000}
 JSON
 )")"
 RUNNING_A_JSON="$(wait_runtime_running "${NODE_A}")"
@@ -148,7 +148,7 @@ python3 - <<PY
 import json, sys
 
 decision_sha = "${DECISION_SHA}"
-leader = "${NODE_A}"
+member_ids = {"${NODE_A}", "${NODE_B}", "${NODE_C}"}
 
 for label, raw in (
   ("running_a", r'''${RUNNING_A_JSON}'''),
@@ -169,6 +169,7 @@ if not (json.loads(r'''${RUNNING_A_JSON}''').get("runtime") or {}).get("running"
   print("start_a never reached running state", json.loads(r'''${RUNNING_A_JSON}'''), file=sys.stderr)
   raise SystemExit(1)
 
+results = {}
 for label, raw in (
   ("A", r'''${STATUS_A_JSON}'''),
   ("B", r'''${STATUS_B_JSON}'''),
@@ -183,11 +184,18 @@ for label, raw in (
   if not res.get("ok"):
     print("runtime missing successful result", label, obj, file=sys.stderr)
     raise SystemExit(1)
-  if res.get("leader_node_id") != leader:
-    print("wrong leader", label, obj, file=sys.stderr)
-    raise SystemExit(1)
   if res.get("committed_decision_sha256") != decision_sha:
     print("wrong decision", label, obj, file=sys.stderr)
+    raise SystemExit(1)
+  results[label] = res
+
+leader = results["A"].get("leader_node_id")
+if leader not in member_ids:
+  print("invalid elected leader", results, file=sys.stderr)
+  raise SystemExit(1)
+for label, res in results.items():
+  if res.get("leader_node_id") != leader:
+    print("wrong leader", label, res, file=sys.stderr)
     raise SystemExit(1)
 
 status_a = (json.loads(r'''${STATUS_A_JSON}''').get("runtime") or {}).get("result") or {}
@@ -195,10 +203,13 @@ loop_status = status_a.get("status") or {}
 if loop_status.get("campaign_attempts", 0) < 3:
   print("candidate A did not retry before quorum", status_a, file=sys.stderr)
   raise SystemExit(1)
+if loop_status.get("leader_heartbeat_ms") != 250 or loop_status.get("leader_lease_ms") != 900:
+  print("candidate A missing leader freshness config", status_a, file=sys.stderr)
+  raise SystemExit(1)
 
 node = (json.loads(r'''${NODE_A_JSON}''').get("node") or {})
 rt = node.get("consensus_runtime") or {}
-if rt.get("node_id") != leader:
+if rt.get("node_id") != "${NODE_A}":
   print("edge node missing runtime summary", node, file=sys.stderr)
   raise SystemExit(1)
 if rt.get("runtime_kind") != "builtin":
@@ -209,6 +220,9 @@ if rt.get("campaign_retry_ms") != 200:
   raise SystemExit(1)
 if rt.get("campaign_retry_max_ms") != 800 or rt.get("campaign_retry_backoff_factor") != 2:
   print("runtime summary missing retry backoff config", rt, file=sys.stderr)
+  raise SystemExit(1)
+if rt.get("leader_heartbeat_ms") != 250 or rt.get("leader_lease_ms") != 900:
+  print("runtime summary missing leader freshness config", rt, file=sys.stderr)
   raise SystemExit(1)
 if rt.get("membership_epoch") != 12:
   print("runtime summary missing membership epoch", rt, file=sys.stderr)

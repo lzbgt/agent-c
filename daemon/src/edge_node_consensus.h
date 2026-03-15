@@ -47,6 +47,8 @@ struct EdgeConsensusNodeLoopConfig {
   int64_t campaign_retry_ms = 0;
   int64_t campaign_retry_max_ms = 0;
   int64_t campaign_retry_backoff_factor = 1;
+  int64_t leader_heartbeat_ms = 1000;
+  int64_t leader_lease_ms = 5000;
   std::string decision_sha256;
 };
 
@@ -60,10 +62,13 @@ class EdgeConsensusReplica {
   const std::string& committed_decision_sha256() const { return committed_decision_sha256_; }
   uint64_t membership_epoch() const { return self_.membership_epoch; }
   const std::set<std::string>& member_node_ids() const { return member_node_ids_; }
+  bool leader_is_self() const { return !leader_node_id_.empty() && leader_node_id_ == self_.node_id; }
 
   void set_trust_epochs(const EdgeConsensusEpochs& epochs);
   void set_membership(uint64_t membership_epoch, const std::vector<std::string>& member_node_ids);
   EdgeConsensusFrame start_election(const std::string& decision_sha256);
+  EdgeConsensusFrame current_leader_commit_frame() const;
+  void expire_leader_lease();
   bool handle_frame(const EdgeConsensusFrame& frame, std::vector<EdgeConsensusFrame>* out_frames, std::string* out_error);
   Json::Value status_to_json() const;
 
@@ -104,17 +109,29 @@ class EdgeConsensusNodeLoop {
   int64_t current_campaign_delay_ms() const;
 
   std::vector<EdgeConsensusFrame> tick(int64_t now_utc_ms);
-  bool handle_frame(const EdgeConsensusFrame& frame, std::vector<EdgeConsensusFrame>* out_frames, std::string* out_error);
+  bool handle_frame(
+    const EdgeConsensusFrame& frame,
+    std::vector<EdgeConsensusFrame>* out_frames,
+    std::string* out_error,
+    int64_t now_utc_ms = 0
+  );
   std::vector<std::string> target_node_ids_for_frame(const EdgeConsensusFrame& frame) const;
   Json::Value status_to_json() const;
 
  private:
+  void remember_decision(const std::string& decision_sha256);
+  bool leader_lease_expired(int64_t now_utc_ms) const;
+  void observe_leader_activity(const EdgeConsensusFrame& frame, int64_t now_utc_ms);
+
   EdgeConsensusNodeLoopConfig cfg_;
   EdgeConsensusReplica replica_;
   int64_t started_utc_ms_ = 0;
   int64_t last_campaign_started_utc_ms_ = 0;
+  int64_t last_leader_contact_utc_ms_ = 0;
+  int64_t last_leader_heartbeat_sent_utc_ms_ = 0;
   bool election_started_ = false;
   uint64_t campaign_attempts_ = 0;
+  std::string last_known_decision_sha256_;
 };
 
 Json::Value edge_consensus_epochs_to_json(const EdgeConsensusEpochs& epochs);

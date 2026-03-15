@@ -99,6 +99,8 @@ The shipped autonomous host-loop proof adds:
 - retry-capable campaign timers (`campaign_delay_ms`, `campaign_retry_ms`, `campaign_retry_max_ms`,
   `campaign_retry_backoff_factor`) so a candidate can start before peers are online and still converge later without
   manual restart while capping retry growth
+- leader freshness policy (`leader_heartbeat_ms`, `leader_lease_ms`) so committed leaders periodically reaffirm the
+  current decision and followers can deterministically expire stale leaders before re-campaigning
 - explicit membership surfaces (`membership_epoch` + `member_node_ids`) on the shared core, host helper, and managed runtime
 - signed/durable cluster policy bundles via `edge_consensus_membership_v1`, including outbox delivery as
   `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE`

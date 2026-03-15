@@ -181,7 +181,7 @@ DECISION_SHA="sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 register_target_node "${TARGET_NODE}" "${TARGET_CAPS_SHA}"
 
 ROTATE_JSON="$(curl_json POST "/api/v1/edge/consensus/membership/rotate" "$(cat <<JSON
-{"cluster_id":"${CLUSTER_ID}","mode":"replace","membership_epoch":19,"member_node_ids":["${NODE_A}","${NODE_B}","${NODE_C}"],"campaign_delay_ms":120,"campaign_retry_ms":300,"campaign_retry_max_ms":900,"campaign_retry_backoff_factor":2}
+{"cluster_id":"${CLUSTER_ID}","mode":"replace","membership_epoch":19,"member_node_ids":["${NODE_A}","${NODE_B}","${NODE_C}"],"campaign_delay_ms":120,"campaign_retry_ms":300,"campaign_retry_max_ms":900,"campaign_retry_backoff_factor":2,"leader_heartbeat_ms":240,"leader_lease_ms":1100}
 JSON
 )")"
 GET_JSON="$(curl_json GET "/api/v1/edge/consensus/membership?cluster_id=${CLUSTER_ID}")"
@@ -255,6 +255,9 @@ if bundle.get("campaign_retry_ms") != 300 or bundle.get("campaign_retry_max_ms")
 if bundle.get("campaign_retry_backoff_factor") != 2:
     print("wrong retry backoff factor", bundle, file=sys.stderr)
     raise SystemExit(1)
+if bundle.get("leader_heartbeat_ms") != 240 or bundle.get("leader_lease_ms") != 1100:
+    print("wrong leader freshness policy", bundle, file=sys.stderr)
+    raise SystemExit(1)
 att = bundle.get("attest") or {}
 if att.get("schema") != "edge_consensus_membership_attest_v1" or att.get("kid") != "edge-consensus-membership-k0":
     print("missing membership attest", bundle, file=sys.stderr)
@@ -276,6 +279,9 @@ if delivered.get("campaign_retry_ms") != 300 or delivered.get("campaign_retry_ma
 if delivered.get("campaign_retry_backoff_factor") != 2:
     print("wrong delivered backoff factor", delivered, file=sys.stderr)
     raise SystemExit(1)
+if delivered.get("leader_heartbeat_ms") != 240 or delivered.get("leader_lease_ms") != 1100:
+    print("wrong delivered leader freshness policy", delivered, file=sys.stderr)
+    raise SystemExit(1)
 
 rt_a = start_a.get("runtime") or {}
 if sorted(rt_a.get("member_node_ids") or []) != members:
@@ -292,6 +298,9 @@ if rt_a.get("membership_epoch") != 19 or rt_a.get("campaign_delay_ms") != 120 or
     raise SystemExit(1)
 if rt_a.get("campaign_retry_max_ms") != 900 or rt_a.get("campaign_retry_backoff_factor") != 2:
     print("runtime A missing retry backoff defaults", rt_a, file=sys.stderr)
+    raise SystemExit(1)
+if rt_a.get("leader_heartbeat_ms") != 240 or rt_a.get("leader_lease_ms") != 1100:
+    print("runtime A missing leader freshness defaults", rt_a, file=sys.stderr)
     raise SystemExit(1)
 if (start_a.get("cluster_policy") or {}).get("cluster_id") != cluster_id:
     print("start response missing cluster policy", start_a, file=sys.stderr)
@@ -310,6 +319,9 @@ for label, obj in (("running_a", running_a), ("status_a", status_a), ("status_b"
         raise SystemExit(1)
     if rt.get("campaign_retry_backoff_factor") != 2:
         print(label, "runtime retry backoff mismatch", obj, file=sys.stderr)
+        raise SystemExit(1)
+    if rt.get("leader_heartbeat_ms") != 240 or rt.get("leader_lease_ms") != 1100:
+        print(label, "runtime leader freshness mismatch", obj, file=sys.stderr)
         raise SystemExit(1)
 
 res_a = (status_a.get("runtime") or {}).get("result") or {}
@@ -330,6 +342,9 @@ if loop_status.get("campaign_attempts", 0) < 2:
 if loop_status.get("campaign_retry_max_ms") != 900 or loop_status.get("campaign_retry_backoff_factor") != 2:
     print("loop status missing retry backoff policy", loop_status, file=sys.stderr)
     raise SystemExit(1)
+if loop_status.get("leader_heartbeat_ms") != 240 or loop_status.get("leader_lease_ms") != 1100:
+    print("loop status missing leader freshness policy", loop_status, file=sys.stderr)
+    raise SystemExit(1)
 
 status_policy = status_a.get("cluster_policy") or {}
 if status_policy.get("cluster_id") != cluster_id:
@@ -343,6 +358,9 @@ if status_policy.get("campaign_retry_ms") != 300 or status_policy.get("campaign_
     raise SystemExit(1)
 if status_policy.get("campaign_retry_backoff_factor") != 2:
     print("runtime status missing retry backoff factor in cluster policy", status_policy, file=sys.stderr)
+    raise SystemExit(1)
+if status_policy.get("leader_heartbeat_ms") != 240 or status_policy.get("leader_lease_ms") != 1100:
+    print("runtime status missing leader freshness policy in cluster policy", status_policy, file=sys.stderr)
     raise SystemExit(1)
 
 print("ok")

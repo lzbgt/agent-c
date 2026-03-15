@@ -32,7 +32,9 @@ static EdgeConsensusNodeLoop make_loop(
   int64_t campaign_delay_ms = 0,
   int64_t campaign_retry_ms = 0,
   int64_t campaign_retry_max_ms = 0,
-  int64_t campaign_retry_backoff_factor = 1
+  int64_t campaign_retry_backoff_factor = 1,
+  int64_t leader_heartbeat_ms = 1000,
+  int64_t leader_lease_ms = 5000
 ) {
   EdgeConsensusNodeLoopConfig cfg;
   cfg.self = make_identity(node_id);
@@ -42,6 +44,8 @@ static EdgeConsensusNodeLoop make_loop(
   cfg.campaign_retry_ms = campaign_retry_ms;
   cfg.campaign_retry_max_ms = campaign_retry_max_ms;
   cfg.campaign_retry_backoff_factor = campaign_retry_backoff_factor;
+  cfg.leader_heartbeat_ms = leader_heartbeat_ms;
+  cfg.leader_lease_ms = leader_lease_ms;
   cfg.decision_sha256 = decision_sha256;
   return EdgeConsensusNodeLoop(cfg);
 }
@@ -230,7 +234,9 @@ static void test_status_surfaces_loop_config() {
     50,
     250,
     500,
-    2
+    2,
+    300,
+    1200
   );
   (void)loop.tick(1000);
   (void)loop.tick(1050);
@@ -240,6 +246,8 @@ static void test_status_surfaces_loop_config() {
   assert(status["campaign_retry_ms"].asInt64() == 250);
   assert(status["campaign_retry_max_ms"].asInt64() == 500);
   assert(status["campaign_retry_backoff_factor"].asInt64() == 2);
+  assert(status["leader_heartbeat_ms"].asInt64() == 300);
+  assert(status["leader_lease_ms"].asInt64() == 1200);
   assert(status["self"]["membership_epoch"].asUInt64() == 9);
   assert(status["peer_node_ids"].isArray());
   assert(status["peer_node_ids"].size() == 2);
@@ -256,6 +264,74 @@ static void test_status_surfaces_loop_config() {
   assert(status["replica"]["member_node_ids"].size() == 3);
 }
 
+static void test_leader_heartbeat_and_follower_lease_expiry() {
+  const std::string decision = "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+  auto loop_a = make_loop("node-a", {"node-b", "node-c"}, decision, 0, 300, 600, 2, 200, 700);
+  auto loop_b = make_loop("node-b", {"node-a", "node-c"}, "", 0, 300, 600, 2, 200, 700);
+  EdgeConsensusReplica replica_b(make_identity("node-b"), 3);
+  EdgeConsensusReplica replica_c(make_identity("node-c"), 3);
+  set_membership_all(&replica_b, {"node-a", "node-b", "node-c"});
+  set_membership_all(&replica_c, {"node-a", "node-b", "node-c"});
+
+  const std::vector<EdgeConsensusFrame> request = loop_a.tick(100);
+  assert(request.size() == 1);
+
+  std::vector<EdgeConsensusFrame> reply_b;
+  std::vector<EdgeConsensusFrame> reply_c;
+  deliver(replica_b, request[0], &reply_b);
+  deliver(replica_c, request[0], &reply_c);
+
+  std::vector<EdgeConsensusFrame> generated;
+  std::string err;
+  bool ok = loop_a.handle_frame(reply_b[0], &generated, &err, 120);
+  assert(ok);
+  assert(err.empty());
+  assert(generated.size() == 1);
+  assert(generated[0].kind == "leader_commit");
+  const EdgeConsensusFrame first_commit = generated[0];
+
+  ok = loop_a.handle_frame(reply_c[0], &generated, &err, 130);
+  assert(ok);
+  assert(err.empty());
+  assert(generated.empty());
+
+  std::vector<EdgeConsensusFrame> follower_generated;
+  ok = loop_b.handle_frame(first_commit, &follower_generated, &err, 140);
+  assert(ok);
+  assert(err.empty());
+  assert(follower_generated.empty());
+  assert(loop_b.committed_decision_sha256() == decision);
+  assert(loop_b.leader_node_id() == "node-a");
+
+  std::vector<EdgeConsensusFrame> heartbeat = loop_a.tick(319);
+  assert(heartbeat.empty());
+  heartbeat = loop_a.tick(320);
+  assert(heartbeat.size() == 1);
+  assert(heartbeat[0].kind == "leader_commit");
+  assert(heartbeat[0].leader_node_id == "node-a");
+
+  ok = loop_b.handle_frame(heartbeat[0], &follower_generated, &err, 340);
+  assert(ok);
+  assert(err.empty());
+  assert(loop_b.committed_decision_sha256() == decision);
+
+  std::vector<EdgeConsensusFrame> retry = loop_b.tick(1039);
+  assert(retry.empty());
+  retry = loop_b.tick(1040);
+  assert(retry.size() == 1);
+  assert(retry[0].kind == "vote_request");
+  assert(retry[0].candidate_node_id == "node-b");
+  assert(retry[0].decision_sha256 == decision);
+  assert(loop_b.leader_node_id().empty());
+  assert(loop_b.committed_decision_sha256().empty());
+
+  const Json::Value status = loop_b.status_to_json();
+  assert(status["last_known_decision_sha256"].asString() == decision);
+  assert(status["leader_heartbeat_ms"].asInt64() == 200);
+  assert(status["leader_lease_ms"].asInt64() == 700);
+  assert(status["campaign_attempts"].asUInt64() == 1);
+}
+
 }  // namespace
 
 int main() {
@@ -265,5 +341,6 @@ int main() {
   test_vote_grant_routes_back_to_candidate();
   test_quorum_commit_emits_leader_commit();
   test_status_surfaces_loop_config();
+  test_leader_heartbeat_and_follower_lease_expiry();
   return 0;
 }

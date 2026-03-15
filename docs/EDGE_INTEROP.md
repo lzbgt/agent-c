@@ -230,6 +230,8 @@ Returns messages in ascending `outbox_id` order. The node should:
   - defaults to a builtin in-agentd backend; `runtime_kind=external` keeps the standalone helper for bring-up/debug parity
   - supports `campaign_delay_ms`, `campaign_retry_ms`, `campaign_retry_max_ms`, and `campaign_retry_backoff_factor`
     so early candidates can re-campaign with bounded exponential backoff until peers come online
+  - supports `leader_heartbeat_ms` and `leader_lease_ms` so followers can expire stale leaders and candidates can
+    resume campaigning after lease timeout
   - accepts explicit `membership_epoch` and `member_node_ids` for deterministic member-set compatibility
   - defaults those same membership/retry fields from the durable per-cluster policy when they are omitted
 - `GET /api/v1/edge/node/consensus_runtime?node_id=...`
@@ -237,7 +239,7 @@ Returns messages in ascending `outbox_id` order. The node should:
 - `GET /api/v1/edge/consensus/membership?cluster_id=...`
   - exports the signed `edge_consensus_membership_v1` control-plane bundle for one cluster
 - `POST /api/v1/edge/consensus/membership/rotate`
-  - persists monotonic cluster membership + retry policy
+  - persists monotonic cluster membership, bounded retry policy, and leader heartbeat/lease policy
 - `POST /api/v1/edge/consensus/membership/send`
   - enqueues that same bundle to a node outbox as `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE`
 - `GET /api/v1/edge/node/caps?node_id=...`

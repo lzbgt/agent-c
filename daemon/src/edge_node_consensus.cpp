@@ -136,6 +136,16 @@ static int64_t clamp_retry_backoff_factor(int64_t v) {
   return std::max<int64_t>(1, std::min<int64_t>(v, 8));
 }
 
+static int64_t clamp_leader_heartbeat_ms(int64_t v) {
+  return std::max<int64_t>(0, std::min<int64_t>(v, 120000));
+}
+
+static int64_t clamp_leader_lease_ms(int64_t heartbeat_ms, int64_t lease_ms) {
+  const int64_t clamped_heartbeat = clamp_leader_heartbeat_ms(heartbeat_ms);
+  const int64_t clamped_lease = std::max<int64_t>(0, std::min<int64_t>(lease_ms, 300000));
+  return std::max<int64_t>(clamped_heartbeat, clamped_lease);
+}
+
 static int64_t compute_campaign_retry_delay_ms(
   int64_t campaign_retry_ms,
   int64_t campaign_retry_max_ms,
@@ -180,6 +190,9 @@ EdgeConsensusNodeLoop::EdgeConsensusNodeLoop(const EdgeConsensusNodeLoopConfig& 
   if (cfg_.campaign_retry_max_ms <= 0) cfg_.campaign_retry_max_ms = cfg_.campaign_retry_ms;
   cfg_.campaign_retry_max_ms = std::max<int64_t>(cfg_.campaign_retry_ms, cfg_.campaign_retry_max_ms);
   cfg_.campaign_retry_backoff_factor = clamp_retry_backoff_factor(cfg_.campaign_retry_backoff_factor);
+  cfg_.leader_heartbeat_ms = clamp_leader_heartbeat_ms(cfg_.leader_heartbeat_ms);
+  cfg_.leader_lease_ms = clamp_leader_lease_ms(cfg_.leader_heartbeat_ms, cfg_.leader_lease_ms);
+  remember_decision(cfg_.decision_sha256);
   replica_.set_membership(cfg_.self.membership_epoch, cfg_.member_node_ids);
 }
 
@@ -204,6 +217,8 @@ void EdgeConsensusReplica::maybe_reset_for_new_term(uint64_t term) {
   voted_for_node_id_.clear();
   leader_node_id_.clear();
   campaign_decision_sha256_.clear();
+  committed_decision_sha256_.clear();
+  committed_vote_witnesses_.clear();
   grant_witnesses_by_node_id_.clear();
 }
 
@@ -253,6 +268,20 @@ EdgeConsensusFrame EdgeConsensusReplica::make_leader_commit_frame() const {
   return out;
 }
 
+EdgeConsensusFrame EdgeConsensusReplica::current_leader_commit_frame() const {
+  return make_leader_commit_frame();
+}
+
+void EdgeConsensusReplica::expire_leader_lease() {
+  if (leader_is_self()) return;
+  leader_node_id_.clear();
+  voted_for_node_id_.clear();
+  campaign_decision_sha256_.clear();
+  committed_decision_sha256_.clear();
+  committed_vote_witnesses_.clear();
+  grant_witnesses_by_node_id_.clear();
+}
+
 EdgeConsensusFrame EdgeConsensusReplica::start_election(const std::string& decision_sha256) {
   campaign_decision_sha256_ = decision_sha256;
   committed_decision_sha256_.clear();
@@ -270,6 +299,11 @@ EdgeConsensusFrame EdgeConsensusReplica::start_election(const std::string& decis
   out.candidate_node_id = self_.node_id;
   out.from = self_;
   return out;
+}
+
+void EdgeConsensusNodeLoop::remember_decision(const std::string& decision_sha256) {
+  const std::string sha = trim_copy(decision_sha256);
+  if (!sha.empty()) last_known_decision_sha256_ = sha;
 }
 
 bool EdgeConsensusReplica::handle_frame(
@@ -339,11 +373,48 @@ int64_t EdgeConsensusNodeLoop::current_campaign_delay_ms() const {
     cfg_.campaign_retry_ms, cfg_.campaign_retry_max_ms, cfg_.campaign_retry_backoff_factor, campaign_attempts_);
 }
 
+bool EdgeConsensusNodeLoop::leader_lease_expired(int64_t now_utc_ms) const {
+  if (cfg_.leader_lease_ms <= 0 || now_utc_ms <= 0) return false;
+  if (replica_.leader_node_id().empty() || replica_.leader_is_self()) return false;
+  if (last_leader_contact_utc_ms_ <= 0) return false;
+  return now_utc_ms - last_leader_contact_utc_ms_ >= cfg_.leader_lease_ms;
+}
+
+void EdgeConsensusNodeLoop::observe_leader_activity(const EdgeConsensusFrame& frame, int64_t now_utc_ms) {
+  if (frame.kind != "leader_commit" || now_utc_ms <= 0) return;
+  if (frame.leader_node_id.empty()) return;
+  last_leader_contact_utc_ms_ = now_utc_ms;
+  remember_decision(frame.decision_sha256);
+}
+
 std::vector<EdgeConsensusFrame> EdgeConsensusNodeLoop::tick(int64_t now_utc_ms) {
   std::vector<EdgeConsensusFrame> out;
   if (started_utc_ms_ == 0) started_utc_ms_ = now_utc_ms;
-  if (trim_copy(cfg_.decision_sha256).empty()) return out;
+  remember_decision(replica_.committed_decision_sha256());
+
+  if (!trim_copy(replica_.committed_decision_sha256()).empty() && replica_.leader_is_self()) {
+    if (cfg_.leader_heartbeat_ms > 0 &&
+        (last_leader_heartbeat_sent_utc_ms_ <= 0 || now_utc_ms - last_leader_heartbeat_sent_utc_ms_ >= cfg_.leader_heartbeat_ms)) {
+      out.push_back(replica_.current_leader_commit_frame());
+      last_leader_heartbeat_sent_utc_ms_ = now_utc_ms;
+      last_leader_contact_utc_ms_ = now_utc_ms;
+    }
+    return out;
+  }
+
+  if (leader_lease_expired(now_utc_ms)) {
+    replica_.expire_leader_lease();
+    last_leader_contact_utc_ms_ = 0;
+    if (election_started_ && last_campaign_started_utc_ms_ > 0) {
+      last_campaign_started_utc_ms_ = now_utc_ms - current_campaign_delay_ms();
+    }
+  }
+
+  const std::string campaign_decision =
+    trim_copy(cfg_.decision_sha256).empty() ? trim_copy(last_known_decision_sha256_) : trim_copy(cfg_.decision_sha256);
+  if (campaign_decision.empty()) return out;
   if (!trim_copy(replica_.committed_decision_sha256()).empty()) return out;
+
   if (!election_started_) {
     if (now_utc_ms - started_utc_ms_ < cfg_.campaign_delay_ms) return out;
   } else {
@@ -353,7 +424,7 @@ std::vector<EdgeConsensusFrame> EdgeConsensusNodeLoop::tick(int64_t now_utc_ms) 
       return out;
     }
   }
-  out.push_back(replica_.start_election(cfg_.decision_sha256));
+  out.push_back(replica_.start_election(campaign_decision));
   election_started_ = true;
   last_campaign_started_utc_ms_ = now_utc_ms;
   campaign_attempts_ += 1;
@@ -363,9 +434,23 @@ std::vector<EdgeConsensusFrame> EdgeConsensusNodeLoop::tick(int64_t now_utc_ms) 
 bool EdgeConsensusNodeLoop::handle_frame(
   const EdgeConsensusFrame& frame,
   std::vector<EdgeConsensusFrame>* out_frames,
-  std::string* out_error
+  std::string* out_error,
+  int64_t now_utc_ms
 ) {
-  return replica_.handle_frame(frame, out_frames, out_error);
+  const bool ok = replica_.handle_frame(frame, out_frames, out_error);
+  if (!ok) return false;
+  remember_decision(frame.decision_sha256);
+  observe_leader_activity(frame, now_utc_ms);
+  if (out_frames) {
+    for (const auto& generated : *out_frames) {
+      if (generated.kind == "leader_commit") {
+        last_leader_contact_utc_ms_ = now_utc_ms;
+        last_leader_heartbeat_sent_utc_ms_ = now_utc_ms;
+        remember_decision(generated.decision_sha256);
+      }
+    }
+  }
+  return true;
 }
 
 std::vector<std::string> EdgeConsensusNodeLoop::target_node_ids_for_frame(const EdgeConsensusFrame& frame) const {
@@ -387,10 +472,25 @@ Json::Value EdgeConsensusNodeLoop::status_to_json() const {
   out["campaign_retry_ms"] = (Json::Int64)cfg_.campaign_retry_ms;
   out["campaign_retry_max_ms"] = (Json::Int64)cfg_.campaign_retry_max_ms;
   out["campaign_retry_backoff_factor"] = (Json::Int64)cfg_.campaign_retry_backoff_factor;
+  out["leader_heartbeat_ms"] = (Json::Int64)cfg_.leader_heartbeat_ms;
+  out["leader_lease_ms"] = (Json::Int64)cfg_.leader_lease_ms;
   if (!cfg_.decision_sha256.empty()) out["decision_sha256"] = cfg_.decision_sha256;
+  if (!last_known_decision_sha256_.empty()) out["last_known_decision_sha256"] = last_known_decision_sha256_;
   out["election_started"] = election_started_;
   out["campaign_attempts"] = Json::UInt64(campaign_attempts_);
   out["current_campaign_delay_ms"] = (Json::Int64)current_campaign_delay_ms();
+  if (last_leader_contact_utc_ms_ > 0) {
+    out["last_leader_contact_utc_ms"] = (Json::Int64)last_leader_contact_utc_ms_;
+    if (cfg_.leader_lease_ms > 0 && !replica_.leader_node_id().empty() && !replica_.leader_is_self()) {
+      out["leader_lease_deadline_utc_ms"] = (Json::Int64)(last_leader_contact_utc_ms_ + cfg_.leader_lease_ms);
+    }
+  }
+  if (last_leader_heartbeat_sent_utc_ms_ > 0) {
+    out["last_leader_heartbeat_sent_utc_ms"] = (Json::Int64)last_leader_heartbeat_sent_utc_ms_;
+    if (cfg_.leader_heartbeat_ms > 0 && replica_.leader_is_self() && !trim_copy(replica_.committed_decision_sha256()).empty()) {
+      out["next_leader_heartbeat_utc_ms"] = (Json::Int64)(last_leader_heartbeat_sent_utc_ms_ + cfg_.leader_heartbeat_ms);
+    }
+  }
   if (last_campaign_started_utc_ms_ > 0) {
     out["last_campaign_started_utc_ms"] = (Json::Int64)last_campaign_started_utc_ms_;
     if (current_campaign_delay_ms() > 0 && trim_copy(replica_.committed_decision_sha256()).empty()) {

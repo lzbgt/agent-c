@@ -885,25 +885,6 @@ static std::vector<std::string> normalize_edge_member_node_ids(const std::vector
   return out;
 }
 
-static Json::Value edge_consensus_cluster_policy_to_json(
-  const std::string& cluster_id,
-  const EdgeConsensusClusterPolicy& pol
-) {
-  Json::Value out(Json::objectValue);
-  out["schema"] = "edge_consensus_cluster_policy_v1";
-  out["cluster_id"] = cluster_id;
-  out["membership_epoch"] = (Json::Int64)pol.membership_epoch;
-  out["updated_utc_ms"] = (Json::Int64)pol.updated_utc_ms;
-  out["campaign_delay_ms"] = (Json::Int64)pol.campaign_delay_ms;
-  out["campaign_retry_ms"] = (Json::Int64)pol.campaign_retry_ms;
-  out["campaign_retry_max_ms"] = (Json::Int64)pol.campaign_retry_max_ms;
-  out["campaign_retry_backoff_factor"] = (Json::Int64)pol.campaign_retry_backoff_factor;
-  Json::Value arr(Json::arrayValue);
-  for (const auto& member : pol.member_node_ids) arr.append(member);
-  out["member_node_ids"] = arr;
-  return out;
-}
-
 static bool build_edge_consensus_membership_bundle(
   const DaemonConfig& cfg,
   const std::string& cluster_id,
@@ -933,6 +914,8 @@ static bool build_edge_consensus_membership_bundle(
   bundle["campaign_retry_ms"] = (Json::Int64)pol.campaign_retry_ms;
   bundle["campaign_retry_max_ms"] = (Json::Int64)pol.campaign_retry_max_ms;
   bundle["campaign_retry_backoff_factor"] = (Json::Int64)pol.campaign_retry_backoff_factor;
+  bundle["leader_heartbeat_ms"] = (Json::Int64)pol.leader_heartbeat_ms;
+  bundle["leader_lease_ms"] = (Json::Int64)pol.leader_lease_ms;
   {
     Json::Value arr(Json::arrayValue);
     for (const auto& member : pol.member_node_ids) arr.append(member);
@@ -3724,10 +3707,38 @@ void handle_edge_consensus_membership_rotate_endpoint(
       ? args["campaign_retry_backoff_factor"].asInt64()
       : (int64_t)args["campaign_retry_backoff_factor"].asUInt64();
   }
+  if (args.isMember("leader_heartbeat_ms")) {
+    if (!args["leader_heartbeat_ms"].isInt64() && !args["leader_heartbeat_ms"].isUInt64()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "leader_heartbeat_ms must be an integer";
+      resp->status = 400;
+      resp->body = json_stringify(o);
+      return;
+    }
+    next_pol.leader_heartbeat_ms = args["leader_heartbeat_ms"].isInt64()
+      ? args["leader_heartbeat_ms"].asInt64()
+      : (int64_t)args["leader_heartbeat_ms"].asUInt64();
+  }
+  if (args.isMember("leader_lease_ms")) {
+    if (!args["leader_lease_ms"].isInt64() && !args["leader_lease_ms"].isUInt64()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "leader_lease_ms must be an integer";
+      resp->status = 400;
+      resp->body = json_stringify(o);
+      return;
+    }
+    next_pol.leader_lease_ms = args["leader_lease_ms"].isInt64()
+      ? args["leader_lease_ms"].asInt64()
+      : (int64_t)args["leader_lease_ms"].asUInt64();
+  }
   next_pol.campaign_delay_ms = std::max<int64_t>(0, std::min<int64_t>(next_pol.campaign_delay_ms, 120000));
   next_pol.campaign_retry_ms = std::max<int64_t>(0, std::min<int64_t>(next_pol.campaign_retry_ms, 120000));
   next_pol.campaign_retry_max_ms = std::max<int64_t>(next_pol.campaign_retry_ms, std::min<int64_t>(next_pol.campaign_retry_max_ms, 300000));
   next_pol.campaign_retry_backoff_factor = std::max<int64_t>(1, std::min<int64_t>(next_pol.campaign_retry_backoff_factor, 8));
+  next_pol.leader_heartbeat_ms = std::max<int64_t>(0, std::min<int64_t>(next_pol.leader_heartbeat_ms, 120000));
+  next_pol.leader_lease_ms = std::max<int64_t>(next_pol.leader_heartbeat_ms, std::min<int64_t>(next_pol.leader_lease_ms, 300000));
 
   DaemonConfig next = cur;
   next.edge_consensus_clusters[cluster_id] = next_pol;
@@ -3763,6 +3774,8 @@ void handle_edge_consensus_membership_rotate_endpoint(
   o["campaign_retry_ms"] = (Json::Int64)next_pol.campaign_retry_ms;
   o["campaign_retry_max_ms"] = (Json::Int64)next_pol.campaign_retry_max_ms;
   o["campaign_retry_backoff_factor"] = (Json::Int64)next_pol.campaign_retry_backoff_factor;
+  o["leader_heartbeat_ms"] = (Json::Int64)next_pol.leader_heartbeat_ms;
+  o["leader_lease_ms"] = (Json::Int64)next_pol.leader_lease_ms;
   o["member_count"] = (Json::UInt64)next_pol.member_node_ids.size();
   o["membership"] = bundle;
   resp->body = json_stringify(o);

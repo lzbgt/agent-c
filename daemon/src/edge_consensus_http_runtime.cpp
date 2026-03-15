@@ -211,6 +211,8 @@ bool run_edge_consensus_http_runtime(
   loop_cfg.campaign_retry_ms = cfg.campaign_retry_ms;
   loop_cfg.campaign_retry_max_ms = cfg.campaign_retry_max_ms;
   loop_cfg.campaign_retry_backoff_factor = cfg.campaign_retry_backoff_factor;
+  loop_cfg.leader_heartbeat_ms = cfg.leader_heartbeat_ms;
+  loop_cfg.leader_lease_ms = cfg.leader_lease_ms;
   loop_cfg.decision_sha256 = cfg.decision_sha256;
   EdgeConsensusNodeLoop loop(loop_cfg);
   const int64_t started_ms = now_utc_ms();
@@ -266,7 +268,7 @@ bool run_edge_consensus_http_runtime(
         }
         std::vector<EdgeConsensusFrame> generated;
         std::string herr;
-        if (!loop.handle_frame(frame, &generated, &herr)) {
+        if (!loop.handle_frame(frame, &generated, &herr, now_utc_ms())) {
           if (out_error) *out_error = "failed to handle relayed frame: " + herr;
           return false;
         }

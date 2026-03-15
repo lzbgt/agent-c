@@ -17,6 +17,8 @@ struct EdgeConsensusClusterPolicy {
   int64_t campaign_retry_ms = 1500;
   int64_t campaign_retry_max_ms = 1500;
   int64_t campaign_retry_backoff_factor = 1;
+  int64_t leader_heartbeat_ms = 1000;
+  int64_t leader_lease_ms = 5000;
 };
 
 struct CorsRouteConfig {
