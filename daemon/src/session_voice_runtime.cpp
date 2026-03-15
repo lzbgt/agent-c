@@ -311,6 +311,16 @@ static std::string effective_voice_broker_token(const DaemonConfig& cfg, const s
   return trim_copy(cfg.audio_webrtc_broker_token);
 }
 
+static bool validate_voice_broker_token_if_present(const std::string& broker_token, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (broker_token.empty()) return true;
+  if (!is_safe_printable_field(broker_token, 1024)) {
+    if (out_err) *out_err = "invalid configured audio_webrtc_broker_token";
+    return false;
+  }
+  return true;
+}
+
 #if !defined(_WIN32)
 static bool pid_is_running(pid_t pid) {
   if (pid <= 0) return false;
@@ -1001,13 +1011,6 @@ void handle_session_voice_webrtc_peer_endpoint(
     resp->body = json_error_body("invalid broker_token");
     return;
   }
-  const std::string broker_token = effective_voice_broker_token(cfg, request_broker_token);
-  if (!broker_token.empty() && !is_safe_printable_field(broker_token, 1024)) {
-    out["error"] = "invalid configured audio_webrtc_broker_token";
-    resp->status = 500;
-    resp->body = json_stringify(out);
-    return;
-  }
 
   if (action == "stop") {
     std::shared_ptr<VoicePeerRuntime> st;
@@ -1058,7 +1061,19 @@ void handle_session_voice_webrtc_peer_endpoint(
     std::string cleanup_err;
     bool cleanup_attempted = false;
     bool cleanup_deleted = false;
+    const std::string broker_token = effective_voice_broker_token(cfg, request_broker_token);
     if (st->managed_broker_session && !trim_copy(st->broker_session_id).empty() && !broker_token.empty()) {
+      if (!validate_voice_broker_token_if_present(broker_token, &cleanup_err)) {
+        out["error"] = cleanup_err;
+        {
+          std::lock_guard<std::mutex> lk(g_voice_peer_mu);
+          refresh_voice_peer_runtime_state(st.get());
+          out["peer"] = voice_peer_runtime_to_json(*st);
+        }
+        resp->status = 500;
+        resp->body = json_stringify(out);
+        return;
+      }
       cleanup_attempted = true;
       cleanup_deleted = broker_delete_audio_session(st->broker_url, broker_token, st->broker_session_id, &cleanup_err);
     }
@@ -1214,6 +1229,13 @@ void handle_session_voice_webrtc_peer_endpoint(
   }
   if (!is_safe_printable_field(broker_url, 2048)) {
     out["error"] = "invalid configured audio_webrtc_broker_url";
+    resp->status = 500;
+    resp->body = json_stringify(out);
+    return;
+  }
+  const std::string broker_token = effective_voice_broker_token(cfg, request_broker_token);
+  if (!validate_voice_broker_token_if_present(broker_token, &err)) {
+    out["error"] = err;
     resp->status = 500;
     resp->body = json_stringify(out);
     return;
@@ -1461,11 +1483,6 @@ bool cleanup_session_voice_webrtc_peer_runtime(
   summary["runtime_present"] = false;
   summary["runtime_was_running"] = false;
   summary["peer"] = Json::Value(Json::nullValue);
-  const std::string broker_token_effective = effective_voice_broker_token(cfg, broker_token);
-  if (!broker_token_effective.empty() && !is_safe_printable_field(broker_token_effective, 1024)) {
-    if (out_err) *out_err = "invalid configured audio_webrtc_broker_token";
-    return false;
-  }
 
   std::shared_ptr<VoicePeerRuntime> st;
   {
@@ -1515,8 +1532,13 @@ bool cleanup_session_voice_webrtc_peer_runtime(
 #endif
 
   bool broker_deleted = false;
+  const std::string broker_token_effective = effective_voice_broker_token(cfg, broker_token);
   if (st && st->managed_broker_session && !trim_copy(st->broker_session_id).empty() && !broker_token_effective.empty()) {
     std::string berr;
+    if (!validate_voice_broker_token_if_present(broker_token_effective, &berr)) {
+      if (out_err) *out_err = berr;
+      return false;
+    }
     broker_deleted = broker_delete_audio_session(st->broker_url, broker_token_effective, st->broker_session_id, &berr);
     summary["broker_session_delete_attempted"] = true;
     summary["broker_session_deleted"] = broker_deleted;

@@ -438,6 +438,8 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
 - `POST /api/v1/session/voice_webrtc_peer` `action=stop` now accepts optional `broker_token`; when the runtime owns the
   broker audio session, agentd can use either that request token or the daemon's configured default token to delete the
   session itself if the peer died before delivering `bye`.
+- The stop/delete cleanup path now validates broker tokens lazily: a malformed configured default broker token no longer
+  blocks stop or session delete for borrowed broker sessions where agentd does not own broker-session deletion.
 
 ## Data governance
 

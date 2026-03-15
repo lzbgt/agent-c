@@ -397,6 +397,8 @@ Current status:
 - Shipped: agentd now owns that host-side media-peer lifecycle through `POST/GET /api/v1/session/voice_webrtc_peer`, covered by `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh`.
 - Shipped: `runtime_kind` on `POST /api/v1/session/voice_webrtc_peer` is now a start-only selector, so stop requests
   ignore mismatched backend values and operate on the real managed runtime for that session.
+- Shipped: stop/delete cleanup now validates broker tokens only when agentd actually needs to delete an owned broker
+  audio session, so malformed configured defaults no longer block borrowed-session teardown.
 - Shipped: when that agentd endpoint is given `broker_agent_id` instead of a pre-created `broker_session_id`,
   agentd now creates the broker audio session itself and records that ownership in runtime status as
   `peer.managed_broker_session=true`.

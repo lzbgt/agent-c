@@ -1536,6 +1536,240 @@ PY
 
 wait_broker_session_deleted "${EXTERNAL_BROKER_SESSION_ID}"
 
+invalid_broker_defaults_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "audio_webrtc": {
+    "broker_url": "${VOICE_BROKER_URL}",
+    "broker_token": "bad\\nvoice\\ntoken",
+    "peer_tool_path": "${PEER_TOOL}",
+    "default_runtime_kind": "external",
+    "node_bin": "node"
+  }
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/config/update")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${invalid_broker_defaults_resp}''')
+if not obj.get("ok"):
+  print("failed to set invalid broker token defaults for lazy-validation proof", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+BORROWED_STOP_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_borrowed_stop_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${BORROWED_STOP_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+borrowed_stop_broker_create_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions" \
+  -H "Authorization: Bearer audio-webui-token" \
+  -H 'Content-Type: application/json' \
+  -d '{"agent_id":"a-1","mode":"webrtc"}')"
+
+BORROWED_STOP_BROKER_SESSION_ID="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${borrowed_stop_broker_create_resp}''')
+sid = str(obj.get("session_id") or "").strip()
+if not obj.get("ok") or not sid:
+  print("failed to create borrowed stop broker session", obj, file=sys.stderr)
+  raise SystemExit(1)
+print(sid)
+PY
+)"
+
+borrowed_stop_start_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${BORROWED_STOP_SESSION_ID}",
+  "action": "start",
+  "runtime_kind": "external",
+  "broker_session_id": "${BORROWED_STOP_BROKER_SESSION_ID}",
+  "broker_url": "${VOICE_BROKER_URL}",
+  "broker_token": "${VOICE_BROKER_TOKEN}",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 777
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${borrowed_stop_start_resp}''')
+peer = obj.get("peer") or {}
+if not obj.get("ok") or not obj.get("started"):
+  print("borrowed stop runtime start failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("managed_broker_session") is not False:
+  print("expected borrowed stop runtime to keep broker ownership external", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("runtime_kind") != "external":
+  print("expected borrowed stop runtime_kind=external", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+wait_voice_peer_ready "${BORROWED_STOP_SESSION_ID}" 1 status_json external external config 1
+
+borrowed_stop_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${BORROWED_STOP_SESSION_ID}\",\"action\":\"stop\"}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${borrowed_stop_resp}''')
+peer = obj.get("peer") or {}
+if not obj.get("ok") or not obj.get("stopped"):
+  print("borrowed runtime stop should ignore invalid configured broker token", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "broker_session_deleted" in obj:
+  print("borrowed runtime stop should not attempt broker deletion", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("managed_broker_session") is not False:
+  print("expected borrowed runtime stop to keep managed_broker_session=false", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+borrowed_stop_delete_status="$(curl -sS --noproxy "*" --max-time 10 -o /dev/null -w '%{http_code}' -X DELETE \
+  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${BORROWED_STOP_BROKER_SESSION_ID}" \
+  -H "Authorization: Bearer audio-webui-token")"
+if [[ "${borrowed_stop_delete_status}" != "200" && "${borrowed_stop_delete_status}" != "404" ]]; then
+  echo "expected borrowed stop broker session delete to return 200 or 404, got ${borrowed_stop_delete_status}" >&2
+  exit 1
+fi
+
+BORROWED_DELETE_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_borrowed_delete_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${BORROWED_DELETE_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+borrowed_delete_broker_create_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions" \
+  -H "Authorization: Bearer audio-webui-token" \
+  -H 'Content-Type: application/json' \
+  -d '{"agent_id":"a-1","mode":"webrtc"}')"
+
+BORROWED_DELETE_BROKER_SESSION_ID="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${borrowed_delete_broker_create_resp}''')
+sid = str(obj.get("session_id") or "").strip()
+if not obj.get("ok") or not sid:
+  print("failed to create borrowed delete broker session", obj, file=sys.stderr)
+  raise SystemExit(1)
+print(sid)
+PY
+)"
+
+borrowed_delete_start_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${BORROWED_DELETE_SESSION_ID}",
+  "action": "start",
+  "runtime_kind": "external",
+  "broker_session_id": "${BORROWED_DELETE_BROKER_SESSION_ID}",
+  "broker_url": "${VOICE_BROKER_URL}",
+  "broker_token": "${VOICE_BROKER_TOKEN}",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 778
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${borrowed_delete_start_resp}''')
+peer = obj.get("peer") or {}
+if not obj.get("ok") or not obj.get("started"):
+  print("borrowed delete runtime start failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("managed_broker_session") is not False:
+  print("expected borrowed delete runtime to keep broker ownership external", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+wait_voice_peer_ready "${BORROWED_DELETE_SESSION_ID}" 1 status_json external external config 1
+
+BORROWED_DELETE_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${BORROWED_DELETE_SESSION_ID}")"
+borrowed_delete_resp="$(curl -fsS --noproxy "*" --max-time 10 -X DELETE \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session?session_id=${BORROWED_DELETE_SESSION_ID_Q}")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${borrowed_delete_resp}''')
+cleanup = obj.get("voice_runtime_cleanup") or {}
+peer = cleanup.get("peer") or {}
+if not obj.get("ok"):
+  print("borrowed delete cleanup should ignore invalid configured broker token", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("runtime_present") is not True or cleanup.get("stopped") is not True:
+  print("expected borrowed delete runtime cleanup summary", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("broker_session_delete_attempted") is not False:
+  print("borrowed delete cleanup should not attempt broker deletion", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("managed_broker_session") is not False:
+  print("expected borrowed delete cleanup peer managed_broker_session=false", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+borrowed_delete_broker_delete_status="$(curl -sS --noproxy "*" --max-time 10 -o /dev/null -w '%{http_code}' -X DELETE \
+  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${BORROWED_DELETE_BROKER_SESSION_ID}" \
+  -H "Authorization: Bearer audio-webui-token")"
+if [[ "${borrowed_delete_broker_delete_status}" != "200" && "${borrowed_delete_broker_delete_status}" != "404" ]]; then
+  echo "expected borrowed delete broker session delete to return 200 or 404, got ${borrowed_delete_broker_delete_status}" >&2
+  exit 1
+fi
+
+restore_broker_defaults_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "audio_webrtc": {
+    "broker_url": "${VOICE_BROKER_URL}",
+    "broker_token": "${VOICE_BROKER_TOKEN}",
+    "peer_tool_path": "${PEER_TOOL}",
+    "default_runtime_kind": "external",
+    "node_bin": "node"
+  }
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/config/update")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${restore_broker_defaults_resp}''')
+if not obj.get("ok"):
+  print("failed to restore broker defaults after lazy-validation proof", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 NOOP_STOP_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_noop_stop_$(date +%s)_$RANDOM"
 curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
