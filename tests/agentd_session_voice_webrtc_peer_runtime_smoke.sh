@@ -811,6 +811,63 @@ if "not configured" not in str(obj.get("error", "")):
   raise SystemExit(1)
 PY
 
+missing_broker_session_resp_body="${LOG_DIR}/voice_webrtc_peer_missing_broker_session_body.json"
+MISSING_BROKER_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_missing_broker_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${MISSING_BROKER_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+missing_broker_session_status="$(curl -sS --noproxy "*" --max-time 10 -o "${missing_broker_session_resp_body}" -w '%{http_code}' \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${MISSING_BROKER_SESSION_ID}",
+  "action": "start",
+  "broker_session_id": "missing-broker-session",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 517
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+if [[ "${missing_broker_session_status}" != "400" ]]; then
+  echo "expected missing broker_session_id start to return 400, got ${missing_broker_session_status}" >&2
+  cat "${missing_broker_session_resp_body}" >&2
+  exit 1
+fi
+python3 - <<PY
+import json, sys
+obj = json.load(open(r'''${missing_broker_session_resp_body}''', 'r', encoding='utf-8'))
+if obj.get("ok") is not False:
+  print("expected missing broker_session_id start to fail", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "broker_session_id not found" not in str(obj.get("error", "")):
+  print("expected missing broker_session_id error", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+missing_broker_session_status_json="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer?session_id=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${MISSING_BROKER_SESSION_ID}")")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${missing_broker_session_status_json}''')
+if obj.get("running") is not False or obj.get("peer") is not None:
+  print("expected no runtime after missing broker_session_id preflight failure", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+curl -fsS --noproxy "*" --max-time 10 -X DELETE \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session?session_id=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${MISSING_BROKER_SESSION_ID}")" >/dev/null
+
 start_resp2="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   -H 'Content-Type: application/json' \

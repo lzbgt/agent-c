@@ -407,6 +407,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   if `broker_session_id` is omitted and `broker_agent_id` is provided, agentd now creates the broker audio session,
   launches the peer against it, and reports `peer.managed_broker_session=true` plus the chosen
   `peer.broker_agent_id` / `peer.broker_deployment_id` in runtime status.
+- When callers do provide `broker_session_id`, agentd now preflights that broker session through the broker before
+  launching the peer and returns `400 broker_session_id not found` instead of spawning a child against a missing
+  signaling session.
 - `POST /api/v1/session/voice_webrtc_peer` now supports daemon-level broker defaults through
   `AGENTD_AUDIO_WEBRTC_BROKER_URL` and `AGENTD_AUDIO_WEBRTC_BROKER_TOKEN` or `/api/v1/config/update`, so callers may
   omit `broker_url` / `broker_token` when those defaults are configured. Runtime status also reports

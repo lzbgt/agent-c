@@ -398,6 +398,8 @@ Current status:
 - Shipped: when that agentd endpoint is given `broker_agent_id` instead of a pre-created `broker_session_id`,
   agentd now creates the broker audio session itself and records that ownership in runtime status as
   `peer.managed_broker_session=true`.
+- Shipped: when callers provide `broker_session_id`, agentd now preflights that session through the broker and fails
+  with `broker_session_id not found` before spawning a managed peer against a missing signaling session.
 - Shipped: that agentd runtime surface now exposes explicit backend metadata (`default_runtime_kind=bundled` when the
   repo helper is present, `default_runtime_kind_source=auto|env|config`, `default_runtime_kind_available=true|false`,
   `bundled_available=true|false`, `external_available=true|false`, `builtin_available=false`, and per-backend

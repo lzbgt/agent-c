@@ -605,6 +605,55 @@ static bool broker_delete_audio_session(
   return true;
 }
 
+static bool broker_audio_session_exists(
+  const std::string& broker_url,
+  const std::string& broker_token,
+  const std::string& broker_session_id,
+  bool* out_exists,
+  std::string* out_err
+) {
+  if (out_exists) *out_exists = false;
+  if (out_err) out_err->clear();
+  const std::string session_id = trim_copy(broker_session_id);
+  if (session_id.empty()) {
+    if (out_err) *out_err = "broker_session_id required";
+    return false;
+  }
+  const HttpClientResult result = http_request(
+    join_base_path(broker_url, "/v1/audio/sessions/" + session_id),
+    "GET",
+    {
+      {"Authorization", std::string("Bearer ") + broker_token},
+    },
+    "",
+    /*timeout_ms=*/10000,
+    /*max_response_bytes=*/128 * 1024,
+    /*proxy_url=*/"",
+    /*pinned_resolve_or_null=*/nullptr
+  );
+  if (!result.ok) {
+    if (out_err) *out_err = result.error.empty() ? "broker inspect request failed" : result.error;
+    return false;
+  }
+  if (result.http_status == 404) {
+    if (out_exists) *out_exists = false;
+    return true;
+  }
+  if (result.http_status != 200) {
+    std::string err = "broker inspect audio session failed: http " + std::to_string(result.http_status);
+    Json::Value parsed(Json::nullValue);
+    std::string jerr;
+    if (json_parse_any(result.response_body, &parsed, &jerr) && parsed.isObject() &&
+        parsed.isMember("error") && parsed["error"].isString()) {
+      err += " " + parsed["error"].asString();
+    }
+    if (out_err) *out_err = err;
+    return false;
+  }
+  if (out_exists) *out_exists = true;
+  return true;
+}
+
 #if !defined(_WIN32)
 static bool wait_for_voice_peer_stop(const std::shared_ptr<VoicePeerRuntime>& st, int64_t timeout_ms) {
   if (!st) return true;
@@ -1192,6 +1241,19 @@ void handle_session_voice_webrtc_peer_endpoint(
       return;
     }
     managed_broker_session = true;
+  } else {
+    bool session_exists = false;
+    if (!broker_audio_session_exists(broker_url, broker_token, broker_session_id, &session_exists, &serr)) {
+      out["error"] = serr.empty() ? "failed to inspect broker audio session" : serr;
+      resp->status = 500;
+      resp->body = json_stringify(out);
+      return;
+    }
+    if (!session_exists) {
+      resp->status = 400;
+      resp->body = json_error_body("broker_session_id not found");
+      return;
+    }
   }
 
   std::shared_ptr<VoicePeerRuntime> spawned;

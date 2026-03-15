@@ -246,6 +246,9 @@ These are the most leveraged next steps grounded in current architecture:
    - Completed 2026-03-15: WebRTC backend availability now means launchable rather than merely configured, with
      unavailable reasons exposed in runtime/config status; the main runtime smoke now separately proves preflight
      invalid-`node_bin` rejection and post-launch fail-fast cleanup when the child exits before readiness.
+   - Completed 2026-03-15: caller-supplied `broker_session_id` is now preflight-validated through the broker before
+     peer launch, and the runtime smoke proves agentd fails cleanly without spawning a managed peer against a missing
+     signaling session.
    - Remaining gap: replace the managed Node/Playwright child with an embedded long-lived agentd-native media service.
 
 5) **Node consensus**
