@@ -485,7 +485,27 @@ static bool broker_delete_audio_session(
 }
 
 #if !defined(_WIN32)
+static bool wait_for_voice_peer_stop(const std::shared_ptr<VoicePeerRuntime>& st, int64_t timeout_ms) {
+  if (!st) return true;
+  const int64_t deadline = now_unix_ms() + (timeout_ms > 0 ? timeout_ms : 0);
+  for (;;) {
+    {
+      std::lock_guard<std::mutex> lk(g_voice_peer_mu);
+      refresh_voice_peer_runtime_state(st.get());
+      if (!st->running) return true;
+    }
+    if (now_unix_ms() >= deadline) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(25));
+  }
+  {
+    std::lock_guard<std::mutex> lk(g_voice_peer_mu);
+    refresh_voice_peer_runtime_state(st.get());
+    return !st->running;
+  }
+}
+
 static bool voice_peer_spawn_process(
+  AgentDb* db,
   const DaemonConfig& cfg,
   const std::string& runtime_kind,
   const std::string& tool_path,
@@ -618,16 +638,22 @@ static bool voice_peer_spawn_process(
   st->running = true;
   st->pid = pid;
 
-  std::thread([st]() {
+  std::thread([db, st]() {
     int status = 0;
     (void)waitpid(st->pid, &status, 0);
-    refresh_voice_peer_runtime_state(st.get());
-    std::lock_guard<std::mutex> lk(g_voice_peer_mu);
-    st->running = false;
-    st->ready = std::filesystem::exists(st->ready_file_path);
-    st->ended_unix_ms = now_unix_ms();
-    if (WIFEXITED(status)) st->exit_code = WEXITSTATUS(status);
-    else if (WIFSIGNALED(status)) st->exit_signal = WTERMSIG(status);
+    {
+      std::lock_guard<std::mutex> lk(g_voice_peer_mu);
+      refresh_voice_peer_runtime_state(st.get());
+      st->running = false;
+      st->ready = std::filesystem::exists(st->ready_file_path);
+      st->ended_unix_ms = now_unix_ms();
+      if (WIFEXITED(status)) st->exit_code = WEXITSTATUS(status);
+      else if (WIFSIGNALED(status)) st->exit_signal = WTERMSIG(status);
+    }
+    if (db && !trim_copy(st->session_id).empty()) {
+      std::string perr;
+      (void)persist_voice_peer_runtime_record(db, *st, &perr);
+    }
   }).detach();
 
   *out_state = std::move(st);
@@ -722,6 +748,14 @@ void handle_session_voice_webrtc_peer_endpoint(
   out["session_id"] = session_id;
   voice_peer_add_runtime_metadata(cfg, &out);
 
+  const std::string broker_token =
+    body.isMember("broker_token") && body["broker_token"].isString() ? trim_copy(body["broker_token"].asString()) : "";
+  if (!broker_token.empty() && !is_safe_printable_field(broker_token, 1024)) {
+    resp->status = 400;
+    resp->body = json_error_body("invalid broker_token");
+    return;
+  }
+
   const std::string runtime_kind = body.isMember("runtime_kind") && body["runtime_kind"].isString()
     ? lower_copy(trim_copy(body["runtime_kind"].asString()))
     : default_voice_peer_runtime_kind(cfg);
@@ -782,6 +816,14 @@ void handle_session_voice_webrtc_peer_endpoint(
       return;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    const bool stopped = wait_for_voice_peer_stop(st, 2000);
+    std::string cleanup_err;
+    bool cleanup_attempted = false;
+    bool cleanup_deleted = false;
+    if (st->managed_broker_session && !trim_copy(st->broker_session_id).empty() && !broker_token.empty()) {
+      cleanup_attempted = true;
+      cleanup_deleted = broker_delete_audio_session(st->broker_url, broker_token, st->broker_session_id, &cleanup_err);
+    }
     {
       std::lock_guard<std::mutex> lk(g_voice_peer_mu);
       refresh_voice_peer_runtime_state(st.get());
@@ -790,7 +832,11 @@ void handle_session_voice_webrtc_peer_endpoint(
     std::string perr;
     (void)persist_voice_peer_runtime_record(db, *st, &perr);
     out["ok"] = true;
-    out["stopped"] = true;
+    out["stopped"] = stopped;
+    if (cleanup_attempted) {
+      out["broker_session_deleted"] = cleanup_deleted;
+      if (!cleanup_deleted && !cleanup_err.empty()) out["broker_session_delete_error"] = cleanup_err;
+    }
     resp->status = 200;
     resp->body = json_stringify(out);
     return;
@@ -868,7 +914,6 @@ void handle_session_voice_webrtc_peer_endpoint(
     body.isMember("broker_deployment_id") && body["broker_deployment_id"].isString()
       ? trim_copy(body["broker_deployment_id"].asString())
       : "";
-  const std::string broker_token = body.isMember("broker_token") && body["broker_token"].isString() ? trim_copy(body["broker_token"].asString()) : "";
   std::string sender_tag =
     body.isMember("sender_tag") && body["sender_tag"].isString()
       ? trim_copy(body["sender_tag"].asString())
@@ -894,7 +939,7 @@ void handle_session_voice_webrtc_peer_endpoint(
     resp->body = json_error_body("invalid broker_url");
     return;
   }
-  if (broker_token.empty() || !is_safe_printable_field(broker_token, 1024)) {
+  if (broker_token.empty()) {
     resp->status = 400;
     resp->body = json_error_body("invalid broker_token");
     return;
@@ -946,6 +991,7 @@ void handle_session_voice_webrtc_peer_endpoint(
 
   std::shared_ptr<VoicePeerRuntime> spawned;
   if (!voice_peer_spawn_process(
+        db,
         cfg,
         runtime_kind,
         tool_path,

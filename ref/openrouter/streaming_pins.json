@@ -1,0 +1,19 @@
+{
+  "generated_utc": "2026-03-15T09:03:00Z",
+  "base_url": "https://openrouter.ai/api/v1",
+  "min_total": "0.01",
+  "max_total": "0.50",
+  "limit": 30,
+  "max_models": 12,
+  "assistant_model": "bytedance-seed/seed-1.6-flash",
+  "tool_model": "bytedance-seed/seed-1.6-flash",
+  "ok_models_both": [
+    "bytedance-seed/seed-1.6-flash"
+  ],
+  "ok_models_assistant": [
+    "bytedance-seed/seed-1.6-flash"
+  ],
+  "ok_models_tool": [
+    "bytedance-seed/seed-1.6-flash"
+  ]
+}

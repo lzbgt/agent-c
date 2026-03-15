@@ -3336,7 +3336,9 @@
       from the recovered persisted runtime record instead of requiring broker
       parameters again. `broker_session_id` is optional when `broker_agent_id`
       is provided; in that mode agentd creates and owns the broker audio session
-      before launching the peer.
+      before launching the peer. On `stop`, callers may also provide `broker_token`
+      so agentd can delete an owned broker audio session itself after an ungraceful
+      child exit that skipped the peer's best-effort `bye`.
     requestBody:
       required: true
       content:

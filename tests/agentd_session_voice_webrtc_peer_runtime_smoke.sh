@@ -760,39 +760,29 @@ print(sid)
 PY
 )"
 
+VOICE_PEER_PID2="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${start_resp2}''')
+peer = obj.get("peer") or {}
+pid = peer.get("pid")
+if not isinstance(pid, int) or pid <= 0:
+  print("missing second pid in start response", file=sys.stderr)
+  raise SystemExit(1)
+print(pid)
+PY
+)"
+
 wait_voice_peer_ready "${SESSION_DB_ID}" 1 status_json
 
-stop_resp="$(curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${SESSION_DB_ID}\",\"action\":\"stop\"}" \
-  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+kill -9 "${VOICE_PEER_PID2}"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${stop_resp}''')
-if not obj.get("ok") or not obj.get("stopped"):
-  print("voice_webrtc_peer stop failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if (obj.get("peer") or {}).get("runtime_kind") != "bundled":
-  print("unexpected stopped peer runtime_kind", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
-
-wait_voice_peer_ready "${SESSION_DB_ID}" 0 stopped_json
-
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${stopped_json}''')
-peer = obj.get("peer") or {}
-last = peer.get("last_stdout") or {}
-if peer.get("running"):
-  print("peer still running after stop", obj, file=sys.stderr)
-  raise SystemExit(1)
-if not last.get("stopped"):
-  print("expected stopped final state after stop", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+session_exists_status="$(curl -sS --noproxy "*" --max-time 10 -o /dev/null -w '%{http_code}' \
+  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${BROKER_SESSION_ID2}" \
+  -H "Authorization: Bearer audio-webui-token")"
+if [[ "${session_exists_status}" != "200" ]]; then
+  echo "expected broker audio session to still exist after peer SIGKILL, got ${session_exists_status}" >&2
+  exit 1
+fi
 
 restart_agentd
 wait_voice_peer_ready "${SESSION_DB_ID}" 0 stopped_json
@@ -801,15 +791,52 @@ python3 - <<PY
 import json, sys
 obj = json.loads(r'''${stopped_json}''')
 peer = obj.get("peer") or {}
-last = peer.get("last_stdout") or {}
 if peer.get("status_source") != "persisted":
-  print("expected persisted stopped peer after restart", obj, file=sys.stderr)
+  print("expected persisted stopped peer after forced-exit restart", obj, file=sys.stderr)
   raise SystemExit(1)
 if peer.get("running"):
-  print("peer unexpectedly running after restart", obj, file=sys.stderr)
+  print("peer unexpectedly running after forced-exit restart", obj, file=sys.stderr)
   raise SystemExit(1)
-if not last.get("stopped"):
-  print("expected stopped final state after restart", obj, file=sys.stderr)
+if peer.get("exit_signal") != 9:
+  print("expected exit_signal 9 after SIGKILL", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+stop_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${SESSION_DB_ID}\",\"action\":\"stop\",\"broker_token\":\"audio-agentd-token\"}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${stop_resp}''')
+if not obj.get("ok") or not obj.get("stopped"):
+  print("voice_webrtc_peer stop failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+peer = obj.get("peer") or {}
+if peer.get("runtime_kind") != "bundled":
+  print("unexpected stopped peer runtime_kind", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("broker_session_deleted") is not True:
+  print("expected broker_session_deleted cleanup result", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+wait_voice_peer_ready "${SESSION_DB_ID}" 0 stopped_json
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${stopped_json}''')
+peer = obj.get("peer") or {}
+if peer.get("running"):
+  print("peer still running after stop", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("status_source") != "persisted":
+  print("expected persisted stopped peer after cleanup", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("exit_signal") != 9:
+  print("expected exit_signal 9 to persist after cleanup", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 

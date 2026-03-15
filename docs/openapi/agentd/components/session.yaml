@@ -58,7 +58,9 @@ VoiceWebRtcPeerRequest:
       type: string
       description: Optional broker `deployment_id` passed through when agentd auto-creates the broker audio session.
     broker_url: { type: string }
-    broker_token: { type: string }
+    broker_token:
+      type: string
+      description: Broker bearer token used for session creation on `start`, and optionally reused on `stop` so agentd can delete an owned broker audio session itself if the child peer died before sending `bye`.
     sender_tag: { type: string }
     deadline_ms: { type: integer, format: int64 }
     poll_interval_ms: { type: integer, format: int64 }
@@ -81,6 +83,8 @@ VoiceWebRtcPeerResponse:
     node_bin: { type: string }
     started: { type: boolean }
     stopped: { type: boolean }
+    broker_session_deleted: { type: boolean }
+    broker_session_delete_error: { type: string }
     already_running: { type: boolean }
     reason: { type: string }
     error: { type: string }

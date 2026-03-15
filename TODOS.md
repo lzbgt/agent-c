@@ -272,7 +272,8 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
 - [x] W=10 — Orchestrator goal/role plan versioning: persist revision history in run meta and emit SSE events for replay.
   - 2026-02-26: broker stores `goal_versions` + `role_plan_versions` with version counters and emits
     `orchestrator_goal_revision` / `orchestrator_role_plan_revision` events; UI event filter updated.
-- [ ] W=10 — Populate OpenRouter streaming pins with a verified key, commit `ref/openrouter/streaming_pins.json`, and tighten smoke tests to prefer pins (unblocks streaming stability work). Current key returns 401 “User not found” on chat preflight; verify key and OpenRouter headers.
+- [x] W=10 — Populate OpenRouter streaming pins with a verified key, commit `ref/openrouter/streaming_pins.json`, and tighten smoke tests to prefer pins (unblocks streaming stability work).
+  - 2026-03-15: key from `~/.env` now passes `tools/openrouter_auth_debug.sh` with `chat_status=200`, both `agentd_openrouter_stream_assistant_smoke` and `agentd_openrouter_stream_tool_call_smoke` pass live with `bytedance-seed/seed-1.6-flash`, and `ref/openrouter/streaming_pins.json` is now populated from that verified result.
   - 2026-02-26: OpenRouter streaming smokes now iterate pinned model lists in order (with candidate logging), and `tools/openrouter_auth_debug.sh` reports pin metadata.
   - 2026-02-19 check: key from `~/.env` returns 401 “User not found”; `OPENROUTER_HTTP_REFERER`/`OPENROUTER_X_TITLE` not set.
   - 2026-02-19 check: setting `OPENROUTER_HTTP_REFERER=http://localhost` and `OPENROUTER_X_TITLE=agentd` still returns 401 “User not found”.
@@ -551,6 +552,7 @@ streaming and plugins are stable.
   - 2026-03-15: the shipped bundled/external voice runtime now persists DB-backed runtime snapshots plus per-session stdout logs, so `GET /api/v1/session/voice_webrtc_peer` can recover running/stopped peer state across agentd restarts and avoid duplicate starts when the peer is still alive.
   - 2026-03-15: shipped a default `bundled` voice runtime tier that auto-discovers the repo-local Node/Playwright peer without `AGENTD_AUDIO_WEBRTC_PEER_TOOL`, while keeping `runtime_kind=external` as the explicit operator-configured override and `runtime_kind=builtin` reserved for the future native media backend.
   - 2026-03-15: `POST /api/v1/session/voice_webrtc_peer` can now auto-create the broker audio session from `broker_agent_id` instead of forcing callers to pre-create `broker_session_id`; runtime status records `managed_broker_session` plus broker ownership metadata, and smoke coverage now proves the caller-free bring-up path.
+  - 2026-03-15: the managed bundled/external runtime now persists child-exit state eagerly and lets `action=stop` take `broker_token` so agentd can delete an owned broker audio session itself after an ungraceful peer death that never delivered `bye`; smoke coverage now proves SIGKILL + restart + cleanup fallback.
 - [x] Add binary blob storage tiering plan (`docs/DB.md#blob-storage-tiers-design--status`).
   - [x] Add edge task/node analytics exports (CSV/JSON bundles).
   - [x] Implement blob_manifest schema + local blob store v0 (upload + read + ref-count GC).

@@ -404,6 +404,8 @@ Current status:
   without changing the session API shape.
 - Shipped: the bundled/external agentd media-peer runtime now persists enough state to recover status across agentd restarts
   without forcing an immediate new broker session when the peer child is still alive.
+- Shipped: that runtime can now also take `broker_token` on `action=stop` and directly delete an agentd-owned broker
+  audio session after an ungraceful peer death that never delivered `bye`.
 - Still open: replace the managed Node/Playwright child runtime with an embedded long-lived agentd-native media service.
 
 Proof:

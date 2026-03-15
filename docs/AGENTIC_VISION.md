@@ -225,6 +225,8 @@ These are the most leveraged next steps grounded in current architecture:
      service can replace the backend without rewriting the session API.
    - Completed 2026-03-15: the managed voice runtime can now auto-create the broker audio session from
      `broker_agent_id`, so normal shipped bring-up no longer requires caller-side broker session creation.
+   - Completed 2026-03-15: that managed runtime now also persists child-exit state eagerly and can clean up an
+     agentd-owned broker audio session itself on `stop` when the child died before sending `bye`.
    - Remaining gap: replace the managed Node/Playwright child with an embedded long-lived agentd-native media service.
 
 5) **Node consensus**

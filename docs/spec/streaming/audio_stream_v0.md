@@ -148,6 +148,8 @@ A v0 smoke test should:
 - The shipped bundled/external backend now persists DB-backed runtime snapshots plus per-session stdout logs, so
   `GET /api/v1/session/voice_webrtc_peer` can recover running/stopped state after agentd restart and duplicate starts
   can return `already_running` from persisted runtime state.
+- That same runtime now persists child-exit state eagerly and lets `action=stop` take `broker_token`, so agentd can
+  delete a managed broker audio session itself after an ungraceful peer death that skipped the child's `bye`.
 
 ## Open questions
 
