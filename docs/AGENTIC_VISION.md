@@ -225,7 +225,9 @@ These are the most leveraged next steps grounded in current architecture:
    - Centralized platform-led quorum and coordination are shipped.
    - Completed 2026-03-15: a deterministic node-native consensus core and simulation harness are shipped for
      vote/commit protocol definition, duplicate suppression, trust-epoch compatibility, split-brain, and quorum recovery.
-   - Still open: live UM-BMP transport integration and durable runtime observability for decentralized leaders/terms.
+   - Completed 2026-03-15: live UM-BMP relay/observability for `edge_node_consensus_frame_v1` is shipped through
+     `/api/v1/edge/message`, `/api/v1/edge/outbox`, and node-read consensus summaries.
+   - Still open: node-executed autonomous control loops that originate/consume those frames without platform-side relay logic.
 
 6) **Scheduling + isolation MVP**
    - Completed 2026-03-15: admission control + per-run budgets + tool execution caps landed with

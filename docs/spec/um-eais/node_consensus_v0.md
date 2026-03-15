@@ -1,15 +1,16 @@
 # Node Consensus v0
 
-Status: implemented foundation (deterministic host-side state machine + simulator)
+Status: implemented rolling foundation (deterministic host-side state machine + live UM-BMP relay/observability)
 
 Purpose:
 - define the first peer-to-peer node-native consensus protocol surface without relying on the platform coordinator
 - carry node identity and trust-root epoch material through votes and recovery
-- provide a deterministic simulation harness before wiring the protocol onto live UM-BMP transport
+- provide a deterministic simulation harness plus live UM-BMP relay/observability foundation
 
 Implemented proof:
 - `tests/test_edge_node_consensus.cpp`
 - `edge_node_consensus_tests`
+- `tests/agentd_edge_consensus_transport_smoke.sh`
 
 Source surface:
 - `daemon/src/edge_node_consensus.h`
@@ -64,7 +65,8 @@ Replica rules implemented in the shipped foundation:
 - quorum is strict majority: `floor(cluster_size / 2) + 1`
 - a leader commit carries the quorum witness set, including node identity and trust epochs for each counted vote
 
-This makes the protocol suitable for deterministic replay and partition/conflict simulation even before live transport wiring.
+This makes the protocol suitable for deterministic replay, partition/conflict simulation, and live
+platform-relayed UM-BMP transport wiring.
 
 ## Current coverage
 
@@ -75,9 +77,14 @@ The shipped host tests prove:
 - quorum recovery with a higher term leader replacing an older one
 - rejection of stale trust-epoch candidates until they recover to the current trust view
 
+The shipped live transport smoke proves:
+- `CONSENSUS_FRAME` ingress through `POST /api/v1/edge/message`
+- relay to recipient node outboxes through `GET /api/v1/edge/outbox`
+- sender-side consensus summaries through `GET /api/v1/edge/node` and `GET /api/v1/edge/nodes`
+
 ## Still open
 
-This document does **not** claim live decentralized consensus is fully deployed. Remaining work:
-- carry `edge_node_consensus_frame_v1` over UM-BMP inbox/outbox transport
-- persist leader/term/recovery state in durable edge node surfaces
-- define operator/debug endpoints for decentralized consensus observability
+This document does **not** claim fully autonomous node-native consensus is complete. Remaining work:
+- move from platform-relayed frame transport to node-executed control loops using the same frame format
+- add stronger operator/debug control surfaces beyond the current node-read summaries
+- connect the consensus core to durable node-side agents that originate and consume the relayed frames

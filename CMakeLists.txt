@@ -742,6 +742,7 @@ if(AGENT_BUILD_HOST)
 				    add_test(NAME agentd_edge_manifest_bundle_send_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_manifest_bundle_send_smoke.sh $<TARGET_FILE:agentd> $<TARGET_FILE:edge_confidentiality_tool>)
 				    add_test(NAME agentd_edge_auth_bundle_send_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_bundle_send_smoke.sh $<TARGET_FILE:agentd> $<TARGET_FILE:edge_confidentiality_tool>)
 				    add_test(NAME agentd_edge_confidential_body_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_confidential_body_smoke.sh $<TARGET_FILE:agentd> $<TARGET_FILE:edge_confidentiality_tool>)
+				    add_test(NAME agentd_edge_consensus_transport_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_consensus_transport_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(
 				      NAME agentd_edge_auth_cert_roots_verify_chain_smoke
 				      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_cert_roots_verify_chain_smoke.sh

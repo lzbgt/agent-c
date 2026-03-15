@@ -53,7 +53,7 @@ Current status in this repo:
 - This platform-first stance is now the shipped behavior: broker team orchestration, workflow aggregate quorum,
   and edge/workflow quorum hash joins already exist and are exercised by dedicated smokes.
 - A deterministic decentralized consensus foundation now exists as a separate subsystem
-  (`docs/spec/um-eais/node_consensus_v0.md`, `edge_node_consensus_tests`) and should not be conflated with
+  (`docs/spec/um-eais/node_consensus_v0.md`, `edge_node_consensus_tests`, `agentd_edge_consensus_transport_smoke`) and should not be conflated with
   the current centralized coordinator path.
 
 ---

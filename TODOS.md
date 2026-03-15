@@ -591,16 +591,18 @@ streaming and plugins are stable.
   - 2026-03-15: added explicit `host_effects.{fs,proc,net}` request policy with fail-closed operator gates (`AGENTD_AVM_ALLOW_{FS,PROC,NET}`), runner env propagation, and direct/workflow smoke coverage.
   - 2026-03-15: workflow `avm_capsule` tasks now persist session-scoped AVM governance bundles plus durable output-log artifacts, keyed by program/job hash and verified through `GET /api/v1/session/artifacts` in `agentd_workflow_avm_capsule_smoke`.
   - 2026-03-15: workflow `avm_capsule` evidence runs now emit `run_attestation_bundle_v1` with stable `node_id`, persist `attestation_bundle.json`, and `quorum_hashes` automatically defaults `node_pointer` to `/avm/attest/node_id` for AVM hash joins while surfacing `attestations_by_task_id`.
-- [ ] Node consensus: wire the shipped deterministic node-native consensus core onto live UM-BMP transport and durable node control loops.
+- [ ] Node consensus: wire the shipped deterministic node-native consensus core into autonomous node control loops.
   - [x] Centralized platform-owned coordination is already the implemented design stance for UM-EAIS and broker team orchestration.
   - [x] Deterministic quorum/join surfaces are already shipped for workflows and broker team runs.
   - [x] Define a peer protocol for node-native elections/conflict resolution without relying on the platform coordinator.
   - [x] Carry node identity / trust-root material through decentralized votes and partition recovery.
   - [x] Add deterministic multi-node simulation tests for split-brain, duplicate delivery, trust-epoch mismatch, and quorum recovery.
-  - [ ] Integrate consensus frames into live edge outbox/inbox delivery and node polling flows.
-  - [ ] Persist and expose leader term / recovery state through edge node observability surfaces.
+  - [x] Integrate consensus frames into live edge outbox/inbox delivery and node polling flows.
+  - [x] Persist and expose leader term / recovery state through edge node observability surfaces.
+  - [ ] Connect the relayed frame protocol to durable node-side execution loops rather than platform-only relay.
   - 2026-03-15: narrowed the stale umbrella item after re-verifying shipped centralized quorum coverage (`agentd_workflow_aggregate_quorum*`, `agentd_workflow_*quorum_hashes*`, `broker_team_runs_quorum_compose_smoke`, `broker_team_quorum_events_sse_compose_smoke`).
   - 2026-03-15: added a deterministic node-native consensus core (`edge_node_consensus_frame_v1`) with carried identity/trust witnesses and host-side duplicate/partition/recovery simulation proof in `edge_node_consensus_tests`.
+  - 2026-03-15: added live `CONSENSUS_FRAME` relay over `/api/v1/edge/message` plus sender-node consensus summaries surfaced via `/api/v1/edge/node` and `/api/v1/edge/nodes`; proof: `tests/agentd_edge_consensus_transport_smoke.sh`.
 
 ## Deferred (after macOS stability)
 

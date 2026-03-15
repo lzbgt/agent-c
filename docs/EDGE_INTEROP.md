@@ -107,6 +107,8 @@ This stores the envelope durably (`edge_inbox_messages`) and updates platform st
   - `NODE_HEARTBEAT` best-effort persists `body.health` (and optional `battery_pct` / `rssi`) into `edge_nodes.health_json`,
     surfaced via `GET /api/v1/edge/node`.
 - `NODE_CAPS_RSP` stores manifest + extracts tags/tools/presence
+- `CONSENSUS_FRAME` validates `body.frame` as `edge_node_consensus_frame_v1`, relays it to recipient node
+  outboxes, and persists a sender-side `health.consensus` summary
 - `TASK_*` messages update `edge_tasks` + append `edge_task_events`
 - `SENSOR_EVENT` appends `edge_sensor_events`
 
@@ -212,7 +214,11 @@ Returns messages in ascending `outbox_id` order. The node should:
 ### Debug registry helpers
 
 - `GET /api/v1/edge/nodes`
+  - compact node registry list
+  - includes `consensus` when the node has emitted relayed decentralized consensus traffic
 - `GET /api/v1/edge/node?node_id=...`
+  - one registry record with tags/tools/hardware presence/health summary
+  - includes `consensus` when present in `edge_nodes.health_json.consensus`
 - `GET /api/v1/edge/node/caps?node_id=...`
 - `GET /api/v1/edge/node/manifest_bundle?node_id=...`
 - `POST /api/v1/edge/node/manifest_bundle/send`

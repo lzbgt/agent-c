@@ -41,6 +41,107 @@ EdgeMessageEnvelope:
       type: object
       additionalProperties: true
 
+EdgeNodeConsensusFrame:
+  type: object
+  required: [schema, frame_id, kind, term, from]
+  properties:
+    schema: { type: string, enum: [edge_node_consensus_frame_v1] }
+    frame_id: { type: string }
+    kind: { type: string, enum: [vote_request, vote_grant, leader_commit] }
+    term: { type: integer, format: int64 }
+    decision_sha256: { type: string }
+    candidate_node_id: { type: string }
+    leader_node_id: { type: string }
+    granted: { type: boolean }
+    from:
+      type: object
+      additionalProperties: true
+    vote_witnesses:
+      type: array
+      items:
+        type: object
+        additionalProperties: true
+
+EdgeNodeConsensusStatus:
+  type: object
+  required: [schema, updated_utc_ms, last_frame_id, last_frame_kind, current_term, from]
+  properties:
+    schema: { type: string, enum: [edge_node_consensus_status_v1] }
+    updated_utc_ms: { type: integer, format: int64 }
+    last_msg_id: { type: string }
+    last_frame_id: { type: string }
+    last_frame_kind: { type: string, enum: [vote_request, vote_grant, leader_commit] }
+    current_term: { type: integer, format: int64 }
+    decision_sha256: { type: string }
+    candidate_node_id: { type: string }
+    leader_node_id: { type: string }
+    granted: { type: boolean }
+    from:
+      type: object
+      additionalProperties: true
+    target_node_ids:
+      type: array
+      items: { type: string }
+    forwarded_count: { type: integer, format: int64 }
+    vote_witness_count: { type: integer, format: int64 }
+    vote_witnesses:
+      type: array
+      items:
+        type: object
+        additionalProperties: true
+
+EdgeNodeSummary:
+  type: object
+  required: [node_id, last_hello_utc_ms, last_heartbeat_utc_ms]
+  properties:
+    node_id: { type: string }
+    model: { type: string }
+    fw_git_sha: { type: string }
+    caps_sha256: { type: string }
+    last_hello_utc_ms: { type: integer, format: int64 }
+    last_heartbeat_utc_ms: { type: integer, format: int64 }
+    consensus:
+      $ref: "#/components/schemas/EdgeNodeConsensusStatus"
+
+EdgeNodesResponse:
+  type: object
+  required: [ok, nodes]
+  properties:
+    ok: { type: boolean }
+    nodes:
+      type: array
+      items:
+        $ref: "#/components/schemas/EdgeNodeSummary"
+
+EdgeNodeRecordResponse:
+  type: object
+  required: [ok, node]
+  properties:
+    ok: { type: boolean }
+    node:
+      allOf:
+        - $ref: "#/components/schemas/EdgeNodeSummary"
+        - type: object
+          properties:
+            tags:
+              type: array
+              items: { type: string }
+            tools:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            hardware_presence:
+              type: object
+              additionalProperties: true
+            health:
+              type: object
+              additionalProperties: true
+            identity_cert_verify:
+              type: object
+              additionalProperties: true
+            has_manifest: { type: boolean }
+
 
 EdgeOutboxResponse:
   type: object

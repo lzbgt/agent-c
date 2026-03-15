@@ -2311,6 +2311,8 @@
     description: |
       Accepts either plaintext `body` or AES-GCM encrypted `body_enc`. When
       `edge_confidentiality_required=true`, plaintext `body` is rejected and callers must send `body_enc`.
+      Validated `CONSENSUS_FRAME` bodies are relayed onto recipient node outboxes as platform-forwarded
+      peer frames, and the sender node’s consensus summary is persisted into node observability surfaces.
     requestBody:
       required: true
       content:
@@ -2374,6 +2376,10 @@
     responses:
       "200":
         description: Nodes list
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeNodesResponse"
 
 /api/v1/edge/node:
   get:
@@ -2387,6 +2393,10 @@
     responses:
       "200":
         description: Node record
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeNodeRecordResponse"
 
 /api/v1/edge/node/caps:
   get:

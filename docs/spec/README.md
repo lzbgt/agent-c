@@ -46,6 +46,7 @@ declares its own status (draft/rolling/implemented) in the document header.
 
 - `agentd-agentd/agentd_agent_interop_v0_1.md`: agentd-to-agentd interop contract.
 - `um-eais/`: embedded/edge interop specs, schemas, and fixtures.
+- `um-eais/node_consensus_v0.md`: node-native consensus frame/state-machine + relay foundation (implemented rolling).
 - `um-eais/node_consensus_v0.md`: node-native consensus frame/state-machine foundation (implemented foundation).
 
 ## AVM + VM ports

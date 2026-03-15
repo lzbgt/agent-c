@@ -49,8 +49,8 @@ Current implementation note:
 - Deterministic quorum/join behavior is implemented for workflows and broker team runs, but that is **not**
   decentralized node-native consensus.
 - A first deterministic decentralized consensus foundation now exists as `edge_node_consensus_frame_v1`
-  with host-side simulation proof, but live UM-BMP transport integration remains future work and should
-  stay separate from the centralized UM-EAIS execution path described here.
+  with host-side simulation proof plus live UM-BMP relay/observability proof, but autonomous node-side
+  execution loops remain future work and should stay separate from the centralized UM-EAIS execution path described here.
 
 ### 0.3 Design stance (important)
 This spec assumes the platform/broker is the **primary coordinator**:
