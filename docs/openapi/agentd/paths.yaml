@@ -411,6 +411,43 @@
             schema:
               $ref: "#/components/schemas/ErrorResponse"
 
+/api/v1/edge/auth/cert_roots/verify_chain:
+  post:
+    tags: [config, edge]
+    summary: Verify a certificate chain against the current stored certificate roots
+    description: |
+      Uses the current durable PEM certificate-root set to verify a submitted certificate chain.
+
+      Notes:
+      - This is a structured operator/control-plane verification surface.
+      - It narrows the gap toward X.509 enforcement, but does not yet mean `/api/v1/edge/message`
+        enforces certificate chains inline for UM-BMP envelopes.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EdgeAuthCertRootsVerifyChainRequest"
+    responses:
+      "200":
+        description: Verification result
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeAuthCertRootsVerifyChainResponse"
+      "400":
+        description: Invalid request or malformed PEM material
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
 /api/v1/edge/auth/node_binding:
   get:
     tags: [config, edge]

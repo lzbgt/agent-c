@@ -837,6 +837,10 @@ struct AgentdService::Impl {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_edge_auth_cert_roots_send_endpoint(cur, &db, cors_cfg, req, resp);
     });
+    server.handle("POST", "/api/v1/edge/auth/cert_roots/verify_chain", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_edge_auth_cert_roots_verify_chain_endpoint(cur, cors_cfg, req, resp);
+    });
     server.handle("GET", "/api/v1/edge/auth/node_binding", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_edge_auth_node_binding_endpoint(cur, cors_cfg, req, resp);

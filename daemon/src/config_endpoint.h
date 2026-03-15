@@ -71,6 +71,13 @@ void handle_edge_auth_cert_roots_send_endpoint(
   HttpResponse* resp
 );
 
+void handle_edge_auth_cert_roots_verify_chain_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
 void handle_edge_auth_node_binding_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,

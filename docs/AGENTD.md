@@ -472,6 +472,9 @@ Edge trust-root rotation:
 - `tools/edge_cert_roots_tool.py` inspects those signed bundles, exports a CA PEM file, and runs
   `openssl verify` against candidate cert chains so operators can validate shipped root material even
   before inline X.509 chain enforcement exists on `/api/v1/edge/message`.
+- `POST /api/v1/edge/auth/cert_roots/verify_chain` performs the same chain check inside `agentd`
+  against the currently stored root set and returns structured verification metadata (`verified`,
+  `verify_error`, matched root kids, chain subjects, leaf summary).
 - `GET /api/v1/edge/auth/revocations` returns the durable revoked-`kid` / revoked-node bundle, with optional
   server-side attestation when run-attestation signing is configured.
 - `POST /api/v1/edge/auth/revocations/update` applies a monotonic revocation epoch and updates the current

@@ -91,6 +91,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
   # Host-side helper for validating CBOR outbox bytes with the embedded decoder.
   if(AGENT_BUILD_HOST)
     find_package(CURL REQUIRED)
+    find_package(OpenSSL REQUIRED)
     if(NOT AGENT_ENABLE_JSONCPP)
       message(FATAL_ERROR "AGENT_BUILD_HOST=ON requires jsoncpp (pkg-config: jsoncpp). Use -DAGENT_BUILD_HOST=OFF for core-only builds.")
     endif()
@@ -329,6 +330,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
   )
 
   target_link_libraries(agentd_lib PUBLIC agent_host)
+  target_link_libraries(agentd_lib PUBLIC OpenSSL::SSL OpenSSL::Crypto)
   if(WIN32)
     target_link_libraries(agentd_lib PUBLIC ws2_32)
   endif()
@@ -720,6 +722,11 @@ if(AGENT_BUILD_HOST)
 				    add_test(NAME agentd_edge_manifest_bundle_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_manifest_bundle_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_manifest_bundle_send_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_manifest_bundle_send_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_auth_bundle_send_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_bundle_send_smoke.sh $<TARGET_FILE:agentd>)
+				    add_test(
+				      NAME agentd_edge_auth_cert_roots_verify_chain_smoke
+				      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_cert_roots_verify_chain_smoke.sh
+				        $<TARGET_FILE:agentd>
+				    )
 				    add_test(
 				      NAME agentd_edge_auth_cert_chain_verify_smoke
 				      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_cert_chain_verify_smoke.sh

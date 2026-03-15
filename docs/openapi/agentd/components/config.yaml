@@ -587,6 +587,55 @@ EdgeAuthCertRootsSendResponse:
       $ref: "#/components/schemas/EdgeAuthCertRootsBundle"
 
 
+EdgeAuthCertRootsVerifyChainRequest:
+  type: object
+  additionalProperties: false
+  required: [cert_pem]
+  properties:
+    cert_pem:
+      type: string
+      description: PEM leaf certificate to verify against the current stored certificate-root set
+    untrusted_cert_pem:
+      type: array
+      description: Optional PEM intermediate certificate blobs supplied as untrusted chain material
+      items: { type: string }
+
+
+EdgeAuthCertRootsVerifyChainResponse:
+  type: object
+  required:
+    [ok, verified, rotation_epoch, updated_utc_ms, edge_auth_cert_roots_set, verify_error_code, verify_error_depth, verify_error, leaf_subject, leaf_issuer, leaf_sha256, verified_chain_subjects, verified_chain_sha256, matched_root_kids]
+  properties:
+    ok: { type: boolean }
+    verified: { type: boolean }
+    rotation_epoch: { type: integer, format: int64 }
+    updated_utc_ms: { type: integer, format: int64 }
+    edge_auth_cert_roots_set: { type: integer, format: int64 }
+    verify_error_code: { type: integer, format: int32 }
+    verify_error_depth: { type: integer, format: int32 }
+    verify_error:
+      type: string
+      nullable: true
+    leaf_subject:
+      type: string
+      nullable: true
+    leaf_issuer:
+      type: string
+      nullable: true
+    leaf_sha256:
+      type: string
+      nullable: true
+    verified_chain_subjects:
+      type: array
+      items: { type: string }
+    verified_chain_sha256:
+      type: array
+      items: { type: string }
+    matched_root_kids:
+      type: array
+      items: { type: string }
+
+
 EdgeAuthNodeBinding:
   type: object
   required:

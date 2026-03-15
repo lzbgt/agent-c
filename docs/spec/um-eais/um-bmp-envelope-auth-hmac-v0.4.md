@@ -1,7 +1,7 @@
 # UM‑BMP Envelope Auth — Profile v0.4
 
 Date: 2026-02-05
-Status: implemented rolling core with durable trust-root rotation, cert-root control, revocation control, node-pollable signed bundle distribution, and operator-side chain verification tooling; inline certificate-chain enforcement / confidentiality still open
+Status: implemented rolling core with durable trust-root rotation, cert-root control, revocation control, node-pollable signed bundle distribution, operator-side chain verification tooling, and server-side cert-root chain verification; inline certificate-chain enforcement / confidentiality still open
 
 This document defines an optional envelope authenticity mechanism for UM‑BMP messages
 in constrained IoT/edge systems, intended for:

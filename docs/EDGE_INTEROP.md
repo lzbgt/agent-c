@@ -24,6 +24,7 @@ Current status:
   - `POST /api/v1/edge/auth/trust_roots/send`
   - `POST /api/v1/edge/auth/revocations/send`
   - `POST /api/v1/edge/auth/cert_roots/send`
+  - `POST /api/v1/edge/auth/cert_roots/verify_chain`
 - Shipped: operator-side certificate-root bundle inspection and `openssl verify` chain checks via
   `tools/edge_cert_roots_tool.py`.
 - Still open: inline certificate-chain enforcement at UM-BMP ingress and confidentiality beyond
@@ -200,6 +201,7 @@ Returns messages in ascending `outbox_id` order. The node should:
 - `GET /api/v1/edge/auth/cert_roots`
 - `POST /api/v1/edge/auth/cert_roots/rotate`
 - `POST /api/v1/edge/auth/cert_roots/send`
+- `POST /api/v1/edge/auth/cert_roots/verify_chain`
 - `POST /api/v1/edge/auth/revocations/send`
 
 Manifest bundle note:
@@ -219,6 +221,8 @@ Manifest bundle note:
   X.509-style root material even before full inline certificate-chain validation is enforced in envelope auth.
 - Operators can inspect those bundles, emit a CA file, and run `openssl verify` against candidate
   leaf/intermediate certs with `tools/edge_cert_roots_tool.py`.
+- `POST /api/v1/edge/auth/cert_roots/verify_chain` exposes the same current-root verification lane
+  through `agentd` itself, returning structured success/failure metadata for candidate PEM chains.
 
 ### Platform helper: enqueue TASK_ASSIGN
 

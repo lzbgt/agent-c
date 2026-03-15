@@ -17,11 +17,17 @@
 #include "base64.h"
 
 #include <json/json.h>
+#include <openssl/err.h>
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/x509.h>
+#include <openssl/x509_vfy.h>
 
 #include "net_compat.h"
 
 #include <array>
 #include <chrono>
+#include <memory>
 #include <vector>
 
 namespace agentd {
@@ -452,6 +458,263 @@ static bool validate_edge_pem_cert_blob_best_effort(const std::string& pem_in, s
   if (count == 0) {
     if (out_error) *out_error = "missing PEM certificate markers";
     return false;
+  }
+  return true;
+}
+
+static std::string openssl_last_error_text() {
+  const unsigned long err = ERR_get_error();
+  if (err == 0) return "openssl_error";
+  char buf[256] = {0};
+  ERR_error_string_n(err, buf, sizeof(buf));
+  return buf[0] ? std::string(buf) : std::string("openssl_error");
+}
+
+static std::string x509_name_to_string(X509_NAME* name) {
+  if (!name) return "";
+  char* raw = X509_NAME_oneline(name, nullptr, 0);
+  if (!raw) return "";
+  std::string out = raw;
+  OPENSSL_free(raw);
+  return out;
+}
+
+static std::string x509_sha256_hex(X509* cert) {
+  if (!cert) return "";
+  unsigned char md[EVP_MAX_MD_SIZE] = {0};
+  unsigned int md_len = 0;
+  if (X509_digest(cert, EVP_sha256(), md, &md_len) != 1 || md_len == 0) return "";
+  static const char* hex = "0123456789abcdef";
+  std::string out;
+  out.reserve(md_len * 2);
+  for (unsigned int i = 0; i < md_len; i++) {
+    out.push_back(hex[(md[i] >> 4) & 0xf]);
+    out.push_back(hex[md[i] & 0xf]);
+  }
+  return out;
+}
+
+static void free_x509_stack_only(STACK_OF(X509)* s) {
+  if (s) sk_X509_free(s);
+}
+
+static void free_x509_stack_with_certs(STACK_OF(X509)* s) {
+  if (s) sk_X509_pop_free(s, X509_free);
+}
+
+static bool parse_x509_pem_chain(
+  const std::string& pem,
+  std::vector<std::unique_ptr<X509, decltype(&X509_free)>>* out,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (!out) return false;
+  out->clear();
+  if (pem.empty()) {
+    if (out_error) *out_error = "empty PEM";
+    return false;
+  }
+  ERR_clear_error();
+  std::unique_ptr<BIO, decltype(&BIO_free)> bio(BIO_new_mem_buf(pem.data(), (int)pem.size()), BIO_free);
+  if (!bio) {
+    if (out_error) *out_error = std::string("internal: ") + openssl_last_error_text();
+    return false;
+  }
+  bool saw = false;
+  while (true) {
+    ERR_clear_error();
+    X509* cert = PEM_read_bio_X509(bio.get(), nullptr, nullptr, nullptr);
+    if (cert) {
+      saw = true;
+      out->emplace_back(cert, X509_free);
+      continue;
+    }
+    const unsigned long err = ERR_peek_last_error();
+    if (err == 0) break;
+    if (!saw) {
+      if (out_error) *out_error = std::string("invalid PEM certificate: ") + openssl_last_error_text();
+      ERR_clear_error();
+      return false;
+    }
+    ERR_clear_error();
+    break;
+  }
+  if (!saw) {
+    if (out_error) *out_error = "invalid PEM certificate: no certificates found";
+    return false;
+  }
+  return true;
+}
+
+struct EdgeRootCertEntry {
+  std::string kid;
+  std::string sha256_hex;
+  std::unique_ptr<X509, decltype(&X509_free)> cert{nullptr, X509_free};
+};
+
+struct EdgeVerifyChainResult {
+  bool verified = false;
+  int verify_error_code = 0;
+  int verify_error_depth = -1;
+  std::string verify_error;
+  std::string leaf_subject;
+  std::string leaf_issuer;
+  std::string leaf_sha256_hex;
+  std::vector<std::string> chain_subjects;
+  std::vector<std::string> chain_sha256_hex;
+  std::vector<std::string> matched_root_kids;
+};
+
+static bool load_edge_root_cert_entries(
+  const DaemonConfig& cfg,
+  std::vector<EdgeRootCertEntry>* out,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (!out) return false;
+  out->clear();
+  for (const auto& it : cfg.edge_auth_cert_roots_pem) {
+    if (it.first.empty() || it.second.empty()) continue;
+    std::vector<std::unique_ptr<X509, decltype(&X509_free)>> parsed;
+    std::string perr;
+    if (!parse_x509_pem_chain(it.second, &parsed, &perr)) {
+      if (out_error) *out_error = "invalid configured cert root '" + it.first + "': " + perr;
+      return false;
+    }
+    for (auto& cert : parsed) {
+      EdgeRootCertEntry row;
+      row.kid = it.first;
+      row.sha256_hex = x509_sha256_hex(cert.get());
+      row.cert.reset(cert.release());
+      out->push_back(std::move(row));
+    }
+  }
+  return true;
+}
+
+static bool verify_edge_cert_chain_against_roots(
+  const DaemonConfig& cfg,
+  const std::string& cert_pem,
+  const std::vector<std::string>& untrusted_cert_pem,
+  EdgeVerifyChainResult* out_result,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (!out_result) return false;
+  *out_result = EdgeVerifyChainResult{};
+
+  std::vector<std::unique_ptr<X509, decltype(&X509_free)>> leafs;
+  std::string lerr;
+  if (!parse_x509_pem_chain(cert_pem, &leafs, &lerr)) {
+    if (out_error) *out_error = "invalid cert_pem: " + lerr;
+    return false;
+  }
+  if (leafs.size() != 1) {
+    if (out_error) *out_error = "invalid cert_pem: expected exactly one certificate";
+    return false;
+  }
+  X509* leaf = leafs.front().get();
+  out_result->leaf_subject = x509_name_to_string(X509_get_subject_name(leaf));
+  out_result->leaf_issuer = x509_name_to_string(X509_get_issuer_name(leaf));
+  out_result->leaf_sha256_hex = x509_sha256_hex(leaf);
+
+  std::vector<std::unique_ptr<X509, decltype(&X509_free)>> chain_certs;
+  for (const auto& pem : untrusted_cert_pem) {
+    std::vector<std::unique_ptr<X509, decltype(&X509_free)>> parsed;
+    std::string perr;
+    if (!parse_x509_pem_chain(pem, &parsed, &perr)) {
+      if (out_error) *out_error = "invalid untrusted_cert_pem: " + perr;
+      return false;
+    }
+    for (auto& cert : parsed) chain_certs.emplace_back(cert.release(), X509_free);
+  }
+
+  std::vector<EdgeRootCertEntry> roots;
+  std::string rerr;
+  if (!load_edge_root_cert_entries(cfg, &roots, &rerr)) {
+    if (out_error) *out_error = rerr.rfind("invalid configured", 0) == 0 ? rerr : std::string("internal: ") + rerr;
+    return false;
+  }
+  if (roots.empty()) {
+    out_result->verified = false;
+    out_result->verify_error_code = X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY;
+    out_result->verify_error = "no_trusted_roots_configured";
+    return true;
+  }
+
+  std::unique_ptr<X509_STORE, decltype(&X509_STORE_free)> store(X509_STORE_new(), X509_STORE_free);
+  if (!store) {
+    if (out_error) *out_error = std::string("internal: failed to allocate x509 store: ") + openssl_last_error_text();
+    return false;
+  }
+  for (const auto& root : roots) {
+    if (!root.cert) continue;
+    ERR_clear_error();
+    if (X509_STORE_add_cert(store.get(), root.cert.get()) != 1) {
+      const unsigned long err = ERR_peek_last_error();
+      if (ERR_GET_REASON(err) != X509_R_CERT_ALREADY_IN_HASH_TABLE) {
+        if (out_error) *out_error = std::string("internal: failed to add trusted cert: ") + openssl_last_error_text();
+        ERR_clear_error();
+        return false;
+      }
+      ERR_clear_error();
+    }
+  }
+
+  std::unique_ptr<STACK_OF(X509), decltype(&free_x509_stack_only)> chain(sk_X509_new_null(), free_x509_stack_only);
+  if (!chain) {
+    if (out_error) *out_error = std::string("internal: failed to allocate x509 chain: ") + openssl_last_error_text();
+    return false;
+  }
+  for (const auto& cert : chain_certs) {
+    if (!cert) continue;
+    if (sk_X509_push(chain.get(), cert.get()) == 0) {
+      if (out_error) *out_error = std::string("internal: failed to append untrusted cert: ") + openssl_last_error_text();
+      return false;
+    }
+  }
+
+  std::unique_ptr<X509_STORE_CTX, decltype(&X509_STORE_CTX_free)> ctx(X509_STORE_CTX_new(), X509_STORE_CTX_free);
+  if (!ctx) {
+    if (out_error) *out_error = std::string("internal: failed to allocate x509 verify context: ") + openssl_last_error_text();
+    return false;
+  }
+  if (X509_STORE_CTX_init(ctx.get(), store.get(), leaf, sk_X509_num(chain.get()) > 0 ? chain.get() : nullptr) != 1) {
+    if (out_error) *out_error = std::string("internal: failed to init x509 verify context: ") + openssl_last_error_text();
+    return false;
+  }
+
+  ERR_clear_error();
+  const int ok = X509_verify_cert(ctx.get());
+  out_result->verified = (ok == 1);
+  out_result->verify_error_code = X509_STORE_CTX_get_error(ctx.get());
+  out_result->verify_error_depth = X509_STORE_CTX_get_error_depth(ctx.get());
+  if (!out_result->verified) {
+    const char* msg = X509_verify_cert_error_string(out_result->verify_error_code);
+    out_result->verify_error = msg ? std::string(msg) : std::string("x509_verify_failed");
+  }
+
+  std::unique_ptr<STACK_OF(X509), decltype(&free_x509_stack_with_certs)> verified_chain(
+    X509_STORE_CTX_get1_chain(ctx.get()),
+    free_x509_stack_with_certs);
+  if (verified_chain) {
+    const int n = sk_X509_num(verified_chain.get());
+    for (int i = 0; i < n; i++) {
+      X509* cert = sk_X509_value(verified_chain.get(), i);
+      if (!cert) continue;
+      out_result->chain_subjects.push_back(x509_name_to_string(X509_get_subject_name(cert)));
+      out_result->chain_sha256_hex.push_back(x509_sha256_hex(cert));
+    }
+    if (!out_result->chain_sha256_hex.empty()) {
+      const std::string& tail = out_result->chain_sha256_hex.back();
+      for (const auto& root : roots) {
+        if (root.sha256_hex == tail) out_result->matched_root_kids.push_back(root.kid);
+      }
+      std::sort(out_result->matched_root_kids.begin(), out_result->matched_root_kids.end());
+      out_result->matched_root_kids.erase(
+        std::unique(out_result->matched_root_kids.begin(), out_result->matched_root_kids.end()),
+        out_result->matched_root_kids.end());
+    }
   }
   return true;
 }
@@ -2226,6 +2489,94 @@ void handle_edge_auth_cert_roots_send_endpoint(
   o["target_node_id"] = target_node_id;
   o["outbox_id"] = (Json::Int64)outbox_id;
   o["cert_roots"] = bundle;
+  resp->body = json_stringify(o);
+}
+
+void handle_edge_auth_cert_roots_verify_chain_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  Json::Value args(Json::objectValue);
+  std::string perr;
+  if (!json_parse_object(req.body, &args, &perr)) {
+    resp->status = 400;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = std::string("invalid JSON: ") + perr;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  const std::string cert_pem =
+    args.isMember("cert_pem") && args["cert_pem"].isString() ? args["cert_pem"].asString() : "";
+  if (cert_pem.empty()) {
+    resp->status = 400;
+    resp->body = json_error_body("missing cert_pem");
+    return;
+  }
+
+  std::vector<std::string> untrusted_cert_pem;
+  if (args.isMember("untrusted_cert_pem") && !args["untrusted_cert_pem"].isNull()) {
+    if (!args["untrusted_cert_pem"].isArray()) {
+      resp->status = 400;
+      resp->body = json_error_body("untrusted_cert_pem must be an array");
+      return;
+    }
+    for (Json::ArrayIndex i = 0; i < args["untrusted_cert_pem"].size(); i++) {
+      if (!args["untrusted_cert_pem"][i].isString()) {
+        resp->status = 400;
+        resp->body = json_error_body("untrusted_cert_pem entries must be strings");
+        return;
+      }
+      const std::string pem = args["untrusted_cert_pem"][i].asString();
+      if (!pem.empty()) untrusted_cert_pem.push_back(pem);
+    }
+  }
+
+  EdgeVerifyChainResult result;
+  std::string verr;
+  if (!verify_edge_cert_chain_against_roots(cfg, cert_pem, untrusted_cert_pem, &result, &verr)) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = verr.empty() ? "failed to verify certificate chain" : verr;
+    resp->status = verr.rfind("internal:", 0) == 0 ? 500 : 400;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  Json::Value o(Json::objectValue);
+  o["ok"] = true;
+  o["verified"] = result.verified;
+  o["rotation_epoch"] = (Json::Int64)cfg.edge_auth_cert_roots_epoch;
+  o["updated_utc_ms"] = (Json::Int64)cfg.edge_auth_cert_roots_updated_utc_ms;
+  o["edge_auth_cert_roots_set"] = (Json::UInt64)cfg.edge_auth_cert_roots_pem.size();
+  o["verify_error_code"] = result.verify_error_code;
+  o["verify_error_depth"] = result.verify_error_depth;
+  o["verify_error"] = result.verify_error;
+  o["leaf_subject"] = result.leaf_subject;
+  o["leaf_issuer"] = result.leaf_issuer;
+  o["leaf_sha256"] = result.leaf_sha256_hex;
+  {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : result.chain_subjects) arr.append(s);
+    o["verified_chain_subjects"] = arr;
+  }
+  {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : result.chain_sha256_hex) arr.append(s);
+    o["verified_chain_sha256"] = arr;
+  }
+  {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : result.matched_root_kids) arr.append(s);
+    o["matched_root_kids"] = arr;
+  }
   resp->body = json_stringify(o);
 }
 
