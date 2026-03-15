@@ -253,30 +253,6 @@ curl -fsS --noproxy "*" --max-time 10 \
   -d "{\"session_id\":\"${SESSION_DB_ID}\"}" \
   "${DAEMON_URL}/api/v1/session/new" >/dev/null
 
-create_broker_session() {
-  python3 - <<PY
-import http.client, json, sys
-host = "127.0.0.1"
-port = ${BROKER_PORT}
-conn = http.client.HTTPConnection(host, port, timeout=5)
-body = json.dumps({"agent_id": "a-1", "mode": "webrtc"})
-conn.request("POST", "/v1/audio/sessions", body=body, headers={
-    "Authorization": "Bearer audio-webui-token",
-    "Content-Type": "application/json",
-})
-resp = conn.getresponse()
-data = resp.read().decode("utf-8")
-if resp.status != 200:
-  print(data, file=sys.stderr)
-  raise SystemExit(1)
-obj = json.loads(data)
-if not obj.get("ok"):
-  print(data, file=sys.stderr)
-  raise SystemExit(1)
-print(obj.get("session_id", ""))
-PY
-}
-
 wait_voice_peer_ready() {
   local session_id="$1"
   local expect_running="${2:-1}"
@@ -543,12 +519,6 @@ run().catch((err) => {
 JS
 }
 
-BROKER_SESSION_ID="$(create_broker_session)"
-if [[ -z "${BROKER_SESSION_ID}" ]]; then
-  echo "failed to create broker audio session" >&2
-  exit 1
-fi
-
 start_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   -H 'Content-Type: application/json' \
@@ -557,7 +527,8 @@ import json
 print(json.dumps({
   "session_id": "${SESSION_DB_ID}",
   "action": "start",
-  "broker_session_id": "${BROKER_SESSION_ID}",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab",
   "broker_url": "http://127.0.0.1:${BROKER_PORT}",
   "broker_token": "audio-agentd-token",
   "sender_tag": "agentd_runtime_peer",
@@ -582,10 +553,28 @@ peer = obj.get("peer") or {}
 if peer.get("runtime_kind") != "bundled":
   print("unexpected peer runtime_kind", obj, file=sys.stderr)
   raise SystemExit(1)
+if peer.get("managed_broker_session") is not True:
+  print("expected managed broker session", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("broker_agent_id") != "a-1" or peer.get("broker_deployment_id") != "lab":
+  print("unexpected broker ownership fields", obj, file=sys.stderr)
+  raise SystemExit(1)
 if not peer.get("running"):
   print("voice peer did not report running", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
+
+BROKER_SESSION_ID="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${start_resp}''')
+peer = obj.get("peer") or {}
+sid = str(peer.get("broker_session_id") or "").strip()
+if not sid:
+  print("missing broker_session_id in start response", file=sys.stderr)
+  raise SystemExit(1)
+print(sid)
+PY
+)"
 
 status_json=""
 wait_voice_peer_ready "${SESSION_DB_ID}" 1 status_json
@@ -602,6 +591,12 @@ if peer.get("status_source") != "persisted":
   raise SystemExit(1)
 if not peer.get("stdout_log_path"):
   print("expected stdout_log_path after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("managed_broker_session") is not True:
+  print("expected managed_broker_session after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("broker_agent_id") != "a-1" or peer.get("broker_deployment_id") != "lab":
+  print("unexpected persisted broker ownership fields", obj, file=sys.stderr)
   raise SystemExit(1)
 if peer.get("runtime_kind") != "bundled" or not peer.get("running") or not peer.get("ready"):
   print("unexpected recovered runtime state after restart", obj, file=sys.stderr)
@@ -699,7 +694,7 @@ external_resp_body="${LOG_DIR}/voice_webrtc_peer_external_body.json"
 external_status="$(curl -sS --noproxy "*" --max-time 10 -o "${external_resp_body}" -D "${external_resp_headers}" -w '%{http_code}' \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${SESSION_DB_ID}\",\"action\":\"start\",\"runtime_kind\":\"external\",\"broker_session_id\":\"${BROKER_SESSION_ID}\",\"broker_url\":\"http://127.0.0.1:${BROKER_PORT}\",\"broker_token\":\"audio-agentd-token\"}" \
+  -d "{\"session_id\":\"${SESSION_DB_ID}\",\"action\":\"start\",\"runtime_kind\":\"external\",\"broker_session_id\":\"external-test-session\",\"broker_url\":\"http://127.0.0.1:${BROKER_PORT}\",\"broker_token\":\"audio-agentd-token\"}" \
   "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
 if [[ "${external_status}" != "500" ]]; then
   echo "expected explicit external runtime request to return 500 without configured tool, got ${external_status}" >&2
@@ -717,7 +712,6 @@ if "not configured" not in str(obj.get("error", "")):
   raise SystemExit(1)
 PY
 
-BROKER_SESSION_ID2="$(create_broker_session)"
 start_resp2="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   -H 'Content-Type: application/json' \
@@ -726,7 +720,8 @@ import json
 print(json.dumps({
   "session_id": "${SESSION_DB_ID}",
   "action": "start",
-  "broker_session_id": "${BROKER_SESSION_ID2}",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab-stop",
   "broker_url": "http://127.0.0.1:${BROKER_PORT}",
   "broker_token": "audio-agentd-token",
   "sender_tag": "agentd_runtime_peer",
@@ -744,10 +739,26 @@ obj = json.loads(r'''${start_resp2}''')
 if not obj.get("ok") or not obj.get("started"):
   print("voice_webrtc_peer second start failed", obj, file=sys.stderr)
   raise SystemExit(1)
-if (obj.get("peer") or {}).get("runtime_kind") != "bundled":
+peer = obj.get("peer") or {}
+if peer.get("runtime_kind") != "bundled":
   print("unexpected second peer runtime_kind", obj, file=sys.stderr)
   raise SystemExit(1)
+if peer.get("managed_broker_session") is not True or peer.get("broker_deployment_id") != "lab-stop":
+  print("unexpected second managed broker session fields", obj, file=sys.stderr)
+  raise SystemExit(1)
 PY
+
+BROKER_SESSION_ID2="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${start_resp2}''')
+peer = obj.get("peer") or {}
+sid = str(peer.get("broker_session_id") or "").strip()
+if not sid:
+  print("missing second broker_session_id in start response", file=sys.stderr)
+  raise SystemExit(1)
+print(sid)
+PY
+)"
 
 wait_voice_peer_ready "${SESSION_DB_ID}" 1 status_json
 

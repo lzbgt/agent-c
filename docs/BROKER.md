@@ -395,6 +395,9 @@ Current status:
 - Shipped adjacent foundation: agentd now exposes session-scoped voice control/stats endpoints so browser clients can durably execute and report `media_play`, `media_pause`, and `media_snapshot` RPCs.
 - Shipped: a real host-side agentd media peer proof now exists via `tools/agentd_audio_webrtc_peer.js` and `tests/agentd_audio_webrtc_peer_smoke.sh`, which completes broker signaling, WebRTC answer/candidate flow, live RTP delivery, and `bye` teardown against a browser peer.
 - Shipped: agentd now owns that host-side media-peer lifecycle through `POST/GET /api/v1/session/voice_webrtc_peer`, covered by `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh`.
+- Shipped: when that agentd endpoint is given `broker_agent_id` instead of a pre-created `broker_session_id`,
+  agentd now creates the broker audio session itself and records that ownership in runtime status as
+  `peer.managed_broker_session=true`.
 - Shipped: that agentd runtime surface now exposes explicit backend metadata (`default_runtime_kind=bundled` when the
   repo helper is present, `bundled_available=true|false`, `builtin_available=false`, `peer.runtime_kind=bundled|external`)
   and is factored away from the generic session endpoints code, so the future native media service can replace the backend

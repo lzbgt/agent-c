@@ -12,6 +12,9 @@ VoiceWebRtcPeerRuntime:
     session_id: { type: string }
     broker_session_id: { type: string }
     broker_url: { type: string }
+    managed_broker_session: { type: boolean }
+    broker_agent_id: { type: string }
+    broker_deployment_id: { type: string }
     sender_tag: { type: string }
     tool_path: { type: string }
     node_bin: { type: string }
@@ -48,6 +51,12 @@ VoiceWebRtcPeerRequest:
       enum: [builtin, bundled, external]
       description: Optional backend selector. `bundled` uses the shipped repo-local Node/Playwright peer when discoverable, `external` uses an operator-configured helper path, and `builtin` is reserved for the future embedded agentd-native media service.
     broker_session_id: { type: string }
+    broker_agent_id:
+      type: string
+      description: Optional broker `agent_id` used to auto-create a broker audio session when `broker_session_id` is omitted.
+    broker_deployment_id:
+      type: string
+      description: Optional broker `deployment_id` passed through when agentd auto-creates the broker audio session.
     broker_url: { type: string }
     broker_token: { type: string }
     sender_tag: { type: string }

@@ -1,6 +1,7 @@
 #include "session_voice_runtime.h"
 
 #include "daemon_auth.h"
+#include "http_client.h"
 #include "http_util.h"
 #include "json_util.h"
 #include "session_id_util.h"
@@ -65,6 +66,8 @@ struct VoicePeerRuntime {
   std::string session_id;
   std::string broker_session_id;
   std::string broker_url;
+  std::string broker_agent_id;
+  std::string broker_deployment_id;
   std::string sender_tag;
   std::string tool_path;
   std::string node_bin;
@@ -76,6 +79,7 @@ struct VoicePeerRuntime {
   int64_t deadline_ms = 15000;
   int64_t poll_interval_ms = 100;
   int64_t tone_hz = 440;
+  bool managed_broker_session = false;
   bool ready = false;
   bool running = false;
   int exit_code = 0;
@@ -101,6 +105,9 @@ static Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   out["session_id"] = st.session_id;
   if (!st.broker_session_id.empty()) out["broker_session_id"] = st.broker_session_id;
   out["broker_url"] = st.broker_url;
+  out["managed_broker_session"] = st.managed_broker_session;
+  if (!st.broker_agent_id.empty()) out["broker_agent_id"] = st.broker_agent_id;
+  if (!st.broker_deployment_id.empty()) out["broker_deployment_id"] = st.broker_deployment_id;
   out["sender_tag"] = st.sender_tag;
   out["tool_path"] = st.tool_path;
   out["node_bin"] = st.node_bin;
@@ -167,6 +174,14 @@ static std::string normalized_path_string(const std::filesystem::path& p) {
   std::error_code ec;
   const std::filesystem::path abs = std::filesystem::absolute(p, ec);
   return (ec ? p : abs).lexically_normal().string();
+}
+
+static std::string join_base_path(const std::string& base_in, const std::string& suffix) {
+  std::string base = trim_copy(base_in);
+  while (!base.empty() && base.back() == '/') base.pop_back();
+  if (suffix.empty()) return base;
+  if (suffix.front() == '/') return base + suffix;
+  return base + "/" + suffix;
 }
 
 static std::string discover_bundled_audio_peer_tool_path(const DaemonConfig& cfg) {
@@ -247,6 +262,8 @@ static bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime*
   if (v.isMember("session_id") && v["session_id"].isString()) st.session_id = trim_copy(v["session_id"].asString());
   if (v.isMember("broker_session_id") && v["broker_session_id"].isString()) st.broker_session_id = trim_copy(v["broker_session_id"].asString());
   if (v.isMember("broker_url") && v["broker_url"].isString()) st.broker_url = v["broker_url"].asString();
+  if (v.isMember("broker_agent_id") && v["broker_agent_id"].isString()) st.broker_agent_id = trim_copy(v["broker_agent_id"].asString());
+  if (v.isMember("broker_deployment_id") && v["broker_deployment_id"].isString()) st.broker_deployment_id = trim_copy(v["broker_deployment_id"].asString());
   if (v.isMember("sender_tag") && v["sender_tag"].isString()) st.sender_tag = trim_copy(v["sender_tag"].asString());
   if (v.isMember("tool_path") && v["tool_path"].isString()) st.tool_path = v["tool_path"].asString();
   if (v.isMember("node_bin") && v["node_bin"].isString()) st.node_bin = trim_copy(v["node_bin"].asString());
@@ -258,6 +275,9 @@ static bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime*
   if (v.isMember("deadline_ms") && (v["deadline_ms"].isInt64() || v["deadline_ms"].isUInt64())) st.deadline_ms = v["deadline_ms"].asInt64();
   if (v.isMember("poll_interval_ms") && (v["poll_interval_ms"].isInt64() || v["poll_interval_ms"].isUInt64())) st.poll_interval_ms = v["poll_interval_ms"].asInt64();
   if (v.isMember("tone_hz") && (v["tone_hz"].isInt64() || v["tone_hz"].isUInt64())) st.tone_hz = v["tone_hz"].asInt64();
+  if (v.isMember("managed_broker_session") && v["managed_broker_session"].isBool()) {
+    st.managed_broker_session = v["managed_broker_session"].asBool();
+  }
   if (v.isMember("ready") && v["ready"].isBool()) st.ready = v["ready"].asBool();
   if (v.isMember("running") && v["running"].isBool()) st.running = v["running"].asBool();
   if (v.isMember("exit_code") && v["exit_code"].isInt()) st.exit_code = v["exit_code"].asInt();
@@ -358,6 +378,110 @@ static bool resolve_voice_peer_backend(
   }
   if (out_err) *out_err = "runtime_kind must be bundled, external, or builtin";
   return false;
+}
+
+static bool broker_create_audio_session(
+  const std::string& broker_url,
+  const std::string& broker_token,
+  const std::string& broker_agent_id,
+  const std::string& broker_deployment_id,
+  std::string* out_session_id,
+  std::string* out_err
+) {
+  if (out_session_id) out_session_id->clear();
+  if (out_err) out_err->clear();
+
+  Json::Value body(Json::objectValue);
+  body["agent_id"] = broker_agent_id;
+  body["mode"] = "webrtc";
+  if (!broker_deployment_id.empty()) body["deployment_id"] = broker_deployment_id;
+
+  const HttpClientResult result = http_request(
+    join_base_path(broker_url, "/v1/audio/sessions"),
+    "POST",
+    {
+      {"Authorization", std::string("Bearer ") + broker_token},
+      {"Content-Type", "application/json"},
+    },
+    json_stringify(body),
+    /*timeout_ms=*/10000,
+    /*max_response_bytes=*/256 * 1024,
+    /*proxy_url=*/"",
+    /*pinned_resolve_or_null=*/nullptr
+  );
+  if (!result.ok) {
+    if (out_err) *out_err = result.error.empty() ? "broker create request failed" : result.error;
+    return false;
+  }
+
+  Json::Value parsed(Json::nullValue);
+  std::string jerr;
+  const bool have_json = json_parse_any(result.response_body, &parsed, &jerr) && parsed.isObject();
+  if (result.http_status != 200) {
+    std::string err = "broker create audio session failed";
+    if (have_json && parsed.isMember("error") && parsed["error"].isString()) err += ": " + parsed["error"].asString();
+    else err += ": http " + std::to_string(result.http_status);
+    if (out_err) *out_err = err;
+    return false;
+  }
+  if (!have_json) {
+    if (out_err) *out_err = jerr.empty() ? "broker create response invalid" : jerr;
+    return false;
+  }
+  if (!parsed.isMember("ok") || !parsed["ok"].asBool()) {
+    if (out_err) *out_err = "broker create audio session returned ok=false";
+    return false;
+  }
+  if (!parsed.isMember("session_id") || !parsed["session_id"].isString()) {
+    if (out_err) *out_err = "broker create response missing session_id";
+    return false;
+  }
+  const std::string session_id = trim_copy(parsed["session_id"].asString());
+  if (!is_safe_shellish_token(session_id, 160)) {
+    if (out_err) *out_err = "broker create returned invalid session_id";
+    return false;
+  }
+  if (out_session_id) *out_session_id = session_id;
+  return true;
+}
+
+static bool broker_delete_audio_session(
+  const std::string& broker_url,
+  const std::string& broker_token,
+  const std::string& broker_session_id,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (trim_copy(broker_session_id).empty()) return true;
+  const HttpClientResult result = http_request(
+    join_base_path(broker_url, "/v1/audio/sessions/" + broker_session_id),
+    "DELETE",
+    {
+      {"Authorization", std::string("Bearer ") + broker_token},
+    },
+    "",
+    /*timeout_ms=*/10000,
+    /*max_response_bytes=*/128 * 1024,
+    /*proxy_url=*/"",
+    /*pinned_resolve_or_null=*/nullptr
+  );
+  if (!result.ok) {
+    if (out_err) *out_err = result.error.empty() ? "broker delete request failed" : result.error;
+    return false;
+  }
+  if (result.http_status == 404) return true;
+  if (result.http_status != 200) {
+    std::string err = "broker delete audio session failed: http " + std::to_string(result.http_status);
+    Json::Value parsed(Json::nullValue);
+    std::string jerr;
+    if (json_parse_any(result.response_body, &parsed, &jerr) && parsed.isObject() &&
+        parsed.isMember("error") && parsed["error"].isString()) {
+      err += " " + parsed["error"].asString();
+    }
+    if (out_err) *out_err = err;
+    return false;
+  }
+  return true;
 }
 
 #if !defined(_WIN32)
@@ -736,17 +860,33 @@ void handle_session_voice_webrtc_peer_endpoint(
   }
 
   const std::string broker_url = body.isMember("broker_url") && body["broker_url"].isString() ? trim_copy(body["broker_url"].asString()) : "";
-  const std::string broker_session_id =
+  const std::string requested_broker_session_id =
     body.isMember("broker_session_id") && body["broker_session_id"].isString() ? trim_copy(body["broker_session_id"].asString()) : "";
+  const std::string broker_agent_id =
+    body.isMember("broker_agent_id") && body["broker_agent_id"].isString() ? trim_copy(body["broker_agent_id"].asString()) : "";
+  const std::string broker_deployment_id =
+    body.isMember("broker_deployment_id") && body["broker_deployment_id"].isString()
+      ? trim_copy(body["broker_deployment_id"].asString())
+      : "";
   const std::string broker_token = body.isMember("broker_token") && body["broker_token"].isString() ? trim_copy(body["broker_token"].asString()) : "";
   std::string sender_tag =
     body.isMember("sender_tag") && body["sender_tag"].isString()
       ? trim_copy(body["sender_tag"].asString())
       : std::string("agentd_runtime_peer");
   if (sender_tag.empty()) sender_tag = "agentd_runtime_peer";
-  if (!is_safe_shellish_token(broker_session_id, 160)) {
+  if (!requested_broker_session_id.empty() && !is_safe_shellish_token(requested_broker_session_id, 160)) {
     resp->status = 400;
     resp->body = json_error_body("invalid broker_session_id");
+    return;
+  }
+  if (!broker_agent_id.empty() && !is_safe_shellish_token(broker_agent_id, 160)) {
+    resp->status = 400;
+    resp->body = json_error_body("invalid broker_agent_id");
+    return;
+  }
+  if (!broker_deployment_id.empty() && !is_safe_shellish_token(broker_deployment_id, 160)) {
+    resp->status = 400;
+    resp->body = json_error_body("invalid broker_deployment_id");
     return;
   }
   if (broker_url.empty() || !is_safe_printable_field(broker_url, 2048)) {
@@ -757,6 +897,11 @@ void handle_session_voice_webrtc_peer_endpoint(
   if (broker_token.empty() || !is_safe_printable_field(broker_token, 1024)) {
     resp->status = 400;
     resp->body = json_error_body("invalid broker_token");
+    return;
+  }
+  if (requested_broker_session_id.empty() && broker_agent_id.empty()) {
+    resp->status = 400;
+    resp->body = json_error_body("broker_agent_id required when broker_session_id omitted");
     return;
   }
   if (!is_safe_shellish_token(sender_tag, 96)) {
@@ -780,6 +925,25 @@ void handle_session_voice_webrtc_peer_endpoint(
     resp->body = json_stringify(out);
     return;
   }
+
+  std::string broker_session_id = requested_broker_session_id;
+  bool managed_broker_session = false;
+  if (broker_session_id.empty()) {
+    if (!broker_create_audio_session(
+          broker_url,
+          broker_token,
+          broker_agent_id,
+          broker_deployment_id,
+          &broker_session_id,
+          &serr)) {
+      out["error"] = serr.empty() ? "failed to create broker audio session" : serr;
+      resp->status = 500;
+      resp->body = json_stringify(out);
+      return;
+    }
+    managed_broker_session = true;
+  }
+
   std::shared_ptr<VoicePeerRuntime> spawned;
   if (!voice_peer_spawn_process(
         cfg,
@@ -796,11 +960,18 @@ void handle_session_voice_webrtc_peer_endpoint(
         tone_hz,
         &spawned,
         &serr)) {
+    if (managed_broker_session) {
+      std::string derr;
+      if (!broker_delete_audio_session(broker_url, broker_token, broker_session_id, &derr) && serr.empty()) serr = derr;
+    }
     out["error"] = serr.empty() ? "failed to start voice peer" : serr;
     resp->status = 500;
     resp->body = json_stringify(out);
     return;
   }
+  spawned->managed_broker_session = managed_broker_session;
+  spawned->broker_agent_id = broker_agent_id;
+  spawned->broker_deployment_id = broker_deployment_id;
   {
     std::lock_guard<std::mutex> lk(g_voice_peer_mu);
     g_voice_peer_by_session[session_id] = spawned;

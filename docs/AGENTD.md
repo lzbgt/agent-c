@@ -391,6 +391,10 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `GET /api/v1/session/voice_webrtc_peer` can recover running or stopped peer state across agentd restarts with
   `peer.status_source=memory|persisted`, and duplicate `start` calls after restart can return `already_running`
   without re-supplying broker parameters.
+- `POST /api/v1/session/voice_webrtc_peer` no longer requires callers to pre-create the broker audio session:
+  if `broker_session_id` is omitted and `broker_agent_id` is provided, agentd now creates the broker audio session,
+  launches the peer against it, and reports `peer.managed_broker_session=true` plus the chosen
+  `peer.broker_agent_id` / `peer.broker_deployment_id` in runtime status.
 
 ## Data governance
 

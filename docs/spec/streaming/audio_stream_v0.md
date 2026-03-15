@@ -124,6 +124,9 @@ A v0 smoke test should:
   - `POST /api/v1/session/voice_webrtc_peer`
   - `GET /api/v1/session/voice_webrtc_peer`
   This lets agentd start, inspect, and stop the shipped host-side Playwright media peer without manual process bring-up.
+- That managed runtime can now also create the broker audio session on demand: callers may omit `broker_session_id`
+  and instead provide `broker_agent_id` (plus optional `broker_deployment_id`), after which agentd creates the broker
+  session, launches the peer, and reports `peer.managed_broker_session=true`.
 - WebUI advanced tools now expose a dedicated Voice panel for session-scoped play/pause/snapshot control and
   durable stats inspection on top of those agentd endpoints, with deterministic Playwright coverage.
 - `tests/webui_observe_voice_hello_openworld.sh` and `ui/e2e/observe_voice_hello.spec.ts`
