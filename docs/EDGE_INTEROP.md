@@ -10,6 +10,13 @@ Canonical spec (copied from `../urine_monitor`):
 
 This document describes the **HTTP transport mapping** implemented by `agentd` for that payload-level spec.
 
+Current status:
+- Shipped: authenticated JSON/CBOR envelope ingress (HMAC + Ed25519), replay-window and
+  node-binding policy knobs, best-effort task attestation verification, and enforceable
+  `edge_attest_required` / `edge_attest_require_sig` policy.
+- Still open: durable PKI / trust-root rotation, signed manifest distribution, and
+  confidentiality beyond authenticity-only envelopes.
+
 Executable contract artifacts (this repo):
 - Schemas: `docs/spec/um-eais/schema/` (envelope + core + platform extensions)
 - Golden transcript fixtures: `docs/spec/um-eais/fixtures/` (JSONL)
@@ -239,6 +246,9 @@ Proof:
 - `ctest` includes `agentd_edge_interop_smoke` and `agentd_edge_workflow_submit_message_smoke`.
 - `ctest` includes `agentd_edge_auth_hmac_smoke`.
 - `ctest` includes `agentd_edge_auth_ed25519_smoke`.
+- `ctest` includes `agentd_edge_auth_hmac_cbor_wire_smoke`.
+- `ctest` includes `agentd_edge_auth_ed25519_cbor_wire_smoke`.
+- `ctest` includes `agentd_edge_task_attest_required_smoke`.
 
 ## Storage
 

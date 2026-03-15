@@ -1,4 +1,6 @@
-# Run Attestation Bundle v1 (Draft)
+# Run Attestation Bundle v1
+
+Status: implemented rolling
 
 Date: 2026-02-19
 
@@ -109,6 +111,12 @@ tools/verify_attestation_bundle.sh <attestation_json> <replay_json> --hmac-key-h
 ```
 
 See: `tools/run_attestation_bundle_tool.cpp`.
+
+## Current proof points
+
+- `ctest` includes `run_attestation_bundle_tool_smoke` for bundle generation + verification.
+- `ctest` includes `agentd_run_attestation_ed25519_smoke` for daemon-issued Ed25519-signed
+  `/api/v1/run/attestation` responses.
 
 ## Notes
 

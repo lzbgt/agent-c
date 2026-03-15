@@ -1,7 +1,7 @@
-# UM‑BMP Envelope Auth — Profile v0.4 (Draft)
+# UM‑BMP Envelope Auth — Profile v0.4
 
 Date: 2026-02-05
-Status: draft (spec)
+Status: implemented rolling core; PKI/confidentiality still open
 
 This document defines an optional envelope authenticity mechanism for UM‑BMP messages
 in constrained IoT/edge systems, intended for:
@@ -20,6 +20,7 @@ This profile is transport-agnostic and applies to both JSON and CBOR wire mappin
 
 - Confidentiality (payload encryption in addition to transport security when available).
 - Certificate chains / PKI with rotation and revocation support.
+- Signed manifest / identity distribution so trust roots do not rely only on operator-provisioned key maps.
 
 ## Envelope fields
 
@@ -151,3 +152,11 @@ When `edge_auth_required=false`:
 - Missing `auth` => accept (legacy bring-up)
 - If `auth` is present, it MUST verify (reject invalid with HTTP 401)
  - Optional timestamp skew checks apply only when `auth` is present (and `ts_utc_ms` is present when required).
+
+## Current proof points
+
+- `ctest` includes `umbmp_auth_vectors_tests` for canonical JSON/CBOR fixture verification.
+- `ctest` includes `agentd_edge_auth_hmac_cbor_wire_smoke` and
+  `agentd_edge_auth_ed25519_cbor_wire_smoke` for authenticated CBOR ingress.
+- `ctest` includes `agentd_edge_auth_hmac_smoke` and `agentd_edge_auth_ed25519_smoke`
+  for authenticated JSON ingress and operator enforcement.

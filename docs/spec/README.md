@@ -10,7 +10,7 @@ declares its own status (draft/rolling/implemented) in the document header.
 
 - `run-events/run_events_v1.md`: canonical run/workflow event envelope + payload schemas.
 - `run_request_refactor_v1.md`: run request refactor record (implemented).
-- `run_attestation_bundle_v1.md`: signed attestation bundle format for replay hashes (draft).
+- `run_attestation_bundle_v1.md`: signed attestation bundle format for replay hashes (implemented rolling).
 - `run_diff_v0.md`: run diff + evidence comparison contract (implemented rolling).
 - `policy_hooks_v0.md`: policy hook contract (pre/post run + tool decisions).
 - `approval_queue_v0.md`: approval queue + tool-level quorum gating (implemented rolling).

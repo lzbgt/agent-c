@@ -550,8 +550,15 @@ streaming and plugins are stable.
 - [x] Memory privacy tags (`<private>`) to keep sensitive content out of durable storage (claude-mem inspired).
 - [x] Memory progressive disclosure + citation surfacing for dynamic context assembly (claude-mem inspired).
 - [x] Memory observations + timeline retrieval tools to mirror claude-mem search workflows.
-- [ ] Interop/attestation: PKI provisioning + signed manifests/attestations + canonical JSON hashing + envelope confidentiality.
-  - [x] Agentd enforceable attestation policy (`edge_attest_required` + `edge_attest_require_sig`) with docs + tests.
+- [ ] Interop/attestation: finish trust-root provisioning/rotation, signed node manifests, and confidentiality beyond authenticated envelopes.
+  - [x] Canonical JSON hashing (`agent_json_c14n_v1`) is wired into replay/attestation bundles and edge result hashing.
+  - [x] Run replay + signed attestation bundles are implemented and verified via `run_attestation_bundle_tool_smoke` and `agentd_run_attestation_ed25519_smoke`.
+  - [x] UM-BMP envelope authenticity is implemented for JSON/CBOR wire with HMAC + Ed25519, operator enforcement knobs, and MCU bring-up vectors.
+  - [x] Agentd enforceable edge task attestation policy (`edge_attest_required` + `edge_attest_require_sig`) is documented and verified.
+  - [ ] Provision durable PKI / trust-root rotation instead of only configured HMAC keys and Ed25519 public keys.
+  - [ ] Add signed node/tool manifests as first-class verified artifacts, not only task/run attestation blobs.
+  - [ ] Add envelope confidentiality / encrypted payload profile beyond authenticity-only signing.
+  - 2026-03-15: narrowed the stale umbrella item after re-verifying `umbmp_auth_vectors_tests`, `agentd_edge_auth_hmac_cbor_wire_smoke`, `agentd_edge_auth_ed25519_cbor_wire_smoke`, `agentd_edge_task_attest_required_smoke`, and `agentd_run_attestation_ed25519_smoke`.
 - [ ] AVM: persist governance bundles/record-replay artifacts, add explicit host-effects policy, and carry quorum/attestation identity through deterministic VM results.
   - [x] Non-exec AVM governance endpoints: `/api/v1/avm/job_scan`, `/policy_scan`, `/inspect`, `/verify_strict`, `/trace_hash`.
   - [x] Exec-gated capsule runner: `/api/v1/avm/capsule_run` with operator gates (`AGENTD_AVM_BIN`, `AGENTD_AVM_EXEC`, `yolo`) and deterministic hash extraction (`RESULT_HASH`, `TRACE_HASH`, `STATE_HASH`).
