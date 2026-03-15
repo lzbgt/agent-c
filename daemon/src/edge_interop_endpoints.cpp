@@ -3,6 +3,7 @@
 #include "config_endpoint.h"
 #include "edge_confidentiality.h"
 #include "edge_node_consensus.h"
+#include "edge_runtime_endpoints.h"
 
 #include "cbor_decode.h"
 #include "cbor_encode.h"
@@ -2104,6 +2105,8 @@ void handle_edge_nodes_endpoint(
         row["consensus"] = v["consensus"];
       }
     }
+    Json::Value runtime = edge_consensus_runtime_status_json_for_node(n.node_id);
+    if (runtime.isObject()) row["consensus_runtime"] = runtime;
     arr.append(row);
   }
   o["nodes"] = arr;
@@ -2174,6 +2177,8 @@ void handle_edge_node_endpoint(
       if (v.isMember("consensus") && v["consensus"].isObject()) row["consensus"] = v["consensus"];
     }
   }
+  Json::Value runtime = edge_consensus_runtime_status_json_for_node(n.node_id);
+  if (runtime.isObject()) row["consensus_runtime"] = runtime;
   if (!n.manifest_json.empty()) {
     Json::Value manifest;
     std::string perr2;

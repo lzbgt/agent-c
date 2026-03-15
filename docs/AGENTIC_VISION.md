@@ -230,8 +230,10 @@ These are the most leveraged next steps grounded in current architecture:
      `/api/v1/edge/message`, `/api/v1/edge/outbox`, and node-read consensus summaries.
    - Completed 2026-03-15: autonomous node-side control loops are shipped in the host bring-up path via
      `agentd_edge_consensus_node` plus `agentd_edge_consensus_autonomous_smoke`.
-   - Still open: embed that loop into long-lived node firmware/runtime with membership timers and recovery policy beyond
-     the current host-side bring-up harness.
+   - Completed 2026-03-15: agentd can now own that loop as a managed runtime via
+     `/api/v1/edge/node/consensus_runtime`, with runtime visibility surfaced on node-read APIs.
+   - Still open: replace the current host-managed helper with embedded node-native adoption plus membership timers and
+     recovery policy beyond the current bring-up/runtime harness.
 
 6) **Scheduling + isolation MVP**
    - Completed 2026-03-15: admission control + per-run budgets + tool execution caps landed with

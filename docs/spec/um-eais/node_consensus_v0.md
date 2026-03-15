@@ -83,15 +83,18 @@ The shipped live transport smoke proves:
 - `CONSENSUS_FRAME` ingress through `POST /api/v1/edge/message`
 - relay to recipient node outboxes through `GET /api/v1/edge/outbox`
 - sender-side consensus summaries through `GET /api/v1/edge/node` and `GET /api/v1/edge/nodes`
+- managed runtime ownership through `POST /api/v1/edge/node/consensus_runtime` and
+  `GET /api/v1/edge/node/consensus_runtime?node_id=...`
+- mirrored `consensus_runtime` visibility on `GET /api/v1/edge/node` and `GET /api/v1/edge/nodes`
 
 The shipped autonomous host-loop proof adds:
 - a real node-side poll/process/post loop on top of `EdgeConsensusReplica`
 - autonomous `vote_request -> vote_grant -> leader_commit` progression over the live platform relay path
 - per-node committed leader/decision proof from the node-loop stdout plus platform-side consensus summaries
+- agentd-managed long-lived host runtime ownership of the same loop, including explicit start/status/stop control
 
 ## Still open
 
 This document does **not** claim production-complete embedded consensus is complete. Remaining work:
-- embed the shipped autonomous loop into long-lived node firmware/runtime rather than only the host bring-up tool
-- add stronger operator/debug control surfaces beyond the current node-read summaries
+- replace the current host-managed helper with embedded / firmware-native adoption
 - define membership, liveness, and retry timers for multi-hour or partition-heavy deployments

@@ -90,6 +90,50 @@ EdgeNodeConsensusStatus:
         type: object
         additionalProperties: true
 
+EdgeNodeConsensusRuntime:
+  type: object
+  required: [schema, node_id, cluster_id, manifest_sha256, peer_node_ids, daemon_url, tool_path, started_unix_ms, campaign_delay_ms, poll_interval_ms, deadline_ms, cluster_size, outbox_limit, trust_epochs, running]
+  properties:
+    schema: { type: string, enum: [edge_node_consensus_runtime_v1] }
+    node_id: { type: string }
+    cluster_id: { type: string }
+    manifest_sha256: { type: string }
+    decision_sha256: { type: string }
+    peer_node_ids:
+      type: array
+      items: { type: string }
+    daemon_url: { type: string }
+    tool_path: { type: string }
+    model: { type: string }
+    fw_git_sha: { type: string }
+    stderr_log_path: { type: string }
+    started_unix_ms: { type: integer, format: int64 }
+    ended_unix_ms: { type: integer, format: int64 }
+    campaign_delay_ms: { type: integer, format: int64 }
+    poll_interval_ms: { type: integer, format: int64 }
+    deadline_ms: { type: integer, format: int64 }
+    cluster_size: { type: integer, format: int64 }
+    outbox_limit: { type: integer, format: int64 }
+    trust_epochs:
+      type: object
+      required: [trust_roots_epoch, revocations_epoch, cert_roots_epoch]
+      properties:
+        trust_roots_epoch: { type: integer, format: int64 }
+        revocations_epoch: { type: integer, format: int64 }
+        cert_roots_epoch: { type: integer, format: int64 }
+    running: { type: boolean }
+    pid: { type: integer, format: int64 }
+    exit_code: { type: integer }
+    exit_signal: { type: integer }
+    last_error: { type: string }
+    last_stdout_line: { type: string }
+    last_stdout:
+      type: object
+      additionalProperties: true
+    result:
+      type: object
+      additionalProperties: true
+
 EdgeNodeSummary:
   type: object
   required: [node_id, last_hello_utc_ms, last_heartbeat_utc_ms]
@@ -102,6 +146,8 @@ EdgeNodeSummary:
     last_heartbeat_utc_ms: { type: integer, format: int64 }
     consensus:
       $ref: "#/components/schemas/EdgeNodeConsensusStatus"
+    consensus_runtime:
+      $ref: "#/components/schemas/EdgeNodeConsensusRuntime"
 
 EdgeNodesResponse:
   type: object
@@ -141,6 +187,75 @@ EdgeNodeRecordResponse:
               type: object
               additionalProperties: true
             has_manifest: { type: boolean }
+            consensus_runtime:
+              $ref: "#/components/schemas/EdgeNodeConsensusRuntime"
+
+EdgeNodeConsensusRuntimeRequest:
+  type: object
+  additionalProperties: false
+  required: [action, node_id]
+  properties:
+    action: { type: string, enum: [start, stop] }
+    node_id: { type: string }
+    cluster_id: { type: string }
+    manifest_sha256: { type: string }
+    decision_sha256: { type: string }
+    peer_node_ids:
+      type: array
+      items: { type: string }
+    cluster_size: { type: integer, format: int64 }
+    outbox_limit: { type: integer, format: int64 }
+    campaign_delay_ms: { type: integer, format: int64 }
+    poll_interval_ms: { type: integer, format: int64 }
+    deadline_ms: { type: integer, format: int64 }
+    trust_roots_epoch: { type: integer, format: int64 }
+    revocations_epoch: { type: integer, format: int64 }
+    cert_roots_epoch: { type: integer, format: int64 }
+    daemon_url:
+      type: string
+      description: Optional override; defaults to the local agentd listener URL
+    auth_token:
+      type: string
+      description: Optional override for the managed helper; defaults to agentd's configured daemon auth token
+    model: { type: string }
+    fw_git_sha: { type: string }
+
+EdgeNodeConsensusRuntimeResponse:
+  type: object
+  required: [ok, node_id, tool_configured, default_daemon_url]
+  properties:
+    ok: { type: boolean }
+    node_id: { type: string }
+    tool_configured: { type: boolean }
+    tool_path: { type: string }
+    default_daemon_url: { type: string }
+    started: { type: boolean }
+    stopped: { type: boolean }
+    already_running: { type: boolean }
+    reason: { type: string }
+    error: { type: string }
+    runtime:
+      nullable: true
+      allOf:
+        - $ref: "#/components/schemas/EdgeNodeConsensusRuntime"
+
+EdgeNodeConsensusRuntimeStatusResponse:
+  type: object
+  required: [ok, node_id, tool_configured, default_daemon_url, node_exists, running]
+  properties:
+    ok: { type: boolean }
+    node_id: { type: string }
+    tool_configured: { type: boolean }
+    tool_path: { type: string }
+    default_daemon_url: { type: string }
+    node_exists: { type: boolean }
+    running: { type: boolean }
+    node_consensus:
+      $ref: "#/components/schemas/EdgeNodeConsensusStatus"
+    runtime:
+      nullable: true
+      allOf:
+        - $ref: "#/components/schemas/EdgeNodeConsensusRuntime"
 
 
 EdgeOutboxResponse:

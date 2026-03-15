@@ -2398,6 +2398,69 @@
             schema:
               $ref: "#/components/schemas/EdgeNodeRecordResponse"
 
+/api/v1/edge/node/consensus_runtime:
+  post:
+    tags: [edge]
+    summary: Start or stop a managed autonomous consensus-node runtime
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EdgeNodeConsensusRuntimeRequest"
+    responses:
+      "200":
+        description: Managed runtime updated
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeNodeConsensusRuntimeResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "500":
+        description: Runtime start/stop failed
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeNodeConsensusRuntimeResponse"
+  get:
+    tags: [edge]
+    summary: Inspect managed autonomous consensus-node runtime status
+    parameters:
+      - in: query
+        name: node_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Runtime status
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeNodeConsensusRuntimeStatusResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
 /api/v1/edge/node/caps:
   get:
     tags: [edge]

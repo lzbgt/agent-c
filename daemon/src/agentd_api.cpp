@@ -12,6 +12,7 @@
 #include "diagnostics_endpoints.h"
 #include "db_query_endpoints.h"
 #include "edge_interop_endpoints.h"
+#include "edge_runtime_endpoints.h"
 #include "file_endpoint.h"
 #include "health_endpoint.h"
 #include "http_util.h"
@@ -205,6 +206,9 @@ static void fill_env_defaults(DaemonConfig* cfg) {
   }
   if (cfg->audio_webrtc_peer_node_bin.empty()) {
     if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_PEER_NODE_BIN")) cfg->audio_webrtc_peer_node_bin = p;
+  }
+  if (cfg->edge_consensus_node_tool_path.empty()) {
+    if (const char* p = getenv_s("AGENTD_EDGE_CONSENSUS_NODE_TOOL")) cfg->edge_consensus_node_tool_path = p;
   }
 
   if (const char* v = getenv_s("AGENTD_UPLOAD_MAX_BYTES")) {
@@ -1079,6 +1083,16 @@ bool AgentdApi::init(std::string* out_error) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();
     handle_edge_node_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route("POST", "/api/v1/edge/node/consensus_runtime", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_edge_node_consensus_runtime_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route("GET", "/api/v1/edge/node/consensus_runtime", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_edge_node_consensus_runtime_status_endpoint(cur, self->cors_cfg, &self->db, req, resp);
   });
   impl_->route("GET", "/api/v1/edge/node/caps", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);

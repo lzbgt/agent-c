@@ -225,6 +225,10 @@ Returns messages in ascending `outbox_id` order. The node should:
 - `GET /api/v1/edge/node?node_id=...`
   - one registry record with tags/tools/hardware presence/health summary
   - includes `consensus` when present in `edge_nodes.health_json.consensus`
+- `POST /api/v1/edge/node/consensus_runtime`
+  - starts or stops the managed host-side `agentd_edge_consensus_node` helper for one edge node
+- `GET /api/v1/edge/node/consensus_runtime?node_id=...`
+  - reports the managed helper status plus the latest final result JSON emitted by the consensus tool
 - `GET /api/v1/edge/node/caps?node_id=...`
 - `GET /api/v1/edge/node/manifest_bundle?node_id=...`
 - `POST /api/v1/edge/node/manifest_bundle/send`
@@ -250,6 +254,9 @@ Manifest bundle note:
 - The certificate-root helper does the same for PEM certificate-root bundles via
   `PLATFORM_CERT_ROOTS_BUNDLE`, giving operators a durable signed distribution lane for
   X.509-style root material even before full inline certificate-chain validation is enforced in envelope auth.
+- Agentd can now own the lifecycle of the shipped autonomous consensus helper directly; `GET /api/v1/edge/node` and
+  `GET /api/v1/edge/nodes` surface `consensus_runtime` when a node has a managed runtime record alongside the existing
+  protocol-level `consensus` summary.
 - Those same send helpers accept `confidential_kid`, which emits the outbox envelope with AES-GCM
   `body_enc` instead of plaintext `body` for peer/control-plane payload confidentiality.
 - Operators can inspect those bundles, emit a CA file, and run `openssl verify` against candidate

@@ -593,7 +593,7 @@ streaming and plugins are stable.
   - 2026-03-15: added explicit `host_effects.{fs,proc,net}` request policy with fail-closed operator gates (`AGENTD_AVM_ALLOW_{FS,PROC,NET}`), runner env propagation, and direct/workflow smoke coverage.
   - 2026-03-15: workflow `avm_capsule` tasks now persist session-scoped AVM governance bundles plus durable output-log artifacts, keyed by program/job hash and verified through `GET /api/v1/session/artifacts` in `agentd_workflow_avm_capsule_smoke`.
   - 2026-03-15: workflow `avm_capsule` evidence runs now emit `run_attestation_bundle_v1` with stable `node_id`, persist `attestation_bundle.json`, and `quorum_hashes` automatically defaults `node_pointer` to `/avm/attest/node_id` for AVM hash joins while surfacing `attestations_by_task_id`.
-- [ ] Node consensus: embed the shipped autonomous consensus loop into long-lived node runtimes / firmware.
+- [ ] Node consensus: replace the current host-managed helper with embedded / firmware-native adoption and add dynamic membership / recovery policy above the shipped frame + relay + managed-runtime layer.
   - [x] Centralized platform-owned coordination is already the implemented design stance for UM-EAIS and broker team orchestration.
   - [x] Deterministic quorum/join surfaces are already shipped for workflows and broker team runs.
   - [x] Define a peer protocol for node-native elections/conflict resolution without relying on the platform coordinator.
@@ -606,6 +606,7 @@ streaming and plugins are stable.
   - 2026-03-15: added a deterministic node-native consensus core (`edge_node_consensus_frame_v1`) with carried identity/trust witnesses and host-side duplicate/partition/recovery simulation proof in `edge_node_consensus_tests`.
   - 2026-03-15: added live `CONSENSUS_FRAME` relay over `/api/v1/edge/message` plus sender-node consensus summaries surfaced via `/api/v1/edge/node` and `/api/v1/edge/nodes`; proof: `tests/agentd_edge_consensus_transport_smoke.sh`.
   - 2026-03-15: added `agentd_edge_consensus_node`, a host-side autonomous node loop that polls `/api/v1/edge/outbox`, consumes relayed `CONSENSUS_FRAME`s through `EdgeConsensusReplica`, and posts generated vote/commit frames back through `/api/v1/edge/message`; proof: `tests/agentd_edge_consensus_autonomous_smoke.sh`.
+  - 2026-03-15: agentd now manages that same autonomous loop through `POST/GET /api/v1/edge/node/consensus_runtime`, with `consensus_runtime` surfaced on `/api/v1/edge/node` and `/api/v1/edge/nodes`; proof: `tests/agentd_edge_consensus_runtime_smoke.sh`.
 
 ## Deferred (after macOS stability)
 

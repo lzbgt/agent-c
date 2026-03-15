@@ -42,6 +42,7 @@
 #include "workflow_stream_endpoint.h"
 #include "db_query_endpoints.h"
 #include "edge_interop_endpoints.h"
+#include "edge_runtime_endpoints.h"
 #include "edge_deadline_sweeper.h"
 #include "edge_workflow_engine.h"
 #include "secrets_file.h"
@@ -749,6 +750,11 @@ int main(int argc, char** argv) {
   if (cfg.audio_webrtc_peer_node_bin.empty()) {
     if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_PEER_NODE_BIN")) {
       cfg.audio_webrtc_peer_node_bin = p;
+    }
+  }
+  if (cfg.edge_consensus_node_tool_path.empty()) {
+    if (const char* p = getenv_s("AGENTD_EDGE_CONSENSUS_NODE_TOOL")) {
+      cfg.edge_consensus_node_tool_path = p;
     }
   }
 
@@ -1588,6 +1594,14 @@ int main(int argc, char** argv) {
   server.handle("GET", "/api/v1/edge/node", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_edge_node_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("POST", "/api/v1/edge/node/consensus_runtime", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_node_consensus_runtime_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/edge/node/consensus_runtime", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_node_consensus_runtime_status_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
   server.handle("GET", "/api/v1/edge/node/caps", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
