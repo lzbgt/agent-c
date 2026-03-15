@@ -157,6 +157,8 @@ A v0 smoke test should:
 - Agentd now also supports daemon-level broker URL/token defaults for that managed runtime, so callers may omit
   `broker_url` / `broker_token` on normal `voice_webrtc_peer` start/stop flows and still let agentd create/clean up
   broker-owned audio sessions. Safe config and runtime status expose only boolean presence, not the token itself.
+- That managed runtime now also performs bounded startup confirmation and fails closed when the child exits before ready,
+  cleaning up any agentd-owned broker audio session created for the failed start.
 
 ## Open questions
 

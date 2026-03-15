@@ -95,6 +95,12 @@ struct VoicePeerRuntime {
 #endif
 };
 
+struct VoicePeerStartupWaitResult {
+  bool ready = false;
+  bool running = false;
+  bool timed_out = false;
+};
+
 static std::mutex g_voice_peer_mu;
 static std::unordered_map<std::string, std::shared_ptr<VoicePeerRuntime>> g_voice_peer_by_session;
 
@@ -528,6 +534,34 @@ static bool wait_for_voice_peer_stop(const std::shared_ptr<VoicePeerRuntime>& st
   }
 }
 
+static VoicePeerStartupWaitResult wait_for_voice_peer_startup(
+  const std::shared_ptr<VoicePeerRuntime>& st,
+  int64_t timeout_ms
+) {
+  VoicePeerStartupWaitResult result;
+  if (!st) return result;
+  const int64_t deadline = now_unix_ms() + (timeout_ms > 0 ? timeout_ms : 0);
+  for (;;) {
+    {
+      std::lock_guard<std::mutex> lk(g_voice_peer_mu);
+      refresh_voice_peer_runtime_state(st.get());
+      result.ready = st->ready;
+      result.running = st->running;
+      if (result.ready || !result.running) return result;
+    }
+    if (now_unix_ms() >= deadline) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(25));
+  }
+  {
+    std::lock_guard<std::mutex> lk(g_voice_peer_mu);
+    refresh_voice_peer_runtime_state(st.get());
+    result.ready = st->ready;
+    result.running = st->running;
+    result.timed_out = !result.ready && result.running;
+  }
+  return result;
+}
+
 static bool voice_peer_spawn_process(
   AgentDb* db,
   const DaemonConfig& cfg,
@@ -919,6 +953,14 @@ void handle_session_voice_webrtc_peer_endpoint(
   if (tone_hz < 50) tone_hz = 50;
   if (tone_hz > 4000) tone_hz = 4000;
 
+  int64_t startup_wait_ms = 2000;
+  if (body.isMember("startup_wait_ms") &&
+      (body["startup_wait_ms"].isInt64() || body["startup_wait_ms"].isUInt64() || body["startup_wait_ms"].isInt())) {
+    startup_wait_ms = body["startup_wait_ms"].asInt64();
+  }
+  if (startup_wait_ms < 0) startup_wait_ms = 0;
+  if (startup_wait_ms > 10000) startup_wait_ms = 10000;
+
   {
     std::lock_guard<std::mutex> lk(g_voice_peer_mu);
     auto st = voice_peer_lookup_locked(session_id);
@@ -1089,12 +1131,46 @@ void handle_session_voice_webrtc_peer_endpoint(
   {
     std::lock_guard<std::mutex> lk(g_voice_peer_mu);
     g_voice_peer_by_session[session_id] = spawned;
-    out["peer"] = voice_peer_runtime_to_json(*spawned);
   }
   std::string perr;
   (void)persist_voice_peer_runtime_record(db, *spawned, &perr);
+  const VoicePeerStartupWaitResult startup = wait_for_voice_peer_startup(spawned, startup_wait_ms);
+  if (!startup.running && !startup.ready) {
+    Json::Value cleanup(Json::objectValue);
+    std::string cerr;
+    if (!cleanup_session_voice_webrtc_peer_runtime(cfg, db, session_id, broker_token, &cleanup, &cerr)) {
+      out["error"] = cerr.empty() ? "voice peer exited before ready and cleanup failed" : cerr;
+      {
+        std::lock_guard<std::mutex> lk(g_voice_peer_mu);
+        refresh_voice_peer_runtime_state(spawned.get());
+        out["peer"] = voice_peer_runtime_to_json(*spawned);
+      }
+      resp->status = 500;
+      resp->body = json_stringify(out);
+      return;
+    }
+    std::string startup_err = trim_copy(spawned->last_error);
+    if (startup_err.empty()) startup_err = "voice peer exited before ready";
+    out["error"] = startup_err;
+    out["startup_confirmed"] = false;
+    out["startup_cleanup"] = cleanup;
+    if (cleanup.isMember("broker_session_deleted")) out["broker_session_deleted"] = cleanup["broker_session_deleted"];
+    if (cleanup.isMember("broker_session_delete_error")) {
+      out["broker_session_delete_error"] = cleanup["broker_session_delete_error"];
+    }
+    out["peer"] = cleanup.isMember("peer") ? cleanup["peer"] : Json::Value(Json::nullValue);
+    resp->status = 500;
+    resp->body = json_stringify(out);
+    return;
+  }
+  {
+    std::lock_guard<std::mutex> lk(g_voice_peer_mu);
+    refresh_voice_peer_runtime_state(spawned.get());
+    out["peer"] = voice_peer_runtime_to_json(*spawned);
+  }
   out["ok"] = true;
   out["started"] = true;
+  out["startup_confirmed"] = startup.ready;
   resp->status = 200;
   resp->body = json_stringify(out);
 #endif

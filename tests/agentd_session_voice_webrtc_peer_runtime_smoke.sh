@@ -265,6 +265,17 @@ restart_agentd_without_voice_defaults() {
   wait_daemon_ready
 }
 
+restart_agentd_with_invalid_peer_node_bin() {
+  agentd_smoke_stop
+  wait_daemon_stopped
+  AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}" \
+  AGENTD_AUDIO_WEBRTC_BROKER_URL="${VOICE_BROKER_URL}" \
+  AGENTD_AUDIO_WEBRTC_BROKER_TOKEN="${VOICE_BROKER_TOKEN}" \
+  AGENTD_AUDIO_WEBRTC_PEER_NODE_BIN="definitely-not-a-real-node-binary" \
+  agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_session_voice_webrtc_peer_runtime_smoke" >>"${LOG_FILE}" 2>&1
+  wait_daemon_ready
+}
+
 wait_daemon_ready
 
 config_env_defaults="$(curl -fsS --noproxy "*" --max-time 10 \
@@ -1258,5 +1269,82 @@ CONFIG_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.q
 curl -fsS --noproxy "*" --max-time 10 -X DELETE \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   "${DAEMON_URL}/api/v1/session?session_id=${CONFIG_SESSION_ID_Q}" >/dev/null
+
+restart_agentd_with_invalid_peer_node_bin
+
+FAIL_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_fail_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${FAIL_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+fail_start_body="${LOG_DIR}/voice_webrtc_peer_fail_start_body.json"
+fail_start_status="$(curl -sS --noproxy "*" --max-time 10 -o "${fail_start_body}" -w '%{http_code}' \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${FAIL_SESSION_ID}",
+  "action": "start",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab-fail-fast",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 932,
+  "startup_wait_ms": 1000
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+if [[ "${fail_start_status}" != "500" ]]; then
+  echo "expected fail-fast startup response to return 500, got ${fail_start_status}" >&2
+  cat "${fail_start_body}" >&2
+  exit 1
+fi
+
+python3 - <<PY
+import json, sys
+obj = json.load(open(r'''${fail_start_body}''', 'r', encoding='utf-8'))
+cleanup = obj.get("startup_cleanup") or {}
+peer = obj.get("peer") or {}
+if obj.get("startup_confirmed") is not False:
+  print("expected startup_confirmed=false for fail-fast start", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("runtime_present") is not True:
+  print("expected startup cleanup to observe runtime", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("broker_session_delete_attempted") is not True or cleanup.get("broker_session_deleted") is not True:
+  print("expected startup cleanup to delete managed broker session", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("exit_code") != 127:
+  print("expected fail-fast peer exit_code 127", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "exited before ready" not in str(obj.get("error", "")):
+  print("expected fail-fast startup error", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+FAIL_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${FAIL_SESSION_ID}")"
+fail_status_json="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer?session_id=${FAIL_SESSION_ID_Q}")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${fail_status_json}''')
+if obj.get("session_exists") is not True:
+  print("expected session row to remain after fail-fast startup", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("running") is not False or obj.get("peer") is not None:
+  print("expected no surviving runtime after fail-fast startup cleanup", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+curl -fsS --noproxy "*" --max-time 10 -X DELETE \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session?session_id=${FAIL_SESSION_ID_Q}" >/dev/null
 
 echo "agentd_session_voice_webrtc_peer_runtime_smoke OK"

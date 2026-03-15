@@ -205,9 +205,7 @@ static void fill_env_defaults(DaemonConfig* cfg) {
   if (cfg->audio_webrtc_peer_tool_path.empty()) {
     if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_PEER_TOOL")) cfg->audio_webrtc_peer_tool_path = p;
   }
-  if (cfg->audio_webrtc_peer_node_bin.empty()) {
-    if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_PEER_NODE_BIN")) cfg->audio_webrtc_peer_node_bin = p;
-  }
+  if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_PEER_NODE_BIN")) cfg->audio_webrtc_peer_node_bin = p;
   if (cfg->audio_webrtc_broker_url.empty()) {
     if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_BROKER_URL")) cfg->audio_webrtc_broker_url = p;
   }

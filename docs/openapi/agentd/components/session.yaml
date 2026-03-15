@@ -67,6 +67,10 @@ VoiceWebRtcPeerRequest:
     deadline_ms: { type: integer, format: int64 }
     poll_interval_ms: { type: integer, format: int64 }
     tone_hz: { type: integer, format: int64 }
+    startup_wait_ms:
+      type: integer
+      format: int64
+      description: Optional bounded startup confirmation window in ms. Agentd waits up to this long for the peer to become ready and fails the start if the child exits before readiness.
 
 VoiceWebRtcPeerResponse:
   type: object
@@ -79,6 +83,7 @@ VoiceWebRtcPeerResponse:
     bundled_available: { type: boolean }
     broker_url_default_configured: { type: boolean }
     broker_token_default_configured: { type: boolean }
+    startup_confirmed: { type: boolean }
     default_runtime_kind:
       type: string
       enum: [bundled, external]
@@ -89,6 +94,9 @@ VoiceWebRtcPeerResponse:
     stopped: { type: boolean }
     broker_session_deleted: { type: boolean }
     broker_session_delete_error: { type: string }
+    startup_cleanup:
+      type: object
+      additionalProperties: true
     already_running: { type: boolean }
     reason: { type: string }
     error: { type: string }

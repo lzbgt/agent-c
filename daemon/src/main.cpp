@@ -748,10 +748,8 @@ int main(int argc, char** argv) {
       cfg.audio_webrtc_peer_tool_path = p;
     }
   }
-  if (cfg.audio_webrtc_peer_node_bin.empty()) {
-    if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_PEER_NODE_BIN")) {
-      cfg.audio_webrtc_peer_node_bin = p;
-    }
+  if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_PEER_NODE_BIN")) {
+    cfg.audio_webrtc_peer_node_bin = p;
   }
   if (cfg.audio_webrtc_broker_url.empty()) {
     if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_BROKER_URL")) {

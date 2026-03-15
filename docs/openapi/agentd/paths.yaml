@@ -3353,7 +3353,10 @@
       and owns the broker audio session before launching the peer. On `stop`, callers
       may also provide `broker_token`, but when a daemon default token is configured
       agentd can use that default to delete an owned broker audio session after an
-      ungraceful child exit that skipped the peer's best-effort `bye`.
+      ungraceful child exit that skipped the peer's best-effort `bye`. `start`
+      now also waits for a bounded startup confirmation window and fails closed if
+      the child exits before readiness, cleaning up any agentd-owned broker audio
+      session instead of leaving an orphan behind.
     requestBody:
       required: true
       content:

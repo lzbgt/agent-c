@@ -406,6 +406,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `AGENTD_AUDIO_WEBRTC_BROKER_URL` and `AGENTD_AUDIO_WEBRTC_BROKER_TOKEN` or `/api/v1/config/update`, so callers may
   omit `broker_url` / `broker_token` when those defaults are configured. Runtime status also reports
   `broker_url_default_configured` / `broker_token_default_configured`.
+- `POST /api/v1/session/voice_webrtc_peer` now also performs bounded startup confirmation. If the managed peer process
+  exits before it ever reaches ready, agentd returns a failed start instead of `started=true`, reports
+  `startup_confirmed=false`, and cleans up any owned broker audio session before returning.
 - `POST /api/v1/session/voice_webrtc_peer` `action=stop` now accepts optional `broker_token`; when the runtime owns the
   broker audio session, agentd can use either that request token or the daemon's configured default token to delete the
   session itself if the peer died before delivering `bye`.
