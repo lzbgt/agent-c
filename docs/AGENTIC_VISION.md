@@ -249,6 +249,9 @@ These are the most leveraged next steps grounded in current architecture:
    - Completed 2026-03-15: caller-supplied `broker_session_id` is now preflight-validated through the broker before
      peer launch, and the runtime smoke proves agentd fails cleanly without spawning a managed peer against a missing
      signaling session.
+   - Completed 2026-03-15: `broker_session_id` is now mutually exclusive with `broker_agent_id` /
+     `broker_deployment_id`, and the runtime smoke proves that ambiguous mixed-mode start requests are rejected before
+     any peer/runtime state is created.
    - Remaining gap: replace the managed Node/Playwright child with an embedded long-lived agentd-native media service.
 
 5) **Node consensus**

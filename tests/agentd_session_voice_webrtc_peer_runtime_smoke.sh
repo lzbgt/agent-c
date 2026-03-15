@@ -868,6 +868,65 @@ curl -fsS --noproxy "*" --max-time 10 -X DELETE \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   "${DAEMON_URL}/api/v1/session?session_id=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${MISSING_BROKER_SESSION_ID}")" >/dev/null
 
+CONFLICT_BROKER_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_conflict_broker_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${CONFLICT_BROKER_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+conflict_broker_session_resp_body="${LOG_DIR}/voice_webrtc_peer_conflict_broker_session_body.json"
+conflict_broker_session_status="$(curl -sS --noproxy "*" --max-time 10 -o "${conflict_broker_session_resp_body}" -w '%{http_code}' \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${CONFLICT_BROKER_SESSION_ID}",
+  "action": "start",
+  "broker_session_id": "aud_conflict",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab-conflict",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 518
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+if [[ "${conflict_broker_session_status}" != "400" ]]; then
+  echo "expected conflicting broker session start to return 400, got ${conflict_broker_session_status}" >&2
+  cat "${conflict_broker_session_resp_body}" >&2
+  exit 1
+fi
+python3 - <<PY
+import json, sys
+obj = json.load(open(r'''${conflict_broker_session_resp_body}''', 'r', encoding='utf-8'))
+if obj.get("ok") is not False:
+  print("expected conflicting broker session start to fail", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "must be omitted" not in str(obj.get("error", "")):
+  print("expected conflicting broker session validation error", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+conflict_broker_session_status_json="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer?session_id=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${CONFLICT_BROKER_SESSION_ID}")")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${conflict_broker_session_status_json}''')
+if obj.get("running") is not False or obj.get("peer") is not None:
+  print("expected no runtime after conflicting broker session validation failure", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+curl -fsS --noproxy "*" --max-time 10 -X DELETE \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session?session_id=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${CONFLICT_BROKER_SESSION_ID}")" >/dev/null
+
 start_resp2="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   -H 'Content-Type: application/json' \

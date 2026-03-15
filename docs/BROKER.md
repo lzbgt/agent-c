@@ -400,6 +400,8 @@ Current status:
   `peer.managed_broker_session=true`.
 - Shipped: when callers provide `broker_session_id`, agentd now preflights that session through the broker and fails
   with `broker_session_id not found` before spawning a managed peer against a missing signaling session.
+- Shipped: `broker_session_id` is now mutually exclusive with `broker_agent_id` / `broker_deployment_id`, so the
+  explicit-borrowed-session path and the auto-create path cannot be mixed accidentally.
 - Shipped: that agentd runtime surface now exposes explicit backend metadata (`default_runtime_kind=bundled` when the
   repo helper is present, `default_runtime_kind_source=auto|env|config`, `default_runtime_kind_available=true|false`,
   `bundled_available=true|false`, `external_available=true|false`, `builtin_available=false`, and per-backend

@@ -164,6 +164,8 @@ A v0 smoke test should:
   broker-owned audio sessions. Safe config and runtime status expose only boolean presence, not the token itself.
 - If callers provide `broker_session_id`, agentd now preflights that session through the broker and fails before spawn
   when the session does not exist, instead of discovering the problem only after launching the managed peer.
+- `broker_session_id` is now mutually exclusive with `broker_agent_id` / `broker_deployment_id`, keeping the borrowed
+  broker-session path distinct from the agentd-owned auto-create path.
 - That managed runtime now also performs bounded startup confirmation and fails closed when the child exits before ready,
   cleaning up any agentd-owned broker audio session created for the failed start.
 - The operator-configured `external` backend seam is now also durable daemon config (`audio_webrtc.peer_tool_path`,

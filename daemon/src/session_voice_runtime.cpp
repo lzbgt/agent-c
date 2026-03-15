@@ -610,9 +610,11 @@ static bool broker_audio_session_exists(
   const std::string& broker_token,
   const std::string& broker_session_id,
   bool* out_exists,
+  std::string* out_mode,
   std::string* out_err
 ) {
   if (out_exists) *out_exists = false;
+  if (out_mode) out_mode->clear();
   if (out_err) out_err->clear();
   const std::string session_id = trim_copy(broker_session_id);
   if (session_id.empty()) {
@@ -649,6 +651,24 @@ static bool broker_audio_session_exists(
     }
     if (out_err) *out_err = err;
     return false;
+  }
+  Json::Value parsed(Json::nullValue);
+  std::string jerr;
+  if (!json_parse_any(result.response_body, &parsed, &jerr) || !parsed.isObject()) {
+    if (out_err) *out_err = jerr.empty() ? "broker inspect response invalid" : jerr;
+    return false;
+  }
+  if (!parsed.isMember("ok") || !parsed["ok"].asBool()) {
+    if (out_err) *out_err = "broker inspect audio session returned ok=false";
+    return false;
+  }
+  if (!parsed.isMember("session") || !parsed["session"].isObject()) {
+    if (out_err) *out_err = "broker inspect response missing session";
+    return false;
+  }
+  const Json::Value& session = parsed["session"];
+  if (out_mode && session.isMember("mode") && session["mode"].isString()) {
+    *out_mode = lower_copy(trim_copy(session["mode"].asString()));
   }
   if (out_exists) *out_exists = true;
   return true;
@@ -1181,6 +1201,11 @@ void handle_session_voice_webrtc_peer_endpoint(
     resp->body = json_error_body("invalid broker_url");
     return;
   }
+  if (!requested_broker_session_id.empty() && (!broker_agent_id.empty() || !broker_deployment_id.empty())) {
+    resp->status = 400;
+    resp->body = json_error_body("broker_agent_id and broker_deployment_id must be omitted when broker_session_id is provided");
+    return;
+  }
   const std::string broker_url = effective_voice_broker_url(cfg, request_broker_url);
   if (broker_url.empty()) {
     resp->status = 400;
@@ -1243,7 +1268,8 @@ void handle_session_voice_webrtc_peer_endpoint(
     managed_broker_session = true;
   } else {
     bool session_exists = false;
-    if (!broker_audio_session_exists(broker_url, broker_token, broker_session_id, &session_exists, &serr)) {
+    std::string broker_session_mode;
+    if (!broker_audio_session_exists(broker_url, broker_token, broker_session_id, &session_exists, &broker_session_mode, &serr)) {
       out["error"] = serr.empty() ? "failed to inspect broker audio session" : serr;
       resp->status = 500;
       resp->body = json_stringify(out);
@@ -1252,6 +1278,11 @@ void handle_session_voice_webrtc_peer_endpoint(
     if (!session_exists) {
       resp->status = 400;
       resp->body = json_error_body("broker_session_id not found");
+      return;
+    }
+    if (!broker_session_mode.empty() && broker_session_mode != "webrtc") {
+      resp->status = 400;
+      resp->body = json_error_body("broker_session_id mode must be webrtc");
       return;
     }
   }

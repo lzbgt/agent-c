@@ -562,6 +562,7 @@ streaming and plugins are stable.
   - 2026-03-15: agentd now self-heals a corrupted persisted `audio_webrtc.default_runtime_kind` back to `auto` during runtime-config load, rewrites the SQLite runtime-config record, and the WebRTC runtime smoke proves bundled fallback behavior after direct DB corruption.
   - 2026-03-15: WebRTC backend availability now means launchable, not merely configured; runtime/config status expose per-backend unavailable reasons, invalid `audio_webrtc.node_bin` is surfaced as preflight unavailability before any broker session is created, and the fail-fast child-exit cleanup path is now proved separately with a launchable-but-immediately-exiting runtime.
   - 2026-03-15: caller-supplied `broker_session_id` is now preflight-validated through the broker before launch, so agentd returns a clean missing-session error without spawning a managed peer against nonexistent signaling state.
+  - 2026-03-15: `broker_session_id` is now mutually exclusive with `broker_agent_id` / `broker_deployment_id`, and the WebRTC runtime smoke proves that ambiguous mixed-mode start requests are rejected without creating peer/runtime state.
 - [x] Add binary blob storage tiering plan (`docs/DB.md#blob-storage-tiers-design--status`).
   - [x] Add edge task/node analytics exports (CSV/JSON bundles).
   - [x] Implement blob_manifest schema + local blob store v0 (upload + read + ref-count GC).
