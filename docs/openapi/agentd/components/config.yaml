@@ -108,6 +108,14 @@ AgentdConfigResponse:
       properties:
         required: { type: boolean }
         keys_set: { type: integer, format: int64 }
+    edge_consensus:
+      type: object
+      additionalProperties: true
+      properties:
+        clusters_set: { type: integer, format: int64 }
+        cluster_ids:
+          type: array
+          items: { type: string }
     memory:
       type: object
       additionalProperties: true
@@ -851,3 +859,111 @@ EdgeAuthRevocationsUpdateResponse:
     revoked_node_ids_set: { type: integer, format: int64 }
     revocations:
       $ref: "#/components/schemas/EdgeAuthRevocationsBundle"
+
+
+EdgeConsensusMembershipAttest:
+  type: object
+  required: [schema, ts_utc_ms, cluster_id, membership_epoch, signing_schema, alg, kid, sig]
+  properties:
+    schema: { type: string, enum: [edge_consensus_membership_attest_v1] }
+    ts_utc_ms: { type: integer, format: int64 }
+    cluster_id: { type: string }
+    membership_epoch: { type: integer, format: int64 }
+    signing_schema: { type: string, enum: [edge_consensus_membership_v1] }
+    alg: { type: string, enum: [hmac-sha256, ed25519] }
+    kid: { type: string }
+    pubkey:
+      type: string
+      description: Present for Ed25519 signatures
+    sig: { type: string }
+
+
+EdgeConsensusMembershipBundle:
+  type: object
+  required: [schema, created_utc_ms, cluster_id, membership_epoch, updated_utc_ms, campaign_delay_ms, campaign_retry_ms, member_node_ids]
+  properties:
+    schema: { type: string, enum: [edge_consensus_membership_v1] }
+    created_utc_ms: { type: integer, format: int64 }
+    cluster_id: { type: string }
+    membership_epoch: { type: integer, format: int64 }
+    updated_utc_ms: { type: integer, format: int64 }
+    campaign_delay_ms: { type: integer, format: int64 }
+    campaign_retry_ms: { type: integer, format: int64 }
+    member_node_ids:
+      type: array
+      items: { type: string }
+    attest:
+      $ref: "#/components/schemas/EdgeConsensusMembershipAttest"
+
+
+EdgeConsensusMembershipResponse:
+  type: object
+  required: [ok, cluster_id, membership]
+  properties:
+    ok: { type: boolean }
+    cluster_id: { type: string }
+    membership:
+      $ref: "#/components/schemas/EdgeConsensusMembershipBundle"
+
+
+EdgeConsensusMembershipRotateRequest:
+  type: object
+  additionalProperties: false
+  required: [cluster_id, member_node_ids]
+  properties:
+    cluster_id: { type: string }
+    mode:
+      type: string
+      enum: [merge, replace]
+      description: Whether to merge into or replace the current member set for this cluster
+    membership_epoch:
+      type: integer
+      format: int64
+      description: Optional explicit monotonic membership epoch; defaults to current+1 for the cluster
+    member_node_ids:
+      type: array
+      items: { type: string }
+    campaign_delay_ms: { type: integer, format: int64 }
+    campaign_retry_ms: { type: integer, format: int64 }
+
+
+EdgeConsensusMembershipRotateResponse:
+  type: object
+  required: [ok, cluster_id, membership_epoch, updated_utc_ms, campaign_delay_ms, campaign_retry_ms, member_count, membership]
+  properties:
+    ok: { type: boolean }
+    cluster_id: { type: string }
+    membership_epoch: { type: integer, format: int64 }
+    updated_utc_ms: { type: integer, format: int64 }
+    campaign_delay_ms: { type: integer, format: int64 }
+    campaign_retry_ms: { type: integer, format: int64 }
+    member_count: { type: integer, format: int64 }
+    membership:
+      $ref: "#/components/schemas/EdgeConsensusMembershipBundle"
+
+
+EdgeConsensusMembershipSendRequest:
+  type: object
+  additionalProperties: false
+  required: [cluster_id, target_node_id]
+  properties:
+    cluster_id: { type: string }
+    target_node_id:
+      type: string
+      description: Recipient node that will receive the membership bundle via outbox
+    confidential_kid:
+      type: string
+      description: Optional configured confidentiality `kid`; when set, the outbox envelope is emitted with `body_enc`
+
+
+EdgeConsensusMembershipSendResponse:
+  type: object
+  required: [ok, cluster_id, target_node_id, outbox_id, membership]
+  properties:
+    ok: { type: boolean }
+    cluster_id: { type: string }
+    target_node_id: { type: string }
+    outbox_id: { type: integer, format: int64 }
+    confidential_kid: { type: string }
+    membership:
+      $ref: "#/components/schemas/EdgeConsensusMembershipBundle"

@@ -99,9 +99,12 @@ The shipped autonomous host-loop proof adds:
 - retry-capable campaign timers (`campaign_delay_ms` + `campaign_retry_ms`) so a candidate can start before peers are
   online and still converge later without manual restart
 - explicit membership surfaces (`membership_epoch` + `member_node_ids`) on the shared core, host helper, and managed runtime
+- signed/durable cluster policy bundles via `edge_consensus_membership_v1`, including outbox delivery as
+  `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE`
+- managed runtime defaulting from the stored cluster policy when explicit member-set / retry fields are omitted
 
 ## Still open
 
 This document does **not** claim production-complete embedded consensus is complete. Remaining work:
 - replace the current host-managed helper with embedded / firmware-native adoption
-- define membership and recovery policy for multi-hour or partition-heavy deployments beyond the shipped bring-up retry timers
+- extend the shipped durable membership bundle into richer long-lived recovery policy for multi-hour or partition-heavy deployments

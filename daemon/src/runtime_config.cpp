@@ -455,6 +455,52 @@ bool load_runtime_config_best_effort(
       if (v.isMember("edge_auth_require_manifest_cert_chain") && v["edge_auth_require_manifest_cert_chain"].isBool()) {
         cfg_io->edge_auth_require_manifest_cert_chain = v["edge_auth_require_manifest_cert_chain"].asBool();
       }
+      if (v.isMember("edge_consensus_clusters") && v["edge_consensus_clusters"].isObject()) {
+        cfg_io->edge_consensus_clusters.clear();
+        const Json::Value& clusters = v["edge_consensus_clusters"];
+        for (const auto& cluster_id : clusters.getMemberNames()) {
+          if (!is_safe_edge_id_token(cluster_id)) continue;
+          const Json::Value& row = clusters[cluster_id];
+          if (!row.isObject()) continue;
+          EdgeConsensusClusterPolicy pol;
+          if (row.isMember("membership_epoch") &&
+              (row["membership_epoch"].isInt64() || row["membership_epoch"].isUInt64())) {
+            pol.membership_epoch = row["membership_epoch"].isInt64()
+              ? row["membership_epoch"].asInt64()
+              : (int64_t)row["membership_epoch"].asUInt64();
+          }
+          if (row.isMember("updated_utc_ms") &&
+              (row["updated_utc_ms"].isInt64() || row["updated_utc_ms"].isUInt64())) {
+            pol.updated_utc_ms = row["updated_utc_ms"].isInt64()
+              ? row["updated_utc_ms"].asInt64()
+              : (int64_t)row["updated_utc_ms"].asUInt64();
+          }
+          if (row.isMember("campaign_delay_ms") &&
+              (row["campaign_delay_ms"].isInt64() || row["campaign_delay_ms"].isUInt64())) {
+            pol.campaign_delay_ms = row["campaign_delay_ms"].isInt64()
+              ? row["campaign_delay_ms"].asInt64()
+              : (int64_t)row["campaign_delay_ms"].asUInt64();
+          }
+          if (row.isMember("campaign_retry_ms") &&
+              (row["campaign_retry_ms"].isInt64() || row["campaign_retry_ms"].isUInt64())) {
+            pol.campaign_retry_ms = row["campaign_retry_ms"].isInt64()
+              ? row["campaign_retry_ms"].asInt64()
+              : (int64_t)row["campaign_retry_ms"].asUInt64();
+          }
+          if (row.isMember("member_node_ids") && row["member_node_ids"].isArray()) {
+            for (const auto& item : row["member_node_ids"]) {
+              if (!item.isString()) continue;
+              std::string s = trim_copy(item.asString());
+              if (!s.empty() && is_safe_edge_id_token(s)) pol.member_node_ids.push_back(s);
+            }
+          }
+          if (pol.membership_epoch < 0) pol.membership_epoch = 0;
+          if (pol.updated_utc_ms < 0) pol.updated_utc_ms = 0;
+          if (pol.campaign_delay_ms < 0) pol.campaign_delay_ms = 0;
+          if (pol.campaign_retry_ms < 0) pol.campaign_retry_ms = 0;
+          if (!pol.member_node_ids.empty()) cfg_io->edge_consensus_clusters[cluster_id] = std::move(pol);
+        }
+      }
       if (v.isMember("edge_confidentiality_required") && v["edge_confidentiality_required"].isBool()) {
         cfg_io->edge_confidentiality_required = v["edge_confidentiality_required"].asBool();
       }
@@ -713,6 +759,22 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   v["edge_auth_cert_roots_epoch"] = (Json::Int64)cfg.edge_auth_cert_roots_epoch;
   v["edge_auth_cert_roots_updated_utc_ms"] = (Json::Int64)cfg.edge_auth_cert_roots_updated_utc_ms;
   v["edge_auth_require_manifest_cert_chain"] = cfg.edge_auth_require_manifest_cert_chain;
+  if (!cfg.edge_consensus_clusters.empty()) {
+    Json::Value clusters(Json::objectValue);
+    for (const auto& it : cfg.edge_consensus_clusters) {
+      if (it.first.empty() || it.second.member_node_ids.empty()) continue;
+      Json::Value row(Json::objectValue);
+      row["membership_epoch"] = (Json::Int64)it.second.membership_epoch;
+      row["updated_utc_ms"] = (Json::Int64)it.second.updated_utc_ms;
+      row["campaign_delay_ms"] = (Json::Int64)it.second.campaign_delay_ms;
+      row["campaign_retry_ms"] = (Json::Int64)it.second.campaign_retry_ms;
+      Json::Value members(Json::arrayValue);
+      for (const auto& member : it.second.member_node_ids) if (!member.empty()) members.append(member);
+      row["member_node_ids"] = members;
+      clusters[it.first] = row;
+    }
+    if (!clusters.empty()) v["edge_consensus_clusters"] = clusters;
+  }
   v["edge_confidentiality_required"] = cfg.edge_confidentiality_required;
   {
     Json::Value arr(Json::arrayValue);

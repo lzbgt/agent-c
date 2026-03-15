@@ -574,6 +574,20 @@ bool AgentdApi::init(std::string* out_error) {
     const DaemonConfig cur = self->cfg_store->snapshot();
     handle_edge_auth_revocations_send_endpoint(cur, &self->db, self->cors_cfg, req, resp);
   });
+  impl_->route("GET", "/api/v1/edge/consensus/membership", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_edge_consensus_membership_endpoint(cur, self->cors_cfg, req, resp);
+  });
+  impl_->route("POST", "/api/v1/edge/consensus/membership/rotate", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    handle_edge_consensus_membership_rotate_endpoint(self->cfg_store.get(), &self->db, self->cors_cfg, req, resp);
+  });
+  impl_->route("POST", "/api/v1/edge/consensus/membership/send", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_edge_consensus_membership_send_endpoint(cur, &self->db, self->cors_cfg, req, resp);
+  });
 
   impl_->route("GET", "/api/v1/client/prefs", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);

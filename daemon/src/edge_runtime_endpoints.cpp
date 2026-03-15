@@ -74,6 +74,31 @@ static int64_t json_to_i64(const Json::Value& v, int64_t fallback) {
   return fallback;
 }
 
+static std::vector<std::string> dedupe_safe_edge_ids(const std::vector<std::string>& in) {
+  std::vector<std::string> out;
+  out.reserve(in.size());
+  for (const auto& raw : in) {
+    const std::string s = trim_copy(raw);
+    if (!edge_id_is_safe(s)) continue;
+    if (std::find(out.begin(), out.end(), s) == out.end()) out.push_back(s);
+  }
+  return out;
+}
+
+static Json::Value edge_consensus_cluster_policy_to_json(const std::string& cluster_id, const EdgeConsensusClusterPolicy& pol) {
+  Json::Value out(Json::objectValue);
+  out["schema"] = "edge_consensus_cluster_policy_v1";
+  out["cluster_id"] = cluster_id;
+  out["membership_epoch"] = (Json::Int64)pol.membership_epoch;
+  out["updated_utc_ms"] = (Json::Int64)pol.updated_utc_ms;
+  out["campaign_delay_ms"] = (Json::Int64)pol.campaign_delay_ms;
+  out["campaign_retry_ms"] = (Json::Int64)pol.campaign_retry_ms;
+  Json::Value members(Json::arrayValue);
+  for (const auto& member : pol.member_node_ids) members.append(member);
+  out["member_node_ids"] = members;
+  return out;
+}
+
 struct EdgeConsensusRuntime {
   std::string node_id;
   std::string cluster_id;
@@ -204,6 +229,8 @@ static bool edge_consensus_runtime_spawn_process(
   const std::string fw_git_sha =
     body.isMember("fw_git_sha") && body["fw_git_sha"].isString() ? trim_copy(body["fw_git_sha"].asString()) : std::string("agentd_managed_runtime");
   const std::string tool_path = trim_copy(cfg.edge_consensus_node_tool_path);
+  const auto pol_it = cfg.edge_consensus_clusters.find(cluster_id);
+  const EdgeConsensusClusterPolicy* cluster_policy = pol_it == cfg.edge_consensus_clusters.end() ? nullptr : &pol_it->second;
 
   if (tool_path.empty()) {
     if (out_err) *out_err = "edge_consensus_node_tool_path not configured";
@@ -279,9 +306,15 @@ static bool edge_consensus_runtime_spawn_process(
       }
     }
   }
+  if (member_node_ids.empty() && cluster_policy) member_node_ids = dedupe_safe_edge_ids(cluster_policy->member_node_ids);
   if (std::find(member_node_ids.begin(), member_node_ids.end(), node_id) == member_node_ids.end()) {
     member_node_ids.push_back(node_id);
   }
+  member_node_ids = dedupe_safe_edge_ids(member_node_ids);
+  if (peer_node_ids.empty() && !member_node_ids.empty()) {
+    for (const auto& member : member_node_ids) if (member != node_id) peer_node_ids.push_back(member);
+  }
+  peer_node_ids = dedupe_safe_edge_ids(peer_node_ids);
   if (member_node_ids.empty()) member_node_ids = peer_node_ids;
 
   uint64_t cluster_size = body.isMember("cluster_size") ? json_to_u64(body["cluster_size"], 0) : 0;
@@ -291,11 +324,13 @@ static bool edge_consensus_runtime_spawn_process(
   uint64_t outbox_limit = body.isMember("outbox_limit") ? json_to_u64(body["outbox_limit"], 128) : 128;
   outbox_limit = std::max<uint64_t>(1, std::min<uint64_t>(outbox_limit, 2048));
 
-  int64_t campaign_delay_ms = body.isMember("campaign_delay_ms") ? json_to_i64(body["campaign_delay_ms"], 0) : 0;
+  int64_t campaign_delay_ms = body.isMember("campaign_delay_ms")
+    ? json_to_i64(body["campaign_delay_ms"], 0)
+    : (cluster_policy ? cluster_policy->campaign_delay_ms : 0);
   campaign_delay_ms = std::max<int64_t>(0, std::min<int64_t>(campaign_delay_ms, 120000));
-  int64_t campaign_retry_ms =
-    body.isMember("campaign_retry_ms") ? json_to_i64(body["campaign_retry_ms"], decision_sha256.empty() ? 0 : 1500) :
-                                         (decision_sha256.empty() ? 0 : 1500);
+  int64_t campaign_retry_ms = body.isMember("campaign_retry_ms")
+    ? json_to_i64(body["campaign_retry_ms"], decision_sha256.empty() ? 0 : 1500)
+    : (cluster_policy ? cluster_policy->campaign_retry_ms : (decision_sha256.empty() ? 0 : 1500));
   campaign_retry_ms = std::max<int64_t>(0, std::min<int64_t>(campaign_retry_ms, 120000));
   int64_t poll_interval_ms = body.isMember("poll_interval_ms") ? json_to_i64(body["poll_interval_ms"], 100) : 100;
   poll_interval_ms = std::max<int64_t>(25, std::min<int64_t>(poll_interval_ms, 5000));
@@ -305,7 +340,9 @@ static bool edge_consensus_runtime_spawn_process(
   uint64_t trust_roots_epoch = body.isMember("trust_roots_epoch") ? json_to_u64(body["trust_roots_epoch"], 0) : 0;
   uint64_t revocations_epoch = body.isMember("revocations_epoch") ? json_to_u64(body["revocations_epoch"], 0) : 0;
   uint64_t cert_roots_epoch = body.isMember("cert_roots_epoch") ? json_to_u64(body["cert_roots_epoch"], 0) : 0;
-  uint64_t membership_epoch = body.isMember("membership_epoch") ? json_to_u64(body["membership_epoch"], 0) : 0;
+  uint64_t membership_epoch = body.isMember("membership_epoch")
+    ? json_to_u64(body["membership_epoch"], 0)
+    : (cluster_policy && cluster_policy->membership_epoch >= 0 ? (uint64_t)cluster_policy->membership_epoch : 0);
 
   std::error_code ec;
   const std::filesystem::path run_dir = edge_consensus_runtime_dir(cfg, node_id);
@@ -572,6 +609,8 @@ void handle_edge_node_consensus_runtime_endpoint(
     resp->body = json_error_body("action must be start or stop");
     return;
   }
+  const std::string req_cluster_id =
+    body.isMember("cluster_id") && body["cluster_id"].isString() ? trim_copy(body["cluster_id"].asString()) : "";
 
   Json::Value out(Json::objectValue);
   out["ok"] = false;
@@ -579,6 +618,8 @@ void handle_edge_node_consensus_runtime_endpoint(
   out["tool_configured"] = !trim_copy(cfg.edge_consensus_node_tool_path).empty();
   if (!cfg.edge_consensus_node_tool_path.empty()) out["tool_path"] = cfg.edge_consensus_node_tool_path;
   out["default_daemon_url"] = default_local_daemon_url(cfg);
+  const auto pol_it = cfg.edge_consensus_clusters.find(req_cluster_id);
+  if (pol_it != cfg.edge_consensus_clusters.end()) out["cluster_policy"] = edge_consensus_cluster_policy_to_json(pol_it->first, pol_it->second);
 
   if (action == "stop") {
     std::shared_ptr<EdgeConsensusRuntime> st;
@@ -626,7 +667,7 @@ void handle_edge_node_consensus_runtime_endpoint(
 #endif
   }
 
-  const std::string cluster_id = body.isMember("cluster_id") && body["cluster_id"].isString() ? trim_copy(body["cluster_id"].asString()) : "";
+  const std::string cluster_id = req_cluster_id;
   const std::string manifest_sha256 =
     body.isMember("manifest_sha256") && body["manifest_sha256"].isString() ? trim_copy(body["manifest_sha256"].asString()) : "";
   if (!edge_id_is_safe(cluster_id)) {
@@ -725,6 +766,10 @@ void handle_edge_node_consensus_runtime_status_endpoint(
   std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
   auto st = edge_consensus_runtime_lookup_locked(*nid);
   out["runtime"] = st ? edge_consensus_runtime_to_json(*st) : Json::Value(Json::nullValue);
+  if (st) {
+    const auto pol_it = cfg.edge_consensus_clusters.find(st->cluster_id);
+    if (pol_it != cfg.edge_consensus_clusters.end()) out["cluster_policy"] = edge_consensus_cluster_policy_to_json(pol_it->first, pol_it->second);
+  }
   out["running"] = st ? st->running : false;
   resp->status = 200;
   resp->body = json_stringify(out);

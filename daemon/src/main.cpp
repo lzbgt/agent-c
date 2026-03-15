@@ -1116,6 +1116,17 @@ int main(int argc, char** argv) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_edge_auth_revocations_send_endpoint(cur, db_or_null, cors_cfg, req, resp);
   });
+  server.handle("GET", "/api/v1/edge/consensus/membership", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_consensus_membership_endpoint(cur, cors_cfg, req, resp);
+  });
+  server.handle("POST", "/api/v1/edge/consensus/membership/rotate", [&](const HttpRequest& req, HttpResponse* resp) {
+    handle_edge_consensus_membership_rotate_endpoint(&cfg_store, db_or_null, cors_cfg, req, resp);
+  });
+  server.handle("POST", "/api/v1/edge/consensus/membership/send", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_consensus_membership_send_endpoint(cur, db_or_null, cors_cfg, req, resp);
+  });
 
   server.handle("GET", "/api/v1/client/prefs", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();

@@ -869,6 +869,17 @@ struct AgentdService::Impl {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_edge_auth_revocations_send_endpoint(cur, &db, cors_cfg, req, resp);
     });
+    server.handle("GET", "/api/v1/edge/consensus/membership", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_edge_consensus_membership_endpoint(cur, cors_cfg, req, resp);
+    });
+    server.handle("POST", "/api/v1/edge/consensus/membership/rotate", [this](const HttpRequest& req, HttpResponse* resp) {
+      handle_edge_consensus_membership_rotate_endpoint(cfg_store.get(), &db, cors_cfg, req, resp);
+    });
+    server.handle("POST", "/api/v1/edge/consensus/membership/send", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_edge_consensus_membership_send_endpoint(cur, &db, cors_cfg, req, resp);
+    });
 
     server.handle("GET", "/api/v1/client/prefs", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();

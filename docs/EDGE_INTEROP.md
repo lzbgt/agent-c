@@ -229,8 +229,15 @@ Returns messages in ascending `outbox_id` order. The node should:
   - starts or stops the managed host-side `agentd_edge_consensus_node` helper for one edge node
   - supports `campaign_delay_ms` and `campaign_retry_ms` so early candidates can re-campaign until peers come online
   - accepts explicit `membership_epoch` and `member_node_ids` for deterministic member-set compatibility
+  - defaults those same membership/retry fields from the durable per-cluster policy when they are omitted
 - `GET /api/v1/edge/node/consensus_runtime?node_id=...`
   - reports the managed helper status plus the latest final result JSON emitted by the consensus tool
+- `GET /api/v1/edge/consensus/membership?cluster_id=...`
+  - exports the signed `edge_consensus_membership_v1` control-plane bundle for one cluster
+- `POST /api/v1/edge/consensus/membership/rotate`
+  - persists monotonic cluster membership + retry policy
+- `POST /api/v1/edge/consensus/membership/send`
+  - enqueues that same bundle to a node outbox as `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE`
 - `GET /api/v1/edge/node/caps?node_id=...`
 - `GET /api/v1/edge/node/manifest_bundle?node_id=...`
 - `POST /api/v1/edge/node/manifest_bundle/send`
@@ -266,6 +273,8 @@ Manifest bundle note:
   without operator restart.
 - The shared protocol/runtime foundation now also carries explicit membership versioning, so stale or non-member nodes can
   be rejected before their votes influence quorum.
+- Consensus membership is now also a first-class signed control-plane artifact rather than only per-process start input:
+  operator-managed cluster policy can be exported, delivered over outbox transport, and reused by managed runtime starts.
 - Those same send helpers accept `confidential_kid`, which emits the outbox envelope with AES-GCM
   `body_enc` instead of plaintext `body` for peer/control-plane payload confidentiality.
 - Operators can inspect those bundles, emit a CA file, and run `openssl verify` against candidate

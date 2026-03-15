@@ -626,6 +626,131 @@
             schema:
               $ref: "#/components/schemas/ErrorResponse"
 
+/api/v1/edge/consensus/membership:
+  get:
+    tags: [config, edge]
+    summary: Get signed edge consensus membership bundle
+    description: |
+      Returns the durable per-cluster consensus membership and retry policy as a first-class bundle.
+
+      Notes:
+      - `cluster_id` is required.
+      - The bundle carries `membership_epoch`, `member_node_ids`, `campaign_delay_ms`, and `campaign_retry_ms`.
+      - When run-attestation signing keys are configured, the bundle includes an `attest` block.
+    parameters:
+      - in: query
+        name: cluster_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Consensus membership bundle
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeConsensusMembershipResponse"
+      "400":
+        description: Invalid cluster id
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "404":
+        description: Cluster policy not found
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
+/api/v1/edge/consensus/membership/rotate:
+  post:
+    tags: [config, edge]
+    summary: Update durable edge consensus membership policy
+    description: |
+      Applies a monotonic membership epoch for one cluster and stores the durable member set plus retry timing defaults.
+
+      Notes:
+      - Requires Bearer auth when daemon auth is enabled.
+      - `mode:"replace"` clears the current stored member set before applying the request body.
+      - `membership_epoch` must be strictly greater than the current epoch for the cluster.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EdgeConsensusMembershipRotateRequest"
+    responses:
+      "200":
+        description: Membership policy update acknowledged
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeConsensusMembershipRotateResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "409":
+        description: Membership epoch conflict
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
+/api/v1/edge/consensus/membership/send:
+  post:
+    tags: [config, edge]
+    summary: Enqueue the signed consensus membership bundle to one node outbox
+    description: |
+      Builds the current signed `edge_consensus_membership_v1` bundle and enqueues it to the
+      recipient node as a `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE` outbox message. When
+      `confidential_kid` is set, the outbox envelope uses `body_enc` instead of plaintext `body`.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EdgeConsensusMembershipSendRequest"
+    responses:
+      "200":
+        description: Membership bundle queued for node delivery
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeConsensusMembershipSendResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "404":
+        description: Target node or cluster policy not found
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
 /api/v1/client/prefs:
   get:
     tags: [client]
@@ -2407,6 +2532,8 @@
       set `campaign_delay_ms` for the first election and `campaign_retry_ms` for
       repeated campaigns when quorum is not reached before peers arrive. They can
       also provide `membership_epoch` and `member_node_ids` for explicit member-set compatibility.
+      When those fields are omitted and a durable `/api/v1/edge/consensus/membership` policy exists
+      for the cluster, the runtime defaults from that stored bundle.
     requestBody:
       required: true
       content:

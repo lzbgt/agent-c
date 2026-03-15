@@ -238,8 +238,11 @@ These are the most leveraged next steps grounded in current architecture:
      can converge after peers arrive late instead of stalling after a single failed round.
    - Completed 2026-03-15: the shared consensus foundation now carries explicit membership versioning/member sets, so
      runtime and embedded adopters have a deterministic compatibility surface beyond ad hoc peer lists.
-   - Still open: replace the current host-managed helper with embedded node-native adoption plus richer membership and
-     recovery policy beyond the current bring-up/runtime harness.
+   - Completed 2026-03-15: cluster membership/retry policy is now a signed durable control-plane artifact
+     (`edge_consensus_membership_v1`) with outbox delivery and managed-runtime defaulting, so operator policy is no
+     longer stranded in one-off runtime start bodies.
+   - Still open: replace the current host-managed helper with embedded node-native adoption plus richer long-lived
+     membership and recovery policy beyond the current durable bundle fields.
 
 6) **Scheduling + isolation MVP**
    - Completed 2026-03-15: admission control + per-run budgets + tool execution caps landed with

@@ -9,6 +9,14 @@
 
 namespace agentd {
 
+struct EdgeConsensusClusterPolicy {
+  int64_t membership_epoch = 0;
+  int64_t updated_utc_ms = 0;
+  std::vector<std::string> member_node_ids;
+  int64_t campaign_delay_ms = 0;
+  int64_t campaign_retry_ms = 1500;
+};
+
 struct CorsRouteConfig {
   std::string path_prefix;
   std::vector<std::string> origins;
@@ -136,6 +144,8 @@ struct DaemonConfig {
   std::string audio_webrtc_peer_node_bin = "node";
   // Optional managed host-side consensus-node helper for edge bring-up.
   std::string edge_consensus_node_tool_path;
+  // Optional durable per-cluster consensus membership/retry policy.
+  std::map<std::string, EdgeConsensusClusterPolicy> edge_consensus_clusters;
   // Session upload limit (per-file, decoded bytes). 0 means "no explicit per-file limit".
   size_t upload_max_bytes = 32 * 1024 * 1024;
   // When true, session-scoped file reads require resolved realpaths to stay within the session root.
