@@ -193,15 +193,24 @@ VOICE_BROKER_URL="http://127.0.0.1:${BROKER_PORT}"
 VOICE_BROKER_TOKEN="audio-agentd-token"
 
 start_agentd_with_voice_defaults() {
-  AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}" \
-  AGENTD_AUDIO_WEBRTC_BROKER_URL="${VOICE_BROKER_URL}" \
-  AGENTD_AUDIO_WEBRTC_BROKER_TOKEN="${VOICE_BROKER_TOKEN}" \
+  export AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}"
+  export AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND="bundled"
+  export AGENTD_AUDIO_WEBRTC_BROKER_URL="${VOICE_BROKER_URL}"
+  export AGENTD_AUDIO_WEBRTC_BROKER_TOKEN="${VOICE_BROKER_TOKEN}"
   agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_session_voice_webrtc_peer_runtime_smoke" >>"${LOG_FILE}" 2>&1
+  unset AGENTD_AUTH_TOKEN
+  unset AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND
+  unset AGENTD_AUDIO_WEBRTC_BROKER_URL
+  unset AGENTD_AUDIO_WEBRTC_BROKER_TOKEN
 }
 
 start_agentd_without_voice_defaults() {
-  AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}" \
+  export AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}"
+  unset AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND
+  unset AGENTD_AUDIO_WEBRTC_BROKER_URL
+  unset AGENTD_AUDIO_WEBRTC_BROKER_TOKEN
   agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_session_voice_webrtc_peer_runtime_smoke" >>"${LOG_FILE}" 2>&1
+  unset AGENTD_AUTH_TOKEN
 }
 
 start_agentd_with_voice_defaults
@@ -282,8 +291,8 @@ if audio.get("broker_url_default_configured") is not True:
 if audio.get("broker_token_default_configured") is not True:
   print("expected broker_token_default_configured from daemon env", obj, file=sys.stderr)
   raise SystemExit(1)
-if audio.get("default_runtime_kind") is not None or audio.get("default_runtime_kind_source") != "auto":
-  print("expected auto default_runtime_kind before runtime config override", obj, file=sys.stderr)
+if audio.get("default_runtime_kind") != "bundled" or audio.get("default_runtime_kind_source") != "env":
+  print("expected env default_runtime_kind before runtime config override", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 
@@ -300,7 +309,7 @@ wait_voice_peer_ready() {
   local out_var="${3:-}"
   local expected_runtime_kind="${4:-bundled}"
   local expected_default_runtime_kind="${5:-bundled}"
-  local expected_default_runtime_kind_source="${6:-auto}"
+  local expected_default_runtime_kind_source="${6:-env}"
   local expected_external_available="${7:-0}"
   local status_body=""
   for _ in $(seq 1 120); do
@@ -609,7 +618,7 @@ if obj.get("builtin_available") is not False or obj.get("bundled_available") is 
 if obj.get("external_available") is not False or obj.get("default_runtime_kind") != "bundled":
   print("unexpected runtime defaults", obj, file=sys.stderr)
   raise SystemExit(1)
-if obj.get("default_runtime_kind_source") != "auto" or obj.get("default_runtime_kind_available") is not True:
+if obj.get("default_runtime_kind_source") != "env" or obj.get("default_runtime_kind_available") is not True:
   print("unexpected runtime defaults", obj, file=sys.stderr)
   raise SystemExit(1)
 if obj.get("broker_url_default_configured") is not True or obj.get("broker_token_default_configured") is not True:
@@ -753,7 +762,7 @@ if obj.get("builtin_available") is not False or obj.get("bundled_available") is 
 if obj.get("external_available") is not False or obj.get("default_runtime_kind") != "bundled":
   print("unexpected builtin contract response", obj, file=sys.stderr)
   raise SystemExit(1)
-if obj.get("default_runtime_kind_source") != "auto" or obj.get("default_runtime_kind_available") is not True:
+if obj.get("default_runtime_kind_source") != "env" or obj.get("default_runtime_kind_available") is not True:
   print("unexpected builtin contract response", obj, file=sys.stderr)
   raise SystemExit(1)
 if obj.get("broker_url_default_configured") is not True or obj.get("broker_token_default_configured") is not True:
@@ -785,7 +794,7 @@ if obj.get("builtin_available") is not False or obj.get("bundled_available") is 
 if obj.get("external_available") is not False or obj.get("default_runtime_kind") != "bundled":
   print("unexpected external contract response", obj, file=sys.stderr)
   raise SystemExit(1)
-if obj.get("default_runtime_kind_source") != "auto" or obj.get("default_runtime_kind_available") is not True:
+if obj.get("default_runtime_kind_source") != "env" or obj.get("default_runtime_kind_available") is not True:
   print("unexpected external contract response", obj, file=sys.stderr)
   raise SystemExit(1)
 if obj.get("broker_url_default_configured") is not True or obj.get("broker_token_default_configured") is not True:

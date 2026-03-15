@@ -236,7 +236,8 @@ These are the most leveraged next steps grounded in current architecture:
      cleans up any owned broker audio session created for that failed start instead of reporting a false-positive start.
    - Completed 2026-03-15: the operator-configured `external` backend seam is now durable daemon config
      (`audio_webrtc.peer_tool_path`, `audio_webrtc.node_bin`, `audio_webrtc.default_runtime_kind`) instead of env-only
-     process wiring, and runtime metadata now makes default backend source/availability explicit.
+     process wiring, daemon startup now also honors `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND`, and runtime metadata now
+     makes default backend source/availability explicit.
    - Remaining gap: replace the managed Node/Playwright child with an embedded long-lived agentd-native media service.
 
 5) **Node consensus**

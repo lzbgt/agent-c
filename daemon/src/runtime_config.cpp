@@ -125,9 +125,13 @@ bool load_runtime_config_best_effort(
           }
         }
         if (aw.isMember("default_runtime_kind")) {
-          if (aw["default_runtime_kind"].isNull()) cfg_io->audio_webrtc_default_runtime_kind.clear();
+          if (aw["default_runtime_kind"].isNull()) {
+            cfg_io->audio_webrtc_default_runtime_kind.clear();
+            cfg_io->audio_webrtc_default_runtime_kind_from_env = false;
+          }
           else if (aw["default_runtime_kind"].isString()) {
             cfg_io->audio_webrtc_default_runtime_kind = lower_copy(trim_copy(aw["default_runtime_kind"].asString()));
+            cfg_io->audio_webrtc_default_runtime_kind_from_env = false;
           }
         }
         if (aw.isMember("node_bin")) {

@@ -143,7 +143,7 @@ A v0 smoke test should:
   - `bundled_available=true|false`
   - `external_available=true|false`
   - `default_runtime_kind=bundled|external`
-  - `default_runtime_kind_source=auto|config`
+  - `default_runtime_kind_source=auto|env|config`
   - `default_runtime_kind_available=true|false`
   - `peer.runtime_kind=bundled|external`
   so the current shipped Node/Playwright path is a named bundled backend with an explicit `external` override rather
@@ -164,7 +164,8 @@ A v0 smoke test should:
   cleaning up any agentd-owned broker audio session created for the failed start.
 - The operator-configured `external` backend seam is now also durable daemon config (`audio_webrtc.peer_tool_path`,
   `audio_webrtc.node_bin`, `audio_webrtc.default_runtime_kind`) rather than env-only, and the main runtime smoke proves
-  both an explicit config-backed external path and a no-request config-defaulted external launch path.
+  both an explicit config-backed external path and a no-request config-defaulted external launch path. Daemon startup
+  also honors `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND`, which surfaces as `default_runtime_kind_source=env`.
 
 ## Open questions
 

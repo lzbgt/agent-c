@@ -399,7 +399,7 @@ Current status:
   agentd now creates the broker audio session itself and records that ownership in runtime status as
   `peer.managed_broker_session=true`.
 - Shipped: that agentd runtime surface now exposes explicit backend metadata (`default_runtime_kind=bundled` when the
-  repo helper is present, `default_runtime_kind_source=auto|config`, `default_runtime_kind_available=true|false`,
+  repo helper is present, `default_runtime_kind_source=auto|env|config`, `default_runtime_kind_available=true|false`,
   `bundled_available=true|false`, `external_available=true|false`, `builtin_available=false`,
   `peer.runtime_kind=bundled|external`) and is factored away from the generic session endpoints code, so the future
   native media service can replace the backend without changing the session API shape.
@@ -418,7 +418,8 @@ Current status:
   any broker audio session it created for that failed start instead of leaving an orphaned broker-side session behind.
 - Shipped: the `external` backend seam is now also durable daemon config (`audio_webrtc.peer_tool_path`,
   `audio_webrtc.node_bin`, `audio_webrtc.default_runtime_kind`), and the runtime smoke now proves both an explicit
-  config-backed `runtime_kind=external` start/stop path and a no-request config-defaulted external launch path.
+  config-backed `runtime_kind=external` start/stop path and a no-request config-defaulted external launch path; daemon
+  startup also honors `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND` with `default_runtime_kind_source=env`.
 - Still open: replace the managed Node/Playwright child runtime with an embedded long-lived agentd-native media service.
 
 Proof:

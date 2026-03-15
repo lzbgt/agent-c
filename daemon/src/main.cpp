@@ -751,6 +751,15 @@ int main(int argc, char** argv) {
   if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_PEER_NODE_BIN")) {
     cfg.audio_webrtc_peer_node_bin = p;
   }
+  if (cfg.audio_webrtc_default_runtime_kind.empty()) {
+    if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND")) {
+      const std::string kind = lower_copy(trim_copy(p));
+      if (kind == "bundled" || kind == "external") {
+        cfg.audio_webrtc_default_runtime_kind = kind;
+        cfg.audio_webrtc_default_runtime_kind_from_env = true;
+      }
+    }
+  }
   if (cfg.audio_webrtc_broker_url.empty()) {
     if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_BROKER_URL")) {
       cfg.audio_webrtc_broker_url = p;

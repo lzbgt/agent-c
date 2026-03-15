@@ -1124,7 +1124,7 @@ void handle_config_endpoint(
       : Json::Value(cfg.audio_webrtc_default_runtime_kind);
     aw["default_runtime_kind_source"] = cfg.audio_webrtc_default_runtime_kind.empty()
       ? Json::Value("auto")
-      : Json::Value("config");
+      : Json::Value(cfg.audio_webrtc_default_runtime_kind_from_env ? "env" : "config");
     aw["node_bin"] = cfg.audio_webrtc_peer_node_bin.empty() ? Json::Value("node") : Json::Value(cfg.audio_webrtc_peer_node_bin);
     daemon["audio_webrtc"] = aw;
   }
@@ -2048,6 +2048,7 @@ void handle_config_update_endpoint(
       const Json::Value& v = aw["default_runtime_kind"];
       if (v.isNull()) {
         next.audio_webrtc_default_runtime_kind.clear();
+        next.audio_webrtc_default_runtime_kind_from_env = false;
       } else if (v.isString()) {
         const std::string kind = lower_copy(trim_copy(v.asString()));
         if (kind != "bundled" && kind != "external") {
@@ -2059,6 +2060,7 @@ void handle_config_update_endpoint(
           return;
         }
         next.audio_webrtc_default_runtime_kind = kind;
+        next.audio_webrtc_default_runtime_kind_from_env = false;
       } else {
         Json::Value o(Json::objectValue);
         o["ok"] = false;
@@ -2307,7 +2309,7 @@ void handle_config_update_endpoint(
       : Json::Value(next.audio_webrtc_default_runtime_kind);
     aw["default_runtime_kind_source"] = next.audio_webrtc_default_runtime_kind.empty()
       ? Json::Value("auto")
-      : Json::Value("config");
+      : Json::Value(next.audio_webrtc_default_runtime_kind_from_env ? "env" : "config");
     aw["node_bin"] = next.audio_webrtc_peer_node_bin.empty() ? Json::Value("node") : Json::Value(next.audio_webrtc_peer_node_bin);
     o["audio_webrtc"] = aw;
   }

@@ -225,7 +225,8 @@ static std::string configured_default_voice_peer_runtime_kind(const DaemonConfig
 }
 
 static std::string default_voice_peer_runtime_kind_source(const DaemonConfig& cfg) {
-  return configured_default_voice_peer_runtime_kind(cfg).empty() ? "auto" : "config";
+  if (configured_default_voice_peer_runtime_kind(cfg).empty()) return "auto";
+  return cfg.audio_webrtc_default_runtime_kind_from_env ? "env" : "config";
 }
 
 static std::string default_voice_peer_runtime_kind(const DaemonConfig& cfg) {

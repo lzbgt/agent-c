@@ -149,6 +149,7 @@ struct DaemonConfig {
   // Optional durable preferred backend for managed WebRTC runtime selection.
   // Empty means "auto" (prefer bundled when discoverable, else external).
   std::string audio_webrtc_default_runtime_kind;
+  bool audio_webrtc_default_runtime_kind_from_env = false;
   // Optional default broker settings for the managed voice/WebRTC runtime.
   std::string audio_webrtc_broker_url;
   std::string audio_webrtc_broker_token;

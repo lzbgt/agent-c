@@ -46,7 +46,7 @@ AgentdConfigResponse:
               enum: [bundled, external]
             default_runtime_kind_source:
               type: string
-              enum: [auto, config]
+              enum: [auto, env, config]
             node_bin: { type: string }
         max_steps_default: { type: integer, format: int64 }
         max_tool_calls_total_default: { type: integer, format: int64 }
@@ -397,9 +397,9 @@ AgentdConfigUpdateResponse:
           type: string
           nullable: true
           enum: [bundled, external]
-        default_runtime_kind_source:
-          type: string
-          enum: [auto, config]
+    default_runtime_kind_source:
+      type: string
+      enum: [auto, env, config]
         node_bin: { type: string }
     edge_auth_required: { type: boolean }
     edge_auth_require_ts: { type: boolean }
