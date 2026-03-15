@@ -415,6 +415,8 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   environment or implicit autodetect behavior to keep the managed WebRTC backend wired correctly across restarts.
 - Daemon startup also honors `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND=bundled|external`; runtime/config status then
   reports `default_runtime_kind_source=env` until a persisted daemon config override takes precedence.
+- If persisted runtime config is corrupted to an invalid `audio_webrtc.default_runtime_kind`, agentd now self-heals it
+  back to `auto` on load instead of reporting an impossible configured backend while silently falling back internally.
 - `POST /api/v1/session/voice_webrtc_peer` now also performs bounded startup confirmation. If the managed peer process
   exits before it ever reaches ready, agentd returns a failed start instead of `started=true`, reports
   `startup_confirmed=false`, and cleans up any owned broker audio session before returning.

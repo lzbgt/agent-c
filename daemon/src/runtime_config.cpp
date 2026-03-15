@@ -53,6 +53,11 @@ static bool is_safe_edge_id_token(const std::string& s_in) {
   return true;
 }
 
+static bool is_valid_voice_runtime_kind(const std::string& s_in) {
+  const std::string s = lower_copy(trim_copy(s_in));
+  return s == "bundled" || s == "external";
+}
+
 static void upsert_tool_call_limit(std::vector<std::pair<std::string, size_t>>* limits, std::string tool, size_t max_calls) {
   if (!limits || tool.empty()) return;
   for (auto& kv : *limits) {
@@ -85,6 +90,7 @@ bool load_runtime_config_best_effort(
 
   // Non-secret defaults.
   {
+    bool should_rewrite_runtime_config = false;
     std::string raw;
     std::string err;
     if (!db.meta_get(kRuntimeConfigMetaKey, &raw, &err)) {
@@ -128,15 +134,26 @@ bool load_runtime_config_best_effort(
           if (aw["default_runtime_kind"].isNull()) {
             cfg_io->audio_webrtc_default_runtime_kind.clear();
             cfg_io->audio_webrtc_default_runtime_kind_from_env = false;
-          }
-          else if (aw["default_runtime_kind"].isString()) {
-            cfg_io->audio_webrtc_default_runtime_kind = lower_copy(trim_copy(aw["default_runtime_kind"].asString()));
+          } else if (aw["default_runtime_kind"].isString()) {
+            const std::string kind = lower_copy(trim_copy(aw["default_runtime_kind"].asString()));
+            if (is_valid_voice_runtime_kind(kind)) {
+              cfg_io->audio_webrtc_default_runtime_kind = kind;
+            } else {
+              cfg_io->audio_webrtc_default_runtime_kind.clear();
+              should_rewrite_runtime_config = true;
+            }
             cfg_io->audio_webrtc_default_runtime_kind_from_env = false;
           }
         }
         if (aw.isMember("node_bin")) {
           if (aw["node_bin"].isNull()) cfg_io->audio_webrtc_peer_node_bin = "node";
           else if (aw["node_bin"].isString()) cfg_io->audio_webrtc_peer_node_bin = trim_copy(aw["node_bin"].asString());
+        }
+      }
+      if (should_rewrite_runtime_config) {
+        std::string rewrite_err;
+        if (!save_runtime_config_best_effort(db, *cfg_io, &rewrite_err) && out_error && out_error->empty()) {
+          *out_error = rewrite_err.empty() ? "failed to rewrite sanitized runtime config" : rewrite_err;
         }
       }
       uint64_t n_u64 = 0;

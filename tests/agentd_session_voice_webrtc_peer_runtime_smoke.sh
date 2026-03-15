@@ -1419,6 +1419,137 @@ curl -fsS --noproxy "*" --max-time 10 -X DELETE \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   "${DAEMON_URL}/api/v1/session?session_id=${EXTERNAL_SESSION_ID_Q}" >/dev/null
 
+python3 - <<PY
+import json, sqlite3
+db_path = r'''${SESSION_DB_PATH}'''
+conn = sqlite3.connect(db_path)
+try:
+    row = conn.execute("SELECT value FROM meta WHERE key = 'daemon.runtime_config_json'").fetchone()
+    if row is None:
+        raise SystemExit("missing daemon.runtime_config_json before corruption test")
+    raw = row[0]
+    data = json.loads(raw)
+    audio = data.get("audio_webrtc") or {}
+    audio["default_runtime_kind"] = "not-a-real-runtime-kind"
+    data["audio_webrtc"] = audio
+    conn.execute("UPDATE meta SET value = ? WHERE key = 'daemon.runtime_config_json'", (json.dumps(data),))
+    conn.commit()
+finally:
+    conn.close()
+PY
+
+restart_agentd_without_voice_defaults
+
+invalid_default_self_healed="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/config")"
+
+python3 - <<PY
+import json, sqlite3, sys
+obj = json.loads(r'''${invalid_default_self_healed}''')
+daemon = obj.get("daemon") or {}
+audio = daemon.get("audio_webrtc") or {}
+if audio.get("default_runtime_kind") is not None or audio.get("default_runtime_kind_source") != "auto":
+  print("expected invalid persisted default_runtime_kind to self-heal to auto", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("peer_tool_path_configured") is not True:
+  print("expected external seam to remain configured after self-heal", obj, file=sys.stderr)
+  raise SystemExit(1)
+db_path = r'''${SESSION_DB_PATH}'''
+conn = sqlite3.connect(db_path)
+try:
+    row = conn.execute("SELECT value FROM meta WHERE key = 'daemon.runtime_config_json'").fetchone()
+    if row is None:
+        print("missing daemon.runtime_config_json after self-heal", file=sys.stderr)
+        raise SystemExit(1)
+    data = json.loads(row[0])
+    audio_cfg = data.get("audio_webrtc") or {}
+    if audio_cfg.get("default_runtime_kind", "__missing__") is not None:
+        print("expected persisted invalid default_runtime_kind to be rewritten to null", data, file=sys.stderr)
+        raise SystemExit(1)
+finally:
+    conn.close()
+PY
+
+SELF_HEAL_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_self_heal_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${SELF_HEAL_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+self_heal_start_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${SELF_HEAL_SESSION_ID}",
+  "action": "start",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab-self-heal",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 902
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${self_heal_start_resp}''')
+peer = obj.get("peer") or {}
+if not obj.get("ok") or not obj.get("started"):
+  print("voice_webrtc_peer self-heal fallback start failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("default_runtime_kind") != "bundled" or obj.get("default_runtime_kind_source") != "auto":
+  print("expected auto/bundled default after self-heal fallback", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("runtime_kind") != "bundled":
+  print("expected bundled runtime after self-heal fallback", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+SELF_HEAL_BROKER_SESSION_ID="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${self_heal_start_resp}''')
+peer = obj.get("peer") or {}
+sid = str(peer.get("broker_session_id") or "").strip()
+if not sid:
+  print("missing self-heal broker_session_id", file=sys.stderr)
+  raise SystemExit(1)
+print(sid)
+PY
+)"
+
+wait_voice_peer_ready "${SELF_HEAL_SESSION_ID}" 1 status_json bundled bundled auto 1
+
+self_heal_stop_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${SELF_HEAL_SESSION_ID}\",\"action\":\"stop\"}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${self_heal_stop_resp}''')
+if not obj.get("ok") or not obj.get("stopped"):
+  print("voice_webrtc_peer self-heal fallback stop failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("broker_session_deleted") is not True:
+  print("expected broker_session_deleted after self-heal fallback stop", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+wait_broker_session_deleted "${SELF_HEAL_BROKER_SESSION_ID}"
+
+SELF_HEAL_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${SELF_HEAL_SESSION_ID}")"
+curl -fsS --noproxy "*" --max-time 10 -X DELETE \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session?session_id=${SELF_HEAL_SESSION_ID_Q}" >/dev/null
+
 config_failfast_update_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   -H 'Content-Type: application/json' \

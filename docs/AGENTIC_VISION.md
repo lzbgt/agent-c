@@ -238,6 +238,8 @@ These are the most leveraged next steps grounded in current architecture:
      (`audio_webrtc.peer_tool_path`, `audio_webrtc.node_bin`, `audio_webrtc.default_runtime_kind`) instead of env-only
      process wiring, daemon startup now also honors `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND`, and runtime metadata now
      makes default backend source/availability explicit.
+   - Completed 2026-03-15: corrupted persisted WebRTC default-backend policy now self-heals back to `auto` on daemon
+     load, so status/config no longer expose impossible backend choices after direct DB corruption.
    - Remaining gap: replace the managed Node/Playwright child with an embedded long-lived agentd-native media service.
 
 5) **Node consensus**
