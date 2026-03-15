@@ -43,6 +43,9 @@ AgentdConfigResponse:
             builtin_available: { type: boolean, enum: [false] }
             bundled_available: { type: boolean }
             external_available: { type: boolean }
+            builtin_unavailable_reason: { type: string }
+            bundled_unavailable_reason: { type: string }
+            external_unavailable_reason: { type: string }
             default_runtime_kind:
               type: string
               nullable: true
@@ -51,6 +54,7 @@ AgentdConfigResponse:
               type: string
               enum: [auto, env, config]
             default_runtime_kind_available: { type: boolean }
+            default_runtime_kind_unavailable_reason: { type: string }
             node_bin: { type: string }
         max_steps_default: { type: integer, format: int64 }
         max_tool_calls_total_default: { type: integer, format: int64 }
@@ -400,6 +404,9 @@ AgentdConfigUpdateResponse:
         builtin_available: { type: boolean, enum: [false] }
         bundled_available: { type: boolean }
         external_available: { type: boolean }
+        builtin_unavailable_reason: { type: string }
+        bundled_unavailable_reason: { type: string }
+        external_unavailable_reason: { type: string }
         default_runtime_kind:
           type: string
           nullable: true
@@ -408,6 +415,7 @@ AgentdConfigUpdateResponse:
           type: string
           enum: [auto, env, config]
         default_runtime_kind_available: { type: boolean }
+        default_runtime_kind_unavailable_reason: { type: string }
         node_bin: { type: string }
     edge_auth_required: { type: boolean }
     edge_auth_require_ts: { type: boolean }

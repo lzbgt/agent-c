@@ -768,6 +768,9 @@ if obj.get("default_runtime_kind_source") != "env" or obj.get("default_runtime_k
 if obj.get("broker_url_default_configured") is not True or obj.get("broker_token_default_configured") is not True:
   print("expected broker defaults in builtin contract response", obj, file=sys.stderr)
   raise SystemExit(1)
+if "not implemented" not in str(obj.get("builtin_unavailable_reason", "")):
+  print("expected builtin unavailable reason", obj, file=sys.stderr)
+  raise SystemExit(1)
 if "not implemented" not in str(obj.get("error", "")):
   print("expected builtin not implemented error", obj, file=sys.stderr)
   raise SystemExit(1)
@@ -799,6 +802,9 @@ if obj.get("default_runtime_kind_source") != "env" or obj.get("default_runtime_k
   raise SystemExit(1)
 if obj.get("broker_url_default_configured") is not True or obj.get("broker_token_default_configured") is not True:
   print("expected broker defaults in external contract response", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "not configured" not in str(obj.get("external_unavailable_reason", "")):
+  print("expected external unavailable reason", obj, file=sys.stderr)
   raise SystemExit(1)
 if "not configured" not in str(obj.get("error", "")):
   print("expected external not configured error", obj, file=sys.stderr)
@@ -1721,7 +1727,7 @@ curl -fsS --noproxy "*" --max-time 10 -X DELETE \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   "${DAEMON_URL}/api/v1/session?session_id=${SELF_HEAL_SESSION_ID_Q}" >/dev/null
 
-config_failfast_update_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+config_invalid_node_bin_update_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   -H 'Content-Type: application/json' \
   -d "$(python3 - <<PY
@@ -1737,13 +1743,152 @@ PY
 
 python3 - <<PY
 import json, sys
+obj = json.loads(r'''${config_invalid_node_bin_update_resp}''')
+audio = obj.get("audio_webrtc") or {}
+if not obj.get("ok"):
+  print("config update for invalid node_bin failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("node_bin") != "definitely-not-a-real-node-binary":
+  print("expected persisted invalid node_bin", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("bundled_available") is not False or audio.get("external_available") is not False:
+  print("expected bundled/external unavailable with missing node_bin", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("default_runtime_kind_available") is not False:
+  print("expected default_runtime_kind_available=false with missing node_bin", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "not found" not in str(audio.get("bundled_unavailable_reason", "")):
+  print("expected bundled unavailable reason for missing node_bin", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "not found" not in str(audio.get("external_unavailable_reason", "")):
+  print("expected external unavailable reason for missing node_bin", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+restart_agentd_without_voice_defaults
+
+invalid_node_bin_config_json="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/config")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${invalid_node_bin_config_json}''')
+daemon = obj.get("daemon") or {}
+audio = daemon.get("audio_webrtc") or {}
+if audio.get("default_runtime_kind") is not None or audio.get("default_runtime_kind_source") != "auto":
+  print("expected auto default runtime policy with invalid node_bin", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("bundled_available") is not False or audio.get("external_available") is not False:
+  print("expected bundled/external unavailable after restart with invalid node_bin", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("default_runtime_kind_available") is not False:
+  print("expected default runtime unavailable after restart with invalid node_bin", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "not found" not in str(audio.get("default_runtime_kind_unavailable_reason", "")):
+  print("expected default unavailable reason for missing node_bin", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+INVALID_NODE_BIN_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_invalid_node_bin_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${INVALID_NODE_BIN_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+invalid_node_bin_start_body="${LOG_DIR}/voice_webrtc_peer_invalid_node_bin_start_body.json"
+invalid_node_bin_start_status="$(curl -sS --noproxy "*" --max-time 10 -o "${invalid_node_bin_start_body}" -w '%{http_code}' \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${INVALID_NODE_BIN_SESSION_ID}",
+  "action": "start",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab-invalid-node-bin",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 932,
+  "startup_wait_ms": 1000
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+if [[ "${invalid_node_bin_start_status}" != "500" ]]; then
+  echo "expected invalid node_bin start response to return 500, got ${invalid_node_bin_start_status}" >&2
+  cat "${invalid_node_bin_start_body}" >&2
+  exit 1
+fi
+
+python3 - <<PY
+import json, sys
+obj = json.load(open(r'''${invalid_node_bin_start_body}''', 'r', encoding='utf-8'))
+if obj.get("default_runtime_kind_available") is not False:
+  print("expected unavailable default runtime on invalid node_bin start", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "audio_webrtc_peer_node_bin not found" not in str(obj.get("error", "")):
+  print("expected direct invalid node_bin error", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("startup_cleanup") is not None:
+  print("expected no startup cleanup for preflight node_bin failure", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("peer") is not None:
+  print("expected no peer state for preflight node_bin failure", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "not found" not in str(obj.get("default_runtime_kind_unavailable_reason", "")):
+  print("expected default unavailable reason on invalid node_bin start", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+INVALID_NODE_BIN_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${INVALID_NODE_BIN_SESSION_ID}")"
+invalid_node_bin_status_json="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer?session_id=${INVALID_NODE_BIN_SESSION_ID_Q}")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${invalid_node_bin_status_json}''')
+if obj.get("session_exists") is not True:
+  print("expected session row to remain after invalid node_bin preflight failure", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("running") is not False or obj.get("peer") is not None:
+  print("expected no runtime after invalid node_bin preflight failure", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+curl -fsS --noproxy "*" --max-time 10 -X DELETE \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session?session_id=${INVALID_NODE_BIN_SESSION_ID_Q}" >/dev/null
+
+config_failfast_update_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "audio_webrtc": {
+    "node_bin": "false"
+  }
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/config/update")"
+
+python3 - <<PY
+import json, sys
 obj = json.loads(r'''${config_failfast_update_resp}''')
 audio = obj.get("audio_webrtc") or {}
 if not obj.get("ok"):
   print("config update for fail-fast node_bin failed", obj, file=sys.stderr)
   raise SystemExit(1)
-if audio.get("node_bin") != "definitely-not-a-real-node-binary":
-  print("expected persisted invalid node_bin for fail-fast test", obj, file=sys.stderr)
+if audio.get("node_bin") != "false":
+  print("expected persisted fail-fast node_bin", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("bundled_available") is not True or audio.get("default_runtime_kind_available") is not True:
+  print("expected launchable backend availability for fail-fast runtime test", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 
@@ -1796,8 +1941,8 @@ if cleanup.get("runtime_present") is not True:
 if cleanup.get("broker_session_delete_attempted") is not True or cleanup.get("broker_session_deleted") is not True:
   print("expected startup cleanup to delete managed broker session", obj, file=sys.stderr)
   raise SystemExit(1)
-if peer.get("exit_code") != 127:
-  print("expected fail-fast peer exit_code 127", obj, file=sys.stderr)
+if peer.get("exit_code") != 1:
+  print("expected fail-fast peer exit_code 1", obj, file=sys.stderr)
   raise SystemExit(1)
 if "exited before ready" not in str(obj.get("error", "")):
   print("expected fail-fast startup error", obj, file=sys.stderr)

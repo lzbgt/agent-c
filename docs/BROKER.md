@@ -400,7 +400,8 @@ Current status:
   `peer.managed_broker_session=true`.
 - Shipped: that agentd runtime surface now exposes explicit backend metadata (`default_runtime_kind=bundled` when the
   repo helper is present, `default_runtime_kind_source=auto|env|config`, `default_runtime_kind_available=true|false`,
-  `bundled_available=true|false`, `external_available=true|false`, `builtin_available=false`,
+  `bundled_available=true|false`, `external_available=true|false`, `builtin_available=false`, and per-backend
+  unavailable reasons,
   `peer.runtime_kind=bundled|external`) and is factored away from the generic session endpoints code, so the future
   native media service can replace the backend without changing the session API shape.
 - Shipped: the bundled/external agentd media-peer runtime now persists enough state to recover status across agentd restarts
@@ -421,8 +422,10 @@ Current status:
   config-backed `runtime_kind=external` start/stop path and a no-request config-defaulted external launch path; daemon
   startup also honors `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND` with `default_runtime_kind_source=env`.
 - Shipped: safe daemon config now reports `builtin_available`, `bundled_available`, `external_available`, and
-  `default_runtime_kind_available` for that managed runtime, so operators can detect a configured-but-unavailable
-  default backend before attempting a start.
+  `default_runtime_kind_available` for that managed runtime, plus unavailable reasons, so operators can detect a
+  configured-but-unavailable or otherwise unlaunchable default backend before attempting a start.
+- Shipped: backend availability now means launchable, not merely configured; for example, an invalid or missing
+  `audio_webrtc.node_bin` now marks both bundled and external backends unavailable before start-time failure.
 - Shipped: if the persisted daemon runtime config is corrupted to an invalid WebRTC default backend, agentd now
   rewrites that value back to `auto` on load and the runtime smoke proves the fallback returns to bundled default
   behavior rather than surfacing stale impossible state.

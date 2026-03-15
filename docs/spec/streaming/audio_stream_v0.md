@@ -142,9 +142,11 @@ A v0 smoke test should:
   - `builtin_available=false`
   - `bundled_available=true|false`
   - `external_available=true|false`
+  - `builtin_unavailable_reason`, `bundled_unavailable_reason`, `external_unavailable_reason`
   - `default_runtime_kind=bundled|external`
   - `default_runtime_kind_source=auto|env|config`
   - `default_runtime_kind_available=true|false`
+  - `default_runtime_kind_unavailable_reason`
   - `peer.runtime_kind=bundled|external`
   so the current shipped Node/Playwright path is a named bundled backend with an explicit `external` override rather
   than an implicit assumption baked into the API.
@@ -167,8 +169,9 @@ A v0 smoke test should:
   both an explicit config-backed external path and a no-request config-defaulted external launch path. Daemon startup
   also honors `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND`, which surfaces as `default_runtime_kind_source=env`.
 - Safe daemon config now reports the same backend availability facts (`builtin_available`, `bundled_available`,
-  `external_available`, `default_runtime_kind_available`) so a configured default such as `external` can be seen as
-  unavailable before start-time failure.
+  `external_available`, `default_runtime_kind_available`) plus unavailable reasons, so a configured default such as
+  `external` can be seen as unavailable before start-time failure and misconfigured `node_bin` now shows up as an
+  unlaunchable backend rather than only surfacing after a start request.
 - If persisted daemon config is corrupted to an invalid `audio_webrtc.default_runtime_kind`, agentd now self-heals that
   field back to `auto` on load and rewrites the SQLite runtime-config record instead of surfacing impossible state.
 

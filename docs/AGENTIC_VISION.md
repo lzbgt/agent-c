@@ -243,6 +243,9 @@ These are the most leveraged next steps grounded in current architecture:
    - Completed 2026-03-15: safe daemon config now exposes WebRTC backend availability
      (`builtin_available`, `bundled_available`, `external_available`, `default_runtime_kind_available`), and the main
      runtime smoke proves the configured-but-unavailable `default_runtime_kind=external` case before start-time failure.
+   - Completed 2026-03-15: WebRTC backend availability now means launchable rather than merely configured, with
+     unavailable reasons exposed in runtime/config status; the main runtime smoke now separately proves preflight
+     invalid-`node_bin` rejection and post-launch fail-fast cleanup when the child exits before readiness.
    - Remaining gap: replace the managed Node/Playwright child with an embedded long-lived agentd-native media service.
 
 5) **Node consensus**
