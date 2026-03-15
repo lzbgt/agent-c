@@ -1,7 +1,7 @@
 # Audio Streaming (v0)
 
 Date: 2026-02-19
-Status: implemented rolling foundation (broker signaling relay + session status APIs + WebUI voice-session controls); real WebRTC media path pending
+Status: implemented rolling foundation (broker signaling relay + session status APIs + WebUI voice-session controls + browser-side WebRTC negotiation client); end-to-end agentd media peer path pending
 
 ## Goals
 
@@ -113,6 +113,8 @@ A v0 smoke test should:
   - `GET /v1/audio/sessions/{session_id}`
   - `DELETE /v1/audio/sessions/{session_id}`
 - WebUI broker panel now exposes explicit voice session create/list/select/send/delete controls with live signal inspection.
+- WebUI broker panel now also drives browser-side `RTCPeerConnection` negotiation over those broker signaling APIs,
+  including automated offer/answer/bye handling, remote-candidate handling, and a mounted remote audio element.
 - Agentd now exposes minimal session-scoped voice control/stats endpoints:
   - `POST /api/v1/session/voice_control`
   - `GET /api/v1/session/voice_stats`
@@ -123,13 +125,14 @@ A v0 smoke test should:
 - `tests/webui_observe_voice_hello_openworld.sh` and `ui/e2e/observe_voice_hello.spec.ts`
   cover the current browser voice-presentation harness, which is artifact/scene driven rather than
   a full WebRTC session.
+- `ui/e2e/broker_audio_panel.spec.ts` covers the browser-side WebRTC control flow against a deterministic mocked peer.
 
 ## Open questions
 
 - Should signaling use WebSocket instead of SSE+POST for bidirectional framing?
 - Do we need a broker-issued ephemeral token for direct agentd signaling as a fallback?
 - How should the broker authenticate agentd participation (mTLS vs bearer)?
-- How should the minimal agentd voice-control surface evolve once a real browser-to-agentd WebRTC media session exists?
+- How should the agentd-side media peer surface evolve so the shipped browser WebRTC client can complete a real end-to-end RTP path?
 
 ## References
 

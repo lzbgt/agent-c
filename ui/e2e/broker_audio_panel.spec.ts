@@ -6,9 +6,91 @@ test("broker audio panel manages signaling session lifecycle", async ({ page }) 
   const sessionId = "aud_test_123";
   const now = Date.now();
   let sessions: any[] = [];
-  let lastSignalBody: any = null;
+  const signalBodies: any[] = [];
 
   await seedBrokerState(page, { agentId });
+  await page.addInitScript(() => {
+    class FakeStream {
+      id = "remote-stream-1";
+
+      getTracks() {
+        return [{ kind: "audio", id: "remote-audio-1" }];
+      }
+    }
+
+    class FakePeerConnection extends EventTarget {
+      connectionState = "new";
+      signalingState = "stable";
+      iceConnectionState = "new";
+      localDescription: any = null;
+      remoteDescription: any = null;
+      onicecandidate: ((ev: any) => void) | null = null;
+      ontrack: ((ev: any) => void) | null = null;
+      onconnectionstatechange: (() => void) | null = null;
+      onsignalingstatechange: (() => void) | null = null;
+      oniceconnectionstatechange: (() => void) | null = null;
+
+      addTransceiver() {
+        return undefined;
+      }
+
+      async createOffer() {
+        return { type: "offer", sdp: "fake-offer-sdp" };
+      }
+
+      async setLocalDescription(desc: any) {
+        this.localDescription = desc;
+        this.signalingState = "have-local-offer";
+        this.onsignalingstatechange?.();
+        setTimeout(() => {
+          const payload = {
+            candidate: "candidate:1 1 udp 2113937151 127.0.0.1 49999 typ host",
+            sdpMid: "0",
+            sdpMLineIndex: 0,
+          };
+          const ev: any = new Event("icecandidate");
+          ev.candidate = {
+            ...payload,
+            toJSON() {
+              return payload;
+            },
+          };
+          this.onicecandidate?.(ev);
+        }, 0);
+      }
+
+      async setRemoteDescription(desc: any) {
+        this.remoteDescription = desc;
+        this.signalingState = "stable";
+        this.connectionState = "connected";
+        this.iceConnectionState = "connected";
+        this.onsignalingstatechange?.();
+        this.onconnectionstatechange?.();
+        this.oniceconnectionstatechange?.();
+        setTimeout(() => {
+          const ev: any = new Event("track");
+          ev.track = { kind: "audio", id: "remote-audio-1" };
+          ev.streams = [new FakeStream()];
+          this.ontrack?.(ev);
+        }, 0);
+      }
+
+      async addIceCandidate() {
+        return undefined;
+      }
+
+      close() {
+        this.connectionState = "closed";
+        this.iceConnectionState = "closed";
+        this.signalingState = "closed";
+        this.onconnectionstatechange?.();
+        this.oniceconnectionstatechange?.();
+        this.onsignalingstatechange?.();
+      }
+    }
+
+    (window as any).__agentuiRtcFactory = () => new FakePeerConnection();
+  });
 
   await page.route("**/v1/**", async (route, request) => {
     const url = new URL(request.url());
@@ -146,11 +228,12 @@ test("broker audio panel manages signaling session lifecycle", async ({ page }) 
       return;
     }
     if (method === "POST" && path === `/v1/audio/sessions/${sessionId}/signal`) {
-      lastSignalBody = request.postDataJSON();
+      const signalBody = request.postDataJSON();
+      signalBodies.push(signalBody);
       sessions = sessions.map((session) => ({
         ...session,
         signal_count: 1,
-        last_signal_type: String(lastSignalBody?.type || ""),
+        last_signal_type: String(signalBody?.type || ""),
         last_signal_from: "webui",
         last_signal_unix_ms: now + 1,
       }));
@@ -163,8 +246,8 @@ test("broker audio panel manages signaling session lifecycle", async ({ page }) 
         contentType: "text/event-stream",
         body:
           ":ok\n\n" +
-          `event: signal\ndata: ${JSON.stringify({ type: "offer", from: "agentd", ts_unix_ms: now + 2, payload: { sdp: "dummy-offer" } })}\n\n` +
-          `event: signal\ndata: ${JSON.stringify({ type: "answer", from: "webui", ts_unix_ms: now + 3, payload: { sdp: "dummy-answer" } })}\n\n`,
+          `event: signal\ndata: ${JSON.stringify({ type: "answer", from: "agentd", ts_unix_ms: now + 2, payload: { type: "answer", sdp: "fake-answer-sdp" } })}\n\n` +
+          `event: signal\ndata: ${JSON.stringify({ type: "candidate", from: "agentd", ts_unix_ms: now + 3, payload: { candidate: "candidate:2 1 udp 2113937151 127.0.0.1 50000 typ host", sdpMid: "0", sdpMLineIndex: 0 } })}\n\n`,
       });
       return;
     }
@@ -191,15 +274,24 @@ test("broker audio panel manages signaling session lifecycle", async ({ page }) 
 
   await expect(page.getByTestId(`broker-audio-session-${sessionId}`)).toBeVisible();
   await expect(page.getByTestId("broker-audio-selected-session")).toContainText(sessionId);
-  await expect(page.getByTestId("broker-audio-signal-events")).toContainText("offer");
+  await expect(page.getByTestId("broker-audio-signal-events")).toContainText("candidate");
   await expect(page.getByTestId("broker-audio-signal-events")).toContainText("answer");
+
+  await page.getByTestId("broker-audio-webrtc-connect").click();
+  await expect.poll(() => signalBodies.map((row) => row?.type || "")).toContain("offer");
+  await expect(page.getByTestId("broker-audio-webrtc-status")).toContainText("state: connected");
+  await expect(page.getByTestId("broker-audio-webrtc-status")).toContainText("remote tracks: 1");
+  await expect(page.getByTestId("broker-audio-webrtc-status")).toContainText("last remote signal: candidate");
 
   await page.getByTestId("broker-audio-signal-type").selectOption("control");
   await page.getByTestId("broker-audio-signal-payload").fill('{"state":"ready"}');
   await page.getByTestId("broker-audio-send").click();
 
-  await expect.poll(() => lastSignalBody?.type ?? "").toBe("control");
+  await expect.poll(() => signalBodies.at(-1)?.type ?? "").toBe("control");
   await expect(page.getByTestId("broker-audio-selected-session")).toContainText("last signal: control from webui");
+
+  await page.getByTestId("broker-audio-webrtc-disconnect").click();
+  await expect.poll(() => signalBodies.map((row) => row?.type || "")).toContain("bye");
 
   await page.getByTestId("broker-audio-delete").click();
   await expect(page.getByText("No live audio sessions for the current filter.")).toBeVisible();

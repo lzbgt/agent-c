@@ -2,6 +2,7 @@ import React from "react";
 import type { ApiAuth } from "../../api";
 import { fmtTs } from "./useBrokerPanelState";
 import useBrokerAudioState from "./useBrokerAudioState";
+import useBrokerAudioWebRtcState from "./useBrokerAudioWebRtcState";
 
 type BrokerAudioSectionProps = {
   base: string;
@@ -18,6 +19,12 @@ export default function BrokerAudioSection(props: BrokerAudioSectionProps) {
     canQuery: props.canQuery,
     agentId: props.agentId,
     defaultDeploymentId: props.defaultDeploymentId,
+  });
+  const webrtc = useBrokerAudioWebRtcState({
+    canQuery: props.canQuery,
+    selectedSessionId: state.selectedSessionId,
+    signalEvents: state.signalEvents,
+    sendSignalDirect: state.sendSignalDirect,
   });
 
   return (
@@ -176,6 +183,64 @@ export default function BrokerAudioSection(props: BrokerAudioSectionProps) {
                 Reload status
               </button>
             </div>
+          </div>
+
+          <div className="rounded-md border border-white/10 bg-black/30 p-3" data-testid="broker-audio-webrtc-section">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-[11px] font-semibold text-white/60">Browser WebRTC peer</div>
+                <div className="text-[11px] text-white/50">
+                  Drive offer/answer/candidate exchange from the browser and mount the remote audio stream locally.
+                </div>
+              </div>
+              <div className="text-[11px] text-white/50">{webrtc.supported ? "supported" : "unsupported"}</div>
+            </div>
+
+            <div className="grid gap-2 text-[11px] text-white/70" data-testid="broker-audio-webrtc-status">
+              <div>session: {state.selectedSessionId || "none"}</div>
+              <div>state: {webrtc.connectState}</div>
+              <div>peer connection: {webrtc.connectionState}</div>
+              <div>signaling: {webrtc.signalingState}</div>
+              <div>ice: {webrtc.iceConnectionState}</div>
+              <div>remote tracks: {webrtc.remoteTrackCount}</div>
+              <div>candidates: sent {webrtc.sentCandidateCount} · received {webrtc.receivedCandidateCount}</div>
+              <div>last remote signal: {webrtc.lastRemoteSignal || "none"}</div>
+            </div>
+
+            {webrtc.webrtcError ? (
+              <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+                {webrtc.webrtcError}
+              </div>
+            ) : null}
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                data-testid="broker-audio-webrtc-connect"
+                className="rounded-md border border-emerald-400/30 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-100 hover:bg-emerald-500/20 disabled:opacity-50"
+                type="button"
+                disabled={!webrtc.supported || !state.selectedSessionId || webrtc.connectPending}
+                onClick={() => void webrtc.connect()}
+              >
+                {webrtc.connectPending ? "Connecting…" : "Connect browser peer"}
+              </button>
+              <button
+                data-testid="broker-audio-webrtc-disconnect"
+                className="rounded-md border border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-100 hover:bg-amber-500/20 disabled:opacity-50"
+                type="button"
+                disabled={!state.selectedSessionId}
+                onClick={() => webrtc.disconnect()}
+              >
+                Disconnect peer
+              </button>
+            </div>
+
+            <audio
+              ref={webrtc.audioRef}
+              data-testid="broker-audio-webrtc-remote-audio"
+              className="mt-3 w-full rounded-md border border-white/10 bg-black/20"
+              controls
+              autoPlay
+            />
           </div>
 
           <div className="rounded-md border border-white/10 bg-black/30 p-3">

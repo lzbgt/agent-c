@@ -82,12 +82,12 @@ else
 fi
 
 echo "[playwright] ensuring chromium is installed (log: ${pw_install_log})"
-(cd ui && npx playwright install chromium) >"${pw_install_log}" 2>&1
+(cd ui && ./node_modules/.bin/playwright install chromium) >"${pw_install_log}" 2>&1
 
 echo "[playwright] running smoke specs (log: ${pw_log})"
 AGENT_E2E_UI_BASE_URL="${AGENT_E2E_UI_BASE_URL}" \
 AGENT_E2E_OUTPUT_DIR="${pw_artifacts_dir}" \
-  bash -lc "cd ui && npx playwright test \
+  bash -lc "cd ui && ./node_modules/.bin/playwright test \
     e2e/agentd_host_smoke.spec.ts \
     e2e/conversation_client_rpc.spec.ts \
     e2e/conversation_rpc_script_eval.spec.ts \

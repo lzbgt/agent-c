@@ -391,13 +391,14 @@ Sessions are in-memory and expire after a TTL (default 15 minutes). Configure vi
 - `AGENTD_BROKER_AUDIO_SESSION_TTL_MS` (milliseconds)
 
 Current status:
-- Shipped: authenticated signaling relay endpoints, in-memory session lifecycle, loopback smoke coverage, and explicit broker-panel voice session create/list/inspect/delete controls in the WebUI.
+- Shipped: authenticated signaling relay endpoints, in-memory session lifecycle, loopback smoke coverage, explicit broker-panel voice session create/list/inspect/delete controls, and browser-side WebRTC offer/answer/bye automation with remote-candidate handling and remote-audio mounting in the WebUI.
 - Shipped adjacent foundation: agentd now exposes session-scoped voice control/stats endpoints so browser clients can durably execute and report `media_play`, `media_pause`, and `media_snapshot` RPCs.
-- Still open: a real browser-to-agentd WebRTC media path for live media transport.
+- Still open: a real agentd-side live media peer so the browser WebRTC client can complete an end-to-end RTP path beyond signaling loopback and mocked-browser negotiation proof.
 
 Proof:
 - `ctest` includes `broker_audio_signal_loopback_smoke`.
 - `ctest` includes `broker_audio_signal_docker_smoke`.
+- `ui/e2e/broker_audio_panel.spec.ts` covers the broker-panel browser WebRTC control flow.
 
 #### Using durable workflows through the broker proxy
 

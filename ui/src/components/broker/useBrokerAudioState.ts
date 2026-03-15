@@ -7,6 +7,7 @@ import {
   apiBrokerListAudioSessions,
   apiBrokerSendAudioSignal,
   BrokerAudioSignalEventSchema,
+  type BrokerAudioSignalEvent,
   daemonFetchInit,
   type ApiAuth,
 } from "../../api";
@@ -28,9 +29,7 @@ export default function useBrokerAudioState(args: UseBrokerAudioStateArgs) {
   const [selectedSessionId, setSelectedSessionId] = React.useState<string>("");
   const [signalType, setSignalType] = React.useState<string>("control");
   const [signalPayloadText, setSignalPayloadText] = React.useState<string>('{"state":"ready"}');
-  const [signalEvents, setSignalEvents] = React.useState<Array<{ type: string; from?: string; ts_unix_ms: number; payload?: unknown }>>(
-    [],
-  );
+  const [signalEvents, setSignalEvents] = React.useState<BrokerAudioSignalEvent[]>([]);
   const [streamConnected, setStreamConnected] = React.useState<boolean>(false);
   const [streamError, setStreamError] = React.useState<string | null>(null);
   const [createError, setCreateError] = React.useState<string | null>(null);
@@ -54,6 +53,24 @@ export default function useBrokerAudioState(args: UseBrokerAudioStateArgs) {
     enabled: false,
     queryFn: () => apiBrokerGetAudioSession(args.base, selectedSessionId, args.auth),
   });
+
+  const sendSignalDirect = React.useCallback(
+    async (type: string, payload?: Record<string, unknown>) => {
+      const sid = String(selectedSessionId || "").trim();
+      if (!sid) throw new Error("select a session first");
+      const signalType = String(type || "").trim();
+      if (!signalType) throw new Error("select a signal type");
+      const resp = await apiBrokerSendAudioSignal(args.base, sid, payload ? { type: signalType, payload } : { type: signalType }, args.auth);
+      if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "audio signal send failed");
+      await sessionQuery.refetch();
+      await sessionsQuery.refetch();
+      if (signalType === "bye") {
+        setSelectedSessionId("");
+      }
+      return resp;
+    },
+    [args.auth, args.base, selectedSessionId, sessionQuery, sessionsQuery],
+  );
 
   React.useEffect(() => {
     if (!args.canQuery || !args.agentId) return;
@@ -116,8 +133,6 @@ export default function useBrokerAudioState(args: UseBrokerAudioStateArgs) {
 
   const sendMutation = useMutation({
     mutationFn: async () => {
-      const sid = String(selectedSessionId || "").trim();
-      if (!sid) throw new Error("select a session first");
       const type = String(signalType || "").trim();
       if (!type) throw new Error("select a signal type");
       let payload: Record<string, unknown> | undefined;
@@ -130,18 +145,11 @@ export default function useBrokerAudioState(args: UseBrokerAudioStateArgs) {
           throw new Error("signal payload must be a JSON object");
         }
       }
-      const resp = await apiBrokerSendAudioSignal(args.base, sid, { type, payload }, args.auth);
-      if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "audio signal send failed");
+      const resp = await sendSignalDirect(type, payload);
       return { type };
     },
     onMutate: () => setSendError(null),
-    onSuccess: async ({ type }) => {
-      await sessionQuery.refetch();
-      await sessionsQuery.refetch();
-      if (type === "bye") {
-        setSelectedSessionId("");
-      }
-    },
+    onSuccess: async () => {},
     onError: (err) => setSendError(String(err)),
   });
 
@@ -227,6 +235,7 @@ export default function useBrokerAudioState(args: UseBrokerAudioStateArgs) {
     streamError,
     createError,
     sendError,
+    sendSignalDirect,
     deleteError,
     createMutation,
     sendMutation,
