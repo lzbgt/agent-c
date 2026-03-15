@@ -82,6 +82,7 @@ struct VoicePeerRuntime {
   bool managed_broker_session = false;
   bool ready = false;
   bool running = false;
+  bool suppress_persist = false;
   int exit_code = 0;
   int exit_signal = 0;
   std::string last_error;
@@ -650,6 +651,7 @@ static bool voice_peer_spawn_process(
   std::thread([db, st]() {
     int status = 0;
     (void)waitpid(st->pid, &status, 0);
+    bool should_persist = false;
     {
       std::lock_guard<std::mutex> lk(g_voice_peer_mu);
       refresh_voice_peer_runtime_state(st.get());
@@ -658,8 +660,9 @@ static bool voice_peer_spawn_process(
       st->ended_unix_ms = now_unix_ms();
       if (WIFEXITED(status)) st->exit_code = WEXITSTATUS(status);
       else if (WIFSIGNALED(status)) st->exit_signal = WTERMSIG(status);
+      should_persist = !st->suppress_persist;
     }
-    if (db && !trim_copy(st->session_id).empty()) {
+    if (should_persist && db && !trim_copy(st->session_id).empty()) {
       std::string perr;
       (void)persist_voice_peer_runtime_record(db, *st, &perr);
     }
@@ -1122,6 +1125,20 @@ void handle_session_voice_webrtc_peer_status_endpoint(
       g_voice_peer_by_session[*sid] = st;
     }
   }
+  if (!session_exists && st) {
+    Json::Value cleanup(Json::objectValue);
+    std::string cerr;
+    if (!cleanup_session_voice_webrtc_peer_runtime(cfg, db, *sid, "", &cleanup, &cerr)) {
+      resp->status = 500;
+      out["ok"] = false;
+      out["error"] = cerr.empty() ? "failed to clean up stale voice peer state" : cerr;
+      if (!cleanup.empty()) out["cleanup_on_missing_session"] = cleanup;
+      resp->body = json_stringify(out);
+      return;
+    }
+    out["cleanup_on_missing_session"] = cleanup;
+    st.reset();
+  }
   if (st) {
     std::string perr;
     (void)persist_voice_peer_runtime_record(db, *st, &perr);
@@ -1162,6 +1179,10 @@ bool cleanup_session_voice_webrtc_peer_runtime(
   }
 
   if (st) {
+    {
+      std::lock_guard<std::mutex> lk(g_voice_peer_mu);
+      st->suppress_persist = true;
+    }
     summary["runtime_present"] = true;
     summary["runtime_was_running"] = st->running;
     summary["peer"] = voice_peer_runtime_to_json(*st);

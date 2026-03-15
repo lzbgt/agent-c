@@ -111,6 +111,7 @@ if [[ "${USE_DOCKER}" == "1" ]]; then
 fi
 BROKER_PORT="$(pick_port)"
 PORT_DAEMON="$(pick_port)"
+SESSION_DB_PATH="${LOG_DIR}/agentd_session_voice_webrtc_peer_runtime_smoke_${PORT_DAEMON}.sqlite"
 
 if [[ "${USE_DOCKER}" == "1" ]]; then
   if docker ps -a --format '{{.Names}}' | grep -q "^${POSTGRES_NAME}$"; then
@@ -962,6 +963,132 @@ if os.path.exists(r'''${VOICE_STDOUT_LOG3}'''):
   raise SystemExit(1)
 PY
 
+restart_agentd
+
+status_after_delete_restart="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer?session_id=${SESSION_DB_ID_Q}")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${status_after_delete_restart}''')
+if obj.get("session_exists") is not False or obj.get("running") is not False or obj.get("peer") is not None:
+  print("expected no resurrected peer state after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("cleanup_on_missing_session") not in (None, {}):
+  print("unexpected cleanup_on_missing_session after already-clean delete", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 wait_broker_session_deleted "${BROKER_SESSION_ID3}"
+
+STALE_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_stale_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${STALE_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+start_resp4="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${STALE_SESSION_ID}",
+  "action": "start",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab-stale",
+  "broker_url": "http://127.0.0.1:${BROKER_PORT}",
+  "broker_token": "audio-agentd-token",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 784
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${start_resp4}''')
+if not obj.get("ok") or not obj.get("started"):
+  print("voice_webrtc_peer fourth start failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+peer = obj.get("peer") or {}
+if peer.get("runtime_kind") != "bundled" or peer.get("managed_broker_session") is not True:
+  print("unexpected fourth peer runtime state", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+BROKER_SESSION_ID4="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${start_resp4}''')
+peer = obj.get("peer") or {}
+sid = str(peer.get("broker_session_id") or "").strip()
+if not sid:
+  print("missing fourth broker_session_id in start response", file=sys.stderr)
+  raise SystemExit(1)
+print(sid)
+PY
+)"
+
+VOICE_STDOUT_LOG4="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${start_resp4}''')
+peer = obj.get("peer") or {}
+path = str(peer.get("stdout_log_path") or "").strip()
+if not path:
+  print("missing fourth stdout_log_path in start response", file=sys.stderr)
+  raise SystemExit(1)
+print(path)
+PY
+)"
+
+wait_voice_peer_ready "${STALE_SESSION_ID}" 1 status_json
+
+python3 - <<PY
+import sqlite3
+db_path = r'''${SESSION_DB_PATH}'''
+sid = r'''${STALE_SESSION_ID}'''
+conn = sqlite3.connect(db_path)
+try:
+    conn.execute("DELETE FROM sessions WHERE session_id = ?", (sid,))
+    conn.commit()
+finally:
+    conn.close()
+PY
+
+STALE_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${STALE_SESSION_ID}")"
+status_after_stale_delete="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer?session_id=${STALE_SESSION_ID_Q}")"
+
+python3 - <<PY
+import json, os, sys
+obj = json.loads(r'''${status_after_stale_delete}''')
+if obj.get("session_exists") is not False:
+  print("expected session_exists=false after direct DB delete", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("running") is not False:
+  print("expected running=false after stale cleanup", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("peer") is not None:
+  print("expected peer=null after stale cleanup", obj, file=sys.stderr)
+  raise SystemExit(1)
+cleanup = obj.get("cleanup_on_missing_session") or {}
+if cleanup.get("runtime_present") is not True or cleanup.get("runtime_was_running") is not True:
+  print("expected cleanup_on_missing_session to report stale running runtime", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("persisted_record_cleared") is not True:
+  print("expected persisted runtime record cleared during stale cleanup", obj, file=sys.stderr)
+  raise SystemExit(1)
+if os.path.exists(r'''${VOICE_STDOUT_LOG4}'''):
+  print("expected stale runtime stdout log removed", r'''${VOICE_STDOUT_LOG4}''', file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+wait_broker_session_deleted "${BROKER_SESSION_ID4}"
 
 echo "agentd_session_voice_webrtc_peer_runtime_smoke OK"

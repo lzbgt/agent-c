@@ -229,6 +229,8 @@ These are the most leveraged next steps grounded in current architecture:
      agentd-owned broker audio session itself on `stop` when the child died before sending `bye`.
    - Completed 2026-03-15: session erase now also owns the managed voice runtime lifecycle, stopping the peer and
      removing persisted runtime artifacts (plus owned broker session cleanup when `broker_token` is supplied).
+   - Completed 2026-03-15: status reads now also self-heal stale local voice runtime state if the session row vanished
+     outside the normal erase path, instead of surfacing orphaned peer/runtime residue indefinitely.
    - Remaining gap: replace the managed Node/Playwright child with an embedded long-lived agentd-native media service.
 
 5) **Node consensus**

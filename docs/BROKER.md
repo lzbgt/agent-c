@@ -408,6 +408,8 @@ Current status:
   audio session after an ungraceful peer death that never delivered `bye`.
 - Shipped: `DELETE /api/v1/session?session_id=...&broker_token=...` now treats session erase as a real lifecycle boundary
   for voice: it stops the managed peer, clears persisted runtime artifacts, and deletes the owned broker audio session.
+- Shipped: `GET /api/v1/session/voice_webrtc_peer` now also self-heals stale local runtime state if the session row
+  disappears outside the normal erase path, rather than leaving orphaned local peer/runtime artifacts behind.
 - Still open: replace the managed Node/Playwright child runtime with an embedded long-lived agentd-native media service.
 
 Proof:

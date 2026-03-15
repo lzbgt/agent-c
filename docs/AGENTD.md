@@ -395,6 +395,8 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   without re-supplying broker parameters.
 - Child exit state is now persisted eagerly as the peer process ends, so later status reads and daemon restarts do not
   depend on an in-memory refresh to observe that the peer already stopped.
+- If the canonical session row is gone but stale `voice_webrtc_peer` state still exists, the status read now self-heals
+  that stale runtime, clears local runtime artifacts, and reports the cleanup in `cleanup_on_missing_session`.
 - `POST /api/v1/session/voice_webrtc_peer` no longer requires callers to pre-create the broker audio session:
   if `broker_session_id` is omitted and `broker_agent_id` is provided, agentd now creates the broker audio session,
   launches the peer against it, and reports `peer.managed_broker_session=true` plus the chosen

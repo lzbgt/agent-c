@@ -3300,7 +3300,10 @@
       runtime records and stdout logs, so status can be recovered across agentd
       restarts with `peer.status_source=persisted`. When `peer.managed_broker_session=true`,
       the runtime also records which broker `agent_id`/`deployment_id` was used for
-      agentd-owned broker audio-session creation.
+      agentd-owned broker audio-session creation. If the canonical session row no
+      longer exists but stale runtime state still does, the status read now self-heals
+      that stale runtime, clears local runtime artifacts, and reports the cleanup in
+      `cleanup_on_missing_session`.
     parameters:
       - in: query
         name: session_id

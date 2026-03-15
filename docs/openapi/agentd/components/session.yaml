@@ -111,6 +111,9 @@ VoiceWebRtcPeerStatusResponse:
     session_exists: { type: boolean }
     running: { type: boolean }
     error: { type: string }
+    cleanup_on_missing_session:
+      type: object
+      additionalProperties: true
     peer:
       nullable: true
       allOf:
