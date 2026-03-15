@@ -611,6 +611,8 @@ Edge trust-root rotation:
   `GET /api/v1/edge/node/consensus_runtime?node_id=<id>` reports managed runtime status plus the latest final result JSON.
   Both start and status now also expose `external_available` plus `external_unavailable_reason`, so operator tooling can
   see whether the external helper seam is actually launchable before trying `runtime_kind=external`.
+  External starts now also use bounded startup confirmation and return `startup_confirmed=false` with a `500` response
+  if the helper exits immediately after launch instead of reporting a false-positive started runtime.
 - Start requests can include `campaign_delay_ms`, `campaign_retry_ms`, `campaign_retry_max_ms`, and
   `campaign_retry_backoff_factor`, plus `leader_heartbeat_ms` and `leader_lease_ms`; the reported runtime/result
   surfaces expose that same bounded retry and leader-freshness policy so operators can confirm whether a candidate

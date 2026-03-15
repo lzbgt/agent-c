@@ -702,6 +702,41 @@ static bool edge_consensus_runtime_kill_best_effort(std::shared_ptr<EdgeConsensu
   }
   return true;
 }
+
+static bool edge_consensus_runtime_confirm_external_startup(
+  const std::shared_ptr<EdgeConsensusRuntime>& st,
+  Json::Value* out_runtime,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (out_runtime) *out_runtime = Json::Value(Json::nullValue);
+  if (!st) {
+    if (out_err) *out_err = "missing runtime";
+    return false;
+  }
+
+  const int64_t deadline = now_unix_ms() + 400;
+  for (;;) {
+    {
+      std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
+      if (!st->running) {
+        if (out_runtime) *out_runtime = edge_consensus_runtime_to_json(*st);
+        if (out_err) {
+          *out_err = !st->last_error.empty() ? st->last_error : "consensus runtime exited before startup confirmation";
+        }
+        return false;
+      }
+    }
+    if (now_unix_ms() >= deadline) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(25));
+  }
+
+  if (out_runtime) {
+    std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
+    *out_runtime = edge_consensus_runtime_to_json(*st);
+  }
+  return true;
+}
 #endif
 
 static Json::Value build_edge_node_consensus_summary(AgentDb* db_or_null, const std::string& node_id, bool* out_exists) {
@@ -891,9 +926,22 @@ void handle_edge_node_consensus_runtime_endpoint(
     : edge_consensus_runtime_start_builtin(cfg, body, &spawned, &serr);
   if (!started) {
     out["error"] = serr.empty() ? "failed to start consensus runtime" : serr;
+    out["startup_confirmed"] = false;
     resp->status = 500;
     resp->body = json_stringify(out);
     return;
+  }
+  if (runtime_kind == "external") {
+    Json::Value startup_runtime(Json::nullValue);
+    if (!edge_consensus_runtime_confirm_external_startup(spawned, &startup_runtime, &serr)) {
+      out["error"] = serr.empty() ? "failed to start consensus runtime" : serr;
+      out["startup_confirmed"] = false;
+      out["runtime"] = startup_runtime;
+      resp->status = 500;
+      resp->body = json_stringify(out);
+      return;
+    }
+    out["startup_confirmed"] = true;
   }
   {
     std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);

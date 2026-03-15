@@ -2535,7 +2535,9 @@
       standalone helper for bring-up or debug parity. Runtime status now reports
       whether that external helper seam is actually launchable before start, and
       `/api/v1/config/update` can persist `edge_consensus.node_tool_path` instead
-      of relying only on `AGENTD_EDGE_CONSENSUS_NODE_TOOL`. Start requests can also set
+      of relying only on `AGENTD_EDGE_CONSENSUS_NODE_TOOL`. External starts now also
+      use a bounded startup confirmation window and fail closed if the helper exits
+      immediately after launch. Start requests can also set
       `campaign_delay_ms` for the first election, `campaign_retry_ms` for the base
       retry interval, `campaign_retry_max_ms` for the backoff ceiling, and
       `campaign_retry_backoff_factor` for bounded exponential retry growth when

@@ -216,6 +216,15 @@ CONFIG_RESTART_JSON="$(curl_json GET "/api/v1/config")"
 EXT_NODE="node_runtime_cons_ext"
 EXT_CLUSTER="lab-consensus-managed-ext"
 EXT_SHA="sha256:6666666666666666666666666666666666666666666666666666666666666666"
+FALSE_BIN="$(python3 - <<'PY'
+import shutil
+print(shutil.which("false") or "")
+PY
+)"
+if [[ -z "${FALSE_BIN}" ]]; then
+  echo "missing false helper binary for fail-fast startup proof" >&2
+  exit 1
+fi
 
 START_EXT_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
 {"action":"start","runtime_kind":"external","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","deadline_ms":30000,"poll_interval_ms":100}
@@ -227,6 +236,19 @@ STOP_EXT_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<J
 JSON
 )")"
 STOP_EXT_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${EXT_NODE}")"
+
+FAILFAST_CFG_JSON="$(curl_json POST "/api/v1/config/update" "$(cat <<JSON
+{"edge_consensus":{"node_tool_path":"${FALSE_BIN}"}}
+JSON
+)")"
+FAILFAST_CONFIG_JSON="$(curl_json GET "/api/v1/config")"
+FAILFAST_START_RAW="$(curl_json_status POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"start","runtime_kind":"external","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","deadline_ms":30000,"poll_interval_ms":100}
+JSON
+)")"
+FAILFAST_START_STATUS="$(printf '%s\n' "${FAILFAST_START_RAW}" | sed -n '1p')"
+FAILFAST_START_JSON="$(printf '%s\n' "${FAILFAST_START_RAW}" | sed '1d')"
+FAILFAST_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${EXT_NODE}")"
 
 CLEAR_CFG_JSON="$(curl_json POST "/api/v1/config/update" "$(cat <<JSON
 {"edge_consensus":{"node_tool_path":null}}
@@ -245,6 +267,7 @@ python3 - <<PY
 import json, sys
 
 node_tool = "${NODE_TOOL_BIN}"
+false_bin = "${FALSE_BIN}"
 
 config_set = json.loads(r'''${CONFIG_SET_JSON}''')
 config_get = json.loads(r'''${CONFIG_GET_JSON}''')
@@ -253,12 +276,16 @@ start_ext = json.loads(r'''${START_EXT_JSON}''')
 running_ext = json.loads(r'''${RUNNING_EXT_JSON}''')
 stop_ext = json.loads(r'''${STOP_EXT_JSON}''')
 stop_ext_status = json.loads(r'''${STOP_EXT_STATUS_JSON}''')
+failfast_cfg = json.loads(r'''${FAILFAST_CFG_JSON}''')
+failfast_config = json.loads(r'''${FAILFAST_CONFIG_JSON}''')
+failfast_start = json.loads(r'''${FAILFAST_START_JSON}''')
+failfast_status = json.loads(r'''${FAILFAST_STATUS_JSON}''')
 clear_cfg = json.loads(r'''${CLEAR_CFG_JSON}''')
 config_cleared = json.loads(r'''${CONFIG_CLEARED_JSON}''')
 fail_start = json.loads(r'''${FAIL_START_JSON}''')
 fail_start_status = json.loads(r'''${FAIL_START_STATUS_JSON}''')
 
-for label, obj in (("config_set", config_set), ("config_get", config_get), ("config_restart", config_restart), ("clear_cfg", clear_cfg), ("config_cleared", config_cleared)):
+for label, obj in (("config_set", config_set), ("config_get", config_get), ("config_restart", config_restart), ("failfast_cfg", failfast_cfg), ("failfast_config", failfast_config), ("clear_cfg", clear_cfg), ("config_cleared", config_cleared)):
   if not obj.get("ok"):
     print(label, obj, file=sys.stderr)
     raise SystemExit(1)
@@ -293,6 +320,35 @@ if not stop_ext.get("ok") or not stop_ext.get("stopped"):
   raise SystemExit(1)
 if (stop_ext_status.get("runtime") or {}).get("running"):
   print("external runtime still running after stop", stop_ext_status, file=sys.stderr)
+  raise SystemExit(1)
+
+for label, obj in (("failfast_cfg", failfast_cfg), ("failfast_config", failfast_config)):
+  edge = obj.get("edge_consensus") or {}
+  if not edge.get("node_tool_path_configured"):
+    print(label, "expected configured false-bin helper", obj, file=sys.stderr)
+    raise SystemExit(1)
+  if not edge.get("external_available"):
+    print(label, "expected executable false-bin helper to look available", obj, file=sys.stderr)
+    raise SystemExit(1)
+
+if "${FAILFAST_START_STATUS}" != "500":
+  print("failfast external start returned wrong status", "${FAILFAST_START_STATUS}", failfast_start, file=sys.stderr)
+  raise SystemExit(1)
+if failfast_start.get("startup_confirmed") is not False:
+  print("failfast external start missing startup_confirmed=false", failfast_start, file=sys.stderr)
+  raise SystemExit(1)
+ff_rt = failfast_start.get("runtime") or {}
+if ff_rt.get("runtime_kind") != "external":
+  print("failfast external start missing runtime snapshot", failfast_start, file=sys.stderr)
+  raise SystemExit(1)
+if ff_rt.get("tool_path") != false_bin:
+  print("failfast external start wrong tool path", failfast_start, file=sys.stderr)
+  raise SystemExit(1)
+if ff_rt.get("running"):
+  print("failfast external start left runtime running", failfast_start, file=sys.stderr)
+  raise SystemExit(1)
+if failfast_status.get("runtime") is not None:
+  print("failfast external start left persisted runtime behind", failfast_status, file=sys.stderr)
   raise SystemExit(1)
 
 for label, obj in (("clear_cfg", clear_cfg), ("config_cleared", config_cleared)):

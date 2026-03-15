@@ -28,6 +28,8 @@ Recent shipped note:
 - 2026-03-15: the optional external edge-consensus helper seam is now durable daemon config too
   (`edge_consensus.node_tool_path`), and consensus runtime/config surfaces now report whether that external backend is
   actually launchable before `runtime_kind=external` start attempts.
+- 2026-03-15: managed external edge-consensus starts now also use bounded startup confirmation, so immediately exiting
+  helpers fail closed instead of being reported as successful managed runtimes.
 
 Clarification: “Beyond OpenClaw” means **going past a gateway/plugin model** into a full-stack,
 durable, policy-driven agent platform with evidence-grade runs, multi-agent orchestration,

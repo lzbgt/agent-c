@@ -280,6 +280,7 @@ EdgeNodeConsensusRuntimeResponse:
     tool_path: { type: string }
     default_daemon_url: { type: string }
     started: { type: boolean }
+    startup_confirmed: { type: boolean }
     stopped: { type: boolean }
     already_running: { type: boolean }
     reason: { type: string }
