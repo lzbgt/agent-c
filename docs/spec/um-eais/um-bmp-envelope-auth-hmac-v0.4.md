@@ -140,6 +140,8 @@ Operator config:
 - `GET /api/v1/edge/auth/trust_roots` returns a safe trust-root bundle with `rotation_epoch`, HMAC `kid` list,
   Ed25519 public keys, and an optional server-side `attest` block.
 - `POST /api/v1/edge/auth/trust_roots/rotate` updates the durable trust-root set with a strictly increasing rotation epoch.
+- `GET /api/v1/edge/auth/node_binding?node_id=...` returns the effective binding summary for one node under the current `kid_policy`.
+- `POST /api/v1/edge/auth/provision_node` provisions HMAC / Ed25519 trust roots for a specific node and rejects `kid` values that violate the active `kid_policy`.
 
 When `edge_auth_required=true`:
 - Missing `auth` => reject with HTTP 401
@@ -164,6 +166,7 @@ When `edge_auth_required=false`:
   `agentd_edge_auth_ed25519_cbor_wire_smoke` for authenticated CBOR ingress.
 - `ctest` includes `agentd_edge_auth_hmac_smoke` and `agentd_edge_auth_ed25519_smoke`
   for authenticated JSON ingress and operator enforcement.
+- `ctest` includes `agentd_edge_auth_provision_node_smoke` for node-scoped provisioning and binding inspection.
 - `ctest` includes `agentd_edge_auth_trust_roots_rotate_smoke` for live trust-root rotation and signed bundle export.
 - `ctest` includes `agentd_edge_manifest_bundle_smoke` for the platform-signed manifest bundle
   export surface (`GET /api/v1/edge/node/manifest_bundle`).

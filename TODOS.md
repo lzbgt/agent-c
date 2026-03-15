@@ -562,6 +562,7 @@ streaming and plugins are stable.
   - [x] UM-BMP envelope authenticity is implemented for JSON/CBOR wire with HMAC + Ed25519, operator enforcement knobs, and MCU bring-up vectors.
   - [x] Agentd enforceable edge task attestation policy (`edge_attest_required` + `edge_attest_require_sig`) is documented and verified.
   - [x] 2026-03-15: added first-class trust-root rotation endpoints (`GET /api/v1/edge/auth/trust_roots`, `POST /api/v1/edge/auth/trust_roots/rotate`) with durable epoch metadata, signed bundle export, and live rotation proof in `tests/agentd_edge_auth_trust_roots_rotate_smoke.sh`.
+  - [x] 2026-03-15: added per-node trust-root provisioning + binding inspection (`POST /api/v1/edge/auth/provision_node`, `GET /api/v1/edge/auth/node_binding`) with active `kid_policy` enforcement and proof in `tests/agentd_edge_auth_provision_node_smoke.sh`.
   - [x] 2026-03-15: added `GET /api/v1/edge/node/manifest_bundle`, a platform-signed node/tool manifest bundle export backed by durable `edge_nodes` state and existing attestation keys; proof: `tests/agentd_edge_manifest_bundle_smoke.sh`.
   - [ ] Add envelope confidentiality / encrypted payload profile beyond authenticity-only signing.
   - 2026-03-15: narrowed the stale umbrella item after re-verifying `umbmp_auth_vectors_tests`, `agentd_edge_auth_hmac_cbor_wire_smoke`, `agentd_edge_auth_ed25519_cbor_wire_smoke`, `agentd_edge_task_attest_required_smoke`, and `agentd_run_attestation_ed25519_smoke`.
@@ -974,7 +975,6 @@ Details (stable order for diff readability; numbering below is not priority):
      - Evidence is emitted under edge task events (trace-queryable).
      - Embedded bring-up: `agent_core` helper `agent_um_eais_result_attest_signing_input_v0_1(...)` generates the exact signing bytes.
    - Next: complete trust roots + identity binding:
-     - per-node key provisioning workflow (bootstrap + rotation)
      - replay window guidance + nonce/ts enforcement for lossy bridges (configurable; deterministic)
    - Shipped (MCU ergonomics): small-footprint CBOR **decoder** helper in `agent_core` for the same definite-length wire profile:
      - Core API: `agent/cbor_read.h` (no allocations; returns views into input bytes; depth/item limits for safety).

@@ -457,3 +457,80 @@ EdgeAuthTrustRootsRotateResponse:
     edge_auth_ed25519_pubkeys_set: { type: integer, format: int64 }
     trust_roots:
       $ref: "#/components/schemas/EdgeAuthTrustRootsBundle"
+
+
+EdgeAuthNodeBinding:
+  type: object
+  required:
+    [node_id, kid_policy, trust_roots_epoch, trust_roots_updated_utc_ms, recommended_hmac_kid, recommended_ed25519_kid, matching_hmac_kids, matching_ed25519_kids, kid_policy_satisfied]
+  properties:
+    node_id: { type: string }
+    kid_policy: { type: string }
+    trust_roots_epoch: { type: integer, format: int64 }
+    trust_roots_updated_utc_ms: { type: integer, format: int64 }
+    recommended_hmac_kid: { type: string }
+    recommended_ed25519_kid: { type: string }
+    matching_hmac_kids:
+      type: array
+      items: { type: string }
+    matching_ed25519_kids:
+      type: array
+      items: { type: string }
+    kid_policy_satisfied: { type: boolean }
+
+
+EdgeAuthNodeBindingResponse:
+  type: object
+  required: [ok, binding]
+  properties:
+    ok: { type: boolean }
+    binding:
+      $ref: "#/components/schemas/EdgeAuthNodeBinding"
+
+
+EdgeAuthProvisionNodeRequest:
+  type: object
+  additionalProperties: false
+  required: [node_id]
+  properties:
+    node_id: { type: string }
+    mode:
+      type: string
+      enum: [merge, replace]
+    rotation_epoch:
+      type: integer
+      format: int64
+    hmac_kid:
+      type: string
+      description: Defaults to `node_id`
+    hmac_secret:
+      type: string
+      description: Shared secret to provision for HMAC envelope auth
+    clear_hmac:
+      type: boolean
+      description: Remove the specified/default HMAC kid
+    ed25519_kid:
+      type: string
+      description: Defaults to `node_id`
+    ed25519_pubkey:
+      type: string
+      description: Base64 of 32-byte Ed25519 public key
+    clear_ed25519:
+      type: boolean
+      description: Remove the specified/default Ed25519 kid
+
+
+EdgeAuthProvisionNodeResponse:
+  type: object
+  required: [ok, rotation_epoch, updated_utc_ms, provisioned, binding, trust_roots]
+  properties:
+    ok: { type: boolean }
+    rotation_epoch: { type: integer, format: int64 }
+    updated_utc_ms: { type: integer, format: int64 }
+    provisioned:
+      type: object
+      additionalProperties: true
+    binding:
+      $ref: "#/components/schemas/EdgeAuthNodeBinding"
+    trust_roots:
+      $ref: "#/components/schemas/EdgeAuthTrustRootsBundle"

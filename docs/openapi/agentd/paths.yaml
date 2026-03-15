@@ -271,6 +271,75 @@
             schema:
               $ref: "#/components/schemas/ErrorResponse"
 
+/api/v1/edge/auth/node_binding:
+  get:
+    tags: [config, edge]
+    summary: Inspect effective edge auth binding for one node
+    parameters:
+      - in: query
+        name: node_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Binding summary
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeAuthNodeBindingResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
+/api/v1/edge/auth/provision_node:
+  post:
+    tags: [config, edge]
+    summary: Provision edge auth trust roots for one node
+    description: |
+      Helper endpoint for per-node trust-root bootstrap and rotation. Applies the requested
+      key material, enforces the current `edge_auth_kid_policy`, advances the trust-root epoch,
+      and returns both the updated trust-root bundle and the effective node binding.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EdgeAuthProvisionNodeRequest"
+    responses:
+      "200":
+        description: Provisioning acknowledged
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeAuthProvisionNodeResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "409":
+        description: Kid policy or epoch conflict
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
 /api/v1/client/prefs:
   get:
     tags: [client]

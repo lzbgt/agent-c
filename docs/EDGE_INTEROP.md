@@ -129,6 +129,9 @@ Envelope authenticity (optional, UM‑BMP auth v0.4):
   - Trust-root rotation control plane:
     - `GET /api/v1/edge/auth/trust_roots` returns a safe bundle with `rotation_epoch`, `hmac_kids`, `ed25519_pubkeys`, and optional `attest`
     - `POST /api/v1/edge/auth/trust_roots/rotate` applies a monotonic rotation epoch and updates the HMAC / Ed25519 trust-root set (`mode:"merge"` or `mode:"replace"`)
+  - Per-node provisioning helpers:
+    - `GET /api/v1/edge/auth/node_binding?node_id=...` shows the effective `kid_policy` match set for one node
+    - `POST /api/v1/edge/auth/provision_node` provisions HMAC / Ed25519 trust roots for one node while enforcing the active `edge_auth_kid_policy`
   - Behavior:
     - If `edge_auth_required=true`: missing/invalid `auth` is rejected with HTTP 401 (no inbox persistence).
     - If `edge_auth_required=false`: unsigned envelopes are accepted, but if `auth` is present it must verify.
@@ -259,6 +262,7 @@ Workflows are executed by a background runner in `agentd`:
 Proof:
 - `ctest` includes `agentd_edge_interop_smoke` and `agentd_edge_workflow_submit_message_smoke`.
 - `ctest` includes `agentd_edge_auth_hmac_smoke`.
+- `ctest` includes `agentd_edge_auth_provision_node_smoke`.
 - `ctest` includes `agentd_edge_auth_trust_roots_rotate_smoke`.
 - `ctest` includes `agentd_edge_auth_ed25519_smoke`.
 - `ctest` includes `agentd_edge_auth_hmac_cbor_wire_smoke`.
