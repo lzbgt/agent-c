@@ -19,6 +19,7 @@ namespace agentd {
 // - GET /api/v1/edge/node?node_id=...
 // - GET /api/v1/edge/node/caps?node_id=...
 // - GET /api/v1/edge/node/manifest_bundle?node_id=...
+// - POST /api/v1/edge/node/manifest_bundle/send
 // - POST /api/v1/edge/task/assign  (platform helper: enqueue TASK_ASSIGN)
 // - GET /api/v1/edge/task?task_id=...&step_id=...
 
@@ -63,6 +64,14 @@ void handle_edge_node_caps_endpoint(
 );
 
 void handle_edge_node_manifest_bundle_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
+void handle_edge_node_manifest_bundle_send_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
   AgentDb* db_or_null,

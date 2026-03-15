@@ -18,8 +18,9 @@ Current status:
   trust-root rotation via `GET /api/v1/edge/auth/trust_roots` and
   `POST /api/v1/edge/auth/trust_roots/rotate`, per-node provisioning via
   `POST /api/v1/edge/auth/provision_node`, and revocation bundle/control via
-  `GET /api/v1/edge/auth/revocations` plus `POST /api/v1/edge/auth/revocations/update`.
-- Still open: certificate-chain PKI, node-native signed manifest distribution, and
+  `GET /api/v1/edge/auth/revocations` plus `POST /api/v1/edge/auth/revocations/update`,
+  plus node-pollable signed manifest distribution via `POST /api/v1/edge/node/manifest_bundle/send`.
+- Still open: certificate-chain PKI and confidentiality beyond authenticity-only envelopes.
   confidentiality beyond authenticity-only envelopes.
 
 Executable contract artifacts (this repo):
@@ -182,6 +183,7 @@ Returns messages in ascending `outbox_id` order. The node should:
 - `GET /api/v1/edge/node?node_id=...`
 - `GET /api/v1/edge/node/caps?node_id=...`
 - `GET /api/v1/edge/node/manifest_bundle?node_id=...`
+- `POST /api/v1/edge/node/manifest_bundle/send`
 
 Manifest bundle note:
 - The manifest bundle endpoint returns the stored manifest plus derived `tools`, `tags`, and
@@ -189,6 +191,9 @@ Manifest bundle note:
 - When `AGENTD_RUN_ATTEST_HMAC_*` or `AGENTD_RUN_ATTEST_ED25519_*` is configured, `agentd`
   signs the bundle and returns an `attest` block so operators can treat it as a verified
   control-plane artifact rather than only an unsigned registry read.
+- The send helper enqueues that same signed bundle to a recipient node’s outbox as
+  `PLATFORM_MANIFEST_BUNDLE`, so non-HTTP node transports can consume peer identity/capability
+  material over the shipped UM-BMP poll path.
 
 ### Platform helper: enqueue TASK_ASSIGN
 
@@ -271,6 +276,7 @@ Proof:
 - `ctest` includes `agentd_edge_auth_provision_node_smoke`.
 - `ctest` includes `agentd_edge_auth_revocations_smoke`.
 - `ctest` includes `agentd_edge_auth_trust_roots_rotate_smoke`.
+- `ctest` includes `agentd_edge_manifest_bundle_send_smoke`.
 - `ctest` includes `agentd_edge_auth_ed25519_smoke`.
 - `ctest` includes `agentd_edge_auth_hmac_cbor_wire_smoke`.
 - `ctest` includes `agentd_edge_auth_ed25519_cbor_wire_smoke`.

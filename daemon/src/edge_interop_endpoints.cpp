@@ -230,6 +230,107 @@ static bool maybe_sign_manifest_bundle(const DaemonConfig& cfg, Json::Value* bun
   return true;
 }
 
+static bool build_edge_node_manifest_bundle(
+  const DaemonConfig& cfg,
+  AgentDb* db_or_null,
+  const std::string& node_id,
+  Json::Value* out_bundle,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (!out_bundle) return false;
+  if (!db_or_null || !db_or_null->is_open()) {
+    if (out_error) *out_error = "db not available";
+    return false;
+  }
+  if (node_id.empty() || !edge_id_is_safe(node_id)) {
+    if (out_error) *out_error = "missing/invalid node_id";
+    return false;
+  }
+
+  AgentDb::EdgeNodeRow n;
+  std::string err;
+  if (!db_or_null->get_edge_node(node_id, &n, &err)) {
+    if (out_error) *out_error = "node not found";
+    return false;
+  }
+  if (n.manifest_json.empty()) {
+    if (out_error) *out_error = "node has no manifest";
+    return false;
+  }
+
+  Json::Value manifest;
+  std::string perr;
+  if (!json_parse_any(n.manifest_json, &manifest, &perr) || !manifest.isObject()) {
+    if (out_error) *out_error = "failed to parse stored manifest";
+    return false;
+  }
+
+  std::string manifest_sha256;
+  std::string sha_err;
+  if (!compute_manifest_sha256(manifest, &manifest_sha256, &sha_err)) {
+    if (out_error) *out_error = "failed to hash manifest";
+    return false;
+  }
+
+  Json::Value bundle(Json::objectValue);
+  bundle["schema"] = "edge_node_manifest_bundle_v1";
+  bundle["created_utc_ms"] = (Json::Int64)edge_unix_ms_now();
+  bundle["node_id"] = n.node_id;
+  if (!n.caps_sha256.empty()) bundle["caps_sha256"] = n.caps_sha256;
+  bundle["manifest_sha256"] = manifest_sha256;
+  bundle["manifest_sha256_alg"] = "agent_json_c14n_v1";
+  if (!n.model.empty()) bundle["model"] = n.model;
+  if (!n.fw_git_sha.empty()) bundle["fw_git_sha"] = n.fw_git_sha;
+  bundle["last_hello_utc_ms"] = (Json::Int64)n.last_hello_utc_ms;
+  bundle["last_heartbeat_utc_ms"] = (Json::Int64)n.last_heartbeat_utc_ms;
+  bundle["manifest"] = manifest;
+
+  if (manifest.isMember("tools") && manifest["tools"].isArray()) {
+    bundle["tools"] = manifest["tools"];
+  } else if (!n.tools_json.empty()) {
+    Json::Value v;
+    std::string derr;
+    if (json_parse_any(n.tools_json, &v, &derr) && v.isArray()) bundle["tools"] = v;
+  }
+
+  bool have_tags = false;
+  if (!n.tags_json.empty()) {
+    Json::Value v;
+    std::string derr;
+    if (json_parse_any(n.tags_json, &v, &derr) && v.isArray()) {
+      bundle["tags"] = v;
+      have_tags = true;
+    }
+  }
+  if (!have_tags && manifest.isMember("tags") && manifest["tags"].isArray()) bundle["tags"] = manifest["tags"];
+
+  bool have_presence = false;
+  if (!n.hardware_presence_json.empty()) {
+    Json::Value v;
+    std::string derr;
+    if (json_parse_any(n.hardware_presence_json, &v, &derr) && v.isObject()) {
+      bundle["hardware_presence"] = v;
+      have_presence = true;
+    }
+  }
+  if (!have_presence && manifest.isMember("hardware") && manifest["hardware"].isObject() &&
+      manifest["hardware"].isMember("presence") && manifest["hardware"]["presence"].isObject()) {
+    bundle["hardware_presence"] = manifest["hardware"]["presence"];
+  }
+
+  std::string sign_err;
+  if (!maybe_sign_manifest_bundle(cfg, &bundle, &sign_err)) {
+    if (out_error) {
+      *out_error = sign_err.empty() ? "manifest_bundle_sign_failed" : sign_err;
+    }
+    return false;
+  }
+
+  *out_bundle = bundle;
+  return true;
+}
+
 }  // namespace
 
 void handle_edge_message_endpoint(
@@ -1781,91 +1882,22 @@ void handle_edge_node_manifest_bundle_endpoint(
     return;
   }
 
-  AgentDb::EdgeNodeRow n;
-  std::string err;
-  if (!db_or_null->get_edge_node(*nid, &n, &err)) {
-    resp->status = 404;
-    resp->body = json_error_body("node not found");
-    return;
-  }
-  if (n.manifest_json.empty()) {
-    resp->status = 404;
-    resp->body = json_error_body("node has no manifest");
-    return;
-  }
-
-  Json::Value manifest;
-  std::string perr;
-  if (!json_parse_any(n.manifest_json, &manifest, &perr) || !manifest.isObject()) {
-    resp->status = 500;
-    Json::Value o(Json::objectValue);
-    o["ok"] = false;
-    o["error"] = "failed to parse stored manifest";
-    o["parse_error"] = perr;
-    resp->body = edge_json_stringify_compact(o);
-    return;
-  }
-
-  std::string manifest_sha256;
-  std::string sha_err;
-  if (!compute_manifest_sha256(manifest, &manifest_sha256, &sha_err)) {
-    resp->status = 500;
-    Json::Value o(Json::objectValue);
-    o["ok"] = false;
-    o["error"] = "failed to hash manifest";
-    o["details"] = sha_err;
-    resp->body = edge_json_stringify_compact(o);
-    return;
-  }
-
-  Json::Value bundle(Json::objectValue);
-  bundle["schema"] = "edge_node_manifest_bundle_v1";
-  bundle["created_utc_ms"] = (Json::Int64)edge_unix_ms_now();
-  bundle["node_id"] = n.node_id;
-  if (!n.caps_sha256.empty()) bundle["caps_sha256"] = n.caps_sha256;
-  bundle["manifest_sha256"] = manifest_sha256;
-  bundle["manifest_sha256_alg"] = "agent_json_c14n_v1";
-  if (!n.model.empty()) bundle["model"] = n.model;
-  if (!n.fw_git_sha.empty()) bundle["fw_git_sha"] = n.fw_git_sha;
-  bundle["last_hello_utc_ms"] = (Json::Int64)n.last_hello_utc_ms;
-  bundle["last_heartbeat_utc_ms"] = (Json::Int64)n.last_heartbeat_utc_ms;
-  bundle["manifest"] = manifest;
-
-  if (manifest.isMember("tools") && manifest["tools"].isArray()) {
-    bundle["tools"] = manifest["tools"];
-  } else if (!n.tools_json.empty()) {
-    Json::Value v;
-    std::string derr;
-    if (json_parse_any(n.tools_json, &v, &derr) && v.isArray()) bundle["tools"] = v;
-  }
-
-  bool have_tags = false;
-  if (!n.tags_json.empty()) {
-    Json::Value v;
-    std::string derr;
-    if (json_parse_any(n.tags_json, &v, &derr) && v.isArray()) {
-      bundle["tags"] = v;
-      have_tags = true;
-    }
-  }
-  if (!have_tags && manifest.isMember("tags") && manifest["tags"].isArray()) bundle["tags"] = manifest["tags"];
-
-  bool have_presence = false;
-  if (!n.hardware_presence_json.empty()) {
-    Json::Value v;
-    std::string derr;
-    if (json_parse_any(n.hardware_presence_json, &v, &derr) && v.isObject()) {
-      bundle["hardware_presence"] = v;
-      have_presence = true;
-    }
-  }
-  if (!have_presence && manifest.isMember("hardware") && manifest["hardware"].isObject() &&
-      manifest["hardware"].isMember("presence") && manifest["hardware"]["presence"].isObject()) {
-    bundle["hardware_presence"] = manifest["hardware"]["presence"];
-  }
-
+  Json::Value bundle;
   std::string sign_err;
-  if (!maybe_sign_manifest_bundle(cfg, &bundle, &sign_err)) {
+  if (!build_edge_node_manifest_bundle(cfg, db_or_null, *nid, &bundle, &sign_err)) {
+    if (sign_err == "node not found" || sign_err == "node has no manifest") {
+      resp->status = 404;
+      resp->body = json_error_body(sign_err);
+      return;
+    }
+    if (sign_err == "failed to parse stored manifest" || sign_err == "failed to hash manifest") {
+      resp->status = 500;
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = sign_err;
+      resp->body = edge_json_stringify_compact(o);
+      return;
+    }
     resp->status = 500;
     Json::Value o(Json::objectValue);
     o["ok"] = false;
@@ -1885,7 +1917,104 @@ void handle_edge_node_manifest_bundle_endpoint(
 
   Json::Value o(Json::objectValue);
   o["ok"] = true;
-  o["node_id"] = n.node_id;
+  o["node_id"] = *nid;
+  o["bundle"] = bundle;
+  resp->body = edge_json_stringify_compact(o);
+}
+
+void handle_edge_node_manifest_bundle_send_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  if (!db_or_null || !db_or_null->is_open()) {
+    resp->status = 503;
+    resp->body = json_error_body("db not available");
+    return;
+  }
+
+  Json::Value args;
+  std::string perr;
+  if (!json_parse_object(req.body, &args, &perr)) {
+    resp->status = 400;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = std::string("invalid JSON: ") + perr;
+    resp->body = edge_json_stringify_compact(o);
+    return;
+  }
+
+  const std::string target_node_id =
+    args.isMember("target_node_id") && args["target_node_id"].isString() ? trim_copy(args["target_node_id"].asString()) : "";
+  const std::string subject_node_id =
+    args.isMember("subject_node_id") && args["subject_node_id"].isString() ? trim_copy(args["subject_node_id"].asString()) : "";
+  if (target_node_id.empty() || !edge_id_is_safe(target_node_id) || subject_node_id.empty() || !edge_id_is_safe(subject_node_id)) {
+    resp->status = 400;
+    resp->body = json_error_body("missing/invalid target_node_id or subject_node_id");
+    return;
+  }
+
+  AgentDb::EdgeNodeRow target_row;
+  std::string terr;
+  if (!db_or_null->get_edge_node(target_node_id, &target_row, &terr)) {
+    resp->status = 404;
+    resp->body = json_error_body("target node not found");
+    return;
+  }
+
+  Json::Value bundle;
+  std::string berr;
+  if (!build_edge_node_manifest_bundle(cfg, db_or_null, subject_node_id, &bundle, &berr)) {
+    if (berr == "node not found" || berr == "node has no manifest") {
+      resp->status = 404;
+      resp->body = json_error_body(berr == "node not found" ? "subject node not found" : "subject node has no manifest");
+      return;
+    }
+    resp->status = 500;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = berr.empty() ? "manifest_bundle_send_failed" : berr;
+    resp->body = edge_json_stringify_compact(o);
+    return;
+  }
+
+  Json::Value env(Json::objectValue);
+  env["msg_id"] = edge_make_uuidish_msg_id();
+  env["ts_utc_ms"] = (Json::Int64)edge_unix_ms_now();
+  env["type"] = "PLATFORM_MANIFEST_BUNDLE";
+  env["from"] = "platform";
+  env["to"] = edge_node_to_prefix(target_node_id);
+  Json::Value body(Json::objectValue);
+  body["subject_node_id"] = subject_node_id;
+  body["bundle"] = bundle;
+  env["body"] = body;
+
+  AgentDb::EdgeOutboxMessageRow orow;
+  orow.node_id = target_node_id;
+  orow.ts_utc_ms = env["ts_utc_ms"].asInt64();
+  orow.envelope_json = edge_json_stringify_compact(env);
+  int64_t outbox_id = 0;
+  std::string oerr;
+  if (!db_or_null->insert_edge_outbox_message(orow, &outbox_id, &oerr)) {
+    resp->status = 500;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = oerr.empty() ? "failed to enqueue manifest bundle" : oerr;
+    resp->body = edge_json_stringify_compact(o);
+    return;
+  }
+
+  Json::Value o(Json::objectValue);
+  o["ok"] = true;
+  o["target_node_id"] = target_node_id;
+  o["subject_node_id"] = subject_node_id;
+  o["outbox_id"] = (Json::Int64)outbox_id;
   o["bundle"] = bundle;
   resp->body = edge_json_stringify_compact(o);
 }

@@ -1554,6 +1554,10 @@ int main(int argc, char** argv) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_edge_node_manifest_bundle_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
+  server.handle("POST", "/api/v1/edge/node/manifest_bundle/send", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_node_manifest_bundle_send_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
   server.handle("POST", "/api/v1/edge/task/assign", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_edge_task_assign_endpoint(cur, cors_cfg, db_or_null, req, resp);

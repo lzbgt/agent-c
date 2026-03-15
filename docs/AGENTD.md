@@ -469,6 +469,8 @@ Edge trust-root rotation:
   revoked `kid` / node-id set in the durable runtime config.
 - `GET /api/v1/edge/auth/node_binding?node_id=...` shows the effective binding and revocation status for one node,
   and `POST /api/v1/edge/auth/provision_node` remains the per-node bootstrap/rotation helper.
+- `POST /api/v1/edge/node/manifest_bundle/send` enqueues a signed `PLATFORM_MANIFEST_BUNDLE` to a recipient node’s
+  outbox so peer manifest/identity material can travel over the same UM-BMP poll path as other node traffic.
 
 ## Client prefs (WebUI connection profiles)
 

@@ -1,7 +1,7 @@
 # UM‑BMP Envelope Auth — Profile v0.4
 
 Date: 2026-02-05
-Status: implemented rolling core with durable trust-root rotation and revocation control; certificate-chain PKI / confidentiality and node-native manifest distribution still open
+Status: implemented rolling core with durable trust-root rotation, revocation control, and node-pollable signed manifest distribution; certificate-chain PKI / confidentiality still open
 
 This document defines an optional envelope authenticity mechanism for UM‑BMP messages
 in constrained IoT/edge systems, intended for:
@@ -20,8 +20,7 @@ This profile is transport-agnostic and applies to both JSON and CBOR wire mappin
 
 - Confidentiality (payload encryption in addition to transport security when available).
 - Certificate chains / PKI beyond the current signed trust-root + revocation control plane.
-- Certificate-chain PKI and node-native signed manifest / identity distribution so trust roots do not rely
-  only on operator-provisioned key maps.
+- Certificate-chain PKI so trust roots do not rely only on operator-provisioned key maps.
 
 ## Envelope fields
 
@@ -144,6 +143,8 @@ Operator config:
 - `POST /api/v1/edge/auth/provision_node` provisions HMAC / Ed25519 trust roots for a specific node and rejects `kid` values that violate the active `kid_policy`.
 - `GET /api/v1/edge/auth/revocations` returns the durable revoked-`kid` / revoked-node bundle with optional server-side `attest`.
 - `POST /api/v1/edge/auth/revocations/update` updates the durable revocation set with a strictly increasing revocation epoch.
+- `POST /api/v1/edge/node/manifest_bundle/send` enqueues a signed `PLATFORM_MANIFEST_BUNDLE` to a target node’s outbox so
+  node transports can receive peer manifest/identity material without an out-of-band HTTP pull.
 
 When `edge_auth_required=true`:
 - Missing `auth` => reject with HTTP 401
@@ -174,3 +175,5 @@ When `edge_auth_required=false`:
 - `ctest` includes `agentd_edge_auth_trust_roots_rotate_smoke` for live trust-root rotation and signed bundle export.
 - `ctest` includes `agentd_edge_manifest_bundle_smoke` for the platform-signed manifest bundle
   export surface (`GET /api/v1/edge/node/manifest_bundle`).
+- `ctest` includes `agentd_edge_manifest_bundle_send_smoke` for outbox-backed signed manifest distribution
+  (`POST /api/v1/edge/node/manifest_bundle/send`).

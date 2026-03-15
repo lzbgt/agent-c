@@ -115,6 +115,31 @@ EdgeNodeManifestBundleResponse:
       $ref: "#/components/schemas/EdgeNodeManifestBundle"
 
 
+EdgeNodeManifestBundleSendRequest:
+  type: object
+  additionalProperties: false
+  required: [target_node_id, subject_node_id]
+  properties:
+    target_node_id:
+      type: string
+      description: Recipient node that will receive the bundle via outbox
+    subject_node_id:
+      type: string
+      description: Node whose manifest bundle will be signed and delivered
+
+
+EdgeNodeManifestBundleSendResponse:
+  type: object
+  required: [ok, target_node_id, subject_node_id, outbox_id, bundle]
+  properties:
+    ok: { type: boolean }
+    target_node_id: { type: string }
+    subject_node_id: { type: string }
+    outbox_id: { type: integer, format: int64 }
+    bundle:
+      $ref: "#/components/schemas/EdgeNodeManifestBundle"
+
+
 EdgeTaskAssignRequest:
   type: object
   required: [task_id, step_id, idempotency_key, mode, deadline_utc_ms, payload]

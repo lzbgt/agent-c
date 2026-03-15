@@ -556,7 +556,7 @@ streaming and plugins are stable.
 - [x] Memory privacy tags (`<private>`) to keep sensitive content out of durable storage (claude-mem inspired).
 - [x] Memory progressive disclosure + citation surfacing for dynamic context assembly (claude-mem inspired).
 - [x] Memory observations + timeline retrieval tools to mirror claude-mem search workflows.
-- [ ] Interop/attestation: finish certificate-chain PKI, node-native manifest distribution, and confidentiality beyond authenticated envelopes.
+- [ ] Interop/attestation: finish certificate-chain PKI and confidentiality beyond authenticated envelopes.
   - [x] Canonical JSON hashing (`agent_json_c14n_v1`) is wired into replay/attestation bundles and edge result hashing.
   - [x] Run replay + signed attestation bundles are implemented and verified via `run_attestation_bundle_tool_smoke` and `agentd_run_attestation_ed25519_smoke`.
   - [x] UM-BMP envelope authenticity is implemented for JSON/CBOR wire with HMAC + Ed25519, operator enforcement knobs, and MCU bring-up vectors.
@@ -565,6 +565,7 @@ streaming and plugins are stable.
   - [x] 2026-03-15: added per-node trust-root provisioning + binding inspection (`POST /api/v1/edge/auth/provision_node`, `GET /api/v1/edge/auth/node_binding`) with active `kid_policy` enforcement and proof in `tests/agentd_edge_auth_provision_node_smoke.sh`.
   - [x] 2026-03-15: added signed revocation bundle/control (`GET /api/v1/edge/auth/revocations`, `POST /api/v1/edge/auth/revocations/update`) with live revoked-`kid` / revoked-node enforcement proof in `tests/agentd_edge_auth_revocations_smoke.sh`.
   - [x] 2026-03-15: added `GET /api/v1/edge/node/manifest_bundle`, a platform-signed node/tool manifest bundle export backed by durable `edge_nodes` state and existing attestation keys; proof: `tests/agentd_edge_manifest_bundle_smoke.sh`.
+  - [x] 2026-03-15: added node-pollable signed manifest distribution (`POST /api/v1/edge/node/manifest_bundle/send`) that enqueues `PLATFORM_MANIFEST_BUNDLE` over the existing UM-BMP outbox path; proof: `tests/agentd_edge_manifest_bundle_send_smoke.sh`.
   - [ ] Add envelope confidentiality / encrypted payload profile beyond authenticity-only signing.
   - 2026-03-15: narrowed the stale umbrella item after re-verifying `umbmp_auth_vectors_tests`, `agentd_edge_auth_hmac_cbor_wire_smoke`, `agentd_edge_auth_ed25519_cbor_wire_smoke`, `agentd_edge_task_attest_required_smoke`, and `agentd_run_attestation_ed25519_smoke`.
 - [x] AVM: persist governance bundles/record-replay artifacts, add explicit host-effects policy, and carry quorum/attestation identity through deterministic VM results.

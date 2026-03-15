@@ -2204,6 +2204,45 @@
             schema:
               $ref: "#/components/schemas/EdgeNodeManifestBundleResponse"
 
+/api/v1/edge/node/manifest_bundle/send:
+  post:
+    tags: [edge]
+    summary: Send a platform-signed node manifest bundle to another node via outbox
+    description: |
+      Builds the signed manifest bundle for `subject_node_id` and enqueues it to the
+      UM-BMP outbox of `target_node_id` as `PLATFORM_MANIFEST_BUNDLE`.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EdgeNodeManifestBundleSendRequest"
+    responses:
+      "200":
+        description: Manifest bundle enqueued
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeNodeManifestBundleSendResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "404":
+        description: Node or manifest not found
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
 /api/v1/edge/task/assign:
   post:
     tags: [edge]
