@@ -403,6 +403,18 @@ bool load_runtime_config_best_effort(
         const std::string s = trim_copy(v["edge_auth_kid_policy"].asString());
         if (s == "any" || s == "match_node" || s == "node_prefix") cfg_io->edge_auth_kid_policy = s;
       }
+      if (v.isMember("edge_auth_trust_roots_epoch") &&
+          (v["edge_auth_trust_roots_epoch"].isInt64() || v["edge_auth_trust_roots_epoch"].isUInt64())) {
+        cfg_io->edge_auth_trust_roots_epoch = v["edge_auth_trust_roots_epoch"].isInt64()
+          ? v["edge_auth_trust_roots_epoch"].asInt64()
+          : (int64_t)v["edge_auth_trust_roots_epoch"].asUInt64();
+      }
+      if (v.isMember("edge_auth_trust_roots_updated_utc_ms") &&
+          (v["edge_auth_trust_roots_updated_utc_ms"].isInt64() || v["edge_auth_trust_roots_updated_utc_ms"].isUInt64())) {
+        cfg_io->edge_auth_trust_roots_updated_utc_ms = v["edge_auth_trust_roots_updated_utc_ms"].isInt64()
+          ? v["edge_auth_trust_roots_updated_utc_ms"].asInt64()
+          : (int64_t)v["edge_auth_trust_roots_updated_utc_ms"].asUInt64();
+      }
       if (v.isMember("edge_attest_required") && v["edge_attest_required"].isBool()) {
         cfg_io->edge_attest_required = v["edge_attest_required"].asBool();
       }
@@ -607,6 +619,8 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   v["edge_auth_max_skew_ms"] = (Json::Int64)cfg.edge_auth_max_skew_ms;
   v["edge_auth_require_seq"] = cfg.edge_auth_require_seq;
   v["edge_auth_kid_policy"] = cfg.edge_auth_kid_policy;
+  v["edge_auth_trust_roots_epoch"] = (Json::Int64)cfg.edge_auth_trust_roots_epoch;
+  v["edge_auth_trust_roots_updated_utc_ms"] = (Json::Int64)cfg.edge_auth_trust_roots_updated_utc_ms;
   v["edge_attest_required"] = cfg.edge_attest_required;
   v["edge_attest_require_sig"] = cfg.edge_attest_require_sig;
   v["workflow_admit_max_inflight_tasks_per_session"] = cfg.workflow_admit_max_inflight_tasks_per_session;

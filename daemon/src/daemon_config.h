@@ -76,6 +76,9 @@ struct DaemonConfig {
   // These are not secrets, but we store them in the runtime secrets blob to keep the control-plane
   // surface uniform (and to avoid accidentally turning /api/v1/config into a directory of node keys).
   std::map<std::string, std::string> edge_auth_ed25519_pubkeys; // kid -> base64(pubkey32)
+  // Durable trust-root rotation metadata for edge envelope auth control-plane operations.
+  int64_t edge_auth_trust_roots_epoch = 0;
+  int64_t edge_auth_trust_roots_updated_utc_ms = 0;
   // Optional attestation enforcement for edge TASK_DONE results (UM-EAIS v0.x).
   //
   // When enabled, agentd enforces that invoke-mode edge tasks include a `result.attest` blob

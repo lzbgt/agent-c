@@ -719,6 +719,7 @@ if(AGENT_BUILD_HOST)
 				    add_test(NAME agentd_edge_interop_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_interop_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_manifest_bundle_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_manifest_bundle_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_auth_hmac_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_hmac_smoke.sh $<TARGET_FILE:agentd>)
+				    add_test(NAME agentd_edge_auth_trust_roots_rotate_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_trust_roots_rotate_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(
 				      NAME agentd_edge_auth_hmac_cbor_wire_smoke
 				      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_hmac_cbor_wire_smoke.sh

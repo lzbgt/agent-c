@@ -1,7 +1,7 @@
 # UM‑BMP Envelope Auth — Profile v0.4
 
 Date: 2026-02-05
-Status: implemented rolling core; PKI/confidentiality and node-native manifest distribution still open
+Status: implemented rolling core with durable trust-root rotation; certificate-chain PKI / confidentiality and node-native manifest distribution still open
 
 This document defines an optional envelope authenticity mechanism for UM‑BMP messages
 in constrained IoT/edge systems, intended for:
@@ -20,7 +20,7 @@ This profile is transport-agnostic and applies to both JSON and CBOR wire mappin
 
 - Confidentiality (payload encryption in addition to transport security when available).
 - Certificate chains / PKI with rotation and revocation support.
-- Durable PKI / trust-root rotation and node-native signed manifest / identity distribution so trust roots do not rely
+- Certificate-chain / revocation PKI and node-native signed manifest / identity distribution so trust roots do not rely
   only on operator-provisioned key maps.
 
 ## Envelope fields
@@ -137,6 +137,9 @@ Operator config:
 - `edge_auth_kid_policy: "any"|"match_node"|"node_prefix"` (default "any")
 - `edge_auth_hmac_keys: { kid -> secret }` (secrets; not exposed in config snapshots)
 - `edge_auth_ed25519_pubkeys: { kid -> base64(pubkey32) }` (stored in runtime secrets for uniformity; not exposed in config snapshots)
+- `GET /api/v1/edge/auth/trust_roots` returns a safe trust-root bundle with `rotation_epoch`, HMAC `kid` list,
+  Ed25519 public keys, and an optional server-side `attest` block.
+- `POST /api/v1/edge/auth/trust_roots/rotate` updates the durable trust-root set with a strictly increasing rotation epoch.
 
 When `edge_auth_required=true`:
 - Missing `auth` => reject with HTTP 401
@@ -161,5 +164,6 @@ When `edge_auth_required=false`:
   `agentd_edge_auth_ed25519_cbor_wire_smoke` for authenticated CBOR ingress.
 - `ctest` includes `agentd_edge_auth_hmac_smoke` and `agentd_edge_auth_ed25519_smoke`
   for authenticated JSON ingress and operator enforcement.
+- `ctest` includes `agentd_edge_auth_trust_roots_rotate_smoke` for live trust-root rotation and signed bundle export.
 - `ctest` includes `agentd_edge_manifest_bundle_smoke` for the platform-signed manifest bundle
   export surface (`GET /api/v1/edge/node/manifest_bundle`).

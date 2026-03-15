@@ -14,8 +14,10 @@ Current status:
 - Shipped: authenticated JSON/CBOR envelope ingress (HMAC + Ed25519), replay-window and
   node-binding policy knobs, best-effort task attestation verification, enforceable
   `edge_attest_required` / `edge_attest_require_sig` policy, and platform-signed
-  node manifest bundle export via `GET /api/v1/edge/node/manifest_bundle`.
-- Still open: durable PKI / trust-root rotation, node-native signed manifest distribution, and
+  node manifest bundle export via `GET /api/v1/edge/node/manifest_bundle`, plus durable
+  trust-root rotation via `GET /api/v1/edge/auth/trust_roots` and
+  `POST /api/v1/edge/auth/trust_roots/rotate`.
+- Still open: certificate-chain / revocation PKI, node-native signed manifest distribution, and
   confidentiality beyond authenticity-only envelopes.
 
 Executable contract artifacts (this repo):
@@ -124,6 +126,9 @@ Envelope authenticity (optional, UM‑BMP auth v0.4):
     - `edge_auth_ed25519_pubkeys: { "<kid>": "<base64(pubkey32)>", "<kid2>": null }` (null clears)
     - `edge_attest_required: true|false` (when true, invoke-mode `TASK_DONE` must include `result.attest` with a matching `result_sha256`)
     - `edge_attest_require_sig: true|false` (when true, invoke-mode `TASK_DONE` attestation signatures must verify)
+  - Trust-root rotation control plane:
+    - `GET /api/v1/edge/auth/trust_roots` returns a safe bundle with `rotation_epoch`, `hmac_kids`, `ed25519_pubkeys`, and optional `attest`
+    - `POST /api/v1/edge/auth/trust_roots/rotate` applies a monotonic rotation epoch and updates the HMAC / Ed25519 trust-root set (`mode:"merge"` or `mode:"replace"`)
   - Behavior:
     - If `edge_auth_required=true`: missing/invalid `auth` is rejected with HTTP 401 (no inbox persistence).
     - If `edge_auth_required=false`: unsigned envelopes are accepted, but if `auth` is present it must verify.
@@ -254,6 +259,7 @@ Workflows are executed by a background runner in `agentd`:
 Proof:
 - `ctest` includes `agentd_edge_interop_smoke` and `agentd_edge_workflow_submit_message_smoke`.
 - `ctest` includes `agentd_edge_auth_hmac_smoke`.
+- `ctest` includes `agentd_edge_auth_trust_roots_rotate_smoke`.
 - `ctest` includes `agentd_edge_auth_ed25519_smoke`.
 - `ctest` includes `agentd_edge_auth_hmac_cbor_wire_smoke`.
 - `ctest` includes `agentd_edge_auth_ed25519_cbor_wire_smoke`.

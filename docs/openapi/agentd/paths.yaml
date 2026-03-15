@@ -202,6 +202,75 @@
             schema:
               $ref: "#/components/schemas/ErrorResponse"
 
+/api/v1/edge/auth/trust_roots:
+  get:
+    tags: [config, edge]
+    summary: Get safe edge auth trust-root bundle
+    description: |
+      Returns the current durable edge-auth trust-root set as a first-class bundle.
+
+      Notes:
+      - HMAC secrets are not returned; only `hmac_kids` are exposed.
+      - Ed25519 public keys are returned because they are trust roots, not secrets.
+      - When run-attestation signing keys are configured, the bundle includes an `attest` block.
+    responses:
+      "200":
+        description: Trust-root bundle
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeAuthTrustRootsResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
+/api/v1/edge/auth/trust_roots/rotate:
+  post:
+    tags: [config, edge]
+    summary: Rotate durable edge auth trust roots
+    description: |
+      Applies a monotonic trust-root rotation epoch and updates the current HMAC / Ed25519
+      trust-root set.
+
+      Notes:
+      - Requires Bearer auth when daemon auth is enabled.
+      - `mode:"replace"` clears the current trust-root set before applying the request body.
+      - `rotation_epoch` must be strictly greater than the current epoch.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EdgeAuthTrustRootsRotateRequest"
+    responses:
+      "200":
+        description: Rotation acknowledged
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeAuthTrustRootsRotateResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "409":
+        description: Rotation epoch conflict
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
 /api/v1/client/prefs:
   get:
     tags: [client]

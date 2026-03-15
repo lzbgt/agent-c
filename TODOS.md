@@ -556,12 +556,12 @@ streaming and plugins are stable.
 - [x] Memory privacy tags (`<private>`) to keep sensitive content out of durable storage (claude-mem inspired).
 - [x] Memory progressive disclosure + citation surfacing for dynamic context assembly (claude-mem inspired).
 - [x] Memory observations + timeline retrieval tools to mirror claude-mem search workflows.
-- [ ] Interop/attestation: finish trust-root provisioning/rotation, node-native manifest distribution, and confidentiality beyond authenticated envelopes.
+- [ ] Interop/attestation: finish certificate-chain / revocation PKI, node-native manifest distribution, and confidentiality beyond authenticated envelopes.
   - [x] Canonical JSON hashing (`agent_json_c14n_v1`) is wired into replay/attestation bundles and edge result hashing.
   - [x] Run replay + signed attestation bundles are implemented and verified via `run_attestation_bundle_tool_smoke` and `agentd_run_attestation_ed25519_smoke`.
   - [x] UM-BMP envelope authenticity is implemented for JSON/CBOR wire with HMAC + Ed25519, operator enforcement knobs, and MCU bring-up vectors.
   - [x] Agentd enforceable edge task attestation policy (`edge_attest_required` + `edge_attest_require_sig`) is documented and verified.
-  - [ ] Provision durable PKI / trust-root rotation instead of only configured HMAC keys and Ed25519 public keys.
+  - [x] 2026-03-15: added first-class trust-root rotation endpoints (`GET /api/v1/edge/auth/trust_roots`, `POST /api/v1/edge/auth/trust_roots/rotate`) with durable epoch metadata, signed bundle export, and live rotation proof in `tests/agentd_edge_auth_trust_roots_rotate_smoke.sh`.
   - [x] 2026-03-15: added `GET /api/v1/edge/node/manifest_bundle`, a platform-signed node/tool manifest bundle export backed by durable `edge_nodes` state and existing attestation keys; proof: `tests/agentd_edge_manifest_bundle_smoke.sh`.
   - [ ] Add envelope confidentiality / encrypted payload profile beyond authenticity-only signing.
   - 2026-03-15: narrowed the stale umbrella item after re-verifying `umbmp_auth_vectors_tests`, `agentd_edge_auth_hmac_cbor_wire_smoke`, `agentd_edge_auth_ed25519_cbor_wire_smoke`, `agentd_edge_task_attest_required_smoke`, and `agentd_run_attestation_ed25519_smoke`.

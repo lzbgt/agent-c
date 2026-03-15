@@ -508,6 +508,15 @@ bool AgentdApi::init(std::string* out_error) {
     auto* self = static_cast<Impl*>(ctx);
     handle_config_update_endpoint(self->cfg_store.get(), &self->db, self->cors_cfg, req, resp);
   });
+  impl_->route("GET", "/api/v1/edge/auth/trust_roots", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_edge_auth_trust_roots_endpoint(cur, self->cors_cfg, req, resp);
+  });
+  impl_->route("POST", "/api/v1/edge/auth/trust_roots/rotate", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    handle_edge_auth_trust_roots_rotate_endpoint(self->cfg_store.get(), &self->db, self->cors_cfg, req, resp);
+  });
 
   impl_->route("GET", "/api/v1/client/prefs", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);

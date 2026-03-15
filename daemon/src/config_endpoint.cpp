@@ -10,11 +10,19 @@
 #include "mount_allowlist.h"
 #include "string_util.h"
 
+#include "agent/ed25519.h"
+#include "agent/hmac_sha256.h"
+#include "agent/json_c14n.h"
+
 #include "base64.h"
 
 #include <json/json.h>
 
 #include "net_compat.h"
+
+#include <array>
+#include <chrono>
+#include <vector>
 
 namespace agentd {
 
@@ -163,6 +171,200 @@ static bool read_string_array_best_effort(
     }
     out->push_back(std::move(s));
   }
+  return true;
+}
+
+static int64_t now_utc_ms() {
+  return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+           std::chrono::system_clock::now().time_since_epoch())
+    .count();
+}
+
+static bool canonical_json_bytes(const Json::Value& v, std::string* out, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!out) return false;
+  out->clear();
+  Json::StreamWriterBuilder wb;
+  wb["indentation"] = "";
+  const std::string raw = Json::writeString(wb, v);
+  char* canon = nullptr;
+  size_t canon_len = 0;
+  char errbuf[128] = {0};
+  const agent_status_t st =
+    agent_json_c14n_canonicalize(raw.data(), raw.size(), &canon, &canon_len, errbuf, sizeof(errbuf));
+  if (st != AGENT_OK || !canon) {
+    if (out_err) *out_err = errbuf[0] ? std::string(errbuf) : "c14n_failed";
+    if (canon) agent_free(canon);
+    return false;
+  }
+  out->assign(canon, canon_len);
+  agent_free(canon);
+  return true;
+}
+
+static bool parse_hex_bytes(const std::string& hex, std::vector<uint8_t>* out, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!out) return false;
+  out->clear();
+  if (hex.size() % 2 != 0) {
+    if (out_err) *out_err = "hex string must have even length";
+    return false;
+  }
+  auto nibble = [](char c) -> int {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
+    if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
+    return -1;
+  };
+  out->reserve(hex.size() / 2);
+  for (size_t i = 0; i < hex.size(); i += 2) {
+    const int hi = nibble(hex[i]);
+    const int lo = nibble(hex[i + 1]);
+    if (hi < 0 || lo < 0) {
+      if (out_err) *out_err = "hex string contains non-hex characters";
+      return false;
+    }
+    out->push_back(static_cast<uint8_t>((hi << 4) | lo));
+  }
+  return true;
+}
+
+static bool parse_seed_bytes(const std::string& text, std::vector<uint8_t>* out, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!out) return false;
+  out->clear();
+  const std::string s = trim_copy(text);
+  if (s.empty()) {
+    if (out_err) *out_err = "empty seed";
+    return false;
+  }
+  bool hex_candidate = (s.size() == 64);
+  if (hex_candidate) {
+    for (char c : s) {
+      const bool ok = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+      if (!ok) {
+        hex_candidate = false;
+        break;
+      }
+    }
+  }
+  if (hex_candidate) {
+    std::string herr;
+    if (!parse_hex_bytes(s, out, &herr)) {
+      if (out_err) *out_err = herr;
+      return false;
+    }
+  } else {
+    std::string raw;
+    std::string berr;
+    if (!base64_decode(s, &raw, &berr)) {
+      if (out_err) *out_err = berr.empty() ? "invalid base64 seed" : berr;
+      return false;
+    }
+    out->assign(raw.begin(), raw.end());
+  }
+  if (out->size() != 32) {
+    if (out_err) *out_err = "seed must be 32 bytes";
+    return false;
+  }
+  return true;
+}
+
+static bool validate_edge_kid(const std::string& kid) {
+  return !kid.empty() && kid.size() <= 64 && edge_id_is_safe(kid);
+}
+
+static bool build_edge_auth_trust_roots_bundle(
+  const DaemonConfig& cfg,
+  Json::Value* out_bundle,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (!out_bundle) return false;
+
+  Json::Value bundle(Json::objectValue);
+  bundle["schema"] = "edge_auth_trust_roots_v1";
+  bundle["created_utc_ms"] = (Json::Int64)now_utc_ms();
+  bundle["rotation_epoch"] = (Json::Int64)cfg.edge_auth_trust_roots_epoch;
+  bundle["updated_utc_ms"] = (Json::Int64)cfg.edge_auth_trust_roots_updated_utc_ms;
+  bundle["auth_required"] = cfg.edge_auth_required;
+  bundle["require_ts"] = cfg.edge_auth_require_ts;
+  bundle["max_skew_ms"] = (Json::Int64)cfg.edge_auth_max_skew_ms;
+  bundle["require_seq"] = cfg.edge_auth_require_seq;
+  bundle["kid_policy"] = cfg.edge_auth_kid_policy;
+  {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& it : cfg.edge_auth_hmac_keys) {
+      if (!it.first.empty() && !it.second.empty()) arr.append(it.first);
+    }
+    bundle["hmac_kids"] = arr;
+  }
+  {
+    Json::Value dir(Json::objectValue);
+    for (const auto& it : cfg.edge_auth_ed25519_pubkeys) {
+      if (!it.first.empty() && !it.second.empty()) dir[it.first] = it.second;
+    }
+    bundle["ed25519_pubkeys"] = dir;
+  }
+
+  const bool hmac_kid_set = !cfg.run_attest_hmac_kid.empty();
+  const bool hmac_key_set = !cfg.run_attest_hmac_key.empty();
+  const bool ed_kid_set = !cfg.run_attest_ed25519_kid.empty();
+  const bool ed_seed_set = !cfg.run_attest_ed25519_seed.empty();
+  const int sign_modes = (hmac_kid_set || hmac_key_set ? 1 : 0) + (ed_kid_set || ed_seed_set ? 1 : 0);
+  if (sign_modes == 0) {
+    *out_bundle = bundle;
+    return true;
+  }
+  if (sign_modes > 1) {
+    if (out_error) *out_error = "attest_sign_config_invalid: multiple signing modes configured";
+    return false;
+  }
+  if ((hmac_kid_set || hmac_key_set) && (!hmac_kid_set || !hmac_key_set)) {
+    if (out_error) *out_error = "attest_sign_config_invalid: missing AGENTD_RUN_ATTEST_HMAC_KID or AGENTD_RUN_ATTEST_HMAC_KEY";
+    return false;
+  }
+  if ((ed_kid_set || ed_seed_set) && (!ed_kid_set || !ed_seed_set)) {
+    if (out_error) *out_error = "attest_sign_config_invalid: missing AGENTD_RUN_ATTEST_ED25519_KID or AGENTD_RUN_ATTEST_ED25519_SEED";
+    return false;
+  }
+
+  std::string canon;
+  std::string cerr;
+  if (!canonical_json_bytes(bundle, &canon, &cerr)) {
+    if (out_error) *out_error = std::string("attest_sign_failed: ") + (cerr.empty() ? "c14n_failed" : cerr);
+    return false;
+  }
+  Json::Value att(Json::objectValue);
+  att["schema"] = "edge_auth_trust_roots_attest_v1";
+  att["ts_utc_ms"] = (Json::Int64)now_utc_ms();
+  att["rotation_epoch"] = (Json::Int64)cfg.edge_auth_trust_roots_epoch;
+  att["signing_schema"] = "edge_auth_trust_roots_v1";
+
+  if (hmac_kid_set) {
+    std::array<uint8_t, 32> mac{};
+    agent_hmac_sha256(cfg.run_attest_hmac_key.data(), cfg.run_attest_hmac_key.size(), canon.data(), canon.size(), mac.data());
+    att["alg"] = "hmac-sha256";
+    att["kid"] = cfg.run_attest_hmac_kid;
+    att["sig"] = base64_encode(reinterpret_cast<const char*>(mac.data()), mac.size());
+  } else {
+    std::vector<uint8_t> seed;
+    std::string serr;
+    if (!parse_seed_bytes(cfg.run_attest_ed25519_seed, &seed, &serr)) {
+      if (out_error) *out_error = std::string("attest_sign_failed: ") + (serr.empty() ? "invalid_ed25519_seed" : serr);
+      return false;
+    }
+    uint8_t pk[32] = {0};
+    uint8_t sig_bytes[64] = {0};
+    agent_ed25519_publickey(seed.data(), pk);
+    agent_ed25519_sign(canon.data(), canon.size(), seed.data(), pk, sig_bytes);
+    att["alg"] = "ed25519";
+    att["kid"] = cfg.run_attest_ed25519_kid;
+    att["pubkey"] = base64_encode(reinterpret_cast<const char*>(pk), sizeof(pk));
+    att["sig"] = base64_encode(reinterpret_cast<const char*>(sig_bytes), sizeof(sig_bytes));
+  }
+  bundle["attest"] = att;
+  *out_bundle = bundle;
   return true;
 }
 
@@ -394,6 +596,8 @@ void handle_config_endpoint(
   edge_auth["kid_policy"] = cfg.edge_auth_kid_policy;
   edge_auth["hmac_keys_set"] = (Json::UInt64)cfg.edge_auth_hmac_keys.size();
   edge_auth["ed25519_pubkeys_set"] = (Json::UInt64)cfg.edge_auth_ed25519_pubkeys.size();
+  edge_auth["trust_roots_epoch"] = (Json::Int64)cfg.edge_auth_trust_roots_epoch;
+  edge_auth["trust_roots_updated_utc_ms"] = (Json::Int64)cfg.edge_auth_trust_roots_updated_utc_ms;
   out["edge_auth"] = edge_auth;
 
   Json::Value edge_attest(Json::objectValue);
@@ -805,6 +1009,20 @@ void handle_config_update_endpoint(
   if (args.isMember("edge_auth_kid_policy") && args["edge_auth_kid_policy"].isString()) {
     const std::string s = trim_copy(args["edge_auth_kid_policy"].asString());
     if (s == "any" || s == "match_node" || s == "node_prefix") next.edge_auth_kid_policy = s;
+  }
+  if (args.isMember("edge_auth_trust_roots_epoch")) {
+    if (!args["edge_auth_trust_roots_epoch"].isInt64() && !args["edge_auth_trust_roots_epoch"].isUInt64()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "edge_auth_trust_roots_epoch must be an integer";
+      resp->status = 400;
+      resp->body = json_stringify(o);
+      return;
+    }
+    next.edge_auth_trust_roots_epoch = args["edge_auth_trust_roots_epoch"].isInt64()
+      ? args["edge_auth_trust_roots_epoch"].asInt64()
+      : (int64_t)args["edge_auth_trust_roots_epoch"].asUInt64();
+    next.edge_auth_trust_roots_updated_utc_ms = now_utc_ms();
   }
   if (args.isMember("edge_attest_required") && args["edge_attest_required"].isBool()) {
     next.edge_attest_required = args["edge_attest_required"].asBool();
@@ -1256,6 +1474,8 @@ void handle_config_update_endpoint(
   o["edge_auth_max_skew_ms"] = (Json::Int64)next.edge_auth_max_skew_ms;
   o["edge_auth_require_seq"] = next.edge_auth_require_seq;
   o["edge_auth_kid_policy"] = next.edge_auth_kid_policy;
+  o["edge_auth_trust_roots_epoch"] = (Json::Int64)next.edge_auth_trust_roots_epoch;
+  o["edge_auth_trust_roots_updated_utc_ms"] = (Json::Int64)next.edge_auth_trust_roots_updated_utc_ms;
   o["edge_attest_required"] = next.edge_attest_required;
   o["edge_attest_require_sig"] = next.edge_attest_require_sig;
   {
@@ -1299,6 +1519,229 @@ void handle_config_update_endpoint(
   o["edge_auth_ed25519_pubkeys_set"] = (Json::UInt64)next.edge_auth_ed25519_pubkeys.size();
   resp->body = json_stringify(o);
   return;
+}
+
+void handle_edge_auth_trust_roots_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  Json::Value bundle;
+  std::string berr;
+  if (!build_edge_auth_trust_roots_bundle(cfg, &bundle, &berr)) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    if (berr.rfind("attest_sign_config_invalid:", 0) == 0) {
+      o["error"] = "attest_sign_config_invalid";
+      o["details"] = trim_copy(berr.substr(std::string("attest_sign_config_invalid:").size()));
+    } else if (berr.rfind("attest_sign_failed:", 0) == 0) {
+      o["error"] = "attest_sign_failed";
+      o["details"] = trim_copy(berr.substr(std::string("attest_sign_failed:").size()));
+    } else {
+      o["error"] = berr.empty() ? "trust_roots_unavailable" : berr;
+    }
+    resp->status = 500;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  Json::Value o(Json::objectValue);
+  o["ok"] = true;
+  o["trust_roots"] = bundle;
+  resp->body = json_stringify(o);
+}
+
+void handle_edge_auth_trust_roots_rotate_endpoint(
+  DaemonConfigStore* cfg_store,
+  AgentDb* db,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!cfg_store || !db || !db->is_open()) {
+    resp->status = 503;
+    resp->body = json_error_body("db not available");
+    return;
+  }
+
+  const DaemonConfig cur = cfg_store->snapshot();
+  if (!daemon_require_auth(cur, req, resp)) return;
+
+  Json::Value args;
+  std::string perr;
+  if (!json_parse_object(req.body, &args, &perr)) {
+    resp->status = 400;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = std::string("invalid JSON: ") + perr;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  const std::string mode = args.isMember("mode") && args["mode"].isString() ? trim_copy(args["mode"].asString()) : "merge";
+  if (mode != "merge" && mode != "replace") {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = "mode must be merge or replace";
+    resp->status = 400;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  int64_t new_epoch = cur.edge_auth_trust_roots_epoch + 1;
+  if (args.isMember("rotation_epoch")) {
+    if (!args["rotation_epoch"].isInt64() && !args["rotation_epoch"].isUInt64()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "rotation_epoch must be an integer";
+      resp->status = 400;
+      resp->body = json_stringify(o);
+      return;
+    }
+    new_epoch = args["rotation_epoch"].isInt64() ? args["rotation_epoch"].asInt64() : (int64_t)args["rotation_epoch"].asUInt64();
+  }
+  if (new_epoch <= cur.edge_auth_trust_roots_epoch) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = "rotation_epoch must be strictly greater than current epoch";
+    o["current_epoch"] = (Json::Int64)cur.edge_auth_trust_roots_epoch;
+    resp->status = 409;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  DaemonConfig next = cur;
+  if (mode == "replace") {
+    next.edge_auth_hmac_keys.clear();
+    next.edge_auth_ed25519_pubkeys.clear();
+  }
+
+  if (args.isMember("edge_auth_hmac_keys")) {
+    if (!args["edge_auth_hmac_keys"].isObject()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "edge_auth_hmac_keys must be an object";
+      resp->status = 400;
+      resp->body = json_stringify(o);
+      return;
+    }
+    const auto& ek = args["edge_auth_hmac_keys"];
+    for (const auto& kid : ek.getMemberNames()) {
+      if (!validate_edge_kid(kid)) {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "invalid edge_auth_hmac_keys kid";
+        o["kid"] = kid;
+        resp->status = 400;
+        resp->body = json_stringify(o);
+        return;
+      }
+      const Json::Value& v = ek[kid];
+      if (v.isNull()) {
+        next.edge_auth_hmac_keys.erase(kid);
+      } else if (v.isString()) {
+        const std::string s = trim_copy(v.asString());
+        if (s.empty()) next.edge_auth_hmac_keys.erase(kid);
+        else next.edge_auth_hmac_keys[kid] = s;
+      }
+    }
+  }
+
+  if (args.isMember("edge_auth_ed25519_pubkeys")) {
+    if (!args["edge_auth_ed25519_pubkeys"].isObject()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "edge_auth_ed25519_pubkeys must be an object";
+      resp->status = 400;
+      resp->body = json_stringify(o);
+      return;
+    }
+    const auto& ek = args["edge_auth_ed25519_pubkeys"];
+    for (const auto& kid : ek.getMemberNames()) {
+      if (!validate_edge_kid(kid)) {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "invalid edge_auth_ed25519_pubkeys kid";
+        o["kid"] = kid;
+        resp->status = 400;
+        resp->body = json_stringify(o);
+        return;
+      }
+      const Json::Value& v = ek[kid];
+      if (v.isNull()) {
+        next.edge_auth_ed25519_pubkeys.erase(kid);
+      } else if (v.isString()) {
+        const std::string s = trim_copy(v.asString());
+        if (s.empty()) {
+          next.edge_auth_ed25519_pubkeys.erase(kid);
+        } else {
+          std::string pk_bytes;
+          std::string berr;
+          if (!base64_decode(s, &pk_bytes, &berr) || pk_bytes.size() != 32) {
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "invalid edge_auth_ed25519_pubkeys value (expected base64 of 32 bytes)";
+            o["kid"] = kid;
+            resp->status = 400;
+            resp->body = json_stringify(o);
+            return;
+          }
+          next.edge_auth_ed25519_pubkeys[kid] = s;
+        }
+      }
+    }
+  }
+
+  next.edge_auth_trust_roots_epoch = new_epoch;
+  next.edge_auth_trust_roots_updated_utc_ms = now_utc_ms();
+
+  std::string werr;
+  if (!save_runtime_config_best_effort(*db, next, &werr)) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = werr.empty() ? "failed to persist runtime config" : werr;
+    resp->status = 500;
+    resp->body = json_stringify(o);
+    return;
+  }
+  std::string serr;
+  if (!save_runtime_secrets_best_effort(*db, next, &serr)) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = serr.empty() ? "failed to persist runtime secrets" : serr;
+    resp->status = 500;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  cfg_store->replace(next);
+
+  Json::Value bundle;
+  std::string berr;
+  if (!build_edge_auth_trust_roots_bundle(next, &bundle, &berr)) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = berr.empty() ? "trust_roots_unavailable" : berr;
+    resp->status = 500;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  Json::Value o(Json::objectValue);
+  o["ok"] = true;
+  o["rotation_epoch"] = (Json::Int64)next.edge_auth_trust_roots_epoch;
+  o["updated_utc_ms"] = (Json::Int64)next.edge_auth_trust_roots_updated_utc_ms;
+  o["edge_auth_hmac_keys_set"] = (Json::UInt64)next.edge_auth_hmac_keys.size();
+  o["edge_auth_ed25519_pubkeys_set"] = (Json::UInt64)next.edge_auth_ed25519_pubkeys.size();
+  o["trust_roots"] = bundle;
+  resp->body = json_stringify(o);
 }
 
 }  // namespace agentd

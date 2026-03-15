@@ -86,6 +86,8 @@ AgentdConfigResponse:
         kid_policy: { type: string }
         hmac_keys_set: { type: integer, format: int64 }
         ed25519_pubkeys_set: { type: integer, format: int64 }
+        trust_roots_epoch: { type: integer, format: int64 }
+        trust_roots_updated_utc_ms: { type: integer, format: int64 }
     edge_attest:
       type: object
       additionalProperties: true
@@ -144,6 +146,10 @@ AgentdConfigUpdateRequest:
     edge_auth_kid_policy:
       type: string
       description: Key selection policy for authenticated node envelopes (any|match_node|node_prefix)
+    edge_auth_trust_roots_epoch:
+      type: integer
+      format: int64
+      description: Optional explicit trust-root rotation epoch metadata (also updated by `/api/v1/edge/auth/trust_roots/rotate`)
     edge_auth_hmac_keys:
       type: object
       additionalProperties:
@@ -311,6 +317,8 @@ AgentdConfigUpdateResponse:
     edge_auth_max_skew_ms: { type: integer, format: int64 }
     edge_auth_require_seq: { type: boolean }
     edge_auth_kid_policy: { type: string }
+    edge_auth_trust_roots_epoch: { type: integer, format: int64 }
+    edge_auth_trust_roots_updated_utc_ms: { type: integer, format: int64 }
     edge_attest_required: { type: boolean }
     edge_attest_require_sig: { type: boolean }
     memory:
@@ -361,3 +369,91 @@ AgentdConfigUpdateResponse:
       $ref: "#/components/schemas/BlobStoreConfig"
     blob_tier:
       $ref: "#/components/schemas/BlobTierConfig"
+
+
+EdgeAuthTrustRootsAttestation:
+  type: object
+  required: [schema, ts_utc_ms, rotation_epoch, signing_schema, alg, kid, sig]
+  properties:
+    schema: { type: string, enum: [edge_auth_trust_roots_attest_v1] }
+    ts_utc_ms: { type: integer, format: int64 }
+    rotation_epoch: { type: integer, format: int64 }
+    signing_schema: { type: string, enum: [edge_auth_trust_roots_v1] }
+    alg: { type: string, enum: [hmac-sha256, ed25519] }
+    kid: { type: string }
+    pubkey:
+      type: string
+      description: Present for Ed25519 signatures
+    sig: { type: string }
+
+
+EdgeAuthTrustRootsBundle:
+  type: object
+  required:
+    [schema, created_utc_ms, rotation_epoch, updated_utc_ms, auth_required, require_ts, max_skew_ms, require_seq, kid_policy, hmac_kids, ed25519_pubkeys]
+  properties:
+    schema: { type: string, enum: [edge_auth_trust_roots_v1] }
+    created_utc_ms: { type: integer, format: int64 }
+    rotation_epoch: { type: integer, format: int64 }
+    updated_utc_ms: { type: integer, format: int64 }
+    auth_required: { type: boolean }
+    require_ts: { type: boolean }
+    max_skew_ms: { type: integer, format: int64 }
+    require_seq: { type: boolean }
+    kid_policy: { type: string }
+    hmac_kids:
+      type: array
+      items: { type: string }
+    ed25519_pubkeys:
+      type: object
+      additionalProperties: { type: string }
+    attest:
+      $ref: "#/components/schemas/EdgeAuthTrustRootsAttestation"
+
+
+EdgeAuthTrustRootsResponse:
+  type: object
+  required: [ok, trust_roots]
+  properties:
+    ok: { type: boolean }
+    trust_roots:
+      $ref: "#/components/schemas/EdgeAuthTrustRootsBundle"
+
+
+EdgeAuthTrustRootsRotateRequest:
+  type: object
+  additionalProperties: false
+  properties:
+    mode:
+      type: string
+      enum: [merge, replace]
+      description: Whether to merge into or replace the current trust-root set
+    rotation_epoch:
+      type: integer
+      format: int64
+      description: Optional explicit monotonic rotation epoch; defaults to current+1
+    edge_auth_hmac_keys:
+      type: object
+      additionalProperties:
+        type: string
+        nullable: true
+      description: Map of `kid` → shared secret for HMAC trust roots (null clears that kid)
+    edge_auth_ed25519_pubkeys:
+      type: object
+      additionalProperties:
+        type: string
+        nullable: true
+      description: Map of `kid` → base64(pubkey32) for Ed25519 trust roots (null clears that kid)
+
+
+EdgeAuthTrustRootsRotateResponse:
+  type: object
+  required: [ok, rotation_epoch, updated_utc_ms, edge_auth_hmac_keys_set, edge_auth_ed25519_pubkeys_set, trust_roots]
+  properties:
+    ok: { type: boolean }
+    rotation_epoch: { type: integer, format: int64 }
+    updated_utc_ms: { type: integer, format: int64 }
+    edge_auth_hmac_keys_set: { type: integer, format: int64 }
+    edge_auth_ed25519_pubkeys_set: { type: integer, format: int64 }
+    trust_roots:
+      $ref: "#/components/schemas/EdgeAuthTrustRootsBundle"

@@ -458,6 +458,12 @@ Notes:
 - The response never includes secrets. Use `GET /api/v1/config` to see booleans like `provider_keys_set`.
 - The WebUI exposes Settings buttons to “Save defaults to daemon” and “Save API key to daemon”.
 
+Edge trust-root rotation:
+- `GET /api/v1/edge/auth/trust_roots` returns a safe edge-auth trust-root bundle with rotation metadata,
+  HMAC `kid` list, Ed25519 public keys, and optional server-side attestation.
+- `POST /api/v1/edge/auth/trust_roots/rotate` applies a monotonic rotation epoch and updates the current
+  HMAC / Ed25519 trust-root set in the durable runtime config.
+
 ## Client prefs (WebUI connection profiles)
 
 The daemon can persist WebUI connection profiles so they survive browser resets:

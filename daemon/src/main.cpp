@@ -1056,6 +1056,13 @@ int main(int argc, char** argv) {
   server.handle("POST", "/api/v1/config/update", [&](const HttpRequest& req, HttpResponse* resp) {
     handle_config_update_endpoint(&cfg_store, db_or_null, cors_cfg, req, resp);
   });
+  server.handle("GET", "/api/v1/edge/auth/trust_roots", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_auth_trust_roots_endpoint(cur, cors_cfg, req, resp);
+  });
+  server.handle("POST", "/api/v1/edge/auth/trust_roots/rotate", [&](const HttpRequest& req, HttpResponse* resp) {
+    handle_edge_auth_trust_roots_rotate_endpoint(&cfg_store, db_or_null, cors_cfg, req, resp);
+  });
 
   server.handle("GET", "/api/v1/client/prefs", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();

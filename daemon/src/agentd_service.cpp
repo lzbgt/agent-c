@@ -815,6 +815,13 @@ struct AgentdService::Impl {
     server.handle("POST", "/api/v1/config/update", [this](const HttpRequest& req, HttpResponse* resp) {
       handle_config_update_endpoint(cfg_store.get(), &db, cors_cfg, req, resp);
     });
+    server.handle("GET", "/api/v1/edge/auth/trust_roots", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_edge_auth_trust_roots_endpoint(cur, cors_cfg, req, resp);
+    });
+    server.handle("POST", "/api/v1/edge/auth/trust_roots/rotate", [this](const HttpRequest& req, HttpResponse* resp) {
+      handle_edge_auth_trust_roots_rotate_endpoint(cfg_store.get(), &db, cors_cfg, req, resp);
+    });
 
     server.handle("GET", "/api/v1/client/prefs", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
