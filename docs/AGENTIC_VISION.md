@@ -223,7 +223,9 @@ These are the most leveraged next steps grounded in current architecture:
 
 5) **Node consensus**
    - Centralized platform-led quorum and coordination are shipped.
-   - True node-native decentralized consensus remains future work and needs its own deterministic simulation harness.
+   - Completed 2026-03-15: a deterministic node-native consensus core and simulation harness are shipped for
+     vote/commit protocol definition, duplicate suppression, trust-epoch compatibility, split-brain, and quorum recovery.
+   - Still open: live UM-BMP transport integration and durable runtime observability for decentralized leaders/terms.
 
 6) **Scheduling + isolation MVP**
    - Completed 2026-03-15: admission control + per-run budgets + tool execution caps landed with

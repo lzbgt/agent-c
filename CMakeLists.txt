@@ -226,6 +226,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/edge_interop_auth.cpp
     daemon/src/edge_confidentiality.cpp
     daemon/src/edge_interop_endpoints.cpp
+    daemon/src/edge_node_consensus.cpp
     daemon/src/edge_deadline_sweeper.cpp
     daemon/src/edge_rules.cpp
     daemon/src/edge_util.cpp
@@ -531,6 +532,15 @@ if(AGENT_BUILD_HOST)
   )
   target_link_libraries(cbor_det_roundtrip_tests PRIVATE agentd_lib)
   add_test(NAME cbor_det_roundtrip_tests COMMAND cbor_det_roundtrip_tests)
+
+  add_executable(edge_node_consensus_tests
+    tests/test_edge_node_consensus.cpp
+  )
+  target_compile_options(edge_node_consensus_tests PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_link_libraries(edge_node_consensus_tests PRIVATE agentd_lib)
+  add_test(NAME edge_node_consensus_tests COMMAND edge_node_consensus_tests)
 
   if(WIN32)
     add_executable(tool_plugin_host_limits_tests
