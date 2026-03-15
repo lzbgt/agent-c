@@ -1,7 +1,7 @@
 # Audio Streaming (v0)
 
 Date: 2026-02-19
-Status: implemented rolling foundation (broker signaling relay + session status APIs + WebUI voice-session controls + browser-side WebRTC negotiation client + host-side agentd media peer RTP proof); agentd-native embedding still pending
+Status: implemented rolling foundation (broker signaling relay + session status APIs + WebUI voice-session controls + browser-side WebRTC negotiation client + managed agentd-side media peer runtime + RTP proof); embedded agentd-native media service still pending
 
 ## Goals
 
@@ -120,6 +120,10 @@ A v0 smoke test should:
   - `GET /api/v1/session/voice_stats`
   These use durable `ui_action` + `client_event` plumbing to drive `media_play`, `media_pause`, and `media_snapshot`
   without inventing a parallel control channel.
+- Agentd now also exposes a first-class managed WebRTC peer runtime:
+  - `POST /api/v1/session/voice_webrtc_peer`
+  - `GET /api/v1/session/voice_webrtc_peer`
+  This lets agentd start, inspect, and stop the shipped host-side Playwright media peer without manual process bring-up.
 - WebUI advanced tools now expose a dedicated Voice panel for session-scoped play/pause/snapshot control and
   durable stats inspection on top of those agentd endpoints, with deterministic Playwright coverage.
 - `tests/webui_observe_voice_hello_openworld.sh` and `ui/e2e/observe_voice_hello.spec.ts`
@@ -129,13 +133,15 @@ A v0 smoke test should:
 - `tests/agentd_audio_webrtc_peer_smoke.sh` plus `tools/agentd_audio_webrtc_peer.js` cover a real browser-to-agentd-side
   RTP path over broker signaling, including offer/answer exchange, ICE candidates, inbound audio stats, and `bye`
   teardown against a live headless Chromium peer.
+- `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` covers the agentd-managed runtime surface for that same peer,
+  including start/status, inbound RTP proof against a live browser peer, and managed stop/teardown.
 
 ## Open questions
 
 - Should signaling use WebSocket instead of SSE+POST for bidirectional framing?
 - Do we need a broker-issued ephemeral token for direct agentd signaling as a fallback?
 - How should the broker authenticate agentd participation (mTLS vs bearer)?
-- How should the shipped host-side media peer be embedded into a first-class agentd/session runtime surface instead of a standalone bring-up tool?
+- How should the shipped managed media peer move from a Node/Playwright child runtime into an embedded long-lived agentd-native media service?
 
 ## References
 

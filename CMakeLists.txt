@@ -949,6 +949,12 @@ if(AGENT_BUILD_HOST)
         ${CMAKE_CURRENT_SOURCE_DIR}/tools/agentd_audio_webrtc_peer.js
     )
     set_tests_properties(agentd_audio_webrtc_peer_smoke PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(
+      NAME agentd_session_voice_webrtc_peer_runtime_smoke
+      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh
+        $<TARGET_FILE:agentd>
+    )
+    set_tests_properties(agentd_session_voice_webrtc_peer_runtime_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
     if(AGENT_ENABLE_SQLITE3)
       add_test(NAME agentd_db_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_smoke.sh $<TARGET_FILE:agentd>)

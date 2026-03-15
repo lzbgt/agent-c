@@ -375,6 +375,11 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
 - `DELETE /api/v1/session?session_id=<id>` erases the canonical SQLite-backed session record and its
   dependent runs/messages/tool records/events/artifacts via DB cascade.
 - `GET /api/v1/session/audit?session_id=<id>&include_rotated=0|1` returns recent per-run audit entries.
+- `POST /api/v1/session/voice_control` persists minimal session-scoped `media_play` / `media_pause` / `media_snapshot`
+  control requests for browser clients.
+- `GET /api/v1/session/voice_stats?session_id=<id>` summarizes observed voice/media RPC outcomes for the session.
+- `POST /api/v1/session/voice_webrtc_peer` starts or stops the managed host-side WebRTC media peer for a session.
+- `GET /api/v1/session/voice_webrtc_peer?session_id=<id>` reports managed media-peer runtime status, readiness, and final result.
 
 ## Data governance
 

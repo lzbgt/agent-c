@@ -531,7 +531,7 @@ streaming and plugins are stable.
   - [x] Plugin host tool-result cap (4 MiB) enforced before JSON parsing.
   - [x] Plugin host oversized payload smoke coverage (ext_big).
   - 2026-03-15: closed stale roadmap item after verifying in-process plugin loading, out-of-process isolation, embedded/MCU compile-time plugin ABI docs, and Windows loader coverage (`daemon/src/tool_plugins.cpp`, `tests/agentd_tool_plugin*_smoke.sh`, `tests/test_tool_plugin_host_limits.cpp`, `docs/PLATFORM_SUPPORT.md`, `tools/verify_windows_build.ps1`).
-- [ ] Audio streaming: embed the shipped browser-to-agentd live media path into a first-class agentd/runtime product surface.
+- [ ] Audio streaming: replace the shipped managed browser-to-agentd live media runtime with an embedded long-lived agentd-native media service.
   - [x] Broker signaling relay endpoints are implemented: `POST /v1/audio/sessions`, `GET/DELETE /v1/audio/sessions/{id}`, `POST /v1/audio/sessions/{id}/signal`, `GET /v1/audio/sessions/{id}/signal/stream`, plus list/status views for live sessions.
   - [x] Broker audio signaling loopback/durable relay coverage exists via `broker_audio_signal_loopback_smoke` and `broker_audio_signal_docker_smoke`.
   - [x] Agentd loopback audio tool + smoke coverage exist via `agentd_audio_signal_loopback` and `agentd_audio_signal_loopback_smoke`.
@@ -546,6 +546,7 @@ streaming and plugins are stable.
   - 2026-03-15: WebUI advanced tools now expose a dedicated Voice panel that drives the shipped agentd voice endpoints and renders durable voice stats, covered by `ui/e2e/voice_panel.spec.ts`.
   - 2026-03-15: WebUI broker panel now drives browser-side WebRTC offer/answer/bye automation with mounted remote audio playback and remote-candidate handling, covered by `ui/e2e/broker_audio_panel.spec.ts` against a deterministic mocked `RTCPeerConnection`.
   - 2026-03-15: `tools/agentd_audio_webrtc_peer.js` plus `tests/agentd_audio_webrtc_peer_smoke.sh` now prove a real browser-to-agentd-side WebRTC RTP path over broker signaling, including answer/candidate relay, inbound RTP stats, and `bye` teardown; the remaining gap is embedding that media peer into an agentd-native runtime surface.
+  - 2026-03-15: agentd now manages that host-side media peer through `POST/GET /api/v1/session/voice_webrtc_peer`, with `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` proving start/status, live RTP, and managed stop/teardown against a real broker session.
 - [x] Add binary blob storage tiering plan (`docs/DB.md#blob-storage-tiers-design--status`).
   - [x] Add edge task/node analytics exports (CSV/JSON bundles).
   - [x] Implement blob_manifest schema + local blob store v0 (upload + read + ref-count GC).

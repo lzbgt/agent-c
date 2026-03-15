@@ -3073,6 +3073,130 @@
             schema:
               $ref: "#/components/schemas/ErrorResponse"
 
+/api/v1/session/voice_webrtc_peer:
+  get:
+    tags: [sessions]
+    summary: Inspect the managed session-scoped WebRTC media peer runtime
+    parameters:
+      - in: query
+        name: session_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Voice WebRTC peer status
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok, session_id, tool_configured, node_bin, session_exists, running, peer]
+              properties:
+                ok: { type: boolean }
+                session_id: { type: string }
+                tool_configured: { type: boolean }
+                tool_path: { type: string }
+                node_bin: { type: string }
+                session_exists: { type: boolean }
+                running: { type: boolean }
+                peer:
+                  oneOf:
+                    - type: "null"
+                    - type: object
+                      additionalProperties: true
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "500":
+        description: Read failed
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+  post:
+    tags: [sessions]
+    summary: Start or stop the managed session-scoped WebRTC media peer runtime
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [session_id, action]
+            properties:
+              session_id: { type: string }
+              action:
+                type: string
+                enum: [start, stop]
+              broker_session_id: { type: string }
+              broker_url: { type: string }
+              broker_token: { type: string }
+              sender_tag: { type: string }
+              deadline_ms: { type: integer, format: int64 }
+              poll_interval_ms: { type: integer, format: int64 }
+              tone_hz: { type: integer, format: int64 }
+    responses:
+      "200":
+        description: Voice WebRTC peer action applied
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok, session_id, tool_configured, node_bin]
+              properties:
+                ok: { type: boolean }
+                session_id: { type: string }
+                tool_configured: { type: boolean }
+                tool_path: { type: string }
+                node_bin: { type: string }
+                started: { type: boolean }
+                stopped: { type: boolean }
+                already_running: { type: boolean }
+                reason: { type: string }
+                peer:
+                  oneOf:
+                    - type: "null"
+                    - type: object
+                      additionalProperties: true
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "404":
+        description: Session not found
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "500":
+        description: Start or stop failed
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "501":
+        description: Unsupported runtime platform
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
 /api/v1/moderator/directive:
   post:
     tags: [moderator]

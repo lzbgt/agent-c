@@ -741,6 +741,16 @@ int main(int argc, char** argv) {
       cfg.sessions_root_dir = d;
     }
   }
+  if (cfg.audio_webrtc_peer_tool_path.empty()) {
+    if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_PEER_TOOL")) {
+      cfg.audio_webrtc_peer_tool_path = p;
+    }
+  }
+  if (cfg.audio_webrtc_peer_node_bin.empty()) {
+    if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_PEER_NODE_BIN")) {
+      cfg.audio_webrtc_peer_node_bin = p;
+    }
+  }
 
   // Make the effective state/session roots explicit (so /api/v1/config can report them).
   if (cfg.state_dir.empty()) {
@@ -1273,6 +1283,16 @@ int main(int argc, char** argv) {
   server.handle("GET", "/api/v1/session/voice_stats", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_session_voice_stats_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+
+  server.handle("POST", "/api/v1/session/voice_webrtc_peer", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_session_voice_webrtc_peer_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+
+  server.handle("GET", "/api/v1/session/voice_webrtc_peer", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_session_voice_webrtc_peer_status_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   server.handle("GET", "/api/v1/session/clients", [&](const HttpRequest& req, HttpResponse* resp) {

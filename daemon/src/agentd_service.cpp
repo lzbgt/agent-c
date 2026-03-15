@@ -245,6 +245,12 @@ static void fill_env_defaults(DaemonConfig* cfg) {
     if (const char* d = getenv_s("AGENT_WD")) cfg->sessions_root_dir = d;
     if (const char* d = getenv_s("AGENTD_SESSIONS_ROOT")) cfg->sessions_root_dir = d;
   }
+  if (cfg->audio_webrtc_peer_tool_path.empty()) {
+    if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_PEER_TOOL")) cfg->audio_webrtc_peer_tool_path = p;
+  }
+  if (cfg->audio_webrtc_peer_node_bin.empty()) {
+    if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_PEER_NODE_BIN")) cfg->audio_webrtc_peer_node_bin = p;
+  }
 
   if (const char* v = getenv_s("AGENTD_UPLOAD_MAX_BYTES")) {
     try {
@@ -1067,6 +1073,16 @@ struct AgentdService::Impl {
     server.handle("GET", "/api/v1/session/voice_stats", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_session_voice_stats_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+
+    server.handle("POST", "/api/v1/session/voice_webrtc_peer", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_session_voice_webrtc_peer_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+
+    server.handle("GET", "/api/v1/session/voice_webrtc_peer", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_session_voice_webrtc_peer_status_endpoint(cur, cors_cfg, &db, req, resp);
     });
 
     server.handle("GET", "/api/v1/session/clients", [this](const HttpRequest& req, HttpResponse* resp) {

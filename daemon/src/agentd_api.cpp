@@ -200,6 +200,12 @@ static void fill_env_defaults(DaemonConfig* cfg) {
     if (const char* d = getenv_s("AGENT_WD")) cfg->sessions_root_dir = d;
     if (const char* d = getenv_s("AGENTD_SESSIONS_ROOT")) cfg->sessions_root_dir = d;
   }
+  if (cfg->audio_webrtc_peer_tool_path.empty()) {
+    if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_PEER_TOOL")) cfg->audio_webrtc_peer_tool_path = p;
+  }
+  if (cfg->audio_webrtc_peer_node_bin.empty()) {
+    if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_PEER_NODE_BIN")) cfg->audio_webrtc_peer_node_bin = p;
+  }
 
   if (const char* v = getenv_s("AGENTD_UPLOAD_MAX_BYTES")) {
     try {
@@ -760,6 +766,16 @@ bool AgentdApi::init(std::string* out_error) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();
     handle_session_voice_stats_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route("POST", "/api/v1/session/voice_webrtc_peer", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_session_voice_webrtc_peer_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route("GET", "/api/v1/session/voice_webrtc_peer", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_session_voice_webrtc_peer_status_endpoint(cur, self->cors_cfg, &self->db, req, resp);
   });
   impl_->route("GET", "/api/v1/session/clients", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);

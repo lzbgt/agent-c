@@ -394,7 +394,8 @@ Current status:
 - Shipped: authenticated signaling relay endpoints, in-memory session lifecycle, loopback smoke coverage, explicit broker-panel voice session create/list/inspect/delete controls, and browser-side WebRTC offer/answer/bye automation with remote-candidate handling and remote-audio mounting in the WebUI.
 - Shipped adjacent foundation: agentd now exposes session-scoped voice control/stats endpoints so browser clients can durably execute and report `media_play`, `media_pause`, and `media_snapshot` RPCs.
 - Shipped: a real host-side agentd media peer proof now exists via `tools/agentd_audio_webrtc_peer.js` and `tests/agentd_audio_webrtc_peer_smoke.sh`, which completes broker signaling, WebRTC answer/candidate flow, live RTP delivery, and `bye` teardown against a browser peer.
-- Still open: embed that shipped media-peer foundation into a first-class agentd/session runtime path instead of keeping it as an external host-side bring-up tool.
+- Shipped: agentd now owns that host-side media-peer lifecycle through `POST/GET /api/v1/session/voice_webrtc_peer`, covered by `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh`.
+- Still open: replace the managed Node/Playwright child runtime with an embedded long-lived agentd-native media service.
 
 Proof:
 - `ctest` includes `broker_audio_signal_loopback_smoke`.

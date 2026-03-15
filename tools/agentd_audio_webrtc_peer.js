@@ -53,6 +53,7 @@ function parseArgs(argv) {
     else if (a === "--poll-interval-ms" && i + 1 < argv.length) out.pollIntervalMs = Number(argv[++i]);
     else if (a === "--tone-hz" && i + 1 < argv.length) out.toneHz = Number(argv[++i]);
     else if (a === "--ready-file" && i + 1 < argv.length) out.readyFile = argv[++i];
+    else if (a === "--sender-tag" && i + 1 < argv.length) out.senderTag = argv[++i];
     else if (a === "--verbose") out.verbose = true;
     else if (a === "--help" || a === "-h") out.help = true;
     else throw new Error(`unknown arg: ${a}`);
@@ -64,7 +65,7 @@ function usage() {
   return (
     "Usage: agentd_audio_webrtc_peer.js" +
     " --broker-url <url> --token <token> --session-id <id>" +
-    " [--deadline-ms <ms>] [--poll-interval-ms <ms>] [--tone-hz <hz>] [--ready-file <path>] [--verbose]"
+    " [--deadline-ms <ms>] [--poll-interval-ms <ms>] [--tone-hz <hz>] [--ready-file <path>] [--sender-tag <tag>] [--verbose]"
   );
 }
 
@@ -139,8 +140,43 @@ async function main() {
   let browser;
   let page;
   let closedByRemote = false;
-    const deadlineAt = Date.now() + opt.deadlineMs;
-    let streamOpened = false;
+  let byeSent = false;
+  let shuttingDown = false;
+  const deadlineAt = Date.now() + opt.deadlineMs;
+  let streamOpened = false;
+
+  async function sendByeOnce(reason) {
+    if (byeSent) return;
+    byeSent = true;
+    try {
+      await sendSignal(opt, "bye", { reason: reason || "agentd_peer_shutdown" });
+    } catch (_) {
+      // best effort during shutdown
+    }
+  }
+
+  async function gracefulSignalShutdown(reason) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    try {
+      await sendByeOnce(reason);
+      let state = {};
+      if (page) {
+        try {
+          state = await page.evaluate(() => (window.__agentdAudioGetState ? window.__agentdAudioGetState() : {}));
+        } catch (_) {
+          state = {};
+        }
+      }
+      process.stdout.write(`${JSON.stringify({ ok: true, stopped: true, reason, state })}\n`);
+    } finally {
+      if (browser) await browser.close().catch(() => {});
+      process.exit(0);
+    }
+  }
+
+  process.on("SIGTERM", () => { void gracefulSignalShutdown("sigterm"); });
+  process.on("SIGINT", () => { void gracefulSignalShutdown("sigint"); });
 
   try {
     browser = await chromium.launch({
