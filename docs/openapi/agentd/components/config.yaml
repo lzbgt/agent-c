@@ -141,8 +141,12 @@ AgentdConfigResponse:
         external_unavailable_reason: { type: string }
         default_runtime_kind:
           type: string
-          enum: [builtin]
-        default_runtime_kind_available: { type: boolean, enum: [true] }
+          enum: [builtin, external]
+        default_runtime_kind_source:
+          type: string
+          enum: [auto, env, config]
+        default_runtime_kind_available: { type: boolean }
+        default_runtime_kind_unavailable_reason: { type: string }
         clusters_set: { type: integer, format: int64 }
         cluster_ids:
           type: array
@@ -353,6 +357,11 @@ AgentdConfigUpdateRequest:
           type: string
           nullable: true
           description: External helper tool path for `runtime_kind=external` managed consensus runtimes (null clears)
+        default_runtime_kind:
+          type: string
+          nullable: true
+          enum: [builtin, external]
+          description: Preferred default managed consensus backend when callers omit `runtime_kind` (null resets to builtin auto selection)
     blob_store:
       $ref: "#/components/schemas/BlobStoreUpdate"
     blob_store_secrets:
@@ -443,8 +452,12 @@ AgentdConfigUpdateResponse:
         external_unavailable_reason: { type: string }
         default_runtime_kind:
           type: string
-          enum: [builtin]
-        default_runtime_kind_available: { type: boolean, enum: [true] }
+          enum: [builtin, external]
+        default_runtime_kind_source:
+          type: string
+          enum: [auto, env, config]
+        default_runtime_kind_available: { type: boolean }
+        default_runtime_kind_unavailable_reason: { type: string }
     edge_auth_required: { type: boolean }
     edge_auth_require_ts: { type: boolean }
     edge_auth_max_skew_ms: { type: integer, format: int64 }

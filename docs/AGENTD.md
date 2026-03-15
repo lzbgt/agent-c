@@ -502,8 +502,8 @@ and `db_path` (SQLite; canonical daemon state store). For the managed WebRTC lan
 so operators can verify whether caller-free voice runtime bring-up and backend selection are configured without
 exposing the token itself.
 For the managed edge consensus lane, the safe snapshot now also exposes
-`edge_consensus.{node_tool_path_configured,builtin_available,external_available,external_unavailable_reason,default_runtime_kind,default_runtime_kind_available,clusters_set,cluster_ids}`
-so operators can see whether the optional `runtime_kind=external` helper seam is configured and launchable.
+`edge_consensus.{node_tool_path_configured,builtin_available,external_available,external_unavailable_reason,default_runtime_kind,default_runtime_kind_source,default_runtime_kind_available,default_runtime_kind_unavailable_reason,clusters_set,cluster_ids}`
+so operators can see whether the optional `runtime_kind=external` helper seam is configured and whether the current default backend is actually launchable.
 
 ## Update daemon defaults at runtime
 
@@ -558,7 +558,7 @@ Example (persist the operator-configured external consensus helper seam):
 curl -fsS \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_AGENTD_TOKEN" \
-  -d '{"edge_consensus":{"node_tool_path":"/opt/agentd/bin/agentd_edge_consensus_node"}}' \
+  -d '{"edge_consensus":{"node_tool_path":"/opt/agentd/bin/agentd_edge_consensus_node","default_runtime_kind":"external"}}' \
   http://127.0.0.1:8123/api/v1/config/update
 ```
 
@@ -567,7 +567,7 @@ Notes:
 - For managed voice/WebRTC broker defaults, `GET /api/v1/config` exposes only
   `daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured,peer_tool_path_configured,builtin_available,bundled_available,external_available,builtin_unavailable_reason,bundled_unavailable_reason,external_unavailable_reason,default_runtime_kind,default_runtime_kind_source,default_runtime_kind_available,default_runtime_kind_unavailable_reason,node_bin}`.
 - For the managed edge consensus helper seam, `GET /api/v1/config` exposes only
-  `edge_consensus.{node_tool_path_configured,builtin_available,external_available,external_unavailable_reason,default_runtime_kind,default_runtime_kind_available,clusters_set,cluster_ids}`.
+  `edge_consensus.{node_tool_path_configured,builtin_available,external_available,external_unavailable_reason,default_runtime_kind,default_runtime_kind_source,default_runtime_kind_available,default_runtime_kind_unavailable_reason,clusters_set,cluster_ids}`.
 - The WebUI exposes Settings buttons to “Save defaults to daemon” and “Save API key to daemon”.
 
 Edge trust-root rotation:

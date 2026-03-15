@@ -775,6 +775,15 @@ int main(int argc, char** argv) {
       cfg.edge_consensus_node_tool_path = p;
     }
   }
+  if (cfg.edge_consensus_default_runtime_kind.empty()) {
+    if (const char* p = getenv_s("AGENTD_EDGE_CONSENSUS_DEFAULT_RUNTIME_KIND")) {
+      const std::string kind = lower_copy(trim_copy(p));
+      if (kind == "builtin" || kind == "external") {
+        cfg.edge_consensus_default_runtime_kind = kind;
+        cfg.edge_consensus_default_runtime_kind_from_env = true;
+      }
+    }
+  }
 
   // Make the effective state/session roots explicit (so /api/v1/config can report them).
   if (cfg.state_dir.empty()) {

@@ -227,9 +227,11 @@ Returns messages in ascending `outbox_id` order. The node should:
   - includes `consensus` when present in `edge_nodes.health_json.consensus`
 - `POST /api/v1/edge/node/consensus_runtime`
   - starts or stops the managed autonomous consensus runtime for one edge node
-  - defaults to a builtin in-agentd backend; `runtime_kind=external` keeps the standalone helper for bring-up/debug parity
+  - defaults to the configured managed consensus backend when present, otherwise builtin auto selection; `runtime_kind=external` keeps the standalone helper for bring-up/debug parity
   - status/start metadata now reports `external_available` plus `external_unavailable_reason`, so operator tooling can
     preflight whether that helper seam is launchable before attempting `runtime_kind=external`
+  - config/runtime metadata also reports `default_runtime_kind_source=auto|env|config` plus `default_runtime_kind_available`
+    so operator tooling can distinguish builtin auto fallback from explicit backend policy
   - `runtime_kind=external` now also uses bounded startup confirmation, so agentd fails closed if the helper exits
     immediately after exec instead of reporting a false-positive started runtime
   - supports `campaign_delay_ms`, `campaign_retry_ms`, `campaign_retry_max_ms`, and `campaign_retry_backoff_factor`
@@ -279,6 +281,8 @@ Manifest bundle note:
   which is the intended stepping stone toward embedded/node-native adoption.
 - The optional external helper seam is now also durable daemon config (`edge_consensus.node_tool_path`) instead of only
   `AGENTD_EDGE_CONSENSUS_NODE_TOOL`, so bring-up/debug parity can survive daemon restart without environment injection.
+- Managed consensus backend selection is now durable daemon policy too (`edge_consensus.default_runtime_kind`) and can
+  also be seeded by `AGENTD_EDGE_CONSENSUS_DEFAULT_RUNTIME_KIND`; invalid persisted values self-heal back to builtin auto.
 - The managed/runtime bring-up path now includes retry timers, so a node can miss initial quorum and still converge later
   without operator restart.
 - The shared protocol/runtime foundation now also carries explicit membership versioning, so stale or non-member nodes can

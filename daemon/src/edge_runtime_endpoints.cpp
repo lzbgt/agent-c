@@ -233,6 +233,21 @@ static std::string edge_consensus_external_runtime_unavailable_reason(const Daem
   return "";
 }
 
+static std::string configured_default_edge_consensus_runtime_kind(const DaemonConfig& cfg) {
+  const std::string kind = lower_copy(trim_copy(cfg.edge_consensus_default_runtime_kind));
+  return (kind == "builtin" || kind == "external") ? kind : std::string();
+}
+
+static std::string default_edge_consensus_runtime_kind_source(const DaemonConfig& cfg) {
+  if (configured_default_edge_consensus_runtime_kind(cfg).empty()) return "auto";
+  return cfg.edge_consensus_default_runtime_kind_from_env ? "env" : "config";
+}
+
+static std::string default_edge_consensus_runtime_kind(const DaemonConfig& cfg) {
+  const std::string configured = configured_default_edge_consensus_runtime_kind(cfg);
+  return configured.empty() ? "builtin" : configured;
+}
+
 static bool edge_consensus_runtime_build_config(
   const DaemonConfig& cfg,
   const Json::Value& body,
@@ -763,14 +778,18 @@ static Json::Value build_edge_node_consensus_summary(AgentDb* db_or_null, const 
 Json::Value edge_consensus_runtime_backend_metadata_json(const DaemonConfig& cfg) {
   Json::Value out(Json::objectValue);
   out["builtin_available"] = true;
-  out["default_runtime_kind"] = "builtin";
-  out["default_runtime_kind_available"] = true;
+  const std::string default_runtime_kind = default_edge_consensus_runtime_kind(cfg);
+  out["default_runtime_kind"] = default_runtime_kind;
+  out["default_runtime_kind_source"] = default_edge_consensus_runtime_kind_source(cfg);
   out["tool_configured"] = !trim_copy(cfg.edge_consensus_node_tool_path).empty();
   if (!cfg.edge_consensus_node_tool_path.empty()) out["tool_path"] = cfg.edge_consensus_node_tool_path;
   out["default_daemon_url"] = default_local_daemon_url(cfg);
   const std::string external_reason = edge_consensus_external_runtime_unavailable_reason(cfg);
   out["external_available"] = external_reason.empty();
+  const std::string default_reason = default_runtime_kind == "external" ? external_reason : std::string();
+  out["default_runtime_kind_available"] = default_reason.empty();
   if (!external_reason.empty()) out["external_unavailable_reason"] = external_reason;
+  if (!default_reason.empty()) out["default_runtime_kind_unavailable_reason"] = default_reason;
   return out;
 }
 
@@ -873,7 +892,9 @@ void handle_edge_node_consensus_runtime_endpoint(
 
   const std::string cluster_id = req_cluster_id;
   const std::string runtime_kind =
-    body.isMember("runtime_kind") && body["runtime_kind"].isString() ? lower_copy(trim_copy(body["runtime_kind"].asString())) : "builtin";
+    body.isMember("runtime_kind") && body["runtime_kind"].isString()
+      ? lower_copy(trim_copy(body["runtime_kind"].asString()))
+      : default_edge_consensus_runtime_kind(cfg);
   if (runtime_kind != "builtin" && runtime_kind != "external") {
     resp->status = 400;
     resp->body = json_error_body("runtime_kind must be builtin or external");

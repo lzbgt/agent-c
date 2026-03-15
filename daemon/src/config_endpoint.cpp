@@ -2133,6 +2133,32 @@ void handle_config_update_endpoint(
         return;
       }
     }
+    if (ec.isMember("default_runtime_kind")) {
+      const Json::Value& v = ec["default_runtime_kind"];
+      if (v.isNull()) {
+        next.edge_consensus_default_runtime_kind.clear();
+        next.edge_consensus_default_runtime_kind_from_env = false;
+      } else if (v.isString()) {
+        const std::string kind = lower_copy(trim_copy(v.asString()));
+        if (kind != "builtin" && kind != "external") {
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "edge_consensus.default_runtime_kind must be builtin, external, or null";
+          resp->status = 400;
+          resp->body = json_stringify(o);
+          return;
+        }
+        next.edge_consensus_default_runtime_kind = kind;
+        next.edge_consensus_default_runtime_kind_from_env = false;
+      } else {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "edge_consensus.default_runtime_kind must be a string or null";
+        resp->status = 400;
+        resp->body = json_stringify(o);
+        return;
+      }
+    }
   }
 
   // Edge auth keyring (secrets):

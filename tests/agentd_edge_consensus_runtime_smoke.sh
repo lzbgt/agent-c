@@ -163,6 +163,9 @@ if start_rt.get("runtime_kind") != "builtin":
 if not start_stop.get("builtin_available") or start_stop.get("default_runtime_kind") != "builtin":
   print("start_stop missing builtin metadata", start_stop, file=sys.stderr)
   raise SystemExit(1)
+if start_stop.get("default_runtime_kind_source") != "auto":
+  print("start_stop wrong default runtime source", start_stop, file=sys.stderr)
+  raise SystemExit(1)
 if start_stop.get("external_available"):
   print("start_stop unexpectedly reported external available", start_stop, file=sys.stderr)
   raise SystemExit(1)
@@ -191,13 +194,16 @@ if stop_rt.get("runtime_kind") != "builtin":
 if not stop_status.get("builtin_available") or stop_status.get("default_runtime_kind") != "builtin":
   print("stop status missing builtin metadata", stop_status, file=sys.stderr)
   raise SystemExit(1)
+if stop_status.get("default_runtime_kind_source") != "auto":
+  print("stop status wrong default runtime source", stop_status, file=sys.stderr)
+  raise SystemExit(1)
 if stop_status.get("external_available"):
   print("stop status unexpectedly reported external available", stop_status, file=sys.stderr)
   raise SystemExit(1)
 PY
 
 CONFIG_SET_JSON="$(curl_json POST "/api/v1/config/update" "$(cat <<JSON
-{"edge_consensus":{"node_tool_path":"${NODE_TOOL_BIN}"}}
+{"edge_consensus":{"node_tool_path":"${NODE_TOOL_BIN}","default_runtime_kind":"external"}}
 JSON
 )")"
 CONFIG_GET_JSON="$(curl_json GET "/api/v1/config")"
@@ -227,7 +233,7 @@ if [[ -z "${FALSE_BIN}" ]]; then
 fi
 
 START_EXT_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","runtime_kind":"external","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","deadline_ms":30000,"poll_interval_ms":100}
+{"action":"start","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","deadline_ms":30000,"poll_interval_ms":100}
 JSON
 )")"
 RUNNING_EXT_JSON="$(wait_runtime_running "${EXT_NODE}")"
@@ -243,7 +249,7 @@ JSON
 )")"
 FAILFAST_CONFIG_JSON="$(curl_json GET "/api/v1/config")"
 FAILFAST_START_RAW="$(curl_json_status POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","runtime_kind":"external","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","deadline_ms":30000,"poll_interval_ms":100}
+{"action":"start","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","deadline_ms":30000,"poll_interval_ms":100}
 JSON
 )")"
 FAILFAST_START_STATUS="$(printf '%s\n' "${FAILFAST_START_RAW}" | sed -n '1p')"
@@ -256,7 +262,7 @@ JSON
 )")"
 CONFIG_CLEARED_JSON="$(curl_json GET "/api/v1/config")"
 FAIL_START_RAW="$(curl_json_status POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","runtime_kind":"external","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","deadline_ms":30000,"poll_interval_ms":100}
+{"action":"start","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","deadline_ms":30000,"poll_interval_ms":100}
 JSON
 )")"
 FAIL_START_STATUS="$(printf '%s\n' "${FAIL_START_RAW}" | sed -n '1p')"
@@ -264,10 +270,54 @@ FAIL_START_JSON="$(printf '%s\n' "${FAIL_START_RAW}" | sed '1d')"
 FAIL_START_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${EXT_NODE}")"
 
 python3 - <<PY
+import json
+import sqlite3
+
+db_path = r'''${TEST_DB}'''
+conn = sqlite3.connect(db_path)
+try:
+    row = conn.execute("SELECT value FROM meta WHERE key = 'daemon.runtime_config_json'").fetchone()
+    if row is None:
+        raise SystemExit("missing daemon.runtime_config_json before edge consensus corruption test")
+    data = json.loads(row[0])
+    edge = data.setdefault("edge_consensus", {})
+    edge["default_runtime_kind"] = "not-a-real-runtime-kind"
+    conn.execute("UPDATE meta SET value = ? WHERE key = 'daemon.runtime_config_json'", (json.dumps(data),))
+    conn.commit()
+finally:
+    conn.close()
+PY
+
+agentd_smoke_stop
+AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}" \
+agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_edge_consensus_runtime_smoke_self_heal" \
+  --db-path "${TEST_DB}" \
+  --state-dir "${TEST_STATE}" \
+  --tools none
+DAEMON_URL="http://${HOST}:${PORT_DAEMON}"
+agentd_smoke_wait_health "${DAEMON_URL}" "${DAEMON_TOKEN}"
+
+CONFIG_SELF_HEAL_JSON="$(curl_json GET "/api/v1/config")"
+FALLBACK_NODE="node_runtime_cons_fallback"
+FALLBACK_CLUSTER="lab-consensus-managed-fallback"
+FALLBACK_SHA="sha256:7777777777777777777777777777777777777777777777777777777777777777"
+FALLBACK_START_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"start","node_id":"${FALLBACK_NODE}","cluster_id":"${FALLBACK_CLUSTER}","manifest_sha256":"${FALLBACK_SHA}","deadline_ms":30000,"poll_interval_ms":100}
+JSON
+)")"
+FALLBACK_RUNNING_JSON="$(wait_runtime_running "${FALLBACK_NODE}")"
+FALLBACK_STOP_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"stop","node_id":"${FALLBACK_NODE}"}
+JSON
+)")"
+
+python3 - <<PY
 import json, sys
+import sqlite3
 
 node_tool = "${NODE_TOOL_BIN}"
 false_bin = "${FALSE_BIN}"
+db_path = r'''${TEST_DB}'''
 
 config_set = json.loads(r'''${CONFIG_SET_JSON}''')
 config_get = json.loads(r'''${CONFIG_GET_JSON}''')
@@ -284,8 +334,12 @@ clear_cfg = json.loads(r'''${CLEAR_CFG_JSON}''')
 config_cleared = json.loads(r'''${CONFIG_CLEARED_JSON}''')
 fail_start = json.loads(r'''${FAIL_START_JSON}''')
 fail_start_status = json.loads(r'''${FAIL_START_STATUS_JSON}''')
+config_self_heal = json.loads(r'''${CONFIG_SELF_HEAL_JSON}''')
+fallback_start = json.loads(r'''${FALLBACK_START_JSON}''')
+fallback_running = json.loads(r'''${FALLBACK_RUNNING_JSON}''')
+fallback_stop = json.loads(r'''${FALLBACK_STOP_JSON}''')
 
-for label, obj in (("config_set", config_set), ("config_get", config_get), ("config_restart", config_restart), ("failfast_cfg", failfast_cfg), ("failfast_config", failfast_config), ("clear_cfg", clear_cfg), ("config_cleared", config_cleared)):
+for label, obj in (("config_set", config_set), ("config_get", config_get), ("config_restart", config_restart), ("failfast_cfg", failfast_cfg), ("failfast_config", failfast_config), ("clear_cfg", clear_cfg), ("config_cleared", config_cleared), ("config_self_heal", config_self_heal)):
   if not obj.get("ok"):
     print(label, obj, file=sys.stderr)
     raise SystemExit(1)
@@ -298,7 +352,7 @@ for label, obj in (("config_set", config_set), ("config_get", config_get), ("con
   if not edge.get("external_available"):
     print(label, "expected external_available", obj, file=sys.stderr)
     raise SystemExit(1)
-  if edge.get("default_runtime_kind") != "builtin" or not edge.get("default_runtime_kind_available"):
+  if edge.get("default_runtime_kind") != "external" or edge.get("default_runtime_kind_source") != "config" or not edge.get("default_runtime_kind_available"):
     print(label, "wrong default runtime metadata", obj, file=sys.stderr)
     raise SystemExit(1)
 
@@ -329,6 +383,9 @@ for label, obj in (("failfast_cfg", failfast_cfg), ("failfast_config", failfast_
     raise SystemExit(1)
   if not edge.get("external_available"):
     print(label, "expected executable false-bin helper to look available", obj, file=sys.stderr)
+    raise SystemExit(1)
+  if edge.get("default_runtime_kind") != "external" or edge.get("default_runtime_kind_source") != "config":
+    print(label, "expected default external runtime metadata", obj, file=sys.stderr)
     raise SystemExit(1)
 
 if "${FAILFAST_START_STATUS}" != "500":
@@ -362,6 +419,15 @@ for label, obj in (("clear_cfg", clear_cfg), ("config_cleared", config_cleared))
   if edge.get("external_unavailable_reason") != "edge_consensus_node_tool_path not configured":
     print(label, "wrong unavailable reason", obj, file=sys.stderr)
     raise SystemExit(1)
+  if edge.get("default_runtime_kind") != "external" or edge.get("default_runtime_kind_source") != "config":
+    print(label, "expected configured default external runtime", obj, file=sys.stderr)
+    raise SystemExit(1)
+  if edge.get("default_runtime_kind_available") is not False:
+    print(label, "expected unavailable default runtime", obj, file=sys.stderr)
+    raise SystemExit(1)
+  if edge.get("default_runtime_kind_unavailable_reason") != "edge_consensus_node_tool_path not configured":
+    print(label, "wrong default unavailable reason", obj, file=sys.stderr)
+    raise SystemExit(1)
 
 if "${FAIL_START_STATUS}" != "500":
   print("external start after clear returned wrong status", "${FAIL_START_STATUS}", fail_start, file=sys.stderr)
@@ -371,6 +437,41 @@ if fail_start.get("error") != "edge_consensus_node_tool_path not configured":
   raise SystemExit(1)
 if fail_start_status.get("runtime") is not None:
   print("external failed start left runtime behind", fail_start_status, file=sys.stderr)
+  raise SystemExit(1)
+
+edge = config_self_heal.get("edge_consensus") or {}
+if edge.get("default_runtime_kind") != "builtin" or edge.get("default_runtime_kind_source") != "auto":
+  print("self-heal wrong default runtime metadata", config_self_heal, file=sys.stderr)
+  raise SystemExit(1)
+if edge.get("default_runtime_kind_available") is not True:
+  print("self-heal expected available builtin default", config_self_heal, file=sys.stderr)
+  raise SystemExit(1)
+if edge.get("node_tool_path_configured"):
+  print("self-heal unexpectedly restored tool path", config_self_heal, file=sys.stderr)
+  raise SystemExit(1)
+
+conn = sqlite3.connect(db_path)
+try:
+  row = conn.execute("SELECT value FROM meta WHERE key = 'daemon.runtime_config_json'").fetchone()
+  if row is None:
+    print("missing daemon.runtime_config_json after edge consensus self-heal", file=sys.stderr)
+    raise SystemExit(1)
+  data = json.loads(row[0])
+  edge_cfg = data.get("edge_consensus") or {}
+  if edge_cfg.get("default_runtime_kind", "__missing__") is not None:
+    print("edge consensus default_runtime_kind not rewritten to null", data, file=sys.stderr)
+    raise SystemExit(1)
+finally:
+  conn.close()
+
+if (fallback_start.get("runtime") or {}).get("runtime_kind") != "builtin":
+  print("fallback start did not use builtin runtime", fallback_start, file=sys.stderr)
+  raise SystemExit(1)
+if not (fallback_running.get("runtime") or {}).get("running"):
+  print("fallback runtime never entered running state", fallback_running, file=sys.stderr)
+  raise SystemExit(1)
+if not fallback_stop.get("ok") or not fallback_stop.get("stopped"):
+  print("fallback stop wrong", fallback_stop, file=sys.stderr)
   raise SystemExit(1)
 PY
 

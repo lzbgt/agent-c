@@ -2530,14 +2530,17 @@
     summary: Start or stop a managed autonomous consensus-node runtime
     description: |
       Starts or stops the managed autonomous consensus runtime. `builtin` is the
-      default backend and runs the HTTP poll/process/post loop inside agentd.
-      Start requests can explicitly set `runtime_kind=external` to keep using the
-      standalone helper for bring-up or debug parity. Runtime status now reports
-      whether that external helper seam is actually launchable before start, and
-      `/api/v1/config/update` can persist `edge_consensus.node_tool_path` instead
-      of relying only on `AGENTD_EDGE_CONSENSUS_NODE_TOOL`. External starts now also
-      use a bounded startup confirmation window and fail closed if the helper exits
-      immediately after launch. Start requests can also set
+      in-agentd backend and runs the HTTP poll/process/post loop inside agentd.
+      When callers omit `runtime_kind`, agentd now uses the configured default
+      managed consensus backend (`edge_consensus.default_runtime_kind`) or falls
+      back to builtin auto selection. Start requests can explicitly set
+      `runtime_kind=external` to keep using the standalone helper for bring-up or
+      debug parity. Runtime status now reports whether that external helper seam is
+      actually launchable before start, and `/api/v1/config/update` can persist
+      `edge_consensus.{node_tool_path,default_runtime_kind}` instead of relying only
+      on `AGENTD_EDGE_CONSENSUS_NODE_TOOL` / `AGENTD_EDGE_CONSENSUS_DEFAULT_RUNTIME_KIND`.
+      External starts now also use a bounded startup confirmation window and fail
+      closed if the helper exits immediately after launch. Start requests can also set
       `campaign_delay_ms` for the first election, `campaign_retry_ms` for the base
       retry interval, `campaign_retry_max_ms` for the backoff ceiling, and
       `campaign_retry_backoff_factor` for bounded exponential retry growth when

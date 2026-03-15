@@ -229,7 +229,7 @@ EdgeNodeConsensusRuntimeRequest:
     runtime_kind:
       type: string
       enum: [builtin, external]
-      description: Optional runtime backend selector. Defaults to `builtin`; `external` keeps using the standalone helper for bring-up/debug.
+      description: Optional runtime backend selector. Defaults to the configured managed consensus backend when present, otherwise builtin auto; `external` keeps using the standalone helper for bring-up/debug.
     node_id: { type: string }
     cluster_id: { type: string }
     manifest_sha256: { type: string }
@@ -265,7 +265,7 @@ EdgeNodeConsensusRuntimeRequest:
 
 EdgeNodeConsensusRuntimeResponse:
   type: object
-  required: [ok, node_id, tool_configured, builtin_available, external_available, default_runtime_kind, default_runtime_kind_available, default_daemon_url]
+  required: [ok, node_id, tool_configured, builtin_available, external_available, default_runtime_kind, default_runtime_kind_source, default_runtime_kind_available, default_daemon_url]
   properties:
     ok: { type: boolean }
     node_id: { type: string }
@@ -275,8 +275,12 @@ EdgeNodeConsensusRuntimeResponse:
     external_unavailable_reason: { type: string }
     default_runtime_kind:
       type: string
-      enum: [builtin]
-    default_runtime_kind_available: { type: boolean, enum: [true] }
+      enum: [builtin, external]
+    default_runtime_kind_source:
+      type: string
+      enum: [auto, env, config]
+    default_runtime_kind_available: { type: boolean }
+    default_runtime_kind_unavailable_reason: { type: string }
     tool_path: { type: string }
     default_daemon_url: { type: string }
     started: { type: boolean }
@@ -294,7 +298,7 @@ EdgeNodeConsensusRuntimeResponse:
 
 EdgeNodeConsensusRuntimeStatusResponse:
   type: object
-  required: [ok, node_id, tool_configured, builtin_available, external_available, default_runtime_kind, default_runtime_kind_available, default_daemon_url, node_exists, running]
+  required: [ok, node_id, tool_configured, builtin_available, external_available, default_runtime_kind, default_runtime_kind_source, default_runtime_kind_available, default_daemon_url, node_exists, running]
   properties:
     ok: { type: boolean }
     node_id: { type: string }
@@ -304,8 +308,12 @@ EdgeNodeConsensusRuntimeStatusResponse:
     external_unavailable_reason: { type: string }
     default_runtime_kind:
       type: string
-      enum: [builtin]
-    default_runtime_kind_available: { type: boolean, enum: [true] }
+      enum: [builtin, external]
+    default_runtime_kind_source:
+      type: string
+      enum: [auto, env, config]
+    default_runtime_kind_available: { type: boolean }
+    default_runtime_kind_unavailable_reason: { type: string }
     tool_path: { type: string }
     default_daemon_url: { type: string }
     node_exists: { type: boolean }

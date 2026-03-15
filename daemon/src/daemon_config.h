@@ -155,6 +155,10 @@ struct DaemonConfig {
   std::string audio_webrtc_broker_token;
   // Optional managed host-side consensus-node helper for edge bring-up.
   std::string edge_consensus_node_tool_path;
+  // Optional durable preferred backend for managed consensus runtime selection.
+  // Empty means "auto" (currently builtin).
+  std::string edge_consensus_default_runtime_kind;
+  bool edge_consensus_default_runtime_kind_from_env = false;
   // Optional durable per-cluster consensus membership/retry policy.
   std::map<std::string, EdgeConsensusClusterPolicy> edge_consensus_clusters;
   // Session upload limit (per-file, decoded bytes). 0 means "no explicit per-file limit".

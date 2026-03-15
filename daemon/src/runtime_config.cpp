@@ -58,6 +58,11 @@ static bool is_valid_voice_runtime_kind(const std::string& s_in) {
   return s == "bundled" || s == "external";
 }
 
+static bool is_valid_edge_consensus_runtime_kind(const std::string& s_in) {
+  const std::string s = lower_copy(trim_copy(s_in));
+  return s == "builtin" || s == "external";
+}
+
 static void upsert_tool_call_limit(std::vector<std::pair<std::string, size_t>>* limits, std::string tool, size_t max_calls) {
   if (!limits || tool.empty()) return;
   for (auto& kv : *limits) {
@@ -156,6 +161,25 @@ bool load_runtime_config_best_effort(
           if (ec["node_tool_path"].isNull()) cfg_io->edge_consensus_node_tool_path.clear();
           else if (ec["node_tool_path"].isString()) {
             cfg_io->edge_consensus_node_tool_path = trim_copy(ec["node_tool_path"].asString());
+          }
+        }
+        if (ec.isMember("default_runtime_kind")) {
+          if (ec["default_runtime_kind"].isNull()) {
+            cfg_io->edge_consensus_default_runtime_kind.clear();
+            cfg_io->edge_consensus_default_runtime_kind_from_env = false;
+          } else if (ec["default_runtime_kind"].isString()) {
+            const std::string kind = lower_copy(trim_copy(ec["default_runtime_kind"].asString()));
+            if (is_valid_edge_consensus_runtime_kind(kind)) {
+              cfg_io->edge_consensus_default_runtime_kind = kind;
+            } else {
+              cfg_io->edge_consensus_default_runtime_kind.clear();
+              should_rewrite_runtime_config = true;
+            }
+            cfg_io->edge_consensus_default_runtime_kind_from_env = false;
+          } else {
+            cfg_io->edge_consensus_default_runtime_kind.clear();
+            cfg_io->edge_consensus_default_runtime_kind_from_env = false;
+            should_rewrite_runtime_config = true;
           }
         }
       }
@@ -780,6 +804,9 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
     ec["node_tool_path"] = cfg.edge_consensus_node_tool_path.empty()
       ? Json::Value(Json::nullValue)
       : Json::Value(cfg.edge_consensus_node_tool_path);
+    ec["default_runtime_kind"] = cfg.edge_consensus_default_runtime_kind.empty()
+      ? Json::Value(Json::nullValue)
+      : Json::Value(cfg.edge_consensus_default_runtime_kind);
     v["edge_consensus"] = ec;
   }
   v["max_steps_default"] = (Json::UInt64)cfg.max_steps_default;
