@@ -395,6 +395,9 @@ Current status:
 - Shipped adjacent foundation: agentd now exposes session-scoped voice control/stats endpoints so browser clients can durably execute and report `media_play`, `media_pause`, and `media_snapshot` RPCs.
 - Shipped: a real host-side agentd media peer proof now exists via `tools/agentd_audio_webrtc_peer.js` and `tests/agentd_audio_webrtc_peer_smoke.sh`, which completes broker signaling, WebRTC answer/candidate flow, live RTP delivery, and `bye` teardown against a browser peer.
 - Shipped: agentd now owns that host-side media-peer lifecycle through `POST/GET /api/v1/session/voice_webrtc_peer`, covered by `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh`.
+- Shipped: that agentd runtime surface now exposes explicit backend metadata (`default_runtime_kind=external`,
+  `builtin_available=false`, `peer.runtime_kind=external`) and is factored away from the generic session endpoints code,
+  so the future native media service can replace the backend without changing the session API shape.
 - Still open: replace the managed Node/Playwright child runtime with an embedded long-lived agentd-native media service.
 
 Proof:

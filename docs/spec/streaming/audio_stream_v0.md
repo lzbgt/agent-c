@@ -1,7 +1,7 @@
 # Audio Streaming (v0)
 
 Date: 2026-02-19
-Status: implemented rolling foundation (broker signaling relay + session status APIs + WebUI voice-session controls + browser-side WebRTC negotiation client + managed agentd-side media peer runtime + RTP proof); embedded agentd-native media service still pending
+Status: implemented rolling foundation (broker signaling relay + session status APIs + WebUI voice-session controls + browser-side WebRTC negotiation client + managed agentd-side media peer runtime + RTP proof); embedded agentd-native media service still pending, but the runtime contract now exposes an explicit backend seam (`external` today, `builtin` reserved)
 
 ## Goals
 
@@ -135,6 +135,11 @@ A v0 smoke test should:
   teardown against a live headless Chromium peer.
 - `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` covers the agentd-managed runtime surface for that same peer,
   including start/status, inbound RTP proof against a live browser peer, and managed stop/teardown.
+- The managed runtime contract now explicitly reports:
+  - `builtin_available=false`
+  - `default_runtime_kind=external`
+  - `peer.runtime_kind=external`
+  so the current shipped Node/Playwright path is a named backend rather than an implicit assumption baked into the API.
 
 ## Open questions
 
@@ -142,6 +147,7 @@ A v0 smoke test should:
 - Do we need a broker-issued ephemeral token for direct agentd signaling as a fallback?
 - How should the broker authenticate agentd participation (mTLS vs bearer)?
 - How should the shipped managed media peer move from a Node/Playwright child runtime into an embedded long-lived agentd-native media service?
+- How should the future `builtin` backend terminate WebRTC/SRTP natively inside agentd without inheriting the current child-process browser dependency?
 
 ## References
 

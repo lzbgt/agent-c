@@ -3279,6 +3279,11 @@
   get:
     tags: [sessions]
     summary: Inspect the managed session-scoped WebRTC media peer runtime
+    description: |
+      Returns managed WebRTC media-peer runtime status. The only implemented backend
+      today is `external`, which runs the shipped Node/Playwright peer as a child
+      process. `builtin` is reserved for the future embedded agentd-native media
+      service and is reported as unavailable in current status responses.
     parameters:
       - in: query
         name: session_id
@@ -3290,21 +3295,7 @@
         content:
           application/json:
             schema:
-              type: object
-              required: [ok, session_id, tool_configured, node_bin, session_exists, running, peer]
-              properties:
-                ok: { type: boolean }
-                session_id: { type: string }
-                tool_configured: { type: boolean }
-                tool_path: { type: string }
-                node_bin: { type: string }
-                session_exists: { type: boolean }
-                running: { type: boolean }
-                peer:
-                  oneOf:
-                    - type: "null"
-                    - type: object
-                      additionalProperties: true
+              $ref: "#/components/schemas/VoiceWebRtcPeerStatusResponse"
       "400":
         description: Invalid request
         content:
@@ -3326,48 +3317,24 @@
   post:
     tags: [sessions]
     summary: Start or stop the managed session-scoped WebRTC media peer runtime
+    description: |
+      Starts or stops the managed WebRTC media peer for a session. `external` is the
+      only implemented runtime backend today and launches the shipped Node/Playwright
+      peer. `builtin` is reserved for a future embedded agentd-native media service
+      and currently returns a not-implemented response.
     requestBody:
       required: true
       content:
         application/json:
           schema:
-            type: object
-            required: [session_id, action]
-            properties:
-              session_id: { type: string }
-              action:
-                type: string
-                enum: [start, stop]
-              broker_session_id: { type: string }
-              broker_url: { type: string }
-              broker_token: { type: string }
-              sender_tag: { type: string }
-              deadline_ms: { type: integer, format: int64 }
-              poll_interval_ms: { type: integer, format: int64 }
-              tone_hz: { type: integer, format: int64 }
+            $ref: "#/components/schemas/VoiceWebRtcPeerRequest"
     responses:
       "200":
         description: Voice WebRTC peer action applied
         content:
           application/json:
             schema:
-              type: object
-              required: [ok, session_id, tool_configured, node_bin]
-              properties:
-                ok: { type: boolean }
-                session_id: { type: string }
-                tool_configured: { type: boolean }
-                tool_path: { type: string }
-                node_bin: { type: string }
-                started: { type: boolean }
-                stopped: { type: boolean }
-                already_running: { type: boolean }
-                reason: { type: string }
-                peer:
-                  oneOf:
-                    - type: "null"
-                    - type: object
-                      additionalProperties: true
+              $ref: "#/components/schemas/VoiceWebRtcPeerResponse"
       "400":
         description: Invalid request
         content:
@@ -3391,13 +3358,13 @@
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ErrorResponse"
+              $ref: "#/components/schemas/VoiceWebRtcPeerResponse"
       "501":
         description: Unsupported runtime platform
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ErrorResponse"
+              $ref: "#/components/schemas/VoiceWebRtcPeerResponse"
 
 /api/v1/moderator/directive:
   post:

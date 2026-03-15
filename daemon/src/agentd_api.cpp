@@ -33,6 +33,7 @@
 #include "runtime_config.h"
 #include "secrets_file.h"
 #include "session_endpoints.h"
+#include "session_voice_runtime.h"
 #include "string_util.h"
 #include "tools_endpoint.h"
 

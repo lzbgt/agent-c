@@ -1,0 +1,96 @@
+VoiceWebRtcPeerRuntime:
+  type: object
+  required: [schema, runtime_kind, session_id, broker_url, sender_tag, tool_path, node_bin, started_unix_ms, deadline_ms, poll_interval_ms, tone_hz, ready, running]
+  properties:
+    schema: { type: string, enum: [session_voice_webrtc_peer_runtime_v1] }
+    runtime_kind:
+      type: string
+      enum: [external]
+    session_id: { type: string }
+    broker_session_id: { type: string }
+    broker_url: { type: string }
+    sender_tag: { type: string }
+    tool_path: { type: string }
+    node_bin: { type: string }
+    ready_file_path: { type: string }
+    stderr_log_path: { type: string }
+    started_unix_ms: { type: integer, format: int64 }
+    ended_unix_ms: { type: integer, format: int64 }
+    deadline_ms: { type: integer, format: int64 }
+    poll_interval_ms: { type: integer, format: int64 }
+    tone_hz: { type: integer, format: int64 }
+    ready: { type: boolean }
+    running: { type: boolean }
+    pid: { type: integer, format: int64 }
+    exit_code: { type: integer }
+    exit_signal: { type: integer }
+    last_error: { type: string }
+    last_stdout_line: { type: string }
+    last_stdout:
+      type: object
+      additionalProperties: true
+
+VoiceWebRtcPeerRequest:
+  type: object
+  additionalProperties: false
+  required: [session_id, action]
+  properties:
+    session_id: { type: string }
+    action:
+      type: string
+      enum: [start, stop]
+    runtime_kind:
+      type: string
+      enum: [builtin, external]
+      description: Optional backend selector. `external` is the only implemented backend today; `builtin` is reserved for the future embedded agentd-native media service.
+    broker_session_id: { type: string }
+    broker_url: { type: string }
+    broker_token: { type: string }
+    sender_tag: { type: string }
+    deadline_ms: { type: integer, format: int64 }
+    poll_interval_ms: { type: integer, format: int64 }
+    tone_hz: { type: integer, format: int64 }
+
+VoiceWebRtcPeerResponse:
+  type: object
+  required: [ok, session_id, tool_configured, builtin_available, default_runtime_kind, node_bin]
+  properties:
+    ok: { type: boolean }
+    session_id: { type: string }
+    tool_configured: { type: boolean }
+    builtin_available: { type: boolean, enum: [false] }
+    default_runtime_kind:
+      type: string
+      enum: [external]
+    tool_path: { type: string }
+    node_bin: { type: string }
+    started: { type: boolean }
+    stopped: { type: boolean }
+    already_running: { type: boolean }
+    reason: { type: string }
+    error: { type: string }
+    peer:
+      nullable: true
+      allOf:
+        - $ref: "#/components/schemas/VoiceWebRtcPeerRuntime"
+
+VoiceWebRtcPeerStatusResponse:
+  type: object
+  required: [ok, session_id, tool_configured, builtin_available, default_runtime_kind, node_bin, session_exists, running]
+  properties:
+    ok: { type: boolean }
+    session_id: { type: string }
+    tool_configured: { type: boolean }
+    builtin_available: { type: boolean, enum: [false] }
+    default_runtime_kind:
+      type: string
+      enum: [external]
+    tool_path: { type: string }
+    node_bin: { type: string }
+    session_exists: { type: boolean }
+    running: { type: boolean }
+    error: { type: string }
+    peer:
+      nullable: true
+      allOf:
+        - $ref: "#/components/schemas/VoiceWebRtcPeerRuntime"

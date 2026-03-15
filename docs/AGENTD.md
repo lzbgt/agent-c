@@ -378,8 +378,13 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
 - `POST /api/v1/session/voice_control` persists minimal session-scoped `media_play` / `media_pause` / `media_snapshot`
   control requests for browser clients.
 - `GET /api/v1/session/voice_stats?session_id=<id>` summarizes observed voice/media RPC outcomes for the session.
-- `POST /api/v1/session/voice_webrtc_peer` starts or stops the managed host-side WebRTC media peer for a session.
+- `POST /api/v1/session/voice_webrtc_peer` starts or stops the managed WebRTC media peer for a session.
 - `GET /api/v1/session/voice_webrtc_peer?session_id=<id>` reports managed media-peer runtime status, readiness, and final result.
+- The current implementation exposes an explicit backend seam:
+  - `default_runtime_kind=external`
+  - `builtin_available=false`
+  - `peer.runtime_kind=external`
+  so the shipped Node/Playwright peer is now clearly modeled as one backend behind the API instead of an implicit implementation detail.
 
 ## Data governance
 

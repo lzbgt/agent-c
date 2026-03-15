@@ -253,7 +253,11 @@ import json, sys
 obj = json.loads(r'''${status_json}''')
 peer = obj.get("peer")
 expect_running = ${expect_running}
+if obj.get("builtin_available") is not False or obj.get("default_runtime_kind") != "external":
+  raise SystemExit(1)
 if not isinstance(peer, dict):
+  raise SystemExit(1)
+if peer.get("runtime_kind") != "external":
   raise SystemExit(1)
 running = bool(peer.get("running"))
 ready = bool(peer.get("ready"))
@@ -533,7 +537,13 @@ obj = json.loads(r'''${start_resp}''')
 if not obj.get("ok") or not obj.get("started"):
   print("voice_webrtc_peer start failed", obj, file=sys.stderr)
   raise SystemExit(1)
+if obj.get("builtin_available") is not False or obj.get("default_runtime_kind") != "external":
+  print("unexpected runtime defaults", obj, file=sys.stderr)
+  raise SystemExit(1)
 peer = obj.get("peer") or {}
+if peer.get("runtime_kind") != "external":
+  print("unexpected peer runtime_kind", obj, file=sys.stderr)
+  raise SystemExit(1)
 if not peer.get("running"):
   print("voice peer did not report running", obj, file=sys.stderr)
   raise SystemExit(1)
@@ -587,6 +597,29 @@ PY
 
 wait_broker_session_deleted "${BROKER_SESSION_ID}"
 
+builtin_resp_headers="${LOG_DIR}/voice_webrtc_peer_builtin_headers.txt"
+builtin_resp_body="${LOG_DIR}/voice_webrtc_peer_builtin_body.json"
+builtin_status="$(curl -sS --noproxy "*" --max-time 10 -o "${builtin_resp_body}" -D "${builtin_resp_headers}" -w '%{http_code}' \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${SESSION_DB_ID}\",\"action\":\"start\",\"runtime_kind\":\"builtin\"}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+if [[ "${builtin_status}" != "501" ]]; then
+  echo "expected builtin runtime request to return 501, got ${builtin_status}" >&2
+  cat "${builtin_resp_body}" >&2
+  exit 1
+fi
+python3 - <<PY
+import json, sys
+obj = json.load(open(r'''${builtin_resp_body}''', 'r', encoding='utf-8'))
+if obj.get("builtin_available") is not False or obj.get("default_runtime_kind") != "external":
+  print("unexpected builtin contract response", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "not implemented" not in str(obj.get("error", "")):
+  print("expected builtin not implemented error", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 BROKER_SESSION_ID2="$(create_broker_session)"
 start_resp2="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
@@ -614,6 +647,9 @@ obj = json.loads(r'''${start_resp2}''')
 if not obj.get("ok") or not obj.get("started"):
   print("voice_webrtc_peer second start failed", obj, file=sys.stderr)
   raise SystemExit(1)
+if (obj.get("peer") or {}).get("runtime_kind") != "external":
+  print("unexpected second peer runtime_kind", obj, file=sys.stderr)
+  raise SystemExit(1)
 PY
 
 wait_voice_peer_ready "${SESSION_DB_ID}" 1 status_json
@@ -629,6 +665,9 @@ import json, sys
 obj = json.loads(r'''${stop_resp}''')
 if not obj.get("ok") or not obj.get("stopped"):
   print("voice_webrtc_peer stop failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if (obj.get("peer") or {}).get("runtime_kind") != "external":
+  print("unexpected stopped peer runtime_kind", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 

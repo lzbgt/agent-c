@@ -119,6 +119,14 @@ schemas:
     $ref: ./components/memory.yaml#/MemoryCorrelateResponse
   MemoryQueryResponse:
     $ref: ./components/memory.yaml#/MemoryQueryResponse
+  VoiceWebRtcPeerRuntime:
+    $ref: ./components/session.yaml#/VoiceWebRtcPeerRuntime
+  VoiceWebRtcPeerRequest:
+    $ref: ./components/session.yaml#/VoiceWebRtcPeerRequest
+  VoiceWebRtcPeerResponse:
+    $ref: ./components/session.yaml#/VoiceWebRtcPeerResponse
+  VoiceWebRtcPeerStatusResponse:
+    $ref: ./components/session.yaml#/VoiceWebRtcPeerStatusResponse
   EdgeMessageEnvelope:
     $ref: ./components/edge.yaml#/EdgeMessageEnvelope
   EdgeOutboxResponse:

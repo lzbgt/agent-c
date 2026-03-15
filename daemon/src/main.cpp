@@ -23,6 +23,7 @@
 #include "tool_servers.h"
 #include "tool_extension_mux.h"
 #include "session_endpoints.h"
+#include "session_voice_runtime.h"
 #include "moderator_endpoints.h"
 #include "job_endpoints.h"
 #include "orchestrate_endpoints.h"
