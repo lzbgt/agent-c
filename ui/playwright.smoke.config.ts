@@ -30,9 +30,11 @@ export default defineConfig({
   use: {
     baseURL,
     headless: true,
-    trace: "on",
-    screenshot: "on",
-    video: "on",
+    // Smoke runs are deterministic verification lanes, not evidence-capture runs.
+    // Keep failure artifacts, but avoid per-test video/trace overhead that can stall cleanup.
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
+    video: "off",
   },
   reporter: [["list"]],
 });
