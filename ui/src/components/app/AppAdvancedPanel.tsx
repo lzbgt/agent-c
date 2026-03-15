@@ -5,6 +5,7 @@ import BrokerPanel from "../BrokerPanel";
 import MemoryPanel from "../MemoryPanel";
 import RunDiffPanel from "../RunDiffPanel";
 import TraceLookupPanel from "../TraceLookupPanel";
+import VoicePanel from "../VoicePanel";
 import WorkflowPanel from "../WorkflowPanel";
 
 type AppAdvancedPanelProps = {
@@ -32,6 +33,11 @@ type AppAdvancedPanelProps = {
   memoryPanel: {
     baseUrl: string;
     auth: ApiAuth;
+  };
+  voicePanel: {
+    baseUrl: string;
+    auth: ApiAuth;
+    sessionId: string;
   };
   approvalsPanel: {
     baseUrl: string;
@@ -113,6 +119,16 @@ export default function AppAdvancedPanel(props: AppAdvancedPanelProps) {
           }}
           baseUrl={props.memoryPanel.baseUrl}
           auth={props.memoryPanel.auth}
+        />
+      ) : props.advancedPage === "voice" ? (
+        <VoicePanel
+          open={true}
+          onToggle={(open) => {
+            if (!open) props.setAdvancedPage("");
+          }}
+          baseUrl={props.voicePanel.baseUrl}
+          auth={props.voicePanel.auth}
+          sessionId={props.voicePanel.sessionId}
         />
       ) : props.advancedPage === "approvals" ? (
         <ApprovalQueuePanel

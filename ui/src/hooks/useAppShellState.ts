@@ -117,6 +117,7 @@ export default function useAppShellState({
   const advancedPages = React.useMemo(() => {
     const pages = [
       { id: "memory", label: "Memory" },
+      { id: "voice", label: "Voice" },
       { id: "trace", label: "Trace" },
       { id: "workflows", label: "Workflows" },
       { id: "approvals", label: "Approvals" },

@@ -542,6 +542,7 @@ streaming and plugins are stable.
   - 2026-03-15: narrowed the stale umbrella item after re-verifying broker signaling endpoints, loopback smokes, and the open-world voice observe harness.
   - 2026-03-15: broker panel now exposes explicit voice session create/list/select/send/delete controls with live signal stream inspection, backed by broker audio session status APIs and Playwright regression coverage.
   - 2026-03-15: agentd now exposes `POST /api/v1/session/voice_control` plus `GET /api/v1/session/voice_stats`, and the WebUI runtime auto-runs DB-backed `media_play`/`media_pause`/`media_snapshot` actions through the shared client RPC executor.
+  - 2026-03-15: WebUI advanced tools now expose a dedicated Voice panel that drives the shipped agentd voice endpoints and renders durable voice stats, covered by `ui/e2e/voice_panel.spec.ts`.
 - [x] Add binary blob storage tiering plan (`docs/DB.md#blob-storage-tiers-design--status`).
   - [x] Add edge task/node analytics exports (CSV/JSON bundles).
   - [x] Implement blob_manifest schema + local blob store v0 (upload + read + ref-count GC).

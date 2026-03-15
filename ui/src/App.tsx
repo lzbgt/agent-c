@@ -732,6 +732,7 @@ export default function App() {
                 }}
                 runDiffPanel={{ baseUrl: effectiveBase, auth: daemonAuth }}
                 memoryPanel={{ baseUrl: effectiveBase, auth: daemonAuth }}
+                voicePanel={{ baseUrl: effectiveBase, auth: daemonAuth, sessionId }}
                 approvalsPanel={{ baseUrl: effectiveBase, auth: daemonAuth }}
                 workflowPanel={{
                   baseUrl: effectiveBase,

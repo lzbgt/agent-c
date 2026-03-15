@@ -118,6 +118,8 @@ A v0 smoke test should:
   - `GET /api/v1/session/voice_stats`
   These use durable `ui_action` + `client_event` plumbing to drive `media_play`, `media_pause`, and `media_snapshot`
   without inventing a parallel control channel.
+- WebUI advanced tools now expose a dedicated Voice panel for session-scoped play/pause/snapshot control and
+  durable stats inspection on top of those agentd endpoints, with deterministic Playwright coverage.
 - `tests/webui_observe_voice_hello_openworld.sh` and `ui/e2e/observe_voice_hello.spec.ts`
   cover the current browser voice-presentation harness, which is artifact/scene driven rather than
   a full WebRTC session.
