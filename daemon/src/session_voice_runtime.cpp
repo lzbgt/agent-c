@@ -83,6 +83,7 @@ struct VoicePeerRuntime {
   bool managed_broker_session = false;
   bool ready = false;
   bool running = false;
+  bool stale_persisted_record = false;
   bool suppress_persist = false;
   int exit_code = 0;
   int exit_signal = 0;
@@ -465,6 +466,13 @@ static bool clear_voice_peer_runtime_record(AgentDb* db, const std::string& sess
   return db->meta_set(voice_peer_meta_key(session_id), "", out_err);
 }
 
+static bool remove_voice_peer_runtime_artifacts(
+  const DaemonConfig& cfg,
+  const std::string& session_id,
+  bool* out_any_deleted,
+  std::string* out_err
+);
+
 static bool load_voice_peer_runtime_record(
   AgentDb* db,
   const std::string& session_id,
@@ -514,10 +522,29 @@ static bool load_voice_peer_runtime_record(
     if (out_err) out_err->clear();
     return true;
   }
+  const bool persisted_claimed_running = st->running;
   st->status_source = "persisted";
   refresh_voice_peer_runtime_state(st.get());
+  st->stale_persisted_record = persisted_claimed_running && !st->running;
   if (out_state) *out_state = std::move(st);
   return true;
+}
+
+static Json::Value cleanup_stale_persisted_voice_peer_runtime(
+  const DaemonConfig& cfg,
+  AgentDb* db,
+  const std::string& session_id
+) {
+  Json::Value cleanup(Json::objectValue);
+  cleanup["persisted_record_cleared"] = clear_voice_peer_runtime_record(db, session_id, nullptr);
+  bool artifacts_deleted = false;
+  std::string aerr;
+  if (remove_voice_peer_runtime_artifacts(cfg, session_id, &artifacts_deleted, &aerr)) {
+    cleanup["runtime_artifacts_deleted"] = artifacts_deleted;
+  } else if (!aerr.empty()) {
+    cleanup["runtime_artifacts_delete_error"] = aerr;
+  }
+  return cleanup;
 }
 
 static Json::Value session_voice_webrtc_backend_metadata_json_impl(const DaemonConfig& cfg) {
@@ -1116,6 +1143,10 @@ void handle_session_voice_webrtc_peer_endpoint(
         out["cleanup_on_corrupt_record"] = cleanup;
       }
     }
+    if (st && st->stale_persisted_record) {
+      out["cleanup_on_stale_record"] = cleanup_stale_persisted_voice_peer_runtime(cfg, db, session_id);
+      st.reset();
+    }
     if (!st) {
       out["ok"] = true;
       out["stopped"] = false;
@@ -1283,6 +1314,10 @@ void handle_session_voice_webrtc_peer_endpoint(
         cleanup["runtime_artifacts_delete_error"] = aerr;
       }
       out["cleanup_on_corrupt_record"] = cleanup;
+    }
+    if (persisted && persisted->stale_persisted_record) {
+      out["cleanup_on_stale_record"] = cleanup_stale_persisted_voice_peer_runtime(cfg, db, session_id);
+      persisted.reset();
     }
     if (persisted && persisted->running) {
       {
@@ -1578,6 +1613,10 @@ void handle_session_voice_webrtc_peer_status_endpoint(
         cleanup["runtime_artifacts_delete_error"] = aerr;
       }
       out["cleanup_on_corrupt_record"] = cleanup;
+    }
+    if (st && st->stale_persisted_record) {
+      out["cleanup_on_stale_record"] = cleanup_stale_persisted_voice_peer_runtime(cfg, db, *sid);
+      st.reset();
     }
     if (st && st->running) {
       std::lock_guard<std::mutex> lk(g_voice_peer_mu);

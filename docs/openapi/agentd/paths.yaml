@@ -3330,7 +3330,9 @@
       whether per-request broker fields are optional. If the canonical session row no
       longer exists but stale runtime state still does, the status read now self-heals
       that stale runtime, clears local runtime artifacts, and reports the cleanup in
-      `cleanup_on_missing_session`.
+      `cleanup_on_missing_session`. Persisted `running=true` runtime records left
+      behind by a dead daemon process are also self-healed on read through
+      `cleanup_on_stale_record` instead of being surfaced as a fake stopped peer.
     parameters:
       - in: query
         name: session_id
@@ -3386,7 +3388,10 @@
       ungraceful child exit that skipped the peer's best-effort `bye`. `start` now
       also waits for a bounded startup confirmation window and fails closed if the
       child exits before readiness, cleaning up any agentd-owned broker audio session
-      instead of leaving an orphan behind.
+      instead of leaving an orphan behind. If the only recovered runtime state is a
+      stale persisted `running=true` record from a dead daemon process, `stop`
+      returns `reason=not_running` and `start` first clears that stale record via
+      `cleanup_on_stale_record` before proceeding.
     requestBody:
       required: true
       content:

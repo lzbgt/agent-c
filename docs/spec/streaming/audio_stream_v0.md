@@ -171,6 +171,9 @@ A v0 smoke test should:
 - Corrupt persisted `session.voice_webrtc_peer.*` records are now self-healed too: agentd clears the bad record,
   removes stale local runtime artifacts, and reports that recovery in `cleanup_on_corrupt_record` instead of failing
   status/start/stop on a dead persisted snapshot.
+- Persisted `session.voice_webrtc_peer.*` records that still claim `running=true` after a dead daemon restart are now
+  self-healed too: status/stop/start clear the stale record, remove stale local runtime artifacts, and expose that
+  recovery in `cleanup_on_stale_record` instead of reporting a fake recovered peer.
 - Agentd now also supports daemon-level broker URL/token defaults for that managed runtime, so callers may omit
   `broker_url` / `broker_token` on normal `voice_webrtc_peer` start/stop flows and still let agentd create/clean up
   broker-owned audio sessions. Safe config and runtime status expose only boolean presence, not the token itself.

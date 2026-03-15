@@ -428,6 +428,9 @@ Current status:
 - Shipped: corrupt persisted `session.voice_webrtc_peer.*` state is now self-healed too; agentd clears the bad record,
   removes stale local runtime artifacts, and reports the recovery in `cleanup_on_corrupt_record` instead of failing the
   runtime surface with `500`.
+- Shipped: stale persisted `session.voice_webrtc_peer.*` records that still claim `running=true` after a dead daemon
+  restart are now self-healed too; status/stop/start clear the stale record, remove local runtime artifacts, and
+  report the recovery in `cleanup_on_stale_record` instead of surfacing a fake recovered peer.
 - Shipped: agentd can now hold daemon-level broker URL/token defaults for that managed runtime, so normal
   `voice_webrtc_peer` start/stop/delete flows can omit `broker_url` / `broker_token` while still letting agentd create
   and clean up broker-owned audio sessions.

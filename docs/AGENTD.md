@@ -412,6 +412,10 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
 - If the persisted `session.voice_webrtc_peer.*` record is corrupt, status/start/stop now self-heal it by clearing the
   bad persisted record, removing stale local runtime artifacts, and exposing that recovery in
   `cleanup_on_corrupt_record` instead of returning a hard `500`.
+- If a dead daemon process left behind a persisted `session.voice_webrtc_peer.*` record with `running=true`, status,
+  stop, and later starts now self-heal that stale snapshot too: agentd clears the persisted record, removes stale
+  local runtime artifacts, exposes the recovery in `cleanup_on_stale_record`, and treats the runtime as not running
+  instead of surfacing a fake persisted stopped peer.
 - `POST /api/v1/session/voice_webrtc_peer` no longer requires callers to pre-create the broker audio session:
   if `broker_session_id` is omitted and `broker_agent_id` is provided, agentd now creates the broker audio session,
   launches the peer against it, and reports `peer.managed_broker_session=true` plus the chosen
