@@ -19,9 +19,11 @@ Current status:
   `POST /api/v1/edge/auth/trust_roots/rotate`, per-node provisioning via
   `POST /api/v1/edge/auth/provision_node`, and revocation bundle/control via
   `GET /api/v1/edge/auth/revocations` plus `POST /api/v1/edge/auth/revocations/update`,
-  plus node-pollable signed manifest distribution via `POST /api/v1/edge/node/manifest_bundle/send`.
+  plus node-pollable signed bundle distribution via:
+  - `POST /api/v1/edge/node/manifest_bundle/send`
+  - `POST /api/v1/edge/auth/trust_roots/send`
+  - `POST /api/v1/edge/auth/revocations/send`
 - Still open: certificate-chain PKI and confidentiality beyond authenticity-only envelopes.
-  confidentiality beyond authenticity-only envelopes.
 
 Executable contract artifacts (this repo):
 - Schemas: `docs/spec/um-eais/schema/` (envelope + core + platform extensions)
@@ -132,12 +134,14 @@ Envelope authenticity (optional, UM‑BMP auth v0.4):
   - Trust-root rotation control plane:
     - `GET /api/v1/edge/auth/trust_roots` returns a safe bundle with `rotation_epoch`, `hmac_kids`, `ed25519_pubkeys`, and optional `attest`
     - `POST /api/v1/edge/auth/trust_roots/rotate` applies a monotonic rotation epoch and updates the HMAC / Ed25519 trust-root set (`mode:"merge"` or `mode:"replace"`)
+    - `POST /api/v1/edge/auth/trust_roots/send` enqueues the same signed trust-root bundle to a recipient node’s outbox as `PLATFORM_TRUST_ROOTS_BUNDLE`
   - Per-node provisioning helpers:
     - `GET /api/v1/edge/auth/node_binding?node_id=...` shows the effective `kid_policy` match set for one node
     - `POST /api/v1/edge/auth/provision_node` provisions HMAC / Ed25519 trust roots for one node while enforcing the active `edge_auth_kid_policy`
   - Revocation control plane:
     - `GET /api/v1/edge/auth/revocations` returns the durable revoked-`kid` / revoked-node bundle with optional `attest`
     - `POST /api/v1/edge/auth/revocations/update` applies a monotonic revocation epoch and updates the revoked `kid` / node-id set (`mode:"merge"` or `mode:"replace"`)
+    - `POST /api/v1/edge/auth/revocations/send` enqueues the same signed revocation bundle to a recipient node’s outbox as `PLATFORM_REVOCATIONS_BUNDLE`
   - Behavior:
     - If `edge_auth_required=true`: missing/invalid `auth` is rejected with HTTP 401 (no inbox persistence).
     - If `edge_auth_required=false`: unsigned envelopes are accepted, but if `auth` is present it must verify.
@@ -184,6 +188,8 @@ Returns messages in ascending `outbox_id` order. The node should:
 - `GET /api/v1/edge/node/caps?node_id=...`
 - `GET /api/v1/edge/node/manifest_bundle?node_id=...`
 - `POST /api/v1/edge/node/manifest_bundle/send`
+- `POST /api/v1/edge/auth/trust_roots/send`
+- `POST /api/v1/edge/auth/revocations/send`
 
 Manifest bundle note:
 - The manifest bundle endpoint returns the stored manifest plus derived `tools`, `tags`, and
@@ -194,6 +200,9 @@ Manifest bundle note:
 - The send helper enqueues that same signed bundle to a recipient node’s outbox as
   `PLATFORM_MANIFEST_BUNDLE`, so non-HTTP node transports can consume peer identity/capability
   material over the shipped UM-BMP poll path.
+- The edge-auth send helpers enqueue the current signed trust-root and revocation bundles as
+  `PLATFORM_TRUST_ROOTS_BUNDLE` and `PLATFORM_REVOCATIONS_BUNDLE`, so nodes can poll
+  control-plane trust changes through the same outbox transport instead of relying on a direct HTTP pull.
 
 ### Platform helper: enqueue TASK_ASSIGN
 

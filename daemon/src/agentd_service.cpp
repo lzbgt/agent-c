@@ -822,6 +822,10 @@ struct AgentdService::Impl {
     server.handle("POST", "/api/v1/edge/auth/trust_roots/rotate", [this](const HttpRequest& req, HttpResponse* resp) {
       handle_edge_auth_trust_roots_rotate_endpoint(cfg_store.get(), &db, cors_cfg, req, resp);
     });
+    server.handle("POST", "/api/v1/edge/auth/trust_roots/send", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_edge_auth_trust_roots_send_endpoint(cur, &db, cors_cfg, req, resp);
+    });
     server.handle("GET", "/api/v1/edge/auth/node_binding", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_edge_auth_node_binding_endpoint(cur, cors_cfg, req, resp);
@@ -835,6 +839,10 @@ struct AgentdService::Impl {
     });
     server.handle("POST", "/api/v1/edge/auth/revocations/update", [this](const HttpRequest& req, HttpResponse* resp) {
       handle_edge_auth_revocations_update_endpoint(cfg_store.get(), &db, cors_cfg, req, resp);
+    });
+    server.handle("POST", "/api/v1/edge/auth/revocations/send", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_edge_auth_revocations_send_endpoint(cur, &db, cors_cfg, req, resp);
     });
 
     server.handle("GET", "/api/v1/client/prefs", [this](const HttpRequest& req, HttpResponse* resp) {

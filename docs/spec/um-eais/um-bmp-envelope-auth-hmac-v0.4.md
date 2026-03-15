@@ -1,7 +1,7 @@
 # UM‑BMP Envelope Auth — Profile v0.4
 
 Date: 2026-02-05
-Status: implemented rolling core with durable trust-root rotation, revocation control, and node-pollable signed manifest distribution; certificate-chain PKI / confidentiality still open
+Status: implemented rolling core with durable trust-root rotation, revocation control, and node-pollable signed bundle distribution; certificate-chain PKI / confidentiality still open
 
 This document defines an optional envelope authenticity mechanism for UM‑BMP messages
 in constrained IoT/edge systems, intended for:
@@ -139,10 +139,12 @@ Operator config:
 - `GET /api/v1/edge/auth/trust_roots` returns a safe trust-root bundle with `rotation_epoch`, HMAC `kid` list,
   Ed25519 public keys, and an optional server-side `attest` block.
 - `POST /api/v1/edge/auth/trust_roots/rotate` updates the durable trust-root set with a strictly increasing rotation epoch.
+- `POST /api/v1/edge/auth/trust_roots/send` enqueues a signed `PLATFORM_TRUST_ROOTS_BUNDLE` to a target node’s outbox.
 - `GET /api/v1/edge/auth/node_binding?node_id=...` returns the effective binding summary for one node under the current `kid_policy`.
 - `POST /api/v1/edge/auth/provision_node` provisions HMAC / Ed25519 trust roots for a specific node and rejects `kid` values that violate the active `kid_policy`.
 - `GET /api/v1/edge/auth/revocations` returns the durable revoked-`kid` / revoked-node bundle with optional server-side `attest`.
 - `POST /api/v1/edge/auth/revocations/update` updates the durable revocation set with a strictly increasing revocation epoch.
+- `POST /api/v1/edge/auth/revocations/send` enqueues a signed `PLATFORM_REVOCATIONS_BUNDLE` to a target node’s outbox.
 - `POST /api/v1/edge/node/manifest_bundle/send` enqueues a signed `PLATFORM_MANIFEST_BUNDLE` to a target node’s outbox so
   node transports can receive peer manifest/identity material without an out-of-band HTTP pull.
 
@@ -173,6 +175,7 @@ When `edge_auth_required=false`:
 - `ctest` includes `agentd_edge_auth_provision_node_smoke` for node-scoped provisioning and binding inspection.
 - `ctest` includes `agentd_edge_auth_revocations_smoke` for signed revocation bundle export and live ingress enforcement.
 - `ctest` includes `agentd_edge_auth_trust_roots_rotate_smoke` for live trust-root rotation and signed bundle export.
+- `ctest` includes `agentd_edge_auth_bundle_send_smoke` for outbox-backed signed trust-root and revocation bundle delivery.
 - `ctest` includes `agentd_edge_manifest_bundle_smoke` for the platform-signed manifest bundle
   export surface (`GET /api/v1/edge/node/manifest_bundle`).
 - `ctest` includes `agentd_edge_manifest_bundle_send_smoke` for outbox-backed signed manifest distribution

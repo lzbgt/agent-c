@@ -517,6 +517,11 @@ bool AgentdApi::init(std::string* out_error) {
     auto* self = static_cast<Impl*>(ctx);
     handle_edge_auth_trust_roots_rotate_endpoint(self->cfg_store.get(), &self->db, self->cors_cfg, req, resp);
   });
+  impl_->route("POST", "/api/v1/edge/auth/trust_roots/send", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_edge_auth_trust_roots_send_endpoint(cur, &self->db, self->cors_cfg, req, resp);
+  });
   impl_->route("GET", "/api/v1/edge/auth/node_binding", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();
@@ -534,6 +539,11 @@ bool AgentdApi::init(std::string* out_error) {
   impl_->route("POST", "/api/v1/edge/auth/revocations/update", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);
     handle_edge_auth_revocations_update_endpoint(self->cfg_store.get(), &self->db, self->cors_cfg, req, resp);
+  });
+  impl_->route("POST", "/api/v1/edge/auth/revocations/send", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_edge_auth_revocations_send_endpoint(cur, &self->db, self->cors_cfg, req, resp);
   });
 
   impl_->route("GET", "/api/v1/client/prefs", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {

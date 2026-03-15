@@ -424,6 +424,27 @@ EdgeAuthTrustRootsResponse:
       $ref: "#/components/schemas/EdgeAuthTrustRootsBundle"
 
 
+EdgeAuthTrustRootsSendRequest:
+  type: object
+  additionalProperties: false
+  required: [target_node_id]
+  properties:
+    target_node_id:
+      type: string
+      description: Recipient node that will receive the trust-root bundle via outbox
+
+
+EdgeAuthTrustRootsSendResponse:
+  type: object
+  required: [ok, target_node_id, outbox_id, trust_roots]
+  properties:
+    ok: { type: boolean }
+    target_node_id: { type: string }
+    outbox_id: { type: integer, format: int64 }
+    trust_roots:
+      $ref: "#/components/schemas/EdgeAuthTrustRootsBundle"
+
+
 EdgeAuthTrustRootsRotateRequest:
   type: object
   additionalProperties: false
@@ -586,6 +607,27 @@ EdgeAuthRevocationsResponse:
   required: [ok, revocations]
   properties:
     ok: { type: boolean }
+    revocations:
+      $ref: "#/components/schemas/EdgeAuthRevocationsBundle"
+
+
+EdgeAuthRevocationsSendRequest:
+  type: object
+  additionalProperties: false
+  required: [target_node_id]
+  properties:
+    target_node_id:
+      type: string
+      description: Recipient node that will receive the revocation bundle via outbox
+
+
+EdgeAuthRevocationsSendResponse:
+  type: object
+  required: [ok, target_node_id, outbox_id, revocations]
+  properties:
+    ok: { type: boolean }
+    target_node_id: { type: string }
+    outbox_id: { type: integer, format: int64 }
     revocations:
       $ref: "#/components/schemas/EdgeAuthRevocationsBundle"
 

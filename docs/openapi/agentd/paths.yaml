@@ -271,6 +271,45 @@
             schema:
               $ref: "#/components/schemas/ErrorResponse"
 
+/api/v1/edge/auth/trust_roots/send:
+  post:
+    tags: [config, edge]
+    summary: Enqueue the signed trust-root bundle to one node outbox
+    description: |
+      Builds the current signed `edge_auth_trust_roots_v1` bundle and enqueues it to the
+      recipient node as a `PLATFORM_TRUST_ROOTS_BUNDLE` outbox message.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EdgeAuthTrustRootsSendRequest"
+    responses:
+      "200":
+        description: Bundle queued for node delivery
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeAuthTrustRootsSendResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "404":
+        description: Target node not found
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
 /api/v1/edge/auth/node_binding:
   get:
     tags: [config, edge]
@@ -402,6 +441,45 @@
               $ref: "#/components/schemas/ErrorResponse"
       "409":
         description: Revocation epoch conflict
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
+/api/v1/edge/auth/revocations/send:
+  post:
+    tags: [config, edge]
+    summary: Enqueue the signed revocation bundle to one node outbox
+    description: |
+      Builds the current signed `edge_auth_revocations_v1` bundle and enqueues it to the
+      recipient node as a `PLATFORM_REVOCATIONS_BUNDLE` outbox message.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EdgeAuthRevocationsSendRequest"
+    responses:
+      "200":
+        description: Bundle queued for node delivery
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeAuthRevocationsSendResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "404":
+        description: Target node not found
         content:
           application/json:
             schema:
