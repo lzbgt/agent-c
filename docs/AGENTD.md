@@ -574,7 +574,7 @@ Notes:
 - `POST /api/v1/edge/node/consensus_runtime` `action=stop` now reports `reason=not_running` when the managed runtime has
   already completed, and includes the final runtime snapshot/result instead of claiming a live stop occurred.
 - `POST /api/v1/edge/node/consensus_runtime` `action=start` is now idempotent only for the same running config. If the
-  same `node_id` already has a different running runtime, agentd returns `409` with the existing runtime snapshot.
+  same `node_id` already has a different effective running runtime config, agentd returns `409` with the existing runtime snapshot.
 - The WebUI exposes Settings buttons to “Save defaults to daemon” and “Save API key to daemon”.
 
 Edge trust-root rotation:

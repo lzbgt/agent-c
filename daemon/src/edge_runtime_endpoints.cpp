@@ -201,6 +201,35 @@ static Json::Value edge_consensus_runtime_to_json(const EdgeConsensusRuntime& st
   return out;
 }
 
+static bool edge_consensus_runtime_same_effective_config(const EdgeConsensusRuntime& a, const EdgeConsensusRuntime& b) {
+  return
+    trim_copy(a.runtime_kind) == trim_copy(b.runtime_kind) &&
+    trim_copy(a.node_id) == trim_copy(b.node_id) &&
+    trim_copy(a.cluster_id) == trim_copy(b.cluster_id) &&
+    trim_copy(a.manifest_sha256) == trim_copy(b.manifest_sha256) &&
+    trim_copy(a.decision_sha256) == trim_copy(b.decision_sha256) &&
+    a.peer_node_ids == b.peer_node_ids &&
+    a.member_node_ids == b.member_node_ids &&
+    trim_copy(a.daemon_url) == trim_copy(b.daemon_url) &&
+    trim_copy(a.tool_path) == trim_copy(b.tool_path) &&
+    trim_copy(a.model) == trim_copy(b.model) &&
+    trim_copy(a.fw_git_sha) == trim_copy(b.fw_git_sha) &&
+    a.campaign_delay_ms == b.campaign_delay_ms &&
+    a.campaign_retry_ms == b.campaign_retry_ms &&
+    a.campaign_retry_max_ms == b.campaign_retry_max_ms &&
+    a.campaign_retry_backoff_factor == b.campaign_retry_backoff_factor &&
+    a.leader_heartbeat_ms == b.leader_heartbeat_ms &&
+    a.leader_lease_ms == b.leader_lease_ms &&
+    a.poll_interval_ms == b.poll_interval_ms &&
+    a.deadline_ms == b.deadline_ms &&
+    a.cluster_size == b.cluster_size &&
+    a.outbox_limit == b.outbox_limit &&
+    a.trust_roots_epoch == b.trust_roots_epoch &&
+    a.revocations_epoch == b.revocations_epoch &&
+    a.cert_roots_epoch == b.cert_roots_epoch &&
+    a.membership_epoch == b.membership_epoch;
+}
+
 static std::shared_ptr<EdgeConsensusRuntime> edge_consensus_runtime_lookup_locked(const std::string& node_id) {
   const auto it = g_edge_consensus_runtime_by_node.find(node_id);
   return it == g_edge_consensus_runtime_by_node.end() ? nullptr : it->second;
@@ -940,22 +969,19 @@ void handle_edge_node_consensus_runtime_endpoint(
     std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
     auto st = edge_consensus_runtime_lookup_locked(node_id);
     if (st && st->running) {
-      const std::string requested_decision_sha256 =
-        body.isMember("decision_sha256") && body["decision_sha256"].isString()
-          ? trim_copy(body["decision_sha256"].asString())
-          : std::string();
-      const std::string requested_daemon_url =
-        body.isMember("daemon_url") && body["daemon_url"].isString()
-          ? trim_copy(body["daemon_url"].asString())
-          : std::string();
-      const bool same_runtime_kind = trim_copy(st->runtime_kind) == runtime_kind;
-      const bool same_cluster_id = trim_copy(st->cluster_id) == cluster_id;
-      const bool same_manifest_sha256 = trim_copy(st->manifest_sha256) == manifest_sha256;
-      const bool same_decision_sha256 =
-        requested_decision_sha256.empty() || trim_copy(st->decision_sha256) == requested_decision_sha256;
-      const bool same_daemon_url =
-        requested_daemon_url.empty() || trim_copy(st->daemon_url) == requested_daemon_url;
-      if (!(same_runtime_kind && same_cluster_id && same_manifest_sha256 && same_decision_sha256 && same_daemon_url)) {
+      EdgeConsensusHttpRuntimeConfig desired_cfg;
+      EdgeConsensusRuntime desired_state;
+      std::string conflict_err;
+      if (!edge_consensus_runtime_build_config(cfg, body, &desired_cfg, &desired_state, &conflict_err)) {
+        out["error"] = conflict_err.empty() ? "failed to validate requested consensus runtime config" : conflict_err;
+        out["runtime"] = edge_consensus_runtime_to_json(*st);
+        resp->status = 400;
+        resp->body = json_stringify(out);
+        return;
+      }
+      desired_state.runtime_kind = runtime_kind;
+      desired_state.tool_path = runtime_kind == "external" ? trim_copy(cfg.edge_consensus_node_tool_path) : "@builtin";
+      if (!edge_consensus_runtime_same_effective_config(*st, desired_state)) {
         out["error"] = "consensus runtime already running with different config";
         out["runtime"] = edge_consensus_runtime_to_json(*st);
         resp->status = 409;

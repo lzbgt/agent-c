@@ -273,7 +273,7 @@ START_EXT_AGAIN_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(
 JSON
 )")"
 CONFLICT_START_RAW="$(curl_json_status POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","runtime_kind":"builtin","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}-conflict","manifest_sha256":"sha256:6969696969696969696969696969696969696969696969696969696969696969","deadline_ms":30000,"poll_interval_ms":100}
+{"action":"start","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","leader_lease_ms":7777,"deadline_ms":30000,"poll_interval_ms":100}
 JSON
 )")"
 CONFLICT_START_STATUS="$(printf '%s\n' "${CONFLICT_START_RAW}" | sed -n '1p')"
@@ -429,6 +429,9 @@ if conflict_start.get("error") != "consensus runtime already running with differ
   raise SystemExit(1)
 if (conflict_start.get("runtime") or {}).get("runtime_kind") != "external":
   print("conflicting running start lost existing runtime snapshot", conflict_start, file=sys.stderr)
+  raise SystemExit(1)
+if (conflict_start.get("runtime") or {}).get("leader_lease_ms") == 7777:
+  print("conflicting running start unexpectedly mutated running runtime", conflict_start, file=sys.stderr)
   raise SystemExit(1)
 if not stop_ext.get("ok") or not stop_ext.get("stopped"):
   print("external stop wrong", stop_ext, file=sys.stderr)

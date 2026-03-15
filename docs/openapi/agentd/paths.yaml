@@ -2548,7 +2548,9 @@
       Repeating the same running start request is idempotent, but trying to reuse the
       same `node_id` for a different running runtime configuration now returns `409`
       with the existing runtime snapshot instead of pretending the requested runtime
-      was started.
+      was started. Conflict matching uses the effective runtime config, not only the
+      top-level identity fields, so changed timing/member/transport inputs are also
+      rejected while the runtime is active.
       Start requests can also set
       `campaign_delay_ms` for the first election, `campaign_retry_ms` for the base
       retry interval, `campaign_retry_max_ms` for the backoff ceiling, and

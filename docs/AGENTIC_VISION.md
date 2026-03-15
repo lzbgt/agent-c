@@ -353,4 +353,4 @@ Planned evidence (tracked in `TODOS.md`):
 - Managed consensus start semantics are now fail-closed for both backend families on early failure rather than only the
   external helper seam.
 - Managed consensus stop semantics now also distinguish live teardown from already-completed runtimes.
-- Managed consensus start semantics now also distinguish idempotent reuse from real running-config conflicts.
+- Managed consensus start semantics now also distinguish idempotent reuse from real effective-config conflicts.
