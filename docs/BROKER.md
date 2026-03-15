@@ -417,6 +417,8 @@ Current status:
   native media service can replace the backend without changing the session API shape.
 - Shipped: the bundled/external agentd media-peer runtime now persists enough state to recover status across agentd restarts
   without forcing an immediate new broker session when the peer child is still alive.
+- Shipped: repeated `action=start` is now only idempotent when the explicit request still matches the live runtime;
+  conflicting explicit starts return `409` with the current peer snapshot instead of being reported as reused.
 - Shipped: that runtime can now also take `broker_token` on `action=stop` and directly delete an agentd-owned broker
   audio session after an ungraceful peer death that never delivered `bye`.
 - Shipped: `DELETE /api/v1/session?session_id=...&broker_token=...` now treats session erase as a real lifecycle boundary

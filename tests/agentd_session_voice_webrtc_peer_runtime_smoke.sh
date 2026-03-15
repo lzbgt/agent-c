@@ -696,6 +696,29 @@ if peer.get("status_source") != "persisted":
   raise SystemExit(1)
 PY
 
+persisted_conflict_body="${LOG_DIR}/voice_webrtc_peer_persisted_conflict_body.json"
+persisted_conflict_status="$(curl -sS --noproxy "*" --max-time 10 -o "${persisted_conflict_body}" -w '%{http_code}' \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${SESSION_DB_ID}\",\"action\":\"start\",\"runtime_kind\":\"builtin\"}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+if [[ "${persisted_conflict_status}" != "409" ]]; then
+  echo "expected persisted running builtin conflict to return 409, got ${persisted_conflict_status}" >&2
+  cat "${persisted_conflict_body}" >&2
+  exit 1
+fi
+python3 - <<PY
+import json, sys
+obj = json.load(open(r'''${persisted_conflict_body}''', 'r', encoding='utf-8'))
+peer = obj.get("peer") or {}
+if obj.get("error") != "voice peer already running with different config":
+  print("unexpected persisted running conflict response", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("status_source") != "persisted" or peer.get("runtime_kind") != "bundled":
+  print("unexpected persisted conflict peer snapshot", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 run_receiver_peer "${BROKER_SESSION_ID}"
 
 SESSION_JSON="$(curl -fsS --noproxy "*" --max-time 10 \
@@ -1512,6 +1535,61 @@ PY
 )"
 
 wait_voice_peer_ready "${EXTERNAL_SESSION_ID}" 1 status_json external external config 1
+
+external_config_start_again_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${EXTERNAL_SESSION_ID}",
+  "action": "start",
+  "runtime_kind": "external",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab-external-config",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 901
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${external_config_start_again_resp}''')
+peer = obj.get("peer") or {}
+if not obj.get("ok") or obj.get("already_running") is not True:
+  print("expected idempotent already_running response for external runtime", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("runtime_kind") != "external" or peer.get("tone_hz") != 901:
+  print("unexpected peer snapshot for idempotent external start", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+external_conflict_body="${LOG_DIR}/voice_webrtc_peer_external_conflict_body.json"
+external_conflict_status="$(curl -sS --noproxy "*" --max-time 10 -o "${external_conflict_body}" -w '%{http_code}' \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${EXTERNAL_SESSION_ID}\",\"action\":\"start\",\"runtime_kind\":\"external\",\"tone_hz\":1234}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+if [[ "${external_conflict_status}" != "409" ]]; then
+  echo "expected external running conflict to return 409, got ${external_conflict_status}" >&2
+  cat "${external_conflict_body}" >&2
+  exit 1
+fi
+python3 - <<PY
+import json, sys
+obj = json.load(open(r'''${external_conflict_body}''', 'r', encoding='utf-8'))
+peer = obj.get("peer") or {}
+if obj.get("error") != "voice peer already running with different config":
+  print("unexpected external running conflict response", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("runtime_kind") != "external" or peer.get("tone_hz") != 901:
+  print("unexpected external conflict peer snapshot", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
 
 external_config_stop_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \

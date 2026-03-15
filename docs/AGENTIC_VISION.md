@@ -16,6 +16,9 @@ References:
 - Broker + control plane: `docs/BROKER.md`
 
 Recent shipped note:
+- 2026-03-15: running `voice_webrtc_peer` start requests are now only reusable when the explicit requested config still
+  matches the live runtime; conflicting explicit starts, including `runtime_kind=builtin` against a live non-builtin
+  peer, now fail closed with `409` plus the existing runtime snapshot.
 - 2026-03-15: `voice_webrtc_peer` now treats `runtime_kind` as a start-only selector, so stop requests no longer
   reject unrelated backend values like `builtin`; runtime smoke now proves both active-stop and no-runtime stop
   behavior with ignored selector values.

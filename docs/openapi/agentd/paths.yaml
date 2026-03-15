@@ -3365,17 +3365,22 @@
       paths. `builtin` is reserved for a future embedded agentd-native media service
       and currently returns a not-implemented response. If a bundled/external peer
       is still alive after an agentd restart, `start` returns `already_running`
-      from the recovered persisted runtime record instead of requiring broker
-      parameters again. `broker_url` and `broker_token` may be omitted when daemon
-      defaults are configured through env or `/api/v1/config/update`. `broker_session_id`
-      is optional when `broker_agent_id` is provided; in that mode agentd creates
-      and owns the broker audio session before launching the peer. On `stop`, callers
-      may also provide `broker_token`, but when a daemon default token is configured
+      from the recovered persisted runtime record only when the explicit requested
+      runtime fields remain compatible with that live runtime; conflicting explicit
+      start requests now return `409` with the existing runtime snapshot instead.
+      That running-runtime conflict path also wins over the reserved `builtin`
+      selector, so an explicit `runtime_kind=builtin` request against a live bundled
+      or external runtime returns `409` instead of a misleading not-implemented
+      response. `broker_url` and `broker_token` may be omitted when daemon defaults
+      are configured through env or `/api/v1/config/update`. `broker_session_id` is
+      optional when `broker_agent_id` is provided; in that mode agentd creates and
+      owns the broker audio session before launching the peer. On `stop`, callers may
+      also provide `broker_token`, but when a daemon default token is configured
       agentd can use that default to delete an owned broker audio session after an
-      ungraceful child exit that skipped the peer's best-effort `bye`. `start`
-      now also waits for a bounded startup confirmation window and fails closed if
-      the child exits before readiness, cleaning up any agentd-owned broker audio
-      session instead of leaving an orphan behind.
+      ungraceful child exit that skipped the peer's best-effort `bye`. `start` now
+      also waits for a bounded startup confirmation window and fails closed if the
+      child exits before readiness, cleaning up any agentd-owned broker audio session
+      instead of leaving an orphan behind.
     requestBody:
       required: true
       content:
@@ -3395,6 +3400,12 @@
           application/json:
             schema:
               $ref: "#/components/schemas/ErrorResponse"
+      "409":
+        description: Conflicting explicit start request against a running managed peer
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoiceWebRtcPeerResponse"
       "401":
         description: Unauthorized
         content:

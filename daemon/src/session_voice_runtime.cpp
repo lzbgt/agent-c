@@ -141,6 +141,55 @@ static Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   return out;
 }
 
+static bool voice_peer_runtime_matches_explicit_start_request(
+  const VoicePeerRuntime& st,
+  const Json::Value& body,
+  const std::string& runtime_kind,
+  const std::string& requested_broker_session_id,
+  const std::string& broker_agent_id,
+  const std::string& broker_deployment_id,
+  const std::string& request_broker_url,
+  const std::string& sender_tag,
+  int64_t deadline_ms,
+  int64_t poll_interval_ms,
+  int64_t tone_hz
+) {
+  if (body.isMember("runtime_kind") && body["runtime_kind"].isString() && runtime_kind != st.runtime_kind) return false;
+  if (body.isMember("broker_session_id") && body["broker_session_id"].isString() &&
+      !requested_broker_session_id.empty() && requested_broker_session_id != st.broker_session_id) {
+    return false;
+  }
+  if (body.isMember("broker_agent_id") && body["broker_agent_id"].isString() &&
+      !broker_agent_id.empty() && broker_agent_id != st.broker_agent_id) {
+    return false;
+  }
+  if (body.isMember("broker_deployment_id") && body["broker_deployment_id"].isString() &&
+      !broker_deployment_id.empty() && broker_deployment_id != st.broker_deployment_id) {
+    return false;
+  }
+  if (body.isMember("broker_url") && body["broker_url"].isString() &&
+      !request_broker_url.empty() && request_broker_url != st.broker_url) {
+    return false;
+  }
+  if (body.isMember("sender_tag") && body["sender_tag"].isString() && sender_tag != st.sender_tag) return false;
+  if (body.isMember("deadline_ms") &&
+      (body["deadline_ms"].isInt64() || body["deadline_ms"].isUInt64() || body["deadline_ms"].isInt()) &&
+      deadline_ms != st.deadline_ms) {
+    return false;
+  }
+  if (body.isMember("poll_interval_ms") &&
+      (body["poll_interval_ms"].isInt64() || body["poll_interval_ms"].isUInt64() || body["poll_interval_ms"].isInt()) &&
+      poll_interval_ms != st.poll_interval_ms) {
+    return false;
+  }
+  if (body.isMember("tone_hz") &&
+      (body["tone_hz"].isInt64() || body["tone_hz"].isUInt64() || body["tone_hz"].isInt()) &&
+      tone_hz != st.tone_hz) {
+    return false;
+  }
+  return true;
+}
+
 static std::shared_ptr<VoicePeerRuntime> voice_peer_lookup_locked(const std::string& session_id) {
   const auto it = g_voice_peer_by_session.find(session_id);
   return it == g_voice_peer_by_session.end() ? nullptr : it->second;
@@ -1134,12 +1183,6 @@ void handle_session_voice_webrtc_peer_endpoint(
     resp->body = json_error_body("runtime_kind must be bundled, external, or builtin");
     return;
   }
-  if (runtime_kind == "builtin") {
-    out["error"] = "builtin voice_webrtc_peer runtime not implemented";
-    resp->status = 501;
-    resp->body = json_stringify(out);
-    return;
-  }
 
   int64_t deadline_ms = 15000;
   if (body.isMember("deadline_ms") && (body["deadline_ms"].isInt64() || body["deadline_ms"].isUInt64() || body["deadline_ms"].isInt())) {
@@ -1170,16 +1213,49 @@ void handle_session_voice_webrtc_peer_endpoint(
   if (startup_wait_ms < 0) startup_wait_ms = 0;
   if (startup_wait_ms > 10000) startup_wait_ms = 10000;
 
+  const std::string request_broker_url =
+    body.isMember("broker_url") && body["broker_url"].isString() ? trim_copy(body["broker_url"].asString()) : "";
+  const std::string requested_broker_session_id =
+    body.isMember("broker_session_id") && body["broker_session_id"].isString() ? trim_copy(body["broker_session_id"].asString()) : "";
+  const std::string broker_agent_id =
+    body.isMember("broker_agent_id") && body["broker_agent_id"].isString() ? trim_copy(body["broker_agent_id"].asString()) : "";
+  const std::string broker_deployment_id =
+    body.isMember("broker_deployment_id") && body["broker_deployment_id"].isString()
+      ? trim_copy(body["broker_deployment_id"].asString())
+      : "";
+  std::string sender_tag =
+    body.isMember("sender_tag") && body["sender_tag"].isString()
+      ? trim_copy(body["sender_tag"].asString())
+      : std::string("agentd_runtime_peer");
+  if (sender_tag.empty()) sender_tag = "agentd_runtime_peer";
+
   {
     std::lock_guard<std::mutex> lk(g_voice_peer_mu);
     auto st = voice_peer_lookup_locked(session_id);
     if (st) refresh_voice_peer_runtime_state(st.get());
     if (st && st->running) {
-      out["ok"] = true;
-      out["already_running"] = true;
       out["peer"] = voice_peer_runtime_to_json(*st);
       std::string perr;
       (void)persist_voice_peer_runtime_record(db, *st, &perr);
+      if (!voice_peer_runtime_matches_explicit_start_request(
+            *st,
+            body,
+            runtime_kind,
+            requested_broker_session_id,
+            broker_agent_id,
+            broker_deployment_id,
+            request_broker_url,
+            sender_tag,
+            deadline_ms,
+            poll_interval_ms,
+            tone_hz)) {
+        out["error"] = "voice peer already running with different config";
+        resp->status = 409;
+        resp->body = json_stringify(out);
+        return;
+      }
+      out["ok"] = true;
+      out["already_running"] = true;
       resp->status = 200;
       resp->body = json_stringify(out);
       return;
@@ -1213,32 +1289,39 @@ void handle_session_voice_webrtc_peer_endpoint(
         std::lock_guard<std::mutex> lk(g_voice_peer_mu);
         g_voice_peer_by_session[session_id] = persisted;
       }
-      out["ok"] = true;
-      out["already_running"] = true;
       out["peer"] = voice_peer_runtime_to_json(*persisted);
       std::string perr;
       (void)persist_voice_peer_runtime_record(db, *persisted, &perr);
+      if (!voice_peer_runtime_matches_explicit_start_request(
+            *persisted,
+            body,
+            runtime_kind,
+            requested_broker_session_id,
+            broker_agent_id,
+            broker_deployment_id,
+            request_broker_url,
+            sender_tag,
+            deadline_ms,
+            poll_interval_ms,
+            tone_hz)) {
+        out["error"] = "voice peer already running with different config";
+        resp->status = 409;
+        resp->body = json_stringify(out);
+        return;
+      }
+      out["ok"] = true;
+      out["already_running"] = true;
       resp->status = 200;
       resp->body = json_stringify(out);
       return;
     }
   }
-
-  const std::string request_broker_url =
-    body.isMember("broker_url") && body["broker_url"].isString() ? trim_copy(body["broker_url"].asString()) : "";
-  const std::string requested_broker_session_id =
-    body.isMember("broker_session_id") && body["broker_session_id"].isString() ? trim_copy(body["broker_session_id"].asString()) : "";
-  const std::string broker_agent_id =
-    body.isMember("broker_agent_id") && body["broker_agent_id"].isString() ? trim_copy(body["broker_agent_id"].asString()) : "";
-  const std::string broker_deployment_id =
-    body.isMember("broker_deployment_id") && body["broker_deployment_id"].isString()
-      ? trim_copy(body["broker_deployment_id"].asString())
-      : "";
-  std::string sender_tag =
-    body.isMember("sender_tag") && body["sender_tag"].isString()
-      ? trim_copy(body["sender_tag"].asString())
-      : std::string("agentd_runtime_peer");
-  if (sender_tag.empty()) sender_tag = "agentd_runtime_peer";
+  if (runtime_kind == "builtin") {
+    out["error"] = "builtin voice_webrtc_peer runtime not implemented";
+    resp->status = 501;
+    resp->body = json_stringify(out);
+    return;
+  }
   if (!requested_broker_session_id.empty() && !is_safe_shellish_token(requested_broker_session_id, 160)) {
     resp->status = 400;
     resp->body = json_error_body("invalid broker_session_id");
