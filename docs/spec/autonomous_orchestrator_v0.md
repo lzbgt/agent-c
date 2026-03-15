@@ -131,6 +131,13 @@ Minimal responsibilities:
    - If a team run reports `auto_allocate_missing_roles`, emit spawn requests for those roles
      (unless existing requests already cover them).
    - Attempt allocator-backed runtime member allocation first when enabled.
+   - If `meta.capacity_autoscale=true`, inspect `member_job_summary` / `member_jobs`
+     on the active team run and scale beyond “missing roles” when backlog per active
+     member crosses the configured threshold. The loop tries allocator-backed runtime
+     member additions first and falls back to spawn requests when connected capacity
+     is unavailable.
+   - When the active run goes idle, duplicate runtime members above the configured
+     floor are retired to the configured status.
 
 5) **Progress + drift checkpoints**
    - Emit `goal_progress` events periodically (`meta.progress_every_ms`).
@@ -156,6 +163,11 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   auto_allocate_roles: true|false     # default true
   auto_allocate_max_members: number   # optional cap
   allocator_retry_after_ms: number    # optional retry window for allocator attempts
+  capacity_autoscale: true|false      # default false; use job backlog to add/remove capacity
+  capacity_autoscale_queue_per_member: number  # default 2 jobs/member before scale-out
+  capacity_autoscale_min_members: number       # optional floor for idle retirement
+  capacity_autoscale_max_members: number       # optional cap for backlog-driven scale-out
+  capacity_autoscale_retire_idle: true|false   # default true when autoscale enabled
   spawn_missing_roles: true|false     # default true
   spawn_count_per_role: number        # default 1
   spawn_count_by_role: { role: number }  # optional per-role override
@@ -233,6 +245,13 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   allocator_missing_roles: [string, ...]
   allocator_warnings: [string, ...]
   allocator_runtime_members_added: integer
+  capacity_autoscale_scale_roles: [string, ...]
+  capacity_autoscale_scale_unix_ms: integer
+  capacity_autoscale_queued: integer
+  capacity_autoscale_running: integer
+  capacity_autoscale_retired_member_ids: [string, ...]
+  capacity_autoscale_retired_status: string
+  capacity_autoscale_retired_unix_ms: integer
   runtime_members_retired_team_run_id: string
   runtime_members_retired_status: string
   runtime_members_retired_unix_ms: integer

@@ -113,6 +113,32 @@ func TestBuildRuntimeMemberUpdates(t *testing.T) {
 	}
 }
 
+func TestSelectIdleRuntimeMembersToRetire(t *testing.T) {
+	run := orchestratorRun{
+		RolePlanSnapshot: map[string]any{
+			"role_instructions": map[string]any{
+				"planner":  "plan",
+				"executor": "execute",
+			},
+		},
+	}
+	status := &teamRunResponse{
+		MemberJobSummary: map[string]any{"queued": 0, "running": 0},
+		RuntimeMembers: []map[string]any{
+			{"member_id": "rt-1", "agent_id": "agent-1", "role": "planner"},
+			{"member_id": "rt-2", "agent_id": "agent-2", "role": "executor"},
+			{"member_id": "rt-3", "agent_id": "agent-3", "role": "executor"},
+		},
+	}
+	retire := selectIdleRuntimeMembersToRetire(run, status, map[string]any{"capacity_autoscale": true}, parseRuntimeMembers(status.RuntimeMembers))
+	if len(retire) != 1 {
+		t.Fatalf("expected 1 idle retire target, got %d", len(retire))
+	}
+	if retire[0]["member_id"] != "rt-3" {
+		t.Fatalf("expected newest duplicate executor to retire, got %#v", retire[0])
+	}
+}
+
 func TestParseSpawnMetaConfig(t *testing.T) {
 	meta := map[string]any{
 		"spawn_count_per_role": 3,
@@ -447,6 +473,120 @@ func TestHandleRunAllocatorFallbacksToSpawn(t *testing.T) {
 	role, _ := st.spawnBody["role"].(string)
 	if strings.TrimSpace(role) != "planner" {
 		t.Fatalf("unexpected spawn role payload: %#v", st.spawnBody)
+	}
+	if len(st.updateBodies) == 0 {
+		t.Fatalf("expected orchestrator meta updates")
+	}
+}
+
+func TestHandleRunCapacityAutoscaleFallbacksToSpawn(t *testing.T) {
+	type state struct {
+		mu           sync.Mutex
+		calls        []string
+		allocateBody map[string]any
+		spawnBody    map[string]any
+		updateBodies []map[string]any
+		err          string
+	}
+	st := &state{}
+	runMeta := map[string]any{
+		"orchestrator_owner":                  "orch1",
+		"active_team_run_id":                  "teamrun1",
+		"capacity_autoscale":                  true,
+		"capacity_autoscale_queue_per_member": 2,
+		"capacity_autoscale_max_members":      2,
+		"spawn_missing_roles":                 true,
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "" {
+			st.mu.Lock()
+			st.err = "missing Authorization header"
+			st.mu.Unlock()
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/teams/team1/orchestrator/runs/run1/heartbeat":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","run":{"orchestrator_run_id":"run1","team_id":"team1","status":"running","meta":{"orchestrator_owner":"orch1","active_team_run_id":"teamrun1","capacity_autoscale":true,"capacity_autoscale_queue_per_member":2,"capacity_autoscale_max_members":2,"spawn_missing_roles":true}}}`)
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/teams/team1/orchestrator/runs/run1":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			st.mu.Lock()
+			st.updateBodies = append(st.updateBodies, payload)
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","run":{"orchestrator_run_id":"run1","team_id":"team1","status":"running","meta":{}}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/teams/team1/runs/teamrun1":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","team_run_id":"teamrun1","status":"running","auto_allocate_missing_roles":[],"runtime_members":[{"member_id":"rt-1","agent_id":"agent-1","role":"executor"}],"member_jobs":[{"member_id":"rt-1","agent_id":"agent-1","job_id":"job-1","status":"running"},{"member_id":"rt-1","agent_id":"agent-1","job_id":"job-2","status":"queued"},{"member_id":"rt-1","agent_id":"agent-1","job_id":"job-3","status":"queued"}],"member_job_summary":{"queued":2,"running":1}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/teams/team1/guidance":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","guidance":[],"count":0}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/teams/team1/runtime_members/allocate":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			st.mu.Lock()
+			st.calls = append(st.calls, "allocate")
+			st.allocateBody = payload
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","runtime_members":[],"allocated_roles":[],"missing_roles":["executor"]}`)
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/teams/team1/runs/teamrun1/runtime_members":
+			st.mu.Lock()
+			st.err = "unexpected runtime member update"
+			st.mu.Unlock()
+			http.Error(w, "unexpected", http.StatusBadRequest)
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/teams/team1/orchestrator/spawn_requests"):
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","spawn_requests":[]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/teams/team1/orchestrator/spawn_requests":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			st.mu.Lock()
+			st.calls = append(st.calls, "spawn")
+			st.spawnBody = payload
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","spawn_request":{"spawn_request_id":"spawn1","role":"executor","status":"requested","count":1}}`)
+		default:
+			st.mu.Lock()
+			st.err = "unexpected request: " + r.Method + " " + r.URL.Path
+			st.mu.Unlock()
+			http.Error(w, "unexpected", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	cfg := config{brokerBase: server.URL, oidcToken: "token", orchestratorID: "orch1"}
+	run := orchestratorRun{
+		OrchestratorRunID: "run1",
+		TeamID:            "team1",
+		Status:            "running",
+		Meta:              runMeta,
+	}
+	if err := handleRun(context.Background(), server.Client(), cfg, "team1", run); err != nil {
+		t.Fatalf("handleRun error: %v", err)
+	}
+
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.err != "" {
+		t.Fatalf("server error: %s", st.err)
+	}
+	if len(st.calls) < 2 || st.calls[0] != "allocate" || st.calls[1] != "spawn" {
+		t.Fatalf("expected allocate then spawn, got %v", st.calls)
+	}
+	roles, _ := st.allocateBody["roles"].([]any)
+	if len(roles) != 1 || strings.TrimSpace(asString(roles[0])) != "executor" {
+		t.Fatalf("unexpected autoscale allocate roles: %#v", st.allocateBody["roles"])
+	}
+	role, _ := st.spawnBody["role"].(string)
+	if strings.TrimSpace(role) != "executor" {
+		t.Fatalf("unexpected autoscale spawn payload: %#v", st.spawnBody)
 	}
 	if len(st.updateBodies) == 0 {
 		t.Fatalf("expected orchestrator meta updates")

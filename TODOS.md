@@ -422,7 +422,8 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-26: added goal/role revision history with diff keys, replayable events, SSE payloads, and WebUI revision views.
 - [x] W=8 — Orchestrator modularization: split `agentd-orchestrator` loop into SOLID modules (scheduling, allocation, drift, guidance) to keep files <2000 LOC.
   - 2026-03-15: extracted drift/replan, runtime allocation/handoff/retire, run lifecycle/lease progression, bootstrap/loop control, and broker API surfaces into dedicated modules; `broker/cmd/agentd-orchestrator/main.go` is now a tiny entry shell.
-- [ ] W=8 — Capacity-based autoscale: spawn or retire runtime members based on backlog/latency signals (not only missing roles).
+- [x] W=8 — Capacity-based autoscale: spawn or retire runtime members based on backlog/latency signals (not only missing roles).
+  - 2026-03-15: added opt-in `capacity_autoscale` heuristics in the orchestrator loop using `member_job_summary` / `member_jobs` pressure, allocator-first scale-out, spawn fallback, and idle duplicate-runtime-member retirement with package tests + spec updates.
 - [ ] W=9 — Scheduling + isolation MVP: admission control, per-run budgets, and tool execution caps with evidence logs.
 - [ ] W=8 — Data governance controls: retention policy config, export/erase endpoints, and redaction-aware evidence bundles.
 

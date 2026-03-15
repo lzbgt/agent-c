@@ -213,6 +213,11 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 				missingForSpawn = after
 			}
 		}
+		if ok, err := maybeCapacityAutoscaleRuntime(ctx, client, cfg, teamID, activeRunID, run.OrchestratorRunID, owner, run, tr, meta); err != nil {
+			return err
+		} else if ok {
+			metaChanged = true
+		}
 		if shouldSpawnMissingRoles(meta) {
 			if err := ensureSpawnRequests(ctx, client, cfg, teamID, run.OrchestratorRunID, activeRunID, meta, missingForSpawn, owner); err == nil {
 				metaChanged = true

@@ -217,6 +217,333 @@ func maybeAllocateRuntimeMembers(
 	return true, missingAfter, nil
 }
 
+func capacityAutoscaleEnabled(meta map[string]any) bool {
+	if meta == nil {
+		return false
+	}
+	if v, ok := meta["capacity_autoscale"]; ok {
+		if b, ok := asBool(v); ok {
+			return b
+		}
+	}
+	return false
+}
+
+func capacityAutoscaleQueuePerMember(meta map[string]any) int {
+	if meta != nil {
+		if v, ok := asInt(meta["capacity_autoscale_queue_per_member"]); ok && v > 0 {
+			return v
+		}
+	}
+	return 2
+}
+
+func capacityAutoscaleMinMembers(run orchestratorRun, meta map[string]any, runtimeMembers []map[string]any) int {
+	if meta != nil {
+		if v, ok := asInt(meta["capacity_autoscale_min_members"]); ok && v > 0 {
+			return v
+		}
+	}
+	plannedRoles := collectRolesFromPlan(run, meta)
+	if len(plannedRoles) > 0 {
+		return len(plannedRoles)
+	}
+	roleSet := map[string]bool{}
+	for _, member := range runtimeMembers {
+		role := strings.ToLower(strings.TrimSpace(asString(member["role"])))
+		if role != "" {
+			roleSet[role] = true
+		}
+	}
+	if len(roleSet) > 0 {
+		return len(roleSet)
+	}
+	return 1
+}
+
+func capacityAutoscaleMaxMembers(run orchestratorRun, status *teamRunResponse, meta map[string]any, runtimeMembers []map[string]any) int {
+	if meta != nil {
+		if v, ok := asInt(meta["capacity_autoscale_max_members"]); ok && v > 0 {
+			return v
+		}
+	}
+	if status != nil {
+		if v, ok := asInt(status.AutoAllocateMaxMembers); ok && v > 0 {
+			return v
+		}
+	}
+	minMembers := capacityAutoscaleMinMembers(run, meta, runtimeMembers)
+	if minMembers > 0 {
+		return minMembers
+	}
+	return len(runtimeMembers)
+}
+
+func teamRunQueuedRunningCounts(status *teamRunResponse) (int, int) {
+	if status == nil {
+		return 0, 0
+	}
+	if summary, ok := status.MemberJobSummary.(map[string]any); ok {
+		queued, _ := asInt(summary["queued"])
+		running, _ := asInt(summary["running"])
+		if queued > 0 || running > 0 {
+			return queued, running
+		}
+	}
+	queued := 0
+	running := 0
+	memberJobs := parseRuntimeMembers(status.MemberJobs)
+	for _, job := range memberJobs {
+		switch strings.ToLower(strings.TrimSpace(asString(job["status"]))) {
+		case "queued":
+			queued++
+		case "running":
+			running++
+		}
+	}
+	return queued, running
+}
+
+func teamRunRolePressure(status *teamRunResponse, runtimeMembers []map[string]any) map[string]int {
+	pressure := map[string]int{}
+	memberRole := map[string]string{}
+	agentRole := map[string]string{}
+	for _, member := range runtimeMembers {
+		role := strings.ToLower(strings.TrimSpace(asString(member["role"])))
+		memberID := strings.TrimSpace(asString(member["member_id"]))
+		agentID := strings.TrimSpace(asString(member["agent_id"]))
+		if role == "" {
+			continue
+		}
+		if memberID != "" {
+			memberRole[memberID] = role
+		}
+		if agentID != "" {
+			agentRole[agentID] = role
+		}
+	}
+	memberJobs := parseRuntimeMembers(status.MemberJobs)
+	for _, job := range memberJobs {
+		state := strings.ToLower(strings.TrimSpace(asString(job["status"])))
+		if state != "queued" && state != "running" {
+			continue
+		}
+		role := strings.ToLower(strings.TrimSpace(asString(job["role"])))
+		if role == "" {
+			if memberID := strings.TrimSpace(asString(job["member_id"])); memberID != "" {
+				role = memberRole[memberID]
+			}
+		}
+		if role == "" {
+			if agentID := strings.TrimSpace(asString(job["agent_id"])); agentID != "" {
+				role = agentRole[agentID]
+			}
+		}
+		if role != "" {
+			pressure[role]++
+		}
+	}
+	return pressure
+}
+
+func chooseCapacityAutoscaleRoleCounts(pressure map[string]int, preferredRoles []string, runtimeMembers []map[string]any, extra int) map[string]int {
+	if extra <= 0 {
+		return nil
+	}
+	candidates := []string{}
+	for role := range pressure {
+		if role != "" {
+			candidates = append(candidates, role)
+		}
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		li := pressure[candidates[i]]
+		lj := pressure[candidates[j]]
+		if li == lj {
+			return candidates[i] < candidates[j]
+		}
+		return li > lj
+	})
+	if len(candidates) == 0 {
+		candidates = append(candidates, preferredRoles...)
+	}
+	if len(candidates) == 0 {
+		roleSet := map[string]bool{}
+		for _, member := range runtimeMembers {
+			role := strings.ToLower(strings.TrimSpace(asString(member["role"])))
+			if role != "" && !roleSet[role] {
+				roleSet[role] = true
+				candidates = append(candidates, role)
+			}
+		}
+		sort.Strings(candidates)
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	counts := map[string]int{}
+	for idx := 0; idx < extra; idx++ {
+		role := candidates[idx%len(candidates)]
+		counts[role]++
+	}
+	return counts
+}
+
+func selectIdleRuntimeMembersToRetire(run orchestratorRun, status *teamRunResponse, meta map[string]any, runtimeMembers []map[string]any) []map[string]any {
+	if status == nil || len(runtimeMembers) == 0 {
+		return nil
+	}
+	queued, running := teamRunQueuedRunningCounts(status)
+	if queued > 0 || running > 0 {
+		return nil
+	}
+	if meta != nil {
+		if v, ok := meta["capacity_autoscale_retire_idle"]; ok {
+			if b, ok := asBool(v); ok && !b {
+				return nil
+			}
+		}
+	}
+	minMembers := capacityAutoscaleMinMembers(run, meta, runtimeMembers)
+	if len(runtimeMembers) <= minMembers {
+		return nil
+	}
+	baselineByRole := map[string]int{}
+	for _, role := range collectRolesFromPlan(run, meta) {
+		if role != "" {
+			baselineByRole[role]++
+		}
+	}
+	if len(baselineByRole) == 0 {
+		for _, member := range runtimeMembers {
+			role := strings.ToLower(strings.TrimSpace(asString(member["role"])))
+			if role != "" {
+				baselineByRole[role] = 1
+			}
+		}
+	}
+	activeByRole := map[string]int{}
+	for _, member := range runtimeMembers {
+		role := strings.ToLower(strings.TrimSpace(asString(member["role"])))
+		if role != "" {
+			activeByRole[role]++
+		}
+	}
+	retireCount := len(runtimeMembers) - minMembers
+	if retireCount <= 0 {
+		return nil
+	}
+	retire := make([]map[string]any, 0, retireCount)
+	for idx := len(runtimeMembers) - 1; idx >= 0 && len(retire) < retireCount; idx-- {
+		member := runtimeMembers[idx]
+		role := strings.ToLower(strings.TrimSpace(asString(member["role"])))
+		if role == "" {
+			continue
+		}
+		baseline := baselineByRole[role]
+		if baseline <= 0 {
+			baseline = 1
+		}
+		if activeByRole[role] <= baseline {
+			continue
+		}
+		activeByRole[role]--
+		retire = append(retire, member)
+	}
+	return retire
+}
+
+func maybeCapacityAutoscaleRuntime(
+	ctx context.Context,
+	client *http.Client,
+	cfg config,
+	teamID,
+	teamRunID,
+	orchestratorRunID,
+	owner string,
+	run orchestratorRun,
+	status *teamRunResponse,
+	meta map[string]any,
+) (bool, error) {
+	if !capacityAutoscaleEnabled(meta) || status == nil || teamID == "" || teamRunID == "" {
+		return false, nil
+	}
+	runtimeMembers := parseRuntimeMembers(status.RuntimeMembers)
+	queued, running := teamRunQueuedRunningCounts(status)
+	currentCount := len(runtimeMembers)
+	maxMembers := capacityAutoscaleMaxMembers(run, status, meta, runtimeMembers)
+	minMembers := capacityAutoscaleMinMembers(run, meta, runtimeMembers)
+	queuePerMember := capacityAutoscaleQueuePerMember(meta)
+	changed := false
+
+	totalLoad := queued + running
+	if totalLoad > 0 && currentCount < maxMembers {
+		desired := (totalLoad + queuePerMember - 1) / queuePerMember
+		if desired < minMembers {
+			desired = minMembers
+		}
+		if desired > maxMembers {
+			desired = maxMembers
+		}
+		extra := desired - currentCount
+		if extra > 0 {
+			preferredRoles := collectRolesFromPlan(run, meta)
+			roleCounts := chooseCapacityAutoscaleRoleCounts(teamRunRolePressure(status, runtimeMembers), preferredRoles, runtimeMembers, extra)
+			if len(roleCounts) > 0 {
+				scaleRoles := []string{}
+				for role, count := range roleCounts {
+					for idx := 0; idx < count; idx++ {
+						scaleRoles = append(scaleRoles, role)
+					}
+				}
+				sort.Strings(scaleRoles)
+				if ok, _, err := maybeAllocateRuntimeMembers(ctx, client, cfg, teamID, teamRunID, status, meta, scaleRoles); err != nil {
+					return changed, err
+				} else if ok {
+					changed = true
+					meta["capacity_autoscale_scale_roles"] = scaleRoles
+					meta["capacity_autoscale_scale_unix_ms"] = time.Now().UTC().UnixMilli()
+					meta["capacity_autoscale_queued"] = queued
+					meta["capacity_autoscale_running"] = running
+					if shouldSpawnMissingRoles(meta) {
+						if err := ensureSpawnRequests(ctx, client, cfg, teamID, orchestratorRunID, teamRunID, meta, scaleRoles, owner); err == nil {
+							changed = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	retireTargets := selectIdleRuntimeMembersToRetire(run, status, meta, runtimeMembers)
+	if len(retireTargets) > 0 {
+		retireStatus := runtimeMemberRetireStatus(meta)
+		updates := buildRuntimeMemberUpdates(retireTargets, retireStatus)
+		if len(updates) > 0 {
+			if err := updateTeamRunRuntimeMembers(ctx, client, cfg, teamID, teamRunID, updates); err != nil {
+				return changed, err
+			}
+			changed = true
+			meta["capacity_autoscale_retired_unix_ms"] = time.Now().UTC().UnixMilli()
+			meta["capacity_autoscale_retired_status"] = retireStatus
+			meta["capacity_autoscale_retired_member_ids"] = extractRuntimeMemberIDs(retireTargets)
+		}
+	}
+
+	return changed, nil
+}
+
+func extractRuntimeMemberIDs(runtimeMembers []map[string]any) []string {
+	ids := make([]string, 0, len(runtimeMembers))
+	for _, member := range runtimeMembers {
+		memberID := strings.TrimSpace(asString(member["member_id"]))
+		if memberID != "" {
+			ids = append(ids, memberID)
+		}
+	}
+	return ids
+}
+
 func allocatorWarningFromErr(err error) string {
 	if err == nil {
 		return ""
