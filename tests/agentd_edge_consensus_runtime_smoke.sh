@@ -268,6 +268,16 @@ START_EXT_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<
 JSON
 )")"
 RUNNING_EXT_JSON="$(wait_runtime_running "${EXT_NODE}")"
+START_EXT_AGAIN_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"start","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","deadline_ms":30000,"poll_interval_ms":100}
+JSON
+)")"
+CONFLICT_START_RAW="$(curl_json_status POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"start","runtime_kind":"builtin","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}-conflict","manifest_sha256":"sha256:6969696969696969696969696969696969696969696969696969696969696969","deadline_ms":30000,"poll_interval_ms":100}
+JSON
+)")"
+CONFLICT_START_STATUS="$(printf '%s\n' "${CONFLICT_START_RAW}" | sed -n '1p')"
+CONFLICT_START_JSON="$(printf '%s\n' "${CONFLICT_START_RAW}" | sed '1d')"
 STOP_EXT_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
 {"action":"stop","node_id":"${EXT_NODE}"}
 JSON
@@ -355,6 +365,8 @@ config_get = json.loads(r'''${CONFIG_GET_JSON}''')
 config_restart = json.loads(r'''${CONFIG_RESTART_JSON}''')
 start_ext = json.loads(r'''${START_EXT_JSON}''')
 running_ext = json.loads(r'''${RUNNING_EXT_JSON}''')
+start_ext_again = json.loads(r'''${START_EXT_AGAIN_JSON}''')
+conflict_start = json.loads(r'''${CONFLICT_START_JSON}''')
 stop_ext = json.loads(r'''${STOP_EXT_JSON}''')
 stop_ext_status = json.loads(r'''${STOP_EXT_STATUS_JSON}''')
 failfast_cfg = json.loads(r'''${FAILFAST_CFG_JSON}''')
@@ -402,6 +414,21 @@ if not (running_ext.get("runtime") or {}).get("running"):
   raise SystemExit(1)
 if (running_ext.get("runtime") or {}).get("runtime_kind") != "external":
   print("running external runtime kind mismatch", running_ext, file=sys.stderr)
+  raise SystemExit(1)
+if not start_ext_again.get("ok") or start_ext_again.get("already_running") is not True:
+  print("identical external re-start did not stay idempotent", start_ext_again, file=sys.stderr)
+  raise SystemExit(1)
+if (start_ext_again.get("runtime") or {}).get("runtime_kind") != "external":
+  print("identical external re-start lost runtime snapshot", start_ext_again, file=sys.stderr)
+  raise SystemExit(1)
+if "${CONFLICT_START_STATUS}" != "409":
+  print("conflicting running start returned wrong status", "${CONFLICT_START_STATUS}", conflict_start, file=sys.stderr)
+  raise SystemExit(1)
+if conflict_start.get("error") != "consensus runtime already running with different config":
+  print("conflicting running start wrong error", conflict_start, file=sys.stderr)
+  raise SystemExit(1)
+if (conflict_start.get("runtime") or {}).get("runtime_kind") != "external":
+  print("conflicting running start lost existing runtime snapshot", conflict_start, file=sys.stderr)
   raise SystemExit(1)
 if not stop_ext.get("ok") or not stop_ext.get("stopped"):
   print("external stop wrong", stop_ext, file=sys.stderr)

@@ -940,6 +940,28 @@ void handle_edge_node_consensus_runtime_endpoint(
     std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
     auto st = edge_consensus_runtime_lookup_locked(node_id);
     if (st && st->running) {
+      const std::string requested_decision_sha256 =
+        body.isMember("decision_sha256") && body["decision_sha256"].isString()
+          ? trim_copy(body["decision_sha256"].asString())
+          : std::string();
+      const std::string requested_daemon_url =
+        body.isMember("daemon_url") && body["daemon_url"].isString()
+          ? trim_copy(body["daemon_url"].asString())
+          : std::string();
+      const bool same_runtime_kind = trim_copy(st->runtime_kind) == runtime_kind;
+      const bool same_cluster_id = trim_copy(st->cluster_id) == cluster_id;
+      const bool same_manifest_sha256 = trim_copy(st->manifest_sha256) == manifest_sha256;
+      const bool same_decision_sha256 =
+        requested_decision_sha256.empty() || trim_copy(st->decision_sha256) == requested_decision_sha256;
+      const bool same_daemon_url =
+        requested_daemon_url.empty() || trim_copy(st->daemon_url) == requested_daemon_url;
+      if (!(same_runtime_kind && same_cluster_id && same_manifest_sha256 && same_decision_sha256 && same_daemon_url)) {
+        out["error"] = "consensus runtime already running with different config";
+        out["runtime"] = edge_consensus_runtime_to_json(*st);
+        resp->status = 409;
+        resp->body = json_stringify(out);
+        return;
+      }
       out["ok"] = true;
       out["already_running"] = true;
       out["runtime"] = edge_consensus_runtime_to_json(*st);

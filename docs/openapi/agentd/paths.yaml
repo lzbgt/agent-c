@@ -2545,6 +2545,10 @@
       quickly with a successful commit during that same confirmation window. Stop
       requests now return `reason=not_running` when the runtime already finished and
       include the final runtime snapshot instead of reporting a false positive stop.
+      Repeating the same running start request is idempotent, but trying to reuse the
+      same `node_id` for a different running runtime configuration now returns `409`
+      with the existing runtime snapshot instead of pretending the requested runtime
+      was started.
       Start requests can also set
       `campaign_delay_ms` for the first election, `campaign_retry_ms` for the base
       retry interval, `campaign_retry_max_ms` for the backoff ceiling, and
