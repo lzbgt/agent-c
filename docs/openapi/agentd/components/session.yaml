@@ -49,7 +49,7 @@ VoiceWebRtcPeerRequest:
     runtime_kind:
       type: string
       enum: [builtin, bundled, external]
-      description: Optional backend selector. `bundled` uses the shipped repo-local Node/Playwright peer when discoverable, `external` uses an operator-configured helper path, and `builtin` is reserved for the future embedded agentd-native media service.
+      description: Optional backend selector for `action=start`; ignored on `action=stop`. `bundled` uses the shipped repo-local Node/Playwright peer when discoverable, `external` uses an operator-configured helper path, and `builtin` is reserved for the future embedded agentd-native media service.
     broker_session_id:
       type: string
       description: Optional existing broker audio-session id. Must not be combined with `broker_agent_id` or `broker_deployment_id`; when supplied, agentd preflights that broker session before launching the peer.

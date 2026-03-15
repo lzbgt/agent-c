@@ -1009,21 +1009,6 @@ void handle_session_voice_webrtc_peer_endpoint(
     return;
   }
 
-  const std::string runtime_kind = body.isMember("runtime_kind") && body["runtime_kind"].isString()
-    ? lower_copy(trim_copy(body["runtime_kind"].asString()))
-    : default_voice_peer_runtime_kind(cfg);
-  if (runtime_kind != "external" && runtime_kind != "bundled" && runtime_kind != "builtin") {
-    resp->status = 400;
-    resp->body = json_error_body("runtime_kind must be bundled, external, or builtin");
-    return;
-  }
-  if (runtime_kind == "builtin") {
-    out["error"] = "builtin voice_webrtc_peer runtime not implemented";
-    resp->status = 501;
-    resp->body = json_stringify(out);
-    return;
-  }
-
   if (action == "stop") {
     std::shared_ptr<VoicePeerRuntime> st;
     {
@@ -1094,6 +1079,21 @@ void handle_session_voice_webrtc_peer_endpoint(
     resp->body = json_stringify(out);
     return;
 #endif
+  }
+
+  const std::string runtime_kind = body.isMember("runtime_kind") && body["runtime_kind"].isString()
+    ? lower_copy(trim_copy(body["runtime_kind"].asString()))
+    : default_voice_peer_runtime_kind(cfg);
+  if (runtime_kind != "external" && runtime_kind != "bundled" && runtime_kind != "builtin") {
+    resp->status = 400;
+    resp->body = json_error_body("runtime_kind must be bundled, external, or builtin");
+    return;
+  }
+  if (runtime_kind == "builtin") {
+    out["error"] = "builtin voice_webrtc_peer runtime not implemented";
+    resp->status = 501;
+    resp->body = json_stringify(out);
+    return;
   }
 
   int64_t deadline_ms = 15000;

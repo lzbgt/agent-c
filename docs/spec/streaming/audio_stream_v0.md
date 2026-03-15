@@ -138,6 +138,8 @@ A v0 smoke test should:
   teardown against a live headless Chromium peer.
 - `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` covers the agentd-managed runtime surface for that same peer,
   including start/status, inbound RTP proof against a live browser peer, and managed stop/teardown.
+- `runtime_kind` on `POST /api/v1/session/voice_webrtc_peer` is now a start-only backend selector; stop requests ignore
+  it and target the actual managed runtime state for the session.
 - The managed runtime contract now explicitly reports:
   - `builtin_available=false`
   - `bundled_available=true|false`

@@ -15,6 +15,11 @@ References:
 - Current capabilities: `docs/HANDBOOK.md`, `docs/AGENTD.md`, `docs/WORKFLOWS.md`, `docs/MEMORY.md`
 - Broker + control plane: `docs/BROKER.md`
 
+Recent shipped note:
+- 2026-03-15: `voice_webrtc_peer` now treats `runtime_kind` as a start-only selector, so stop requests no longer
+  reject unrelated backend values like `builtin`; runtime smoke now proves both active-stop and no-runtime stop
+  behavior with ignored selector values.
+
 Clarification: “Beyond OpenClaw” means **going past a gateway/plugin model** into a full-stack,
 durable, policy-driven agent platform with evidence-grade runs, multi-agent orchestration,
 and replayable outcomes.

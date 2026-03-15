@@ -1516,7 +1516,7 @@ wait_voice_peer_ready "${EXTERNAL_SESSION_ID}" 1 status_json external external c
 external_config_stop_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${EXTERNAL_SESSION_ID}\",\"action\":\"stop\"}" \
+  -d "{\"session_id\":\"${EXTERNAL_SESSION_ID}\",\"action\":\"stop\",\"runtime_kind\":\"builtin\"}" \
   "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
 
 python3 - <<PY
@@ -1535,6 +1535,38 @@ if obj.get("broker_session_deleted") is not True:
 PY
 
 wait_broker_session_deleted "${EXTERNAL_BROKER_SESSION_ID}"
+
+NOOP_STOP_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_noop_stop_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${NOOP_STOP_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+noop_stop_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${NOOP_STOP_SESSION_ID}\",\"action\":\"stop\",\"runtime_kind\":\"not-a-real-runtime-kind\"}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${noop_stop_resp}''')
+if not obj.get("ok"):
+  print("expected noop stop with ignored runtime_kind to succeed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("stopped") is not False or obj.get("reason") != "not_running":
+  print("expected noop stop result", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("peer") is not None:
+  print("expected noop stop peer=null", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+NOOP_STOP_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${NOOP_STOP_SESSION_ID}")"
+curl -fsS --noproxy "*" --max-time 10 -X DELETE \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session?session_id=${NOOP_STOP_SESSION_ID_Q}" >/dev/null
 
 EXTERNAL_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${EXTERNAL_SESSION_ID}")"
 curl -fsS --noproxy "*" --max-time 10 -X DELETE \

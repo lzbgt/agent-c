@@ -382,6 +382,8 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   control requests for browser clients.
 - `GET /api/v1/session/voice_stats?session_id=<id>` summarizes observed voice/media RPC outcomes for the session.
 - `POST /api/v1/session/voice_webrtc_peer` starts or stops the managed WebRTC media peer for a session.
+- `runtime_kind` on that endpoint is start-only; stop requests now ignore it and act on the actual managed runtime
+  state for the session instead of rejecting unrelated backend values.
 - `GET /api/v1/session/voice_webrtc_peer?session_id=<id>` reports managed media-peer runtime status, readiness, and final result.
 - The current implementation exposes an explicit backend seam:
   - `default_runtime_kind=bundled|external`
