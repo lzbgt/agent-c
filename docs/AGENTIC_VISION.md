@@ -56,7 +56,7 @@ CLI, or a custom client.
    - “Bring your own keys” and zero-secret-sharing deployment paths.
 
 8) **Cost and latency control**
-   - Explicit budget caps, retry policies, and model routing.
+   - Explicit budget caps, bounded retry policies, and model routing.
    - Diagnostics that identify provider failures quickly.
 
 9) **Evidence-grade outcomes**

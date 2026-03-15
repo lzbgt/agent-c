@@ -30,7 +30,9 @@ static EdgeConsensusNodeLoop make_loop(
   const std::vector<std::string>& peers,
   const std::string& decision_sha256,
   int64_t campaign_delay_ms = 0,
-  int64_t campaign_retry_ms = 0
+  int64_t campaign_retry_ms = 0,
+  int64_t campaign_retry_max_ms = 0,
+  int64_t campaign_retry_backoff_factor = 1
 ) {
   EdgeConsensusNodeLoopConfig cfg;
   cfg.self = make_identity(node_id);
@@ -38,6 +40,8 @@ static EdgeConsensusNodeLoop make_loop(
   cfg.cluster_size = peers.size() + 1;
   cfg.campaign_delay_ms = campaign_delay_ms;
   cfg.campaign_retry_ms = campaign_retry_ms;
+  cfg.campaign_retry_max_ms = campaign_retry_max_ms;
+  cfg.campaign_retry_backoff_factor = campaign_retry_backoff_factor;
   cfg.decision_sha256 = decision_sha256;
   return EdgeConsensusNodeLoop(cfg);
 }
@@ -112,6 +116,46 @@ static void test_tick_retries_election_after_retry_delay() {
   assert(loop.campaign_attempts() == 2);
 }
 
+static void test_tick_applies_bounded_backoff() {
+  auto loop = make_loop(
+    "node-a",
+    {"node-b", "node-c"},
+    "sha256:efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+    100,
+    200,
+    500,
+    2
+  );
+
+  std::vector<EdgeConsensusFrame> frames = loop.tick(1000);
+  assert(frames.empty());
+  frames = loop.tick(1100);
+  assert(frames.size() == 1);
+  assert(loop.campaign_attempts() == 1);
+  assert(loop.current_campaign_delay_ms() == 200);
+
+  frames = loop.tick(1299);
+  assert(frames.empty());
+  frames = loop.tick(1300);
+  assert(frames.size() == 1);
+  assert(loop.campaign_attempts() == 2);
+  assert(loop.current_campaign_delay_ms() == 400);
+
+  frames = loop.tick(1699);
+  assert(frames.empty());
+  frames = loop.tick(1700);
+  assert(frames.size() == 1);
+  assert(loop.campaign_attempts() == 3);
+  assert(loop.current_campaign_delay_ms() == 500);
+
+  frames = loop.tick(2199);
+  assert(frames.empty());
+  frames = loop.tick(2200);
+  assert(frames.size() == 1);
+  assert(loop.campaign_attempts() == 4);
+  assert(loop.current_campaign_delay_ms() == 500);
+}
+
 static void test_vote_grant_routes_back_to_candidate() {
   auto loop_a = make_loop(
     "node-a",
@@ -184,7 +228,9 @@ static void test_status_surfaces_loop_config() {
     {"node-y", "node-x"},
     "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
     50,
-    250
+    250,
+    500,
+    2
   );
   (void)loop.tick(1000);
   (void)loop.tick(1050);
@@ -192,6 +238,8 @@ static void test_status_surfaces_loop_config() {
   assert(status["self"]["node_id"].asString() == "node-z");
   assert(status["campaign_delay_ms"].asInt64() == 50);
   assert(status["campaign_retry_ms"].asInt64() == 250);
+  assert(status["campaign_retry_max_ms"].asInt64() == 500);
+  assert(status["campaign_retry_backoff_factor"].asInt64() == 2);
   assert(status["self"]["membership_epoch"].asUInt64() == 9);
   assert(status["peer_node_ids"].isArray());
   assert(status["peer_node_ids"].size() == 2);
@@ -199,6 +247,7 @@ static void test_status_surfaces_loop_config() {
   assert(status["member_node_ids"].size() == 3);
   assert(status["election_started"].asBool());
   assert(status["campaign_attempts"].asUInt64() == 1);
+  assert(status["current_campaign_delay_ms"].asInt64() == 250);
   assert(status["last_campaign_started_utc_ms"].asInt64() == 1050);
   assert(status["next_campaign_utc_ms"].asInt64() == 1300);
   assert(status["replica"]["campaign_decision_sha256"].asString() ==
@@ -212,6 +261,7 @@ static void test_status_surfaces_loop_config() {
 int main() {
   test_tick_emits_election_once_after_delay();
   test_tick_retries_election_after_retry_delay();
+  test_tick_applies_bounded_backoff();
   test_vote_grant_routes_back_to_candidate();
   test_quorum_commit_emits_leader_commit();
   test_status_surfaces_loop_config();

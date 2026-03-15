@@ -209,6 +209,8 @@ bool run_edge_consensus_http_runtime(
   loop_cfg.cluster_size = cfg.cluster_size;
   loop_cfg.campaign_delay_ms = cfg.campaign_delay_ms;
   loop_cfg.campaign_retry_ms = cfg.campaign_retry_ms;
+  loop_cfg.campaign_retry_max_ms = cfg.campaign_retry_max_ms;
+  loop_cfg.campaign_retry_backoff_factor = cfg.campaign_retry_backoff_factor;
   loop_cfg.decision_sha256 = cfg.decision_sha256;
   EdgeConsensusNodeLoop loop(loop_cfg);
   const int64_t started_ms = now_utc_ms();

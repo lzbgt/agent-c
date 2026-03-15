@@ -880,7 +880,7 @@ EdgeConsensusMembershipAttest:
 
 EdgeConsensusMembershipBundle:
   type: object
-  required: [schema, created_utc_ms, cluster_id, membership_epoch, updated_utc_ms, campaign_delay_ms, campaign_retry_ms, member_node_ids]
+  required: [schema, created_utc_ms, cluster_id, membership_epoch, updated_utc_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, member_node_ids]
   properties:
     schema: { type: string, enum: [edge_consensus_membership_v1] }
     created_utc_ms: { type: integer, format: int64 }
@@ -889,6 +889,8 @@ EdgeConsensusMembershipBundle:
     updated_utc_ms: { type: integer, format: int64 }
     campaign_delay_ms: { type: integer, format: int64 }
     campaign_retry_ms: { type: integer, format: int64 }
+    campaign_retry_max_ms: { type: integer, format: int64 }
+    campaign_retry_backoff_factor: { type: integer, format: int64 }
     member_node_ids:
       type: array
       items: { type: string }
@@ -925,11 +927,13 @@ EdgeConsensusMembershipRotateRequest:
       items: { type: string }
     campaign_delay_ms: { type: integer, format: int64 }
     campaign_retry_ms: { type: integer, format: int64 }
+    campaign_retry_max_ms: { type: integer, format: int64 }
+    campaign_retry_backoff_factor: { type: integer, format: int64 }
 
 
 EdgeConsensusMembershipRotateResponse:
   type: object
-  required: [ok, cluster_id, membership_epoch, updated_utc_ms, campaign_delay_ms, campaign_retry_ms, member_count, membership]
+  required: [ok, cluster_id, membership_epoch, updated_utc_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, member_count, membership]
   properties:
     ok: { type: boolean }
     cluster_id: { type: string }
@@ -937,6 +941,8 @@ EdgeConsensusMembershipRotateResponse:
     updated_utc_ms: { type: integer, format: int64 }
     campaign_delay_ms: { type: integer, format: int64 }
     campaign_retry_ms: { type: integer, format: int64 }
+    campaign_retry_max_ms: { type: integer, format: int64 }
+    campaign_retry_backoff_factor: { type: integer, format: int64 }
     member_count: { type: integer, format: int64 }
     membership:
       $ref: "#/components/schemas/EdgeConsensusMembershipBundle"

@@ -26,6 +26,8 @@ struct Options {
   size_t outbox_limit = 128;
   int64_t campaign_delay_ms = 0;
   int64_t campaign_retry_ms = 1500;
+  int64_t campaign_retry_max_ms = 1500;
+  int64_t campaign_retry_backoff_factor = 1;
   int64_t poll_interval_ms = 100;
   int64_t deadline_ms = 10000;
   uint64_t trust_roots_epoch = 0;
@@ -61,6 +63,8 @@ static void print_usage(const char* argv0) {
     << "  [--decision-sha256 <sha256:...>]\n"
     << "  [--campaign-delay-ms <ms>]\n"
     << "  [--campaign-retry-ms <ms>]\n"
+    << "  [--campaign-retry-max-ms <ms>]\n"
+    << "  [--campaign-retry-backoff-factor <n>]\n"
     << "  [--poll-interval-ms <ms>]\n"
     << "  [--deadline-ms <ms>]\n"
     << "  [--trust-roots-epoch <n>]\n"
@@ -140,6 +144,16 @@ static bool parse_args(int argc, char** argv, Options* out) {
         std::cerr << "invalid --campaign-retry-ms\n";
         return false;
       }
+    } else if (a == "--campaign-retry-max-ms" && i + 1 < argc) {
+      if (!parse_i64_arg(argv[++i], &opt.campaign_retry_max_ms) || opt.campaign_retry_max_ms < 0) {
+        std::cerr << "invalid --campaign-retry-max-ms\n";
+        return false;
+      }
+    } else if (a == "--campaign-retry-backoff-factor" && i + 1 < argc) {
+      if (!parse_i64_arg(argv[++i], &opt.campaign_retry_backoff_factor) || opt.campaign_retry_backoff_factor < 1) {
+        std::cerr << "invalid --campaign-retry-backoff-factor\n";
+        return false;
+      }
     } else if (a == "--poll-interval-ms" && i + 1 < argc) {
       if (!parse_i64_arg(argv[++i], &opt.poll_interval_ms) || opt.poll_interval_ms < 1) {
         std::cerr << "invalid --poll-interval-ms\n";
@@ -212,6 +226,8 @@ int main(int argc, char** argv) {
   cfg.outbox_limit = opt.outbox_limit;
   cfg.campaign_delay_ms = opt.campaign_delay_ms;
   cfg.campaign_retry_ms = opt.campaign_retry_ms;
+  cfg.campaign_retry_max_ms = opt.campaign_retry_max_ms;
+  cfg.campaign_retry_backoff_factor = opt.campaign_retry_backoff_factor;
   cfg.poll_interval_ms = opt.poll_interval_ms;
   cfg.deadline_ms = opt.deadline_ms;
   cfg.trust_roots_epoch = opt.trust_roots_epoch;

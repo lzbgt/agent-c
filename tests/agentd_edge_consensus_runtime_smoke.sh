@@ -107,7 +107,7 @@ CAPS_SHA_C="sha256:3333333333333333333333333333333333333333333333333333333333333
 DECISION_SHA="sha256:4444444444444444444444444444444444444444444444444444444444444444"
 
 START_A_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","node_id":"${NODE_A}","cluster_id":"${CLUSTER_ID}","manifest_sha256":"${CAPS_SHA_A}","peer_node_ids":["${NODE_B}","${NODE_C}"],"member_node_ids":["${NODE_A}","${NODE_B}","${NODE_C}"],"membership_epoch":12,"decision_sha256":"${DECISION_SHA}","campaign_delay_ms":200,"campaign_retry_ms":500,"trust_roots_epoch":9,"revocations_epoch":4,"cert_roots_epoch":11,"deadline_ms":12000}
+{"action":"start","node_id":"${NODE_A}","cluster_id":"${CLUSTER_ID}","manifest_sha256":"${CAPS_SHA_A}","peer_node_ids":["${NODE_B}","${NODE_C}"],"member_node_ids":["${NODE_A}","${NODE_B}","${NODE_C}"],"membership_epoch":12,"decision_sha256":"${DECISION_SHA}","campaign_delay_ms":200,"campaign_retry_ms":200,"campaign_retry_max_ms":800,"campaign_retry_backoff_factor":2,"trust_roots_epoch":9,"revocations_epoch":4,"cert_roots_epoch":11,"deadline_ms":12000}
 JSON
 )")"
 RUNNING_A_JSON="$(wait_runtime_running "${NODE_A}")"
@@ -192,7 +192,7 @@ for label, raw in (
 
 status_a = (json.loads(r'''${STATUS_A_JSON}''').get("runtime") or {}).get("result") or {}
 loop_status = status_a.get("status") or {}
-if loop_status.get("campaign_attempts", 0) < 2:
+if loop_status.get("campaign_attempts", 0) < 3:
   print("candidate A did not retry before quorum", status_a, file=sys.stderr)
   raise SystemExit(1)
 
@@ -204,8 +204,11 @@ if rt.get("node_id") != leader:
 if rt.get("runtime_kind") != "builtin":
   print("edge node runtime summary missing builtin kind", rt, file=sys.stderr)
   raise SystemExit(1)
-if rt.get("campaign_retry_ms") != 500:
+if rt.get("campaign_retry_ms") != 200:
   print("runtime summary missing retry config", rt, file=sys.stderr)
+  raise SystemExit(1)
+if rt.get("campaign_retry_max_ms") != 800 or rt.get("campaign_retry_backoff_factor") != 2:
+  print("runtime summary missing retry backoff config", rt, file=sys.stderr)
   raise SystemExit(1)
 if rt.get("membership_epoch") != 12:
   print("runtime summary missing membership epoch", rt, file=sys.stderr)

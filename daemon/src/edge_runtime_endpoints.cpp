@@ -95,6 +95,8 @@ static Json::Value edge_consensus_cluster_policy_to_json(const std::string& clus
   out["updated_utc_ms"] = (Json::Int64)pol.updated_utc_ms;
   out["campaign_delay_ms"] = (Json::Int64)pol.campaign_delay_ms;
   out["campaign_retry_ms"] = (Json::Int64)pol.campaign_retry_ms;
+  out["campaign_retry_max_ms"] = (Json::Int64)pol.campaign_retry_max_ms;
+  out["campaign_retry_backoff_factor"] = (Json::Int64)pol.campaign_retry_backoff_factor;
   Json::Value members(Json::arrayValue);
   for (const auto& member : pol.member_node_ids) members.append(member);
   out["member_node_ids"] = members;
@@ -118,6 +120,8 @@ struct EdgeConsensusRuntime {
   int64_t ended_unix_ms = 0;
   int64_t campaign_delay_ms = 0;
   int64_t campaign_retry_ms = 0;
+  int64_t campaign_retry_max_ms = 0;
+  int64_t campaign_retry_backoff_factor = 1;
   int64_t poll_interval_ms = 100;
   int64_t deadline_ms = 10000;
   uint64_t cluster_size = 0;
@@ -166,6 +170,8 @@ static Json::Value edge_consensus_runtime_to_json(const EdgeConsensusRuntime& st
   if (st.ended_unix_ms > 0) out["ended_unix_ms"] = (Json::Int64)st.ended_unix_ms;
   out["campaign_delay_ms"] = (Json::Int64)st.campaign_delay_ms;
   out["campaign_retry_ms"] = (Json::Int64)st.campaign_retry_ms;
+  out["campaign_retry_max_ms"] = (Json::Int64)st.campaign_retry_max_ms;
+  out["campaign_retry_backoff_factor"] = (Json::Int64)st.campaign_retry_backoff_factor;
   out["poll_interval_ms"] = (Json::Int64)st.poll_interval_ms;
   out["deadline_ms"] = (Json::Int64)st.deadline_ms;
   out["cluster_size"] = Json::UInt64(st.cluster_size);
@@ -322,6 +328,14 @@ static bool edge_consensus_runtime_build_config(
     ? json_to_i64(body["campaign_retry_ms"], decision_sha256.empty() ? 0 : 1500)
     : (cluster_policy ? cluster_policy->campaign_retry_ms : (decision_sha256.empty() ? 0 : 1500));
   campaign_retry_ms = std::max<int64_t>(0, std::min<int64_t>(campaign_retry_ms, 120000));
+  int64_t campaign_retry_max_ms = body.isMember("campaign_retry_max_ms")
+    ? json_to_i64(body["campaign_retry_max_ms"], campaign_retry_ms)
+    : (cluster_policy ? cluster_policy->campaign_retry_max_ms : campaign_retry_ms);
+  campaign_retry_max_ms = std::max<int64_t>(campaign_retry_ms, std::min<int64_t>(campaign_retry_max_ms, 300000));
+  int64_t campaign_retry_backoff_factor = body.isMember("campaign_retry_backoff_factor")
+    ? json_to_i64(body["campaign_retry_backoff_factor"], 1)
+    : (cluster_policy ? cluster_policy->campaign_retry_backoff_factor : 1);
+  campaign_retry_backoff_factor = std::max<int64_t>(1, std::min<int64_t>(campaign_retry_backoff_factor, 8));
   int64_t poll_interval_ms = body.isMember("poll_interval_ms") ? json_to_i64(body["poll_interval_ms"], 100) : 100;
   poll_interval_ms = std::max<int64_t>(25, std::min<int64_t>(poll_interval_ms, 5000));
   int64_t deadline_ms = body.isMember("deadline_ms") ? json_to_i64(body["deadline_ms"], 10000) : 10000;
@@ -348,6 +362,8 @@ static bool edge_consensus_runtime_build_config(
   out_cfg->outbox_limit = (size_t)outbox_limit;
   out_cfg->campaign_delay_ms = campaign_delay_ms;
   out_cfg->campaign_retry_ms = campaign_retry_ms;
+  out_cfg->campaign_retry_max_ms = campaign_retry_max_ms;
+  out_cfg->campaign_retry_backoff_factor = campaign_retry_backoff_factor;
   out_cfg->poll_interval_ms = poll_interval_ms;
   out_cfg->deadline_ms = deadline_ms;
   out_cfg->trust_roots_epoch = trust_roots_epoch;
@@ -368,6 +384,8 @@ static bool edge_consensus_runtime_build_config(
   out_state->started_unix_ms = now_unix_ms();
   out_state->campaign_delay_ms = campaign_delay_ms;
   out_state->campaign_retry_ms = campaign_retry_ms;
+  out_state->campaign_retry_max_ms = campaign_retry_max_ms;
+  out_state->campaign_retry_backoff_factor = campaign_retry_backoff_factor;
   out_state->poll_interval_ms = poll_interval_ms;
   out_state->deadline_ms = deadline_ms;
   out_state->cluster_size = cluster_size;
@@ -469,6 +487,10 @@ static bool edge_consensus_runtime_spawn_process(
     args.push_back(std::to_string((long long)runtime_state.campaign_delay_ms));
     args.push_back("--campaign-retry-ms");
     args.push_back(std::to_string((long long)runtime_state.campaign_retry_ms));
+    args.push_back("--campaign-retry-max-ms");
+    args.push_back(std::to_string((long long)runtime_state.campaign_retry_max_ms));
+    args.push_back("--campaign-retry-backoff-factor");
+    args.push_back(std::to_string((long long)runtime_state.campaign_retry_backoff_factor));
     args.push_back("--poll-interval-ms");
     args.push_back(std::to_string((long long)runtime_state.poll_interval_ms));
     args.push_back("--deadline-ms");

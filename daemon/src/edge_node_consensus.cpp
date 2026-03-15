@@ -132,6 +132,31 @@ static std::vector<std::string> dedupe_loop_targets(
   return out;
 }
 
+static int64_t clamp_retry_backoff_factor(int64_t v) {
+  return std::max<int64_t>(1, std::min<int64_t>(v, 8));
+}
+
+static int64_t compute_campaign_retry_delay_ms(
+  int64_t campaign_retry_ms,
+  int64_t campaign_retry_max_ms,
+  int64_t campaign_retry_backoff_factor,
+  uint64_t campaign_attempts
+) {
+  if (campaign_retry_ms <= 0 || campaign_attempts < 1) return 0;
+  const int64_t factor = clamp_retry_backoff_factor(campaign_retry_backoff_factor);
+  int64_t delay = campaign_retry_ms;
+  for (uint64_t i = 1; i < campaign_attempts; i++) {
+    if (delay > INT64_MAX / factor) {
+      delay = INT64_MAX;
+      break;
+    }
+    delay *= factor;
+  }
+  const int64_t cap = campaign_retry_max_ms > 0 ? campaign_retry_max_ms : campaign_retry_ms;
+  if (cap > 0) delay = std::min<int64_t>(delay, cap);
+  return std::max<int64_t>(0, delay);
+}
+
 }  // namespace
 
 EdgeConsensusReplica::EdgeConsensusReplica(const EdgeConsensusIdentity& self, size_t cluster_size)
@@ -152,6 +177,9 @@ EdgeConsensusNodeLoop::EdgeConsensusNodeLoop(const EdgeConsensusNodeLoopConfig& 
   if (cfg_.cluster_size < 1) cfg_.cluster_size = 1;
   if (cfg_.campaign_delay_ms < 0) cfg_.campaign_delay_ms = 0;
   if (cfg_.campaign_retry_ms < 0) cfg_.campaign_retry_ms = 0;
+  if (cfg_.campaign_retry_max_ms <= 0) cfg_.campaign_retry_max_ms = cfg_.campaign_retry_ms;
+  cfg_.campaign_retry_max_ms = std::max<int64_t>(cfg_.campaign_retry_ms, cfg_.campaign_retry_max_ms);
+  cfg_.campaign_retry_backoff_factor = clamp_retry_backoff_factor(cfg_.campaign_retry_backoff_factor);
   replica_.set_membership(cfg_.self.membership_epoch, cfg_.member_node_ids);
 }
 
@@ -306,6 +334,11 @@ bool EdgeConsensusReplica::handle_frame(
   return true;
 }
 
+int64_t EdgeConsensusNodeLoop::current_campaign_delay_ms() const {
+  return compute_campaign_retry_delay_ms(
+    cfg_.campaign_retry_ms, cfg_.campaign_retry_max_ms, cfg_.campaign_retry_backoff_factor, campaign_attempts_);
+}
+
 std::vector<EdgeConsensusFrame> EdgeConsensusNodeLoop::tick(int64_t now_utc_ms) {
   std::vector<EdgeConsensusFrame> out;
   if (started_utc_ms_ == 0) started_utc_ms_ = now_utc_ms;
@@ -314,8 +347,9 @@ std::vector<EdgeConsensusFrame> EdgeConsensusNodeLoop::tick(int64_t now_utc_ms) 
   if (!election_started_) {
     if (now_utc_ms - started_utc_ms_ < cfg_.campaign_delay_ms) return out;
   } else {
-    if (cfg_.campaign_retry_ms <= 0) return out;
-    if (last_campaign_started_utc_ms_ > 0 && now_utc_ms - last_campaign_started_utc_ms_ < cfg_.campaign_retry_ms) {
+    const int64_t retry_delay_ms = current_campaign_delay_ms();
+    if (retry_delay_ms <= 0) return out;
+    if (last_campaign_started_utc_ms_ > 0 && now_utc_ms - last_campaign_started_utc_ms_ < retry_delay_ms) {
       return out;
     }
   }
@@ -351,13 +385,16 @@ Json::Value EdgeConsensusNodeLoop::status_to_json() const {
   out["cluster_size"] = Json::UInt64(cfg_.cluster_size);
   out["campaign_delay_ms"] = (Json::Int64)cfg_.campaign_delay_ms;
   out["campaign_retry_ms"] = (Json::Int64)cfg_.campaign_retry_ms;
+  out["campaign_retry_max_ms"] = (Json::Int64)cfg_.campaign_retry_max_ms;
+  out["campaign_retry_backoff_factor"] = (Json::Int64)cfg_.campaign_retry_backoff_factor;
   if (!cfg_.decision_sha256.empty()) out["decision_sha256"] = cfg_.decision_sha256;
   out["election_started"] = election_started_;
   out["campaign_attempts"] = Json::UInt64(campaign_attempts_);
+  out["current_campaign_delay_ms"] = (Json::Int64)current_campaign_delay_ms();
   if (last_campaign_started_utc_ms_ > 0) {
     out["last_campaign_started_utc_ms"] = (Json::Int64)last_campaign_started_utc_ms_;
-    if (cfg_.campaign_retry_ms > 0 && trim_copy(replica_.committed_decision_sha256()).empty()) {
-      out["next_campaign_utc_ms"] = (Json::Int64)(last_campaign_started_utc_ms_ + cfg_.campaign_retry_ms);
+    if (current_campaign_delay_ms() > 0 && trim_copy(replica_.committed_decision_sha256()).empty()) {
+      out["next_campaign_utc_ms"] = (Json::Int64)(last_campaign_started_utc_ms_ + current_campaign_delay_ms());
     }
   }
   Json::Value peers(Json::arrayValue);

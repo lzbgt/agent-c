@@ -26,6 +26,8 @@ struct EdgeConsensusHttpRuntimeConfig {
   size_t outbox_limit = 128;
   int64_t campaign_delay_ms = 0;
   int64_t campaign_retry_ms = 1500;
+  int64_t campaign_retry_max_ms = 1500;
+  int64_t campaign_retry_backoff_factor = 1;
   int64_t poll_interval_ms = 100;
   int64_t deadline_ms = 10000;
   uint64_t trust_roots_epoch = 0;

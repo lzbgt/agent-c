@@ -896,6 +896,8 @@ static Json::Value edge_consensus_cluster_policy_to_json(
   out["updated_utc_ms"] = (Json::Int64)pol.updated_utc_ms;
   out["campaign_delay_ms"] = (Json::Int64)pol.campaign_delay_ms;
   out["campaign_retry_ms"] = (Json::Int64)pol.campaign_retry_ms;
+  out["campaign_retry_max_ms"] = (Json::Int64)pol.campaign_retry_max_ms;
+  out["campaign_retry_backoff_factor"] = (Json::Int64)pol.campaign_retry_backoff_factor;
   Json::Value arr(Json::arrayValue);
   for (const auto& member : pol.member_node_ids) arr.append(member);
   out["member_node_ids"] = arr;
@@ -929,6 +931,8 @@ static bool build_edge_consensus_membership_bundle(
   bundle["updated_utc_ms"] = (Json::Int64)pol.updated_utc_ms;
   bundle["campaign_delay_ms"] = (Json::Int64)pol.campaign_delay_ms;
   bundle["campaign_retry_ms"] = (Json::Int64)pol.campaign_retry_ms;
+  bundle["campaign_retry_max_ms"] = (Json::Int64)pol.campaign_retry_max_ms;
+  bundle["campaign_retry_backoff_factor"] = (Json::Int64)pol.campaign_retry_backoff_factor;
   {
     Json::Value arr(Json::arrayValue);
     for (const auto& member : pol.member_node_ids) arr.append(member);
@@ -3694,8 +3698,36 @@ void handle_edge_consensus_membership_rotate_endpoint(
       ? args["campaign_retry_ms"].asInt64()
       : (int64_t)args["campaign_retry_ms"].asUInt64();
   }
+  if (args.isMember("campaign_retry_max_ms")) {
+    if (!args["campaign_retry_max_ms"].isInt64() && !args["campaign_retry_max_ms"].isUInt64()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "campaign_retry_max_ms must be an integer";
+      resp->status = 400;
+      resp->body = json_stringify(o);
+      return;
+    }
+    next_pol.campaign_retry_max_ms = args["campaign_retry_max_ms"].isInt64()
+      ? args["campaign_retry_max_ms"].asInt64()
+      : (int64_t)args["campaign_retry_max_ms"].asUInt64();
+  }
+  if (args.isMember("campaign_retry_backoff_factor")) {
+    if (!args["campaign_retry_backoff_factor"].isInt64() && !args["campaign_retry_backoff_factor"].isUInt64()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "campaign_retry_backoff_factor must be an integer";
+      resp->status = 400;
+      resp->body = json_stringify(o);
+      return;
+    }
+    next_pol.campaign_retry_backoff_factor = args["campaign_retry_backoff_factor"].isInt64()
+      ? args["campaign_retry_backoff_factor"].asInt64()
+      : (int64_t)args["campaign_retry_backoff_factor"].asUInt64();
+  }
   next_pol.campaign_delay_ms = std::max<int64_t>(0, std::min<int64_t>(next_pol.campaign_delay_ms, 120000));
   next_pol.campaign_retry_ms = std::max<int64_t>(0, std::min<int64_t>(next_pol.campaign_retry_ms, 120000));
+  next_pol.campaign_retry_max_ms = std::max<int64_t>(next_pol.campaign_retry_ms, std::min<int64_t>(next_pol.campaign_retry_max_ms, 300000));
+  next_pol.campaign_retry_backoff_factor = std::max<int64_t>(1, std::min<int64_t>(next_pol.campaign_retry_backoff_factor, 8));
 
   DaemonConfig next = cur;
   next.edge_consensus_clusters[cluster_id] = next_pol;
@@ -3729,6 +3761,8 @@ void handle_edge_consensus_membership_rotate_endpoint(
   o["updated_utc_ms"] = (Json::Int64)next_pol.updated_utc_ms;
   o["campaign_delay_ms"] = (Json::Int64)next_pol.campaign_delay_ms;
   o["campaign_retry_ms"] = (Json::Int64)next_pol.campaign_retry_ms;
+  o["campaign_retry_max_ms"] = (Json::Int64)next_pol.campaign_retry_max_ms;
+  o["campaign_retry_backoff_factor"] = (Json::Int64)next_pol.campaign_retry_backoff_factor;
   o["member_count"] = (Json::UInt64)next_pol.member_node_ids.size();
   o["membership"] = bundle;
   resp->body = json_stringify(o);

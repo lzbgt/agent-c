@@ -487,6 +487,18 @@ bool load_runtime_config_best_effort(
               ? row["campaign_retry_ms"].asInt64()
               : (int64_t)row["campaign_retry_ms"].asUInt64();
           }
+          if (row.isMember("campaign_retry_max_ms") &&
+              (row["campaign_retry_max_ms"].isInt64() || row["campaign_retry_max_ms"].isUInt64())) {
+            pol.campaign_retry_max_ms = row["campaign_retry_max_ms"].isInt64()
+              ? row["campaign_retry_max_ms"].asInt64()
+              : (int64_t)row["campaign_retry_max_ms"].asUInt64();
+          }
+          if (row.isMember("campaign_retry_backoff_factor") &&
+              (row["campaign_retry_backoff_factor"].isInt64() || row["campaign_retry_backoff_factor"].isUInt64())) {
+            pol.campaign_retry_backoff_factor = row["campaign_retry_backoff_factor"].isInt64()
+              ? row["campaign_retry_backoff_factor"].asInt64()
+              : (int64_t)row["campaign_retry_backoff_factor"].asUInt64();
+          }
           if (row.isMember("member_node_ids") && row["member_node_ids"].isArray()) {
             for (const auto& item : row["member_node_ids"]) {
               if (!item.isString()) continue;
@@ -498,6 +510,8 @@ bool load_runtime_config_best_effort(
           if (pol.updated_utc_ms < 0) pol.updated_utc_ms = 0;
           if (pol.campaign_delay_ms < 0) pol.campaign_delay_ms = 0;
           if (pol.campaign_retry_ms < 0) pol.campaign_retry_ms = 0;
+          if (pol.campaign_retry_max_ms < pol.campaign_retry_ms) pol.campaign_retry_max_ms = pol.campaign_retry_ms;
+          pol.campaign_retry_backoff_factor = std::max<int64_t>(1, std::min<int64_t>(pol.campaign_retry_backoff_factor, 8));
           if (!pol.member_node_ids.empty()) cfg_io->edge_consensus_clusters[cluster_id] = std::move(pol);
         }
       }
@@ -768,6 +782,8 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
       row["updated_utc_ms"] = (Json::Int64)it.second.updated_utc_ms;
       row["campaign_delay_ms"] = (Json::Int64)it.second.campaign_delay_ms;
       row["campaign_retry_ms"] = (Json::Int64)it.second.campaign_retry_ms;
+      row["campaign_retry_max_ms"] = (Json::Int64)it.second.campaign_retry_max_ms;
+      row["campaign_retry_backoff_factor"] = (Json::Int64)it.second.campaign_retry_backoff_factor;
       Json::Value members(Json::arrayValue);
       for (const auto& member : it.second.member_node_ids) if (!member.empty()) members.append(member);
       row["member_node_ids"] = members;

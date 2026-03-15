@@ -96,8 +96,9 @@ The shipped autonomous host-loop proof adds:
 - agentd-managed long-lived host runtime ownership of the same loop, including explicit start/status/stop control
 - a reusable transport-agnostic node loop core (`EdgeConsensusNodeLoop`) so the election/commit state machine is no
   longer stranded inside the host CLI helper
-- retry-capable campaign timers (`campaign_delay_ms` + `campaign_retry_ms`) so a candidate can start before peers are
-  online and still converge later without manual restart
+- retry-capable campaign timers (`campaign_delay_ms`, `campaign_retry_ms`, `campaign_retry_max_ms`,
+  `campaign_retry_backoff_factor`) so a candidate can start before peers are online and still converge later without
+  manual restart while capping retry growth
 - explicit membership surfaces (`membership_epoch` + `member_node_ids`) on the shared core, host helper, and managed runtime
 - signed/durable cluster policy bundles via `edge_consensus_membership_v1`, including outbox delivery as
   `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE`

@@ -15,6 +15,8 @@ struct EdgeConsensusClusterPolicy {
   std::vector<std::string> member_node_ids;
   int64_t campaign_delay_ms = 0;
   int64_t campaign_retry_ms = 1500;
+  int64_t campaign_retry_max_ms = 1500;
+  int64_t campaign_retry_backoff_factor = 1;
 };
 
 struct CorsRouteConfig {

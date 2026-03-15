@@ -181,7 +181,7 @@ DECISION_SHA="sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 register_target_node "${TARGET_NODE}" "${TARGET_CAPS_SHA}"
 
 ROTATE_JSON="$(curl_json POST "/api/v1/edge/consensus/membership/rotate" "$(cat <<JSON
-{"cluster_id":"${CLUSTER_ID}","mode":"replace","membership_epoch":19,"member_node_ids":["${NODE_A}","${NODE_B}","${NODE_C}"],"campaign_delay_ms":120,"campaign_retry_ms":450}
+{"cluster_id":"${CLUSTER_ID}","mode":"replace","membership_epoch":19,"member_node_ids":["${NODE_A}","${NODE_B}","${NODE_C}"],"campaign_delay_ms":120,"campaign_retry_ms":300,"campaign_retry_max_ms":900,"campaign_retry_backoff_factor":2}
 JSON
 )")"
 GET_JSON="$(curl_json GET "/api/v1/edge/consensus/membership?cluster_id=${CLUSTER_ID}")"
@@ -246,6 +246,15 @@ if bundle.get("cluster_id") != cluster_id or bundle.get("membership_epoch") != 1
 if sorted(bundle.get("member_node_ids") or []) != members:
     print("wrong membership members", bundle, file=sys.stderr)
     raise SystemExit(1)
+if bundle.get("campaign_delay_ms") != 120:
+    print("wrong campaign delay", bundle, file=sys.stderr)
+    raise SystemExit(1)
+if bundle.get("campaign_retry_ms") != 300 or bundle.get("campaign_retry_max_ms") != 900:
+    print("wrong retry bounds", bundle, file=sys.stderr)
+    raise SystemExit(1)
+if bundle.get("campaign_retry_backoff_factor") != 2:
+    print("wrong retry backoff factor", bundle, file=sys.stderr)
+    raise SystemExit(1)
 att = bundle.get("attest") or {}
 if att.get("schema") != "edge_consensus_membership_attest_v1" or att.get("kid") != "edge-consensus-membership-k0":
     print("missing membership attest", bundle, file=sys.stderr)
@@ -261,6 +270,12 @@ delivered = payload.get("membership") or {}
 if delivered.get("cluster_id") != cluster_id or delivered.get("membership_epoch") != 19:
     print("wrong delivered membership bundle", delivered, file=sys.stderr)
     raise SystemExit(1)
+if delivered.get("campaign_retry_ms") != 300 or delivered.get("campaign_retry_max_ms") != 900:
+    print("wrong delivered retry bounds", delivered, file=sys.stderr)
+    raise SystemExit(1)
+if delivered.get("campaign_retry_backoff_factor") != 2:
+    print("wrong delivered backoff factor", delivered, file=sys.stderr)
+    raise SystemExit(1)
 
 rt_a = start_a.get("runtime") or {}
 if sorted(rt_a.get("member_node_ids") or []) != members:
@@ -272,8 +287,11 @@ if rt_a.get("runtime_kind") != "builtin":
 if sorted(rt_a.get("peer_node_ids") or []) != sorted(["${NODE_B}", "${NODE_C}"]):
     print("runtime A did not default peer set from policy", rt_a, file=sys.stderr)
     raise SystemExit(1)
-if rt_a.get("membership_epoch") != 19 or rt_a.get("campaign_delay_ms") != 120 or rt_a.get("campaign_retry_ms") != 450:
+if rt_a.get("membership_epoch") != 19 or rt_a.get("campaign_delay_ms") != 120 or rt_a.get("campaign_retry_ms") != 300:
     print("runtime A missing policy defaults", rt_a, file=sys.stderr)
+    raise SystemExit(1)
+if rt_a.get("campaign_retry_max_ms") != 900 or rt_a.get("campaign_retry_backoff_factor") != 2:
+    print("runtime A missing retry backoff defaults", rt_a, file=sys.stderr)
     raise SystemExit(1)
 if (start_a.get("cluster_policy") or {}).get("cluster_id") != cluster_id:
     print("start response missing cluster policy", start_a, file=sys.stderr)
@@ -286,6 +304,12 @@ for label, obj in (("running_a", running_a), ("status_a", status_a), ("status_b"
         raise SystemExit(1)
     if rt.get("membership_epoch") != 19:
         print(label, "runtime membership epoch mismatch", obj, file=sys.stderr)
+        raise SystemExit(1)
+    if rt.get("campaign_retry_ms") != 300 or rt.get("campaign_retry_max_ms") != 900:
+        print(label, "runtime retry bounds mismatch", obj, file=sys.stderr)
+        raise SystemExit(1)
+    if rt.get("campaign_retry_backoff_factor") != 2:
+        print(label, "runtime retry backoff mismatch", obj, file=sys.stderr)
         raise SystemExit(1)
 
 res_a = (status_a.get("runtime") or {}).get("result") or {}
@@ -303,6 +327,9 @@ loop_status = res_a.get("status") or {}
 if loop_status.get("campaign_attempts", 0) < 2:
     print("runtime A did not retry after late peers", loop_status, file=sys.stderr)
     raise SystemExit(1)
+if loop_status.get("campaign_retry_max_ms") != 900 or loop_status.get("campaign_retry_backoff_factor") != 2:
+    print("loop status missing retry backoff policy", loop_status, file=sys.stderr)
+    raise SystemExit(1)
 
 status_policy = status_a.get("cluster_policy") or {}
 if status_policy.get("cluster_id") != cluster_id:
@@ -310,6 +337,12 @@ if status_policy.get("cluster_id") != cluster_id:
     raise SystemExit(1)
 if sorted(status_policy.get("member_node_ids") or []) != members:
     print("runtime status cluster policy mismatch", status_policy, file=sys.stderr)
+    raise SystemExit(1)
+if status_policy.get("campaign_retry_ms") != 300 or status_policy.get("campaign_retry_max_ms") != 900:
+    print("runtime status missing retry bounds in cluster policy", status_policy, file=sys.stderr)
+    raise SystemExit(1)
+if status_policy.get("campaign_retry_backoff_factor") != 2:
+    print("runtime status missing retry backoff factor in cluster policy", status_policy, file=sys.stderr)
     raise SystemExit(1)
 
 print("ok")

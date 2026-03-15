@@ -45,6 +45,8 @@ struct EdgeConsensusNodeLoopConfig {
   size_t cluster_size = 0;
   int64_t campaign_delay_ms = 0;
   int64_t campaign_retry_ms = 0;
+  int64_t campaign_retry_max_ms = 0;
+  int64_t campaign_retry_backoff_factor = 1;
   std::string decision_sha256;
 };
 
@@ -99,6 +101,7 @@ class EdgeConsensusNodeLoop {
   uint64_t campaign_attempts() const { return campaign_attempts_; }
   const std::string& leader_node_id() const { return replica_.leader_node_id(); }
   const std::string& committed_decision_sha256() const { return replica_.committed_decision_sha256(); }
+  int64_t current_campaign_delay_ms() const;
 
   std::vector<EdgeConsensusFrame> tick(int64_t now_utc_ms);
   bool handle_frame(const EdgeConsensusFrame& frame, std::vector<EdgeConsensusFrame>* out_frames, std::string* out_error);

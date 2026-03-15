@@ -228,7 +228,8 @@ Returns messages in ascending `outbox_id` order. The node should:
 - `POST /api/v1/edge/node/consensus_runtime`
   - starts or stops the managed autonomous consensus runtime for one edge node
   - defaults to a builtin in-agentd backend; `runtime_kind=external` keeps the standalone helper for bring-up/debug parity
-  - supports `campaign_delay_ms` and `campaign_retry_ms` so early candidates can re-campaign until peers come online
+  - supports `campaign_delay_ms`, `campaign_retry_ms`, `campaign_retry_max_ms`, and `campaign_retry_backoff_factor`
+    so early candidates can re-campaign with bounded exponential backoff until peers come online
   - accepts explicit `membership_epoch` and `member_node_ids` for deterministic member-set compatibility
   - defaults those same membership/retry fields from the durable per-cluster policy when they are omitted
 - `GET /api/v1/edge/node/consensus_runtime?node_id=...`

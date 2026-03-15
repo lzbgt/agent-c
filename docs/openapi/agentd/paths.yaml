@@ -635,7 +635,8 @@
 
       Notes:
       - `cluster_id` is required.
-      - The bundle carries `membership_epoch`, `member_node_ids`, `campaign_delay_ms`, and `campaign_retry_ms`.
+      - The bundle carries `membership_epoch`, `member_node_ids`, `campaign_delay_ms`, `campaign_retry_ms`,
+        `campaign_retry_max_ms`, and `campaign_retry_backoff_factor`.
       - When run-attestation signing keys are configured, the bundle includes an `attest` block.
     parameters:
       - in: query
@@ -2532,8 +2533,10 @@
       default backend and runs the HTTP poll/process/post loop inside agentd.
       Start requests can explicitly set `runtime_kind=external` to keep using the
       standalone helper for bring-up or debug parity. They can also set
-      `campaign_delay_ms` for the first election, `campaign_retry_ms` for repeated
-      campaigns when quorum is not reached before peers arrive, and
+      `campaign_delay_ms` for the first election, `campaign_retry_ms` for the base
+      retry interval, `campaign_retry_max_ms` for the backoff ceiling, and
+      `campaign_retry_backoff_factor` for bounded exponential retry growth when
+      quorum is not reached before peers arrive, and
       `membership_epoch` plus `member_node_ids` for explicit member-set compatibility.
       When those fields are omitted and a durable `/api/v1/edge/consensus/membership`
       policy exists for the cluster, the runtime defaults from that stored bundle.
