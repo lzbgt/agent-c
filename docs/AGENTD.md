@@ -235,6 +235,40 @@ Policy decisions emit `policy_decision` events in the run/job event streams for 
 - In `audit` mode, approvals emit `approval_request` + `approval_resolved` events but do not block.
 - Approval lifecycle events: `approval_request`, `approval_update`, `approval_resolved`.
 
+## Workflow admission control + durable budget evidence
+
+The workflow scheduler already exposes the core scheduling/isolation MVP for durable execution:
+
+- Submit-time admission control:
+  - `--workflow-admit-max-inflight-tasks-total`
+  - `--workflow-admit-max-inflight-tasks-per-session`
+  - rejected submits return HTTP `429` with deterministic counters + `retry_after_ms`
+- Durable workflow-level budgets on `/api/v1/workflow/submit` via `workflow_limits`:
+  - `max_tool_calls_total`
+  - `max_steps_total`
+  - `max_elapsed_ms_total`
+  - `max_total_tokens`
+- Per-attempt caps on delegated run execution:
+  - workflow `attempt_caps` clamp `timeout_ms`, `max_steps`,
+    `max_tool_calls_total`, and `max_tool_calls_per_tool`
+  - request `host_policy: "readonly"` keeps workflow-triggered tool execution
+    inside the daemon’s restricted host surface
+
+Evidence surface:
+- When a budget is exceeded, the engine emits a durable
+  `workflow_budget_exceeded` event under `GET /api/v1/workflow/events`
+  with used/remaining counters.
+- The same cancellation path bulk-cancels still-queued follow-on tasks so the
+  workflow converges to a deterministic terminal state.
+
+Proof tests:
+- `tests/agentd_workflow_admission_control_smoke.sh`
+- `tests/agentd_workflow_budget_tool_calls_smoke.sh`
+- `tests/agentd_workflow_budget_steps_smoke.sh`
+- `tests/agentd_workflow_budget_tokens_smoke.sh`
+- `tests/agentd_workflow_budget_tokens_stream_smoke.sh`
+- `tests/agentd_workflow_budget_events_smoke.sh`
+
 ### Automation profiles (nonblocking defaults)
 
 - `/api/v1/caps` includes `features.automation` with `default_profile` and supported `profiles`.

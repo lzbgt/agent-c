@@ -670,6 +670,12 @@ if(AGENT_BUILD_HOST)
 				        $<TARGET_FILE:agentd_tool_plugin_echo>
 				    )
 				    add_test(
+				      NAME agentd_workflow_budget_events_smoke
+				      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_budget_events_smoke.sh
+				        $<TARGET_FILE:agentd>
+				        $<TARGET_FILE:agentd_tool_plugin_echo>
+				    )
+				    add_test(
 				      NAME agentd_workflow_budget_steps_smoke
 				      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_budget_steps_smoke.sh
 				        $<TARGET_FILE:agentd>
