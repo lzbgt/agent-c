@@ -11,9 +11,9 @@ declares its own status (draft/rolling/implemented) in the document header.
 - `run-events/run_events_v1.md`: canonical run/workflow event envelope + payload schemas.
 - `run_request_refactor_v1.md`: run request refactor record (implemented).
 - `run_attestation_bundle_v1.md`: signed attestation bundle format for replay hashes (draft).
-- `run_diff_v0.md`: run diff + evidence comparison contract (draft).
+- `run_diff_v0.md`: run diff + evidence comparison contract (implemented rolling).
 - `policy_hooks_v0.md`: policy hook contract (pre/post run + tool decisions).
-- `approval_queue_v0.md`: approval queue + tool-level quorum gating (draft).
+- `approval_queue_v0.md`: approval queue + tool-level quorum gating (implemented rolling).
 - `automation_mode_v0.md`: automation profile + moderator control plane (draft).
 - `team_orchestration_v0.md`: team orchestration model (roles, shared memory, quorum gates).
 - `orchestrator_console_v0.md`: WebUI orchestration console (roles/backends, run monitor, reload-safe).
@@ -35,7 +35,7 @@ declares its own status (draft/rolling/implemented) in the document header.
 ## Tool plugins
 
 - `tool_plugins_sandbox_v0.md`: plugin sandboxing and host policy rules.
-- `tool_plugins_embedded_v0.md`: embedded/MCU tool plugin ABI (draft).
+- `tool_plugins_embedded_v0.md`: embedded/MCU tool plugin ABI (implemented rolling).
 - `tool_sandbox_mount_allowlist_v0.md`: host mount allowlist for sandboxed tools (draft).
 
 ## Memory
@@ -49,8 +49,8 @@ declares its own status (draft/rolling/implemented) in the document header.
 
 ## AVM + VM ports
 
-- `avm_capsule_run_v0.md`: AVM capsule execution contract.
-- `agent_vm_port_v0.md`: agent VM port integration contract.
+- `avm_capsule_run_v0.md`: AVM capsule execution contract (implemented rolling core).
+- `agent_vm_port_v0.md`: agent VM port integration contract (partially implemented via AVM).
 
 ## WebUI
 

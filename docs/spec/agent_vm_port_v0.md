@@ -2,7 +2,7 @@
 
 Date: 2026-02-05
 
-Status: v0 (integration contract; partially implemented via AVM capsules)
+Status: v0.3 (integration contract; first production VM port surface shipped via AVM scan/run endpoints and `avm_capsule` workflow tasks)
 
 Purpose:
 - Define a minimal, explicit “port” boundary so a future deterministic VM/language runtime (e.g. `oren-lang`)
@@ -15,6 +15,12 @@ Update (shipped path):
 - `agentd` workflows now support deterministic VM execution as a task kind: `kind: "avm_capsule"`.
   This is the first concrete “VM port” surface in production code (out-of-process AVM runner).
   See `docs/spec/avm_capsule_run_v0.md` and the smoke test `agentd_workflow_avm_capsule_smoke`.
+- Direct governance/inspection surfaces are also shipped:
+  - `/api/v1/avm/job_scan`
+  - `/api/v1/avm/policy_scan`
+  - `/api/v1/avm/inspect`
+  - `/api/v1/avm/verify_strict`
+  - `/api/v1/avm/trace_hash`
 
 ## 1) Design constraints (must hold)
 
@@ -144,9 +150,9 @@ To keep correctness high:
 
 ## 6) Goals for v0
 
-- Embed the VM in `agent_core` immediately for a single portable execution surface.
-- Provide a full package manager / ecosystem registry for VM modules.
-- Allow VM code to read arbitrary host files under explicit policy controls.
+- Keep the VM boundary explicit and host-governed while the runner remains out-of-process.
+- Provide a portable path to stronger governance bundles and replay artifacts.
+- Avoid arbitrary host file/process/network access without explicit policy surfaces.
 
 ## 7) Budget and policy knobs (aligning with AVM realities)
 
@@ -164,3 +170,9 @@ Concrete alignment with `oren-lang` nested universes:
   - `allowed_domains`, `gas_limit`, `deadline_ns`, `mem_bytes`, `io_bytes`, `log_bytes`
   - virtual backend toggles and fixtures as bytes (`vfs_fixtures`, `proc_fixtures`, `net_fixtures`)
   - returns `result_hash`, `state_hash`, and `record_log` bytes
+
+## 8) Current proof points
+
+- `tests/agentd_avm_job_scan_smoke.sh`
+- `tests/agentd_workflow_avm_capsule_smoke.sh`
+- `tests/agentd_workflow_aggregate_quorum_smoke.sh`

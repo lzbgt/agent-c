@@ -2,7 +2,7 @@
 
 Date: 2026-02-05
 
-Status: v0 (implemented; rolling)
+Status: v0.4 (scan/trace-hash/capsule-run/workflow execution shipped; persisted record-replay evidence and attestation layering remain open)
 
 ## 1) Goal (why this exists)
 
@@ -21,14 +21,32 @@ This spec defines a minimal `agentd` HTTP endpoint that can:
 - enforce explicit budgets + deterministic knobs
 - return machine-readable results + hash tokens
 
-## 2) Goals (v0)
+## 2) Current shipped surface
+
+- Guarded AVM governance endpoints:
+  - `/api/v1/avm/job_scan`
+  - `/api/v1/avm/policy_scan`
+  - `/api/v1/avm/inspect`
+  - `/api/v1/avm/verify_strict`
+  - `/api/v1/avm/trace_hash`
+- Guarded execution endpoint:
+  - `/api/v1/avm/capsule_run`
+- Durable workflow integration:
+  - task kind `avm_capsule`
+- Deterministic downstream joins:
+  - aggregate pointers `/avm/result_hash` and `/avm/trace_hash`
+- Mount allowlist enforcement for direct runs and workflow tasks
+
+## 3) Remaining goals
+
+The following parts of the original v0 ambition are still open:
 
 - Allow scoped AVM flags passthrough via an explicit allowlist.
 - Enable host-effects under explicit policy and budget controls (FS/PROC/NET).
 - Expose full record/replay plumbing (log + snapshot persistence).
 - Integrate multi-node quorum/attestation protocol in agentd (with broker coordination).
 
-## 3) Security model
+## 4) Security model
 
 The endpoint is intentionally **gated** because it executes untrusted bytecode:
 
@@ -39,7 +57,7 @@ The endpoint is intentionally **gated** because it executes untrusted bytecode:
 
 The endpoint always runs AVM with `--capsule` so AVM applies deny-by-default + strict verification defaults and uses Virtual* backends unless explicitly overridden (v0 forbids overrides).
 
-## 4) API (v0)
+## 5) API (current)
 
 ### Endpoint
 
@@ -92,7 +110,7 @@ Failure response:
   - `502` (avm failed)
   - `504` (timed out)
 
-## 5) Implementation notes (agentd)
+## 6) Implementation notes (agentd)
 
 - Use `posix_spawnp` (no shell) to run the AVM binary.
 - Enforce a separate outer timeout in agentd to avoid runaway subprocesses (outer timeout slightly above `timeout_ms`).
@@ -103,7 +121,7 @@ Failure response:
 - Forward validated mounts through `AGENTD_AVM_MOUNTS_JSON`, `AGENTD_AVM_MOUNT_COUNT`,
   and `AGENTD_AVM_MOUNT_<n>_*` env vars. If the runner ignores these vars, no host mount is exposed.
 
-## 6) Fast bring-up (developer workflow)
+## 7) Fast bring-up (developer workflow)
 
 In this workspace, `oren-lang` typically lives at `../oren-lang`.
 
@@ -124,7 +142,7 @@ tools/oren_capsule_task.sh --src /abs/path/to/prog.oren --task-id AVM
 This produces an `{"task_id":"AVM","kind":"avm_capsule","capsule":{...}}` object suitable for
 `POST /api/v1/workflow/submit`.
 
-## 7) Workflow integration (shipped)
+## 8) Workflow integration (shipped)
 
 Durable workflows support deterministic capsule tasks (no LLM required):
 
@@ -141,3 +159,12 @@ curl -fsS -H "Content-Type: application/json" -d '{
   ]
 }' http://127.0.0.1:8080/api/v1/workflow/submit
 ```
+
+## 9) Current proof points
+
+- `tests/agentd_avm_job_scan_smoke.sh`
+  - verifies scan/inspect/verify/trace-hash plus direct `capsule_run`
+- `tests/agentd_workflow_avm_capsule_smoke.sh`
+  - verifies durable workflow execution + mount allowlist enforcement
+- `tests/agentd_workflow_aggregate_quorum_smoke.sh`
+  - verifies deterministic quorum checks across `/avm/result_hash` and `/avm/trace_hash`

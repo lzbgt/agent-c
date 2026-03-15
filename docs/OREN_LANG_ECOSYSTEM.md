@@ -151,12 +151,12 @@ Before that, embedding usually slows everything down.
 
 If you want to maximize leverage *now* with minimal time:
 
-1) Treat AVM as a **future deterministic policy engine**, and only implement a “runner boundary” in `agentd` first
+1) Reuse the **already shipped runner boundary** in `agentd` first
    (out-of-process, deny-by-default), not a full language integration.
-2) Align the boundary with AVM’s native concepts:
-   - `allowed_domains` + budgets
-   - record/replay logs as bytes
-   - job scanning (`--print-job-json`) for caching and governance
+2) Extend the boundary where the current gap still exists:
+   - persist a governance bundle object (scan/inspect/verify/run) keyed by hashes
+   - carry record/replay logs as durable evidence, not only subprocess stdout
+   - add explicit host-effects policy surfaces beyond mount validation
 
 The draft for this boundary is `docs/spec/agent_vm_port_v0.md`.
 
@@ -174,3 +174,8 @@ If you want immediate leverage without “bringing up the whole language project
    - set `AGENTD_AVM_EXEC=1` and use `POST /api/v1/avm/capsule_run` or workflow `kind:"avm_capsule"`
 5) Compile a `.oren` source → `.obc` and emit a ready workflow task JSON:
    - `tools/oren_capsule_task.sh --src /abs/path/to/prog.oren --task-id AVM`
+
+Current proof:
+- `tests/agentd_avm_job_scan_smoke.sh`
+- `tests/agentd_workflow_avm_capsule_smoke.sh`
+- `tests/agentd_workflow_aggregate_quorum_smoke.sh`
