@@ -43,6 +43,78 @@ EdgeOutboxResponse:
           parse_error: { type: string }
 
 
+EdgeNodeCapsResponse:
+  type: object
+  required: [ok, node_id, manifest]
+  properties:
+    ok: { type: boolean }
+    node_id: { type: string }
+    manifest:
+      type: object
+      additionalProperties: true
+
+
+EdgeNodeManifestAttestation:
+  type: object
+  required: [schema, ts_utc_ms, signing_schema, node_id, manifest_sha256, alg, kid, sig]
+  properties:
+    schema: { type: string, enum: [edge_node_manifest_attest_v1] }
+    ts_utc_ms: { type: integer, format: int64 }
+    signing_schema: { type: string, enum: [edge_node_manifest_bundle_v1] }
+    node_id: { type: string }
+    caps_sha256: { type: string }
+    manifest_sha256: { type: string }
+    alg: { type: string, enum: [hmac-sha256, ed25519] }
+    kid: { type: string }
+    pubkey:
+      type: string
+      description: Present for Ed25519 signatures
+    sig: { type: string }
+
+
+EdgeNodeManifestBundle:
+  type: object
+  required:
+    [schema, created_utc_ms, node_id, manifest_sha256, manifest_sha256_alg, last_hello_utc_ms, last_heartbeat_utc_ms, manifest]
+  properties:
+    schema: { type: string, enum: [edge_node_manifest_bundle_v1] }
+    created_utc_ms: { type: integer, format: int64 }
+    node_id: { type: string }
+    caps_sha256: { type: string }
+    manifest_sha256: { type: string }
+    manifest_sha256_alg: { type: string, enum: [agent_json_c14n_v1] }
+    model: { type: string }
+    fw_git_sha: { type: string }
+    last_hello_utc_ms: { type: integer, format: int64 }
+    last_heartbeat_utc_ms: { type: integer, format: int64 }
+    manifest:
+      type: object
+      additionalProperties: true
+    tools:
+      type: array
+      items:
+        type: object
+        additionalProperties: true
+    tags:
+      type: array
+      items: { type: string }
+    hardware_presence:
+      type: object
+      additionalProperties: true
+    attest:
+      $ref: "#/components/schemas/EdgeNodeManifestAttestation"
+
+
+EdgeNodeManifestBundleResponse:
+  type: object
+  required: [ok, node_id, bundle]
+  properties:
+    ok: { type: boolean }
+    node_id: { type: string }
+    bundle:
+      $ref: "#/components/schemas/EdgeNodeManifestBundle"
+
+
 EdgeTaskAssignRequest:
   type: object
   required: [task_id, step_id, idempotency_key, mode, deadline_utc_ms, payload]

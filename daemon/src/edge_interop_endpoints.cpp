@@ -44,6 +44,192 @@ static bool select_node_match_any(
   return edge_select_node_match_any(db, requires_tools, tags_all, tags_any, tags_none, exclude_node_ids_or_null, out_node_id);
 }
 
+static bool canonical_json_bytes(const Json::Value& v, std::string* out, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!out) return false;
+  out->clear();
+  Json::StreamWriterBuilder wb;
+  wb["indentation"] = "";
+  const std::string raw = Json::writeString(wb, v);
+
+  char* canon = nullptr;
+  size_t canon_len = 0;
+  char errbuf[128] = {0};
+  const agent_status_t st =
+    agent_json_c14n_canonicalize(raw.data(), raw.size(), &canon, &canon_len, errbuf, sizeof(errbuf));
+  if (st != AGENT_OK || !canon) {
+    if (out_err) *out_err = errbuf[0] ? std::string(errbuf) : "c14n_failed";
+    if (canon) agent_free(canon);
+    return false;
+  }
+  out->assign(canon, canon_len);
+  agent_free(canon);
+  return true;
+}
+
+static bool parse_hex_bytes(const std::string& hex, std::vector<uint8_t>* out, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!out) return false;
+  out->clear();
+  if (hex.size() % 2 != 0) {
+    if (out_err) *out_err = "hex string must have even length";
+    return false;
+  }
+  auto nibble = [](char c) -> int {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
+    if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
+    return -1;
+  };
+  out->reserve(hex.size() / 2);
+  for (size_t i = 0; i < hex.size(); i += 2) {
+    const int hi = nibble(hex[i]);
+    const int lo = nibble(hex[i + 1]);
+    if (hi < 0 || lo < 0) {
+      if (out_err) *out_err = "hex string contains non-hex characters";
+      return false;
+    }
+    out->push_back(static_cast<uint8_t>((hi << 4) | lo));
+  }
+  return true;
+}
+
+static bool parse_seed_bytes(const std::string& text, std::vector<uint8_t>* out, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!out) return false;
+  out->clear();
+  const std::string s = trim_copy(text);
+  if (s.empty()) {
+    if (out_err) *out_err = "empty seed";
+    return false;
+  }
+  bool hex_candidate = (s.size() == 64);
+  if (hex_candidate) {
+    for (char c : s) {
+      const bool ok = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+      if (!ok) {
+        hex_candidate = false;
+        break;
+      }
+    }
+  }
+  if (hex_candidate) {
+    std::string herr;
+    if (!parse_hex_bytes(s, out, &herr)) {
+      if (out_err) *out_err = herr;
+      return false;
+    }
+  } else {
+    std::string raw;
+    std::string berr;
+    if (!base64_decode(s, &raw, &berr)) {
+      if (out_err) *out_err = berr.empty() ? "invalid base64 seed" : berr;
+      return false;
+    }
+    out->assign(raw.begin(), raw.end());
+  }
+  if (out->size() != 32) {
+    if (out_err) *out_err = "seed must be 32 bytes";
+    return false;
+  }
+  return true;
+}
+
+static bool compute_manifest_sha256(const Json::Value& manifest, std::string* out_sha256, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!out_sha256) return false;
+  out_sha256->clear();
+  Json::StreamWriterBuilder wb;
+  wb["indentation"] = "";
+  const std::string raw = Json::writeString(wb, manifest);
+  char token[80] = {0};
+  char errbuf[128] = {0};
+  const agent_status_t st =
+    agent_json_c14n_sha256_token(raw.data(), raw.size(), token, errbuf, sizeof(errbuf));
+  if (st != AGENT_OK || token[0] == '\0') {
+    if (out_err) *out_err = errbuf[0] ? std::string(errbuf) : "manifest_hash_failed";
+    return false;
+  }
+  *out_sha256 = std::string(token);
+  return true;
+}
+
+static bool maybe_sign_manifest_bundle(const DaemonConfig& cfg, Json::Value* bundle, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!bundle || !bundle->isObject()) {
+    if (out_error) *out_error = "internal error";
+    return false;
+  }
+
+  const bool hmac_kid_set = !cfg.run_attest_hmac_kid.empty();
+  const bool hmac_key_set = !cfg.run_attest_hmac_key.empty();
+  const bool ed_kid_set = !cfg.run_attest_ed25519_kid.empty();
+  const bool ed_seed_set = !cfg.run_attest_ed25519_seed.empty();
+  const int sign_modes = (hmac_kid_set || hmac_key_set ? 1 : 0) + (ed_kid_set || ed_seed_set ? 1 : 0);
+  if (sign_modes == 0) return true;
+  if (sign_modes > 1) {
+    if (out_error) *out_error = "attest_sign_config_invalid: multiple signing modes configured";
+    return false;
+  }
+  if ((hmac_kid_set || hmac_key_set) && (!hmac_kid_set || !hmac_key_set)) {
+    if (out_error) *out_error = "attest_sign_config_invalid: missing AGENTD_RUN_ATTEST_HMAC_KID or AGENTD_RUN_ATTEST_HMAC_KEY";
+    return false;
+  }
+  if ((ed_kid_set || ed_seed_set) && (!ed_kid_set || !ed_seed_set)) {
+    if (out_error) *out_error = "attest_sign_config_invalid: missing AGENTD_RUN_ATTEST_ED25519_KID or AGENTD_RUN_ATTEST_ED25519_SEED";
+    return false;
+  }
+
+  Json::Value signable = *bundle;
+  signable.removeMember("attest");
+  std::string canon;
+  std::string cerr;
+  if (!canonical_json_bytes(signable, &canon, &cerr)) {
+    if (out_error) *out_error = std::string("attest_sign_failed: ") + (cerr.empty() ? "c14n_failed" : cerr);
+    return false;
+  }
+
+  Json::Value sig(Json::objectValue);
+  sig["schema"] = "edge_node_manifest_attest_v1";
+  sig["ts_utc_ms"] = (Json::Int64)edge_unix_ms_now();
+  sig["signing_schema"] = "edge_node_manifest_bundle_v1";
+  if (bundle->isMember("node_id")) sig["node_id"] = (*bundle)["node_id"];
+  if (bundle->isMember("caps_sha256")) sig["caps_sha256"] = (*bundle)["caps_sha256"];
+  if (bundle->isMember("manifest_sha256")) sig["manifest_sha256"] = (*bundle)["manifest_sha256"];
+
+  if (hmac_kid_set) {
+    std::array<uint8_t, 32> mac{};
+    agent_hmac_sha256(
+      cfg.run_attest_hmac_key.data(),
+      cfg.run_attest_hmac_key.size(),
+      canon.data(),
+      canon.size(),
+      mac.data()
+    );
+    sig["alg"] = "hmac-sha256";
+    sig["kid"] = cfg.run_attest_hmac_kid;
+    sig["sig"] = base64_encode(reinterpret_cast<const char*>(mac.data()), mac.size());
+  } else {
+    std::vector<uint8_t> seed;
+    std::string serr;
+    if (!parse_seed_bytes(cfg.run_attest_ed25519_seed, &seed, &serr)) {
+      if (out_error) *out_error = std::string("attest_sign_failed: ") + (serr.empty() ? "invalid_ed25519_seed" : serr);
+      return false;
+    }
+    uint8_t pubkey[32] = {0};
+    uint8_t sig_bytes[64] = {0};
+    agent_ed25519_publickey(seed.data(), pubkey);
+    agent_ed25519_sign(canon.data(), canon.size(), seed.data(), pubkey, sig_bytes);
+    sig["alg"] = "ed25519";
+    sig["kid"] = cfg.run_attest_ed25519_kid;
+    sig["pubkey"] = base64_encode(reinterpret_cast<const char*>(pubkey), sizeof(pubkey));
+    sig["sig"] = base64_encode(reinterpret_cast<const char*>(sig_bytes), sizeof(sig_bytes));
+  }
+
+  (*bundle)["attest"] = sig;
+  return true;
+}
+
 }  // namespace
 
 void handle_edge_message_endpoint(
@@ -1556,6 +1742,139 @@ void handle_edge_node_caps_endpoint(
   o["ok"] = true;
   o["node_id"] = *nid;
   o["manifest"] = m;
+  resp->body = edge_json_stringify_compact(o);
+}
+
+void handle_edge_node_manifest_bundle_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  if (!db_or_null || !db_or_null->is_open()) {
+    resp->status = 503;
+    resp->body = json_error_body("db not available");
+    return;
+  }
+
+  const auto nid = query_get(req.query, "node_id");
+  if (!nid || nid->empty() || !edge_id_is_safe(*nid)) {
+    resp->status = 400;
+    resp->body = json_error_body("missing/invalid node_id");
+    return;
+  }
+
+  AgentDb::EdgeNodeRow n;
+  std::string err;
+  if (!db_or_null->get_edge_node(*nid, &n, &err)) {
+    resp->status = 404;
+    resp->body = json_error_body("node not found");
+    return;
+  }
+  if (n.manifest_json.empty()) {
+    resp->status = 404;
+    resp->body = json_error_body("node has no manifest");
+    return;
+  }
+
+  Json::Value manifest;
+  std::string perr;
+  if (!json_parse_any(n.manifest_json, &manifest, &perr) || !manifest.isObject()) {
+    resp->status = 500;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = "failed to parse stored manifest";
+    o["parse_error"] = perr;
+    resp->body = edge_json_stringify_compact(o);
+    return;
+  }
+
+  std::string manifest_sha256;
+  std::string sha_err;
+  if (!compute_manifest_sha256(manifest, &manifest_sha256, &sha_err)) {
+    resp->status = 500;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = "failed to hash manifest";
+    o["details"] = sha_err;
+    resp->body = edge_json_stringify_compact(o);
+    return;
+  }
+
+  Json::Value bundle(Json::objectValue);
+  bundle["schema"] = "edge_node_manifest_bundle_v1";
+  bundle["created_utc_ms"] = (Json::Int64)edge_unix_ms_now();
+  bundle["node_id"] = n.node_id;
+  if (!n.caps_sha256.empty()) bundle["caps_sha256"] = n.caps_sha256;
+  bundle["manifest_sha256"] = manifest_sha256;
+  bundle["manifest_sha256_alg"] = "agent_json_c14n_v1";
+  if (!n.model.empty()) bundle["model"] = n.model;
+  if (!n.fw_git_sha.empty()) bundle["fw_git_sha"] = n.fw_git_sha;
+  bundle["last_hello_utc_ms"] = (Json::Int64)n.last_hello_utc_ms;
+  bundle["last_heartbeat_utc_ms"] = (Json::Int64)n.last_heartbeat_utc_ms;
+  bundle["manifest"] = manifest;
+
+  if (manifest.isMember("tools") && manifest["tools"].isArray()) {
+    bundle["tools"] = manifest["tools"];
+  } else if (!n.tools_json.empty()) {
+    Json::Value v;
+    std::string derr;
+    if (json_parse_any(n.tools_json, &v, &derr) && v.isArray()) bundle["tools"] = v;
+  }
+
+  bool have_tags = false;
+  if (!n.tags_json.empty()) {
+    Json::Value v;
+    std::string derr;
+    if (json_parse_any(n.tags_json, &v, &derr) && v.isArray()) {
+      bundle["tags"] = v;
+      have_tags = true;
+    }
+  }
+  if (!have_tags && manifest.isMember("tags") && manifest["tags"].isArray()) bundle["tags"] = manifest["tags"];
+
+  bool have_presence = false;
+  if (!n.hardware_presence_json.empty()) {
+    Json::Value v;
+    std::string derr;
+    if (json_parse_any(n.hardware_presence_json, &v, &derr) && v.isObject()) {
+      bundle["hardware_presence"] = v;
+      have_presence = true;
+    }
+  }
+  if (!have_presence && manifest.isMember("hardware") && manifest["hardware"].isObject() &&
+      manifest["hardware"].isMember("presence") && manifest["hardware"]["presence"].isObject()) {
+    bundle["hardware_presence"] = manifest["hardware"]["presence"];
+  }
+
+  std::string sign_err;
+  if (!maybe_sign_manifest_bundle(cfg, &bundle, &sign_err)) {
+    resp->status = 500;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    if (sign_err.rfind("attest_sign_config_invalid:", 0) == 0) {
+      o["error"] = "attest_sign_config_invalid";
+      o["details"] = trim_copy(sign_err.substr(std::string("attest_sign_config_invalid:").size()));
+    } else if (sign_err.rfind("attest_sign_failed:", 0) == 0) {
+      o["error"] = "attest_sign_failed";
+      o["details"] = trim_copy(sign_err.substr(std::string("attest_sign_failed:").size()));
+    } else {
+      o["error"] = "manifest_bundle_sign_failed";
+      if (!sign_err.empty()) o["details"] = sign_err;
+    }
+    resp->body = edge_json_stringify_compact(o);
+    return;
+  }
+
+  Json::Value o(Json::objectValue);
+  o["ok"] = true;
+  o["node_id"] = n.node_id;
+  o["bundle"] = bundle;
   resp->body = edge_json_stringify_compact(o);
 }
 

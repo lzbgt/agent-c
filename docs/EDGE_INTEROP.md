@@ -12,9 +12,10 @@ This document describes the **HTTP transport mapping** implemented by `agentd` f
 
 Current status:
 - Shipped: authenticated JSON/CBOR envelope ingress (HMAC + Ed25519), replay-window and
-  node-binding policy knobs, best-effort task attestation verification, and enforceable
-  `edge_attest_required` / `edge_attest_require_sig` policy.
-- Still open: durable PKI / trust-root rotation, signed manifest distribution, and
+  node-binding policy knobs, best-effort task attestation verification, enforceable
+  `edge_attest_required` / `edge_attest_require_sig` policy, and platform-signed
+  node manifest bundle export via `GET /api/v1/edge/node/manifest_bundle`.
+- Still open: durable PKI / trust-root rotation, node-native signed manifest distribution, and
   confidentiality beyond authenticity-only envelopes.
 
 Executable contract artifacts (this repo):
@@ -166,6 +167,14 @@ Returns messages in ascending `outbox_id` order. The node should:
 - `GET /api/v1/edge/nodes`
 - `GET /api/v1/edge/node?node_id=...`
 - `GET /api/v1/edge/node/caps?node_id=...`
+- `GET /api/v1/edge/node/manifest_bundle?node_id=...`
+
+Manifest bundle note:
+- The manifest bundle endpoint returns the stored manifest plus derived `tools`, `tags`, and
+  `hardware_presence` surfaces as one exportable artifact.
+- When `AGENTD_RUN_ATTEST_HMAC_*` or `AGENTD_RUN_ATTEST_ED25519_*` is configured, `agentd`
+  signs the bundle and returns an `attest` block so operators can treat it as a verified
+  control-plane artifact rather than only an unsigned registry read.
 
 ### Platform helper: enqueue TASK_ASSIGN
 

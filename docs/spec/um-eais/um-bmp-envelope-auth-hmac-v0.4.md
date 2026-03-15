@@ -1,7 +1,7 @@
 # UM‑BMP Envelope Auth — Profile v0.4
 
 Date: 2026-02-05
-Status: implemented rolling core; PKI/confidentiality still open
+Status: implemented rolling core; PKI/confidentiality and node-native manifest distribution still open
 
 This document defines an optional envelope authenticity mechanism for UM‑BMP messages
 in constrained IoT/edge systems, intended for:
@@ -20,7 +20,8 @@ This profile is transport-agnostic and applies to both JSON and CBOR wire mappin
 
 - Confidentiality (payload encryption in addition to transport security when available).
 - Certificate chains / PKI with rotation and revocation support.
-- Signed manifest / identity distribution so trust roots do not rely only on operator-provisioned key maps.
+- Durable PKI / trust-root rotation and node-native signed manifest / identity distribution so trust roots do not rely
+  only on operator-provisioned key maps.
 
 ## Envelope fields
 
@@ -160,3 +161,5 @@ When `edge_auth_required=false`:
   `agentd_edge_auth_ed25519_cbor_wire_smoke` for authenticated CBOR ingress.
 - `ctest` includes `agentd_edge_auth_hmac_smoke` and `agentd_edge_auth_ed25519_smoke`
   for authenticated JSON ingress and operator enforcement.
+- `ctest` includes `agentd_edge_manifest_bundle_smoke` for the platform-signed manifest bundle
+  export surface (`GET /api/v1/edge/node/manifest_bundle`).

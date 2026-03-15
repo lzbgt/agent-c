@@ -1279,6 +1279,10 @@ struct AgentdService::Impl {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_edge_node_caps_endpoint(cur, cors_cfg, &db, req, resp);
     });
+    server.handle("GET", "/api/v1/edge/node/manifest_bundle", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_edge_node_manifest_bundle_endpoint(cur, cors_cfg, &db, req, resp);
+    });
     server.handle("POST", "/api/v1/edge/task/assign", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_edge_task_assign_endpoint(cur, cors_cfg, &db, req, resp);

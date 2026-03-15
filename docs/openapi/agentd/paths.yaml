@@ -1973,6 +1973,31 @@
     responses:
       "200":
         description: Node manifest
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeNodeCapsResponse"
+
+/api/v1/edge/node/manifest_bundle:
+  get:
+    tags: [edge]
+    summary: Get platform-signed node manifest bundle
+    description: |
+      Returns the stored node capability manifest plus derived tool/tag/presence surfaces
+      as one manifest bundle. When run-attestation signing keys are configured, agentd signs
+      the bundle as a first-class verified artifact.
+    parameters:
+      - in: query
+        name: node_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Node manifest bundle
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeNodeManifestBundleResponse"
 
 /api/v1/edge/task/assign:
   post:
