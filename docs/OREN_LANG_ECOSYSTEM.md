@@ -154,12 +154,12 @@ If you want to maximize leverage *now* with minimal time:
 1) Reuse the **already shipped runner boundary** in `agentd` first
    (out-of-process, deny-by-default), not a full language integration.
 2) Extend the boundary where the current gap still exists:
-   - persist a governance bundle object (scan/inspect/verify/run) keyed by hashes
-   - carry record/replay logs as durable evidence, not only subprocess stdout
    - add explicit host-effects policy surfaces beyond mount validation
      2026-03-15: shipped request-time `host_effects.{fs,proc,net}` with fail-closed operator env gates
-     and AVM runner pass-through (`AGENTD_AVM_HOST_EFFECT_*`); durable governance bundles and replay
-     artifacts still remain open.
+     and AVM runner pass-through (`AGENTD_AVM_HOST_EFFECT_*`)
+   - carry node identity / attestation material through quorum joins for multi-node correctness
+   - extend durable evidence from the now-shipped governance bundle/output-log artifacts to full
+     snapshot-level record/replay persistence when AVM exposes it cleanly
 
 The draft for this boundary is `docs/spec/agent_vm_port_v0.md`.
 

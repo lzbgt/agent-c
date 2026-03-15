@@ -126,6 +126,24 @@ bool avm_capsule_run_to_json(
   return false;
 }
 
+bool avm_governance_bundle_to_json(
+  const DaemonConfig&,
+  const Json::Value&,
+  const Json::Value*,
+  Json::Value* out,
+  std::string* out_error
+) {
+  if (out_error) *out_error = "avm governance bundle not supported on Windows";
+  if (out) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = "avm endpoints are not supported on Windows";
+    o["error_kind"] = "unavailable";
+    *out = o;
+  }
+  return false;
+}
+
 }  // namespace agentd
 
 #else
@@ -720,6 +738,66 @@ static Json::Value run_avm_json(const std::string& avm_bin, const std::string& a
   return out;
 }
 
+static Json::Value run_avm_verify_strict_json(const std::string& avm_bin, const std::filesystem::path& obc_path) {
+  const int timeout_ms = 5000;
+  const size_t max_out = 1024 * 1024;
+  ExecResult r = run_proc_capture({avm_bin, "--verify-strict", obc_path.string()}, timeout_ms, max_out);
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = (r.exit_code == 0 && !r.timed_out);
+  out["exit_code"] = r.exit_code;
+  out["timed_out"] = r.timed_out;
+  out["truncated"] = r.truncated;
+  out["stdout"] = r.output;
+  const AvmOutputEvidence ev = build_avm_output_evidence(r.output);
+  out["output"] = avm_output_evidence_to_json(ev);
+
+  if (r.timed_out) {
+    out["ok"] = false;
+    out["error"] = "avm timed out";
+    return out;
+  }
+  if (r.exit_code != 0) {
+    out["ok"] = false;
+    out["error"] = "verify-strict failed";
+    return out;
+  }
+  return out;
+}
+
+static Json::Value run_avm_trace_hash_json(const std::string& avm_bin, const std::filesystem::path& obc_path) {
+  const int timeout_ms = 5000;
+  const size_t max_out = 1024 * 1024;
+  ExecResult r = run_proc_capture({avm_bin, "--print-trace-hash", obc_path.string()}, timeout_ms, max_out);
+  const AvmOutputEvidence ev = build_avm_output_evidence(r.output);
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = (r.exit_code == 0 && !r.timed_out);
+  out["exit_code"] = r.exit_code;
+  out["timed_out"] = r.timed_out;
+  out["truncated"] = r.truncated;
+  out["stdout"] = r.output;
+  out["output"] = avm_output_evidence_to_json(ev);
+
+  if (r.timed_out) {
+    out["ok"] = false;
+    out["error"] = "avm timed out";
+    return out;
+  }
+  if (r.exit_code != 0) {
+    out["ok"] = false;
+    out["error"] = "avm exited non-zero";
+    return out;
+  }
+  if (!ev.trace_hash) {
+    out["ok"] = false;
+    out["error"] = "TRACE_HASH not found in avm output";
+    return out;
+  }
+  out["trace_hash"] = *ev.trace_hash;
+  return out;
+}
+
 static std::optional<std::string> parse_trace_hash(const std::string& output) {
   // Real AVM prints: "TRACE_HASH <hex>" (rolling). Accept extra whitespace and extra lines.
   // Return just the <hex> token if found.
@@ -1088,6 +1166,165 @@ bool avm_capsule_run_to_json(
   return true;
 }
 
+bool avm_governance_bundle_to_json(
+  const DaemonConfig& cfg,
+  const Json::Value& args,
+  const Json::Value* run_result_or_null,
+  Json::Value* out,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (!out) {
+    if (out_error) *out_error = "missing out";
+    return false;
+  }
+  *out = Json::Value(Json::objectValue);
+
+  Json::Value bundle(Json::objectValue);
+  bundle["schema"] = "agentd.avm.governance_bundle.v1";
+
+  if (!cfg.yolo_default) {
+    const std::string err = "avm governance bundle requires yolo_default=true";
+    if (out_error) *out_error = err;
+    bundle["ok"] = false;
+    bundle["error_kind"] = "forbidden";
+    bundle["error"] = err;
+    *out = bundle;
+    return true;
+  }
+
+  const std::string avm_bin = getenv_string("AGENTD_AVM_BIN");
+  if (avm_bin.empty()) {
+    const std::string err = "AGENTD_AVM_BIN is not set";
+    if (out_error) *out_error = err;
+    bundle["ok"] = false;
+    bundle["error_kind"] = "unavailable";
+    bundle["error"] = err;
+    *out = bundle;
+    return true;
+  }
+
+  std::string obc_bytes;
+  std::string perr;
+  if (!parse_obc_from_args(args, &obc_bytes, &perr)) {
+    const std::string err = perr.empty() ? "invalid args" : perr;
+    if (out_error) *out_error = err;
+    bundle["ok"] = false;
+    bundle["error_kind"] = "bad_request";
+    bundle["error"] = err;
+    *out = bundle;
+    return true;
+  }
+
+  Json::Value capsule(Json::objectValue);
+  if (args.isObject()) capsule = args;
+  capsule.removeMember("obc_base64");
+  bundle["capsule"] = capsule;
+  bundle["obc_size_bytes"] = (Json::UInt64)obc_bytes.size();
+
+  std::string terr;
+  const auto tmp = write_temp_file_bytes(obc_bytes, &terr);
+  if (!tmp) {
+    if (out_error) *out_error = terr.empty() ? "failed to write temp obc" : terr;
+    bundle["ok"] = false;
+    bundle["error_kind"] = "internal";
+    bundle["error"] = "failed to write temp obc";
+    if (!terr.empty()) bundle["detail"] = terr;
+    *out = bundle;
+    return true;
+  }
+
+  Json::Value job_out = run_avm_json(avm_bin, "--print-job-json", *tmp);
+  if (job_out.isObject() && job_out.isMember("value")) {
+    job_out["job"] = job_out["value"];
+    job_out.removeMember("value");
+  }
+  Json::Value policy_out = run_avm_json(avm_bin, "--print-policy-json", *tmp);
+  if (policy_out.isObject() && policy_out.isMember("value")) {
+    policy_out["policy"] = policy_out["value"];
+    policy_out.removeMember("value");
+  }
+  Json::Value inspect_out = run_avm_json(avm_bin, "--inspect-json", *tmp);
+  if (inspect_out.isObject() && inspect_out.isMember("value")) {
+    inspect_out["inspect"] = inspect_out["value"];
+    inspect_out.removeMember("value");
+  }
+  Json::Value verify_out = run_avm_verify_strict_json(avm_bin, *tmp);
+  Json::Value trace_out = run_avm_trace_hash_json(avm_bin, *tmp);
+
+  std::error_code ec;
+  std::filesystem::remove(*tmp, ec);
+
+  bundle["job_scan"] = job_out;
+  bundle["policy_scan"] = policy_out;
+  bundle["inspect"] = inspect_out;
+  bundle["verify_strict"] = verify_out;
+  bundle["trace_hash_probe"] = trace_out;
+
+  if (run_result_or_null && run_result_or_null->isObject()) {
+    Json::Value run_summary = *run_result_or_null;
+    run_summary.removeMember("stdout");
+    if (run_summary.isMember("output") && run_summary["output"].isObject()) {
+      run_summary["output"].removeMember("raw_text");
+      run_summary["output"].removeMember("residual_text");
+    }
+    bundle["run"] = run_summary;
+  }
+
+  Json::Value keys(Json::objectValue);
+  auto get_obj_string = [](const Json::Value& obj, const char* key) -> std::string {
+    return obj.isObject() && obj.isMember(key) && obj[key].isString() ? obj[key].asString() : std::string();
+  };
+  const Json::Value job_v = job_out.isObject() ? job_out["job"] : Json::Value(Json::nullValue);
+  const Json::Value policy_v = policy_out.isObject() ? policy_out["policy"] : Json::Value(Json::nullValue);
+  const Json::Value inspect_v = inspect_out.isObject() ? inspect_out["inspect"] : Json::Value(Json::nullValue);
+  const Json::Value inspect_caps =
+    inspect_v.isObject() && inspect_v.isMember("capabilities") && inspect_v["capabilities"].isObject()
+      ? inspect_v["capabilities"]
+      : Json::Value(Json::nullValue);
+
+  const std::string program_hash =
+    !get_obj_string(job_v, "program_hash_sha256").empty() ? get_obj_string(job_v, "program_hash_sha256")
+    : get_obj_string(inspect_v, "program_hash_sha256");
+  const std::string job_hash = get_obj_string(job_v, "job_hash_sha256");
+  const std::string policy_hash =
+    !get_obj_string(job_v, "policy_hash_sha256").empty() ? get_obj_string(job_v, "policy_hash_sha256")
+    : (!get_obj_string(policy_v, "policy_hash_sha256").empty() ? get_obj_string(policy_v, "policy_hash_sha256")
+                                                                : get_obj_string(inspect_caps, "policy_hash_sha256"));
+  const std::string trace_hash =
+    get_obj_string(trace_out, "trace_hash").empty() && run_result_or_null && run_result_or_null->isObject()
+      ? get_obj_string(*run_result_or_null, "trace_hash")
+      : get_obj_string(trace_out, "trace_hash");
+  const std::string result_hash =
+    run_result_or_null && run_result_or_null->isObject() ? get_obj_string(*run_result_or_null, "result_hash") : std::string();
+  const std::string state_hash =
+    run_result_or_null && run_result_or_null->isObject() ? get_obj_string(*run_result_or_null, "state_hash") : std::string();
+
+  if (!program_hash.empty()) keys["program_hash_sha256"] = program_hash;
+  if (!job_hash.empty()) keys["job_hash_sha256"] = job_hash;
+  if (!policy_hash.empty()) keys["policy_hash_sha256"] = policy_hash;
+  if (!trace_hash.empty()) keys["trace_hash"] = trace_hash;
+  if (!result_hash.empty()) keys["result_hash"] = result_hash;
+  if (!state_hash.empty()) keys["state_hash"] = state_hash;
+  if (!keys.empty()) bundle["keys"] = keys;
+  if (!job_hash.empty()) bundle["bundle_key"] = std::string("job:") + job_hash;
+  else if (!program_hash.empty()) bundle["bundle_key"] = std::string("program:") + program_hash;
+
+  const bool ok =
+    job_out.isObject() && job_out.isMember("ok") && job_out["ok"].isBool() && job_out["ok"].asBool() &&
+    policy_out.isObject() && policy_out.isMember("ok") && policy_out["ok"].isBool() && policy_out["ok"].asBool() &&
+    inspect_out.isObject() && inspect_out.isMember("ok") && inspect_out["ok"].isBool() && inspect_out["ok"].asBool() &&
+    verify_out.isObject() && verify_out.isMember("ok") && verify_out["ok"].isBool() && verify_out["ok"].asBool() &&
+    trace_out.isObject() && trace_out.isMember("ok") && trace_out["ok"].isBool() && trace_out["ok"].asBool() &&
+    (!run_result_or_null || !run_result_or_null->isObject() ||
+     !run_result_or_null->isMember("ok") || !(*run_result_or_null)["ok"].isBool() ||
+     (*run_result_or_null)["ok"].asBool());
+  bundle["ok"] = ok;
+
+  *out = bundle;
+  return true;
+}
+
 void handle_avm_job_scan_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
@@ -1263,33 +1500,18 @@ void handle_avm_verify_strict_endpoint(
     return;
   }
 
-  const int timeout_ms = 5000;
-  const size_t max_out = 1024 * 1024;
-  ExecResult r = run_proc_capture({ready->avm_bin, "--verify-strict", tmp->string()}, timeout_ms, max_out);
+  Json::Value out = run_avm_verify_strict_json(ready->avm_bin, *tmp);
 
   std::error_code ec;
   std::filesystem::remove(*tmp, ec);
 
-  Json::Value out(Json::objectValue);
-  out["ok"] = (r.exit_code == 0 && !r.timed_out);
-  out["exit_code"] = r.exit_code;
-  out["timed_out"] = r.timed_out;
-  out["truncated"] = r.truncated;
-  out["stdout"] = r.output;
-  const AvmOutputEvidence ev = build_avm_output_evidence(r.output);
-  out["output"] = avm_output_evidence_to_json(ev);
-
-  if (r.timed_out) {
+  if (out.isMember("timed_out") && out["timed_out"].asBool()) {
     resp->status = 504;
-    out["ok"] = false;
-    out["error"] = "avm timed out";
     respond_json(resp, out);
     return;
   }
-  if (r.exit_code != 0) {
+  if (!out.isMember("ok") || !out["ok"].asBool()) {
     resp->status = 422;
-    out["ok"] = false;
-    out["error"] = "verify-strict failed";
     respond_json(resp, out);
     return;
   }
@@ -1328,45 +1550,21 @@ void handle_avm_trace_hash_endpoint(
     return;
   }
 
-  const int timeout_ms = 5000;
-  const size_t max_out = 1024 * 1024;
-  ExecResult r = run_proc_capture({ready->avm_bin, "--print-trace-hash", tmp->string()}, timeout_ms, max_out);
-  const AvmOutputEvidence ev = build_avm_output_evidence(r.output);
+  Json::Value out = run_avm_trace_hash_json(ready->avm_bin, *tmp);
 
   std::error_code ec;
   std::filesystem::remove(*tmp, ec);
 
-  Json::Value out(Json::objectValue);
-  out["ok"] = (r.exit_code == 0 && !r.timed_out);
-  out["exit_code"] = r.exit_code;
-  out["timed_out"] = r.timed_out;
-  out["truncated"] = r.truncated;
-  out["stdout"] = r.output;
-  out["output"] = avm_output_evidence_to_json(ev);
-
-  if (r.timed_out) {
+  if (out.isMember("timed_out") && out["timed_out"].asBool()) {
     resp->status = 504;
-    out["ok"] = false;
-    out["error"] = "avm timed out";
     respond_json(resp, out);
     return;
   }
-  if (r.exit_code != 0) {
+  if (!out.isMember("ok") || !out["ok"].asBool()) {
     resp->status = 502;
-    out["ok"] = false;
-    out["error"] = "avm exited non-zero";
     respond_json(resp, out);
     return;
   }
-
-  if (!ev.trace_hash) {
-    resp->status = 502;
-    out["ok"] = false;
-    out["error"] = "TRACE_HASH not found in avm output";
-    respond_json(resp, out);
-    return;
-  }
-  out["trace_hash"] = *ev.trace_hash;
   respond_json(resp, out);
 }
 

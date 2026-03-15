@@ -87,4 +87,17 @@ bool avm_capsule_run_to_json(
   std::string* out_error
 );
 
+// Internal helper for durable evidence surfaces (for example workflow-task artifact persistence).
+//
+// Builds a reusable AVM governance bundle from the non-exec AVM surfaces plus an optional
+// capsule-run result. The bundle intentionally omits `obc_base64` and is keyed by the hashes
+// returned by AVM scan/inspect output when available.
+bool avm_governance_bundle_to_json(
+  const DaemonConfig& cfg,
+  const Json::Value& args,
+  const Json::Value* run_result_or_null,
+  Json::Value* out,
+  std::string* out_error
+);
+
 }  // namespace agentd

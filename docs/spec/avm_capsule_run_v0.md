@@ -1,8 +1,8 @@
 # AVM Capsule Run Endpoint (v0) — agentd ↔ Oren AVM Integration
 
-Date: 2026-02-05
+Date: 2026-03-15
 
-Status: v0.4 (scan/trace-hash/capsule-run/workflow execution shipped; persisted record-replay evidence and attestation layering remain open)
+Status: v0.5 (scan/trace-hash/capsule-run/workflow execution and durable governance/output evidence shipped; attestation layering remains open)
 
 ## 1) Goal (why this exists)
 
@@ -33,6 +33,9 @@ This spec defines a minimal `agentd` HTTP endpoint that can:
   - `/api/v1/avm/capsule_run`
 - Durable workflow integration:
   - task kind `avm_capsule`
+- Durable AVM evidence artifacts for workflow tasks:
+  - governance bundle persisted into session artifacts
+  - bounded output log persisted into session artifacts
 - Deterministic downstream joins:
   - aggregate pointers `/avm/result_hash` and `/avm/trace_hash`
 - Mount allowlist enforcement for direct runs and workflow tasks
@@ -43,7 +46,7 @@ The following parts of the original v0 ambition are still open:
 
 - Allow scoped AVM flags passthrough via an explicit allowlist.
 - Enable host-effects under explicit policy and budget controls (FS/PROC/NET).
-- Expose full record/replay plumbing (log + snapshot persistence).
+- Expose full snapshot-level record/replay plumbing beyond the currently shipped durable output-log evidence.
 - Integrate multi-node quorum/attestation protocol in agentd (with broker coordination).
 
 ## 4) Security model
@@ -174,6 +177,11 @@ Durable workflows support deterministic capsule tasks (no LLM required):
 - Task kind: `avm_capsule`
 - Task payload: `capsule: { obc_base64, timeout_ms, gas, mem_bytes, mounts?, ... }`
 - Execution: agentd runs the configured AVM binary out-of-process under the same operator gates as `/api/v1/avm/capsule_run`.
+- Evidence persistence: successful and failed workflow capsule tasks persist two session-scoped artifacts:
+  - `.../governance_bundle.json` with `job_scan`, `policy_scan`, `inspect`, `verify_strict`, sanitized capsule args,
+    run summary, and stable keys such as `program_hash_sha256` / `job_hash_sha256`
+  - `.../output.log` with the bounded subprocess output that backs `output.raw_text`
+  These are visible through `GET /api/v1/session/artifacts`.
 
 Minimal example:
 
@@ -191,6 +199,7 @@ curl -fsS -H "Content-Type: application/json" -d '{
   - verifies scan/inspect/verify/trace-hash plus direct `capsule_run`
 - `tests/agentd_workflow_avm_capsule_smoke.sh`
   - verifies durable workflow execution + mount allowlist enforcement
+  - verifies session-scoped `governance_bundle.json` and `output.log` artifacts
 - `tests/agentd_avm_job_scan_smoke.sh`
   and `tests/agentd_workflow_avm_capsule_smoke.sh`
   now also verify explicit host-effect policy propagation and fail-closed denials for disallowed effects

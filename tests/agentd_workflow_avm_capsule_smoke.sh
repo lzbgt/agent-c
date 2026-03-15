@@ -29,6 +29,7 @@ trap cleanup EXIT
 LOG_DIR="$(agentd_smoke_log_dir)"
 TMP_DIR="${LOG_DIR}/agentd_workflow_avm_capsule_smoke_${PORT_DAEMON}.tmp"
 mkdir -p "${TMP_DIR}"
+SESSION_ID="sess_workflow_avm_capsule_smoke"
 
 HOME_ROOT="${TMP_DIR}/home"
 ALLOW_ROOT="${TMP_DIR}/allow_root"
@@ -68,12 +69,22 @@ while [[ $i -lt ${#args[@]} ]]; do
       i=$((i + 2))
       continue
       ;;
-    --capsule|--print-result-hash|--print-trace-hash|--print-state-hash)
+    --capsule|--print-result-hash|--print-state-hash)
       i=$((i + 1))
       continue
       ;;
     --print-run-json)
       mode="--print-run-json"
+      i=$((i + 1))
+      continue
+      ;;
+    --print-job-json|--print-policy-json|--inspect-json|--verify-strict)
+      if [[ -z "${mode}" ]]; then mode="${a}"; fi
+      i=$((i + 1))
+      continue
+      ;;
+    --print-trace-hash)
+      if [[ -z "${mode}" ]]; then mode="--print-trace-hash"; fi
       i=$((i + 1))
       continue
       ;;
@@ -93,6 +104,18 @@ if [[ -z "${file}" || ! -f "${file}" ]]; then
 fi
 
 case "${mode}" in
+  --print-job-json)
+    printf '{"schema":"avm.job.v7","program_hash_sha256":"sha256:stub","policy_hash_sha256":"sha256:stub","input_hash_sha256":"sha256:stub","exec_hash_sha256":"sha256:stub","job_hash_sha256":"sha256:stub"}\n'
+    ;;
+  --print-policy-json)
+    printf '{"schema":"avm.policy.v1","policy_hash_sha256":"sha256:stub","used_domains_mask":"0x0","pairs":[]}\n'
+    ;;
+  --inspect-json)
+    printf '{"schema":"avm.inspect.v1","program_hash_sha256":"sha256:stub","capabilities":{"schema":"avm.policy.v1","policy_hash_sha256":"sha256:stub"}}\n'
+    ;;
+  --verify-strict)
+    echo "OK"
+    ;;
   --print-run-json)
     mount_count="${AGENTD_AVM_MOUNT_COUNT:-0}"
     if [[ "${mount_count}" != "0" ]]; then
@@ -152,6 +175,9 @@ PY
     echo "RESULT_HASH stubresulthash"
     echo "TRACE_HASH stubtracehash"
     echo "STATE_HASH stubstatehash"
+    ;;
+  --print-trace-hash)
+    echo "TRACE_HASH stubtracehash"
     ;;
   *)
     echo "unexpected argv (mode not found)" >&2
@@ -241,7 +267,7 @@ tasks = [
   {"task_id":"AVM","kind":"avm_capsule","capsule":{"obc_base64":"${obc_b64}","timeout_ms":1000,"gas":1000,"mem_bytes":64000,"io_bytes":0,"log_bytes":0,"deterministic":True,"host_effects":{"fs":True},"mounts":[{"host_path":"${ALLOW_ROOT}/allowed","container_path":"/workspace/extra/allowed","is_main":True}]}},
   {"task_id":"B","depends_on":["AVM"],"request":{"prompt":"B got \${task.AVM.json:/assistant_text}","no_session":True,"tools":"none","base_url":"${STUB_BASE}","api_key":"dummy","model":"stub","trace":False}},
 ]
-print(json.dumps({"tasks": tasks, "allow_inline_api_keys": True}))
+print(json.dumps({"tasks": tasks, "allow_inline_api_keys": True, "allow_sessions": True, "session_id": "${SESSION_ID}"}))
 PY
 )" \
   "${DAEMON_URL}/api/v1/workflow/submit")"
@@ -254,6 +280,16 @@ PY
 )"
 if [[ -z "${workflow_id}" ]]; then
   echo "failed to get workflow_id: ${submit_resp}" >&2
+  exit 1
+fi
+session_id="$(python3 - <<PY
+import json
+obj = json.loads(r'''${submit_resp}''')
+print(obj.get("session_id",""))
+PY
+)"
+if [[ -z "${session_id}" ]]; then
+  echo "failed to get session_id: ${submit_resp}" >&2
   exit 1
 fi
 
@@ -359,6 +395,59 @@ if "B got stubresulthash" not in (r_b.get("assistant_text") or ""):
   raise SystemExit(1)
 PY
 
+artifacts_resp="$(curl -fsS --noproxy "*" --max-time 5 \
+  -H "Authorization: Bearer ${AUTH_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session/artifacts?session_id=${session_id}&max_artifacts=20&max_bytes=2000000")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${artifacts_resp}''')
+if not obj.get("ok"):
+  print("session artifacts failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+arts = obj.get("artifacts") or []
+gov = None
+log = None
+for rec in arts:
+  art = (((rec or {}).get("data") or {}).get("artifact") or {})
+  path = art.get("path") or ""
+  if path.endswith("/governance_bundle.json"):
+    gov = art
+  if path.endswith("/output.log"):
+    log = art
+if gov is None:
+  print("missing governance bundle artifact", arts, file=sys.stderr)
+  raise SystemExit(1)
+if log is None:
+  print("missing output log artifact", arts, file=sys.stderr)
+  raise SystemExit(1)
+bundle = gov.get("bundle") or {}
+if gov.get("schema") != "agentd.avm.governance_bundle_artifact.v1":
+  print("unexpected governance artifact schema", gov, file=sys.stderr)
+  raise SystemExit(1)
+if bundle.get("schema") != "agentd.avm.governance_bundle.v1":
+  print("unexpected bundle schema", bundle, file=sys.stderr)
+  raise SystemExit(1)
+keys = bundle.get("keys") or {}
+if keys.get("job_hash_sha256") != "sha256:stub":
+  print("unexpected job hash", keys, file=sys.stderr)
+  raise SystemExit(1)
+if keys.get("program_hash_sha256") != "sha256:stub":
+  print("unexpected program hash", keys, file=sys.stderr)
+  raise SystemExit(1)
+run = bundle.get("run") or {}
+if run.get("result_hash") != "stubresulthash":
+  print("unexpected bundle run result_hash", run, file=sys.stderr)
+  raise SystemExit(1)
+if log.get("schema") != "agentd.avm.output_log_artifact.v1":
+  print("unexpected log artifact schema", log, file=sys.stderr)
+  raise SystemExit(1)
+text = log.get("text") or ""
+if "RESULT_HASH stubresulthash" not in text or '"schema":"avm.run.v1"' not in text:
+  print("unexpected log artifact text", log, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 submit_bad_resp="$(curl -fsS --noproxy "*" --max-time 20 \
   -H "Authorization: Bearer ${AUTH_TOKEN}" \
   -H "Content-Type: application/json" \
@@ -367,7 +456,7 @@ import json
 tasks = [
   {"task_id":"AVM_BAD","kind":"avm_capsule","capsule":{"obc_base64":"${obc_b64}","timeout_ms":1000,"host_effects":{"fs":True},"mounts":[{"host_path":"${OUTSIDE_ROOT}/blocked","container_path":"/workspace/extra/blocked","is_main":True}]}}
 ]
-print(json.dumps({"tasks": tasks, "allow_inline_api_keys": True}))
+print(json.dumps({"tasks": tasks, "allow_inline_api_keys": True, "allow_sessions": True, "session_id": "${SESSION_ID}"}))
 PY
 )" \
   "${DAEMON_URL}/api/v1/workflow/submit")"
