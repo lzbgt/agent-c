@@ -2405,7 +2405,8 @@
     description: |
       Starts or stops the managed host-side consensus helper. Start requests can
       set `campaign_delay_ms` for the first election and `campaign_retry_ms` for
-      repeated campaigns when quorum is not reached before peers arrive.
+      repeated campaigns when quorum is not reached before peers arrive. They can
+      also provide `membership_epoch` and `member_node_ids` for explicit member-set compatibility.
     requestBody:
       required: true
       content:

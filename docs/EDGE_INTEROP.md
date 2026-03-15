@@ -228,6 +228,7 @@ Returns messages in ascending `outbox_id` order. The node should:
 - `POST /api/v1/edge/node/consensus_runtime`
   - starts or stops the managed host-side `agentd_edge_consensus_node` helper for one edge node
   - supports `campaign_delay_ms` and `campaign_retry_ms` so early candidates can re-campaign until peers come online
+  - accepts explicit `membership_epoch` and `member_node_ids` for deterministic member-set compatibility
 - `GET /api/v1/edge/node/consensus_runtime?node_id=...`
   - reports the managed helper status plus the latest final result JSON emitted by the consensus tool
 - `GET /api/v1/edge/node/caps?node_id=...`
@@ -263,6 +264,8 @@ Manifest bundle note:
   adoption.
 - The managed/runtime bring-up path now includes retry timers, so a node can miss initial quorum and still converge later
   without operator restart.
+- The shared protocol/runtime foundation now also carries explicit membership versioning, so stale or non-member nodes can
+  be rejected before their votes influence quorum.
 - Those same send helpers accept `confidential_kid`, which emits the outbox envelope with AES-GCM
   `body_enc` instead of plaintext `body` for peer/control-plane payload confidentiality.
 - Operators can inspect those bundles, emit a CA file, and run `openssl verify` against candidate

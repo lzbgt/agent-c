@@ -503,6 +503,8 @@ Edge trust-root rotation:
   the latest final result JSON emitted by the helper.
 - Start requests can include `campaign_delay_ms` and `campaign_retry_ms`, and the reported runtime/result surfaces
   expose the same retry policy so operators can confirm whether a candidate re-campaigned before quorum formed.
+- The same runtime start surface also accepts `membership_epoch` and `member_node_ids`, and the emitted runtime/result
+  JSON mirrors that explicit member-set view for deterministic compatibility checks.
 - Operator bring-up sets `AGENTD_EDGE_CONSENSUS_NODE_TOOL=/abs/path/to/agentd_edge_consensus_node` so agentd can spawn
   the shipped helper directly.
 - `GET /api/v1/edge/node` and `GET /api/v1/edge/nodes` now surface `consensus_runtime` when a node has a managed

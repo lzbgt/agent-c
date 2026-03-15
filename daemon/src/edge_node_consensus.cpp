@@ -64,6 +64,20 @@ static bool parse_identity_like(const EdgeConsensusIdentity& id, std::string* ou
   return true;
 }
 
+static std::set<std::string> dedupe_member_ids(
+  const std::vector<std::string>& raw_ids,
+  const std::string& self_node_id
+) {
+  std::set<std::string> out;
+  if (edge_id_is_safe(self_node_id)) out.insert(self_node_id);
+  for (const auto& raw : raw_ids) {
+    const std::string node_id = trim_copy(raw);
+    if (!edge_id_is_safe(node_id)) continue;
+    out.insert(node_id);
+  }
+  return out;
+}
+
 static bool frame_is_valid(const EdgeConsensusFrame& frame, std::string* out_error) {
   if (out_error) out_error->clear();
   if (frame.schema != "edge_node_consensus_frame_v1") {
@@ -121,19 +135,34 @@ static std::vector<std::string> dedupe_loop_targets(
 }  // namespace
 
 EdgeConsensusReplica::EdgeConsensusReplica(const EdgeConsensusIdentity& self, size_t cluster_size)
-    : self_(self), cluster_size_(cluster_size < 1 ? 1 : cluster_size) {}
+    : self_(self), cluster_size_(cluster_size < 1 ? 1 : cluster_size) {
+  member_node_ids_.insert(self_.node_id);
+}
 
 EdgeConsensusNodeLoop::EdgeConsensusNodeLoop(const EdgeConsensusNodeLoopConfig& cfg)
     : cfg_(cfg), replica_(cfg.self, cfg.cluster_size == 0 ? cfg.peer_node_ids.size() + 1 : cfg.cluster_size) {
   cfg_.peer_node_ids = dedupe_loop_targets(cfg.peer_node_ids, cfg.self.node_id);
-  if (cfg_.cluster_size == 0) cfg_.cluster_size = cfg_.peer_node_ids.size() + 1;
+  if (cfg_.member_node_ids.empty()) {
+    cfg_.member_node_ids = cfg_.peer_node_ids;
+    cfg_.member_node_ids.push_back(cfg_.self.node_id);
+  }
+  const std::set<std::string> member_ids = dedupe_member_ids(cfg_.member_node_ids, cfg_.self.node_id);
+  cfg_.member_node_ids.assign(member_ids.begin(), member_ids.end());
+  if (cfg_.cluster_size == 0) cfg_.cluster_size = cfg_.member_node_ids.size();
   if (cfg_.cluster_size < 1) cfg_.cluster_size = 1;
   if (cfg_.campaign_delay_ms < 0) cfg_.campaign_delay_ms = 0;
   if (cfg_.campaign_retry_ms < 0) cfg_.campaign_retry_ms = 0;
+  replica_.set_membership(cfg_.self.membership_epoch, cfg_.member_node_ids);
 }
 
 void EdgeConsensusReplica::set_trust_epochs(const EdgeConsensusEpochs& epochs) {
   self_.trust_epochs = epochs;
+}
+
+void EdgeConsensusReplica::set_membership(uint64_t membership_epoch, const std::vector<std::string>& member_node_ids) {
+  self_.membership_epoch = membership_epoch;
+  member_node_ids_ = dedupe_member_ids(member_node_ids, self_.node_id);
+  cluster_size_ = std::max<size_t>(1, member_node_ids_.empty() ? 1 : member_node_ids_.size());
 }
 
 std::string EdgeConsensusReplica::next_frame_id(const char* kind) {
@@ -154,6 +183,14 @@ bool EdgeConsensusReplica::trust_epochs_match(const EdgeConsensusEpochs& other) 
   return self_.trust_epochs.trust_roots_epoch == other.trust_roots_epoch &&
          self_.trust_epochs.revocations_epoch == other.revocations_epoch &&
          self_.trust_epochs.cert_roots_epoch == other.cert_roots_epoch;
+}
+
+bool EdgeConsensusReplica::node_is_member(const std::string& node_id) const {
+  return edge_id_is_safe(node_id) && member_node_ids_.find(node_id) != member_node_ids_.end();
+}
+
+bool EdgeConsensusReplica::membership_matches(const EdgeConsensusIdentity& other) const {
+  return self_.membership_epoch == other.membership_epoch && node_is_member(other.node_id);
 }
 
 bool EdgeConsensusReplica::has_quorum() const {
@@ -223,11 +260,13 @@ bool EdgeConsensusReplica::handle_frame(
     if (out_error) *out_error = "cluster_id mismatch";
     return false;
   }
+  if (!membership_matches(frame.from)) return true;
   auto seen_it = seen_frame_term_by_id_.find(frame.frame_id);
   if (seen_it != seen_frame_term_by_id_.end() && seen_it->second == frame.term) return true;
   seen_frame_term_by_id_[frame.frame_id] = frame.term;
 
   if (frame.kind == "vote_request") {
+    if (!node_is_member(frame.candidate_node_id)) return true;
     if (frame.term < current_term_) return true;
     maybe_reset_for_new_term(frame.term);
     if (!trust_epochs_match(frame.from.trust_epochs)) return true;
@@ -238,6 +277,7 @@ bool EdgeConsensusReplica::handle_frame(
   }
 
   if (frame.kind == "vote_grant") {
+    if (!node_is_member(frame.candidate_node_id)) return true;
     if (frame.term < current_term_) return true;
     maybe_reset_for_new_term(frame.term);
     if (frame.candidate_node_id != self_.node_id) return true;
@@ -255,6 +295,7 @@ bool EdgeConsensusReplica::handle_frame(
   }
 
   if (frame.term < current_term_) return true;
+  if (!node_is_member(frame.leader_node_id)) return true;
   if (!trust_epochs_match(frame.from.trust_epochs)) return true;
   maybe_reset_for_new_term(frame.term);
   leader_node_id_ = frame.leader_node_id;
@@ -322,6 +363,9 @@ Json::Value EdgeConsensusNodeLoop::status_to_json() const {
   Json::Value peers(Json::arrayValue);
   for (const auto& peer : cfg_.peer_node_ids) peers.append(peer);
   out["peer_node_ids"] = peers;
+  Json::Value members(Json::arrayValue);
+  for (const auto& member : cfg_.member_node_ids) members.append(member);
+  out["member_node_ids"] = members;
   out["replica"] = replica_.status_to_json();
   return out;
 }
@@ -329,6 +373,9 @@ Json::Value EdgeConsensusNodeLoop::status_to_json() const {
 Json::Value EdgeConsensusReplica::status_to_json() const {
   Json::Value out(Json::objectValue);
   out["self"] = edge_consensus_identity_to_json(self_);
+  Json::Value members(Json::arrayValue);
+  for (const auto& member : member_node_ids_) members.append(member);
+  out["member_node_ids"] = members;
   out["current_term"] = Json::UInt64(current_term_);
   if (!voted_for_node_id_.empty()) out["voted_for_node_id"] = voted_for_node_id_;
   if (!leader_node_id_.empty()) out["leader_node_id"] = leader_node_id_;
@@ -357,6 +404,7 @@ Json::Value edge_consensus_identity_to_json(const EdgeConsensusIdentity& identit
   out["cluster_id"] = identity.cluster_id;
   out["node_id"] = identity.node_id;
   if (!identity.manifest_sha256.empty()) out["manifest_sha256"] = identity.manifest_sha256;
+  out["membership_epoch"] = Json::UInt64(identity.membership_epoch);
   out["trust_epochs"] = edge_consensus_epochs_to_json(identity.trust_epochs);
   return out;
 }
@@ -409,6 +457,12 @@ bool edge_consensus_identity_from_json(const Json::Value& root, EdgeConsensusIde
       !parse_nonempty_string(root, "node_id", &out->node_id, out_error) ||
       !parse_optional_sha256(root, "manifest_sha256", &out->manifest_sha256, out_error)) {
     return false;
+  }
+  if (root.isMember("membership_epoch") && !root["membership_epoch"].isNull()) {
+    if (!json_get_u64_nonneg(root, "membership_epoch", &out->membership_epoch)) {
+      if (out_error) *out_error = "membership_epoch must be uint64";
+      return false;
+    }
   }
   if (!root.isMember("trust_epochs") || !edge_consensus_epochs_from_json(root["trust_epochs"], &out->trust_epochs, out_error)) {
     if (out_error && out_error->empty()) *out_error = "trust_epochs missing or invalid";

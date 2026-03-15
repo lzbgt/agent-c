@@ -15,12 +15,14 @@ static EdgeConsensusIdentity make_identity(
   const std::string& node_id,
   uint64_t trust_roots_epoch,
   uint64_t revocations_epoch,
-  uint64_t cert_roots_epoch
+  uint64_t cert_roots_epoch,
+  uint64_t membership_epoch = 1
 ) {
   EdgeConsensusIdentity out;
   out.cluster_id = "lab-consensus";
   out.node_id = node_id;
   out.manifest_sha256 = "sha256:" + std::string(64, node_id.empty() ? 'a' : node_id.back());
+  out.membership_epoch = membership_epoch;
   out.trust_epochs.trust_roots_epoch = trust_roots_epoch;
   out.trust_epochs.revocations_epoch = revocations_epoch;
   out.trust_epochs.cert_roots_epoch = cert_roots_epoch;
@@ -38,6 +40,11 @@ static void deliver(
   assert(ok);
   assert(err.empty());
   if (out_frames) *out_frames = local;
+}
+
+static void set_membership_all(EdgeConsensusReplica* replica, uint64_t membership_epoch, std::vector<std::string> members) {
+  assert(replica);
+  replica->set_membership(membership_epoch, members);
 }
 
 static void test_frame_json_roundtrip() {
@@ -59,6 +66,7 @@ static void test_frame_json_roundtrip() {
   assert(parsed.term == frame.term);
   assert(parsed.candidate_node_id == frame.candidate_node_id);
   assert(parsed.from.node_id == frame.from.node_id);
+  assert(parsed.from.membership_epoch == 1);
   assert(parsed.from.trust_epochs.trust_roots_epoch == 7);
 }
 
@@ -66,6 +74,9 @@ static void test_duplicate_vote_grants_do_not_count_twice() {
   EdgeConsensusReplica a(make_identity("node-a", 7, 3, 5), 5);
   EdgeConsensusReplica b(make_identity("node-b", 7, 3, 5), 5);
   EdgeConsensusReplica c(make_identity("node-c", 7, 3, 5), 5);
+  set_membership_all(&a, 1, {"node-a", "node-b", "node-c", "node-d", "node-e"});
+  set_membership_all(&b, 1, {"node-a", "node-b", "node-c", "node-d", "node-e"});
+  set_membership_all(&c, 1, {"node-a", "node-b", "node-c", "node-d", "node-e"});
 
   const EdgeConsensusFrame req = a.start_election(
     "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
@@ -98,6 +109,9 @@ static void test_partition_and_quorum_recovery() {
   EdgeConsensusReplica c(make_identity("node-c", 7, 3, 5), 5);
   EdgeConsensusReplica d(make_identity("node-d", 7, 3, 5), 5);
   EdgeConsensusReplica e(make_identity("node-e", 7, 3, 5), 5);
+  for (EdgeConsensusReplica* replica : {&a, &b, &c, &d, &e}) {
+    set_membership_all(replica, 1, {"node-a", "node-b", "node-c", "node-d", "node-e"});
+  }
 
   const EdgeConsensusFrame req_a =
     a.start_election("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
@@ -146,6 +160,9 @@ static void test_trust_epoch_mismatch_requires_recovery() {
   EdgeConsensusReplica a(make_identity("node-a", 1, 1, 1), 3);
   EdgeConsensusReplica b(make_identity("node-b", 2, 1, 1), 3);
   EdgeConsensusReplica c(make_identity("node-c", 2, 1, 1), 3);
+  set_membership_all(&a, 1, {"node-a", "node-b", "node-c"});
+  set_membership_all(&b, 1, {"node-a", "node-b", "node-c"});
+  set_membership_all(&c, 1, {"node-a", "node-b", "node-c"});
 
   const EdgeConsensusFrame stale_req =
     a.start_election("sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
@@ -162,6 +179,7 @@ static void test_trust_epoch_mismatch_requires_recovery() {
   recovered.revocations_epoch = 1;
   recovered.cert_roots_epoch = 1;
   a.set_trust_epochs(recovered);
+  a.set_membership(1, {"node-a", "node-b", "node-c"});
 
   const EdgeConsensusFrame fresh_req =
     a.start_election("sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
@@ -181,6 +199,39 @@ static void test_trust_epoch_mismatch_requires_recovery() {
   }
 }
 
+static void test_membership_epoch_and_nonmember_rejection() {
+  EdgeConsensusReplica a(make_identity("node-a", 7, 3, 5, 4), 3);
+  EdgeConsensusReplica b(make_identity("node-b", 7, 3, 5, 5), 3);
+  EdgeConsensusReplica c(make_identity("node-c", 7, 3, 5, 4), 3);
+  a.set_membership(4, {"node-a", "node-c"});
+  b.set_membership(5, {"node-a", "node-b", "node-c"});
+  c.set_membership(4, {"node-a", "node-c"});
+
+  const EdgeConsensusFrame stale_req =
+    a.start_election("sha256:1212121212121212121212121212121212121212121212121212121212121212");
+  std::vector<EdgeConsensusFrame> reply_b;
+  std::vector<EdgeConsensusFrame> reply_c;
+  deliver(b, stale_req, &reply_b);
+  deliver(c, stale_req, &reply_c);
+  assert(reply_b.empty());
+  assert(reply_c.size() == 1);
+
+  EdgeConsensusReplica d(make_identity("node-d", 7, 3, 5, 4), 3);
+  d.set_membership(4, {"node-c", "node-d", "node-e"});
+  std::vector<EdgeConsensusFrame> reply_d;
+  deliver(d, stale_req, &reply_d);
+  assert(reply_d.empty());
+
+  a.set_membership(5, {"node-a", "node-b", "node-c"});
+  c.set_membership(5, {"node-a", "node-b", "node-c"});
+  const EdgeConsensusFrame fresh_req =
+    a.start_election("sha256:3434343434343434343434343434343434343434343434343434343434343434");
+  deliver(b, fresh_req, &reply_b);
+  deliver(c, fresh_req, &reply_c);
+  assert(reply_b.size() == 1);
+  assert(reply_c.size() == 1);
+}
+
 }  // namespace
 
 int main() {
@@ -188,5 +239,6 @@ int main() {
   test_duplicate_vote_grants_do_not_count_twice();
   test_partition_and_quorum_recovery();
   test_trust_epoch_mismatch_requires_recovery();
+  test_membership_epoch_and_nonmember_rejection();
   return 0;
 }

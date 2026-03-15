@@ -18,6 +18,7 @@ static EdgeConsensusIdentity make_identity(const std::string& node_id) {
   out.cluster_id = "lab-consensus-loop";
   out.node_id = node_id;
   out.manifest_sha256 = "sha256:" + std::string(64, node_id.empty() ? 'a' : node_id.back());
+  out.membership_epoch = 9;
   out.trust_epochs.trust_roots_epoch = 3;
   out.trust_epochs.revocations_epoch = 1;
   out.trust_epochs.cert_roots_epoch = 5;
@@ -52,6 +53,11 @@ static void deliver(
   assert(ok);
   assert(err.empty());
   if (out_frames) *out_frames = local;
+}
+
+static void set_membership_all(EdgeConsensusReplica* replica, std::vector<std::string> members) {
+  assert(replica);
+  replica->set_membership(9, members);
 }
 
 static void test_tick_emits_election_once_after_delay() {
@@ -116,6 +122,7 @@ static void test_vote_grant_routes_back_to_candidate() {
   assert(request.size() == 1);
 
   EdgeConsensusReplica replica_b(make_identity("node-b"), 3);
+  set_membership_all(&replica_b, {"node-a", "node-b", "node-c"});
   std::vector<EdgeConsensusFrame> replies;
   deliver(replica_b, request[0], &replies);
   assert(replies.size() == 1);
@@ -136,6 +143,8 @@ static void test_quorum_commit_emits_leader_commit() {
   EdgeConsensusNodeLoop loop_a(cfg_a);
   EdgeConsensusReplica replica_b(make_identity("node-b"), 5);
   EdgeConsensusReplica replica_c(make_identity("node-c"), 5);
+  set_membership_all(&replica_b, {"node-a", "node-b", "node-c", "node-d", "node-e"});
+  set_membership_all(&replica_c, {"node-a", "node-b", "node-c", "node-d", "node-e"});
 
   const std::vector<EdgeConsensusFrame> request = loop_a.tick(100);
   assert(request.size() == 1);
@@ -183,14 +192,19 @@ static void test_status_surfaces_loop_config() {
   assert(status["self"]["node_id"].asString() == "node-z");
   assert(status["campaign_delay_ms"].asInt64() == 50);
   assert(status["campaign_retry_ms"].asInt64() == 250);
+  assert(status["self"]["membership_epoch"].asUInt64() == 9);
   assert(status["peer_node_ids"].isArray());
   assert(status["peer_node_ids"].size() == 2);
+  assert(status["member_node_ids"].isArray());
+  assert(status["member_node_ids"].size() == 3);
   assert(status["election_started"].asBool());
   assert(status["campaign_attempts"].asUInt64() == 1);
   assert(status["last_campaign_started_utc_ms"].asInt64() == 1050);
   assert(status["next_campaign_utc_ms"].asInt64() == 1300);
   assert(status["replica"]["campaign_decision_sha256"].asString() ==
          "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd");
+  assert(status["replica"]["member_node_ids"].isArray());
+  assert(status["replica"]["member_node_ids"].size() == 3);
 }
 
 }  // namespace

@@ -80,6 +80,7 @@ struct EdgeConsensusRuntime {
   std::string manifest_sha256;
   std::string decision_sha256;
   std::vector<std::string> peer_node_ids;
+  std::vector<std::string> member_node_ids;
   std::string daemon_url;
   std::string tool_path;
   std::string model;
@@ -96,6 +97,7 @@ struct EdgeConsensusRuntime {
   uint64_t trust_roots_epoch = 0;
   uint64_t revocations_epoch = 0;
   uint64_t cert_roots_epoch = 0;
+  uint64_t membership_epoch = 0;
   bool running = false;
   int exit_code = 0;
   int exit_signal = 0;
@@ -122,6 +124,9 @@ static Json::Value edge_consensus_runtime_to_json(const EdgeConsensusRuntime& st
   Json::Value peers(Json::arrayValue);
   for (const auto& peer : st.peer_node_ids) peers.append(peer);
   out["peer_node_ids"] = peers;
+  Json::Value members(Json::arrayValue);
+  for (const auto& member : st.member_node_ids) members.append(member);
+  out["member_node_ids"] = members;
   out["daemon_url"] = st.daemon_url;
   out["tool_path"] = st.tool_path;
   if (!st.model.empty()) out["model"] = st.model;
@@ -140,6 +145,7 @@ static Json::Value edge_consensus_runtime_to_json(const EdgeConsensusRuntime& st
   epochs["revocations_epoch"] = Json::UInt64(st.revocations_epoch);
   epochs["cert_roots_epoch"] = Json::UInt64(st.cert_roots_epoch);
   out["trust_epochs"] = epochs;
+  out["membership_epoch"] = Json::UInt64(st.membership_epoch);
   out["running"] = st.running;
   if (st.running) out["pid"] = (Json::Int64)st.pid;
   else out["exit_code"] = st.exit_code;
@@ -233,6 +239,7 @@ static bool edge_consensus_runtime_spawn_process(
   }
 
   std::vector<std::string> peer_node_ids;
+  std::vector<std::string> member_node_ids;
   if (body.isMember("peer_node_ids")) {
     if (!body["peer_node_ids"].isArray()) {
       if (out_err) *out_err = "peer_node_ids must be an array";
@@ -252,9 +259,33 @@ static bool edge_consensus_runtime_spawn_process(
       if (std::find(peer_node_ids.begin(), peer_node_ids.end(), peer) == peer_node_ids.end()) peer_node_ids.push_back(peer);
     }
   }
+  if (body.isMember("member_node_ids")) {
+    if (!body["member_node_ids"].isArray()) {
+      if (out_err) *out_err = "member_node_ids must be an array";
+      return false;
+    }
+    for (Json::ArrayIndex i = 0; i < body["member_node_ids"].size(); i++) {
+      if (!body["member_node_ids"][i].isString()) {
+        if (out_err) *out_err = "member_node_ids must contain only strings";
+        return false;
+      }
+      const std::string member = trim_copy(body["member_node_ids"][i].asString());
+      if (!edge_id_is_safe(member)) {
+        if (out_err) *out_err = "invalid member_node_id";
+        return false;
+      }
+      if (std::find(member_node_ids.begin(), member_node_ids.end(), member) == member_node_ids.end()) {
+        member_node_ids.push_back(member);
+      }
+    }
+  }
+  if (std::find(member_node_ids.begin(), member_node_ids.end(), node_id) == member_node_ids.end()) {
+    member_node_ids.push_back(node_id);
+  }
+  if (member_node_ids.empty()) member_node_ids = peer_node_ids;
 
   uint64_t cluster_size = body.isMember("cluster_size") ? json_to_u64(body["cluster_size"], 0) : 0;
-  if (cluster_size == 0) cluster_size = (uint64_t)peer_node_ids.size() + 1;
+  if (cluster_size == 0) cluster_size = !member_node_ids.empty() ? (uint64_t)member_node_ids.size() : (uint64_t)peer_node_ids.size() + 1;
   cluster_size = std::max<uint64_t>(1, std::min<uint64_t>(cluster_size, 128));
 
   uint64_t outbox_limit = body.isMember("outbox_limit") ? json_to_u64(body["outbox_limit"], 128) : 128;
@@ -274,6 +305,7 @@ static bool edge_consensus_runtime_spawn_process(
   uint64_t trust_roots_epoch = body.isMember("trust_roots_epoch") ? json_to_u64(body["trust_roots_epoch"], 0) : 0;
   uint64_t revocations_epoch = body.isMember("revocations_epoch") ? json_to_u64(body["revocations_epoch"], 0) : 0;
   uint64_t cert_roots_epoch = body.isMember("cert_roots_epoch") ? json_to_u64(body["cert_roots_epoch"], 0) : 0;
+  uint64_t membership_epoch = body.isMember("membership_epoch") ? json_to_u64(body["membership_epoch"], 0) : 0;
 
   std::error_code ec;
   const std::filesystem::path run_dir = edge_consensus_runtime_dir(cfg, node_id);
@@ -345,6 +377,8 @@ static bool edge_consensus_runtime_spawn_process(
     args.push_back(std::to_string((unsigned long long)revocations_epoch));
     args.push_back("--cert-roots-epoch");
     args.push_back(std::to_string((unsigned long long)cert_roots_epoch));
+    args.push_back("--membership-epoch");
+    args.push_back(std::to_string((unsigned long long)membership_epoch));
     args.push_back("--model");
     args.push_back(model);
     args.push_back("--fw-git-sha");
@@ -360,6 +394,10 @@ static bool edge_consensus_runtime_spawn_process(
     for (const auto& peer : peer_node_ids) {
       args.push_back("--peer-node-id");
       args.push_back(peer);
+    }
+    for (const auto& member : member_node_ids) {
+      args.push_back("--member-node-id");
+      args.push_back(member);
     }
 
     std::vector<char*> argv;
@@ -379,6 +417,7 @@ static bool edge_consensus_runtime_spawn_process(
   st->manifest_sha256 = manifest_sha256;
   st->decision_sha256 = decision_sha256;
   st->peer_node_ids = peer_node_ids;
+  st->member_node_ids = member_node_ids;
   st->daemon_url = daemon_url;
   st->tool_path = tool_path;
   st->model = model;
@@ -394,6 +433,7 @@ static bool edge_consensus_runtime_spawn_process(
   st->trust_roots_epoch = trust_roots_epoch;
   st->revocations_epoch = revocations_epoch;
   st->cert_roots_epoch = cert_roots_epoch;
+  st->membership_epoch = membership_epoch;
   st->running = true;
   st->pid = pid;
 

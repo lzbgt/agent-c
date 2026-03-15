@@ -40,6 +40,7 @@ Common fields:
 - `cluster_id`
 - `node_id`
 - `manifest_sha256`
+- `membership_epoch`
 - `trust_epochs`
 
 `trust_epochs` carries:
@@ -64,6 +65,7 @@ Replica rules implemented in the shipped foundation:
 - higher terms reset prior local vote/campaign state
 - duplicate frames are ignored by `frame_id` + `term`
 - trust epochs must match exactly for votes or commits to be accepted
+- membership epoch must match exactly and the sender/leader/candidate must be in the local member set
 - quorum is strict majority: `floor(cluster_size / 2) + 1`
 - a leader commit carries the quorum witness set, including node identity and trust epochs for each counted vote
 
@@ -96,6 +98,7 @@ The shipped autonomous host-loop proof adds:
   longer stranded inside the host CLI helper
 - retry-capable campaign timers (`campaign_delay_ms` + `campaign_retry_ms`) so a candidate can start before peers are
   online and still converge later without manual restart
+- explicit membership surfaces (`membership_epoch` + `member_node_ids`) on the shared core, host helper, and managed runtime
 
 ## Still open
 

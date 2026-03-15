@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -20,6 +21,7 @@ struct EdgeConsensusIdentity {
   std::string cluster_id;
   std::string node_id;
   std::string manifest_sha256;
+  uint64_t membership_epoch = 0;
   EdgeConsensusEpochs trust_epochs;
 };
 
@@ -39,6 +41,7 @@ struct EdgeConsensusFrame {
 struct EdgeConsensusNodeLoopConfig {
   EdgeConsensusIdentity self;
   std::vector<std::string> peer_node_ids;
+  std::vector<std::string> member_node_ids;
   size_t cluster_size = 0;
   int64_t campaign_delay_ms = 0;
   int64_t campaign_retry_ms = 0;
@@ -53,14 +56,19 @@ class EdgeConsensusReplica {
   uint64_t current_term() const { return current_term_; }
   const std::string& leader_node_id() const { return leader_node_id_; }
   const std::string& committed_decision_sha256() const { return committed_decision_sha256_; }
+  uint64_t membership_epoch() const { return self_.membership_epoch; }
+  const std::set<std::string>& member_node_ids() const { return member_node_ids_; }
 
   void set_trust_epochs(const EdgeConsensusEpochs& epochs);
+  void set_membership(uint64_t membership_epoch, const std::vector<std::string>& member_node_ids);
   EdgeConsensusFrame start_election(const std::string& decision_sha256);
   bool handle_frame(const EdgeConsensusFrame& frame, std::vector<EdgeConsensusFrame>* out_frames, std::string* out_error);
   Json::Value status_to_json() const;
 
  private:
   bool trust_epochs_match(const EdgeConsensusEpochs& other) const;
+  bool membership_matches(const EdgeConsensusIdentity& other) const;
+  bool node_is_member(const std::string& node_id) const;
   bool has_quorum() const;
   EdgeConsensusFrame make_vote_grant_frame(const std::string& candidate_node_id, const std::string& decision_sha256) const;
   EdgeConsensusFrame make_leader_commit_frame() const;
@@ -75,6 +83,7 @@ class EdgeConsensusReplica {
   std::string leader_node_id_;
   std::string campaign_decision_sha256_;
   std::string committed_decision_sha256_;
+  std::set<std::string> member_node_ids_;
   std::map<std::string, EdgeConsensusIdentity> grant_witnesses_by_node_id_;
   std::vector<EdgeConsensusIdentity> committed_vote_witnesses_;
   std::map<std::string, uint64_t> seen_frame_term_by_id_;

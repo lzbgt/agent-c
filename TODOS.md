@@ -609,6 +609,7 @@ streaming and plugins are stable.
   - 2026-03-15: agentd now manages that same autonomous loop through `POST/GET /api/v1/edge/node/consensus_runtime`, with `consensus_runtime` surfaced on `/api/v1/edge/node` and `/api/v1/edge/nodes`; proof: `tests/agentd_edge_consensus_runtime_smoke.sh`.
   - 2026-03-15: extracted the autonomous election scheduler / frame-routing behavior into reusable core code (`EdgeConsensusNodeLoop`) with dedicated unit proof in `tests/test_edge_node_consensus_loop.cpp`, so embedded adoption no longer has to start from the host CLI helper as the only implementation.
   - 2026-03-15: added retry-capable campaign timers (`campaign_retry_ms`) to the reusable loop, host helper, and managed runtime, with late-peer convergence proved in `tests/agentd_edge_consensus_runtime_smoke.sh`.
+  - 2026-03-15: added explicit membership versioning/member sets (`membership_epoch`, `member_node_ids`) to the shared consensus core, host helper, and managed runtime, with unit/runtime proof for stale/non-member rejection.
 
 ## Deferred (after macOS stability)
 

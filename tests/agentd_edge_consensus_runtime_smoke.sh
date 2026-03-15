@@ -109,7 +109,7 @@ CAPS_SHA_C="sha256:3333333333333333333333333333333333333333333333333333333333333
 DECISION_SHA="sha256:4444444444444444444444444444444444444444444444444444444444444444"
 
 START_A_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","node_id":"${NODE_A}","cluster_id":"${CLUSTER_ID}","manifest_sha256":"${CAPS_SHA_A}","peer_node_ids":["${NODE_B}","${NODE_C}"],"decision_sha256":"${DECISION_SHA}","campaign_delay_ms":200,"campaign_retry_ms":500,"trust_roots_epoch":9,"revocations_epoch":4,"cert_roots_epoch":11,"deadline_ms":12000}
+{"action":"start","node_id":"${NODE_A}","cluster_id":"${CLUSTER_ID}","manifest_sha256":"${CAPS_SHA_A}","peer_node_ids":["${NODE_B}","${NODE_C}"],"member_node_ids":["${NODE_A}","${NODE_B}","${NODE_C}"],"membership_epoch":12,"decision_sha256":"${DECISION_SHA}","campaign_delay_ms":200,"campaign_retry_ms":500,"trust_roots_epoch":9,"revocations_epoch":4,"cert_roots_epoch":11,"deadline_ms":12000}
 JSON
 )")"
 RUNNING_A_JSON="$(wait_runtime_running "${NODE_A}")"
@@ -117,11 +117,11 @@ RUNNING_A_JSON="$(wait_runtime_running "${NODE_A}")"
 sleep 1.2
 
 START_B_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","node_id":"${NODE_B}","cluster_id":"${CLUSTER_ID}","manifest_sha256":"${CAPS_SHA_B}","peer_node_ids":["${NODE_A}","${NODE_C}"],"trust_roots_epoch":9,"revocations_epoch":4,"cert_roots_epoch":11,"deadline_ms":12000}
+{"action":"start","node_id":"${NODE_B}","cluster_id":"${CLUSTER_ID}","manifest_sha256":"${CAPS_SHA_B}","peer_node_ids":["${NODE_A}","${NODE_C}"],"member_node_ids":["${NODE_A}","${NODE_B}","${NODE_C}"],"membership_epoch":12,"trust_roots_epoch":9,"revocations_epoch":4,"cert_roots_epoch":11,"deadline_ms":12000}
 JSON
 )")"
 START_C_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","node_id":"${NODE_C}","cluster_id":"${CLUSTER_ID}","manifest_sha256":"${CAPS_SHA_C}","peer_node_ids":["${NODE_A}","${NODE_B}"],"trust_roots_epoch":9,"revocations_epoch":4,"cert_roots_epoch":11,"deadline_ms":12000}
+{"action":"start","node_id":"${NODE_C}","cluster_id":"${CLUSTER_ID}","manifest_sha256":"${CAPS_SHA_C}","peer_node_ids":["${NODE_A}","${NODE_B}"],"member_node_ids":["${NODE_A}","${NODE_B}","${NODE_C}"],"membership_epoch":12,"trust_roots_epoch":9,"revocations_epoch":4,"cert_roots_epoch":11,"deadline_ms":12000}
 JSON
 )")"
 
@@ -202,6 +202,12 @@ if rt.get("node_id") != leader:
   raise SystemExit(1)
 if rt.get("campaign_retry_ms") != 500:
   print("runtime summary missing retry config", rt, file=sys.stderr)
+  raise SystemExit(1)
+if rt.get("membership_epoch") != 12:
+  print("runtime summary missing membership epoch", rt, file=sys.stderr)
+  raise SystemExit(1)
+if sorted(rt.get("member_node_ids") or []) != sorted(["${NODE_A}", "${NODE_B}", "${NODE_C}"]):
+  print("runtime summary missing member set", rt, file=sys.stderr)
   raise SystemExit(1)
 res = rt.get("result") or {}
 if res.get("leader_node_id") != leader or res.get("committed_decision_sha256") != decision_sha:

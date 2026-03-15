@@ -27,6 +27,7 @@ struct Options {
   std::string fw_git_sha = "consensus-node";
   std::string decision_sha256;
   std::vector<std::string> peer_node_ids;
+  std::vector<std::string> member_node_ids;
   size_t cluster_size = 0;
   size_t outbox_limit = 128;
   int64_t campaign_delay_ms = 0;
@@ -36,6 +37,7 @@ struct Options {
   uint64_t trust_roots_epoch = 0;
   uint64_t revocations_epoch = 0;
   uint64_t cert_roots_epoch = 0;
+  uint64_t membership_epoch = 0;
   bool verbose = false;
 };
 
@@ -105,6 +107,7 @@ static void print_usage(const char* argv0) {
     << "  --cluster-id <id>\n"
     << "  --manifest-sha256 <sha256:...>\n"
     << "  [--peer-node-id <id>]...\n"
+    << "  [--member-node-id <id>]...\n"
     << "  [--cluster-size <n>]\n"
     << "  [--decision-sha256 <sha256:...>]\n"
     << "  [--campaign-delay-ms <ms>]\n"
@@ -114,6 +117,7 @@ static void print_usage(const char* argv0) {
     << "  [--trust-roots-epoch <n>]\n"
     << "  [--revocations-epoch <n>]\n"
     << "  [--cert-roots-epoch <n>]\n"
+    << "  [--membership-epoch <n>]\n"
     << "  [--auth-token <token>]\n"
     << "  [--verbose]\n";
 }
@@ -159,6 +163,8 @@ static bool parse_args(int argc, char** argv, Options* out) {
       opt.fw_git_sha = argv[++i];
     } else if (a == "--peer-node-id" && i + 1 < argc) {
       opt.peer_node_ids.push_back(argv[++i]);
+    } else if (a == "--member-node-id" && i + 1 < argc) {
+      opt.member_node_ids.push_back(argv[++i]);
     } else if (a == "--decision-sha256" && i + 1 < argc) {
       opt.decision_sha256 = argv[++i];
     } else if (a == "--cluster-size" && i + 1 < argc) {
@@ -208,6 +214,11 @@ static bool parse_args(int argc, char** argv, Options* out) {
     } else if (a == "--cert-roots-epoch" && i + 1 < argc) {
       if (!parse_u64_arg(argv[++i], &opt.cert_roots_epoch)) {
         std::cerr << "invalid --cert-roots-epoch\n";
+        return false;
+      }
+    } else if (a == "--membership-epoch" && i + 1 < argc) {
+      if (!parse_u64_arg(argv[++i], &opt.membership_epoch)) {
+        std::cerr << "invalid --membership-epoch\n";
         return false;
       }
     } else if (a == "--verbose") {
@@ -363,6 +374,7 @@ int main(int argc, char** argv) {
   self.cluster_id = opt.cluster_id;
   self.node_id = opt.node_id;
   self.manifest_sha256 = opt.manifest_sha256;
+  self.membership_epoch = opt.membership_epoch;
   self.trust_epochs.trust_roots_epoch = opt.trust_roots_epoch;
   self.trust_epochs.revocations_epoch = opt.revocations_epoch;
   self.trust_epochs.cert_roots_epoch = opt.cert_roots_epoch;
@@ -370,6 +382,7 @@ int main(int argc, char** argv) {
   EdgeConsensusNodeLoopConfig loop_cfg;
   loop_cfg.self = self;
   loop_cfg.peer_node_ids = opt.peer_node_ids;
+  loop_cfg.member_node_ids = opt.member_node_ids;
   loop_cfg.cluster_size = opt.cluster_size;
   loop_cfg.campaign_delay_ms = opt.campaign_delay_ms;
   loop_cfg.campaign_retry_ms = opt.campaign_retry_ms;

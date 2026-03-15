@@ -236,6 +236,8 @@ These are the most leveraged next steps grounded in current architecture:
      living only inside the host CLI helper, which materially lowers the gap to embedded/node-native adoption.
    - Completed 2026-03-15: the shipped host/runtime harness now supports retry-capable election timers, so candidates
      can converge after peers arrive late instead of stalling after a single failed round.
+   - Completed 2026-03-15: the shared consensus foundation now carries explicit membership versioning/member sets, so
+     runtime and embedded adopters have a deterministic compatibility surface beyond ad hoc peer lists.
    - Still open: replace the current host-managed helper with embedded node-native adoption plus richer membership and
      recovery policy beyond the current bring-up/runtime harness.
 
