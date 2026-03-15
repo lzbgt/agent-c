@@ -33,6 +33,12 @@ AgentdConfigResponse:
         db_path: { type: string, nullable: true }
         state_dir: { type: string, nullable: true }
         sessions_root_dir: { type: string, nullable: true }
+        audio_webrtc:
+          type: object
+          additionalProperties: true
+          properties:
+            broker_url_default_configured: { type: boolean }
+            broker_token_default_configured: { type: boolean }
         max_steps_default: { type: integer, format: int64 }
         max_tool_calls_total_default: { type: integer, format: int64 }
         max_tool_calls_per_tool_default: { type: integer, format: int64 }
@@ -289,6 +295,18 @@ AgentdConfigUpdateRequest:
         type: string
         nullable: true
       description: Map of provider name → API key (null clears that provider key). Keys must be one of deepseek|openrouter|moonshot|openai.
+    audio_webrtc:
+      type: object
+      additionalProperties: false
+      properties:
+        broker_url:
+          type: string
+          nullable: true
+          description: Default broker base URL for managed WebRTC voice runtimes (null clears)
+        broker_token:
+          type: string
+          nullable: true
+          description: Default broker bearer token for managed WebRTC voice runtimes (null clears)
     blob_store:
       $ref: "#/components/schemas/BlobStoreUpdate"
     blob_store_secrets:
@@ -346,6 +364,12 @@ AgentdConfigUpdateResponse:
           tool: { type: string }
           max_calls: { type: integer, format: int64 }
     proxy_url_set: { type: boolean }
+    audio_webrtc:
+      type: object
+      additionalProperties: true
+      properties:
+        broker_url_default_configured: { type: boolean }
+        broker_token_default_configured: { type: boolean }
     edge_auth_required: { type: boolean }
     edge_auth_require_ts: { type: boolean }
     edge_auth_max_skew_ms: { type: integer, format: int64 }

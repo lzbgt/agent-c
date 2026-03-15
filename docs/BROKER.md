@@ -410,6 +410,9 @@ Current status:
   for voice: it stops the managed peer, clears persisted runtime artifacts, and deletes the owned broker audio session.
 - Shipped: `GET /api/v1/session/voice_webrtc_peer` now also self-heals stale local runtime state if the session row
   disappears outside the normal erase path, rather than leaving orphaned local peer/runtime artifacts behind.
+- Shipped: agentd can now hold daemon-level broker URL/token defaults for that managed runtime, so normal
+  `voice_webrtc_peer` start/stop/delete flows can omit `broker_url` / `broker_token` while still letting agentd create
+  and clean up broker-owned audio sessions.
 - Still open: replace the managed Node/Playwright child runtime with an embedded long-lived agentd-native media service.
 
 Proof:

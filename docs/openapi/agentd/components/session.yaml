@@ -57,10 +57,12 @@ VoiceWebRtcPeerRequest:
     broker_deployment_id:
       type: string
       description: Optional broker `deployment_id` passed through when agentd auto-creates the broker audio session.
-    broker_url: { type: string }
+    broker_url:
+      type: string
+      description: Optional broker base URL override. When omitted, agentd uses its configured default broker URL if available.
     broker_token:
       type: string
-      description: Broker bearer token used for session creation on `start`, and optionally reused on `stop` so agentd can delete an owned broker audio session itself if the child peer died before sending `bye`.
+      description: Broker bearer token override used for session creation on `start`, and optionally reused on `stop` so agentd can delete an owned broker audio session itself if the child peer died before sending `bye`. When omitted, agentd uses its configured default broker token if available.
     sender_tag: { type: string }
     deadline_ms: { type: integer, format: int64 }
     poll_interval_ms: { type: integer, format: int64 }
@@ -75,6 +77,8 @@ VoiceWebRtcPeerResponse:
     tool_configured: { type: boolean }
     builtin_available: { type: boolean, enum: [false] }
     bundled_available: { type: boolean }
+    broker_url_default_configured: { type: boolean }
+    broker_token_default_configured: { type: boolean }
     default_runtime_kind:
       type: string
       enum: [bundled, external]
@@ -102,6 +106,8 @@ VoiceWebRtcPeerStatusResponse:
     tool_configured: { type: boolean }
     builtin_available: { type: boolean, enum: [false] }
     bundled_available: { type: boolean }
+    broker_url_default_configured: { type: boolean }
+    broker_token_default_configured: { type: boolean }
     default_runtime_kind:
       type: string
       enum: [bundled, external]

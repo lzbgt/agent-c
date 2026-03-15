@@ -1114,6 +1114,12 @@ void handle_config_endpoint(
   daemon["db_path"] = cfg.db_path.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.db_path);
   daemon["state_dir"] = cfg.state_dir.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.state_dir);
   daemon["sessions_root_dir"] = cfg.sessions_root_dir.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.sessions_root_dir);
+  {
+    Json::Value aw(Json::objectValue);
+    aw["broker_url_default_configured"] = !trim_copy(cfg.audio_webrtc_broker_url).empty();
+    aw["broker_token_default_configured"] = !trim_copy(cfg.audio_webrtc_broker_token).empty();
+    daemon["audio_webrtc"] = aw;
+  }
   daemon["upload_max_bytes"] = (Json::UInt64)cfg.upload_max_bytes;
   {
     Json::Value bs(Json::objectValue);
@@ -1973,6 +1979,50 @@ void handle_config_update_endpoint(
     }
   }
 
+  // Managed voice/WebRTC defaults:
+  // - audio_webrtc: { "broker_url": "...", "broker_token": "..." } (null clears)
+  if (args.isMember("audio_webrtc")) {
+    if (!args["audio_webrtc"].isObject()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "audio_webrtc must be an object";
+      resp->status = 400;
+      resp->body = json_stringify(o);
+      return;
+    }
+    const auto& aw = args["audio_webrtc"];
+    if (aw.isMember("broker_url")) {
+      const Json::Value& v = aw["broker_url"];
+      if (v.isNull()) {
+        next.audio_webrtc_broker_url.clear();
+      } else if (v.isString()) {
+        next.audio_webrtc_broker_url = trim_copy(v.asString());
+      } else {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "audio_webrtc.broker_url must be a string or null";
+        resp->status = 400;
+        resp->body = json_stringify(o);
+        return;
+      }
+    }
+    if (aw.isMember("broker_token")) {
+      const Json::Value& v = aw["broker_token"];
+      if (v.isNull()) {
+        next.audio_webrtc_broker_token.clear();
+      } else if (v.isString()) {
+        next.audio_webrtc_broker_token = trim_copy(v.asString());
+      } else {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "audio_webrtc.broker_token must be a string or null";
+        resp->status = 400;
+        resp->body = json_stringify(o);
+        return;
+      }
+    }
+  }
+
   // Edge auth keyring (secrets):
   // - edge_auth_hmac_keys: { "<kid>": "<secret>", ... } (null clears a kid)
   if (args.isMember("edge_auth_hmac_keys")) {
@@ -2185,6 +2235,12 @@ void handle_config_update_endpoint(
     o["policy"] = pol;
   }
   o["proxy_url_set"] = !next.proxy_url.empty();
+  {
+    Json::Value aw(Json::objectValue);
+    aw["broker_url_default_configured"] = !trim_copy(next.audio_webrtc_broker_url).empty();
+    aw["broker_token_default_configured"] = !trim_copy(next.audio_webrtc_broker_token).empty();
+    o["audio_webrtc"] = aw;
+  }
   {
     Json::Value bs(Json::objectValue);
     bs["mode"] = next.blob_store_mode;

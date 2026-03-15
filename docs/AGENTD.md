@@ -375,7 +375,8 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
 - `DELETE /api/v1/session?session_id=<id>` erases the canonical SQLite-backed session record and its
   dependent runs/messages/tool records/events/artifacts via DB cascade. If the session currently owns a managed
   `voice_webrtc_peer` runtime, agentd now also stops that peer, clears its persisted runtime/log artifacts, and can
-  delete the owned broker audio session when `broker_token` is supplied on the delete request.
+  delete the owned broker audio session using either the request `broker_token` or the daemon's configured default
+  broker token.
 - `GET /api/v1/session/audit?session_id=<id>&include_rotated=0|1` returns recent per-run audit entries.
 - `POST /api/v1/session/voice_control` persists minimal session-scoped `media_play` / `media_pause` / `media_snapshot`
   control requests for browser clients.
@@ -401,8 +402,13 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   if `broker_session_id` is omitted and `broker_agent_id` is provided, agentd now creates the broker audio session,
   launches the peer against it, and reports `peer.managed_broker_session=true` plus the chosen
   `peer.broker_agent_id` / `peer.broker_deployment_id` in runtime status.
+- `POST /api/v1/session/voice_webrtc_peer` now supports daemon-level broker defaults through
+  `AGENTD_AUDIO_WEBRTC_BROKER_URL` and `AGENTD_AUDIO_WEBRTC_BROKER_TOKEN` or `/api/v1/config/update`, so callers may
+  omit `broker_url` / `broker_token` when those defaults are configured. Runtime status also reports
+  `broker_url_default_configured` / `broker_token_default_configured`.
 - `POST /api/v1/session/voice_webrtc_peer` `action=stop` now accepts optional `broker_token`; when the runtime owns the
-  broker audio session, agentd can use that token to delete the session itself if the peer died before delivering `bye`.
+  broker audio session, agentd can use either that request token or the daemon's configured default token to delete the
+  session itself if the peer died before delivering `bye`.
 
 ## Data governance
 
@@ -454,7 +460,9 @@ For debugging client/daemon mismatches (CORS, sandbox defaults, job GC), `agentd
 
 This endpoint requires auth when `--auth-token` is set. It intentionally does not include secrets.
 The WebUI surfaces this snapshot in Settings as “Daemon config”, including `state_dir`, `sessions_root_dir`,
-and `db_path` (SQLite; canonical daemon state store).
+and `db_path` (SQLite; canonical daemon state store). For the managed WebRTC lane, the safe snapshot now also exposes
+`daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured}` so operators can verify whether
+caller-free voice runtime bring-up is configured without exposing the token itself.
 
 ## Update daemon defaults at runtime
 
@@ -483,8 +491,20 @@ curl -fsS \
   http://127.0.0.1:8123/api/v1/config/update
 ```
 
+Example (store default broker settings for managed WebRTC voice runtimes):
+
+```bash
+curl -fsS \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_AGENTD_TOKEN" \
+  -d '{"audio_webrtc":{"broker_url":"http://127.0.0.1:8090","broker_token":"audio-agentd-token"}}' \
+  http://127.0.0.1:8123/api/v1/config/update
+```
+
 Notes:
 - The response never includes secrets. Use `GET /api/v1/config` to see booleans like `provider_keys_set`.
+- For managed voice/WebRTC broker defaults, `GET /api/v1/config` exposes only
+  `daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured}`.
 - The WebUI exposes Settings buttons to “Save defaults to daemon” and “Save API key to daemon”.
 
 Edge trust-root rotation:

@@ -753,6 +753,16 @@ int main(int argc, char** argv) {
       cfg.audio_webrtc_peer_node_bin = p;
     }
   }
+  if (cfg.audio_webrtc_broker_url.empty()) {
+    if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_BROKER_URL")) {
+      cfg.audio_webrtc_broker_url = p;
+    }
+  }
+  if (cfg.audio_webrtc_broker_token.empty()) {
+    if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_BROKER_TOKEN")) {
+      cfg.audio_webrtc_broker_token = p;
+    }
+  }
   if (cfg.edge_consensus_node_tool_path.empty()) {
     if (const char* p = getenv_s("AGENTD_EDGE_CONSENSUS_NODE_TOOL")) {
       cfg.edge_consensus_node_tool_path = p;

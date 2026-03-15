@@ -154,6 +154,9 @@ A v0 smoke test should:
   the peer is stopped, persisted runtime artifacts are removed, and the owned broker audio session is deleted.
 - `GET /api/v1/session/voice_webrtc_peer` now also self-heals stale local runtime state if the canonical session row
   disappeared outside the normal delete endpoint, and reports that cleanup in `cleanup_on_missing_session`.
+- Agentd now also supports daemon-level broker URL/token defaults for that managed runtime, so callers may omit
+  `broker_url` / `broker_token` on normal `voice_webrtc_peer` start/stop flows and still let agentd create/clean up
+  broker-owned audio sessions. Safe config and runtime status expose only boolean presence, not the token itself.
 
 ## Open questions
 

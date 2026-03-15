@@ -112,6 +112,13 @@ bool load_runtime_config_best_effort(
         if (v["proxy_url"].isNull()) cfg_io->proxy_url.clear();
         else if (v["proxy_url"].isString()) cfg_io->proxy_url = v["proxy_url"].asString();
       }
+      if (v.isMember("audio_webrtc") && v["audio_webrtc"].isObject()) {
+        const Json::Value& aw = v["audio_webrtc"];
+        if (aw.isMember("broker_url")) {
+          if (aw["broker_url"].isNull()) cfg_io->audio_webrtc_broker_url.clear();
+          else if (aw["broker_url"].isString()) cfg_io->audio_webrtc_broker_url = trim_copy(aw["broker_url"].asString());
+        }
+      }
       uint64_t n_u64 = 0;
       if (json_get_u64_nonneg(v, "max_steps_default", &n_u64)) {
         cfg_io->max_steps_default = (size_t)n_u64;
@@ -686,6 +693,12 @@ bool load_runtime_config_best_effort(
           cfg_io->blob_store_session_token = trim_copy(bs["session_token"].asString());
         }
       }
+      if (v.isMember("audio_webrtc") && v["audio_webrtc"].isObject()) {
+        const Json::Value& aw = v["audio_webrtc"];
+        if (aw.isMember("broker_token") && aw["broker_token"].isString()) {
+          cfg_io->audio_webrtc_broker_token = trim_copy(aw["broker_token"].asString());
+        }
+      }
     }
   }
 
@@ -701,6 +714,12 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   v["summary_model"] = cfg.summary_model.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.summary_model);
   v["summary_max_chars"] = (Json::UInt64)cfg.summary_max_chars;
   v["proxy_url"] = cfg.proxy_url.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.proxy_url);
+  {
+    Json::Value aw(Json::objectValue);
+    aw["broker_url"] =
+      cfg.audio_webrtc_broker_url.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.audio_webrtc_broker_url);
+    v["audio_webrtc"] = aw;
+  }
   v["max_steps_default"] = (Json::UInt64)cfg.max_steps_default;
   v["max_tool_calls_total_default"] = (Json::UInt64)cfg.max_tool_calls_total_default;
   v["max_tool_calls_per_tool_default"] = (Json::UInt64)cfg.max_tool_calls_per_tool_default;
@@ -897,6 +916,11 @@ bool save_runtime_secrets_best_effort(AgentDb& db, const DaemonConfig& cfg, std:
     if (!cfg.blob_store_secret_key.empty()) bs["secret_key"] = cfg.blob_store_secret_key;
     if (!cfg.blob_store_session_token.empty()) bs["session_token"] = cfg.blob_store_session_token;
     v["blob_store"] = bs;
+  }
+  if (!cfg.audio_webrtc_broker_token.empty()) {
+    Json::Value aw(Json::objectValue);
+    aw["broker_token"] = cfg.audio_webrtc_broker_token;
+    v["audio_webrtc"] = aw;
   }
 
   Json::StreamWriterBuilder wb;

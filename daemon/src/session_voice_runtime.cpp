@@ -216,6 +216,18 @@ static std::string default_voice_peer_runtime_kind(const DaemonConfig& cfg) {
   return discover_bundled_audio_peer_tool_path(cfg).empty() ? "external" : "bundled";
 }
 
+static std::string effective_voice_broker_url(const DaemonConfig& cfg, const std::string& request_broker_url) {
+  const std::string requested = trim_copy(request_broker_url);
+  if (!requested.empty()) return requested;
+  return trim_copy(cfg.audio_webrtc_broker_url);
+}
+
+static std::string effective_voice_broker_token(const DaemonConfig& cfg, const std::string& request_broker_token) {
+  const std::string requested = trim_copy(request_broker_token);
+  if (!requested.empty()) return requested;
+  return trim_copy(cfg.audio_webrtc_broker_token);
+}
+
 #if !defined(_WIN32)
 static bool pid_is_running(pid_t pid) {
   if (pid <= 0) return false;
@@ -347,6 +359,8 @@ static void voice_peer_add_runtime_metadata(const DaemonConfig& cfg, Json::Value
   (*out)["bundled_available"] = !bundled_tool_path.empty();
   (*out)["default_runtime_kind"] = default_voice_peer_runtime_kind(cfg);
   (*out)["tool_configured"] = !trim_copy(cfg.audio_webrtc_peer_tool_path).empty();
+  (*out)["broker_url_default_configured"] = !trim_copy(cfg.audio_webrtc_broker_url).empty();
+  (*out)["broker_token_default_configured"] = !trim_copy(cfg.audio_webrtc_broker_token).empty();
   if (!cfg.audio_webrtc_peer_tool_path.empty()) (*out)["tool_path"] = cfg.audio_webrtc_peer_tool_path;
   if (!bundled_tool_path.empty()) (*out)["bundled_tool_path"] = bundled_tool_path;
   (*out)["node_bin"] = cfg.audio_webrtc_peer_node_bin.empty() ? "node" : cfg.audio_webrtc_peer_node_bin;
@@ -782,11 +796,18 @@ void handle_session_voice_webrtc_peer_endpoint(
   out["session_id"] = session_id;
   voice_peer_add_runtime_metadata(cfg, &out);
 
-  const std::string broker_token =
+  const std::string request_broker_token =
     body.isMember("broker_token") && body["broker_token"].isString() ? trim_copy(body["broker_token"].asString()) : "";
-  if (!broker_token.empty() && !is_safe_printable_field(broker_token, 1024)) {
+  if (!request_broker_token.empty() && !is_safe_printable_field(request_broker_token, 1024)) {
     resp->status = 400;
     resp->body = json_error_body("invalid broker_token");
+    return;
+  }
+  const std::string broker_token = effective_voice_broker_token(cfg, request_broker_token);
+  if (!broker_token.empty() && !is_safe_printable_field(broker_token, 1024)) {
+    out["error"] = "invalid configured audio_webrtc_broker_token";
+    resp->status = 500;
+    resp->body = json_stringify(out);
     return;
   }
 
@@ -939,7 +960,8 @@ void handle_session_voice_webrtc_peer_endpoint(
     }
   }
 
-  const std::string broker_url = body.isMember("broker_url") && body["broker_url"].isString() ? trim_copy(body["broker_url"].asString()) : "";
+  const std::string request_broker_url =
+    body.isMember("broker_url") && body["broker_url"].isString() ? trim_copy(body["broker_url"].asString()) : "";
   const std::string requested_broker_session_id =
     body.isMember("broker_session_id") && body["broker_session_id"].isString() ? trim_copy(body["broker_session_id"].asString()) : "";
   const std::string broker_agent_id =
@@ -968,14 +990,26 @@ void handle_session_voice_webrtc_peer_endpoint(
     resp->body = json_error_body("invalid broker_deployment_id");
     return;
   }
-  if (broker_url.empty() || !is_safe_printable_field(broker_url, 2048)) {
+  if (!request_broker_url.empty() && !is_safe_printable_field(request_broker_url, 2048)) {
     resp->status = 400;
     resp->body = json_error_body("invalid broker_url");
     return;
   }
+  const std::string broker_url = effective_voice_broker_url(cfg, request_broker_url);
+  if (broker_url.empty()) {
+    resp->status = 400;
+    resp->body = json_error_body("broker_url required when daemon default not configured");
+    return;
+  }
+  if (!is_safe_printable_field(broker_url, 2048)) {
+    out["error"] = "invalid configured audio_webrtc_broker_url";
+    resp->status = 500;
+    resp->body = json_stringify(out);
+    return;
+  }
   if (broker_token.empty()) {
     resp->status = 400;
-    resp->body = json_error_body("invalid broker_token");
+    resp->body = json_error_body("broker_token required when daemon default not configured");
     return;
   }
   if (requested_broker_session_id.empty() && broker_agent_id.empty()) {
@@ -1163,6 +1197,11 @@ bool cleanup_session_voice_webrtc_peer_runtime(
   summary["runtime_present"] = false;
   summary["runtime_was_running"] = false;
   summary["peer"] = Json::Value(Json::nullValue);
+  const std::string broker_token_effective = effective_voice_broker_token(cfg, broker_token);
+  if (!broker_token_effective.empty() && !is_safe_printable_field(broker_token_effective, 1024)) {
+    if (out_err) *out_err = "invalid configured audio_webrtc_broker_token";
+    return false;
+  }
 
   std::shared_ptr<VoicePeerRuntime> st;
   {
@@ -1212,9 +1251,9 @@ bool cleanup_session_voice_webrtc_peer_runtime(
 #endif
 
   bool broker_deleted = false;
-  if (st && st->managed_broker_session && !trim_copy(st->broker_session_id).empty() && !trim_copy(broker_token).empty()) {
+  if (st && st->managed_broker_session && !trim_copy(st->broker_session_id).empty() && !broker_token_effective.empty()) {
     std::string berr;
-    broker_deleted = broker_delete_audio_session(st->broker_url, broker_token, st->broker_session_id, &berr);
+    broker_deleted = broker_delete_audio_session(st->broker_url, broker_token_effective, st->broker_session_id, &berr);
     summary["broker_session_delete_attempted"] = true;
     summary["broker_session_deleted"] = broker_deleted;
     if (!broker_deleted && !berr.empty()) summary["broker_session_delete_error"] = berr;
