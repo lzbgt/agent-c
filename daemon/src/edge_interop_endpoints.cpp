@@ -1,5 +1,6 @@
 #include "edge_interop_endpoints.h"
 #include "edge_interop_auth.h"
+#include "config_endpoint.h"
 
 #include "cbor_decode.h"
 #include "cbor_encode.h"
@@ -42,6 +43,104 @@ static bool select_node_match_any(
   std::string* out_node_id
 ) {
   return edge_select_node_match_any(db, requires_tools, tags_all, tags_any, tags_none, exclude_node_ids_or_null, out_node_id);
+}
+
+static void append_edge_verify_chain_result_json(const EdgeVerifyChainResult& result, Json::Value* out) {
+  if (!out) return;
+  *out = Json::Value(Json::objectValue);
+  (*out)["verified"] = result.verified;
+  (*out)["verify_error_code"] = result.verify_error_code;
+  (*out)["verify_error_depth"] = result.verify_error_depth;
+  if (!result.verify_error.empty()) (*out)["verify_error"] = result.verify_error;
+  if (!result.leaf_subject.empty()) (*out)["leaf_subject"] = result.leaf_subject;
+  if (!result.leaf_issuer.empty()) (*out)["leaf_issuer"] = result.leaf_issuer;
+  if (!result.leaf_sha256_hex.empty()) (*out)["leaf_sha256"] = result.leaf_sha256_hex;
+  if (!result.chain_subjects.empty()) {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : result.chain_subjects) if (!s.empty()) arr.append(s);
+    (*out)["verified_chain_subjects"] = arr;
+  }
+  if (!result.matched_root_kids.empty()) {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : result.matched_root_kids) if (!s.empty()) arr.append(s);
+    (*out)["matched_root_kids"] = arr;
+  }
+}
+
+static bool extract_manifest_identity_cert_inputs(
+  const Json::Value& manifest,
+  std::string* out_cert_pem,
+  std::vector<std::string>* out_chain_pem,
+  bool* out_has_cert,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_cert_pem) out_cert_pem->clear();
+  if (out_chain_pem) out_chain_pem->clear();
+  if (out_has_cert) *out_has_cert = false;
+  if (!manifest.isObject()) {
+    if (out_error) *out_error = "manifest must be an object";
+    return false;
+  }
+  if (!manifest.isMember("identity") || manifest["identity"].isNull()) return true;
+  if (!manifest["identity"].isObject()) {
+    if (out_error) *out_error = "manifest.identity must be an object";
+    return false;
+  }
+  const Json::Value& identity = manifest["identity"];
+  const bool has_cert_pem = identity.isMember("cert_pem") && !identity["cert_pem"].isNull();
+  const bool has_chain = identity.isMember("cert_chain_pem") && !identity["cert_chain_pem"].isNull();
+  if (!has_cert_pem && !has_chain) return true;
+  if (!has_cert_pem || !identity["cert_pem"].isString() || trim_copy(identity["cert_pem"].asString()).empty()) {
+    if (out_error) *out_error = "manifest.identity.cert_pem must be a non-empty string";
+    return false;
+  }
+  if (out_cert_pem) *out_cert_pem = identity["cert_pem"].asString();
+  if (has_chain) {
+    if (!identity["cert_chain_pem"].isArray()) {
+      if (out_error) *out_error = "manifest.identity.cert_chain_pem must be an array";
+      return false;
+    }
+    for (Json::ArrayIndex i = 0; i < identity["cert_chain_pem"].size(); i++) {
+      if (!identity["cert_chain_pem"][i].isString()) {
+        if (out_error) *out_error = "manifest.identity.cert_chain_pem entries must be strings";
+        return false;
+      }
+      const std::string pem = identity["cert_chain_pem"][i].asString();
+      if (!trim_copy(pem).empty() && out_chain_pem) out_chain_pem->push_back(pem);
+    }
+  }
+  if (out_has_cert) *out_has_cert = true;
+  return true;
+}
+
+static bool build_manifest_identity_cert_verify(
+  const DaemonConfig& cfg,
+  const Json::Value& manifest,
+  Json::Value* out_verify,
+  bool* out_has_cert,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_verify) *out_verify = Json::Value(Json::nullValue);
+  std::string cert_pem;
+  std::vector<std::string> chain_pem;
+  bool has_cert = false;
+  std::string xerr;
+  if (!extract_manifest_identity_cert_inputs(manifest, &cert_pem, &chain_pem, &has_cert, &xerr)) {
+    if (out_error) *out_error = xerr;
+    return false;
+  }
+  if (out_has_cert) *out_has_cert = has_cert;
+  if (!has_cert) return true;
+  EdgeVerifyChainResult result;
+  std::string verr;
+  if (!verify_edge_cert_chain_against_roots(cfg, cert_pem, chain_pem, &result, &verr)) {
+    if (out_error) *out_error = verr;
+    return false;
+  }
+  if (out_verify) append_edge_verify_chain_result_json(result, out_verify);
+  return true;
 }
 
 static bool canonical_json_bytes(const Json::Value& v, std::string* out, std::string* out_err) {
@@ -317,6 +416,15 @@ static bool build_edge_node_manifest_bundle(
   if (!have_presence && manifest.isMember("hardware") && manifest["hardware"].isObject() &&
       manifest["hardware"].isMember("presence") && manifest["hardware"]["presence"].isObject()) {
     bundle["hardware_presence"] = manifest["hardware"]["presence"];
+  }
+  {
+    Json::Value verify(Json::nullValue);
+    bool have_identity_cert = false;
+    std::string verr;
+    if (build_manifest_identity_cert_verify(cfg, manifest, &verify, &have_identity_cert, &verr) && have_identity_cert &&
+        verify.isObject()) {
+      bundle["identity_cert_verify"] = verify;
+    }
   }
 
   std::string sign_err;
@@ -730,6 +838,35 @@ void handle_edge_message_endpoint(
       resp->status = 400;
       resp->body = json_error_body("invalid NODE_CAPS_RSP body");
       return;
+    }
+    Json::Value identity_cert_verify(Json::nullValue);
+    bool have_identity_cert = false;
+    std::string cert_verr;
+    if (!build_manifest_identity_cert_verify(cfg, manifest, &identity_cert_verify, &have_identity_cert, &cert_verr)) {
+      const bool internal_err =
+        cert_verr.rfind("internal:", 0) == 0 ||
+        cert_verr.rfind("invalid configured cert root", 0) == 0;
+      resp->status = internal_err ? 500 : 400;
+      resp->body = json_error_body(cert_verr.empty() ? "invalid manifest.identity certificate material" : cert_verr);
+      return;
+    }
+    if (cfg.edge_auth_require_manifest_cert_chain) {
+      if (!have_identity_cert) {
+        resp->status = 400;
+        resp->body = json_error_body("manifest.identity.cert_pem required when edge_auth_require_manifest_cert_chain=true");
+        return;
+      }
+      if (!identity_cert_verify.isObject() || !identity_cert_verify.isMember("verified") ||
+          !identity_cert_verify["verified"].asBool()) {
+        const std::string verr =
+          identity_cert_verify.isObject() && identity_cert_verify.isMember("verify_error") &&
+              identity_cert_verify["verify_error"].isString()
+            ? trim_copy(identity_cert_verify["verify_error"].asString())
+            : std::string("manifest identity cert chain did not verify");
+        resp->status = 400;
+        resp->body = json_error_body(verr);
+        return;
+      }
     }
 
     std::string tags_json, tools_json, hw_json;
@@ -1797,6 +1934,18 @@ void handle_edge_node_endpoint(
     Json::Value v;
     std::string perr2;
     if (json_parse_any(n.health_json, &v, &perr2) && v.isObject()) row["health"] = v;
+  }
+  if (!n.manifest_json.empty()) {
+    Json::Value manifest;
+    std::string perr2;
+    Json::Value verify(Json::nullValue);
+    bool have_identity_cert = false;
+    std::string verr;
+    if (json_parse_any(n.manifest_json, &manifest, &perr2) && manifest.isObject() &&
+        build_manifest_identity_cert_verify(cfg, manifest, &verify, &have_identity_cert, &verr) &&
+        have_identity_cert && verify.isObject()) {
+      row["identity_cert_verify"] = verify;
+    }
   }
   row["has_manifest"] = !n.manifest_json.empty();
   o["node"] = row;

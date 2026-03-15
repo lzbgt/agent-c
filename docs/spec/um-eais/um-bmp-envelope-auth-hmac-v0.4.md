@@ -143,6 +143,9 @@ Operator config:
 - `GET /api/v1/edge/auth/cert_roots` returns the durable PEM certificate-root bundle with optional server-side `attest`.
 - `POST /api/v1/edge/auth/cert_roots/rotate` updates the durable certificate-root set with a strictly increasing rotation epoch.
 - `POST /api/v1/edge/auth/cert_roots/send` enqueues a signed `PLATFORM_CERT_ROOTS_BUNDLE` to a target node’s outbox.
+- `edge_auth_require_manifest_cert_chain: bool` (default false) requires
+  `NODE_CAPS_RSP.body.manifest.identity.cert_pem` plus optional `cert_chain_pem[]` to verify against
+  the current PEM root bundle before the manifest is accepted.
 - `GET /api/v1/edge/auth/node_binding?node_id=...` returns the effective binding summary for one node under the current `kid_policy`.
 - `POST /api/v1/edge/auth/provision_node` provisions HMAC / Ed25519 trust roots for a specific node and rejects `kid` values that violate the active `kid_policy`.
 - `GET /api/v1/edge/auth/revocations` returns the durable revoked-`kid` / revoked-node bundle with optional server-side `attest`.
@@ -180,6 +183,8 @@ When `edge_auth_required=false`:
 - `ctest` includes `agentd_edge_auth_trust_roots_rotate_smoke` for live trust-root rotation and signed bundle export.
 - `ctest` includes `agentd_edge_auth_bundle_send_smoke` for outbox-backed signed trust-root and revocation bundle delivery.
 - `ctest` includes `agentd_edge_auth_cert_roots_smoke` for durable PEM certificate-root bundle export and outbox delivery.
+- `ctest` includes `agentd_edge_manifest_identity_cert_enforce_smoke` for fail-closed manifest identity
+  certificate-chain enforcement on `NODE_CAPS_RSP`.
 - `ctest` includes `agentd_edge_manifest_bundle_smoke` for the platform-signed manifest bundle
   export surface (`GET /api/v1/edge/node/manifest_bundle`).
 - `ctest` includes `agentd_edge_manifest_bundle_send_smoke` for outbox-backed signed manifest distribution

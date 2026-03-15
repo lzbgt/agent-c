@@ -552,19 +552,6 @@ struct EdgeRootCertEntry {
   std::unique_ptr<X509, decltype(&X509_free)> cert{nullptr, X509_free};
 };
 
-struct EdgeVerifyChainResult {
-  bool verified = false;
-  int verify_error_code = 0;
-  int verify_error_depth = -1;
-  std::string verify_error;
-  std::string leaf_subject;
-  std::string leaf_issuer;
-  std::string leaf_sha256_hex;
-  std::vector<std::string> chain_subjects;
-  std::vector<std::string> chain_sha256_hex;
-  std::vector<std::string> matched_root_kids;
-};
-
 static bool load_edge_root_cert_entries(
   const DaemonConfig& cfg,
   std::vector<EdgeRootCertEntry>* out,
@@ -592,7 +579,7 @@ static bool load_edge_root_cert_entries(
   return true;
 }
 
-static bool verify_edge_cert_chain_against_roots(
+static bool verify_edge_cert_chain_against_roots_impl(
   const DaemonConfig& cfg,
   const std::string& cert_pem,
   const std::vector<std::string>& untrusted_cert_pem,
@@ -941,6 +928,16 @@ static bool enqueue_edge_platform_bundle(
 
 }  // namespace
 
+bool verify_edge_cert_chain_against_roots(
+  const DaemonConfig& cfg,
+  const std::string& cert_pem,
+  const std::vector<std::string>& untrusted_cert_pem,
+  EdgeVerifyChainResult* out_result,
+  std::string* out_error
+) {
+  return verify_edge_cert_chain_against_roots_impl(cfg, cert_pem, untrusted_cert_pem, out_result, out_error);
+}
+
 void handle_config_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
@@ -1172,6 +1169,7 @@ void handle_config_endpoint(
   edge_auth["cert_roots_set"] = (Json::UInt64)cfg.edge_auth_cert_roots_pem.size();
   edge_auth["cert_roots_epoch"] = (Json::Int64)cfg.edge_auth_cert_roots_epoch;
   edge_auth["cert_roots_updated_utc_ms"] = (Json::Int64)cfg.edge_auth_cert_roots_updated_utc_ms;
+  edge_auth["require_manifest_cert_chain"] = cfg.edge_auth_require_manifest_cert_chain;
   edge_auth["revoked_kids_set"] = (Json::UInt64)cfg.edge_auth_revoked_kids.size();
   edge_auth["revoked_node_ids_set"] = (Json::UInt64)cfg.edge_auth_revoked_node_ids.size();
   edge_auth["revocations_epoch"] = (Json::Int64)cfg.edge_auth_revocations_epoch;
@@ -1587,6 +1585,9 @@ void handle_config_update_endpoint(
   if (args.isMember("edge_auth_kid_policy") && args["edge_auth_kid_policy"].isString()) {
     const std::string s = trim_copy(args["edge_auth_kid_policy"].asString());
     if (s == "any" || s == "match_node" || s == "node_prefix") next.edge_auth_kid_policy = s;
+  }
+  if (args.isMember("edge_auth_require_manifest_cert_chain") && args["edge_auth_require_manifest_cert_chain"].isBool()) {
+    next.edge_auth_require_manifest_cert_chain = args["edge_auth_require_manifest_cert_chain"].asBool();
   }
   if (args.isMember("edge_auth_trust_roots_epoch")) {
     if (!args["edge_auth_trust_roots_epoch"].isInt64() && !args["edge_auth_trust_roots_epoch"].isUInt64()) {
@@ -2056,6 +2057,7 @@ void handle_config_update_endpoint(
   o["edge_auth_trust_roots_updated_utc_ms"] = (Json::Int64)next.edge_auth_trust_roots_updated_utc_ms;
   o["edge_auth_cert_roots_epoch"] = (Json::Int64)next.edge_auth_cert_roots_epoch;
   o["edge_auth_cert_roots_updated_utc_ms"] = (Json::Int64)next.edge_auth_cert_roots_updated_utc_ms;
+  o["edge_auth_require_manifest_cert_chain"] = next.edge_auth_require_manifest_cert_chain;
   o["edge_attest_required"] = next.edge_attest_required;
   o["edge_attest_require_sig"] = next.edge_attest_require_sig;
   {

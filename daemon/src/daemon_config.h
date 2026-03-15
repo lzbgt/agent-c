@@ -87,6 +87,7 @@ struct DaemonConfig {
   std::map<std::string, std::string> edge_auth_cert_roots_pem; // kid -> PEM certificate/root chain blob
   int64_t edge_auth_cert_roots_epoch = 0;
   int64_t edge_auth_cert_roots_updated_utc_ms = 0;
+  bool edge_auth_require_manifest_cert_chain = false;
   // Durable revocation metadata for edge envelope auth.
   //
   // Revocation is enforced against both envelope auth and node attestation verification:

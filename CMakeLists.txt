@@ -734,6 +734,7 @@ if(AGENT_BUILD_HOST)
 				        $<TARGET_FILE:agent_ed25519_tool>
 				    )
 				    add_test(NAME agentd_edge_auth_cert_roots_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_cert_roots_smoke.sh $<TARGET_FILE:agentd>)
+				    add_test(NAME agentd_edge_manifest_identity_cert_enforce_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_manifest_identity_cert_enforce_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_auth_hmac_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_hmac_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_auth_provision_node_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_provision_node_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_auth_revocations_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_revocations_smoke.sh $<TARGET_FILE:agentd>)

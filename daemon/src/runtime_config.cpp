@@ -452,6 +452,9 @@ bool load_runtime_config_best_effort(
           ? v["edge_auth_cert_roots_updated_utc_ms"].asInt64()
           : (int64_t)v["edge_auth_cert_roots_updated_utc_ms"].asUInt64();
       }
+      if (v.isMember("edge_auth_require_manifest_cert_chain") && v["edge_auth_require_manifest_cert_chain"].isBool()) {
+        cfg_io->edge_auth_require_manifest_cert_chain = v["edge_auth_require_manifest_cert_chain"].asBool();
+      }
       if (v.isMember("edge_auth_revoked_kids") && v["edge_auth_revoked_kids"].isArray()) {
         cfg_io->edge_auth_revoked_kids.clear();
         for (const auto& item : v["edge_auth_revoked_kids"]) {
@@ -696,6 +699,7 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   }
   v["edge_auth_cert_roots_epoch"] = (Json::Int64)cfg.edge_auth_cert_roots_epoch;
   v["edge_auth_cert_roots_updated_utc_ms"] = (Json::Int64)cfg.edge_auth_cert_roots_updated_utc_ms;
+  v["edge_auth_require_manifest_cert_chain"] = cfg.edge_auth_require_manifest_cert_chain;
   {
     Json::Value arr(Json::arrayValue);
     for (const auto& s : cfg.edge_auth_revoked_kids) if (!s.empty()) arr.append(s);

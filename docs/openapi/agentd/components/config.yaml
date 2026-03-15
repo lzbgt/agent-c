@@ -91,6 +91,7 @@ AgentdConfigResponse:
         cert_roots_set: { type: integer, format: int64 }
         cert_roots_epoch: { type: integer, format: int64 }
         cert_roots_updated_utc_ms: { type: integer, format: int64 }
+        require_manifest_cert_chain: { type: boolean }
         revoked_kids_set: { type: integer, format: int64 }
         revoked_node_ids_set: { type: integer, format: int64 }
         revocations_epoch: { type: integer, format: int64 }
@@ -153,6 +154,9 @@ AgentdConfigUpdateRequest:
     edge_auth_kid_policy:
       type: string
       description: Key selection policy for authenticated node envelopes (any|match_node|node_prefix)
+    edge_auth_require_manifest_cert_chain:
+      type: boolean
+      description: When true, `NODE_CAPS_RSP.body.manifest.identity.{cert_pem,cert_chain_pem}` must verify against the stored PEM cert-root set
     edge_auth_trust_roots_epoch:
       type: integer
       format: int64

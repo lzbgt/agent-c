@@ -101,6 +101,10 @@ EdgeNodeManifestBundle:
     hardware_presence:
       type: object
       additionalProperties: true
+    identity_cert_verify:
+      type: object
+      additionalProperties: true
+      description: Best-effort verification summary for `manifest.identity.{cert_pem,cert_chain_pem}` against the current PEM cert-root set
     attest:
       $ref: "#/components/schemas/EdgeNodeManifestAttestation"
 

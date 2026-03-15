@@ -27,8 +27,11 @@ Current status:
   - `POST /api/v1/edge/auth/cert_roots/verify_chain`
 - Shipped: operator-side certificate-root bundle inspection and `openssl verify` chain checks via
   `tools/edge_cert_roots_tool.py`.
-- Still open: inline certificate-chain enforcement at UM-BMP ingress and confidentiality beyond
-  authenticity-only envelopes.
+- Shipped: optional inline manifest identity certificate-chain enforcement on `NODE_CAPS_RSP`
+  via `edge_auth_require_manifest_cert_chain`, backed by the same durable PEM root bundle and
+  surfaced through node/manifest reads as `identity_cert_verify`.
+- Still open: confidentiality beyond authenticity-only envelopes, plus certificate-bound transport /
+  envelope identity beyond manifest-ingest verification.
 
 Executable contract artifacts (this repo):
 - Schemas: `docs/spec/um-eais/schema/` (envelope + core + platform extensions)
@@ -144,6 +147,8 @@ Envelope authenticity (optional, UM‑BMP auth v0.4):
     - `GET /api/v1/edge/auth/cert_roots` returns the durable PEM certificate-root bundle with optional `attest`
     - `POST /api/v1/edge/auth/cert_roots/rotate` applies a monotonic certificate-root epoch and updates the current PEM root-chain set
     - `POST /api/v1/edge/auth/cert_roots/send` enqueues the same signed certificate-root bundle to a recipient node’s outbox as `PLATFORM_CERT_ROOTS_BUNDLE`
+    - `edge_auth_require_manifest_cert_chain: true|false` requires `NODE_CAPS_RSP.body.manifest.identity.cert_pem`
+      plus optional `cert_chain_pem[]` to verify against the stored PEM root set before the manifest is accepted
   - Per-node provisioning helpers:
     - `GET /api/v1/edge/auth/node_binding?node_id=...` shows the effective `kid_policy` match set for one node
     - `POST /api/v1/edge/auth/provision_node` provisions HMAC / Ed25519 trust roots for one node while enforcing the active `edge_auth_kid_policy`
@@ -223,6 +228,9 @@ Manifest bundle note:
   leaf/intermediate certs with `tools/edge_cert_roots_tool.py`.
 - `POST /api/v1/edge/auth/cert_roots/verify_chain` exposes the same current-root verification lane
   through `agentd` itself, returning structured success/failure metadata for candidate PEM chains.
+- When a node manifest carries `manifest.identity.cert_pem` and optional `cert_chain_pem`, both
+  `GET /api/v1/edge/node` and `GET /api/v1/edge/node/manifest_bundle` surface a best-effort
+  `identity_cert_verify` summary against the current PEM root set.
 
 ### Platform helper: enqueue TASK_ASSIGN
 

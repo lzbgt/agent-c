@@ -8,6 +8,27 @@
 
 namespace agentd {
 
+struct EdgeVerifyChainResult {
+  bool verified = false;
+  int verify_error_code = 0;
+  int verify_error_depth = -1;
+  std::string verify_error;
+  std::string leaf_subject;
+  std::string leaf_issuer;
+  std::string leaf_sha256_hex;
+  std::vector<std::string> chain_subjects;
+  std::vector<std::string> chain_sha256_hex;
+  std::vector<std::string> matched_root_kids;
+};
+
+bool verify_edge_cert_chain_against_roots(
+  const DaemonConfig& cfg,
+  const std::string& cert_pem,
+  const std::vector<std::string>& untrusted_cert_pem,
+  EdgeVerifyChainResult* out_result,
+  std::string* out_error
+);
+
 void handle_config_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
