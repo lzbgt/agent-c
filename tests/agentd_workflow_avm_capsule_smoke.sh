@@ -190,6 +190,7 @@ chmod +x "${AVM_STUB_BIN}"
 export AGENTD_AVM_BIN="${AVM_STUB_BIN}"
 export AGENTD_AVM_EXEC=1
 export AGENTD_AVM_ALLOW_FS=1
+export AGENTD_NODE_ID="agentd-avm-workflow-smoke-node"
 
 # OpenAI-compatible stub:
 # - echoes user prompt as assistant content
@@ -384,6 +385,16 @@ host_effects = avm.get("host_effects") or {}
 if host_effects.get("fs") is not True or host_effects.get("proc") is not False or host_effects.get("net") is not False:
   print("unexpected AVM host_effects", host_effects, file=sys.stderr)
   raise SystemExit(1)
+attest = avm.get("attest") or {}
+if attest.get("schema") != "run_attestation_bundle_v1":
+  print("unexpected avm.attest schema", attest, file=sys.stderr)
+  raise SystemExit(1)
+if attest.get("node_id") != "agentd-avm-workflow-smoke-node":
+  print("unexpected avm.attest node_id", attest, file=sys.stderr)
+  raise SystemExit(1)
+if not str(attest.get("replay_sha256") or "").startswith("sha256:"):
+  print("unexpected avm.attest replay hash", attest, file=sys.stderr)
+  raise SystemExit(1)
 
 if (r_avm.get("assistant_text") or "").strip() != "stubresulthash":
   print("unexpected AVM assistant_text", r_avm.get("assistant_text"), file=sys.stderr)
@@ -408,6 +419,7 @@ if not obj.get("ok"):
 arts = obj.get("artifacts") or []
 gov = None
 log = None
+att = None
 for rec in arts:
   art = (((rec or {}).get("data") or {}).get("artifact") or {})
   path = art.get("path") or ""
@@ -415,11 +427,16 @@ for rec in arts:
     gov = art
   if path.endswith("/output.log"):
     log = art
+  if path.endswith("/attestation_bundle.json"):
+    att = art
 if gov is None:
   print("missing governance bundle artifact", arts, file=sys.stderr)
   raise SystemExit(1)
 if log is None:
   print("missing output log artifact", arts, file=sys.stderr)
+  raise SystemExit(1)
+if att is None:
+  print("missing attestation artifact", arts, file=sys.stderr)
   raise SystemExit(1)
 bundle = gov.get("bundle") or {}
 if gov.get("schema") != "agentd.avm.governance_bundle_artifact.v1":
@@ -445,6 +462,16 @@ if log.get("schema") != "agentd.avm.output_log_artifact.v1":
 text = log.get("text") or ""
 if "RESULT_HASH stubresulthash" not in text or '"schema":"avm.run.v1"' not in text:
   print("unexpected log artifact text", log, file=sys.stderr)
+  raise SystemExit(1)
+att_bundle = att.get("attestation") or {}
+if att.get("schema") != "run_attestation_bundle_v1":
+  print("unexpected attestation artifact schema", att, file=sys.stderr)
+  raise SystemExit(1)
+if att_bundle.get("node_id") != "agentd-avm-workflow-smoke-node":
+  print("unexpected attestation artifact node_id", att_bundle, file=sys.stderr)
+  raise SystemExit(1)
+if not str(att_bundle.get("replay_sha256") or "").startswith("sha256:"):
+  print("unexpected attestation artifact replay hash", att_bundle, file=sys.stderr)
   raise SystemExit(1)
 PY
 

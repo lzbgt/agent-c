@@ -2,7 +2,7 @@
 
 Date: 2026-03-15
 
-Status: v0.5 (scan/trace-hash/capsule-run/workflow execution and durable governance/output evidence shipped; attestation layering remains open)
+Status: v0.6 (scan/trace-hash/capsule-run/workflow execution, durable governance/output evidence, and quorum attestation carry-through shipped)
 
 ## 1) Goal (why this exists)
 
@@ -35,9 +35,11 @@ This spec defines a minimal `agentd` HTTP endpoint that can:
   - task kind `avm_capsule`
 - Durable AVM evidence artifacts for workflow tasks:
   - governance bundle persisted into session artifacts
+  - attestation bundle persisted into session artifacts
   - bounded output log persisted into session artifacts
 - Deterministic downstream joins:
   - aggregate pointers `/avm/result_hash` and `/avm/trace_hash`
+  - AVM quorum joins now default `node_pointer` to `/avm/attest/node_id` and surface `attestations_by_task_id`
 - Mount allowlist enforcement for direct runs and workflow tasks
 
 ## 3) Remaining goals
@@ -47,7 +49,7 @@ The following parts of the original v0 ambition are still open:
 - Allow scoped AVM flags passthrough via an explicit allowlist.
 - Enable host-effects under explicit policy and budget controls (FS/PROC/NET).
 - Expose full snapshot-level record/replay plumbing beyond the currently shipped durable output-log evidence.
-- Integrate multi-node quorum/attestation protocol in agentd (with broker coordination).
+- Integrate signed multi-node trust-root / manifest protocol in agentd (with broker coordination).
 
 ## 4) Security model
 
@@ -178,6 +180,7 @@ Durable workflows support deterministic capsule tasks (no LLM required):
 - Task payload: `capsule: { obc_base64, timeout_ms, gas, mem_bytes, mounts?, ... }`
 - Execution: agentd runs the configured AVM binary out-of-process under the same operator gates as `/api/v1/avm/capsule_run`.
 - Evidence persistence: successful and failed workflow capsule tasks persist two session-scoped artifacts:
+  - `.../attestation_bundle.json` with `run_attestation_bundle_v1` for the synthetic evidence run, including stable `node_id`
   - `.../governance_bundle.json` with `job_scan`, `policy_scan`, `inspect`, `verify_strict`, sanitized capsule args,
     run summary, and stable keys such as `program_hash_sha256` / `job_hash_sha256`
   - `.../output.log` with the bounded subprocess output that backs `output.raw_text`
@@ -205,3 +208,4 @@ curl -fsS -H "Content-Type: application/json" -d '{
   now also verify explicit host-effect policy propagation and fail-closed denials for disallowed effects
 - `tests/agentd_workflow_aggregate_quorum_smoke.sh`
   - verifies deterministic quorum checks across `/avm/result_hash` and `/avm/trace_hash`
+  - verifies aggregate node evidence defaults to `/avm/attest/node_id` and surfaces `attestations_by_task_id`

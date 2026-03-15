@@ -26,6 +26,7 @@ Top-level object:
 
   "run_id": "run_...",               // optional
   "session_id": "sess_...",          // optional
+  "node_id": "agentd-node-a",        // optional
   "agent_id": "agent_...",           // optional
   "deployment_id": "prod-west-1",    // optional
 
@@ -121,5 +122,7 @@ See: `tools/run_attestation_bundle_tool.cpp`.
 ## Notes
 
 - The attestation bundle is intentionally small and **does not embed** the replay bundle.
+- Current daemon responses also carry stable `node_id` evidence. `agentd` uses `AGENTD_NODE_ID`
+  when configured and otherwise falls back to `listen_host:listen_port`.
 - Future versions can add attestation of tool/plugin manifests or policy VM outputs without
   changing the replay hash surface.

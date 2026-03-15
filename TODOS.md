@@ -565,7 +565,7 @@ streaming and plugins are stable.
   - [ ] Add signed node/tool manifests as first-class verified artifacts, not only task/run attestation blobs.
   - [ ] Add envelope confidentiality / encrypted payload profile beyond authenticity-only signing.
   - 2026-03-15: narrowed the stale umbrella item after re-verifying `umbmp_auth_vectors_tests`, `agentd_edge_auth_hmac_cbor_wire_smoke`, `agentd_edge_auth_ed25519_cbor_wire_smoke`, `agentd_edge_task_attest_required_smoke`, and `agentd_run_attestation_ed25519_smoke`.
-- [ ] AVM: persist governance bundles/record-replay artifacts, add explicit host-effects policy, and carry quorum/attestation identity through deterministic VM results.
+- [x] AVM: persist governance bundles/record-replay artifacts, add explicit host-effects policy, and carry quorum/attestation identity through deterministic VM results.
   - [x] Non-exec AVM governance endpoints: `/api/v1/avm/job_scan`, `/policy_scan`, `/inspect`, `/verify_strict`, `/trace_hash`.
   - [x] Exec-gated capsule runner: `/api/v1/avm/capsule_run` with operator gates (`AGENTD_AVM_BIN`, `AGENTD_AVM_EXEC`, `yolo`) and deterministic hash extraction (`RESULT_HASH`, `TRACE_HASH`, `STATE_HASH`).
   - [x] Durable workflow VM task: `kind:"avm_capsule"` executes out-of-process under the same guarded runner.
@@ -575,11 +575,12 @@ streaming and plugins are stable.
   - [x] Persist a reusable governance bundle object (scan/inspect/verify/run/log) keyed by program/job hash.
   - [x] Expose AVM record/replay artifacts as durable evidence, not only transient subprocess stdout.
   - [x] Add explicit host-effects policy surfaces beyond mounts (FS/PROC/NET capability gating).
-  - [ ] Carry node identity / attestation material through quorum votes for multi-node correctness.
+  - [x] Carry node identity / attestation material through quorum votes for multi-node correctness.
   - 2026-03-15: narrowed the stale umbrella item after re-verifying the shipped runner/scan/quorum surfaces in `agentd_avm_job_scan_smoke`, `agentd_workflow_avm_capsule_smoke`, and `agentd_workflow_aggregate_quorum_smoke`.
   - 2026-03-15: added structured AVM output evidence to the shipped runner path so callers no longer need to scrape raw stdout for the JSON fragment and hash tokens when using direct `capsule_run` or workflow `avm_capsule`.
   - 2026-03-15: added explicit `host_effects.{fs,proc,net}` request policy with fail-closed operator gates (`AGENTD_AVM_ALLOW_{FS,PROC,NET}`), runner env propagation, and direct/workflow smoke coverage.
   - 2026-03-15: workflow `avm_capsule` tasks now persist session-scoped AVM governance bundles plus durable output-log artifacts, keyed by program/job hash and verified through `GET /api/v1/session/artifacts` in `agentd_workflow_avm_capsule_smoke`.
+  - 2026-03-15: workflow `avm_capsule` evidence runs now emit `run_attestation_bundle_v1` with stable `node_id`, persist `attestation_bundle.json`, and `quorum_hashes` automatically defaults `node_pointer` to `/avm/attest/node_id` for AVM hash joins while surfacing `attestations_by_task_id`.
 - [ ] Node consensus: add true peer-to-peer node-native consensus and deterministic partition/conflict simulation on top of the shipped centralized quorum surfaces.
   - [x] Centralized platform-owned coordination is already the implemented design stance for UM-EAIS and broker team orchestration.
   - [x] Deterministic quorum/join surfaces are already shipped for workflows and broker team runs.

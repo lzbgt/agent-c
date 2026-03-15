@@ -14,6 +14,7 @@
 #include <json/json.h>
 
 #include <chrono>
+#include <cstdlib>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -332,6 +333,102 @@ static ReplayBundleLoad load_replay_bundle(sqlite3* db, int64_t run_id) {
 }
 #endif
 
+static std::string daemon_node_identity(const DaemonConfig& cfg) {
+  if (const char* node_id_env = std::getenv("AGENTD_NODE_ID")) {
+    const std::string node_id = trim_copy(node_id_env);
+    if (!node_id.empty()) return node_id;
+  }
+  if (!cfg.listen_host.empty() && cfg.listen_port > 0) {
+    return cfg.listen_host + ":" + std::to_string((unsigned)cfg.listen_port);
+  }
+  if (!cfg.listen_host.empty()) return cfg.listen_host;
+  if (cfg.listen_port > 0) return std::string("agentd:") + std::to_string((unsigned)cfg.listen_port);
+  return "agentd";
+}
+
+static bool build_run_attestation_bundle_from_load(
+  const DaemonConfig& cfg,
+  int64_t run_id,
+  const ReplayBundleLoad& load,
+  Json::Value* out_attestation,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (!out_attestation) {
+    if (out_error) *out_error = "internal error";
+    return false;
+  }
+
+  Json::Value att(Json::objectValue);
+  att["schema"] = "run_attestation_bundle_v1";
+  att["created_utc_ms"] = (Json::Int64)now_utc_ms();
+  att["replay_sha256"] = load.replay_sha256;
+  att["replay_sha256_alg"] = load.replay_sha256_alg;
+  att["replay_sha256_schema"] = load.replay_sha256_schema;
+  att["run_id"] = (Json::Int64)run_id;
+  if (!load.session_id.empty()) att["session_id"] = load.session_id;
+  att["node_id"] = daemon_node_identity(cfg);
+
+  const bool hmac_kid_set = !cfg.run_attest_hmac_kid.empty();
+  const bool hmac_key_set = !cfg.run_attest_hmac_key.empty();
+  const bool ed_kid_set = !cfg.run_attest_ed25519_kid.empty();
+  const bool ed_seed_set = !cfg.run_attest_ed25519_seed.empty();
+  const bool any_hmac = hmac_kid_set || hmac_key_set;
+  const bool any_ed = ed_kid_set || ed_seed_set;
+
+  if (any_hmac || any_ed) {
+    if (any_hmac && any_ed) {
+      if (out_error) *out_error = "attest_sign_config_invalid: multiple signing modes configured";
+      return false;
+    }
+    if (any_hmac && (!hmac_kid_set || !hmac_key_set)) {
+      if (out_error) *out_error = "attest_sign_config_invalid: missing AGENTD_RUN_ATTEST_HMAC_KID or AGENTD_RUN_ATTEST_HMAC_KEY";
+      return false;
+    }
+    if (any_ed && (!ed_kid_set || !ed_seed_set)) {
+      if (out_error) *out_error = "attest_sign_config_invalid: missing AGENTD_RUN_ATTEST_ED25519_KID or AGENTD_RUN_ATTEST_ED25519_SEED";
+      return false;
+    }
+
+    std::string canon;
+    std::string cerr;
+    if (!canonical_json_bytes(att, &canon, &cerr)) {
+      if (out_error) *out_error = std::string("attest_sign_failed: ") + (cerr.empty() ? "c14n_failed" : cerr);
+      return false;
+    }
+
+    Json::Value sig(Json::objectValue);
+    if (any_hmac) {
+      uint8_t mac[32];
+      agent_hmac_sha256(cfg.run_attest_hmac_key.data(), cfg.run_attest_hmac_key.size(), canon.data(), canon.size(), mac);
+      sig["alg"] = "hmac-sha256";
+      sig["kid"] = cfg.run_attest_hmac_kid;
+      sig["sig"] = base64_encode(mac, sizeof(mac));
+    } else {
+      std::vector<uint8_t> seed;
+      std::string serr;
+      if (!parse_seed_bytes(cfg.run_attest_ed25519_seed, &seed, &serr)) {
+        if (out_error) *out_error = std::string("attest_sign_failed: ") + (serr.empty() ? "invalid_ed25519_seed" : serr);
+        return false;
+      }
+      uint8_t pk[32];
+      agent_ed25519_publickey(seed.data(), pk);
+      uint8_t sig_bytes[64];
+      agent_ed25519_sign(canon.data(), canon.size(), seed.data(), pk, sig_bytes);
+      sig["alg"] = "ed25519";
+      sig["kid"] = cfg.run_attest_ed25519_kid;
+      sig["sig"] = base64_encode(sig_bytes, sizeof(sig_bytes));
+    }
+    sig["ts_utc_ms"] = att["created_utc_ms"];
+    sig["hash_alg"] = "agent_json_c14n_v1";
+    sig["signing_schema"] = "run_attestation_bundle_v1";
+    att["attest"] = sig;
+  }
+
+  *out_attestation = att;
+  return true;
+}
+
 }  // namespace
 
 void handle_run_replay_endpoint(
@@ -391,6 +488,53 @@ void handle_run_replay_endpoint(
 #endif
 }
 
+bool build_run_attestation_bundle_json(
+  const DaemonConfig& cfg,
+  AgentDb* db_or_null,
+  int64_t run_id,
+  Json::Value* out_attestation,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (!out_attestation) {
+    if (out_error) *out_error = "internal error";
+    return false;
+  }
+
+  DbHandle h;
+  Json::Value db_open = open_db_or_error(db_or_null, &h);
+  if (!db_open.isObject() || !db_open.get("ok", false).asBool()) {
+    if (out_error) {
+      *out_error =
+        db_open.isMember("error") && db_open["error"].isString() ? db_open["error"].asString() : "db unavailable";
+      if (db_open.isMember("details") && db_open["details"].isString() && !db_open["details"].asString().empty()) {
+        *out_error += ": " + db_open["details"].asString();
+      }
+    }
+    return false;
+  }
+
+#if !defined(AGENT_HAVE_SQLITE3)
+  if (out_error) *out_error = "sqlite disabled";
+  return false;
+#else
+  ReplayBundleLoad load = load_replay_bundle(h.db, run_id);
+  if (!load.ok) {
+    if (out_error) {
+      *out_error =
+        load.error_body.isMember("error") && load.error_body["error"].isString() ? load.error_body["error"].asString()
+                                                                                  : "run attestation unavailable";
+      if (load.error_body.isMember("details") && load.error_body["details"].isString() &&
+          !load.error_body["details"].asString().empty()) {
+        *out_error += ": " + load.error_body["details"].asString();
+      }
+    }
+    return false;
+  }
+  return build_run_attestation_bundle_from_load(cfg, run_id, load, out_attestation, out_error);
+#endif
+}
+
 void handle_run_attestation_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
@@ -435,96 +579,24 @@ void handle_run_attestation_endpoint(
   }
 
   Json::Value att(Json::objectValue);
-  att["schema"] = "run_attestation_bundle_v1";
-  att["created_utc_ms"] = (Json::Int64)now_utc_ms();
-  att["replay_sha256"] = load.replay_sha256;
-  att["replay_sha256_alg"] = load.replay_sha256_alg;
-  att["replay_sha256_schema"] = load.replay_sha256_schema;
-  att["run_id"] = (Json::Int64)run_id;
-  if (!load.session_id.empty()) att["session_id"] = load.session_id;
-
-  const bool hmac_kid_set = !cfg.run_attest_hmac_kid.empty();
-  const bool hmac_key_set = !cfg.run_attest_hmac_key.empty();
-  const bool ed_kid_set = !cfg.run_attest_ed25519_kid.empty();
-  const bool ed_seed_set = !cfg.run_attest_ed25519_seed.empty();
-  const bool any_hmac = hmac_kid_set || hmac_key_set;
-  const bool any_ed = ed_kid_set || ed_seed_set;
-
-  if (any_hmac || any_ed) {
-    if (any_hmac && any_ed) {
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["rpc_status"] = 500;
+  std::string aerr;
+  if (!build_run_attestation_bundle_from_load(cfg, run_id, load, &att, &aerr)) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["rpc_status"] = 500;
+    if (aerr.rfind("attest_sign_config_invalid:", 0) == 0) {
       o["error"] = "attest_sign_config_invalid";
-      o["details"] = "multiple signing modes configured";
-      resp->status = 500;
-      resp->body = json_stringify(o);
-      return;
-    }
-    if (any_hmac && (!hmac_kid_set || !hmac_key_set)) {
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["rpc_status"] = 500;
-      o["error"] = "attest_sign_config_invalid";
-      o["details"] = "missing AGENTD_RUN_ATTEST_HMAC_KID or AGENTD_RUN_ATTEST_HMAC_KEY";
-      resp->status = 500;
-      resp->body = json_stringify(o);
-      return;
-    }
-    if (any_ed && (!ed_kid_set || !ed_seed_set)) {
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["rpc_status"] = 500;
-      o["error"] = "attest_sign_config_invalid";
-      o["details"] = "missing AGENTD_RUN_ATTEST_ED25519_KID or AGENTD_RUN_ATTEST_ED25519_SEED";
-      resp->status = 500;
-      resp->body = json_stringify(o);
-      return;
-    }
-    std::string canon;
-    std::string cerr;
-    if (!canonical_json_bytes(att, &canon, &cerr)) {
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["rpc_status"] = 500;
+      o["details"] = trim_copy(aerr.substr(std::string("attest_sign_config_invalid:").size()));
+    } else if (aerr.rfind("attest_sign_failed:", 0) == 0) {
       o["error"] = "attest_sign_failed";
-      o["details"] = cerr.empty() ? "c14n_failed" : cerr;
-      resp->status = 500;
-      resp->body = json_stringify(o);
-      return;
-    }
-    Json::Value sig(Json::objectValue);
-    if (any_hmac) {
-      uint8_t mac[32];
-      agent_hmac_sha256(cfg.run_attest_hmac_key.data(), cfg.run_attest_hmac_key.size(), canon.data(), canon.size(), mac);
-      sig["alg"] = "hmac-sha256";
-      sig["kid"] = cfg.run_attest_hmac_kid;
-      sig["sig"] = base64_encode(mac, sizeof(mac));
+      o["details"] = trim_copy(aerr.substr(std::string("attest_sign_failed:").size()));
     } else {
-      std::vector<uint8_t> seed;
-      std::string serr;
-      if (!parse_seed_bytes(cfg.run_attest_ed25519_seed, &seed, &serr)) {
-        Json::Value o(Json::objectValue);
-        o["ok"] = false;
-        o["rpc_status"] = 500;
-        o["error"] = "attest_sign_failed";
-        o["details"] = serr.empty() ? "invalid_ed25519_seed" : serr;
-        resp->status = 500;
-        resp->body = json_stringify(o);
-        return;
-      }
-      uint8_t pk[32];
-      agent_ed25519_publickey(seed.data(), pk);
-      uint8_t sig_bytes[64];
-      agent_ed25519_sign(canon.data(), canon.size(), seed.data(), pk, sig_bytes);
-      sig["alg"] = "ed25519";
-      sig["kid"] = cfg.run_attest_ed25519_kid;
-      sig["sig"] = base64_encode(sig_bytes, sizeof(sig_bytes));
+      o["error"] = "attestation_unavailable";
+      if (!aerr.empty()) o["details"] = aerr;
     }
-    sig["ts_utc_ms"] = att["created_utc_ms"];
-    sig["hash_alg"] = "agent_json_c14n_v1";
-    sig["signing_schema"] = "run_attestation_bundle_v1";
-    att["attest"] = sig;
+    resp->status = 500;
+    resp->body = json_stringify(o);
+    return;
   }
 
   Json::Value out(Json::objectValue);

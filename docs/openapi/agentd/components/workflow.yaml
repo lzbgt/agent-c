@@ -991,14 +991,14 @@ WorkflowAggregateSpec:
         Notes:
         - When `require_distinct_nodes=true`, this pointer is used to count votes across distinct nodes.
         - Otherwise, it is only an observability/correlation surface (does not change quorum semantics).
-        - Default: `/edge/node_id` (populated by `kind:edge_invoke` results).
+        - Default: `/avm/attest/node_id` when the active pointers are AVM hash pointers, otherwise `/edge/node_id`.
     require_distinct_nodes:
       type: boolean
       description: |
         For mode=quorum_hashes, when true, count votes across **distinct node identities** instead of per-task votes.
 
         Semantics:
-        - Node identity is read from `node_pointer` (default `/edge/node_id`).
+        - Node identity is read from `node_pointer` (default `/avm/attest/node_id` for AVM hash joins, otherwise `/edge/node_id`).
         - Each distinct node contributes at most one vote per pointer:
           the vote is taken from the first task_id (in task_ids order) that has a non-empty string at that pointer.
         - Tasks missing a node_id at node_pointer do not contribute votes when this is enabled (fail-closed).
@@ -1411,7 +1411,7 @@ WorkflowDelegateParallelAggregateSpec:
         (for quorum_hashes correlation; also used when require_distinct_nodes=true).
 
         For `kind:delegate_parallel` with `mode=quorum_hashes`, the server defaults this to `/effective_base_url`.
-        (The aggregate engine's default is `/edge/node_id`.)
+        (The aggregate engine otherwise defaults to `/avm/attest/node_id` for AVM hash joins or `/edge/node_id`.)
     require_distinct_nodes:
       type: boolean
       description: |

@@ -14,6 +14,7 @@ fi
 HOST="127.0.0.1"
 PORT_DAEMON="$(agentd_smoke_pick_port)"
 AUTH_TOKEN="agentd_workflow_aggregate_quorum_smoke_token"
+SESSION_ID="sess_workflow_aggregate_quorum_smoke"
 
 trap agentd_smoke_stop EXIT
 
@@ -80,6 +81,7 @@ chmod +x "${AVM_STUB_BIN}"
 
 export AGENTD_AVM_BIN="${AVM_STUB_BIN}"
 export AGENTD_AVM_EXEC=1
+export AGENTD_NODE_ID="agentd-avm-quorum-smoke-node"
 
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_workflow_aggregate_quorum_smoke" \
   --auth-token "${AUTH_TOKEN}" \
@@ -108,7 +110,7 @@ tasks = [
   {"task_id":"J","kind":"aggregate","depends_on":["AVM1","AVM2","AVM3"],
    "aggregate":{"mode":"quorum_hashes","task_ids":["AVM1","AVM2","AVM3"],"quorum":2,"pointers":["/avm/result_hash","/avm/trace_hash"]}}
 ]
-print(json.dumps({"tasks": tasks}))
+print(json.dumps({"tasks": tasks, "allow_sessions": True, "session_id": "${SESSION_ID}"}))
 PY
 )" \
   "${DAEMON_URL}/api/v1/workflow/submit")"
@@ -168,6 +170,30 @@ if rj.get("ok") is not True:
 if (rj.get("assistant_text") or "").strip() != "stubresulthash":
   print("unexpected aggregate assistant_text", rj.get("assistant_text"), file=sys.stderr)
   raise SystemExit(1)
+if rj.get("node_pointer") != "/avm/attest/node_id":
+  print("unexpected aggregate node_pointer", rj.get("node_pointer"), file=sys.stderr)
+  raise SystemExit(1)
+nodes = rj.get("nodes_by_task_id") or {}
+expected_nodes = {
+  "AVM1": "agentd-avm-quorum-smoke-node",
+  "AVM2": "agentd-avm-quorum-smoke-node",
+  "AVM3": "agentd-avm-quorum-smoke-node",
+}
+if nodes != expected_nodes:
+  print("unexpected nodes_by_task_id", nodes, file=sys.stderr)
+  raise SystemExit(1)
+attestations = rj.get("attestations_by_task_id") or {}
+for tid in ("AVM1", "AVM2", "AVM3"):
+  att = attestations.get(tid) or {}
+  if att.get("schema") != "run_attestation_bundle_v1":
+    print("unexpected attestation schema", tid, att, file=sys.stderr)
+    raise SystemExit(1)
+  if att.get("node_id") != "agentd-avm-quorum-smoke-node":
+    print("unexpected attestation node_id", tid, att, file=sys.stderr)
+    raise SystemExit(1)
+  if not str(att.get("replay_sha256") or "").startswith("sha256:"):
+    print("unexpected attestation replay hash", tid, att, file=sys.stderr)
+    raise SystemExit(1)
 
 checks = rj.get("checks") or []
 if len(checks) < 2:
@@ -187,4 +213,3 @@ if th.get("chosen") != "stubtracehash" or th.get("ok") is not True:
 PY
 
 echo "agentd_workflow_aggregate_quorum_smoke OK"
-

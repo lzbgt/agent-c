@@ -158,6 +158,8 @@ If you want to maximize leverage *now* with minimal time:
      2026-03-15: shipped request-time `host_effects.{fs,proc,net}` with fail-closed operator env gates
      and AVM runner pass-through (`AGENTD_AVM_HOST_EFFECT_*`)
    - carry node identity / attestation material through quorum joins for multi-node correctness
+     2026-03-15: shipped workflow AVM attestation bundles with stable `node_id`, persisted
+     `attestation_bundle.json`, and automatic aggregate `node_pointer=/avm/attest/node_id` defaults
    - extend durable evidence from the now-shipped governance bundle/output-log artifacts to full
      snapshot-level record/replay persistence when AVM exposes it cleanly
 

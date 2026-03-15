@@ -318,6 +318,7 @@ RunAttestationBundle:
     replay_sha256_schema: { type: string }
     run_id: { type: integer, format: int64 }
     session_id: { type: string }
+    node_id: { type: string }
     agent_id: { type: string }
     deployment_id: { type: string }
     issuer:

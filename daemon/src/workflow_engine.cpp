@@ -6,6 +6,7 @@
 #include "json_util.h"
 #include "memory_consolidator.h"
 #include "run_endpoints.h"
+#include "run_replay_endpoint.h"
 #include "string_util.h"
 #include "toolset_host.h"
 #include "workflow_aggregate.h"
@@ -96,6 +97,12 @@ int64_t create_workflow_evidence_run_best_effort(
   row.model = "workflow_evidence";
   row.base_url = "/api/v1/workflow";
   row.stream_assistant = false;
+  Json::Value request(Json::objectValue);
+  request["schema"] = "agentd.workflow_evidence_request.v1";
+  request["workflow_id"] = wf.workflow_id;
+  request["task_id"] = task.task_id;
+  request["kind"] = "workflow_evidence";
+  row.request_json = workflow_json_stringify_compact(request);
   row.ok = result.isObject() && result.isMember("ok") && result["ok"].isBool() && result["ok"].asBool();
   row.stop_reason = row.ok ? "done" : "error";
   row.response_json = workflow_json_stringify_compact(result);
@@ -1709,48 +1716,66 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         !wf.session_id.empty()) {
       const int64_t evidence_run_id = create_workflow_evidence_run_best_effort(db_, wf, task, now, out);
       if (evidence_run_id > 0) {
-      const Json::Value keys = bundle.isMember("keys") && bundle["keys"].isObject() ? bundle["keys"] : Json::Value(Json::nullValue);
-      const std::string artifact_key_raw =
-        keys.isObject() && keys.isMember("job_hash_sha256") && keys["job_hash_sha256"].isString()
-          ? keys["job_hash_sha256"].asString()
-          : (keys.isObject() && keys.isMember("program_hash_sha256") && keys["program_hash_sha256"].isString()
-               ? keys["program_hash_sha256"].asString()
-               : task.task_id);
-      const std::string artifact_key = workflow_artifact_slug(artifact_key_raw);
-      const std::string base_path =
-        "workflow/" + workflow_artifact_slug(wf.workflow_id) + "/tasks/" + workflow_artifact_slug(task.task_id) +
-        "/avm/" + artifact_key + "/";
+        Json::Value attestation(Json::objectValue);
+        std::string attestation_err;
+        if (build_run_attestation_bundle_json(cfg, db_, evidence_run_id, &attestation, &attestation_err) &&
+            attestation.isObject()) {
+          avm_task_result["attest"] = attestation;
+          if (out.isObject() && out.isMember("avm") && out["avm"].isObject()) out["avm"]["attest"] = attestation;
+        }
+        const Json::Value keys = bundle.isMember("keys") && bundle["keys"].isObject() ? bundle["keys"] : Json::Value(Json::nullValue);
+        const std::string artifact_key_raw =
+          keys.isObject() && keys.isMember("job_hash_sha256") && keys["job_hash_sha256"].isString()
+            ? keys["job_hash_sha256"].asString()
+            : (keys.isObject() && keys.isMember("program_hash_sha256") && keys["program_hash_sha256"].isString()
+                 ? keys["program_hash_sha256"].asString()
+                 : task.task_id);
+        const std::string artifact_key = workflow_artifact_slug(artifact_key_raw);
+        const std::string base_path =
+          "workflow/" + workflow_artifact_slug(wf.workflow_id) + "/tasks/" + workflow_artifact_slug(task.task_id) +
+          "/avm/" + artifact_key + "/";
 
-      Json::Value bundle_artifact(Json::objectValue);
-      bundle_artifact["path"] = base_path + "governance_bundle.json";
-      bundle_artifact["kind"] = "json";
-      bundle_artifact["mime"] = "application/json";
-      bundle_artifact["title"] = "AVM governance bundle";
-      bundle_artifact["schema"] = "agentd.avm.governance_bundle_artifact.v1";
-      bundle_artifact["bundle"] = bundle;
-      persist_workflow_session_artifact_best_effort(db_, evidence_run_id, wf, task.task_id, now, bundle_artifact);
+        Json::Value bundle_artifact(Json::objectValue);
+        bundle_artifact["path"] = base_path + "governance_bundle.json";
+        bundle_artifact["kind"] = "json";
+        bundle_artifact["mime"] = "application/json";
+        bundle_artifact["title"] = "AVM governance bundle";
+        bundle_artifact["schema"] = "agentd.avm.governance_bundle_artifact.v1";
+        bundle_artifact["bundle"] = bundle;
+        persist_workflow_session_artifact_best_effort(db_, evidence_run_id, wf, task.task_id, now, bundle_artifact);
 
-      const Json::Value output_obj =
-        avm_task_result.isMember("output") && avm_task_result["output"].isObject() ? avm_task_result["output"] : Json::Value(Json::nullValue);
-      const std::string raw_text =
-        output_obj.isObject() && output_obj.isMember("raw_text") && output_obj["raw_text"].isString()
-          ? output_obj["raw_text"].asString()
-          : std::string();
-      if (!raw_text.empty()) {
-        Json::Value log_artifact(Json::objectValue);
-        log_artifact["path"] = base_path + "output.log";
-        log_artifact["kind"] = "text";
-        log_artifact["mime"] = "text/plain; charset=utf-8";
-        log_artifact["title"] = "AVM output log";
-        log_artifact["schema"] = "agentd.avm.output_log_artifact.v1";
-        Json::Value meta(Json::objectValue);
-        meta["workflow_id"] = wf.workflow_id;
-        meta["task_id"] = task.task_id;
-        if (keys.isObject()) meta["keys"] = keys;
-        log_artifact["avm"] = meta;
-        log_artifact["text"] = raw_text;
-        persist_workflow_session_artifact_best_effort(db_, evidence_run_id, wf, task.task_id, now, log_artifact);
-      }
+        if (attestation.isObject()) {
+          Json::Value attestation_artifact(Json::objectValue);
+          attestation_artifact["path"] = base_path + "attestation_bundle.json";
+          attestation_artifact["kind"] = "json";
+          attestation_artifact["mime"] = "application/json";
+          attestation_artifact["title"] = "AVM attestation bundle";
+          attestation_artifact["schema"] = "run_attestation_bundle_v1";
+          attestation_artifact["attestation"] = attestation;
+          persist_workflow_session_artifact_best_effort(db_, evidence_run_id, wf, task.task_id, now, attestation_artifact);
+        }
+
+        const Json::Value output_obj =
+          avm_task_result.isMember("output") && avm_task_result["output"].isObject() ? avm_task_result["output"] : Json::Value(Json::nullValue);
+        const std::string raw_text =
+          output_obj.isObject() && output_obj.isMember("raw_text") && output_obj["raw_text"].isString()
+            ? output_obj["raw_text"].asString()
+            : std::string();
+        if (!raw_text.empty()) {
+          Json::Value log_artifact(Json::objectValue);
+          log_artifact["path"] = base_path + "output.log";
+          log_artifact["kind"] = "text";
+          log_artifact["mime"] = "text/plain; charset=utf-8";
+          log_artifact["title"] = "AVM output log";
+          log_artifact["schema"] = "agentd.avm.output_log_artifact.v1";
+          Json::Value meta(Json::objectValue);
+          meta["workflow_id"] = wf.workflow_id;
+          meta["task_id"] = task.task_id;
+          if (keys.isObject()) meta["keys"] = keys;
+          log_artifact["avm"] = meta;
+          log_artifact["text"] = raw_text;
+          persist_workflow_session_artifact_best_effort(db_, evidence_run_id, wf, task.task_id, now, log_artifact);
+        }
       }
     }
   }

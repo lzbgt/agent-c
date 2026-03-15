@@ -390,7 +390,8 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
 - `GET /api/v1/run/replay?run_id=<id>` returns a redacted replay bundle (`run_replay_bundle_v1`).
   Sensitive request fields such as `api_key` are omitted from the bundle.
 - `GET /api/v1/run/attestation?run_id=<id>` returns a signed or unsigned
-  `run_attestation_bundle_v1` referencing the replay hash.
+  `run_attestation_bundle_v1` referencing the replay hash and carrying stable daemon
+  `node_id` evidence (`AGENTD_NODE_ID` when set, else `listen_host:listen_port`).
 
 Host-test proof points:
 - `tests/agentd_memory_retention_smoke.sh`

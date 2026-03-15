@@ -122,8 +122,18 @@ static Json::Value workflow_aggregate_quorum_hashes_to_json(
   }
 
   std::string node_ptr = "/edge/node_id";
+  bool node_ptr_explicit = false;
   if (agg.isMember("node_pointer") && agg["node_pointer"].isString() && !agg["node_pointer"].asString().empty()) {
     node_ptr = agg["node_pointer"].asString();
+    node_ptr_explicit = true;
+  } else {
+    bool avm_pointer_present = false;
+    bool edge_pointer_present = false;
+    for (const auto& ptr : ptrs) {
+      if (ptr.rfind("/avm/", 0) == 0) avm_pointer_present = true;
+      if (ptr.rfind("/edge/", 0) == 0) edge_pointer_present = true;
+    }
+    if (avm_pointer_present && !edge_pointer_present) node_ptr = "/avm/attest/node_id";
   }
 
   bool require_distinct_nodes = false;
@@ -141,6 +151,7 @@ static Json::Value workflow_aggregate_quorum_hashes_to_json(
   out["pointers"] = parr;
   out["node_pointer"] = node_ptr;
   out["require_distinct_nodes"] = require_distinct_nodes;
+  out["node_pointer_defaulted"] = !node_ptr_explicit;
 
   // Optional evidence surface: attach stable node identity (when present) to votes.
   // This is useful for multi-node correctness debugging and attestation correlation.
@@ -153,10 +164,15 @@ static Json::Value workflow_aggregate_quorum_hashes_to_json(
   std::vector<std::string> unknown_node_task_ids;
   {
     Json::Value nodes_by_task(Json::objectValue);
+    Json::Value attestation_by_task(Json::objectValue);
     for (const auto& tid : task_ids) {
       auto it = result_json_by_task.find(tid);
       if (it == result_json_by_task.end()) continue;
       const Json::Value& root = it->second;
+      const Json::Value* att = nullptr;
+      if (json_pointer_get(root, "/avm/attest", &att) && att && att->isObject()) {
+        attestation_by_task[tid] = *att;
+      }
       const Json::Value* got = nullptr;
       if (json_pointer_get(root, node_ptr, &got) && got && got->isString() && !got->asString().empty()) {
         const std::string nid = got->asString();
@@ -172,6 +188,7 @@ static Json::Value workflow_aggregate_quorum_hashes_to_json(
       }
     }
     if (!nodes_by_task.empty()) out["nodes_by_task_id"] = nodes_by_task;
+    if (!attestation_by_task.empty()) out["attestations_by_task_id"] = attestation_by_task;
   }
   if (require_distinct_nodes && !unknown_node_task_ids.empty()) {
     Json::Value unk(Json::arrayValue);
