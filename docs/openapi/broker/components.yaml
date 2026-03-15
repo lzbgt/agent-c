@@ -77,6 +77,50 @@ schemas:
           send_url: { type: string }
           recv_url: { type: string }
 
+  AudioSessionSummary:
+    type: object
+    required: [session_id, agent_id, created_unix_ms, expires_unix_ms, subscriber_count, signal_count]
+    properties:
+      session_id: { type: string }
+      agent_id: { type: string }
+      deployment_id: { type: string }
+      owner_sub: { type: string }
+      mode: { type: string }
+      created_unix_ms: { type: integer, format: int64 }
+      expires_unix_ms: { type: integer, format: int64 }
+      subscriber_count: { type: integer, format: int32 }
+      signal_count: { type: integer, format: int64 }
+      last_signal_type: { type: string }
+      last_signal_from: { type: string }
+      last_signal_unix_ms: { type: integer, format: int64 }
+
+  AudioSessionListResponse:
+    type: object
+    required: [ok, count, sessions]
+    properties:
+      ok: { type: boolean }
+      count: { type: integer, format: int32 }
+      sessions:
+        type: array
+        items:
+          $ref: "#/components/schemas/AudioSessionSummary"
+
+  AudioSessionGetResponse:
+    type: object
+    required: [ok, session]
+    properties:
+      ok: { type: boolean }
+      session:
+        $ref: "#/components/schemas/AudioSessionSummary"
+
+  AudioSessionDeleteResponse:
+    type: object
+    required: [ok, deleted, session_id]
+    properties:
+      ok: { type: boolean }
+      deleted: { type: boolean }
+      session_id: { type: string }
+
   AudioSignalRequest:
     type: object
     required: [type]

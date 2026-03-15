@@ -380,6 +380,9 @@ Idempotency (optional):
 The broker provides a **signaling relay** for audio sessions (media flows directly between WebUI and agentd):
 
 - `POST /v1/audio/sessions` (create a session; returns `session_id`)
+- `GET  /v1/audio/sessions` (list live sessions; optional `agent_id` / `deployment_id` filters)
+- `GET  /v1/audio/sessions/{session_id}` (inspect session status and signal counters)
+- `DELETE /v1/audio/sessions/{session_id}` (terminate a live session explicitly)
 - `POST /v1/audio/sessions/{session_id}/signal` (send offer/answer/candidate/bye)
 - `GET  /v1/audio/sessions/{session_id}/signal/stream` (SSE stream of signaling events)
 
@@ -388,8 +391,8 @@ Sessions are in-memory and expire after a TTL (default 15 minutes). Configure vi
 - `AGENTD_BROKER_AUDIO_SESSION_TTL_MS` (milliseconds)
 
 Current status:
-- Shipped: authenticated signaling relay endpoints, in-memory session lifecycle, and loopback smoke coverage.
-- Still open: a real browser-to-agentd WebRTC media path with first-class WebUI voice session controls.
+- Shipped: authenticated signaling relay endpoints, in-memory session lifecycle, loopback smoke coverage, and explicit broker-panel voice session create/list/inspect/delete controls in the WebUI.
+- Still open: a real browser-to-agentd WebRTC media path and the minimal agentd-side voice session control/stats API for real media sessions.
 
 Proof:
 - `ctest` includes `broker_audio_signal_loopback_smoke`.

@@ -1,6 +1,7 @@
 import React from "react";
 import { type ApiAuth } from "../api";
 import BrokerAgentsSection from "./broker/BrokerAgentsSection";
+import BrokerAudioSection from "./broker/BrokerAudioSection";
 import BrokerAuditSection from "./broker/BrokerAuditSection";
 import BrokerConnectorsSection from "./broker/BrokerConnectorsSection";
 import BrokerDeploymentsSection from "./broker/BrokerDeploymentsSection";
@@ -97,6 +98,16 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                 agentId={state.agentId}
                 onRefresh={() => void state.agentsQuery.refetch()}
                 onSelectAgent={props.setBrokerAgentId}
+              />
+            ) : null}
+
+            {state.brokerPage === "audio" ? (
+              <BrokerAudioSection
+                base={state.base}
+                auth={props.auth}
+                canQuery={state.canQuery}
+                agentId={state.agentId}
+                defaultDeploymentId={state.defaultDeploymentId}
               />
             ) : null}
 

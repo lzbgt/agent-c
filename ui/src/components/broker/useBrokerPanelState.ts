@@ -76,6 +76,7 @@ export default function useBrokerPanelState(args: UseBrokerPanelStateArgs) {
     () => [
       { id: "teams", label: "Teams" },
       { id: "agents", label: "Agents" },
+      { id: "audio", label: "Audio" },
       { id: "connectors", label: "Connectors" },
       { id: "members", label: "Member list" },
       { id: "deployments", label: "Deployments + OTA" },

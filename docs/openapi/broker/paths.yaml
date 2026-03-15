@@ -993,6 +993,25 @@
               $ref: "#/components/schemas/BrokerSessionResponse"
 
 /v1/audio/sessions:
+  get:
+    tags: [audio]
+    summary: List live audio signaling sessions
+    parameters:
+      - in: query
+        name: agent_id
+        required: false
+        schema: { type: string }
+      - in: query
+        name: deployment_id
+        required: false
+        schema: { type: string }
+    responses:
+      "200":
+        description: Live signaling sessions
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AudioSessionListResponse"
   post:
     tags: [audio]
     summary: Create an audio signaling session
@@ -1009,6 +1028,38 @@
           application/json:
             schema:
               $ref: "#/components/schemas/AudioSessionCreateResponse"
+
+/v1/audio/sessions/{session_id}:
+  get:
+    tags: [audio]
+    summary: Get audio signaling session status
+    parameters:
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Session status
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AudioSessionGetResponse"
+  delete:
+    tags: [audio]
+    summary: Delete an audio signaling session
+    parameters:
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Session deleted
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AudioSessionDeleteResponse"
 
 /v1/audio/sessions/{session_id}/signal:
   post:

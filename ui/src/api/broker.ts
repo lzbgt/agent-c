@@ -3,6 +3,16 @@ import { addQueryParam } from "./query";
 import {
   BrokerAgentsRespSchema,
   BrokerAuthSessionRespSchema,
+  BrokerAudioSessionCreateRespSchema,
+  BrokerAudioSessionDeleteRespSchema,
+  BrokerAudioSessionGetRespSchema,
+  BrokerAudioSessionListRespSchema,
+  BrokerAudioSignalRespSchema,
+  type BrokerAudioSessionCreateResp,
+  type BrokerAudioSessionDeleteResp,
+  type BrokerAudioSessionGetResp,
+  type BrokerAudioSessionListResp,
+  type BrokerAudioSignalResp,
   type BrokerAuthSessionResp,
   type BrokerAgentsResp,
   BrokerDeploymentsRespSchema,
@@ -91,6 +101,80 @@ export async function apiBrokerDeleteAuthSession(brokerBase: string, auth?: ApiA
   const r = await fetch(`${base}/v1/auth/session`, daemonFetchInit(auth, { method: "DELETE" }));
   const j = await r.json();
   return BrokerAuthSessionRespSchema.parse(j);
+}
+
+export async function apiBrokerListAudioSessions(
+  brokerBase: string,
+  auth?: ApiAuth,
+  opts?: { agentId?: string; deploymentId?: string },
+): Promise<BrokerAudioSessionListResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const params = new URLSearchParams();
+  const agentId = String(opts?.agentId || "").trim();
+  const deploymentId = String(opts?.deploymentId || "").trim();
+  if (agentId) params.set("agent_id", agentId);
+  if (deploymentId) params.set("deployment_id", deploymentId);
+  const qs = params.toString();
+  const r = await fetch(`${base}/v1/audio/sessions${qs ? `?${qs}` : ""}`, daemonFetchInit(auth));
+  const j = await r.json();
+  return BrokerAudioSessionListRespSchema.parse(j);
+}
+
+export async function apiBrokerCreateAudioSession(
+  brokerBase: string,
+  body: Record<string, unknown>,
+  auth?: ApiAuth,
+): Promise<BrokerAudioSessionCreateResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const r = await fetch(
+    `${base}/v1/audio/sessions`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(body) }, daemonHeaders(auth, { "Content-Type": "application/json" })),
+  );
+  const j = await r.json();
+  return BrokerAudioSessionCreateRespSchema.parse(j);
+}
+
+export async function apiBrokerGetAudioSession(
+  brokerBase: string,
+  sessionId: string,
+  auth?: ApiAuth,
+): Promise<BrokerAudioSessionGetResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const sid = String(sessionId || "").trim();
+  if (!sid) throw new Error("missing session_id");
+  const r = await fetch(`${base}/v1/audio/sessions/${encodeURIComponent(sid)}`, daemonFetchInit(auth));
+  const j = await r.json();
+  return BrokerAudioSessionGetRespSchema.parse(j);
+}
+
+export async function apiBrokerDeleteAudioSession(
+  brokerBase: string,
+  sessionId: string,
+  auth?: ApiAuth,
+): Promise<BrokerAudioSessionDeleteResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const sid = String(sessionId || "").trim();
+  if (!sid) throw new Error("missing session_id");
+  const r = await fetch(`${base}/v1/audio/sessions/${encodeURIComponent(sid)}`, daemonFetchInit(auth, { method: "DELETE" }));
+  const j = await r.json();
+  return BrokerAudioSessionDeleteRespSchema.parse(j);
+}
+
+export async function apiBrokerSendAudioSignal(
+  brokerBase: string,
+  sessionId: string,
+  body: Record<string, unknown>,
+  auth?: ApiAuth,
+): Promise<BrokerAudioSignalResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const sid = String(sessionId || "").trim();
+  if (!sid) throw new Error("missing session_id");
+  const r = await fetch(
+    `${base}/v1/audio/sessions/${encodeURIComponent(sid)}/signal`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(body) }, daemonHeaders(auth, { "Content-Type": "application/json" })),
+  );
+  const j = await r.json();
+  return BrokerAudioSignalRespSchema.parse(j);
 }
 
 export async function apiBrokerListConnectors(brokerBase: string, auth?: ApiAuth): Promise<BrokerConnectorsResp> {

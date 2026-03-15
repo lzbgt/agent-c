@@ -842,6 +842,16 @@ export interface paths {
                             timed_out: boolean;
                             truncated: boolean;
                             stdout: string;
+                            output?: {
+                                raw_text: string;
+                                json_text?: string;
+                                residual_text?: string;
+                                hashes?: {
+                                    result_hash?: string;
+                                    trace_hash?: string;
+                                    state_hash?: string;
+                                };
+                            };
                         };
                     };
                 };
@@ -934,6 +944,16 @@ export interface paths {
                             timed_out: boolean;
                             truncated: boolean;
                             stdout: string;
+                            output?: {
+                                raw_text: string;
+                                json_text?: string;
+                                residual_text?: string;
+                                hashes?: {
+                                    result_hash?: string;
+                                    trace_hash?: string;
+                                    state_hash?: string;
+                                };
+                            };
                         };
                     };
                 };
@@ -990,6 +1010,16 @@ export interface paths {
                             timed_out: boolean;
                             truncated: boolean;
                             stdout: string;
+                            output?: {
+                                raw_text: string;
+                                json_text?: string;
+                                residual_text?: string;
+                                hashes?: {
+                                    result_hash?: string;
+                                    trace_hash?: string;
+                                    state_hash?: string;
+                                };
+                            };
                         };
                     };
                 };
@@ -1043,6 +1073,16 @@ export interface paths {
                             timed_out: boolean;
                             truncated: boolean;
                             stdout: string;
+                            output?: {
+                                raw_text: string;
+                                json_text?: string;
+                                residual_text?: string;
+                                hashes?: {
+                                    result_hash?: string;
+                                    trace_hash?: string;
+                                    state_hash?: string;
+                                };
+                            };
                         };
                     };
                 };
@@ -1104,6 +1144,16 @@ export interface paths {
                             timed_out: boolean;
                             truncated: boolean;
                             stdout: string;
+                            output?: {
+                                raw_text: string;
+                                json_text?: string;
+                                residual_text?: string;
+                                hashes?: {
+                                    result_hash?: string;
+                                    trace_hash?: string;
+                                    state_hash?: string;
+                                };
+                            };
                         };
                     };
                 };
@@ -1158,6 +1208,7 @@ export interface paths {
                             run: {
                                 [key: string]: unknown;
                             };
+                            run_json_raw?: string;
                             result_hash?: string;
                             trace_hash?: string;
                             state_hash?: string;
@@ -1168,6 +1219,16 @@ export interface paths {
                             timed_out: boolean;
                             truncated: boolean;
                             stdout: string;
+                            output?: {
+                                raw_text: string;
+                                json_text?: string;
+                                residual_text?: string;
+                                hashes?: {
+                                    result_hash?: string;
+                                    trace_hash?: string;
+                                    state_hash?: string;
+                                };
+                            };
                         };
                     };
                 };
@@ -1798,6 +1859,149 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/db/analytics/workflows/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export durable and edge workflow analytics */
+        get: {
+            parameters: {
+                query?: {
+                    format?: "json" | "csv";
+                    scope?: "all" | "durable" | "edge";
+                    since_unix_ms?: number;
+                    until_unix_ms?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Workflow analytics export */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                        "text/csv": string;
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Export failed */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/db/analytics/edge/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export edge task and edge node analytics */
+        get: {
+            parameters: {
+                query?: {
+                    format?: "json" | "csv";
+                    scope?: "all" | "edge_tasks" | "edge_nodes";
+                    since_unix_ms?: number;
+                    until_unix_ms?: number;
+                    active_within_ms?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Edge analytics export */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                        "text/csv": string;
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Export failed */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3856,7 +4060,63 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete a session and cascade its persisted evidence */
+        delete: {
+            parameters: {
+                query: {
+                    session_id: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Session delete result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok: boolean;
+                            session_id: string;
+                            deleted_from_db: boolean;
+                            legacy_cleanup_attempted?: boolean;
+                            legacy_any_deleted?: boolean;
+                            error?: string;
+                        };
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Delete failed */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;

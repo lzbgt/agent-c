@@ -1562,7 +1562,30 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List live audio signaling sessions */
+        get: {
+            parameters: {
+                query?: {
+                    agent_id?: string;
+                    deployment_id?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Live signaling sessions */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AudioSessionListResponse"];
+                    };
+                };
+            };
+        };
         put?: never;
         /** Create an audio signaling session */
         post: {
@@ -1590,6 +1613,66 @@ export interface paths {
             };
         };
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/audio/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get audio signaling session status */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    session_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Session status */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AudioSessionGetResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Delete an audio signaling session */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    session_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Session deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AudioSessionDeleteResponse"];
+                    };
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -4001,6 +4084,40 @@ export interface components {
                 send_url?: string;
                 recv_url?: string;
             };
+        };
+        AudioSessionSummary: {
+            session_id: string;
+            agent_id: string;
+            deployment_id?: string;
+            owner_sub?: string;
+            mode?: string;
+            /** Format: int64 */
+            created_unix_ms: number;
+            /** Format: int64 */
+            expires_unix_ms: number;
+            /** Format: int32 */
+            subscriber_count: number;
+            /** Format: int64 */
+            signal_count: number;
+            last_signal_type?: string;
+            last_signal_from?: string;
+            /** Format: int64 */
+            last_signal_unix_ms?: number;
+        };
+        AudioSessionListResponse: {
+            ok: boolean;
+            /** Format: int32 */
+            count: number;
+            sessions: components["schemas"]["AudioSessionSummary"][];
+        };
+        AudioSessionGetResponse: {
+            ok: boolean;
+            session: components["schemas"]["AudioSessionSummary"];
+        };
+        AudioSessionDeleteResponse: {
+            ok: boolean;
+            deleted: boolean;
+            session_id: string;
         };
         AudioSignalRequest: {
             /** @description offer|answer|candidate|bye|control */

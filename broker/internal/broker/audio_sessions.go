@@ -21,12 +21,32 @@ type audioSession struct {
 	agentID      string
 	deploymentID string
 	ownerSub     string
+	mode         string
 	createdAt    time.Time
 	expiresAt    time.Time
 
-	mu        sync.Mutex
-	nextSubID uint64
-	subs      map[uint64]chan audioSignalEvent
+	mu             sync.Mutex
+	nextSubID      uint64
+	subs           map[uint64]chan audioSignalEvent
+	signalCount    int64
+	lastSignalType string
+	lastSignalFrom string
+	lastSignalAt   time.Time
+}
+
+type audioSessionInfo struct {
+	SessionID        string `json:"session_id"`
+	AgentID          string `json:"agent_id"`
+	DeploymentID     string `json:"deployment_id,omitempty"`
+	OwnerSub         string `json:"owner_sub,omitempty"`
+	Mode             string `json:"mode,omitempty"`
+	CreatedUnixMs    int64  `json:"created_unix_ms"`
+	ExpiresUnixMs    int64  `json:"expires_unix_ms"`
+	SubscriberCount  int    `json:"subscriber_count"`
+	SignalCount      int64  `json:"signal_count"`
+	LastSignalType   string `json:"last_signal_type,omitempty"`
+	LastSignalFrom   string `json:"last_signal_from,omitempty"`
+	LastSignalUnixMs int64  `json:"last_signal_unix_ms,omitempty"`
 }
 
 func (s *audioSession) expired(now time.Time) bool {
@@ -63,6 +83,12 @@ func (s *audioSession) unsubscribe(id uint64) {
 func (s *audioSession) broadcast(ev audioSignalEvent) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.signalCount++
+	s.lastSignalType = ev.Type
+	s.lastSignalFrom = ev.From
+	if ev.TsUnixMs > 0 {
+		s.lastSignalAt = time.UnixMilli(ev.TsUnixMs)
+	}
 	for _, ch := range s.subs {
 		select {
 		case ch <- ev:
@@ -70,6 +96,28 @@ func (s *audioSession) broadcast(ev audioSignalEvent) {
 			// Drop if subscriber is slow.
 		}
 	}
+}
+
+func (s *audioSession) snapshot() audioSessionInfo {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	info := audioSessionInfo{
+		SessionID:       s.id,
+		AgentID:         s.agentID,
+		DeploymentID:    s.deploymentID,
+		OwnerSub:        s.ownerSub,
+		Mode:            s.mode,
+		CreatedUnixMs:   s.createdAt.UnixMilli(),
+		ExpiresUnixMs:   s.expiresAt.UnixMilli(),
+		SubscriberCount: len(s.subs),
+		SignalCount:     s.signalCount,
+		LastSignalType:  s.lastSignalType,
+		LastSignalFrom:  s.lastSignalFrom,
+	}
+	if !s.lastSignalAt.IsZero() {
+		info.LastSignalUnixMs = s.lastSignalAt.UnixMilli()
+	}
+	return info
 }
 
 func (s *audioSession) closeAll() {
@@ -97,7 +145,7 @@ func newAudioSessionStore(ttl time.Duration) *audioSessionStore {
 	}
 }
 
-func (s *audioSessionStore) create(agentID, deploymentID, ownerSub string) *audioSession {
+func (s *audioSessionStore) create(agentID, deploymentID, ownerSub, mode string) *audioSession {
 	if s == nil {
 		return nil
 	}
@@ -110,6 +158,7 @@ func (s *audioSessionStore) create(agentID, deploymentID, ownerSub string) *audi
 		agentID:      agentID,
 		deploymentID: deploymentID,
 		ownerSub:     ownerSub,
+		mode:         mode,
 		createdAt:    now,
 		expiresAt:    now.Add(s.ttl),
 		subs:         map[uint64]chan audioSignalEvent{},
@@ -148,4 +197,41 @@ func (s *audioSessionStore) delete(id string) {
 	if sess != nil {
 		sess.closeAll()
 	}
+}
+
+func (s *audioSessionStore) list(agentID, deploymentID string) []audioSessionInfo {
+	if s == nil {
+		return nil
+	}
+	now := time.Now()
+	s.mu.Lock()
+	expired := make([]*audioSession, 0)
+	out := make([]*audioSession, 0, len(s.sessions))
+	for id, sess := range s.sessions {
+		if sess == nil {
+			delete(s.sessions, id)
+			continue
+		}
+		if sess.expired(now) {
+			delete(s.sessions, id)
+			expired = append(expired, sess)
+			continue
+		}
+		if agentID != "" && sess.agentID != agentID {
+			continue
+		}
+		if deploymentID != "" && sess.deploymentID != deploymentID {
+			continue
+		}
+		out = append(out, sess)
+	}
+	s.mu.Unlock()
+	for _, sess := range expired {
+		sess.closeAll()
+	}
+	infos := make([]audioSessionInfo, 0, len(out))
+	for _, sess := range out {
+		infos = append(infos, sess.snapshot())
+	}
+	return infos
 }

@@ -13,6 +13,8 @@ func (s *Server) handleAudioSessions(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
 		s.handleAudioSessionCreate(w, r)
+	case "GET":
+		s.handleAudioSessionList(w, r)
 	default:
 		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -21,16 +23,23 @@ func (s *Server) handleAudioSessions(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAudioSessionsSubroutes(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/audio/sessions/")
 	parts := strings.SplitN(rest, "/", 3)
-	if len(parts) < 2 {
-		writeErrorJSON(w, "not found", http.StatusNotFound)
-		return
-	}
 	sessionID := parts[0]
-	action := parts[1]
 	if !audioSessionIDRe.MatchString(sessionID) {
 		writeErrorJSON(w, "invalid session_id", http.StatusBadRequest)
 		return
 	}
+	if len(parts) == 1 || strings.TrimSpace(parts[1]) == "" {
+		switch r.Method {
+		case "GET":
+			s.handleAudioSessionGet(w, r, sessionID)
+		case "DELETE":
+			s.handleAudioSessionDelete(w, r, sessionID)
+		default:
+			writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+		return
+	}
+	action := parts[1]
 	if action == "signal" {
 		if len(parts) == 2 {
 			s.handleAudioSignalSend(w, r, sessionID)
@@ -42,6 +51,43 @@ func (s *Server) handleAudioSessionsSubroutes(w http.ResponseWriter, r *http.Req
 		}
 	}
 	writeErrorJSON(w, "not found", http.StatusNotFound)
+}
+
+func (s *Server) handleAudioSessionList(w http.ResponseWriter, r *http.Request) {
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	agentID := strings.TrimSpace(r.URL.Query().Get("agent_id"))
+	if agentID != "" && !agentIDRe.MatchString(agentID) {
+		writeErrorJSON(w, "invalid agent_id", http.StatusBadRequest)
+		return
+	}
+	deploymentID := strings.TrimSpace(r.URL.Query().Get("deployment_id"))
+	if deploymentID != "" && !deploymentIDRe.MatchString(deploymentID) {
+		writeErrorJSON(w, "invalid deployment_id", http.StatusBadRequest)
+		return
+	}
+
+	all := s.audioStore.list(agentID, deploymentID)
+	sessions := make([]audioSessionInfo, 0, len(all))
+	for _, info := range all {
+		ok, err := s.canAccessAgent(r.Context(), p, info.AgentID)
+		if err != nil {
+			writeErrorJSON(w, "db error", http.StatusInternalServerError)
+			return
+		}
+		if ok {
+			sessions = append(sessions, info)
+		}
+	}
+
+	writeJSON(w, map[string]any{
+		"ok":       true,
+		"count":    len(sessions),
+		"sessions": sessions,
+	})
 }
 
 func (s *Server) handleAudioSessionCreate(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +143,7 @@ func (s *Server) handleAudioSessionCreate(w http.ResponseWriter, r *http.Request
 		deploymentID = "default"
 	}
 
-	sess := s.audioStore.create(agentID, deploymentID, p.Sub)
+	sess := s.audioStore.create(agentID, deploymentID, p.Sub, mode)
 	if sess == nil {
 		writeErrorJSON(w, "audio session unavailable", http.StatusInternalServerError)
 		return
@@ -115,6 +161,64 @@ func (s *Server) handleAudioSessionCreate(w http.ResponseWriter, r *http.Request
 			"send_url": "/v1/audio/sessions/" + sess.id + "/signal",
 			"recv_url": "/v1/audio/sessions/" + sess.id + "/signal/stream",
 		},
+	})
+}
+
+func (s *Server) handleAudioSessionGet(w http.ResponseWriter, r *http.Request, sessionID string) {
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if r.Method != "GET" {
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	sess, ok := s.audioStore.get(sessionID)
+	if !ok || sess == nil {
+		writeErrorJSON(w, "session not found", http.StatusNotFound)
+		return
+	}
+	if ok, err := s.canAccessAgent(r.Context(), p, sess.agentID); err != nil {
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
+		return
+	} else if !ok {
+		writeErrorJSON(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	writeJSON(w, map[string]any{
+		"ok":      true,
+		"session": sess.snapshot(),
+	})
+}
+
+func (s *Server) handleAudioSessionDelete(w http.ResponseWriter, r *http.Request, sessionID string) {
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if r.Method != "DELETE" {
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	sess, ok := s.audioStore.get(sessionID)
+	if !ok || sess == nil {
+		writeErrorJSON(w, "session not found", http.StatusNotFound)
+		return
+	}
+	if ok, err := s.canAccessAgent(r.Context(), p, sess.agentID); err != nil {
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
+		return
+	} else if !ok {
+		writeErrorJSON(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	s.audioStore.delete(sessionID)
+	writeJSON(w, map[string]any{
+		"ok":         true,
+		"deleted":    true,
+		"session_id": sessionID,
 	})
 }
 

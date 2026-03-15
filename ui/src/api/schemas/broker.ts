@@ -11,6 +11,16 @@ export type BrokerAgentsResp =
   BrokerPaths["/v1/agents"]["get"]["responses"][200]["content"]["application/json"] & BrokerErrorFields;
 export type BrokerAuthSessionResp =
   BrokerPaths["/v1/auth/session"]["post"]["responses"][200]["content"]["application/json"] & BrokerErrorFields;
+export type BrokerAudioSessionSummary = BrokerComponents["schemas"]["AudioSessionSummary"];
+export type BrokerAudioSessionListResp = BrokerComponents["schemas"]["AudioSessionListResponse"] & BrokerErrorFields;
+export type BrokerAudioSessionGetResp = BrokerComponents["schemas"]["AudioSessionGetResponse"] & BrokerErrorFields;
+export type BrokerAudioSessionDeleteResp = BrokerComponents["schemas"]["AudioSessionDeleteResponse"] & BrokerErrorFields;
+export type BrokerAudioSessionCreateResp =
+  BrokerPaths["/v1/audio/sessions"]["post"]["responses"][200]["content"]["application/json"] & BrokerErrorFields;
+export type BrokerAudioSignalResp =
+  BrokerPaths["/v1/audio/sessions/{session_id}/signal"]["post"]["responses"][200]["content"]["application/json"] &
+    BrokerErrorFields;
+export type BrokerAudioSignalEvent = BrokerComponents["schemas"]["AudioSignalEvent"];
 export type BrokerDeploymentsResp = BrokerComponents["schemas"]["AgentDeploymentsResponse"] & BrokerErrorFields;
 export type BrokerMembersResp =
   BrokerPaths["/v1/agents/{agent_id}/members"]["get"]["responses"][200]["content"]["application/json"] & BrokerErrorFields;
@@ -150,6 +160,91 @@ export const BrokerAuthSessionRespSchema: z.ZodType<BrokerAuthSessionResp> = z
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerAudioSessionSummarySchema: z.ZodType<BrokerAudioSessionSummary> = z
+  .object({
+    session_id: z.string(),
+    agent_id: z.string(),
+    deployment_id: z.string().optional(),
+    owner_sub: z.string().optional(),
+    mode: z.string().optional(),
+    created_unix_ms: z.number().int().nonnegative(),
+    expires_unix_ms: z.number().int().nonnegative(),
+    subscriber_count: z.number().int().nonnegative(),
+    signal_count: z.number().int().nonnegative(),
+    last_signal_type: z.string().optional(),
+    last_signal_from: z.string().optional(),
+    last_signal_unix_ms: z.number().int().nonnegative().optional(),
+  })
+  .passthrough();
+
+export const BrokerAudioSessionListRespSchema: z.ZodType<BrokerAudioSessionListResp> = z
+  .object({
+    ok: z.boolean(),
+    count: z.number().int().nonnegative(),
+    sessions: z.array(BrokerAudioSessionSummarySchema),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerAudioSessionGetRespSchema: z.ZodType<BrokerAudioSessionGetResp> = z
+  .object({
+    ok: z.boolean(),
+    session: BrokerAudioSessionSummarySchema,
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerAudioSessionDeleteRespSchema: z.ZodType<BrokerAudioSessionDeleteResp> = z
+  .object({
+    ok: z.boolean(),
+    deleted: z.boolean(),
+    session_id: z.string(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerAudioSessionCreateRespSchema: z.ZodType<BrokerAudioSessionCreateResp> = z
+  .object({
+    ok: z.boolean(),
+    session_id: z.string(),
+    expires_unix_ms: z.number().int().nonnegative().optional(),
+    signal: z
+      .object({
+        send_url: z.string().optional(),
+        recv_url: z.string().optional(),
+      })
+      .passthrough()
+      .optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerAudioSignalRespSchema: z.ZodType<BrokerAudioSignalResp> = z
+  .object({
+    ok: z.boolean(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+export const BrokerAudioSignalEventSchema: z.ZodType<BrokerAudioSignalEvent> = z
+  .object({
+    type: z.string(),
+    payload: UnknownRecordSchema.optional(),
+    from: z.string().optional(),
+    ts_unix_ms: z.number().int().nonnegative(),
   })
   .passthrough();
 

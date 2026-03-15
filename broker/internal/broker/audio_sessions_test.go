@@ -8,7 +8,7 @@ import (
 
 func TestAudioSessionStoreCreateGet(t *testing.T) {
 	store := newAudioSessionStore(50 * time.Millisecond)
-	sess := store.create("a-1", "default", "user-1")
+	sess := store.create("a-1", "default", "user-1", "webrtc")
 	if sess == nil {
 		t.Fatalf("expected session")
 	}
@@ -28,7 +28,7 @@ func TestAudioSessionStoreCreateGet(t *testing.T) {
 
 func TestAudioSessionBroadcast(t *testing.T) {
 	store := newAudioSessionStore(time.Minute)
-	sess := store.create("a-1", "default", "user-1")
+	sess := store.create("a-1", "default", "user-1", "webrtc")
 	if sess == nil {
 		t.Fatalf("expected session")
 	}
