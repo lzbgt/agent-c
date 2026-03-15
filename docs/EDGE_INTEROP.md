@@ -257,6 +257,9 @@ Manifest bundle note:
 - Agentd can now own the lifecycle of the shipped autonomous consensus helper directly; `GET /api/v1/edge/node` and
   `GET /api/v1/edge/nodes` surface `consensus_runtime` when a node has a managed runtime record alongside the existing
   protocol-level `consensus` summary.
+- The shipped helper is no longer the only place the loop exists: the election scheduler and frame-routing logic now
+  live in reusable core code (`EdgeConsensusNodeLoop`), which is the intended stepping stone toward embedded/node-native
+  adoption.
 - Those same send helpers accept `confidential_kid`, which emits the outbox envelope with AES-GCM
   `body_enc` instead of plaintext `body` for peer/control-plane payload confidentiality.
 - Operators can inspect those bundles, emit a CA file, and run `openssl verify` against candidate

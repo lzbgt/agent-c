@@ -36,6 +36,14 @@ struct EdgeConsensusFrame {
   std::vector<EdgeConsensusIdentity> vote_witnesses;
 };
 
+struct EdgeConsensusNodeLoopConfig {
+  EdgeConsensusIdentity self;
+  std::vector<std::string> peer_node_ids;
+  size_t cluster_size = 0;
+  int64_t campaign_delay_ms = 0;
+  std::string decision_sha256;
+};
+
 class EdgeConsensusReplica {
  public:
   EdgeConsensusReplica(const EdgeConsensusIdentity& self, size_t cluster_size);
@@ -69,6 +77,28 @@ class EdgeConsensusReplica {
   std::map<std::string, EdgeConsensusIdentity> grant_witnesses_by_node_id_;
   std::vector<EdgeConsensusIdentity> committed_vote_witnesses_;
   std::map<std::string, uint64_t> seen_frame_term_by_id_;
+};
+
+class EdgeConsensusNodeLoop {
+ public:
+  explicit EdgeConsensusNodeLoop(const EdgeConsensusNodeLoopConfig& cfg);
+
+  const EdgeConsensusNodeLoopConfig& config() const { return cfg_; }
+  const EdgeConsensusReplica& replica() const { return replica_; }
+  bool election_started() const { return election_started_; }
+  const std::string& leader_node_id() const { return replica_.leader_node_id(); }
+  const std::string& committed_decision_sha256() const { return replica_.committed_decision_sha256(); }
+
+  std::vector<EdgeConsensusFrame> tick(int64_t now_utc_ms);
+  bool handle_frame(const EdgeConsensusFrame& frame, std::vector<EdgeConsensusFrame>* out_frames, std::string* out_error);
+  std::vector<std::string> target_node_ids_for_frame(const EdgeConsensusFrame& frame) const;
+  Json::Value status_to_json() const;
+
+ private:
+  EdgeConsensusNodeLoopConfig cfg_;
+  EdgeConsensusReplica replica_;
+  int64_t started_utc_ms_ = 0;
+  bool election_started_ = false;
 };
 
 Json::Value edge_consensus_epochs_to_json(const EdgeConsensusEpochs& epochs);

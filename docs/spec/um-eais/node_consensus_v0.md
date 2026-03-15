@@ -92,6 +92,8 @@ The shipped autonomous host-loop proof adds:
 - autonomous `vote_request -> vote_grant -> leader_commit` progression over the live platform relay path
 - per-node committed leader/decision proof from the node-loop stdout plus platform-side consensus summaries
 - agentd-managed long-lived host runtime ownership of the same loop, including explicit start/status/stop control
+- a reusable transport-agnostic node loop core (`EdgeConsensusNodeLoop`) so the election/commit state machine is no
+  longer stranded inside the host CLI helper
 
 ## Still open
 

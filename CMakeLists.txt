@@ -551,6 +551,16 @@ if(AGENT_BUILD_HOST)
   target_link_libraries(edge_node_consensus_tests PRIVATE agentd_lib)
   add_test(NAME edge_node_consensus_tests COMMAND edge_node_consensus_tests)
 
+  add_executable(edge_node_consensus_loop_tests
+    tests/test_edge_node_consensus_loop.cpp
+  )
+  target_compile_options(edge_node_consensus_loop_tests PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/W4>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic>
+  )
+  target_link_libraries(edge_node_consensus_loop_tests PRIVATE agentd_lib)
+  add_test(NAME edge_node_consensus_loop_tests COMMAND edge_node_consensus_loop_tests)
+
   if(WIN32)
     add_executable(tool_plugin_host_limits_tests
       tests/test_tool_plugin_host_limits.cpp

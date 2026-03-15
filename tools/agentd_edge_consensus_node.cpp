@@ -274,18 +274,6 @@ static bool post_hello(const Options& opt, uint64_t* io_seq, std::string* out_er
   return http_post_json(join_base_path(opt.daemon_url, "/api/v1/edge/message"), env, opt, &resp, out_error);
 }
 
-static std::vector<std::string> dedupe_targets(const std::vector<std::string>& in, const std::string& self_node_id) {
-  std::vector<std::string> out;
-  std::set<std::string> seen;
-  for (const auto& raw : in) {
-    const std::string nid = trim_copy(raw);
-    if (nid.empty() || nid == self_node_id) continue;
-    if (!seen.insert(nid).second) continue;
-    out.push_back(nid);
-  }
-  return out;
-}
-
 static bool send_consensus_frame(
   const Options& opt,
   const EdgeConsensusFrame& frame,
@@ -294,7 +282,14 @@ static bool send_consensus_frame(
   std::string* out_error
 ) {
   if (!io_seq) return false;
-  const std::vector<std::string> target_node_ids = dedupe_targets(raw_target_node_ids, opt.node_id);
+  std::set<std::string> seen;
+  std::vector<std::string> target_node_ids;
+  for (const auto& raw : raw_target_node_ids) {
+    const std::string nid = trim_copy(raw);
+    if (nid.empty() || nid == opt.node_id) continue;
+    if (!seen.insert(nid).second) continue;
+    target_node_ids.push_back(nid);
+  }
   if (target_node_ids.empty()) return true;
 
   Json::Value env(Json::objectValue);
@@ -333,12 +328,6 @@ static bool poll_outbox(
   return http_get_json(url, opt, out, out_error);
 }
 
-static std::vector<std::string> targets_for_generated_frame(const Options& opt, const EdgeConsensusFrame& frame) {
-  if (frame.kind == "vote_grant") return {frame.candidate_node_id};
-  if (frame.kind == "leader_commit" || frame.kind == "vote_request") return opt.peer_node_ids;
-  return {};
-}
-
 static void log_verbose(const Options& opt, const std::string& line) {
   if (!opt.verbose) return;
   std::cerr << "[" << opt.node_id << "] " << line << "\n";
@@ -371,24 +360,27 @@ int main(int argc, char** argv) {
   self.trust_epochs.revocations_epoch = opt.revocations_epoch;
   self.trust_epochs.cert_roots_epoch = opt.cert_roots_epoch;
 
-  EdgeConsensusReplica replica(self, opt.cluster_size);
+  EdgeConsensusNodeLoopConfig loop_cfg;
+  loop_cfg.self = self;
+  loop_cfg.peer_node_ids = opt.peer_node_ids;
+  loop_cfg.cluster_size = opt.cluster_size;
+  loop_cfg.campaign_delay_ms = opt.campaign_delay_ms;
+  loop_cfg.decision_sha256 = opt.decision_sha256;
+  EdgeConsensusNodeLoop loop(loop_cfg);
   const int64_t started_ms = now_utc_ms();
   const int64_t deadline_at = started_ms + opt.deadline_ms;
   int64_t cursor = 0;
-  bool election_started = false;
 
   while (now_utc_ms() < deadline_at) {
-    const int64_t elapsed_ms = now_utc_ms() - started_ms;
-    if (!election_started && !trim_copy(opt.decision_sha256).empty() && elapsed_ms >= opt.campaign_delay_ms) {
-      const EdgeConsensusFrame request = replica.start_election(opt.decision_sha256);
-      std::vector<std::string> targets = dedupe_targets(opt.peer_node_ids, opt.node_id);
+    const std::vector<EdgeConsensusFrame> scheduled = loop.tick(now_utc_ms());
+    for (const auto& request : scheduled) {
+      const std::vector<std::string> targets = loop.target_node_ids_for_frame(request);
       if (!send_consensus_frame(opt, request, targets, &msg_seq, &err)) {
         std::cerr << "failed to send vote_request: " << err << "\n";
         curl_global_cleanup();
         return 1;
       }
       log_verbose(opt, "sent vote_request term=" + std::to_string((unsigned long long)request.term));
-      election_started = true;
     }
 
     Json::Value outbox;
@@ -420,7 +412,7 @@ int main(int argc, char** argv) {
         }
         std::vector<EdgeConsensusFrame> generated;
         std::string herr;
-        if (!replica.handle_frame(frame, &generated, &herr)) {
+        if (!loop.handle_frame(frame, &generated, &herr)) {
           std::cerr << "failed to handle relayed frame: " << herr << "\n";
           curl_global_cleanup();
           return 1;
@@ -428,7 +420,7 @@ int main(int argc, char** argv) {
         log_verbose(opt, "handled " + frame.kind + " from " + frame.from.node_id + " term=" +
                              std::to_string((unsigned long long)frame.term));
         for (const auto& out_frame : generated) {
-          const std::vector<std::string> targets = targets_for_generated_frame(opt, out_frame);
+          const std::vector<std::string> targets = loop.target_node_ids_for_frame(out_frame);
           if (!send_consensus_frame(opt, out_frame, targets, &msg_seq, &err)) {
             std::cerr << "failed to send generated frame: " << err << "\n";
             curl_global_cleanup();
@@ -440,14 +432,14 @@ int main(int argc, char** argv) {
       }
     }
 
-    if (!trim_copy(replica.committed_decision_sha256()).empty()) {
+    if (!trim_copy(loop.committed_decision_sha256()).empty()) {
       Json::Value result(Json::objectValue);
       result["ok"] = true;
       result["node_id"] = opt.node_id;
-      result["leader_node_id"] = replica.leader_node_id();
-      result["committed_decision_sha256"] = replica.committed_decision_sha256();
-      result["current_term"] = Json::UInt64(replica.current_term());
-      result["status"] = replica.status_to_json();
+      result["leader_node_id"] = loop.leader_node_id();
+      result["committed_decision_sha256"] = loop.committed_decision_sha256();
+      result["current_term"] = Json::UInt64(loop.replica().current_term());
+      result["status"] = loop.status_to_json();
       std::cout << json_compact(result) << "\n";
       curl_global_cleanup();
       return 0;
@@ -460,8 +452,8 @@ int main(int argc, char** argv) {
   result["ok"] = false;
   result["node_id"] = opt.node_id;
   result["error"] = "deadline exceeded before commit";
-  result["current_term"] = Json::UInt64(replica.current_term());
-  result["status"] = replica.status_to_json();
+  result["current_term"] = Json::UInt64(loop.replica().current_term());
+  result["status"] = loop.status_to_json();
   std::cout << json_compact(result) << "\n";
   curl_global_cleanup();
   return 1;

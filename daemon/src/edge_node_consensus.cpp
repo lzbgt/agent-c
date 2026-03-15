@@ -103,10 +103,33 @@ static bool frame_is_valid(const EdgeConsensusFrame& frame, std::string* out_err
   return true;
 }
 
+static std::vector<std::string> dedupe_loop_targets(
+  const std::vector<std::string>& raw_ids,
+  const std::string& self_node_id
+) {
+  std::vector<std::string> out;
+  std::set<std::string> seen;
+  for (const auto& raw : raw_ids) {
+    const std::string node_id = trim_copy(raw);
+    if (!edge_id_is_safe(node_id) || node_id == self_node_id) continue;
+    if (!seen.insert(node_id).second) continue;
+    out.push_back(node_id);
+  }
+  return out;
+}
+
 }  // namespace
 
 EdgeConsensusReplica::EdgeConsensusReplica(const EdgeConsensusIdentity& self, size_t cluster_size)
     : self_(self), cluster_size_(cluster_size < 1 ? 1 : cluster_size) {}
+
+EdgeConsensusNodeLoop::EdgeConsensusNodeLoop(const EdgeConsensusNodeLoopConfig& cfg)
+    : cfg_(cfg), replica_(cfg.self, cfg.cluster_size == 0 ? cfg.peer_node_ids.size() + 1 : cfg.cluster_size) {
+  cfg_.peer_node_ids = dedupe_loop_targets(cfg.peer_node_ids, cfg.self.node_id);
+  if (cfg_.cluster_size == 0) cfg_.cluster_size = cfg_.peer_node_ids.size() + 1;
+  if (cfg_.cluster_size < 1) cfg_.cluster_size = 1;
+  if (cfg_.campaign_delay_ms < 0) cfg_.campaign_delay_ms = 0;
+}
 
 void EdgeConsensusReplica::set_trust_epochs(const EdgeConsensusEpochs& epochs) {
   self_.trust_epochs = epochs;
@@ -239,6 +262,49 @@ bool EdgeConsensusReplica::handle_frame(
   committed_decision_sha256_ = frame.decision_sha256;
   committed_vote_witnesses_ = frame.vote_witnesses;
   return true;
+}
+
+std::vector<EdgeConsensusFrame> EdgeConsensusNodeLoop::tick(int64_t now_utc_ms) {
+  std::vector<EdgeConsensusFrame> out;
+  if (started_utc_ms_ == 0) started_utc_ms_ = now_utc_ms;
+  if (election_started_ || trim_copy(cfg_.decision_sha256).empty()) return out;
+  if (now_utc_ms - started_utc_ms_ < cfg_.campaign_delay_ms) return out;
+  out.push_back(replica_.start_election(cfg_.decision_sha256));
+  election_started_ = true;
+  return out;
+}
+
+bool EdgeConsensusNodeLoop::handle_frame(
+  const EdgeConsensusFrame& frame,
+  std::vector<EdgeConsensusFrame>* out_frames,
+  std::string* out_error
+) {
+  return replica_.handle_frame(frame, out_frames, out_error);
+}
+
+std::vector<std::string> EdgeConsensusNodeLoop::target_node_ids_for_frame(const EdgeConsensusFrame& frame) const {
+  if (frame.kind == "vote_grant") {
+    if (edge_id_is_safe(frame.candidate_node_id) && frame.candidate_node_id != cfg_.self.node_id) {
+      return {frame.candidate_node_id};
+    }
+    return {};
+  }
+  if (frame.kind == "vote_request" || frame.kind == "leader_commit") return cfg_.peer_node_ids;
+  return {};
+}
+
+Json::Value EdgeConsensusNodeLoop::status_to_json() const {
+  Json::Value out(Json::objectValue);
+  out["self"] = edge_consensus_identity_to_json(cfg_.self);
+  out["cluster_size"] = Json::UInt64(cfg_.cluster_size);
+  out["campaign_delay_ms"] = (Json::Int64)cfg_.campaign_delay_ms;
+  if (!cfg_.decision_sha256.empty()) out["decision_sha256"] = cfg_.decision_sha256;
+  out["election_started"] = election_started_;
+  Json::Value peers(Json::arrayValue);
+  for (const auto& peer : cfg_.peer_node_ids) peers.append(peer);
+  out["peer_node_ids"] = peers;
+  out["replica"] = replica_.status_to_json();
+  return out;
 }
 
 Json::Value EdgeConsensusReplica::status_to_json() const {
