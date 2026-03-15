@@ -469,6 +469,9 @@ Edge trust-root rotation:
   server-side attestation, and `POST /api/v1/edge/auth/cert_roots/rotate` updates it with a monotonic epoch.
 - `POST /api/v1/edge/auth/cert_roots/send` enqueues that same signed certificate-root bundle to a recipient node’s
   outbox as `PLATFORM_CERT_ROOTS_BUNDLE`.
+- `tools/edge_cert_roots_tool.py` inspects those signed bundles, exports a CA PEM file, and runs
+  `openssl verify` against candidate cert chains so operators can validate shipped root material even
+  before inline X.509 chain enforcement exists on `/api/v1/edge/message`.
 - `GET /api/v1/edge/auth/revocations` returns the durable revoked-`kid` / revoked-node bundle, with optional
   server-side attestation when run-attestation signing is configured.
 - `POST /api/v1/edge/auth/revocations/update` applies a monotonic revocation epoch and updates the current

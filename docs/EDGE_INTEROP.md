@@ -24,7 +24,10 @@ Current status:
   - `POST /api/v1/edge/auth/trust_roots/send`
   - `POST /api/v1/edge/auth/revocations/send`
   - `POST /api/v1/edge/auth/cert_roots/send`
-- Still open: certificate-chain validation and confidentiality beyond authenticity-only envelopes.
+- Shipped: operator-side certificate-root bundle inspection and `openssl verify` chain checks via
+  `tools/edge_cert_roots_tool.py`.
+- Still open: inline certificate-chain enforcement at UM-BMP ingress and confidentiality beyond
+  authenticity-only envelopes.
 
 Executable contract artifacts (this repo):
 - Schemas: `docs/spec/um-eais/schema/` (envelope + core + platform extensions)
@@ -213,7 +216,9 @@ Manifest bundle note:
   control-plane trust changes through the same outbox transport instead of relying on a direct HTTP pull.
 - The certificate-root helper does the same for PEM certificate-root bundles via
   `PLATFORM_CERT_ROOTS_BUNDLE`, giving operators a durable signed distribution lane for
-  X.509-style root material even before full certificate-chain validation is enforced in envelope auth.
+  X.509-style root material even before full inline certificate-chain validation is enforced in envelope auth.
+- Operators can inspect those bundles, emit a CA file, and run `openssl verify` against candidate
+  leaf/intermediate certs with `tools/edge_cert_roots_tool.py`.
 
 ### Platform helper: enqueue TASK_ASSIGN
 

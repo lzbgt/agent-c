@@ -720,6 +720,12 @@ if(AGENT_BUILD_HOST)
 				    add_test(NAME agentd_edge_manifest_bundle_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_manifest_bundle_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_manifest_bundle_send_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_manifest_bundle_send_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_auth_bundle_send_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_bundle_send_smoke.sh $<TARGET_FILE:agentd>)
+				    add_test(
+				      NAME agentd_edge_auth_cert_chain_verify_smoke
+				      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_cert_chain_verify_smoke.sh
+				        $<TARGET_FILE:agentd>
+				        $<TARGET_FILE:agent_ed25519_tool>
+				    )
 				    add_test(NAME agentd_edge_auth_cert_roots_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_cert_roots_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_auth_hmac_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_hmac_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_auth_provision_node_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_provision_node_smoke.sh $<TARGET_FILE:agentd>)

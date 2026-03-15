@@ -1,7 +1,7 @@
 # UM‑BMP Envelope Auth — Profile v0.4
 
 Date: 2026-02-05
-Status: implemented rolling core with durable trust-root rotation, cert-root control, revocation control, and node-pollable signed bundle distribution; certificate-chain validation / confidentiality still open
+Status: implemented rolling core with durable trust-root rotation, cert-root control, revocation control, node-pollable signed bundle distribution, and operator-side chain verification tooling; inline certificate-chain enforcement / confidentiality still open
 
 This document defines an optional envelope authenticity mechanism for UM‑BMP messages
 in constrained IoT/edge systems, intended for:
@@ -19,7 +19,7 @@ This profile is transport-agnostic and applies to both JSON and CBOR wire mappin
 ## Additional goals
 
 - Confidentiality (payload encryption in addition to transport security when available).
-- Certificate chains / PKI beyond the current signed trust-root + revocation control plane.
+- Inline certificate-chain / PKI enforcement beyond the current signed trust-root + revocation control plane.
 - Certificate-chain PKI so trust roots do not rely only on operator-provisioned key maps.
 
 ## Envelope fields
