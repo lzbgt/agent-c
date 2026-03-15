@@ -896,12 +896,14 @@ if(AGENT_BUILD_HOST)
       add_test(NAME agentd_db_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_smoke.sh $<TARGET_FILE:agentd>)
       add_test(NAME agentd_db_query_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_query_smoke.sh $<TARGET_FILE:agentd>)
       add_test(NAME agentd_blob_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_blob_smoke.sh $<TARGET_FILE:agentd>)
-    add_test(NAME agentd_run_replay_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_run_replay_smoke.sh $<TARGET_FILE:agentd>)
-    add_test(NAME agentd_run_attestation_ed25519_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_run_attestation_ed25519_smoke.sh
-      $<TARGET_FILE:agentd>
-      $<TARGET_FILE:run_attestation_bundle_tool>
-      $<TARGET_FILE:agent_ed25519_tool>
-    )
+      add_test(NAME agentd_run_replay_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_run_replay_smoke.sh $<TARGET_FILE:agentd>)
+      add_test(NAME agentd_session_delete_governance_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_session_delete_governance_smoke.sh $<TARGET_FILE:agentd>)
+      add_test(NAME agentd_db_analytics_export_governance_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_analytics_export_governance_smoke.sh $<TARGET_FILE:agentd>)
+      add_test(NAME agentd_run_attestation_ed25519_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_run_attestation_ed25519_smoke.sh
+        $<TARGET_FILE:agentd>
+        $<TARGET_FILE:run_attestation_bundle_tool>
+        $<TARGET_FILE:agent_ed25519_tool>
+      )
     endif()
 
     add_test(

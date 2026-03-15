@@ -221,12 +221,12 @@ These are the most leveraged next steps grounded in current architecture:
    - Minimal loopback verification harness.
 
 5) **Scheduling + isolation MVP**
-   - Admission control + per-run budgets + tool execution caps.
-   - Evidence logs for quota decisions and resource usage.
+   - Completed 2026-03-15: admission control + per-run budgets + tool execution caps landed with
+     evidence logs and host-smoke coverage.
 
 6) **Data governance controls**
-   - Retention policy config + erase/export endpoints.
-   - Redaction-aware evidence bundle validation.
+   - Completed 2026-03-15: retention enforcement, session erase + analytics export endpoints, and
+     redaction-aware replay/attestation evidence are implemented with host-smoke coverage.
 
 7) **Run comparison + evidence diff UX**
    - Side-by-side run diffs (events, artifacts, costs) with evidence bundle links.

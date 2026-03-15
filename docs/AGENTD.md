@@ -361,7 +361,32 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
 
 - `GET /api/v1/sessions` lists known sessions.
 - `GET /api/v1/session?session_id=<id>` returns the message history.
+- `DELETE /api/v1/session?session_id=<id>` erases the canonical SQLite-backed session record and its
+  dependent runs/messages/tool records/events/artifacts via DB cascade.
 - `GET /api/v1/session/audit?session_id=<id>&include_rotated=0|1` returns recent per-run audit entries.
+
+## Data governance
+
+- `POST /api/v1/memory/retention/enforce` applies deterministic retention policies to daily logs and
+  structured checkpoints, with `dry_run` and per-call overrides.
+- `DELETE /api/v1/session?session_id=<id>` is the primary erase surface. After a successful delete,
+  session history and run-backed evidence for that session no longer resolve through
+  `GET /api/v1/session`, `GET /api/v1/run/replay`, or `GET /api/v1/run/attestation`.
+- `GET /api/v1/db/analytics/workflows/export?format=json|csv&scope=all|durable|edge` exports durable
+  workflow analytics snapshots for audit/reporting.
+- `GET /api/v1/db/analytics/edge/export?format=json|csv&scope=all|edge_tasks|edge_nodes` exports edge
+  analytics snapshots for the same governance/reporting workflows.
+- `GET /api/v1/run/replay?run_id=<id>` returns a redacted replay bundle (`run_replay_bundle_v1`).
+  Sensitive request fields such as `api_key` are omitted from the bundle.
+- `GET /api/v1/run/attestation?run_id=<id>` returns a signed or unsigned
+  `run_attestation_bundle_v1` referencing the replay hash.
+
+Host-test proof points:
+- `tests/agentd_memory_retention_smoke.sh`
+- `tests/agentd_session_delete_governance_smoke.sh`
+- `tests/agentd_db_analytics_export_governance_smoke.sh`
+- `tests/agentd_run_replay_smoke.sh`
+- `tests/agentd_run_attestation_ed25519_smoke.sh`
 
 ## Async runs (UI-friendly)
 

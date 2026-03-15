@@ -1031,6 +1031,112 @@
             schema:
               $ref: "#/components/schemas/ErrorResponse"
 
+/api/v1/db/analytics/workflows/export:
+  get:
+    tags: [db]
+    summary: Export durable and edge workflow analytics
+    parameters:
+      - in: query
+        name: format
+        required: false
+        schema: { type: string, enum: [json, csv], default: json }
+      - in: query
+        name: scope
+        required: false
+        schema: { type: string, enum: [all, durable, edge], default: all }
+      - in: query
+        name: since_unix_ms
+        required: false
+        schema: { type: integer, format: int64 }
+      - in: query
+        name: until_unix_ms
+        required: false
+        schema: { type: integer, format: int64 }
+    responses:
+      "200":
+        description: Workflow analytics export
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+          text/csv:
+            schema:
+              type: string
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "500":
+        description: Export failed
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
+/api/v1/db/analytics/edge/export:
+  get:
+    tags: [db]
+    summary: Export edge task and edge node analytics
+    parameters:
+      - in: query
+        name: format
+        required: false
+        schema: { type: string, enum: [json, csv], default: json }
+      - in: query
+        name: scope
+        required: false
+        schema: { type: string, enum: [all, edge_tasks, edge_nodes], default: all }
+      - in: query
+        name: since_unix_ms
+        required: false
+        schema: { type: integer, format: int64 }
+      - in: query
+        name: until_unix_ms
+        required: false
+        schema: { type: integer, format: int64 }
+      - in: query
+        name: active_within_ms
+        required: false
+        schema: { type: integer, format: int64 }
+    responses:
+      "200":
+        description: Edge analytics export
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+          text/csv:
+            schema:
+              type: string
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "500":
+        description: Export failed
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
 /api/v1/memory/checkpoints:
   get:
     tags: [memory]
@@ -2203,6 +2309,47 @@
                       mm_bytes: { type: integer, format: int64 }
                       mm_truncated: { type: integer, format: int64 }
                 error: { type: string }
+  delete:
+    tags: [sessions]
+    summary: Delete a session and cascade its persisted evidence
+    parameters:
+      - in: query
+        name: session_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Session delete result
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok, session_id, deleted_from_db]
+              properties:
+                ok: { type: boolean }
+                session_id: { type: string }
+                deleted_from_db: { type: boolean }
+                legacy_cleanup_attempted: { type: boolean }
+                legacy_any_deleted: { type: boolean }
+                error: { type: string }
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "500":
+        description: Delete failed
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
 
 /api/v1/moderator/directive:
   post:

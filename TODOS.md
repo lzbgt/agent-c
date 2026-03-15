@@ -427,7 +427,8 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-03-15: added opt-in `capacity_autoscale` heuristics in the orchestrator loop using `member_job_summary` / `member_jobs` pressure, allocator-first scale-out, spawn fallback, and idle duplicate-runtime-member retirement with package tests + spec updates.
 - [x] W=9 — Scheduling + isolation MVP: admission control, per-run budgets, and tool execution caps with evidence logs.
   - 2026-03-15: verified submit-time admission control, durable `workflow_limits` enforcement, per-attempt cap clamping, and emitted `workflow_budget_exceeded` evidence via source + smoke coverage (`agentd_workflow_admission_control_smoke`, budget smokes, and `agentd_workflow_budget_events_smoke`).
-- [ ] W=8 — Data governance controls: retention policy config, export/erase endpoints, and redaction-aware evidence bundles.
+- [x] W=8 — Data governance controls: retention policy config, export/erase endpoints, and redaction-aware evidence bundles.
+  - 2026-03-15: verified retention enforcement, session erase cascade, analytics export endpoints, and redacted replay/attestation evidence with dedicated host smokes (`agentd_memory_retention_smoke`, `agentd_session_delete_governance_smoke`, `agentd_db_analytics_export_governance_smoke`, `agentd_run_replay_smoke`, and `agentd_run_attestation_ed25519_smoke`).
 
 ## New tasks (2026-02-19)
 
