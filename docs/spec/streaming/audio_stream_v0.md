@@ -1,7 +1,7 @@
 # Audio Streaming (v0)
 
 Date: 2026-02-19
-Status: v0 (broker signaling relay implemented; agentd loopback smoke tool added; real WebRTC pending)
+Status: implemented rolling foundation (broker signaling relay + loopback smokes); real WebRTC/session UX pending
 
 ## Goals
 
@@ -102,6 +102,15 @@ A v0 smoke test should:
 2) Create an audio session via broker
 3) Exchange offer/answer over the signaling endpoints
 4) Verify signaling completes and session closes cleanly
+
+## Current proof points
+
+- `ctest` includes `broker_audio_signal_loopback_smoke` for broker signaling relay behavior.
+- `ctest` includes `broker_audio_signal_docker_smoke` for broker signaling with ephemeral Postgres backing.
+- `ctest` includes `agentd_audio_signal_loopback_smoke` for the agentd-side loopback tool and signaling flow.
+- `tests/webui_observe_voice_hello_openworld.sh` and `ui/e2e/observe_voice_hello.spec.ts`
+  cover the current browser voice-presentation harness, which is artifact/scene driven rather than
+  a full WebRTC session.
 
 ## Open questions
 

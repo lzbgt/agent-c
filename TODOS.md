@@ -532,11 +532,15 @@ streaming and plugins are stable.
   - [x] Plugin host tool-result cap (4 MiB) enforced before JSON parsing.
   - [x] Plugin host oversized payload smoke coverage (ext_big).
   - 2026-03-15: closed stale roadmap item after verifying in-process plugin loading, out-of-process isolation, embedded/MCU compile-time plugin ABI docs, and Windows loader coverage (`daemon/src/tool_plugins.cpp`, `tests/agentd_tool_plugin*_smoke.sh`, `tests/test_tool_plugin_host_limits.cpp`, `docs/PLATFORM_SUPPORT.md`, `tools/verify_windows_build.ps1`).
-- [ ] Audio streaming: Opus/WebRTC voice pipeline + broker relay + UI voice session controls.
-  - [x] Add workflow DB query endpoints (`/api/v1/db/workflows`, `/api/v1/db/workflow`, `/api/v1/db/workflow_tasks`, `/api/v1/db/workflow_events`)
-    with docs + smoke tests.
-  - [x] Add edge workflow DB query endpoints + workflow analytics aggregates (counts, latency, error rates).
-  - [x] Add edge task/edge node analytics aggregates (counts, latency, error rates).
+- [ ] Audio streaming: finish real WebRTC voice sessions and explicit UI session controls on top of the shipped signaling foundation.
+  - [x] Broker signaling relay endpoints are implemented: `POST /v1/audio/sessions`, `POST /v1/audio/sessions/{id}/signal`, `GET /v1/audio/sessions/{id}/signal/stream`.
+  - [x] Broker audio signaling loopback/durable relay coverage exists via `broker_audio_signal_loopback_smoke` and `broker_audio_signal_docker_smoke`.
+  - [x] Agentd loopback audio tool + smoke coverage exist via `agentd_audio_signal_loopback` and `agentd_audio_signal_loopback_smoke`.
+  - [x] WebUI open-world voice presentation harness exists via `tests/webui_observe_voice_hello_openworld.sh` and `ui/e2e/observe_voice_hello.spec.ts`.
+  - [ ] Implement a real browser-to-agentd WebRTC media path instead of only signaling/loopback scaffolding.
+  - [ ] Add explicit voice session lifecycle/status controls in the WebUI rather than prompt-driven open-world presentation only.
+  - [ ] Define the minimal agentd API surface for voice session control/stats once real media sessions exist.
+  - 2026-03-15: narrowed the stale umbrella item after re-verifying broker signaling endpoints, loopback smokes, and the open-world voice observe harness.
 - [x] Add binary blob storage tiering plan (`docs/DB.md#blob-storage-tiers-design--status`).
   - [x] Add edge task/node analytics exports (CSV/JSON bundles).
   - [x] Implement blob_manifest schema + local blob store v0 (upload + read + ref-count GC).

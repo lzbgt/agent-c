@@ -387,6 +387,14 @@ Sessions are in-memory and expire after a TTL (default 15 minutes). Configure vi
 - `--audio-session-ttl` (duration)
 - `AGENTD_BROKER_AUDIO_SESSION_TTL_MS` (milliseconds)
 
+Current status:
+- Shipped: authenticated signaling relay endpoints, in-memory session lifecycle, and loopback smoke coverage.
+- Still open: a real browser-to-agentd WebRTC media path with first-class WebUI voice session controls.
+
+Proof:
+- `ctest` includes `broker_audio_signal_loopback_smoke`.
+- `ctest` includes `broker_audio_signal_docker_smoke`.
+
 #### Using durable workflows through the broker proxy
 
 The broker proxy can be used as a “virtual base URL” for agentd-to-agentd collaboration tasks:

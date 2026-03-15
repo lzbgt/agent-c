@@ -26,7 +26,7 @@ declares its own status (draft/rolling/implemented) in the document header.
 ## Streaming
 
 - `streaming/core_stream_v1.md`: streaming contract and decoder expectations.
-- `streaming/audio_stream_v0.md`: audio streaming signaling (draft).
+- `streaming/audio_stream_v0.md`: audio signaling + loopback foundation (implemented rolling; real WebRTC pending).
 
 ## OTA
 
