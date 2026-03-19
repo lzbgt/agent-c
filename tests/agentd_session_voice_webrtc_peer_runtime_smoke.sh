@@ -1618,6 +1618,135 @@ if peer.get("runtime_kind") != "external" or peer.get("tone_hz") != 901:
   raise SystemExit(1)
 PY
 
+external_default_conflict_update_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "audio_webrtc": {
+    "broker_url": "${VOICE_BROKER_URL}",
+    "broker_token": "${VOICE_BROKER_TOKEN}",
+    "peer_tool_path": "${PEER_TOOL}",
+    "default_runtime_kind": "bundled",
+    "node_bin": "node"
+  }
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/config/update")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${external_default_conflict_update_resp}''')
+audio = obj.get("audio_webrtc") or {}
+if not obj.get("ok"):
+  print("failed to switch audio_webrtc default runtime_kind for conflict proof", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("default_runtime_kind") != "bundled" or audio.get("default_runtime_kind_source") != "config":
+  print("expected bundled config-backed default for running-conflict proof", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("bundled_available") is not True or audio.get("external_available") is not True:
+  print("expected both bundled and external available for running-conflict proof", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+external_default_conflict_body="${LOG_DIR}/voice_webrtc_peer_external_default_conflict_body.json"
+external_default_conflict_status="$(curl -sS --noproxy "*" --max-time 10 -o "${external_default_conflict_body}" -w '%{http_code}' \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${EXTERNAL_SESSION_ID}\",\"action\":\"start\"}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+if [[ "${external_default_conflict_status}" != "409" ]]; then
+  echo "expected effective default-runtime conflict to return 409, got ${external_default_conflict_status}" >&2
+  cat "${external_default_conflict_body}" >&2
+  exit 1
+fi
+python3 - <<PY
+import json, sys
+obj = json.load(open(r'''${external_default_conflict_body}''', 'r', encoding='utf-8'))
+peer = obj.get("peer") or {}
+if obj.get("error") != "voice peer already running with different config":
+  print("unexpected effective default-runtime conflict response", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("runtime_kind") != "external" or peer.get("tone_hz") != 901:
+  print("unexpected peer snapshot for effective default-runtime conflict", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+external_node_bin_conflict_update_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "audio_webrtc": {
+    "broker_url": "${VOICE_BROKER_URL}",
+    "broker_token": "${VOICE_BROKER_TOKEN}",
+    "peer_tool_path": "${PEER_TOOL}",
+    "default_runtime_kind": "external",
+    "node_bin": "false"
+  }
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/config/update")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${external_node_bin_conflict_update_resp}''')
+audio = obj.get("audio_webrtc") or {}
+if not obj.get("ok"):
+  print("failed to change audio_webrtc node_bin for conflict proof", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("default_runtime_kind") != "external" or audio.get("default_runtime_kind_source") != "config":
+  print("expected restored external config-backed default before node_bin conflict", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("node_bin") != "false":
+  print("expected persisted node_bin=false for conflict proof", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("external_available") is not True or audio.get("default_runtime_kind_available") is not True:
+  print("expected launchable external backend for node_bin conflict proof", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+external_node_bin_conflict_body="${LOG_DIR}/voice_webrtc_peer_external_node_bin_conflict_body.json"
+external_node_bin_conflict_status="$(curl -sS --noproxy "*" --max-time 10 -o "${external_node_bin_conflict_body}" -w '%{http_code}' \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${EXTERNAL_SESSION_ID}",
+  "action": "start",
+  "runtime_kind": "external",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab-external-config",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 901
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+if [[ "${external_node_bin_conflict_status}" != "409" ]]; then
+  echo "expected effective node_bin conflict to return 409, got ${external_node_bin_conflict_status}" >&2
+  cat "${external_node_bin_conflict_body}" >&2
+  exit 1
+fi
+python3 - <<PY
+import json, sys
+obj = json.load(open(r'''${external_node_bin_conflict_body}''', 'r', encoding='utf-8'))
+peer = obj.get("peer") or {}
+if obj.get("error") != "voice peer already running with different config":
+  print("unexpected effective node_bin conflict response", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("runtime_kind") != "external" or peer.get("node_bin") != "node":
+  print("unexpected peer snapshot for effective node_bin conflict", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 external_conflict_body="${LOG_DIR}/voice_webrtc_peer_external_conflict_body.json"
 external_conflict_status="$(curl -sS --noproxy "*" --max-time 10 -o "${external_conflict_body}" -w '%{http_code}' \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \

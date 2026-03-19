@@ -3373,9 +3373,10 @@
       paths. `builtin` is reserved for a future embedded agentd-native media service
       and currently returns a not-implemented response. If a bundled/external peer
       is still alive after an agentd restart, `start` returns `already_running`
-      from the recovered persisted runtime record only when the explicit requested
-      runtime fields remain compatible with that live runtime; conflicting explicit
-      start requests now return `409` with the existing runtime snapshot instead.
+      from the recovered persisted runtime record only when the effective resolved
+      runtime config remains compatible with that live runtime; conflicting explicit
+      or config-driven start requests now return `409` with the existing runtime
+      snapshot instead.
       That running-runtime conflict path also wins over the reserved `builtin`
       selector, so an explicit `runtime_kind=builtin` request against a live bundled
       or external runtime returns `409` instead of a misleading not-implemented

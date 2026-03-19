@@ -142,35 +142,38 @@ static Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   return out;
 }
 
-static bool voice_peer_runtime_matches_explicit_start_request(
+static bool voice_peer_runtime_matches_start_request(
   const VoicePeerRuntime& st,
   const Json::Value& body,
   const std::string& runtime_kind,
+  const std::string& effective_broker_url,
+  const std::string& resolved_tool_path,
+  const std::string& resolved_node_bin,
+  bool resolved_backend_available,
   const std::string& requested_broker_session_id,
   const std::string& broker_agent_id,
   const std::string& broker_deployment_id,
-  const std::string& request_broker_url,
   const std::string& sender_tag,
   int64_t deadline_ms,
   int64_t poll_interval_ms,
   int64_t tone_hz
 ) {
-  if (body.isMember("runtime_kind") && body["runtime_kind"].isString() && runtime_kind != st.runtime_kind) return false;
+  if (runtime_kind != st.runtime_kind) return false;
+  if (resolved_backend_available) {
+    if (resolved_tool_path != st.tool_path) return false;
+    if (resolved_node_bin != st.node_bin) return false;
+  }
+  if (!effective_broker_url.empty() && effective_broker_url != st.broker_url) return false;
   if (body.isMember("broker_session_id") && body["broker_session_id"].isString() &&
-      !requested_broker_session_id.empty() && requested_broker_session_id != st.broker_session_id) {
+      (!requested_broker_session_id.empty() &&
+       (requested_broker_session_id != st.broker_session_id || st.managed_broker_session))) {
     return false;
   }
-  if (body.isMember("broker_agent_id") && body["broker_agent_id"].isString() &&
-      !broker_agent_id.empty() && broker_agent_id != st.broker_agent_id) {
-    return false;
-  }
-  if (body.isMember("broker_deployment_id") && body["broker_deployment_id"].isString() &&
-      !broker_deployment_id.empty() && broker_deployment_id != st.broker_deployment_id) {
-    return false;
-  }
-  if (body.isMember("broker_url") && body["broker_url"].isString() &&
-      !request_broker_url.empty() && request_broker_url != st.broker_url) {
-    return false;
+  if ((body.isMember("broker_agent_id") && body["broker_agent_id"].isString()) ||
+      (body.isMember("broker_deployment_id") && body["broker_deployment_id"].isString())) {
+    if (!st.managed_broker_session) return false;
+    if (broker_agent_id != st.broker_agent_id) return false;
+    if (broker_deployment_id != st.broker_deployment_id) return false;
   }
   if (body.isMember("sender_tag") && body["sender_tag"].isString() && sender_tag != st.sender_tag) return false;
   if (body.isMember("deadline_ms") &&
@@ -1271,6 +1274,13 @@ void handle_session_voice_webrtc_peer_endpoint(
       ? trim_copy(body["sender_tag"].asString())
       : std::string("agentd_runtime_peer");
   if (sender_tag.empty()) sender_tag = "agentd_runtime_peer";
+  const std::string effective_broker_url = effective_voice_broker_url(cfg, request_broker_url);
+  std::string desired_tool_path;
+  std::string desired_node_bin;
+  std::string desired_backend_err;
+  const bool desired_backend_available =
+    runtime_kind != "builtin" &&
+    resolve_voice_peer_backend(cfg, runtime_kind, &desired_tool_path, &desired_node_bin, &desired_backend_err);
 
   {
     std::lock_guard<std::mutex> lk(g_voice_peer_mu);
@@ -1280,14 +1290,17 @@ void handle_session_voice_webrtc_peer_endpoint(
       out["peer"] = voice_peer_runtime_to_json(*st);
       std::string perr;
       (void)persist_voice_peer_runtime_record(db, *st, &perr);
-      if (!voice_peer_runtime_matches_explicit_start_request(
+      if (!voice_peer_runtime_matches_start_request(
             *st,
             body,
             runtime_kind,
+            effective_broker_url,
+            desired_tool_path,
+            desired_node_bin,
+            desired_backend_available,
             requested_broker_session_id,
             broker_agent_id,
             broker_deployment_id,
-            request_broker_url,
             sender_tag,
             deadline_ms,
             poll_interval_ms,
@@ -1339,14 +1352,17 @@ void handle_session_voice_webrtc_peer_endpoint(
       out["peer"] = voice_peer_runtime_to_json(*persisted);
       std::string perr;
       (void)persist_voice_peer_runtime_record(db, *persisted, &perr);
-      if (!voice_peer_runtime_matches_explicit_start_request(
+      if (!voice_peer_runtime_matches_start_request(
             *persisted,
             body,
             runtime_kind,
+            effective_broker_url,
+            desired_tool_path,
+            desired_node_bin,
+            desired_backend_available,
             requested_broker_session_id,
             broker_agent_id,
             broker_deployment_id,
-            request_broker_url,
             sender_tag,
             deadline_ms,
             poll_interval_ms,
@@ -1394,7 +1410,7 @@ void handle_session_voice_webrtc_peer_endpoint(
     resp->body = json_error_body("broker_agent_id and broker_deployment_id must be omitted when broker_session_id is provided");
     return;
   }
-  const std::string broker_url = effective_voice_broker_url(cfg, request_broker_url);
+  const std::string broker_url = effective_broker_url;
   if (broker_url.empty()) {
     resp->status = 400;
     resp->body = json_error_body("broker_url required when daemon default not configured");
@@ -1436,9 +1452,12 @@ void handle_session_voice_webrtc_peer_endpoint(
   return;
 #else
   std::string serr;
-  std::string tool_path;
-  std::string node_bin;
-  if (!resolve_voice_peer_backend(cfg, runtime_kind, &tool_path, &node_bin, &serr)) {
+  std::string tool_path = desired_tool_path;
+  std::string node_bin = desired_node_bin;
+  if (!desired_backend_available) {
+    serr = desired_backend_err;
+  }
+  if (!desired_backend_available) {
     out["error"] = serr.empty() ? "failed to resolve voice peer backend" : serr;
     resp->status = 500;
     resp->body = json_stringify(out);

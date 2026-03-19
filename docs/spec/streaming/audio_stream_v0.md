@@ -154,10 +154,11 @@ A v0 smoke test should:
   than an implicit assumption baked into the API.
 - The shipped bundled/external backend now persists DB-backed runtime snapshots plus per-session stdout logs, so
   `GET /api/v1/session/voice_webrtc_peer` can recover running/stopped state after agentd restart and duplicate starts
-  can return `already_running` from persisted runtime state when the explicit request remains compatible with the live
-  runtime.
-- If callers explicitly ask for a different live runtime config on the same session, `POST /api/v1/session/voice_webrtc_peer`
-  now returns `409` with the current `peer` snapshot instead of reporting a false idempotent reuse.
+  can return `already_running` from persisted runtime state when the effective resolved request/runtime config remains
+  compatible with the live runtime.
+- If callers ask for a different live runtime config on the same session, whether explicitly or indirectly through
+  changed daemon defaults like backend selection or `node_bin`, `POST /api/v1/session/voice_webrtc_peer` now returns
+  `409` with the current `peer` snapshot instead of reporting a false idempotent reuse.
 - That same runtime now persists child-exit state eagerly and lets `action=stop` take `broker_token`, so agentd can
   delete a managed broker audio session itself after an ungraceful peer death that skipped the child's `bye`.
 - Stop and session-delete cleanup now validate broker tokens lazily, so borrowed broker-session runtimes can still be
