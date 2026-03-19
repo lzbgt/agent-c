@@ -211,6 +211,7 @@ fi
   --broker-url "http://127.0.0.1:${BROKER_PORT}" \
   --token "audio-agentd-token" \
   --session-id "${SESSION_ID}" \
+  --post-answer-candidate-timeout-ms 5000 \
   --send-bye-reason "loopback_done" >>"${LOG_FILE}" 2>&1 &
 LOOP_PID=$!
 
@@ -284,6 +285,22 @@ while time.time() < deadline:
     continue
   if msg.get("type") == "answer" and msg.get("payload", {}).get("sdp") == "stub-answer":
     answer = msg
+    time.sleep(0.25)
+    conn_post_candidate = http.client.HTTPConnection(host, port, timeout=5)
+    post_candidate_body = json.dumps({"type": "candidate", "payload": {
+        "candidate": "cand-post-answer",
+        "sdpMid": "audio",
+        "sdpMLineIndex": 0,
+    }})
+    conn_post_candidate.request("POST", f"/v1/audio/sessions/{session_id}/signal", body=post_candidate_body, headers={
+        "Authorization": "Bearer audio-webui-token",
+        "Content-Type": "application/json",
+    })
+    resp_post_candidate = conn_post_candidate.getresponse()
+    resp_post_candidate.read()
+    if resp_post_candidate.status != 200:
+      print("post-answer candidate failed", resp_post_candidate.status, file=sys.stderr)
+      raise SystemExit(1)
     continue
   if msg.get("type") == "bye" and msg.get("payload", {}).get("reason") == "loopback_done":
     bye = msg
@@ -321,7 +338,7 @@ PY
 
 wait "${LOOP_PID}" >/dev/null 2>&1 || true
 
-if ! grep -q 'agentd_audio_signal_loopback OK initial_remote_candidate_count=1' "${LOG_FILE}"; then
-  echo "Loopback helper did not report the queued pre-offer candidate; see ${LOG_FILE}" >&2
+if ! grep -q 'agentd_audio_signal_loopback OK initial_remote_candidate_count=1 post_answer_remote_candidate_count=1' "${LOG_FILE}"; then
+  echo "Loopback helper did not report both queued and post-answer candidates; see ${LOG_FILE}" >&2
   exit 1
 fi

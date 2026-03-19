@@ -161,6 +161,9 @@ A v0 smoke test should:
 - The native session-aware signal wait path now also preserves trickled ICE candidates that arrive before the first
   remote description; the loopback smoke proves that queued pre-offer candidate survives until the remote offer is
   accepted instead of being dropped by the first-description wait helper.
+- The same native session-aware path can now continue on the same session state after remote-description bootstrap and
+  wait for ready post-description candidates too; the loopback smoke proves both queued pre-offer ICE and a later
+  post-answer candidate through the shared C++ helper path.
 - `ctest` now also includes `session_voice_signal_protocol_tests` for direct typed broker-signal payload coverage.
 - `ctest` now also includes `session_voice_signal_session_tests` for direct native signal-session state coverage.
 - `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` covers the agentd-managed runtime surface for that same peer,

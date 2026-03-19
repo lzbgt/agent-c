@@ -292,31 +292,136 @@ bool wait_for_voice_broker_signal_remote_description(
   return true;
 }
 
-bool wait_for_voice_broker_signal_remote_description_ready(
+bool wait_for_voice_broker_signal_session_ingress_kind(
   const std::string& broker_url,
   const std::string& token,
   const std::string& session_id,
-  const std::string& self_sender_tag,
   int64_t timeout_ms,
+  VoiceBrokerSignalSessionState* io_state,
+  VoiceBrokerSignalIngressKind expected_kind,
+  VoiceBrokerSignalIngress* out_ingress,
+  long* out_http_status,
+  std::string* out_err
+) {
+  if (out_ingress) *out_ingress = VoiceBrokerSignalIngress{};
+  if (!io_state) {
+    if (out_err) *out_err = "missing signal session state";
+    return false;
+  }
+
+  bool matched = false;
+  VoiceBrokerSignalIngress found;
+  const bool ok = stream_voice_broker_signal_session(
+    broker_url,
+    token,
+    session_id,
+    io_state->self_sender_tag(),
+    timeout_ms,
+    io_state,
+    [&](const VoiceBrokerSignalIngress& ingress) {
+      if (ingress.kind != expected_kind) return true;
+      matched = true;
+      found = ingress;
+      return false;
+    },
+    out_http_status,
+    out_err);
+  if (!ok) return false;
+  if (!matched) {
+    if (out_err && out_err->empty()) {
+      *out_err = "expected signal ingress not received before stream ended";
+    }
+    return false;
+  }
+  if (out_ingress) *out_ingress = std::move(found);
+  return true;
+}
+
+bool wait_for_voice_broker_signal_remote_candidate_ready(
+  const std::string& broker_url,
+  const std::string& token,
+  const std::string& session_id,
+  int64_t timeout_ms,
+  VoiceBrokerSignalSessionState* io_state,
+  VoiceBrokerSignalCandidate* out_candidate,
+  long* out_http_status,
+  std::string* out_err
+) {
+  if (out_candidate) *out_candidate = VoiceBrokerSignalCandidate{};
+  VoiceBrokerSignalIngress ingress;
+  if (!wait_for_voice_broker_signal_session_ingress_kind(
+        broker_url,
+        token,
+        session_id,
+        timeout_ms,
+        io_state,
+        VoiceBrokerSignalIngressKind::remote_candidate_ready,
+        &ingress,
+        out_http_status,
+        out_err)) {
+    return false;
+  }
+  if (out_candidate) *out_candidate = std::move(ingress.candidate);
+  return true;
+}
+
+bool wait_for_voice_broker_signal_remote_bye(
+  const std::string& broker_url,
+  const std::string& token,
+  const std::string& session_id,
+  int64_t timeout_ms,
+  VoiceBrokerSignalSessionState* io_state,
+  VoiceBrokerSignalBye* out_bye,
+  long* out_http_status,
+  std::string* out_err
+) {
+  if (out_bye) *out_bye = VoiceBrokerSignalBye{};
+  VoiceBrokerSignalIngress ingress;
+  if (!wait_for_voice_broker_signal_session_ingress_kind(
+        broker_url,
+        token,
+        session_id,
+        timeout_ms,
+        io_state,
+        VoiceBrokerSignalIngressKind::remote_bye,
+        &ingress,
+        out_http_status,
+        out_err)) {
+    return false;
+  }
+  if (out_bye) *out_bye = std::move(ingress.bye);
+  return true;
+}
+
+bool wait_for_voice_broker_signal_remote_description_ready_with_state(
+  const std::string& broker_url,
+  const std::string& token,
+  const std::string& session_id,
+  int64_t timeout_ms,
+  VoiceBrokerSignalSessionState* io_state,
   VoiceBrokerSignalRemoteDescriptionReady* out_ready,
   long* out_http_status,
   std::string* out_err
 ) {
   if (out_ready) *out_ready = VoiceBrokerSignalRemoteDescriptionReady{};
+  if (!io_state) {
+    if (out_err) *out_err = "missing signal session state";
+    return false;
+  }
+
   bool matched = false;
   VoiceBrokerSignalRemoteDescriptionReady found;
-  VoiceBrokerSignalSessionState state(self_sender_tag);
   const bool ok = stream_voice_broker_signal_session(
     broker_url,
     token,
     session_id,
-    self_sender_tag,
+    io_state->self_sender_tag(),
     timeout_ms,
-    &state,
+    io_state,
     [&](const VoiceBrokerSignalIngress& ingress) {
       if (ingress.kind != VoiceBrokerSignalIngressKind::remote_description) return true;
       std::string err;
-      if (!finalize_voice_broker_remote_description_ready(&state, ingress, &found, &err)) {
+      if (!finalize_voice_broker_remote_description_ready(io_state, ingress, &found, &err)) {
         if (out_err) *out_err = err.empty() ? "failed to finalize remote description" : err;
         return false;
       }
@@ -332,6 +437,22 @@ bool wait_for_voice_broker_signal_remote_description_ready(
   }
   if (out_ready) *out_ready = std::move(found);
   return true;
+}
+
+bool wait_for_voice_broker_signal_remote_description_ready(
+  const std::string& broker_url,
+  const std::string& token,
+  const std::string& session_id,
+  const std::string& self_sender_tag,
+  int64_t timeout_ms,
+  VoiceBrokerSignalRemoteDescriptionReady* out_ready,
+  long* out_http_status,
+  std::string* out_err
+) {
+  if (out_ready) *out_ready = VoiceBrokerSignalRemoteDescriptionReady{};
+  VoiceBrokerSignalSessionState state(self_sender_tag);
+  return wait_for_voice_broker_signal_remote_description_ready_with_state(
+    broker_url, token, session_id, timeout_ms, &state, out_ready, out_http_status, out_err);
 }
 
 }  // namespace agentd

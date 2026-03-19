@@ -40,15 +40,15 @@ static void test_self_sender_events_are_ignored() {
 static void test_offer_then_candidate_queue_then_drain() {
   VoiceBrokerSignalSessionState state("agentd-runtime");
   std::string err;
-  VoiceBrokerSignalIngress ingress;
+  VoiceBrokerSignalIngress description_ingress;
 
   Json::Value offer_payload(Json::objectValue);
   offer_payload["type"] = "offer";
   offer_payload["sdp"] = "stub-offer";
   offer_payload["sender_tag"] = "webui-peer";
-  assert(state.ingest_event(make_event("offer", offer_payload), &ingress, &err));
+  assert(state.ingest_event(make_event("offer", offer_payload), &description_ingress, &err));
   assert(err.empty());
-  assert(ingress.kind == VoiceBrokerSignalIngressKind::remote_description);
+  assert(description_ingress.kind == VoiceBrokerSignalIngressKind::remote_description);
   assert(state.remote_offer_seen());
   assert(!state.remote_description_applied());
 
@@ -57,14 +57,15 @@ static void test_offer_then_candidate_queue_then_drain() {
   candidate_payload["sdpMid"] = "audio";
   candidate_payload["sdpMLineIndex"] = 0;
   candidate_payload["sender_tag"] = "webui-peer";
-  assert(state.ingest_event(make_event("candidate", candidate_payload), &ingress, &err));
+  VoiceBrokerSignalIngress candidate_ingress;
+  assert(state.ingest_event(make_event("candidate", candidate_payload), &candidate_ingress, &err));
   assert(err.empty());
-  assert(ingress.kind == VoiceBrokerSignalIngressKind::remote_candidate_queued);
+  assert(candidate_ingress.kind == VoiceBrokerSignalIngressKind::remote_candidate_queued);
   assert(state.received_candidate_count() == 1);
   assert(state.pending_remote_candidate_count() == 1);
 
   VoiceBrokerSignalRemoteDescriptionReady ready;
-  assert(finalize_voice_broker_remote_description_ready(&state, ingress, &ready, &err));
+  assert(finalize_voice_broker_remote_description_ready(&state, description_ingress, &ready, &err));
   assert(err.empty());
   assert(state.remote_description_applied());
   assert(state.pending_remote_candidate_count() == 0);

@@ -88,6 +88,51 @@ bool wait_for_voice_broker_signal_remote_description(
   std::string* out_err
 );
 
+bool wait_for_voice_broker_signal_session_ingress_kind(
+  const std::string& broker_url,
+  const std::string& token,
+  const std::string& session_id,
+  int64_t timeout_ms,
+  VoiceBrokerSignalSessionState* io_state,
+  VoiceBrokerSignalIngressKind expected_kind,
+  VoiceBrokerSignalIngress* out_ingress,
+  long* out_http_status,
+  std::string* out_err
+);
+
+bool wait_for_voice_broker_signal_remote_candidate_ready(
+  const std::string& broker_url,
+  const std::string& token,
+  const std::string& session_id,
+  int64_t timeout_ms,
+  VoiceBrokerSignalSessionState* io_state,
+  VoiceBrokerSignalCandidate* out_candidate,
+  long* out_http_status,
+  std::string* out_err
+);
+
+bool wait_for_voice_broker_signal_remote_bye(
+  const std::string& broker_url,
+  const std::string& token,
+  const std::string& session_id,
+  int64_t timeout_ms,
+  VoiceBrokerSignalSessionState* io_state,
+  VoiceBrokerSignalBye* out_bye,
+  long* out_http_status,
+  std::string* out_err
+);
+
+bool wait_for_voice_broker_signal_remote_description_ready_with_state(
+  const std::string& broker_url,
+  const std::string& token,
+  const std::string& session_id,
+  int64_t timeout_ms,
+  VoiceBrokerSignalSessionState* io_state,
+  VoiceBrokerSignalRemoteDescriptionReady* out_ready,
+  long* out_http_status,
+  std::string* out_err
+);
+
 bool wait_for_voice_broker_signal_remote_description_ready(
   const std::string& broker_url,
   const std::string& token,
