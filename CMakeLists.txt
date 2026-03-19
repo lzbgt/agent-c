@@ -284,6 +284,8 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/trace_id_util.cpp
     daemon/src/scene_store.cpp
     daemon/src/session_endpoints.cpp
+    daemon/src/session_voice_backend_policy.cpp
+    daemon/src/session_voice_broker_client.cpp
     daemon/src/session_voice_runtime.cpp
     daemon/src/tool_plugins.cpp
     daemon/src/tool_servers.cpp
