@@ -1,6 +1,5 @@
 #include "session_voice_signal_client.h"
-
-#include <json/json.h>
+#include "session_voice_signal_protocol.h"
 
 #include <iostream>
 #include <string>
@@ -58,6 +57,7 @@ int main(int argc, char** argv) {
   Options opt;
   if (!parse_args(argc, argv, &opt)) return 2;
 
+  VoiceBrokerSignalEvent offer_event;
   long http_status = 0;
   std::string err;
   if (!wait_for_voice_broker_signal_type(
@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
         opt.session_id,
         "offer",
         opt.stream_timeout_ms,
-        nullptr,
+        &offer_event,
         &http_status,
         &err)) {
     std::cerr << "Failed to read offer";
@@ -76,16 +76,23 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  Json::Value answer_payload(Json::objectValue);
-  answer_payload["sdp"] = "stub-answer";
-  answer_payload["type"] = "answer";
-  if (!send_voice_broker_answer(opt.broker_url, opt.token, opt.session_id, answer_payload, &err)) {
+  VoiceBrokerSignalDescription offer;
+  if (!parse_voice_broker_signal_description_payload(offer_event.payload, &offer, &err)) {
+    std::cerr << "Failed to parse offer payload: " << err << "\n";
+    return 1;
+  }
+
+  VoiceBrokerSignalDescription answer;
+  answer.type = "answer";
+  answer.sdp = "stub-answer";
+  if (!send_voice_broker_answer(opt.broker_url, opt.token, opt.session_id, answer, &err)) {
     std::cerr << "Failed to send answer: " << err << "\n";
     return 1;
   }
-  if (!opt.send_bye_reason.empty() &&
-      !send_voice_broker_bye(
-        opt.broker_url, opt.token, opt.session_id, opt.send_bye_reason, &err)) {
+
+  VoiceBrokerSignalBye bye;
+  bye.reason = opt.send_bye_reason;
+  if (!bye.reason.empty() && !send_voice_broker_bye(opt.broker_url, opt.token, opt.session_id, bye, &err)) {
     std::cerr << "Failed to send bye: " << err << "\n";
     return 1;
   }

@@ -1,20 +1,11 @@
 #pragma once
 
-#include <json/json.h>
+#include "session_voice_signal_protocol.h"
 
-#include <cstdint>
 #include <functional>
 #include <string>
 
 namespace agentd {
-
-struct VoiceBrokerSignalEvent {
-  std::string type;
-  Json::Value payload = Json::Value(Json::objectValue);
-  std::string from;
-  int64_t ts_unix_ms = 0;
-  Json::Value raw = Json::Value(Json::objectValue);
-};
 
 using VoiceBrokerSignalEventCallback = std::function<bool(const VoiceBrokerSignalEvent&)>;
 
@@ -31,7 +22,7 @@ bool send_voice_broker_answer(
   const std::string& broker_url,
   const std::string& token,
   const std::string& session_id,
-  const Json::Value& payload,
+  const VoiceBrokerSignalDescription& answer,
   std::string* out_err
 );
 
@@ -39,7 +30,7 @@ bool send_voice_broker_bye(
   const std::string& broker_url,
   const std::string& token,
   const std::string& session_id,
-  const std::string& reason,
+  const VoiceBrokerSignalBye& bye,
   std::string* out_err
 );
 

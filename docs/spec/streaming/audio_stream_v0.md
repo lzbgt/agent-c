@@ -113,6 +113,12 @@ A v0 smoke test should:
   - send standard `answer` payloads
   - send graceful `bye` payloads
   These are reused by the loopback tool instead of remaining trapped in tool-local HTTP/SSE code.
+- Agentd also now ships shared typed broker-signal payload semantics in C++:
+  - parsed event `sender_tag` extraction
+  - typed offer/answer SDP payload parsing
+  - typed ICE candidate payload parsing
+  - typed `bye` payload parsing/building
+  so the future builtin backend can reuse one protocol contract instead of re-deriving JSON fields ad hoc.
 - Broker now exposes live session lifecycle/status APIs:
   - `GET /v1/audio/sessions`
   - `GET /v1/audio/sessions/{session_id}`
@@ -143,6 +149,7 @@ A v0 smoke test should:
   teardown against a live headless Chromium peer.
 - `tests/agentd_audio_signal_loopback_smoke.sh` now also proves agentd-side graceful `bye` after the stub `answer`,
   and confirms the broker reports the session closed rather than leaving teardown implicit.
+- `ctest` now also includes `session_voice_signal_protocol_tests` for direct typed broker-signal payload coverage.
 - `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` covers the agentd-managed runtime surface for that same peer,
   including start/status, inbound RTP proof against a live browser peer, and managed stop/teardown.
 - `runtime_kind` on `POST /api/v1/session/voice_webrtc_peer` is now a start-only backend selector; stop requests ignore

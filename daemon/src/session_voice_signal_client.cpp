@@ -8,7 +8,6 @@
 #include <curl/curl.h>
 
 #include <map>
-#include <memory>
 
 namespace agentd {
 namespace {
@@ -19,29 +18,6 @@ std::string join_base_path(std::string base, const std::string& path) {
   if (path.empty()) return base;
   if (path.front() == '/') return base + path;
   return base + "/" + path;
-}
-
-bool parse_voice_broker_signal_event_json(const std::string& raw, VoiceBrokerSignalEvent* out_event) {
-  if (!out_event) return false;
-  Json::CharReaderBuilder rb;
-  rb["collectComments"] = false;
-  std::string errs;
-  Json::Value root(Json::nullValue);
-  const std::unique_ptr<Json::CharReader> reader(rb.newCharReader());
-  if (!reader->parse(raw.data(), raw.data() + raw.size(), &root, &errs)) return false;
-  if (!root.isObject()) return false;
-
-  VoiceBrokerSignalEvent ev;
-  ev.raw = root;
-  if (root.isMember("type") && root["type"].isString()) ev.type = trim_copy(root["type"].asString());
-  if (root.isMember("payload") && root["payload"].isObject()) ev.payload = root["payload"];
-  else ev.payload = Json::Value(Json::objectValue);
-  if (root.isMember("from") && root["from"].isString()) ev.from = trim_copy(root["from"].asString());
-  if (root.isMember("ts_unix_ms") && (root["ts_unix_ms"].isInt64() || root["ts_unix_ms"].isUInt64())) {
-    ev.ts_unix_ms = root["ts_unix_ms"].asInt64();
-  }
-  *out_event = std::move(ev);
-  return true;
 }
 
 struct VoiceBrokerSignalStreamState {
@@ -122,22 +98,22 @@ bool send_voice_broker_answer(
   const std::string& broker_url,
   const std::string& token,
   const std::string& session_id,
-  const Json::Value& payload,
+  const VoiceBrokerSignalDescription& answer,
   std::string* out_err
 ) {
-  return send_voice_broker_signal(broker_url, token, session_id, "answer", payload, out_err);
+  return send_voice_broker_signal(
+    broker_url, token, session_id, "answer", make_voice_broker_description_payload(answer), out_err);
 }
 
 bool send_voice_broker_bye(
   const std::string& broker_url,
   const std::string& token,
   const std::string& session_id,
-  const std::string& reason,
+  const VoiceBrokerSignalBye& bye,
   std::string* out_err
 ) {
-  Json::Value payload(Json::objectValue);
-  if (!trim_copy(reason).empty()) payload["reason"] = trim_copy(reason);
-  return send_voice_broker_signal(broker_url, token, session_id, "bye", payload, out_err);
+  return send_voice_broker_signal(
+    broker_url, token, session_id, "bye", make_voice_broker_bye_payload(bye), out_err);
 }
 
 bool stream_voice_broker_signal_events(
