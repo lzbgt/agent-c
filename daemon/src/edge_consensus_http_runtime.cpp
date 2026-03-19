@@ -1,5 +1,6 @@
 #include "edge_consensus_http_runtime.h"
 
+#include "edge_consensus_runtime_core.h"
 #include "edge_node_consensus.h"
 #include "http_client.h"
 #include "json_util.h"
@@ -187,16 +188,46 @@ bool run_edge_consensus_http_runtime(
   Json::Value* out_result,
   std::string* out_error
 ) {
+  EdgeConsensusRuntimeTransportOps transport;
+  transport.post_hello = [&cfg](uint64_t* io_seq, std::string* err) {
+    return post_hello(cfg, io_seq, err);
+  };
+  transport.send_consensus_frame =
+    [&cfg](
+      const EdgeConsensusFrame& frame,
+      const std::vector<std::string>& raw_target_node_ids,
+      uint64_t* io_seq,
+      std::string* err
+    ) {
+      return send_consensus_frame(cfg, frame, raw_target_node_ids, io_seq, err);
+    };
+  transport.poll_outbox = [&cfg](int64_t cursor, Json::Value* out, std::string* err) {
+    return poll_outbox(cfg, cursor, out, err);
+  };
+  return run_edge_consensus_runtime_core(cfg, hooks, transport, out_result, out_error);
+}
+
+bool run_edge_consensus_runtime_core(
+  const EdgeConsensusHttpRuntimeConfig& cfg,
+  const EdgeConsensusHttpRuntimeHooks& hooks,
+  const EdgeConsensusRuntimeTransportOps& transport,
+  Json::Value* out_result,
+  std::string* out_error
+) {
   if (out_error) out_error->clear();
   if (out_result) *out_result = Json::Value(Json::nullValue);
   if (!out_result) {
     if (out_error) *out_error = "out_result required";
     return false;
   }
+  if (!transport.post_hello || !transport.send_consensus_frame || !transport.poll_outbox) {
+    if (out_error) *out_error = "runtime transport incomplete";
+    return false;
+  }
 
   uint64_t msg_seq = 0;
   std::string err;
-  if (!post_hello(cfg, &msg_seq, &err)) {
+  if (!transport.post_hello(&msg_seq, &err)) {
     if (out_error) *out_error = "failed to post NODE_HELLO: " + err;
     return false;
   }
@@ -245,7 +276,7 @@ bool run_edge_consensus_http_runtime(
     const std::vector<EdgeConsensusFrame> scheduled = loop.tick(now_utc_ms());
     for (const auto& request : scheduled) {
       const std::vector<std::string> targets = loop.target_node_ids_for_frame(request);
-      if (!send_consensus_frame(cfg, request, targets, &msg_seq, &err)) {
+      if (!transport.send_consensus_frame(request, targets, &msg_seq, &err)) {
         if (out_error) *out_error = "failed to send vote_request: " + err;
         return false;
       }
@@ -254,7 +285,7 @@ bool run_edge_consensus_http_runtime(
     }
 
     Json::Value outbox;
-    if (!poll_outbox(cfg, cursor, &outbox, &err)) {
+    if (!transport.poll_outbox(cursor, &outbox, &err)) {
       if (out_error) *out_error = "failed to poll outbox: " + err;
       return false;
     }
@@ -288,7 +319,7 @@ bool run_edge_consensus_http_runtime(
                              std::to_string((unsigned long long)frame.term));
         for (const auto& out_frame : generated) {
           const std::vector<std::string> targets = loop.target_node_ids_for_frame(out_frame);
-          if (!send_consensus_frame(cfg, out_frame, targets, &msg_seq, &err)) {
+          if (!transport.send_consensus_frame(out_frame, targets, &msg_seq, &err)) {
             if (out_error) *out_error = "failed to send generated frame: " + err;
             return false;
           }
