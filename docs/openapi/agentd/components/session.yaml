@@ -1,3 +1,14 @@
+VoiceWebRtcPeerBackendPolicyDrift:
+  type: object
+  required: [changed_fields, current_effective_start]
+  properties:
+    changed_fields:
+      type: array
+      items: { type: string }
+    current_effective_start:
+      type: object
+      additionalProperties: true
+
 VoiceWebRtcPeerRuntime:
   type: object
   required: [schema, runtime_kind, status_source, session_id, broker_url, sender_tag, tool_path, node_bin, started_unix_ms, deadline_ms, poll_interval_ms, tone_hz, ready, running]
@@ -117,6 +128,8 @@ VoiceWebRtcPeerResponse:
     already_running: { type: boolean }
     reason: { type: string }
     error: { type: string }
+    backend_policy_drift:
+      $ref: "#/components/schemas/VoiceWebRtcPeerBackendPolicyDrift"
     peer:
       nullable: true
       allOf:
@@ -160,6 +173,8 @@ VoiceWebRtcPeerStatusResponse:
     cleanup_on_missing_session:
       type: object
       additionalProperties: true
+    backend_policy_drift:
+      $ref: "#/components/schemas/VoiceWebRtcPeerBackendPolicyDrift"
     peer:
       nullable: true
       allOf:

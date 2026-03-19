@@ -409,6 +409,11 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   config changes that make that selected backend unlaunchable now fail closed with `409` plus the existing `peer`
   snapshot; that includes explicit `runtime_kind=builtin`, which now conflicts against a live non-builtin runtime
   instead of falling through to the reserved not-implemented branch.
+- When daemon backend policy rotates under a still-running bundled/external peer, both
+  `GET /api/v1/session/voice_webrtc_peer` and `409` start-conflict responses now surface
+  `backend_policy_drift.changed_fields[]` plus `backend_policy_drift.current_effective_start`, so operators can see
+  whether drift comes from default backend selection, broker URL defaults, `peer_tool_path`, bundled discovery, or
+  `node_bin` rather than inferring it from a generic mismatch.
 - Child exit state is now persisted eagerly as the peer process ends, so later status reads and daemon restarts do not
   depend on an in-memory refresh to observe that the peer already stopped.
 - If the canonical session row is gone but stale `voice_webrtc_peer` state still exists, the status read now self-heals

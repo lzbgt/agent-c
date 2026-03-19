@@ -2019,6 +2019,31 @@ if audio.get("bundled_available") is not True or audio.get("external_available")
   raise SystemExit(1)
 PY
 
+external_default_conflict_status_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer?session_id=${EXTERNAL_SESSION_ID}")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${external_default_conflict_status_resp}''')
+peer = obj.get("peer") or {}
+drift = obj.get("backend_policy_drift") or {}
+fields = set(drift.get("changed_fields") or [])
+current = drift.get("current_effective_start") or {}
+if peer.get("runtime_kind") != "external" or obj.get("running") is not True:
+  print("expected running external peer while proving default-runtime drift", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "default_runtime_kind" not in fields:
+  print("expected default_runtime_kind drift on status", obj, file=sys.stderr)
+  raise SystemExit(1)
+if current.get("runtime_kind") != "bundled" or current.get("default_runtime_kind_source") != "config":
+  print("unexpected effective start policy for default-runtime drift", obj, file=sys.stderr)
+  raise SystemExit(1)
+if current.get("runtime_available") is not True:
+  print("expected bundled effective start policy to remain available", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 external_default_conflict_body="${LOG_DIR}/voice_webrtc_peer_external_default_conflict_body.json"
 external_default_conflict_status="$(curl -sS --noproxy "*" --max-time 10 -o "${external_default_conflict_body}" -w '%{http_code}' \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
@@ -2034,11 +2059,20 @@ python3 - <<PY
 import json, sys
 obj = json.load(open(r'''${external_default_conflict_body}''', 'r', encoding='utf-8'))
 peer = obj.get("peer") or {}
+drift = obj.get("backend_policy_drift") or {}
+fields = set(drift.get("changed_fields") or [])
+current = drift.get("current_effective_start") or {}
 if obj.get("error") != "voice peer already running with different config":
   print("unexpected effective default-runtime conflict response", obj, file=sys.stderr)
   raise SystemExit(1)
 if peer.get("runtime_kind") != "external" or peer.get("tone_hz") != 901:
   print("unexpected peer snapshot for effective default-runtime conflict", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "default_runtime_kind" not in fields:
+  print("expected default_runtime_kind drift on conflict response", obj, file=sys.stderr)
+  raise SystemExit(1)
+if current.get("runtime_kind") != "bundled" or current.get("default_runtime_kind_source") != "config":
+  print("unexpected conflict effective start policy for default-runtime drift", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 
@@ -2093,11 +2127,23 @@ python3 - <<PY
 import json, sys
 obj = json.load(open(r'''${external_unavailable_conflict_body}''', 'r', encoding='utf-8'))
 peer = obj.get("peer") or {}
+drift = obj.get("backend_policy_drift") or {}
+fields = set(drift.get("changed_fields") or [])
+current = drift.get("current_effective_start") or {}
 if obj.get("error") != "voice peer already running with different config":
   print("unexpected unavailable-backend running conflict response", obj, file=sys.stderr)
   raise SystemExit(1)
 if peer.get("runtime_kind") != "external" or peer.get("tool_path") != r'''${PEER_TOOL}''':
   print("unexpected peer snapshot for unavailable-backend running conflict", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "peer_tool_path" not in fields:
+  print("expected peer_tool_path drift on unavailable external conflict", obj, file=sys.stderr)
+  raise SystemExit(1)
+if current.get("runtime_kind") != "external" or current.get("runtime_available") is not False:
+  print("unexpected effective start policy for unavailable external conflict", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "not configured" not in str(current.get("runtime_unavailable_reason") or ""):
+  print("expected missing peer_tool_path reason on unavailable external conflict", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 
@@ -2166,11 +2212,23 @@ python3 - <<PY
 import json, sys
 obj = json.load(open(r'''${external_node_bin_conflict_body}''', 'r', encoding='utf-8'))
 peer = obj.get("peer") or {}
+drift = obj.get("backend_policy_drift") or {}
+fields = set(drift.get("changed_fields") or [])
+current = drift.get("current_effective_start") or {}
 if obj.get("error") != "voice peer already running with different config":
   print("unexpected effective node_bin conflict response", obj, file=sys.stderr)
   raise SystemExit(1)
 if peer.get("runtime_kind") != "external" or peer.get("node_bin") != "node":
   print("unexpected peer snapshot for effective node_bin conflict", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "node_bin" not in fields:
+  print("expected node_bin drift on node_bin conflict", obj, file=sys.stderr)
+  raise SystemExit(1)
+if current.get("runtime_kind") != "external" or current.get("node_bin") != "definitely-not-a-real-node-binary":
+  print("unexpected effective start policy for node_bin conflict", obj, file=sys.stderr)
+  raise SystemExit(1)
+if current.get("runtime_available") is not False or "not found" not in str(current.get("runtime_unavailable_reason") or ""):
+  print("expected unavailable node_bin drift reason on conflict", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 
@@ -2207,6 +2265,21 @@ if audio.get("node_bin") != "node" or audio.get("peer_tool_path_configured") is 
   raise SystemExit(1)
 PY
 
+external_restored_status_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer?session_id=${EXTERNAL_SESSION_ID}")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${external_restored_status_resp}''')
+if obj.get("running") is not True or (obj.get("peer") or {}).get("runtime_kind") != "external":
+  print("expected running external peer after restoring valid config", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "backend_policy_drift" in obj:
+  print("did not expect backend_policy_drift after restoring valid external config", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 external_conflict_body="${LOG_DIR}/voice_webrtc_peer_external_conflict_body.json"
 external_conflict_status="$(curl -sS --noproxy "*" --max-time 10 -o "${external_conflict_body}" -w '%{http_code}' \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
@@ -2227,6 +2300,9 @@ if obj.get("error") != "voice peer already running with different config":
   raise SystemExit(1)
 if peer.get("runtime_kind") != "external" or peer.get("tone_hz") != 901:
   print("unexpected external conflict peer snapshot", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "backend_policy_drift" in obj:
+  print("did not expect backend_policy_drift for explicit request conflict with restored policy", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 

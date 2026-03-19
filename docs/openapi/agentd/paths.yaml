@@ -3376,6 +3376,9 @@
       `cleanup_on_missing_session`. Persisted `running=true` runtime records left
       behind by a dead daemon process are also self-healed on read through
       `cleanup_on_stale_record` instead of being surfaced as a fake stopped peer.
+      If daemon backend policy rotates under a still-running bundled/external peer,
+      status also surfaces `backend_policy_drift` with the current effective start
+      policy instead of leaving that mismatch implicit.
     parameters:
       - in: query
         name: session_id
@@ -3419,7 +3422,10 @@
       from the recovered persisted runtime record only when the effective resolved
       runtime config remains compatible with that live runtime; conflicting explicit,
       config-driven, or now-unlaunchable start requests now return `409` with the
-      existing runtime snapshot instead.
+      existing runtime snapshot instead. When daemon backend policy rotates under a
+      still-running bundled/external peer, both status and those `409` conflict
+      responses also surface `backend_policy_drift` so callers can see the current
+      effective start policy behind the mismatch.
       That running-runtime conflict path also wins over the reserved `builtin`
       selector, so an explicit `runtime_kind=builtin` request against a live bundled
       or external runtime returns `409` instead of a misleading not-implemented

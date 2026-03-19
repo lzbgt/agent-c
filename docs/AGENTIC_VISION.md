@@ -388,6 +388,9 @@ Implemented evidence (facts):
 Planned evidence (tracked in `TODOS.md`):
 - Multi-agent team orchestration smoke (roles, shared memory, quorum gates).
 - Voice workflow loopback (end-to-end low-latency media path).
+- If daemon voice-backend policy rotates while a managed bundled/external peer is still running, status and
+  start-conflict reads now surface `backend_policy_drift.changed_fields[]` plus the current effective start policy
+  instead of leaving operators with a generic mismatch.
 - The managed edge-consensus lane now has explicit backend-default policy plumbing too: daemon config and env can select
   builtin vs external by default, and runtime/config metadata expose whether that current default is actually launchable.
 - Managed consensus start semantics are now fail-closed for both backend families on early failure rather than only the

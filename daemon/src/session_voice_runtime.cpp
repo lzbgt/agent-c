@@ -144,6 +144,78 @@ static Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   return out;
 }
 
+static Json::Value voice_peer_runtime_backend_policy_drift_json(const DaemonConfig& cfg, const VoicePeerRuntime& st) {
+  if (!st.running) return Json::Value(Json::nullValue);
+
+  Json::Value changed_fields(Json::arrayValue);
+  std::set<std::string> seen_changed_fields;
+  auto add_changed_field = [&](const std::string& name) {
+    if (name.empty()) return;
+    if (!seen_changed_fields.insert(name).second) return;
+    changed_fields.append(name);
+  };
+
+  const std::string current_default_runtime_kind = default_voice_peer_runtime_kind(cfg);
+  const std::string current_default_runtime_kind_source = default_voice_peer_runtime_kind_source(cfg);
+  const std::string current_broker_url = effective_voice_broker_url(cfg, "");
+  const std::string default_unavailable_reason =
+    voice_peer_backend_unavailable_reason(cfg, current_default_runtime_kind);
+
+  Json::Value current_effective_start(Json::objectValue);
+  current_effective_start["runtime_kind"] = current_default_runtime_kind;
+  current_effective_start["default_runtime_kind_source"] = current_default_runtime_kind_source;
+  current_effective_start["broker_url_configured"] = !current_broker_url.empty();
+  if (!current_broker_url.empty()) current_effective_start["broker_url"] = current_broker_url;
+  current_effective_start["runtime_available"] = default_unavailable_reason.empty();
+  if (!default_unavailable_reason.empty()) {
+    current_effective_start["runtime_unavailable_reason"] = default_unavailable_reason;
+  }
+
+  if (current_default_runtime_kind != st.runtime_kind) add_changed_field("default_runtime_kind");
+  if (current_broker_url != st.broker_url) add_changed_field("broker_url_default");
+
+  if (current_default_runtime_kind == st.runtime_kind &&
+      (current_default_runtime_kind == "bundled" || current_default_runtime_kind == "external")) {
+    std::string resolved_tool_path;
+    std::string resolved_node_bin;
+    std::string resolved_err;
+    (void)resolve_voice_peer_backend(
+      cfg, current_default_runtime_kind, &resolved_tool_path, &resolved_node_bin, &resolved_err);
+    const std::string effective_node_bin = trim_copy(
+      cfg.audio_webrtc_peer_node_bin.empty() ? std::string("node") : cfg.audio_webrtc_peer_node_bin);
+    current_effective_start["node_bin"] = effective_node_bin;
+
+    std::string effective_tool_path = resolved_tool_path;
+    if (effective_tool_path.empty()) {
+      if (current_default_runtime_kind == "bundled") {
+        effective_tool_path = discover_bundled_audio_peer_tool_path(cfg);
+      } else {
+        effective_tool_path = trim_copy(cfg.audio_webrtc_peer_tool_path);
+      }
+    }
+    if (!effective_tool_path.empty()) current_effective_start["tool_path"] = effective_tool_path;
+
+    if (effective_node_bin != st.node_bin) add_changed_field("node_bin");
+    if (effective_tool_path != st.tool_path) {
+      add_changed_field(current_default_runtime_kind == "bundled" ? "bundled_tool_path" : "peer_tool_path");
+    }
+  }
+
+  if (changed_fields.empty()) return Json::Value(Json::nullValue);
+
+  Json::Value out(Json::objectValue);
+  out["changed_fields"] = changed_fields;
+  out["current_effective_start"] = current_effective_start;
+  return out;
+}
+
+static void voice_peer_add_runtime_snapshot(const DaemonConfig& cfg, const VoicePeerRuntime& st, Json::Value* out) {
+  if (!out) return;
+  (*out)["peer"] = voice_peer_runtime_to_json(st);
+  const Json::Value drift = voice_peer_runtime_backend_policy_drift_json(cfg, st);
+  if (!drift.isNull()) (*out)["backend_policy_drift"] = drift;
+}
+
 static bool voice_peer_runtime_matches_start_request(
   const VoicePeerRuntime& st,
   const Json::Value& body,
@@ -806,7 +878,7 @@ void handle_session_voice_webrtc_peer_endpoint(
       {
         std::lock_guard<std::mutex> lk(g_voice_peer_mu);
         refresh_voice_peer_runtime_state(st.get());
-        out["peer"] = voice_peer_runtime_to_json(*st);
+        voice_peer_add_runtime_snapshot(cfg, *st, &out);
       }
       resp->status = 500;
       resp->body = json_stringify(out);
@@ -820,7 +892,7 @@ void handle_session_voice_webrtc_peer_endpoint(
 #else
     if (was_running) {
       out["error"] = "voice_webrtc_peer stop unsupported on Windows";
-      out["peer"] = voice_peer_runtime_to_json(*st);
+      voice_peer_add_runtime_snapshot(cfg, *st, &out);
       resp->status = 501;
       resp->body = json_stringify(out);
       return;
@@ -841,7 +913,7 @@ void handle_session_voice_webrtc_peer_endpoint(
       std::lock_guard<std::mutex> lk(g_voice_peer_mu);
       refresh_voice_peer_runtime_state(st.get());
       finalize_recovered_voice_peer_stop(st.get(), signal_used);
-      out["peer"] = voice_peer_runtime_to_json(*st);
+      voice_peer_add_runtime_snapshot(cfg, *st, &out);
     }
     std::string perr;
     (void)persist_voice_peer_runtime_record(db, *st, &perr);
@@ -928,7 +1000,7 @@ void handle_session_voice_webrtc_peer_endpoint(
     auto st = voice_peer_lookup_locked(session_id);
     if (st) refresh_voice_peer_runtime_state(st.get());
     if (st && st->running) {
-      out["peer"] = voice_peer_runtime_to_json(*st);
+      voice_peer_add_runtime_snapshot(cfg, *st, &out);
       std::string perr;
       (void)persist_voice_peer_runtime_record(db, *st, &perr);
       if (!voice_peer_runtime_matches_start_request(
@@ -989,7 +1061,7 @@ void handle_session_voice_webrtc_peer_endpoint(
         std::lock_guard<std::mutex> lk(g_voice_peer_mu);
         g_voice_peer_by_session[session_id] = persisted;
       }
-      out["peer"] = voice_peer_runtime_to_json(*persisted);
+      voice_peer_add_runtime_snapshot(cfg, *persisted, &out);
       std::string perr;
       (void)persist_voice_peer_runtime_record(db, *persisted, &perr);
       if (!voice_peer_runtime_matches_start_request(
@@ -1184,7 +1256,7 @@ void handle_session_voice_webrtc_peer_endpoint(
       {
         std::lock_guard<std::mutex> lk(g_voice_peer_mu);
         refresh_voice_peer_runtime_state(spawned.get());
-        out["peer"] = voice_peer_runtime_to_json(*spawned);
+        voice_peer_add_runtime_snapshot(cfg, *spawned, &out);
       }
       resp->status = 500;
       resp->body = json_stringify(out);
@@ -1207,7 +1279,7 @@ void handle_session_voice_webrtc_peer_endpoint(
   {
     std::lock_guard<std::mutex> lk(g_voice_peer_mu);
     refresh_voice_peer_runtime_state(spawned.get());
-    out["peer"] = voice_peer_runtime_to_json(*spawned);
+    voice_peer_add_runtime_snapshot(cfg, *spawned, &out);
   }
   out["ok"] = true;
   out["started"] = true;
@@ -1311,7 +1383,11 @@ void handle_session_voice_webrtc_peer_status_endpoint(
     std::string perr;
     (void)persist_voice_peer_runtime_record(db, *st, &perr);
   }
-  out["peer"] = st ? voice_peer_runtime_to_json(*st) : Json::Value(Json::nullValue);
+  if (st) {
+    voice_peer_add_runtime_snapshot(cfg, *st, &out);
+  } else {
+    out["peer"] = Json::Value(Json::nullValue);
+  }
   out["running"] = st ? st->running : false;
   resp->status = 200;
   resp->body = json_stringify(out);

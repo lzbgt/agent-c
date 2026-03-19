@@ -160,6 +160,10 @@ A v0 smoke test should:
   changed daemon defaults like backend selection or `node_bin`, or through config that now makes the selected backend
   unlaunchable, `POST /api/v1/session/voice_webrtc_peer` now returns `409` with the current `peer` snapshot instead of
   reporting a false idempotent reuse.
+- If daemon backend policy rotates underneath a live bundled/external peer, runtime reads and `409` start-conflict
+  responses now also surface `backend_policy_drift.changed_fields[]` plus
+  `backend_policy_drift.current_effective_start`, so callers can distinguish default-backend drift from tool-path,
+  `node_bin`, or broker-default drift without diffing daemon config out of band.
 - That same runtime now persists child-exit state eagerly and lets `action=stop` take `broker_token`, so agentd can
   delete a managed broker audio session itself after an ungraceful peer death that skipped the child's `bye`.
 - Stop and session-delete cleanup now validate broker tokens lazily, so borrowed broker-session runtimes can still be
