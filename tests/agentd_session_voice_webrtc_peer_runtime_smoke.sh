@@ -980,6 +980,9 @@ if broker_session.get("mode") != "auto_create" or broker_session.get("agent_id")
 if broker_session.get("deployment_id") != "lab-builtin-contract":
   print("expected builtin deployment contract", obj, file=sys.stderr)
   raise SystemExit(1)
+if broker_session.get("session_id") is not None:
+  print("expected builtin auto-create broker contract to omit session_id", obj, file=sys.stderr)
+  raise SystemExit(1)
 artifacts = contract.get("runtime_artifacts") or {}
 runtime_dir = artifacts.get("runtime_dir") or ""
 if not runtime_dir.endswith("/voice_webrtc_peers/" + obj.get("session_id", "")):
@@ -1135,6 +1138,9 @@ if broker_session.get("session_id") != r'''${BUILTIN_BORROWED_BROKER_SESSION_ID}
   raise SystemExit(1)
 if broker_session.get("session_mode") != "webrtc":
   print("expected builtin borrowed broker session mode", obj, file=sys.stderr)
+  raise SystemExit(1)
+if broker_session.get("agent_id") is not None or broker_session.get("deployment_id") is not None:
+  print("expected builtin borrowed broker contract to omit auto-create ownership fields", obj, file=sys.stderr)
   raise SystemExit(1)
 media_plan = contract.get("media_runtime_plan") or {}
 if media_plan.get("broker_session_id") != r'''${BUILTIN_BORROWED_BROKER_SESSION_ID}''' or media_plan.get("managed_broker_session") is not False:

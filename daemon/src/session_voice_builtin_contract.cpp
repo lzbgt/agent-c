@@ -1,5 +1,6 @@
 #include "session_voice_builtin_contract.h"
 
+#include "session_voice_broker_plan.h"
 #include "session_voice_launch_flow.h"
 #include "session_voice_process_plan.h"
 #include "session_voice_runtime_plan.h"
@@ -14,6 +15,8 @@ Json::Value session_voice_builtin_start_contract_json(
 ) {
   const VoicePeerRuntimeArtifactsPlan artifacts =
     plan_voice_peer_runtime_artifacts(cfg, session_id);
+  const VoicePeerBrokerSessionPlan broker_session_plan =
+    make_voice_peer_broker_session_plan(start_plan);
   Json::Value out(Json::objectValue);
   out["session_id"] = session_id;
   out["runtime_kind"] = "builtin";
@@ -28,42 +31,19 @@ Json::Value session_voice_builtin_start_contract_json(
   out["startup_sequence"] =
     voice_peer_launch_startup_sequence_json(start_plan, true);
   out["runtime_artifacts"] = voice_peer_runtime_artifacts_json(artifacts);
-
-  Json::Value broker_session(Json::objectValue);
-  std::string planned_broker_session_id;
-  bool planned_managed_broker_session = false;
-  if (!start_plan.requested_broker_session_id.empty()) {
-    broker_session["mode"] = "borrowed";
-    broker_session["session_id"] = start_plan.requested_broker_session_id;
-    broker_session["preflighted"] = start_plan.requested_broker_session_preflighted;
-    if (!start_plan.requested_broker_session_mode.empty()) {
-      broker_session["session_mode"] = start_plan.requested_broker_session_mode;
-    }
-    planned_broker_session_id = start_plan.requested_broker_session_id;
-  } else {
-    broker_session["mode"] = "auto_create";
-    broker_session["preflighted"] = false;
-    broker_session["agent_id"] = start_plan.broker_agent_id;
-    if (!start_plan.broker_deployment_id.empty()) {
-      broker_session["deployment_id"] = start_plan.broker_deployment_id;
-    }
-    planned_managed_broker_session = true;
-  }
-  out["broker_session"] = broker_session;
+  out["broker_session"] = voice_peer_broker_session_plan_json(broker_session_plan);
   out["media_runtime_plan"] = voice_peer_media_runtime_plan_json(
     make_voice_peer_media_runtime_plan(
       session_id,
       start_plan,
       artifacts,
-      planned_broker_session_id,
-      planned_managed_broker_session));
+      broker_session_plan));
   out["planned_runtime"] = voice_peer_runtime_to_json(
     make_planned_voice_peer_runtime(
       session_id,
       start_plan,
       artifacts,
-      planned_broker_session_id,
-      planned_managed_broker_session));
+      broker_session_plan));
   return out;
 }
 

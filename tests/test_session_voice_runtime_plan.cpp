@@ -1,4 +1,5 @@
 #include "session_voice_runtime_plan.h"
+#include "session_voice_broker_plan.h"
 #include "session_voice_process_plan.h"
 
 #include <cassert>
@@ -7,6 +8,7 @@
 namespace {
 
 using agentd::DaemonConfig;
+using agentd::VoicePeerBrokerSessionPlan;
 using agentd::VoicePeerChildLaunchConfig;
 using agentd::VoicePeerRuntimeArtifactsPlan;
 using agentd::VoicePeerRuntimeSeed;
@@ -111,11 +113,16 @@ static void test_planned_runtime_matches_start_plan_and_artifacts() {
   artifacts.stdout_log_path = artifacts.runtime_dir + "/stdout.jsonl";
   artifacts.stderr_log_path = artifacts.runtime_dir + "/stderr.log";
 
+  VoicePeerBrokerSessionPlan broker_session_plan;
+  broker_session_plan.mode = "auto_create";
+  broker_session_plan.agent_id = "agent-a";
+  broker_session_plan.deployment_id = "deploy-b";
+  broker_session_plan.managed_broker_session = true;
   const agentd::VoicePeerMediaRuntimePlan media_plan =
-    make_voice_peer_media_runtime_plan("voice-sid", plan, artifacts, "", true);
+    make_voice_peer_media_runtime_plan("voice-sid", plan, artifacts, broker_session_plan);
 
   const agentd::VoicePeerRuntime runtime =
-    make_planned_voice_peer_runtime("voice-sid", plan, artifacts, "", true);
+    make_planned_voice_peer_runtime("voice-sid", plan, artifacts, broker_session_plan);
   assert(runtime.runtime_kind == "builtin");
   assert(runtime.status_source == "planned");
   assert(runtime.session_id == "voice-sid");
@@ -145,6 +152,34 @@ static void test_planned_runtime_matches_start_plan_and_artifacts() {
   assert(runtime.tone_hz == media_plan.tone_hz);
   assert(!runtime.ready);
   assert(!runtime.running);
+}
+
+static void test_planned_runtime_follows_borrowed_broker_session_plan() {
+  VoicePeerStartPlan plan;
+  plan.runtime_kind = "builtin";
+  plan.effective_broker_url = "http://broker";
+  plan.sender_tag = "agentd_runtime_peer";
+
+  VoicePeerRuntimeArtifactsPlan artifacts;
+  artifacts.runtime_dir = "/tmp/agentd-state/voice_webrtc_peers/voice-sid";
+  artifacts.ready_file_path = artifacts.runtime_dir + "/ready.json";
+  artifacts.stdout_log_path = artifacts.runtime_dir + "/stdout.jsonl";
+  artifacts.stderr_log_path = artifacts.runtime_dir + "/stderr.log";
+
+  VoicePeerBrokerSessionPlan broker_session_plan;
+  broker_session_plan.mode = "borrowed";
+  broker_session_plan.session_id = "sess-1";
+  broker_session_plan.preflighted = true;
+  broker_session_plan.session_mode = "webrtc";
+  broker_session_plan.managed_broker_session = false;
+
+  const agentd::VoicePeerRuntime runtime =
+    make_planned_voice_peer_runtime("voice-sid", plan, artifacts, broker_session_plan);
+
+  assert(runtime.broker_session_id == "sess-1");
+  assert(!runtime.managed_broker_session);
+  assert(runtime.broker_agent_id.empty());
+  assert(runtime.broker_deployment_id.empty());
 }
 
 static void test_spawned_runtime_seed_matches_child_process_media_plan() {
@@ -202,6 +237,7 @@ int main() {
   test_runtime_artifacts_follow_state_dir();
   test_spawned_runtime_seed_carries_launch_and_artifacts();
   test_planned_runtime_matches_start_plan_and_artifacts();
+  test_planned_runtime_follows_borrowed_broker_session_plan();
   test_spawned_runtime_seed_matches_child_process_media_plan();
   return 0;
 }

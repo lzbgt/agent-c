@@ -8,6 +8,7 @@ namespace {
 
 using agentd::VoicePeerChildLaunchConfig;
 using agentd::VoicePeerChildProcessPlan;
+using agentd::VoicePeerBrokerSessionPlan;
 using agentd::VoicePeerBrokerSessionBinding;
 using agentd::VoicePeerRuntimeArtifactsPlan;
 using agentd::VoicePeerStartPlan;
@@ -37,8 +38,13 @@ static void test_media_runtime_plan_carries_safe_runtime_inputs() {
   plan.tone_hz = 345;
 
   const VoicePeerRuntimeArtifactsPlan artifacts = make_artifacts();
+  VoicePeerBrokerSessionPlan broker_session_plan;
+  broker_session_plan.mode = "auto_create";
+  broker_session_plan.agent_id = "agent-a";
+  broker_session_plan.deployment_id = "deploy-b";
+  broker_session_plan.managed_broker_session = true;
   const agentd::VoicePeerMediaRuntimePlan media_plan =
-    make_voice_peer_media_runtime_plan("voice-sid", plan, artifacts, "", true);
+    make_voice_peer_media_runtime_plan("voice-sid", plan, artifacts, broker_session_plan);
 
   assert(media_plan.schema == "voice_webrtc_peer_media_runtime_plan_v1");
   assert(media_plan.signaling_surface == "voice_webrtc_peer");
@@ -71,6 +77,32 @@ static void test_media_runtime_plan_carries_safe_runtime_inputs() {
   assert(out["deadline_ms"].asInt64() == 1234);
   assert(out["poll_interval_ms"].asInt64() == 234);
   assert(out["tone_hz"].asInt64() == 345);
+}
+
+static void test_media_runtime_plan_follows_borrowed_broker_session_plan() {
+  VoicePeerStartPlan plan;
+  plan.runtime_kind = "builtin";
+  plan.effective_broker_url = "http://broker";
+  plan.sender_tag = "agentd_runtime_peer";
+  plan.deadline_ms = 1234;
+  plan.poll_interval_ms = 234;
+  plan.tone_hz = 345;
+
+  VoicePeerBrokerSessionPlan broker_session_plan;
+  broker_session_plan.mode = "borrowed";
+  broker_session_plan.session_id = "sess-1";
+  broker_session_plan.preflighted = true;
+  broker_session_plan.session_mode = "webrtc";
+  broker_session_plan.managed_broker_session = false;
+
+  const VoicePeerRuntimeArtifactsPlan artifacts = make_artifacts();
+  const agentd::VoicePeerMediaRuntimePlan media_plan =
+    make_voice_peer_media_runtime_plan("voice-sid", plan, artifacts, broker_session_plan);
+
+  assert(media_plan.broker_session_id == "sess-1");
+  assert(!media_plan.managed_broker_session);
+  assert(media_plan.broker_agent_id.empty());
+  assert(media_plan.broker_deployment_id.empty());
 }
 
 static void test_child_process_plan_shapes_media_plan_and_argv() {
@@ -172,6 +204,7 @@ static void test_child_launch_config_follows_start_plan_and_binding() {
 
 int main() {
   test_media_runtime_plan_carries_safe_runtime_inputs();
+  test_media_runtime_plan_follows_borrowed_broker_session_plan();
   test_child_process_plan_shapes_media_plan_and_argv();
   test_child_launch_config_follows_start_plan_and_binding();
   return 0;

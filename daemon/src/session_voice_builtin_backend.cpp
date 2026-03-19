@@ -1,6 +1,7 @@
 #include "session_voice_builtin_backend.h"
 
 #include "session_voice_backend_policy.h"
+#include "session_voice_broker_plan.h"
 #include "session_voice_builtin_contract.h"
 #include "session_voice_runtime_plan.h"
 #include "string_util.h"
@@ -24,13 +25,14 @@ bool start_voice_peer_builtin_backend(
   }
   const VoicePeerRuntimeArtifactsPlan artifacts =
     plan_voice_peer_runtime_artifacts(cfg, session_id);
+  const VoicePeerBrokerSessionPlan broker_session_plan =
+    make_voice_peer_broker_session_plan(start_plan);
   auto planned_state = std::make_shared<VoicePeerRuntime>(
     make_planned_voice_peer_runtime(
       session_id,
       start_plan,
       artifacts,
-      start_plan.requested_broker_session_id,
-      start_plan.requested_broker_session_id.empty()));
+      broker_session_plan));
   planned_state->last_error = out_result->error;
   out_result->state = std::move(planned_state);
   out_result->backend_info["builtin_start_contract"] =

@@ -91,11 +91,10 @@ VoicePeerRuntime make_planned_voice_peer_runtime(
   const std::string& session_id,
   const VoicePeerStartPlan& start_plan,
   const VoicePeerRuntimeArtifactsPlan& artifacts,
-  const std::string& broker_session_id,
-  bool managed_broker_session
+  const VoicePeerBrokerSessionPlan& broker_session_plan
 ) {
   const VoicePeerMediaRuntimePlan media_plan = make_voice_peer_media_runtime_plan(
-    session_id, start_plan, artifacts, broker_session_id, managed_broker_session);
+    session_id, start_plan, artifacts, broker_session_plan);
   VoicePeerRuntime runtime;
   apply_media_runtime_plan_fields(media_plan, &runtime);
   runtime.status_source = "planned";

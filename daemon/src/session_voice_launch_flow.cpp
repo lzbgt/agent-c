@@ -1,5 +1,6 @@
 #include "session_voice_launch_flow.h"
 
+#include "session_voice_broker_plan.h"
 #include "string_util.h"
 
 namespace agentd {
@@ -99,8 +100,10 @@ Json::Value voice_peer_launch_startup_sequence_json(
   const VoicePeerStartPlan& start_plan,
   bool runtime_launch_deferred
 ) {
+  const VoicePeerBrokerSessionPlan broker_session_plan =
+    make_voice_peer_broker_session_plan(start_plan);
   Json::Value out(Json::arrayValue);
-  if (!trim_copy(start_plan.requested_broker_session_id).empty()) {
+  if (broker_session_plan.mode == "borrowed") {
     append_startup_stage(&out, "borrowed_broker_session_preflight", false);
   } else {
     append_startup_stage(&out, "auto_create_broker_session", true);

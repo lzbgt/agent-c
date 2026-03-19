@@ -1,6 +1,7 @@
 #pragma once
 
 #include "daemon_config.h"
+#include "session_voice_broker_plan.h"
 #include "session_voice_runtime_internal.h"
 #include "session_voice_start_plan.h"
 
@@ -30,8 +31,7 @@ VoicePeerRuntime make_planned_voice_peer_runtime(
   const std::string& session_id,
   const VoicePeerStartPlan& start_plan,
   const VoicePeerRuntimeArtifactsPlan& artifacts,
-  const std::string& broker_session_id,
-  bool managed_broker_session
+  const VoicePeerBrokerSessionPlan& broker_session_plan
 );
 
 VoicePeerRuntimeSeed make_spawned_voice_peer_runtime_seed(

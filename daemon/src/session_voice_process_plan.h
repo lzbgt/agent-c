@@ -1,5 +1,6 @@
 #pragma once
 
+#include "session_voice_broker_plan.h"
 #include "session_voice_broker_session.h"
 #include "session_voice_runtime_internal.h"
 #include "session_voice_runtime_plan.h"
@@ -38,8 +39,7 @@ VoicePeerMediaRuntimePlan make_voice_peer_media_runtime_plan(
   const std::string& session_id,
   const VoicePeerStartPlan& start_plan,
   const VoicePeerRuntimeArtifactsPlan& artifacts,
-  const std::string& broker_session_id,
-  bool managed_broker_session
+  const VoicePeerBrokerSessionPlan& broker_session_plan
 );
 
 Json::Value voice_peer_media_runtime_plan_json(

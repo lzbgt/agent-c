@@ -8,17 +8,16 @@ VoicePeerMediaRuntimePlan make_voice_peer_media_runtime_plan(
   const std::string& session_id,
   const VoicePeerStartPlan& start_plan,
   const VoicePeerRuntimeArtifactsPlan& artifacts,
-  const std::string& broker_session_id,
-  bool managed_broker_session
+  const VoicePeerBrokerSessionPlan& broker_session_plan
 ) {
   VoicePeerMediaRuntimePlan plan;
   plan.runtime_kind = start_plan.runtime_kind;
   plan.session_id = trim_copy(session_id);
-  plan.broker_session_id = trim_copy(broker_session_id);
+  plan.broker_session_id = trim_copy(broker_session_plan.session_id);
   plan.broker_url = start_plan.effective_broker_url;
-  plan.managed_broker_session = managed_broker_session;
-  plan.broker_agent_id = start_plan.broker_agent_id;
-  plan.broker_deployment_id = start_plan.broker_deployment_id;
+  plan.managed_broker_session = broker_session_plan.managed_broker_session;
+  plan.broker_agent_id = broker_session_plan.agent_id;
+  plan.broker_deployment_id = broker_session_plan.deployment_id;
   plan.sender_tag = start_plan.sender_tag;
   plan.ready_file_path = artifacts.ready_file_path;
   plan.deadline_ms = start_plan.deadline_ms;
