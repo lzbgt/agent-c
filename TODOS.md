@@ -224,6 +224,7 @@ contract map.
 - 2026-03-20: extracted consensus runtime start-path reuse/conflict evaluation into `edge_consensus_runtime_reuse.cpp`, so active-runtime and recovered-external idempotency/conflict handling now share one config-comparison contract and direct proof.
 - 2026-03-20: extracted consensus runtime snapshot loading/reconciliation into `edge_consensus_runtime_snapshot.cpp`, so start/stop/status and registry read paths now share one active-vs-persisted resolution flow with direct proof for registry preference, corrupt-record updates, external adoption, and stale builtin cleanup.
 - 2026-03-20: added `edge_consensus_runtime_resolve_snapshot(...)` on top of the snapshot module, so endpoint/status/registry readers now share the full load+reconcile+recovery-update flow instead of repeating those orchestration steps inline.
+- 2026-03-20: extracted consensus runtime stop/activate control into `edge_consensus_runtime_control.cpp`, so endpoint start/stop paths now share persistence, registry activation, startup-confirmation cleanup, and stop finalization semantics with direct unit proof.
   - 2026-02-25: server-backed run watch prefs merged with localStorage; throttle server updates for cursor persistence.
 - [x] W=11 — Autonomous ops stack defaults: orchestrator + spawn adapter as first-class services (compose/systemd/launchd) with auto OIDC token refresh, so automation runs without the WebUI.
   - 2026-02-26: added `tools/run_autonomous_devstack.sh` wrapper for dev stacks.

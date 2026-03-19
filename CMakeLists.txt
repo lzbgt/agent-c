@@ -232,6 +232,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/edge_consensus_runtime_recovery.cpp
     daemon/src/edge_consensus_runtime_reuse.cpp
     daemon/src/edge_consensus_runtime_snapshot.cpp
+    daemon/src/edge_consensus_runtime_control.cpp
     daemon/src/edge_consensus_runtime_registry.cpp
     daemon/src/edge_consensus_runtime_core.cpp
     daemon/src/edge_consensus_runtime_backend.cpp
@@ -675,6 +676,15 @@ if(AGENT_BUILD_HOST)
   )
   target_link_libraries(edge_consensus_runtime_snapshot_tests PRIVATE agentd_lib)
   add_test(NAME edge_consensus_runtime_snapshot_tests COMMAND edge_consensus_runtime_snapshot_tests)
+
+  add_executable(edge_consensus_runtime_control_tests
+    tests/test_edge_consensus_runtime_control.cpp
+  )
+  target_compile_options(edge_consensus_runtime_control_tests PRIVATE
+    ${AGENTD_CXX_WARNINGS}
+  )
+  target_link_libraries(edge_consensus_runtime_control_tests PRIVATE agentd_lib)
+  add_test(NAME edge_consensus_runtime_control_tests COMMAND edge_consensus_runtime_control_tests)
 
   add_executable(edge_consensus_local_transport_tests
     tests/test_edge_consensus_local_transport.cpp

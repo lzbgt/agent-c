@@ -2,8 +2,8 @@
 
 #include "daemon_auth.h"
 #include "edge_consensus_runtime_backend.h"
+#include "edge_consensus_runtime_control.h"
 #include "edge_consensus_http_runtime.h"
-#include "edge_consensus_runtime_lifecycle.h"
 #include "edge_consensus_runtime_model.h"
 #include "edge_consensus_runtime_policy.h"
 #include "edge_consensus_runtime_recovery.h"
@@ -19,11 +19,7 @@
 #include <json/json.h>
 
 #include <algorithm>
-#include <atomic>
-#include <chrono>
-#include <filesystem>
 #include <memory>
-#include <thread>
 #include <vector>
 
 namespace agentd {
@@ -107,60 +103,35 @@ void handle_edge_node_consensus_runtime_endpoint(
     }
     edge_consensus_runtime_append_recovery_updates(recovery_updates, &out);
     std::shared_ptr<EdgeConsensusRuntime> st = snapshot.runtime;
-    if (!st) {
-      out["ok"] = true;
-      out["stopped"] = false;
-      out["reason"] = "not_running";
-      out["runtime"] = Json::Value(Json::nullValue);
-      resp->status = 200;
-      resp->body = json_stringify(out);
-      return;
-    }
-    if (!st->running) {
-      std::string perr;
-      (void)persist_edge_consensus_runtime_record(db_or_null, *st, &perr);
-      out["ok"] = true;
-      out["stopped"] = false;
-      out["reason"] = "not_running";
-      out["runtime"] = edge_consensus_runtime_response_json(cfg, *st);
-      resp->status = 200;
-      resp->body = json_stringify(out);
-      return;
-    }
-#if defined(_WIN32)
-    out["error"] = "consensus_runtime stop unsupported on Windows";
-    out["runtime"] = edge_consensus_runtime_response_json(cfg, *st);
-    resp->status = 501;
-    resp->body = json_stringify(out);
-    return;
-#else
-    std::string serr;
-    int signal_used = 0;
-    if (!edge_consensus_runtime_kill_best_effort(st, edge_consensus_runtime_registry_mutex(), &signal_used, &serr)) {
-      out["error"] = serr.empty() ? "failed to stop consensus runtime" : serr;
-      {
-        std::lock_guard<std::mutex> lk(edge_consensus_runtime_registry_mutex());
-        out["runtime"] = edge_consensus_runtime_response_json(cfg, *st);
-      }
+    EdgeConsensusRuntimeStopResult stop_result;
+    if (!edge_consensus_runtime_stop(
+          cfg, db_or_null, st, edge_consensus_runtime_registry_mutex(), &stop_result, &lerr)) {
+      out["error"] = lerr.empty() ? "failed to stop consensus runtime" : lerr;
+      out["runtime"] = st ? edge_consensus_runtime_response_json(cfg, *st) : Json::Value(Json::nullValue);
       resp->status = 500;
       resp->body = json_stringify(out);
       return;
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    {
-      std::lock_guard<std::mutex> lk(edge_consensus_runtime_registry_mutex());
-      refresh_edge_consensus_runtime_state(st.get());
-      finalize_recovered_edge_consensus_stop(st.get(), signal_used);
-      out["runtime"] = edge_consensus_runtime_response_json(cfg, *st);
+    out["runtime"] = stop_result.runtime;
+    if (stop_result.disposition == EdgeConsensusRuntimeStopDisposition::unsupported) {
+      out["error"] = "consensus_runtime stop unsupported on Windows";
+      resp->status = 501;
+      resp->body = json_stringify(out);
+      return;
     }
-    std::string perr;
-    (void)persist_edge_consensus_runtime_record(db_or_null, *st, &perr);
+    if (stop_result.disposition == EdgeConsensusRuntimeStopDisposition::not_running) {
+      out["ok"] = true;
+      out["stopped"] = false;
+      out["reason"] = "not_running";
+      resp->status = 200;
+      resp->body = json_stringify(out);
+      return;
+    }
     out["ok"] = true;
     out["stopped"] = true;
     resp->status = 200;
     resp->body = json_stringify(out);
     return;
-#endif
   }
 
   const std::string cluster_id = req_cluster_id;
@@ -248,10 +219,7 @@ void handle_edge_node_consensus_runtime_endpoint(
   std::shared_ptr<EdgeConsensusRuntime> spawned;
   std::string serr;
   const EdgeConsensusRuntimePersistFn persist_on_exit =
-    [db = db_or_null](const EdgeConsensusRuntime& snapshot) {
-      std::string perr;
-      (void)persist_edge_consensus_runtime_record(db, snapshot, &perr);
-    };
+    make_edge_consensus_runtime_persist_on_exit(db_or_null);
   const bool started = runtime_kind == "external"
     ? edge_consensus_runtime_spawn_external(
         cfg, db_or_null, body, edge_consensus_runtime_registry_mutex(), persist_on_exit, &spawned, &serr)
@@ -264,22 +232,18 @@ void handle_edge_node_consensus_runtime_endpoint(
     resp->body = json_stringify(out);
     return;
   }
-  Json::Value startup_runtime(Json::nullValue);
-  if (!edge_consensus_runtime_confirm_startup(spawned, edge_consensus_runtime_registry_mutex(), &startup_runtime, &serr)) {
+  Json::Value runtime(Json::nullValue);
+  if (!edge_consensus_runtime_activate_started(
+        cfg, db_or_null, node_id, spawned, edge_consensus_runtime_registry_mutex(), &runtime, &serr)) {
     out["error"] = serr.empty() ? "failed to start consensus runtime" : serr;
     out["startup_confirmed"] = false;
-    out["runtime"] = startup_runtime;
-    std::string cerr;
-    (void)clear_edge_consensus_runtime_record(db_or_null, node_id, &cerr);
+    out["runtime"] = runtime;
     resp->status = 500;
     resp->body = json_stringify(out);
     return;
   }
   out["startup_confirmed"] = true;
-  edge_consensus_runtime_remember_active(spawned);
-  out["runtime"] = edge_consensus_runtime_response_json(cfg, *spawned);
-  std::string perr;
-  (void)persist_edge_consensus_runtime_record(db_or_null, *spawned, &perr);
+  out["runtime"] = runtime;
   out["ok"] = true;
   out["started"] = true;
   resp->status = 200;
