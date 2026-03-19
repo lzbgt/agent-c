@@ -16,6 +16,8 @@ References:
 - Broker + control plane: `docs/BROKER.md`
 
 Recent shipped note:
+- 2026-03-19: tool-server child exec now closes inherited non-stdio fds, and restart smoke proves an ungraceful
+  agentd death can no longer leave an orphaned helper pinning the daemon's listener socket across same-port restart.
 - 2026-03-15: managed edge-consensus runtimes now persist their last runtime snapshot in DB meta, so status survives
   agentd restart for finished/stopped runtimes, live external helpers can be recovered from persisted running state,
   and stale/corrupt persisted runtime records self-heal on read.

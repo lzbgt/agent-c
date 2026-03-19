@@ -659,6 +659,8 @@ streaming and plugins are stable.
 - Tool servers (out-of-process) so big integrations stay isolated and “bring-up fast”.
   - Daemon flag: `--tool-server-cmd "<cmd>"` (repeatable; stdio JSON-lines protocol)
   - Reliability knobs: `--tool-server-timeout-ms`, `--tool-server-max-line-bytes`, plus restart-with-backoff on death (fail-closed; no auto-retry)
+  - 2026-03-19: tool-server child exec now closes inherited non-stdio fds too, and the restart smoke proves an
+    ungraceful daemon death cannot leave an orphaned helper pinning the same listener port across restart.
   - Optional health checks: `--tool-server-ping-interval-ms <n>` (best-effort idle `op:"ping"`; auto-disables if server replies `unknown op`)
   - Docs: `docs/TOOLS.md`
   - Proof: `ctest` includes `agentd_tool_server_smoke`, `agentd_tool_server_ping_smoke`, and `agentd_tool_server_restart_smoke`.

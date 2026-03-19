@@ -147,6 +147,16 @@ static void child_close_all(int* fds, size_t n) {
   }
 }
 
+static void child_close_inherited_nonstdio_fds() {
+  long max_fd = ::sysconf(_SC_OPEN_MAX);
+  if (max_fd < 0 || max_fd > 4096) {
+    max_fd = 4096;
+  }
+  for (int fd = 3; fd < max_fd; ++fd) {
+    close(fd);
+  }
+}
+
 static bool spawn_shell_cmd(const std::string& cmd, ChildProc* out, std::string* out_err) {
   if (out_err) out_err->clear();
   if (!out) return false;
@@ -180,6 +190,7 @@ static bool spawn_shell_cmd(const std::string& cmd, ChildProc* out, std::string*
 
     child_close_all(in_pipe, 2);
     child_close_all(out_pipe, 2);
+    child_close_inherited_nonstdio_fds();
 
     // Exec via sh for simple operator ergonomics.
     execl("/bin/sh", "sh", "-lc", cmd.c_str(), (char*)nullptr);

@@ -89,6 +89,9 @@ Notes:
   --tool-server-cmd
 - max_line_bytes bounds both the JSON response line and buffered partial lines
 - optional ping (op:"ping") can be enabled to detect dead servers
+- child tool-server exec now closes inherited non-stdio fds before `exec`, so
+  an orphaned helper cannot accidentally keep agentd listener sockets open
+  across an ungraceful daemon restart
 
 ### Protocol (JSON-lines)
 
@@ -137,8 +140,11 @@ ignores those vars, no host mount is exposed.
 
 ### Deterministic testing
 
-ctest includes agentd_tool_server_smoke, which routes a forced tool call to a
-server and validates the response.
+ctest includes:
+- `agentd_tool_server_smoke` for registration + basic tool execution
+- `agentd_tool_server_ping_smoke` for idle ping health checks
+- `agentd_tool_server_restart_smoke` for both restart-with-backoff after child
+  death and same-port daemon restart after an orphaned tool-server child
 
 ## Tool plugins (in-process ABI)
 

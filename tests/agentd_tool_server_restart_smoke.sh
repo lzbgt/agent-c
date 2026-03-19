@@ -19,9 +19,19 @@ PORT_STUB="$(agentd_smoke_pick_port)"
 HOST="127.0.0.1"
 STUB_BASE="http://${HOST}:${PORT_STUB}/v1"
 NAME="agentd_tool_server_restart_smoke"
+TOOL_SERVER_LINGER_CMD="python3 -u ${SCRIPT_DIR}/tool_server_linger_on_eof.py"
+TOOL_SERVER_FLAKY_CMD="python3 -u ${SCRIPT_DIR}/tool_server_flaky_exit.py"
+ORPHAN_PIDS_FILE="${LOG_DIR}/${NAME}.orphan_pids"
 
 cleanup() {
   agentd_smoke_stop
+  if [[ -f "${ORPHAN_PIDS_FILE}" ]]; then
+    while IFS= read -r pid; do
+      [[ -n "${pid}" ]] || continue
+      kill -TERM "${pid}" >/dev/null 2>&1 || true
+      wait "${pid}" >/dev/null 2>&1 || true
+    done < "${ORPHAN_PIDS_FILE}"
+  fi
   if [[ -n "${STUB_PID:-}" ]]; then
     kill -TERM "${STUB_PID}" >/dev/null 2>&1 || true
     wait "${STUB_PID}" >/dev/null 2>&1 || true
@@ -106,17 +116,6 @@ HTTPServer(("127.0.0.1", ${PORT_STUB}), H).serve_forever()
 PY
 STUB_PID=$!
 
-TOOL_SERVER_CMD="python3 -u ${SCRIPT_DIR}/tool_server_flaky_exit.py"
-
-agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "${NAME}" \
-  --tools basic \
-  --tool-server-cmd "${TOOL_SERVER_CMD}" \
-  --tool-server-timeout-ms 5000 \
-  --tool-server-max-line-bytes $((1024*1024)) \
-  --no-yolo
-
-agentd_smoke_wait_health "${DAEMON_URL}"
-
 run_once() {
   local resp
   resp="$(curl -fsS --noproxy "*" --max-time 10 \
@@ -151,9 +150,79 @@ if txt != "OK":
 PY
 }
 
+record_orphan_tool_server_pid() {
+  local pid
+  pid="$(python3 - <<PY
+import re
+import subprocess
+
+ppid = int("${AGENTD_PID}")
+pattern = re.compile(r"tool_server_linger_on_eof\\.py")
+out = subprocess.check_output(
+    ["ps", "-ax", "-o", "pid=", "-o", "ppid=", "-o", "command="],
+    text=True,
+)
+for line in out.splitlines():
+    m = re.match(r"\\s*(\\d+)\\s+(\\d+)\\s+(.*)$", line)
+    if not m:
+        continue
+    pid = int(m.group(1))
+    parent = int(m.group(2))
+    cmd = m.group(3)
+    if parent != ppid or pid == ppid:
+        continue
+    if pattern.search(cmd):
+        print(pid)
+        raise SystemExit(0)
+print("", end="")
+PY
+)"
+  if [[ -z "${pid}" ]]; then
+    echo "failed to locate linger tool-server child pid" >&2
+    exit 1
+  fi
+  echo "${pid}" >> "${ORPHAN_PIDS_FILE}"
+}
+
+rm -f "${ORPHAN_PIDS_FILE}"
+
+agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "${NAME}_linger" \
+  --tools basic \
+  --tool-server-cmd "${TOOL_SERVER_LINGER_CMD}" \
+  --tool-server-timeout-ms 5000 \
+  --tool-server-max-line-bytes $((1024*1024)) \
+  --no-yolo
+
+agentd_smoke_wait_health "${DAEMON_URL}"
+run_once
+record_orphan_tool_server_pid
+kill -KILL "${AGENTD_PID}" >/dev/null 2>&1 || true
+wait "${AGENTD_PID}" >/dev/null 2>&1 || true
+unset AGENTD_PID
+
+agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "${NAME}_linger_restart" \
+  --tools basic \
+  --tool-server-cmd "${TOOL_SERVER_LINGER_CMD}" \
+  --tool-server-timeout-ms 5000 \
+  --tool-server-max-line-bytes $((1024*1024)) \
+  --no-yolo
+
+agentd_smoke_wait_health "${DAEMON_URL}"
+run_once
+
+agentd_smoke_stop
+
+agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "${NAME}" \
+  --tools basic \
+  --tool-server-cmd "${TOOL_SERVER_FLAKY_CMD}" \
+  --tool-server-timeout-ms 5000 \
+  --tool-server-max-line-bytes $((1024*1024)) \
+  --no-yolo
+
+agentd_smoke_wait_health "${DAEMON_URL}"
+
 # Run twice: flaky server exits after first execute; agentd must restart it for the second call.
 run_once
 run_once
 
 echo "${NAME} OK"
-
