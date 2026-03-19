@@ -157,8 +157,9 @@ A v0 smoke test should:
   can return `already_running` from persisted runtime state when the effective resolved request/runtime config remains
   compatible with the live runtime.
 - If callers ask for a different live runtime config on the same session, whether explicitly or indirectly through
-  changed daemon defaults like backend selection or `node_bin`, `POST /api/v1/session/voice_webrtc_peer` now returns
-  `409` with the current `peer` snapshot instead of reporting a false idempotent reuse.
+  changed daemon defaults like backend selection or `node_bin`, or through config that now makes the selected backend
+  unlaunchable, `POST /api/v1/session/voice_webrtc_peer` now returns `409` with the current `peer` snapshot instead of
+  reporting a false idempotent reuse.
 - That same runtime now persists child-exit state eagerly and lets `action=stop` take `broker_token`, so agentd can
   delete a managed broker audio session itself after an ungraceful peer death that skipped the child's `bye`.
 - Stop and session-delete cleanup now validate broker tokens lazily, so borrowed broker-session runtimes can still be

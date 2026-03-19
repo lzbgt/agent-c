@@ -147,9 +147,8 @@ static bool voice_peer_runtime_matches_start_request(
   const Json::Value& body,
   const std::string& runtime_kind,
   const std::string& effective_broker_url,
-  const std::string& resolved_tool_path,
-  const std::string& resolved_node_bin,
-  bool resolved_backend_available,
+  const std::string& desired_tool_path,
+  const std::string& desired_node_bin,
   const std::string& requested_broker_session_id,
   const std::string& broker_agent_id,
   const std::string& broker_deployment_id,
@@ -159,9 +158,9 @@ static bool voice_peer_runtime_matches_start_request(
   int64_t tone_hz
 ) {
   if (runtime_kind != st.runtime_kind) return false;
-  if (resolved_backend_available) {
-    if (resolved_tool_path != st.tool_path) return false;
-    if (resolved_node_bin != st.node_bin) return false;
+  if (runtime_kind == "bundled" || runtime_kind == "external") {
+    if (desired_tool_path != st.tool_path) return false;
+    if (desired_node_bin != st.node_bin) return false;
   }
   if (!effective_broker_url.empty() && effective_broker_url != st.broker_url) return false;
   if (body.isMember("broker_session_id") && body["broker_session_id"].isString() &&
@@ -1276,11 +1275,16 @@ void handle_session_voice_webrtc_peer_endpoint(
   if (sender_tag.empty()) sender_tag = "agentd_runtime_peer";
   const std::string effective_broker_url = effective_voice_broker_url(cfg, request_broker_url);
   std::string desired_tool_path;
-  std::string desired_node_bin;
+  if (runtime_kind == "bundled") desired_tool_path = discover_bundled_audio_peer_tool_path(cfg);
+  if (runtime_kind == "external") desired_tool_path = trim_copy(cfg.audio_webrtc_peer_tool_path);
+  const std::string desired_node_bin = trim_copy(
+    cfg.audio_webrtc_peer_node_bin.empty() ? std::string("node") : cfg.audio_webrtc_peer_node_bin);
+  std::string resolved_tool_path;
+  std::string resolved_node_bin;
   std::string desired_backend_err;
   const bool desired_backend_available =
     runtime_kind != "builtin" &&
-    resolve_voice_peer_backend(cfg, runtime_kind, &desired_tool_path, &desired_node_bin, &desired_backend_err);
+    resolve_voice_peer_backend(cfg, runtime_kind, &resolved_tool_path, &resolved_node_bin, &desired_backend_err);
 
   {
     std::lock_guard<std::mutex> lk(g_voice_peer_mu);
@@ -1297,7 +1301,6 @@ void handle_session_voice_webrtc_peer_endpoint(
             effective_broker_url,
             desired_tool_path,
             desired_node_bin,
-            desired_backend_available,
             requested_broker_session_id,
             broker_agent_id,
             broker_deployment_id,
@@ -1359,7 +1362,6 @@ void handle_session_voice_webrtc_peer_endpoint(
             effective_broker_url,
             desired_tool_path,
             desired_node_bin,
-            desired_backend_available,
             requested_broker_session_id,
             broker_agent_id,
             broker_deployment_id,
@@ -1452,8 +1454,8 @@ void handle_session_voice_webrtc_peer_endpoint(
   return;
 #else
   std::string serr;
-  std::string tool_path = desired_tool_path;
-  std::string node_bin = desired_node_bin;
+  std::string tool_path = resolved_tool_path;
+  std::string node_bin = resolved_node_bin;
   if (!desired_backend_available) {
     serr = desired_backend_err;
   }

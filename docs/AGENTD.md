@@ -402,9 +402,10 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `peer.status_source=memory|persisted`, and duplicate compatible `start` calls after restart can return
   `already_running` without re-supplying broker parameters.
 - If a bundled/external peer is already running, `action=start` is now idempotent only when the effective resolved
-  runtime config still matches the live peer. Explicit/requested conflicts and config-driven backend changes now fail
-  closed with `409` plus the existing `peer` snapshot; that includes explicit `runtime_kind=builtin`, which now
-  conflicts against a live non-builtin runtime instead of falling through to the reserved not-implemented branch.
+  runtime config still matches the live peer. Explicit/requested conflicts, config-driven backend changes, and
+  config changes that make that selected backend unlaunchable now fail closed with `409` plus the existing `peer`
+  snapshot; that includes explicit `runtime_kind=builtin`, which now conflicts against a live non-builtin runtime
+  instead of falling through to the reserved not-implemented branch.
 - Child exit state is now persisted eagerly as the peer process ends, so later status reads and daemon restarts do not
   depend on an in-memory refresh to observe that the peer already stopped.
 - If the canonical session row is gone but stale `voice_webrtc_peer` state still exists, the status read now self-heals
