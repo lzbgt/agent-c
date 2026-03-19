@@ -3,6 +3,7 @@
 #include "edge_consensus_runtime_recovery.h"
 #include "edge_consensus_runtime_lifecycle.h"
 #include "edge_consensus_runtime_store.h"
+#include "edge_consensus_runtime_snapshot.h"
 #include "edge_util.h"
 #include "string_util.h"
 
@@ -60,42 +61,18 @@ void edge_consensus_runtime_forget_active(const std::string& node_id) {
 }
 
 Json::Value edge_consensus_runtime_status_json_for_node(const DaemonConfig& cfg, AgentDb* db_or_null, const std::string& node_id) {
-  auto st = edge_consensus_runtime_lookup_active(node_id);
-  if (st) {
-    {
-      std::lock_guard<std::mutex> lk(edge_consensus_runtime_registry_mutex());
-      refresh_edge_consensus_runtime_state(st.get());
-      std::string perr;
-      (void)persist_edge_consensus_runtime_record(db_or_null, *st, &perr);
-      return edge_consensus_runtime_response_json(cfg, *st);
-    }
-  }
-  if (!db_or_null || !db_or_null->is_open()) return Json::Value(Json::nullValue);
-  std::shared_ptr<EdgeConsensusRuntime> persisted;
-  Json::Value updates(Json::objectValue);
+  EdgeConsensusRuntimeSnapshot snapshot;
   std::string err;
-  if (!recover_edge_consensus_runtime_record(cfg, db_or_null, node_id, &persisted, &updates, &err)) {
+  if (!edge_consensus_runtime_load_snapshot(cfg, db_or_null, node_id, &snapshot, &err)) {
     return Json::Value(Json::nullValue);
   }
-  if (!persisted) return Json::Value(Json::nullValue);
-  if (persisted->running) {
-    EdgeConsensusPersistedRunningReconcileResult reconcile;
-    std::string rerr;
-    if (!edge_consensus_runtime_reconcile_persisted_running(
-          cfg, db_or_null, node_id, persisted, &reconcile, &rerr)) {
-      return Json::Value(Json::nullValue);
-    }
-    if (reconcile.disposition == EdgeConsensusPersistedRunningDisposition::active_external) {
-      edge_consensus_runtime_remember_active(persisted);
-      std::string perr;
-      (void)persist_edge_consensus_runtime_record(db_or_null, *persisted, &perr);
-      return edge_consensus_runtime_response_json(cfg, *persisted);
-    }
-    if (reconcile.disposition == EdgeConsensusPersistedRunningDisposition::stale_cleared) {
-      return Json::Value(Json::nullValue);
-    }
+  if (!edge_consensus_runtime_reconcile_snapshot(cfg, db_or_null, node_id, &snapshot, &err)) {
+    return Json::Value(Json::nullValue);
   }
-  return edge_consensus_runtime_response_json(cfg, *persisted);
+  if (!snapshot.runtime) return Json::Value(Json::nullValue);
+  std::string perr;
+  (void)persist_edge_consensus_runtime_record(db_or_null, *snapshot.runtime, &perr);
+  return edge_consensus_runtime_response_json(cfg, *snapshot.runtime);
 }
 
 std::vector<std::string> edge_consensus_runtime_node_ids(AgentDb* db_or_null, size_t limit) {
