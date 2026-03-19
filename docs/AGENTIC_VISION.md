@@ -321,6 +321,9 @@ These are the most leveraged next steps grounded in current architecture:
    - Completed 2026-03-20: active managed consensus runtimes now expose `runtime.live_status` while still running, so
      operator reads can inspect live campaign/recovery state before terminal result instead of treating the managed
      runtime as an opaque in-flight process; external helper parity is now included while stdout remains attached.
+   - Completed 2026-03-20: the builtin managed consensus backend now runs over daemon-local transport instead of
+     self-HTTP, so it is materially closer to embedded/node-native adoption and no longer treats `daemon_url` /
+     `auth_token` request overrides as semantic runtime config.
    - Completed 2026-03-20: `GET /api/v1/edge/node?node_id=...` now also synthesizes a minimal runtime-backed node
      record when no edge registry row exists but managed consensus runtime state does, so runtime-only nodes remain
      inspectable through the main node-read API.

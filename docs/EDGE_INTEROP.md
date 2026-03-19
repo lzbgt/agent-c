@@ -301,6 +301,9 @@ Manifest bundle note:
 - Agentd can now own the lifecycle of the shipped autonomous consensus loop directly through a builtin runtime backend;
   `GET /api/v1/edge/node` and `GET /api/v1/edge/nodes` surface `consensus_runtime` when a node has a managed runtime
   record alongside the existing protocol-level `consensus` summary.
+- That builtin backend now uses daemon-local transport rather than self-HTTP, so bring-up no longer depends on the
+  daemon listener URL/auth token loopback path; transport-only request overrides such as `daemon_url` are ignored for
+  builtin starts instead of changing runtime reuse semantics.
 - `GET /api/v1/edge/node?node_id=...` now also falls back to a synthetic runtime-backed node record when no stored
   hello/caps row exists but managed consensus runtime state does, so runtime-only nodes remain inspectable without
   inventing a manifest-backed registry entry.

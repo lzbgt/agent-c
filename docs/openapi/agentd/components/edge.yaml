@@ -137,7 +137,9 @@ EdgeNodeConsensusRuntime:
     member_node_ids:
       type: array
       items: { type: string }
-    daemon_url: { type: string }
+    daemon_url:
+      type: string
+      description: For `runtime_kind=builtin`, this is normalized to `@local` because the builtin loop uses daemon-local transport instead of self-HTTP.
     tool_path: { type: string }
     model: { type: string }
     fw_git_sha: { type: string }
@@ -294,10 +296,10 @@ EdgeNodeConsensusRuntimeRequest:
     membership_epoch: { type: integer, format: int64 }
     daemon_url:
       type: string
-      description: Optional override; defaults to the local agentd listener URL
+      description: Optional override for the external helper transport; ignored for `runtime_kind=builtin`, which uses daemon-local transport.
     auth_token:
       type: string
-      description: Optional override for the managed helper; defaults to agentd's configured daemon auth token
+      description: Optional override for the managed external helper; ignored for `runtime_kind=builtin`.
     model: { type: string }
     fw_git_sha: { type: string }
 

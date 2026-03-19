@@ -321,6 +321,7 @@ static bool edge_consensus_runtime_stdout_event_live_status(
 }
 
 static bool edge_consensus_runtime_same_effective_config(const EdgeConsensusRuntime& a, const EdgeConsensusRuntime& b) {
+  const bool builtin = trim_copy(a.runtime_kind) == "builtin" && trim_copy(b.runtime_kind) == "builtin";
   return
     trim_copy(a.runtime_kind) == trim_copy(b.runtime_kind) &&
     trim_copy(a.node_id) == trim_copy(b.node_id) &&
@@ -329,7 +330,7 @@ static bool edge_consensus_runtime_same_effective_config(const EdgeConsensusRunt
     trim_copy(a.decision_sha256) == trim_copy(b.decision_sha256) &&
     a.peer_node_ids == b.peer_node_ids &&
     a.member_node_ids == b.member_node_ids &&
-    trim_copy(a.daemon_url) == trim_copy(b.daemon_url) &&
+    (builtin || trim_copy(a.daemon_url) == trim_copy(b.daemon_url)) &&
     trim_copy(a.tool_path) == trim_copy(b.tool_path) &&
     trim_copy(a.model) == trim_copy(b.model) &&
     trim_copy(a.fw_git_sha) == trim_copy(b.fw_git_sha) &&
@@ -1028,6 +1029,7 @@ static bool edge_consensus_runtime_start_builtin(
   auto st = std::make_shared<EdgeConsensusRuntime>(std::move(runtime_state));
   st->runtime_kind = "builtin";
   st->tool_path = "@builtin";
+  st->daemon_url = "@local";
   st->stop_requested = std::make_shared<std::atomic<bool>>(false);
   st->startup_ready = std::make_shared<std::atomic<bool>>(false);
 
@@ -1047,7 +1049,7 @@ static bool edge_consensus_runtime_start_builtin(
     };
     Json::Value result(Json::nullValue);
     std::string err;
-    const bool ok = run_edge_consensus_http_runtime(run_cfg, hooks, &result, &err);
+    const bool ok = run_edge_consensus_local_runtime(db, run_cfg, hooks, &result, &err);
     std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
     st->running = false;
     st->ended_unix_ms = now_unix_ms();

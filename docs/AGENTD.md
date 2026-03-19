@@ -680,6 +680,10 @@ Edge trust-root rotation:
   `leader_lease_ms`, agentd now defaults those fields from the stored cluster membership bundle.
 - Operator bring-up can still set `AGENTD_EDGE_CONSENSUS_NODE_TOOL=/abs/path/to/agentd_edge_consensus_node` to force
   `runtime_kind=external`, but the normal managed path no longer depends on that helper being configured.
+- The builtin managed consensus backend now also runs over daemon-local transport instead of calling back through
+  agentd's HTTP listener. For builtin starts, `daemon_url` / `auth_token` request overrides are ignored as transport
+  details, runtime snapshots normalize `daemon_url` to `@local`, and transport-only drift no longer turns an otherwise
+  identical running builtin runtime into a false config conflict.
 - The same external helper path can now also be persisted through `POST /api/v1/config/update` as
   `edge_consensus.node_tool_path`, and `GET /api/v1/config` reports whether that seam is configured and available
   without exposing the literal path.

@@ -229,6 +229,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/edge_runtime_endpoints.cpp
     daemon/src/edge_node_consensus.cpp
     daemon/src/edge_consensus_http_runtime.cpp
+    daemon/src/edge_consensus_local_runtime.cpp
     daemon/src/edge_deadline_sweeper.cpp
     daemon/src/edge_rules.cpp
     daemon/src/edge_util.cpp

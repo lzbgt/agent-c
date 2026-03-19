@@ -2540,7 +2540,8 @@
     summary: Start or stop a managed autonomous consensus-node runtime
     description: |
       Starts or stops the managed autonomous consensus runtime. `builtin` is the
-      in-agentd backend and runs the HTTP poll/process/post loop inside agentd.
+      in-agentd backend and now runs over daemon-local transport inside agentd
+      rather than calling back through the daemon's HTTP listener.
       When callers omit `runtime_kind`, agentd now uses the configured default
       managed consensus backend (`edge_consensus.default_runtime_kind`) or falls
       back to builtin auto selection. Start requests can explicitly set
@@ -2551,6 +2552,8 @@
       on `AGENTD_EDGE_CONSENSUS_NODE_TOOL` / `AGENTD_EDGE_CONSENSUS_DEFAULT_RUNTIME_KIND`.
       Managed starts now also use a bounded startup confirmation window and fail
       closed if the builtin loop or external helper exits immediately with failure.
+      For `runtime_kind=builtin`, `daemon_url` and `auth_token` request overrides
+      are ignored as transport details.
       Start requests can still return success when a managed runtime finishes very
       quickly with a successful commit during that same confirmation window. Stop
       requests now return `reason=not_running` when the runtime already finished and

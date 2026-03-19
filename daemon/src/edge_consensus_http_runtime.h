@@ -11,6 +11,8 @@
 
 namespace agentd {
 
+class AgentDb;
+
 struct EdgeConsensusHttpRuntimeConfig {
   std::string daemon_url;
   std::string auth_token;
@@ -52,6 +54,17 @@ struct EdgeConsensusHttpRuntimeHooks {
 // Returns false only for internal transport / parse failures, in which case
 // `out_error` contains a human-readable error.
 bool run_edge_consensus_http_runtime(
+  const EdgeConsensusHttpRuntimeConfig& cfg,
+  const EdgeConsensusHttpRuntimeHooks& hooks,
+  Json::Value* out_result,
+  std::string* out_error
+);
+
+// Runs the same consensus loop against daemon-local DB-backed transport instead of
+// calling back through agentd's HTTP surfaces. This is the transport used by the
+// builtin managed runtime.
+bool run_edge_consensus_local_runtime(
+  AgentDb* db,
   const EdgeConsensusHttpRuntimeConfig& cfg,
   const EdgeConsensusHttpRuntimeHooks& hooks,
   Json::Value* out_result,

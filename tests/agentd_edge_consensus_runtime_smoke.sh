@@ -235,9 +235,9 @@ STOP_SHA="sha256:555555555555555555555555555555555555555555555555555555555555555
 STALE_NODE="node_runtime_cons_stale"
 STALE_CLUSTER="lab-consensus-managed-stale"
 STALE_SHA="sha256:5858585858585858585858585858585858585858585858585858585858585858"
-FAIL_BUILTIN_NODE="node_runtime_cons_builtin_failfast"
-FAIL_BUILTIN_CLUSTER="lab-consensus-managed-builtin-failfast"
-FAIL_BUILTIN_SHA="sha256:5959595959595959595959595959595959595959595959595959595959595959"
+BUILTIN_LOCAL_NODE="node_runtime_cons_builtin_local"
+BUILTIN_LOCAL_CLUSTER="lab-consensus-managed-builtin-local"
+BUILTIN_LOCAL_SHA="sha256:5959595959595959595959595959595959595959595959595959595959595959"
 DRIFT_NODE="node_runtime_cons_policy_drift"
 DRIFT_CLUSTER="lab-consensus-policy-drift"
 DRIFT_MEMBER_A="${DRIFT_NODE}"
@@ -259,13 +259,21 @@ STOP_RESP_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<
 JSON
 )")"
 STOP_STATUS_JSON="$(wait_runtime_stopped "${STOP_NODE}")"
-FAIL_BUILTIN_RAW="$(curl_json_status POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","node_id":"${FAIL_BUILTIN_NODE}","cluster_id":"${FAIL_BUILTIN_CLUSTER}","manifest_sha256":"${FAIL_BUILTIN_SHA}","daemon_url":"not-a-url","deadline_ms":30000,"poll_interval_ms":100}
+BUILTIN_LOCAL_START_RAW="$(curl_json_status POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"start","node_id":"${BUILTIN_LOCAL_NODE}","cluster_id":"${BUILTIN_LOCAL_CLUSTER}","manifest_sha256":"${BUILTIN_LOCAL_SHA}","daemon_url":"not-a-url","auth_token":"unused-local-token","deadline_ms":30000,"poll_interval_ms":100}
 JSON
 )")"
-FAIL_BUILTIN_STATUS="$(printf '%s\n' "${FAIL_BUILTIN_RAW}" | sed -n '1p')"
-FAIL_BUILTIN_JSON="$(printf '%s\n' "${FAIL_BUILTIN_RAW}" | sed '1d')"
-FAIL_BUILTIN_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${FAIL_BUILTIN_NODE}")"
+BUILTIN_LOCAL_START_STATUS="$(printf '%s\n' "${BUILTIN_LOCAL_START_RAW}" | sed -n '1p')"
+BUILTIN_LOCAL_START_JSON="$(printf '%s\n' "${BUILTIN_LOCAL_START_RAW}" | sed '1d')"
+BUILTIN_LOCAL_RUNNING_JSON="$(wait_runtime_running "${BUILTIN_LOCAL_NODE}")"
+BUILTIN_LOCAL_AGAIN_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"start","node_id":"${BUILTIN_LOCAL_NODE}","cluster_id":"${BUILTIN_LOCAL_CLUSTER}","manifest_sha256":"${BUILTIN_LOCAL_SHA}","daemon_url":"https://ignored.example.invalid","auth_token":"different-unused-token","deadline_ms":30000,"poll_interval_ms":100}
+JSON
+)")"
+BUILTIN_LOCAL_STOP_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"stop","node_id":"${BUILTIN_LOCAL_NODE}"}
+JSON
+)")"
 
 python3 - <<PY
 import json, sys
@@ -311,22 +319,34 @@ if not stop_resp.get("ok") or not stop_resp.get("stopped"):
   print("stop response wrong", stop_resp, file=sys.stderr)
   raise SystemExit(1)
 
-fail_builtin = json.loads(r'''${FAIL_BUILTIN_JSON}''')
-if "${FAIL_BUILTIN_STATUS}" != "500":
-  print("builtin failfast returned wrong status", "${FAIL_BUILTIN_STATUS}", fail_builtin, file=sys.stderr)
+builtin_local_start = json.loads(r'''${BUILTIN_LOCAL_START_JSON}''')
+builtin_local_running = json.loads(r'''${BUILTIN_LOCAL_RUNNING_JSON}''')
+builtin_local_again = json.loads(r'''${BUILTIN_LOCAL_AGAIN_JSON}''')
+builtin_local_stop = json.loads(r'''${BUILTIN_LOCAL_STOP_JSON}''')
+if "${BUILTIN_LOCAL_START_STATUS}" != "200":
+  print("builtin local start returned wrong status", "${BUILTIN_LOCAL_START_STATUS}", builtin_local_start, file=sys.stderr)
   raise SystemExit(1)
-if fail_builtin.get("startup_confirmed") is not False:
-  print("builtin failfast missing startup_confirmed=false", fail_builtin, file=sys.stderr)
+if builtin_local_start.get("startup_confirmed") is not True:
+  print("builtin local start missing startup_confirmed=true", builtin_local_start, file=sys.stderr)
   raise SystemExit(1)
-fail_builtin_rt = fail_builtin.get("runtime") or {}
-if fail_builtin_rt.get("runtime_kind") != "builtin":
-  print("builtin failfast missing runtime snapshot", fail_builtin, file=sys.stderr)
+builtin_local_start_rt = builtin_local_start.get("runtime") or {}
+if builtin_local_start_rt.get("runtime_kind") != "builtin":
+  print("builtin local start missing runtime snapshot", builtin_local_start, file=sys.stderr)
   raise SystemExit(1)
-if fail_builtin_rt.get("running"):
-  print("builtin failfast left runtime running", fail_builtin, file=sys.stderr)
+if builtin_local_start_rt.get("daemon_url") != "@local":
+  print("builtin local start did not normalize transport to @local", builtin_local_start, file=sys.stderr)
   raise SystemExit(1)
-if (json.loads(r'''${FAIL_BUILTIN_STATUS_JSON}''').get("runtime")) is not None:
-  print("builtin failfast left persisted runtime behind", json.loads(r'''${FAIL_BUILTIN_STATUS_JSON}'''), file=sys.stderr)
+if not (builtin_local_running.get("runtime") or {}).get("running"):
+  print("builtin local runtime never entered running state", builtin_local_running, file=sys.stderr)
+  raise SystemExit(1)
+if not builtin_local_again.get("ok") or builtin_local_again.get("already_running") is not True:
+  print("builtin local restart did not stay idempotent across transport-only drift", builtin_local_again, file=sys.stderr)
+  raise SystemExit(1)
+if (builtin_local_again.get("runtime") or {}).get("daemon_url") != "@local":
+  print("builtin local restart lost normalized transport marker", builtin_local_again, file=sys.stderr)
+  raise SystemExit(1)
+if not builtin_local_stop.get("ok") or not builtin_local_stop.get("stopped"):
+  print("builtin local stop failed", builtin_local_stop, file=sys.stderr)
   raise SystemExit(1)
 
 stop_status = json.loads(r'''${STOP_STATUS_JSON}''')
