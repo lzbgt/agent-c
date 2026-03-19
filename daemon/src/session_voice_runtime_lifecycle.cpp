@@ -84,6 +84,28 @@ bool stop_voice_peer_runtime_process(
 #endif
 }
 
+bool stop_voice_peer_runtime_with_broker_cleanup(
+  const std::shared_ptr<VoicePeerRuntime>& st,
+  std::mutex& runtime_mu,
+  int64_t timeout_ms,
+  const std::string& broker_token,
+  VoicePeerManagedStopResult* out_result,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (out_result) *out_result = VoicePeerManagedStopResult{};
+
+  VoicePeerStopProcessResult stop_result;
+  if (!stop_voice_peer_runtime_process(st, runtime_mu, timeout_ms, &stop_result, out_err)) return false;
+
+  if (out_result) {
+    out_result->was_running = stop_result.was_running;
+    out_result->stopped = stop_result.stopped;
+    out_result->broker_cleanup = cleanup_managed_voice_peer_broker_session(st, broker_token);
+  }
+  return true;
+}
+
 Json::Value cleanup_managed_voice_peer_broker_session(
   const std::shared_ptr<VoicePeerRuntime>& st,
   const std::string& broker_token

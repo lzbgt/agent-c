@@ -51,6 +51,13 @@ static void voice_peer_add_runtime_metadata(const DaemonConfig& cfg, Json::Value
   }
 }
 
+static void merge_json_object_fields(const Json::Value& src, Json::Value* dst) {
+  if (!dst || !src.isObject()) return;
+  for (const auto& name : src.getMemberNames()) {
+    (*dst)[name] = src[name];
+  }
+}
+
 static void voice_peer_apply_start_backend_failure(
   const DaemonConfig& cfg,
   std::mutex& runtime_mu,
@@ -170,15 +177,13 @@ void handle_session_voice_webrtc_peer_endpoint(
     if (!st) {
       Json::Value recovery_updates(Json::objectValue);
       std::string lerr;
-      if (!recover_voice_peer_runtime_record(cfg, db, session_id, &st, &recovery_updates, &lerr)) {
+    if (!recover_voice_peer_runtime_record(cfg, db, session_id, &st, &recovery_updates, &lerr)) {
         out["error"] = lerr.empty() ? "failed to load persisted voice peer state" : lerr;
         resp->status = 500;
         resp->body = json_stringify(out);
         return;
       }
-      for (const auto& name : recovery_updates.getMemberNames()) {
-        out[name] = recovery_updates[name];
-      }
+      merge_json_object_fields(recovery_updates, &out);
     }
     if (!st) {
       out["ok"] = true;
@@ -194,9 +199,15 @@ void handle_session_voice_webrtc_peer_endpoint(
       refresh_voice_peer_runtime_backend_state(st.get());
     }
     const bool was_running = st->running;
-    VoicePeerStopProcessResult stop_result;
+    VoicePeerManagedStopResult stop_result;
     std::string serr;
-    if (!stop_voice_peer_runtime_process(st, g_voice_peer_mu, 2000, &stop_result, &serr)) {
+    if (!stop_voice_peer_runtime_with_broker_cleanup(
+          st,
+          g_voice_peer_mu,
+          2000,
+          effective_voice_broker_token(cfg, request_broker_token),
+          &stop_result,
+          &serr)) {
       out["error"] = serr.empty() ? "failed to stop voice peer" : serr;
       {
         std::lock_guard<std::mutex> lk(g_voice_peer_mu);
@@ -207,8 +218,6 @@ void handle_session_voice_webrtc_peer_endpoint(
       resp->body = json_stringify(out);
       return;
     }
-    const std::string broker_token = effective_voice_broker_token(cfg, request_broker_token);
-    const Json::Value broker_cleanup = cleanup_managed_voice_peer_broker_session(st, broker_token);
     {
       std::lock_guard<std::mutex> lk(g_voice_peer_mu);
       voice_peer_add_runtime_snapshot(cfg, *st, &out);
@@ -218,12 +227,7 @@ void handle_session_voice_webrtc_peer_endpoint(
     out["ok"] = true;
     out["stopped"] = stop_result.stopped;
     if (!was_running) out["reason"] = "not_running";
-    if (broker_cleanup.isMember("broker_session_deleted")) {
-      out["broker_session_deleted"] = broker_cleanup["broker_session_deleted"];
-    }
-    if (broker_cleanup.isMember("broker_session_delete_error")) {
-      out["broker_session_delete_error"] = broker_cleanup["broker_session_delete_error"];
-    }
+    merge_json_object_fields(stop_result.broker_cleanup, &out);
     resp->status = 200;
     resp->body = json_stringify(out);
     return;
@@ -274,9 +278,7 @@ void handle_session_voice_webrtc_peer_endpoint(
       resp->body = json_stringify(out);
       return;
     }
-    for (const auto& name : recovery_updates.getMemberNames()) {
-      out[name] = recovery_updates[name];
-    }
+    merge_json_object_fields(recovery_updates, &out);
     if (persisted && persisted->running) {
       {
         std::lock_guard<std::mutex> lk(g_voice_peer_mu);
@@ -418,9 +420,7 @@ void handle_session_voice_webrtc_peer_status_endpoint(
       resp->body = json_stringify(out);
       return;
     }
-    for (const auto& name : recovery_updates.getMemberNames()) {
-      out[name] = recovery_updates[name];
-    }
+    merge_json_object_fields(recovery_updates, &out);
     if (st && st->running) {
       std::lock_guard<std::mutex> lk(g_voice_peer_mu);
       g_voice_peer_by_session[*sid] = st;
@@ -494,19 +494,20 @@ bool cleanup_session_voice_webrtc_peer_runtime(
     summary["runtime_was_running"] = st->running;
     summary["peer"] = voice_peer_runtime_to_json(*st);
 
-    VoicePeerStopProcessResult stop_result;
-    if (!stop_voice_peer_runtime_process(st, g_voice_peer_mu, 2000, &stop_result, out_err)) {
+    VoicePeerManagedStopResult stop_result;
+    if (!stop_voice_peer_runtime_with_broker_cleanup(
+          st,
+          g_voice_peer_mu,
+          2000,
+          effective_voice_broker_token(cfg, broker_token),
+          &stop_result,
+          out_err)) {
       if (out_err && out_err->empty()) *out_err = "failed to stop voice peer during session delete";
       return false;
     }
     summary["stopped"] = stop_result.was_running ? stop_result.stopped : !st->running;
     summary["peer"] = voice_peer_runtime_to_json(*st);
-
-    const Json::Value broker_cleanup =
-      cleanup_managed_voice_peer_broker_session(st, effective_voice_broker_token(cfg, broker_token));
-    for (const auto& name : broker_cleanup.getMemberNames()) {
-      summary[name] = broker_cleanup[name];
-    }
+    merge_json_object_fields(stop_result.broker_cleanup, &summary);
   } else {
     summary["stopped"] = false;
     summary["broker_session_delete_attempted"] = false;
