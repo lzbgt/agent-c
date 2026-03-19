@@ -12,7 +12,7 @@ namespace {
 
 using agentd::AgentDb;
 using agentd::EdgeConsensusFrame;
-using agentd::EdgeConsensusHttpRuntimeConfig;
+using agentd::EdgeConsensusRuntimeConfig;
 using agentd::poll_edge_consensus_local_outbox;
 using agentd::post_edge_consensus_local_hello;
 using agentd::send_edge_consensus_local_frame;
@@ -32,8 +32,8 @@ static void open_test_db(const std::filesystem::path& path, AgentDb* out_db) {
   (void)err;
 }
 
-static EdgeConsensusHttpRuntimeConfig make_cfg() {
-  EdgeConsensusHttpRuntimeConfig cfg;
+static EdgeConsensusRuntimeConfig make_cfg() {
+  EdgeConsensusRuntimeConfig cfg;
   cfg.node_id = "node-a";
   cfg.cluster_id = "cluster-a";
   cfg.manifest_sha256 =
@@ -64,7 +64,7 @@ static void test_post_hello_upserts_node_and_caps_request() {
   AgentDb db;
   open_test_db(db_path, &db);
 
-  const EdgeConsensusHttpRuntimeConfig cfg = make_cfg();
+  const EdgeConsensusRuntimeConfig cfg = make_cfg();
   uint64_t io_seq = 0;
   std::string err;
   assert(post_edge_consensus_local_hello(&db, cfg, &io_seq, &err));
@@ -94,7 +94,7 @@ static void test_send_frame_dedupes_targets_and_updates_health() {
   AgentDb db;
   open_test_db(db_path, &db);
 
-  const EdgeConsensusHttpRuntimeConfig cfg = make_cfg();
+  const EdgeConsensusRuntimeConfig cfg = make_cfg();
   uint64_t io_seq = 0;
   std::string err;
   assert(post_edge_consensus_local_hello(&db, cfg, &io_seq, &err));
@@ -139,7 +139,7 @@ static void test_poll_outbox_returns_cursor_and_parsed_messages() {
   AgentDb db;
   open_test_db(db_path, &db);
 
-  const EdgeConsensusHttpRuntimeConfig cfg = make_cfg();
+  const EdgeConsensusRuntimeConfig cfg = make_cfg();
   uint64_t io_seq = 0;
   std::string err;
   assert(post_edge_consensus_local_hello(&db, cfg, &io_seq, &err));

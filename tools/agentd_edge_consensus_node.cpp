@@ -241,7 +241,7 @@ int main(int argc, char** argv) {
   Options opt;
   if (!parse_args(argc, argv, &opt)) return 2;
 
-  EdgeConsensusHttpRuntimeConfig cfg;
+  EdgeConsensusRuntimeConfig cfg;
   cfg.daemon_url = opt.daemon_url;
   cfg.auth_token = opt.auth_token;
   cfg.node_id = opt.node_id;
@@ -268,7 +268,7 @@ int main(int argc, char** argv) {
   cfg.cert_roots_epoch = opt.cert_roots_epoch;
   cfg.membership_epoch = opt.membership_epoch;
 
-  EdgeConsensusHttpRuntimeHooks hooks;
+  EdgeConsensusRuntimeHooks hooks;
   hooks.log_line = [&](const std::string& line) {
     if (!opt.verbose) return;
     std::cerr << "[" << opt.node_id << "] " << line << "\n";

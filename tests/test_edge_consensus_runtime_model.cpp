@@ -7,7 +7,7 @@ namespace {
 
 using agentd::DaemonConfig;
 using agentd::EdgeConsensusClusterPolicy;
-using agentd::EdgeConsensusHttpRuntimeConfig;
+using agentd::EdgeConsensusRuntimeConfig;
 using agentd::EdgeConsensusRuntime;
 using agentd::edge_consensus_runtime_build_config;
 using agentd::edge_consensus_runtime_response_json;
@@ -43,7 +43,7 @@ static void test_build_config_defaults_policy_and_trust_epochs() {
   body["manifest_sha256"] =
     "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-  EdgeConsensusHttpRuntimeConfig run_cfg;
+  EdgeConsensusRuntimeConfig run_cfg;
   EdgeConsensusRuntime st;
   std::string err;
   const bool ok = edge_consensus_runtime_build_config(cfg, body, &run_cfg, &st, &err);

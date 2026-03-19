@@ -7,14 +7,14 @@
 namespace {
 
 using agentd::EdgeConsensusFrame;
-using agentd::EdgeConsensusHttpRuntimeConfig;
+using agentd::EdgeConsensusRuntimeConfig;
 using agentd::build_edge_consensus_http_frame_envelope;
 using agentd::build_edge_consensus_http_hello_envelope;
 using agentd::build_edge_consensus_http_outbox_poll_url;
 using agentd::edge_consensus_http_json_headers;
 
-static EdgeConsensusHttpRuntimeConfig make_cfg() {
-  EdgeConsensusHttpRuntimeConfig cfg;
+static EdgeConsensusRuntimeConfig make_cfg() {
+  EdgeConsensusRuntimeConfig cfg;
   cfg.daemon_url = "http://127.0.0.1:8123/";
   cfg.auth_token = "daemon-token";
   cfg.node_id = "node-a";
@@ -46,7 +46,7 @@ static void test_headers_include_json_and_bearer_auth() {
 }
 
 static void test_hello_envelope_shape() {
-  const EdgeConsensusHttpRuntimeConfig cfg = make_cfg();
+  const EdgeConsensusRuntimeConfig cfg = make_cfg();
   const Json::Value env = build_edge_consensus_http_hello_envelope(cfg, "node-a:consensus-node:1", 12345);
   assert(env["msg_id"].asString() == "node-a:consensus-node:1");
   assert(env["ts_utc_ms"].asInt64() == 12345);
@@ -58,7 +58,7 @@ static void test_hello_envelope_shape() {
 }
 
 static void test_frame_envelope_uses_single_target_field_when_possible() {
-  const EdgeConsensusHttpRuntimeConfig cfg = make_cfg();
+  const EdgeConsensusRuntimeConfig cfg = make_cfg();
   const Json::Value env = build_edge_consensus_http_frame_envelope(
     cfg, make_frame(), {"node-a", "node-b", "node-b"}, "node-a:consensus-node:2", 22222);
   assert(env["type"].asString() == "CONSENSUS_FRAME");
@@ -68,7 +68,7 @@ static void test_frame_envelope_uses_single_target_field_when_possible() {
 }
 
 static void test_frame_envelope_dedupes_multiple_targets() {
-  const EdgeConsensusHttpRuntimeConfig cfg = make_cfg();
+  const EdgeConsensusRuntimeConfig cfg = make_cfg();
   const Json::Value env = build_edge_consensus_http_frame_envelope(
     cfg, make_frame(), {"node-c", "node-b", "node-b", "", "node-a"}, "node-a:consensus-node:3", 33333);
   assert(!env["body"].isMember("target_node_id"));
@@ -79,7 +79,7 @@ static void test_frame_envelope_dedupes_multiple_targets() {
 }
 
 static void test_outbox_poll_url_shape() {
-  const EdgeConsensusHttpRuntimeConfig cfg = make_cfg();
+  const EdgeConsensusRuntimeConfig cfg = make_cfg();
   const std::string url = build_edge_consensus_http_outbox_poll_url(cfg, 42);
   assert(url == "http://127.0.0.1:8123/api/v1/edge/outbox?node_id=node-a&cursor=42&limit=17");
 }

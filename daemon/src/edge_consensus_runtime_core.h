@@ -1,6 +1,6 @@
 #pragma once
 
-#include "edge_consensus_http_runtime.h"
+#include "edge_consensus_runtime_execution.h"
 #include "edge_node_consensus.h"
 
 #include <functional>
@@ -21,8 +21,8 @@ struct EdgeConsensusRuntimeTransportOps {
 };
 
 bool run_edge_consensus_runtime_core(
-  const EdgeConsensusHttpRuntimeConfig& cfg,
-  const EdgeConsensusHttpRuntimeHooks& hooks,
+  const EdgeConsensusRuntimeConfig& cfg,
+  const EdgeConsensusRuntimeHooks& hooks,
   const EdgeConsensusRuntimeTransportOps& transport,
   Json::Value* out_result,
   std::string* out_error

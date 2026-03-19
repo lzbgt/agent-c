@@ -8,7 +8,7 @@ namespace {
 
 using agentd::DaemonConfig;
 using agentd::EdgeConsensusExternalProcessPlan;
-using agentd::EdgeConsensusHttpRuntimeConfig;
+using agentd::EdgeConsensusRuntimeConfig;
 using agentd::EdgeConsensusRuntime;
 using agentd::EdgeConsensusRuntimeArtifactsPlan;
 using agentd::edge_consensus_runtime_stdout_event_is_startup_ready;
@@ -31,7 +31,7 @@ static void test_external_process_plan_shapes_argv() {
   cfg.state_dir = "/tmp/agentd-runtime";
   cfg.edge_consensus_node_tool_path = "/tmp/edge-consensus-node";
 
-  EdgeConsensusHttpRuntimeConfig run_cfg;
+  EdgeConsensusRuntimeConfig run_cfg;
   run_cfg.daemon_url = "http://127.0.0.1:8123";
   run_cfg.auth_token = "daemon-token";
 

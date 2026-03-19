@@ -53,7 +53,7 @@ static std::string make_msg_id(const std::string& node_id, uint64_t seq) {
   return node_id + ":consensus-node:" + std::to_string(seq);
 }
 
-static bool http_get_json(const std::string& url, const EdgeConsensusHttpRuntimeConfig& cfg, Json::Value* out, std::string* out_error) {
+static bool http_get_json(const std::string& url, const EdgeConsensusRuntimeConfig& cfg, Json::Value* out, std::string* out_error) {
   const int64_t timeout_ms = std::max<int64_t>(250, std::min<int64_t>(5000, cfg.poll_interval_ms * 4));
   const HttpClientResult r =
     http_request(url, "GET", edge_consensus_http_json_headers(cfg), "", timeout_ms, 1024 * 1024, "", nullptr);
@@ -67,7 +67,7 @@ static bool http_get_json(const std::string& url, const EdgeConsensusHttpRuntime
 static bool http_post_json(
   const std::string& url,
   const Json::Value& body,
-  const EdgeConsensusHttpRuntimeConfig& cfg,
+  const EdgeConsensusRuntimeConfig& cfg,
   Json::Value* out,
   std::string* out_error
 ) {
@@ -88,7 +88,7 @@ static bool http_post_json(
 }  // namespace
 
 std::map<std::string, std::string> edge_consensus_http_json_headers(
-  const EdgeConsensusHttpRuntimeConfig& cfg
+  const EdgeConsensusRuntimeConfig& cfg
 ) {
   std::map<std::string, std::string> headers;
   headers["Content-Type"] = "application/json";
@@ -97,7 +97,7 @@ std::map<std::string, std::string> edge_consensus_http_json_headers(
 }
 
 Json::Value build_edge_consensus_http_hello_envelope(
-  const EdgeConsensusHttpRuntimeConfig& cfg,
+  const EdgeConsensusRuntimeConfig& cfg,
   const std::string& msg_id,
   int64_t ts_utc_ms
 ) {
@@ -117,7 +117,7 @@ Json::Value build_edge_consensus_http_hello_envelope(
 }
 
 Json::Value build_edge_consensus_http_frame_envelope(
-  const EdgeConsensusHttpRuntimeConfig& cfg,
+  const EdgeConsensusRuntimeConfig& cfg,
   const EdgeConsensusFrame& frame,
   const std::vector<std::string>& raw_target_node_ids,
   const std::string& msg_id,
@@ -153,7 +153,7 @@ Json::Value build_edge_consensus_http_frame_envelope(
 }
 
 std::string build_edge_consensus_http_outbox_poll_url(
-  const EdgeConsensusHttpRuntimeConfig& cfg,
+  const EdgeConsensusRuntimeConfig& cfg,
   int64_t cursor
 ) {
   return join_base_path(
@@ -164,7 +164,7 @@ std::string build_edge_consensus_http_outbox_poll_url(
 }
 
 EdgeConsensusRuntimeTransportOps make_edge_consensus_http_transport(
-  const EdgeConsensusHttpRuntimeConfig& cfg
+  const EdgeConsensusRuntimeConfig& cfg
 ) {
   EdgeConsensusRuntimeTransportOps transport;
   transport.post_hello = [cfg](uint64_t* io_seq, std::string* out_error) {

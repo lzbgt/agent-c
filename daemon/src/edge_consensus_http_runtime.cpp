@@ -6,8 +6,8 @@
 namespace agentd {
 
 bool run_edge_consensus_http_runtime(
-  const EdgeConsensusHttpRuntimeConfig& cfg,
-  const EdgeConsensusHttpRuntimeHooks& hooks,
+  const EdgeConsensusRuntimeConfig& cfg,
+  const EdgeConsensusRuntimeHooks& hooks,
   Json::Value* out_result,
   std::string* out_error
 ) {

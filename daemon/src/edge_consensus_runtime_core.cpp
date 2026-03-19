@@ -13,23 +13,23 @@ static int64_t now_utc_ms() {
   return std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
 }
 
-static void log_line(const EdgeConsensusHttpRuntimeHooks& hooks, const std::string& line) {
+static void log_line(const EdgeConsensusRuntimeHooks& hooks, const std::string& line) {
   if (hooks.log_line) hooks.log_line(line);
 }
 
-static void status_update(const EdgeConsensusHttpRuntimeHooks& hooks, const EdgeConsensusNodeLoop& loop) {
+static void status_update(const EdgeConsensusRuntimeHooks& hooks, const EdgeConsensusNodeLoop& loop) {
   if (hooks.status_update) hooks.status_update(loop.status_to_json());
 }
 
-static void notify_startup_ready(const EdgeConsensusHttpRuntimeHooks& hooks) {
+static void notify_startup_ready(const EdgeConsensusRuntimeHooks& hooks) {
   if (hooks.startup_ready) hooks.startup_ready();
 }
 
 }  // namespace
 
 bool run_edge_consensus_runtime_core(
-  const EdgeConsensusHttpRuntimeConfig& cfg,
-  const EdgeConsensusHttpRuntimeHooks& hooks,
+  const EdgeConsensusRuntimeConfig& cfg,
+  const EdgeConsensusRuntimeHooks& hooks,
   const EdgeConsensusRuntimeTransportOps& transport,
   Json::Value* out_result,
   std::string* out_error

@@ -1,6 +1,7 @@
 #include "edge_consensus_runtime_backend.h"
 
 #include "agent_db.h"
+#include "edge_consensus_http_runtime.h"
 #include "edge_consensus_runtime_policy.h"
 #include "json_util.h"
 #include "string_util.h"
@@ -94,7 +95,7 @@ bool edge_consensus_runtime_spawn_external(
   if (!out_state) return false;
   out_state->reset();
 
-  EdgeConsensusHttpRuntimeConfig run_cfg;
+  EdgeConsensusRuntimeConfig run_cfg;
   EdgeConsensusRuntime runtime_state;
   if (!edge_consensus_runtime_build_config(cfg, body, &run_cfg, &runtime_state, out_err)) return false;
 
@@ -242,14 +243,14 @@ bool edge_consensus_runtime_start_builtin(
   if (!out_state) return false;
   out_state->reset();
 
-  EdgeConsensusHttpRuntimeConfig run_cfg;
+  EdgeConsensusRuntimeConfig run_cfg;
   EdgeConsensusRuntime runtime_state;
   if (!edge_consensus_runtime_build_config(cfg, body, &run_cfg, &runtime_state, out_err)) return false;
 
   auto st = make_edge_consensus_builtin_runtime_state(runtime_state);
 
   std::thread([db, st, run_cfg, &runtime_mu, on_exit_persist]() mutable {
-    EdgeConsensusHttpRuntimeHooks hooks;
+    EdgeConsensusRuntimeHooks hooks;
     hooks.stop_requested = st->stop_requested.get();
     hooks.log_line = [st, &runtime_mu](const std::string& line) {
       std::lock_guard<std::mutex> lk(runtime_mu);

@@ -9,8 +9,8 @@ namespace {
 
 using agentd::EdgeConsensusEpochs;
 using agentd::EdgeConsensusFrame;
-using agentd::EdgeConsensusHttpRuntimeConfig;
-using agentd::EdgeConsensusHttpRuntimeHooks;
+using agentd::EdgeConsensusRuntimeConfig;
+using agentd::EdgeConsensusRuntimeHooks;
 using agentd::EdgeConsensusIdentity;
 using agentd::EdgeConsensusNodeLoop;
 using agentd::EdgeConsensusNodeLoopConfig;
@@ -19,8 +19,8 @@ using agentd::EdgeConsensusRuntimeTransportOps;
 using agentd::edge_consensus_frame_to_json;
 using agentd::run_edge_consensus_runtime_core;
 
-static EdgeConsensusHttpRuntimeConfig make_config() {
-  EdgeConsensusHttpRuntimeConfig cfg;
+static EdgeConsensusRuntimeConfig make_config() {
+  EdgeConsensusRuntimeConfig cfg;
   cfg.daemon_url = "http://127.0.0.1:8123";
   cfg.auth_token = "token";
   cfg.node_id = "node-a";
@@ -72,7 +72,7 @@ static void set_membership_all(EdgeConsensusReplica* replica) {
   replica->set_membership(9, {"node-a", "node-b", "node-c"});
 }
 
-static std::vector<EdgeConsensusFrame> make_vote_grants_for_node_a(const EdgeConsensusHttpRuntimeConfig& cfg) {
+static std::vector<EdgeConsensusFrame> make_vote_grants_for_node_a(const EdgeConsensusRuntimeConfig& cfg) {
   EdgeConsensusNodeLoopConfig loop_cfg;
   loop_cfg.self = make_identity(cfg.node_id);
   loop_cfg.peer_node_ids = cfg.peer_node_ids;
@@ -101,17 +101,17 @@ static std::vector<EdgeConsensusFrame> make_vote_grants_for_node_a(const EdgeCon
 }
 
 static void test_runtime_core_rejects_incomplete_transport() {
-  const EdgeConsensusHttpRuntimeConfig cfg = make_config();
+  const EdgeConsensusRuntimeConfig cfg = make_config();
   EdgeConsensusRuntimeTransportOps transport;
   Json::Value result(Json::nullValue);
   std::string error;
-  const bool ok = run_edge_consensus_runtime_core(cfg, EdgeConsensusHttpRuntimeHooks(), transport, &result, &error);
+  const bool ok = run_edge_consensus_runtime_core(cfg, EdgeConsensusRuntimeHooks(), transport, &result, &error);
   assert(!ok);
   assert(error == "runtime transport incomplete");
 }
 
 static void test_runtime_core_surfaces_hello_failure() {
-  const EdgeConsensusHttpRuntimeConfig cfg = make_config();
+  const EdgeConsensusRuntimeConfig cfg = make_config();
   EdgeConsensusRuntimeTransportOps transport;
   transport.post_hello = [](uint64_t*, std::string* out_error) {
     if (out_error) *out_error = "network down";
@@ -127,13 +127,13 @@ static void test_runtime_core_surfaces_hello_failure() {
 
   Json::Value result(Json::nullValue);
   std::string error;
-  const bool ok = run_edge_consensus_runtime_core(cfg, EdgeConsensusHttpRuntimeHooks(), transport, &result, &error);
+  const bool ok = run_edge_consensus_runtime_core(cfg, EdgeConsensusRuntimeHooks(), transport, &result, &error);
   assert(!ok);
   assert(error == "failed to post NODE_HELLO: network down");
 }
 
 static void test_runtime_core_returns_structured_stop_result() {
-  const EdgeConsensusHttpRuntimeConfig cfg = make_config();
+  const EdgeConsensusRuntimeConfig cfg = make_config();
   std::atomic<bool> stop_requested(true);
   int startup_ready_calls = 0;
   int status_updates = 0;
@@ -153,7 +153,7 @@ static void test_runtime_core_returns_structured_stop_result() {
     return true;
   };
 
-  EdgeConsensusHttpRuntimeHooks hooks;
+  EdgeConsensusRuntimeHooks hooks;
   hooks.stop_requested = &stop_requested;
   hooks.startup_ready = [&startup_ready_calls]() { startup_ready_calls++; };
   hooks.status_update = [&status_updates](const Json::Value&) { status_updates++; };
@@ -171,7 +171,7 @@ static void test_runtime_core_returns_structured_stop_result() {
 }
 
 static void test_runtime_core_returns_deadline_result_without_commit() {
-  EdgeConsensusHttpRuntimeConfig cfg = make_config();
+  EdgeConsensusRuntimeConfig cfg = make_config();
   cfg.deadline_ms = 0;
 
   EdgeConsensusRuntimeTransportOps transport;
@@ -190,7 +190,7 @@ static void test_runtime_core_returns_deadline_result_without_commit() {
 
   Json::Value result(Json::nullValue);
   std::string error;
-  const bool ok = run_edge_consensus_runtime_core(cfg, EdgeConsensusHttpRuntimeHooks(), transport, &result, &error);
+  const bool ok = run_edge_consensus_runtime_core(cfg, EdgeConsensusRuntimeHooks(), transport, &result, &error);
   assert(ok);
   assert(error.empty());
   assert(!result["ok"].asBool());
@@ -198,7 +198,7 @@ static void test_runtime_core_returns_deadline_result_without_commit() {
 }
 
 static void test_runtime_core_commits_from_relayed_vote_grants() {
-  const EdgeConsensusHttpRuntimeConfig cfg = make_config();
+  const EdgeConsensusRuntimeConfig cfg = make_config();
   const std::vector<EdgeConsensusFrame> grants = make_vote_grants_for_node_a(cfg);
   int send_calls = 0;
   int poll_calls = 0;
@@ -239,7 +239,7 @@ static void test_runtime_core_commits_from_relayed_vote_grants() {
     return true;
   };
 
-  EdgeConsensusHttpRuntimeHooks hooks;
+  EdgeConsensusRuntimeHooks hooks;
   hooks.status_update = [&statuses](const Json::Value& status) { statuses.append(status); };
 
   Json::Value result(Json::nullValue);

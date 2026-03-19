@@ -8,8 +8,8 @@ namespace agentd {
 
 bool run_edge_consensus_local_runtime(
   AgentDb* db,
-  const EdgeConsensusHttpRuntimeConfig& cfg,
-  const EdgeConsensusHttpRuntimeHooks& hooks,
+  const EdgeConsensusRuntimeConfig& cfg,
+  const EdgeConsensusRuntimeHooks& hooks,
   Json::Value* out_result,
   std::string* out_error
 ) {

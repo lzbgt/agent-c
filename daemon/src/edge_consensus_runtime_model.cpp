@@ -264,7 +264,7 @@ bool edge_consensus_runtime_same_effective_config(
 bool edge_consensus_runtime_build_config(
   const DaemonConfig& cfg,
   const Json::Value& body,
-  EdgeConsensusHttpRuntimeConfig* out_cfg,
+  EdgeConsensusRuntimeConfig* out_cfg,
   EdgeConsensusRuntime* out_state,
   std::string* out_err
 ) {

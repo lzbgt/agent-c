@@ -1,7 +1,7 @@
 #pragma once
 
 #include "daemon_config.h"
-#include "edge_consensus_http_runtime.h"
+#include "edge_consensus_runtime_execution.h"
 #include "edge_consensus_runtime_model.h"
 
 #include <json/json.h>
@@ -29,7 +29,7 @@ EdgeConsensusRuntimeArtifactsPlan plan_edge_consensus_runtime_artifacts(
 
 EdgeConsensusExternalProcessPlan make_edge_consensus_external_process_plan(
   const DaemonConfig& cfg,
-  const EdgeConsensusHttpRuntimeConfig& run_cfg,
+  const EdgeConsensusRuntimeConfig& run_cfg,
   const EdgeConsensusRuntime& runtime_state
 );
 

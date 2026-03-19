@@ -1,7 +1,7 @@
 #pragma once
 
 #include "daemon_config.h"
-#include "edge_consensus_http_runtime.h"
+#include "edge_consensus_runtime_execution.h"
 #include "edge_consensus_runtime_model.h"
 
 #include <json/json.h>
@@ -20,7 +20,7 @@ enum class EdgeConsensusRuntimeReuseDisposition {
 struct EdgeConsensusRuntimeReuseResult {
   EdgeConsensusRuntimeReuseDisposition disposition =
     EdgeConsensusRuntimeReuseDisposition::not_running;
-  EdgeConsensusHttpRuntimeConfig desired_config;
+  EdgeConsensusRuntimeConfig desired_config;
   EdgeConsensusRuntime desired_state;
   Json::Value runtime = Json::Value(Json::nullValue);
   std::string error;

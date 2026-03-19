@@ -92,7 +92,7 @@ static bool upsert_consensus_health_local(
 
 bool post_edge_consensus_local_hello(
   AgentDb* db,
-  const EdgeConsensusHttpRuntimeConfig& cfg,
+  const EdgeConsensusRuntimeConfig& cfg,
   uint64_t* io_seq,
   std::string* out_error
 ) {
@@ -156,7 +156,7 @@ bool post_edge_consensus_local_hello(
 
 bool send_edge_consensus_local_frame(
   AgentDb* db,
-  const EdgeConsensusHttpRuntimeConfig& cfg,
+  const EdgeConsensusRuntimeConfig& cfg,
   const EdgeConsensusFrame& frame,
   const std::vector<std::string>& raw_target_node_ids,
   uint64_t* io_seq,
@@ -217,7 +217,7 @@ bool send_edge_consensus_local_frame(
 
 bool poll_edge_consensus_local_outbox(
   AgentDb* db,
-  const EdgeConsensusHttpRuntimeConfig& cfg,
+  const EdgeConsensusRuntimeConfig& cfg,
   int64_t cursor,
   Json::Value* out,
   std::string* out_error
@@ -263,7 +263,7 @@ bool poll_edge_consensus_local_outbox(
 
 EdgeConsensusRuntimeTransportOps make_edge_consensus_local_transport(
   AgentDb* db,
-  const EdgeConsensusHttpRuntimeConfig& cfg
+  const EdgeConsensusRuntimeConfig& cfg
 ) {
   EdgeConsensusRuntimeTransportOps transport;
   transport.post_hello = [db, cfg](uint64_t* io_seq, std::string* err) {
