@@ -134,6 +134,55 @@ PY
   return 1
 }
 
+wait_runtime_running_persisted() {
+  local node_id="$1"
+  local status_json=""
+  for _ in $(seq 1 120); do
+    status_json="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${node_id}")"
+    if python3 - <<PY
+import json
+obj = json.loads(r'''${status_json}''')
+rt = obj.get("runtime")
+if not isinstance(rt, dict) or not rt.get("running") or rt.get("status_source") != "persisted":
+  raise SystemExit(1)
+PY
+    then
+      echo "${status_json}"
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "timed out waiting for runtime ${node_id} to recover as persisted+running" >&2
+  echo "${status_json}" >&2
+  return 1
+}
+
+wait_runtime_stopped_with_signal() {
+  local node_id="$1"
+  local exit_signal="$2"
+  local status_json=""
+  for _ in $(seq 1 120); do
+    status_json="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${node_id}")"
+    if python3 - <<PY
+import json
+obj = json.loads(r'''${status_json}''')
+rt = obj.get("runtime")
+if not isinstance(rt, dict) or rt.get("running"):
+  raise SystemExit(1)
+if int(rt.get("exit_signal") or 0) != int(${exit_signal}):
+  raise SystemExit(1)
+PY
+    then
+      echo "${status_json}"
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "timed out waiting for runtime ${node_id} to stop with exit_signal=${exit_signal}" >&2
+  echo "${status_json}" >&2
+  return 1
+}
+
 STOP_NODE="node_runtime_cons_stop"
 STOP_CLUSTER="lab-consensus-managed-stop"
 STOP_SHA="sha256:5555555555555555555555555555555555555555555555555555555555555555"
@@ -282,6 +331,7 @@ agentd_smoke_wait_health "${DAEMON_URL}" "${DAEMON_TOKEN}"
 CONFIG_RESTART_JSON="$(curl_json GET "/api/v1/config")"
 
 EXT_NODE="node_runtime_cons_ext"
+EXT_PEER="node_runtime_cons_ext_peer"
 EXT_CLUSTER="lab-consensus-managed-ext"
 EXT_SHA="sha256:6666666666666666666666666666666666666666666666666666666666666666"
 FALSE_BIN="$(python3 - <<'PY'
@@ -295,7 +345,7 @@ if [[ -z "${FALSE_BIN}" ]]; then
 fi
 
 START_EXT_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","deadline_ms":30000,"poll_interval_ms":100}
+{"action":"start","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","member_node_ids":["${EXT_NODE}","${EXT_PEER}"],"cluster_size":2,"deadline_ms":30000,"poll_interval_ms":100}
 JSON
 )")"
 RUNNING_EXT_JSON="$(wait_runtime_running "${EXT_NODE}")"
@@ -309,13 +359,13 @@ agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_edge_conse
 DAEMON_URL="http://${HOST}:${PORT_DAEMON}"
 agentd_smoke_wait_health "${DAEMON_URL}" "${DAEMON_TOKEN}"
 
-EXT_RESTART_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${EXT_NODE}")"
+EXT_RESTART_STATUS_JSON="$(wait_runtime_running_persisted "${EXT_NODE}")"
 START_EXT_AGAIN_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","deadline_ms":30000,"poll_interval_ms":100}
+{"action":"start","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","member_node_ids":["${EXT_NODE}","${EXT_PEER}"],"cluster_size":2,"deadline_ms":30000,"poll_interval_ms":100}
 JSON
 )")"
 CONFLICT_START_RAW="$(curl_json_status POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","leader_lease_ms":7777,"deadline_ms":30000,"poll_interval_ms":100}
+{"action":"start","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","member_node_ids":["${EXT_NODE}","${EXT_PEER}"],"cluster_size":2,"leader_lease_ms":7777,"deadline_ms":30000,"poll_interval_ms":100}
 JSON
 )")"
 CONFLICT_START_STATUS="$(printf '%s\n' "${CONFLICT_START_RAW}" | sed -n '1p')"
@@ -324,7 +374,7 @@ STOP_EXT_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<J
 {"action":"stop","node_id":"${EXT_NODE}"}
 JSON
 )")"
-STOP_EXT_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${EXT_NODE}")"
+STOP_EXT_STATUS_JSON="$(wait_runtime_stopped_with_signal "${EXT_NODE}" 15)"
 
 FAILFAST_CFG_JSON="$(curl_json POST "/api/v1/config/update" "$(cat <<JSON
 {"edge_consensus":{"node_tool_path":"${FALSE_BIN}"}}
