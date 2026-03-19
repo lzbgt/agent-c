@@ -183,6 +183,52 @@ PY
   return 1
 }
 
+wait_runtime_stopped() {
+  local node_id="$1"
+  local status_json=""
+  for _ in $(seq 1 120); do
+    status_json="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${node_id}")"
+    if python3 - <<PY
+import json
+obj = json.loads(r'''${status_json}''')
+rt = obj.get("runtime")
+if not isinstance(rt, dict) or rt.get("running"):
+  raise SystemExit(1)
+PY
+    then
+      echo "${status_json}"
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "timed out waiting for runtime ${node_id} to stop" >&2
+  echo "${status_json}" >&2
+  return 1
+}
+
+wait_runtime_stopped_persisted() {
+  local node_id="$1"
+  local status_json=""
+  for _ in $(seq 1 120); do
+    status_json="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${node_id}")"
+    if python3 - <<PY
+import json
+obj = json.loads(r'''${status_json}''')
+rt = obj.get("runtime")
+if not isinstance(rt, dict) or rt.get("running") or rt.get("status_source") != "persisted":
+  raise SystemExit(1)
+PY
+    then
+      echo "${status_json}"
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "timed out waiting for runtime ${node_id} to stop as persisted" >&2
+  echo "${status_json}" >&2
+  return 1
+}
+
 STOP_NODE="node_runtime_cons_stop"
 STOP_CLUSTER="lab-consensus-managed-stop"
 STOP_SHA="sha256:5555555555555555555555555555555555555555555555555555555555555555"
@@ -192,6 +238,13 @@ STALE_SHA="sha256:58585858585858585858585858585858585858585858585858585858585858
 FAIL_BUILTIN_NODE="node_runtime_cons_builtin_failfast"
 FAIL_BUILTIN_CLUSTER="lab-consensus-managed-builtin-failfast"
 FAIL_BUILTIN_SHA="sha256:5959595959595959595959595959595959595959595959595959595959595959"
+DRIFT_NODE="node_runtime_cons_policy_drift"
+DRIFT_CLUSTER="lab-consensus-policy-drift"
+DRIFT_MEMBER_A="${DRIFT_NODE}"
+DRIFT_MEMBER_B="node_runtime_cons_policy_peer_b"
+DRIFT_MEMBER_C="node_runtime_cons_policy_peer_c"
+DRIFT_MEMBER_D="node_runtime_cons_policy_peer_d"
+DRIFT_SHA="sha256:5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
 
 START_STOP_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
 {"action":"start","node_id":"${STOP_NODE}","cluster_id":"${STOP_CLUSTER}","manifest_sha256":"${STOP_SHA}","deadline_ms":30000,"poll_interval_ms":100}
@@ -202,7 +255,7 @@ STOP_RESP_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<
 {"action":"stop","node_id":"${STOP_NODE}"}
 JSON
 )")"
-STOP_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${STOP_NODE}")"
+STOP_STATUS_JSON="$(wait_runtime_stopped "${STOP_NODE}")"
 FAIL_BUILTIN_RAW="$(curl_json_status POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
 {"action":"start","node_id":"${FAIL_BUILTIN_NODE}","cluster_id":"${FAIL_BUILTIN_CLUSTER}","manifest_sha256":"${FAIL_BUILTIN_SHA}","daemon_url":"not-a-url","deadline_ms":30000,"poll_interval_ms":100}
 JSON
@@ -294,7 +347,7 @@ agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_edge_conse
 DAEMON_URL="http://${HOST}:${PORT_DAEMON}"
 agentd_smoke_wait_health "${DAEMON_URL}" "${DAEMON_TOKEN}"
 
-STOP_RESTART_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${STOP_NODE}")"
+STOP_RESTART_STATUS_JSON="$(wait_runtime_stopped_persisted "${STOP_NODE}")"
 
 START_STALE_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
 {"action":"start","node_id":"${STALE_NODE}","cluster_id":"${STALE_CLUSTER}","manifest_sha256":"${STALE_SHA}","deadline_ms":30000,"poll_interval_ms":100}
@@ -312,6 +365,40 @@ DAEMON_URL="http://${HOST}:${PORT_DAEMON}"
 agentd_smoke_wait_health "${DAEMON_URL}" "${DAEMON_TOKEN}"
 
 STALE_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${STALE_NODE}")"
+
+DRIFT_ROTATE_V1_JSON="$(curl_json POST "/api/v1/edge/consensus/membership/rotate" "$(cat <<JSON
+{"cluster_id":"${DRIFT_CLUSTER}","mode":"replace","membership_epoch":21,"member_node_ids":["${DRIFT_MEMBER_A}","${DRIFT_MEMBER_B}","${DRIFT_MEMBER_C}"],"campaign_delay_ms":75,"campaign_retry_ms":400,"campaign_retry_max_ms":900,"campaign_retry_backoff_factor":2,"leader_heartbeat_ms":240,"leader_lease_ms":1200}
+JSON
+)")"
+DRIFT_START_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"start","node_id":"${DRIFT_NODE}","cluster_id":"${DRIFT_CLUSTER}","manifest_sha256":"${DRIFT_SHA}","deadline_ms":30000,"poll_interval_ms":100}
+JSON
+)")"
+DRIFT_RUNNING_JSON="$(wait_runtime_running "${DRIFT_NODE}")"
+DRIFT_ROTATE_V2_JSON="$(curl_json POST "/api/v1/edge/consensus/membership/rotate" "$(cat <<JSON
+{"cluster_id":"${DRIFT_CLUSTER}","mode":"replace","membership_epoch":22,"member_node_ids":["${DRIFT_MEMBER_A}","${DRIFT_MEMBER_B}","${DRIFT_MEMBER_D}"],"campaign_delay_ms":125,"campaign_retry_ms":650,"campaign_retry_max_ms":1600,"campaign_retry_backoff_factor":3,"leader_heartbeat_ms":360,"leader_lease_ms":1800}
+JSON
+)")"
+DRIFT_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${DRIFT_NODE}")"
+DRIFT_CONFLICT_RAW="$(curl_json_status POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"start","node_id":"${DRIFT_NODE}","cluster_id":"${DRIFT_CLUSTER}","manifest_sha256":"${DRIFT_SHA}","deadline_ms":30000,"poll_interval_ms":100}
+JSON
+)")"
+DRIFT_CONFLICT_STATUS="$(printf '%s\n' "${DRIFT_CONFLICT_RAW}" | sed -n '1p')"
+DRIFT_CONFLICT_JSON="$(printf '%s\n' "${DRIFT_CONFLICT_RAW}" | sed '1d')"
+DRIFT_STOP_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"stop","node_id":"${DRIFT_NODE}"}
+JSON
+)")"
+DRIFT_RESTART_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"start","node_id":"${DRIFT_NODE}","cluster_id":"${DRIFT_CLUSTER}","manifest_sha256":"${DRIFT_SHA}","deadline_ms":30000,"poll_interval_ms":100}
+JSON
+)")"
+DRIFT_RESTART_RUNNING_JSON="$(wait_runtime_running "${DRIFT_NODE}")"
+DRIFT_RESTART_STOP_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"stop","node_id":"${DRIFT_NODE}"}
+JSON
+)")"
 
 CONFIG_SET_JSON="$(curl_json POST "/api/v1/config/update" "$(cat <<JSON
 {"edge_consensus":{"node_tool_path":"${NODE_TOOL_BIN}","default_runtime_kind":"external"}}
@@ -458,6 +545,16 @@ stop_restart_status = json.loads(r'''${STOP_RESTART_STATUS_JSON}''')
 start_stale = json.loads(r'''${START_STALE_JSON}''')
 running_stale = json.loads(r'''${RUNNING_STALE_JSON}''')
 stale_status = json.loads(r'''${STALE_STATUS_JSON}''')
+drift_rotate_v1 = json.loads(r'''${DRIFT_ROTATE_V1_JSON}''')
+drift_start = json.loads(r'''${DRIFT_START_JSON}''')
+drift_running = json.loads(r'''${DRIFT_RUNNING_JSON}''')
+drift_rotate_v2 = json.loads(r'''${DRIFT_ROTATE_V2_JSON}''')
+drift_status = json.loads(r'''${DRIFT_STATUS_JSON}''')
+drift_conflict = json.loads(r'''${DRIFT_CONFLICT_JSON}''')
+drift_stop = json.loads(r'''${DRIFT_STOP_JSON}''')
+drift_restart = json.loads(r'''${DRIFT_RESTART_JSON}''')
+drift_restart_running = json.loads(r'''${DRIFT_RESTART_RUNNING_JSON}''')
+drift_restart_stop = json.loads(r'''${DRIFT_RESTART_STOP_JSON}''')
 config_set = json.loads(r'''${CONFIG_SET_JSON}''')
 config_get = json.loads(r'''${CONFIG_GET_JSON}''')
 config_restart = json.loads(r'''${CONFIG_RESTART_JSON}''')
@@ -507,6 +604,62 @@ if stale_status.get("runtime") is not None:
 if cleanup_stale.get("persisted_record_cleared") is not True:
   print("stale runtime restart did not clear stale persisted record", stale_status, file=sys.stderr)
   raise SystemExit(1)
+
+for label, obj in (("drift_rotate_v1", drift_rotate_v1), ("drift_rotate_v2", drift_rotate_v2), ("drift_start", drift_start), ("drift_stop", drift_stop), ("drift_restart", drift_restart), ("drift_restart_stop", drift_restart_stop)):
+  if not obj.get("ok"):
+    print(label, obj, file=sys.stderr)
+    raise SystemExit(1)
+if drift_start.get("startup_confirmed") is not True or drift_restart.get("startup_confirmed") is not True:
+  print("drift start/restart missing startup confirmation", drift_start, drift_restart, file=sys.stderr)
+  raise SystemExit(1)
+if not (drift_running.get("runtime") or {}).get("running"):
+  print("drift runtime never entered running state", drift_running, file=sys.stderr)
+  raise SystemExit(1)
+drift_rt = drift_status.get("runtime") or {}
+drift_info = drift_rt.get("cluster_policy_drift") or {}
+changed = set(drift_info.get("changed_fields") or [])
+if drift_rt.get("running") is not True:
+  print("drift runtime unexpectedly not running", drift_status, file=sys.stderr)
+  raise SystemExit(1)
+if drift_info.get("cluster_id") != "${DRIFT_CLUSTER}":
+  print("drift status missing cluster id", drift_status, file=sys.stderr)
+  raise SystemExit(1)
+if not {"membership_epoch", "member_node_ids", "campaign_delay_ms", "campaign_retry_ms", "campaign_retry_max_ms", "campaign_retry_backoff_factor", "leader_heartbeat_ms", "leader_lease_ms"}.issubset(changed):
+  print("drift status missing expected changed fields", drift_status, file=sys.stderr)
+  raise SystemExit(1)
+current_policy = drift_info.get("current_policy") or {}
+if current_policy.get("membership_epoch") != 22 or current_policy.get("leader_lease_ms") != 1800:
+  print("drift status missing rotated current policy", drift_status, file=sys.stderr)
+  raise SystemExit(1)
+if sorted(current_policy.get("member_node_ids") or []) != sorted(["${DRIFT_MEMBER_A}", "${DRIFT_MEMBER_B}", "${DRIFT_MEMBER_D}"]):
+  print("drift status current policy members wrong", drift_status, file=sys.stderr)
+  raise SystemExit(1)
+if "${DRIFT_CONFLICT_STATUS}" != "409":
+  print("drift restart conflict wrong status", "${DRIFT_CONFLICT_STATUS}", drift_conflict, file=sys.stderr)
+  raise SystemExit(1)
+conflict_rt = drift_conflict.get("runtime") or {}
+conflict_drift = conflict_rt.get("cluster_policy_drift") or {}
+if drift_conflict.get("error") != "consensus runtime already running with different config":
+  print("drift restart conflict wrong error", drift_conflict, file=sys.stderr)
+  raise SystemExit(1)
+if sorted((conflict_drift.get("current_policy") or {}).get("member_node_ids") or []) != sorted(["${DRIFT_MEMBER_A}", "${DRIFT_MEMBER_B}", "${DRIFT_MEMBER_D}"]):
+  print("drift restart conflict missing current policy", drift_conflict, file=sys.stderr)
+  raise SystemExit(1)
+restart_rt = drift_restart.get("runtime") or {}
+restart_running_rt = drift_restart_running.get("runtime") or {}
+for label, rt in (("drift_restart", restart_rt), ("drift_restart_running", restart_running_rt)):
+  if rt.get("membership_epoch") != 22 or rt.get("campaign_delay_ms") != 125 or rt.get("campaign_retry_ms") != 650:
+    print(label, "did not adopt rotated policy", rt, file=sys.stderr)
+    raise SystemExit(1)
+  if rt.get("campaign_retry_max_ms") != 1600 or rt.get("campaign_retry_backoff_factor") != 3:
+    print(label, "missing rotated retry policy", rt, file=sys.stderr)
+    raise SystemExit(1)
+  if rt.get("leader_heartbeat_ms") != 360 or rt.get("leader_lease_ms") != 1800:
+    print(label, "missing rotated leader policy", rt, file=sys.stderr)
+    raise SystemExit(1)
+  if "cluster_policy_drift" in rt:
+    print(label, "unexpected drift after restart adoption", rt, file=sys.stderr)
+    raise SystemExit(1)
 
 for label, obj in (("config_set", config_set), ("config_get", config_get), ("config_restart", config_restart)):
   edge = obj.get("edge_consensus") or {}

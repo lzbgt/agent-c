@@ -2569,6 +2569,9 @@
       `membership_epoch` plus `member_node_ids` for explicit member-set compatibility.
       When those fields are omitted and a durable `/api/v1/edge/consensus/membership`
       policy exists for the cluster, the runtime defaults from that stored bundle.
+      If that durable cluster policy is rotated while a runtime is still active,
+      responses now surface `runtime.cluster_policy_drift` with the changed fields
+      plus the current rotated policy; restart remains the adoption boundary.
     requestBody:
       required: true
       content:
@@ -2606,7 +2609,9 @@
     description: |
       Returns managed runtime state plus the latest structured result emitted by the
       builtin or external backend, including loop status fields such as campaign
-      attempts and retry timing.
+      attempts and retry timing. When durable cluster policy has drifted underneath
+      a still-running runtime, the returned runtime snapshot includes
+      `cluster_policy_drift`.
     parameters:
       - in: query
         name: node_id

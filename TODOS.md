@@ -648,6 +648,7 @@ streaming and plugins are stable.
   - 2026-03-15: managed consensus start now returns `409` when a different effective runtime config tries to reuse an already-running `node_id`, while repeated identical starts remain idempotent with `already_running=true`.
   - 2026-03-15: managed consensus runtime snapshots now persist in DB meta too, so `GET /api/v1/edge/node/consensus_runtime` can recover finished/stopped runtime state after restart with `status_source=persisted`, can also recover a still-live external helper from a persisted running snapshot, and now self-heals stale builtin/corrupt persisted runtime records by clearing the record plus dead local artifacts.
   - 2026-03-19: if that recovered live external helper is later stopped through agentd, the persisted final runtime snapshot now keeps the stop signal/result instead of degrading into a signal-less stopped record.
+  - 2026-03-19: if durable cluster membership/retry policy rotates while a managed consensus runtime is still running, runtime reads now surface `runtime.cluster_policy_drift` with changed fields plus the current policy, and the main runtime smoke proves restart-based adoption of the rotated policy.
 
 ## Deferred (after macOS stability)
 

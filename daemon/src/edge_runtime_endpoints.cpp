@@ -211,6 +211,48 @@ static Json::Value edge_consensus_runtime_to_json(const EdgeConsensusRuntime& st
   return out;
 }
 
+static Json::Value edge_consensus_runtime_cluster_policy_drift_json(
+  const DaemonConfig& cfg,
+  const EdgeConsensusRuntime& st
+) {
+  const auto pol_it = cfg.edge_consensus_clusters.find(st.cluster_id);
+  if (pol_it == cfg.edge_consensus_clusters.end()) return Json::Value(Json::nullValue);
+
+  const EdgeConsensusClusterPolicy& pol = pol_it->second;
+  std::vector<std::string> policy_member_node_ids = dedupe_safe_edge_ids(pol.member_node_ids);
+  std::vector<std::string> runtime_member_node_ids = dedupe_safe_edge_ids(st.member_node_ids);
+  std::sort(policy_member_node_ids.begin(), policy_member_node_ids.end());
+  std::sort(runtime_member_node_ids.begin(), runtime_member_node_ids.end());
+  Json::Value changed_fields(Json::arrayValue);
+  auto append_changed = [&changed_fields](const char* field) {
+    changed_fields.append(field);
+  };
+
+  if ((uint64_t)std::max<int64_t>(0, pol.membership_epoch) != st.membership_epoch) append_changed("membership_epoch");
+  if (policy_member_node_ids != runtime_member_node_ids) append_changed("member_node_ids");
+  if (pol.campaign_delay_ms != st.campaign_delay_ms) append_changed("campaign_delay_ms");
+  if (pol.campaign_retry_ms != st.campaign_retry_ms) append_changed("campaign_retry_ms");
+  if (pol.campaign_retry_max_ms != st.campaign_retry_max_ms) append_changed("campaign_retry_max_ms");
+  if (pol.campaign_retry_backoff_factor != st.campaign_retry_backoff_factor) append_changed("campaign_retry_backoff_factor");
+  if (pol.leader_heartbeat_ms != st.leader_heartbeat_ms) append_changed("leader_heartbeat_ms");
+  if (pol.leader_lease_ms != st.leader_lease_ms) append_changed("leader_lease_ms");
+
+  if (changed_fields.empty()) return Json::Value(Json::nullValue);
+
+  Json::Value out(Json::objectValue);
+  out["cluster_id"] = st.cluster_id;
+  out["changed_fields"] = changed_fields;
+  out["current_policy"] = edge_consensus_cluster_policy_to_json(pol_it->first, pol);
+  return out;
+}
+
+static Json::Value edge_consensus_runtime_response_json(const DaemonConfig& cfg, const EdgeConsensusRuntime& st) {
+  Json::Value out = edge_consensus_runtime_to_json(st);
+  const Json::Value drift = edge_consensus_runtime_cluster_policy_drift_json(cfg, st);
+  if (!drift.isNull()) out["cluster_policy_drift"] = drift;
+  return out;
+}
+
 static bool edge_consensus_runtime_same_effective_config(const EdgeConsensusRuntime& a, const EdgeConsensusRuntime& b) {
   return
     trim_copy(a.runtime_kind) == trim_copy(b.runtime_kind) &&
@@ -1071,7 +1113,7 @@ Json::Value edge_consensus_runtime_status_json_for_node(const DaemonConfig& cfg,
       refresh_edge_consensus_runtime_state(st.get());
       std::string perr;
       (void)persist_edge_consensus_runtime_record(db_or_null, *st, &perr);
-      return edge_consensus_runtime_to_json(*st);
+      return edge_consensus_runtime_response_json(cfg, *st);
     }
   }
   if (!db_or_null || !db_or_null->is_open()) return Json::Value(Json::nullValue);
@@ -1092,7 +1134,7 @@ Json::Value edge_consensus_runtime_status_json_for_node(const DaemonConfig& cfg,
       g_edge_consensus_runtime_by_node[node_id] = persisted;
       std::string perr;
       (void)persist_edge_consensus_runtime_record(db_or_null, *persisted, &perr);
-      return edge_consensus_runtime_to_json(*persisted);
+      return edge_consensus_runtime_response_json(cfg, *persisted);
     }
     std::string cerr;
     (void)clear_edge_consensus_runtime_record(db_or_null, node_id, &cerr);
@@ -1101,7 +1143,7 @@ Json::Value edge_consensus_runtime_status_json_for_node(const DaemonConfig& cfg,
     (void)remove_edge_consensus_runtime_artifacts(cfg, node_id, &artifacts_deleted, &aerr);
     return Json::Value(Json::nullValue);
   }
-  return persisted ? edge_consensus_runtime_to_json(*persisted) : Json::Value(Json::nullValue);
+  return persisted ? edge_consensus_runtime_response_json(cfg, *persisted) : Json::Value(Json::nullValue);
 }
 
 void handle_edge_node_consensus_runtime_endpoint(
@@ -1218,14 +1260,14 @@ void handle_edge_node_consensus_runtime_endpoint(
       out["ok"] = true;
       out["stopped"] = false;
       out["reason"] = "not_running";
-      out["runtime"] = edge_consensus_runtime_to_json(*st);
+      out["runtime"] = edge_consensus_runtime_response_json(cfg, *st);
       resp->status = 200;
       resp->body = json_stringify(out);
       return;
     }
 #if defined(_WIN32)
     out["error"] = "consensus_runtime stop unsupported on Windows";
-    out["runtime"] = edge_consensus_runtime_to_json(*st);
+    out["runtime"] = edge_consensus_runtime_response_json(cfg, *st);
     resp->status = 501;
     resp->body = json_stringify(out);
     return;
@@ -1236,7 +1278,7 @@ void handle_edge_node_consensus_runtime_endpoint(
       out["error"] = serr.empty() ? "failed to stop consensus runtime" : serr;
       {
         std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
-        out["runtime"] = edge_consensus_runtime_to_json(*st);
+        out["runtime"] = edge_consensus_runtime_response_json(cfg, *st);
       }
       resp->status = 500;
       resp->body = json_stringify(out);
@@ -1247,7 +1289,7 @@ void handle_edge_node_consensus_runtime_endpoint(
       std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
       refresh_edge_consensus_runtime_state(st.get());
       finalize_recovered_edge_consensus_stop(st.get(), signal_used);
-      out["runtime"] = edge_consensus_runtime_to_json(*st);
+      out["runtime"] = edge_consensus_runtime_response_json(cfg, *st);
     }
     std::string perr;
     (void)persist_edge_consensus_runtime_record(db_or_null, *st, &perr);
@@ -1299,7 +1341,7 @@ void handle_edge_node_consensus_runtime_endpoint(
       std::string conflict_err;
       if (!edge_consensus_runtime_build_config(cfg, body, &desired_cfg, &desired_state, &conflict_err)) {
         out["error"] = conflict_err.empty() ? "failed to validate requested consensus runtime config" : conflict_err;
-        out["runtime"] = edge_consensus_runtime_to_json(*st);
+        out["runtime"] = edge_consensus_runtime_response_json(cfg, *st);
         resp->status = 400;
         resp->body = json_stringify(out);
         return;
@@ -1308,14 +1350,14 @@ void handle_edge_node_consensus_runtime_endpoint(
       desired_state.tool_path = runtime_kind == "external" ? trim_copy(cfg.edge_consensus_node_tool_path) : "@builtin";
       if (!edge_consensus_runtime_same_effective_config(*st, desired_state)) {
         out["error"] = "consensus runtime already running with different config";
-        out["runtime"] = edge_consensus_runtime_to_json(*st);
+        out["runtime"] = edge_consensus_runtime_response_json(cfg, *st);
         resp->status = 409;
         resp->body = json_stringify(out);
         return;
       }
       out["ok"] = true;
       out["already_running"] = true;
-      out["runtime"] = edge_consensus_runtime_to_json(*st);
+      out["runtime"] = edge_consensus_runtime_response_json(cfg, *st);
       resp->status = 200;
       resp->body = json_stringify(out);
       return;
@@ -1356,14 +1398,14 @@ void handle_edge_node_consensus_runtime_endpoint(
         std::string conflict_err;
         if (!edge_consensus_runtime_build_config(cfg, body, &desired_cfg, &desired_state, &conflict_err)) {
           out["error"] = conflict_err.empty() ? "failed to validate requested consensus runtime config" : conflict_err;
-          out["runtime"] = edge_consensus_runtime_to_json(*persisted);
+          out["runtime"] = edge_consensus_runtime_response_json(cfg, *persisted);
           resp->status = 400;
           resp->body = json_stringify(out);
           return;
         }
         desired_state.runtime_kind = runtime_kind;
         desired_state.tool_path = runtime_kind == "external" ? trim_copy(cfg.edge_consensus_node_tool_path) : "@builtin";
-        out["runtime"] = edge_consensus_runtime_to_json(*persisted);
+        out["runtime"] = edge_consensus_runtime_response_json(cfg, *persisted);
         std::string perr;
         (void)persist_edge_consensus_runtime_record(db_or_null, *persisted, &perr);
         if (!edge_consensus_runtime_same_effective_config(*persisted, desired_state)) {
@@ -1426,7 +1468,7 @@ void handle_edge_node_consensus_runtime_endpoint(
   {
     std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
     g_edge_consensus_runtime_by_node[node_id] = spawned;
-    out["runtime"] = edge_consensus_runtime_to_json(*spawned);
+    out["runtime"] = edge_consensus_runtime_response_json(cfg, *spawned);
   }
   std::string perr;
   (void)persist_edge_consensus_runtime_record(db_or_null, *spawned, &perr);
@@ -1516,7 +1558,7 @@ void handle_edge_node_consensus_runtime_status_endpoint(
       st.reset();
     }
   }
-  out["runtime"] = st ? edge_consensus_runtime_to_json(*st) : Json::Value(Json::nullValue);
+  out["runtime"] = st ? edge_consensus_runtime_response_json(cfg, *st) : Json::Value(Json::nullValue);
   if (st) {
     std::string perr;
     (void)persist_edge_consensus_runtime_record(db_or_null, *st, &perr);

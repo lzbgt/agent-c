@@ -594,6 +594,10 @@ Notes:
   already completed, and includes the final runtime snapshot/result instead of claiming a live stop occurred.
 - `POST /api/v1/edge/node/consensus_runtime` `action=start` is now idempotent only for the same running config. If the
   same `node_id` already has a different effective running runtime config, agentd returns `409` with the existing runtime snapshot.
+- If durable cluster membership/retry policy is rotated while a managed consensus runtime is still running, runtime
+  reads now surface `runtime.cluster_policy_drift.changed_fields[]` plus the current rotated policy as
+  `runtime.cluster_policy_drift.current_policy`. Restart remains the adoption boundary: a later stop/start picks up the
+  new policy, while same-request re-start during the old run conflicts with `409` and the drifted runtime snapshot.
 - Managed consensus runtime snapshots now persist in DB meta too, so
   `GET /api/v1/edge/node/consensus_runtime?node_id=<id>` can recover the last finished/stopped runtime after agentd
   restart with `runtime.status_source=persisted`, and can also recover a still-live external helper from its persisted

@@ -376,3 +376,6 @@ Planned evidence (tracked in `TODOS.md`):
   external helper seam.
 - Managed consensus stop semantics now also distinguish live teardown from already-completed runtimes.
 - Managed consensus start semantics now also distinguish idempotent reuse from real effective-config conflicts.
+- If durable cluster policy rotates while a managed consensus runtime is still running, runtime reads now surface
+  `cluster_policy_drift.changed_fields[]` plus the current rotated policy, and restart is the explicit adoption
+  boundary instead of silent mid-run mutation.

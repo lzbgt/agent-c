@@ -240,6 +240,9 @@ Returns messages in ascending `outbox_id` order. The node should:
   - repeated starts are now split cleanly between idempotent reuse and real conflict: the same running config returns
     `already_running=true`, while a different effective config on the same running `node_id` returns `409` with the
     existing snapshot
+  - if durable cluster policy rotates underneath a still-running managed runtime, runtime reads now surface
+    `runtime.cluster_policy_drift` with `changed_fields[]` and the current rotated policy; restart remains the policy
+    adoption boundary for that managed loop
   - terminal runtime snapshots now persist across agentd restart with `runtime.status_source=persisted`; live external
     helpers can also be recovered from persisted running snapshots after restart, while stale builtin `running=true`
     records and corrupt persisted runtime records are self-healed by clearing the record and dead runtime artifacts

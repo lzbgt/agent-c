@@ -166,6 +166,16 @@ EdgeNodeConsensusRuntime:
     result:
       type: object
       additionalProperties: true
+    cluster_policy_drift:
+      type: object
+      required: [cluster_id, changed_fields, current_policy]
+      properties:
+        cluster_id: { type: string }
+        changed_fields:
+          type: array
+          items: { type: string }
+        current_policy:
+          $ref: "#/components/schemas/EdgeConsensusClusterPolicy"
 
 EdgeNodeSummary:
   type: object
