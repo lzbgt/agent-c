@@ -134,50 +134,32 @@ void voice_peer_add_runtime_snapshot(const DaemonConfig& cfg, const VoicePeerRun
 
 bool voice_peer_runtime_matches_start_request(
   const VoicePeerRuntime& st,
-  const Json::Value& body,
-  const std::string& runtime_kind,
-  const std::string& effective_broker_url,
-  const std::string& desired_tool_path,
-  const std::string& desired_node_bin,
-  const std::string& requested_broker_session_id,
-  const std::string& broker_agent_id,
-  const std::string& broker_deployment_id,
-  const std::string& sender_tag,
-  int64_t deadline_ms,
-  int64_t poll_interval_ms,
-  int64_t tone_hz
+  const VoicePeerStartPlan& plan
 ) {
-  if (runtime_kind != st.runtime_kind) return false;
-  if (runtime_kind == "bundled" || runtime_kind == "external") {
-    if (desired_tool_path != st.tool_path) return false;
-    if (desired_node_bin != st.node_bin) return false;
+  if (plan.runtime_kind != st.runtime_kind) return false;
+  if (plan.runtime_kind == "bundled" || plan.runtime_kind == "external") {
+    if (plan.desired_tool_path != st.tool_path) return false;
+    if (plan.desired_node_bin != st.node_bin) return false;
   }
-  if (!effective_broker_url.empty() && effective_broker_url != st.broker_url) return false;
-  if (body.isMember("broker_session_id") && body["broker_session_id"].isString() &&
-      (!requested_broker_session_id.empty() &&
-       (requested_broker_session_id != st.broker_session_id || st.managed_broker_session))) {
+  if (!plan.effective_broker_url.empty() && plan.effective_broker_url != st.broker_url) return false;
+  if (plan.has_requested_broker_session_id &&
+      (!plan.requested_broker_session_id.empty() &&
+       (plan.requested_broker_session_id != st.broker_session_id || st.managed_broker_session))) {
     return false;
   }
-  if ((body.isMember("broker_agent_id") && body["broker_agent_id"].isString()) ||
-      (body.isMember("broker_deployment_id") && body["broker_deployment_id"].isString())) {
+  if (plan.has_broker_agent_id || plan.has_broker_deployment_id) {
     if (!st.managed_broker_session) return false;
-    if (broker_agent_id != st.broker_agent_id) return false;
-    if (broker_deployment_id != st.broker_deployment_id) return false;
+    if (plan.broker_agent_id != st.broker_agent_id) return false;
+    if (plan.broker_deployment_id != st.broker_deployment_id) return false;
   }
-  if (body.isMember("sender_tag") && body["sender_tag"].isString() && sender_tag != st.sender_tag) return false;
-  if (body.isMember("deadline_ms") &&
-      (body["deadline_ms"].isInt64() || body["deadline_ms"].isUInt64() || body["deadline_ms"].isInt()) &&
-      deadline_ms != st.deadline_ms) {
+  if (plan.has_sender_tag && plan.sender_tag != st.sender_tag) return false;
+  if (plan.has_deadline_ms && plan.deadline_ms != st.deadline_ms) {
     return false;
   }
-  if (body.isMember("poll_interval_ms") &&
-      (body["poll_interval_ms"].isInt64() || body["poll_interval_ms"].isUInt64() || body["poll_interval_ms"].isInt()) &&
-      poll_interval_ms != st.poll_interval_ms) {
+  if (plan.has_poll_interval_ms && plan.poll_interval_ms != st.poll_interval_ms) {
     return false;
   }
-  if (body.isMember("tone_hz") &&
-      (body["tone_hz"].isInt64() || body["tone_hz"].isUInt64() || body["tone_hz"].isInt()) &&
-      tone_hz != st.tone_hz) {
+  if (plan.has_tone_hz && plan.tone_hz != st.tone_hz) {
     return false;
   }
   return true;
@@ -297,6 +279,37 @@ bool load_voice_peer_runtime_record(
   st->status_source = "persisted";
   refresh_voice_peer_runtime_state(st.get());
   st->stale_persisted_record = persisted_claimed_running && !st->running;
+  if (out_state) *out_state = std::move(st);
+  return true;
+}
+
+bool recover_voice_peer_runtime_record(
+  const DaemonConfig& cfg,
+  AgentDb* db,
+  const std::string& session_id,
+  std::shared_ptr<VoicePeerRuntime>* out_state,
+  Json::Value* out_updates,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (out_state) out_state->reset();
+  if (out_updates) *out_updates = Json::Value(Json::objectValue);
+
+  bool record_self_healed = false;
+  std::shared_ptr<VoicePeerRuntime> st;
+  if (!load_voice_peer_runtime_record(db, session_id, &st, &record_self_healed, out_err)) return false;
+
+  if (record_self_healed && out_updates) {
+    (*out_updates)["cleanup_on_corrupt_record"] = voice_peer_corrupt_record_cleanup_json(cfg, session_id);
+  }
+  if (st && st->stale_persisted_record) {
+    if (out_updates) {
+      (*out_updates)["cleanup_on_stale_record"] = cleanup_stale_persisted_voice_peer_runtime(cfg, db, session_id);
+    } else {
+      (void)cleanup_stale_persisted_voice_peer_runtime(cfg, db, session_id);
+    }
+    st.reset();
+  }
   if (out_state) *out_state = std::move(st);
   return true;
 }

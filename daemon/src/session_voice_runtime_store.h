@@ -2,6 +2,7 @@
 
 #include "agent_db.h"
 #include "daemon_config.h"
+#include "session_voice_start_plan.h"
 #include "session_voice_runtime_internal.h"
 
 #include <json/json.h>
@@ -19,18 +20,7 @@ void voice_peer_add_runtime_snapshot(const DaemonConfig& cfg, const VoicePeerRun
 
 bool voice_peer_runtime_matches_start_request(
   const VoicePeerRuntime& st,
-  const Json::Value& body,
-  const std::string& runtime_kind,
-  const std::string& effective_broker_url,
-  const std::string& desired_tool_path,
-  const std::string& desired_node_bin,
-  const std::string& requested_broker_session_id,
-  const std::string& broker_agent_id,
-  const std::string& broker_deployment_id,
-  const std::string& sender_tag,
-  int64_t deadline_ms,
-  int64_t poll_interval_ms,
-  int64_t tone_hz
+  const VoicePeerStartPlan& plan
 );
 
 bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, std::string* out_err);
@@ -44,6 +34,15 @@ bool load_voice_peer_runtime_record(
   const std::string& session_id,
   std::shared_ptr<VoicePeerRuntime>* out_state,
   bool* out_self_healed,
+  std::string* out_err
+);
+
+bool recover_voice_peer_runtime_record(
+  const DaemonConfig& cfg,
+  AgentDb* db,
+  const std::string& session_id,
+  std::shared_ptr<VoicePeerRuntime>* out_state,
+  Json::Value* out_updates,
   std::string* out_err
 );
 
