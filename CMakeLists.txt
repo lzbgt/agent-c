@@ -287,6 +287,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/session_voice_backend_policy.cpp
     daemon/src/session_voice_broker_client.cpp
     daemon/src/session_voice_child_runtime.cpp
+    daemon/src/session_voice_runtime_store.cpp
     daemon/src/session_voice_runtime.cpp
     daemon/src/tool_plugins.cpp
     daemon/src/tool_servers.cpp
