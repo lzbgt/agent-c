@@ -428,6 +428,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
 - That same stale-record self-heal is now explicit for impossible persisted `runtime_kind=builtin` snapshots too, so
   agentd no longer depends on child-process PID probing to clean up reserved native-backend records before the backend
   actually exists.
+- Accidentally persisted builtin preview records (`status_source=planned`) now also fail closed: agentd refuses to
+  persist them and self-heals any old planned record through `cleanup_on_corrupt_record` instead of treating preview
+  metadata as a recoverable runtime snapshot.
 - `POST /api/v1/session/voice_webrtc_peer` `action=stop` now also reports actual local teardown semantics: when the
   peer already exited, the response returns `stopped=false` and `reason=not_running` instead of claiming a live stop,
   while still attempting owned broker-session cleanup when applicable.

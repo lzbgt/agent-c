@@ -242,6 +242,9 @@ A v0 smoke test should:
   plus a runtime-schema-shaped `planned_runtime` preview with explicit `status_source=planned` and builtin execution
   sentinels (`tool_path="@builtin"`, `node_bin="@builtin"`); the same valid builtin `501` response now also exposes
   that preview through top-level `peer`, without pretending the builtin media runtime already exists.
+- Those planned builtin previews now also fail closed at persistence boundaries: agentd refuses to persist
+  `status_source=planned`, and any stale planned record is self-healed through `cleanup_on_corrupt_record` instead of
+  being recovered as if it were a real runtime.
 - `broker_session_id` is now mutually exclusive with `broker_agent_id` / `broker_deployment_id`, keeping the borrowed
   broker-session path distinct from the agentd-owned auto-create path.
 - That managed runtime now also performs bounded startup confirmation and fails closed when the child exits before ready,

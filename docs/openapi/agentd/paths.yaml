@@ -3450,7 +3450,10 @@
       returns `reason=not_running` and `start` first clears that stale record via
       `cleanup_on_stale_record` before proceeding. If the runtime record exists but
       the peer has already exited, `stop` now also returns `reason=not_running`
-      while still attempting owned broker-session cleanup when applicable. If a live
+      while still attempting owned broker-session cleanup when applicable. If a persisted
+      preview record (`status_source=planned`) is ever encountered, status/start/stop
+      now self-heal it through `cleanup_on_corrupt_record` instead of treating preview
+      metadata as a real runtime snapshot. If a live
       bundled/external peer is recovered from persisted running state after agentd
       restart, a later `stop` now also preserves the final terminal signal/result in
       the persisted runtime snapshot.

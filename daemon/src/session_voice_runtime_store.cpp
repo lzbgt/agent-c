@@ -212,6 +212,10 @@ bool persist_voice_peer_runtime_record(AgentDb* db, const VoicePeerRuntime& st, 
     if (out_err) *out_err = "db unavailable";
     return false;
   }
+  if (trim_copy(st.status_source) == "planned") {
+    if (out_err) *out_err = "refusing to persist planned voice runtime preview";
+    return false;
+  }
   Json::Value record = voice_peer_runtime_to_json(st);
   record["persisted_utc_ms"] = (Json::Int64)now_unix_ms();
   return db->meta_set(voice_peer_meta_key(st.session_id), json_stringify(record), out_err);
@@ -267,6 +271,21 @@ bool load_voice_peer_runtime_record(
         *out_err = cerr.empty()
           ? original_err
           : ("failed to clear corrupt persisted voice runtime record: " + cerr);
+      }
+      return false;
+    }
+    if (out_state) out_state->reset();
+    if (out_self_healed) *out_self_healed = true;
+    if (out_err) out_err->clear();
+    return true;
+  }
+  if (trim_copy(st->status_source) == "planned") {
+    std::string cerr;
+    if (!clear_voice_peer_runtime_record(db, session_id, &cerr)) {
+      if (out_err) {
+        *out_err = cerr.empty()
+          ? "failed to clear invalid planned persisted voice runtime record"
+          : ("failed to clear invalid planned persisted voice runtime record: " + cerr);
       }
       return false;
     }

@@ -85,7 +85,7 @@ VoiceWebRtcPeerRuntime:
     schema: { type: string, enum: [session_voice_webrtc_peer_runtime_v1] }
     runtime_kind:
       type: string
-      enum: [bundled, external]
+      enum: [builtin, bundled, external]
     status_source:
       type: string
       enum: [memory, persisted, planned]
