@@ -237,6 +237,22 @@ if resp_stream.status != 200:
 _ = resp_stream.fp.readline().decode("utf-8")
 
 # Send offer
+conn_candidate = http.client.HTTPConnection(host, port, timeout=5)
+candidate_body = json.dumps({"type": "candidate", "payload": {
+    "candidate": "cand-pre-offer",
+    "sdpMid": "audio",
+    "sdpMLineIndex": 0,
+}})
+conn_candidate.request("POST", f"/v1/audio/sessions/{session_id}/signal", body=candidate_body, headers={
+    "Authorization": "Bearer audio-webui-token",
+    "Content-Type": "application/json",
+})
+resp_candidate = conn_candidate.getresponse()
+resp_candidate.read()
+if resp_candidate.status != 200:
+  print("candidate failed", resp_candidate.status, file=sys.stderr)
+  raise SystemExit(1)
+
 conn_offer = http.client.HTTPConnection(host, port, timeout=5)
 offer_body = json.dumps({"type": "offer", "payload": {"sdp": "stub-offer"}})
 conn_offer.request("POST", f"/v1/audio/sessions/{session_id}/signal", body=offer_body, headers={
@@ -304,3 +320,8 @@ print("agentd_audio_signal_loopback_smoke OK")
 PY
 
 wait "${LOOP_PID}" >/dev/null 2>&1 || true
+
+if ! grep -q 'agentd_audio_signal_loopback OK initial_remote_candidate_count=1' "${LOG_FILE}"; then
+  echo "Loopback helper did not report the queued pre-offer candidate; see ${LOG_FILE}" >&2
+  exit 1
+fi

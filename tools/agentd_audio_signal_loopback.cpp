@@ -1,5 +1,6 @@
 #include "session_voice_signal_client.h"
 #include "session_voice_signal_protocol.h"
+#include "string_util.h"
 
 #include <iostream>
 #include <string>
@@ -59,14 +60,14 @@ int main(int argc, char** argv) {
 
   long http_status = 0;
   std::string err;
-  VoiceBrokerSignalDescription offer;
-  if (!wait_for_voice_broker_signal_remote_description(
+  VoiceBrokerSignalRemoteDescriptionReady remote_ready;
+  if (!wait_for_voice_broker_signal_remote_description_ready(
         opt.broker_url,
         opt.token,
         opt.session_id,
         "",
         opt.stream_timeout_ms,
-        &offer,
+        &remote_ready,
         &http_status,
         &err)) {
     std::cerr << "Failed to read offer";
@@ -75,7 +76,11 @@ int main(int argc, char** argv) {
     std::cerr << "\n";
     return 1;
   }
-  (void)offer;
+  const std::string offer_type = lower_copy(trim_copy(remote_ready.description.type));
+  if (!offer_type.empty() && offer_type != "offer") {
+    std::cerr << "Failed to read offer: expected remote offer, got " << offer_type << "\n";
+    return 1;
+  }
 
   VoiceBrokerSignalDescription answer;
   answer.type = "answer";
@@ -92,6 +97,8 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  std::cout << "agentd_audio_signal_loopback OK\n";
+  std::cout
+    << "agentd_audio_signal_loopback OK initial_remote_candidate_count="
+    << remote_ready.initial_remote_candidates.size() << "\n";
   return 0;
 }

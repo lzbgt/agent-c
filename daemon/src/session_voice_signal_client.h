@@ -88,4 +88,15 @@ bool wait_for_voice_broker_signal_remote_description(
   std::string* out_err
 );
 
+bool wait_for_voice_broker_signal_remote_description_ready(
+  const std::string& broker_url,
+  const std::string& token,
+  const std::string& session_id,
+  const std::string& self_sender_tag,
+  int64_t timeout_ms,
+  VoiceBrokerSignalRemoteDescriptionReady* out_ready,
+  long* out_http_status,
+  std::string* out_err
+);
+
 }  // namespace agentd

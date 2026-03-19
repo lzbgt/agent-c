@@ -9,7 +9,9 @@ namespace {
 using agentd::VoiceBrokerSignalEvent;
 using agentd::VoiceBrokerSignalIngress;
 using agentd::VoiceBrokerSignalIngressKind;
+using agentd::VoiceBrokerSignalRemoteDescriptionReady;
 using agentd::VoiceBrokerSignalSessionState;
+using agentd::finalize_voice_broker_remote_description_ready;
 
 static VoiceBrokerSignalEvent make_event(const std::string& type, const Json::Value& payload) {
   VoiceBrokerSignalEvent ev;
@@ -61,13 +63,14 @@ static void test_offer_then_candidate_queue_then_drain() {
   assert(state.received_candidate_count() == 1);
   assert(state.pending_remote_candidate_count() == 1);
 
-  std::vector<agentd::VoiceBrokerSignalCandidate> drained;
-  assert(state.mark_remote_description_applied(&drained, &err));
+  VoiceBrokerSignalRemoteDescriptionReady ready;
+  assert(finalize_voice_broker_remote_description_ready(&state, ingress, &ready, &err));
   assert(err.empty());
   assert(state.remote_description_applied());
   assert(state.pending_remote_candidate_count() == 0);
-  assert(drained.size() == 1);
-  assert(drained[0].candidate == "cand-1");
+  assert(ready.description.sdp == "stub-offer");
+  assert(ready.initial_remote_candidates.size() == 1);
+  assert(ready.initial_remote_candidates[0].candidate == "cand-1");
 }
 
 static void test_candidate_ready_after_remote_description() {
@@ -132,6 +135,17 @@ static void test_invalid_candidate_payload_fails_closed() {
   assert(err == "candidate payload missing candidate");
 }
 
+static void test_finalize_remote_description_rejects_wrong_ingress_kind() {
+  VoiceBrokerSignalSessionState state("agentd-runtime");
+  VoiceBrokerSignalIngress ingress;
+  ingress.kind = VoiceBrokerSignalIngressKind::remote_bye;
+
+  VoiceBrokerSignalRemoteDescriptionReady ready;
+  std::string err;
+  assert(!finalize_voice_broker_remote_description_ready(&state, ingress, &ready, &err));
+  assert(err == "signal ingress must be a remote description");
+}
+
 }  // namespace
 
 int main() {
@@ -141,5 +155,6 @@ int main() {
   test_remote_bye_captures_close_reason();
   test_unknown_types_are_ignored();
   test_invalid_candidate_payload_fails_closed();
+  test_finalize_remote_description_rejects_wrong_ingress_kind();
   return 0;
 }

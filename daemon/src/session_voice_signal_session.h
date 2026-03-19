@@ -24,6 +24,11 @@ struct VoiceBrokerSignalIngress {
   VoiceBrokerSignalBye bye;
 };
 
+struct VoiceBrokerSignalRemoteDescriptionReady {
+  VoiceBrokerSignalDescription description;
+  std::vector<VoiceBrokerSignalCandidate> initial_remote_candidates;
+};
+
 class VoiceBrokerSignalSessionState {
  public:
   explicit VoiceBrokerSignalSessionState(std::string self_sender_tag = "");
@@ -59,5 +64,12 @@ class VoiceBrokerSignalSessionState {
   size_t received_candidate_count_ = 0;
   std::vector<VoiceBrokerSignalCandidate> pending_remote_candidates_;
 };
+
+bool finalize_voice_broker_remote_description_ready(
+  VoiceBrokerSignalSessionState* io_state,
+  const VoiceBrokerSignalIngress& ingress,
+  VoiceBrokerSignalRemoteDescriptionReady* out_ready,
+  std::string* out_error
+);
 
 }  // namespace agentd

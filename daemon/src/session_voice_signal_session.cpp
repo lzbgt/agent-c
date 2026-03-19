@@ -68,4 +68,33 @@ bool VoiceBrokerSignalSessionState::mark_remote_description_applied(
   return true;
 }
 
+bool finalize_voice_broker_remote_description_ready(
+  VoiceBrokerSignalSessionState* io_state,
+  const VoiceBrokerSignalIngress& ingress,
+  VoiceBrokerSignalRemoteDescriptionReady* out_ready,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (!io_state) {
+    if (out_error) *out_error = "missing signal session state";
+    return false;
+  }
+  if (!out_ready) {
+    if (out_error) *out_error = "missing remote description output";
+    return false;
+  }
+  if (ingress.kind != VoiceBrokerSignalIngressKind::remote_description) {
+    if (out_error) *out_error = "signal ingress must be a remote description";
+    return false;
+  }
+
+  VoiceBrokerSignalRemoteDescriptionReady ready;
+  ready.description = ingress.description;
+  if (!io_state->mark_remote_description_applied(&ready.initial_remote_candidates, out_error)) {
+    return false;
+  }
+  *out_ready = std::move(ready);
+  return true;
+}
+
 }  // namespace agentd

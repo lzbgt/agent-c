@@ -158,6 +158,9 @@ A v0 smoke test should:
   teardown against a live headless Chromium peer.
 - `tests/agentd_audio_signal_loopback_smoke.sh` now also proves agentd-side graceful `bye` after the stub `answer`,
   and confirms the broker reports the session closed rather than leaving teardown implicit.
+- The native session-aware signal wait path now also preserves trickled ICE candidates that arrive before the first
+  remote description; the loopback smoke proves that queued pre-offer candidate survives until the remote offer is
+  accepted instead of being dropped by the first-description wait helper.
 - `ctest` now also includes `session_voice_signal_protocol_tests` for direct typed broker-signal payload coverage.
 - `ctest` now also includes `session_voice_signal_session_tests` for direct native signal-session state coverage.
 - `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` covers the agentd-managed runtime surface for that same peer,

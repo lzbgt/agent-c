@@ -276,8 +276,35 @@ bool wait_for_voice_broker_signal_remote_description(
   std::string* out_err
 ) {
   if (out_desc) *out_desc = VoiceBrokerSignalDescription{};
+  VoiceBrokerSignalRemoteDescriptionReady ready;
+  if (!wait_for_voice_broker_signal_remote_description_ready(
+        broker_url,
+        token,
+        session_id,
+        self_sender_tag,
+        timeout_ms,
+        &ready,
+        out_http_status,
+        out_err)) {
+    return false;
+  }
+  if (out_desc) *out_desc = std::move(ready.description);
+  return true;
+}
+
+bool wait_for_voice_broker_signal_remote_description_ready(
+  const std::string& broker_url,
+  const std::string& token,
+  const std::string& session_id,
+  const std::string& self_sender_tag,
+  int64_t timeout_ms,
+  VoiceBrokerSignalRemoteDescriptionReady* out_ready,
+  long* out_http_status,
+  std::string* out_err
+) {
+  if (out_ready) *out_ready = VoiceBrokerSignalRemoteDescriptionReady{};
   bool matched = false;
-  VoiceBrokerSignalDescription found;
+  VoiceBrokerSignalRemoteDescriptionReady found;
   VoiceBrokerSignalSessionState state(self_sender_tag);
   const bool ok = stream_voice_broker_signal_session(
     broker_url,
@@ -288,8 +315,12 @@ bool wait_for_voice_broker_signal_remote_description(
     &state,
     [&](const VoiceBrokerSignalIngress& ingress) {
       if (ingress.kind != VoiceBrokerSignalIngressKind::remote_description) return true;
+      std::string err;
+      if (!finalize_voice_broker_remote_description_ready(&state, ingress, &found, &err)) {
+        if (out_err) *out_err = err.empty() ? "failed to finalize remote description" : err;
+        return false;
+      }
       matched = true;
-      found = ingress.description;
       return false;
     },
     out_http_status,
@@ -299,7 +330,7 @@ bool wait_for_voice_broker_signal_remote_description(
     if (out_err && out_err->empty()) *out_err = "remote description not received before stream ended";
     return false;
   }
-  if (out_desc) *out_desc = std::move(found);
+  if (out_ready) *out_ready = std::move(found);
   return true;
 }
 
