@@ -1,0 +1,153 @@
+#include "edge_consensus_runtime_model.h"
+
+#include <cassert>
+#include <string>
+
+namespace {
+
+using agentd::DaemonConfig;
+using agentd::EdgeConsensusClusterPolicy;
+using agentd::EdgeConsensusHttpRuntimeConfig;
+using agentd::EdgeConsensusRuntime;
+using agentd::edge_consensus_runtime_build_config;
+using agentd::edge_consensus_runtime_response_json;
+using agentd::edge_consensus_runtime_same_effective_config;
+
+static DaemonConfig make_cfg() {
+  DaemonConfig cfg;
+  cfg.listen_host = "0.0.0.0";
+  cfg.listen_port = 8080;
+  cfg.auth_token = "daemon-token";
+  cfg.edge_auth_trust_roots_epoch = 11;
+  cfg.edge_auth_revocations_epoch = 12;
+  cfg.edge_auth_cert_roots_epoch = 13;
+
+  EdgeConsensusClusterPolicy pol;
+  pol.membership_epoch = 7;
+  pol.member_node_ids = {"node-b", "node-a", "node-a"};
+  pol.campaign_retry_ms = 1500;
+  pol.campaign_retry_max_ms = 2500;
+  pol.campaign_retry_backoff_factor = 2;
+  pol.leader_heartbeat_ms = 1000;
+  pol.leader_lease_ms = 5000;
+  pol.lease_expiry_recampaign_delay_ms = 333;
+  cfg.edge_consensus_clusters["cluster-a"] = pol;
+  return cfg;
+}
+
+static void test_build_config_defaults_policy_and_trust_epochs() {
+  const DaemonConfig cfg = make_cfg();
+  Json::Value body(Json::objectValue);
+  body["node_id"] = "node-a";
+  body["cluster_id"] = "cluster-a";
+  body["manifest_sha256"] =
+    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+  EdgeConsensusHttpRuntimeConfig run_cfg;
+  EdgeConsensusRuntime st;
+  std::string err;
+  const bool ok = edge_consensus_runtime_build_config(cfg, body, &run_cfg, &st, &err);
+  assert(ok);
+  assert(err.empty());
+
+  assert(run_cfg.daemon_url == "http://127.0.0.1:8080");
+  assert(run_cfg.auth_token == "daemon-token");
+  assert(run_cfg.member_node_ids.size() == 2);
+  assert(run_cfg.member_node_ids[0] == "node-b");
+  assert(run_cfg.member_node_ids[1] == "node-a");
+  assert(run_cfg.peer_node_ids.size() == 1);
+  assert(run_cfg.peer_node_ids[0] == "node-b");
+  assert(run_cfg.cluster_size == 2);
+  assert(run_cfg.trust_roots_epoch == 11);
+  assert(run_cfg.revocations_epoch == 12);
+  assert(run_cfg.cert_roots_epoch == 13);
+  assert(run_cfg.membership_epoch == 7);
+  assert(run_cfg.lease_expiry_recampaign_delay_ms == 333);
+
+  assert(st.daemon_url == run_cfg.daemon_url);
+  assert(st.member_node_ids == run_cfg.member_node_ids);
+  assert(st.peer_node_ids == run_cfg.peer_node_ids);
+  assert(st.cluster_size == run_cfg.cluster_size);
+  assert(st.trust_roots_epoch == run_cfg.trust_roots_epoch);
+  assert(st.revocations_epoch == run_cfg.revocations_epoch);
+  assert(st.cert_roots_epoch == run_cfg.cert_roots_epoch);
+  assert(st.membership_epoch == run_cfg.membership_epoch);
+  assert(st.lease_expiry_recampaign_delay_ms == run_cfg.lease_expiry_recampaign_delay_ms);
+  assert(st.running);
+}
+
+static void test_same_effective_config_ignores_builtin_daemon_url_drift_only() {
+  EdgeConsensusRuntime builtin_a;
+  builtin_a.runtime_kind = "builtin";
+  builtin_a.node_id = "node-a";
+  builtin_a.cluster_id = "cluster-a";
+  builtin_a.manifest_sha256 =
+    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  builtin_a.daemon_url = "@local";
+
+  EdgeConsensusRuntime builtin_b = builtin_a;
+  builtin_b.daemon_url = "http://127.0.0.1:8123";
+
+  assert(edge_consensus_runtime_same_effective_config(builtin_a, builtin_b));
+
+  EdgeConsensusRuntime external_a = builtin_a;
+  external_a.runtime_kind = "external";
+  external_a.daemon_url = "http://127.0.0.1:8123";
+
+  EdgeConsensusRuntime external_b = external_a;
+  external_b.daemon_url = "http://127.0.0.1:8124";
+
+  assert(!edge_consensus_runtime_same_effective_config(external_a, external_b));
+}
+
+static void test_response_json_surfaces_cluster_and_trust_drift() {
+  const DaemonConfig cfg = make_cfg();
+  EdgeConsensusRuntime st;
+  st.runtime_kind = "builtin";
+  st.node_id = "node-a";
+  st.cluster_id = "cluster-a";
+  st.manifest_sha256 =
+    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  st.member_node_ids = {"node-a", "node-c"};
+  st.trust_roots_epoch = 21;
+  st.revocations_epoch = 22;
+  st.cert_roots_epoch = 23;
+  st.membership_epoch = 9;
+  st.lease_expiry_recampaign_delay_ms = 444;
+
+  const Json::Value out = edge_consensus_runtime_response_json(cfg, st);
+  assert(out.isObject());
+  assert(out.isMember("cluster_policy_drift"));
+  assert(out["cluster_policy_drift"]["cluster_id"].asString() == "cluster-a");
+  assert(out["cluster_policy_drift"]["current_policy"]["lease_expiry_recampaign_delay_ms"]
+           .asInt64() == 333);
+
+  const Json::Value changed = out["cluster_policy_drift"]["changed_fields"];
+  assert(changed.isArray());
+  bool saw_membership_epoch = false;
+  bool saw_member_node_ids = false;
+  bool saw_lease_delay = false;
+  for (Json::ArrayIndex i = 0; i < changed.size(); i++) {
+    const std::string field = changed[i].asString();
+    if (field == "membership_epoch") saw_membership_epoch = true;
+    if (field == "member_node_ids") saw_member_node_ids = true;
+    if (field == "lease_expiry_recampaign_delay_ms") saw_lease_delay = true;
+  }
+  assert(saw_membership_epoch);
+  assert(saw_member_node_ids);
+  assert(saw_lease_delay);
+
+  assert(out.isMember("trust_epoch_drift"));
+  assert(out["trust_epoch_drift"]["current_trust_epochs"]["trust_roots_epoch"].asUInt64() == 11);
+  assert(out["trust_epoch_drift"]["current_trust_epochs"]["revocations_epoch"].asUInt64() == 12);
+  assert(out["trust_epoch_drift"]["current_trust_epochs"]["cert_roots_epoch"].asUInt64() == 13);
+}
+
+}  // namespace
+
+int main() {
+  test_build_config_defaults_policy_and_trust_epochs();
+  test_same_effective_config_ignores_builtin_daemon_url_drift_only();
+  test_response_json_surfaces_cluster_and_trust_drift();
+  return 0;
+}
