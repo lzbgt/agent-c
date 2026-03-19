@@ -237,6 +237,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/edge_consensus_runtime_store.cpp
     daemon/src/edge_consensus_local_runtime.cpp
     daemon/src/edge_consensus_local_transport.cpp
+    daemon/src/edge_consensus_http_transport.cpp
     daemon/src/edge_deadline_sweeper.cpp
     daemon/src/edge_rules.cpp
     daemon/src/edge_util.cpp
@@ -633,6 +634,15 @@ if(AGENT_BUILD_HOST)
   )
   target_link_libraries(edge_consensus_local_transport_tests PRIVATE agentd_lib)
   add_test(NAME edge_consensus_local_transport_tests COMMAND edge_consensus_local_transport_tests)
+
+  add_executable(edge_consensus_http_transport_tests
+    tests/test_edge_consensus_http_transport.cpp
+  )
+  target_compile_options(edge_consensus_http_transport_tests PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_link_libraries(edge_consensus_http_transport_tests PRIVATE agentd_lib)
+  add_test(NAME edge_consensus_http_transport_tests COMMAND edge_consensus_http_transport_tests)
 
   add_executable(edge_consensus_runtime_process_plan_tests
     tests/test_edge_consensus_runtime_process_plan.cpp
