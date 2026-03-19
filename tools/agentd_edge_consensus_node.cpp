@@ -2,6 +2,7 @@
 
 #include <json/json.h>
 
+#include <csignal>
 #include <cstdint>
 #include <iostream>
 #include <string>
@@ -50,6 +51,10 @@ static std::string json_compact(const Json::Value& root) {
   wb["indentation"] = "";
   wb["commentStyle"] = "None";
   return Json::writeString(wb, root);
+}
+
+static void emit_json_line(const Json::Value& root) {
+  std::cout << json_compact(root) << "\n" << std::flush;
 }
 
 static void print_usage(const char* argv0) {
@@ -222,6 +227,9 @@ static bool parse_args(int argc, char** argv, Options* out) {
 }  // namespace
 
 int main(int argc, char** argv) {
+#if !defined(_WIN32)
+  std::signal(SIGPIPE, SIG_IGN);
+#endif
   Options opt;
   if (!parse_args(argc, argv, &opt)) return 2;
 
@@ -256,6 +264,20 @@ int main(int argc, char** argv) {
     if (!opt.verbose) return;
     std::cerr << "[" << opt.node_id << "] " << line << "\n";
   };
+  hooks.startup_ready = [&]() {
+    Json::Value event(Json::objectValue);
+    event["schema"] = "edge_node_consensus_runtime_event_v1";
+    event["event"] = "startup_ready";
+    event["node_id"] = opt.node_id;
+    emit_json_line(event);
+  };
+  hooks.status_update = [&](const Json::Value& status) {
+    Json::Value event(Json::objectValue);
+    event["schema"] = "edge_node_consensus_live_status_v1";
+    event["node_id"] = opt.node_id;
+    event["status"] = status;
+    emit_json_line(event);
+  };
 
   Json::Value result(Json::objectValue);
   std::string err;
@@ -264,6 +286,6 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  std::cout << json_compact(result) << "\n";
+  emit_json_line(result);
   return result.isObject() && result.isMember("ok") && result["ok"].asBool() ? 0 : 1;
 }

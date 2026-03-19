@@ -802,8 +802,19 @@ if rt.get("tool_path") != node_tool:
 if not (running_ext.get("runtime") or {}).get("running"):
   print("external runtime never entered running state", running_ext, file=sys.stderr)
   raise SystemExit(1)
-if (running_ext.get("runtime") or {}).get("runtime_kind") != "external":
+running_ext_rt = running_ext.get("runtime") or {}
+if running_ext_rt.get("runtime_kind") != "external":
   print("running external runtime kind mismatch", running_ext, file=sys.stderr)
+  raise SystemExit(1)
+running_ext_live = running_ext_rt.get("live_status") or {}
+if (running_ext_live.get("self") or {}).get("node_id") != "${EXT_NODE}":
+  print("running external runtime missing live_status self node", running_ext, file=sys.stderr)
+  raise SystemExit(1)
+if sorted(running_ext_live.get("member_node_ids") or []) != sorted(["${EXT_NODE}", "${EXT_PEER}"]):
+  print("running external runtime live_status member set mismatch", running_ext, file=sys.stderr)
+  raise SystemExit(1)
+if running_ext_live.get("cluster_size") != 2:
+  print("running external runtime missing live_status cluster size", running_ext, file=sys.stderr)
   raise SystemExit(1)
 if (ext_restart_status.get("runtime") or {}).get("status_source") != "persisted":
   print("external restart did not recover persisted running runtime", ext_restart_status, file=sys.stderr)

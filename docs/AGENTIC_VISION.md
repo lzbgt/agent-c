@@ -318,9 +318,9 @@ These are the most leveraged next steps grounded in current architecture:
    - Completed 2026-03-20: managed consensus start now defaults omitted trust epochs from the daemon's current
      `edge_auth_*_epoch` policy, and runtime reads now surface `trust_epoch_drift` when those daemon trust epochs rotate
      underneath a still-running managed runtime; restart remains the explicit adoption boundary.
-   - Completed 2026-03-20: active builtin managed consensus runtimes now expose `runtime.live_status` while still
-     running, so operator reads can inspect live campaign/recovery state before terminal result instead of treating the
-     managed runtime as an opaque in-flight process.
+   - Completed 2026-03-20: active managed consensus runtimes now expose `runtime.live_status` while still running, so
+     operator reads can inspect live campaign/recovery state before terminal result instead of treating the managed
+     runtime as an opaque in-flight process; external helper parity is now included while stdout remains attached.
    - Still open: replace the current builtin daemon-hosted runtime with embedded node-native adoption plus richer
      long-lived membership and recovery policy beyond the current durable bundle fields.
 

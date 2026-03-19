@@ -172,7 +172,7 @@ EdgeNodeConsensusRuntime:
     live_status:
       type: object
       additionalProperties: true
-      description: Best-effort live loop status for an active builtin managed runtime, mirroring the consensus loop status object while the runtime is still running.
+      description: Best-effort live loop status for an active managed runtime, mirroring the consensus loop status object while the runtime is still running. Builtin runtimes expose it directly in-process; external runtimes expose it while their stdout remains attached to agentd.
     cluster_policy_drift:
       type: object
       required: [cluster_id, changed_fields, current_policy]

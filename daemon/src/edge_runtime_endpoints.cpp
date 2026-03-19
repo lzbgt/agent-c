@@ -296,6 +296,30 @@ static Json::Value edge_consensus_runtime_response_json(const DaemonConfig& cfg,
   return out;
 }
 
+static bool edge_consensus_runtime_stdout_event_is_startup_ready(const Json::Value& parsed) {
+  return
+    parsed.isObject() &&
+    parsed.isMember("schema") &&
+    parsed["schema"].isString() &&
+    trim_copy(parsed["schema"].asString()) == "edge_node_consensus_runtime_event_v1" &&
+    parsed.isMember("event") &&
+    parsed["event"].isString() &&
+    trim_copy(parsed["event"].asString()) == "startup_ready";
+}
+
+static bool edge_consensus_runtime_stdout_event_live_status(
+  const Json::Value& parsed,
+  Json::Value* out_status
+) {
+  if (out_status) *out_status = Json::Value(Json::nullValue);
+  if (!parsed.isObject()) return false;
+  if (!parsed.isMember("schema") || !parsed["schema"].isString()) return false;
+  if (trim_copy(parsed["schema"].asString()) != "edge_node_consensus_live_status_v1") return false;
+  if (!parsed.isMember("status") || !parsed["status"].isObject()) return false;
+  if (out_status) *out_status = parsed["status"];
+  return true;
+}
+
 static bool edge_consensus_runtime_same_effective_config(const EdgeConsensusRuntime& a, const EdgeConsensusRuntime& b) {
   return
     trim_copy(a.runtime_kind) == trim_copy(b.runtime_kind) &&
@@ -926,6 +950,7 @@ static bool edge_consensus_runtime_spawn_process(
   st->tool_path = tool_path;
   st->stderr_log_path = stderr_log.string();
   st->pid = pid;
+  st->startup_ready = std::make_shared<std::atomic<bool>>(false);
 
   std::thread([db, st, fd = out_pipe[0]]() {
     std::string buffer;
@@ -949,7 +974,16 @@ static bool edge_consensus_runtime_spawn_process(
         Json::Value parsed(Json::nullValue);
         std::string jerr;
         if (json_parse_any(line, &parsed, &jerr) && parsed.isObject()) {
+          Json::Value live_status(Json::nullValue);
           std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
+          if (edge_consensus_runtime_stdout_event_is_startup_ready(parsed)) {
+            if (st->startup_ready) st->startup_ready->store(true);
+            continue;
+          }
+          if (edge_consensus_runtime_stdout_event_live_status(parsed, &live_status)) {
+            st->live_status_json = live_status;
+            continue;
+          }
           st->last_stdout_line = line;
           st->last_stdout_json = parsed;
           if (parsed.isMember("error") && parsed["error"].isString()) st->last_error = parsed["error"].asString();
@@ -965,6 +999,7 @@ static bool edge_consensus_runtime_spawn_process(
     std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
     st->running = false;
     st->ended_unix_ms = now_unix_ms();
+    st->live_status_json = Json::Value(Json::nullValue);
     if (WIFEXITED(status)) st->exit_code = WEXITSTATUS(status);
     else if (WIFSIGNALED(status)) st->exit_signal = WTERMSIG(status);
     std::string perr;
@@ -1100,7 +1135,7 @@ static bool edge_consensus_runtime_confirm_startup(
   for (;;) {
     {
       std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
-      if (st->runtime_kind == "builtin" && st->startup_ready && st->startup_ready->load()) {
+      if (st->startup_ready && st->startup_ready->load()) {
         if (out_runtime) *out_runtime = edge_consensus_runtime_to_json(*st);
         return true;
       }
@@ -1123,6 +1158,14 @@ static bool edge_consensus_runtime_confirm_startup(
     std::this_thread::sleep_for(std::chrono::milliseconds(25));
   }
 
+  {
+    std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
+    if (st->startup_ready && !st->startup_ready->load()) {
+      if (out_runtime) *out_runtime = edge_consensus_runtime_to_json(*st);
+      if (out_err) *out_err = "consensus runtime did not confirm startup";
+      return false;
+    }
+  }
   if (out_runtime) {
     std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
     *out_runtime = edge_consensus_runtime_to_json(*st);

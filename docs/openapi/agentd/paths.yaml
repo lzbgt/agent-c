@@ -2616,10 +2616,12 @@
     description: |
       Returns managed runtime state plus the latest structured result emitted by the
       builtin or external backend, including loop status fields such as campaign
-      attempts and retry timing. Active builtin runtimes now also expose a best-effort
+      attempts and retry timing. Active managed runtimes now also expose a best-effort
       `runtime.live_status` snapshot while the loop is still running, so operator reads
       can inspect current term, campaign attempts, member/trust identity, and leader
-      freshness state before terminal result. When durable cluster policy has drifted underneath
+      freshness state before terminal result. Builtin runtimes expose it directly
+      in-process; external runtimes expose it while their stdout remains attached to
+      agentd. When durable cluster policy has drifted underneath
       a still-running runtime, the returned runtime snapshot includes
       `cluster_policy_drift`. When the daemon's current edge-auth epochs have
       drifted underneath a still-running runtime, the returned runtime snapshot
