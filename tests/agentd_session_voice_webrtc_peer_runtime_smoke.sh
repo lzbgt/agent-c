@@ -1069,6 +1069,98 @@ if "not implemented" not in str(peer.get("last_error") or ""):
   raise SystemExit(1)
 PY
 
+BUILTIN_BORROWED_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_borrowed_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${BUILTIN_BORROWED_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+builtin_borrowed_broker_create_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions" \
+  -H "Authorization: Bearer audio-webui-token" \
+  -H 'Content-Type: application/json' \
+  -d '{"agent_id":"a-1","mode":"webrtc"}')"
+
+BUILTIN_BORROWED_BROKER_SESSION_ID="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${builtin_borrowed_broker_create_resp}''')
+sid = str(obj.get("session_id") or "").strip()
+if not obj.get("ok") or not sid:
+  print("failed to create builtin borrowed broker session", obj, file=sys.stderr)
+  raise SystemExit(1)
+print(sid)
+PY
+)"
+
+builtin_borrowed_resp_body="${LOG_DIR}/voice_webrtc_peer_builtin_borrowed_body.json"
+builtin_borrowed_status="$(curl -sS --noproxy "*" --max-time 10 -o "${builtin_borrowed_resp_body}" -w '%{http_code}' \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${BUILTIN_BORROWED_SESSION_ID}",
+  "action": "start",
+  "runtime_kind": "builtin",
+  "broker_session_id": "${BUILTIN_BORROWED_BROKER_SESSION_ID}",
+  "broker_url": "${VOICE_BROKER_URL}",
+  "broker_token": "${VOICE_BROKER_TOKEN}",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 551
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+if [[ "${builtin_borrowed_status}" != "501" ]]; then
+  echo "expected builtin borrowed start to return 501, got ${builtin_borrowed_status}" >&2
+  cat "${builtin_borrowed_resp_body}" >&2
+  exit 1
+fi
+python3 - <<PY
+import json, sys
+obj = json.load(open(r'''${builtin_borrowed_resp_body}''', 'r', encoding='utf-8'))
+if obj.get("ok") is not False:
+  print("expected builtin borrowed start to fail not-implemented", obj, file=sys.stderr)
+  raise SystemExit(1)
+contract = obj.get("builtin_start_contract") or {}
+broker_session = contract.get("broker_session") or {}
+if broker_session.get("mode") != "borrowed":
+  print("expected builtin borrowed broker contract", obj, file=sys.stderr)
+  raise SystemExit(1)
+if broker_session.get("session_id") != r'''${BUILTIN_BORROWED_BROKER_SESSION_ID}''' or broker_session.get("preflighted") is not True:
+  print("expected builtin borrowed broker session id/preflight", obj, file=sys.stderr)
+  raise SystemExit(1)
+if broker_session.get("session_mode") != "webrtc":
+  print("expected builtin borrowed broker session mode", obj, file=sys.stderr)
+  raise SystemExit(1)
+media_plan = contract.get("media_runtime_plan") or {}
+if media_plan.get("broker_session_id") != r'''${BUILTIN_BORROWED_BROKER_SESSION_ID}''' or media_plan.get("managed_broker_session") is not False:
+  print("expected builtin borrowed media runtime plan", obj, file=sys.stderr)
+  raise SystemExit(1)
+if media_plan.get("broker_agent_id") is not None or media_plan.get("broker_deployment_id") is not None:
+  print("expected builtin borrowed media runtime plan to omit ownership fields", obj, file=sys.stderr)
+  raise SystemExit(1)
+planned_runtime = contract.get("planned_runtime") or {}
+peer = obj.get("peer") or {}
+if planned_runtime.get("broker_session_id") != r'''${BUILTIN_BORROWED_BROKER_SESSION_ID}''' or planned_runtime.get("managed_broker_session") is not False:
+  print("expected builtin borrowed planned runtime", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("broker_session_id") != r'''${BUILTIN_BORROWED_BROKER_SESSION_ID}''' or peer.get("managed_broker_session") is not False:
+  print("expected builtin borrowed top-level peer preview", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+builtin_borrowed_delete_status="$(curl -sS --noproxy "*" --max-time 10 -o /dev/null -w '%{http_code}' -X DELETE \
+  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${BUILTIN_BORROWED_BROKER_SESSION_ID}" \
+  -H "Authorization: Bearer audio-webui-token")"
+if [[ "${builtin_borrowed_delete_status}" != "200" && "${builtin_borrowed_delete_status}" != "404" ]]; then
+  echo "expected builtin borrowed broker session delete to return 200 or 404, got ${builtin_borrowed_delete_status}" >&2
+  exit 1
+fi
+
 BUILTIN_MISSING_BROKER_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_missing_broker_$(date +%s)_$RANDOM"
 curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \

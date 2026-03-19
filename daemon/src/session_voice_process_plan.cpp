@@ -96,4 +96,27 @@ VoicePeerChildProcessPlan make_voice_peer_child_process_plan(
   return plan;
 }
 
+VoicePeerChildLaunchConfig make_voice_peer_child_launch_config(
+  const std::string& session_id,
+  const VoicePeerStartPlan& start_plan,
+  const VoicePeerBrokerSessionBinding& binding
+) {
+  VoicePeerChildLaunchConfig launch_cfg;
+  launch_cfg.runtime_kind = start_plan.runtime_kind;
+  launch_cfg.session_id = trim_copy(session_id);
+  launch_cfg.broker_session_id = binding.broker_session_id;
+  launch_cfg.broker_url = start_plan.effective_broker_url;
+  launch_cfg.broker_token = start_plan.broker_token;
+  launch_cfg.broker_agent_id = start_plan.broker_agent_id;
+  launch_cfg.broker_deployment_id = start_plan.broker_deployment_id;
+  launch_cfg.sender_tag = start_plan.sender_tag;
+  launch_cfg.tool_path = start_plan.resolved_tool_path;
+  launch_cfg.node_bin = start_plan.resolved_node_bin;
+  launch_cfg.deadline_ms = start_plan.deadline_ms;
+  launch_cfg.poll_interval_ms = start_plan.poll_interval_ms;
+  launch_cfg.tone_hz = start_plan.tone_hz;
+  launch_cfg.managed_broker_session = binding.managed_broker_session;
+  return launch_cfg;
+}
+
 }  // namespace agentd

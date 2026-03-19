@@ -8,9 +8,11 @@ namespace {
 
 using agentd::VoicePeerChildLaunchConfig;
 using agentd::VoicePeerChildProcessPlan;
+using agentd::VoicePeerBrokerSessionBinding;
 using agentd::VoicePeerRuntimeArtifactsPlan;
 using agentd::VoicePeerStartPlan;
 using agentd::make_voice_peer_child_process_plan;
+using agentd::make_voice_peer_child_launch_config;
 using agentd::make_voice_peer_media_runtime_plan;
 using agentd::voice_peer_media_runtime_plan_json;
 
@@ -129,10 +131,48 @@ static void test_child_process_plan_shapes_media_plan_and_argv() {
   assert(plan.argv == expected);
 }
 
+static void test_child_launch_config_follows_start_plan_and_binding() {
+  VoicePeerStartPlan start_plan;
+  start_plan.runtime_kind = "external";
+  start_plan.effective_broker_url = "http://broker";
+  start_plan.broker_token = "secret-token";
+  start_plan.broker_agent_id = "agent-a";
+  start_plan.broker_deployment_id = "deploy-b";
+  start_plan.sender_tag = "agentd_runtime_peer";
+  start_plan.resolved_tool_path = "/tool.js";
+  start_plan.resolved_node_bin = "/usr/bin/node";
+  start_plan.deadline_ms = 1111;
+  start_plan.poll_interval_ms = 222;
+  start_plan.tone_hz = 333;
+
+  VoicePeerBrokerSessionBinding binding;
+  binding.broker_session_id = "sess-1";
+  binding.managed_broker_session = false;
+
+  const VoicePeerChildLaunchConfig launch_cfg =
+    make_voice_peer_child_launch_config("voice-sid", start_plan, binding);
+
+  assert(launch_cfg.runtime_kind == "external");
+  assert(launch_cfg.session_id == "voice-sid");
+  assert(launch_cfg.broker_session_id == "sess-1");
+  assert(launch_cfg.broker_url == "http://broker");
+  assert(launch_cfg.broker_token == "secret-token");
+  assert(launch_cfg.broker_agent_id == "agent-a");
+  assert(launch_cfg.broker_deployment_id == "deploy-b");
+  assert(launch_cfg.sender_tag == "agentd_runtime_peer");
+  assert(launch_cfg.tool_path == "/tool.js");
+  assert(launch_cfg.node_bin == "/usr/bin/node");
+  assert(launch_cfg.deadline_ms == 1111);
+  assert(launch_cfg.poll_interval_ms == 222);
+  assert(launch_cfg.tone_hz == 333);
+  assert(!launch_cfg.managed_broker_session);
+}
+
 }  // namespace
 
 int main() {
   test_media_runtime_plan_carries_safe_runtime_inputs();
   test_child_process_plan_shapes_media_plan_and_argv();
+  test_child_launch_config_follows_start_plan_and_binding();
   return 0;
 }

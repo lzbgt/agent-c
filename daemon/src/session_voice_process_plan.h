@@ -1,5 +1,6 @@
 #pragma once
 
+#include "session_voice_broker_session.h"
 #include "session_voice_runtime_internal.h"
 #include "session_voice_runtime_plan.h"
 #include "session_voice_start_plan.h"
@@ -48,6 +49,12 @@ Json::Value voice_peer_media_runtime_plan_json(
 VoicePeerChildProcessPlan make_voice_peer_child_process_plan(
   const VoicePeerChildLaunchConfig& launch_cfg,
   const VoicePeerRuntimeArtifactsPlan& artifacts
+);
+
+VoicePeerChildLaunchConfig make_voice_peer_child_launch_config(
+  const std::string& session_id,
+  const VoicePeerStartPlan& start_plan,
+  const VoicePeerBrokerSessionBinding& binding
 );
 
 }  // namespace agentd

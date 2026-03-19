@@ -1466,3 +1466,4 @@ Proof:
 - planned builtin previews now fail closed at persistence/recovery boundaries instead of being recoverable as runtimes
 - voice runtime media inputs and child argv shaping now live in a shared process-plan helper, and `builtin_start_contract` exposes the same safe `media_runtime_plan` the future native backend would consume
 - planned voice runtime preview and spawned runtime seed now both derive their broker/session/timing fields from that same shared media plan instead of re-shaping them separately
+- child backend launch config now also derives from the shared process-plan layer, and the main runtime smoke proves valid builtin borrowed-session contracts carry the borrowed session through `broker_session`, `media_runtime_plan`, `planned_runtime`, and top-level `peer`
