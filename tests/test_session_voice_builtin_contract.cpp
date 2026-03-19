@@ -32,6 +32,12 @@ static void test_borrowed_broker_session_contract() {
   assert(out["tone_hz"].asInt64() == 333);
   assert(out["startup_wait_ms"].asInt64() == 444);
   assert(out["mutating_broker_actions_deferred"].asBool());
+  assert(out["startup_sequence"].isArray());
+  assert(out["startup_sequence"].size() == 4);
+  assert(out["startup_sequence"][0]["stage"].asString() == "borrowed_broker_session_preflight");
+  assert(!out["startup_sequence"][0]["deferred"].asBool());
+  assert(out["startup_sequence"][1]["stage"].asString() == "launch_runtime");
+  assert(out["startup_sequence"][1]["deferred"].asBool());
   assert(out["broker_session"]["mode"].asString() == "borrowed");
   assert(out["broker_session"]["session_id"].asString() == "sess-1");
   assert(out["broker_session"]["preflighted"].asBool());
@@ -51,6 +57,10 @@ static void test_auto_create_broker_session_contract() {
   assert(!out["broker_session"]["preflighted"].asBool());
   assert(out["broker_session"]["agent_id"].asString() == "agent-a");
   assert(out["broker_session"]["deployment_id"].asString() == "deploy-b");
+  assert(out["startup_sequence"].isArray());
+  assert(out["startup_sequence"].size() == 4);
+  assert(out["startup_sequence"][0]["stage"].asString() == "auto_create_broker_session");
+  assert(out["startup_sequence"][0]["deferred"].asBool());
 }
 
 }  // namespace

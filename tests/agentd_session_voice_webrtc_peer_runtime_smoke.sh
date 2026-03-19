@@ -961,6 +961,18 @@ if contract.get("runtime_kind") != "builtin" or contract.get("signaling_surface"
 if contract.get("mutating_broker_actions_deferred") is not True:
   print("expected builtin contract to defer mutating broker actions", obj, file=sys.stderr)
   raise SystemExit(1)
+sequence = contract.get("startup_sequence") or []
+if [step.get("stage") for step in sequence] != [
+    "auto_create_broker_session",
+    "launch_runtime",
+    "startup_confirmation",
+    "startup_failure_cleanup",
+]:
+  print("expected builtin startup sequence", obj, file=sys.stderr)
+  raise SystemExit(1)
+if not sequence[0].get("deferred", False) or not sequence[1].get("deferred", False):
+  print("expected builtin startup sequence to remain deferred", obj, file=sys.stderr)
+  raise SystemExit(1)
 broker_session = contract.get("broker_session") or {}
 if broker_session.get("mode") != "auto_create" or broker_session.get("agent_id") != "a-1":
   print("expected builtin auto-create broker contract", obj, file=sys.stderr)

@@ -22,9 +22,18 @@ VoiceWebRtcPeerBuiltinBrokerSessionContract:
     agent_id: { type: string }
     deployment_id: { type: string }
 
+VoiceWebRtcPeerBuiltinStartStage:
+  type: object
+  required: [stage, deferred]
+  properties:
+    stage:
+      type: string
+      enum: [borrowed_broker_session_preflight, auto_create_broker_session, launch_runtime, startup_confirmation, startup_failure_cleanup]
+    deferred: { type: boolean }
+
 VoiceWebRtcPeerBuiltinStartContract:
   type: object
-  required: [session_id, runtime_kind, signaling_surface, broker_url, sender_tag, deadline_ms, poll_interval_ms, tone_hz, startup_wait_ms, mutating_broker_actions_deferred, broker_session]
+  required: [session_id, runtime_kind, signaling_surface, broker_url, sender_tag, deadline_ms, poll_interval_ms, tone_hz, startup_wait_ms, mutating_broker_actions_deferred, startup_sequence, broker_session]
   properties:
     session_id: { type: string }
     runtime_kind:
@@ -40,6 +49,10 @@ VoiceWebRtcPeerBuiltinStartContract:
     tone_hz: { type: integer, format: int64 }
     startup_wait_ms: { type: integer, format: int64 }
     mutating_broker_actions_deferred: { type: boolean, enum: [true] }
+    startup_sequence:
+      type: array
+      items:
+        $ref: "#/components/schemas/VoiceWebRtcPeerBuiltinStartStage"
     broker_session:
       $ref: "#/components/schemas/VoiceWebRtcPeerBuiltinBrokerSessionContract"
 

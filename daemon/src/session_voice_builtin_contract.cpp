@@ -1,5 +1,7 @@
 #include "session_voice_builtin_contract.h"
 
+#include "session_voice_launch_flow.h"
+
 namespace agentd {
 
 Json::Value session_voice_builtin_start_contract_json(
@@ -17,6 +19,8 @@ Json::Value session_voice_builtin_start_contract_json(
   out["tone_hz"] = Json::Int64(start_plan.tone_hz);
   out["startup_wait_ms"] = Json::Int64(start_plan.startup_wait_ms);
   out["mutating_broker_actions_deferred"] = true;
+  out["startup_sequence"] =
+    voice_peer_launch_startup_sequence_json(start_plan, true);
 
   Json::Value broker_session(Json::objectValue);
   if (!start_plan.requested_broker_session_id.empty()) {
