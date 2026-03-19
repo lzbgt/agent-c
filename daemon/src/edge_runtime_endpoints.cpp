@@ -165,7 +165,9 @@ struct EdgeConsensusRuntime {
   std::string last_error;
   std::string last_stdout_line;
   Json::Value last_stdout_json = Json::Value(Json::nullValue);
+  Json::Value live_status_json = Json::Value(Json::nullValue);
   std::shared_ptr<std::atomic<bool>> stop_requested;
+  std::shared_ptr<std::atomic<bool>> startup_ready;
 #if defined(_WIN32)
   intptr_t pid = 0;
 #else
@@ -221,6 +223,7 @@ static Json::Value edge_consensus_runtime_to_json(const EdgeConsensusRuntime& st
     out["last_stdout"] = st.last_stdout_json;
     out["result"] = st.last_stdout_json;
   }
+  if (st.running && st.live_status_json.isObject()) out["live_status"] = st.live_status_json;
   return out;
 }
 
@@ -991,6 +994,7 @@ static bool edge_consensus_runtime_start_builtin(
   st->runtime_kind = "builtin";
   st->tool_path = "@builtin";
   st->stop_requested = std::make_shared<std::atomic<bool>>(false);
+  st->startup_ready = std::make_shared<std::atomic<bool>>(false);
 
   std::thread([db, st, run_cfg]() mutable {
     EdgeConsensusHttpRuntimeHooks hooks;
@@ -999,12 +1003,20 @@ static bool edge_consensus_runtime_start_builtin(
       std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
       st->last_stdout_line = line;
     };
+    hooks.status_update = [st](const Json::Value& status) {
+      std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
+      st->live_status_json = status;
+    };
+    hooks.startup_ready = [st]() {
+      if (st->startup_ready) st->startup_ready->store(true);
+    };
     Json::Value result(Json::nullValue);
     std::string err;
     const bool ok = run_edge_consensus_http_runtime(run_cfg, hooks, &result, &err);
     std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
     st->running = false;
     st->ended_unix_ms = now_unix_ms();
+    st->live_status_json = Json::Value(Json::nullValue);
     st->last_stdout_json = result;
     if (!result.isNull()) st->last_stdout_line = json_stringify(result);
     if (!ok) {
@@ -1088,6 +1100,10 @@ static bool edge_consensus_runtime_confirm_startup(
   for (;;) {
     {
       std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
+      if (st->runtime_kind == "builtin" && st->startup_ready && st->startup_ready->load()) {
+        if (out_runtime) *out_runtime = edge_consensus_runtime_to_json(*st);
+        return true;
+      }
       if (!st->running) {
         const bool completed_ok =
           st->exit_code == 0 ||

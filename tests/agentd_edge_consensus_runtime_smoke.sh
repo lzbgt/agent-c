@@ -298,6 +298,13 @@ running_stop = json.loads(r'''${RUNNING_STOP_JSON}''')
 if not (running_stop.get("runtime") or {}).get("running"):
   print("stop runtime never entered running state", running_stop, file=sys.stderr)
   raise SystemExit(1)
+running_stop_live = ((running_stop.get("runtime") or {}).get("live_status") or {})
+if (running_stop_live.get("self") or {}).get("node_id") != "${STOP_NODE}":
+  print("stop runtime missing live_status self node", running_stop, file=sys.stderr)
+  raise SystemExit(1)
+if running_stop_live.get("cluster_size") != 1:
+  print("stop runtime missing live_status cluster size", running_stop, file=sys.stderr)
+  raise SystemExit(1)
 
 stop_resp = json.loads(r'''${STOP_RESP_JSON}''')
 if not stop_resp.get("ok") or not stop_resp.get("stopped"):
@@ -662,6 +669,13 @@ if drift_start.get("startup_confirmed") is not True or drift_restart.get("startu
 if not (drift_running.get("runtime") or {}).get("running"):
   print("drift runtime never entered running state", drift_running, file=sys.stderr)
   raise SystemExit(1)
+drift_live = ((drift_running.get("runtime") or {}).get("live_status") or {})
+if (drift_live.get("self") or {}).get("node_id") != "${DRIFT_NODE}":
+  print("drift runtime missing live_status self node", drift_running, file=sys.stderr)
+  raise SystemExit(1)
+if sorted(drift_live.get("member_node_ids") or []) != sorted(["${DRIFT_MEMBER_A}", "${DRIFT_MEMBER_B}", "${DRIFT_MEMBER_C}"]):
+  print("drift runtime live_status member set mismatch", drift_running, file=sys.stderr)
+  raise SystemExit(1)
 drift_rt = drift_status.get("runtime") or {}
 drift_info = drift_rt.get("cluster_policy_drift") or {}
 changed = set(drift_info.get("changed_fields") or [])
@@ -724,6 +738,11 @@ for label, rt in (("trust_start", trust_start_rt), ("trust_running", trust_runni
     raise SystemExit(1)
 if not trust_running_rt.get("running"):
   print("trust runtime never entered running state", trust_running, file=sys.stderr)
+  raise SystemExit(1)
+trust_live = trust_running_rt.get("live_status") or {}
+trust_live_epochs = ((trust_live.get("self") or {}).get("trust_epochs") or {})
+if trust_live_epochs.get("trust_roots_epoch") != 5 or trust_live_epochs.get("revocations_epoch") != 6 or trust_live_epochs.get("cert_roots_epoch") != 7:
+  print("trust runtime missing live_status trust epochs", trust_running, file=sys.stderr)
   raise SystemExit(1)
 trust_status_rt = trust_status.get("runtime") or {}
 trust_drift = trust_status_rt.get("trust_epoch_drift") or {}

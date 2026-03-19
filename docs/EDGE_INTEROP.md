@@ -248,6 +248,9 @@ Returns messages in ascending `outbox_id` order. The node should:
   - if those daemon trust epochs rotate underneath a still-running managed runtime, runtime reads now surface
     `runtime.trust_epoch_drift` with `changed_fields[]` and `current_trust_epochs`; restart remains the adoption
     boundary for that managed loop too
+  - active builtin managed runtimes now also expose `runtime.live_status` while they are still running, carrying the
+    current loop state (`self`, member set, current term, campaign attempts, leader freshness timers) before terminal
+    result is available
   - terminal runtime snapshots now persist across agentd restart with `runtime.status_source=persisted`; live external
     helpers can also be recovered from persisted running snapshots after restart, while stale builtin `running=true`
     records and corrupt persisted runtime records are self-healed by clearing the record and dead runtime artifacts

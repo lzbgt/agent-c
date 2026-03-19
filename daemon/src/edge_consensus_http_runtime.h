@@ -41,6 +41,8 @@ struct EdgeConsensusHttpRuntimeConfig {
 struct EdgeConsensusHttpRuntimeHooks {
   std::atomic<bool>* stop_requested = nullptr;
   std::function<void(const std::string&)> log_line;
+  std::function<void(const Json::Value&)> status_update;
+  std::function<void()> startup_ready;
 };
 
 // Runs the poll/process/post consensus loop against agentd HTTP surfaces.

@@ -180,6 +180,11 @@ DECISION_SHA="sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 
 register_target_node "${TARGET_NODE}" "${TARGET_CAPS_SHA}"
 
+CONFIG_JSON="$(curl_json POST "/api/v1/config/update" "$(cat <<JSON
+{"edge_auth_trust_roots_epoch":2,"edge_auth_revocations_epoch":3,"edge_auth_cert_roots_epoch":4}
+JSON
+)")"
+
 ROTATE_JSON="$(curl_json POST "/api/v1/edge/consensus/membership/rotate" "$(cat <<JSON
 {"cluster_id":"${CLUSTER_ID}","mode":"replace","membership_epoch":19,"member_node_ids":["${NODE_A}","${NODE_B}","${NODE_C}"],"campaign_delay_ms":120,"campaign_retry_ms":300,"campaign_retry_max_ms":900,"campaign_retry_backoff_factor":2,"leader_heartbeat_ms":240,"leader_lease_ms":1100}
 JSON
@@ -227,6 +232,7 @@ rotate = json.loads(r'''${ROTATE_JSON}''')
 get_obj = json.loads(r'''${GET_JSON}''')
 send_obj = json.loads(r'''${SEND_JSON}''')
 outbox = json.loads(r'''${OUTBOX_JSON}''')
+config_obj = json.loads(r'''${CONFIG_JSON}''')
 start_a = json.loads(r'''${START_A_JSON}''')
 running_a = json.loads(r'''${RUNNING_A_JSON}''')
 start_b = json.loads(r'''${START_B_JSON}''')
@@ -235,6 +241,10 @@ status_a = json.loads(r'''${STATUS_A_JSON}''')
 status_b = json.loads(r'''${STATUS_B_JSON}''')
 status_c = json.loads(r'''${STATUS_C_JSON}''')
 stop_done = json.loads(r'''${STOP_DONE_JSON}''')
+
+if not config_obj.get("ok"):
+    print("config", config_obj, file=sys.stderr)
+    raise SystemExit(1)
 
 for label, obj in (("rotate", rotate), ("get", get_obj), ("send", send_obj), ("start_a", start_a), ("start_b", start_b), ("start_c", start_c)):
     if not obj.get("ok"):

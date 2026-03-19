@@ -171,6 +171,14 @@ static void log_line(const EdgeConsensusHttpRuntimeHooks& hooks, const std::stri
   if (hooks.log_line) hooks.log_line(line);
 }
 
+static void status_update(const EdgeConsensusHttpRuntimeHooks& hooks, const EdgeConsensusNodeLoop& loop) {
+  if (hooks.status_update) hooks.status_update(loop.status_to_json());
+}
+
+static void notify_startup_ready(const EdgeConsensusHttpRuntimeHooks& hooks) {
+  if (hooks.startup_ready) hooks.startup_ready();
+}
+
 }  // namespace
 
 bool run_edge_consensus_http_runtime(
@@ -215,6 +223,8 @@ bool run_edge_consensus_http_runtime(
   loop_cfg.leader_lease_ms = cfg.leader_lease_ms;
   loop_cfg.decision_sha256 = cfg.decision_sha256;
   EdgeConsensusNodeLoop loop(loop_cfg);
+  notify_startup_ready(hooks);
+  status_update(hooks, loop);
   const int64_t started_ms = now_utc_ms();
   const int64_t deadline_at = started_ms + cfg.deadline_ms;
   int64_t cursor = 0;
@@ -227,6 +237,7 @@ bool run_edge_consensus_http_runtime(
       result["error"] = "stopped";
       result["current_term"] = Json::UInt64(loop.replica().current_term());
       result["status"] = loop.status_to_json();
+      status_update(hooks, loop);
       *out_result = result;
       return true;
     }
@@ -239,6 +250,7 @@ bool run_edge_consensus_http_runtime(
         return false;
       }
       log_line(hooks, "sent vote_request term=" + std::to_string((unsigned long long)request.term));
+      status_update(hooks, loop);
     }
 
     Json::Value outbox;
@@ -282,6 +294,7 @@ bool run_edge_consensus_http_runtime(
           }
           log_line(hooks, "sent " + out_frame.kind + " term=" + std::to_string((unsigned long long)out_frame.term));
         }
+        status_update(hooks, loop);
         processed_message = true;
       }
     }
@@ -294,6 +307,7 @@ bool run_edge_consensus_http_runtime(
       result["committed_decision_sha256"] = loop.committed_decision_sha256();
       result["current_term"] = Json::UInt64(loop.replica().current_term());
       result["status"] = loop.status_to_json();
+      status_update(hooks, loop);
       *out_result = result;
       return true;
     }
@@ -307,6 +321,7 @@ bool run_edge_consensus_http_runtime(
   result["error"] = "deadline exceeded before commit";
   result["current_term"] = Json::UInt64(loop.replica().current_term());
   result["status"] = loop.status_to_json();
+  status_update(hooks, loop);
   *out_result = result;
   return true;
 }
