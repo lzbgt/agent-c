@@ -1,6 +1,7 @@
 #include "session_voice_child_runtime.h"
 
 #include "json_util.h"
+#include "session_voice_runtime_seed.h"
 #include "string_util.h"
 
 #include <chrono>
@@ -264,24 +265,27 @@ bool voice_peer_spawn_process(
   close(stdout_fd);
   close(stderr_fd);
 
-  auto st = std::make_shared<VoicePeerRuntime>();
-  st->runtime_kind = launch_cfg.runtime_kind;
-  st->session_id = launch_cfg.session_id;
-  st->broker_session_id = launch_cfg.broker_session_id;
-  st->broker_url = launch_cfg.broker_url;
-  st->sender_tag = launch_cfg.sender_tag;
-  st->tool_path = launch_cfg.tool_path;
-  st->node_bin = launch_cfg.node_bin;
-  st->ready_file_path = ready_file.string();
-  st->stdout_log_path = stdout_log.string();
-  st->stderr_log_path = stderr_log.string();
-  st->started_unix_ms = now_unix_ms();
-  st->deadline_ms = launch_cfg.deadline_ms;
-  st->poll_interval_ms = launch_cfg.poll_interval_ms;
-  st->tone_hz = launch_cfg.tone_hz;
-  st->ready = false;
-  st->running = true;
-  st->pid = pid;
+  VoicePeerRuntimeSeed runtime_seed;
+  runtime_seed.runtime_kind = launch_cfg.runtime_kind;
+  runtime_seed.session_id = launch_cfg.session_id;
+  runtime_seed.broker_session_id = launch_cfg.broker_session_id;
+  runtime_seed.broker_url = launch_cfg.broker_url;
+  runtime_seed.broker_agent_id = launch_cfg.broker_agent_id;
+  runtime_seed.broker_deployment_id = launch_cfg.broker_deployment_id;
+  runtime_seed.sender_tag = launch_cfg.sender_tag;
+  runtime_seed.tool_path = launch_cfg.tool_path;
+  runtime_seed.node_bin = launch_cfg.node_bin;
+  runtime_seed.ready_file_path = ready_file.string();
+  runtime_seed.stdout_log_path = stdout_log.string();
+  runtime_seed.stderr_log_path = stderr_log.string();
+  runtime_seed.deadline_ms = launch_cfg.deadline_ms;
+  runtime_seed.poll_interval_ms = launch_cfg.poll_interval_ms;
+  runtime_seed.tone_hz = launch_cfg.tone_hz;
+  runtime_seed.managed_broker_session = launch_cfg.managed_broker_session;
+  runtime_seed.ready = false;
+  runtime_seed.running = true;
+  runtime_seed.pid = pid;
+  auto st = make_voice_peer_runtime_state(runtime_seed);
 
   std::mutex* runtime_mu_ptr = &runtime_mu;
   std::thread([st, runtime_mu_ptr, on_exit_persist]() {

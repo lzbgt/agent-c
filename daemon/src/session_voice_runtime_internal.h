@@ -62,12 +62,41 @@ struct VoicePeerChildLaunchConfig {
   std::string broker_session_id;
   std::string broker_url;
   std::string broker_token;
+  std::string broker_agent_id;
+  std::string broker_deployment_id;
   std::string sender_tag;
   std::string tool_path;
   std::string node_bin;
   int64_t deadline_ms = 15000;
   int64_t poll_interval_ms = 100;
   int64_t tone_hz = 440;
+  bool managed_broker_session = false;
+};
+
+struct VoicePeerRuntimeSeed {
+  std::string runtime_kind = "external";
+  std::string session_id;
+  std::string broker_session_id;
+  std::string broker_url;
+  std::string broker_agent_id;
+  std::string broker_deployment_id;
+  std::string sender_tag;
+  std::string tool_path;
+  std::string node_bin;
+  std::string ready_file_path;
+  std::string stdout_log_path;
+  std::string stderr_log_path;
+  int64_t deadline_ms = 15000;
+  int64_t poll_interval_ms = 100;
+  int64_t tone_hz = 440;
+  bool managed_broker_session = false;
+  bool ready = false;
+  bool running = false;
+#if defined(_WIN32)
+  intptr_t pid = 0;
+#else
+  pid_t pid = -1;
+#endif
 };
 
 }  // namespace agentd
