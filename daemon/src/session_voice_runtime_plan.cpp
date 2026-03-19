@@ -1,5 +1,6 @@
 #include "session_voice_runtime_plan.h"
 
+#include "session_voice_runtime_store.h"
 #include "string_util.h"
 
 #include <filesystem>
@@ -45,6 +46,35 @@ Json::Value voice_peer_runtime_artifacts_json(
   out["stdout_format"] = "jsonl";
   out["stderr_format"] = "text";
   return out;
+}
+
+VoicePeerRuntime make_planned_voice_peer_runtime(
+  const std::string& session_id,
+  const VoicePeerStartPlan& start_plan,
+  const VoicePeerRuntimeArtifactsPlan& artifacts,
+  const std::string& broker_session_id,
+  bool managed_broker_session
+) {
+  VoicePeerRuntime runtime;
+  runtime.runtime_kind = start_plan.runtime_kind;
+  runtime.session_id = trim_copy(session_id);
+  runtime.broker_session_id = trim_copy(broker_session_id);
+  runtime.broker_url = start_plan.effective_broker_url;
+  runtime.managed_broker_session = managed_broker_session;
+  runtime.broker_agent_id = start_plan.broker_agent_id;
+  runtime.broker_deployment_id = start_plan.broker_deployment_id;
+  runtime.sender_tag = start_plan.sender_tag;
+  runtime.tool_path = start_plan.resolved_tool_path;
+  runtime.node_bin = start_plan.resolved_node_bin;
+  runtime.ready_file_path = artifacts.ready_file_path;
+  runtime.stdout_log_path = artifacts.stdout_log_path;
+  runtime.stderr_log_path = artifacts.stderr_log_path;
+  runtime.deadline_ms = start_plan.deadline_ms;
+  runtime.poll_interval_ms = start_plan.poll_interval_ms;
+  runtime.tone_hz = start_plan.tone_hz;
+  runtime.ready = false;
+  runtime.running = false;
+  return runtime;
 }
 
 VoicePeerRuntimeSeed make_spawned_voice_peer_runtime_seed(

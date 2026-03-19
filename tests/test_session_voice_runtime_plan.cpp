@@ -9,6 +9,8 @@ using agentd::DaemonConfig;
 using agentd::VoicePeerChildLaunchConfig;
 using agentd::VoicePeerRuntimeArtifactsPlan;
 using agentd::VoicePeerRuntimeSeed;
+using agentd::VoicePeerStartPlan;
+using agentd::make_planned_voice_peer_runtime;
 using agentd::make_spawned_voice_peer_runtime_seed;
 using agentd::plan_voice_peer_runtime_artifacts;
 using agentd::voice_peer_runtime_artifacts_json;
@@ -89,10 +91,48 @@ static void test_spawned_runtime_seed_carries_launch_and_artifacts() {
 #endif
 }
 
+static void test_planned_runtime_matches_start_plan_and_artifacts() {
+  VoicePeerStartPlan plan;
+  plan.runtime_kind = "builtin";
+  plan.effective_broker_url = "http://broker";
+  plan.broker_agent_id = "agent-a";
+  plan.broker_deployment_id = "deploy-b";
+  plan.sender_tag = "agentd_runtime_peer";
+  plan.deadline_ms = 1234;
+  plan.poll_interval_ms = 234;
+  plan.tone_hz = 345;
+
+  VoicePeerRuntimeArtifactsPlan artifacts;
+  artifacts.runtime_dir = "/tmp/agentd-state/voice_webrtc_peers/voice-sid";
+  artifacts.ready_file_path = artifacts.runtime_dir + "/ready.json";
+  artifacts.stdout_log_path = artifacts.runtime_dir + "/stdout.jsonl";
+  artifacts.stderr_log_path = artifacts.runtime_dir + "/stderr.log";
+
+  const agentd::VoicePeerRuntime runtime =
+    make_planned_voice_peer_runtime("voice-sid", plan, artifacts, "", true);
+  assert(runtime.runtime_kind == "builtin");
+  assert(runtime.session_id == "voice-sid");
+  assert(runtime.broker_session_id.empty());
+  assert(runtime.broker_url == "http://broker");
+  assert(runtime.managed_broker_session);
+  assert(runtime.broker_agent_id == "agent-a");
+  assert(runtime.broker_deployment_id == "deploy-b");
+  assert(runtime.sender_tag == "agentd_runtime_peer");
+  assert(runtime.ready_file_path == artifacts.ready_file_path);
+  assert(runtime.stdout_log_path == artifacts.stdout_log_path);
+  assert(runtime.stderr_log_path == artifacts.stderr_log_path);
+  assert(runtime.deadline_ms == 1234);
+  assert(runtime.poll_interval_ms == 234);
+  assert(runtime.tone_hz == 345);
+  assert(!runtime.ready);
+  assert(!runtime.running);
+}
+
 }  // namespace
 
 int main() {
   test_runtime_artifacts_follow_state_dir();
   test_spawned_runtime_seed_carries_launch_and_artifacts();
+  test_planned_runtime_matches_start_plan_and_artifacts();
   return 0;
 }

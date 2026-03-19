@@ -239,7 +239,7 @@ A v0 smoke test should:
 - Valid reserved `runtime_kind=builtin` requests now also return `builtin_start_contract`, which captures the native
   start intent (`broker_session` mode/details, `sender_tag`, timing knobs, staged startup sequence, and
   `mutating_broker_actions_deferred=true`) plus the shared planned runtime artifact layout for the future native peer,
-  without pretending the builtin media runtime already exists.
+  plus a runtime-schema-shaped `planned_runtime` preview, without pretending the builtin media runtime already exists.
 - `broker_session_id` is now mutually exclusive with `broker_agent_id` / `broker_deployment_id`, keeping the borrowed
   broker-session path distinct from the agentd-owned auto-create path.
 - That managed runtime now also performs bounded startup confirmation and fails closed when the child exits before ready,

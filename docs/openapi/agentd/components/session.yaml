@@ -51,7 +51,7 @@ VoiceWebRtcPeerBuiltinRuntimeArtifacts:
 
 VoiceWebRtcPeerBuiltinStartContract:
   type: object
-  required: [session_id, runtime_kind, signaling_surface, broker_url, sender_tag, deadline_ms, poll_interval_ms, tone_hz, startup_wait_ms, mutating_broker_actions_deferred, startup_sequence, runtime_artifacts, broker_session]
+  required: [session_id, runtime_kind, signaling_surface, broker_url, sender_tag, deadline_ms, poll_interval_ms, tone_hz, startup_wait_ms, mutating_broker_actions_deferred, startup_sequence, runtime_artifacts, broker_session, planned_runtime]
   properties:
     session_id: { type: string }
     runtime_kind:
@@ -75,6 +75,8 @@ VoiceWebRtcPeerBuiltinStartContract:
       $ref: "#/components/schemas/VoiceWebRtcPeerBuiltinRuntimeArtifacts"
     broker_session:
       $ref: "#/components/schemas/VoiceWebRtcPeerBuiltinBrokerSessionContract"
+    planned_runtime:
+      $ref: "#/components/schemas/VoiceWebRtcPeerRuntime"
 
 VoiceWebRtcPeerRuntime:
   type: object

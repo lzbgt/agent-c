@@ -997,6 +997,25 @@ if artifacts.get("stderr_log_path") != runtime_dir + "/stderr.log":
 if artifacts.get("stdout_format") != "jsonl" or artifacts.get("stderr_format") != "text":
   print("expected builtin runtime artifact format contract", obj, file=sys.stderr)
   raise SystemExit(1)
+planned_runtime = contract.get("planned_runtime") or {}
+if planned_runtime.get("schema") != "session_voice_webrtc_peer_runtime_v1":
+  print("expected builtin planned runtime schema", obj, file=sys.stderr)
+  raise SystemExit(1)
+if planned_runtime.get("runtime_kind") != "builtin" or planned_runtime.get("session_id") != obj.get("session_id"):
+  print("expected builtin planned runtime identity", obj, file=sys.stderr)
+  raise SystemExit(1)
+if planned_runtime.get("managed_broker_session") is not True:
+  print("expected builtin planned runtime managed broker session", obj, file=sys.stderr)
+  raise SystemExit(1)
+if planned_runtime.get("running") is not False or planned_runtime.get("ready") is not False:
+  print("expected builtin planned runtime to stay inactive", obj, file=sys.stderr)
+  raise SystemExit(1)
+if planned_runtime.get("stdout_log_path") != artifacts.get("stdout_log_path"):
+  print("expected builtin planned runtime stdout_log_path to match artifacts", obj, file=sys.stderr)
+  raise SystemExit(1)
+if planned_runtime.get("broker_agent_id") != "a-1" or planned_runtime.get("broker_deployment_id") != "lab-builtin-contract":
+  print("expected builtin planned runtime broker ownership metadata", obj, file=sys.stderr)
+  raise SystemExit(1)
 PY
 
 BUILTIN_MISSING_BROKER_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_missing_broker_$(date +%s)_$RANDOM"

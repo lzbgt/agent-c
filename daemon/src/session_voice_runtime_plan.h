@@ -2,6 +2,7 @@
 
 #include "daemon_config.h"
 #include "session_voice_runtime_internal.h"
+#include "session_voice_start_plan.h"
 
 #include <json/json.h>
 
@@ -23,6 +24,14 @@ VoicePeerRuntimeArtifactsPlan plan_voice_peer_runtime_artifacts(
 
 Json::Value voice_peer_runtime_artifacts_json(
   const VoicePeerRuntimeArtifactsPlan& plan
+);
+
+VoicePeerRuntime make_planned_voice_peer_runtime(
+  const std::string& session_id,
+  const VoicePeerStartPlan& start_plan,
+  const VoicePeerRuntimeArtifactsPlan& artifacts,
+  const std::string& broker_session_id,
+  bool managed_broker_session
 );
 
 VoicePeerRuntimeSeed make_spawned_voice_peer_runtime_seed(

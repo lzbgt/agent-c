@@ -2,6 +2,7 @@
 
 #include "session_voice_launch_flow.h"
 #include "session_voice_runtime_plan.h"
+#include "session_voice_runtime_store.h"
 
 namespace agentd {
 
@@ -10,6 +11,8 @@ Json::Value session_voice_builtin_start_contract_json(
   const std::string& session_id,
   const VoicePeerStartPlan& start_plan
 ) {
+  const VoicePeerRuntimeArtifactsPlan artifacts =
+    plan_voice_peer_runtime_artifacts(cfg, session_id);
   Json::Value out(Json::objectValue);
   out["session_id"] = session_id;
   out["runtime_kind"] = "builtin";
@@ -23,10 +26,11 @@ Json::Value session_voice_builtin_start_contract_json(
   out["mutating_broker_actions_deferred"] = true;
   out["startup_sequence"] =
     voice_peer_launch_startup_sequence_json(start_plan, true);
-  out["runtime_artifacts"] = voice_peer_runtime_artifacts_json(
-    plan_voice_peer_runtime_artifacts(cfg, session_id));
+  out["runtime_artifacts"] = voice_peer_runtime_artifacts_json(artifacts);
 
   Json::Value broker_session(Json::objectValue);
+  std::string planned_broker_session_id;
+  bool planned_managed_broker_session = false;
   if (!start_plan.requested_broker_session_id.empty()) {
     broker_session["mode"] = "borrowed";
     broker_session["session_id"] = start_plan.requested_broker_session_id;
@@ -34,6 +38,7 @@ Json::Value session_voice_builtin_start_contract_json(
     if (!start_plan.requested_broker_session_mode.empty()) {
       broker_session["session_mode"] = start_plan.requested_broker_session_mode;
     }
+    planned_broker_session_id = start_plan.requested_broker_session_id;
   } else {
     broker_session["mode"] = "auto_create";
     broker_session["preflighted"] = false;
@@ -41,8 +46,16 @@ Json::Value session_voice_builtin_start_contract_json(
     if (!start_plan.broker_deployment_id.empty()) {
       broker_session["deployment_id"] = start_plan.broker_deployment_id;
     }
+    planned_managed_broker_session = true;
   }
   out["broker_session"] = broker_session;
+  out["planned_runtime"] = voice_peer_runtime_to_json(
+    make_planned_voice_peer_runtime(
+      session_id,
+      start_plan,
+      artifacts,
+      planned_broker_session_id,
+      planned_managed_broker_session));
   return out;
 }
 

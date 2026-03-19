@@ -448,7 +448,8 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   broker/signaling/session parameters that a future native backend would consume (`broker_session.mode`,
   `sender_tag`, timing knobs, explicit `mutating_broker_actions_deferred=true`, and now the shared staged
   `startup_sequence`) plus the shared planned runtime artifact layout (`runtime_artifacts.runtime_dir`,
-  `ready_file_path`, `stdout_log_path`, `stderr_log_path`) without persisting a fake runtime.
+  `ready_file_path`, `stdout_log_path`, `stderr_log_path`) plus a schema-shaped `planned_runtime`
+  preview without persisting a fake runtime.
 - `broker_session_id` is now mutually exclusive with `broker_agent_id` / `broker_deployment_id`; agentd rejects that
   ambiguous mixed mode at request validation time instead of silently ignoring the auto-create fields.
 - `POST /api/v1/session/voice_webrtc_peer` now supports daemon-level broker defaults through
