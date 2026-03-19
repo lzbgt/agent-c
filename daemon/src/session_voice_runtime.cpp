@@ -8,6 +8,7 @@
 #include "session_voice_broker_client.h"
 #include "session_voice_child_runtime.h"
 #include "session_voice_runtime_internal.h"
+#include "session_voice_runtime_lifecycle.h"
 #include "session_voice_runtime_store.h"
 #include "session_voice_start_plan.h"
 #include "session_id_util.h"
@@ -15,11 +16,9 @@
 
 #include <json/json.h>
 
-#include <chrono>
 #include <cstdlib>
 #include <memory>
 #include <mutex>
-#include <thread>
 #include <unordered_map>
 
 namespace agentd {
@@ -153,10 +152,9 @@ void handle_session_voice_webrtc_peer_endpoint(
       refresh_voice_peer_runtime_state(st.get());
     }
     const bool was_running = st->running;
-#if !defined(_WIN32)
+    VoicePeerStopProcessResult stop_result;
     std::string serr;
-    int signal_used = 0;
-    if (was_running && !voice_peer_kill_best_effort(st, g_voice_peer_mu, &signal_used, &serr)) {
+    if (!stop_voice_peer_runtime_process(st, g_voice_peer_mu, 2000, &stop_result, &serr)) {
       out["error"] = serr.empty() ? "failed to stop voice peer" : serr;
       {
         std::lock_guard<std::mutex> lk(g_voice_peer_mu);
@@ -167,45 +165,22 @@ void handle_session_voice_webrtc_peer_endpoint(
       resp->body = json_stringify(out);
       return;
     }
-    bool stopped = false;
-    if (was_running) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      stopped = wait_for_voice_peer_stop(st, g_voice_peer_mu, 2000);
-    }
-#else
-    if (was_running) {
-      out["error"] = "voice_webrtc_peer stop unsupported on Windows";
-      voice_peer_add_runtime_snapshot(cfg, *st, &out);
-      resp->status = 501;
-      resp->body = json_stringify(out);
-      return;
-    }
-    const bool stopped = false;
-#endif
-    std::string cleanup_err;
-    bool cleanup_attempted = false;
-    bool cleanup_deleted = false;
     const std::string broker_token = effective_voice_broker_token(cfg, request_broker_token);
-    if (st->managed_broker_session && !trim_copy(st->broker_session_id).empty() && !broker_token.empty()) {
-      cleanup_attempted = true;
-      if (validate_voice_broker_token_if_present(broker_token, &cleanup_err)) {
-        cleanup_deleted = broker_delete_audio_session(st->broker_url, broker_token, st->broker_session_id, &cleanup_err);
-      }
-    }
+    const Json::Value broker_cleanup = cleanup_managed_voice_peer_broker_session(st, broker_token);
     {
       std::lock_guard<std::mutex> lk(g_voice_peer_mu);
-      refresh_voice_peer_runtime_state(st.get());
-      finalize_recovered_voice_peer_stop(st.get(), signal_used);
       voice_peer_add_runtime_snapshot(cfg, *st, &out);
     }
     std::string perr;
     (void)persist_voice_peer_runtime_record(db, *st, &perr);
     out["ok"] = true;
-    out["stopped"] = stopped;
+    out["stopped"] = stop_result.stopped;
     if (!was_running) out["reason"] = "not_running";
-    if (cleanup_attempted) {
-      out["broker_session_deleted"] = cleanup_deleted;
-      if (!cleanup_deleted && !cleanup_err.empty()) out["broker_session_delete_error"] = cleanup_err;
+    if (broker_cleanup.isMember("broker_session_deleted")) {
+      out["broker_session_deleted"] = broker_cleanup["broker_session_deleted"];
+    }
+    if (broker_cleanup.isMember("broker_session_delete_error")) {
+      out["broker_session_delete_error"] = broker_cleanup["broker_session_delete_error"];
     }
     resp->status = 200;
     resp->body = json_stringify(out);
@@ -572,44 +547,22 @@ bool cleanup_session_voice_webrtc_peer_runtime(
     summary["runtime_present"] = true;
     summary["runtime_was_running"] = st->running;
     summary["peer"] = voice_peer_runtime_to_json(*st);
-  }
 
-#if defined(_WIN32)
-  if (st && st->running) {
-    if (out_err) *out_err = "voice_webrtc_peer cleanup unsupported on Windows";
-    return false;
-  }
-#else
-  if (st && st->running) {
-    std::string serr;
-    int signal_used = 0;
-    if (!voice_peer_kill_best_effort(st, g_voice_peer_mu, &signal_used, &serr)) {
-      if (out_err) *out_err = serr.empty() ? "failed to stop voice peer during session delete" : serr;
+    VoicePeerStopProcessResult stop_result;
+    if (!stop_voice_peer_runtime_process(st, g_voice_peer_mu, 2000, &stop_result, out_err)) {
+      if (out_err && out_err->empty()) *out_err = "failed to stop voice peer during session delete";
       return false;
     }
-    summary["stopped"] = wait_for_voice_peer_stop(st, g_voice_peer_mu, 2000);
-    {
-      std::lock_guard<std::mutex> lk(g_voice_peer_mu);
-      refresh_voice_peer_runtime_state(st.get());
-      finalize_recovered_voice_peer_stop(st.get(), signal_used);
-      summary["peer"] = voice_peer_runtime_to_json(*st);
-    }
-  } else {
-    summary["stopped"] = st ? !st->running : false;
-  }
-#endif
+    summary["stopped"] = stop_result.was_running ? stop_result.stopped : !st->running;
+    summary["peer"] = voice_peer_runtime_to_json(*st);
 
-  bool broker_deleted = false;
-  const std::string broker_token_effective = effective_voice_broker_token(cfg, broker_token);
-  if (st && st->managed_broker_session && !trim_copy(st->broker_session_id).empty() && !broker_token_effective.empty()) {
-    std::string berr;
-    summary["broker_session_delete_attempted"] = true;
-    if (validate_voice_broker_token_if_present(broker_token_effective, &berr)) {
-      broker_deleted = broker_delete_audio_session(st->broker_url, broker_token_effective, st->broker_session_id, &berr);
+    const Json::Value broker_cleanup =
+      cleanup_managed_voice_peer_broker_session(st, effective_voice_broker_token(cfg, broker_token));
+    for (const auto& name : broker_cleanup.getMemberNames()) {
+      summary[name] = broker_cleanup[name];
     }
-    summary["broker_session_deleted"] = broker_deleted;
-    if (!broker_deleted && !berr.empty()) summary["broker_session_delete_error"] = berr;
   } else {
+    summary["stopped"] = false;
     summary["broker_session_delete_attempted"] = false;
   }
 
