@@ -162,4 +162,62 @@ bool AgentDb::meta_set(const std::string& key, const std::string& value, std::st
 #endif
 }
 
+bool AgentDb::list_meta_prefix(
+  const std::string& prefix,
+  size_t limit,
+  std::vector<MetaRow>* out_rows,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_rows) out_rows->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)prefix;
+  (void)limit;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (prefix.empty()) {
+    if (out_error) *out_error = "list_meta_prefix: prefix is empty";
+    return false;
+  }
+  if (limit == 0) return true;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql =
+    "SELECT key, value FROM meta "
+    "WHERE substr(key, 1, ?) = ? "
+    "ORDER BY key LIMIT ?;";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = agent_db_sqlite_err(db_);
+    return false;
+  }
+  bool ok = agent_db_bind_i64(st, 1, (int64_t)prefix.size()) &&
+            agent_db_bind_text(st, 2, prefix) &&
+            agent_db_bind_i64(st, 3, (int64_t)limit);
+  std::vector<MetaRow> rows;
+  while (ok) {
+    const int rc = sqlite3_step(st);
+    if (rc == SQLITE_ROW) {
+      MetaRow row;
+      const unsigned char* key_txt = sqlite3_column_text(st, 0);
+      const unsigned char* value_txt = sqlite3_column_text(st, 1);
+      if (key_txt) row.key = (const char*)key_txt;
+      if (value_txt) row.value = (const char*)value_txt;
+      rows.push_back(std::move(row));
+      continue;
+    }
+    if (rc == SQLITE_DONE) break;
+    ok = false;
+  }
+  if (!ok && out_error) *out_error = agent_db_sqlite_err(db_);
+  sqlite3_finalize(st);
+  if (ok && out_rows) *out_rows = std::move(rows);
+  return ok;
+#endif
+}
+
 }  // namespace agentd

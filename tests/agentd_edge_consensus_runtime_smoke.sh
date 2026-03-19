@@ -368,6 +368,7 @@ finally:
     conn.close()
 PY
 STOP_RESTART_NODE_JSON="$(curl_json GET "/api/v1/edge/node?node_id=${STOP_NODE}")"
+STOP_RESTART_NODES_JSON="$(curl_json GET "/api/v1/edge/nodes?limit=200")"
 
 START_STALE_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
 {"action":"start","node_id":"${STALE_NODE}","cluster_id":"${STALE_CLUSTER}","manifest_sha256":"${STALE_SHA}","deadline_ms":30000,"poll_interval_ms":100}
@@ -511,6 +512,7 @@ finally:
     conn.close()
 PY
 EXT_RESTART_NODE_JSON="$(curl_json GET "/api/v1/edge/node?node_id=${EXT_NODE}")"
+EXT_RESTART_NODES_JSON="$(curl_json GET "/api/v1/edge/nodes?limit=200")"
 START_EXT_AGAIN_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
 {"action":"start","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","member_node_ids":["${EXT_NODE}","${EXT_PEER}"],"cluster_size":2,"deadline_ms":30000,"poll_interval_ms":100}
 JSON
@@ -607,6 +609,7 @@ db_path = r'''${TEST_DB}'''
 
 stop_restart_status = json.loads(r'''${STOP_RESTART_STATUS_JSON}''')
 stop_restart_node = json.loads(r'''${STOP_RESTART_NODE_JSON}''')
+stop_restart_nodes = json.loads(r'''${STOP_RESTART_NODES_JSON}''')
 start_stale = json.loads(r'''${START_STALE_JSON}''')
 running_stale = json.loads(r'''${RUNNING_STALE_JSON}''')
 stale_status = json.loads(r'''${STALE_STATUS_JSON}''')
@@ -637,6 +640,7 @@ start_ext = json.loads(r'''${START_EXT_JSON}''')
 running_ext = json.loads(r'''${RUNNING_EXT_JSON}''')
 ext_restart_status = json.loads(r'''${EXT_RESTART_STATUS_JSON}''')
 ext_restart_node = json.loads(r'''${EXT_RESTART_NODE_JSON}''')
+ext_restart_nodes = json.loads(r'''${EXT_RESTART_NODES_JSON}''')
 start_ext_again = json.loads(r'''${START_EXT_AGAIN_JSON}''')
 conflict_start = json.loads(r'''${CONFLICT_START_JSON}''')
 stop_ext = json.loads(r'''${STOP_EXT_JSON}''')
@@ -660,6 +664,13 @@ for label, obj in (("config_set", config_set), ("config_get", config_get), ("con
     print(label, obj, file=sys.stderr)
     raise SystemExit(1)
 
+def find_nodes(obj, node_id):
+  matches = []
+  for row in obj.get("nodes") or []:
+    if row.get("node_id") == node_id:
+      matches.append(row)
+  return matches
+
 stop_restart_rt = stop_restart_status.get("runtime") or {}
 if stop_restart_rt.get("status_source") != "persisted" or stop_restart_rt.get("runtime_kind") != "builtin":
   print("stop restart status did not recover persisted runtime snapshot", stop_restart_status, file=sys.stderr)
@@ -679,6 +690,17 @@ if (stop_restart_node.get("node") or {}).get("has_manifest") is not False:
   raise SystemExit(1)
 if stop_restart_node_rt.get("status_source") != "persisted" or stop_restart_node_rt.get("runtime_kind") != "builtin" or stop_restart_node_rt.get("running"):
   print("runtime-backed edge/node lookup lost persisted builtin runtime snapshot", stop_restart_node, file=sys.stderr)
+  raise SystemExit(1)
+stop_restart_rows = find_nodes(stop_restart_nodes, "${STOP_NODE}")
+if stop_restart_nodes.get("ok") is not True or len(stop_restart_rows) != 1:
+  print("runtime-backed edge/nodes lookup failed for persisted builtin runtime", stop_restart_nodes, file=sys.stderr)
+  raise SystemExit(1)
+stop_restart_list_rt = (stop_restart_rows[0].get("consensus_runtime") or {})
+if stop_restart_rows[0].get("last_hello_utc_ms") != 0 or stop_restart_rows[0].get("last_heartbeat_utc_ms") != 0:
+  print("runtime-backed persisted builtin nodes listing should synthesize zero timestamps", stop_restart_nodes, file=sys.stderr)
+  raise SystemExit(1)
+if stop_restart_list_rt.get("status_source") != "persisted" or stop_restart_list_rt.get("runtime_kind") != "builtin" or stop_restart_list_rt.get("running"):
+  print("runtime-backed edge/nodes lookup lost persisted builtin runtime snapshot", stop_restart_nodes, file=sys.stderr)
   raise SystemExit(1)
 if start_stale.get("startup_confirmed") is not True or (start_stale.get("runtime") or {}).get("runtime_kind") != "builtin":
   print("stale runtime start wrong", start_stale, file=sys.stderr)
@@ -872,6 +894,17 @@ if (ext_restart_node.get("node") or {}).get("has_manifest") is not False:
   raise SystemExit(1)
 if ext_restart_node_rt.get("status_source") != "persisted" or ext_restart_node_rt.get("runtime_kind") != "external" or not ext_restart_node_rt.get("running"):
   print("runtime-backed edge/node lookup lost recovered external runtime", ext_restart_node, file=sys.stderr)
+  raise SystemExit(1)
+ext_restart_rows = find_nodes(ext_restart_nodes, "${EXT_NODE}")
+if ext_restart_nodes.get("ok") is not True or len(ext_restart_rows) != 1:
+  print("runtime-backed edge/nodes lookup failed for recovered external runtime", ext_restart_nodes, file=sys.stderr)
+  raise SystemExit(1)
+ext_restart_list_rt = (ext_restart_rows[0].get("consensus_runtime") or {})
+if ext_restart_rows[0].get("last_hello_utc_ms") != 0 or ext_restart_rows[0].get("last_heartbeat_utc_ms") != 0:
+  print("runtime-backed recovered external nodes listing should synthesize zero timestamps", ext_restart_nodes, file=sys.stderr)
+  raise SystemExit(1)
+if ext_restart_list_rt.get("status_source") != "persisted" or ext_restart_list_rt.get("runtime_kind") != "external" or not ext_restart_list_rt.get("running"):
+  print("runtime-backed edge/nodes lookup lost recovered external runtime", ext_restart_nodes, file=sys.stderr)
   raise SystemExit(1)
 if not start_ext_again.get("ok") or start_ext_again.get("already_running") is not True:
   print("identical external re-start did not stay idempotent", start_ext_again, file=sys.stderr)

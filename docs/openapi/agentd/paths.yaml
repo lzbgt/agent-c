@@ -2493,7 +2493,12 @@
 /api/v1/edge/nodes:
   get:
     tags: [edge]
-    summary: List registered edge nodes
+    summary: List edge nodes
+    description: |
+      Returns stored edge-node registry rows plus synthetic runtime-backed summaries for
+      managed consensus runtimes that currently have no registry row. Those synthetic rows
+      keep `consensus_runtime` visible with zero `last_hello_utc_ms` /
+      `last_heartbeat_utc_ms`.
     parameters:
       - in: query
         name: limit

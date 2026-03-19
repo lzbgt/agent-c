@@ -688,6 +688,9 @@ Edge trust-root rotation:
 - `GET /api/v1/edge/node?node_id=<id>` now also falls back to a synthetic runtime-backed node record when no edge-node
   registry row exists but a managed consensus runtime does. That fallback keeps `consensus_runtime` visible for
   runtime-only nodes with zero hello/heartbeat timestamps and `has_manifest=false` instead of returning `404`.
+- `GET /api/v1/edge/nodes` now applies the same runtime-backed fallback to listing too: if a managed consensus runtime
+  exists without a stored edge-node registry row, the list still includes a synthetic node summary with zero
+  hello/heartbeat timestamps and the current `consensus_runtime` snapshot.
 - `POST /api/v1/config/update` supports `edge_confidentiality_required` and `edge_confidentiality_keys`.
   When enabled, `/api/v1/edge/message` rejects plaintext `body` and requires AES-GCM `body_enc`.
 - `POST /api/v1/edge/auth/trust_roots/send`, `.../cert_roots/send`, `.../revocations/send`, and

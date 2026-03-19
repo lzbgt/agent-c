@@ -1254,6 +1254,32 @@ Json::Value edge_consensus_runtime_status_json_for_node(const DaemonConfig& cfg,
   return persisted ? edge_consensus_runtime_response_json(cfg, *persisted) : Json::Value(Json::nullValue);
 }
 
+std::vector<std::string> edge_consensus_runtime_node_ids(AgentDb* db_or_null, size_t limit) {
+  if (limit == 0) return {};
+  std::vector<std::string> ids;
+  {
+    std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
+    ids.reserve(g_edge_consensus_runtime_by_node.size());
+    for (const auto& kv : g_edge_consensus_runtime_by_node) ids.push_back(kv.first);
+  }
+  if (db_or_null && db_or_null->is_open()) {
+    std::vector<AgentDb::MetaRow> rows;
+    std::string err;
+    const size_t db_limit = std::max<size_t>(limit, 256);
+    if (db_or_null->list_meta_prefix("edge.consensus_runtime.", db_limit, &rows, &err)) {
+      for (const auto& row : rows) {
+        constexpr size_t kPrefixLen = sizeof("edge.consensus_runtime.") - 1;
+        if (row.key.size() <= kPrefixLen) continue;
+        ids.push_back(row.key.substr(kPrefixLen));
+      }
+    }
+  }
+  ids = dedupe_safe_edge_ids(ids);
+  std::sort(ids.begin(), ids.end());
+  if (ids.size() > limit) ids.resize(limit);
+  return ids;
+}
+
 void handle_edge_node_consensus_runtime_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,

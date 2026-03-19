@@ -304,6 +304,9 @@ Manifest bundle note:
 - `GET /api/v1/edge/node?node_id=...` now also falls back to a synthetic runtime-backed node record when no stored
   hello/caps row exists but managed consensus runtime state does, so runtime-only nodes remain inspectable without
   inventing a manifest-backed registry entry.
+- `GET /api/v1/edge/nodes` now also appends those synthetic runtime-backed summaries for runtime-only managed consensus
+  nodes, so list reads no longer lose nodes whose registry row was never written or was removed after runtime state
+  persisted.
 - The shipped helper is no longer the only place the loop exists: the election scheduler and frame-routing logic now
   live in reusable core code (`EdgeConsensusNodeLoop`) plus a shared HTTP runtime core (`run_edge_consensus_http_runtime`),
   which is the intended stepping stone toward embedded/node-native adoption.

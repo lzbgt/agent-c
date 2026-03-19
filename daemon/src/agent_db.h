@@ -36,8 +36,18 @@ class AgentDb {
 
   // Generic key/value store (daemon-local; used for persisted runtime defaults and other small blobs).
   // Values are opaque UTF-8 strings (typically JSON).
+  struct MetaRow {
+    std::string key;
+    std::string value;
+  };
   bool meta_get(const std::string& key, std::string* out_value, std::string* out_error);
   bool meta_set(const std::string& key, const std::string& value, std::string* out_error);
+  bool list_meta_prefix(
+    const std::string& prefix,
+    size_t limit,
+    std::vector<MetaRow>* out_rows,
+    std::string* out_error
+  );
 
   // Session state (canonical).
   struct MessageRow {

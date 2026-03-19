@@ -196,6 +196,27 @@ static Json::Value build_edge_node_summary_json(
   return row;
 }
 
+static void append_runtime_only_edge_node_summaries(
+  const DaemonConfig& cfg,
+  AgentDb* db_or_null,
+  size_t limit,
+  std::unordered_set<std::string>* seen_node_ids,
+  Json::Value* arr
+) {
+  if (!arr || !arr->isArray() || !seen_node_ids || !db_or_null || !db_or_null->is_open()) return;
+  if (arr->size() >= limit) return;
+  const size_t remaining = limit - arr->size();
+  const std::vector<std::string> runtime_node_ids = edge_consensus_runtime_node_ids(db_or_null, remaining + seen_node_ids->size());
+  for (const auto& node_id : runtime_node_ids) {
+    if (arr->size() >= limit) break;
+    if (seen_node_ids->find(node_id) != seen_node_ids->end()) continue;
+    Json::Value runtime = edge_consensus_runtime_status_json_for_node(cfg, db_or_null, node_id);
+    if (!runtime.isObject()) continue;
+    arr->append(build_edge_node_summary_json(nullptr, runtime, node_id));
+    seen_node_ids->insert(node_id);
+  }
+}
+
 static void append_edge_node_detail_json(
   const DaemonConfig& cfg,
   const AgentDb::EdgeNodeRow* row_or_null,
@@ -2171,11 +2192,15 @@ void handle_edge_nodes_endpoint(
   Json::Value o(Json::objectValue);
   o["ok"] = true;
   Json::Value arr(Json::arrayValue);
+  std::unordered_set<std::string> seen_node_ids;
+  seen_node_ids.reserve(nodes.size());
   for (const auto& n : nodes) {
     Json::Value runtime = edge_consensus_runtime_status_json_for_node(cfg, db_or_null, n.node_id);
     Json::Value row = build_edge_node_summary_json(&n, runtime, n.node_id);
     arr.append(row);
+    seen_node_ids.insert(n.node_id);
   }
+  append_runtime_only_edge_node_summaries(cfg, db_or_null, limit, &seen_node_ids, &arr);
   o["nodes"] = arr;
   resp->body = edge_json_stringify_compact(o);
 }

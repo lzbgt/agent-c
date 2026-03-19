@@ -652,6 +652,7 @@ streaming and plugins are stable.
   - 2026-03-20: if callers omit `trust_roots_epoch` / `revocations_epoch` / `cert_roots_epoch`, managed consensus start now defaults those from the daemon's current `edge_auth_*_epoch` policy, runtime reads surface `runtime.trust_epoch_drift` when that trust policy rotates underneath a live runtime, and the main runtime smoke proves restart-based adoption while the membership-bundle smoke now also checks explicit trust-epoch carriage.
   - 2026-03-20: active managed consensus runtimes now expose best-effort `runtime.live_status` snapshots while still running, including external helper parity while stdout remains attached to agentd, and the main runtime smoke proves operator-visible live member/trust identity plus campaign state before terminal result.
   - 2026-03-20: `GET /api/v1/edge/node?node_id=...` now falls back to a synthetic runtime-backed node record when no hello/caps row exists but managed consensus runtime state does, and the main runtime smoke proves builtin running, builtin persisted, and external recovered-runtime lookup through the main node-read API.
+  - 2026-03-20: `GET /api/v1/edge/nodes` now applies the same runtime-backed fallback to listing, so runtime-only managed consensus nodes still appear even when the `edge_nodes` row is missing, with builtin-persisted and recovered-external proof in `tests/agentd_edge_consensus_runtime_smoke.sh`.
 
 ## Deferred (after macOS stability)
 
