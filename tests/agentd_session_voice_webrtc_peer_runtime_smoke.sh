@@ -1238,6 +1238,155 @@ PY
 
 wait_broker_session_deleted "${RECOVERED_STOP_BROKER_SESSION_ID}"
 
+RECOVERED_DELETE_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_recovered_delete_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${RECOVERED_DELETE_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+recovered_delete_start_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${RECOVERED_DELETE_SESSION_ID}",
+  "action": "start",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab-recovered-delete",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 611
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${recovered_delete_start_resp}''')
+if not obj.get("ok") or not obj.get("started"):
+  print("recovered-delete voice start failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+peer = obj.get("peer") or {}
+if peer.get("runtime_kind") != "bundled" or peer.get("managed_broker_session") is not True:
+  print("recovered-delete voice start missing bundled managed runtime", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+RECOVERED_DELETE_BROKER_SESSION_ID="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${recovered_delete_start_resp}''')
+peer = obj.get("peer") or {}
+sid = str(peer.get("broker_session_id") or "").strip()
+if not sid:
+  print("missing recovered-delete broker_session_id in start response", file=sys.stderr)
+  raise SystemExit(1)
+print(sid)
+PY
+)"
+
+RECOVERED_DELETE_STDOUT_LOG="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${recovered_delete_start_resp}''')
+peer = obj.get("peer") or {}
+path = str(peer.get("stdout_log_path") or "").strip()
+if not path:
+  print("missing recovered-delete stdout_log_path in start response", file=sys.stderr)
+  raise SystemExit(1)
+print(path)
+PY
+)"
+
+wait_voice_peer_ready "${RECOVERED_DELETE_SESSION_ID}" 1 status_json
+
+restart_agentd
+wait_voice_peer_ready "${RECOVERED_DELETE_SESSION_ID}" 1 status_json
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${status_json}''')
+peer = obj.get("peer") or {}
+if peer.get("status_source") != "persisted" or peer.get("runtime_kind") != "bundled":
+  print("expected persisted bundled peer before recovered-delete session erase", obj, file=sys.stderr)
+  raise SystemExit(1)
+if not peer.get("running") or not peer.get("ready"):
+  print("expected recovered-delete peer to stay running after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+RECOVERED_DELETE_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${RECOVERED_DELETE_SESSION_ID}")"
+recovered_delete_resp="$(curl -fsS --noproxy "*" --max-time 10 -X DELETE \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session?session_id=${RECOVERED_DELETE_SESSION_ID_Q}")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${recovered_delete_resp}''')
+if not obj.get("ok") or obj.get("deleted_from_db") is not True:
+  print("recovered-delete session delete failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+cleanup = obj.get("voice_runtime_cleanup") or {}
+if cleanup.get("runtime_present") is not True or cleanup.get("runtime_was_running") is not True:
+  print("recovered-delete cleanup missing running runtime", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("stopped") is not True:
+  print("recovered-delete cleanup should report stopped=true", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("broker_session_delete_attempted") is not True or cleanup.get("broker_session_deleted") is not True:
+  print("recovered-delete cleanup missing broker session deletion", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("persisted_record_cleared") is not True or cleanup.get("runtime_artifacts_deleted") is not True:
+  print("recovered-delete cleanup missing persisted/artifact cleanup", obj, file=sys.stderr)
+  raise SystemExit(1)
+peer = cleanup.get("peer") or {}
+if peer.get("status_source") != "persisted" or peer.get("runtime_kind") != "bundled":
+  print("recovered-delete cleanup lost persisted bundled peer snapshot", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("running"):
+  print("recovered-delete cleanup still reported running peer", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("exit_signal") != 15:
+  print("recovered-delete cleanup missing synthesized SIGTERM result", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+recovered_delete_status="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer?session_id=${RECOVERED_DELETE_SESSION_ID_Q}")"
+
+python3 - <<PY
+import json, os, sys
+obj = json.loads(r'''${recovered_delete_status}''')
+if obj.get("session_exists") is not False or obj.get("running") is not False or obj.get("peer") is not None:
+  print("expected no peer state after recovered-delete cleanup", obj, file=sys.stderr)
+  raise SystemExit(1)
+if os.path.exists(r'''${RECOVERED_DELETE_STDOUT_LOG}'''):
+  print("expected recovered-delete stdout log to be removed", r'''${RECOVERED_DELETE_STDOUT_LOG}''', file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+restart_agentd
+
+recovered_delete_status_restart="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer?session_id=${RECOVERED_DELETE_SESSION_ID_Q}")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${recovered_delete_status_restart}''')
+if obj.get("session_exists") is not False or obj.get("running") is not False or obj.get("peer") is not None:
+  print("expected no resurrected peer state after recovered-delete restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("cleanup_on_missing_session") not in (None, {}):
+  print("unexpected cleanup_on_missing_session after recovered-delete cleanup", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+wait_broker_session_deleted "${RECOVERED_DELETE_BROKER_SESSION_ID}"
+
 start_resp3="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   -H 'Content-Type: application/json' \

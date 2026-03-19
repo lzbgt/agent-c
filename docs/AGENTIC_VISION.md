@@ -260,6 +260,9 @@ These are the most leveraged next steps grounded in current architecture:
    - Completed 2026-03-15: session erase now also owns the managed voice runtime lifecycle, stopping the peer and
      removing persisted runtime artifacts (plus owned broker session cleanup when either request-scoped or
      daemon-configured broker credentials are available).
+   - Completed 2026-03-19: if session erase has to stop a live voice peer recovered from persisted running state after
+     daemon restart, the returned cleanup summary now preserves that peer's explicit terminal signal/result before the
+     runtime record is cleared.
    - Completed 2026-03-15: status reads now also self-heal stale local voice runtime state if the session row vanished
      outside the normal erase path, instead of surfacing orphaned peer/runtime residue indefinitely.
    - Completed 2026-03-15: stale persisted `voice_webrtc_peer` records that still claim `running=true` after a dead

@@ -424,6 +424,9 @@ Current status:
   audio session after an ungraceful peer death that never delivered `bye`.
 - Shipped: `DELETE /api/v1/session?session_id=...&broker_token=...` now treats session erase as a real lifecycle boundary
   for voice: it stops the managed peer, clears persisted runtime artifacts, and deletes the owned broker audio session.
+- Shipped: if session erase has to stop a live managed peer that was recovered from persisted running state after
+  agentd restart, the returned `voice_runtime_cleanup.peer` snapshot now preserves the explicit terminal signal/result
+  before the runtime record is cleared.
 - Shipped: `GET /api/v1/session/voice_webrtc_peer` now also self-heals stale local runtime state if the session row
   disappears outside the normal erase path, rather than leaving orphaned local peer/runtime artifacts behind.
 - Shipped: corrupt persisted `session.voice_webrtc_peer.*` state is now self-healed too; agentd clears the bad record,

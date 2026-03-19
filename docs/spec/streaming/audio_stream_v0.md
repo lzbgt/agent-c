@@ -168,6 +168,8 @@ A v0 smoke test should:
   stop/session-delete teardown and reports the broker cleanup failure explicitly instead of failing the local cleanup.
 - `DELETE /api/v1/session?session_id=...&broker_token=...` now also cleans up the managed voice runtime for that session:
   the peer is stopped, persisted runtime artifacts are removed, and the owned broker audio session is deleted.
+- If that delete has to stop a live bundled/external peer recovered from persisted running state after agentd restart,
+  the returned cleanup snapshot now preserves the peer's terminal signal/result before the runtime record is cleared.
 - `GET /api/v1/session/voice_webrtc_peer` now also self-heals stale local runtime state if the canonical session row
   disappeared outside the normal delete endpoint, and reports that cleanup in `cleanup_on_missing_session`.
 - Corrupt persisted `session.voice_webrtc_peer.*` records are now self-healed too: agentd clears the bad record,

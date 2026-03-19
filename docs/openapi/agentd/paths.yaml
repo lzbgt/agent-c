@@ -3129,6 +3129,14 @@
   delete:
     tags: [sessions]
     summary: Delete a session and cascade its persisted evidence
+    description: |
+      Deletes the canonical session row and its dependent persisted evidence. If the
+      session currently owns a managed `voice_webrtc_peer` runtime, agentd first
+      stops that peer, deletes any owned broker audio session, clears the persisted
+      runtime/artifact state, and returns a `voice_runtime_cleanup` summary. If the
+      deleted peer had been recovered as a live persisted runtime after an agentd
+      restart, that cleanup summary now preserves the final terminal peer snapshot
+      before the runtime record is cleared.
     parameters:
       - in: query
         name: session_id
