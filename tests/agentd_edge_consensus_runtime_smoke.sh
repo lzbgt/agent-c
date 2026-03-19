@@ -519,8 +519,22 @@ if (conflict_start.get("runtime") or {}).get("leader_lease_ms") == 7777:
 if not stop_ext.get("ok") or not stop_ext.get("stopped"):
   print("external stop wrong", stop_ext, file=sys.stderr)
   raise SystemExit(1)
+stop_ext_rt = stop_ext.get("runtime") or {}
+if stop_ext_rt.get("status_source") != "persisted" or stop_ext_rt.get("runtime_kind") != "external":
+  print("external stop lost recovered persisted runtime snapshot", stop_ext, file=sys.stderr)
+  raise SystemExit(1)
+if stop_ext_rt.get("running"):
+  print("external stop still reported running runtime", stop_ext, file=sys.stderr)
+  raise SystemExit(1)
+if stop_ext_rt.get("exit_signal") != 15:
+  print("external stop missing synthesized SIGTERM result", stop_ext, file=sys.stderr)
+  raise SystemExit(1)
+stop_ext_status_rt = stop_ext_status.get("runtime") or {}
 if (stop_ext_status.get("runtime") or {}).get("running"):
   print("external runtime still running after stop", stop_ext_status, file=sys.stderr)
+  raise SystemExit(1)
+if stop_ext_status_rt.get("status_source") != "persisted" or stop_ext_status_rt.get("exit_signal") != 15:
+  print("external stopped runtime did not persist SIGTERM result", stop_ext_status, file=sys.stderr)
   raise SystemExit(1)
 
 for label, obj in (("failfast_cfg", failfast_cfg), ("failfast_config", failfast_config)):

@@ -434,6 +434,9 @@ Current status:
   report the recovery in `cleanup_on_stale_record` instead of surfacing a fake recovered peer.
 - Shipped: `voice_webrtc_peer action=stop` now reports `reason=not_running` when the managed peer already finished,
   while still attempting owned broker-session cleanup, instead of claiming a false-positive active stop.
+- Shipped: if a live managed voice peer survives agentd restart and is recovered from persisted running state, a later
+  `voice_webrtc_peer action=stop` now preserves an explicit terminal signal in the persisted runtime snapshot instead
+  of downgrading that recovered peer to a generic stopped record.
 - Shipped: agentd can now hold daemon-level broker URL/token defaults for that managed runtime, so normal
   `voice_webrtc_peer` start/stop/delete flows can omit `broker_url` / `broker_token` while still letting agentd create
   and clean up broker-owned audio sessions.

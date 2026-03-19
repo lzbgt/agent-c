@@ -1128,6 +1128,116 @@ PY
 
 wait_broker_session_deleted "${BROKER_SESSION_ID2}"
 
+RECOVERED_STOP_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_recovered_stop_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${RECOVERED_STOP_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+recovered_stop_start_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${RECOVERED_STOP_SESSION_ID}",
+  "action": "start",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab-recovered-stop",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 587
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${recovered_stop_start_resp}''')
+if not obj.get("ok") or not obj.get("started"):
+  print("recovered-stop voice start failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+peer = obj.get("peer") or {}
+if peer.get("runtime_kind") != "bundled" or peer.get("managed_broker_session") is not True:
+  print("recovered-stop voice start missing bundled managed runtime", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+RECOVERED_STOP_BROKER_SESSION_ID="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${recovered_stop_start_resp}''')
+peer = obj.get("peer") or {}
+sid = str(peer.get("broker_session_id") or "").strip()
+if not sid:
+  print("missing recovered-stop broker_session_id in start response", file=sys.stderr)
+  raise SystemExit(1)
+print(sid)
+PY
+)"
+
+wait_voice_peer_ready "${RECOVERED_STOP_SESSION_ID}" 1 status_json
+
+restart_agentd
+wait_voice_peer_ready "${RECOVERED_STOP_SESSION_ID}" 1 status_json
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${status_json}''')
+peer = obj.get("peer") or {}
+if peer.get("status_source") != "persisted" or peer.get("runtime_kind") != "bundled":
+  print("expected persisted bundled peer after recovered-stop restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+if not peer.get("running") or not peer.get("ready"):
+  print("expected recovered-stop peer to stay running after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+recovered_stop_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${RECOVERED_STOP_SESSION_ID}\",\"action\":\"stop\"}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${recovered_stop_resp}''')
+if not obj.get("ok") or obj.get("stopped") is not True:
+  print("recovered-stop voice stop failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("broker_session_deleted") is not True:
+  print("expected broker_session_deleted after recovered-stop voice stop", obj, file=sys.stderr)
+  raise SystemExit(1)
+peer = obj.get("peer") or {}
+if peer.get("status_source") != "persisted" or peer.get("runtime_kind") != "bundled":
+  print("recovered-stop voice stop lost persisted bundled snapshot", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("running"):
+  print("recovered-stop voice stop still reported running peer", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("exit_signal") != 15:
+  print("recovered-stop voice stop missing synthesized SIGTERM result", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+wait_voice_peer_ready "${RECOVERED_STOP_SESSION_ID}" 0 stopped_json
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${stopped_json}''')
+peer = obj.get("peer") or {}
+if peer.get("status_source") != "persisted" or peer.get("running"):
+  print("recovered-stop final status wrong", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("exit_signal") != 15:
+  print("recovered-stop final status did not persist SIGTERM result", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+wait_broker_session_deleted "${RECOVERED_STOP_BROKER_SESSION_ID}"
+
 start_resp3="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   -H 'Content-Type: application/json' \

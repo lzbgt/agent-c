@@ -407,6 +407,19 @@ static void refresh_voice_peer_runtime_state(VoicePeerRuntime* st) {
   }
 }
 
+static void finalize_recovered_voice_peer_stop(VoicePeerRuntime* st, int signal_used) {
+  if (!st) return;
+  if (st->status_source != "persisted" || st->running) return;
+  if (st->last_stdout_json.isObject() && st->last_stdout_json.isMember("reason") && st->last_stdout_json["reason"].isString()) {
+    const std::string reason = lower_copy(trim_copy(st->last_stdout_json["reason"].asString()));
+    if (reason == "sigterm") signal_used = SIGTERM;
+    else if (reason == "sigint") signal_used = SIGINT;
+  }
+  if (signal_used <= 0 || st->exit_signal != 0) return;
+  if (st->ended_unix_ms <= 0) st->ended_unix_ms = now_unix_ms();
+  st->exit_signal = signal_used;
+}
+
 static bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, std::string* out_err) {
   if (out_err) out_err->clear();
   if (!out) return false;
@@ -994,7 +1007,8 @@ static bool voice_peer_spawn_process(
   return true;
 }
 
-static bool voice_peer_kill_best_effort(std::shared_ptr<VoicePeerRuntime> st, std::string* out_err) {
+static bool voice_peer_kill_best_effort(std::shared_ptr<VoicePeerRuntime> st, int* out_signal_used, std::string* out_err) {
+  if (out_signal_used) *out_signal_used = 0;
   if (out_err) out_err->clear();
   if (!st) return false;
   if (!st->running) return true;
@@ -1003,6 +1017,7 @@ static bool voice_peer_kill_best_effort(std::shared_ptr<VoicePeerRuntime> st, st
     if (out_err) *out_err = std::string("kill(SIGTERM) failed: ") + std::strerror(errno);
     return false;
   }
+  if (out_signal_used) *out_signal_used = SIGTERM;
   const int64_t deadline = now_unix_ms() + 1500;
   for (;;) {
     {
@@ -1016,6 +1031,7 @@ static bool voice_peer_kill_best_effort(std::shared_ptr<VoicePeerRuntime> st, st
     if (out_err) *out_err = std::string("kill(SIGKILL) failed: ") + std::strerror(errno);
     return false;
   }
+  if (out_signal_used) *out_signal_used = SIGKILL;
   return true;
 }
 #endif
@@ -1165,7 +1181,8 @@ void handle_session_voice_webrtc_peer_endpoint(
     const bool was_running = st->running;
 #if !defined(_WIN32)
     std::string serr;
-    if (was_running && !voice_peer_kill_best_effort(st, &serr)) {
+    int signal_used = 0;
+    if (was_running && !voice_peer_kill_best_effort(st, &signal_used, &serr)) {
       out["error"] = serr.empty() ? "failed to stop voice peer" : serr;
       {
         std::lock_guard<std::mutex> lk(g_voice_peer_mu);
@@ -1204,6 +1221,7 @@ void handle_session_voice_webrtc_peer_endpoint(
     {
       std::lock_guard<std::mutex> lk(g_voice_peer_mu);
       refresh_voice_peer_runtime_state(st.get());
+      finalize_recovered_voice_peer_stop(st.get(), signal_used);
       out["peer"] = voice_peer_runtime_to_json(*st);
     }
     std::string perr;
@@ -1729,7 +1747,8 @@ bool cleanup_session_voice_webrtc_peer_runtime(
 #else
   if (st && st->running) {
     std::string serr;
-    if (!voice_peer_kill_best_effort(st, &serr)) {
+    int signal_used = 0;
+    if (!voice_peer_kill_best_effort(st, &signal_used, &serr)) {
       if (out_err) *out_err = serr.empty() ? "failed to stop voice peer during session delete" : serr;
       return false;
     }
@@ -1737,6 +1756,7 @@ bool cleanup_session_voice_webrtc_peer_runtime(
     {
       std::lock_guard<std::mutex> lk(g_voice_peer_mu);
       refresh_voice_peer_runtime_state(st.get());
+      finalize_recovered_voice_peer_stop(st.get(), signal_used);
       summary["peer"] = voice_peer_runtime_to_json(*st);
     }
   } else {

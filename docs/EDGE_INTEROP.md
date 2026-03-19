@@ -243,6 +243,8 @@ Returns messages in ascending `outbox_id` order. The node should:
   - terminal runtime snapshots now persist across agentd restart with `runtime.status_source=persisted`; live external
     helpers can also be recovered from persisted running snapshots after restart, while stale builtin `running=true`
     records and corrupt persisted runtime records are self-healed by clearing the record and dead runtime artifacts
+  - when one of those recovered live external helpers is later stopped through agentd, the persisted final runtime
+    snapshot now preserves the stop signal instead of collapsing to a signal-less stopped record
   - supports `campaign_delay_ms`, `campaign_retry_ms`, `campaign_retry_max_ms`, and `campaign_retry_backoff_factor`
     so early candidates can re-campaign with bounded exponential backoff until peers come online
   - supports `leader_heartbeat_ms` and `leader_lease_ms` so followers can expire stale leaders and candidates can

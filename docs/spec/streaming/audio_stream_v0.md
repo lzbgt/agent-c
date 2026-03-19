@@ -178,6 +178,9 @@ A v0 smoke test should:
   recovery in `cleanup_on_stale_record` instead of reporting a fake recovered peer.
 - `POST /api/v1/session/voice_webrtc_peer` `action=stop` now also returns `reason=not_running` when the peer already
   exited, while still allowing agentd to clean up an owned broker audio session for that finished runtime.
+- If a live bundled/external peer is recovered from persisted running state after agentd restart, a later
+  `action=stop` now also preserves an explicit terminal signal/result in the persisted runtime snapshot instead of
+  flattening the recovered peer into a generic stopped record.
 - Agentd now also supports daemon-level broker URL/token defaults for that managed runtime, so callers may omit
   `broker_url` / `broker_token` on normal `voice_webrtc_peer` start/stop flows and still let agentd create/clean up
   broker-owned audio sessions. Safe config and runtime status expose only boolean presence, not the token itself.

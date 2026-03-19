@@ -2555,7 +2555,9 @@
       `GET /api/v1/edge/node/consensus_runtime` can recover the last finished/stopped
       runtime across agentd restart with `runtime.status_source=persisted`, and a
       still-live external helper can also be recovered from its persisted running
-      snapshot. Stale builtin `running=true` records and corrupt persisted runtime
+      snapshot. If that recovered live external helper is later stopped through
+      agentd, the persisted final runtime snapshot now also preserves the stop
+      signal/result. Stale builtin `running=true` records and corrupt persisted runtime
       records are now self-healed by clearing the bad record and local runtime
       artifacts instead of surfacing stale managed state forever.
       Start requests can also set
@@ -3395,7 +3397,10 @@
       returns `reason=not_running` and `start` first clears that stale record via
       `cleanup_on_stale_record` before proceeding. If the runtime record exists but
       the peer has already exited, `stop` now also returns `reason=not_running`
-      while still attempting owned broker-session cleanup when applicable.
+      while still attempting owned broker-session cleanup when applicable. If a live
+      bundled/external peer is recovered from persisted running state after agentd
+      restart, a later `stop` now also preserves the final terminal signal/result in
+      the persisted runtime snapshot.
     requestBody:
       required: true
       content:

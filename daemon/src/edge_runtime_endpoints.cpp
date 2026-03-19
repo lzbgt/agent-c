@@ -250,6 +250,14 @@ static void refresh_edge_consensus_runtime_state(EdgeConsensusRuntime* st) {
 #endif
 }
 
+static void finalize_recovered_edge_consensus_stop(EdgeConsensusRuntime* st, int signal_used) {
+  if (!st || signal_used <= 0) return;
+  if (st->status_source != "persisted" || st->running) return;
+  if (st->exit_signal != 0) return;
+  if (st->ended_unix_ms <= 0) st->ended_unix_ms = now_unix_ms();
+  st->exit_signal = signal_used;
+}
+
 static std::shared_ptr<EdgeConsensusRuntime> edge_consensus_runtime_lookup_locked(const std::string& node_id) {
   const auto it = g_edge_consensus_runtime_by_node.find(node_id);
   return it == g_edge_consensus_runtime_by_node.end() ? nullptr : it->second;
@@ -925,7 +933,12 @@ static bool edge_consensus_runtime_start_builtin(
   return true;
 }
 
-static bool edge_consensus_runtime_kill_best_effort(std::shared_ptr<EdgeConsensusRuntime> st, std::string* out_err) {
+static bool edge_consensus_runtime_kill_best_effort(
+  std::shared_ptr<EdgeConsensusRuntime> st,
+  int* out_signal_used,
+  std::string* out_err
+) {
+  if (out_signal_used) *out_signal_used = 0;
   if (out_err) out_err->clear();
   if (!st) return false;
   refresh_edge_consensus_runtime_state(st.get());
@@ -949,6 +962,7 @@ static bool edge_consensus_runtime_kill_best_effort(std::shared_ptr<EdgeConsensu
     if (out_err) *out_err = std::string("kill(SIGTERM) failed: ") + std::strerror(errno);
     return false;
   }
+  if (out_signal_used) *out_signal_used = SIGTERM;
   const int64_t deadline = now_unix_ms() + 1500;
   for (;;) {
     {
@@ -963,6 +977,7 @@ static bool edge_consensus_runtime_kill_best_effort(std::shared_ptr<EdgeConsensu
     if (out_err) *out_err = std::string("kill(SIGKILL) failed: ") + std::strerror(errno);
     return false;
   }
+  if (out_signal_used) *out_signal_used = SIGKILL;
   return true;
 }
 
@@ -1216,7 +1231,8 @@ void handle_edge_node_consensus_runtime_endpoint(
     return;
 #else
     std::string serr;
-    if (!edge_consensus_runtime_kill_best_effort(st, &serr)) {
+    int signal_used = 0;
+    if (!edge_consensus_runtime_kill_best_effort(st, &signal_used, &serr)) {
       out["error"] = serr.empty() ? "failed to stop consensus runtime" : serr;
       {
         std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
@@ -1229,6 +1245,8 @@ void handle_edge_node_consensus_runtime_endpoint(
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     {
       std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
+      refresh_edge_consensus_runtime_state(st.get());
+      finalize_recovered_edge_consensus_stop(st.get(), signal_used);
       out["runtime"] = edge_consensus_runtime_to_json(*st);
     }
     std::string perr;

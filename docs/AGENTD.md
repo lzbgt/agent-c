@@ -422,6 +422,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
 - `POST /api/v1/session/voice_webrtc_peer` `action=stop` now also reports actual local teardown semantics: when the
   peer already exited, the response returns `stopped=false` and `reason=not_running` instead of claiming a live stop,
   while still attempting owned broker-session cleanup when applicable.
+- If a still-live bundled/external peer is recovered from persisted running state after agentd restart, a later
+  `action=stop` now preserves an explicit terminal signal/result in that persisted snapshot too, instead of degrading
+  to a generic stopped record with no authoritative final cause.
 - `POST /api/v1/session/voice_webrtc_peer` no longer requires callers to pre-create the broker audio session:
   if `broker_session_id` is omitted and `broker_agent_id` is provided, agentd now creates the broker audio session,
   launches the peer against it, and reports `peer.managed_broker_session=true` plus the chosen
@@ -593,6 +596,8 @@ Notes:
   `GET /api/v1/edge/node/consensus_runtime?node_id=<id>` can recover the last finished/stopped runtime after agentd
   restart with `runtime.status_source=persisted`, and can also recover a still-live external helper from its persisted
   running snapshot.
+- If that recovered live external helper is later stopped through agentd, the persisted final runtime snapshot now also
+  records the stop signal instead of collapsing to a signal-less stopped state after restart recovery.
 - Persisted consensus runtime records now self-heal on read: corrupt records and stale builtin `running=true` records
   from a dead daemon process are cleared along with dead local runtime artifacts instead of being reported forever as
   live or unusable managed state.

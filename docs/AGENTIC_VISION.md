@@ -23,6 +23,9 @@ Recent shipped note:
 - 2026-03-15: managed edge-consensus runtimes now persist their last runtime snapshot in DB meta, so status survives
   agentd restart for finished/stopped runtimes, live external helpers can be recovered from persisted running state,
   and stale/corrupt persisted runtime records self-heal on read.
+- 2026-03-19: when a live managed runtime is recovered from persisted running state after agentd restart, later stop
+  now preserves an explicit terminal signal too, so recovered voice peers and external consensus helpers do not lose
+  final-cause fidelity when they are torn down by the new daemon process.
 - 2026-03-15: running `voice_webrtc_peer` start requests are now only reusable when the effective resolved config still
   matches the live runtime; conflicting explicit, config-driven, or now-unlaunchable starts, including
   `runtime_kind=builtin` against a live non-builtin peer, now fail closed with `409` plus the existing runtime
