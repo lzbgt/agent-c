@@ -5,6 +5,7 @@
 #include "http_util.h"
 #include "json_util.h"
 #include "session_voice_backend_policy.h"
+#include "session_voice_backend_state.h"
 #include "session_voice_child_backend.h"
 #include "session_voice_builtin_backend.h"
 #include "session_voice_broker_client.h"
@@ -59,7 +60,7 @@ static void voice_peer_apply_start_backend_failure(
   if (!out) return;
   if (start_result.state) {
     std::lock_guard<std::mutex> lk(runtime_mu);
-    refresh_voice_peer_runtime_state(start_result.state.get());
+    refresh_voice_peer_runtime_backend_state(start_result.state.get());
     voice_peer_add_runtime_snapshot(cfg, *start_result.state, out);
   }
   if (!start_result.startup_cleanup.isNull()) {
@@ -85,7 +86,7 @@ static void voice_peer_apply_start_backend_success(
 ) {
   if (!out || !start_result.state) return;
   std::lock_guard<std::mutex> lk(runtime_mu);
-  refresh_voice_peer_runtime_state(start_result.state.get());
+  refresh_voice_peer_runtime_backend_state(start_result.state.get());
   voice_peer_add_runtime_snapshot(cfg, *start_result.state, out);
 }
 
@@ -164,7 +165,7 @@ void handle_session_voice_webrtc_peer_endpoint(
     {
       std::lock_guard<std::mutex> lk(g_voice_peer_mu);
       st = voice_peer_lookup_locked(session_id);
-      if (st) refresh_voice_peer_runtime_state(st.get());
+      if (st) refresh_voice_peer_runtime_backend_state(st.get());
     }
     if (!st) {
       Json::Value recovery_updates(Json::objectValue);
@@ -190,7 +191,7 @@ void handle_session_voice_webrtc_peer_endpoint(
     }
     {
       std::lock_guard<std::mutex> lk(g_voice_peer_mu);
-      refresh_voice_peer_runtime_state(st.get());
+      refresh_voice_peer_runtime_backend_state(st.get());
     }
     const bool was_running = st->running;
     VoicePeerStopProcessResult stop_result;
@@ -199,7 +200,7 @@ void handle_session_voice_webrtc_peer_endpoint(
       out["error"] = serr.empty() ? "failed to stop voice peer" : serr;
       {
         std::lock_guard<std::mutex> lk(g_voice_peer_mu);
-        refresh_voice_peer_runtime_state(st.get());
+        refresh_voice_peer_runtime_backend_state(st.get());
         voice_peer_add_runtime_snapshot(cfg, *st, &out);
       }
       resp->status = 500;
@@ -244,7 +245,7 @@ void handle_session_voice_webrtc_peer_endpoint(
   {
     std::lock_guard<std::mutex> lk(g_voice_peer_mu);
     auto st = voice_peer_lookup_locked(session_id);
-    if (st) refresh_voice_peer_runtime_state(st.get());
+    if (st) refresh_voice_peer_runtime_backend_state(st.get());
     if (st && st->running) {
       voice_peer_add_runtime_snapshot(cfg, *st, &out);
       std::string perr;
@@ -405,7 +406,7 @@ void handle_session_voice_webrtc_peer_status_endpoint(
   {
     std::lock_guard<std::mutex> lk(g_voice_peer_mu);
     st = voice_peer_lookup_locked(*sid);
-    if (st) refresh_voice_peer_runtime_state(st.get());
+    if (st) refresh_voice_peer_runtime_backend_state(st.get());
   }
   if (!st) {
     Json::Value recovery_updates(Json::objectValue);
@@ -472,7 +473,7 @@ bool cleanup_session_voice_webrtc_peer_runtime(
   {
     std::lock_guard<std::mutex> lk(g_voice_peer_mu);
     st = voice_peer_lookup_locked(session_id);
-    if (st) refresh_voice_peer_runtime_state(st.get());
+    if (st) refresh_voice_peer_runtime_backend_state(st.get());
   }
   if (!st) {
     bool record_self_healed = false;

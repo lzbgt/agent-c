@@ -1,5 +1,6 @@
 #include "session_voice_runtime_lifecycle.h"
 
+#include "session_voice_backend_state.h"
 #include "session_voice_broker_client.h"
 #include "session_voice_child_runtime.h"
 #include "string_util.h"
@@ -12,6 +13,16 @@
 #endif
 
 namespace agentd {
+namespace {
+
+int64_t now_unix_ms() {
+  using namespace std::chrono;
+  return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+           std::chrono::system_clock::now().time_since_epoch())
+    .count();
+}
+
+}  // namespace
 
 bool stop_voice_peer_runtime_process(
   const std::shared_ptr<VoicePeerRuntime>& st,
@@ -29,10 +40,22 @@ bool stop_voice_peer_runtime_process(
 
   {
     std::lock_guard<std::mutex> lk(runtime_mu);
-    refresh_voice_peer_runtime_state(st.get());
+    refresh_voice_peer_runtime_backend_state(st.get());
     if (out_result) out_result->was_running = st->running;
   }
   const bool was_running = out_result ? out_result->was_running : st->running;
+
+  if (st->runtime_kind == "builtin") {
+    if (was_running) {
+      std::lock_guard<std::mutex> lk(runtime_mu);
+      st->running = false;
+      st->ready = false;
+      if (st->ended_unix_ms <= 0) st->ended_unix_ms = now_unix_ms();
+      if (st->last_error.empty()) st->last_error = "builtin voice_webrtc_peer runtime not implemented";
+    }
+    if (out_result) out_result->stopped = was_running;
+    return true;
+  }
 
 #if defined(_WIN32)
   if (st->running) {
@@ -53,7 +76,7 @@ bool stop_voice_peer_runtime_process(
   }
   {
     std::lock_guard<std::mutex> lk(runtime_mu);
-    refresh_voice_peer_runtime_state(st.get());
+    refresh_voice_peer_runtime_backend_state(st.get());
     finalize_recovered_voice_peer_stop(st.get(), signal_used);
   }
   if (out_result) out_result->stopped = stopped;

@@ -425,6 +425,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   stop, and later starts now self-heal that stale snapshot too: agentd clears the persisted record, removes stale
   local runtime artifacts, exposes the recovery in `cleanup_on_stale_record`, and treats the runtime as not running
   instead of surfacing a fake persisted stopped peer.
+- That same stale-record self-heal is now explicit for impossible persisted `runtime_kind=builtin` snapshots too, so
+  agentd no longer depends on child-process PID probing to clean up reserved native-backend records before the backend
+  actually exists.
 - `POST /api/v1/session/voice_webrtc_peer` `action=stop` now also reports actual local teardown semantics: when the
   peer already exited, the response returns `stopped=false` and `reason=not_running` instead of claiming a live stop,
   while still attempting owned broker-session cleanup when applicable.

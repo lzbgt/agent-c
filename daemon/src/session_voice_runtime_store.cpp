@@ -2,6 +2,7 @@
 
 #include "json_util.h"
 #include "session_voice_backend_policy.h"
+#include "session_voice_backend_state.h"
 #include "session_voice_broker_client.h"
 #include "session_voice_child_runtime.h"
 #include "string_util.h"
@@ -277,7 +278,7 @@ bool load_voice_peer_runtime_record(
   }
   const bool persisted_claimed_running = st->running;
   st->status_source = "persisted";
-  refresh_voice_peer_runtime_state(st.get());
+  refresh_voice_peer_runtime_backend_state(st.get());
   st->stale_persisted_record = persisted_claimed_running && !st->running;
   if (out_state) *out_state = std::move(st);
   return true;

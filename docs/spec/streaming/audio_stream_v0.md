@@ -182,6 +182,9 @@ A v0 smoke test should:
 - Persisted `session.voice_webrtc_peer.*` records that still claim `running=true` after a dead daemon restart are now
   self-healed too: status/stop/start clear the stale record, remove stale local runtime artifacts, and expose that
   recovery in `cleanup_on_stale_record` instead of reporting a fake recovered peer.
+- That stale-record self-heal now also applies explicitly to impossible persisted `runtime_kind=builtin` snapshots, so
+  the reserved native backend path is cleaned up by backend-aware runtime refresh instead of accidental child-PID
+  assumptions.
 - `POST /api/v1/session/voice_webrtc_peer` `action=stop` now also returns `reason=not_running` when the peer already
   exited, while still allowing agentd to clean up an owned broker audio session for that finished runtime.
 - If a live bundled/external peer is recovered from persisted running state after agentd restart, a later

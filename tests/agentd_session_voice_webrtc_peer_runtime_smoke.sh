@@ -487,6 +487,7 @@ wait_broker_session_deleted() {
 
 inject_stale_persisted_voice_runtime() {
   local session_id="$1"
+  local runtime_kind="${2:-bundled}"
   local runtime_dir="${STATE_DIR}/voice_webrtc_peers/${session_id}"
   mkdir -p "${runtime_dir}"
   printf '%s\n' '{"stale":"artifact"}' > "${runtime_dir}/stdout.jsonl"
@@ -499,7 +500,7 @@ sid = r'''${session_id}'''
 runtime_dir = r'''${runtime_dir}'''
 record = {
     "schema": "session_voice_webrtc_peer_runtime_v1",
-    "runtime_kind": "bundled",
+    "runtime_kind": r'''${runtime_kind}''',
     "status_source": "memory",
     "session_id": sid,
     "broker_session_id": "stale-broker-session",
@@ -3571,6 +3572,199 @@ STALE_START_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.pa
 curl -fsS --noproxy "*" --max-time 10 -X DELETE \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   "${DAEMON_URL}/api/v1/session?session_id=${STALE_START_SESSION_ID_Q}" >/dev/null
+
+BUILTIN_STALE_STATUS_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_stale_status_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${BUILTIN_STALE_STATUS_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+inject_stale_persisted_voice_runtime "${BUILTIN_STALE_STATUS_SESSION_ID}" builtin
+BUILTIN_STALE_STATUS_RUNTIME_DIR="${STATE_DIR}/voice_webrtc_peers/${BUILTIN_STALE_STATUS_SESSION_ID}"
+BUILTIN_STALE_STATUS_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${BUILTIN_STALE_STATUS_SESSION_ID}")"
+
+builtin_stale_status_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer?session_id=${BUILTIN_STALE_STATUS_SESSION_ID_Q}")"
+
+python3 - <<PY
+import json, os, sqlite3, sys
+obj = json.loads(r'''${builtin_stale_status_resp}''')
+cleanup = obj.get("cleanup_on_stale_record") or {}
+if obj.get("ok") is not True or obj.get("running") is not False:
+  print("expected builtin stale runtime status self-heal success", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("peer") is not None:
+  print("expected builtin stale runtime status peer=null after self-heal", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("persisted_record_cleared") is not True:
+  print("expected builtin stale runtime status persisted_record_cleared", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("runtime_artifacts_deleted") is not True:
+  print("expected builtin stale runtime status runtime_artifacts_deleted", obj, file=sys.stderr)
+  raise SystemExit(1)
+if os.path.exists(r'''${BUILTIN_STALE_STATUS_RUNTIME_DIR}'''):
+  print("expected builtin stale runtime status artifacts removed", r'''${BUILTIN_STALE_STATUS_RUNTIME_DIR}''', file=sys.stderr)
+  raise SystemExit(1)
+conn = sqlite3.connect(r'''${SESSION_DB_PATH}''')
+try:
+  row = conn.execute(
+      "SELECT value FROM meta WHERE key = ?",
+      (f"session.voice_webrtc_peer.{r'''${BUILTIN_STALE_STATUS_SESSION_ID}'''}",)
+  ).fetchone()
+  if row is None or row[0] != "":
+    print("expected builtin stale runtime status meta row cleared to empty string", row, file=sys.stderr)
+    raise SystemExit(1)
+finally:
+  conn.close()
+PY
+
+curl -fsS --noproxy "*" --max-time 10 -X DELETE \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session?session_id=${BUILTIN_STALE_STATUS_SESSION_ID_Q}" >/dev/null
+
+BUILTIN_STALE_STOP_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_stale_stop_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${BUILTIN_STALE_STOP_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+inject_stale_persisted_voice_runtime "${BUILTIN_STALE_STOP_SESSION_ID}" builtin
+BUILTIN_STALE_STOP_RUNTIME_DIR="${STATE_DIR}/voice_webrtc_peers/${BUILTIN_STALE_STOP_SESSION_ID}"
+BUILTIN_STALE_STOP_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${BUILTIN_STALE_STOP_SESSION_ID}")"
+
+builtin_stale_stop_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${BUILTIN_STALE_STOP_SESSION_ID}\",\"action\":\"stop\"}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, os, sqlite3, sys
+obj = json.loads(r'''${builtin_stale_stop_resp}''')
+cleanup = obj.get("cleanup_on_stale_record") or {}
+if obj.get("ok") is not True or obj.get("stopped") is not False or obj.get("reason") != "not_running":
+  print("expected builtin stale runtime stop self-heal success", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("peer") is not None:
+  print("expected builtin stale runtime stop peer=null after self-heal", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("persisted_record_cleared") is not True:
+  print("expected builtin stale runtime stop persisted_record_cleared", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("runtime_artifacts_deleted") is not True:
+  print("expected builtin stale runtime stop runtime_artifacts_deleted", obj, file=sys.stderr)
+  raise SystemExit(1)
+if os.path.exists(r'''${BUILTIN_STALE_STOP_RUNTIME_DIR}'''):
+  print("expected builtin stale runtime stop artifacts removed", r'''${BUILTIN_STALE_STOP_RUNTIME_DIR}''', file=sys.stderr)
+  raise SystemExit(1)
+conn = sqlite3.connect(r'''${SESSION_DB_PATH}''')
+try:
+  row = conn.execute(
+      "SELECT value FROM meta WHERE key = ?",
+      (f"session.voice_webrtc_peer.{r'''${BUILTIN_STALE_STOP_SESSION_ID}'''}",)
+  ).fetchone()
+  if row is None or row[0] != "":
+    print("expected builtin stale runtime stop meta row cleared to empty string", row, file=sys.stderr)
+    raise SystemExit(1)
+finally:
+  conn.close()
+PY
+
+curl -fsS --noproxy "*" --max-time 10 -X DELETE \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session?session_id=${BUILTIN_STALE_STOP_SESSION_ID_Q}" >/dev/null
+
+BUILTIN_STALE_START_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_stale_start_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${BUILTIN_STALE_START_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+inject_stale_persisted_voice_runtime "${BUILTIN_STALE_START_SESSION_ID}" builtin
+BUILTIN_STALE_START_RUNTIME_DIR="${STATE_DIR}/voice_webrtc_peers/${BUILTIN_STALE_START_SESSION_ID}"
+
+builtin_stale_start_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${BUILTIN_STALE_START_SESSION_ID}",
+  "action": "start",
+  "runtime_kind": "bundled",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab-builtin-stale-runtime-self-heal",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 913
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, os, sys
+obj = json.loads(r'''${builtin_stale_start_resp}''')
+peer = obj.get("peer") or {}
+cleanup = obj.get("cleanup_on_stale_record") or {}
+if not obj.get("ok") or not obj.get("started"):
+  print("expected start to recover after builtin stale runtime self-heal", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("persisted_record_cleared") is not True:
+  print("expected start response to report builtin stale runtime self-heal", obj, file=sys.stderr)
+  raise SystemExit(1)
+if cleanup.get("runtime_artifacts_deleted") is not True:
+  print("expected start response to delete builtin stale runtime artifacts", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("runtime_kind") != "bundled" or not peer.get("running"):
+  print("expected bundled running runtime after builtin stale runtime self-heal", obj, file=sys.stderr)
+  raise SystemExit(1)
+if os.path.exists(r'''${BUILTIN_STALE_START_RUNTIME_DIR}/stdout.jsonl'''):
+  with open(r'''${BUILTIN_STALE_START_RUNTIME_DIR}/stdout.jsonl''', 'r', encoding='utf-8') as f:
+    if '{"stale":"artifact"}' in f.read():
+      print("expected builtin stale stdout artifact to be replaced on fresh start", file=sys.stderr)
+      raise SystemExit(1)
+PY
+
+BUILTIN_STALE_START_BROKER_SESSION_ID="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${builtin_stale_start_resp}''')
+peer = obj.get("peer") or {}
+sid = str(peer.get("broker_session_id") or "").strip()
+if not sid:
+  print("missing builtin stale runtime self-heal broker_session_id", file=sys.stderr)
+  raise SystemExit(1)
+print(sid)
+PY
+)"
+
+wait_voice_peer_ready "${BUILTIN_STALE_START_SESSION_ID}" 1 status_json bundled bundled auto 1
+
+builtin_stale_start_stop_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${BUILTIN_STALE_START_SESSION_ID}\",\"action\":\"stop\"}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${builtin_stale_start_stop_resp}''')
+if not obj.get("ok") or not obj.get("stopped"):
+  print("expected builtin stale runtime self-heal stop to succeed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("broker_session_deleted") is not True:
+  print("expected builtin stale runtime self-heal stop to delete broker session", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+wait_broker_session_deleted "${BUILTIN_STALE_START_BROKER_SESSION_ID}"
+
+BUILTIN_STALE_START_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${BUILTIN_STALE_START_SESSION_ID}")"
+curl -fsS --noproxy "*" --max-time 10 -X DELETE \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session?session_id=${BUILTIN_STALE_START_SESSION_ID_Q}" >/dev/null
 
 config_invalid_node_bin_update_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
