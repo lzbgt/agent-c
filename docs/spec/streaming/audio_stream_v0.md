@@ -125,6 +125,9 @@ A v0 smoke test should:
   - candidate drain once the remote description is accepted
   - remote `bye` close tracking
   This mirrors the currently shipped browser peer behavior in reusable native code instead of leaving it only in the JS runtime.
+- The shared native signal client now also exposes a session-aware typed-ingress stream on top of raw SSE plus typed
+  egress builders for answer/candidate/bye payloads, so future builtin media code can operate on parsed session events
+  instead of reimplementing self-filtering and payload wiring on every call site.
 - Broker now exposes live session lifecycle/status APIs:
   - `GET /v1/audio/sessions`
   - `GET /v1/audio/sessions/{session_id}`

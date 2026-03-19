@@ -57,6 +57,7 @@ bool parse_voice_broker_signal_bye_payload(
 );
 
 Json::Value make_voice_broker_description_payload(const VoiceBrokerSignalDescription& desc);
+Json::Value make_voice_broker_candidate_payload(const VoiceBrokerSignalCandidate& candidate);
 Json::Value make_voice_broker_bye_payload(const VoiceBrokerSignalBye& bye);
 
 bool voice_broker_signal_is_from_sender(const VoiceBrokerSignalEvent& ev, const std::string& sender_tag);

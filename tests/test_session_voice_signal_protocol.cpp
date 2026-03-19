@@ -10,6 +10,7 @@ using agentd::VoiceBrokerSignalCandidate;
 using agentd::VoiceBrokerSignalDescription;
 using agentd::VoiceBrokerSignalEvent;
 using agentd::make_voice_broker_bye_payload;
+using agentd::make_voice_broker_candidate_payload;
 using agentd::make_voice_broker_description_payload;
 using agentd::parse_voice_broker_signal_bye_payload;
 using agentd::parse_voice_broker_signal_candidate_payload;
@@ -73,6 +74,14 @@ static void test_candidate_payload_parse() {
   assert(candidate.sdp_mline_index == 0);
   assert(candidate.username_fragment == "ufrag-1");
   assert(candidate.sender_tag == "webui-peer");
+
+  const Json::Value built = make_voice_broker_candidate_payload(candidate);
+  assert(built.isObject());
+  assert(built["candidate"].asString() == "cand-1");
+  assert(built["sdpMid"].asString() == "audio");
+  assert(built["sdpMLineIndex"].asInt() == 0);
+  assert(built["usernameFragment"].asString() == "ufrag-1");
+  assert(built["sender_tag"].asString() == "webui-peer");
 }
 
 static void test_bye_payload_parse_and_build() {

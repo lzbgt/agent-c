@@ -135,6 +135,18 @@ Json::Value make_voice_broker_description_payload(const VoiceBrokerSignalDescrip
   return payload;
 }
 
+Json::Value make_voice_broker_candidate_payload(const VoiceBrokerSignalCandidate& candidate) {
+  Json::Value payload(Json::objectValue);
+  payload["candidate"] = candidate.candidate;
+  if (!trim_copy(candidate.sdp_mid).empty()) payload["sdpMid"] = trim_copy(candidate.sdp_mid);
+  if (candidate.has_sdp_mline_index) payload["sdpMLineIndex"] = candidate.sdp_mline_index;
+  if (!trim_copy(candidate.username_fragment).empty()) {
+    payload["usernameFragment"] = trim_copy(candidate.username_fragment);
+  }
+  if (!trim_copy(candidate.sender_tag).empty()) payload["sender_tag"] = trim_copy(candidate.sender_tag);
+  return payload;
+}
+
 Json::Value make_voice_broker_bye_payload(const VoiceBrokerSignalBye& bye) {
   Json::Value payload(Json::objectValue);
   if (!trim_copy(bye.reason).empty()) payload["reason"] = trim_copy(bye.reason);

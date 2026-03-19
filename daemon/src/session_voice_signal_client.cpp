@@ -105,6 +105,17 @@ bool send_voice_broker_answer(
     broker_url, token, session_id, "answer", make_voice_broker_description_payload(answer), out_err);
 }
 
+bool send_voice_broker_candidate(
+  const std::string& broker_url,
+  const std::string& token,
+  const std::string& session_id,
+  const VoiceBrokerSignalCandidate& candidate,
+  std::string* out_err
+) {
+  return send_voice_broker_signal(
+    broker_url, token, session_id, "candidate", make_voice_broker_candidate_payload(candidate), out_err);
+}
+
 bool send_voice_broker_bye(
   const std::string& broker_url,
   const std::string& token,
@@ -172,6 +183,49 @@ bool stream_voice_broker_signal_events(
   return true;
 }
 
+bool stream_voice_broker_signal_session(
+  const std::string& broker_url,
+  const std::string& token,
+  const std::string& session_id,
+  const std::string& self_sender_tag,
+  int64_t timeout_ms,
+  VoiceBrokerSignalSessionState* io_state,
+  const VoiceBrokerSignalIngressCallback& on_ingress,
+  long* out_http_status,
+  std::string* out_err
+) {
+  VoiceBrokerSignalSessionState local_state(self_sender_tag);
+  VoiceBrokerSignalSessionState* state = io_state ? io_state : &local_state;
+  bool callback_failed = false;
+  std::string callback_error;
+  const bool ok = stream_voice_broker_signal_events(
+    broker_url,
+    token,
+    session_id,
+    timeout_ms,
+    [&](const VoiceBrokerSignalEvent& ev) {
+      VoiceBrokerSignalIngress ingress;
+      std::string err;
+      if (!state->ingest_event(ev, &ingress, &err)) {
+        callback_failed = true;
+        callback_error = err.empty() ? "failed to ingest broker signal event" : err;
+        return false;
+      }
+      if (ingress.kind == VoiceBrokerSignalIngressKind::ignored_self ||
+          ingress.kind == VoiceBrokerSignalIngressKind::ignored_unknown) {
+        return true;
+      }
+      return on_ingress ? on_ingress(ingress) : true;
+    },
+    out_http_status,
+    out_err);
+  if (callback_failed) {
+    if (out_err) *out_err = callback_error;
+    return false;
+  }
+  return ok;
+}
+
 bool wait_for_voice_broker_signal_type(
   const std::string& broker_url,
   const std::string& token,
@@ -208,6 +262,44 @@ bool wait_for_voice_broker_signal_type(
     return false;
   }
   if (out_event) *out_event = std::move(found);
+  return true;
+}
+
+bool wait_for_voice_broker_signal_remote_description(
+  const std::string& broker_url,
+  const std::string& token,
+  const std::string& session_id,
+  const std::string& self_sender_tag,
+  int64_t timeout_ms,
+  VoiceBrokerSignalDescription* out_desc,
+  long* out_http_status,
+  std::string* out_err
+) {
+  if (out_desc) *out_desc = VoiceBrokerSignalDescription{};
+  bool matched = false;
+  VoiceBrokerSignalDescription found;
+  VoiceBrokerSignalSessionState state(self_sender_tag);
+  const bool ok = stream_voice_broker_signal_session(
+    broker_url,
+    token,
+    session_id,
+    self_sender_tag,
+    timeout_ms,
+    &state,
+    [&](const VoiceBrokerSignalIngress& ingress) {
+      if (ingress.kind != VoiceBrokerSignalIngressKind::remote_description) return true;
+      matched = true;
+      found = ingress.description;
+      return false;
+    },
+    out_http_status,
+    out_err);
+  if (!ok) return false;
+  if (!matched) {
+    if (out_err && out_err->empty()) *out_err = "remote description not received before stream ended";
+    return false;
+  }
+  if (out_desc) *out_desc = std::move(found);
   return true;
 }
 

@@ -57,16 +57,16 @@ int main(int argc, char** argv) {
   Options opt;
   if (!parse_args(argc, argv, &opt)) return 2;
 
-  VoiceBrokerSignalEvent offer_event;
   long http_status = 0;
   std::string err;
-  if (!wait_for_voice_broker_signal_type(
+  VoiceBrokerSignalDescription offer;
+  if (!wait_for_voice_broker_signal_remote_description(
         opt.broker_url,
         opt.token,
         opt.session_id,
-        "offer",
+        "",
         opt.stream_timeout_ms,
-        &offer_event,
+        &offer,
         &http_status,
         &err)) {
     std::cerr << "Failed to read offer";
@@ -75,12 +75,7 @@ int main(int argc, char** argv) {
     std::cerr << "\n";
     return 1;
   }
-
-  VoiceBrokerSignalDescription offer;
-  if (!parse_voice_broker_signal_description_payload(offer_event.payload, &offer, &err)) {
-    std::cerr << "Failed to parse offer payload: " << err << "\n";
-    return 1;
-  }
+  (void)offer;
 
   VoiceBrokerSignalDescription answer;
   answer.type = "answer";
