@@ -230,6 +230,8 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/edge_node_consensus.cpp
     daemon/src/edge_consensus_http_runtime.cpp
     daemon/src/edge_consensus_runtime_model.cpp
+    daemon/src/edge_consensus_runtime_policy.cpp
+    daemon/src/edge_consensus_runtime_store.cpp
     daemon/src/edge_consensus_local_runtime.cpp
     daemon/src/edge_deadline_sweeper.cpp
     daemon/src/edge_rules.cpp
@@ -600,6 +602,24 @@ if(AGENT_BUILD_HOST)
   )
   target_link_libraries(edge_consensus_runtime_model_tests PRIVATE agentd_lib)
   add_test(NAME edge_consensus_runtime_model_tests COMMAND edge_consensus_runtime_model_tests)
+
+  add_executable(edge_consensus_runtime_policy_tests
+    tests/test_edge_consensus_runtime_policy.cpp
+  )
+  target_compile_options(edge_consensus_runtime_policy_tests PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_link_libraries(edge_consensus_runtime_policy_tests PRIVATE agentd_lib)
+  add_test(NAME edge_consensus_runtime_policy_tests COMMAND edge_consensus_runtime_policy_tests)
+
+  add_executable(edge_consensus_runtime_store_tests
+    tests/test_edge_consensus_runtime_store.cpp
+  )
+  target_compile_options(edge_consensus_runtime_store_tests PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_link_libraries(edge_consensus_runtime_store_tests PRIVATE agentd_lib)
+  add_test(NAME edge_consensus_runtime_store_tests COMMAND edge_consensus_runtime_store_tests)
 
   add_executable(session_voice_signal_protocol_tests
     tests/test_session_voice_signal_protocol.cpp
