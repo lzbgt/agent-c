@@ -11,8 +11,10 @@
 #include "session_voice_runtime_cleanup.h"
 #include "session_voice_runtime_internal.h"
 #include "session_voice_runtime_lifecycle.h"
+#include "session_voice_runtime_current.h"
 #include "session_voice_runtime_registry.h"
 #include "session_voice_runtime_response.h"
+#include "session_voice_runtime_stop.h"
 #include "session_voice_runtime_store.h"
 #include "session_voice_start_plan.h"
 #include "session_id_util.h"
@@ -94,68 +96,7 @@ void handle_session_voice_webrtc_peer_endpoint(
   }
 
   if (action == "stop") {
-    std::shared_ptr<VoicePeerRuntime> st;
-    {
-      std::lock_guard<std::mutex> lk(voice_peer_runtime_registry_mutex());
-      st = voice_peer_runtime_lookup_locked(session_id);
-      if (st) refresh_voice_peer_runtime_backend_state(st.get());
-    }
-    if (!st) {
-      Json::Value recovery_updates(Json::objectValue);
-      std::string lerr;
-    if (!recover_voice_peer_runtime_record(cfg, db, session_id, &st, &recovery_updates, &lerr)) {
-        out["error"] = lerr.empty() ? "failed to load persisted voice peer state" : lerr;
-        resp->status = 500;
-        resp->body = json_stringify(out);
-        return;
-      }
-      merge_json_object_fields(recovery_updates, &out);
-    }
-    if (!st) {
-      out["ok"] = true;
-      out["stopped"] = false;
-      out["reason"] = "not_running";
-      out["peer"] = Json::Value(Json::nullValue);
-      resp->status = 200;
-      resp->body = json_stringify(out);
-      return;
-    }
-    {
-      std::lock_guard<std::mutex> lk(voice_peer_runtime_registry_mutex());
-      refresh_voice_peer_runtime_backend_state(st.get());
-    }
-    const bool was_running = st->running;
-    VoicePeerManagedStopResult stop_result;
-    std::string serr;
-    if (!stop_voice_peer_runtime_with_broker_cleanup(
-          st,
-          voice_peer_runtime_registry_mutex(),
-          2000,
-          effective_voice_broker_token(cfg, request_broker_token),
-          &stop_result,
-          &serr)) {
-      out["error"] = serr.empty() ? "failed to stop voice peer" : serr;
-      {
-        std::lock_guard<std::mutex> lk(voice_peer_runtime_registry_mutex());
-        refresh_voice_peer_runtime_backend_state(st.get());
-        voice_peer_add_runtime_snapshot(cfg, *st, &out);
-      }
-      resp->status = 500;
-      resp->body = json_stringify(out);
-      return;
-    }
-    {
-      std::lock_guard<std::mutex> lk(voice_peer_runtime_registry_mutex());
-      voice_peer_add_runtime_snapshot(cfg, *st, &out);
-    }
-    std::string perr;
-    (void)persist_voice_peer_runtime_record(db, *st, &perr);
-    out["ok"] = true;
-    out["stopped"] = stop_result.stopped;
-    if (!was_running) out["reason"] = "not_running";
-    merge_json_object_fields(stop_result.broker_cleanup, &out);
-    resp->status = 200;
-    resp->body = json_stringify(out);
+    handle_session_voice_webrtc_peer_stop_action(cfg, db, session_id, request_broker_token, &out, resp);
     return;
   }
 

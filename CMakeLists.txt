@@ -291,10 +291,12 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/session_voice_broker_client.cpp
     daemon/src/session_voice_child_runtime.cpp
     daemon/src/session_voice_runtime_cleanup.cpp
+    daemon/src/session_voice_runtime_current.cpp
     daemon/src/session_voice_runtime_lifecycle.cpp
     daemon/src/session_voice_runtime_registry.cpp
     daemon/src/session_voice_runtime_response.cpp
     daemon/src/session_voice_runtime_status.cpp
+    daemon/src/session_voice_runtime_stop.cpp
     daemon/src/session_voice_start_plan.cpp
     daemon/src/session_voice_runtime_store.cpp
     daemon/src/session_voice_runtime.cpp

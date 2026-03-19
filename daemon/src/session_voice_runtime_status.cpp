@@ -6,6 +6,7 @@
 #include "session_id_util.h"
 #include "session_voice_backend_state.h"
 #include "session_voice_runtime_cleanup.h"
+#include "session_voice_runtime_current.h"
 #include "session_voice_runtime_registry.h"
 #include "session_voice_runtime_response.h"
 #include "session_voice_runtime_store.h"
@@ -52,27 +53,16 @@ void handle_session_voice_webrtc_peer_status_endpoint(
   out["session_exists"] = session_exists;
 
   std::shared_ptr<VoicePeerRuntime> st;
-  {
-    std::lock_guard<std::mutex> lk(voice_peer_runtime_registry_mutex());
-    st = voice_peer_runtime_lookup_locked(*sid);
-    if (st) refresh_voice_peer_runtime_backend_state(st.get());
+  Json::Value recovery_updates(Json::objectValue);
+  std::string lerr;
+  if (!lookup_or_recover_voice_peer_runtime(cfg, db, *sid, true, &st, &recovery_updates, &lerr)) {
+    resp->status = 500;
+    out["ok"] = false;
+    out["error"] = lerr.empty() ? "failed to load persisted voice peer state" : lerr;
+    resp->body = json_stringify(out);
+    return;
   }
-  if (!st) {
-    Json::Value recovery_updates(Json::objectValue);
-    std::string lerr;
-    if (!recover_voice_peer_runtime_record(cfg, db, *sid, &st, &recovery_updates, &lerr)) {
-      resp->status = 500;
-      out["ok"] = false;
-      out["error"] = lerr.empty() ? "failed to load persisted voice peer state" : lerr;
-      resp->body = json_stringify(out);
-      return;
-    }
-    merge_json_object_fields(recovery_updates, &out);
-    if (st && st->running) {
-      std::lock_guard<std::mutex> lk(voice_peer_runtime_registry_mutex());
-      voice_peer_runtime_store_locked(*sid, st);
-    }
-  }
+  merge_json_object_fields(recovery_updates, &out);
   if (!session_exists && st) {
     Json::Value cleanup(Json::objectValue);
     std::string cerr;
