@@ -6,6 +6,7 @@
 #include "edge_consensus_runtime_lifecycle.h"
 #include "edge_consensus_runtime_model.h"
 #include "edge_consensus_runtime_policy.h"
+#include "edge_consensus_runtime_recovery.h"
 #include "edge_consensus_runtime_registry.h"
 #include "edge_consensus_runtime_store.h"
 #include "edge_util.h"
@@ -108,14 +109,7 @@ void handle_edge_node_consensus_runtime_endpoint(
         resp->body = json_stringify(out);
         return;
       }
-      if (updates.isObject()) {
-        if (updates.isMember("cleanup_on_corrupt_record")) {
-          out["cleanup_on_corrupt_record"] = updates["cleanup_on_corrupt_record"];
-        }
-        if (updates.isMember("cleanup_on_stale_record")) {
-          out["cleanup_on_stale_record"] = updates["cleanup_on_stale_record"];
-        }
-      }
+      edge_consensus_runtime_append_recovery_updates(updates, &out);
     }
     if (!st) {
       out["ok"] = true;
@@ -127,20 +121,19 @@ void handle_edge_node_consensus_runtime_endpoint(
       return;
     }
     if (st->status_source == "persisted" && st->running) {
-      refresh_edge_consensus_runtime_state(st.get());
-      if (st->running && st->runtime_kind == "external") {
+      EdgeConsensusPersistedRunningReconcileResult reconcile;
+      std::string rerr;
+      if (!edge_consensus_runtime_reconcile_persisted_running(
+            cfg, db_or_null, node_id, st, &reconcile, &rerr)) {
+        out["error"] = rerr.empty() ? "failed to reconcile persisted consensus runtime state" : rerr;
+        resp->status = 500;
+        resp->body = json_stringify(out);
+        return;
+      }
+      if (reconcile.disposition == EdgeConsensusPersistedRunningDisposition::active_external) {
         edge_consensus_runtime_remember_active(st);
-      } else if (st->running) {
-        Json::Value cleanup(Json::objectValue);
-        cleanup["persisted_record_cleared"] = clear_edge_consensus_runtime_record(db_or_null, node_id, nullptr);
-        bool artifacts_deleted = false;
-        std::string aerr;
-        if (remove_edge_consensus_runtime_artifacts(cfg, node_id, &artifacts_deleted, &aerr)) {
-          cleanup["runtime_artifacts_deleted"] = artifacts_deleted;
-        } else if (!aerr.empty()) {
-          cleanup["runtime_artifacts_delete_error"] = aerr;
-        }
-        out["cleanup_on_stale_record"] = cleanup;
+      } else if (reconcile.disposition == EdgeConsensusPersistedRunningDisposition::stale_cleared) {
+        out["cleanup_on_stale_record"] = reconcile.cleanup;
         out["ok"] = true;
         out["stopped"] = false;
         out["reason"] = "not_running";
@@ -274,17 +267,18 @@ void handle_edge_node_consensus_runtime_endpoint(
       resp->body = json_stringify(out);
       return;
     }
-    if (updates.isObject()) {
-      if (updates.isMember("cleanup_on_corrupt_record")) {
-        out["cleanup_on_corrupt_record"] = updates["cleanup_on_corrupt_record"];
-      }
-      if (updates.isMember("cleanup_on_stale_record")) {
-        out["cleanup_on_stale_record"] = updates["cleanup_on_stale_record"];
-      }
-    }
+    edge_consensus_runtime_append_recovery_updates(updates, &out);
     if (persisted && persisted->running) {
-      refresh_edge_consensus_runtime_state(persisted.get());
-      if (persisted->running && persisted->runtime_kind == "external") {
+      EdgeConsensusPersistedRunningReconcileResult reconcile;
+      std::string rerr;
+      if (!edge_consensus_runtime_reconcile_persisted_running(
+            cfg, db_or_null, node_id, persisted, &reconcile, &rerr)) {
+        out["error"] = rerr.empty() ? "failed to reconcile persisted consensus runtime state" : rerr;
+        resp->status = 500;
+        resp->body = json_stringify(out);
+        return;
+      }
+      if (reconcile.disposition == EdgeConsensusPersistedRunningDisposition::active_external) {
         edge_consensus_runtime_remember_active(persisted);
         EdgeConsensusHttpRuntimeConfig desired_cfg;
         EdgeConsensusRuntime desired_state;
@@ -313,17 +307,8 @@ void handle_edge_node_consensus_runtime_endpoint(
         resp->body = json_stringify(out);
         return;
       }
-      if (persisted->running) {
-        Json::Value cleanup(Json::objectValue);
-        cleanup["persisted_record_cleared"] = clear_edge_consensus_runtime_record(db_or_null, node_id, nullptr);
-        bool artifacts_deleted = false;
-        std::string aerr;
-        if (remove_edge_consensus_runtime_artifacts(cfg, node_id, &artifacts_deleted, &aerr)) {
-          cleanup["runtime_artifacts_deleted"] = artifacts_deleted;
-        } else if (!aerr.empty()) {
-          cleanup["runtime_artifacts_delete_error"] = aerr;
-        }
-        out["cleanup_on_stale_record"] = cleanup;
+      if (reconcile.disposition == EdgeConsensusPersistedRunningDisposition::stale_cleared) {
+        out["cleanup_on_stale_record"] = reconcile.cleanup;
       }
     }
   }
@@ -423,30 +408,22 @@ void handle_edge_node_consensus_runtime_status_endpoint(
       resp->body = json_stringify(out);
       return;
     }
-    if (updates.isObject()) {
-      if (updates.isMember("cleanup_on_corrupt_record")) {
-        out["cleanup_on_corrupt_record"] = updates["cleanup_on_corrupt_record"];
-      }
-      if (updates.isMember("cleanup_on_stale_record")) {
-        out["cleanup_on_stale_record"] = updates["cleanup_on_stale_record"];
-      }
-    }
+    edge_consensus_runtime_append_recovery_updates(updates, &out);
   }
   if (st && st->status_source == "persisted" && st->running) {
-    refresh_edge_consensus_runtime_state(st.get());
-    if (st->running && st->runtime_kind == "external") {
+    EdgeConsensusPersistedRunningReconcileResult reconcile;
+    std::string rerr;
+    if (!edge_consensus_runtime_reconcile_persisted_running(
+          cfg, db_or_null, *nid, st, &reconcile, &rerr)) {
+      out["error"] = rerr.empty() ? "failed to reconcile persisted consensus runtime state" : rerr;
+      resp->status = 500;
+      resp->body = json_stringify(out);
+      return;
+    }
+    if (reconcile.disposition == EdgeConsensusPersistedRunningDisposition::active_external) {
       edge_consensus_runtime_remember_active(st);
-    } else if (st->running) {
-      Json::Value cleanup(Json::objectValue);
-      cleanup["persisted_record_cleared"] = clear_edge_consensus_runtime_record(db_or_null, *nid, nullptr);
-      bool artifacts_deleted = false;
-      std::string aerr;
-      if (remove_edge_consensus_runtime_artifacts(cfg, *nid, &artifacts_deleted, &aerr)) {
-        cleanup["runtime_artifacts_deleted"] = artifacts_deleted;
-      } else if (!aerr.empty()) {
-        cleanup["runtime_artifacts_delete_error"] = aerr;
-      }
-      out["cleanup_on_stale_record"] = cleanup;
+    } else if (reconcile.disposition == EdgeConsensusPersistedRunningDisposition::stale_cleared) {
+      out["cleanup_on_stale_record"] = reconcile.cleanup;
       st.reset();
     }
   }

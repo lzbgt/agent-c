@@ -1,5 +1,6 @@
 #include "edge_consensus_runtime_registry.h"
 
+#include "edge_consensus_runtime_recovery.h"
 #include "edge_consensus_runtime_lifecycle.h"
 #include "edge_consensus_runtime_store.h"
 #include "edge_util.h"
@@ -78,19 +79,21 @@ Json::Value edge_consensus_runtime_status_json_for_node(const DaemonConfig& cfg,
   }
   if (!persisted) return Json::Value(Json::nullValue);
   if (persisted->running) {
-    refresh_edge_consensus_runtime_state(persisted.get());
-    if (persisted->running && persisted->runtime_kind == "external") {
+    EdgeConsensusPersistedRunningReconcileResult reconcile;
+    std::string rerr;
+    if (!edge_consensus_runtime_reconcile_persisted_running(
+          cfg, db_or_null, node_id, persisted, &reconcile, &rerr)) {
+      return Json::Value(Json::nullValue);
+    }
+    if (reconcile.disposition == EdgeConsensusPersistedRunningDisposition::active_external) {
       edge_consensus_runtime_remember_active(persisted);
       std::string perr;
       (void)persist_edge_consensus_runtime_record(db_or_null, *persisted, &perr);
       return edge_consensus_runtime_response_json(cfg, *persisted);
     }
-    std::string cerr;
-    (void)clear_edge_consensus_runtime_record(db_or_null, node_id, &cerr);
-    bool artifacts_deleted = false;
-    std::string aerr;
-    (void)remove_edge_consensus_runtime_artifacts(cfg, node_id, &artifacts_deleted, &aerr);
-    return Json::Value(Json::nullValue);
+    if (reconcile.disposition == EdgeConsensusPersistedRunningDisposition::stale_cleared) {
+      return Json::Value(Json::nullValue);
+    }
   }
   return edge_consensus_runtime_response_json(cfg, *persisted);
 }
