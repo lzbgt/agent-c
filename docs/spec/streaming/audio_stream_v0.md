@@ -108,6 +108,11 @@ A v0 smoke test should:
 - `ctest` includes `broker_audio_signal_loopback_smoke` for broker signaling relay behavior.
 - `ctest` includes `broker_audio_signal_docker_smoke` for broker signaling with ephemeral Postgres backing.
 - `ctest` includes `agentd_audio_signal_loopback_smoke` for the agentd-side loopback tool and signaling flow.
+- Agentd now also ships shared native broker-signal helpers for common control flow:
+  - wait for a specific signal type over SSE
+  - send standard `answer` payloads
+  - send graceful `bye` payloads
+  These are reused by the loopback tool instead of remaining trapped in tool-local HTTP/SSE code.
 - Broker now exposes live session lifecycle/status APIs:
   - `GET /v1/audio/sessions`
   - `GET /v1/audio/sessions/{session_id}`
@@ -136,6 +141,8 @@ A v0 smoke test should:
 - `tests/agentd_audio_webrtc_peer_smoke.sh` plus `tools/agentd_audio_webrtc_peer.js` cover a real browser-to-agentd-side
   RTP path over broker signaling, including offer/answer exchange, ICE candidates, inbound audio stats, and `bye`
   teardown against a live headless Chromium peer.
+- `tests/agentd_audio_signal_loopback_smoke.sh` now also proves agentd-side graceful `bye` after the stub `answer`,
+  and confirms the broker reports the session closed rather than leaving teardown implicit.
 - `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` covers the agentd-managed runtime surface for that same peer,
   including start/status, inbound RTP proof against a live browser peer, and managed stop/teardown.
 - `runtime_kind` on `POST /api/v1/session/voice_webrtc_peer` is now a start-only backend selector; stop requests ignore

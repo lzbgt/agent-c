@@ -12,12 +12,14 @@ struct Options {
   std::string token;
   std::string session_id;
   int64_t stream_timeout_ms = 15000;
+  std::string send_bye_reason;
 };
 
 static void print_usage(const char* argv0) {
   std::cerr
     << "Usage: " << (argv0 ? argv0 : "agentd_audio_signal_loopback")
-    << " --broker-url <url> --token <token> --session-id <id> [--stream-timeout-ms <ms>]\n";
+    << " --broker-url <url> --token <token> --session-id <id>"
+    << " [--stream-timeout-ms <ms>] [--send-bye-reason <reason>]\n";
 }
 
 static bool parse_args(int argc, char** argv, Options* out) {
@@ -33,6 +35,8 @@ static bool parse_args(int argc, char** argv, Options* out) {
       opt.session_id = argv[++i];
     } else if (a == "--stream-timeout-ms" && i + 1 < argc) {
       opt.stream_timeout_ms = std::stoll(argv[++i]);
+    } else if (a == "--send-bye-reason" && i + 1 < argc) {
+      opt.send_bye_reason = argv[++i];
     } else if (a == "--help" || a == "-h") {
       print_usage(argv[0]);
       return false;
@@ -54,19 +58,15 @@ int main(int argc, char** argv) {
   Options opt;
   if (!parse_args(argc, argv, &opt)) return 2;
 
-  bool got_offer = false;
   long http_status = 0;
   std::string err;
-  if (!stream_voice_broker_signal_events(
+  if (!wait_for_voice_broker_signal_type(
         opt.broker_url,
         opt.token,
         opt.session_id,
+        "offer",
         opt.stream_timeout_ms,
-        [&](const VoiceBrokerSignalEvent& ev) {
-          if (ev.type != "offer") return true;
-          got_offer = true;
-          return false;
-        },
+        nullptr,
         &http_status,
         &err)) {
     std::cerr << "Failed to read offer";
@@ -75,18 +75,18 @@ int main(int argc, char** argv) {
     std::cerr << "\n";
     return 1;
   }
-  if (!got_offer) {
-    std::cerr << "Failed to read offer";
-    if (http_status > 0) std::cerr << " (http status " << http_status << ")";
-    std::cerr << ": offer not received before stream ended\n";
-    return 1;
-  }
 
   Json::Value answer_payload(Json::objectValue);
   answer_payload["sdp"] = "stub-answer";
-  if (!send_voice_broker_signal(
-        opt.broker_url, opt.token, opt.session_id, "answer", answer_payload, &err)) {
+  answer_payload["type"] = "answer";
+  if (!send_voice_broker_answer(opt.broker_url, opt.token, opt.session_id, answer_payload, &err)) {
     std::cerr << "Failed to send answer: " << err << "\n";
+    return 1;
+  }
+  if (!opt.send_bye_reason.empty() &&
+      !send_voice_broker_bye(
+        opt.broker_url, opt.token, opt.session_id, opt.send_bye_reason, &err)) {
+    std::cerr << "Failed to send bye: " << err << "\n";
     return 1;
   }
 

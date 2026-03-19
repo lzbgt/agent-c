@@ -118,6 +118,28 @@ bool send_voice_broker_signal(
   return true;
 }
 
+bool send_voice_broker_answer(
+  const std::string& broker_url,
+  const std::string& token,
+  const std::string& session_id,
+  const Json::Value& payload,
+  std::string* out_err
+) {
+  return send_voice_broker_signal(broker_url, token, session_id, "answer", payload, out_err);
+}
+
+bool send_voice_broker_bye(
+  const std::string& broker_url,
+  const std::string& token,
+  const std::string& session_id,
+  const std::string& reason,
+  std::string* out_err
+) {
+  Json::Value payload(Json::objectValue);
+  if (!trim_copy(reason).empty()) payload["reason"] = trim_copy(reason);
+  return send_voice_broker_signal(broker_url, token, session_id, "bye", payload, out_err);
+}
+
 bool stream_voice_broker_signal_events(
   const std::string& broker_url,
   const std::string& token,
@@ -171,6 +193,45 @@ bool stream_voice_broker_signal_events(
     }
     return false;
   }
+  return true;
+}
+
+bool wait_for_voice_broker_signal_type(
+  const std::string& broker_url,
+  const std::string& token,
+  const std::string& session_id,
+  const std::string& expected_type,
+  int64_t timeout_ms,
+  VoiceBrokerSignalEvent* out_event,
+  long* out_http_status,
+  std::string* out_err
+) {
+  if (out_event) *out_event = VoiceBrokerSignalEvent{};
+  const std::string expected = trim_copy(expected_type);
+  bool matched = false;
+  VoiceBrokerSignalEvent found;
+  const bool ok = stream_voice_broker_signal_events(
+    broker_url,
+    token,
+    session_id,
+    timeout_ms,
+    [&](const VoiceBrokerSignalEvent& ev) {
+      if (trim_copy(ev.type) != expected) return true;
+      matched = true;
+      found = ev;
+      return false;
+    },
+    out_http_status,
+    out_err);
+  if (!ok) return false;
+  if (!matched) {
+    if (out_err && out_err->empty()) {
+      *out_err = expected.empty() ? "signal not received before stream ended"
+                                  : ("signal type '" + expected + "' not received before stream ended");
+    }
+    return false;
+  }
+  if (out_event) *out_event = std::move(found);
   return true;
 }
 

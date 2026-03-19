@@ -210,7 +210,8 @@ fi
 "${LOOPBACK_BIN}" \
   --broker-url "http://127.0.0.1:${BROKER_PORT}" \
   --token "audio-agentd-token" \
-  --session-id "${SESSION_ID}" >>"${LOG_FILE}" 2>&1 &
+  --session-id "${SESSION_ID}" \
+  --send-bye-reason "loopback_done" >>"${LOG_FILE}" 2>&1 &
 LOOP_PID=$!
 
 sleep 0.5
@@ -248,8 +249,9 @@ if resp_offer.status != 200:
   print("offer failed", resp_offer.status, file=sys.stderr)
   raise SystemExit(1)
 
-# Wait for answer
+# Wait for answer then agentd-side bye
 answer = None
+bye = None
 deadline = time.time() + 5
 while time.time() < deadline:
   line = resp_stream.fp.readline().decode("utf-8")
@@ -266,24 +268,37 @@ while time.time() < deadline:
     continue
   if msg.get("type") == "answer" and msg.get("payload", {}).get("sdp") == "stub-answer":
     answer = msg
+    continue
+  if msg.get("type") == "bye" and msg.get("payload", {}).get("reason") == "loopback_done":
+    bye = msg
     break
 
 if not answer:
   print("missing answer", file=sys.stderr)
   raise SystemExit(1)
-
-# Close session
-conn_bye = http.client.HTTPConnection(host, port, timeout=5)
-bye_body = json.dumps({"type": "bye"})
-conn_bye.request("POST", f"/v1/audio/sessions/{session_id}/signal", body=bye_body, headers={
-    "Authorization": "Bearer audio-webui-token",
-    "Content-Type": "application/json",
-})
-resp_bye = conn_bye.getresponse()
-resp_bye.read()
-if resp_bye.status != 200:
-  print("bye failed", resp_bye.status, file=sys.stderr)
+if not bye:
+  print("missing bye", file=sys.stderr)
   raise SystemExit(1)
+
+conn_status = http.client.HTTPConnection(host, port, timeout=5)
+conn_status.request("GET", f"/v1/audio/sessions/{session_id}", headers={
+    "Authorization": "Bearer audio-webui-token",
+})
+resp_status = conn_status.getresponse()
+status_body = resp_status.read().decode("utf-8")
+if resp_status.status == 404:
+  status_obj = json.loads(status_body)
+  if status_obj.get("code") != "session_not_found":
+    print("unexpected 404 payload", status_body, file=sys.stderr)
+    raise SystemExit(1)
+elif resp_status.status != 200:
+  print("status failed", resp_status.status, status_body, file=sys.stderr)
+  raise SystemExit(1)
+else:
+  status_obj = json.loads(status_body)
+  if status_obj.get("open") is not False:
+    print("session still open", status_body, file=sys.stderr)
+    raise SystemExit(1)
 
 print("agentd_audio_signal_loopback_smoke OK")
 PY
