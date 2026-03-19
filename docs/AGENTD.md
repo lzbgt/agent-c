@@ -589,10 +589,11 @@ Notes:
   same `node_id` already has a different effective running runtime config, agentd returns `409` with the existing runtime snapshot.
 - Managed consensus runtime snapshots now persist in DB meta too, so
   `GET /api/v1/edge/node/consensus_runtime?node_id=<id>` can recover the last finished/stopped runtime after agentd
-  restart with `runtime.status_source=persisted`.
-- Persisted consensus runtime records now self-heal on read: corrupt records and stale `running=true` records from a
-  dead daemon process are cleared along with dead local runtime artifacts instead of being reported forever as live or
-  unusable managed state.
+  restart with `runtime.status_source=persisted`, and can also recover a still-live external helper from its persisted
+  running snapshot.
+- Persisted consensus runtime records now self-heal on read: corrupt records and stale builtin `running=true` records
+  from a dead daemon process are cleared along with dead local runtime artifacts instead of being reported forever as
+  live or unusable managed state.
 - The WebUI exposes Settings buttons to “Save defaults to daemon” and “Save API key to daemon”.
 
 Edge trust-root rotation:

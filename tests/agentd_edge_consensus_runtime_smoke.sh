@@ -299,6 +299,17 @@ START_EXT_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<
 JSON
 )")"
 RUNNING_EXT_JSON="$(wait_runtime_running "${EXT_NODE}")"
+
+agentd_smoke_stop
+AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}" \
+agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_edge_consensus_runtime_smoke_external_recover" \
+  --db-path "${TEST_DB}" \
+  --state-dir "${TEST_STATE}" \
+  --tools none
+DAEMON_URL="http://${HOST}:${PORT_DAEMON}"
+agentd_smoke_wait_health "${DAEMON_URL}" "${DAEMON_TOKEN}"
+
+EXT_RESTART_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${EXT_NODE}")"
 START_EXT_AGAIN_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
 {"action":"start","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","deadline_ms":30000,"poll_interval_ms":100}
 JSON
@@ -402,6 +413,7 @@ config_get = json.loads(r'''${CONFIG_GET_JSON}''')
 config_restart = json.loads(r'''${CONFIG_RESTART_JSON}''')
 start_ext = json.loads(r'''${START_EXT_JSON}''')
 running_ext = json.loads(r'''${RUNNING_EXT_JSON}''')
+ext_restart_status = json.loads(r'''${EXT_RESTART_STATUS_JSON}''')
 start_ext_again = json.loads(r'''${START_EXT_AGAIN_JSON}''')
 conflict_start = json.loads(r'''${CONFLICT_START_JSON}''')
 stop_ext = json.loads(r'''${STOP_EXT_JSON}''')
@@ -474,11 +486,23 @@ if not (running_ext.get("runtime") or {}).get("running"):
 if (running_ext.get("runtime") or {}).get("runtime_kind") != "external":
   print("running external runtime kind mismatch", running_ext, file=sys.stderr)
   raise SystemExit(1)
+if (ext_restart_status.get("runtime") or {}).get("status_source") != "persisted":
+  print("external restart did not recover persisted running runtime", ext_restart_status, file=sys.stderr)
+  raise SystemExit(1)
+if not (ext_restart_status.get("runtime") or {}).get("running"):
+  print("external restart did not preserve running runtime", ext_restart_status, file=sys.stderr)
+  raise SystemExit(1)
+if (ext_restart_status.get("runtime") or {}).get("runtime_kind") != "external":
+  print("external restart runtime kind mismatch", ext_restart_status, file=sys.stderr)
+  raise SystemExit(1)
 if not start_ext_again.get("ok") or start_ext_again.get("already_running") is not True:
   print("identical external re-start did not stay idempotent", start_ext_again, file=sys.stderr)
   raise SystemExit(1)
 if (start_ext_again.get("runtime") or {}).get("runtime_kind") != "external":
   print("identical external re-start lost runtime snapshot", start_ext_again, file=sys.stderr)
+  raise SystemExit(1)
+if (start_ext_again.get("runtime") or {}).get("status_source") != "persisted":
+  print("identical external re-start should reuse persisted recovered runtime", start_ext_again, file=sys.stderr)
   raise SystemExit(1)
 if "${CONFLICT_START_STATUS}" != "409":
   print("conflicting running start returned wrong status", "${CONFLICT_START_STATUS}", conflict_start, file=sys.stderr)

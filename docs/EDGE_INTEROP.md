@@ -240,9 +240,9 @@ Returns messages in ascending `outbox_id` order. The node should:
   - repeated starts are now split cleanly between idempotent reuse and real conflict: the same running config returns
     `already_running=true`, while a different effective config on the same running `node_id` returns `409` with the
     existing snapshot
-  - terminal runtime snapshots now persist across agentd restart with `runtime.status_source=persisted`, while stale
-    persisted `running=true` records and corrupt persisted runtime records are self-healed by clearing the record and
-    dead runtime artifacts
+  - terminal runtime snapshots now persist across agentd restart with `runtime.status_source=persisted`; live external
+    helpers can also be recovered from persisted running snapshots after restart, while stale builtin `running=true`
+    records and corrupt persisted runtime records are self-healed by clearing the record and dead runtime artifacts
   - supports `campaign_delay_ms`, `campaign_retry_ms`, `campaign_retry_max_ms`, and `campaign_retry_backoff_factor`
     so early candidates can re-campaign with bounded exponential backoff until peers come online
   - supports `leader_heartbeat_ms` and `leader_lease_ms` so followers can expire stale leaders and candidates can
@@ -251,7 +251,8 @@ Returns messages in ascending `outbox_id` order. The node should:
   - defaults those same membership/retry fields from the durable per-cluster policy when they are omitted
 - `GET /api/v1/edge/node/consensus_runtime?node_id=...`
   - reports the managed runtime status plus the latest final result JSON emitted by the builtin or external backend
-  - recovers the last finished/stopped runtime from persisted DB state after agentd restart
+  - recovers the last finished/stopped runtime from persisted DB state after agentd restart, and can also recover a
+    still-live external helper from its persisted running snapshot
 - `GET /api/v1/edge/consensus/membership?cluster_id=...`
   - exports the signed `edge_consensus_membership_v1` control-plane bundle for one cluster
 - `POST /api/v1/edge/consensus/membership/rotate`
