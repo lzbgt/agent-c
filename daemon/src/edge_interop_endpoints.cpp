@@ -3,7 +3,7 @@
 #include "config_endpoint.h"
 #include "edge_confidentiality.h"
 #include "edge_node_consensus.h"
-#include "edge_runtime_endpoints.h"
+#include "edge_consensus_runtime_registry.h"
 
 #include "cbor_decode.h"
 #include "cbor_encode.h"

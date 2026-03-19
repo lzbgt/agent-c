@@ -219,6 +219,7 @@ contract map.
 - [x] W=12 — Refresh-safe run streaming: persist active job stream state in client prefs (broker/agentd) and auto-resume after reload.
   - 2026-02-26: localStorage-based job resume exists; extend to server prefs + merge strategy.
 - 2026-03-20: extracted the transport-agnostic edge consensus runtime core loop into `edge_consensus_runtime_core.cpp` with direct fake-transport proof for incomplete transport, hello failure, graceful stop, deadline expiry, and quorum commit.
+- 2026-03-20: extracted the active edge consensus runtime registry/status helpers into `edge_consensus_runtime_registry.cpp`, so edge interop discovery and the runtime endpoints now share one source of truth for active snapshots, persisted fallback, node-id enumeration, and stale builtin self-heal.
   - 2026-02-25: server-backed run watch prefs merged with localStorage; throttle server updates for cursor persistence.
 - [x] W=11 — Autonomous ops stack defaults: orchestrator + spawn adapter as first-class services (compose/systemd/launchd) with auto OIDC token refresh, so automation runs without the WebUI.
   - 2026-02-26: added `tools/run_autonomous_devstack.sh` wrapper for dev stacks.

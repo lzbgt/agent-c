@@ -2,7 +2,7 @@
 
 #include "daemon_auth.h"
 #include "edge_confidentiality.h"
-#include "edge_runtime_endpoints.h"
+#include "edge_consensus_runtime_policy.h"
 #include "edge_util.h"
 #include "http_util.h"
 #include "json_util.h"
