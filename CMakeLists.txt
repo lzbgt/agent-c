@@ -625,6 +625,15 @@ if(AGENT_BUILD_HOST)
   target_link_libraries(session_voice_builtin_contract_tests PRIVATE agentd_lib)
   add_test(NAME session_voice_builtin_contract_tests COMMAND session_voice_builtin_contract_tests)
 
+  add_executable(session_voice_builtin_backend_tests
+    tests/test_session_voice_builtin_backend.cpp
+  )
+  target_compile_options(session_voice_builtin_backend_tests PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_link_libraries(session_voice_builtin_backend_tests PRIVATE agentd_lib)
+  add_test(NAME session_voice_builtin_backend_tests COMMAND session_voice_builtin_backend_tests)
+
   add_executable(session_voice_runtime_plan_tests
     tests/test_session_voice_runtime_plan.cpp
   )

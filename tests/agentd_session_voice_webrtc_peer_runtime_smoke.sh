@@ -1016,6 +1016,20 @@ if planned_runtime.get("stdout_log_path") != artifacts.get("stdout_log_path"):
 if planned_runtime.get("broker_agent_id") != "a-1" or planned_runtime.get("broker_deployment_id") != "lab-builtin-contract":
   print("expected builtin planned runtime broker ownership metadata", obj, file=sys.stderr)
   raise SystemExit(1)
+peer = obj.get("peer") or {}
+if peer.get("schema") != "session_voice_webrtc_peer_runtime_v1":
+  print("expected builtin top-level peer preview schema", obj, file=sys.stderr)
+  raise SystemExit(1)
+for key in ("runtime_kind", "session_id", "broker_url", "stdout_log_path", "stderr_log_path", "ready_file_path"):
+  if peer.get(key) != planned_runtime.get(key):
+    print(f"expected builtin top-level peer preview to match planned_runtime for {key}", obj, file=sys.stderr)
+    raise SystemExit(1)
+if peer.get("managed_broker_session") is not True or peer.get("running") is not False or peer.get("ready") is not False:
+  print("expected builtin top-level peer preview state", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "not implemented" not in str(peer.get("last_error") or ""):
+  print("expected builtin top-level peer preview error", obj, file=sys.stderr)
+  raise SystemExit(1)
 PY
 
 BUILTIN_MISSING_BROKER_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_missing_broker_$(date +%s)_$RANDOM"
