@@ -53,7 +53,7 @@ contract map.
    - [x] Broker tunables: max body/header bytes + HTTP timeouts (flags + env).
    - [x] Agentd HTTP hardening: header size cap + read timeouts (env) with smoke test.
    - [x] Diagnostics endpoints: `/api/v1/diagnostics`, `/api/v1/diagnostics/providers`, `/api/v1/diagnostics/provider_test`.
-   - [x] Diagnostics reference doc: `docs/DIAGNOSTICS.md` with usage examples.
+- [x] Diagnostics reference doc: `docs/DIAGNOSTICS.md` with usage examples.
    - [x] WebUI diagnostics panel + provider tests (DeepSeek/Moonshot) to confirm keys and run health checks.
    - [x] WebUI run settings panel (model/base_url/proxy/timeout, run limits, OpenRouter picker).
    - [x] WebUI App.tsx refactor (<2000 LOC) with modular panels/hooks.
@@ -72,7 +72,9 @@ contract map.
   - [x] Evidence bundle validation tool for agentd/broker (machine-checkable gate).
   - [x] Data-driven scenario pack for agentd/broker (scripted runs + evidence capture).
   - [x] Scenario pack runner for multi-scenario runs + evidence validation.
-  - [x] One-command devstack (agentd + broker + WebUI) with smoke checks + evidence bundle.
+- [x] One-command devstack (agentd + broker + WebUI) with smoke checks + evidence bundle.
+- 2026-03-19: AVM subprocess exec now closes inherited non-stdio file descriptors too, and the AVM smoke proves an
+  ungraceful daemon death cannot leave an orphaned runner pinning the same listener port across restart.
 - [x] macOS full-stack compose verification on this host (Docker Desktop running).
   - 2026-02-19: `docker info` not responding / daemon not running; host-stack verification skipped until Docker Desktop/Colima is running.
   - 2026-02-19: attempted `open -a Docker` and polled `docker info` (12x/120s); all attempts timed out.

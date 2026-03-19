@@ -62,6 +62,9 @@ The endpoint is intentionally **gated** because it executes untrusted bytecode:
 
 The endpoint always runs AVM with `--capsule` so AVM applies deny-by-default + strict verification defaults and uses Virtual* backends unless explicitly overridden (v0 forbids overrides).
 
+Implementation hardening now also closes inherited non-stdio file descriptors in the spawned AVM process, so an
+ungraceful agentd death cannot leave an orphaned AVM helper pinning the daemon listener across same-port restart.
+
 ## 5) API (current)
 
 ### Endpoint

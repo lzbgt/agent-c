@@ -264,6 +264,38 @@ static std::vector<std::string> build_env_kv_strings_with_overrides(
   return out;
 }
 
+static long avm_spawn_max_fd() {
+  long max_fd = ::sysconf(_SC_OPEN_MAX);
+  if (max_fd < 0 || max_fd > 4096) {
+    max_fd = 4096;
+  }
+  return max_fd;
+}
+
+static bool avm_spawn_add_close_all_nonstdio_except(
+  posix_spawn_file_actions_t* actions,
+  int keep_fd,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (!actions) {
+    if (out_error) *out_error = "spawn file actions missing";
+    return false;
+  }
+  const long max_fd = avm_spawn_max_fd();
+  for (int fd = 3; fd < max_fd; ++fd) {
+    if (fd == keep_fd) continue;
+    errno = 0;
+    if (::fcntl(fd, F_GETFD) == -1 && errno == EBADF) continue;
+    const int rc = posix_spawn_file_actions_addclose(actions, fd);
+    if (rc != 0) {
+      if (out_error) *out_error = std::string("posix_spawn_file_actions_addclose failed: ") + std::strerror(rc);
+      return false;
+    }
+  }
+  return true;
+}
+
 static ExecResult run_proc_capture_env(
   const std::vector<std::string>& argv,
   int timeout_ms,
@@ -286,11 +318,82 @@ static ExecResult run_proc_capture_env(
     (void)fcntl(pipefd[0], F_SETFL, flags | O_NONBLOCK);
   }
 
+  posix_spawnattr_t attr;
+  const int attr_init_rc = posix_spawnattr_init(&attr);
+  if (attr_init_rc != 0) {
+    close(pipefd[0]);
+    close(pipefd[1]);
+    r.output = std::string("posix_spawnattr_init failed: ") + std::strerror(attr_init_rc);
+    return r;
+  }
+
   posix_spawn_file_actions_t actions;
-  posix_spawn_file_actions_init(&actions);
-  posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
-  posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDERR_FILENO);
-  posix_spawn_file_actions_addclose(&actions, pipefd[0]);
+  const int init_rc = posix_spawn_file_actions_init(&actions);
+  if (init_rc != 0) {
+    posix_spawnattr_destroy(&attr);
+    close(pipefd[0]);
+    close(pipefd[1]);
+    r.output = std::string("posix_spawn_file_actions_init failed: ") + std::strerror(init_rc);
+    return r;
+  }
+  std::string actions_err;
+  bool actions_ready = true;
+#ifdef POSIX_SPAWN_CLOEXEC_DEFAULT
+  short attr_flags = 0;
+  const int get_flags_rc = posix_spawnattr_getflags(&attr, &attr_flags);
+  if (get_flags_rc != 0) {
+    actions_ready = false;
+    actions_err = std::string("posix_spawnattr_getflags failed: ") + std::strerror(get_flags_rc);
+  } else {
+    attr_flags |= POSIX_SPAWN_CLOEXEC_DEFAULT;
+    const int set_flags_rc = posix_spawnattr_setflags(&attr, attr_flags);
+    if (set_flags_rc != 0) {
+      actions_ready = false;
+      actions_err = std::string("posix_spawnattr_setflags failed: ") + std::strerror(set_flags_rc);
+    }
+  }
+#endif
+#ifndef POSIX_SPAWN_CLOEXEC_DEFAULT
+  if (!avm_spawn_add_close_all_nonstdio_except(&actions, pipefd[1], &actions_err)) {
+    actions_ready = false;
+  } else
+#endif
+  {
+    int rc = posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
+    if (rc != 0) {
+      actions_ready = false;
+      actions_err = std::string("posix_spawn_file_actions_adddup2 stdout failed: ") + std::strerror(rc);
+    }
+    if (actions_ready) {
+      rc = posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDERR_FILENO);
+      if (rc != 0) {
+        actions_ready = false;
+        actions_err = std::string("posix_spawn_file_actions_adddup2 stderr failed: ") + std::strerror(rc);
+      }
+    }
+    if (actions_ready) {
+      rc = posix_spawn_file_actions_addclose(&actions, pipefd[0]);
+      if (rc != 0) {
+        actions_ready = false;
+        actions_err = std::string("posix_spawn_file_actions_addclose read pipe failed: ") + std::strerror(rc);
+      }
+    }
+    if (actions_ready && pipefd[1] > STDERR_FILENO) {
+      rc = posix_spawn_file_actions_addclose(&actions, pipefd[1]);
+      if (rc != 0) {
+        actions_ready = false;
+        actions_err = std::string("posix_spawn_file_actions_addclose write pipe failed: ") + std::strerror(rc);
+      }
+    }
+  }
+  if (!actions_ready) {
+    posix_spawn_file_actions_destroy(&actions);
+    posix_spawnattr_destroy(&attr);
+    close(pipefd[0]);
+    close(pipefd[1]);
+    r.output = actions_err;
+    return r;
+  }
 
   std::vector<char*> cargv;
   cargv.reserve(argv.size() + 1);
@@ -304,8 +407,9 @@ static ExecResult run_proc_capture_env(
   cenv.push_back(nullptr);
 
   pid_t pid = 0;
-  int spawn_rc = posix_spawnp(&pid, cargv[0], &actions, nullptr, cargv.data(), cenv.data());
+  int spawn_rc = posix_spawnp(&pid, cargv[0], &actions, &attr, cargv.data(), cenv.data());
   posix_spawn_file_actions_destroy(&actions);
+  posix_spawnattr_destroy(&attr);
   close(pipefd[1]);
 
   if (spawn_rc != 0) {

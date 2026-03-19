@@ -40,6 +40,8 @@ export EXPECTED_ALLOWED_HOST="${ALLOW_ROOT}/allowed"
 export EXPECTED_ALLOWED_CONTAINER="/workspace/extra/allowed"
 export EXPECTED_ALLOWED_MATCHED_ROOT="${ALLOW_ROOT}"
 export EXPECTED_ALLOWED_READONLY="0"
+ORPHAN_PIDS_FILE="${TMP_DIR}/avm_orphan_pids"
+AVM_LINGER_MARKER="${TMP_DIR}/avm_linger.marker"
 
 AVM_STUB_BIN="${TMP_DIR}/avm_stub.sh"
 cat > "${AVM_STUB_BIN}" <<'SH'
@@ -178,9 +180,14 @@ esac
 SH
 chmod +x "${AVM_STUB_BIN}"
 
+AVM_LINGER_BIN="${TMP_DIR}/avm_linger_stub.sh"
+cp "${SCRIPT_DIR}/avm_linger_stub.sh" "${AVM_LINGER_BIN}"
+chmod +x "${AVM_LINGER_BIN}"
+
 export AGENTD_AVM_BIN="${AVM_STUB_BIN}"
 export AGENTD_AVM_EXEC=1
 export AGENTD_AVM_ALLOW_FS=1
+export AGENTD_AVM_LINGER_MARKER="${AVM_LINGER_MARKER}"
 
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT}" "agentd_avm_job_scan_smoke" \
   --auth-token "${AUTH_TOKEN}" \
@@ -473,6 +480,124 @@ if obj.get("error_kind") != "forbidden":
 err = obj.get("error") or ""
 if "AGENTD_AVM_ALLOW_NET" not in err:
   print("unexpected error", err, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+record_orphan_avm_pid() {
+  local pid
+  pid="$(python3 - <<PY
+import re
+import subprocess
+
+ppid = int("${AGENTD_PID}")
+needle = r"${AVM_LINGER_BIN}"
+out = subprocess.check_output(
+    ["ps", "-ax", "-o", "pid=", "-o", "ppid=", "-o", "command="],
+    text=True,
+)
+for line in out.splitlines():
+    m = re.match(r"\\s*(\\d+)\\s+(\\d+)\\s+(.*)$", line)
+    if not m:
+        continue
+    pid = int(m.group(1))
+    parent = int(m.group(2))
+    cmd = m.group(3)
+    if parent != ppid or pid == ppid:
+        continue
+    if needle in cmd:
+        print(pid)
+        raise SystemExit(0)
+print("", end="")
+PY
+)"
+  if [[ -z "${pid}" ]]; then
+    echo "failed to locate AVM linger child pid" >&2
+    exit 1
+  fi
+  echo "${pid}" >> "${ORPHAN_PIDS_FILE}"
+}
+
+cleanup_orphan_avm_children() {
+  if [[ -f "${ORPHAN_PIDS_FILE}" ]]; then
+    while IFS= read -r pid; do
+      [[ -n "${pid}" ]] || continue
+      kill -TERM "${pid}" >/dev/null 2>&1 || true
+      wait "${pid}" >/dev/null 2>&1 || true
+    done < "${ORPHAN_PIDS_FILE}"
+  fi
+}
+
+trap 'cleanup_orphan_avm_children; agentd_smoke_stop' EXIT
+
+rm -f "${ORPHAN_PIDS_FILE}" "${AVM_LINGER_MARKER}"
+export AGENTD_AVM_BIN="${AVM_LINGER_BIN}"
+
+agentd_smoke_stop
+agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT}" "agentd_avm_job_scan_smoke_linger" \
+  --auth-token "${AUTH_TOKEN}" \
+  --tools none
+agentd_smoke_wait_health "${DAEMON_URL}"
+
+linger_body_file="${TMP_DIR}/avm_job_scan_linger_body.json"
+python3 - <<PY > "${linger_body_file}" 2> "${TMP_DIR}/avm_linger_client.stderr.log" &
+import json
+import sys
+import urllib.error
+import urllib.request
+
+req = urllib.request.Request(
+    "${DAEMON_URL}/api/v1/avm/job_scan",
+    data=json.dumps({"obc_base64": "${obc_b64}"}).encode("utf-8"),
+    headers={
+        "Authorization": "Bearer ${AUTH_TOKEN}",
+        "Content-Type": "application/json",
+    },
+    method="POST",
+)
+with urllib.request.urlopen(req, timeout=30) as resp:
+    sys.stdout.write(resp.read().decode("utf-8"))
+PY
+LINGER_CLIENT_PID=$!
+
+for _ in $(seq 1 50); do
+  if [[ -f "${AVM_LINGER_MARKER}" ]]; then
+    break
+  fi
+  sleep 0.1
+done
+if [[ ! -f "${AVM_LINGER_MARKER}" ]]; then
+  echo "AVM linger marker was not created" >&2
+  exit 1
+fi
+
+record_orphan_avm_pid
+kill -KILL "${AGENTD_PID}" >/dev/null 2>&1 || true
+wait "${AGENTD_PID}" >/dev/null 2>&1 || true
+kill -TERM "${LINGER_CLIENT_PID}" >/dev/null 2>&1 || true
+wait "${LINGER_CLIENT_PID}" >/dev/null 2>&1 || true
+unset AGENTD_PID
+
+export AGENTD_AVM_BIN="${AVM_STUB_BIN}"
+agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT}" "agentd_avm_job_scan_smoke_restart" \
+  --auth-token "${AUTH_TOKEN}" \
+  --tools none
+agentd_smoke_wait_health "${DAEMON_URL}"
+
+resp_restart="$(curl -fsS --noproxy "*" --max-time 5 \
+  -H "Authorization: Bearer ${AUTH_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "{\"obc_base64\":\"${obc_b64}\"}" \
+  "${DAEMON_URL}/api/v1/avm/job_scan")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${resp_restart}''')
+if not obj.get("ok"):
+  print("expected AVM job_scan to work after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+job = obj.get("job") or {}
+if job.get("schema") != "avm.job.v7":
+  print("unexpected restarted job.schema", job, file=sys.stderr)
   raise SystemExit(1)
 PY
 

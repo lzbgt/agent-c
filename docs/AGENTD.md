@@ -169,6 +169,8 @@ Sandbox mount allowlist:
   - `capsule.mounts` requires `capsule.host_effects.fs=true`; `capsule.allow_domains` requires `capsule.host_effects.net=true`.
   - Allowed mounts are forwarded to the AVM subprocess via `AGENTD_AVM_MOUNTS_JSON` plus `AGENTD_AVM_MOUNT_<n>_*` env vars.
   - Explicit host-effect policy is forwarded to the AVM subprocess via `AGENTD_AVM_HOST_EFFECT_{FS,PROC,NET}`.
+  - AVM subprocess exec now closes inherited non-stdio file descriptors before launch, so an orphaned runner cannot keep
+    agentd listener sockets pinned across an ungraceful same-port restart.
   - Workflow `avm_capsule` tasks also persist durable session artifacts:
     - `.../governance_bundle.json` with `job_scan`, `policy_scan`, `inspect`, `verify_strict`, sanitized capsule args,
       run summary, and program/job hash keys

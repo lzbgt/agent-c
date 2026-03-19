@@ -16,6 +16,8 @@ References:
 - Broker + control plane: `docs/BROKER.md`
 
 Recent shipped note:
+- 2026-03-19: AVM subprocess exec now closes inherited non-stdio file descriptors too, and the AVM job-scan smoke
+  proves same-port restart still works after an ungraceful daemon death while an orphaned AVM child is still alive.
 - 2026-03-19: tool-server child exec now closes inherited non-stdio fds, and restart smoke proves an ungraceful
   agentd death can no longer leave an orphaned helper pinning the daemon's listener socket across same-port restart.
 - 2026-03-15: managed edge-consensus runtimes now persist their last runtime snapshot in DB meta, so status survives
