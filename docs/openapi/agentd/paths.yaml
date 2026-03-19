@@ -3419,7 +3419,9 @@
       paths. `builtin` is reserved for a future embedded agentd-native media service
       and currently returns a not-implemented response, but it now still applies the
       same request validation and non-mutating borrowed broker-session preflight
-      before that final `501`. If a bundled/external peer
+      before that final `501`. Valid builtin requests also surface
+      `builtin_start_contract` so callers can inspect the native start intent without
+      a fake runtime being persisted. If a bundled/external peer
       is still alive after an agentd restart, `start` returns `already_running`
       from the recovered persisted runtime record only when the effective resolved
       runtime config remains compatible with that live runtime; conflicting explicit,

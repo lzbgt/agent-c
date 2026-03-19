@@ -41,6 +41,7 @@ void voice_peer_apply_start_backend_failure(
     refresh_voice_peer_runtime_backend_state(start_result.state.get());
     voice_peer_add_runtime_snapshot(cfg, *start_result.state, out);
   }
+  merge_json_object_fields(start_result.backend_info, out);
   if (!start_result.startup_cleanup.isNull()) {
     (*out)["startup_confirmed"] = false;
     (*out)["startup_cleanup"] = start_result.startup_cleanup;

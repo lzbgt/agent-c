@@ -15,6 +15,7 @@ struct VoicePeerBackendStartResult {
   bool startup_confirmed = false;
   std::string error;
   std::shared_ptr<VoicePeerRuntime> state;
+  Json::Value backend_info = Json::Value(Json::nullValue);
   Json::Value startup_cleanup = Json::Value(Json::nullValue);
 };
 

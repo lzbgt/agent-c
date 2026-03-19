@@ -954,6 +954,20 @@ if "not implemented" not in str(obj.get("builtin_unavailable_reason", "")):
 if "not implemented" not in str(obj.get("error", "")):
   print("expected builtin not implemented error", obj, file=sys.stderr)
   raise SystemExit(1)
+contract = obj.get("builtin_start_contract") or {}
+if contract.get("runtime_kind") != "builtin" or contract.get("signaling_surface") != "voice_webrtc_peer":
+  print("expected builtin start contract metadata", obj, file=sys.stderr)
+  raise SystemExit(1)
+if contract.get("mutating_broker_actions_deferred") is not True:
+  print("expected builtin contract to defer mutating broker actions", obj, file=sys.stderr)
+  raise SystemExit(1)
+broker_session = contract.get("broker_session") or {}
+if broker_session.get("mode") != "auto_create" or broker_session.get("agent_id") != "a-1":
+  print("expected builtin auto-create broker contract", obj, file=sys.stderr)
+  raise SystemExit(1)
+if broker_session.get("deployment_id") != "lab-builtin-contract":
+  print("expected builtin deployment contract", obj, file=sys.stderr)
+  raise SystemExit(1)
 PY
 
 BUILTIN_MISSING_BROKER_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_missing_broker_$(date +%s)_$RANDOM"
