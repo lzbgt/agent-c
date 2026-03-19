@@ -167,6 +167,9 @@ A v0 smoke test should:
 - Agentd now also has a native stateful wait path for remote `bye` on that same shared session state, and a dedicated
   remote-bye smoke proves agentd can consume pre-offer ICE, post-answer ICE, and then a browser-side close reason
   without dropping back to ad hoc stream parsing.
+- The full “answer a remote offer” control flow is now also collapsed into one shared C++ negotiation helper, so the
+  loopback tool no longer hand-assembles offer wait, answer send, candidate wait, remote `bye`, and optional local
+  `bye` sequencing inline.
 - `ctest` now also includes `session_voice_signal_protocol_tests` for direct typed broker-signal payload coverage.
 - `ctest` now also includes `session_voice_signal_session_tests` for direct native signal-session state coverage.
 - `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` covers the agentd-managed runtime surface for that same peer,

@@ -290,6 +290,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/session_voice_signal_protocol.cpp
     daemon/src/session_voice_signal_session.cpp
     daemon/src/session_voice_signal_client.cpp
+    daemon/src/session_voice_signal_negotiation.cpp
     daemon/src/session_voice_builtin_backend.cpp
     daemon/src/session_voice_child_backend.cpp
     daemon/src/session_voice_broker_client.cpp

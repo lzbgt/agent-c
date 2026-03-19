@@ -1,6 +1,4 @@
-#include "session_voice_signal_client.h"
-#include "session_voice_signal_protocol.h"
-#include "string_util.h"
+#include "session_voice_signal_negotiation.h"
 
 #include <iostream>
 #include <string>
@@ -66,95 +64,39 @@ int main(int argc, char** argv) {
   Options opt;
   if (!parse_args(argc, argv, &opt)) return 2;
 
+  VoiceBrokerSignalAnswerExchangeOptions exchange_options;
+  exchange_options.remote_description_timeout_ms = opt.stream_timeout_ms;
+  exchange_options.post_answer_candidate_timeout_ms = opt.post_answer_candidate_timeout_ms;
+  exchange_options.remote_bye_timeout_ms = opt.remote_bye_timeout_ms;
+  exchange_options.local_answer.type = "answer";
+  exchange_options.local_answer.sdp = "stub-answer";
+  exchange_options.local_bye.reason = opt.send_bye_reason;
+
   long http_status = 0;
   std::string err;
-  VoiceBrokerSignalSessionState signal_state("");
-  VoiceBrokerSignalRemoteDescriptionReady remote_ready;
-  if (!wait_for_voice_broker_signal_remote_description_ready_with_state(
+  VoiceBrokerSignalAnswerExchangeResult exchange_result;
+  if (!run_voice_broker_signal_answer_exchange(
         opt.broker_url,
         opt.token,
         opt.session_id,
-        opt.stream_timeout_ms,
-        &signal_state,
-        &remote_ready,
+        exchange_options,
+        &exchange_result,
         &http_status,
         &err)) {
-    std::cerr << "Failed to read offer";
+    std::cerr << "Failed to run answer exchange";
     if (http_status > 0) std::cerr << " (http status " << http_status << ")";
     if (!err.empty()) std::cerr << ": " << err;
     std::cerr << "\n";
     return 1;
   }
-  const std::string offer_type = lower_copy(trim_copy(remote_ready.description.type));
-  if (!offer_type.empty() && offer_type != "offer") {
-    std::cerr << "Failed to read offer: expected remote offer, got " << offer_type << "\n";
-    return 1;
-  }
-
-  VoiceBrokerSignalDescription answer;
-  answer.type = "answer";
-  answer.sdp = "stub-answer";
-  if (!send_voice_broker_answer(opt.broker_url, opt.token, opt.session_id, answer, &err)) {
-    std::cerr << "Failed to send answer: " << err << "\n";
-    return 1;
-  }
-
-  size_t post_answer_remote_candidate_count = 0;
-  std::string remote_bye_reason;
-  if (opt.post_answer_candidate_timeout_ms > 0) {
-    VoiceBrokerSignalCandidate candidate;
-    if (!wait_for_voice_broker_signal_remote_candidate_ready(
-          opt.broker_url,
-          opt.token,
-          opt.session_id,
-          opt.post_answer_candidate_timeout_ms,
-          &signal_state,
-          &candidate,
-          &http_status,
-          &err)) {
-      std::cerr << "Failed to read post-answer candidate";
-      if (http_status > 0) std::cerr << " (http status " << http_status << ")";
-      if (!err.empty()) std::cerr << ": " << err;
-      std::cerr << "\n";
-      return 1;
-    }
-    if (!trim_copy(candidate.candidate).empty()) post_answer_remote_candidate_count = 1;
-  }
-
-  if (opt.remote_bye_timeout_ms > 0) {
-    VoiceBrokerSignalBye remote_bye;
-    if (!wait_for_voice_broker_signal_remote_bye(
-          opt.broker_url,
-          opt.token,
-          opt.session_id,
-          opt.remote_bye_timeout_ms,
-          &signal_state,
-          &remote_bye,
-          &http_status,
-          &err)) {
-      std::cerr << "Failed to read remote bye";
-      if (http_status > 0) std::cerr << " (http status " << http_status << ")";
-      if (!err.empty()) std::cerr << ": " << err;
-      std::cerr << "\n";
-      return 1;
-    }
-    remote_bye_reason = trim_copy(remote_bye.reason);
-  }
-
-  VoiceBrokerSignalBye bye;
-  bye.reason = opt.send_bye_reason;
-  if (!bye.reason.empty() && !send_voice_broker_bye(opt.broker_url, opt.token, opt.session_id, bye, &err)) {
-    std::cerr << "Failed to send bye: " << err << "\n";
-    return 1;
-  }
 
   std::cout
     << "agentd_audio_signal_loopback OK initial_remote_candidate_count="
-    << remote_ready.initial_remote_candidates.size()
+    << exchange_result.remote_ready.initial_remote_candidates.size()
     << " post_answer_remote_candidate_count="
-    << post_answer_remote_candidate_count;
-  if (opt.remote_bye_timeout_ms > 0) {
-    std::cout << " remote_bye_reason=" << remote_bye_reason;
+    << (exchange_result.post_answer_remote_candidate_received ? 1 : 0);
+  if (exchange_result.remote_bye_received) {
+    std::cout << " remote_bye_reason=" << exchange_result.remote_bye.reason;
   }
   std::cout << "\n";
   return 0;
