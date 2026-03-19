@@ -598,6 +598,12 @@ Notes:
   reads now surface `runtime.cluster_policy_drift.changed_fields[]` plus the current rotated policy as
   `runtime.cluster_policy_drift.current_policy`. Restart remains the adoption boundary: a later stop/start picks up the
   new policy, while same-request re-start during the old run conflicts with `409` and the drifted runtime snapshot.
+- If callers omit `trust_roots_epoch`, `revocations_epoch`, or `cert_roots_epoch` on managed consensus start, agentd
+  now defaults those from the daemon's current `edge_auth_*_epoch` policy instead of falling back to zero.
+- If those daemon trust epochs rotate while a managed consensus runtime is still running, runtime reads now surface
+  `runtime.trust_epoch_drift.changed_fields[]` plus `runtime.trust_epoch_drift.current_trust_epochs`. Restart remains
+  the adoption boundary there too: same-request re-start during the old run now conflicts with `409`, while a later
+  stop/start adopts the rotated trust epochs.
 - Managed consensus runtime snapshots now persist in DB meta too, so
   `GET /api/v1/edge/node/consensus_runtime?node_id=<id>` can recover the last finished/stopped runtime after agentd
   restart with `runtime.status_source=persisted`, and can also recover a still-live external helper from its persisted

@@ -213,6 +213,14 @@ AgentdConfigUpdateRequest:
       type: integer
       format: int64
       description: Optional explicit trust-root rotation epoch metadata (also updated by `/api/v1/edge/auth/trust_roots/rotate`)
+    edge_auth_cert_roots_epoch:
+      type: integer
+      format: int64
+      description: Optional explicit cert-root rotation epoch metadata (also updated by `/api/v1/edge/auth/cert_roots/rotate`)
+    edge_auth_revocations_epoch:
+      type: integer
+      format: int64
+      description: Optional explicit revocation epoch metadata (also updated by `/api/v1/edge/auth/revocations/update`)
     edge_auth_hmac_keys:
       type: object
       additionalProperties:
@@ -467,6 +475,8 @@ AgentdConfigUpdateResponse:
     edge_auth_trust_roots_updated_utc_ms: { type: integer, format: int64 }
     edge_auth_cert_roots_epoch: { type: integer, format: int64 }
     edge_auth_cert_roots_updated_utc_ms: { type: integer, format: int64 }
+    edge_auth_revocations_epoch: { type: integer, format: int64 }
+    edge_auth_revocations_updated_utc_ms: { type: integer, format: int64 }
     edge_confidentiality_required: { type: boolean }
     edge_attest_required: { type: boolean }
     edge_attest_require_sig: { type: boolean }

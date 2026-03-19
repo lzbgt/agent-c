@@ -245,6 +245,9 @@ DRIFT_MEMBER_B="node_runtime_cons_policy_peer_b"
 DRIFT_MEMBER_C="node_runtime_cons_policy_peer_c"
 DRIFT_MEMBER_D="node_runtime_cons_policy_peer_d"
 DRIFT_SHA="sha256:5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+TRUST_NODE="node_runtime_cons_trust_drift"
+TRUST_CLUSTER="lab-consensus-trust-drift"
+TRUST_SHA="sha256:5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b"
 
 START_STOP_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
 {"action":"start","node_id":"${STOP_NODE}","cluster_id":"${STOP_CLUSTER}","manifest_sha256":"${STOP_SHA}","deadline_ms":30000,"poll_interval_ms":100}
@@ -397,6 +400,40 @@ JSON
 DRIFT_RESTART_RUNNING_JSON="$(wait_runtime_running "${DRIFT_NODE}")"
 DRIFT_RESTART_STOP_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
 {"action":"stop","node_id":"${DRIFT_NODE}"}
+JSON
+)")"
+
+TRUST_CFG_V1_JSON="$(curl_json POST "/api/v1/config/update" "$(cat <<JSON
+{"edge_auth_trust_roots_epoch":5,"edge_auth_revocations_epoch":6,"edge_auth_cert_roots_epoch":7}
+JSON
+)")"
+TRUST_START_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"start","node_id":"${TRUST_NODE}","cluster_id":"${TRUST_CLUSTER}","manifest_sha256":"${TRUST_SHA}","deadline_ms":30000,"poll_interval_ms":100}
+JSON
+)")"
+TRUST_RUNNING_JSON="$(wait_runtime_running "${TRUST_NODE}")"
+TRUST_CFG_V2_JSON="$(curl_json POST "/api/v1/config/update" "$(cat <<JSON
+{"edge_auth_trust_roots_epoch":8,"edge_auth_revocations_epoch":9,"edge_auth_cert_roots_epoch":10}
+JSON
+)")"
+TRUST_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${TRUST_NODE}")"
+TRUST_CONFLICT_RAW="$(curl_json_status POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"start","node_id":"${TRUST_NODE}","cluster_id":"${TRUST_CLUSTER}","manifest_sha256":"${TRUST_SHA}","deadline_ms":30000,"poll_interval_ms":100}
+JSON
+)")"
+TRUST_CONFLICT_STATUS="$(printf '%s\n' "${TRUST_CONFLICT_RAW}" | sed -n '1p')"
+TRUST_CONFLICT_JSON="$(printf '%s\n' "${TRUST_CONFLICT_RAW}" | sed '1d')"
+TRUST_STOP_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"stop","node_id":"${TRUST_NODE}"}
+JSON
+)")"
+TRUST_RESTART_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"start","node_id":"${TRUST_NODE}","cluster_id":"${TRUST_CLUSTER}","manifest_sha256":"${TRUST_SHA}","deadline_ms":30000,"poll_interval_ms":100}
+JSON
+)")"
+TRUST_RESTART_RUNNING_JSON="$(wait_runtime_running "${TRUST_NODE}")"
+TRUST_RESTART_STOP_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"stop","node_id":"${TRUST_NODE}"}
 JSON
 )")"
 
@@ -555,6 +592,16 @@ drift_stop = json.loads(r'''${DRIFT_STOP_JSON}''')
 drift_restart = json.loads(r'''${DRIFT_RESTART_JSON}''')
 drift_restart_running = json.loads(r'''${DRIFT_RESTART_RUNNING_JSON}''')
 drift_restart_stop = json.loads(r'''${DRIFT_RESTART_STOP_JSON}''')
+trust_cfg_v1 = json.loads(r'''${TRUST_CFG_V1_JSON}''')
+trust_start = json.loads(r'''${TRUST_START_JSON}''')
+trust_running = json.loads(r'''${TRUST_RUNNING_JSON}''')
+trust_cfg_v2 = json.loads(r'''${TRUST_CFG_V2_JSON}''')
+trust_status = json.loads(r'''${TRUST_STATUS_JSON}''')
+trust_conflict = json.loads(r'''${TRUST_CONFLICT_JSON}''')
+trust_stop = json.loads(r'''${TRUST_STOP_JSON}''')
+trust_restart = json.loads(r'''${TRUST_RESTART_JSON}''')
+trust_restart_running = json.loads(r'''${TRUST_RESTART_RUNNING_JSON}''')
+trust_restart_stop = json.loads(r'''${TRUST_RESTART_STOP_JSON}''')
 config_set = json.loads(r'''${CONFIG_SET_JSON}''')
 config_get = json.loads(r'''${CONFIG_GET_JSON}''')
 config_restart = json.loads(r'''${CONFIG_RESTART_JSON}''')
@@ -659,6 +706,56 @@ for label, rt in (("drift_restart", restart_rt), ("drift_restart_running", resta
     raise SystemExit(1)
   if "cluster_policy_drift" in rt:
     print(label, "unexpected drift after restart adoption", rt, file=sys.stderr)
+    raise SystemExit(1)
+
+for label, obj in (("trust_cfg_v1", trust_cfg_v1), ("trust_cfg_v2", trust_cfg_v2), ("trust_start", trust_start), ("trust_stop", trust_stop), ("trust_restart", trust_restart), ("trust_restart_stop", trust_restart_stop)):
+  if not obj.get("ok"):
+    print(label, obj, file=sys.stderr)
+    raise SystemExit(1)
+if trust_start.get("startup_confirmed") is not True or trust_restart.get("startup_confirmed") is not True:
+  print("trust start/restart missing startup confirmation", trust_start, trust_restart, file=sys.stderr)
+  raise SystemExit(1)
+trust_start_rt = trust_start.get("runtime") or {}
+trust_running_rt = trust_running.get("runtime") or {}
+for label, rt in (("trust_start", trust_start_rt), ("trust_running", trust_running_rt)):
+  epochs = rt.get("trust_epochs") or {}
+  if epochs.get("trust_roots_epoch") != 5 or epochs.get("revocations_epoch") != 6 or epochs.get("cert_roots_epoch") != 7:
+    print(label, "missing configured trust-epoch defaults", rt, file=sys.stderr)
+    raise SystemExit(1)
+if not trust_running_rt.get("running"):
+  print("trust runtime never entered running state", trust_running, file=sys.stderr)
+  raise SystemExit(1)
+trust_status_rt = trust_status.get("runtime") or {}
+trust_drift = trust_status_rt.get("trust_epoch_drift") or {}
+if trust_status_rt.get("running") is not True:
+  print("trust runtime unexpectedly not running", trust_status, file=sys.stderr)
+  raise SystemExit(1)
+if set(trust_drift.get("changed_fields") or []) != {"trust_roots_epoch", "revocations_epoch", "cert_roots_epoch"}:
+  print("trust drift missing expected changed fields", trust_status, file=sys.stderr)
+  raise SystemExit(1)
+current_trust = trust_drift.get("current_trust_epochs") or {}
+if current_trust.get("trust_roots_epoch") != 8 or current_trust.get("revocations_epoch") != 9 or current_trust.get("cert_roots_epoch") != 10:
+  print("trust drift missing rotated current epochs", trust_status, file=sys.stderr)
+  raise SystemExit(1)
+if "${TRUST_CONFLICT_STATUS}" != "409":
+  print("trust restart conflict wrong status", "${TRUST_CONFLICT_STATUS}", trust_conflict, file=sys.stderr)
+  raise SystemExit(1)
+trust_conflict_rt = trust_conflict.get("runtime") or {}
+if trust_conflict.get("error") != "consensus runtime already running with different config":
+  print("trust restart conflict wrong error", trust_conflict, file=sys.stderr)
+  raise SystemExit(1)
+if (trust_conflict_rt.get("trust_epoch_drift") or {}).get("current_trust_epochs", {}).get("trust_roots_epoch") != 8:
+  print("trust restart conflict missing current trust epochs", trust_conflict, file=sys.stderr)
+  raise SystemExit(1)
+trust_restart_rt = trust_restart.get("runtime") or {}
+trust_restart_running_rt = trust_restart_running.get("runtime") or {}
+for label, rt in (("trust_restart", trust_restart_rt), ("trust_restart_running", trust_restart_running_rt)):
+  epochs = rt.get("trust_epochs") or {}
+  if epochs.get("trust_roots_epoch") != 8 or epochs.get("revocations_epoch") != 9 or epochs.get("cert_roots_epoch") != 10:
+    print(label, "did not adopt rotated trust epochs", rt, file=sys.stderr)
+    raise SystemExit(1)
+  if "trust_epoch_drift" in rt:
+    print(label, "unexpected trust drift after restart adoption", rt, file=sys.stderr)
     raise SystemExit(1)
 
 for label, obj in (("config_set", config_set), ("config_get", config_get), ("config_restart", config_restart)):

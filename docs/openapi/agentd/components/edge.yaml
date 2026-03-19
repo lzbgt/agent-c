@@ -108,6 +108,14 @@ EdgeConsensusClusterPolicy:
       type: array
       items: { type: string }
 
+EdgeTrustEpochs:
+  type: object
+  required: [trust_roots_epoch, revocations_epoch, cert_roots_epoch]
+  properties:
+    trust_roots_epoch: { type: integer, format: int64 }
+    revocations_epoch: { type: integer, format: int64 }
+    cert_roots_epoch: { type: integer, format: int64 }
+
 EdgeNodeConsensusRuntime:
   type: object
   required: [schema, runtime_kind, status_source, node_id, cluster_id, manifest_sha256, peer_node_ids, member_node_ids, daemon_url, tool_path, started_unix_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, leader_heartbeat_ms, leader_lease_ms, poll_interval_ms, deadline_ms, cluster_size, outbox_limit, trust_epochs, membership_epoch, running]
@@ -147,12 +155,7 @@ EdgeNodeConsensusRuntime:
     cluster_size: { type: integer, format: int64 }
     outbox_limit: { type: integer, format: int64 }
     trust_epochs:
-      type: object
-      required: [trust_roots_epoch, revocations_epoch, cert_roots_epoch]
-      properties:
-        trust_roots_epoch: { type: integer, format: int64 }
-        revocations_epoch: { type: integer, format: int64 }
-        cert_roots_epoch: { type: integer, format: int64 }
+      $ref: "#/components/schemas/EdgeTrustEpochs"
     membership_epoch: { type: integer, format: int64 }
     running: { type: boolean }
     pid: { type: integer, format: int64 }
@@ -176,6 +179,15 @@ EdgeNodeConsensusRuntime:
           items: { type: string }
         current_policy:
           $ref: "#/components/schemas/EdgeConsensusClusterPolicy"
+    trust_epoch_drift:
+      type: object
+      required: [changed_fields, current_trust_epochs]
+      properties:
+        changed_fields:
+          type: array
+          items: { type: string }
+        current_trust_epochs:
+          $ref: "#/components/schemas/EdgeTrustEpochs"
 
 EdgeNodeSummary:
   type: object
@@ -263,9 +275,18 @@ EdgeNodeConsensusRuntimeRequest:
     leader_lease_ms: { type: integer, format: int64 }
     poll_interval_ms: { type: integer, format: int64 }
     deadline_ms: { type: integer, format: int64 }
-    trust_roots_epoch: { type: integer, format: int64 }
-    revocations_epoch: { type: integer, format: int64 }
-    cert_roots_epoch: { type: integer, format: int64 }
+    trust_roots_epoch:
+      type: integer
+      format: int64
+      description: Optional override; defaults to the daemon's current `edge_auth_trust_roots_epoch`.
+    revocations_epoch:
+      type: integer
+      format: int64
+      description: Optional override; defaults to the daemon's current `edge_auth_revocations_epoch`.
+    cert_roots_epoch:
+      type: integer
+      format: int64
+      description: Optional override; defaults to the daemon's current `edge_auth_cert_roots_epoch`.
     membership_epoch: { type: integer, format: int64 }
     daemon_url:
       type: string

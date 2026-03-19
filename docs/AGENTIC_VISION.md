@@ -315,6 +315,9 @@ These are the most leveraged next steps grounded in current architecture:
      longer stranded in one-off runtime start bodies.
    - Completed 2026-03-15: the durable/runtime consensus policy now includes leader heartbeat and lease timing, so
      failover behavior is explicit and survives restarts instead of being implicit loop-local behavior.
+   - Completed 2026-03-20: managed consensus start now defaults omitted trust epochs from the daemon's current
+     `edge_auth_*_epoch` policy, and runtime reads now surface `trust_epoch_drift` when those daemon trust epochs rotate
+     underneath a still-running managed runtime; restart remains the explicit adoption boundary.
    - Still open: replace the current builtin daemon-hosted runtime with embedded node-native adoption plus richer
      long-lived membership and recovery policy beyond the current durable bundle fields.
 
@@ -379,3 +382,6 @@ Planned evidence (tracked in `TODOS.md`):
 - If durable cluster policy rotates while a managed consensus runtime is still running, runtime reads now surface
   `cluster_policy_drift.changed_fields[]` plus the current rotated policy, and restart is the explicit adoption
   boundary instead of silent mid-run mutation.
+- If daemon trust epochs rotate while a managed consensus runtime is still running, runtime reads now surface
+  `trust_epoch_drift.changed_fields[]` plus `current_trust_epochs`, and restart is the explicit adoption boundary for
+  those trust-policy inputs too.

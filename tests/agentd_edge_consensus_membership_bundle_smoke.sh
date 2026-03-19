@@ -310,6 +310,10 @@ if rt_a.get("campaign_retry_max_ms") != 900 or rt_a.get("campaign_retry_backoff_
 if rt_a.get("leader_heartbeat_ms") != 240 or rt_a.get("leader_lease_ms") != 1100:
     print("runtime A missing leader freshness defaults", rt_a, file=sys.stderr)
     raise SystemExit(1)
+trust_epochs = rt_a.get("trust_epochs") or {}
+if trust_epochs.get("trust_roots_epoch") != 2 or trust_epochs.get("revocations_epoch") != 3 or trust_epochs.get("cert_roots_epoch") != 4:
+    print("runtime A missing explicit trust epochs", rt_a, file=sys.stderr)
+    raise SystemExit(1)
 if (start_a.get("cluster_policy") or {}).get("cluster_id") != cluster_id:
     print("start response missing cluster policy", start_a, file=sys.stderr)
     raise SystemExit(1)
@@ -330,6 +334,10 @@ for label, obj in (("running_a", running_a), ("status_a", status_a), ("status_b"
         raise SystemExit(1)
     if rt.get("leader_heartbeat_ms") != 240 or rt.get("leader_lease_ms") != 1100:
         print(label, "runtime leader freshness mismatch", obj, file=sys.stderr)
+        raise SystemExit(1)
+    epochs = rt.get("trust_epochs") or {}
+    if epochs.get("trust_roots_epoch") != 2 or epochs.get("revocations_epoch") != 3 or epochs.get("cert_roots_epoch") != 4:
+        print(label, "runtime trust epoch mismatch", obj, file=sys.stderr)
         raise SystemExit(1)
 
 res_a = (status_a.get("runtime") or {}).get("result") or {}
@@ -352,6 +360,10 @@ if loop_status.get("campaign_retry_max_ms") != 900 or loop_status.get("campaign_
     raise SystemExit(1)
 if loop_status.get("leader_heartbeat_ms") != 240 or loop_status.get("leader_lease_ms") != 1100:
     print("loop status missing leader freshness policy", loop_status, file=sys.stderr)
+    raise SystemExit(1)
+loop_self_epochs = ((loop_status.get("self") or {}).get("trust_epochs") or {})
+if loop_self_epochs.get("trust_roots_epoch") != 2 or loop_self_epochs.get("revocations_epoch") != 3 or loop_self_epochs.get("cert_roots_epoch") != 4:
+    print("loop status missing explicit trust epochs", loop_status, file=sys.stderr)
     raise SystemExit(1)
 
 status_policy = status_a.get("cluster_policy") or {}

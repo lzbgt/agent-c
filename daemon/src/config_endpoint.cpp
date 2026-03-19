@@ -1782,6 +1782,34 @@ void handle_config_update_endpoint(
       : (int64_t)args["edge_auth_trust_roots_epoch"].asUInt64();
     next.edge_auth_trust_roots_updated_utc_ms = now_utc_ms();
   }
+  if (args.isMember("edge_auth_cert_roots_epoch")) {
+    if (!args["edge_auth_cert_roots_epoch"].isInt64() && !args["edge_auth_cert_roots_epoch"].isUInt64()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "edge_auth_cert_roots_epoch must be an integer";
+      resp->status = 400;
+      resp->body = json_stringify(o);
+      return;
+    }
+    next.edge_auth_cert_roots_epoch = args["edge_auth_cert_roots_epoch"].isInt64()
+      ? args["edge_auth_cert_roots_epoch"].asInt64()
+      : (int64_t)args["edge_auth_cert_roots_epoch"].asUInt64();
+    next.edge_auth_cert_roots_updated_utc_ms = now_utc_ms();
+  }
+  if (args.isMember("edge_auth_revocations_epoch")) {
+    if (!args["edge_auth_revocations_epoch"].isInt64() && !args["edge_auth_revocations_epoch"].isUInt64()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "edge_auth_revocations_epoch must be an integer";
+      resp->status = 400;
+      resp->body = json_stringify(o);
+      return;
+    }
+    next.edge_auth_revocations_epoch = args["edge_auth_revocations_epoch"].isInt64()
+      ? args["edge_auth_revocations_epoch"].asInt64()
+      : (int64_t)args["edge_auth_revocations_epoch"].asUInt64();
+    next.edge_auth_revocations_updated_utc_ms = now_utc_ms();
+  }
   if (args.isMember("edge_attest_required") && args["edge_attest_required"].isBool()) {
     next.edge_attest_required = args["edge_attest_required"].asBool();
   }

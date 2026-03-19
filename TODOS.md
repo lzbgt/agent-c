@@ -649,6 +649,7 @@ streaming and plugins are stable.
   - 2026-03-15: managed consensus runtime snapshots now persist in DB meta too, so `GET /api/v1/edge/node/consensus_runtime` can recover finished/stopped runtime state after restart with `status_source=persisted`, can also recover a still-live external helper from a persisted running snapshot, and now self-heals stale builtin/corrupt persisted runtime records by clearing the record plus dead local artifacts.
   - 2026-03-19: if that recovered live external helper is later stopped through agentd, the persisted final runtime snapshot now keeps the stop signal/result instead of degrading into a signal-less stopped record.
   - 2026-03-19: if durable cluster membership/retry policy rotates while a managed consensus runtime is still running, runtime reads now surface `runtime.cluster_policy_drift` with changed fields plus the current policy, and the main runtime smoke proves restart-based adoption of the rotated policy.
+  - 2026-03-20: if callers omit `trust_roots_epoch` / `revocations_epoch` / `cert_roots_epoch`, managed consensus start now defaults those from the daemon's current `edge_auth_*_epoch` policy, runtime reads surface `runtime.trust_epoch_drift` when that trust policy rotates underneath a live runtime, and the main runtime smoke proves restart-based adoption while the membership-bundle smoke now also checks explicit trust-epoch carriage.
 
 ## Deferred (after macOS stability)
 

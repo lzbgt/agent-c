@@ -243,6 +243,11 @@ Returns messages in ascending `outbox_id` order. The node should:
   - if durable cluster policy rotates underneath a still-running managed runtime, runtime reads now surface
     `runtime.cluster_policy_drift` with `changed_fields[]` and the current rotated policy; restart remains the policy
     adoption boundary for that managed loop
+  - if callers omit `trust_roots_epoch`, `revocations_epoch`, or `cert_roots_epoch`, managed consensus start now
+    defaults those from the daemon's current `edge_auth_*_epoch` policy instead of falling back to zero
+  - if those daemon trust epochs rotate underneath a still-running managed runtime, runtime reads now surface
+    `runtime.trust_epoch_drift` with `changed_fields[]` and `current_trust_epochs`; restart remains the adoption
+    boundary for that managed loop too
   - terminal runtime snapshots now persist across agentd restart with `runtime.status_source=persisted`; live external
     helpers can also be recovered from persisted running snapshots after restart, while stale builtin `running=true`
     records and corrupt persisted runtime records are self-healed by clearing the record and dead runtime artifacts

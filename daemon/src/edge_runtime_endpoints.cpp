@@ -113,6 +113,22 @@ static Json::Value edge_consensus_cluster_policy_to_json(const std::string& clus
   return out;
 }
 
+static uint64_t safe_config_epoch_u64(int64_t v) {
+  return v <= 0 ? 0 : (uint64_t)v;
+}
+
+static Json::Value edge_consensus_trust_epochs_to_json(
+  uint64_t trust_roots_epoch,
+  uint64_t revocations_epoch,
+  uint64_t cert_roots_epoch
+) {
+  Json::Value out(Json::objectValue);
+  out["trust_roots_epoch"] = Json::UInt64(trust_roots_epoch);
+  out["revocations_epoch"] = Json::UInt64(revocations_epoch);
+  out["cert_roots_epoch"] = Json::UInt64(cert_roots_epoch);
+  return out;
+}
+
 struct EdgeConsensusRuntime {
   std::string runtime_kind = "builtin";
   std::string status_source = "memory";
@@ -192,11 +208,8 @@ static Json::Value edge_consensus_runtime_to_json(const EdgeConsensusRuntime& st
   out["deadline_ms"] = (Json::Int64)st.deadline_ms;
   out["cluster_size"] = Json::UInt64(st.cluster_size);
   out["outbox_limit"] = Json::UInt64(st.outbox_limit);
-  Json::Value epochs(Json::objectValue);
-  epochs["trust_roots_epoch"] = Json::UInt64(st.trust_roots_epoch);
-  epochs["revocations_epoch"] = Json::UInt64(st.revocations_epoch);
-  epochs["cert_roots_epoch"] = Json::UInt64(st.cert_roots_epoch);
-  out["trust_epochs"] = epochs;
+  out["trust_epochs"] = edge_consensus_trust_epochs_to_json(
+    st.trust_roots_epoch, st.revocations_epoch, st.cert_roots_epoch);
   out["membership_epoch"] = Json::UInt64(st.membership_epoch);
   out["running"] = st.running;
   if (st.running) out["pid"] = (Json::Int64)st.pid;
@@ -246,10 +259,37 @@ static Json::Value edge_consensus_runtime_cluster_policy_drift_json(
   return out;
 }
 
+static Json::Value edge_consensus_runtime_trust_epoch_drift_json(
+  const DaemonConfig& cfg,
+  const EdgeConsensusRuntime& st
+) {
+  const uint64_t current_trust_roots_epoch = safe_config_epoch_u64(cfg.edge_auth_trust_roots_epoch);
+  const uint64_t current_revocations_epoch = safe_config_epoch_u64(cfg.edge_auth_revocations_epoch);
+  const uint64_t current_cert_roots_epoch = safe_config_epoch_u64(cfg.edge_auth_cert_roots_epoch);
+
+  Json::Value changed_fields(Json::arrayValue);
+  auto append_changed = [&changed_fields](const char* field) {
+    changed_fields.append(field);
+  };
+  if (current_trust_roots_epoch != st.trust_roots_epoch) append_changed("trust_roots_epoch");
+  if (current_revocations_epoch != st.revocations_epoch) append_changed("revocations_epoch");
+  if (current_cert_roots_epoch != st.cert_roots_epoch) append_changed("cert_roots_epoch");
+
+  if (changed_fields.empty()) return Json::Value(Json::nullValue);
+
+  Json::Value out(Json::objectValue);
+  out["changed_fields"] = changed_fields;
+  out["current_trust_epochs"] = edge_consensus_trust_epochs_to_json(
+    current_trust_roots_epoch, current_revocations_epoch, current_cert_roots_epoch);
+  return out;
+}
+
 static Json::Value edge_consensus_runtime_response_json(const DaemonConfig& cfg, const EdgeConsensusRuntime& st) {
   Json::Value out = edge_consensus_runtime_to_json(st);
   const Json::Value drift = edge_consensus_runtime_cluster_policy_drift_json(cfg, st);
   if (!drift.isNull()) out["cluster_policy_drift"] = drift;
+  const Json::Value trust_drift = edge_consensus_runtime_trust_epoch_drift_json(cfg, st);
+  if (!trust_drift.isNull()) out["trust_epoch_drift"] = trust_drift;
   return out;
 }
 
@@ -670,9 +710,18 @@ static bool edge_consensus_runtime_build_config(
   int64_t deadline_ms = body.isMember("deadline_ms") ? json_to_i64(body["deadline_ms"], 10000) : 10000;
   deadline_ms = std::max<int64_t>(1000, std::min<int64_t>(deadline_ms, 300000));
 
-  uint64_t trust_roots_epoch = body.isMember("trust_roots_epoch") ? json_to_u64(body["trust_roots_epoch"], 0) : 0;
-  uint64_t revocations_epoch = body.isMember("revocations_epoch") ? json_to_u64(body["revocations_epoch"], 0) : 0;
-  uint64_t cert_roots_epoch = body.isMember("cert_roots_epoch") ? json_to_u64(body["cert_roots_epoch"], 0) : 0;
+  const uint64_t default_trust_roots_epoch = safe_config_epoch_u64(cfg.edge_auth_trust_roots_epoch);
+  const uint64_t default_revocations_epoch = safe_config_epoch_u64(cfg.edge_auth_revocations_epoch);
+  const uint64_t default_cert_roots_epoch = safe_config_epoch_u64(cfg.edge_auth_cert_roots_epoch);
+  uint64_t trust_roots_epoch = body.isMember("trust_roots_epoch")
+    ? json_to_u64(body["trust_roots_epoch"], default_trust_roots_epoch)
+    : default_trust_roots_epoch;
+  uint64_t revocations_epoch = body.isMember("revocations_epoch")
+    ? json_to_u64(body["revocations_epoch"], default_revocations_epoch)
+    : default_revocations_epoch;
+  uint64_t cert_roots_epoch = body.isMember("cert_roots_epoch")
+    ? json_to_u64(body["cert_roots_epoch"], default_cert_roots_epoch)
+    : default_cert_roots_epoch;
   uint64_t membership_epoch = body.isMember("membership_epoch")
     ? json_to_u64(body["membership_epoch"], 0)
     : (cluster_policy && cluster_policy->membership_epoch >= 0 ? (uint64_t)cluster_policy->membership_epoch : 0);
