@@ -92,7 +92,7 @@ VoiceWebRtcPeerResponse:
     startup_confirmed: { type: boolean }
     default_runtime_kind:
       type: string
-      enum: [bundled, external]
+      enum: [builtin, bundled, external]
     default_runtime_kind_source:
       type: string
       enum: [auto, env, config]
@@ -139,7 +139,7 @@ VoiceWebRtcPeerStatusResponse:
     broker_token_default_configured: { type: boolean }
     default_runtime_kind:
       type: string
-      enum: [bundled, external]
+      enum: [builtin, bundled, external]
     default_runtime_kind_source:
       type: string
       enum: [auto, env, config]

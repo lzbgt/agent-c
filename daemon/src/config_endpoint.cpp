@@ -2035,7 +2035,7 @@ void handle_config_update_endpoint(
   }
 
   // Managed voice/WebRTC defaults:
-  // - audio_webrtc: { "broker_url": "...", "broker_token": "...", "peer_tool_path": "...", "default_runtime_kind": "bundled|external", "node_bin": "..." } (null clears)
+  // - audio_webrtc: { "broker_url": "...", "broker_token": "...", "peer_tool_path": "...", "default_runtime_kind": "builtin|bundled|external", "node_bin": "..." } (null clears)
   if (args.isMember("audio_webrtc")) {
     if (!args["audio_webrtc"].isObject()) {
       Json::Value o(Json::objectValue);
@@ -2098,10 +2098,10 @@ void handle_config_update_endpoint(
         next.audio_webrtc_default_runtime_kind_from_env = false;
       } else if (v.isString()) {
         const std::string kind = lower_copy(trim_copy(v.asString()));
-        if (kind != "bundled" && kind != "external") {
+        if (kind != "builtin" && kind != "bundled" && kind != "external") {
           Json::Value o(Json::objectValue);
           o["ok"] = false;
-          o["error"] = "audio_webrtc.default_runtime_kind must be bundled, external, or null";
+          o["error"] = "audio_webrtc.default_runtime_kind must be builtin, bundled, external, or null";
           resp->status = 400;
           resp->body = json_stringify(o);
           return;

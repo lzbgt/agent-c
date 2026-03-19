@@ -276,6 +276,9 @@ These are the most leveraged next steps grounded in current architecture:
      (`audio_webrtc.peer_tool_path`, `audio_webrtc.node_bin`, `audio_webrtc.default_runtime_kind`) instead of env-only
      process wiring, daemon startup now also honors `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND`, and runtime metadata now
      makes default backend source/availability explicit.
+   - Completed 2026-03-20: the durable/defaulted WebRTC backend policy now accepts `builtin` too, so operators can pin
+     the future native media backend through config or env and see an explicit unavailable/not-implemented state rather
+     than having that intent silently rewritten away.
    - Completed 2026-03-15: corrupted persisted WebRTC default-backend policy now self-heals back to `auto` on daemon
      load, so status/config no longer expose impossible backend choices after direct DB corruption.
    - Completed 2026-03-15: safe daemon config now exposes WebRTC backend availability

@@ -205,6 +205,18 @@ start_agentd_with_voice_defaults() {
   unset AGENTD_AUDIO_WEBRTC_BROKER_TOKEN
 }
 
+start_agentd_with_builtin_voice_default() {
+  export AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}"
+  export AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND="builtin"
+  export AGENTD_AUDIO_WEBRTC_BROKER_URL="${VOICE_BROKER_URL}"
+  export AGENTD_AUDIO_WEBRTC_BROKER_TOKEN="${VOICE_BROKER_TOKEN}"
+  agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_session_voice_webrtc_peer_runtime_smoke_env_builtin" >>"${LOG_FILE}" 2>&1
+  unset AGENTD_AUTH_TOKEN
+  unset AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND
+  unset AGENTD_AUDIO_WEBRTC_BROKER_URL
+  unset AGENTD_AUDIO_WEBRTC_BROKER_TOKEN
+}
+
 start_agentd_without_voice_defaults() {
   export AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}"
   unset AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND
@@ -275,6 +287,13 @@ restart_agentd_without_voice_defaults() {
   wait_daemon_ready
 }
 
+restart_agentd_with_builtin_voice_default() {
+  agentd_smoke_stop
+  wait_daemon_stopped
+  start_agentd_with_builtin_voice_default
+  wait_daemon_ready
+}
+
 wait_daemon_ready
 
 config_env_defaults="$(curl -fsS --noproxy "*" --max-time 10 \
@@ -296,6 +315,96 @@ if audio.get("default_runtime_kind") != "bundled" or audio.get("default_runtime_
   print("expected env default_runtime_kind before runtime config override", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
+
+restart_agentd_with_builtin_voice_default
+
+config_env_builtin_default="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/config")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${config_env_builtin_default}''')
+daemon = obj.get("daemon") or {}
+audio = daemon.get("audio_webrtc") or {}
+if audio.get("default_runtime_kind") != "builtin" or audio.get("default_runtime_kind_source") != "env":
+  print("expected env builtin default_runtime_kind", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("default_runtime_kind_available") is not False:
+  print("expected builtin env default to be unavailable", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("builtin_available") is not False or audio.get("bundled_available") is not True:
+  print("unexpected builtin/bundled availability for env builtin default", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "not implemented" not in str(audio.get("builtin_unavailable_reason") or ""):
+  print("expected builtin unavailable reason for env builtin default", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "not implemented" not in str(audio.get("default_runtime_kind_unavailable_reason") or ""):
+  print("expected builtin default unavailable reason for env builtin default", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+ENV_BUILTIN_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_env_builtin_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${ENV_BUILTIN_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+set +e
+env_builtin_start_resp="$(curl -sS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${ENV_BUILTIN_SESSION_ID}",
+  "action": "start",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab-env-builtin-default",
+  "sender_tag": "agentd_runtime_peer"
+}))
+PY
+)" \
+  -w $'\n%{http_code}' \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+env_builtin_start_curl_rc=$?
+set -e
+if [[ ${env_builtin_start_curl_rc} -ne 0 ]]; then
+  echo "voice_webrtc_peer env-builtin-default start request failed to complete" >&2
+  exit 1
+fi
+
+env_builtin_start_code="$(printf '%s' "${env_builtin_start_resp}" | tail -n 1)"
+env_builtin_start_body="$(printf '%s' "${env_builtin_start_resp}" | sed '$d')"
+if [[ "${env_builtin_start_code}" != "501" ]]; then
+  echo "expected env builtin default start to return http 501, got ${env_builtin_start_code}" >&2
+  exit 1
+fi
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${env_builtin_start_body}''')
+if obj.get("ok") is not False:
+  print("expected env builtin default start to fail", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("default_runtime_kind") != "builtin" or obj.get("default_runtime_kind_source") != "env":
+  print("expected builtin env default on start failure", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("default_runtime_kind_available") is not False:
+  print("expected unavailable builtin env default on start failure", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "not implemented" not in str(obj.get("error") or ""):
+  print("expected builtin not implemented error for env default start", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+ENV_BUILTIN_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${ENV_BUILTIN_SESSION_ID}")"
+curl -fsS --noproxy "*" --max-time 10 -X DELETE \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session?session_id=${ENV_BUILTIN_SESSION_ID_Q}" >/dev/null
+
+restart_agentd
 
 SESSION_DB_ID="agentd_session_voice_webrtc_peer_runtime_$(date +%s)_$RANDOM"
 curl -fsS --noproxy "*" --max-time 10 \
@@ -2753,6 +2862,131 @@ UNAVAILABLE_DEFAULT_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(u
 curl -fsS --noproxy "*" --max-time 10 -X DELETE \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   "${DAEMON_URL}/api/v1/session?session_id=${UNAVAILABLE_DEFAULT_SESSION_ID_Q}" >/dev/null
+
+builtin_default_config_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "audio_webrtc": {
+    "peer_tool_path": "${PEER_TOOL}",
+    "default_runtime_kind": "builtin",
+    "node_bin": "node"
+  }
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/config/update")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${builtin_default_config_resp}''')
+audio = obj.get("audio_webrtc") or {}
+if not obj.get("ok"):
+  print("config update for builtin default failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("default_runtime_kind") != "builtin" or audio.get("default_runtime_kind_source") != "config":
+  print("expected config-backed builtin default", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("default_runtime_kind_available") is not False:
+  print("expected config-backed builtin default to be unavailable", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("builtin_available") is not False or audio.get("bundled_available") is not True or audio.get("external_available") is not True:
+  print("unexpected backend availability for config-backed builtin default", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "not implemented" not in str(audio.get("builtin_unavailable_reason") or ""):
+  print("expected builtin unavailable reason for config-backed builtin default", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "not implemented" not in str(audio.get("default_runtime_kind_unavailable_reason") or ""):
+  print("expected builtin default unavailable reason for config-backed builtin default", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+restart_agentd_without_voice_defaults
+
+builtin_default_config_get="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/config")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${builtin_default_config_get}''')
+daemon = obj.get("daemon") or {}
+audio = daemon.get("audio_webrtc") or {}
+if audio.get("default_runtime_kind") != "builtin" or audio.get("default_runtime_kind_source") != "config":
+  print("expected persisted builtin default after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+if audio.get("default_runtime_kind_available") is not False:
+  print("expected persisted builtin default to remain unavailable after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "not implemented" not in str(audio.get("default_runtime_kind_unavailable_reason") or ""):
+  print("expected builtin default unavailable reason after restart", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+BUILTIN_DEFAULT_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_default_builtin_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${BUILTIN_DEFAULT_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+set +e
+builtin_default_start_resp="$(curl -sS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${BUILTIN_DEFAULT_SESSION_ID}",
+  "action": "start",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab-default-builtin",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 904
+}))
+PY
+)" \
+  -w $'\n%{http_code}' \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+builtin_default_start_curl_rc=$?
+set -e
+if [[ ${builtin_default_start_curl_rc} -ne 0 ]]; then
+  echo "voice_webrtc_peer config-builtin-default start request failed to complete" >&2
+  exit 1
+fi
+
+builtin_default_start_code="$(printf '%s' "${builtin_default_start_resp}" | tail -n 1)"
+builtin_default_start_body="$(printf '%s' "${builtin_default_start_resp}" | sed '$d')"
+if [[ "${builtin_default_start_code}" != "501" ]]; then
+  echo "expected config builtin default start to return http 501, got ${builtin_default_start_code}" >&2
+  exit 1
+fi
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${builtin_default_start_body}''')
+if obj.get("ok") is not False:
+  print("expected config builtin default start to fail", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("default_runtime_kind") != "builtin" or obj.get("default_runtime_kind_source") != "config":
+  print("expected config-backed builtin default on start failure", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("default_runtime_kind_available") is not False:
+  print("expected unavailable builtin config default on start failure", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "not implemented" not in str(obj.get("error") or ""):
+  print("expected builtin not implemented error for config default start", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+BUILTIN_DEFAULT_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${BUILTIN_DEFAULT_SESSION_ID}")"
+curl -fsS --noproxy "*" --max-time 10 -X DELETE \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session?session_id=${BUILTIN_DEFAULT_SESSION_ID_Q}" >/dev/null
 
 restored_external_default_config_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \

@@ -273,7 +273,7 @@ static std::string discover_bundled_audio_peer_tool_path(const DaemonConfig& cfg
 
 static std::string configured_default_voice_peer_runtime_kind(const DaemonConfig& cfg) {
   const std::string kind = lower_copy(trim_copy(cfg.audio_webrtc_default_runtime_kind));
-  if (kind == "bundled" || kind == "external") return kind;
+  if (kind == "builtin" || kind == "bundled" || kind == "external") return kind;
   return "";
 }
 

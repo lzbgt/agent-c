@@ -254,7 +254,7 @@ static void fill_env_defaults(DaemonConfig* cfg) {
   if (cfg->audio_webrtc_default_runtime_kind.empty()) {
     if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND")) {
       const std::string kind = lower_copy(trim_copy(p));
-      if (kind == "bundled" || kind == "external") {
+      if (kind == "builtin" || kind == "bundled" || kind == "external") {
         cfg->audio_webrtc_default_runtime_kind = kind;
         cfg->audio_webrtc_default_runtime_kind_from_env = true;
       }

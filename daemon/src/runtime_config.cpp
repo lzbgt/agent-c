@@ -55,7 +55,7 @@ static bool is_safe_edge_id_token(const std::string& s_in) {
 
 static bool is_valid_voice_runtime_kind(const std::string& s_in) {
   const std::string s = lower_copy(trim_copy(s_in));
-  return s == "bundled" || s == "external";
+  return s == "builtin" || s == "bundled" || s == "external";
 }
 
 static bool is_valid_edge_consensus_runtime_kind(const std::string& s_in) {

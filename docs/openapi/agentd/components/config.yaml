@@ -49,7 +49,7 @@ AgentdConfigResponse:
             default_runtime_kind:
               type: string
               nullable: true
-              enum: [bundled, external]
+              enum: [builtin, bundled, external]
             default_runtime_kind_source:
               type: string
               enum: [auto, env, config]
@@ -351,7 +351,7 @@ AgentdConfigUpdateRequest:
         default_runtime_kind:
           type: string
           nullable: true
-          enum: [bundled, external]
+          enum: [builtin, bundled, external]
           description: Preferred default managed WebRTC backend when callers omit `runtime_kind` (null resets to auto selection)
         node_bin:
           type: string
@@ -443,7 +443,7 @@ AgentdConfigUpdateResponse:
         default_runtime_kind:
           type: string
           nullable: true
-          enum: [bundled, external]
+          enum: [builtin, bundled, external]
         default_runtime_kind_source:
           type: string
           enum: [auto, env, config]

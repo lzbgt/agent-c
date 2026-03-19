@@ -145,7 +145,7 @@ A v0 smoke test should:
   - `bundled_available=true|false`
   - `external_available=true|false`
   - `builtin_unavailable_reason`, `bundled_unavailable_reason`, `external_unavailable_reason`
-  - `default_runtime_kind=bundled|external`
+  - `default_runtime_kind=builtin|bundled|external`
   - `default_runtime_kind_source=auto|env|config`
   - `default_runtime_kind_available=true|false`
   - `default_runtime_kind_unavailable_reason`
@@ -192,10 +192,12 @@ A v0 smoke test should:
   broker-session path distinct from the agentd-owned auto-create path.
 - That managed runtime now also performs bounded startup confirmation and fails closed when the child exits before ready,
   cleaning up any agentd-owned broker audio session created for the failed start.
-- The operator-configured `external` backend seam is now also durable daemon config (`audio_webrtc.peer_tool_path`,
-  `audio_webrtc.node_bin`, `audio_webrtc.default_runtime_kind`) rather than env-only, and the main runtime smoke proves
-  both an explicit config-backed external path and a no-request config-defaulted external launch path. Daemon startup
-  also honors `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND`, which surfaces as `default_runtime_kind_source=env`.
+- The operator-configured backend seam is now also durable daemon config (`audio_webrtc.peer_tool_path`,
+  `audio_webrtc.node_bin`, `audio_webrtc.default_runtime_kind`) rather than env-only. `default_runtime_kind` may be
+  `builtin`, `bundled`, or `external`: config/env can intentionally pin the future native backend even though it still
+  surfaces as unavailable/not implemented today, and the main runtime smoke proves both builtin-default unavailability
+  and explicit config-backed external launch/default behavior. Daemon startup also honors
+  `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND`, which surfaces as `default_runtime_kind_source=env`.
 - Safe daemon config now reports the same backend availability facts (`builtin_available`, `bundled_available`,
   `external_available`, `default_runtime_kind_available`) plus unavailable reasons, so a configured default such as
   `external` can be seen as unavailable before start-time failure and misconfigured `node_bin` now shows up as an

@@ -389,7 +389,7 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   state for the session instead of rejecting unrelated backend values.
 - `GET /api/v1/session/voice_webrtc_peer?session_id=<id>` reports managed media-peer runtime status, readiness, and final result.
 - The current implementation exposes an explicit backend seam:
-  - `default_runtime_kind=bundled|external`
+  - `default_runtime_kind=builtin|bundled|external`
   - `default_runtime_kind_source=auto|env|config`
   - `default_runtime_kind_available=true|false`
   - `builtin_available=false`
@@ -443,14 +443,16 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `peer_tool_path` for `runtime_kind=external`, `node_bin` for bundled/external peer launch, and
   `default_runtime_kind` for no-request backend selection, so operators no longer have to rely only on process
   environment or implicit autodetect behavior to keep the managed WebRTC backend wired correctly across restarts.
+  That durable default may now intentionally be `builtin` too, which keeps the future native backend selected and
+  visible as unavailable/not implemented instead of self-healing it away.
 - `GET /api/v1/config` and `POST /api/v1/config/update` now expose the same safe backend-availability facts for that
   managed WebRTC lane:
   `builtin_available=false`, `bundled_available=true|false`, `external_available=true|false`,
   `default_runtime_kind_available=true|false`, plus per-backend unavailable reasons. That lets operators see when
   `default_runtime_kind=external` is persisted but currently unusable because the external helper seam is not
   configured, or when a configured backend is unlaunchable because `node_bin` is invalid/missing.
-- Daemon startup also honors `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND=bundled|external`; runtime/config status then
-  reports `default_runtime_kind_source=env` until a persisted daemon config override takes precedence.
+- Daemon startup also honors `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND=builtin|bundled|external`; runtime/config status
+  then reports `default_runtime_kind_source=env` until a persisted daemon config override takes precedence.
 - If persisted runtime config is corrupted to an invalid `audio_webrtc.default_runtime_kind`, agentd now self-heals it
   back to `auto` on load instead of reporting an impossible configured backend while silently falling back internally.
 - `POST /api/v1/session/voice_webrtc_peer` now also performs bounded startup confirmation. If the managed peer process
