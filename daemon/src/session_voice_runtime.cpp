@@ -4,14 +4,15 @@
 #include "http_client.h"
 #include "http_util.h"
 #include "json_util.h"
-#include "session_voice_backend_policy.h"
 #include "session_voice_backend_state.h"
 #include "session_voice_child_backend.h"
 #include "session_voice_builtin_backend.h"
 #include "session_voice_broker_client.h"
+#include "session_voice_runtime_cleanup.h"
 #include "session_voice_runtime_internal.h"
 #include "session_voice_runtime_lifecycle.h"
 #include "session_voice_runtime_registry.h"
+#include "session_voice_runtime_response.h"
 #include "session_voice_runtime_store.h"
 #include "session_voice_start_plan.h"
 #include "session_id_util.h"
@@ -23,71 +24,6 @@
 #include <memory>
 
 namespace agentd {
-namespace {
-
-static bool is_safe_printable_field(const std::string& s, size_t max_len) {
-  if (s.empty() || s.size() > max_len) return false;
-  for (unsigned char c : s) {
-    if (c < 0x20) return false;
-  }
-  return true;
-}
-
-static void voice_peer_add_runtime_metadata(const DaemonConfig& cfg, Json::Value* out) {
-  if (!out) return;
-  const Json::Value meta = session_voice_webrtc_backend_metadata_json(cfg);
-  for (const auto& name : meta.getMemberNames()) {
-    (*out)[name] = meta[name];
-  }
-}
-
-static void merge_json_object_fields(const Json::Value& src, Json::Value* dst) {
-  if (!dst || !src.isObject()) return;
-  for (const auto& name : src.getMemberNames()) {
-    (*dst)[name] = src[name];
-  }
-}
-
-static void voice_peer_apply_start_backend_failure(
-  const DaemonConfig& cfg,
-  std::mutex& runtime_mu,
-  const VoicePeerBackendStartResult& start_result,
-  Json::Value* out
-) {
-  if (!out) return;
-  if (start_result.state) {
-    std::lock_guard<std::mutex> lk(runtime_mu);
-    refresh_voice_peer_runtime_backend_state(start_result.state.get());
-    voice_peer_add_runtime_snapshot(cfg, *start_result.state, out);
-  }
-  if (!start_result.startup_cleanup.isNull()) {
-    (*out)["startup_confirmed"] = false;
-    (*out)["startup_cleanup"] = start_result.startup_cleanup;
-    if (start_result.startup_cleanup.isMember("broker_session_deleted")) {
-      (*out)["broker_session_deleted"] = start_result.startup_cleanup["broker_session_deleted"];
-    }
-    if (start_result.startup_cleanup.isMember("broker_session_delete_error")) {
-      (*out)["broker_session_delete_error"] = start_result.startup_cleanup["broker_session_delete_error"];
-    }
-    (*out)["peer"] = start_result.startup_cleanup.isMember("peer")
-      ? start_result.startup_cleanup["peer"]
-      : Json::Value(Json::nullValue);
-  }
-}
-
-static void voice_peer_apply_start_backend_success(
-  const DaemonConfig& cfg,
-  std::mutex& runtime_mu,
-  const VoicePeerBackendStartResult& start_result,
-  Json::Value* out
-) {
-  if (!out || !start_result.state) return;
-  std::lock_guard<std::mutex> lk(runtime_mu);
-  refresh_voice_peer_runtime_backend_state(start_result.state.get());
-  voice_peer_add_runtime_snapshot(cfg, *start_result.state, out);
-}
-
-}  // namespace
 
 void handle_session_voice_webrtc_peer_endpoint(
   const DaemonConfig& cfg,
@@ -351,95 +287,6 @@ void handle_session_voice_webrtc_peer_endpoint(
   out["ok"] = true;
   out["started"] = true;
   out["startup_confirmed"] = start_result.startup_confirmed;
-  resp->status = 200;
-  resp->body = json_stringify(out);
-}
-
-void handle_session_voice_webrtc_peer_status_endpoint(
-  const DaemonConfig& cfg,
-  const CorsConfig& cors_cfg,
-  AgentDb* db,
-  const HttpRequest& req,
-  HttpResponse* resp
-) {
-  cors_apply(req, resp, cors_cfg);
-  resp->headers["Content-Type"] = "application/json; charset=utf-8";
-  if (!daemon_require_auth(cfg, req, resp)) return;
-  if (!db || !db->is_open()) {
-    resp->status = 500;
-    resp->body = json_error_body("db not available");
-    return;
-  }
-
-  const auto sid = query_get(req.query, "session_id");
-  if (!sid || sid->empty() || !session_id_is_safe(*sid)) {
-    resp->status = 400;
-    resp->body = json_error_body("invalid session_id");
-    return;
-  }
-
-  Json::Value out(Json::objectValue);
-  out["ok"] = true;
-  out["session_id"] = *sid;
-  voice_peer_add_runtime_metadata(cfg, &out);
-
-  std::string err;
-  bool session_exists = false;
-  if (!db->session_exists(*sid, &session_exists, &err)) {
-    resp->status = 500;
-    out["ok"] = false;
-    out["error"] = err.empty() ? "failed to query session" : err;
-    resp->body = json_stringify(out);
-    return;
-  }
-  out["session_exists"] = session_exists;
-
-  std::shared_ptr<VoicePeerRuntime> st;
-  {
-    std::lock_guard<std::mutex> lk(voice_peer_runtime_registry_mutex());
-    st = voice_peer_runtime_lookup_locked(*sid);
-    if (st) refresh_voice_peer_runtime_backend_state(st.get());
-  }
-  if (!st) {
-    Json::Value recovery_updates(Json::objectValue);
-    std::string lerr;
-    if (!recover_voice_peer_runtime_record(cfg, db, *sid, &st, &recovery_updates, &lerr)) {
-      resp->status = 500;
-      out["ok"] = false;
-      out["error"] = lerr.empty() ? "failed to load persisted voice peer state" : lerr;
-      resp->body = json_stringify(out);
-      return;
-    }
-    merge_json_object_fields(recovery_updates, &out);
-    if (st && st->running) {
-      std::lock_guard<std::mutex> lk(voice_peer_runtime_registry_mutex());
-      voice_peer_runtime_store_locked(*sid, st);
-    }
-  }
-  if (!session_exists && st) {
-    Json::Value cleanup(Json::objectValue);
-    std::string cerr;
-    if (!cleanup_session_voice_webrtc_peer_runtime(cfg, db, *sid, "", &cleanup, &cerr)) {
-      resp->status = 500;
-      out["ok"] = false;
-      out["error"] = cerr.empty() ? "failed to clean up stale voice peer state" : cerr;
-      if (!cleanup.empty()) out["cleanup_on_missing_session"] = cleanup;
-      resp->body = json_stringify(out);
-      return;
-    }
-    out["cleanup_on_missing_session"] = cleanup;
-    st.reset();
-  }
-  if (st) {
-    std::string perr;
-    (void)persist_voice_peer_runtime_record(db, *st, &perr);
-  }
-  if (st) {
-    voice_peer_add_runtime_snapshot(cfg, *st, &out);
-  } else {
-    out["peer"] = Json::Value(Json::nullValue);
-  }
-  out["running"] = st ? st->running : false;
   resp->status = 200;
   resp->body = json_stringify(out);
 }
