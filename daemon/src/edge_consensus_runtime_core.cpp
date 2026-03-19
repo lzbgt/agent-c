@@ -1,5 +1,6 @@
 #include "edge_consensus_runtime_core.h"
 
+#include "edge_consensus_runtime_loop_adapter.h"
 #include "string_util.h"
 
 #include <chrono>
@@ -52,29 +53,7 @@ bool run_edge_consensus_runtime_core(
     return false;
   }
 
-  EdgeConsensusIdentity self;
-  self.cluster_id = cfg.cluster_id;
-  self.node_id = cfg.node_id;
-  self.manifest_sha256 = cfg.manifest_sha256;
-  self.membership_epoch = cfg.membership_epoch;
-  self.trust_epochs.trust_roots_epoch = cfg.trust_roots_epoch;
-  self.trust_epochs.revocations_epoch = cfg.revocations_epoch;
-  self.trust_epochs.cert_roots_epoch = cfg.cert_roots_epoch;
-
-  EdgeConsensusNodeLoopConfig loop_cfg;
-  loop_cfg.self = self;
-  loop_cfg.peer_node_ids = cfg.peer_node_ids;
-  loop_cfg.member_node_ids = cfg.member_node_ids;
-  loop_cfg.cluster_size = cfg.cluster_size;
-  loop_cfg.campaign_delay_ms = cfg.campaign_delay_ms;
-  loop_cfg.campaign_retry_ms = cfg.campaign_retry_ms;
-  loop_cfg.campaign_retry_max_ms = cfg.campaign_retry_max_ms;
-  loop_cfg.campaign_retry_backoff_factor = cfg.campaign_retry_backoff_factor;
-  loop_cfg.leader_heartbeat_ms = cfg.leader_heartbeat_ms;
-  loop_cfg.leader_lease_ms = cfg.leader_lease_ms;
-  loop_cfg.lease_expiry_recampaign_delay_ms = cfg.lease_expiry_recampaign_delay_ms;
-  loop_cfg.decision_sha256 = cfg.decision_sha256;
-  EdgeConsensusNodeLoop loop(loop_cfg);
+  EdgeConsensusNodeLoop loop(edge_consensus_runtime_node_loop_config(cfg));
   notify_startup_ready(hooks);
   status_update(hooks, loop);
   const int64_t started_ms = now_utc_ms();
@@ -83,12 +62,7 @@ bool run_edge_consensus_runtime_core(
 
   while (now_utc_ms() < deadline_at) {
     if (hooks.stop_requested && hooks.stop_requested->load()) {
-      Json::Value result(Json::objectValue);
-      result["ok"] = false;
-      result["node_id"] = cfg.node_id;
-      result["error"] = "stopped";
-      result["current_term"] = Json::UInt64(loop.replica().current_term());
-      result["status"] = loop.status_to_json();
+      Json::Value result = edge_consensus_runtime_loop_result_json(cfg, loop, false, "stopped");
       status_update(hooks, loop);
       *out_result = result;
       return true;
@@ -152,13 +126,7 @@ bool run_edge_consensus_runtime_core(
     }
 
     if (!trim_copy(loop.committed_decision_sha256()).empty()) {
-      Json::Value result(Json::objectValue);
-      result["ok"] = true;
-      result["node_id"] = cfg.node_id;
-      result["leader_node_id"] = loop.leader_node_id();
-      result["committed_decision_sha256"] = loop.committed_decision_sha256();
-      result["current_term"] = Json::UInt64(loop.replica().current_term());
-      result["status"] = loop.status_to_json();
+      Json::Value result = edge_consensus_runtime_loop_result_json(cfg, loop, true, "");
       status_update(hooks, loop);
       *out_result = result;
       return true;
@@ -167,12 +135,8 @@ bool run_edge_consensus_runtime_core(
     if (!processed_message) std::this_thread::sleep_for(std::chrono::milliseconds(cfg.poll_interval_ms));
   }
 
-  Json::Value result(Json::objectValue);
-  result["ok"] = false;
-  result["node_id"] = cfg.node_id;
-  result["error"] = "deadline exceeded before commit";
-  result["current_term"] = Json::UInt64(loop.replica().current_term());
-  result["status"] = loop.status_to_json();
+  Json::Value result = edge_consensus_runtime_loop_result_json(
+    cfg, loop, false, "deadline exceeded before commit");
   status_update(hooks, loop);
   *out_result = result;
   return true;

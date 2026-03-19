@@ -235,6 +235,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/edge_consensus_runtime_control.cpp
     daemon/src/edge_consensus_runtime_registry.cpp
     daemon/src/edge_consensus_runtime_core.cpp
+    daemon/src/edge_consensus_runtime_loop_adapter.cpp
     daemon/src/edge_consensus_runtime_backend.cpp
     daemon/src/edge_consensus_runtime_lifecycle.cpp
     daemon/src/edge_consensus_runtime_model.cpp
@@ -640,6 +641,15 @@ if(AGENT_BUILD_HOST)
   )
   target_link_libraries(edge_consensus_runtime_core_tests PRIVATE agentd_lib)
   add_test(NAME edge_consensus_runtime_core_tests COMMAND edge_consensus_runtime_core_tests)
+
+  add_executable(edge_consensus_runtime_loop_adapter_tests
+    tests/test_edge_consensus_runtime_loop_adapter.cpp
+  )
+  target_compile_options(edge_consensus_runtime_loop_adapter_tests PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_link_libraries(edge_consensus_runtime_loop_adapter_tests PRIVATE agentd_lib)
+  add_test(NAME edge_consensus_runtime_loop_adapter_tests COMMAND edge_consensus_runtime_loop_adapter_tests)
 
   add_executable(edge_consensus_runtime_registry_tests
     tests/test_edge_consensus_runtime_registry.cpp
