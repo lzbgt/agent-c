@@ -1001,8 +1001,14 @@ planned_runtime = contract.get("planned_runtime") or {}
 if planned_runtime.get("schema") != "session_voice_webrtc_peer_runtime_v1":
   print("expected builtin planned runtime schema", obj, file=sys.stderr)
   raise SystemExit(1)
+if planned_runtime.get("status_source") != "planned":
+  print("expected builtin planned runtime status_source=planned", obj, file=sys.stderr)
+  raise SystemExit(1)
 if planned_runtime.get("runtime_kind") != "builtin" or planned_runtime.get("session_id") != obj.get("session_id"):
   print("expected builtin planned runtime identity", obj, file=sys.stderr)
+  raise SystemExit(1)
+if planned_runtime.get("tool_path") != "@builtin" or planned_runtime.get("node_bin") != "@builtin":
+  print("expected builtin planned runtime builtin execution sentinels", obj, file=sys.stderr)
   raise SystemExit(1)
 if planned_runtime.get("managed_broker_session") is not True:
   print("expected builtin planned runtime managed broker session", obj, file=sys.stderr)
@@ -1024,6 +1030,12 @@ for key in ("runtime_kind", "session_id", "broker_url", "stdout_log_path", "stde
   if peer.get(key) != planned_runtime.get(key):
     print(f"expected builtin top-level peer preview to match planned_runtime for {key}", obj, file=sys.stderr)
     raise SystemExit(1)
+if peer.get("status_source") != "planned":
+  print("expected builtin top-level peer preview status_source=planned", obj, file=sys.stderr)
+  raise SystemExit(1)
+if peer.get("tool_path") != "@builtin" or peer.get("node_bin") != "@builtin":
+  print("expected builtin top-level peer preview builtin execution sentinels", obj, file=sys.stderr)
+  raise SystemExit(1)
 if peer.get("managed_broker_session") is not True or peer.get("running") is not False or peer.get("ready") is not False:
   print("expected builtin top-level peer preview state", obj, file=sys.stderr)
   raise SystemExit(1)

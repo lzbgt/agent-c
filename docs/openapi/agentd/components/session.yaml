@@ -88,7 +88,7 @@ VoiceWebRtcPeerRuntime:
       enum: [bundled, external]
     status_source:
       type: string
-      enum: [memory, persisted]
+      enum: [memory, persisted, planned]
     session_id: { type: string }
     broker_session_id: { type: string }
     broker_url: { type: string }

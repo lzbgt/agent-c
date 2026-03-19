@@ -47,9 +47,12 @@ static void test_borrowed_broker_session_contract() {
   assert(out["runtime_artifacts"]["stderr_log_path"].asString() == "/tmp/agentd-state/voice_webrtc_peers/voice-sid/stderr.log");
   assert(out["planned_runtime"]["schema"].asString() == "session_voice_webrtc_peer_runtime_v1");
   assert(out["planned_runtime"]["runtime_kind"].asString() == "builtin");
+  assert(out["planned_runtime"]["status_source"].asString() == "planned");
   assert(out["planned_runtime"]["session_id"].asString() == "voice-sid");
   assert(out["planned_runtime"]["broker_session_id"].asString() == "sess-1");
   assert(out["planned_runtime"]["managed_broker_session"].asBool() == false);
+  assert(out["planned_runtime"]["tool_path"].asString() == "@builtin");
+  assert(out["planned_runtime"]["node_bin"].asString() == "@builtin");
   assert(out["planned_runtime"]["ready"].asBool() == false);
   assert(out["planned_runtime"]["running"].asBool() == false);
   assert(out["planned_runtime"]["ready_file_path"].asString() == out["runtime_artifacts"]["ready_file_path"].asString());
@@ -82,10 +85,13 @@ static void test_auto_create_broker_session_contract() {
   assert(out["runtime_artifacts"]["stderr_format"].asString() == "text");
   assert(out["planned_runtime"]["schema"].asString() == "session_voice_webrtc_peer_runtime_v1");
   assert(out["planned_runtime"]["runtime_kind"].asString() == "builtin");
+  assert(out["planned_runtime"]["status_source"].asString() == "planned");
   assert(out["planned_runtime"]["session_id"].asString() == "voice-sid");
   assert(out["planned_runtime"]["managed_broker_session"].asBool() == true);
   assert(out["planned_runtime"]["broker_agent_id"].asString() == "agent-a");
   assert(out["planned_runtime"]["broker_deployment_id"].asString() == "deploy-b");
+  assert(out["planned_runtime"]["tool_path"].asString() == "@builtin");
+  assert(out["planned_runtime"]["node_bin"].asString() == "@builtin");
   assert(out["planned_runtime"]["broker_session_id"].isNull());
   assert(out["planned_runtime"]["stdout_log_path"].asString() == out["runtime_artifacts"]["stdout_log_path"].asString());
 }

@@ -1462,3 +1462,4 @@ Proof:
 - voice builtin start contract now exposes shared planned runtime artifact layout
 - voice builtin start contract now also exposes a runtime-schema-shaped planned runtime preview
 - valid builtin `501` starts now also surface that planned runtime preview through the normal top-level `peer` snapshot path
+- builtin runtime previews now mark `status_source=planned` and use explicit `@builtin` execution sentinels

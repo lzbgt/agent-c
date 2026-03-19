@@ -32,11 +32,14 @@ static void test_builtin_backend_returns_planned_runtime_state() {
   assert(result.http_status == 501);
   assert(result.state);
   assert(result.state->runtime_kind == "builtin");
+  assert(result.state->status_source == "planned");
   assert(result.state->session_id == "voice-sid");
   assert(result.state->broker_url == "http://broker");
   assert(result.state->managed_broker_session);
   assert(result.state->broker_agent_id == "agent-a");
   assert(result.state->broker_deployment_id == "deploy-b");
+  assert(result.state->tool_path == "@builtin");
+  assert(result.state->node_bin == "@builtin");
   assert(result.state->ready_file_path == "/tmp/agentd-state/voice_webrtc_peers/voice-sid/ready.json");
   assert(result.state->stdout_log_path == "/tmp/agentd-state/voice_webrtc_peers/voice-sid/stdout.jsonl");
   assert(result.state->stderr_log_path == "/tmp/agentd-state/voice_webrtc_peers/voice-sid/stderr.log");
@@ -59,6 +62,7 @@ static void test_builtin_backend_borrowed_session_preview_is_not_managed() {
   VoicePeerBackendStartResult result;
   assert(!start_voice_peer_builtin_backend(cfg, "voice-sid", plan, &result));
   assert(result.state);
+  assert(result.state->status_source == "planned");
   assert(!result.state->managed_broker_session);
   assert(result.state->broker_session_id == "sess-1");
 }

@@ -111,6 +111,7 @@ static void test_planned_runtime_matches_start_plan_and_artifacts() {
   const agentd::VoicePeerRuntime runtime =
     make_planned_voice_peer_runtime("voice-sid", plan, artifacts, "", true);
   assert(runtime.runtime_kind == "builtin");
+  assert(runtime.status_source == "planned");
   assert(runtime.session_id == "voice-sid");
   assert(runtime.broker_session_id.empty());
   assert(runtime.broker_url == "http://broker");
@@ -118,6 +119,8 @@ static void test_planned_runtime_matches_start_plan_and_artifacts() {
   assert(runtime.broker_agent_id == "agent-a");
   assert(runtime.broker_deployment_id == "deploy-b");
   assert(runtime.sender_tag == "agentd_runtime_peer");
+  assert(runtime.tool_path == "@builtin");
+  assert(runtime.node_bin == "@builtin");
   assert(runtime.ready_file_path == artifacts.ready_file_path);
   assert(runtime.stdout_log_path == artifacts.stdout_log_path);
   assert(runtime.stderr_log_path == artifacts.stderr_log_path);

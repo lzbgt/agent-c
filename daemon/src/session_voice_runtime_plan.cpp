@@ -57,6 +57,7 @@ VoicePeerRuntime make_planned_voice_peer_runtime(
 ) {
   VoicePeerRuntime runtime;
   runtime.runtime_kind = start_plan.runtime_kind;
+  runtime.status_source = "planned";
   runtime.session_id = trim_copy(session_id);
   runtime.broker_session_id = trim_copy(broker_session_id);
   runtime.broker_url = start_plan.effective_broker_url;
@@ -64,8 +65,10 @@ VoicePeerRuntime make_planned_voice_peer_runtime(
   runtime.broker_agent_id = start_plan.broker_agent_id;
   runtime.broker_deployment_id = start_plan.broker_deployment_id;
   runtime.sender_tag = start_plan.sender_tag;
-  runtime.tool_path = start_plan.resolved_tool_path;
-  runtime.node_bin = start_plan.resolved_node_bin;
+  runtime.tool_path =
+    start_plan.runtime_kind == "builtin" ? "@builtin" : start_plan.resolved_tool_path;
+  runtime.node_bin =
+    start_plan.runtime_kind == "builtin" ? "@builtin" : start_plan.resolved_node_bin;
   runtime.ready_file_path = artifacts.ready_file_path;
   runtime.stdout_log_path = artifacts.stdout_log_path;
   runtime.stderr_log_path = artifacts.stderr_log_path;
