@@ -292,6 +292,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/session_voice_signal_client.cpp
     daemon/src/session_voice_signal_negotiation.cpp
     daemon/src/session_voice_launch_flow.cpp
+    daemon/src/session_voice_process_plan.cpp
     daemon/src/session_voice_builtin_contract.cpp
     daemon/src/session_voice_builtin_backend.cpp
     daemon/src/session_voice_child_backend.cpp
@@ -642,6 +643,15 @@ if(AGENT_BUILD_HOST)
   )
   target_link_libraries(session_voice_runtime_plan_tests PRIVATE agentd_lib)
   add_test(NAME session_voice_runtime_plan_tests COMMAND session_voice_runtime_plan_tests)
+
+  add_executable(session_voice_process_plan_tests
+    tests/test_session_voice_process_plan.cpp
+  )
+  target_compile_options(session_voice_process_plan_tests PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_link_libraries(session_voice_process_plan_tests PRIVATE agentd_lib)
+  add_test(NAME session_voice_process_plan_tests COMMAND session_voice_process_plan_tests)
 
   add_executable(session_voice_runtime_store_tests
     tests/test_session_voice_runtime_store.cpp

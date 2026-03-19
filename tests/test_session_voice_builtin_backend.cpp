@@ -47,6 +47,10 @@ static void test_builtin_backend_returns_planned_runtime_state() {
   assert(!result.state->ready);
   assert(result.state->last_error == result.error);
   assert(result.backend_info["builtin_start_contract"].isObject());
+  assert(result.backend_info["builtin_start_contract"]["media_runtime_plan"]["schema"].asString() ==
+         "voice_webrtc_peer_media_runtime_plan_v1");
+  assert(result.backend_info["builtin_start_contract"]["media_runtime_plan"]["session_id"].asString() ==
+         "voice-sid");
 }
 
 static void test_builtin_backend_borrowed_session_preview_is_not_managed() {

@@ -450,8 +450,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
 - Valid reserved `runtime_kind=builtin` starts now also return `builtin_start_contract`, a structured summary of the
   broker/signaling/session parameters that a future native backend would consume (`broker_session.mode`,
   `sender_tag`, timing knobs, explicit `mutating_broker_actions_deferred=true`, and now the shared staged
-  `startup_sequence`) plus the shared planned runtime artifact layout (`runtime_artifacts.runtime_dir`,
-  `ready_file_path`, `stdout_log_path`, `stderr_log_path`) plus a schema-shaped `planned_runtime`
+  `startup_sequence`) plus a shared safe `media_runtime_plan` (broker/session/timing/ready-file inputs with no
+  broker token), plus the shared planned runtime artifact layout (`runtime_artifacts.runtime_dir`,
+  `ready_file_path`, `stdout_log_path`, `stderr_log_path`), plus a schema-shaped `planned_runtime`
   preview. That preview now reports `status_source=planned` and uses builtin sentinel execution fields
   (`tool_path="@builtin"`, `node_bin="@builtin"`), and the main response also surfaces that same preview through
   top-level `peer`, without persisting a fake runtime.

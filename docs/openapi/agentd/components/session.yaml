@@ -49,9 +49,37 @@ VoiceWebRtcPeerBuiltinRuntimeArtifacts:
       type: string
       enum: [text]
 
+VoiceWebRtcPeerMediaRuntimePlan:
+  type: object
+  required: [schema, signaling_surface, runtime_kind, session_id, broker_url, managed_broker_session, sender_tag, ready_signal, ready_file_path, deadline_ms, poll_interval_ms, tone_hz]
+  properties:
+    schema:
+      type: string
+      enum: [voice_webrtc_peer_media_runtime_plan_v1]
+    signaling_surface:
+      type: string
+      enum: [voice_webrtc_peer]
+    runtime_kind:
+      type: string
+      enum: [builtin, bundled, external]
+    session_id: { type: string }
+    broker_session_id: { type: string }
+    broker_url: { type: string }
+    managed_broker_session: { type: boolean }
+    broker_agent_id: { type: string }
+    broker_deployment_id: { type: string }
+    sender_tag: { type: string }
+    ready_signal:
+      type: string
+      enum: [ready_file]
+    ready_file_path: { type: string }
+    deadline_ms: { type: integer, format: int64 }
+    poll_interval_ms: { type: integer, format: int64 }
+    tone_hz: { type: integer, format: int64 }
+
 VoiceWebRtcPeerBuiltinStartContract:
   type: object
-  required: [session_id, runtime_kind, signaling_surface, broker_url, sender_tag, deadline_ms, poll_interval_ms, tone_hz, startup_wait_ms, mutating_broker_actions_deferred, startup_sequence, runtime_artifacts, broker_session, planned_runtime]
+  required: [session_id, runtime_kind, signaling_surface, broker_url, sender_tag, deadline_ms, poll_interval_ms, tone_hz, startup_wait_ms, mutating_broker_actions_deferred, startup_sequence, runtime_artifacts, broker_session, media_runtime_plan, planned_runtime]
   properties:
     session_id: { type: string }
     runtime_kind:
@@ -75,6 +103,8 @@ VoiceWebRtcPeerBuiltinStartContract:
       $ref: "#/components/schemas/VoiceWebRtcPeerBuiltinRuntimeArtifacts"
     broker_session:
       $ref: "#/components/schemas/VoiceWebRtcPeerBuiltinBrokerSessionContract"
+    media_runtime_plan:
+      $ref: "#/components/schemas/VoiceWebRtcPeerMediaRuntimePlan"
     planned_runtime:
       $ref: "#/components/schemas/VoiceWebRtcPeerRuntime"
 

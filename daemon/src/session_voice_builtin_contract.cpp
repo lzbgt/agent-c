@@ -1,6 +1,7 @@
 #include "session_voice_builtin_contract.h"
 
 #include "session_voice_launch_flow.h"
+#include "session_voice_process_plan.h"
 #include "session_voice_runtime_plan.h"
 #include "session_voice_runtime_store.h"
 
@@ -49,6 +50,13 @@ Json::Value session_voice_builtin_start_contract_json(
     planned_managed_broker_session = true;
   }
   out["broker_session"] = broker_session;
+  out["media_runtime_plan"] = voice_peer_media_runtime_plan_json(
+    make_voice_peer_media_runtime_plan(
+      session_id,
+      start_plan,
+      artifacts,
+      planned_broker_session_id,
+      planned_managed_broker_session));
   out["planned_runtime"] = voice_peer_runtime_to_json(
     make_planned_voice_peer_runtime(
       session_id,

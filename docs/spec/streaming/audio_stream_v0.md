@@ -238,8 +238,8 @@ A v0 smoke test should:
   final not-implemented response instead of bypassing those contract checks entirely.
 - Valid reserved `runtime_kind=builtin` requests now also return `builtin_start_contract`, which captures the native
   start intent (`broker_session` mode/details, `sender_tag`, timing knobs, staged startup sequence, and
-  `mutating_broker_actions_deferred=true`) plus the shared planned runtime artifact layout for the future native peer,
-  plus a runtime-schema-shaped `planned_runtime` preview with explicit `status_source=planned` and builtin execution
+  `mutating_broker_actions_deferred=true`) plus a shared safe `media_runtime_plan` for the future native peer,
+  plus the shared planned runtime artifact layout, plus a runtime-schema-shaped `planned_runtime` preview with explicit `status_source=planned` and builtin execution
   sentinels (`tool_path="@builtin"`, `node_bin="@builtin"`); the same valid builtin `501` response now also exposes
   that preview through top-level `peer`, without pretending the builtin media runtime already exists.
 - Those planned builtin previews now also fail closed at persistence boundaries: agentd refuses to persist

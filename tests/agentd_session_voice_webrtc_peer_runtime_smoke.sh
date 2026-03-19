@@ -997,6 +997,31 @@ if artifacts.get("stderr_log_path") != runtime_dir + "/stderr.log":
 if artifacts.get("stdout_format") != "jsonl" or artifacts.get("stderr_format") != "text":
   print("expected builtin runtime artifact format contract", obj, file=sys.stderr)
   raise SystemExit(1)
+media_plan = contract.get("media_runtime_plan") or {}
+if media_plan.get("schema") != "voice_webrtc_peer_media_runtime_plan_v1":
+  print("expected builtin media runtime plan schema", obj, file=sys.stderr)
+  raise SystemExit(1)
+if media_plan.get("signaling_surface") != "voice_webrtc_peer":
+  print("expected builtin media runtime signaling surface", obj, file=sys.stderr)
+  raise SystemExit(1)
+if media_plan.get("runtime_kind") != "builtin" or media_plan.get("session_id") != obj.get("session_id"):
+  print("expected builtin media runtime plan identity", obj, file=sys.stderr)
+  raise SystemExit(1)
+if media_plan.get("broker_session_id") is not None:
+  print("expected builtin auto-create media runtime plan to omit broker_session_id", obj, file=sys.stderr)
+  raise SystemExit(1)
+if media_plan.get("managed_broker_session") is not True:
+  print("expected builtin media runtime plan managed broker session", obj, file=sys.stderr)
+  raise SystemExit(1)
+if media_plan.get("broker_agent_id") != "a-1" or media_plan.get("broker_deployment_id") != "lab-builtin-contract":
+  print("expected builtin media runtime plan broker ownership metadata", obj, file=sys.stderr)
+  raise SystemExit(1)
+if media_plan.get("ready_signal") != "ready_file" or media_plan.get("ready_file_path") != artifacts.get("ready_file_path"):
+  print("expected builtin media runtime plan ready contract", obj, file=sys.stderr)
+  raise SystemExit(1)
+if media_plan.get("deadline_ms") != contract.get("deadline_ms") or media_plan.get("poll_interval_ms") != contract.get("poll_interval_ms") or media_plan.get("tone_hz") != contract.get("tone_hz"):
+  print("expected builtin media runtime timing contract", obj, file=sys.stderr)
+  raise SystemExit(1)
 planned_runtime = contract.get("planned_runtime") or {}
 if planned_runtime.get("schema") != "session_voice_webrtc_peer_runtime_v1":
   print("expected builtin planned runtime schema", obj, file=sys.stderr)

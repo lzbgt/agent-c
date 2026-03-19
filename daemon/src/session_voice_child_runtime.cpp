@@ -1,6 +1,7 @@
 #include "session_voice_child_runtime.h"
 
 #include "json_util.h"
+#include "session_voice_process_plan.h"
 #include "session_voice_runtime_plan.h"
 #include "session_voice_runtime_seed.h"
 #include "string_util.h"
@@ -223,35 +224,14 @@ bool voice_peer_spawn_process(
     if (max_fd < 0 || max_fd > 65536) max_fd = 4096;
     for (int fd = 3; fd < max_fd; ++fd) close(fd);
 
-    const std::string deadline_s = std::to_string((long long)launch_cfg.deadline_ms);
-    const std::string poll_s = std::to_string((long long)launch_cfg.poll_interval_ms);
-    const std::string tone_s = std::to_string((long long)launch_cfg.tone_hz);
-
-    std::vector<std::string> args;
-    args.push_back(launch_cfg.node_bin);
-    args.push_back(launch_cfg.tool_path);
-    args.push_back("--broker-url");
-    args.push_back(launch_cfg.broker_url);
-    args.push_back("--token");
-    args.push_back(launch_cfg.broker_token);
-    args.push_back("--session-id");
-    args.push_back(launch_cfg.broker_session_id);
-    args.push_back("--ready-file");
-    args.push_back(ready_file.string());
-    args.push_back("--deadline-ms");
-    args.push_back(deadline_s);
-    args.push_back("--poll-interval-ms");
-    args.push_back(poll_s);
-    args.push_back("--tone-hz");
-    args.push_back(tone_s);
-    if (!launch_cfg.sender_tag.empty()) {
-      args.push_back("--sender-tag");
-      args.push_back(launch_cfg.sender_tag);
-    }
+    const VoicePeerChildProcessPlan process_plan =
+      make_voice_peer_child_process_plan(launch_cfg, artifacts);
 
     std::vector<char*> argv;
-    argv.reserve(args.size() + 1);
-    for (auto& a : args) argv.push_back(const_cast<char*>(a.c_str()));
+    argv.reserve(process_plan.argv.size() + 1);
+    for (const auto& a : process_plan.argv) {
+      argv.push_back(const_cast<char*>(a.c_str()));
+    }
     argv.push_back(nullptr);
     execvp(launch_cfg.node_bin.c_str(), argv.data());
     _exit(127);
