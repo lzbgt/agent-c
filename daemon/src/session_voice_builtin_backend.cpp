@@ -23,20 +23,10 @@ bool start_voice_peer_builtin_backend(
   if (trim_copy(out_result->error).empty()) {
     out_result->error = "builtin voice_webrtc_peer runtime not implemented";
   }
-  const VoicePeerRuntimeArtifactsPlan artifacts =
-    plan_voice_peer_runtime_artifacts(cfg, session_id);
-  const VoicePeerBrokerSessionPlan broker_session_plan =
-    make_voice_peer_broker_session_plan(start_plan);
-  auto planned_state = std::make_shared<VoicePeerRuntime>(
-    make_planned_voice_peer_runtime(
-      session_id,
-      start_plan,
-      artifacts,
-      broker_session_plan));
-  planned_state->last_error = out_result->error;
-  out_result->state = std::move(planned_state);
-  out_result->backend_info["builtin_start_contract"] =
-    session_voice_builtin_start_contract_json(cfg, session_id, start_plan);
+  const VoicePeerBuiltinStartPreview preview =
+    build_voice_peer_builtin_start_preview(cfg, session_id, start_plan);
+  out_result->state = std::make_shared<VoicePeerRuntime>(preview.planned_runtime);
+  out_result->backend_info["builtin_start_contract"] = preview.contract;
   return false;
 }
 

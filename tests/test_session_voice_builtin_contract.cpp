@@ -1,4 +1,5 @@
 #include "session_voice_builtin_contract.h"
+#include "session_voice_runtime_store.h"
 
 #include <cassert>
 #include <string>
@@ -7,7 +8,9 @@ namespace {
 
 using agentd::VoicePeerStartPlan;
 using agentd::session_voice_builtin_start_contract_json;
+using agentd::build_voice_peer_builtin_start_preview;
 using agentd::DaemonConfig;
+using agentd::voice_peer_runtime_to_json;
 
 static void test_borrowed_broker_session_contract() {
   DaemonConfig cfg;
@@ -71,6 +74,11 @@ static void test_borrowed_broker_session_contract() {
   assert(out["broker_session"]["session_id"].asString() == "sess-1");
   assert(out["broker_session"]["preflighted"].asBool());
   assert(out["broker_session"]["session_mode"].asString() == "webrtc");
+
+  const agentd::VoicePeerBuiltinStartPreview preview =
+    build_voice_peer_builtin_start_preview(cfg, "voice-sid", plan);
+  assert(preview.contract == out);
+  assert(voice_peer_runtime_to_json(preview.planned_runtime) == out["planned_runtime"]);
 }
 
 static void test_auto_create_broker_session_contract() {
@@ -113,6 +121,11 @@ static void test_auto_create_broker_session_contract() {
   assert(out["planned_runtime"]["node_bin"].asString() == "@builtin");
   assert(out["planned_runtime"]["broker_session_id"].isNull());
   assert(out["planned_runtime"]["stdout_log_path"].asString() == out["runtime_artifacts"]["stdout_log_path"].asString());
+
+  const agentd::VoicePeerBuiltinStartPreview preview =
+    build_voice_peer_builtin_start_preview(cfg, "voice-sid", plan);
+  assert(preview.contract == out);
+  assert(voice_peer_runtime_to_json(preview.planned_runtime) == out["planned_runtime"]);
 }
 
 }  // namespace

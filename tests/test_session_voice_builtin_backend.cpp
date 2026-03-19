@@ -1,4 +1,5 @@
 #include "session_voice_builtin_backend.h"
+#include "session_voice_runtime_store.h"
 
 #include <cassert>
 #include <string>
@@ -9,6 +10,7 @@ using agentd::DaemonConfig;
 using agentd::VoicePeerBackendStartResult;
 using agentd::VoicePeerStartPlan;
 using agentd::start_voice_peer_builtin_backend;
+using agentd::voice_peer_runtime_to_json;
 
 static VoicePeerStartPlan make_plan() {
   VoicePeerStartPlan plan;
@@ -51,6 +53,8 @@ static void test_builtin_backend_returns_planned_runtime_state() {
          "voice_webrtc_peer_media_runtime_plan_v1");
   assert(result.backend_info["builtin_start_contract"]["media_runtime_plan"]["session_id"].asString() ==
          "voice-sid");
+  assert(voice_peer_runtime_to_json(*result.state) ==
+         result.backend_info["builtin_start_contract"]["planned_runtime"]);
 }
 
 static void test_builtin_backend_borrowed_session_preview_is_not_managed() {
@@ -69,6 +73,8 @@ static void test_builtin_backend_borrowed_session_preview_is_not_managed() {
   assert(result.state->status_source == "planned");
   assert(!result.state->managed_broker_session);
   assert(result.state->broker_session_id == "sess-1");
+  assert(voice_peer_runtime_to_json(*result.state) ==
+         result.backend_info["builtin_start_contract"]["planned_runtime"]);
 }
 
 }  // namespace
