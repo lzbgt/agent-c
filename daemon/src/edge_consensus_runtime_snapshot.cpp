@@ -41,6 +41,26 @@ bool edge_consensus_runtime_load_snapshot(
   return true;
 }
 
+bool edge_consensus_runtime_resolve_snapshot(
+  const DaemonConfig& cfg,
+  AgentDb* db,
+  const std::string& node_id,
+  EdgeConsensusRuntimeSnapshot* out,
+  Json::Value* out_recovery_updates,
+  std::string* out_err
+) {
+  if (out_recovery_updates) *out_recovery_updates = Json::Value(Json::objectValue);
+  if (!edge_consensus_runtime_load_snapshot(cfg, db, node_id, out, out_err)) return false;
+  if (out_recovery_updates && out) {
+    edge_consensus_runtime_append_recovery_updates(out->updates, out_recovery_updates);
+  }
+  if (!edge_consensus_runtime_reconcile_snapshot(cfg, db, node_id, out, out_err)) return false;
+  if (out_recovery_updates && out) {
+    edge_consensus_runtime_append_recovery_updates(out->updates, out_recovery_updates);
+  }
+  return true;
+}
+
 bool edge_consensus_runtime_reconcile_snapshot(
   const DaemonConfig& cfg,
   AgentDb* db,

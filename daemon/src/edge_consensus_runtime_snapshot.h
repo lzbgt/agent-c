@@ -25,6 +25,15 @@ bool edge_consensus_runtime_load_snapshot(
   std::string* out_err
 );
 
+bool edge_consensus_runtime_resolve_snapshot(
+  const DaemonConfig& cfg,
+  AgentDb* db,
+  const std::string& node_id,
+  EdgeConsensusRuntimeSnapshot* out,
+  Json::Value* out_recovery_updates,
+  std::string* out_err
+);
+
 bool edge_consensus_runtime_reconcile_snapshot(
   const DaemonConfig& cfg,
   AgentDb* db,

@@ -98,20 +98,14 @@ void handle_edge_node_consensus_runtime_endpoint(
   if (action == "stop") {
     EdgeConsensusRuntimeSnapshot snapshot;
     std::string lerr;
-    if (!edge_consensus_runtime_load_snapshot(cfg, db_or_null, node_id, &snapshot, &lerr)) {
-      out["error"] = lerr.empty() ? "failed to load persisted consensus runtime state" : lerr;
+    Json::Value recovery_updates(Json::objectValue);
+    if (!edge_consensus_runtime_resolve_snapshot(cfg, db_or_null, node_id, &snapshot, &recovery_updates, &lerr)) {
+      out["error"] = lerr.empty() ? "failed to resolve persisted consensus runtime state" : lerr;
       resp->status = 500;
       resp->body = json_stringify(out);
       return;
     }
-    edge_consensus_runtime_append_recovery_updates(snapshot.updates, &out);
-    if (!edge_consensus_runtime_reconcile_snapshot(cfg, db_or_null, node_id, &snapshot, &lerr)) {
-      out["error"] = lerr.empty() ? "failed to reconcile persisted consensus runtime state" : lerr;
-      resp->status = 500;
-      resp->body = json_stringify(out);
-      return;
-    }
-    edge_consensus_runtime_append_recovery_updates(snapshot.updates, &out);
+    edge_consensus_runtime_append_recovery_updates(recovery_updates, &out);
     std::shared_ptr<EdgeConsensusRuntime> st = snapshot.runtime;
     if (!st) {
       out["ok"] = true;
@@ -202,20 +196,14 @@ void handle_edge_node_consensus_runtime_endpoint(
   {
     EdgeConsensusRuntimeSnapshot snapshot;
     std::string lerr;
-    if (!edge_consensus_runtime_load_snapshot(cfg, db_or_null, node_id, &snapshot, &lerr)) {
-      out["error"] = lerr.empty() ? "failed to load persisted consensus runtime state" : lerr;
+    Json::Value recovery_updates(Json::objectValue);
+    if (!edge_consensus_runtime_resolve_snapshot(cfg, db_or_null, node_id, &snapshot, &recovery_updates, &lerr)) {
+      out["error"] = lerr.empty() ? "failed to resolve persisted consensus runtime state" : lerr;
       resp->status = 500;
       resp->body = json_stringify(out);
       return;
     }
-    edge_consensus_runtime_append_recovery_updates(snapshot.updates, &out);
-    if (!edge_consensus_runtime_reconcile_snapshot(cfg, db_or_null, node_id, &snapshot, &lerr)) {
-      out["error"] = lerr.empty() ? "failed to reconcile persisted consensus runtime state" : lerr;
-      resp->status = 500;
-      resp->body = json_stringify(out);
-      return;
-    }
-    edge_consensus_runtime_append_recovery_updates(snapshot.updates, &out);
+    edge_consensus_runtime_append_recovery_updates(recovery_updates, &out);
     auto st = snapshot.runtime;
     if (st && st->running) {
       EdgeConsensusRuntimeReuseResult reuse;
@@ -333,20 +321,14 @@ void handle_edge_node_consensus_runtime_status_endpoint(
 
   EdgeConsensusRuntimeSnapshot snapshot;
   std::string lerr;
-  if (!edge_consensus_runtime_load_snapshot(cfg, db_or_null, *nid, &snapshot, &lerr)) {
-    out["error"] = lerr.empty() ? "failed to load persisted consensus runtime state" : lerr;
+  Json::Value recovery_updates(Json::objectValue);
+  if (!edge_consensus_runtime_resolve_snapshot(cfg, db_or_null, *nid, &snapshot, &recovery_updates, &lerr)) {
+    out["error"] = lerr.empty() ? "failed to resolve persisted consensus runtime state" : lerr;
     resp->status = 500;
     resp->body = json_stringify(out);
     return;
   }
-  edge_consensus_runtime_append_recovery_updates(snapshot.updates, &out);
-  if (!edge_consensus_runtime_reconcile_snapshot(cfg, db_or_null, *nid, &snapshot, &lerr)) {
-    out["error"] = lerr.empty() ? "failed to reconcile persisted consensus runtime state" : lerr;
-    resp->status = 500;
-    resp->body = json_stringify(out);
-    return;
-  }
-  edge_consensus_runtime_append_recovery_updates(snapshot.updates, &out);
+  edge_consensus_runtime_append_recovery_updates(recovery_updates, &out);
   std::shared_ptr<EdgeConsensusRuntime> st = snapshot.runtime;
   out["runtime"] = st ? edge_consensus_runtime_response_json(cfg, *st) : Json::Value(Json::nullValue);
   if (st) {

@@ -63,10 +63,7 @@ void edge_consensus_runtime_forget_active(const std::string& node_id) {
 Json::Value edge_consensus_runtime_status_json_for_node(const DaemonConfig& cfg, AgentDb* db_or_null, const std::string& node_id) {
   EdgeConsensusRuntimeSnapshot snapshot;
   std::string err;
-  if (!edge_consensus_runtime_load_snapshot(cfg, db_or_null, node_id, &snapshot, &err)) {
-    return Json::Value(Json::nullValue);
-  }
-  if (!edge_consensus_runtime_reconcile_snapshot(cfg, db_or_null, node_id, &snapshot, &err)) {
+  if (!edge_consensus_runtime_resolve_snapshot(cfg, db_or_null, node_id, &snapshot, nullptr, &err)) {
     return Json::Value(Json::nullValue);
   }
   if (!snapshot.runtime) return Json::Value(Json::nullValue);

@@ -18,6 +18,7 @@ using agentd::EdgeConsensusRuntimeSnapshot;
 using agentd::clear_edge_consensus_runtime_record;
 using agentd::edge_consensus_runtime_forget_active;
 using agentd::edge_consensus_runtime_load_snapshot;
+using agentd::edge_consensus_runtime_resolve_snapshot;
 using agentd::edge_consensus_runtime_reconcile_snapshot;
 using agentd::edge_consensus_runtime_remember_active;
 using agentd::persist_edge_consensus_runtime_record;
@@ -159,6 +160,76 @@ static void test_reconcile_snapshot_adopts_persisted_external_runtime() {
 #endif
 }
 
+static void test_resolve_snapshot_collects_stale_cleanup_updates() {
+#if !defined(AGENT_HAVE_SQLITE3)
+  return;
+#else
+  const std::filesystem::path db_path = make_temp_db_path("edge_consensus_runtime_snapshot_resolve_builtin");
+  AgentDb db;
+  open_test_db(db_path, &db);
+
+  const std::filesystem::path state_dir =
+    std::filesystem::temp_directory_path() /
+    ("edge_consensus_runtime_snapshot_resolve_state_" + std::to_string((long long)getpid()));
+  std::error_code ec;
+  std::filesystem::remove_all(state_dir, ec);
+  const std::filesystem::path runtime_dir = state_dir / "edge_consensus_runtimes" / "node-resolve-builtin";
+  std::filesystem::create_directories(runtime_dir, ec);
+  assert(!ec);
+  {
+    FILE* f = std::fopen((runtime_dir / "stderr.log").string().c_str(), "w");
+    assert(f);
+    std::fputs("stale builtin\n", f);
+    std::fclose(f);
+  }
+
+  EdgeConsensusRuntime st = make_runtime("node-resolve-builtin", "builtin");
+  st.running = true;
+  st.stderr_log_path = (runtime_dir / "stderr.log").string();
+  std::string err;
+  assert(persist_edge_consensus_runtime_record(&db, st, &err));
+
+  DaemonConfig cfg;
+  cfg.state_dir = state_dir.string();
+  EdgeConsensusRuntimeSnapshot snapshot;
+  Json::Value updates(Json::objectValue);
+  assert(edge_consensus_runtime_resolve_snapshot(cfg, &db, st.node_id, &snapshot, &updates, &err));
+  assert(err.empty());
+  assert(!snapshot.runtime);
+  assert(updates["cleanup_on_stale_record"]["persisted_record_cleared"].asBool());
+  assert(updates["cleanup_on_stale_record"]["runtime_artifacts_deleted"].asBool());
+#endif
+}
+
+static void test_resolve_snapshot_adopts_persisted_external_runtime() {
+#if defined(_WIN32) || !defined(AGENT_HAVE_SQLITE3)
+  return;
+#else
+  const std::filesystem::path db_path = make_temp_db_path("edge_consensus_runtime_snapshot_resolve_external");
+  AgentDb db;
+  open_test_db(db_path, &db);
+
+  EdgeConsensusRuntime st = make_runtime("node-resolve-external", "external");
+  st.running = true;
+  st.pid = getpid();
+  std::string err;
+  assert(persist_edge_consensus_runtime_record(&db, st, &err));
+
+  EdgeConsensusRuntimeSnapshot snapshot;
+  Json::Value updates(Json::objectValue);
+  assert(edge_consensus_runtime_resolve_snapshot(DaemonConfig(), &db, st.node_id, &snapshot, &updates, &err));
+  assert(err.empty());
+  assert(snapshot.runtime);
+  assert(snapshot.runtime->running);
+  assert(updates.isObject());
+  assert(!updates.isMember("cleanup_on_stale_record"));
+  auto active = agentd::edge_consensus_runtime_lookup_active(st.node_id);
+  assert(active);
+  edge_consensus_runtime_forget_active(st.node_id);
+  assert(clear_edge_consensus_runtime_record(&db, st.node_id, &err));
+#endif
+}
+
 }  // namespace
 
 int main() {
@@ -166,5 +237,7 @@ int main() {
   test_load_snapshot_recovers_persisted_updates();
   test_reconcile_snapshot_clears_stale_builtin_runtime();
   test_reconcile_snapshot_adopts_persisted_external_runtime();
+  test_resolve_snapshot_collects_stale_cleanup_updates();
+  test_resolve_snapshot_adopts_persisted_external_runtime();
   return 0;
 }
