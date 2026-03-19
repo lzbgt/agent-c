@@ -2,6 +2,7 @@
 
 #include "daemon_auth.h"
 #include "edge_consensus_http_runtime.h"
+#include "edge_consensus_runtime_lifecycle.h"
 #include "edge_consensus_runtime_model.h"
 #include "edge_consensus_runtime_process_plan.h"
 #include "edge_consensus_runtime_policy.h"
@@ -53,34 +54,8 @@ static std::vector<std::string> dedupe_safe_edge_ids(const std::vector<std::stri
   return out;
 }
 
-#if !defined(_WIN32)
-static bool pid_is_running(pid_t pid) {
-  if (pid <= 0) return false;
-  if (::kill(pid, 0) == 0) return true;
-  return errno == EPERM;
-}
-#endif
-
 static std::mutex g_edge_consensus_runtime_mu;
 static std::unordered_map<std::string, std::shared_ptr<EdgeConsensusRuntime>> g_edge_consensus_runtime_by_node;
-
-static void refresh_edge_consensus_runtime_state(EdgeConsensusRuntime* st) {
-  if (!st) return;
-#if !defined(_WIN32)
-  if (st->runtime_kind == "external" && st->running && !pid_is_running(st->pid)) {
-    st->running = false;
-    if (st->ended_unix_ms <= 0) st->ended_unix_ms = now_unix_ms();
-  }
-#endif
-}
-
-static void finalize_recovered_edge_consensus_stop(EdgeConsensusRuntime* st, int signal_used) {
-  if (!st || signal_used <= 0) return;
-  if (st->status_source != "persisted" || st->running) return;
-  if (st->exit_signal != 0) return;
-  if (st->ended_unix_ms <= 0) st->ended_unix_ms = now_unix_ms();
-  st->exit_signal = signal_used;
-}
 
 static std::shared_ptr<EdgeConsensusRuntime> edge_consensus_runtime_lookup_locked(const std::string& node_id) {
   const auto it = g_edge_consensus_runtime_by_node.find(node_id);
@@ -299,107 +274,6 @@ static bool edge_consensus_runtime_start_builtin(
   return true;
 }
 
-static bool edge_consensus_runtime_kill_best_effort(
-  std::shared_ptr<EdgeConsensusRuntime> st,
-  int* out_signal_used,
-  std::string* out_err
-) {
-  if (out_signal_used) *out_signal_used = 0;
-  if (out_err) out_err->clear();
-  if (!st) return false;
-  refresh_edge_consensus_runtime_state(st.get());
-  if (!st->running) return true;
-  if (st->runtime_kind == "builtin") {
-    if (st->stop_requested) st->stop_requested->store(true);
-    const int64_t deadline = now_unix_ms() + 4000;
-    for (;;) {
-      {
-        std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
-        if (!st->running) return true;
-      }
-      if (now_unix_ms() >= deadline) break;
-      std::this_thread::sleep_for(std::chrono::milliseconds(25));
-    }
-    if (out_err) *out_err = "builtin runtime stop timeout";
-    return false;
-  }
-  if (::kill(st->pid, SIGTERM) != 0) {
-    if (errno == ESRCH) return true;
-    if (out_err) *out_err = std::string("kill(SIGTERM) failed: ") + std::strerror(errno);
-    return false;
-  }
-  if (out_signal_used) *out_signal_used = SIGTERM;
-  const int64_t deadline = now_unix_ms() + 1500;
-  for (;;) {
-    {
-      std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
-      refresh_edge_consensus_runtime_state(st.get());
-      if (!st->running) return true;
-    }
-    if (now_unix_ms() >= deadline) break;
-    std::this_thread::sleep_for(std::chrono::milliseconds(25));
-  }
-  if (::kill(st->pid, SIGKILL) != 0 && errno != ESRCH) {
-    if (out_err) *out_err = std::string("kill(SIGKILL) failed: ") + std::strerror(errno);
-    return false;
-  }
-  if (out_signal_used) *out_signal_used = SIGKILL;
-  return true;
-}
-
-static bool edge_consensus_runtime_confirm_startup(
-  const std::shared_ptr<EdgeConsensusRuntime>& st,
-  Json::Value* out_runtime,
-  std::string* out_err
-) {
-  if (out_err) out_err->clear();
-  if (out_runtime) *out_runtime = Json::Value(Json::nullValue);
-  if (!st) {
-    if (out_err) *out_err = "missing runtime";
-    return false;
-  }
-
-  const int64_t deadline = now_unix_ms() + 400;
-  for (;;) {
-    {
-      std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
-      if (st->startup_ready && st->startup_ready->load()) {
-        if (out_runtime) *out_runtime = edge_consensus_runtime_to_json(*st);
-        return true;
-      }
-      if (!st->running) {
-        const bool completed_ok =
-          st->exit_code == 0 ||
-          (st->last_stdout_json.isObject() &&
-           st->last_stdout_json.isMember("ok") &&
-           st->last_stdout_json["ok"].isBool() &&
-           st->last_stdout_json["ok"].asBool());
-        if (out_runtime) *out_runtime = edge_consensus_runtime_to_json(*st);
-        if (completed_ok) return true;
-        if (out_err) {
-          *out_err = !st->last_error.empty() ? st->last_error : "consensus runtime exited before startup confirmation";
-        }
-        return false;
-      }
-    }
-    if (now_unix_ms() >= deadline) break;
-    std::this_thread::sleep_for(std::chrono::milliseconds(25));
-  }
-
-  {
-    std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
-    if (st->startup_ready && !st->startup_ready->load()) {
-      if (out_runtime) *out_runtime = edge_consensus_runtime_to_json(*st);
-      if (out_err) *out_err = "consensus runtime did not confirm startup";
-      return false;
-    }
-  }
-  if (out_runtime) {
-    std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
-    *out_runtime = edge_consensus_runtime_to_json(*st);
-  }
-  return true;
-}
 #endif
 
 static Json::Value build_edge_node_consensus_summary(AgentDb* db_or_null, const std::string& node_id, bool* out_exists) {
@@ -611,7 +485,7 @@ void handle_edge_node_consensus_runtime_endpoint(
 #else
     std::string serr;
     int signal_used = 0;
-    if (!edge_consensus_runtime_kill_best_effort(st, &signal_used, &serr)) {
+    if (!edge_consensus_runtime_kill_best_effort(st, g_edge_consensus_runtime_mu, &signal_used, &serr)) {
       out["error"] = serr.empty() ? "failed to stop consensus runtime" : serr;
       {
         std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
@@ -787,7 +661,7 @@ void handle_edge_node_consensus_runtime_endpoint(
     return;
   }
   Json::Value startup_runtime(Json::nullValue);
-  if (!edge_consensus_runtime_confirm_startup(spawned, &startup_runtime, &serr)) {
+  if (!edge_consensus_runtime_confirm_startup(spawned, g_edge_consensus_runtime_mu, &startup_runtime, &serr)) {
     out["error"] = serr.empty() ? "failed to start consensus runtime" : serr;
     out["startup_confirmed"] = false;
     out["runtime"] = startup_runtime;
