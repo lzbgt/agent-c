@@ -221,6 +221,7 @@ contract map.
 - 2026-03-20: extracted the transport-agnostic edge consensus runtime core loop into `edge_consensus_runtime_core.cpp` with direct fake-transport proof for incomplete transport, hello failure, graceful stop, deadline expiry, and quorum commit.
 - 2026-03-20: extracted the active edge consensus runtime registry/status helpers into `edge_consensus_runtime_registry.cpp`, so edge interop discovery and the runtime endpoints now share one source of truth for active snapshots, persisted fallback, node-id enumeration, and stale builtin self-heal.
 - 2026-03-20: extracted persisted edge consensus runtime recovery semantics into `edge_consensus_runtime_recovery.cpp`, so stale builtin cleanup, external adoption, and response update propagation are shared across registry/status/start/stop paths instead of being reimplemented in each endpoint flow.
+- 2026-03-20: extracted consensus runtime start-path reuse/conflict evaluation into `edge_consensus_runtime_reuse.cpp`, so active-runtime and recovered-external idempotency/conflict handling now share one config-comparison contract and direct proof.
   - 2026-02-25: server-backed run watch prefs merged with localStorage; throttle server updates for cursor persistence.
 - [x] W=11 — Autonomous ops stack defaults: orchestrator + spawn adapter as first-class services (compose/systemd/launchd) with auto OIDC token refresh, so automation runs without the WebUI.
   - 2026-02-26: added `tools/run_autonomous_devstack.sh` wrapper for dev stacks.

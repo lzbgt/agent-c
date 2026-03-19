@@ -7,6 +7,7 @@
 #include "edge_consensus_runtime_model.h"
 #include "edge_consensus_runtime_policy.h"
 #include "edge_consensus_runtime_recovery.h"
+#include "edge_consensus_runtime_reuse.h"
 #include "edge_consensus_runtime_registry.h"
 #include "edge_consensus_runtime_store.h"
 #include "edge_util.h"
@@ -227,21 +228,23 @@ void handle_edge_node_consensus_runtime_endpoint(
       refresh_edge_consensus_runtime_state(st.get());
     }
     if (st && st->running) {
-      EdgeConsensusHttpRuntimeConfig desired_cfg;
-      EdgeConsensusRuntime desired_state;
-      std::string conflict_err;
-      if (!edge_consensus_runtime_build_config(cfg, body, &desired_cfg, &desired_state, &conflict_err)) {
-        out["error"] = conflict_err.empty() ? "failed to validate requested consensus runtime config" : conflict_err;
-        out["runtime"] = edge_consensus_runtime_response_json(cfg, *st);
+      EdgeConsensusRuntimeReuseResult reuse;
+      std::string reuse_err;
+      if (!edge_consensus_runtime_evaluate_reuse(cfg, body, runtime_kind, *st, &reuse, &reuse_err)) {
+        out["error"] = reuse_err.empty() ? "failed to evaluate running consensus runtime reuse" : reuse_err;
         resp->status = 400;
         resp->body = json_stringify(out);
         return;
       }
-      desired_state.runtime_kind = runtime_kind;
-      desired_state.tool_path = runtime_kind == "external" ? trim_copy(cfg.edge_consensus_node_tool_path) : "@builtin";
-      if (!edge_consensus_runtime_same_effective_config(*st, desired_state)) {
-        out["error"] = "consensus runtime already running with different config";
-        out["runtime"] = edge_consensus_runtime_response_json(cfg, *st);
+      out["runtime"] = reuse.runtime;
+      if (reuse.disposition == EdgeConsensusRuntimeReuseDisposition::invalid_request) {
+        out["error"] = reuse.error;
+        resp->status = 400;
+        resp->body = json_stringify(out);
+        return;
+      }
+      if (reuse.disposition == EdgeConsensusRuntimeReuseDisposition::conflict) {
+        out["error"] = reuse.error;
         resp->status = 409;
         resp->body = json_stringify(out);
         return;
@@ -280,23 +283,26 @@ void handle_edge_node_consensus_runtime_endpoint(
       }
       if (reconcile.disposition == EdgeConsensusPersistedRunningDisposition::active_external) {
         edge_consensus_runtime_remember_active(persisted);
-        EdgeConsensusHttpRuntimeConfig desired_cfg;
-        EdgeConsensusRuntime desired_state;
-        std::string conflict_err;
-        if (!edge_consensus_runtime_build_config(cfg, body, &desired_cfg, &desired_state, &conflict_err)) {
-          out["error"] = conflict_err.empty() ? "failed to validate requested consensus runtime config" : conflict_err;
+        EdgeConsensusRuntimeReuseResult reuse;
+        std::string reuse_err;
+        if (!edge_consensus_runtime_evaluate_reuse(cfg, body, runtime_kind, *persisted, &reuse, &reuse_err)) {
+          out["error"] = reuse_err.empty() ? "failed to evaluate running consensus runtime reuse" : reuse_err;
           out["runtime"] = edge_consensus_runtime_response_json(cfg, *persisted);
           resp->status = 400;
           resp->body = json_stringify(out);
           return;
         }
-        desired_state.runtime_kind = runtime_kind;
-        desired_state.tool_path = runtime_kind == "external" ? trim_copy(cfg.edge_consensus_node_tool_path) : "@builtin";
-        out["runtime"] = edge_consensus_runtime_response_json(cfg, *persisted);
+        out["runtime"] = reuse.runtime;
         std::string perr;
         (void)persist_edge_consensus_runtime_record(db_or_null, *persisted, &perr);
-        if (!edge_consensus_runtime_same_effective_config(*persisted, desired_state)) {
-          out["error"] = "consensus runtime already running with different config";
+        if (reuse.disposition == EdgeConsensusRuntimeReuseDisposition::invalid_request) {
+          out["error"] = reuse.error;
+          resp->status = 400;
+          resp->body = json_stringify(out);
+          return;
+        }
+        if (reuse.disposition == EdgeConsensusRuntimeReuseDisposition::conflict) {
+          out["error"] = reuse.error;
           resp->status = 409;
           resp->body = json_stringify(out);
           return;
