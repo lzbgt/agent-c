@@ -2511,6 +2511,11 @@
   get:
     tags: [edge]
     summary: Get node registry record (summary)
+    description: |
+      Returns the stored edge-node registry record when present. If no registry row exists
+      but a managed consensus runtime does, the response now falls back to a synthetic
+      runtime-backed node record with zero `last_hello_utc_ms` / `last_heartbeat_utc_ms`,
+      `has_manifest=false`, and the current `consensus_runtime` snapshot.
     parameters:
       - in: query
         name: node_id

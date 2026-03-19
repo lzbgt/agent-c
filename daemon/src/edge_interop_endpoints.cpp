@@ -154,6 +154,88 @@ static Json::Value parse_health_json_best_effort(const std::string& health_json)
   return out;
 }
 
+static Json::Value build_edge_node_summary_json(
+  const AgentDb::EdgeNodeRow* row_or_null,
+  const Json::Value& runtime_or_null,
+  const std::string& fallback_node_id
+) {
+  Json::Value row(Json::objectValue);
+  const std::string runtime_node_id =
+    runtime_or_null.isObject() && runtime_or_null.isMember("node_id") && runtime_or_null["node_id"].isString()
+      ? trim_copy(runtime_or_null["node_id"].asString())
+      : std::string();
+  const std::string node_id = row_or_null ? row_or_null->node_id : (!runtime_node_id.empty() ? runtime_node_id : fallback_node_id);
+  row["node_id"] = node_id;
+
+  if (row_or_null) {
+    if (!row_or_null->model.empty()) row["model"] = row_or_null->model;
+    if (!row_or_null->fw_git_sha.empty()) row["fw_git_sha"] = row_or_null->fw_git_sha;
+    if (!row_or_null->caps_sha256.empty()) row["caps_sha256"] = row_or_null->caps_sha256;
+    row["last_hello_utc_ms"] = (Json::Int64)row_or_null->last_hello_utc_ms;
+    row["last_heartbeat_utc_ms"] = (Json::Int64)row_or_null->last_heartbeat_utc_ms;
+    if (!row_or_null->health_json.empty()) {
+      Json::Value v;
+      std::string perr2;
+      if (json_parse_any(row_or_null->health_json, &v, &perr2) && v.isObject()) {
+        row["health"] = v;
+        if (v.isMember("consensus") && v["consensus"].isObject()) row["consensus"] = v["consensus"];
+      }
+    }
+  } else {
+    if (runtime_or_null.isObject() && runtime_or_null.isMember("model") && runtime_or_null["model"].isString()) {
+      row["model"] = trim_copy(runtime_or_null["model"].asString());
+    }
+    if (runtime_or_null.isObject() && runtime_or_null.isMember("fw_git_sha") && runtime_or_null["fw_git_sha"].isString()) {
+      row["fw_git_sha"] = trim_copy(runtime_or_null["fw_git_sha"].asString());
+    }
+    row["last_hello_utc_ms"] = (Json::Int64)0;
+    row["last_heartbeat_utc_ms"] = (Json::Int64)0;
+  }
+
+  if (runtime_or_null.isObject()) row["consensus_runtime"] = runtime_or_null;
+  return row;
+}
+
+static void append_edge_node_detail_json(
+  const DaemonConfig& cfg,
+  const AgentDb::EdgeNodeRow* row_or_null,
+  Json::Value* out
+) {
+  if (!out || !out->isObject()) return;
+  if (!row_or_null) {
+    (*out)["has_manifest"] = false;
+    return;
+  }
+  if (!row_or_null->tags_json.empty()) {
+    Json::Value v;
+    std::string perr2;
+    if (json_parse_any(row_or_null->tags_json, &v, &perr2) && v.isArray()) (*out)["tags"] = v;
+  }
+  if (!row_or_null->tools_json.empty()) {
+    Json::Value v;
+    std::string perr2;
+    if (json_parse_any(row_or_null->tools_json, &v, &perr2) && v.isArray()) (*out)["tools"] = v;
+  }
+  if (!row_or_null->hardware_presence_json.empty()) {
+    Json::Value v;
+    std::string perr2;
+    if (json_parse_any(row_or_null->hardware_presence_json, &v, &perr2) && v.isObject()) (*out)["hardware_presence"] = v;
+  }
+  if (!row_or_null->manifest_json.empty()) {
+    Json::Value manifest;
+    std::string perr2;
+    Json::Value verify(Json::nullValue);
+    bool have_identity_cert = false;
+    std::string verr;
+    if (json_parse_any(row_or_null->manifest_json, &manifest, &perr2) && manifest.isObject() &&
+        build_manifest_identity_cert_verify(cfg, manifest, &verify, &have_identity_cert, &verr) &&
+        have_identity_cert && verify.isObject()) {
+      (*out)["identity_cert_verify"] = verify;
+    }
+  }
+  (*out)["has_manifest"] = !row_or_null->manifest_json.empty();
+}
+
 static bool collect_consensus_target_node_ids(
   const Json::Value& body,
   const std::string& env_to,
@@ -2090,23 +2172,8 @@ void handle_edge_nodes_endpoint(
   o["ok"] = true;
   Json::Value arr(Json::arrayValue);
   for (const auto& n : nodes) {
-    Json::Value row(Json::objectValue);
-    row["node_id"] = n.node_id;
-    if (!n.model.empty()) row["model"] = n.model;
-    if (!n.fw_git_sha.empty()) row["fw_git_sha"] = n.fw_git_sha;
-    if (!n.caps_sha256.empty()) row["caps_sha256"] = n.caps_sha256;
-    row["last_hello_utc_ms"] = (Json::Int64)n.last_hello_utc_ms;
-    row["last_heartbeat_utc_ms"] = (Json::Int64)n.last_heartbeat_utc_ms;
-    if (!n.health_json.empty()) {
-      Json::Value v;
-      std::string perr2;
-      if (json_parse_any(n.health_json, &v, &perr2) && v.isObject() &&
-          v.isMember("consensus") && v["consensus"].isObject()) {
-        row["consensus"] = v["consensus"];
-      }
-    }
     Json::Value runtime = edge_consensus_runtime_status_json_for_node(cfg, db_or_null, n.node_id);
-    if (runtime.isObject()) row["consensus_runtime"] = runtime;
+    Json::Value row = build_edge_node_summary_json(&n, runtime, n.node_id);
     arr.append(row);
   }
   o["nodes"] = arr;
@@ -2139,59 +2206,24 @@ void handle_edge_node_endpoint(
 
   AgentDb::EdgeNodeRow n;
   std::string err;
+  Json::Value runtime = edge_consensus_runtime_status_json_for_node(cfg, db_or_null, *nid);
+  Json::Value o(Json::objectValue);
+  o["ok"] = true;
   if (!db_or_null->get_edge_node(*nid, &n, &err)) {
-    resp->status = 404;
-    resp->body = json_error_body("node not found");
+    if (!runtime.isObject()) {
+      resp->status = 404;
+      resp->body = json_error_body("node not found");
+      return;
+    }
+    Json::Value row = build_edge_node_summary_json(nullptr, runtime, *nid);
+    append_edge_node_detail_json(cfg, nullptr, &row);
+    o["node"] = row;
+    resp->body = edge_json_stringify_compact(o);
     return;
   }
 
-  Json::Value o(Json::objectValue);
-  o["ok"] = true;
-  Json::Value row(Json::objectValue);
-  row["node_id"] = n.node_id;
-  if (!n.model.empty()) row["model"] = n.model;
-  if (!n.fw_git_sha.empty()) row["fw_git_sha"] = n.fw_git_sha;
-  if (!n.caps_sha256.empty()) row["caps_sha256"] = n.caps_sha256;
-  row["last_hello_utc_ms"] = (Json::Int64)n.last_hello_utc_ms;
-  row["last_heartbeat_utc_ms"] = (Json::Int64)n.last_heartbeat_utc_ms;
-  if (!n.tags_json.empty()) {
-    Json::Value v;
-    std::string perr2;
-    if (json_parse_any(n.tags_json, &v, &perr2) && v.isArray()) row["tags"] = v;
-  }
-  if (!n.tools_json.empty()) {
-    Json::Value v;
-    std::string perr2;
-    if (json_parse_any(n.tools_json, &v, &perr2) && v.isArray()) row["tools"] = v;
-  }
-  if (!n.hardware_presence_json.empty()) {
-    Json::Value v;
-    std::string perr2;
-    if (json_parse_any(n.hardware_presence_json, &v, &perr2) && v.isObject()) row["hardware_presence"] = v;
-  }
-  if (!n.health_json.empty()) {
-    Json::Value v;
-    std::string perr2;
-    if (json_parse_any(n.health_json, &v, &perr2) && v.isObject()) {
-      row["health"] = v;
-      if (v.isMember("consensus") && v["consensus"].isObject()) row["consensus"] = v["consensus"];
-    }
-  }
-  Json::Value runtime = edge_consensus_runtime_status_json_for_node(cfg, db_or_null, n.node_id);
-  if (runtime.isObject()) row["consensus_runtime"] = runtime;
-  if (!n.manifest_json.empty()) {
-    Json::Value manifest;
-    std::string perr2;
-    Json::Value verify(Json::nullValue);
-    bool have_identity_cert = false;
-    std::string verr;
-    if (json_parse_any(n.manifest_json, &manifest, &perr2) && manifest.isObject() &&
-        build_manifest_identity_cert_verify(cfg, manifest, &verify, &have_identity_cert, &verr) &&
-        have_identity_cert && verify.isObject()) {
-      row["identity_cert_verify"] = verify;
-    }
-  }
-  row["has_manifest"] = !n.manifest_json.empty();
+  Json::Value row = build_edge_node_summary_json(&n, runtime, *nid);
+  append_edge_node_detail_json(cfg, &n, &row);
   o["node"] = row;
   resp->body = edge_json_stringify_compact(o);
 }

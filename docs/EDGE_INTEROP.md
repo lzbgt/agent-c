@@ -301,6 +301,9 @@ Manifest bundle note:
 - Agentd can now own the lifecycle of the shipped autonomous consensus loop directly through a builtin runtime backend;
   `GET /api/v1/edge/node` and `GET /api/v1/edge/nodes` surface `consensus_runtime` when a node has a managed runtime
   record alongside the existing protocol-level `consensus` summary.
+- `GET /api/v1/edge/node?node_id=...` now also falls back to a synthetic runtime-backed node record when no stored
+  hello/caps row exists but managed consensus runtime state does, so runtime-only nodes remain inspectable without
+  inventing a manifest-backed registry entry.
 - The shipped helper is no longer the only place the loop exists: the election scheduler and frame-routing logic now
   live in reusable core code (`EdgeConsensusNodeLoop`) plus a shared HTTP runtime core (`run_edge_consensus_http_runtime`),
   which is the intended stepping stone toward embedded/node-native adoption.

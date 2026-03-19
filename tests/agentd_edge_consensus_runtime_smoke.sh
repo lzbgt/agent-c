@@ -358,6 +358,16 @@ DAEMON_URL="http://${HOST}:${PORT_DAEMON}"
 agentd_smoke_wait_health "${DAEMON_URL}" "${DAEMON_TOKEN}"
 
 STOP_RESTART_STATUS_JSON="$(wait_runtime_stopped_persisted "${STOP_NODE}")"
+python3 - <<PY
+import sqlite3
+conn = sqlite3.connect(r'''${TEST_DB}''')
+try:
+    conn.execute("DELETE FROM edge_nodes WHERE node_id = ?", (r'''${STOP_NODE}''',))
+    conn.commit()
+finally:
+    conn.close()
+PY
+STOP_RESTART_NODE_JSON="$(curl_json GET "/api/v1/edge/node?node_id=${STOP_NODE}")"
 
 START_STALE_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
 {"action":"start","node_id":"${STALE_NODE}","cluster_id":"${STALE_CLUSTER}","manifest_sha256":"${STALE_SHA}","deadline_ms":30000,"poll_interval_ms":100}
@@ -491,6 +501,16 @@ DAEMON_URL="http://${HOST}:${PORT_DAEMON}"
 agentd_smoke_wait_health "${DAEMON_URL}" "${DAEMON_TOKEN}"
 
 EXT_RESTART_STATUS_JSON="$(wait_runtime_running_persisted "${EXT_NODE}")"
+python3 - <<PY
+import sqlite3
+conn = sqlite3.connect(r'''${TEST_DB}''')
+try:
+    conn.execute("DELETE FROM edge_nodes WHERE node_id = ?", (r'''${EXT_NODE}''',))
+    conn.commit()
+finally:
+    conn.close()
+PY
+EXT_RESTART_NODE_JSON="$(curl_json GET "/api/v1/edge/node?node_id=${EXT_NODE}")"
 START_EXT_AGAIN_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
 {"action":"start","node_id":"${EXT_NODE}","cluster_id":"${EXT_CLUSTER}","manifest_sha256":"${EXT_SHA}","member_node_ids":["${EXT_NODE}","${EXT_PEER}"],"cluster_size":2,"deadline_ms":30000,"poll_interval_ms":100}
 JSON
@@ -586,6 +606,7 @@ false_bin = "${FALSE_BIN}"
 db_path = r'''${TEST_DB}'''
 
 stop_restart_status = json.loads(r'''${STOP_RESTART_STATUS_JSON}''')
+stop_restart_node = json.loads(r'''${STOP_RESTART_NODE_JSON}''')
 start_stale = json.loads(r'''${START_STALE_JSON}''')
 running_stale = json.loads(r'''${RUNNING_STALE_JSON}''')
 stale_status = json.loads(r'''${STALE_STATUS_JSON}''')
@@ -615,6 +636,7 @@ config_restart = json.loads(r'''${CONFIG_RESTART_JSON}''')
 start_ext = json.loads(r'''${START_EXT_JSON}''')
 running_ext = json.loads(r'''${RUNNING_EXT_JSON}''')
 ext_restart_status = json.loads(r'''${EXT_RESTART_STATUS_JSON}''')
+ext_restart_node = json.loads(r'''${EXT_RESTART_NODE_JSON}''')
 start_ext_again = json.loads(r'''${START_EXT_AGAIN_JSON}''')
 conflict_start = json.loads(r'''${CONFLICT_START_JSON}''')
 stop_ext = json.loads(r'''${STOP_EXT_JSON}''')
@@ -644,6 +666,19 @@ if stop_restart_rt.get("status_source") != "persisted" or stop_restart_rt.get("r
   raise SystemExit(1)
 if stop_restart_rt.get("running"):
   print("stop restart status unexpectedly recovered a running runtime", stop_restart_status, file=sys.stderr)
+  raise SystemExit(1)
+stop_restart_node_rt = ((stop_restart_node.get("node") or {}).get("consensus_runtime") or {})
+if stop_restart_node.get("ok") is not True:
+  print("runtime-backed edge/node lookup failed for persisted builtin runtime", stop_restart_node, file=sys.stderr)
+  raise SystemExit(1)
+if (stop_restart_node.get("node") or {}).get("last_hello_utc_ms") != 0 or (stop_restart_node.get("node") or {}).get("last_heartbeat_utc_ms") != 0:
+  print("runtime-backed persisted builtin node lookup should synthesize zero timestamps", stop_restart_node, file=sys.stderr)
+  raise SystemExit(1)
+if (stop_restart_node.get("node") or {}).get("has_manifest") is not False:
+  print("runtime-backed persisted builtin node lookup should report has_manifest=false", stop_restart_node, file=sys.stderr)
+  raise SystemExit(1)
+if stop_restart_node_rt.get("status_source") != "persisted" or stop_restart_node_rt.get("runtime_kind") != "builtin" or stop_restart_node_rt.get("running"):
+  print("runtime-backed edge/node lookup lost persisted builtin runtime snapshot", stop_restart_node, file=sys.stderr)
   raise SystemExit(1)
 if start_stale.get("startup_confirmed") is not True or (start_stale.get("runtime") or {}).get("runtime_kind") != "builtin":
   print("stale runtime start wrong", start_stale, file=sys.stderr)
@@ -824,6 +859,19 @@ if not (ext_restart_status.get("runtime") or {}).get("running"):
   raise SystemExit(1)
 if (ext_restart_status.get("runtime") or {}).get("runtime_kind") != "external":
   print("external restart runtime kind mismatch", ext_restart_status, file=sys.stderr)
+  raise SystemExit(1)
+ext_restart_node_rt = ((ext_restart_node.get("node") or {}).get("consensus_runtime") or {})
+if ext_restart_node.get("ok") is not True:
+  print("runtime-backed edge/node lookup failed for recovered external runtime", ext_restart_node, file=sys.stderr)
+  raise SystemExit(1)
+if (ext_restart_node.get("node") or {}).get("last_hello_utc_ms") != 0 or (ext_restart_node.get("node") or {}).get("last_heartbeat_utc_ms") != 0:
+  print("runtime-backed recovered external node lookup should synthesize zero timestamps", ext_restart_node, file=sys.stderr)
+  raise SystemExit(1)
+if (ext_restart_node.get("node") or {}).get("has_manifest") is not False:
+  print("runtime-backed recovered external node lookup should report has_manifest=false", ext_restart_node, file=sys.stderr)
+  raise SystemExit(1)
+if ext_restart_node_rt.get("status_source") != "persisted" or ext_restart_node_rt.get("runtime_kind") != "external" or not ext_restart_node_rt.get("running"):
+  print("runtime-backed edge/node lookup lost recovered external runtime", ext_restart_node, file=sys.stderr)
   raise SystemExit(1)
 if not start_ext_again.get("ok") or start_ext_again.get("already_running") is not True:
   print("identical external re-start did not stay idempotent", start_ext_again, file=sys.stderr)
