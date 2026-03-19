@@ -2,28 +2,9 @@
 
 #include "session_voice_backend_state.h"
 #include "session_voice_broker_client.h"
-#include "session_voice_child_runtime.h"
 #include "string_util.h"
 
-#include <chrono>
-#include <thread>
-
-#if !defined(_WIN32)
-#include <csignal>
-#endif
-
 namespace agentd {
-namespace {
-
-int64_t now_unix_ms() {
-  using namespace std::chrono;
-  return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
-           std::chrono::system_clock::now().time_since_epoch())
-    .count();
-}
-
-}  // namespace
-
 bool stop_voice_peer_runtime_process(
   const std::shared_ptr<VoicePeerRuntime>& st,
   std::mutex& runtime_mu,
@@ -45,43 +26,13 @@ bool stop_voice_peer_runtime_process(
   }
   const bool was_running = out_result ? out_result->was_running : st->running;
 
-  if (st->runtime_kind == "builtin") {
-    if (was_running) {
-      std::lock_guard<std::mutex> lk(runtime_mu);
-      st->running = false;
-      st->ready = false;
-      if (st->ended_unix_ms <= 0) st->ended_unix_ms = now_unix_ms();
-      if (st->last_error.empty()) st->last_error = "builtin voice_webrtc_peer runtime not implemented";
-    }
-    if (out_result) out_result->stopped = was_running;
-    return true;
-  }
-
-#if defined(_WIN32)
-  if (st->running) {
-    if (out_err) *out_err = "voice_webrtc_peer stop unsupported on Windows";
-    return false;
-  }
-  if (out_result) out_result->stopped = false;
-  return true;
-#else
-  int signal_used = 0;
-  if (was_running && !voice_peer_kill_best_effort(st, runtime_mu, &signal_used, out_err)) {
-    return false;
-  }
   bool stopped = false;
-  if (was_running) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    stopped = wait_for_voice_peer_stop(st, runtime_mu, timeout_ms);
-  }
-  {
-    std::lock_guard<std::mutex> lk(runtime_mu);
-    refresh_voice_peer_runtime_backend_state(st.get());
-    finalize_recovered_voice_peer_stop(st.get(), signal_used);
+  if (!stop_voice_peer_runtime_backend_process(
+        st, runtime_mu, timeout_ms, was_running, &stopped, out_err)) {
+    return false;
   }
   if (out_result) out_result->stopped = stopped;
   return true;
-#endif
 }
 
 bool stop_voice_peer_runtime_with_broker_cleanup(

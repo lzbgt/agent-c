@@ -2,7 +2,6 @@
 
 #include "session_voice_backend_state.h"
 #include "session_voice_broker_client.h"
-#include "session_voice_child_runtime.h"
 #include "session_voice_runtime_lifecycle.h"
 #include "session_voice_runtime_registry.h"
 #include "session_voice_runtime_store.h"
@@ -84,7 +83,9 @@ bool cleanup_session_voice_webrtc_peer_runtime(
 
   bool artifacts_deleted = false;
   std::string aerr;
-  if (!remove_voice_peer_runtime_artifacts(cfg, session_id, &artifacts_deleted, &aerr)) {
+  const std::string runtime_kind = st ? st->runtime_kind : std::string();
+  if (!remove_voice_peer_runtime_backend_artifacts(
+        cfg, session_id, runtime_kind, &artifacts_deleted, &aerr)) {
     if (out_err) *out_err = aerr.empty() ? "failed to remove voice peer runtime artifacts" : aerr;
     return false;
   }

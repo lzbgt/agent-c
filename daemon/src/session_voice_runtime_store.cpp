@@ -4,7 +4,6 @@
 #include "session_voice_backend_policy.h"
 #include "session_voice_backend_state.h"
 #include "session_voice_broker_client.h"
-#include "session_voice_child_runtime.h"
 #include "string_util.h"
 
 #include <chrono>
@@ -305,9 +304,10 @@ bool recover_voice_peer_runtime_record(
   }
   if (st && st->stale_persisted_record) {
     if (out_updates) {
-      (*out_updates)["cleanup_on_stale_record"] = cleanup_stale_persisted_voice_peer_runtime(cfg, db, session_id);
+      (*out_updates)["cleanup_on_stale_record"] =
+        cleanup_stale_persisted_voice_peer_runtime(cfg, db, session_id, st->runtime_kind);
     } else {
-      (void)cleanup_stale_persisted_voice_peer_runtime(cfg, db, session_id);
+      (void)cleanup_stale_persisted_voice_peer_runtime(cfg, db, session_id, st->runtime_kind);
     }
     st.reset();
   }
@@ -318,13 +318,15 @@ bool recover_voice_peer_runtime_record(
 Json::Value cleanup_stale_persisted_voice_peer_runtime(
   const DaemonConfig& cfg,
   AgentDb* db,
-  const std::string& session_id
+  const std::string& session_id,
+  const std::string& runtime_kind
 ) {
   Json::Value cleanup(Json::objectValue);
   cleanup["persisted_record_cleared"] = clear_voice_peer_runtime_record(db, session_id, nullptr);
   bool artifacts_deleted = false;
   std::string aerr;
-  if (remove_voice_peer_runtime_artifacts(cfg, session_id, &artifacts_deleted, &aerr)) {
+  if (remove_voice_peer_runtime_backend_artifacts(
+        cfg, session_id, runtime_kind, &artifacts_deleted, &aerr)) {
     cleanup["runtime_artifacts_deleted"] = artifacts_deleted;
   } else if (!aerr.empty()) {
     cleanup["runtime_artifacts_delete_error"] = aerr;
@@ -337,7 +339,8 @@ Json::Value voice_peer_corrupt_record_cleanup_json(const DaemonConfig& cfg, cons
   cleanup["persisted_record_cleared"] = true;
   bool artifacts_deleted = false;
   std::string aerr;
-  if (remove_voice_peer_runtime_artifacts(cfg, session_id, &artifacts_deleted, &aerr)) {
+  if (remove_voice_peer_runtime_backend_artifacts(
+        cfg, session_id, std::string(), &artifacts_deleted, &aerr)) {
     cleanup["runtime_artifacts_deleted"] = artifacts_deleted;
   } else if (!aerr.empty()) {
     cleanup["runtime_artifacts_delete_error"] = aerr;

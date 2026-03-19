@@ -49,7 +49,8 @@ bool recover_voice_peer_runtime_record(
 Json::Value cleanup_stale_persisted_voice_peer_runtime(
   const DaemonConfig& cfg,
   AgentDb* db,
-  const std::string& session_id
+  const std::string& session_id,
+  const std::string& runtime_kind
 );
 
 Json::Value voice_peer_corrupt_record_cleanup_json(const DaemonConfig& cfg, const std::string& session_id);
