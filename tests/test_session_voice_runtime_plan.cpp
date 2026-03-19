@@ -1,4 +1,5 @@
 #include "session_voice_runtime_plan.h"
+#include "session_voice_process_plan.h"
 
 #include <cassert>
 #include <string>
@@ -10,6 +11,8 @@ using agentd::VoicePeerChildLaunchConfig;
 using agentd::VoicePeerRuntimeArtifactsPlan;
 using agentd::VoicePeerRuntimeSeed;
 using agentd::VoicePeerStartPlan;
+using agentd::make_voice_peer_child_process_plan;
+using agentd::make_voice_peer_media_runtime_plan;
 using agentd::make_planned_voice_peer_runtime;
 using agentd::make_spawned_voice_peer_runtime_seed;
 using agentd::plan_voice_peer_runtime_artifacts;
@@ -108,6 +111,9 @@ static void test_planned_runtime_matches_start_plan_and_artifacts() {
   artifacts.stdout_log_path = artifacts.runtime_dir + "/stdout.jsonl";
   artifacts.stderr_log_path = artifacts.runtime_dir + "/stderr.log";
 
+  const agentd::VoicePeerMediaRuntimePlan media_plan =
+    make_voice_peer_media_runtime_plan("voice-sid", plan, artifacts, "", true);
+
   const agentd::VoicePeerRuntime runtime =
     make_planned_voice_peer_runtime("voice-sid", plan, artifacts, "", true);
   assert(runtime.runtime_kind == "builtin");
@@ -127,8 +133,67 @@ static void test_planned_runtime_matches_start_plan_and_artifacts() {
   assert(runtime.deadline_ms == 1234);
   assert(runtime.poll_interval_ms == 234);
   assert(runtime.tone_hz == 345);
+  assert(runtime.session_id == media_plan.session_id);
+  assert(runtime.broker_url == media_plan.broker_url);
+  assert(runtime.managed_broker_session == media_plan.managed_broker_session);
+  assert(runtime.broker_agent_id == media_plan.broker_agent_id);
+  assert(runtime.broker_deployment_id == media_plan.broker_deployment_id);
+  assert(runtime.sender_tag == media_plan.sender_tag);
+  assert(runtime.ready_file_path == media_plan.ready_file_path);
+  assert(runtime.deadline_ms == media_plan.deadline_ms);
+  assert(runtime.poll_interval_ms == media_plan.poll_interval_ms);
+  assert(runtime.tone_hz == media_plan.tone_hz);
   assert(!runtime.ready);
   assert(!runtime.running);
+}
+
+static void test_spawned_runtime_seed_matches_child_process_media_plan() {
+  VoicePeerChildLaunchConfig launch_cfg;
+  launch_cfg.runtime_kind = "bundled";
+  launch_cfg.session_id = "voice-sid";
+  launch_cfg.broker_session_id = "broker-sess";
+  launch_cfg.broker_url = "http://broker";
+  launch_cfg.broker_agent_id = "agent-a";
+  launch_cfg.broker_deployment_id = "deploy-b";
+  launch_cfg.sender_tag = "agentd_runtime_peer";
+  launch_cfg.tool_path = "/tool.js";
+  launch_cfg.node_bin = "/usr/bin/node";
+  launch_cfg.deadline_ms = 1111;
+  launch_cfg.poll_interval_ms = 222;
+  launch_cfg.tone_hz = 333;
+  launch_cfg.managed_broker_session = true;
+
+  VoicePeerRuntimeArtifactsPlan artifacts;
+  artifacts.runtime_dir = "/tmp/agentd-state/voice_webrtc_peers/voice-sid";
+  artifacts.ready_file_path = artifacts.runtime_dir + "/ready.json";
+  artifacts.stdout_log_path = artifacts.runtime_dir + "/stdout.jsonl";
+  artifacts.stderr_log_path = artifacts.runtime_dir + "/stderr.log";
+
+  const agentd::VoicePeerChildProcessPlan process_plan =
+    make_voice_peer_child_process_plan(launch_cfg, artifacts);
+
+#if defined(_WIN32)
+  const VoicePeerRuntimeSeed seed =
+    make_spawned_voice_peer_runtime_seed(launch_cfg, artifacts, 123);
+  assert(seed.pid == 123);
+#else
+  const VoicePeerRuntimeSeed seed =
+    make_spawned_voice_peer_runtime_seed(launch_cfg, artifacts, 456);
+  assert(seed.pid == 456);
+#endif
+
+  assert(seed.runtime_kind == process_plan.media_runtime_plan.runtime_kind);
+  assert(seed.session_id == process_plan.media_runtime_plan.session_id);
+  assert(seed.broker_session_id == process_plan.media_runtime_plan.broker_session_id);
+  assert(seed.broker_url == process_plan.media_runtime_plan.broker_url);
+  assert(seed.managed_broker_session == process_plan.media_runtime_plan.managed_broker_session);
+  assert(seed.broker_agent_id == process_plan.media_runtime_plan.broker_agent_id);
+  assert(seed.broker_deployment_id == process_plan.media_runtime_plan.broker_deployment_id);
+  assert(seed.sender_tag == process_plan.media_runtime_plan.sender_tag);
+  assert(seed.ready_file_path == process_plan.media_runtime_plan.ready_file_path);
+  assert(seed.deadline_ms == process_plan.media_runtime_plan.deadline_ms);
+  assert(seed.poll_interval_ms == process_plan.media_runtime_plan.poll_interval_ms);
+  assert(seed.tone_hz == process_plan.media_runtime_plan.tone_hz);
 }
 
 }  // namespace
@@ -137,5 +202,6 @@ int main() {
   test_runtime_artifacts_follow_state_dir();
   test_spawned_runtime_seed_carries_launch_and_artifacts();
   test_planned_runtime_matches_start_plan_and_artifacts();
+  test_spawned_runtime_seed_matches_child_process_media_plan();
   return 0;
 }

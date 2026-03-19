@@ -1465,3 +1465,4 @@ Proof:
 - builtin runtime previews now mark `status_source=planned` and use explicit `@builtin` execution sentinels
 - planned builtin previews now fail closed at persistence/recovery boundaries instead of being recoverable as runtimes
 - voice runtime media inputs and child argv shaping now live in a shared process-plan helper, and `builtin_start_contract` exposes the same safe `media_runtime_plan` the future native backend would consume
+- planned voice runtime preview and spawned runtime seed now both derive their broker/session/timing fields from that same shared media plan instead of re-shaping them separately

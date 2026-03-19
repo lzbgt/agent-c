@@ -1,5 +1,6 @@
 #include "session_voice_runtime_plan.h"
 
+#include "session_voice_process_plan.h"
 #include "session_voice_runtime_store.h"
 #include "string_util.h"
 
@@ -14,6 +15,44 @@ std::filesystem::path voice_peer_runtime_base_dir(const DaemonConfig& cfg) {
     cfg.state_dir.empty() ? std::filesystem::temp_directory_path(ec) : std::filesystem::path(cfg.state_dir);
   if (ec) base = std::filesystem::path(".");
   return base / "voice_webrtc_peers";
+}
+
+void apply_media_runtime_plan_fields(
+  const VoicePeerMediaRuntimePlan& media_plan,
+  VoicePeerRuntime* runtime
+) {
+  if (!runtime) return;
+  runtime->runtime_kind = media_plan.runtime_kind;
+  runtime->session_id = media_plan.session_id;
+  runtime->broker_session_id = media_plan.broker_session_id;
+  runtime->broker_url = media_plan.broker_url;
+  runtime->managed_broker_session = media_plan.managed_broker_session;
+  runtime->broker_agent_id = media_plan.broker_agent_id;
+  runtime->broker_deployment_id = media_plan.broker_deployment_id;
+  runtime->sender_tag = media_plan.sender_tag;
+  runtime->ready_file_path = media_plan.ready_file_path;
+  runtime->deadline_ms = media_plan.deadline_ms;
+  runtime->poll_interval_ms = media_plan.poll_interval_ms;
+  runtime->tone_hz = media_plan.tone_hz;
+}
+
+void apply_media_runtime_plan_fields(
+  const VoicePeerMediaRuntimePlan& media_plan,
+  VoicePeerRuntimeSeed* seed
+) {
+  if (!seed) return;
+  seed->runtime_kind = media_plan.runtime_kind;
+  seed->session_id = media_plan.session_id;
+  seed->broker_session_id = media_plan.broker_session_id;
+  seed->broker_url = media_plan.broker_url;
+  seed->managed_broker_session = media_plan.managed_broker_session;
+  seed->broker_agent_id = media_plan.broker_agent_id;
+  seed->broker_deployment_id = media_plan.broker_deployment_id;
+  seed->sender_tag = media_plan.sender_tag;
+  seed->ready_file_path = media_plan.ready_file_path;
+  seed->deadline_ms = media_plan.deadline_ms;
+  seed->poll_interval_ms = media_plan.poll_interval_ms;
+  seed->tone_hz = media_plan.tone_hz;
 }
 
 }  // namespace
@@ -55,26 +94,17 @@ VoicePeerRuntime make_planned_voice_peer_runtime(
   const std::string& broker_session_id,
   bool managed_broker_session
 ) {
+  const VoicePeerMediaRuntimePlan media_plan = make_voice_peer_media_runtime_plan(
+    session_id, start_plan, artifacts, broker_session_id, managed_broker_session);
   VoicePeerRuntime runtime;
-  runtime.runtime_kind = start_plan.runtime_kind;
+  apply_media_runtime_plan_fields(media_plan, &runtime);
   runtime.status_source = "planned";
-  runtime.session_id = trim_copy(session_id);
-  runtime.broker_session_id = trim_copy(broker_session_id);
-  runtime.broker_url = start_plan.effective_broker_url;
-  runtime.managed_broker_session = managed_broker_session;
-  runtime.broker_agent_id = start_plan.broker_agent_id;
-  runtime.broker_deployment_id = start_plan.broker_deployment_id;
-  runtime.sender_tag = start_plan.sender_tag;
   runtime.tool_path =
     start_plan.runtime_kind == "builtin" ? "@builtin" : start_plan.resolved_tool_path;
   runtime.node_bin =
     start_plan.runtime_kind == "builtin" ? "@builtin" : start_plan.resolved_node_bin;
-  runtime.ready_file_path = artifacts.ready_file_path;
   runtime.stdout_log_path = artifacts.stdout_log_path;
   runtime.stderr_log_path = artifacts.stderr_log_path;
-  runtime.deadline_ms = start_plan.deadline_ms;
-  runtime.poll_interval_ms = start_plan.poll_interval_ms;
-  runtime.tone_hz = start_plan.tone_hz;
   runtime.ready = false;
   runtime.running = false;
   return runtime;
@@ -89,23 +119,14 @@ VoicePeerRuntimeSeed make_spawned_voice_peer_runtime_seed(
   pid_t pid
 #endif
 ) {
+  const VoicePeerChildProcessPlan process_plan =
+    make_voice_peer_child_process_plan(launch_cfg, artifacts);
   VoicePeerRuntimeSeed runtime_seed;
-  runtime_seed.runtime_kind = launch_cfg.runtime_kind;
-  runtime_seed.session_id = launch_cfg.session_id;
-  runtime_seed.broker_session_id = launch_cfg.broker_session_id;
-  runtime_seed.broker_url = launch_cfg.broker_url;
-  runtime_seed.broker_agent_id = launch_cfg.broker_agent_id;
-  runtime_seed.broker_deployment_id = launch_cfg.broker_deployment_id;
-  runtime_seed.sender_tag = launch_cfg.sender_tag;
+  apply_media_runtime_plan_fields(process_plan.media_runtime_plan, &runtime_seed);
   runtime_seed.tool_path = launch_cfg.tool_path;
   runtime_seed.node_bin = launch_cfg.node_bin;
-  runtime_seed.ready_file_path = artifacts.ready_file_path;
   runtime_seed.stdout_log_path = artifacts.stdout_log_path;
   runtime_seed.stderr_log_path = artifacts.stderr_log_path;
-  runtime_seed.deadline_ms = launch_cfg.deadline_ms;
-  runtime_seed.poll_interval_ms = launch_cfg.poll_interval_ms;
-  runtime_seed.tone_hz = launch_cfg.tone_hz;
-  runtime_seed.managed_broker_session = launch_cfg.managed_broker_session;
   runtime_seed.ready = false;
   runtime_seed.running = true;
   runtime_seed.pid = pid;
