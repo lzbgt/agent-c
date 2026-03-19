@@ -604,6 +604,15 @@ if(AGENT_BUILD_HOST)
   target_link_libraries(session_voice_signal_session_tests PRIVATE agentd_lib)
   add_test(NAME session_voice_signal_session_tests COMMAND session_voice_signal_session_tests)
 
+  add_executable(session_voice_signal_negotiation_tests
+    tests/test_session_voice_signal_negotiation.cpp
+  )
+  target_compile_options(session_voice_signal_negotiation_tests PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_link_libraries(session_voice_signal_negotiation_tests PRIVATE agentd_lib)
+  add_test(NAME session_voice_signal_negotiation_tests COMMAND session_voice_signal_negotiation_tests)
+
   if(WIN32)
     add_executable(tool_plugin_host_limits_tests
       tests/test_tool_plugin_host_limits.cpp

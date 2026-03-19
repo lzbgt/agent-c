@@ -170,6 +170,8 @@ A v0 smoke test should:
 - The full “answer a remote offer” control flow is now also collapsed into one shared C++ negotiation helper, so the
   loopback tool no longer hand-assembles offer wait, answer send, candidate wait, remote `bye`, and optional local
   `bye` sequencing inline.
+- That negotiation helper now also has direct unit coverage via injectable ops, so future builtin/backend work can
+  extend transport or media integration without relying only on live broker smokes to prove the core sequencing logic.
 - `ctest` now also includes `session_voice_signal_protocol_tests` for direct typed broker-signal payload coverage.
 - `ctest` now also includes `session_voice_signal_session_tests` for direct native signal-session state coverage.
 - `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` covers the agentd-managed runtime surface for that same peer,
