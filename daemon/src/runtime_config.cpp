@@ -588,6 +588,13 @@ bool load_runtime_config_best_effort(
               ? row["leader_lease_ms"].asInt64()
               : (int64_t)row["leader_lease_ms"].asUInt64();
           }
+          if (row.isMember("lease_expiry_recampaign_delay_ms") &&
+              (row["lease_expiry_recampaign_delay_ms"].isInt64() ||
+               row["lease_expiry_recampaign_delay_ms"].isUInt64())) {
+            pol.lease_expiry_recampaign_delay_ms = row["lease_expiry_recampaign_delay_ms"].isInt64()
+              ? row["lease_expiry_recampaign_delay_ms"].asInt64()
+              : (int64_t)row["lease_expiry_recampaign_delay_ms"].asUInt64();
+          }
           if (row.isMember("member_node_ids") && row["member_node_ids"].isArray()) {
             for (const auto& item : row["member_node_ids"]) {
               if (!item.isString()) continue;
@@ -603,6 +610,8 @@ bool load_runtime_config_best_effort(
           pol.campaign_retry_backoff_factor = std::max<int64_t>(1, std::min<int64_t>(pol.campaign_retry_backoff_factor, 8));
           if (pol.leader_heartbeat_ms < 0) pol.leader_heartbeat_ms = 0;
           if (pol.leader_lease_ms < pol.leader_heartbeat_ms) pol.leader_lease_ms = pol.leader_heartbeat_ms;
+          pol.lease_expiry_recampaign_delay_ms =
+            std::max<int64_t>(0, std::min<int64_t>(pol.lease_expiry_recampaign_delay_ms, 300000));
           if (!pol.member_node_ids.empty()) cfg_io->edge_consensus_clusters[cluster_id] = std::move(pol);
         }
       }
@@ -908,6 +917,7 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
       row["campaign_retry_backoff_factor"] = (Json::Int64)it.second.campaign_retry_backoff_factor;
       row["leader_heartbeat_ms"] = (Json::Int64)it.second.leader_heartbeat_ms;
       row["leader_lease_ms"] = (Json::Int64)it.second.leader_lease_ms;
+      row["lease_expiry_recampaign_delay_ms"] = (Json::Int64)it.second.lease_expiry_recampaign_delay_ms;
       Json::Value members(Json::arrayValue);
       for (const auto& member : it.second.member_node_ids) if (!member.empty()) members.append(member);
       row["member_node_ids"] = members;

@@ -186,7 +186,7 @@ JSON
 )")"
 
 ROTATE_JSON="$(curl_json POST "/api/v1/edge/consensus/membership/rotate" "$(cat <<JSON
-{"cluster_id":"${CLUSTER_ID}","mode":"replace","membership_epoch":19,"member_node_ids":["${NODE_A}","${NODE_B}","${NODE_C}"],"campaign_delay_ms":120,"campaign_retry_ms":300,"campaign_retry_max_ms":900,"campaign_retry_backoff_factor":2,"leader_heartbeat_ms":240,"leader_lease_ms":1100}
+{"cluster_id":"${CLUSTER_ID}","mode":"replace","membership_epoch":19,"member_node_ids":["${NODE_A}","${NODE_B}","${NODE_C}"],"campaign_delay_ms":120,"campaign_retry_ms":300,"campaign_retry_max_ms":900,"campaign_retry_backoff_factor":2,"leader_heartbeat_ms":240,"leader_lease_ms":1100,"lease_expiry_recampaign_delay_ms":410}
 JSON
 )")"
 GET_JSON="$(curl_json GET "/api/v1/edge/consensus/membership?cluster_id=${CLUSTER_ID}")"
@@ -276,6 +276,9 @@ if bundle.get("campaign_retry_backoff_factor") != 2:
 if bundle.get("leader_heartbeat_ms") != 240 or bundle.get("leader_lease_ms") != 1100:
     print("wrong leader freshness policy", bundle, file=sys.stderr)
     raise SystemExit(1)
+if bundle.get("lease_expiry_recampaign_delay_ms") != 410:
+    print("wrong lease expiry recampaign policy", bundle, file=sys.stderr)
+    raise SystemExit(1)
 att = bundle.get("attest") or {}
 if att.get("schema") != "edge_consensus_membership_attest_v1" or att.get("kid") != "edge-consensus-membership-k0":
     print("missing membership attest", bundle, file=sys.stderr)
@@ -300,6 +303,9 @@ if delivered.get("campaign_retry_backoff_factor") != 2:
 if delivered.get("leader_heartbeat_ms") != 240 or delivered.get("leader_lease_ms") != 1100:
     print("wrong delivered leader freshness policy", delivered, file=sys.stderr)
     raise SystemExit(1)
+if delivered.get("lease_expiry_recampaign_delay_ms") != 410:
+    print("wrong delivered lease expiry recampaign policy", delivered, file=sys.stderr)
+    raise SystemExit(1)
 
 rt_a = start_a.get("runtime") or {}
 if sorted(rt_a.get("member_node_ids") or []) != members:
@@ -319,6 +325,9 @@ if rt_a.get("campaign_retry_max_ms") != 900 or rt_a.get("campaign_retry_backoff_
     raise SystemExit(1)
 if rt_a.get("leader_heartbeat_ms") != 240 or rt_a.get("leader_lease_ms") != 1100:
     print("runtime A missing leader freshness defaults", rt_a, file=sys.stderr)
+    raise SystemExit(1)
+if rt_a.get("lease_expiry_recampaign_delay_ms") != 410:
+    print("runtime A missing lease expiry recampaign default", rt_a, file=sys.stderr)
     raise SystemExit(1)
 trust_epochs = rt_a.get("trust_epochs") or {}
 if trust_epochs.get("trust_roots_epoch") != 2 or trust_epochs.get("revocations_epoch") != 3 or trust_epochs.get("cert_roots_epoch") != 4:
@@ -344,6 +353,9 @@ for label, obj in (("running_a", running_a), ("status_a", status_a), ("status_b"
         raise SystemExit(1)
     if rt.get("leader_heartbeat_ms") != 240 or rt.get("leader_lease_ms") != 1100:
         print(label, "runtime leader freshness mismatch", obj, file=sys.stderr)
+        raise SystemExit(1)
+    if rt.get("lease_expiry_recampaign_delay_ms") != 410:
+        print(label, "runtime lease expiry recampaign mismatch", obj, file=sys.stderr)
         raise SystemExit(1)
     epochs = rt.get("trust_epochs") or {}
     if epochs.get("trust_roots_epoch") != 2 or epochs.get("revocations_epoch") != 3 or epochs.get("cert_roots_epoch") != 4:
@@ -371,6 +383,9 @@ if loop_status.get("campaign_retry_max_ms") != 900 or loop_status.get("campaign_
 if loop_status.get("leader_heartbeat_ms") != 240 or loop_status.get("leader_lease_ms") != 1100:
     print("loop status missing leader freshness policy", loop_status, file=sys.stderr)
     raise SystemExit(1)
+if loop_status.get("lease_expiry_recampaign_delay_ms") != 410:
+    print("loop status missing lease expiry recampaign policy", loop_status, file=sys.stderr)
+    raise SystemExit(1)
 loop_self_epochs = ((loop_status.get("self") or {}).get("trust_epochs") or {})
 if loop_self_epochs.get("trust_roots_epoch") != 2 or loop_self_epochs.get("revocations_epoch") != 3 or loop_self_epochs.get("cert_roots_epoch") != 4:
     print("loop status missing explicit trust epochs", loop_status, file=sys.stderr)
@@ -391,6 +406,9 @@ if status_policy.get("campaign_retry_backoff_factor") != 2:
     raise SystemExit(1)
 if status_policy.get("leader_heartbeat_ms") != 240 or status_policy.get("leader_lease_ms") != 1100:
     print("runtime status missing leader freshness policy in cluster policy", status_policy, file=sys.stderr)
+    raise SystemExit(1)
+if status_policy.get("lease_expiry_recampaign_delay_ms") != 410:
+    print("runtime status missing lease expiry recampaign policy in cluster policy", status_policy, file=sys.stderr)
     raise SystemExit(1)
 
 if not stop_done.get("ok") or stop_done.get("stopped") is not False or stop_done.get("reason") != "not_running":

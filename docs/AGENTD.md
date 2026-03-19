@@ -683,17 +683,22 @@ Edge trust-root rotation:
   `campaign_retry_backoff_factor`, plus `leader_heartbeat_ms` and `leader_lease_ms`; the reported runtime/result
   surfaces expose that same bounded retry and leader-freshness policy so operators can confirm whether a candidate
   re-campaigned before quorum formed and when follower failover should trigger.
+- The same managed consensus policy now also carries `lease_expiry_recampaign_delay_ms`, so operators can hold
+  followers in a bounded cooldown after leader-lease expiry instead of forcing immediate re-campaign during
+  transient partitions. Live/final loop status now surfaces `leader_lease_expired_count`,
+  `last_leader_lease_expired_utc_ms`, and `lease_expiry_recampaign_ready_utc_ms` for that recovery path.
 - The same runtime start surface also accepts `membership_epoch` and `member_node_ids`, and the emitted runtime/result
   JSON mirrors that explicit member-set view for deterministic compatibility checks.
 - `GET /api/v1/edge/consensus/membership?cluster_id=<id>` now exports a signed durable
   `edge_consensus_membership_v1` bundle for one cluster, and `POST /api/v1/edge/consensus/membership/rotate`
-  persists the monotonic membership epoch, member set, default retry timing, and leader heartbeat/lease policy for
-  that cluster.
+  persists the monotonic membership epoch, member set, default retry timing, leader heartbeat/lease policy, and
+  lease-expiry re-campaign cooldown for that cluster.
 - `POST /api/v1/edge/consensus/membership/send` enqueues that same bundle to a recipient node outbox as
   `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE`, so non-HTTP nodes can poll membership policy through the shipped UM-BMP lane.
 - When a managed consensus runtime start omits `membership_epoch`, `member_node_ids`, `campaign_delay_ms`,
   `campaign_retry_ms`, `campaign_retry_max_ms`, `campaign_retry_backoff_factor`, `leader_heartbeat_ms`, or
-  `leader_lease_ms`, agentd now defaults those fields from the stored cluster membership bundle.
+  `leader_lease_ms`, or `lease_expiry_recampaign_delay_ms`, agentd now defaults those fields from the stored cluster
+  membership bundle.
 - Operator bring-up can still set `AGENTD_EDGE_CONSENSUS_NODE_TOOL=/abs/path/to/agentd_edge_consensus_node` to force
   `runtime_kind=external`, but the normal managed path no longer depends on that helper being configured.
 - The builtin managed consensus backend now also runs over daemon-local transport instead of calling back through

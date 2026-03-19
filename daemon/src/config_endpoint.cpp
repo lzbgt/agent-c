@@ -942,6 +942,7 @@ static bool build_edge_consensus_membership_bundle(
   bundle["campaign_retry_backoff_factor"] = (Json::Int64)pol.campaign_retry_backoff_factor;
   bundle["leader_heartbeat_ms"] = (Json::Int64)pol.leader_heartbeat_ms;
   bundle["leader_lease_ms"] = (Json::Int64)pol.leader_lease_ms;
+  bundle["lease_expiry_recampaign_delay_ms"] = (Json::Int64)pol.lease_expiry_recampaign_delay_ms;
   {
     Json::Value arr(Json::arrayValue);
     for (const auto& member : pol.member_node_ids) arr.append(member);
@@ -3955,12 +3956,28 @@ void handle_edge_consensus_membership_rotate_endpoint(
       ? args["leader_lease_ms"].asInt64()
       : (int64_t)args["leader_lease_ms"].asUInt64();
   }
+  if (args.isMember("lease_expiry_recampaign_delay_ms")) {
+    if (!args["lease_expiry_recampaign_delay_ms"].isInt64() &&
+        !args["lease_expiry_recampaign_delay_ms"].isUInt64()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "lease_expiry_recampaign_delay_ms must be an integer";
+      resp->status = 400;
+      resp->body = json_stringify(o);
+      return;
+    }
+    next_pol.lease_expiry_recampaign_delay_ms = args["lease_expiry_recampaign_delay_ms"].isInt64()
+      ? args["lease_expiry_recampaign_delay_ms"].asInt64()
+      : (int64_t)args["lease_expiry_recampaign_delay_ms"].asUInt64();
+  }
   next_pol.campaign_delay_ms = std::max<int64_t>(0, std::min<int64_t>(next_pol.campaign_delay_ms, 120000));
   next_pol.campaign_retry_ms = std::max<int64_t>(0, std::min<int64_t>(next_pol.campaign_retry_ms, 120000));
   next_pol.campaign_retry_max_ms = std::max<int64_t>(next_pol.campaign_retry_ms, std::min<int64_t>(next_pol.campaign_retry_max_ms, 300000));
   next_pol.campaign_retry_backoff_factor = std::max<int64_t>(1, std::min<int64_t>(next_pol.campaign_retry_backoff_factor, 8));
   next_pol.leader_heartbeat_ms = std::max<int64_t>(0, std::min<int64_t>(next_pol.leader_heartbeat_ms, 120000));
   next_pol.leader_lease_ms = std::max<int64_t>(next_pol.leader_heartbeat_ms, std::min<int64_t>(next_pol.leader_lease_ms, 300000));
+  next_pol.lease_expiry_recampaign_delay_ms =
+    std::max<int64_t>(0, std::min<int64_t>(next_pol.lease_expiry_recampaign_delay_ms, 300000));
 
   DaemonConfig next = cur;
   next.edge_consensus_clusters[cluster_id] = next_pol;
@@ -3998,6 +4015,7 @@ void handle_edge_consensus_membership_rotate_endpoint(
   o["campaign_retry_backoff_factor"] = (Json::Int64)next_pol.campaign_retry_backoff_factor;
   o["leader_heartbeat_ms"] = (Json::Int64)next_pol.leader_heartbeat_ms;
   o["leader_lease_ms"] = (Json::Int64)next_pol.leader_lease_ms;
+  o["lease_expiry_recampaign_delay_ms"] = (Json::Int64)next_pol.lease_expiry_recampaign_delay_ms;
   o["member_count"] = (Json::UInt64)next_pol.member_node_ids.size();
   o["membership"] = bundle;
   resp->body = json_stringify(o);

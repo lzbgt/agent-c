@@ -107,6 +107,7 @@ static Json::Value edge_consensus_cluster_policy_to_json(const std::string& clus
   out["campaign_retry_backoff_factor"] = (Json::Int64)pol.campaign_retry_backoff_factor;
   out["leader_heartbeat_ms"] = (Json::Int64)pol.leader_heartbeat_ms;
   out["leader_lease_ms"] = (Json::Int64)pol.leader_lease_ms;
+  out["lease_expiry_recampaign_delay_ms"] = (Json::Int64)pol.lease_expiry_recampaign_delay_ms;
   Json::Value members(Json::arrayValue);
   for (const auto& member : pol.member_node_ids) members.append(member);
   out["member_node_ids"] = members;
@@ -151,6 +152,7 @@ struct EdgeConsensusRuntime {
   int64_t campaign_retry_backoff_factor = 1;
   int64_t leader_heartbeat_ms = 1000;
   int64_t leader_lease_ms = 5000;
+  int64_t lease_expiry_recampaign_delay_ms = 0;
   int64_t poll_interval_ms = 100;
   int64_t deadline_ms = 10000;
   uint64_t cluster_size = 0;
@@ -206,6 +208,7 @@ static Json::Value edge_consensus_runtime_to_json(const EdgeConsensusRuntime& st
   out["campaign_retry_backoff_factor"] = (Json::Int64)st.campaign_retry_backoff_factor;
   out["leader_heartbeat_ms"] = (Json::Int64)st.leader_heartbeat_ms;
   out["leader_lease_ms"] = (Json::Int64)st.leader_lease_ms;
+  out["lease_expiry_recampaign_delay_ms"] = (Json::Int64)st.lease_expiry_recampaign_delay_ms;
   out["poll_interval_ms"] = (Json::Int64)st.poll_interval_ms;
   out["deadline_ms"] = (Json::Int64)st.deadline_ms;
   out["cluster_size"] = Json::UInt64(st.cluster_size);
@@ -252,6 +255,9 @@ static Json::Value edge_consensus_runtime_cluster_policy_drift_json(
   if (pol.campaign_retry_backoff_factor != st.campaign_retry_backoff_factor) append_changed("campaign_retry_backoff_factor");
   if (pol.leader_heartbeat_ms != st.leader_heartbeat_ms) append_changed("leader_heartbeat_ms");
   if (pol.leader_lease_ms != st.leader_lease_ms) append_changed("leader_lease_ms");
+  if (pol.lease_expiry_recampaign_delay_ms != st.lease_expiry_recampaign_delay_ms) {
+    append_changed("lease_expiry_recampaign_delay_ms");
+  }
 
   if (changed_fields.empty()) return Json::Value(Json::nullValue);
 
@@ -340,6 +346,7 @@ static bool edge_consensus_runtime_same_effective_config(const EdgeConsensusRunt
     a.campaign_retry_backoff_factor == b.campaign_retry_backoff_factor &&
     a.leader_heartbeat_ms == b.leader_heartbeat_ms &&
     a.leader_lease_ms == b.leader_lease_ms &&
+    a.lease_expiry_recampaign_delay_ms == b.lease_expiry_recampaign_delay_ms &&
     a.poll_interval_ms == b.poll_interval_ms &&
     a.deadline_ms == b.deadline_ms &&
     a.cluster_size == b.cluster_size &&
@@ -494,6 +501,10 @@ static bool edge_consensus_runtime_from_json(const Json::Value& v, EdgeConsensus
   if (v.isMember("campaign_retry_backoff_factor") && (v["campaign_retry_backoff_factor"].isInt64() || v["campaign_retry_backoff_factor"].isUInt64())) st.campaign_retry_backoff_factor = v["campaign_retry_backoff_factor"].asInt64();
   if (v.isMember("leader_heartbeat_ms") && (v["leader_heartbeat_ms"].isInt64() || v["leader_heartbeat_ms"].isUInt64())) st.leader_heartbeat_ms = v["leader_heartbeat_ms"].asInt64();
   if (v.isMember("leader_lease_ms") && (v["leader_lease_ms"].isInt64() || v["leader_lease_ms"].isUInt64())) st.leader_lease_ms = v["leader_lease_ms"].asInt64();
+  if (v.isMember("lease_expiry_recampaign_delay_ms") &&
+      (v["lease_expiry_recampaign_delay_ms"].isInt64() || v["lease_expiry_recampaign_delay_ms"].isUInt64())) {
+    st.lease_expiry_recampaign_delay_ms = v["lease_expiry_recampaign_delay_ms"].asInt64();
+  }
   if (v.isMember("poll_interval_ms") && (v["poll_interval_ms"].isInt64() || v["poll_interval_ms"].isUInt64())) st.poll_interval_ms = v["poll_interval_ms"].asInt64();
   if (v.isMember("deadline_ms") && (v["deadline_ms"].isInt64() || v["deadline_ms"].isUInt64())) st.deadline_ms = v["deadline_ms"].asInt64();
   if (v.isMember("cluster_size")) st.cluster_size = json_to_u64(v["cluster_size"], st.cluster_size);
@@ -733,6 +744,11 @@ static bool edge_consensus_runtime_build_config(
     ? json_to_i64(body["leader_lease_ms"], 5000)
     : (cluster_policy ? cluster_policy->leader_lease_ms : 5000);
   leader_lease_ms = std::max<int64_t>(leader_heartbeat_ms, std::min<int64_t>(leader_lease_ms, 300000));
+  int64_t lease_expiry_recampaign_delay_ms = body.isMember("lease_expiry_recampaign_delay_ms")
+    ? json_to_i64(body["lease_expiry_recampaign_delay_ms"], 0)
+    : (cluster_policy ? cluster_policy->lease_expiry_recampaign_delay_ms : 0);
+  lease_expiry_recampaign_delay_ms =
+    std::max<int64_t>(0, std::min<int64_t>(lease_expiry_recampaign_delay_ms, 300000));
   int64_t poll_interval_ms = body.isMember("poll_interval_ms") ? json_to_i64(body["poll_interval_ms"], 100) : 100;
   poll_interval_ms = std::max<int64_t>(25, std::min<int64_t>(poll_interval_ms, 5000));
   int64_t deadline_ms = body.isMember("deadline_ms") ? json_to_i64(body["deadline_ms"], 10000) : 10000;
@@ -772,6 +788,7 @@ static bool edge_consensus_runtime_build_config(
   out_cfg->campaign_retry_backoff_factor = campaign_retry_backoff_factor;
   out_cfg->leader_heartbeat_ms = leader_heartbeat_ms;
   out_cfg->leader_lease_ms = leader_lease_ms;
+  out_cfg->lease_expiry_recampaign_delay_ms = lease_expiry_recampaign_delay_ms;
   out_cfg->poll_interval_ms = poll_interval_ms;
   out_cfg->deadline_ms = deadline_ms;
   out_cfg->trust_roots_epoch = trust_roots_epoch;
@@ -796,6 +813,7 @@ static bool edge_consensus_runtime_build_config(
   out_state->campaign_retry_backoff_factor = campaign_retry_backoff_factor;
   out_state->leader_heartbeat_ms = leader_heartbeat_ms;
   out_state->leader_lease_ms = leader_lease_ms;
+  out_state->lease_expiry_recampaign_delay_ms = lease_expiry_recampaign_delay_ms;
   out_state->poll_interval_ms = poll_interval_ms;
   out_state->deadline_ms = deadline_ms;
   out_state->cluster_size = cluster_size;
@@ -902,6 +920,8 @@ static bool edge_consensus_runtime_spawn_process(
     args.push_back(std::to_string((long long)runtime_state.leader_heartbeat_ms));
     args.push_back("--leader-lease-ms");
     args.push_back(std::to_string((long long)runtime_state.leader_lease_ms));
+    args.push_back("--lease-expiry-recampaign-delay-ms");
+    args.push_back(std::to_string((long long)runtime_state.lease_expiry_recampaign_delay_ms));
     args.push_back("--poll-interval-ms");
     args.push_back(std::to_string((long long)runtime_state.poll_interval_ms));
     args.push_back("--deadline-ms");

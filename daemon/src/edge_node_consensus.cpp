@@ -146,6 +146,10 @@ static int64_t clamp_leader_lease_ms(int64_t heartbeat_ms, int64_t lease_ms) {
   return std::max<int64_t>(clamped_heartbeat, clamped_lease);
 }
 
+static int64_t clamp_lease_expiry_recampaign_delay_ms(int64_t v) {
+  return std::max<int64_t>(0, std::min<int64_t>(v, 300000));
+}
+
 static int64_t compute_campaign_retry_delay_ms(
   int64_t campaign_retry_ms,
   int64_t campaign_retry_max_ms,
@@ -192,6 +196,8 @@ EdgeConsensusNodeLoop::EdgeConsensusNodeLoop(const EdgeConsensusNodeLoopConfig& 
   cfg_.campaign_retry_backoff_factor = clamp_retry_backoff_factor(cfg_.campaign_retry_backoff_factor);
   cfg_.leader_heartbeat_ms = clamp_leader_heartbeat_ms(cfg_.leader_heartbeat_ms);
   cfg_.leader_lease_ms = clamp_leader_lease_ms(cfg_.leader_heartbeat_ms, cfg_.leader_lease_ms);
+  cfg_.lease_expiry_recampaign_delay_ms =
+    clamp_lease_expiry_recampaign_delay_ms(cfg_.lease_expiry_recampaign_delay_ms);
   remember_decision(cfg_.decision_sha256);
   replica_.set_membership(cfg_.self.membership_epoch, cfg_.member_node_ids);
 }
@@ -380,6 +386,12 @@ bool EdgeConsensusNodeLoop::leader_lease_expired(int64_t now_utc_ms) const {
   return now_utc_ms - last_leader_contact_utc_ms_ >= cfg_.leader_lease_ms;
 }
 
+bool EdgeConsensusNodeLoop::lease_expiry_recampaign_delay_active(int64_t now_utc_ms) const {
+  if (cfg_.lease_expiry_recampaign_delay_ms <= 0 || now_utc_ms <= 0) return false;
+  if (last_leader_lease_expired_utc_ms_ <= 0) return false;
+  return now_utc_ms - last_leader_lease_expired_utc_ms_ < cfg_.lease_expiry_recampaign_delay_ms;
+}
+
 void EdgeConsensusNodeLoop::observe_leader_activity(const EdgeConsensusFrame& frame, int64_t now_utc_ms) {
   if (frame.kind != "leader_commit" || now_utc_ms <= 0) return;
   if (frame.leader_node_id.empty()) return;
@@ -405,10 +417,14 @@ std::vector<EdgeConsensusFrame> EdgeConsensusNodeLoop::tick(int64_t now_utc_ms) 
   if (leader_lease_expired(now_utc_ms)) {
     replica_.expire_leader_lease();
     last_leader_contact_utc_ms_ = 0;
+    last_leader_lease_expired_utc_ms_ = now_utc_ms;
+    leader_lease_expired_count_ += 1;
     if (election_started_ && last_campaign_started_utc_ms_ > 0) {
       last_campaign_started_utc_ms_ = now_utc_ms - current_campaign_delay_ms();
     }
   }
+
+  if (lease_expiry_recampaign_delay_active(now_utc_ms)) return out;
 
   const std::string campaign_decision =
     trim_copy(cfg_.decision_sha256).empty() ? trim_copy(last_known_decision_sha256_) : trim_copy(cfg_.decision_sha256);
@@ -474,15 +490,24 @@ Json::Value EdgeConsensusNodeLoop::status_to_json() const {
   out["campaign_retry_backoff_factor"] = (Json::Int64)cfg_.campaign_retry_backoff_factor;
   out["leader_heartbeat_ms"] = (Json::Int64)cfg_.leader_heartbeat_ms;
   out["leader_lease_ms"] = (Json::Int64)cfg_.leader_lease_ms;
+  out["lease_expiry_recampaign_delay_ms"] = (Json::Int64)cfg_.lease_expiry_recampaign_delay_ms;
   if (!cfg_.decision_sha256.empty()) out["decision_sha256"] = cfg_.decision_sha256;
   if (!last_known_decision_sha256_.empty()) out["last_known_decision_sha256"] = last_known_decision_sha256_;
   out["election_started"] = election_started_;
   out["campaign_attempts"] = Json::UInt64(campaign_attempts_);
   out["current_campaign_delay_ms"] = (Json::Int64)current_campaign_delay_ms();
+  out["leader_lease_expired_count"] = Json::UInt64(leader_lease_expired_count_);
   if (last_leader_contact_utc_ms_ > 0) {
     out["last_leader_contact_utc_ms"] = (Json::Int64)last_leader_contact_utc_ms_;
     if (cfg_.leader_lease_ms > 0 && !replica_.leader_node_id().empty() && !replica_.leader_is_self()) {
       out["leader_lease_deadline_utc_ms"] = (Json::Int64)(last_leader_contact_utc_ms_ + cfg_.leader_lease_ms);
+    }
+  }
+  if (last_leader_lease_expired_utc_ms_ > 0) {
+    out["last_leader_lease_expired_utc_ms"] = (Json::Int64)last_leader_lease_expired_utc_ms_;
+    if (cfg_.lease_expiry_recampaign_delay_ms > 0 && replica_.leader_node_id().empty()) {
+      out["lease_expiry_recampaign_ready_utc_ms"] =
+        (Json::Int64)(last_leader_lease_expired_utc_ms_ + cfg_.lease_expiry_recampaign_delay_ms);
     }
   }
   if (last_leader_heartbeat_sent_utc_ms_ > 0) {

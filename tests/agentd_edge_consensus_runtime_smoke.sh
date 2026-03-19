@@ -260,14 +260,14 @@ JSON
 )")"
 STOP_STATUS_JSON="$(wait_runtime_stopped "${STOP_NODE}")"
 BUILTIN_LOCAL_START_RAW="$(curl_json_status POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","node_id":"${BUILTIN_LOCAL_NODE}","cluster_id":"${BUILTIN_LOCAL_CLUSTER}","manifest_sha256":"${BUILTIN_LOCAL_SHA}","daemon_url":"not-a-url","auth_token":"unused-local-token","deadline_ms":30000,"poll_interval_ms":100}
+{"action":"start","node_id":"${BUILTIN_LOCAL_NODE}","cluster_id":"${BUILTIN_LOCAL_CLUSTER}","manifest_sha256":"${BUILTIN_LOCAL_SHA}","daemon_url":"not-a-url","auth_token":"unused-local-token","lease_expiry_recampaign_delay_ms":333,"deadline_ms":30000,"poll_interval_ms":100}
 JSON
 )")"
 BUILTIN_LOCAL_START_STATUS="$(printf '%s\n' "${BUILTIN_LOCAL_START_RAW}" | sed -n '1p')"
 BUILTIN_LOCAL_START_JSON="$(printf '%s\n' "${BUILTIN_LOCAL_START_RAW}" | sed '1d')"
 BUILTIN_LOCAL_RUNNING_JSON="$(wait_runtime_running "${BUILTIN_LOCAL_NODE}")"
 BUILTIN_LOCAL_AGAIN_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
-{"action":"start","node_id":"${BUILTIN_LOCAL_NODE}","cluster_id":"${BUILTIN_LOCAL_CLUSTER}","manifest_sha256":"${BUILTIN_LOCAL_SHA}","daemon_url":"https://ignored.example.invalid","auth_token":"different-unused-token","deadline_ms":30000,"poll_interval_ms":100}
+{"action":"start","node_id":"${BUILTIN_LOCAL_NODE}","cluster_id":"${BUILTIN_LOCAL_CLUSTER}","manifest_sha256":"${BUILTIN_LOCAL_SHA}","daemon_url":"https://ignored.example.invalid","auth_token":"different-unused-token","lease_expiry_recampaign_delay_ms":333,"deadline_ms":30000,"poll_interval_ms":100}
 JSON
 )")"
 BUILTIN_LOCAL_STOP_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
@@ -335,6 +335,9 @@ if builtin_local_start_rt.get("runtime_kind") != "builtin":
   raise SystemExit(1)
 if builtin_local_start_rt.get("daemon_url") != "@local":
   print("builtin local start did not normalize transport to @local", builtin_local_start, file=sys.stderr)
+  raise SystemExit(1)
+if builtin_local_start_rt.get("lease_expiry_recampaign_delay_ms") != 333:
+  print("builtin local start missing lease-expiry recampaign override", builtin_local_start, file=sys.stderr)
   raise SystemExit(1)
 if not (builtin_local_running.get("runtime") or {}).get("running"):
   print("builtin local runtime never entered running state", builtin_local_running, file=sys.stderr)
@@ -408,7 +411,7 @@ agentd_smoke_wait_health "${DAEMON_URL}" "${DAEMON_TOKEN}"
 STALE_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${STALE_NODE}")"
 
 DRIFT_ROTATE_V1_JSON="$(curl_json POST "/api/v1/edge/consensus/membership/rotate" "$(cat <<JSON
-{"cluster_id":"${DRIFT_CLUSTER}","mode":"replace","membership_epoch":21,"member_node_ids":["${DRIFT_MEMBER_A}","${DRIFT_MEMBER_B}","${DRIFT_MEMBER_C}"],"campaign_delay_ms":75,"campaign_retry_ms":400,"campaign_retry_max_ms":900,"campaign_retry_backoff_factor":2,"leader_heartbeat_ms":240,"leader_lease_ms":1200}
+{"cluster_id":"${DRIFT_CLUSTER}","mode":"replace","membership_epoch":21,"member_node_ids":["${DRIFT_MEMBER_A}","${DRIFT_MEMBER_B}","${DRIFT_MEMBER_C}"],"campaign_delay_ms":75,"campaign_retry_ms":400,"campaign_retry_max_ms":900,"campaign_retry_backoff_factor":2,"leader_heartbeat_ms":240,"leader_lease_ms":1200,"lease_expiry_recampaign_delay_ms":410}
 JSON
 )")"
 DRIFT_START_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
@@ -417,7 +420,7 @@ JSON
 )")"
 DRIFT_RUNNING_JSON="$(wait_runtime_running "${DRIFT_NODE}")"
 DRIFT_ROTATE_V2_JSON="$(curl_json POST "/api/v1/edge/consensus/membership/rotate" "$(cat <<JSON
-{"cluster_id":"${DRIFT_CLUSTER}","mode":"replace","membership_epoch":22,"member_node_ids":["${DRIFT_MEMBER_A}","${DRIFT_MEMBER_B}","${DRIFT_MEMBER_D}"],"campaign_delay_ms":125,"campaign_retry_ms":650,"campaign_retry_max_ms":1600,"campaign_retry_backoff_factor":3,"leader_heartbeat_ms":360,"leader_lease_ms":1800}
+{"cluster_id":"${DRIFT_CLUSTER}","mode":"replace","membership_epoch":22,"member_node_ids":["${DRIFT_MEMBER_A}","${DRIFT_MEMBER_B}","${DRIFT_MEMBER_D}"],"campaign_delay_ms":125,"campaign_retry_ms":650,"campaign_retry_max_ms":1600,"campaign_retry_backoff_factor":3,"leader_heartbeat_ms":360,"leader_lease_ms":1800,"lease_expiry_recampaign_delay_ms":920}
 JSON
 )")"
 DRIFT_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${DRIFT_NODE}")"
@@ -753,6 +756,9 @@ if (drift_live.get("self") or {}).get("node_id") != "${DRIFT_NODE}":
 if sorted(drift_live.get("member_node_ids") or []) != sorted(["${DRIFT_MEMBER_A}", "${DRIFT_MEMBER_B}", "${DRIFT_MEMBER_C}"]):
   print("drift runtime live_status member set mismatch", drift_running, file=sys.stderr)
   raise SystemExit(1)
+if drift_live.get("lease_expiry_recampaign_delay_ms") != 410:
+  print("drift runtime live_status missing rotated v1 recampaign policy", drift_running, file=sys.stderr)
+  raise SystemExit(1)
 drift_rt = drift_status.get("runtime") or {}
 drift_info = drift_rt.get("cluster_policy_drift") or {}
 changed = set(drift_info.get("changed_fields") or [])
@@ -762,12 +768,15 @@ if drift_rt.get("running") is not True:
 if drift_info.get("cluster_id") != "${DRIFT_CLUSTER}":
   print("drift status missing cluster id", drift_status, file=sys.stderr)
   raise SystemExit(1)
-if not {"membership_epoch", "member_node_ids", "campaign_delay_ms", "campaign_retry_ms", "campaign_retry_max_ms", "campaign_retry_backoff_factor", "leader_heartbeat_ms", "leader_lease_ms"}.issubset(changed):
+if not {"membership_epoch", "member_node_ids", "campaign_delay_ms", "campaign_retry_ms", "campaign_retry_max_ms", "campaign_retry_backoff_factor", "leader_heartbeat_ms", "leader_lease_ms", "lease_expiry_recampaign_delay_ms"}.issubset(changed):
   print("drift status missing expected changed fields", drift_status, file=sys.stderr)
   raise SystemExit(1)
 current_policy = drift_info.get("current_policy") or {}
 if current_policy.get("membership_epoch") != 22 or current_policy.get("leader_lease_ms") != 1800:
   print("drift status missing rotated current policy", drift_status, file=sys.stderr)
+  raise SystemExit(1)
+if current_policy.get("lease_expiry_recampaign_delay_ms") != 920:
+  print("drift status missing rotated recampaign policy", drift_status, file=sys.stderr)
   raise SystemExit(1)
 if sorted(current_policy.get("member_node_ids") or []) != sorted(["${DRIFT_MEMBER_A}", "${DRIFT_MEMBER_B}", "${DRIFT_MEMBER_D}"]):
   print("drift status current policy members wrong", drift_status, file=sys.stderr)
@@ -794,6 +803,9 @@ for label, rt in (("drift_restart", restart_rt), ("drift_restart_running", resta
     raise SystemExit(1)
   if rt.get("leader_heartbeat_ms") != 360 or rt.get("leader_lease_ms") != 1800:
     print(label, "missing rotated leader policy", rt, file=sys.stderr)
+    raise SystemExit(1)
+  if rt.get("lease_expiry_recampaign_delay_ms") != 920:
+    print(label, "missing rotated lease-expiry recampaign policy", rt, file=sys.stderr)
     raise SystemExit(1)
   if "cluster_policy_drift" in rt:
     print(label, "unexpected drift after restart adoption", rt, file=sys.stderr)

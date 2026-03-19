@@ -92,7 +92,7 @@ EdgeNodeConsensusStatus:
 
 EdgeConsensusClusterPolicy:
   type: object
-  required: [schema, cluster_id, membership_epoch, updated_utc_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, leader_heartbeat_ms, leader_lease_ms, member_node_ids]
+  required: [schema, cluster_id, membership_epoch, updated_utc_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, leader_heartbeat_ms, leader_lease_ms, lease_expiry_recampaign_delay_ms, member_node_ids]
   properties:
     schema: { type: string, enum: [edge_consensus_cluster_policy_v1] }
     cluster_id: { type: string }
@@ -104,6 +104,7 @@ EdgeConsensusClusterPolicy:
     campaign_retry_backoff_factor: { type: integer, format: int64 }
     leader_heartbeat_ms: { type: integer, format: int64 }
     leader_lease_ms: { type: integer, format: int64 }
+    lease_expiry_recampaign_delay_ms: { type: integer, format: int64 }
     member_node_ids:
       type: array
       items: { type: string }
@@ -118,7 +119,7 @@ EdgeTrustEpochs:
 
 EdgeNodeConsensusRuntime:
   type: object
-  required: [schema, runtime_kind, status_source, node_id, cluster_id, manifest_sha256, peer_node_ids, member_node_ids, daemon_url, tool_path, started_unix_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, leader_heartbeat_ms, leader_lease_ms, poll_interval_ms, deadline_ms, cluster_size, outbox_limit, trust_epochs, membership_epoch, running]
+  required: [schema, runtime_kind, status_source, node_id, cluster_id, manifest_sha256, peer_node_ids, member_node_ids, daemon_url, tool_path, started_unix_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, leader_heartbeat_ms, leader_lease_ms, lease_expiry_recampaign_delay_ms, poll_interval_ms, deadline_ms, cluster_size, outbox_limit, trust_epochs, membership_epoch, running]
   properties:
     schema: { type: string, enum: [edge_node_consensus_runtime_v1] }
     runtime_kind:
@@ -152,6 +153,7 @@ EdgeNodeConsensusRuntime:
     campaign_retry_backoff_factor: { type: integer, format: int64 }
     leader_heartbeat_ms: { type: integer, format: int64 }
     leader_lease_ms: { type: integer, format: int64 }
+    lease_expiry_recampaign_delay_ms: { type: integer, format: int64 }
     poll_interval_ms: { type: integer, format: int64 }
     deadline_ms: { type: integer, format: int64 }
     cluster_size: { type: integer, format: int64 }
@@ -279,6 +281,7 @@ EdgeNodeConsensusRuntimeRequest:
     campaign_retry_backoff_factor: { type: integer, format: int64 }
     leader_heartbeat_ms: { type: integer, format: int64 }
     leader_lease_ms: { type: integer, format: int64 }
+    lease_expiry_recampaign_delay_ms: { type: integer, format: int64 }
     poll_interval_ms: { type: integer, format: int64 }
     deadline_ms: { type: integer, format: int64 }
     trust_roots_epoch:

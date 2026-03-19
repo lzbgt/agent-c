@@ -49,6 +49,7 @@ struct EdgeConsensusNodeLoopConfig {
   int64_t campaign_retry_backoff_factor = 1;
   int64_t leader_heartbeat_ms = 1000;
   int64_t leader_lease_ms = 5000;
+  int64_t lease_expiry_recampaign_delay_ms = 0;
   std::string decision_sha256;
 };
 
@@ -121,6 +122,7 @@ class EdgeConsensusNodeLoop {
  private:
   void remember_decision(const std::string& decision_sha256);
   bool leader_lease_expired(int64_t now_utc_ms) const;
+  bool lease_expiry_recampaign_delay_active(int64_t now_utc_ms) const;
   void observe_leader_activity(const EdgeConsensusFrame& frame, int64_t now_utc_ms);
 
   EdgeConsensusNodeLoopConfig cfg_;
@@ -129,8 +131,10 @@ class EdgeConsensusNodeLoop {
   int64_t last_campaign_started_utc_ms_ = 0;
   int64_t last_leader_contact_utc_ms_ = 0;
   int64_t last_leader_heartbeat_sent_utc_ms_ = 0;
+  int64_t last_leader_lease_expired_utc_ms_ = 0;
   bool election_started_ = false;
   uint64_t campaign_attempts_ = 0;
+  uint64_t leader_lease_expired_count_ = 0;
   std::string last_known_decision_sha256_;
 };
 

@@ -34,7 +34,8 @@ static EdgeConsensusNodeLoop make_loop(
   int64_t campaign_retry_max_ms = 0,
   int64_t campaign_retry_backoff_factor = 1,
   int64_t leader_heartbeat_ms = 1000,
-  int64_t leader_lease_ms = 5000
+  int64_t leader_lease_ms = 5000,
+  int64_t lease_expiry_recampaign_delay_ms = 0
 ) {
   EdgeConsensusNodeLoopConfig cfg;
   cfg.self = make_identity(node_id);
@@ -46,6 +47,7 @@ static EdgeConsensusNodeLoop make_loop(
   cfg.campaign_retry_backoff_factor = campaign_retry_backoff_factor;
   cfg.leader_heartbeat_ms = leader_heartbeat_ms;
   cfg.leader_lease_ms = leader_lease_ms;
+  cfg.lease_expiry_recampaign_delay_ms = lease_expiry_recampaign_delay_ms;
   cfg.decision_sha256 = decision_sha256;
   return EdgeConsensusNodeLoop(cfg);
 }
@@ -236,7 +238,8 @@ static void test_status_surfaces_loop_config() {
     500,
     2,
     300,
-    1200
+    1200,
+    450
   );
   (void)loop.tick(1000);
   (void)loop.tick(1050);
@@ -248,6 +251,7 @@ static void test_status_surfaces_loop_config() {
   assert(status["campaign_retry_backoff_factor"].asInt64() == 2);
   assert(status["leader_heartbeat_ms"].asInt64() == 300);
   assert(status["leader_lease_ms"].asInt64() == 1200);
+  assert(status["lease_expiry_recampaign_delay_ms"].asInt64() == 450);
   assert(status["self"]["membership_epoch"].asUInt64() == 9);
   assert(status["peer_node_ids"].isArray());
   assert(status["peer_node_ids"].size() == 2);
@@ -267,7 +271,7 @@ static void test_status_surfaces_loop_config() {
 static void test_leader_heartbeat_and_follower_lease_expiry() {
   const std::string decision = "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
   auto loop_a = make_loop("node-a", {"node-b", "node-c"}, decision, 0, 300, 600, 2, 200, 700);
-  auto loop_b = make_loop("node-b", {"node-a", "node-c"}, "", 0, 300, 600, 2, 200, 700);
+  auto loop_b = make_loop("node-b", {"node-a", "node-c"}, "", 0, 300, 600, 2, 200, 700, 250);
   EdgeConsensusReplica replica_b(make_identity("node-b"), 3);
   EdgeConsensusReplica replica_c(make_identity("node-c"), 3);
   set_membership_all(&replica_b, {"node-a", "node-b", "node-c"});
@@ -318,6 +322,10 @@ static void test_leader_heartbeat_and_follower_lease_expiry() {
   std::vector<EdgeConsensusFrame> retry = loop_b.tick(1039);
   assert(retry.empty());
   retry = loop_b.tick(1040);
+  assert(retry.empty());
+  retry = loop_b.tick(1289);
+  assert(retry.empty());
+  retry = loop_b.tick(1290);
   assert(retry.size() == 1);
   assert(retry[0].kind == "vote_request");
   assert(retry[0].candidate_node_id == "node-b");
@@ -329,7 +337,11 @@ static void test_leader_heartbeat_and_follower_lease_expiry() {
   assert(status["last_known_decision_sha256"].asString() == decision);
   assert(status["leader_heartbeat_ms"].asInt64() == 200);
   assert(status["leader_lease_ms"].asInt64() == 700);
+  assert(status["lease_expiry_recampaign_delay_ms"].asInt64() == 250);
   assert(status["campaign_attempts"].asUInt64() == 1);
+  assert(status["leader_lease_expired_count"].asUInt64() == 1);
+  assert(status["last_leader_lease_expired_utc_ms"].asInt64() == 1040);
+  assert(status["lease_expiry_recampaign_ready_utc_ms"].asInt64() == 1290);
 }
 
 }  // namespace

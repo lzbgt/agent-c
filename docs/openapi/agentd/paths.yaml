@@ -2578,7 +2578,9 @@
       retry interval, `campaign_retry_max_ms` for the backoff ceiling, and
       `campaign_retry_backoff_factor` for bounded exponential retry growth when
       quorum is not reached before peers arrive, plus `leader_heartbeat_ms` and
-      `leader_lease_ms` for leader freshness / failover timing, and
+      `leader_lease_ms` for leader freshness / failover timing, plus
+      `lease_expiry_recampaign_delay_ms` for a bounded cooldown before followers
+      re-campaign after expiring a stale leader, and
       `membership_epoch` plus `member_node_ids` for explicit member-set compatibility.
       When those fields are omitted and a durable `/api/v1/edge/consensus/membership`
       policy exists for the cluster, the runtime defaults from that stored bundle.

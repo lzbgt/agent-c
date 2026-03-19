@@ -101,6 +101,8 @@ The shipped autonomous host-loop proof adds:
   manual restart while capping retry growth
 - leader freshness policy (`leader_heartbeat_ms`, `leader_lease_ms`) so committed leaders periodically reaffirm the
   current decision and followers can deterministically expire stale leaders before re-campaigning
+- durable post-expiry recovery policy (`lease_expiry_recampaign_delay_ms`) so followers can wait out a bounded
+  cooldown after leader-lease expiry instead of always re-campaigning immediately during transient partitions
 - explicit membership surfaces (`membership_epoch` + `member_node_ids`) on the shared core, host helper, and managed runtime
 - signed/durable cluster policy bundles via `edge_consensus_membership_v1`, including outbox delivery as
   `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE`

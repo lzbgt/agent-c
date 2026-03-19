@@ -31,6 +31,7 @@ struct Options {
   int64_t campaign_retry_backoff_factor = 1;
   int64_t leader_heartbeat_ms = 1000;
   int64_t leader_lease_ms = 5000;
+  int64_t lease_expiry_recampaign_delay_ms = 0;
   int64_t poll_interval_ms = 100;
   int64_t deadline_ms = 10000;
   uint64_t trust_roots_epoch = 0;
@@ -74,6 +75,7 @@ static void print_usage(const char* argv0) {
     << "  [--campaign-retry-backoff-factor <n>]\n"
     << "  [--leader-heartbeat-ms <ms>]\n"
     << "  [--leader-lease-ms <ms>]\n"
+    << "  [--lease-expiry-recampaign-delay-ms <ms>]\n"
     << "  [--poll-interval-ms <ms>]\n"
     << "  [--deadline-ms <ms>]\n"
     << "  [--trust-roots-epoch <n>]\n"
@@ -173,6 +175,12 @@ static bool parse_args(int argc, char** argv, Options* out) {
         std::cerr << "invalid --leader-lease-ms\n";
         return false;
       }
+    } else if (a == "--lease-expiry-recampaign-delay-ms" && i + 1 < argc) {
+      if (!parse_i64_arg(argv[++i], &opt.lease_expiry_recampaign_delay_ms) ||
+          opt.lease_expiry_recampaign_delay_ms < 0) {
+        std::cerr << "invalid --lease-expiry-recampaign-delay-ms\n";
+        return false;
+      }
     } else if (a == "--poll-interval-ms" && i + 1 < argc) {
       if (!parse_i64_arg(argv[++i], &opt.poll_interval_ms) || opt.poll_interval_ms < 1) {
         std::cerr << "invalid --poll-interval-ms\n";
@@ -252,6 +260,7 @@ int main(int argc, char** argv) {
   cfg.campaign_retry_backoff_factor = opt.campaign_retry_backoff_factor;
   cfg.leader_heartbeat_ms = opt.leader_heartbeat_ms;
   cfg.leader_lease_ms = opt.leader_lease_ms;
+  cfg.lease_expiry_recampaign_delay_ms = opt.lease_expiry_recampaign_delay_ms;
   cfg.poll_interval_ms = opt.poll_interval_ms;
   cfg.deadline_ms = opt.deadline_ms;
   cfg.trust_roots_epoch = opt.trust_roots_epoch;

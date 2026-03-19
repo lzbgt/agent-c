@@ -670,6 +670,7 @@ streaming and plugins are stable.
   - 2026-03-20: the builtin managed consensus backend now uses daemon-local transport instead of self-HTTP, normalizes runtime `daemon_url` to `@local`, and ignores builtin-only `daemon_url` / `auth_token` request drift when deciding whether a running runtime is reusable; proof: `tests/agentd_edge_consensus_runtime_smoke.sh`.
   - 2026-03-20: `GET /api/v1/edge/node?node_id=...` now falls back to a synthetic runtime-backed node record when no hello/caps row exists but managed consensus runtime state does, and the main runtime smoke proves builtin running, builtin persisted, and external recovered-runtime lookup through the main node-read API.
   - 2026-03-20: `GET /api/v1/edge/nodes` now applies the same runtime-backed fallback to listing, so runtime-only managed consensus nodes still appear even when the `edge_nodes` row is missing, with builtin-persisted and recovered-external proof in `tests/agentd_edge_consensus_runtime_smoke.sh`.
+  - 2026-03-20: durable consensus policy now also carries `lease_expiry_recampaign_delay_ms`, the shared loop exposes lease-expiry recovery counters/deadlines in live/final status, and both membership/runtime smokes plus `test_edge_node_consensus_loop.cpp` prove the new bounded post-expiry cooldown path.
 
 ## Deferred (after macOS stability)
 

@@ -252,6 +252,7 @@ bool run_edge_consensus_runtime_core(
   loop_cfg.campaign_retry_backoff_factor = cfg.campaign_retry_backoff_factor;
   loop_cfg.leader_heartbeat_ms = cfg.leader_heartbeat_ms;
   loop_cfg.leader_lease_ms = cfg.leader_lease_ms;
+  loop_cfg.lease_expiry_recampaign_delay_ms = cfg.lease_expiry_recampaign_delay_ms;
   loop_cfg.decision_sha256 = cfg.decision_sha256;
   EdgeConsensusNodeLoop loop(loop_cfg);
   notify_startup_ready(hooks);
