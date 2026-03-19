@@ -295,6 +295,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/session_voice_runtime_lifecycle.cpp
     daemon/src/session_voice_runtime_registry.cpp
     daemon/src/session_voice_runtime_response.cpp
+    daemon/src/session_voice_runtime_start.cpp
     daemon/src/session_voice_runtime_status.cpp
     daemon/src/session_voice_runtime_stop.cpp
     daemon/src/session_voice_start_plan.cpp
