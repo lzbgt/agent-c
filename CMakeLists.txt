@@ -999,6 +999,12 @@ if(AGENT_BUILD_HOST)
     )
     set_tests_properties(agentd_audio_signal_loopback_smoke PROPERTIES SKIP_RETURN_CODE 77)
     add_test(
+      NAME agentd_audio_signal_remote_bye_smoke
+      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_audio_signal_remote_bye_smoke.sh
+        $<TARGET_FILE:agentd_audio_signal_loopback>
+    )
+    set_tests_properties(agentd_audio_signal_remote_bye_smoke PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(
       NAME agentd_audio_webrtc_peer_smoke
       COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_audio_webrtc_peer_smoke.sh
         ${CMAKE_CURRENT_SOURCE_DIR}/tools/agentd_audio_webrtc_peer.js

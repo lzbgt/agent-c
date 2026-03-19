@@ -13,6 +13,7 @@ struct Options {
   std::string session_id;
   int64_t stream_timeout_ms = 15000;
   int64_t post_answer_candidate_timeout_ms = 0;
+  int64_t remote_bye_timeout_ms = 0;
   std::string send_bye_reason;
 };
 
@@ -21,6 +22,7 @@ static void print_usage(const char* argv0) {
     << "Usage: " << (argv0 ? argv0 : "agentd_audio_signal_loopback")
     << " --broker-url <url> --token <token> --session-id <id>"
     << " [--stream-timeout-ms <ms>] [--post-answer-candidate-timeout-ms <ms>]"
+    << " [--remote-bye-timeout-ms <ms>]"
     << " [--send-bye-reason <reason>]\n";
 }
 
@@ -39,6 +41,8 @@ static bool parse_args(int argc, char** argv, Options* out) {
       opt.stream_timeout_ms = std::stoll(argv[++i]);
     } else if (a == "--post-answer-candidate-timeout-ms" && i + 1 < argc) {
       opt.post_answer_candidate_timeout_ms = std::stoll(argv[++i]);
+    } else if (a == "--remote-bye-timeout-ms" && i + 1 < argc) {
+      opt.remote_bye_timeout_ms = std::stoll(argv[++i]);
     } else if (a == "--send-bye-reason" && i + 1 < argc) {
       opt.send_bye_reason = argv[++i];
     } else if (a == "--help" || a == "-h") {
@@ -96,6 +100,7 @@ int main(int argc, char** argv) {
   }
 
   size_t post_answer_remote_candidate_count = 0;
+  std::string remote_bye_reason;
   if (opt.post_answer_candidate_timeout_ms > 0) {
     VoiceBrokerSignalCandidate candidate;
     if (!wait_for_voice_broker_signal_remote_candidate_ready(
@@ -116,6 +121,26 @@ int main(int argc, char** argv) {
     if (!trim_copy(candidate.candidate).empty()) post_answer_remote_candidate_count = 1;
   }
 
+  if (opt.remote_bye_timeout_ms > 0) {
+    VoiceBrokerSignalBye remote_bye;
+    if (!wait_for_voice_broker_signal_remote_bye(
+          opt.broker_url,
+          opt.token,
+          opt.session_id,
+          opt.remote_bye_timeout_ms,
+          &signal_state,
+          &remote_bye,
+          &http_status,
+          &err)) {
+      std::cerr << "Failed to read remote bye";
+      if (http_status > 0) std::cerr << " (http status " << http_status << ")";
+      if (!err.empty()) std::cerr << ": " << err;
+      std::cerr << "\n";
+      return 1;
+    }
+    remote_bye_reason = trim_copy(remote_bye.reason);
+  }
+
   VoiceBrokerSignalBye bye;
   bye.reason = opt.send_bye_reason;
   if (!bye.reason.empty() && !send_voice_broker_bye(opt.broker_url, opt.token, opt.session_id, bye, &err)) {
@@ -127,6 +152,10 @@ int main(int argc, char** argv) {
     << "agentd_audio_signal_loopback OK initial_remote_candidate_count="
     << remote_ready.initial_remote_candidates.size()
     << " post_answer_remote_candidate_count="
-    << post_answer_remote_candidate_count << "\n";
+    << post_answer_remote_candidate_count;
+  if (opt.remote_bye_timeout_ms > 0) {
+    std::cout << " remote_bye_reason=" << remote_bye_reason;
+  }
+  std::cout << "\n";
   return 0;
 }
