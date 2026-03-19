@@ -87,16 +87,16 @@ void handle_session_voice_webrtc_peer_start_action(
   }
 
   VoicePeerBackendStartResult start_result;
+  if (!finalize_voice_peer_start_plan_for_launch(
+        cfg, request_broker_token, &start_plan, &plan_err)) {
+    respond_voice_peer_start_plan_error(plan_err, out, resp);
+    return;
+  }
+
   if (start_plan.runtime_kind == "builtin") {
     (void)start_voice_peer_builtin_backend(
       cfg, session_id, start_plan, &start_result);
   } else {
-    if (!finalize_voice_peer_start_plan_for_launch(
-          cfg, request_broker_token, &start_plan, &plan_err)) {
-      respond_voice_peer_start_plan_error(plan_err, out, resp);
-      return;
-    }
-
 #if defined(_WIN32)
     (*out)["error"] = "voice_webrtc_peer start unsupported on Windows";
     resp->status = 501;

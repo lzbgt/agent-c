@@ -32,7 +32,9 @@ struct VoicePeerStartPlan {
   std::string resolved_tool_path;
   std::string resolved_node_bin;
   std::string broker_token;
+  std::string requested_broker_session_mode;
   bool desired_backend_available = false;
+  bool requested_broker_session_preflighted = false;
   std::string desired_backend_err;
   bool has_requested_broker_session_id = false;
   bool has_broker_agent_id = false;

@@ -32,6 +32,10 @@ bool resolve_voice_peer_broker_session(
     return true;
   }
 
+  if (start_plan.requested_broker_session_preflighted) {
+    return true;
+  }
+
   bool session_exists = false;
   std::string broker_session_mode;
   if (!broker_audio_session_exists(

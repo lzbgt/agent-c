@@ -926,7 +926,7 @@ builtin_resp_body="${LOG_DIR}/voice_webrtc_peer_builtin_body.json"
 builtin_status="$(curl -sS --noproxy "*" --max-time 10 -o "${builtin_resp_body}" -D "${builtin_resp_headers}" -w '%{http_code}' \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
   -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${SESSION_DB_ID}\",\"action\":\"start\",\"runtime_kind\":\"builtin\"}" \
+  -d "{\"session_id\":\"${SESSION_DB_ID}\",\"action\":\"start\",\"runtime_kind\":\"builtin\",\"broker_agent_id\":\"a-1\",\"broker_deployment_id\":\"lab-builtin-contract\"}" \
   "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
 if [[ "${builtin_status}" != "501" ]]; then
   echo "expected builtin runtime request to return 501, got ${builtin_status}" >&2
@@ -953,6 +953,110 @@ if "not implemented" not in str(obj.get("builtin_unavailable_reason", "")):
   raise SystemExit(1)
 if "not implemented" not in str(obj.get("error", "")):
   print("expected builtin not implemented error", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+BUILTIN_MISSING_BROKER_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_missing_broker_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${BUILTIN_MISSING_BROKER_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+builtin_missing_broker_session_resp_body="${LOG_DIR}/voice_webrtc_peer_builtin_missing_broker_session_body.json"
+builtin_missing_broker_session_status="$(curl -sS --noproxy "*" --max-time 10 -o "${builtin_missing_broker_session_resp_body}" -w '%{http_code}' \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${BUILTIN_MISSING_BROKER_SESSION_ID}",
+  "action": "start",
+  "runtime_kind": "builtin",
+  "broker_session_id": "missing-builtin-broker-session",
+  "sender_tag": "agentd_runtime_peer"
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+if [[ "${builtin_missing_broker_session_status}" != "400" ]]; then
+  echo "expected builtin missing broker_session_id start to return 400, got ${builtin_missing_broker_session_status}" >&2
+  cat "${builtin_missing_broker_session_resp_body}" >&2
+  exit 1
+fi
+python3 - <<PY
+import json, sys
+obj = json.load(open(r'''${builtin_missing_broker_session_resp_body}''', 'r', encoding='utf-8'))
+if obj.get("ok") is not False:
+  print("expected builtin missing broker_session_id start to fail", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "broker_session_id not found" not in str(obj.get("error", "")):
+  print("expected builtin missing broker_session_id error", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+builtin_missing_broker_session_status_json="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer?session_id=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${BUILTIN_MISSING_BROKER_SESSION_ID}")")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${builtin_missing_broker_session_status_json}''')
+if obj.get("running") is not False or obj.get("peer") is not None:
+  print("expected no runtime after builtin missing broker_session_id preflight failure", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+BUILTIN_CONFLICT_BROKER_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_conflict_broker_$(date +%s)_$RANDOM"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"${BUILTIN_CONFLICT_BROKER_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+builtin_conflict_broker_session_resp_body="${LOG_DIR}/voice_webrtc_peer_builtin_conflict_broker_session_body.json"
+builtin_conflict_broker_session_status="$(curl -sS --noproxy "*" --max-time 10 -o "${builtin_conflict_broker_session_resp_body}" -w '%{http_code}' \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${BUILTIN_CONFLICT_BROKER_SESSION_ID}",
+  "action": "start",
+  "runtime_kind": "builtin",
+  "broker_session_id": "aud_conflict_builtin",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "lab-builtin-conflict",
+  "sender_tag": "agentd_runtime_peer"
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+if [[ "${builtin_conflict_broker_session_status}" != "400" ]]; then
+  echo "expected conflicting builtin broker session start to return 400, got ${builtin_conflict_broker_session_status}" >&2
+  cat "${builtin_conflict_broker_session_resp_body}" >&2
+  exit 1
+fi
+python3 - <<PY
+import json, sys
+obj = json.load(open(r'''${builtin_conflict_broker_session_resp_body}''', 'r', encoding='utf-8'))
+if obj.get("ok") is not False:
+  print("expected conflicting builtin broker session start to fail", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "must be omitted" not in str(obj.get("error", "")):
+  print("expected conflicting builtin broker session validation error", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+builtin_conflict_broker_session_status_json="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer?session_id=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${BUILTIN_CONFLICT_BROKER_SESSION_ID}")")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${builtin_conflict_broker_session_status_json}''')
+if obj.get("running") is not False or obj.get("peer") is not None:
+  print("expected no runtime after conflicting builtin broker session validation failure", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 

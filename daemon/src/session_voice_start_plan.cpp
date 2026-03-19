@@ -36,6 +36,44 @@ void set_plan_error(VoicePeerPlanError* out_err, int http_status, bool use_json_
   out_err->message = message;
 }
 
+bool preflight_requested_voice_peer_broker_session(
+  VoicePeerStartPlan* plan,
+  VoicePeerPlanError* out_err
+) {
+  if (!plan || plan->requested_broker_session_id.empty()) return true;
+  if (plan->requested_broker_session_preflighted) return true;
+
+  bool session_exists = false;
+  std::string broker_session_mode;
+  std::string err;
+  if (!broker_audio_session_exists(
+        plan->effective_broker_url,
+        plan->broker_token,
+        plan->requested_broker_session_id,
+        &session_exists,
+        &broker_session_mode,
+        &err)) {
+    set_plan_error(
+      out_err,
+      500,
+      false,
+      err.empty() ? "failed to inspect broker audio session" : err);
+    return false;
+  }
+  if (!session_exists) {
+    set_plan_error(out_err, 400, true, "broker_session_id not found");
+    return false;
+  }
+  if (!broker_session_mode.empty() && broker_session_mode != "webrtc") {
+    set_plan_error(out_err, 400, true, "broker_session_id mode must be webrtc");
+    return false;
+  }
+
+  plan->requested_broker_session_preflighted = true;
+  plan->requested_broker_session_mode = broker_session_mode;
+  return true;
+}
+
 }  // namespace
 
 bool build_voice_peer_start_plan(
@@ -132,7 +170,6 @@ bool finalize_voice_peer_start_plan_for_launch(
     set_plan_error(out_err, 500, false, "start plan unavailable");
     return false;
   }
-  if (plan->runtime_kind == "builtin") return true;
 
   if (!plan->requested_broker_session_id.empty() && !is_safe_shellish_token(plan->requested_broker_session_id, 160)) {
     set_plan_error(out_err, 400, true, "invalid broker_session_id");
@@ -187,19 +224,25 @@ bool finalize_voice_peer_start_plan_for_launch(
     return false;
   }
 
-  plan->desired_backend_available =
-    resolve_voice_peer_backend(
-      cfg,
-      plan->runtime_kind,
-      &plan->resolved_tool_path,
-      &plan->resolved_node_bin,
-      &plan->desired_backend_err);
-  if (!plan->desired_backend_available) {
-    set_plan_error(
-      out_err,
-      500,
-      false,
-      plan->desired_backend_err.empty() ? "failed to resolve voice peer backend" : plan->desired_backend_err);
+  if (plan->runtime_kind != "builtin") {
+    plan->desired_backend_available =
+      resolve_voice_peer_backend(
+        cfg,
+        plan->runtime_kind,
+        &plan->resolved_tool_path,
+        &plan->resolved_node_bin,
+        &plan->desired_backend_err);
+    if (!plan->desired_backend_available) {
+      set_plan_error(
+        out_err,
+        500,
+        false,
+        plan->desired_backend_err.empty() ? "failed to resolve voice peer backend" : plan->desired_backend_err);
+      return false;
+    }
+  }
+
+  if (!preflight_requested_voice_peer_broker_session(plan, out_err)) {
     return false;
   }
 

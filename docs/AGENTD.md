@@ -441,6 +441,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
 - When callers do provide `broker_session_id`, agentd now preflights that broker session through the broker before
   launching the peer and returns `400 broker_session_id not found` instead of spawning a child against a missing
   signaling session.
+- That same non-mutating broker-session preflight and mixed-mode validation now also applies to the reserved
+  `runtime_kind=builtin` path, so builtin requests fail on invalid broker/session inputs before the final
+  not-implemented `501` and do not quietly skip future-native backend contract checks.
 - `broker_session_id` is now mutually exclusive with `broker_agent_id` / `broker_deployment_id`; agentd rejects that
   ambiguous mixed mode at request validation time instead of silently ignoring the auto-create fields.
 - `POST /api/v1/session/voice_webrtc_peer` now supports daemon-level broker defaults through
