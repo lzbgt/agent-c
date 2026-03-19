@@ -14,10 +14,10 @@ bool start_voice_peer_child_backend(
   const std::function<void(const std::string&, const std::shared_ptr<VoicePeerRuntime>&)>& register_runtime,
   const std::function<void(const VoicePeerRuntime&)>& persist_runtime,
   const std::function<bool(const std::string&, const std::string&, Json::Value*, std::string*)>& cleanup_runtime,
-  VoicePeerChildBackendStartResult* out_result
+  VoicePeerBackendStartResult* out_result
 ) {
   if (!out_result) return false;
-  *out_result = VoicePeerChildBackendStartResult{};
+  *out_result = VoicePeerBackendStartResult{};
 
   std::string serr;
   std::string broker_session_id = start_plan.requested_broker_session_id;
