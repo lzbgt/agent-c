@@ -1,6 +1,7 @@
 #include "session_voice_child_runtime.h"
 
 #include "json_util.h"
+#include "session_voice_runtime_plan.h"
 #include "session_voice_runtime_seed.h"
 #include "string_util.h"
 
@@ -43,14 +44,6 @@ static bool read_last_nonempty_line(const std::string& path, std::string* out_li
   if (last.empty()) return false;
   if (out_line) *out_line = last;
   return true;
-}
-
-static std::filesystem::path voice_peer_runtime_dir(const DaemonConfig& cfg, const std::string& session_id) {
-  std::error_code ec;
-  std::filesystem::path base =
-    cfg.state_dir.empty() ? std::filesystem::temp_directory_path(ec) : std::filesystem::path(cfg.state_dir);
-  if (ec) base = std::filesystem::path(".");
-  return base / "voice_webrtc_peers" / session_id;
 }
 
 #if !defined(_WIN32)
@@ -172,15 +165,17 @@ bool voice_peer_spawn_process(
   }
 
   std::error_code ec;
-  const std::filesystem::path run_dir = voice_peer_runtime_dir(cfg, launch_cfg.session_id);
+  const VoicePeerRuntimeArtifactsPlan artifacts =
+    plan_voice_peer_runtime_artifacts(cfg, launch_cfg.session_id);
+  const std::filesystem::path run_dir(artifacts.runtime_dir);
   std::filesystem::create_directories(run_dir, ec);
   if (ec) {
     if (out_err) *out_err = "failed to create voice peer runtime dir";
     return false;
   }
-  const std::filesystem::path ready_file = run_dir / "ready.json";
-  const std::filesystem::path stdout_log = run_dir / "stdout.jsonl";
-  const std::filesystem::path stderr_log = run_dir / "stderr.log";
+  const std::filesystem::path ready_file(artifacts.ready_file_path);
+  const std::filesystem::path stdout_log(artifacts.stdout_log_path);
+  const std::filesystem::path stderr_log(artifacts.stderr_log_path);
   std::filesystem::remove(ready_file, ec);
   ec.clear();
   std::filesystem::remove(stdout_log, ec);
@@ -265,26 +260,8 @@ bool voice_peer_spawn_process(
   close(stdout_fd);
   close(stderr_fd);
 
-  VoicePeerRuntimeSeed runtime_seed;
-  runtime_seed.runtime_kind = launch_cfg.runtime_kind;
-  runtime_seed.session_id = launch_cfg.session_id;
-  runtime_seed.broker_session_id = launch_cfg.broker_session_id;
-  runtime_seed.broker_url = launch_cfg.broker_url;
-  runtime_seed.broker_agent_id = launch_cfg.broker_agent_id;
-  runtime_seed.broker_deployment_id = launch_cfg.broker_deployment_id;
-  runtime_seed.sender_tag = launch_cfg.sender_tag;
-  runtime_seed.tool_path = launch_cfg.tool_path;
-  runtime_seed.node_bin = launch_cfg.node_bin;
-  runtime_seed.ready_file_path = ready_file.string();
-  runtime_seed.stdout_log_path = stdout_log.string();
-  runtime_seed.stderr_log_path = stderr_log.string();
-  runtime_seed.deadline_ms = launch_cfg.deadline_ms;
-  runtime_seed.poll_interval_ms = launch_cfg.poll_interval_ms;
-  runtime_seed.tone_hz = launch_cfg.tone_hz;
-  runtime_seed.managed_broker_session = launch_cfg.managed_broker_session;
-  runtime_seed.ready = false;
-  runtime_seed.running = true;
-  runtime_seed.pid = pid;
+  const VoicePeerRuntimeSeed runtime_seed =
+    make_spawned_voice_peer_runtime_seed(launch_cfg, artifacts, pid);
   auto st = make_voice_peer_runtime_state(runtime_seed);
 
   std::mutex* runtime_mu_ptr = &runtime_mu;
@@ -364,7 +341,8 @@ bool remove_voice_peer_runtime_artifacts(
   if (out_any_deleted) *out_any_deleted = false;
   if (trim_copy(session_id).empty()) return true;
   std::error_code ec;
-  const std::filesystem::path run_dir = voice_peer_runtime_dir(cfg, session_id);
+  const std::filesystem::path run_dir(
+    plan_voice_peer_runtime_artifacts(cfg, session_id).runtime_dir);
   if (!std::filesystem::exists(run_dir, ec)) return true;
   ec.clear();
   const auto removed = std::filesystem::remove_all(run_dir, ec);

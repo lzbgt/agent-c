@@ -1,10 +1,12 @@
 #include "session_voice_builtin_contract.h"
 
 #include "session_voice_launch_flow.h"
+#include "session_voice_runtime_plan.h"
 
 namespace agentd {
 
 Json::Value session_voice_builtin_start_contract_json(
+  const DaemonConfig& cfg,
   const std::string& session_id,
   const VoicePeerStartPlan& start_plan
 ) {
@@ -21,6 +23,8 @@ Json::Value session_voice_builtin_start_contract_json(
   out["mutating_broker_actions_deferred"] = true;
   out["startup_sequence"] =
     voice_peer_launch_startup_sequence_json(start_plan, true);
+  out["runtime_artifacts"] = voice_peer_runtime_artifacts_json(
+    plan_voice_peer_runtime_artifacts(cfg, session_id));
 
   Json::Value broker_session(Json::objectValue);
   if (!start_plan.requested_broker_session_id.empty()) {

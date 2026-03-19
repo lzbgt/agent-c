@@ -20,7 +20,7 @@ bool start_voice_peer_builtin_backend(
     out_result->error = "builtin voice_webrtc_peer runtime not implemented";
   }
   out_result->backend_info["builtin_start_contract"] =
-    session_voice_builtin_start_contract_json(session_id, start_plan);
+    session_voice_builtin_start_contract_json(cfg, session_id, start_plan);
   return false;
 }
 

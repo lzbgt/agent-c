@@ -980,6 +980,23 @@ if broker_session.get("mode") != "auto_create" or broker_session.get("agent_id")
 if broker_session.get("deployment_id") != "lab-builtin-contract":
   print("expected builtin deployment contract", obj, file=sys.stderr)
   raise SystemExit(1)
+artifacts = contract.get("runtime_artifacts") or {}
+runtime_dir = artifacts.get("runtime_dir") or ""
+if not runtime_dir.endswith("/voice_webrtc_peers/" + obj.get("session_id", "")):
+  print("expected builtin runtime_dir contract", obj, file=sys.stderr)
+  raise SystemExit(1)
+if artifacts.get("ready_file_path") != runtime_dir + "/ready.json":
+  print("expected builtin ready_file_path contract", obj, file=sys.stderr)
+  raise SystemExit(1)
+if artifacts.get("stdout_log_path") != runtime_dir + "/stdout.jsonl":
+  print("expected builtin stdout_log_path contract", obj, file=sys.stderr)
+  raise SystemExit(1)
+if artifacts.get("stderr_log_path") != runtime_dir + "/stderr.log":
+  print("expected builtin stderr_log_path contract", obj, file=sys.stderr)
+  raise SystemExit(1)
+if artifacts.get("stdout_format") != "jsonl" or artifacts.get("stderr_format") != "text":
+  print("expected builtin runtime artifact format contract", obj, file=sys.stderr)
+  raise SystemExit(1)
 PY
 
 BUILTIN_MISSING_BROKER_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_missing_broker_$(date +%s)_$RANDOM"

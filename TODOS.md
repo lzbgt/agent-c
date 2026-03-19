@@ -1459,3 +1459,4 @@ Deliverables:
 
 Proof:
 - Integration test exercises broker fan-out with workflow DAG dependencies.
+- voice builtin start contract now exposes shared planned runtime artifact layout

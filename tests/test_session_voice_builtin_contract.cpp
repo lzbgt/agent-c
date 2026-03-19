@@ -7,8 +7,11 @@ namespace {
 
 using agentd::VoicePeerStartPlan;
 using agentd::session_voice_builtin_start_contract_json;
+using agentd::DaemonConfig;
 
 static void test_borrowed_broker_session_contract() {
+  DaemonConfig cfg;
+  cfg.state_dir = "/tmp/agentd-state";
   VoicePeerStartPlan plan;
   plan.runtime_kind = "builtin";
   plan.effective_broker_url = "http://broker";
@@ -21,7 +24,7 @@ static void test_borrowed_broker_session_contract() {
   plan.tone_hz = 333;
   plan.startup_wait_ms = 444;
 
-  const Json::Value out = session_voice_builtin_start_contract_json("voice-sid", plan);
+  const Json::Value out = session_voice_builtin_start_contract_json(cfg, "voice-sid", plan);
   assert(out["session_id"].asString() == "voice-sid");
   assert(out["runtime_kind"].asString() == "builtin");
   assert(out["signaling_surface"].asString() == "voice_webrtc_peer");
@@ -38,6 +41,10 @@ static void test_borrowed_broker_session_contract() {
   assert(!out["startup_sequence"][0]["deferred"].asBool());
   assert(out["startup_sequence"][1]["stage"].asString() == "launch_runtime");
   assert(out["startup_sequence"][1]["deferred"].asBool());
+  assert(out["runtime_artifacts"]["runtime_dir"].asString() == "/tmp/agentd-state/voice_webrtc_peers/voice-sid");
+  assert(out["runtime_artifacts"]["ready_file_path"].asString() == "/tmp/agentd-state/voice_webrtc_peers/voice-sid/ready.json");
+  assert(out["runtime_artifacts"]["stdout_log_path"].asString() == "/tmp/agentd-state/voice_webrtc_peers/voice-sid/stdout.jsonl");
+  assert(out["runtime_artifacts"]["stderr_log_path"].asString() == "/tmp/agentd-state/voice_webrtc_peers/voice-sid/stderr.log");
   assert(out["broker_session"]["mode"].asString() == "borrowed");
   assert(out["broker_session"]["session_id"].asString() == "sess-1");
   assert(out["broker_session"]["preflighted"].asBool());
@@ -45,6 +52,8 @@ static void test_borrowed_broker_session_contract() {
 }
 
 static void test_auto_create_broker_session_contract() {
+  DaemonConfig cfg;
+  cfg.state_dir = "/tmp/agentd-state";
   VoicePeerStartPlan plan;
   plan.runtime_kind = "builtin";
   plan.effective_broker_url = "http://broker";
@@ -52,7 +61,7 @@ static void test_auto_create_broker_session_contract() {
   plan.broker_deployment_id = "deploy-b";
   plan.sender_tag = "agentd_runtime_peer";
 
-  const Json::Value out = session_voice_builtin_start_contract_json("voice-sid", plan);
+  const Json::Value out = session_voice_builtin_start_contract_json(cfg, "voice-sid", plan);
   assert(out["broker_session"]["mode"].asString() == "auto_create");
   assert(!out["broker_session"]["preflighted"].asBool());
   assert(out["broker_session"]["agent_id"].asString() == "agent-a");
@@ -61,6 +70,8 @@ static void test_auto_create_broker_session_contract() {
   assert(out["startup_sequence"].size() == 4);
   assert(out["startup_sequence"][0]["stage"].asString() == "auto_create_broker_session");
   assert(out["startup_sequence"][0]["deferred"].asBool());
+  assert(out["runtime_artifacts"]["stdout_format"].asString() == "jsonl");
+  assert(out["runtime_artifacts"]["stderr_format"].asString() == "text");
 }
 
 }  // namespace
