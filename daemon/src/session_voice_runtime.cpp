@@ -5,6 +5,7 @@
 #include "http_util.h"
 #include "json_util.h"
 #include "session_voice_backend_policy.h"
+#include "session_voice_child_backend.h"
 #include "session_voice_broker_client.h"
 #include "session_voice_child_runtime.h"
 #include "session_voice_runtime_internal.h"
@@ -279,139 +280,62 @@ void handle_session_voice_webrtc_peer_endpoint(
   resp->body = json_stringify(out);
   return;
 #else
-  std::string serr;
-  const std::string tool_path = start_plan.resolved_tool_path;
-  const std::string node_bin = start_plan.resolved_node_bin;
-
-  std::string broker_session_id = start_plan.requested_broker_session_id;
-  bool managed_broker_session = false;
-  if (broker_session_id.empty()) {
-    if (!broker_create_audio_session(
-          start_plan.effective_broker_url,
-          start_plan.broker_token,
-          start_plan.broker_agent_id,
-          start_plan.broker_deployment_id,
-          &broker_session_id,
-          &serr)) {
-      out["error"] = serr.empty() ? "failed to create broker audio session" : serr;
-      resp->status = 500;
-      resp->body = json_stringify(out);
-      return;
-    }
-    managed_broker_session = true;
-  } else {
-    bool session_exists = false;
-    std::string broker_session_mode;
-    if (!broker_audio_session_exists(
-          start_plan.effective_broker_url,
-          start_plan.broker_token,
-          broker_session_id,
-          &session_exists,
-          &broker_session_mode,
-          &serr)) {
-      out["error"] = serr.empty() ? "failed to inspect broker audio session" : serr;
-      resp->status = 500;
-      resp->body = json_stringify(out);
-      return;
-    }
-    if (!session_exists) {
-      resp->status = 400;
-      resp->body = json_error_body("broker_session_id not found");
-      return;
-    }
-    if (!broker_session_mode.empty() && broker_session_mode != "webrtc") {
-      resp->status = 400;
-      resp->body = json_error_body("broker_session_id mode must be webrtc");
-      return;
-    }
-  }
-
-  VoicePeerChildLaunchConfig launch_cfg;
-  launch_cfg.runtime_kind = start_plan.runtime_kind;
-  launch_cfg.session_id = session_id;
-  launch_cfg.broker_session_id = broker_session_id;
-  launch_cfg.broker_url = start_plan.effective_broker_url;
-  launch_cfg.broker_token = start_plan.broker_token;
-  launch_cfg.sender_tag = start_plan.sender_tag;
-  launch_cfg.tool_path = tool_path;
-  launch_cfg.node_bin = node_bin;
-  launch_cfg.deadline_ms = start_plan.deadline_ms;
-  launch_cfg.poll_interval_ms = start_plan.poll_interval_ms;
-  launch_cfg.tone_hz = start_plan.tone_hz;
-
-  std::shared_ptr<VoicePeerRuntime> spawned;
-  if (!voice_peer_spawn_process(
+  VoicePeerChildBackendStartResult start_result;
+  if (!start_voice_peer_child_backend(
         cfg,
-        launch_cfg,
+        session_id,
+        start_plan,
         g_voice_peer_mu,
+        [&](const std::string& sid, const std::shared_ptr<VoicePeerRuntime>& st) {
+          std::lock_guard<std::mutex> lk(g_voice_peer_mu);
+          g_voice_peer_by_session[sid] = st;
+        },
         [db](const VoicePeerRuntime& persisted_state) {
           if (!db || trim_copy(persisted_state.session_id).empty()) return;
           std::string perr;
           (void)persist_voice_peer_runtime_record(db, persisted_state, &perr);
         },
-        &spawned,
-        &serr)) {
-    if (managed_broker_session) {
-      std::string derr;
-      if (!broker_delete_audio_session(
-            start_plan.effective_broker_url, start_plan.broker_token, broker_session_id, &derr) &&
-          serr.empty()) {
-        serr = derr;
-      }
+        [&](const std::string& sid, const std::string& broker_token, Json::Value* cleanup, std::string* cerr) {
+          return cleanup_session_voice_webrtc_peer_runtime(cfg, db, sid, broker_token, cleanup, cerr);
+        },
+        &start_result)) {
+    out["error"] = start_result.error;
+    if (start_result.state) {
+      std::lock_guard<std::mutex> lk(g_voice_peer_mu);
+      refresh_voice_peer_runtime_state(start_result.state.get());
+      voice_peer_add_runtime_snapshot(cfg, *start_result.state, &out);
     }
-    out["error"] = serr.empty() ? "failed to start voice peer" : serr;
-    resp->status = 500;
-    resp->body = json_stringify(out);
-    return;
-  }
-  spawned->managed_broker_session = managed_broker_session;
-  spawned->broker_agent_id = start_plan.broker_agent_id;
-  spawned->broker_deployment_id = start_plan.broker_deployment_id;
-  {
-    std::lock_guard<std::mutex> lk(g_voice_peer_mu);
-    g_voice_peer_by_session[session_id] = spawned;
-  }
-  std::string perr;
-  (void)persist_voice_peer_runtime_record(db, *spawned, &perr);
-  const VoicePeerStartupWaitResult startup =
-    wait_for_voice_peer_startup(spawned, g_voice_peer_mu, start_plan.startup_wait_ms);
-  if (!startup.running && !startup.ready) {
-    Json::Value cleanup(Json::objectValue);
-    std::string cerr;
-    if (!cleanup_session_voice_webrtc_peer_runtime(
-          cfg, db, session_id, start_plan.broker_token, &cleanup, &cerr)) {
-      out["error"] = cerr.empty() ? "voice peer exited before ready and cleanup failed" : cerr;
-      {
-        std::lock_guard<std::mutex> lk(g_voice_peer_mu);
-        refresh_voice_peer_runtime_state(spawned.get());
-        voice_peer_add_runtime_snapshot(cfg, *spawned, &out);
+    if (!start_result.startup_cleanup.isNull()) {
+      out["startup_confirmed"] = false;
+      out["startup_cleanup"] = start_result.startup_cleanup;
+      if (start_result.startup_cleanup.isMember("broker_session_deleted")) {
+        out["broker_session_deleted"] = start_result.startup_cleanup["broker_session_deleted"];
       }
-      resp->status = 500;
+      if (start_result.startup_cleanup.isMember("broker_session_delete_error")) {
+        out["broker_session_delete_error"] = start_result.startup_cleanup["broker_session_delete_error"];
+      }
+      out["peer"] = start_result.startup_cleanup.isMember("peer")
+        ? start_result.startup_cleanup["peer"]
+        : Json::Value(Json::nullValue);
+    }
+    resp->status = start_result.http_status;
+    if (start_result.http_status == 400 &&
+        (start_result.error == "broker_session_id not found" ||
+         start_result.error == "broker_session_id mode must be webrtc")) {
+      resp->body = json_error_body(start_result.error);
+    } else {
       resp->body = json_stringify(out);
-      return;
     }
-    std::string startup_err = trim_copy(spawned->last_error);
-    if (startup_err.empty()) startup_err = "voice peer exited before ready";
-    out["error"] = startup_err;
-    out["startup_confirmed"] = false;
-    out["startup_cleanup"] = cleanup;
-    if (cleanup.isMember("broker_session_deleted")) out["broker_session_deleted"] = cleanup["broker_session_deleted"];
-    if (cleanup.isMember("broker_session_delete_error")) {
-      out["broker_session_delete_error"] = cleanup["broker_session_delete_error"];
-    }
-    out["peer"] = cleanup.isMember("peer") ? cleanup["peer"] : Json::Value(Json::nullValue);
-    resp->status = 500;
-    resp->body = json_stringify(out);
     return;
   }
   {
     std::lock_guard<std::mutex> lk(g_voice_peer_mu);
-    refresh_voice_peer_runtime_state(spawned.get());
-    voice_peer_add_runtime_snapshot(cfg, *spawned, &out);
+    refresh_voice_peer_runtime_state(start_result.state.get());
+    voice_peer_add_runtime_snapshot(cfg, *start_result.state, &out);
   }
   out["ok"] = true;
   out["started"] = true;
-  out["startup_confirmed"] = startup.ready;
+  out["startup_confirmed"] = start_result.startup_confirmed;
   resp->status = 200;
   resp->body = json_stringify(out);
 #endif
