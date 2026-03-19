@@ -6,6 +6,8 @@
 #include "json_util.h"
 #include "session_voice_backend_policy.h"
 #include "session_voice_broker_client.h"
+#include "session_voice_child_runtime.h"
+#include "session_voice_runtime_internal.h"
 #include "session_id_util.h"
 #include "string_util.h"
 
@@ -13,25 +15,11 @@
 
 #include <chrono>
 #include <cstdlib>
-#include <filesystem>
-#include <fstream>
 #include <memory>
 #include <mutex>
 #include <set>
 #include <thread>
 #include <unordered_map>
-#include <vector>
-
-#if defined(_WIN32)
-#include <process.h>
-#else
-#include <cerrno>
-#include <csignal>
-#include <cstring>
-#include <fcntl.h>
-#include <sys/wait.h>
-#include <unistd.h>
-#endif
 
 namespace agentd {
 namespace {
@@ -62,48 +50,6 @@ static bool is_safe_shellish_token(const std::string& s_in, size_t max_len) {
   }
   return true;
 }
-
-struct VoicePeerRuntime {
-  std::string runtime_kind = "external";
-  std::string status_source = "memory";
-  std::string session_id;
-  std::string broker_session_id;
-  std::string broker_url;
-  std::string broker_agent_id;
-  std::string broker_deployment_id;
-  std::string sender_tag;
-  std::string tool_path;
-  std::string node_bin;
-  std::string ready_file_path;
-  std::string stdout_log_path;
-  std::string stderr_log_path;
-  int64_t started_unix_ms = 0;
-  int64_t ended_unix_ms = 0;
-  int64_t deadline_ms = 15000;
-  int64_t poll_interval_ms = 100;
-  int64_t tone_hz = 440;
-  bool managed_broker_session = false;
-  bool ready = false;
-  bool running = false;
-  bool stale_persisted_record = false;
-  bool suppress_persist = false;
-  int exit_code = 0;
-  int exit_signal = 0;
-  std::string last_error;
-  std::string last_stdout_line;
-  Json::Value last_stdout_json = Json::Value(Json::nullValue);
-#if defined(_WIN32)
-  intptr_t pid = 0;
-#else
-  pid_t pid = -1;
-#endif
-};
-
-struct VoicePeerStartupWaitResult {
-  bool ready = false;
-  bool running = false;
-  bool timed_out = false;
-};
 
 static std::mutex g_voice_peer_mu;
 static std::unordered_map<std::string, std::shared_ptr<VoicePeerRuntime>> g_voice_peer_by_session;
@@ -276,77 +222,6 @@ static std::string voice_peer_meta_key(const std::string& session_id) {
   return "session.voice_webrtc_peer." + session_id;
 }
 
-static std::filesystem::path voice_peer_runtime_dir(const DaemonConfig& cfg, const std::string& session_id) {
-  std::error_code ec;
-  std::filesystem::path base =
-    cfg.state_dir.empty() ? std::filesystem::temp_directory_path(ec) : std::filesystem::path(cfg.state_dir);
-  if (ec) base = std::filesystem::path(".");
-  return base / "voice_webrtc_peers" / session_id;
-}
-
-static bool read_last_nonempty_line(const std::string& path, std::string* out_line) {
-  if (out_line) out_line->clear();
-  if (trim_copy(path).empty()) return false;
-  std::ifstream in(path);
-  if (!in.is_open()) return false;
-  std::string line;
-  std::string last;
-  while (std::getline(in, line)) {
-    line = trim_copy(line);
-    if (!line.empty()) last = line;
-  }
-  if (last.empty()) return false;
-  if (out_line) *out_line = last;
-  return true;
-}
-
-#if !defined(_WIN32)
-static bool pid_is_running(pid_t pid) {
-  if (pid <= 0) return false;
-  if (::kill(pid, 0) == 0) return true;
-  return errno == EPERM;
-}
-#else
-static bool pid_is_running(intptr_t pid) {
-  (void)pid;
-  return false;
-}
-#endif
-
-static void refresh_voice_peer_runtime_state(VoicePeerRuntime* st) {
-  if (!st) return;
-  if (!st->ready && !st->ready_file_path.empty() && std::filesystem::exists(st->ready_file_path)) st->ready = true;
-  if (!st->stdout_log_path.empty()) {
-    std::string last_line;
-    if (read_last_nonempty_line(st->stdout_log_path, &last_line)) {
-      st->last_stdout_line = last_line;
-      Json::Value parsed(Json::nullValue);
-      std::string jerr;
-      if (json_parse_any(last_line, &parsed, &jerr) && parsed.isObject()) {
-        st->last_stdout_json = parsed;
-        if (parsed.isMember("error") && parsed["error"].isString()) st->last_error = parsed["error"].asString();
-      }
-    }
-  }
-  if (st->running && !pid_is_running(st->pid)) {
-    st->running = false;
-    if (st->ended_unix_ms <= 0) st->ended_unix_ms = now_unix_ms();
-  }
-}
-
-static void finalize_recovered_voice_peer_stop(VoicePeerRuntime* st, int signal_used) {
-  if (!st) return;
-  if (st->status_source != "persisted" || st->running) return;
-  if (st->last_stdout_json.isObject() && st->last_stdout_json.isMember("reason") && st->last_stdout_json["reason"].isString()) {
-    const std::string reason = lower_copy(trim_copy(st->last_stdout_json["reason"].asString()));
-    if (reason == "sigterm") signal_used = SIGTERM;
-    else if (reason == "sigint") signal_used = SIGINT;
-  }
-  if (signal_used <= 0 || st->exit_signal != 0) return;
-  if (st->ended_unix_ms <= 0) st->ended_unix_ms = now_unix_ms();
-  st->exit_signal = signal_used;
-}
-
 static bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, std::string* out_err) {
   if (out_err) out_err->clear();
   if (!out) return false;
@@ -407,13 +282,6 @@ static bool clear_voice_peer_runtime_record(AgentDb* db, const std::string& sess
   }
   return db->meta_set(voice_peer_meta_key(session_id), "", out_err);
 }
-
-static bool remove_voice_peer_runtime_artifacts(
-  const DaemonConfig& cfg,
-  const std::string& session_id,
-  bool* out_any_deleted,
-  std::string* out_err
-);
 
 static bool load_voice_peer_runtime_record(
   AgentDb* db,
@@ -495,262 +363,6 @@ static void voice_peer_add_runtime_metadata(const DaemonConfig& cfg, Json::Value
   for (const auto& name : meta.getMemberNames()) {
     (*out)[name] = meta[name];
   }
-}
-#if !defined(_WIN32)
-static bool wait_for_voice_peer_stop(const std::shared_ptr<VoicePeerRuntime>& st, int64_t timeout_ms) {
-  if (!st) return true;
-  const int64_t deadline = now_unix_ms() + (timeout_ms > 0 ? timeout_ms : 0);
-  for (;;) {
-    {
-      std::lock_guard<std::mutex> lk(g_voice_peer_mu);
-      refresh_voice_peer_runtime_state(st.get());
-      if (!st->running) return true;
-    }
-    if (now_unix_ms() >= deadline) break;
-    std::this_thread::sleep_for(std::chrono::milliseconds(25));
-  }
-  {
-    std::lock_guard<std::mutex> lk(g_voice_peer_mu);
-    refresh_voice_peer_runtime_state(st.get());
-    return !st->running;
-  }
-}
-
-static VoicePeerStartupWaitResult wait_for_voice_peer_startup(
-  const std::shared_ptr<VoicePeerRuntime>& st,
-  int64_t timeout_ms
-) {
-  VoicePeerStartupWaitResult result;
-  if (!st) return result;
-  const int64_t deadline = now_unix_ms() + (timeout_ms > 0 ? timeout_ms : 0);
-  for (;;) {
-    {
-      std::lock_guard<std::mutex> lk(g_voice_peer_mu);
-      refresh_voice_peer_runtime_state(st.get());
-      result.ready = st->ready;
-      result.running = st->running;
-      if (result.ready || !result.running) return result;
-    }
-    if (now_unix_ms() >= deadline) break;
-    std::this_thread::sleep_for(std::chrono::milliseconds(25));
-  }
-  {
-    std::lock_guard<std::mutex> lk(g_voice_peer_mu);
-    refresh_voice_peer_runtime_state(st.get());
-    result.ready = st->ready;
-    result.running = st->running;
-    result.timed_out = !result.ready && result.running;
-  }
-  return result;
-}
-
-static bool voice_peer_spawn_process(
-  AgentDb* db,
-  const DaemonConfig& cfg,
-  const std::string& runtime_kind,
-  const std::string& tool_path,
-  const std::string& node_bin,
-  const std::string& session_id,
-  const std::string& broker_session_id,
-  const std::string& broker_url,
-  const std::string& broker_token,
-  const std::string& sender_tag,
-  int64_t deadline_ms,
-  int64_t poll_interval_ms,
-  int64_t tone_hz,
-  std::shared_ptr<VoicePeerRuntime>* out_state,
-  std::string* out_err
-) {
-  if (out_err) out_err->clear();
-  if (!out_state) return false;
-  out_state->reset();
-
-  if (tool_path.empty()) {
-    if (out_err) *out_err = "audio_webrtc_peer tool path not configured";
-    return false;
-  }
-  if (!std::filesystem::exists(std::filesystem::path(tool_path))) {
-    if (out_err) *out_err = "audio_webrtc_peer tool path not found";
-    return false;
-  }
-
-  std::error_code ec;
-  const std::filesystem::path run_dir = voice_peer_runtime_dir(cfg, session_id);
-  std::filesystem::create_directories(run_dir, ec);
-  if (ec) {
-    if (out_err) *out_err = "failed to create voice peer runtime dir";
-    return false;
-  }
-  const std::filesystem::path ready_file = run_dir / "ready.json";
-  const std::filesystem::path stdout_log = run_dir / "stdout.jsonl";
-  const std::filesystem::path stderr_log = run_dir / "stderr.log";
-  std::filesystem::remove(ready_file, ec);
-  ec.clear();
-  std::filesystem::remove(stdout_log, ec);
-  ec.clear();
-
-  const int stdout_fd = ::open(stdout_log.string().c_str(), O_CREAT | O_WRONLY | O_TRUNC, 0644);
-  if (stdout_fd < 0) {
-    if (out_err) *out_err = std::string("open stdout log failed: ") + std::strerror(errno);
-    return false;
-  }
-  const int stderr_fd = ::open(stderr_log.string().c_str(), O_CREAT | O_WRONLY | O_TRUNC, 0644);
-  if (stderr_fd < 0) {
-    if (out_err) *out_err = std::string("open stderr log failed: ") + std::strerror(errno);
-    close(stdout_fd);
-    return false;
-  }
-
-  const pid_t pid = fork();
-  if (pid < 0) {
-    if (out_err) *out_err = std::string("fork failed: ") + std::strerror(errno);
-    close(stdout_fd);
-    close(stderr_fd);
-    return false;
-  }
-  if (pid == 0) {
-    const int devnull = ::open("/dev/null", O_RDONLY);
-    if (devnull >= 0) {
-      (void)dup2(devnull, STDIN_FILENO);
-      close(devnull);
-    }
-    (void)dup2(stdout_fd, STDOUT_FILENO);
-    (void)dup2(stderr_fd, STDERR_FILENO);
-    close(stdout_fd);
-    close(stderr_fd);
-    long max_fd = ::sysconf(_SC_OPEN_MAX);
-    if (max_fd < 0 || max_fd > 65536) max_fd = 4096;
-    for (int fd = 3; fd < max_fd; ++fd) close(fd);
-
-    const std::string deadline_s = std::to_string((long long)deadline_ms);
-    const std::string poll_s = std::to_string((long long)poll_interval_ms);
-    const std::string tone_s = std::to_string((long long)tone_hz);
-
-    std::vector<std::string> args;
-    args.push_back(node_bin);
-    args.push_back(tool_path);
-    args.push_back("--broker-url");
-    args.push_back(broker_url);
-    args.push_back("--token");
-    args.push_back(broker_token);
-    args.push_back("--session-id");
-    args.push_back(broker_session_id);
-    args.push_back("--ready-file");
-    args.push_back(ready_file.string());
-    args.push_back("--deadline-ms");
-    args.push_back(deadline_s);
-    args.push_back("--poll-interval-ms");
-    args.push_back(poll_s);
-    args.push_back("--tone-hz");
-    args.push_back(tone_s);
-    if (!sender_tag.empty()) {
-      args.push_back("--sender-tag");
-      args.push_back(sender_tag);
-    }
-
-    std::vector<char*> argv;
-    argv.reserve(args.size() + 1);
-    for (auto& a : args) argv.push_back(const_cast<char*>(a.c_str()));
-    argv.push_back(nullptr);
-    execvp(node_bin.c_str(), argv.data());
-    _exit(127);
-  }
-
-  close(stdout_fd);
-  close(stderr_fd);
-
-  auto st = std::make_shared<VoicePeerRuntime>();
-  st->runtime_kind = runtime_kind;
-  st->session_id = session_id;
-  st->broker_session_id = broker_session_id;
-  st->broker_url = broker_url;
-  st->sender_tag = sender_tag;
-  st->tool_path = tool_path;
-  st->node_bin = node_bin;
-  st->ready_file_path = ready_file.string();
-  st->stdout_log_path = stdout_log.string();
-  st->stderr_log_path = stderr_log.string();
-  st->started_unix_ms = now_unix_ms();
-  st->deadline_ms = deadline_ms;
-  st->poll_interval_ms = poll_interval_ms;
-  st->tone_hz = tone_hz;
-  st->ready = false;
-  st->running = true;
-  st->pid = pid;
-
-  std::thread([db, st]() {
-    int status = 0;
-    (void)waitpid(st->pid, &status, 0);
-    bool should_persist = false;
-    {
-      std::lock_guard<std::mutex> lk(g_voice_peer_mu);
-      refresh_voice_peer_runtime_state(st.get());
-      st->running = false;
-      st->ready = std::filesystem::exists(st->ready_file_path);
-      st->ended_unix_ms = now_unix_ms();
-      if (WIFEXITED(status)) st->exit_code = WEXITSTATUS(status);
-      else if (WIFSIGNALED(status)) st->exit_signal = WTERMSIG(status);
-      should_persist = !st->suppress_persist;
-    }
-    if (should_persist && db && !trim_copy(st->session_id).empty()) {
-      std::string perr;
-      (void)persist_voice_peer_runtime_record(db, *st, &perr);
-    }
-  }).detach();
-
-  *out_state = std::move(st);
-  return true;
-}
-
-static bool voice_peer_kill_best_effort(std::shared_ptr<VoicePeerRuntime> st, int* out_signal_used, std::string* out_err) {
-  if (out_signal_used) *out_signal_used = 0;
-  if (out_err) out_err->clear();
-  if (!st) return false;
-  if (!st->running) return true;
-  if (::kill(st->pid, SIGTERM) != 0) {
-    if (errno == ESRCH) return true;
-    if (out_err) *out_err = std::string("kill(SIGTERM) failed: ") + std::strerror(errno);
-    return false;
-  }
-  if (out_signal_used) *out_signal_used = SIGTERM;
-  const int64_t deadline = now_unix_ms() + 1500;
-  for (;;) {
-    {
-      std::lock_guard<std::mutex> lk(g_voice_peer_mu);
-      if (!st->running) return true;
-    }
-    if (now_unix_ms() >= deadline) break;
-    std::this_thread::sleep_for(std::chrono::milliseconds(25));
-  }
-  if (::kill(st->pid, SIGKILL) != 0 && errno != ESRCH) {
-    if (out_err) *out_err = std::string("kill(SIGKILL) failed: ") + std::strerror(errno);
-    return false;
-  }
-  if (out_signal_used) *out_signal_used = SIGKILL;
-  return true;
-}
-#endif
-
-static bool remove_voice_peer_runtime_artifacts(
-  const DaemonConfig& cfg,
-  const std::string& session_id,
-  bool* out_any_deleted,
-  std::string* out_err
-) {
-  if (out_err) out_err->clear();
-  if (out_any_deleted) *out_any_deleted = false;
-  if (trim_copy(session_id).empty()) return true;
-  std::error_code ec;
-  const std::filesystem::path run_dir = voice_peer_runtime_dir(cfg, session_id);
-  if (!std::filesystem::exists(run_dir, ec)) return true;
-  ec.clear();
-  const auto removed = std::filesystem::remove_all(run_dir, ec);
-  if (ec) {
-    if (out_err) *out_err = "failed to remove voice peer runtime artifacts";
-    return false;
-  }
-  if (out_any_deleted) *out_any_deleted = (removed > 0);
-  return true;
 }
 
 }  // namespace
@@ -873,7 +485,7 @@ void handle_session_voice_webrtc_peer_endpoint(
 #if !defined(_WIN32)
     std::string serr;
     int signal_used = 0;
-    if (was_running && !voice_peer_kill_best_effort(st, &signal_used, &serr)) {
+    if (was_running && !voice_peer_kill_best_effort(st, g_voice_peer_mu, &signal_used, &serr)) {
       out["error"] = serr.empty() ? "failed to stop voice peer" : serr;
       {
         std::lock_guard<std::mutex> lk(g_voice_peer_mu);
@@ -887,7 +499,7 @@ void handle_session_voice_webrtc_peer_endpoint(
     bool stopped = false;
     if (was_running) {
       std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      stopped = wait_for_voice_peer_stop(st, 2000);
+      stopped = wait_for_voice_peer_stop(st, g_voice_peer_mu, 2000);
     }
 #else
     if (was_running) {
@@ -1212,21 +824,29 @@ void handle_session_voice_webrtc_peer_endpoint(
     }
   }
 
+  VoicePeerChildLaunchConfig launch_cfg;
+  launch_cfg.runtime_kind = runtime_kind;
+  launch_cfg.session_id = session_id;
+  launch_cfg.broker_session_id = broker_session_id;
+  launch_cfg.broker_url = broker_url;
+  launch_cfg.broker_token = broker_token;
+  launch_cfg.sender_tag = sender_tag;
+  launch_cfg.tool_path = tool_path;
+  launch_cfg.node_bin = node_bin;
+  launch_cfg.deadline_ms = deadline_ms;
+  launch_cfg.poll_interval_ms = poll_interval_ms;
+  launch_cfg.tone_hz = tone_hz;
+
   std::shared_ptr<VoicePeerRuntime> spawned;
   if (!voice_peer_spawn_process(
-        db,
         cfg,
-        runtime_kind,
-        tool_path,
-        node_bin,
-        session_id,
-        broker_session_id,
-        broker_url,
-        broker_token,
-        sender_tag,
-        deadline_ms,
-        poll_interval_ms,
-        tone_hz,
+        launch_cfg,
+        g_voice_peer_mu,
+        [db](const VoicePeerRuntime& persisted_state) {
+          if (!db || trim_copy(persisted_state.session_id).empty()) return;
+          std::string perr;
+          (void)persist_voice_peer_runtime_record(db, persisted_state, &perr);
+        },
         &spawned,
         &serr)) {
     if (managed_broker_session) {
@@ -1247,7 +867,7 @@ void handle_session_voice_webrtc_peer_endpoint(
   }
   std::string perr;
   (void)persist_voice_peer_runtime_record(db, *spawned, &perr);
-  const VoicePeerStartupWaitResult startup = wait_for_voice_peer_startup(spawned, startup_wait_ms);
+  const VoicePeerStartupWaitResult startup = wait_for_voice_peer_startup(spawned, g_voice_peer_mu, startup_wait_ms);
   if (!startup.running && !startup.ready) {
     Json::Value cleanup(Json::objectValue);
     std::string cerr;
@@ -1443,11 +1063,11 @@ bool cleanup_session_voice_webrtc_peer_runtime(
   if (st && st->running) {
     std::string serr;
     int signal_used = 0;
-    if (!voice_peer_kill_best_effort(st, &signal_used, &serr)) {
+    if (!voice_peer_kill_best_effort(st, g_voice_peer_mu, &signal_used, &serr)) {
       if (out_err) *out_err = serr.empty() ? "failed to stop voice peer during session delete" : serr;
       return false;
     }
-    summary["stopped"] = wait_for_voice_peer_stop(st, 2000);
+    summary["stopped"] = wait_for_voice_peer_stop(st, g_voice_peer_mu, 2000);
     {
       std::lock_guard<std::mutex> lk(g_voice_peer_mu);
       refresh_voice_peer_runtime_state(st.get());
