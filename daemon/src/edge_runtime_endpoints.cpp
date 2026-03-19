@@ -1,10 +1,10 @@
 #include "edge_runtime_endpoints.h"
 
 #include "daemon_auth.h"
+#include "edge_consensus_runtime_backend.h"
 #include "edge_consensus_http_runtime.h"
 #include "edge_consensus_runtime_lifecycle.h"
 #include "edge_consensus_runtime_model.h"
-#include "edge_consensus_runtime_process_plan.h"
 #include "edge_consensus_runtime_policy.h"
 #include "edge_consensus_runtime_store.h"
 #include "edge_util.h"
@@ -24,24 +24,8 @@
 #include <unordered_map>
 #include <vector>
 
-#if defined(_WIN32)
-#include <process.h>
-#else
-#include <cerrno>
-#include <csignal>
-#include <cstring>
-#include <fcntl.h>
-#include <sys/wait.h>
-#include <unistd.h>
-#endif
-
 namespace agentd {
 namespace {
-
-static int64_t now_unix_ms() {
-  using namespace std::chrono;
-  return (int64_t)duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
-}
 
 static std::vector<std::string> dedupe_safe_edge_ids(const std::vector<std::string>& in) {
   std::vector<std::string> out;
@@ -61,220 +45,6 @@ static std::shared_ptr<EdgeConsensusRuntime> edge_consensus_runtime_lookup_locke
   const auto it = g_edge_consensus_runtime_by_node.find(node_id);
   return it == g_edge_consensus_runtime_by_node.end() ? nullptr : it->second;
 }
-
-static std::string edge_consensus_runtime_meta_key(const std::string& node_id) {
-  return "edge.consensus_runtime." + node_id;
-}
-
-#if !defined(_WIN32)
-static bool edge_consensus_runtime_spawn_process(
-  const DaemonConfig& cfg,
-  AgentDb* db,
-  const Json::Value& body,
-  std::shared_ptr<EdgeConsensusRuntime>* out_state,
-  std::string* out_err
-) {
-  if (out_err) out_err->clear();
-  if (!out_state) return false;
-  out_state->reset();
-
-  EdgeConsensusHttpRuntimeConfig run_cfg;
-  EdgeConsensusRuntime runtime_state;
-  if (!edge_consensus_runtime_build_config(cfg, body, &run_cfg, &runtime_state, out_err)) return false;
-
-  const std::string unavailable_reason = edge_consensus_external_runtime_unavailable_reason(cfg);
-  if (!unavailable_reason.empty()) {
-    if (out_err) *out_err = unavailable_reason;
-    return false;
-  }
-
-  const EdgeConsensusExternalProcessPlan process_plan =
-    make_edge_consensus_external_process_plan(cfg, run_cfg, runtime_state);
-
-  std::error_code ec;
-  const std::filesystem::path run_dir = process_plan.artifacts.runtime_dir;
-  std::filesystem::create_directories(run_dir, ec);
-  if (ec) {
-    if (out_err) *out_err = "failed to create edge consensus runtime dir";
-    return false;
-  }
-  const std::filesystem::path stderr_log = process_plan.artifacts.stderr_log_path;
-
-  int out_pipe[2] = {-1, -1};
-  if (pipe(out_pipe) != 0) {
-    if (out_err) *out_err = std::string("pipe failed: ") + std::strerror(errno);
-    return false;
-  }
-  const int stderr_fd = ::open(stderr_log.string().c_str(), O_CREAT | O_WRONLY | O_TRUNC, 0644);
-  if (stderr_fd < 0) {
-    if (out_err) *out_err = std::string("open stderr log failed: ") + std::strerror(errno);
-    close(out_pipe[0]);
-    close(out_pipe[1]);
-    return false;
-  }
-
-  const pid_t pid = fork();
-  if (pid < 0) {
-    if (out_err) *out_err = std::string("fork failed: ") + std::strerror(errno);
-    close(stderr_fd);
-    close(out_pipe[0]);
-    close(out_pipe[1]);
-    return false;
-  }
-  if (pid == 0) {
-    const int devnull = ::open("/dev/null", O_RDONLY);
-    if (devnull >= 0) {
-      (void)dup2(devnull, STDIN_FILENO);
-      close(devnull);
-    }
-    (void)dup2(out_pipe[1], STDOUT_FILENO);
-    (void)dup2(stderr_fd, STDERR_FILENO);
-    close(out_pipe[0]);
-    close(out_pipe[1]);
-    close(stderr_fd);
-    long max_fd = ::sysconf(_SC_OPEN_MAX);
-    if (max_fd < 0 || max_fd > 65536) max_fd = 4096;
-    for (int fd = 3; fd < max_fd; ++fd) close(fd);
-
-    std::vector<char*> argv;
-    argv.reserve(process_plan.argv.size() + 1);
-    for (const auto& arg : process_plan.argv) argv.push_back(const_cast<char*>(arg.c_str()));
-    argv.push_back(nullptr);
-    execvp(process_plan.tool_path.c_str(), argv.data());
-    _exit(127);
-  }
-
-  close(out_pipe[1]);
-  close(stderr_fd);
-
-  auto st = std::make_shared<EdgeConsensusRuntime>(std::move(runtime_state));
-  st->runtime_kind = "external";
-  st->tool_path = process_plan.tool_path;
-  st->stderr_log_path = stderr_log.string();
-  st->pid = pid;
-  st->startup_ready = std::make_shared<std::atomic<bool>>(false);
-
-  std::thread([db, st, fd = out_pipe[0]]() {
-    std::string buffer;
-    char chunk[4096];
-    for (;;) {
-      const ssize_t n = ::read(fd, chunk, sizeof(chunk));
-      if (n < 0) {
-        if (errno == EINTR) continue;
-        std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
-        st->last_error = std::string("read failed: ") + std::strerror(errno);
-        break;
-      }
-      if (n == 0) break;
-      buffer.append(chunk, (size_t)n);
-      for (;;) {
-        const size_t nl = buffer.find('\n');
-        if (nl == std::string::npos) break;
-        std::string line = trim_copy(buffer.substr(0, nl));
-        buffer.erase(0, nl + 1);
-        if (line.empty()) continue;
-        Json::Value parsed(Json::nullValue);
-        std::string jerr;
-        if (json_parse_any(line, &parsed, &jerr) && parsed.isObject()) {
-          Json::Value live_status(Json::nullValue);
-          std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
-          if (edge_consensus_runtime_stdout_event_is_startup_ready(parsed)) {
-            if (st->startup_ready) st->startup_ready->store(true);
-            continue;
-          }
-          if (edge_consensus_runtime_stdout_event_live_status(parsed, &live_status)) {
-            st->live_status_json = live_status;
-            continue;
-          }
-          st->last_stdout_line = line;
-          st->last_stdout_json = parsed;
-          if (parsed.isMember("error") && parsed["error"].isString()) st->last_error = parsed["error"].asString();
-        } else {
-          std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
-          st->last_stdout_line = line;
-        }
-      }
-    }
-    close(fd);
-    int status = 0;
-    (void)waitpid(st->pid, &status, 0);
-    std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
-    st->running = false;
-    st->ended_unix_ms = now_unix_ms();
-    st->live_status_json = Json::Value(Json::nullValue);
-    if (WIFEXITED(status)) st->exit_code = WEXITSTATUS(status);
-    else if (WIFSIGNALED(status)) st->exit_signal = WTERMSIG(status);
-    std::string perr;
-    (void)persist_edge_consensus_runtime_record(db, *st, &perr);
-  }).detach();
-
-  *out_state = std::move(st);
-  return true;
-}
-
-static bool edge_consensus_runtime_start_builtin(
-  const DaemonConfig& cfg,
-  AgentDb* db,
-  const Json::Value& body,
-  std::shared_ptr<EdgeConsensusRuntime>* out_state,
-  std::string* out_err
-) {
-  if (out_err) out_err->clear();
-  if (!out_state) return false;
-  out_state->reset();
-
-  EdgeConsensusHttpRuntimeConfig run_cfg;
-  EdgeConsensusRuntime runtime_state;
-  if (!edge_consensus_runtime_build_config(cfg, body, &run_cfg, &runtime_state, out_err)) return false;
-
-  auto st = std::make_shared<EdgeConsensusRuntime>(std::move(runtime_state));
-  st->runtime_kind = "builtin";
-  st->tool_path = "@builtin";
-  st->daemon_url = "@local";
-  st->stop_requested = std::make_shared<std::atomic<bool>>(false);
-  st->startup_ready = std::make_shared<std::atomic<bool>>(false);
-
-  std::thread([db, st, run_cfg]() mutable {
-    EdgeConsensusHttpRuntimeHooks hooks;
-    hooks.stop_requested = st->stop_requested.get();
-    hooks.log_line = [st](const std::string& line) {
-      std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
-      st->last_stdout_line = line;
-    };
-    hooks.status_update = [st](const Json::Value& status) {
-      std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
-      st->live_status_json = status;
-    };
-    hooks.startup_ready = [st]() {
-      if (st->startup_ready) st->startup_ready->store(true);
-    };
-    Json::Value result(Json::nullValue);
-    std::string err;
-    const bool ok = run_edge_consensus_local_runtime(db, run_cfg, hooks, &result, &err);
-    std::lock_guard<std::mutex> lk(g_edge_consensus_runtime_mu);
-    st->running = false;
-    st->ended_unix_ms = now_unix_ms();
-    st->live_status_json = Json::Value(Json::nullValue);
-    st->last_stdout_json = result;
-    if (!result.isNull()) st->last_stdout_line = json_stringify(result);
-    if (!ok) {
-      st->exit_code = 1;
-      st->last_error = err;
-    } else {
-      st->exit_code = result.isObject() && result.isMember("ok") && result["ok"].asBool() ? 0 : 1;
-      if (result.isObject() && result.isMember("error") && result["error"].isString()) {
-        st->last_error = result["error"].asString();
-      }
-    }
-    std::string perr;
-    (void)persist_edge_consensus_runtime_record(db, *st, &perr);
-  }).detach();
-
-  *out_state = std::move(st);
-  return true;
-}
-
-#endif
 
 static Json::Value build_edge_node_consensus_summary(AgentDb* db_or_null, const std::string& node_id, bool* out_exists) {
   if (out_exists) *out_exists = false;
@@ -650,9 +420,16 @@ void handle_edge_node_consensus_runtime_endpoint(
 #else
   std::shared_ptr<EdgeConsensusRuntime> spawned;
   std::string serr;
+  const EdgeConsensusRuntimePersistFn persist_on_exit =
+    [db = db_or_null](const EdgeConsensusRuntime& snapshot) {
+      std::string perr;
+      (void)persist_edge_consensus_runtime_record(db, snapshot, &perr);
+    };
   const bool started = runtime_kind == "external"
-    ? edge_consensus_runtime_spawn_process(cfg, db_or_null, body, &spawned, &serr)
-    : edge_consensus_runtime_start_builtin(cfg, db_or_null, body, &spawned, &serr);
+    ? edge_consensus_runtime_spawn_external(
+        cfg, db_or_null, body, g_edge_consensus_runtime_mu, persist_on_exit, &spawned, &serr)
+    : edge_consensus_runtime_start_builtin(
+        cfg, db_or_null, body, g_edge_consensus_runtime_mu, persist_on_exit, &spawned, &serr);
   if (!started) {
     out["error"] = serr.empty() ? "failed to start consensus runtime" : serr;
     out["startup_confirmed"] = false;
