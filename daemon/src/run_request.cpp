@@ -6,6 +6,7 @@
 #include "client_profiles.h"
 #include "default_system_prompt.h"
 #include "file_persistor.h"
+#include "host_session_prompts.h"
 #include "http_util.h"
 #include "job_manager.h"
 #include "json_util.h"
@@ -611,6 +612,15 @@ static Json::Value run_request_to_json_impl(
     }
   }
 
+  std::string project_instructions_prompt;
+  if (!no_default_system && tools == "host") {
+    std::error_code cwd_ec;
+    const std::filesystem::path project_instruction_root = std::filesystem::current_path(cwd_ec);
+    if (!cwd_ec) {
+      project_instructions_prompt = build_project_instructions_system_prompt(project_instruction_root);
+    }
+  }
+
   // One-time system message insertion for host tools:
   // - If `system` is provided in the request, it wins (inserted only when the session is empty).
   // - Otherwise, when using host tools, insert a default host system hint unless disabled.
@@ -625,6 +635,9 @@ static Json::Value run_request_to_json_impl(
           agent_session_add_message(session, AGENT_ROLE_SYSTEM, profile.c_str());
         }
       }
+      if (!no_default_system && tools == "host" && !project_instructions_prompt.empty()) {
+        agent_session_add_message(session, AGENT_ROLE_SYSTEM, project_instructions_prompt.c_str());
+      }
     } else {
       if (!no_default_system && tools == "host") {
         agent_session_add_message(session, AGENT_ROLE_SYSTEM, host_system_prompt_for_profile(system_profile.c_str()));
@@ -634,14 +647,23 @@ static Json::Value run_request_to_json_impl(
             agent_session_add_message(session, AGENT_ROLE_SYSTEM, profile.c_str());
           }
         }
+        if (!project_instructions_prompt.empty()) {
+          agent_session_add_message(session, AGENT_ROLE_SYSTEM, project_instructions_prompt.c_str());
+        }
       }
     }
   } else {
     // For long-lived sessions (e.g. Web UI "default"), do not rely on "empty session" to ensure
     // essential host/tool + DoD guidance is present. If the session was created via tools=none or
     // imported from an older version, it may have no system prompt at all.
-    const bool changed = ensure_pinned_host_system_prompts(
-      &session, tools, no_default_system, system_profile, client_kind, /*allow_default_host_prompt=*/true);
+    const std::string client_profile_prompt =
+      client_kind.empty() ? std::string() : client_profile_system_prompt(client_kind);
+    const std::string client_profile_marker =
+      client_kind.empty() ? std::string() : (std::string("CLIENT_PROFILE=") + client_kind);
+    const bool changed = (!no_default_system && tools == "host")
+      ? ensure_pinned_host_session_prompts(
+          &session, system_profile, client_profile_prompt, client_profile_marker, project_instructions_prompt)
+      : false;
     if (changed && !no_session) {
       // Persist the prefix change even if the run later fails, so subsequent runs don't regress.
       if (db_or_null && db_or_null->is_open()) {

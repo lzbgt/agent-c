@@ -120,6 +120,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     cli/src/cli_transcript_writer.cpp
     cli/src/default_system_prompt.cpp
     cli/src/file_persistor.cpp
+    cli/src/host_session_prompts.cpp
     cli/src/openai_client.cpp
     cli/src/openai_provider.cpp
     cli/src/openai_stream_decoder.cpp
@@ -1332,6 +1333,12 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
   )
   target_link_libraries(host_toolset_tests PRIVATE agent_host)
   add_test(NAME host_toolset_tests COMMAND host_toolset_tests)
+
+  add_executable(host_session_prompts_tests
+    tests/test_host_session_prompts.cpp
+  )
+  target_link_libraries(host_session_prompts_tests PRIVATE agent_host)
+  add_test(NAME host_session_prompts_tests COMMAND host_session_prompts_tests)
 
   add_executable(mount_allowlist_tests
     tests/test_mount_allowlist.cpp

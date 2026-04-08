@@ -61,13 +61,4 @@ bool persist_session_to_db(
   std::string* out_error
 );
 
-bool ensure_pinned_host_system_prompts(
-  agent_session_t** session_io,
-  const std::string& tools,
-  bool no_default_system,
-  const std::string& host_system_profile,
-  const std::string& client_kind,
-  bool allow_default_host_prompt
-);
-
 }  // namespace agentd

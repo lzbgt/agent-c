@@ -178,10 +178,13 @@ exposed via `GET /api/v1/session` and `GET /api/v1/session/audit`.
 Host tools include `ui_action` so the model can request UI-side actions in a typed and allowlisted way
 (e.g. notifications, audio playback UI). See `docs/CLIENT.md`.
 
-## Default host system hint (CLI/daemon)
+## Default host system hint and project instructions (CLI/daemon)
 
 When using `--tools host`, the CLI/daemon injects a one-time `system` message into an empty session to encourage
 fast incremental inspection (use `rg/grep`, `head`, `tail`, `awk`, `sed -n`) instead of reading large files wholesale.
+For existing sessions, they also repair missing or stale pinned host prompts on the next host run.
+They also scan from the working directory upward for `AGENTS.md` files and pin those project instructions into the
+session in parent-to-child order, so deeper directories can override broader repo rules.
 
 - CLI: disable with `--no-default-system` or override with `--system "<your prompt>"`.
 - CLI: select a built-in prompt profile with `--system-profile default|jules_codex`.
@@ -189,6 +192,8 @@ fast incremental inspection (use `rg/grep`, `head`, `tail`, `awk`, `sed -n`) ins
   override per-request with `system: "<your prompt>"`.
 - Daemon: select a built-in prompt profile with `./build/agentd --system-profile default|jules_codex`,
   env `AGENTD_SYSTEM_PROFILE`, or per-request with `system_profile: "default" | "jules_codex"`.
+- `AGENTS.md` refreshes on the next host run if the file changes, even for an existing session.
+- Only `AGENTS.md` is auto-loaded. Keep secrets in local env/config files, not in `AGENTS.md`, because the content is sent to the model.
 
 ## Optional LLM summaries for compaction (`--tools none`)
 

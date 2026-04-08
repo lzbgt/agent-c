@@ -90,6 +90,9 @@ agentd_smoke_start() {
   DAEMON_URL="http://${bind_host}:${port}"
   local project_root
   project_root="$(agentd_smoke_project_root)"
+  if [[ -n "${AGENTD_SMOKE_CWD:-}" ]]; then
+    project_root="${AGENTD_SMOKE_CWD}"
+  fi
 
   # Hermetic DB for smoke tests:
   # - agentd now uses SQLite as a primary state store, so always give tests their own DB file
@@ -152,6 +155,9 @@ agentd_smoke_start_bind() {
   DAEMON_URL="http://${connect_host}:${port}"
   local project_root
   project_root="$(agentd_smoke_project_root)"
+  if [[ -n "${AGENTD_SMOKE_CWD:-}" ]]; then
+    project_root="${AGENTD_SMOKE_CWD}"
+  fi
 
   # Hermetic DB for smoke tests unless explicitly passed.
   local has_db="0"

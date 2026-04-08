@@ -1,14 +1,11 @@
 #include "run_endpoints_internal.h"
 
-#include "client_profiles.h"
-#include "default_system_prompt.h"
 #include "json_util.h"
 
 #include "agent/multimodal_prefix.h"
 
 #include <json/json.h>
 
-#include <cstring>
 #include <fstream>
 #include <sstream>
 #include <unordered_set>
@@ -268,117 +265,6 @@ bool persist_session_to_db(
     msgs.push_back(std::move(row));
   }
   return db.replace_session_messages(session_id, msgs, now_unix_ms, out_error);
-}
-
-namespace {
-
-static bool session_leading_system_has_prefix(const agent_session_t* session, const char* prefix) {
-  if (!session || !prefix || !prefix[0]) return false;
-  const size_t prefix_len = std::strlen(prefix);
-  const size_t n = agent_session_message_count(session);
-  for (size_t i = 0; i < n && i < 8; i++) {
-    agent_message_view_t v{};
-    if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
-    if (v.role != AGENT_ROLE_SYSTEM || !v.content) return false;
-    if (v.content_len >= prefix_len && std::memcmp(v.content, prefix, prefix_len) == 0) return true;
-  }
-  return false;
-}
-
-static bool session_leading_system_has_substring(const agent_session_t* session, const char* needle) {
-  if (!session || !needle || !needle[0]) return false;
-  const std::string n(needle);
-  const size_t count = agent_session_message_count(session);
-  for (size_t i = 0; i < count && i < 8; i++) {
-    agent_message_view_t v{};
-    if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
-    if (v.role != AGENT_ROLE_SYSTEM || !v.content) return false;
-    const std::string s(v.content, v.content_len);
-    if (s.find(n) != std::string::npos) return true;
-  }
-  return false;
-}
-
-}  // namespace
-
-bool ensure_pinned_host_system_prompts(
-  agent_session_t** session_io,
-  const std::string& tools,
-  bool no_default_system,
-  const std::string& host_system_profile,
-  const std::string& client_kind,
-  bool allow_default_host_prompt
-) {
-  if (!session_io || !*session_io) return false;
-  if (no_default_system) return false;
-  if (tools != "host") return false;
-
-  // These are intentionally substring/prefix checks, not exact-string matches:
-  // - allows prompt evolution without breaking the "present in session" detection
-  // - avoids repeated insertion across runs in a long-lived session.
-  const char* kHostPrefix = "You are a host-side coding agent";
-  const char* kHostProfilePrefix = "HOST_SYSTEM_PROFILE=";
-  const char* kClientProfilePrefix = "CLIENT_PROFILE=";
-
-  agent_session_t* session = *session_io;
-
-  const bool want_host = allow_default_host_prompt;
-  const bool want_profile = !client_kind.empty();
-  const std::string profile = want_profile ? client_profile_system_prompt(client_kind) : std::string();
-  const std::string profile_marker = want_profile ? (std::string("CLIENT_PROFILE=") + client_kind) : std::string();
-  const std::string host_profile_marker = std::string("HOST_SYSTEM_PROFILE=") + (host_system_profile.empty() ? "default" : host_system_profile);
-
-  const bool have_host_leading = session_leading_system_has_prefix(session, kHostPrefix);
-  const bool have_host_profile_leading = session_leading_system_has_substring(session, host_profile_marker.c_str());
-  const bool have_profile_leading = want_profile ? session_leading_system_has_substring(session, profile_marker.c_str()) : true;
-
-  if ((want_host && (!have_host_leading || !have_host_profile_leading)) || (want_profile && !have_profile_leading)) {
-    // Rebuild the session so the required system messages are *leading* (pinned by core compaction policy).
-    // This is required because agent_session_add_message only appends; appended system messages are not pinned
-    // and can be dropped during char-budget compaction (leading system messages are the pinned prefix).
-    struct Msg {
-      agent_role_t role;
-      std::string content;
-    };
-    std::vector<Msg> msgs;
-    msgs.reserve(agent_session_message_count(session));
-    for (size_t i = 0; i < agent_session_message_count(session); i++) {
-      agent_message_view_t v{};
-      if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
-      msgs.push_back(Msg{v.role, std::string(v.content ? v.content : "", v.content_len)});
-    }
-
-    agent_session_t* ns = nullptr;
-    if (agent_session_create(&ns) != AGENT_OK || !ns) {
-      return false;
-    }
-
-    if (want_host) {
-      (void)agent_session_add_message(ns, AGENT_ROLE_SYSTEM, host_system_prompt_for_profile(host_system_profile.c_str()));
-    }
-    if (want_profile && !profile.empty()) {
-      // Always pin the active client's profile for this run. Any older profile strings (possibly for a different client)
-      // are deduplicated below to avoid mixing semantics in a shared session.
-      (void)agent_session_add_message(ns, AGENT_ROLE_SYSTEM, profile.c_str());
-    }
-
-    for (const auto& m : msgs) {
-      // Deduplicate older/stray copies of these injected prompts to keep the session stable.
-      if (m.role == AGENT_ROLE_SYSTEM) {
-        if (!m.content.empty()) {
-          if (m.content.rfind(kHostPrefix, 0) == 0) continue;
-          if (m.content.rfind(kHostProfilePrefix, 0) == 0) continue;
-          if (m.content.rfind(kClientProfilePrefix, 0) == 0) continue;
-        }
-      }
-      (void)agent_session_add_message(ns, m.role, m.content.c_str());
-    }
-
-    agent_session_destroy(session);
-    *session_io = ns;
-    return true;
-  }
-  return false;
 }
 
 }  // namespace agentd

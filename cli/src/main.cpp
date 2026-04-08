@@ -9,6 +9,7 @@
 #include "session_store.h"
 #include "summary_compaction.h"
 #include "summary_llm.h"
+#include "host_session_prompts.h"
 #include "tool_loop.h"
 #include "toolset_basic.h"
 #include "toolset_host.h"
@@ -816,8 +817,10 @@ int main(int argc, char** argv) {
     }
   }
 
+  const bool session_started_empty = (agent_session_message_count(session) == 0);
+
   // Add one-time system message if requested and session is empty.
-  if (!system_msg.empty() && agent_session_message_count(session) == 0) {
+  if (!system_msg.empty() && session_started_empty) {
     agent_session_add_message(session, AGENT_ROLE_SYSTEM, system_msg.c_str());
   }
 
@@ -842,11 +845,38 @@ int main(int argc, char** argv) {
     return 2;
   }
 
-  // Add host-only default system message (one-time) when using host tools and the session is empty.
-  // This encourages incremental inspection (rg/head/awk) instead of full file dumps.
-  if (!no_default_system && system_msg.empty() && tools_mode == "host" && agent_session_message_count(session) == 0) {
-    const std::string p = system_profile.empty() ? "default" : system_profile;
-    agent_session_add_message(session, AGENT_ROLE_SYSTEM, host_system_prompt_for_profile(p.c_str()));
+  std::string project_instructions_prompt;
+  if (!no_default_system && tools_mode == "host") {
+    std::error_code cwd_ec;
+    const std::filesystem::path project_instruction_root =
+      tools_root.empty() ? std::filesystem::current_path(cwd_ec) : std::filesystem::path(tools_root);
+    if (!cwd_ec || !tools_root.empty()) {
+      project_instructions_prompt = build_project_instructions_system_prompt(project_instruction_root);
+    }
+  }
+
+  if (!no_default_system && tools_mode == "host") {
+    if (session_started_empty) {
+      if (system_msg.empty()) {
+        const std::string p = system_profile.empty() ? "default" : system_profile;
+        agent_session_add_message(session, AGENT_ROLE_SYSTEM, host_system_prompt_for_profile(p.c_str()));
+      }
+      if (!project_instructions_prompt.empty()) {
+        agent_session_add_message(session, AGENT_ROLE_SYSTEM, project_instructions_prompt.c_str());
+      }
+    } else {
+      const bool changed = ensure_pinned_host_session_prompts(
+        &session, system_profile, /*client_profile_prompt=*/"", /*client_profile_marker=*/"", project_instructions_prompt);
+      if (changed && !no_session && !session_id.empty()) {
+        const agent_status_t st = persistor.save(persistor.ctx, session_id.c_str(), session);
+        if (st != AGENT_OK) {
+          std::cerr << "Failed to save session after prompt refresh: " << (int)st << "\n";
+          agent_session_destroy(session);
+          agent_persistor_destroy(&persistor);
+          return 1;
+        }
+      }
+    }
   }
 
   if (tools_mode != "none") {

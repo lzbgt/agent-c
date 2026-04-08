@@ -20,6 +20,7 @@ HOST="127.0.0.1"
 STUB_BASE="http://${HOST}:${PORT_STUB}/v1"
 
 SESSION_ID="agentd_client_profile_injection_smoke_$(date +%s)_$RANDOM"
+PROJECT_DIR="${LOG_DIR}/agentd_client_profile_injection_project_${PORT_DAEMON}"
 
 cleanup() {
   agentd_smoke_stop
@@ -30,10 +31,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
+mkdir -p "${PROJECT_DIR}"
+cat > "${PROJECT_DIR}/AGENTS.md" <<'EOF'
+- smoke project rule: prefer incremental verification
+EOF
+export AGENTD_SMOKE_CWD="${PROJECT_DIR}"
+
 # Stub provider that validates agentd injects host system prompt + webui client profile even when the session is non-empty.
 # Sequence:
 # 1) tools=none run => creates a non-empty session without host system prompts.
-# 2) tools=host run => should include default host system prompt + CLIENT_PROFILE=webui in the provider request messages.
+# 2) tools=host run => should include default host system prompt + CLIENT_PROFILE=webui + AGENTS.md project rules.
 python3 -u - <<PY > "${LOG_DIR}/agentd_client_profile_injection_smoke.stub.stdout.log" 2> "${LOG_DIR}/agentd_client_profile_injection_smoke.stub.stderr.log" &
 import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -108,6 +115,10 @@ class H(BaseHTTPRequestHandler):
         raise AssertionError("missing default host system prompt in messages")
       if not find_substr(messages, "system", "CLIENT_PROFILE=webui"):
         raise AssertionError("missing CLIENT_PROFILE=webui in messages")
+      if not find_substr(messages, "system", "PROJECT_INSTRUCTIONS=agmd-v1"):
+        raise AssertionError("missing AGENTS.md project instructions in messages")
+      if not any_content_substr(messages, "smoke project rule: prefer incremental verification"):
+        raise AssertionError("missing AGENTS.md content in messages")
       # Regression guard: webui profile must mention durable server-owned Scene + scene_apply.
       if not any_content_substr(messages, "scene_apply"):
         raise AssertionError("missing scene_apply guidance in system prompts")
