@@ -205,7 +205,7 @@ The WebUI includes a **Workflows** panel for durable workflow inspection:
 - Surfaces budgets/usage and optional spec/results when enabled.
 - Includes a **Workflow schedules** section for recurring runs (UTC):
   - List schedules with status + next tick (`/api/v1/workflow_schedules`).
-  - Create schedules by providing cron + spec JSON (`/api/v1/workflow_schedules`).
+  - Create schedules by providing cron + `WorkflowSubmitRequest` JSON (`/api/v1/workflow_schedules`).
   - Pause/resume/delete schedules (`/api/v1/workflow_schedule/*`).
   - Inspect schedule runs (`/api/v1/workflow_schedule/runs`).
   - Each run row can load the linked workflow into the workflow inspector.
@@ -214,7 +214,7 @@ The WebUI includes a **Workflows** panel for durable workflow inspection:
   - Schedules and runs support offset-based pagination (offset + prev/next).
   - Schedule lists support client-side filtering by id/cron/error; run lists support filtering by workflow id.
   - Quick preset buttons populate common cron expressions.
-  - Schedule creation validates spec JSON for required `tasks` fields before submit.
+  - Schedule creation validates that spec JSON is a workflow submit payload with non-empty `tasks[]`, each with `task_id` and either `request` or `kind`.
   - A sample spec button inserts a minimal valid workflow template.
   - Cron expressions are linted client-side for 5-field numeric ranges.
   - Schedule rows include copy-curl shortcuts for pause/resume/delete requests.

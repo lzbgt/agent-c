@@ -1,5 +1,6 @@
 import { daemonFetchInit, type ApiAuth } from "./auth";
 import { addQueryParam } from "./query";
+import type { WorkflowScheduleCreatePayload } from "../workflowTypes";
 import {
   WorkflowScheduleCreateRespSchema,
   type WorkflowScheduleCreateResp,
@@ -49,7 +50,7 @@ export async function apiGetWorkflowSchedule(
 
 export async function apiCreateWorkflowSchedule(
   base: string,
-  payload: Record<string, any>,
+  payload: WorkflowScheduleCreatePayload,
   auth?: ApiAuth,
 ): Promise<WorkflowScheduleCreateResp> {
   const r = await fetch(

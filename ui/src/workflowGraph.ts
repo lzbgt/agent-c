@@ -1,3 +1,13 @@
+import type {
+  WorkflowAgentdParallelTask,
+  WorkflowDefaults,
+  WorkflowJsonObject,
+  WorkflowNestedSpec,
+  WorkflowRequestTask,
+  WorkflowSpec,
+  WorkflowTaskSpec,
+} from "./workflowTypes";
+
 export type GraphNodeKind = "llm" | "agent_parallel";
 
 export type GraphNode = {
@@ -20,14 +30,14 @@ export type GraphState = {
 };
 
 export type GraphBuildOptions = {
-  defaults: Record<string, any>;
+  defaults: WorkflowDefaults;
   allowInlineKeys: boolean;
   targets: string[];
   bearerEnv?: string;
 };
 
 export type GraphBuildResult = {
-  workflow: Record<string, any>;
+  workflow: WorkflowSpec;
   warnings: string[];
 };
 
@@ -51,7 +61,11 @@ export const DEFAULT_GRAPH_STATE: GraphState = {
   edges: [],
 };
 
-export const isNonEmptyObject = (v: any) => v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length > 0;
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+export const isNonEmptyObject = (value: unknown): value is WorkflowJsonObject =>
+  isObjectRecord(value) && Object.keys(value).length > 0;
 
 export const normalizeTargets = (targets?: string[]): string[] => {
   if (!Array.isArray(targets)) return [];
@@ -129,7 +143,7 @@ const buildAgentParallelTask = (
   node: GraphNode,
   options: GraphBuildOptions,
   warnings: string[],
-): Record<string, any> => {
+): WorkflowAgentdParallelTask => {
   const nodeTargets = normalizeTargets(node.targets);
   let targets = nodeTargets.length ? nodeTargets : normalizeTargets(options.targets);
   if (!targets.length) {
@@ -138,7 +152,7 @@ const buildAgentParallelTask = (
   }
   const targetEntries = targets.map((base, idx) => ({ id: `t${idx + 1}`, base_url: base }));
 
-  const nestedWorkflow: Record<string, any> = {
+  const nestedWorkflow: WorkflowNestedSpec = {
     tasks: [
       {
         task_id: "RUN",
@@ -168,6 +182,7 @@ const buildAgentParallelTask = (
       },
       aggregate: {
         mode: "first_ok",
+        task_ids: targetEntries.map((target) => `${node.id}:${target.id}`),
         ok_pointer: "/ok",
         value_pointer: "/agentd/final/result/results_by_task/RUN/assistant_text",
       },
@@ -208,53 +223,59 @@ export const buildWorkflowFromGraph = (state: GraphState, options: GraphBuildOpt
     if (!deps.includes(edge.from)) deps.push(edge.from);
   }
 
-  const tasks = cleanedNodes
+  const tasks: WorkflowTaskSpec[] = cleanedNodes
     .slice()
     .sort((a, b) => a.id.localeCompare(b.id))
     .map((node) => {
       const deps = depsMap.get(node.id) ?? [];
-      const baseTask: Record<string, any> = { task_id: node.id };
-      if (deps.length) baseTask.depends_on = deps;
       if (node.kind === "agent_parallel") {
-        return { ...baseTask, ...buildAgentParallelTask(node, options, warnings) };
+        const task = buildAgentParallelTask(node, options, warnings);
+        return deps.length ? { ...task, depends_on: deps } : task;
       }
-      return {
-        ...baseTask,
+      const requestTask: WorkflowRequestTask = {
+        task_id: node.id,
+        ...(deps.length ? { depends_on: deps } : {}),
         request: {
           prompt: node.prompt || DEFAULT_PROMPT,
           no_session: true,
         },
       };
+      return requestTask;
     });
 
-  const workflow: Record<string, any> = { tasks };
+  const workflow: WorkflowSpec = { tasks };
   if (isNonEmptyObject(options.defaults)) workflow.defaults = options.defaults;
   if (options.allowInlineKeys && options.defaults.api_key) workflow.allow_inline_api_keys = true;
 
   return { workflow, warnings };
 };
 
-const parseAgentParallelPrompt = (task: any): string | null => {
-  const wf = task?.agentd_parallel?.agentd_call?.workflow;
+const parseAgentParallelPrompt = (task: Record<string, unknown>): string | null => {
+  const agentdParallel = isObjectRecord(task.agentd_parallel) ? task.agentd_parallel : null;
+  const agentdCall = agentdParallel && isObjectRecord(agentdParallel.agentd_call) ? agentdParallel.agentd_call : null;
+  const wf = agentdCall && isObjectRecord(agentdCall.workflow) ? agentdCall.workflow : null;
   if (!wf || !Array.isArray(wf.tasks)) return null;
   for (const t of wf.tasks) {
-    const prompt = t?.request?.prompt;
+    if (!isObjectRecord(t)) continue;
+    const request = isObjectRecord(t.request) ? t.request : null;
+    const prompt = request?.prompt;
     if (typeof prompt === "string" && prompt.trim()) return prompt.trim();
   }
   return null;
 };
 
-const parseAgentParallelTargets = (task: any, warnings: string[]): string[] => {
-  const targets = task?.agentd_parallel?.targets;
+const parseAgentParallelTargets = (task: Record<string, unknown>, warnings: string[]): string[] => {
+  const agentdParallel = isObjectRecord(task.agentd_parallel) ? task.agentd_parallel : null;
+  const targets = agentdParallel?.targets;
   if (!Array.isArray(targets)) return [];
   const out: string[] = [];
   for (const t of targets) {
-    if (t && typeof t.base_url === "string" && t.base_url.trim()) {
+    if (isObjectRecord(t) && typeof t.base_url === "string" && t.base_url.trim()) {
       out.push(t.base_url.trim());
       continue;
     }
-    const broker = t?.broker_proxy;
-    if (broker && typeof broker === "object") {
+    const broker = isObjectRecord(t) && isObjectRecord(t.broker_proxy) ? t.broker_proxy : null;
+    if (broker) {
       const brokerBase = String(broker.broker_base_url || "").trim();
       const agentId = String(broker.agent_id || "").trim();
       if (brokerBase && agentId) {
@@ -270,13 +291,14 @@ const parseAgentParallelTargets = (task: any, warnings: string[]): string[] => {
 
 export const parseWorkflowToGraph = (jsonText: string): GraphImportResult => {
   const warnings: string[] = [];
-  let parsed: any;
+  let parsed: unknown;
   try {
     parsed = JSON.parse(jsonText || "{}");
   } catch (err) {
     throw new Error(`Invalid JSON: ${String(err)}`);
   }
-  const tasks = Array.isArray(parsed?.tasks) ? parsed.tasks : [];
+  const parsedObject = isObjectRecord(parsed) ? parsed : null;
+  const tasks = Array.isArray(parsedObject?.tasks) ? parsedObject.tasks : [];
   if (!tasks.length) {
     throw new Error("No tasks found in workflow JSON.");
   }
@@ -285,30 +307,35 @@ export const parseWorkflowToGraph = (jsonText: string): GraphImportResult => {
   const edges: GraphEdge[] = [];
 
   for (const task of tasks) {
-    const taskId = String(task?.task_id || "").trim();
+    if (!isObjectRecord(task)) {
+      warnings.push("Skipped non-object task entry.");
+      continue;
+    }
+    const taskId = String(task.task_id || "").trim();
     if (!taskId) {
       warnings.push("Skipped task with missing task_id.");
       continue;
     }
-    const dependsOn = Array.isArray(task?.depends_on)
-      ? task.depends_on.map((d: any) => String(d || "").trim()).filter(Boolean)
+    const dependsOn = Array.isArray(task.depends_on)
+      ? task.depends_on.map((d) => String(d || "").trim()).filter(Boolean)
       : [];
     for (const dep of dependsOn) edges.push({ from: dep, to: taskId });
 
-    const prompt = typeof task?.request?.prompt === "string" ? task.request.prompt.trim() : "";
+    const request = isObjectRecord(task.request) ? task.request : null;
+    const prompt = typeof request?.prompt === "string" ? request.prompt.trim() : "";
     if (prompt) {
       nodes.push({ id: taskId, kind: "llm", x: 0, y: 0, prompt });
       continue;
     }
 
-    if (String(task?.kind || "") === "agentd_parallel") {
+    if (String(task.kind || "") === "agentd_parallel") {
       const remotePrompt = parseAgentParallelPrompt(task) || DEFAULT_PROMPT;
       const targets = parseAgentParallelTargets(task, warnings);
       nodes.push({ id: taskId, kind: "agent_parallel", x: 0, y: 0, prompt: remotePrompt, targets });
       continue;
     }
 
-    warnings.push(`Unsupported task '${taskId}' ignored (kind: ${String(task?.kind || "") || "request"}).`);
+    warnings.push(`Unsupported task '${taskId}' ignored (kind: ${String(task.kind || "") || "request"}).`);
   }
 
   if (!nodes.length) {

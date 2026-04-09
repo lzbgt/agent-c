@@ -1,6 +1,6 @@
 import React from "react";
 
-import { SCHEDULE_PRESETS, SCHEDULE_SAMPLE_SPEC, validateCronExpr, validateScheduleSpec } from "./workflowPanelUtils";
+import { coerceScheduleSpec, SCHEDULE_PRESETS, SCHEDULE_SAMPLE_SPEC, validateCronExpr, validateScheduleSpec } from "./workflowPanelUtils";
 import type { WorkflowSchedulesSectionProps } from "./workflowScheduleSectionTypes";
 
 type WorkflowScheduleCreateSectionProps = Pick<
@@ -104,7 +104,12 @@ export default function WorkflowScheduleCreateSection(props: WorkflowScheduleCre
                 props.setScheduleError("spec validation failed");
                 return;
               }
-              void props.onCopyText("schedule create curl", props.scheduleCreateCurlSnippet(cron, parsed));
+              const spec = coerceScheduleSpec(parsed);
+              if (!spec) {
+                props.setScheduleError("spec validation failed");
+                return;
+              }
+              void props.onCopyText("schedule create curl", props.scheduleCreateCurlSnippet(cron, spec));
             } catch (err) {
               props.setScheduleError(`spec JSON parse error: ${String(err)}`);
             }
@@ -121,7 +126,7 @@ export default function WorkflowScheduleCreateSection(props: WorkflowScheduleCre
           props.setScheduleSpec(e.target.value);
           if (props.scheduleError) props.setScheduleError(null);
         }}
-        placeholder='spec JSON (workflow submit payload, e.g. {"tasks":[...], "defaults":{...}})'
+        placeholder='WorkflowSubmitRequest JSON (e.g. {"tasks":[{"task_id":"TASK_1","request":{"prompt":"...","no_session":true}}]})'
       />
       {props.scheduleError ? <div className="text-[11px] text-rose-200">{props.scheduleError}</div> : null}
       {props.scheduleCronValidation.length > 0 ? (

@@ -1,10 +1,12 @@
 import React from "react";
+import type { WorkflowSummaryRow } from "../../workflowTypes";
 import {
   canCancelStatus,
   formatUnixMs,
   STATUS_OPTIONS,
   statusBadge,
 } from "./workflowPanelUtils";
+import type { WorkflowQueryState } from "./workflowScheduleSectionTypes";
 
 type WorkflowListSectionProps = {
   baseUrl: string;
@@ -17,8 +19,8 @@ type WorkflowListSectionProps = {
   setListFilter: (value: string) => void;
   listAutoRefresh: boolean;
   setListAutoRefresh: (value: boolean) => void;
-  listQuery: any;
-  filteredWorkflows: any[];
+  listQuery: WorkflowQueryState;
+  filteredWorkflows: WorkflowSummaryRow[];
   cancelBusyId: string | null;
   onSelectWorkflow: (id: string) => void;
   onCopyText: (label: string, value?: string | null) => Promise<void> | void;
@@ -103,7 +105,7 @@ export default function WorkflowListSection(props: WorkflowListSectionProps) {
         </div>
       ) : null}
       <div className="grid gap-2">
-        {props.filteredWorkflows.map((wf: any) => {
+        {props.filteredWorkflows.map((wf) => {
           const id = String(wf.workflow_id || "").trim();
           const canCancel = canCancelStatus(wf.status);
           return (

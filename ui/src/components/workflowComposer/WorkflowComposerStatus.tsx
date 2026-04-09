@@ -1,13 +1,13 @@
 import React from "react";
 
-import type { WaitState, WaitStatePersisted } from "./workflowComposerTypes";
+import type { WaitState, WaitStatePersisted, WorkflowComposerSubmitResult } from "./workflowComposerTypes";
 
 type WorkflowComposerStatusProps = {
   cancelBusy: boolean;
   serverWaitStatus: "idle" | "loading" | "ready" | "error";
   submitBusy: boolean;
   submitError: string | null;
-  submitResult: any | null;
+  submitResult: WorkflowComposerSubmitResult | null;
   waitPersisted: WaitStatePersisted | null;
   waitPersistedExtra: number;
   waitState: WaitState | null;

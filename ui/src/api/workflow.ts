@@ -1,5 +1,6 @@
 import { daemonFetchInit, type ApiAuth } from "./auth";
 import { addQueryParam } from "./query";
+import type { WorkflowSubmitRequest } from "../workflowTypes";
 import {
   WorkflowDetailRespSchema,
   type WorkflowDetailResp,
@@ -57,7 +58,7 @@ export async function apiGetWorkflow(
 
 export async function apiSubmitWorkflow(
   base: string,
-  payload: Record<string, any>,
+  payload: WorkflowSubmitRequest,
   auth?: ApiAuth,
 ): Promise<WorkflowSubmitResp> {
   const r = await fetch(

@@ -1,6 +1,7 @@
 import React from "react";
 
 import WorkflowGraphComposer from "../WorkflowGraphComposer";
+import type { WorkflowDefaults } from "../../workflowTypes";
 import type { ComposerMode, GraphSetter, TemplateKind, WorkflowComposerGraphBuild } from "./workflowComposerTypes";
 import type { GraphState } from "./workflowComposerUtils";
 
@@ -9,7 +10,7 @@ type WorkflowComposerBodyProps = {
   bearerEnv?: string;
   composerJson: string;
   composerMode: ComposerMode;
-  defaults: Record<string, any>;
+  defaults: WorkflowDefaults;
   graphBuild: WorkflowComposerGraphBuild;
   graphParseWarnings: string[];
   graphState: GraphState;

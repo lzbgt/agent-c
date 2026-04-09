@@ -1,4 +1,6 @@
 import React from "react";
+import type { WorkflowDetailResp } from "../../api";
+import type { WorkflowBudgetSnapshot, WorkflowSummaryRow } from "../../workflowTypes";
 import {
   canCancelStatus,
   formatUnixMs,
@@ -7,11 +9,14 @@ import {
 } from "./workflowPanelUtils";
 
 type WorkflowDetailSectionProps = {
-  detail: any;
-  summary: Record<string, any>;
+  detail: WorkflowDetailResp | null;
+  summary: WorkflowSummaryRow | null;
   tasks: WorkflowTask[];
   taskCounts: Record<string, number>;
   graph: { levels: WorkflowTask[][]; hasCycle: boolean; missingDeps: string[] };
+  workflowLimits?: WorkflowBudgetSnapshot;
+  workflowUsage?: WorkflowBudgetSnapshot;
+  workflowRemaining?: WorkflowBudgetSnapshot;
   cancelBusyId: string | null;
   workflowLookupPending: boolean;
   onReloadWorkflow: (workflowId: string) => void;
@@ -21,7 +26,8 @@ type WorkflowDetailSectionProps = {
 };
 
 export default function WorkflowDetailSection(props: WorkflowDetailSectionProps) {
-  if (!props.detail || !props.summary.workflow_id) return null;
+  const summary = props.summary;
+  if (!props.detail || !summary?.workflow_id) return null;
 
   return (
     <div className="grid gap-3" data-testid="workflow-detail-panel">
@@ -32,51 +38,51 @@ export default function WorkflowDetailSection(props: WorkflowDetailSectionProps)
             <button
               className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
               type="button"
-              onClick={() => props.onReloadWorkflow(props.summary.workflow_id)}
+              onClick={() => props.onReloadWorkflow(summary.workflow_id)}
               disabled={props.workflowLookupPending}
             >
               {props.workflowLookupPending ? "Reloading…" : "Reload"}
             </button>
-            {canCancelStatus(props.summary.status) ? (
+            {canCancelStatus(summary.status) ? (
               <button
                 className="rounded-md border border-rose-400/30 bg-rose-400/10 px-2 py-1 text-[11px] text-rose-100 hover:bg-rose-400/20 disabled:opacity-50"
                 type="button"
-                onClick={() => void props.onCancelWorkflow(props.summary.workflow_id)}
-                disabled={props.cancelBusyId === props.summary.workflow_id}
+                onClick={() => void props.onCancelWorkflow(summary.workflow_id)}
+                disabled={props.cancelBusyId === summary.workflow_id}
               >
-                {props.cancelBusyId === props.summary.workflow_id ? "Canceling…" : "Cancel"}
+                {props.cancelBusyId === summary.workflow_id ? "Canceling…" : "Cancel"}
               </button>
             ) : null}
           </div>
         </div>
         <div className="mt-2 grid gap-2 text-[11px] text-white/70">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded border px-2 py-0.5 text-[10px] ${statusBadge(props.summary.status)}`}>
-              {props.summary.status ?? "unknown"}
+            <span className={`rounded border px-2 py-0.5 text-[10px] ${statusBadge(summary.status)}`}>
+              {summary.status ?? "unknown"}
             </span>
-            <span className="font-mono text-[11px] text-white/80">{props.summary.workflow_id}</span>
-            {props.summary.workflow_id ? (
+            <span className="font-mono text-[11px] text-white/80">{summary.workflow_id}</span>
+            {summary.workflow_id ? (
               <button
                 type="button"
                 className="rounded border border-white/10 px-2 py-0.5 text-[10px] text-white/60 hover:bg-white/5"
-                onClick={() => void props.onCopyText("workflow id", props.summary.workflow_id)}
+                onClick={() => void props.onCopyText("workflow id", summary.workflow_id)}
               >
                 copy id
               </button>
             ) : null}
-            {props.summary.trace_id ? (
+            {summary.trace_id ? (
               <span className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   className="rounded border border-white/10 px-2 py-0.5 text-[10px] text-white/70 hover:bg-white/5"
-                  onClick={() => props.onTraceIdClick?.(String(props.summary.trace_id))}
+                  onClick={() => props.onTraceIdClick?.(String(summary.trace_id))}
                 >
-                  trace {String(props.summary.trace_id)}
+                  trace {String(summary.trace_id)}
                 </button>
                 <button
                   type="button"
                   className="rounded border border-white/10 px-2 py-0.5 text-[10px] text-white/60 hover:bg-white/5"
-                  onClick={() => void props.onCopyText("trace id", props.summary.trace_id)}
+                  onClick={() => void props.onCopyText("trace id", summary.trace_id)}
                 >
                   copy trace
                 </button>
@@ -84,17 +90,17 @@ export default function WorkflowDetailSection(props: WorkflowDetailSectionProps)
             ) : null}
           </div>
           <div className="grid gap-1 sm:grid-cols-2">
-            <div>priority: {props.summary.priority ?? "—"}</div>
-            <div>session: {props.summary.session_id || "—"}</div>
-            <div>idempotency: {props.summary.idempotency_key || "—"}</div>
-            <div>created: {formatUnixMs(props.summary.created_unix_ms)}</div>
-            <div>updated: {formatUnixMs(props.summary.updated_unix_ms)}</div>
-            <div>deadline: {formatUnixMs(props.summary.deadline_unix_ms)}</div>
-            <div>cancel requested: {String(props.summary.cancel_requested ?? false)}</div>
+            <div>priority: {summary.priority ?? "—"}</div>
+            <div>session: {summary.session_id || "—"}</div>
+            <div>idempotency: {summary.idempotency_key || "—"}</div>
+            <div>created: {formatUnixMs(summary.created_unix_ms)}</div>
+            <div>updated: {formatUnixMs(summary.updated_unix_ms)}</div>
+            <div>deadline: {formatUnixMs(summary.deadline_unix_ms)}</div>
+            <div>cancel requested: {String(summary.cancel_requested ?? false)}</div>
           </div>
-          {props.summary.error ? (
+          {summary.error ? (
             <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
-              {String(props.summary.error)}
+              {String(summary.error)}
             </div>
           ) : null}
         </div>
@@ -152,31 +158,31 @@ export default function WorkflowDetailSection(props: WorkflowDetailSectionProps)
         </div>
       </div>
 
-      {(props.detail.workflow_limits || props.detail.workflow_usage || props.detail.workflow_remaining) && (
+      {(props.workflowLimits || props.workflowUsage || props.workflowRemaining) && (
         <div className="rounded-md border border-white/10 bg-black/30 p-3">
           <div className="text-xs font-semibold text-white/70">Budgets</div>
           <div className="mt-2 grid gap-2 text-[11px] text-white/70">
-            {props.detail.workflow_limits ? (
+            {props.workflowLimits ? (
               <div>
                 <div className="text-white/50">limits</div>
                 <pre className="mt-1 max-h-40 overflow-auto rounded bg-black/40 p-2 text-[10px] text-white/70">
-                  {JSON.stringify(props.detail.workflow_limits, null, 2)}
+                  {JSON.stringify(props.workflowLimits, null, 2)}
                 </pre>
               </div>
             ) : null}
-            {props.detail.workflow_usage ? (
+            {props.workflowUsage ? (
               <div>
                 <div className="text-white/50">usage</div>
                 <pre className="mt-1 max-h-40 overflow-auto rounded bg-black/40 p-2 text-[10px] text-white/70">
-                  {JSON.stringify(props.detail.workflow_usage, null, 2)}
+                  {JSON.stringify(props.workflowUsage, null, 2)}
                 </pre>
               </div>
             ) : null}
-            {props.detail.workflow_remaining ? (
+            {props.workflowRemaining ? (
               <div>
                 <div className="text-white/50">remaining</div>
                 <pre className="mt-1 max-h-40 overflow-auto rounded bg-black/40 p-2 text-[10px] text-white/70">
-                  {JSON.stringify(props.detail.workflow_remaining, null, 2)}
+                  {JSON.stringify(props.workflowRemaining, null, 2)}
                 </pre>
               </div>
             ) : null}

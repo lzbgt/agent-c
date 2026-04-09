@@ -1,4 +1,5 @@
 import type { RunSettings } from "./hooks/uiSettingsTypes";
+import type { WorkflowDefaults, WorkflowToolCallLimit } from "./workflowTypes";
 
 const parseNumber = (raw: string, min = 0): number | undefined => {
   const s = String(raw ?? "").trim();
@@ -8,22 +9,30 @@ const parseNumber = (raw: string, min = 0): number | undefined => {
   return n;
 };
 
-const parseToolCallLimits = (raw: string): { tool: string; max_calls: number }[] | undefined => {
+const isToolCallLimit = (value: unknown): value is WorkflowToolCallLimit =>
+  !!value &&
+  typeof value === "object" &&
+  typeof (value as WorkflowToolCallLimit).tool === "string" &&
+  typeof (value as WorkflowToolCallLimit).max_calls === "number";
+
+const parseToolCallLimits = (raw: string): WorkflowToolCallLimit[] | undefined => {
   const s = String(raw ?? "").trim();
   if (!s) return undefined;
   if (s.startsWith("[") || s.startsWith("{")) {
     try {
-      const v: any = JSON.parse(s);
+      const v: unknown = JSON.parse(s);
       const arr = Array.isArray(v) ? v : [v];
       const parsed = arr
         .map((item) => {
-          const tool = String(item?.tool ?? item?.name ?? "").trim();
-          const max_calls = Number(item?.max_calls ?? item?.maxCalls ?? item?.max ?? item?.limit ?? NaN);
+          if (!item || typeof item !== "object") return null;
+          const record = item as Record<string, unknown>;
+          const tool = String(record.tool ?? record.name ?? "").trim();
+          const max_calls = Number(record.max_calls ?? record.maxCalls ?? record.max ?? record.limit ?? NaN);
           if (!tool) return null;
           if (!Number.isFinite(max_calls) || max_calls < 0) return null;
           return { tool, max_calls: Math.floor(max_calls) };
         })
-        .filter(Boolean) as any;
+        .filter(isToolCallLimit);
       return parsed.length ? parsed : undefined;
     } catch {
       return undefined;
@@ -49,8 +58,8 @@ const parseToolCallLimits = (raw: string): { tool: string; max_calls: number }[]
   return out.length ? out : undefined;
 };
 
-export const buildWorkflowDefaults = (run: RunSettings): Record<string, any> => {
-  const defaults: Record<string, any> = {};
+export const buildWorkflowDefaults = (run: RunSettings): WorkflowDefaults => {
+  const defaults: WorkflowDefaults = {};
 
   if (run.tools) defaults.tools = run.tools;
   if (run.tools === "host" && run.hostPolicy) defaults.host_policy = run.hostPolicy;

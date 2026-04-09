@@ -4,6 +4,7 @@ import {
   apiBrokerGetClientPrefs,
   apiBrokerPostClientPrefs,
   apiCancelWorkflow,
+  type WorkflowDetailResp,
   apiGetClientPrefs,
   apiGetWorkflow,
   apiPostClientPrefs,
@@ -11,7 +12,16 @@ import {
 } from "../../api";
 import useLocalStorageState from "../../hooks/useLocalStorageState";
 import { brokerBaseFromProxy } from "../../utils/brokerBase";
-import type { WorkflowComposerProps, TemplateKind, ComposerMode, GraphSetter, WaitState, WaitStatePersisted } from "./workflowComposerTypes";
+import type { WorkflowDefaults, WorkflowJsonObject, WorkflowSpec, WorkflowSubmitRequest } from "../../workflowTypes";
+import type {
+  WorkflowComposerProps,
+  TemplateKind,
+  ComposerMode,
+  GraphSetter,
+  WaitState,
+  WaitStatePersisted,
+  WorkflowComposerSubmitResult,
+} from "./workflowComposerTypes";
 import {
   DEFAULT_GRAPH_STATE,
   WAIT_PREFS_KIND,
@@ -28,6 +38,9 @@ import {
   pruneWaitByScope,
   waitMapsEqual,
 } from "./workflowComposerUtils";
+
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
 
 export default function useWorkflowComposerState(props: WorkflowComposerProps) {
   const [templateKind, setTemplateKind] = useLocalStorageState<TemplateKind>(
@@ -46,7 +59,7 @@ export default function useWorkflowComposerState(props: WorkflowComposerProps) {
   const [graphStateRaw, setGraphStateRaw] = useLocalStorageState("agentui.workflowComposerGraph", DEFAULT_GRAPH_STATE);
   const [graphParseWarnings, setGraphParseWarnings] = React.useState<string[]>([]);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
-  const [submitResult, setSubmitResult] = React.useState<any | null>(null);
+  const [submitResult, setSubmitResult] = React.useState<WorkflowComposerSubmitResult | null>(null);
   const [submitBusy, setSubmitBusy] = React.useState(false);
   const [cancelBusy, setCancelBusy] = React.useState(false);
   const [waitState, setWaitState] = React.useState<WaitState | null>(null);
@@ -78,7 +91,7 @@ export default function useWorkflowComposerState(props: WorkflowComposerProps) {
   const serverWaitLoadKeyRef = React.useRef<string>("");
   const resumeAttemptedRef = React.useRef<string>("");
 
-  const defaults = React.useMemo(() => props.workflowDefaults ?? {}, [props.workflowDefaults]);
+  const defaults = React.useMemo<WorkflowDefaults>(() => props.workflowDefaults ?? {}, [props.workflowDefaults]);
   const targets = React.useMemo(() => normalizeTargets(props.workflowTargets), [props.workflowTargets]);
   const bearerEnv = React.useMemo(() => (props.workflowBearerEnv || "").trim() || undefined, [props.workflowBearerEnv]);
   const graphState = React.useMemo(() => clampGraphState(graphStateRaw), [graphStateRaw]);
@@ -289,7 +302,7 @@ export default function useWorkflowComposerState(props: WorkflowComposerProps) {
     async (workflowId: string, opts?: { startedUnixMs?: number }) => {
       const startedUnixMs =
         typeof opts?.startedUnixMs === "number" && Number.isFinite(opts.startedUnixMs) ? opts.startedUnixMs : Date.now();
-      let last: any = null;
+      let last: WorkflowDetailResp | null = null;
       const persist = (status: string) => {
         writeWaitPersisted({
           workflow_id: workflowId,
@@ -351,7 +364,7 @@ export default function useWorkflowComposerState(props: WorkflowComposerProps) {
   );
 
   const submitWorkflow = React.useCallback(
-    async (payload: Record<string, any>, opts?: { wait?: boolean }) => {
+    async (payload: WorkflowSubmitRequest, opts?: { wait?: boolean }) => {
       const baseUrl = String(props.baseUrl || "").trim();
       if (!baseUrl) {
         setSubmitError("Base URL is not set.");
@@ -531,7 +544,7 @@ export default function useWorkflowComposerState(props: WorkflowComposerProps) {
   const applyTemplate = React.useCallback(
     (kind: TemplateKind, opts?: { toGraph?: boolean }) => {
       setTemplateKind(kind);
-      let template: Record<string, any>;
+      let template: WorkflowSpec;
       if (kind === "agent_parallel_demo") {
         template = buildAgentParallelDemoTemplate(defaults, targets, bearerEnv, allowInlineKeys);
       } else if (kind === "agent_parallel") {
@@ -603,7 +616,7 @@ export default function useWorkflowComposerState(props: WorkflowComposerProps) {
   }, []);
 
   const submit = React.useCallback(async () => {
-    let payload: Record<string, any>;
+    let payload: WorkflowSubmitRequest;
     if (composerMode === "graph") {
       if (!graphBuild.result) {
         setSubmitError(graphBuild.error || "Graph is invalid.");
@@ -612,12 +625,18 @@ export default function useWorkflowComposerState(props: WorkflowComposerProps) {
       payload = graphBuild.result.workflow;
       setComposerJson(JSON.stringify(payload, null, 2));
     } else {
+      let parsed: unknown;
       try {
-        payload = JSON.parse(composerJson || "{}");
+        parsed = JSON.parse(composerJson || "{}");
       } catch (err) {
         setSubmitError(`Invalid JSON: ${String(err)}`);
         return;
       }
+      if (!isObjectRecord(parsed)) {
+        setSubmitError("Workflow payload must be a JSON object.");
+        return;
+      }
+      payload = parsed as WorkflowJsonObject as WorkflowSubmitRequest;
     }
     await submitWorkflow(payload);
   }, [composerJson, composerMode, graphBuild.error, graphBuild.result, setComposerJson, submitWorkflow]);

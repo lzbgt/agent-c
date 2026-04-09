@@ -1,27 +1,11 @@
+import type { WorkflowScheduleCreatePayload, WorkflowScheduleRow, WorkflowScheduleRunRow } from "../../workflowTypes";
+
 export type WorkflowQueryState = {
   isFetching: boolean;
   isError: boolean;
   isSuccess: boolean;
   error?: unknown;
   refetch: () => Promise<unknown> | unknown;
-};
-
-export type WorkflowScheduleRow = {
-  schedule_id?: string;
-  status?: string;
-  cron?: string;
-  timezone?: string;
-  next_tick_unix_ms?: number;
-  updated_unix_ms?: number;
-  last_error?: string;
-};
-
-export type WorkflowScheduleRunRow = {
-  schedule_id?: string;
-  tick_unix_ms?: number;
-  workflow_id?: string;
-  status?: string;
-  error?: string;
 };
 
 export type WorkflowSchedulesSectionProps = {
@@ -82,5 +66,5 @@ export type WorkflowSchedulesSectionProps = {
   onDeleteSchedule: (id: string) => Promise<void> | void;
   onLoadSpecFromWorkflow: () => void;
   scheduleCurlSnippet: (id: string, action: "pause" | "resume" | "delete") => string;
-  scheduleCreateCurlSnippet: (cron: string, spec: unknown) => string;
+  scheduleCreateCurlSnippet: (cron: string, spec: WorkflowScheduleCreatePayload["spec"]) => string;
 };

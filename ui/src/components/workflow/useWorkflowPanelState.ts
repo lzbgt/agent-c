@@ -14,13 +14,24 @@ import {
 } from "../../api";
 import type { ApiAuth } from "../../api/auth";
 import useLocalStorageState from "../../hooks/useLocalStorageState";
+import type {
+  WorkflowScheduleCreatePayload,
+  WorkflowScheduleRow,
+  WorkflowScheduleRunRow,
+  WorkflowSpec,
+  WorkflowSummaryRow,
+} from "../../workflowTypes";
 import {
-  countByStatus,
   buildLevels,
+  coerceScheduleSpec,
+  countByStatus,
   extractScheduleRuns,
   extractSchedules,
   extractTasks,
+  extractWorkflowLimits,
+  extractWorkflowRemaining,
   extractWorkflowSummary,
+  extractWorkflowUsage,
   extractWorkflows,
   SCHEDULE_RUN_STATUS_OPTIONS,
   SCHEDULE_STATUS_OPTIONS,
@@ -35,6 +46,9 @@ type UseWorkflowPanelStateArgs = {
   auth?: ApiAuth;
   authKey?: string;
 };
+
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
 
 export default function useWorkflowPanelState(args: UseWorkflowPanelStateArgs) {
   const [workflowId, setWorkflowId] = useLocalStorageState("agentui.workflowLookupId", "");
@@ -196,7 +210,7 @@ export default function useWorkflowPanelState(args: UseWorkflowPanelStateArgs) {
     const workflows = extractWorkflows(listQuery.data);
     const query = String(listFilter || "").trim().toLowerCase();
     if (!query) return workflows;
-    return workflows.filter((wf: any) => {
+    return workflows.filter((wf: WorkflowSummaryRow) => {
       const workflowId = String(wf.workflow_id || "").toLowerCase();
       const traceId = String(wf.trace_id || "").toLowerCase();
       const sessionId = String(wf.session_id || "").toLowerCase();
@@ -214,13 +228,16 @@ export default function useWorkflowPanelState(args: UseWorkflowPanelStateArgs) {
   const summary = extractWorkflowSummary(detail);
   const taskCounts = countByStatus(tasks);
   const graph = buildLevels(tasks);
+  const workflowLimits = extractWorkflowLimits(detail);
+  const workflowUsage = extractWorkflowUsage(detail);
+  const workflowRemaining = extractWorkflowRemaining(detail);
   const scheduleList = extractSchedules(scheduleListQuery.data);
   const scheduleRuns = extractScheduleRuns(scheduleRunsQuery.data);
 
   const filteredScheduleList = React.useMemo(() => {
     const query = String(scheduleFilter || "").trim().toLowerCase();
     if (!query) return scheduleList;
-    return scheduleList.filter((sched: any) => {
+    return scheduleList.filter((sched: WorkflowScheduleRow) => {
       const localScheduleId = String(sched?.schedule_id || "").toLowerCase();
       const cron = String(sched?.cron || "").toLowerCase();
       const timezone = String(sched?.timezone || "").toLowerCase();
@@ -237,7 +254,7 @@ export default function useWorkflowPanelState(args: UseWorkflowPanelStateArgs) {
   const filteredScheduleRuns = React.useMemo(() => {
     const statusFilter = normalizedScheduleRunsStatus === "all" ? "" : normalizedScheduleRunsStatus;
     const query = String(scheduleRunsFilter || "").trim().toLowerCase();
-    return scheduleRuns.filter((run: any) => {
+    return scheduleRuns.filter((run: WorkflowScheduleRunRow) => {
       const status = String(run?.status || "").toLowerCase();
       if (statusFilter && status !== statusFilter) return false;
       if (query) {
@@ -315,7 +332,7 @@ export default function useWorkflowPanelState(args: UseWorkflowPanelStateArgs) {
       setScheduleError("spec JSON is required");
       return;
     }
-    let specObj: any = null;
+    let specObj: unknown = null;
     try {
       specObj = JSON.parse(specRaw);
     } catch (err) {
@@ -328,12 +345,17 @@ export default function useWorkflowPanelState(args: UseWorkflowPanelStateArgs) {
       setScheduleError(`spec validation failed (${issues.length} issues)`);
       return;
     }
+    const spec = coerceScheduleSpec(specObj);
+    if (!spec) {
+      setScheduleError("spec validation failed");
+      return;
+    }
     setScheduleCreateBusy(true);
     setScheduleError(null);
     try {
       const resp = await apiCreateWorkflowSchedule(
         args.baseUrl,
-        { cron, timezone: "UTC", spec: specObj },
+        { cron, timezone: "UTC", spec },
         args.auth,
       );
       if (resp && resp.ok === false) {
@@ -361,7 +383,7 @@ export default function useWorkflowPanelState(args: UseWorkflowPanelStateArgs) {
     return `curl -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" -d '{"schedule_id":"${id}"}' ${base}/api/v1/workflow_schedule/${action}`;
   };
 
-  const scheduleCreateCurlSnippet = (cron: string, spec: any) => {
+  const scheduleCreateCurlSnippet = (cron: string, spec: WorkflowScheduleCreatePayload["spec"]) => {
     const base = String(args.baseUrl || "").replace(/\/$/, "");
     const token = "$AGENTD_AUTH_TOKEN";
     const payload = JSON.stringify({ cron, timezone: "UTC", spec });
@@ -441,8 +463,8 @@ export default function useWorkflowPanelState(args: UseWorkflowPanelStateArgs) {
       }
       return;
     }
-    if (detail?.spec && typeof detail.spec === "object") {
-      setScheduleSpec(JSON.stringify(detail.spec, null, 2));
+    if (isObjectRecord(detail?.spec)) {
+      setScheduleSpec(JSON.stringify(detail.spec as WorkflowSpec, null, 2));
       setScheduleValidation(validateScheduleSpec(detail.spec));
     }
   }, [detail, setScheduleSpec]);
@@ -474,7 +496,7 @@ export default function useWorkflowPanelState(args: UseWorkflowPanelStateArgs) {
     copyTimerRef.current = window.setTimeout(() => setCopyNotice(null), 2000);
   };
 
-  const copyJson = async (label: string, payload: any) => {
+  const copyJson = async (label: string, payload: unknown) => {
     try {
       const text = JSON.stringify(payload, null, 2);
       await copyText(label, text);
@@ -485,7 +507,7 @@ export default function useWorkflowPanelState(args: UseWorkflowPanelStateArgs) {
     }
   };
 
-  const downloadJson = (label: string, payload: any) => {
+  const downloadJson = (label: string, payload: unknown) => {
     try {
       const text = JSON.stringify(payload, null, 2);
       const blob = new Blob([text], { type: "application/json" });
@@ -578,6 +600,9 @@ export default function useWorkflowPanelState(args: UseWorkflowPanelStateArgs) {
     summary,
     taskCounts,
     graph,
+    workflowLimits,
+    workflowUsage,
+    workflowRemaining,
     scheduleList,
     scheduleRuns,
     filteredScheduleList,

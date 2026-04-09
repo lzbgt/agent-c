@@ -4,19 +4,17 @@ import type {
   WorkflowScheduleListResp,
   WorkflowScheduleRunsResp,
 } from "../../api";
+import type {
+  WorkflowBudgetSnapshot,
+  WorkflowScheduleCreatePayload,
+  WorkflowScheduleRow,
+  WorkflowScheduleRunRow,
+  WorkflowSummaryRow,
+  WorkflowTaskRow,
+  WorkflowSubmitRequest,
+} from "../../workflowTypes";
 
-export type WorkflowTask = {
-  task_id: string;
-  status?: string;
-  depends_on: string[];
-  allow_error?: boolean;
-  attempt?: number;
-  max_attempts?: number;
-  error?: string;
-  ready_unix_ms?: number;
-  started_unix_ms?: number;
-  finished_unix_ms?: number;
-};
+export type WorkflowTask = WorkflowTaskRow & { depends_on: string[] };
 
 export const STATUS_OPTIONS = ["running", "queued", "active", "done", "error", "cancelled", "all"];
 export const SCHEDULE_STATUS_OPTIONS = ["active", "paused", "error", "all"];
@@ -32,9 +30,11 @@ export const SCHEDULE_PRESETS = [
 export const SCHEDULE_SAMPLE_SPEC = {
   tasks: [
     {
-      id: "task-1",
-      kind: "llm",
-      prompt: "Summarize the top 3 operational alerts from the last 24h.",
+      task_id: "TASK_1",
+      request: {
+        prompt: "Summarize the top 3 operational alerts from the last 24h.",
+        no_session: true,
+      },
     },
   ],
   defaults: {
@@ -43,11 +43,17 @@ export const SCHEDULE_SAMPLE_SPEC = {
   },
 };
 
-export function normalizeTask(raw: any): WorkflowTask | null {
-  if (!raw || typeof raw !== "object") return null;
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+const toStringArray = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+
+export function normalizeTask(raw: unknown): WorkflowTask | null {
+  if (!isObjectRecord(raw)) return null;
   const taskId = typeof raw.task_id === "string" ? raw.task_id : "";
   if (!taskId) return null;
-  const deps = Array.isArray(raw.depends_on) ? raw.depends_on.filter((d: any) => typeof d === "string") : [];
+  const deps = toStringArray(raw.depends_on);
   return {
     task_id: taskId,
     status: typeof raw.status === "string" ? raw.status : undefined,
@@ -59,6 +65,64 @@ export function normalizeTask(raw: any): WorkflowTask | null {
     ready_unix_ms: typeof raw.ready_unix_ms === "number" ? raw.ready_unix_ms : undefined,
     started_unix_ms: typeof raw.started_unix_ms === "number" ? raw.started_unix_ms : undefined,
     finished_unix_ms: typeof raw.finished_unix_ms === "number" ? raw.finished_unix_ms : undefined,
+  };
+}
+
+export function normalizeWorkflowSummary(raw: unknown): WorkflowSummaryRow | null {
+  if (!isObjectRecord(raw)) return null;
+  const workflowId = typeof raw.workflow_id === "string" ? raw.workflow_id.trim() : "";
+  if (!workflowId) return null;
+  return {
+    ...raw,
+    workflow_id: workflowId,
+    status: typeof raw.status === "string" ? raw.status : undefined,
+    priority: typeof raw.priority === "number" ? raw.priority : undefined,
+    deadline_unix_ms: typeof raw.deadline_unix_ms === "number" ? raw.deadline_unix_ms : undefined,
+    idempotency_key: typeof raw.idempotency_key === "string" ? raw.idempotency_key : undefined,
+    trace_id: typeof raw.trace_id === "string" ? raw.trace_id : undefined,
+    session_id: typeof raw.session_id === "string" ? raw.session_id : undefined,
+    cancel_requested: typeof raw.cancel_requested === "boolean" ? raw.cancel_requested : undefined,
+    error: typeof raw.error === "string" ? raw.error : undefined,
+    created_unix_ms: typeof raw.created_unix_ms === "number" ? raw.created_unix_ms : undefined,
+    updated_unix_ms: typeof raw.updated_unix_ms === "number" ? raw.updated_unix_ms : undefined,
+  };
+}
+
+const normalizeBudgetSnapshot = (raw: unknown): WorkflowBudgetSnapshot | undefined =>
+  isObjectRecord(raw) ? (raw as WorkflowBudgetSnapshot) : undefined;
+
+export function normalizeSchedule(raw: unknown): WorkflowScheduleRow | null {
+  if (!isObjectRecord(raw)) return null;
+  const scheduleId = typeof raw.schedule_id === "string" ? raw.schedule_id.trim() : "";
+  if (!scheduleId) return null;
+  return {
+    ...raw,
+    schedule_id: scheduleId,
+    status: typeof raw.status === "string" ? raw.status : undefined,
+    cron: typeof raw.cron === "string" ? raw.cron : undefined,
+    timezone: typeof raw.timezone === "string" ? raw.timezone : undefined,
+    created_unix_ms: typeof raw.created_unix_ms === "number" ? raw.created_unix_ms : undefined,
+    updated_unix_ms: typeof raw.updated_unix_ms === "number" ? raw.updated_unix_ms : undefined,
+    last_tick_unix_ms: typeof raw.last_tick_unix_ms === "number" ? raw.last_tick_unix_ms : undefined,
+    next_tick_unix_ms: typeof raw.next_tick_unix_ms === "number" ? raw.next_tick_unix_ms : undefined,
+    last_error: typeof raw.last_error === "string" ? raw.last_error : undefined,
+    metadata: isObjectRecord(raw.metadata) ? (raw.metadata as WorkflowScheduleRow["metadata"]) : undefined,
+  };
+}
+
+export function normalizeScheduleRun(raw: unknown): WorkflowScheduleRunRow | null {
+  if (!isObjectRecord(raw)) return null;
+  const scheduleId = typeof raw.schedule_id === "string" ? raw.schedule_id.trim() : "";
+  const workflowId = typeof raw.workflow_id === "string" ? raw.workflow_id.trim() : "";
+  if (!scheduleId || !workflowId) return null;
+  return {
+    ...raw,
+    schedule_id: scheduleId,
+    workflow_id: workflowId,
+    tick_unix_ms: typeof raw.tick_unix_ms === "number" ? raw.tick_unix_ms : undefined,
+    created_unix_ms: typeof raw.created_unix_ms === "number" ? raw.created_unix_ms : undefined,
+    status: typeof raw.status === "string" ? raw.status : undefined,
+    error: typeof raw.error === "string" ? raw.error : undefined,
   };
 }
 
@@ -142,7 +206,9 @@ export function buildLevels(tasks: WorkflowTask[]) {
 
 export function extractWorkflows(resp?: WorkflowListResp | null) {
   if (!resp || !resp.ok || !Array.isArray(resp.workflows)) return [];
-  return resp.workflows.filter((wf: any) => wf && typeof wf === "object");
+  return resp.workflows
+    .map((workflow) => normalizeWorkflowSummary(workflow))
+    .filter((workflow): workflow is WorkflowSummaryRow => !!workflow);
 }
 
 export function extractTasks(resp?: WorkflowDetailResp | null): WorkflowTask[] {
@@ -155,9 +221,8 @@ export function extractTasks(resp?: WorkflowDetailResp | null): WorkflowTask[] {
   return out;
 }
 
-export function extractWorkflowSummary(resp?: WorkflowDetailResp | null): Record<string, any> {
-  if (!resp || !resp.workflow || typeof resp.workflow !== "object") return {};
-  return resp.workflow as Record<string, any>;
+export function extractWorkflowSummary(resp?: WorkflowDetailResp | null): WorkflowSummaryRow | null {
+  return normalizeWorkflowSummary(resp?.workflow);
 }
 
 export function countByStatus(tasks: WorkflowTask[]) {
@@ -169,14 +234,18 @@ export function countByStatus(tasks: WorkflowTask[]) {
   return counts;
 }
 
-export function extractSchedules(resp?: WorkflowScheduleListResp | null): any[] {
+export function extractSchedules(resp?: WorkflowScheduleListResp | null): WorkflowScheduleRow[] {
   if (!resp || !Array.isArray(resp.schedules)) return [];
-  return resp.schedules;
+  return resp.schedules
+    .map((schedule) => normalizeSchedule(schedule))
+    .filter((schedule): schedule is WorkflowScheduleRow => !!schedule);
 }
 
-export function extractScheduleRuns(resp?: WorkflowScheduleRunsResp | null): any[] {
+export function extractScheduleRuns(resp?: WorkflowScheduleRunsResp | null): WorkflowScheduleRunRow[] {
   if (!resp || !Array.isArray(resp.runs)) return [];
-  return resp.runs;
+  return resp.runs
+    .map((run) => normalizeScheduleRun(run))
+    .filter((run): run is WorkflowScheduleRunRow => !!run);
 }
 
 export function validateCronExpr(expr: string): string[] {
@@ -231,27 +300,51 @@ export function validateCronExpr(expr: string): string[] {
   return issues;
 }
 
-export function validateScheduleSpec(spec: any): string[] {
+export function validateScheduleSpec(spec: unknown): string[] {
   const issues: string[] = [];
-  if (!spec || typeof spec !== "object" || Array.isArray(spec)) {
+  if (!isObjectRecord(spec)) {
     issues.push("spec must be a JSON object");
     return issues;
   }
   if (!Array.isArray(spec.tasks) || spec.tasks.length === 0) {
     issues.push("spec.tasks must be a non-empty array");
   } else {
-    spec.tasks.forEach((task: any, idx: number) => {
-      if (!task || typeof task !== "object") {
+    spec.tasks.forEach((task, idx) => {
+      if (!isObjectRecord(task)) {
         issues.push(`task[${idx}] must be an object`);
         return;
       }
-      if (!task.id || typeof task.id !== "string") {
-        issues.push(`task[${idx}].id is required`);
+      if (!task.task_id || typeof task.task_id !== "string") {
+        issues.push(`task[${idx}].task_id is required`);
       }
-      if (!task.kind || typeof task.kind !== "string") {
-        issues.push(`task[${idx}].kind is required`);
+      if (task.depends_on !== undefined && !Array.isArray(task.depends_on)) {
+        issues.push(`task[${idx}].depends_on must be an array when provided`);
+      }
+      const hasRequest = isObjectRecord(task.request);
+      const hasKind = typeof task.kind === "string" && task.kind.trim().length > 0;
+      if (!hasRequest && !hasKind) {
+        issues.push(`task[${idx}] must define request or kind`);
       }
     });
   }
+  if (spec.defaults !== undefined && !isObjectRecord(spec.defaults)) {
+    issues.push("spec.defaults must be an object when provided");
+  }
   return issues;
+}
+
+export function coerceScheduleSpec(spec: unknown): WorkflowScheduleCreatePayload["spec"] | null {
+  return validateScheduleSpec(spec).length === 0 ? (spec as WorkflowSubmitRequest) : null;
+}
+
+export function extractWorkflowLimits(resp?: WorkflowDetailResp | null): WorkflowBudgetSnapshot | undefined {
+  return normalizeBudgetSnapshot(resp?.workflow_limits);
+}
+
+export function extractWorkflowUsage(resp?: WorkflowDetailResp | null): WorkflowBudgetSnapshot | undefined {
+  return normalizeBudgetSnapshot(resp?.workflow_usage);
+}
+
+export function extractWorkflowRemaining(resp?: WorkflowDetailResp | null): WorkflowBudgetSnapshot | undefined {
+  return normalizeBudgetSnapshot(resp?.workflow_remaining);
 }

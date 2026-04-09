@@ -8,6 +8,7 @@ import {
   type GraphBuildResult,
   type GraphState,
 } from "../../workflowGraph";
+import type { WorkflowDefaults, WorkflowSpec } from "../../workflowTypes";
 import type {
   TemplateKind,
   WaitStatePersisted,
@@ -25,6 +26,23 @@ export const TEMPLATE_LABELS: Record<TemplateKind, string> = {
 
 export const WAIT_PREFS_KIND = "webui-workflow";
 export const WAIT_PREFS_VERSION = 1;
+
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+const normalizeWaitStatePersisted = (value: unknown): WaitStatePersisted | null => {
+  if (!isObjectRecord(value)) return null;
+  const workflowId = typeof value.workflow_id === "string" ? value.workflow_id.trim() : "";
+  if (!workflowId) return null;
+  const startedUnixMs = typeof value.started_unix_ms === "number" ? value.started_unix_ms : NaN;
+  if (!Number.isFinite(startedUnixMs)) return null;
+  return {
+    workflow_id: workflowId,
+    started_unix_ms: startedUnixMs,
+    last_status: typeof value.last_status === "string" ? value.last_status : undefined,
+    updated_unix_ms: typeof value.updated_unix_ms === "number" ? value.updated_unix_ms : undefined,
+  };
+};
 
 export const pruneWaitByScope = (
   input: Record<string, WaitStatePersisted> | null | undefined,
@@ -48,18 +66,16 @@ export const pruneWaitByScope = (
   return out;
 };
 
-export const extractWorkflowWaitByScope = (prefs: any): Record<string, WaitStatePersisted> => {
-  if (!prefs || typeof prefs !== "object") return {};
-  const raw = prefs.workflow_wait;
-  if (!raw || typeof raw !== "object") return {};
-  const byScope = raw.by_scope;
-  if (!byScope || typeof byScope !== "object") return {};
+export const extractWorkflowWaitByScope = (prefs: unknown): Record<string, WaitStatePersisted> => {
+  if (!isObjectRecord(prefs)) return {};
+  const raw = isObjectRecord(prefs.workflow_wait) ? prefs.workflow_wait : null;
+  if (!raw) return {};
+  const byScope = isObjectRecord(raw.by_scope) ? raw.by_scope : null;
+  if (!byScope) return {};
   const out: Record<string, WaitStatePersisted> = {};
   for (const [key, value] of Object.entries(byScope)) {
-    if (!value || typeof value !== "object") continue;
-    const workflowId = typeof (value as any).workflow_id === "string" ? String((value as any).workflow_id).trim() : "";
-    if (!workflowId) continue;
-    out[key] = value as WaitStatePersisted;
+    const normalized = normalizeWaitStatePersisted(value);
+    if (normalized) out[key] = normalized;
   }
   return out;
 };
@@ -100,8 +116,8 @@ export const waitMapsEqual = (a: Record<string, WaitStatePersisted>, b: Record<s
   return true;
 };
 
-export const buildLlmDagTemplate = (defaults: Record<string, any>, allowInlineKeys: boolean) => {
-  const workflow: Record<string, any> = {
+export const buildLlmDagTemplate = (defaults: WorkflowDefaults, allowInlineKeys: boolean): WorkflowSpec => {
+  const workflow: WorkflowSpec = {
     tasks: [
       {
         task_id: "A",
@@ -138,18 +154,18 @@ export const buildLlmDagTemplate = (defaults: Record<string, any>, allowInlineKe
 };
 
 export const buildAgentParallelTemplate = (
-  defaults: Record<string, any>,
+  defaults: WorkflowDefaults,
   targets: string[],
   bearerEnv: string | undefined,
   allowInlineKeys: boolean,
   opts?: { timeoutMs?: number; pollMs?: number; inputGoal?: string },
-) => {
+): WorkflowSpec => {
   const normTargets = normalizeTargets(targets);
   const targetEntries = normTargets.length
     ? normTargets.map((base, idx) => ({ id: `a${idx + 1}`, base_url: base }))
     : [{ id: "a1", base_url: "http://127.0.0.1:8123" }];
   const inputGoal = opts?.inputGoal;
-  const workflow: Record<string, any> = {
+  const workflow: WorkflowSpec = {
     ...(inputGoal ? { inputs: { goal: inputGoal } } : {}),
     tasks: [
       {
@@ -165,7 +181,7 @@ export const buildAgentParallelTemplate = (
             include_tasks: false,
             ...(bearerEnv ? { bearer_env: bearerEnv } : {}),
             workflow: {
-              defaults: isNonEmptyObject(defaults) ? defaults : undefined,
+              ...(isNonEmptyObject(defaults) ? { defaults } : {}),
               tasks: [
                 {
                   task_id: "RUN",
@@ -181,6 +197,7 @@ export const buildAgentParallelTemplate = (
           },
           aggregate: {
             mode: "first_ok",
+            task_ids: targetEntries.map((target) => `COLLAB:${target.id}`),
             ok_pointer: "/ok",
             value_pointer: "/agentd/final/result/results_by_task/RUN/assistant_text",
           },
@@ -190,15 +207,16 @@ export const buildAgentParallelTemplate = (
   };
   if (allowInlineKeys && defaults.api_key) {
     workflow.allow_inline_api_keys = true;
-    if (workflow.tasks?.[0]?.agentd_parallel?.agentd_call?.workflow) {
-      workflow.tasks[0].agentd_parallel.agentd_call.workflow.allow_inline_api_keys = true;
+    const firstTask = workflow.tasks[0];
+    if (firstTask && "kind" in firstTask && firstTask.kind === "agentd_parallel") {
+      firstTask.agentd_parallel.agentd_call.workflow.allow_inline_api_keys = true;
     }
   }
   return workflow;
 };
 
 export const buildAgentParallelDemoTemplate = (
-  defaults: Record<string, any>,
+  defaults: WorkflowDefaults,
   targets: string[],
   bearerEnv: string | undefined,
   allowInlineKeys: boolean,
@@ -211,7 +229,7 @@ export const buildAgentParallelDemoTemplate = (
 
 export const buildGraphWorkflow = (
   graphState: GraphState,
-  defaults: Record<string, any>,
+  defaults: WorkflowDefaults,
   allowInlineKeys: boolean,
   targets: string[],
   bearerEnv: string | undefined,

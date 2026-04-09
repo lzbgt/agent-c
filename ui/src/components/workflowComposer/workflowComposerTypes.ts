@@ -1,5 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
+import type { WorkflowDetailResp, WorkflowSubmitResp } from "../../api";
 import type { ApiAuth } from "../../api/auth";
+import type { WorkflowDefaults } from "../../workflowTypes";
 import type { GraphBuildResult, GraphState } from "../../workflowGraph";
 
 export type WorkflowComposerProps = {
@@ -7,7 +9,7 @@ export type WorkflowComposerProps = {
   auth?: ApiAuth;
   authKey?: string;
   clientId?: string;
-  workflowDefaults?: Record<string, any>;
+  workflowDefaults?: WorkflowDefaults;
   workflowTargets?: string[];
   workflowBearerEnv?: string;
   onSubmitted?: (workflowId: string) => void;
@@ -29,6 +31,7 @@ export type WaitStatePersisted = {
   last_status?: string;
   updated_unix_ms?: number;
 };
+export type WorkflowComposerSubmitResult = WorkflowSubmitResp | WorkflowDetailResp;
 
 export type WorkflowComposerGraphBuild = {
   result: GraphBuildResult | null;

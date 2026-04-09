@@ -1,5 +1,6 @@
 import React from "react";
 import type { ApiAuth } from "../api/auth";
+import type { WorkflowDefaults } from "../workflowTypes";
 import WorkflowComposer from "./WorkflowComposer";
 import WorkflowDetailSection from "./workflow/WorkflowDetailSection";
 import WorkflowListSection from "./workflow/WorkflowListSection";
@@ -14,7 +15,7 @@ export type WorkflowPanelProps = {
   authKey?: string;
   clientId?: string;
   onTraceIdClick?: (traceId: string) => void;
-  workflowDefaults?: Record<string, any>;
+  workflowDefaults?: WorkflowDefaults;
   workflowTargets?: string[];
   workflowBearerEnv?: string;
 };
@@ -188,6 +189,9 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
           tasks={workflowState.tasks}
           taskCounts={workflowState.taskCounts}
           graph={workflowState.graph}
+          workflowLimits={workflowState.workflowLimits}
+          workflowUsage={workflowState.workflowUsage}
+          workflowRemaining={workflowState.workflowRemaining}
           cancelBusyId={workflowState.cancelBusyId}
           workflowLookupPending={workflowState.workflowLookup.isPending}
           onReloadWorkflow={workflowState.loadWorkflow}
