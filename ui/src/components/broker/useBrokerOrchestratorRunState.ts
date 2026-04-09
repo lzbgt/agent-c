@@ -15,7 +15,9 @@ import {
   diffSummary,
   formatJson,
   matchesRevisionFilter,
+  normalizeRevisionEventPayload,
   normalizeRevisionEntries,
+  type OrchestratorRevisionEntry,
   parseJsonField,
   revisionChangeLabels,
   revisionVersion,
@@ -229,7 +231,7 @@ export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestrato
         setCreateError(meta.error);
         return;
       }
-      const body: Record<string, any> = { goal };
+      const body: Record<string, unknown> = { goal };
       if (createStatus.trim()) body.status = createStatus.trim();
       if (goalContract.value !== undefined) body.goal_contract = goalContract.value;
       if (rolePlan.value !== undefined) body.role_plan_snapshot = rolePlan.value;
@@ -288,7 +290,7 @@ export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestrato
         setUpdateError(meta.error);
         return;
       }
-      const body: Record<string, any> = {};
+      const body: Record<string, unknown> = {};
       if (updateStatus.trim()) body.status = updateStatus.trim();
       if (updateGoal.trim()) body.goal = updateGoal.trim();
       if (goalContract.value !== undefined) body.goal_contract = goalContract.value;
@@ -339,7 +341,7 @@ export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestrato
     setHeartbeatError(null);
     setHeartbeatNote(null);
     try {
-      const body: Record<string, any> = {};
+      const body: Record<string, unknown> = {};
       if (heartbeatStatus.trim()) body.status = heartbeatStatus.trim();
       if (heartbeatExpectedOwner.trim()) body.expected_owner = heartbeatExpectedOwner.trim();
       if (heartbeatExpectedStatus.trim()) body.expected_status = heartbeatExpectedStatus.trim();
@@ -395,7 +397,7 @@ export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestrato
     return () => clearTimeout(timer);
   }, [copyNote]);
 
-  const handleCopyJson = React.useCallback(async (payload: any, label: string) => {
+  const handleCopyJson = React.useCallback(async (payload: unknown, label: string) => {
     const text = formatJson(payload);
     if (!text) {
       setCopyNote(`${label} empty`);
@@ -447,7 +449,7 @@ export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestrato
 
   const revisionFilterLower = revisionFilter.trim().toLowerCase();
   const revisionMatches = React.useCallback(
-    (entry?: Record<string, any> | null) => {
+    (entry?: OrchestratorRevisionEntry | null) => {
       if (!entry) return false;
       return matchesRevisionFilter(revisionFilterLower, {
         version: entry.version,
@@ -473,26 +475,27 @@ export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestrato
     const rows = Array.isArray(args.events) ? args.events : [];
     if (rows.length === 0) return [];
     const rid = String(runId || "").trim();
-    const out = rows.filter((row) => {
+    const out = rows.flatMap((row) => {
       const type = String(row?.type || "");
-      if (type !== "orchestrator_goal_revision" && type !== "orchestrator_role_plan_revision") return false;
-      if (revisionFilterScope === "goal" && type !== "orchestrator_goal_revision") return false;
-      if (revisionFilterScope === "role" && type !== "orchestrator_role_plan_revision") return false;
-      const payload = row?.payload;
-      if (!payload || typeof payload !== "object") return false;
-      if (teamIdTrimmed && String(payload.team_id || "") !== teamIdTrimmed) return false;
-      if (rid && String(payload.orchestrator_run_id || "") !== rid) return false;
+      if (type !== "orchestrator_goal_revision" && type !== "orchestrator_role_plan_revision") return [];
+      if (revisionFilterScope === "goal" && type !== "orchestrator_goal_revision") return [];
+      if (revisionFilterScope === "role" && type !== "orchestrator_role_plan_revision") return [];
+      const payload = normalizeRevisionEventPayload(row?.payload);
+      if (!payload) return [];
+      if (teamIdTrimmed && String(payload.team_id || "") !== teamIdTrimmed) return [];
+      if (rid && String(payload.orchestrator_run_id || "") !== rid) return [];
       const isGoal = type === "orchestrator_goal_revision";
       const diff = isGoal ? payload.goal_contract_diff : payload.role_plan_diff;
-      return matchesRevisionFilter(revisionFilterLower, {
+      const matches = matchesRevisionFilter(revisionFilterLower, {
         version: payload.version,
         updatedBy: payload.updated_by,
         goal: payload.goal,
         diffs: [diff],
         changeLabels: isGoal ? revisionChangeLabels(payload.goal_changed, payload.goal_contract_changed) : [],
       });
+      return matches ? [{ row, type, payload }] : [];
     });
-    out.sort((a, b) => (b.ts_unix_ms || 0) - (a.ts_unix_ms || 0));
+    out.sort((a, b) => (b.row.ts_unix_ms || 0) - (a.row.ts_unix_ms || 0));
     return out;
   }, [args.events, revisionFilterLower, revisionFilterScope, runId, teamIdTrimmed]);
   const revisionEventsTotal = revisionEvents.length;

@@ -299,26 +299,27 @@ export default function BrokerOrchestratorRunRevisionsSection(props: BrokerOrche
         ) : (
           <div className="grid gap-2">
             {state.revisionEventsDisplay.map((row, idx) => {
-              const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
-              const type = String(row.type || "");
+              const event = row.row;
+              const payload = row.payload;
+              const type = row.type;
               const isGoal = type === "orchestrator_goal_revision";
               const label = isGoal ? "Goal revision" : "Role plan revision";
-              const version = toNumber((payload as any).version) || 0;
-              const diff = isGoal ? (payload as any).goal_contract_diff : (payload as any).role_plan_diff;
+              const version = payload.version || 0;
+              const diff = isGoal ? payload.goal_contract_diff : payload.role_plan_diff;
               const summary = diffSummary(diff);
               const diffKeysLabel = diffKeyLabel(diff);
-              const updatedBy = (payload as any).updated_by ? String((payload as any).updated_by) : "";
-              const goalChanged = isGoal && (payload as any).goal_changed === true;
-              const contractChanged = isGoal && (payload as any).goal_contract_changed === true;
-              const goalText = isGoal && (payload as any).goal ? String((payload as any).goal) : "";
+              const updatedBy = payload.updated_by ? String(payload.updated_by) : "";
+              const goalChanged = isGoal && payload.goal_changed === true;
+              const contractChanged = isGoal && payload.goal_contract_changed === true;
+              const goalText = isGoal && payload.goal ? String(payload.goal) : "";
               return (
                 <div
-                  key={`${type}-${row.event_id || row.ts_unix_ms || idx}`}
+                  key={`${type}-${event.event_id || event.ts_unix_ms || idx}`}
                   className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70"
                 >
                   <div className="text-white/80">
                     {label} · v{version || "?"}
-                    {row.ts_unix_ms ? ` · ${fmtTs(row.ts_unix_ms)}` : ""}
+                    {event.ts_unix_ms ? ` · ${fmtTs(event.ts_unix_ms)}` : ""}
                   </div>
                   {updatedBy ? <div className="text-white/50">by {updatedBy}</div> : null}
                   {goalChanged || contractChanged ? (

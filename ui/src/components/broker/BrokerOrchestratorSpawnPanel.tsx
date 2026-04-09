@@ -165,7 +165,7 @@ export default function BrokerOrchestratorSpawnPanel(props: SpawnPanelProps) {
         setCreateError(meta.error);
         return;
       }
-      const body: Record<string, any> = { role };
+      const body: Record<string, unknown> = { role };
       const count = Number(createCount);
       if (Number.isFinite(count) && count > 0) body.count = count;
       if (createStatus.trim()) body.status = createStatus.trim();
@@ -217,7 +217,7 @@ export default function BrokerOrchestratorSpawnPanel(props: SpawnPanelProps) {
         setUpdateError(meta.error);
         return;
       }
-      const body: Record<string, any> = {};
+      const body: Record<string, unknown> = {};
       if (updateStatus.trim()) body.status = updateStatus.trim();
       if (reqs.value !== undefined) body.requirements = reqs.value;
       if (assigned.value !== undefined) body.assigned_members = assigned.value;
