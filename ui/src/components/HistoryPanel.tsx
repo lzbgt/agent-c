@@ -1,7 +1,20 @@
 import React from "react";
 import type { ApiAuth } from "../api";
+import type { ConversationViewProps } from "./conversation/conversationViewTypes";
 import useLocalStorageState from "../hooks/useLocalStorageState";
 import type { TeamConversationItem } from "../hooks/teamChatOrchestrationTypes";
+import {
+  buildPersistedConversationItems,
+  findLastAssistantMessage,
+  findLastRun,
+  parseToolArgumentsJson,
+  type DbMessageRow,
+  type DbRunDetailRow,
+  type DbRunSummaryRow,
+  type HistoryEntry,
+  type PersistedConversationItem,
+  type SessionArtifactRow,
+} from "../history/historyPanelData";
 import type { SceneEntity } from "./SceneView";
 import ArtifactView from "./ArtifactView";
 import Markdown from "./Markdown";
@@ -10,17 +23,17 @@ import HistoryPanelTechnicalSection from "./history/HistoryPanelTechnicalSection
 import useHistoryPanelTeamState from "./history/useHistoryPanelTeamState";
 
 export type HistoryPanelProps = {
-  entries: any[];
+  entries: HistoryEntry[];
   showAllEntries: boolean;
   setShowAllEntries: React.Dispatch<React.SetStateAction<boolean>>;
   showMessages: boolean;
   setShowMessages: React.Dispatch<React.SetStateAction<boolean>>;
   historyExpandedByKey: Record<string, boolean>;
   setHistoryExpandedByKey: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
-  dbMessages?: any[];
-  dbRuns?: any[];
-  dbRunDetailsById?: Record<number, any>;
-  sessionArtifacts?: any[];
+  dbMessages?: DbMessageRow[];
+  dbRuns?: DbRunSummaryRow[];
+  dbRunDetailsById?: Record<number, DbRunDetailRow>;
+  sessionArtifacts?: SessionArtifactRow[];
   artifactCatalogMode?: "direct" | "broker_reference" | "unsupported";
   effectiveBase: string;
   yolo: boolean;
@@ -33,7 +46,7 @@ export type HistoryPanelProps = {
   allowClientEffects: boolean;
   allowUnsafePageEval: boolean;
   sceneEntities: SceneEntity[];
-  onSceneApply: (ops: any[]) => void;
+  onSceneApply: ConversationViewProps["onSceneApply"];
   onTraceIdClick: (traceId: string) => void;
   teamConversationItems?: TeamConversationItem[];
   teamId?: string;
@@ -55,19 +68,18 @@ function formatJson(raw: string): string {
 }
 
 export default function HistoryPanel(props: HistoryPanelProps) {
-  const entries = Array.isArray(props.entries) ? props.entries : [];
-  const dbMessages = Array.isArray(props.dbMessages) ? props.dbMessages : [];
-  const dbRuns = Array.isArray(props.dbRuns) ? props.dbRuns : [];
-  const dbRunDetailsById =
-    props.dbRunDetailsById && typeof props.dbRunDetailsById === "object" ? props.dbRunDetailsById : {};
-  const sessionArtifacts = Array.isArray(props.sessionArtifacts) ? props.sessionArtifacts : [];
+  const entries = props.entries || [];
+  const dbMessages = props.dbMessages || [];
+  const dbRuns = props.dbRuns || [];
+  const dbRunDetailsById = props.dbRunDetailsById || {};
+  const sessionArtifacts = props.sessionArtifacts || [];
   const artifactCatalogMode = props.artifactCatalogMode || "direct";
-  const teamConversationItems = Array.isArray(props.teamConversationItems) ? props.teamConversationItems : [];
+  const teamConversationItems = props.teamConversationItems || [];
   const teamId = String(props.teamId || "").trim();
   const teamRunId = String(props.teamRunId || "").trim();
   const teamRunCreatedMs = typeof props.teamRunCreatedMs === "number" ? props.teamRunCreatedMs : 0;
   const teamRunStatus = String(props.teamRunStatus || "").trim();
-  const teamConversationWarnings = Array.isArray(props.teamConversationWarnings) ? props.teamConversationWarnings : [];
+  const teamConversationWarnings = props.teamConversationWarnings || [];
 
   const systemMessagesKey = React.useMemo(() => {
     const base = String(props.effectiveBase || "").trim() || "default";
@@ -83,75 +95,13 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     teamConversationItems,
   });
 
-  const conversationItems = React.useMemo(() => {
-    const items: {
-      kind: "message" | "tool_record";
-      ts: number;
-      message?: any;
-      run?: any;
-      runId?: number;
-      details?: any;
-      toolRecord?: any;
-    }[] = [];
-    for (const message of dbMessages) {
-      const ts = typeof message?.created_unix_ms === "number" ? message.created_unix_ms : 0;
-      if (!ts) continue;
-      items.push({ kind: "message", ts, message });
-    }
-    for (const run of dbRuns) {
-      const ts = typeof run?.ts_unix_ms === "number" ? run.ts_unix_ms : 0;
-      if (!ts) continue;
-      const runId = typeof run?.run_id === "number" ? run.run_id : Number(run?.run_id ?? run?.id ?? NaN);
-      const details = Number.isFinite(runId) ? dbRunDetailsById[runId] : undefined;
-      const safeRunId = Number.isFinite(runId) ? runId : undefined;
-      const toolRecords = details && Array.isArray(details?.tool_records) ? (details.tool_records as any[]) : [];
-      toolRecords.forEach((toolRecord, idx) => {
-        const toolTs =
-          typeof toolRecord?.ts_unix_ms === "number"
-            ? toolRecord.ts_unix_ms
-            : typeof toolRecord?.created_unix_ms === "number"
-              ? toolRecord.created_unix_ms
-              : typeof toolRecord?.updated_unix_ms === "number"
-                ? toolRecord.updated_unix_ms
-                : ts + idx + 1;
-        items.push({
-          kind: "tool_record",
-          ts: toolTs,
-          run,
-          runId: safeRunId,
-          details,
-          toolRecord,
-        });
-      });
-    }
-    items.sort((a, b) => a.ts - b.ts);
-    return items;
-  }, [dbMessages, dbRunDetailsById, dbRuns]);
+  const conversationItems = React.useMemo<PersistedConversationItem[]>(
+    () => buildPersistedConversationItems(dbMessages, dbRuns, dbRunDetailsById),
+    [dbMessages, dbRunDetailsById, dbRuns],
+  );
 
-  const lastAssistantMessage = React.useMemo(() => {
-    let last: any = null;
-    for (const message of dbMessages) {
-      if (!message || typeof message !== "object") continue;
-      if (message.role !== "assistant") continue;
-      const ts = typeof message.created_unix_ms === "number" ? message.created_unix_ms : 0;
-      if (!last || ts >= (typeof last.created_unix_ms === "number" ? last.created_unix_ms : 0)) {
-        last = message;
-      }
-    }
-    return last;
-  }, [dbMessages]);
-
-  const lastRun = React.useMemo(() => {
-    let last: any = null;
-    for (const run of dbRuns) {
-      if (!run || typeof run !== "object") continue;
-      const ts = typeof run.ts_unix_ms === "number" ? run.ts_unix_ms : 0;
-      if (!last || ts >= (typeof last.ts_unix_ms === "number" ? last.ts_unix_ms : 0)) {
-        last = run;
-      }
-    }
-    return last;
-  }, [dbRuns]);
+  const lastAssistantMessage = React.useMemo(() => findLastAssistantMessage(dbMessages), [dbMessages]);
+  const lastRun = React.useMemo(() => findLastRun(dbRuns), [dbRuns]);
 
   return (
     <div>
@@ -177,9 +127,9 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                   <span className="text-white/50">
                     {typeof lastRun.ts_unix_ms === "number" ? new Date(lastRun.ts_unix_ms).toLocaleString() : ""}
                   </span>
-                  {typeof lastRun.ok === "number" ? (
-                    <span className={lastRun.ok === 1 ? "text-emerald-300" : "text-rose-300"}>
-                      {lastRun.ok === 1 ? "ok" : "error"}
+                  {typeof lastRun.ok === "boolean" ? (
+                    <span className={lastRun.ok ? "text-emerald-300" : "text-rose-300"}>
+                      {lastRun.ok ? "ok" : "error"}
                     </span>
                   ) : null}
                   {lastRun.error ? <span className="text-rose-200">{String(lastRun.error)}</span> : null}
@@ -270,23 +220,16 @@ export default function HistoryPanel(props: HistoryPanelProps) {
               }
 
               if (item.kind === "tool_record") {
-                const toolRecord = item.toolRecord ?? {};
-                const toolName = typeof toolRecord?.tool_name === "string" ? toolRecord.tool_name : "tool";
-                const argsJson = typeof toolRecord?.arguments_json === "string" ? toolRecord.arguments_json : "";
-                let parsedArgs: any = null;
-                try {
-                  parsedArgs = argsJson ? JSON.parse(argsJson) : null;
-                } catch {
-                  parsedArgs = null;
-                }
-                const cmd = typeof parsedArgs?.cmd === "string" ? parsedArgs.cmd : "";
-                const argvRaw = Array.isArray(parsedArgs?.argv) ? parsedArgs.argv : null;
-                const argv = argvRaw ? argvRaw.map((x: any) => (typeof x === "string" ? x : "")).filter(Boolean).join(" ") : "";
+                const toolRecord = item.toolRecord;
+                const toolName = toolRecord.tool_name || "tool";
+                const argsJson = toolRecord.arguments_json || "";
+                const parsedArgs = parseToolArgumentsJson(argsJson);
+                const cmd = parsedArgs?.cmd || "";
+                const argv = parsedArgs?.argv?.join(" ") || "";
                 const command = cmd || argv;
-                const resultText = typeof toolRecord?.result_text === "string" ? toolRecord.result_text : "";
-                const resultForPrompt =
-                  typeof toolRecord?.result_for_prompt_text === "string" ? toolRecord.result_for_prompt_text : "";
-                const truncatedForPrompt = toolRecord?.result_truncated_for_prompt ? true : false;
+                const resultText = toolRecord.result_text || "";
+                const resultForPrompt = toolRecord.result_for_prompt_text || "";
+                const truncatedForPrompt = toolRecord.result_truncated_for_prompt === true;
                 const shortCommand = command ? (command.length > 140 ? `${command.slice(0, 140)}…` : command) : "";
                 return (
                   <div key={`tool:${item.ts || idx}`} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
@@ -379,20 +322,18 @@ export default function HistoryPanel(props: HistoryPanelProps) {
         ) : (
           <div className="grid gap-2">
             {sessionArtifacts.slice(0, 20).map((row, idx) => {
-              const data = row?.data ?? {};
-              const artifact = data?.artifact ?? row?.artifact ?? row;
               const key =
-                typeof artifact?.path === "string"
-                  ? `artifact:${artifact.path}`
-                  : typeof artifact?.resolved_path === "string"
-                    ? `artifact:${artifact.resolved_path}`
+                typeof row.path === "string"
+                  ? `artifact:${row.path}`
+                  : typeof row.resolved_path === "string"
+                    ? `artifact:${row.resolved_path}`
                     : `artifact:${idx}`;
               return (
                 <div key={key} className="rounded-md border border-white/10 bg-black/20 p-3">
                   <ArtifactView
                     baseUrl={props.effectiveBase}
                     yolo={props.yolo}
-                    artifact={artifact}
+                    artifact={row.artifact}
                     allowAutoplay={props.allowAutoplay}
                     sessionId={props.sessionId}
                     client={props.client}

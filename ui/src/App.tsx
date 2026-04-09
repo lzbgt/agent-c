@@ -275,11 +275,11 @@ export default function App() {
 
   const {
     audit, auditRefetch, clearAllSessions, clearAllSessionsError, clearDaemonApiKey, daemonConfig, dbClientEvents,
-    dbMessages, dbRunDetailsById, dbRuns, dbUiActions, deleteSession, deleteSessionError, health, historyEntriesDesc,
+    dbMessages, dbMessageRows, dbRunDetailsById, dbRuns, dbRunRows, dbUiActions, deleteSession, deleteSessionError, health, historyEntriesDesc,
     isLocalDaemonBase, missingBrokerAuthToken, missingDaemonAuthToken, newSession, attachSession, attachSessionError,
     renewSessionAttachment, renewSessionAttachmentError, releaseSessionAttachment, releaseSessionAttachmentError,
     sessionInfoData, sessionLeaseConflict, setSessionLeaseConflict, saveDaemonApiKey, saveDaemonDefaults, sessionsRefetch,
-    sessionsUnauthorized, sessionArtifacts, sessionArtifactsUnsupported, sessionList, sessionScene, updateDaemonDefaults,
+    sessionsUnauthorized, sessionArtifacts, sessionArtifactRows, sessionArtifactsUnsupported, sessionList, sessionScene, updateDaemonDefaults,
   } = useAppDataPlane({
     activeJobId,
     allowClientEffects,
@@ -675,15 +675,10 @@ export default function App() {
                   setShowMessages: setShowHistoryMessages,
                   historyExpandedByKey,
                   setHistoryExpandedByKey,
-                  dbMessages: dbMessages.data?.ok && Array.isArray(dbMessages.data?.messages) ? dbMessages.data.messages : [],
-                  dbRuns: dbRuns.data?.ok && Array.isArray(dbRuns.data?.runs) ? dbRuns.data.runs : [],
+                  dbMessages: dbMessageRows,
+                  dbRuns: dbRunRows,
                   dbRunDetailsById,
-                  sessionArtifacts:
-                    !sessionArtifactsUnsupported &&
-                    sessionArtifacts.data?.ok &&
-                    Array.isArray(sessionArtifacts.data?.artifacts)
-                      ? sessionArtifacts.data.artifacts
-                      : [],
+                  sessionArtifacts: !sessionArtifactsUnsupported ? sessionArtifactRows : [],
                   artifactCatalogMode:
                     sessionArtifactsUnsupported ? "unsupported" : connectionMode === "broker" ? "broker_reference" : "direct",
                   effectiveBase,

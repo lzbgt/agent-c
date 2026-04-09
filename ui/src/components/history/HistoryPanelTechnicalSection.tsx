@@ -1,12 +1,14 @@
 import React from "react";
-import type { ApiAuth } from "../../api";
+import type { AgentEvent, ApiAuth } from "../../api";
 import useLocalStorageState from "../../hooks/useLocalStorageState";
+import type { HistoryEntry } from "../../history/historyPanelData";
 import type { SceneEntity } from "../SceneView";
 import ConversationView from "../ConversationView";
+import type { ConversationViewProps } from "../conversation/conversationViewTypes";
 import Markdown from "../Markdown";
 
 type HistoryPanelTechnicalSectionProps = {
-  entries: any[];
+  entries: HistoryEntry[];
   showAllEntries: boolean;
   setShowAllEntries: React.Dispatch<React.SetStateAction<boolean>>;
   showMessages: boolean;
@@ -24,7 +26,7 @@ type HistoryPanelTechnicalSectionProps = {
   allowClientEffects: boolean;
   allowUnsafePageEval: boolean;
   sceneEntities: SceneEntity[];
-  onSceneApply: (ops: any[]) => void;
+  onSceneApply: ConversationViewProps["onSceneApply"];
   onTraceIdClick: (traceId: string) => void;
   showSystemMessages: boolean;
   setShowSystemMessages: React.Dispatch<React.SetStateAction<boolean>>;
@@ -40,7 +42,7 @@ export default function HistoryPanelTechnicalSection(props: HistoryPanelTechnica
   }, [props.effectiveBase, props.sessionId]);
   const [showTechnicalHistory, setShowTechnicalHistory] = useLocalStorageState<boolean>(technicalHistoryKey, false);
 
-  const entryKeyFor = React.useCallback((entry: any) => {
+  const entryKeyFor = React.useCallback((entry: HistoryEntry) => {
     const isLive = entry?.live === true;
     const jobId = typeof entry?.job_id === "string" ? entry.job_id : "";
     const ts = typeof entry?.ts_unix_ms === "number" ? entry.ts_unix_ms : 0;
@@ -120,34 +122,34 @@ export default function HistoryPanelTechnicalSection(props: HistoryPanelTechnica
           </div>
         ) : (
           <div className="grid gap-2">
-            {(props.showAllEntries ? props.entries : props.entries.slice(0, 1)).map((entry: any, idx: number) => {
-              const ts = typeof entry?.ts_unix_ms === "number" ? entry.ts_unix_ms : 0;
+            {(props.showAllEntries ? props.entries : props.entries.slice(0, 1)).map((entry, idx: number) => {
+              const ts = typeof entry.ts_unix_ms === "number" ? entry.ts_unix_ms : 0;
               const when = ts ? new Date(ts).toLocaleString() : "";
-              const promptText = typeof entry?.prompt === "string" ? entry.prompt : "";
-              const assistantText = typeof entry?.assistant_text === "string" ? entry.assistant_text : "";
-              const events = Array.isArray(entry?.events) ? (entry.events as any[]) : [];
-              const ok = typeof entry?.ok === "boolean" ? entry.ok : undefined;
-              const isLive = entry?.live === true;
-              const jobId = typeof entry?.job_id === "string" ? entry.job_id : "";
-              const jobStatus = typeof entry?.job_status === "string" ? entry.job_status : "";
-              const traceId = typeof entry?.trace_id === "string" ? entry.trace_id : "";
+              const promptText = typeof entry.prompt === "string" ? entry.prompt : "";
+              const assistantText = typeof entry.assistant_text === "string" ? entry.assistant_text : "";
+              const events: AgentEvent[] = Array.isArray(entry.events) ? entry.events : [];
+              const ok = typeof entry.ok === "boolean" ? entry.ok : undefined;
+              const isLive = entry.live === true;
+              const jobId = typeof entry.job_id === "string" ? entry.job_id : "";
+              const jobStatus = typeof entry.job_status === "string" ? entry.job_status : "";
+              const traceId = typeof entry.trace_id === "string" ? entry.trace_id : "";
               const status = ok === true ? "ok" : ok === false ? "error" : "";
               const summary = promptText.trim().length > 0 ? promptText.trim().slice(0, 200) : "(no prompt)";
               const entryKey = entryKeyFor(entry);
               const expanded = Object.prototype.hasOwnProperty.call(props.historyExpandedByKey, entryKey)
                 ? !!props.historyExpandedByKey[entryKey]
                 : idx === 0;
-              const tools = typeof entry?.tools === "string" ? entry.tools : "";
-              const yolo = typeof entry?.yolo === "boolean" ? entry.yolo : undefined;
-              const hostPolicy = typeof entry?.host_policy === "string" ? entry.host_policy : "";
+              const tools = typeof entry.tools === "string" ? entry.tools : "";
+              const yolo = typeof entry.yolo === "boolean" ? entry.yolo : undefined;
+              const hostPolicy = typeof entry.host_policy === "string" ? entry.host_policy : "";
               const automationProfile =
-                typeof entry?.effective_automation_profile === "string"
+                typeof entry.effective_automation_profile === "string"
                   ? entry.effective_automation_profile
-                  : typeof entry?.automation_profile === "string"
+                  : typeof entry.automation_profile === "string"
                     ? entry.automation_profile
                     : "";
-              const model = typeof entry?.model === "string" ? entry.model : "";
-              const baseUrl = typeof entry?.base_url === "string" ? entry.base_url : "";
+              const model = typeof entry.model === "string" ? entry.model : "";
+              const baseUrl = typeof entry.base_url === "string" ? entry.base_url : "";
               const meta = [
                 tools ? { label: "tools", value: tools } : null,
                 typeof yolo === "boolean" ? { label: "yolo", value: yolo ? "true" : "false" } : null,
@@ -238,7 +240,7 @@ export default function HistoryPanelTechnicalSection(props: HistoryPanelTechnica
                         client={props.client}
                         daemonAuth={props.daemonAuth}
                         prompt={promptText}
-                        events={events as any}
+                        events={events}
                         showDebugEvents={props.showDebugInConversation}
                         allowAutoplay={props.allowAutoplay}
                         allowClientRpcs={props.allowClientRpcs}

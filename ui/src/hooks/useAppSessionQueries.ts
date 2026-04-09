@@ -18,6 +18,16 @@ import {
   extractSessionIds,
   extractSessionInfo,
 } from "../api";
+import {
+  getDbRunNumericId,
+  normalizeDbMessageRows,
+  normalizeDbRunDetailRow,
+  normalizeDbRunSummaryRows,
+  normalizeHistoryEntries,
+  normalizeSessionArtifactRows,
+  type DbRunDetailRow,
+  type HistoryEntry,
+} from "../history/historyPanelData";
 import type { AppDataPlaneArgs } from "./appDataPlaneTypes";
 
 export function useAppSessionQueries(args: AppDataPlaneArgs) {
@@ -62,7 +72,7 @@ export function useAppSessionQueries(args: AppDataPlaneArgs) {
     sessions.isSuccess &&
     sessions.data &&
     sessions.data.ok === false &&
-    String((sessions.data as any).error || "").toLowerCase() === "unauthorized";
+    String(extractSessionErrorMessage(sessions.data) || "").toLowerCase() === "unauthorized";
 
   const missingBrokerAuthToken =
     connectionMode === "broker" && !brokerCookieAuth && String(brokerAuthToken || "").trim().length === 0;
@@ -95,26 +105,21 @@ export function useAppSessionQueries(args: AppDataPlaneArgs) {
   const sessionInfoData = React.useMemo(() => extractSessionInfo(sessionInfo.data), [sessionInfo.data]);
 
   const auditEntriesDesc = React.useMemo(() => {
-    const raw = audit.data?.ok && Array.isArray(audit.data?.entries) ? (audit.data.entries as any[]) : [];
-    const entries = raw.filter((entry) => entry && typeof entry === "object");
-    entries.sort((a: any, b: any) => {
-      const ta = typeof a?.ts_unix_ms === "number" ? a.ts_unix_ms : 0;
-      const tb = typeof b?.ts_unix_ms === "number" ? b.ts_unix_ms : 0;
-      return tb - ta;
-    });
+    const entries = audit.data?.ok ? normalizeHistoryEntries(audit.data.entries) : [];
+    entries.sort((a, b) => b.ts_unix_ms - a.ts_unix_ms);
     return entries;
   }, [audit.data]);
 
   const historyEntriesDesc = React.useMemo(() => {
     if (!activeJobId && liveEvents.length === 0) return auditEntriesDesc;
     const ts = typeof jobUpdatedMs === "number" && jobUpdatedMs > 0 ? jobUpdatedMs : Date.now();
-    const live = {
+    const live: HistoryEntry = {
       ts_unix_ms: ts,
       prompt: activeJobId ? lastRunPromptRef.current || lastRunPrompt || "" : "Live session event stream",
       assistant_text: "",
       events: liveEvents,
       ok: undefined,
-      job_id: activeJobId,
+      job_id: activeJobId || undefined,
       job_status: activeJobId ? jobStatus ?? "running" : "live_session",
       live: true,
     };
@@ -143,8 +148,8 @@ export function useAppSessionQueries(args: AppDataPlaneArgs) {
     if (connectionMode !== "broker") return false;
     const payload = sessionArtifacts.data;
     if (!payload || typeof payload !== "object") return false;
-    const status = typeof (payload as any).status === "number" ? (payload as any).status : 0;
-    const code = String((payload as any).code || "").trim().toLowerCase();
+    const status = typeof payload.status === "number" ? payload.status : 0;
+    const code = String(payload.code || "").trim().toLowerCase();
     const message = String(extractSessionErrorMessage(payload) || "").trim().toLowerCase();
     return (
       status === 404 ||
@@ -186,8 +191,18 @@ export function useAppSessionQueries(args: AppDataPlaneArgs) {
     retry: 1,
   });
 
-  const [dbRunDetailsById, setDbRunDetailsById] = React.useState<Record<number, any>>({});
-  const dbRunDetailsByIdRef = React.useRef<Record<number, any>>({});
+  const dbMessageRows = React.useMemo(
+    () => (dbMessages.data?.ok ? normalizeDbMessageRows(dbMessages.data.messages) : []),
+    [dbMessages.data],
+  );
+
+  const dbRunRows = React.useMemo(
+    () => (dbRuns.data?.ok ? normalizeDbRunSummaryRows(dbRuns.data.runs) : []),
+    [dbRuns.data],
+  );
+
+  const [dbRunDetailsById, setDbRunDetailsById] = React.useState<Record<number, DbRunDetailRow>>({});
+  const dbRunDetailsByIdRef = React.useRef<Record<number, DbRunDetailRow>>({});
   const dbRunDetailsLoadingRef = React.useRef<Record<number, boolean>>({});
 
   React.useEffect(() => {
@@ -195,12 +210,12 @@ export function useAppSessionQueries(args: AppDataPlaneArgs) {
   }, [dbRunDetailsById]);
 
   React.useEffect(() => {
-    const runs = dbRuns.data?.ok && Array.isArray(dbRuns.data?.runs) ? (dbRuns.data.runs as any[]) : [];
+    const runs = dbRunRows;
     if (runs.length === 0) return;
     const candidates: number[] = [];
     for (const run of runs.slice(0, 12)) {
-      const runId = typeof run?.run_id === "number" ? run.run_id : Number(run?.run_id ?? run?.id ?? NaN);
-      if (!Number.isFinite(runId)) continue;
+      const runId = getDbRunNumericId(run);
+      if (runId === null) continue;
       candidates.push(runId);
     }
     if (candidates.length === 0) return;
@@ -219,8 +234,9 @@ export function useAppSessionQueries(args: AppDataPlaneArgs) {
             includeArtifacts: false,
             includeUiActions: false,
           });
-          if (resp.ok && resp.run) {
-            setDbRunDetailsById((prev) => ({ ...(prev || {}), [runId]: resp }));
+          const detail = normalizeDbRunDetailRow(resp);
+          if (detail?.ok) {
+            setDbRunDetailsById((prev) => ({ ...(prev || {}), [runId]: detail }));
           }
         } catch {
           // ignore fetch failures; UI will fallback to run summary only
@@ -233,7 +249,12 @@ export function useAppSessionQueries(args: AppDataPlaneArgs) {
     return () => {
       cancelled = true;
     };
-  }, [dbRuns.data, daemonAuth, effectiveBase]);
+  }, [dbRunRows, daemonAuth, effectiveBase]);
+
+  const sessionArtifactRows = React.useMemo(
+    () => (sessionArtifacts.data?.ok ? normalizeSessionArtifactRows(sessionArtifacts.data.artifacts) : []),
+    [sessionArtifacts.data],
+  );
 
   const dbUiActions = useQuery({
     queryKey: ["db_ui_actions", effectiveBase, authKey, selectedSessionId],
@@ -262,8 +283,10 @@ export function useAppSessionQueries(args: AppDataPlaneArgs) {
     daemonConfig,
     dbClientEvents,
     dbMessages,
+    dbMessageRows,
     dbRunDetailsById,
     dbRuns,
+    dbRunRows,
     dbUiActions,
     health,
     historyEntriesDesc,
@@ -276,6 +299,7 @@ export function useAppSessionQueries(args: AppDataPlaneArgs) {
     sessionsRefetch,
     sessionsUnauthorized,
     sessionArtifacts,
+    sessionArtifactRows,
     sessionArtifactsUnsupported,
     sessionClientEvents,
     sessionList,
