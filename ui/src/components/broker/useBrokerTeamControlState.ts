@@ -12,6 +12,10 @@ import {
   type ApiAuth,
   type BrokerAgentInfo,
   type BrokerDeploymentInfo,
+  type BrokerTeamMemberUpsertRequest,
+  type BrokerTeamMemberUpdateRequest,
+  type BrokerTeamQuorumRuleUpsertRequest,
+  type BrokerTeamUpdateRequest,
 } from "../../api";
 import {
   normalizeRoleGraphEdges,
@@ -20,6 +24,7 @@ import {
   normalizeSharedMemoryMode,
   type RoleGraphEdge,
 } from "./teamRunUtils";
+import { asStringList, asUnknownRecord, parseUnknownRecordJson, type UnknownRecord } from "./brokerObjectUtils";
 import type { TeamMemberRow, TeamQuorumRuleRow } from "./types";
 import type { TeamRow } from "./teamConsoleTypes";
 
@@ -141,6 +146,7 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
     if (!canQuery || !tid) return;
     try {
       const resp = await apiBrokerTeamGet(base, tid, auth);
+      if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "team get failed");
       setTeamDetails(resp?.team ?? null);
     } catch {
       setTeamDetails(null);
@@ -154,6 +160,7 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
     setMembersBusy(true);
     try {
       const resp = await apiBrokerTeamMembersList(base, tid, auth);
+      if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "member list failed");
       setMembers(Array.isArray(resp?.members) ? resp.members : []);
     } catch (err) {
       setMembersError(String(err));
@@ -169,6 +176,7 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
     setRulesBusy(true);
     try {
       const resp = await apiBrokerTeamQuorumList(base, tid, auth);
+      if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "quorum list failed");
       setRules(Array.isArray(resp?.rules) ? resp.rules : []);
     } catch (err) {
       setRulesError(String(err));
@@ -177,7 +185,7 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
     }
   }, [auth, base, canQuery]);
 
-  const loadTeamEditsFromDetails = React.useCallback((details: any | null) => {
+  const loadTeamEditsFromDetails = React.useCallback((details: TeamRow | null) => {
     if (!details) {
       setTeamEditName("");
       setTeamEditTags("");
@@ -186,11 +194,15 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
       setTeamEditSharedMode("read_write");
       setTeamEditMetaJson("");
       setTeamEditRoleOverridesJson("");
+      setTeamRoleInstructions({});
+      setTeamRolePromptMode("prepend");
+      setTeamRoleGraphEdges([]);
+      setTeamRolePlanTouched(false);
       return;
     }
     setTeamEditName(String(details?.display_name || ""));
-    const tags = Array.isArray(details?.tags) ? details.tags : [];
-    setTeamEditTags(tags.map((t: any) => String(t)).filter(Boolean).join(", "));
+    const tags = asStringList(details?.tags);
+    setTeamEditTags(tags.join(", "));
     setTeamEditPolicyRef(String(details?.policy_ref || ""));
     setTeamEditSharedScope(String(details?.shared_memory_scope_id || ""));
     if (details?.meta && typeof details.meta === "object") {
@@ -202,13 +214,14 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
     } else {
       setTeamEditMetaJson("");
     }
-    const metaObj = details?.meta && typeof details.meta === "object" ? (details.meta as Record<string, any>) : null;
+    const metaObj = asUnknownRecord(details?.meta);
     setTeamEditSharedMode(
       normalizeSharedMemoryMode(metaObj?.shared_memory_mode ?? metaObj?.memory_scope_mode ?? "read_write"),
     );
-    if (metaObj?.role_overrides && typeof metaObj.role_overrides === "object") {
+    const roleOverrides = asUnknownRecord(metaObj?.role_overrides);
+    if (roleOverrides) {
       try {
-        setTeamEditRoleOverridesJson(JSON.stringify(metaObj.role_overrides, null, 2));
+        setTeamEditRoleOverridesJson(JSON.stringify(roleOverrides, null, 2));
       } catch {
         setTeamEditRoleOverridesJson("");
       }
@@ -273,16 +286,10 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
     }
     const sharedMode = normalizeSharedMemoryMode(sharedModeRaw);
     const metaRaw = String(teamEditMetaJson || "").trim();
-    let meta: Record<string, any> = {};
+    let meta: UnknownRecord = {};
     if (metaRaw) {
       try {
-        const parsed = JSON.parse(metaRaw);
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          meta = parsed;
-        } else {
-          setTeamEditError("meta must be a JSON object");
-          return;
-        }
+        meta = parseUnknownRecordJson(metaRaw, "meta");
       } catch (err) {
         setTeamEditError(`invalid meta json: ${String(err)}`);
         return;
@@ -291,13 +298,7 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
     const roleOverridesRaw = String(teamEditRoleOverridesJson || "").trim();
     if (roleOverridesRaw) {
       try {
-        const parsed = JSON.parse(roleOverridesRaw);
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          meta.role_overrides = parsed;
-        } else {
-          setTeamEditError("role overrides must be a JSON object keyed by role");
-          return;
-        }
+        meta.role_overrides = parseUnknownRecordJson(roleOverridesRaw, "role overrides");
       } catch (err) {
         setTeamEditError(`invalid role overrides json: ${String(err)}`);
         return;
@@ -322,10 +323,17 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
     setTeamEditError(null);
     setTeamEditBusy(true);
     try {
+      const body: BrokerTeamUpdateRequest = {
+        display_name: displayName,
+        tags,
+        policy_ref: policyRef,
+        shared_memory_scope_id: sharedScope,
+        meta,
+      };
       const resp = await apiBrokerTeamUpdate(
         base,
         tid,
-        { display_name: displayName, tags, policy_ref: policyRef, shared_memory_scope_id: sharedScope, meta },
+        body,
         auth,
       );
       if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "update team failed");
@@ -365,7 +373,7 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
     setMembersError(null);
     setMembersBusy(true);
     try {
-      const payload: Record<string, any> = { role };
+      const payload: BrokerTeamMemberUpsertRequest = { role };
       const mid = String(memberId || "").trim();
       if (mid) payload.member_id = mid;
       const aid = String(memberAgentId || "").trim();
@@ -374,17 +382,24 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
       if (dep) payload.deployment_id = dep;
       const status = String(memberStatus || "").trim();
       if (status) payload.status = status;
-      const weight = Number.parseInt(String(memberWeight || ""), 10);
-      if (Number.isFinite(weight)) payload.weight = weight;
+      const weightRaw = String(memberWeight || "").trim();
+      if (weightRaw) {
+        const weight = Number.parseInt(weightRaw, 10);
+        if (!Number.isFinite(weight)) {
+          setMembersError("weight must be a number");
+          return;
+        }
+        payload.weight = weight;
+      }
       const caps = String(memberCapabilities || "")
         .split(",")
         .map((c) => c.trim())
         .filter(Boolean);
       if (caps.length > 0) payload.capabilities = caps;
-      const meta: Record<string, any> = {};
+      const meta: UnknownRecord = {};
       const backendLabel = String(memberBackendLabel || "").trim();
       if (backendLabel) meta.backend_label = backendLabel;
-      const runOverrides: Record<string, any> = {};
+      const runOverrides: UnknownRecord = {};
       const model = String(memberModel || "").trim();
       if (model) runOverrides.model = model;
       const baseUrl = String(memberBaseUrl || "").trim();
@@ -393,11 +408,19 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
       if (summaryModel) runOverrides.summary_model = summaryModel;
       const tools = String(memberTools || "").trim();
       if (tools) runOverrides.tools = tools;
-      const timeoutMs = Number.parseInt(String(memberTimeoutMs || "").trim(), 10);
-      if (Number.isFinite(timeoutMs)) runOverrides.timeout_ms = timeoutMs;
+      const timeoutMsRaw = String(memberTimeoutMs || "").trim();
+      if (timeoutMsRaw) {
+        const timeoutMs = Number.parseInt(timeoutMsRaw, 10);
+        if (!Number.isFinite(timeoutMs)) {
+          setMembersError("timeout_ms must be a number");
+          return;
+        }
+        runOverrides.timeout_ms = timeoutMs;
+      }
       if (Object.keys(runOverrides).length > 0) meta.run_overrides = runOverrides;
       if (Object.keys(meta).length > 0) payload.meta = meta;
-      await apiBrokerTeamMembersUpsert(base, tid, payload, auth);
+      const resp = await apiBrokerTeamMembersUpsert(base, tid, payload, auth);
+      if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "member create failed");
       setMemberId("");
       await refreshMembers(tid);
     } catch (err) {
@@ -506,13 +529,10 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
     setMemberEditAgentId(String(member?.agent_id || ""));
     setMemberEditDeploymentId(String(member?.deployment_id || ""));
     setMemberEditWeight(typeof member?.weight === "number" && Number.isFinite(member.weight) ? String(member.weight) : "");
-    const caps = Array.isArray(member?.capabilities)
-      ? member.capabilities.map((c) => String(c).trim()).filter(Boolean)
-      : [];
+    const caps = Array.isArray(member?.capabilities) ? member.capabilities.map((c) => String(c).trim()).filter(Boolean) : [];
     setMemberEditCapabilities(caps.join(", "));
-    let metaObj: Record<string, any> | null = null;
-    if (member?.meta && typeof member.meta === "object") {
-      metaObj = member.meta as Record<string, any>;
+    const metaObj = asUnknownRecord(member?.meta);
+    if (metaObj) {
       try {
         setMemberEditMetaJson(JSON.stringify(member.meta, null, 2));
       } catch {
@@ -522,10 +542,7 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
       setMemberEditMetaJson("");
     }
     setMemberEditBackendLabel(metaObj?.backend_label ? String(metaObj.backend_label) : "");
-    const overridesRaw =
-      metaObj?.run_overrides && typeof metaObj.run_overrides === "object"
-        ? (metaObj.run_overrides as Record<string, any>)
-        : null;
+    const overridesRaw = asUnknownRecord(metaObj?.run_overrides);
     setMemberEditModel(overridesRaw?.model ? String(overridesRaw.model) : "");
     setMemberEditBaseUrl(overridesRaw?.base_url ? String(overridesRaw.base_url) : "");
     setMemberEditSummaryModel(overridesRaw?.summary_model ? String(overridesRaw.summary_model) : "");
@@ -581,17 +598,12 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
       }
       weightValue = parsed;
     }
-    let meta: Record<string, any> = {};
+    let meta: UnknownRecord = {};
     let hasMeta = false;
     const metaRaw = String(memberEditMetaJson || "").trim();
     if (metaRaw) {
       try {
-        const parsed = JSON.parse(metaRaw);
-        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-          setMemberEditError("meta must be a JSON object");
-          return;
-        }
-        meta = parsed as Record<string, any>;
+        meta = parseUnknownRecordJson(metaRaw, "meta");
         hasMeta = true;
       } catch (err) {
         setMemberEditError(`invalid meta json: ${String(err)}`);
@@ -606,8 +618,9 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
       delete meta.backend_label;
       hasMeta = true;
     }
-    const runOverrides: Record<string, any> =
-      meta.run_overrides && typeof meta.run_overrides === "object" ? { ...meta.run_overrides } : {};
+    const runOverrides: UnknownRecord = asUnknownRecord(meta.run_overrides)
+      ? { ...asUnknownRecord(meta.run_overrides)! }
+      : {};
     const model = String(memberEditModel || "").trim();
     if (model) runOverrides.model = model;
     else if (Object.prototype.hasOwnProperty.call(runOverrides, "model")) delete runOverrides.model;
@@ -641,7 +654,13 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
     setMemberEditError(null);
     setMemberEditBusy(true);
     try {
-      const payload: Record<string, any> = { role, status, capabilities: caps, agent_id: agentId, deployment_id: deploymentId };
+      const payload: BrokerTeamMemberUpdateRequest = {
+        role,
+        status,
+        capabilities: caps,
+        agent_id: agentId,
+        deployment_id: deploymentId,
+      };
       if (hasMeta) payload.meta = meta;
       if (weightValue !== undefined) payload.weight = weightValue;
       const resp = await apiBrokerTeamMemberUpdate(base, tid, mid, payload, auth);
@@ -693,14 +712,14 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
       const aid = String(member?.agent_id || "").trim();
       if (aid) existingAgentIds.add(aid);
     }
-    const payloads: Record<string, any>[] = [];
+    const payloads: BrokerTeamMemberUpsertRequest[] = [];
     for (const agent of memberAgentOptions) {
       const aid = String(agent?.agent_id || "").trim();
       if (!aid || existingAgentIds.has(aid)) continue;
       const deployments = Array.isArray(agent?.deployments) ? agent.deployments : [];
       const connected = agent?.connected === true || deployments.length > 0;
       if (!connected) continue;
-      const payload: Record<string, any> = { role, agent_id: aid };
+      const payload: BrokerTeamMemberUpsertRequest = { role, agent_id: aid };
       if (deployments.length > 0) {
         const depId = deployments[0]?.deployment_id ? String(deployments[0].deployment_id) : "";
         if (depId) payload.deployment_id = depId;
@@ -717,7 +736,8 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
     setMembersBusy(true);
     try {
       for (const payload of payloads) {
-        await apiBrokerTeamMembersUpsert(base, tid, payload, auth);
+        const resp = await apiBrokerTeamMembersUpsert(base, tid, payload, auth);
+        if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "member create failed");
       }
       await refreshMembers(tid);
     } catch (err) {
@@ -735,7 +755,8 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
     setMembersError(null);
     setMembersBusy(true);
     try {
-      await apiBrokerTeamMembersDelete(base, tid, mid, auth);
+      const resp = await apiBrokerTeamMembersDelete(base, tid, mid, auth);
+      if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "delete member failed");
       await refreshMembers(tid);
     } catch (err) {
       setMembersError(String(err));
@@ -765,7 +786,9 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
     setRulesError(null);
     setRulesBusy(true);
     try {
-      await apiBrokerTeamQuorumUpsert(base, tid, { action, min_approvals: min, quorum_mode: mode }, auth);
+      const body: BrokerTeamQuorumRuleUpsertRequest = { action, min_approvals: min, quorum_mode: mode };
+      const resp = await apiBrokerTeamQuorumUpsert(base, tid, body, auth);
+      if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "upsert quorum rule failed");
       await refreshRules(tid);
     } catch (err) {
       setRulesError(String(err));
@@ -782,7 +805,8 @@ export default function useBrokerTeamControlState(args: UseBrokerTeamControlStat
     setRulesError(null);
     setRulesBusy(true);
     try {
-      await apiBrokerTeamQuorumDelete(base, tid, rid, auth);
+      const resp = await apiBrokerTeamQuorumDelete(base, tid, rid, auth);
+      if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "delete quorum rule failed");
       await refreshRules(tid);
     } catch (err) {
       setRulesError(String(err));

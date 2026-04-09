@@ -7,6 +7,8 @@ import {
   apiBrokerTeamList,
   type ApiAuth,
   type BrokerAgentInfo,
+  type BrokerTeamCreateRequest,
+  type BrokerTeamMemberUpsertRequest,
 } from "../../api";
 import useLocalStorageState from "../../hooks/useLocalStorageState";
 import type { QuickMember, TeamRow } from "./teamConsoleTypes";
@@ -86,6 +88,7 @@ export default function useBrokerTeamSetupState(args: UseBrokerTeamSetupStateArg
     setTeamsBusy(true);
     try {
       const resp = await apiBrokerTeamList(base, auth);
+      if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "team list failed");
       const rows = Array.isArray(resp?.teams) ? resp.teams : [];
       setTeams(rows);
       if (!teamIdTrimmed && rows.length > 0) {
@@ -104,6 +107,7 @@ export default function useBrokerTeamSetupState(args: UseBrokerTeamSetupStateArg
     setMemberAgentsBusy(true);
     try {
       const resp = await apiBrokerListAgents(base, auth);
+      if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "agent list failed");
       const rows = Array.isArray(resp?.agents) ? resp.agents : [];
       setMemberAgents(rows);
     } catch (err) {
@@ -122,7 +126,9 @@ export default function useBrokerTeamSetupState(args: UseBrokerTeamSetupStateArg
     setTeamsError(null);
     setTeamsBusy(true);
     try {
-      await apiBrokerTeamCreate(base, { team_id: tid, display_name: String(newTeamName || "").trim() }, auth);
+      const payload: BrokerTeamCreateRequest = { team_id: tid, display_name: String(newTeamName || "").trim() };
+      const resp = await apiBrokerTeamCreate(base, payload, auth);
+      if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "team create failed");
       setNewTeamId("");
       setNewTeamName("");
       await refreshTeams();
@@ -141,7 +147,8 @@ export default function useBrokerTeamSetupState(args: UseBrokerTeamSetupStateArg
     setTeamsError(null);
     setTeamsBusy(true);
     try {
-      await apiBrokerTeamDelete(base, tid, auth);
+      const resp = await apiBrokerTeamDelete(base, tid, auth);
+      if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "team delete failed");
       setTeamId("");
       await refreshTeams();
       return true;
@@ -222,9 +229,9 @@ export default function useBrokerTeamSetupState(args: UseBrokerTeamSetupStateArg
         if (!name) throw new Error("team name required");
         const id = String(quickTeamId || "").trim() || slugifyTeamId(name);
         const goal = String(quickTeamGoal || "").trim();
-        const meta: Record<string, any> = {};
+        const meta: Record<string, unknown> = {};
         if (goal) meta.goal = goal;
-        const payload: Record<string, any> = { team_id: id, display_name: name };
+        const payload: BrokerTeamCreateRequest = { team_id: id, display_name: name };
         if (Object.keys(meta).length > 0) payload.meta = meta;
         const createResp = await apiBrokerTeamCreate(base, payload, auth);
         if (!createResp.ok) throw new Error(createResp.error || createResp.err || createResp.code || "team create failed");
@@ -232,15 +239,15 @@ export default function useBrokerTeamSetupState(args: UseBrokerTeamSetupStateArg
         for (const member of quickMembers) {
           const role = String(member.role || "").trim();
           if (!role) continue;
-          const memberPayload: Record<string, any> = { role };
+          const memberPayload: BrokerTeamMemberUpsertRequest = { role };
           const agentId = String(member.agentId || "").trim();
           const deploymentId = String(member.deploymentId || "").trim();
           if (agentId) memberPayload.agent_id = agentId;
           if (deploymentId) memberPayload.deployment_id = deploymentId;
-          const metaMember: Record<string, any> = {};
+          const metaMember: Record<string, unknown> = {};
           const provider = String(member.provider || "").trim();
           if (provider) metaMember.provider = provider;
-          const runOverrides: Record<string, any> = {};
+          const runOverrides: Record<string, unknown> = {};
           const model = String(member.model || "").trim();
           if (model) runOverrides.model = model;
           const baseUrl = String(member.baseUrl || "").trim();

@@ -438,6 +438,7 @@ schemas:
     type: object
     required: [display_name]
     properties:
+      team_id: { type: string }
       display_name: { type: string }
       tags:
         type: array

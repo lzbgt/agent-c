@@ -1,17 +1,9 @@
 import React from "react";
+import type { BrokerAgentInfo } from "../../api";
 import FieldLabel from "../FieldLabel";
 import BrokerTeamCreatePanel from "./BrokerTeamCreatePanel";
 import SectionCard from "./BrokerTeamSectionCard";
-
-type QuickMember = {
-  id: string;
-  role: string;
-  provider: string;
-  model: string;
-  baseUrl: string;
-  agentId: string;
-  deploymentId: string;
-};
+import type { QuickMember } from "./teamConsoleTypes";
 
 export type BrokerTeamSetupPanelProps = {
   canQuery: boolean;
@@ -26,7 +18,7 @@ export type BrokerTeamSetupPanelProps = {
   quickBuilderError: string | null;
   providerDefaults: Record<string, string>;
   providerModelDefaults: Record<string, string>;
-  memberAgents: Array<Record<string, any>>;
+  memberAgents: BrokerAgentInfo[];
   newTeamId: string;
   newTeamName: string;
   onQuickTeamNameChange: (next: string) => void;
@@ -202,11 +194,19 @@ export default function BrokerTeamSetupPanel(props: BrokerTeamSetupPanelProps) {
                       onChange={(e) => onQuickMemberUpdate(m.id, { agentId: e.target.value, deploymentId: "" })}
                     >
                       <option value="">(any agent)</option>
-                      {(memberAgents || []).map((agent: any) => (
-                        <option key={agent?.agent_id || agent?.id} value={String(agent?.agent_id || agent?.id || "")}>
-                          {String(agent?.display_name || agent?.agent_id || agent?.id || "")}
-                        </option>
-                      ))}
+                      {(memberAgents || []).map((agent) => {
+                        const label =
+                          typeof agent?.meta?.display_name === "string"
+                            ? agent.meta.display_name
+                            : typeof agent?.labels?.name === "string"
+                              ? agent.labels.name
+                              : String(agent?.agent_id || "");
+                        return (
+                          <option key={String(agent?.agent_id || "")} value={String(agent?.agent_id || "")}>
+                            {label}
+                          </option>
+                        );
+                      })}
                     </select>
                     <input
                       aria-label="Deployment"

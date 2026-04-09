@@ -42,26 +42,40 @@ export type BrokerTeamRunGoalContract = BrokerComponents["schemas"]["TeamRunGoal
 export type BrokerTeamRunGoalEvent = BrokerComponents["schemas"]["TeamRunGoalEvent"];
 export type BrokerTeamRunHandoffEvent = BrokerComponents["schemas"]["TeamRunHandoffEvent"];
 export type BrokerOrchestratorRun = BrokerComponents["schemas"]["OrchestratorRun"];
+export type BrokerOrchestratorRunCreateRequest = BrokerComponents["schemas"]["OrchestratorRunCreateRequest"];
+export type BrokerOrchestratorRunUpdateRequest = BrokerComponents["schemas"]["OrchestratorRunUpdateRequest"];
+export type BrokerOrchestratorRunHeartbeatRequest = BrokerComponents["schemas"]["OrchestratorRunHeartbeatRequest"];
 export type BrokerOrchestratorRunResp = BrokerComponents["schemas"]["OrchestratorRunResponse"] & BrokerErrorFields;
 export type BrokerOrchestratorRunListResp = BrokerComponents["schemas"]["OrchestratorRunListResponse"] & BrokerErrorFields;
 export type BrokerOrchestratorSpawnRequest = BrokerComponents["schemas"]["OrchestratorSpawnRequest"];
+export type BrokerOrchestratorSpawnRequestCreateRequest =
+  BrokerComponents["schemas"]["OrchestratorSpawnRequestCreateRequest"];
+export type BrokerOrchestratorSpawnRequestUpdateRequest =
+  BrokerComponents["schemas"]["OrchestratorSpawnRequestUpdateRequest"];
 export type BrokerOrchestratorSpawnRequestResp =
   BrokerComponents["schemas"]["OrchestratorSpawnRequestResponse"] & BrokerErrorFields;
 export type BrokerOrchestratorSpawnRequestListResp =
   BrokerComponents["schemas"]["OrchestratorSpawnRequestListResponse"] & BrokerErrorFields;
 export type BrokerTeam = BrokerComponents["schemas"]["Team"];
+// Server-side create accepts an optional caller-supplied team_id even though the generated schema currently omits it.
+export type BrokerTeamCreateRequest = BrokerComponents["schemas"]["TeamCreateRequest"] & { team_id?: string };
+export type BrokerTeamUpdateRequest = BrokerComponents["schemas"]["TeamUpdateRequest"];
 export type BrokerTeamListResp = BrokerComponents["schemas"]["TeamListResponse"] & BrokerErrorFields;
 export type BrokerTeamCreateResp = BrokerComponents["schemas"]["TeamCreateResponse"] & BrokerErrorFields;
 export type BrokerTeamGetResp = BrokerComponents["schemas"]["TeamGetResponse"] & BrokerErrorFields;
 export type BrokerTeamDeleteResp = BrokerComponents["schemas"]["TeamDeleteResponse"] & BrokerErrorFields;
 export type BrokerTeamMember = BrokerComponents["schemas"]["TeamMember"];
+export type BrokerTeamMemberUpsertRequest = BrokerComponents["schemas"]["TeamMemberUpsertRequest"];
+export type BrokerTeamMemberUpdateRequest = BrokerComponents["schemas"]["TeamMemberUpdateRequest"];
 export type BrokerTeamMemberListResp = BrokerComponents["schemas"]["TeamMemberListResponse"] & BrokerErrorFields;
 export type BrokerTeamMemberUpsertResp = BrokerComponents["schemas"]["TeamMemberUpsertResponse"] & BrokerErrorFields;
 export type BrokerTeamQuorumRule = BrokerComponents["schemas"]["TeamQuorumRule"];
+export type BrokerTeamQuorumRuleUpsertRequest = BrokerComponents["schemas"]["TeamQuorumRuleUpsertRequest"];
 export type BrokerTeamQuorumRuleListResp =
   BrokerComponents["schemas"]["TeamQuorumRuleListResponse"] & BrokerErrorFields;
 export type BrokerTeamQuorumRuleUpsertResp =
   BrokerComponents["schemas"]["TeamQuorumRuleUpsertResponse"] & BrokerErrorFields;
+export type BrokerTeamRunRequest = BrokerComponents["schemas"]["TeamRunRequest"];
 export type BrokerTeamRunRuntimeMember = BrokerComponents["schemas"]["TeamRunRuntimeMember"];
 export type BrokerTeamRunMemberJob = BrokerComponents["schemas"]["TeamRunMemberJob"];
 export type BrokerTeamRunMemberJobSummary = BrokerComponents["schemas"]["TeamRunMemberJobSummary"];
@@ -76,19 +90,30 @@ export type BrokerTeamRunStatusResp = BrokerComponents["schemas"]["TeamRunStatus
   goal_events_updated_unix_ms?: number;
   handoff_events_updated_unix_ms?: number;
 } & BrokerErrorFields;
+export type BrokerTeamRunGoalUpdateRequest = BrokerComponents["schemas"]["TeamRunGoalUpdateRequest"];
 export type BrokerTeamRunGoalUpdateResp = BrokerComponents["schemas"]["TeamRunGoalUpdateResponse"] & BrokerErrorFields;
+export type BrokerTeamRunHandoffUpdateRequest = BrokerComponents["schemas"]["TeamRunHandoffUpdateRequest"];
 export type BrokerTeamRunHandoffResp = BrokerComponents["schemas"]["TeamRunHandoffUpdateResponse"] & BrokerErrorFields;
+export type BrokerTeamRunRuntimeMembersUpdateRequest =
+  BrokerComponents["schemas"]["TeamRunRuntimeMembersUpdateRequest"];
+export type BrokerTeamRuntimeMembersAllocateRequest = BrokerComponents["schemas"]["TeamRuntimeMembersAllocateRequest"];
 export type BrokerTeamRunModeratorDispatch = BrokerComponents["schemas"]["TeamRunModeratorDispatch"];
 export type BrokerTeamRunModeratorSkipped = BrokerComponents["schemas"]["TeamRunModeratorSkipped"];
 export type BrokerTeamRunModeratorEvent = BrokerComponents["schemas"]["TeamRunModeratorEvent"];
+export type BrokerTeamRunModeratorDirectiveRequest =
+  BrokerComponents["schemas"]["TeamRunModeratorDirectiveRequest"];
+export type BrokerTeamRunModeratorTaskRequest = BrokerComponents["schemas"]["TeamRunModeratorTaskRequest"];
 export type BrokerTeamRunModeratorResp = BrokerComponents["schemas"]["TeamRunModeratorResponse"] & BrokerErrorFields;
 export type BrokerTeamRunModeratorEventsResp =
   BrokerComponents["schemas"]["TeamRunModeratorEventsResponse"] & BrokerErrorFields;
+export type BrokerTeamRunApprovalCreateRequest = BrokerComponents["schemas"]["TeamRunApprovalCreateRequest"];
 export type BrokerTeamRunApproval = BrokerComponents["schemas"]["TeamRunApproval"];
 export type BrokerTeamRunApprovalListResp =
   BrokerComponents["schemas"]["TeamRunApprovalListResponse"] & BrokerErrorFields;
 export type BrokerGuidanceEvent = BrokerComponents["schemas"]["GuidanceEvent"];
 export type BrokerGuidanceReceipt = BrokerComponents["schemas"]["GuidanceReceipt"];
+export type BrokerGuidanceCreateRequest = BrokerComponents["schemas"]["GuidanceCreateRequest"];
+export type BrokerGuidanceAckRequest = BrokerComponents["schemas"]["GuidanceAckRequest"];
 
 const UnknownRecordSchema = z.record(z.string(), z.unknown());
 const DeploymentInfoSchema: z.ZodType<DeploymentInfo> = z

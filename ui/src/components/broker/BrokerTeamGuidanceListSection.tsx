@@ -1,7 +1,7 @@
 import React from "react";
 
 import { fmtTs } from "./teamRunUtils";
-import { formatDuration } from "./brokerTeamGuidanceUtils";
+import { formatDuration, getGuidanceBriefing } from "./brokerTeamGuidanceUtils";
 import type { BrokerTeamGuidanceState } from "./brokerTeamGuidanceTypes";
 
 type BrokerTeamGuidanceListSectionProps = Pick<
@@ -42,9 +42,7 @@ export default function BrokerTeamGuidanceListSection({
     <div className="space-y-2">
       {guidanceRows.map((item, idx) => {
         const guidanceId = String(item.guidance_id || "");
-        const payload = item.payload && typeof item.payload === "object" ? item.payload : null;
-        const briefing =
-          payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as any).briefing : null;
+        const briefing = getGuidanceBriefing(item.payload);
         const briefingOpen = !!briefingOpenByGuidanceId[guidanceId];
         const receipts = receiptsByGuidanceId[guidanceId] ?? [];
         const receiptsOpen = !!receiptsOpenByGuidanceId[guidanceId];

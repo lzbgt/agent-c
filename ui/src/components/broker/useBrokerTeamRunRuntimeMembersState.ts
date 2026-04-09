@@ -6,6 +6,7 @@ import {
   type ApiAuth,
   type BrokerAgentInfo,
   type BrokerDeploymentInfo,
+  type BrokerTeamMemberUpsertRequest,
 } from "../../api";
 import {
   buildRoleAllocatedRuntimeMembers,
@@ -546,7 +547,7 @@ export default function useBrokerTeamRunRuntimeMembersState({
       setRuntimeSaveError("no runtime members to save");
       return;
     }
-    const payloads: Array<Record<string, unknown>> = [];
+    const payloads: BrokerTeamMemberUpsertRequest[] = [];
     const invalid: string[] = [];
     for (const row of runtimeSavePreview.newMembers) {
       const item = row?.item ?? {};
@@ -557,7 +558,7 @@ export default function useBrokerTeamRunRuntimeMembersState({
         invalid.push(memberId || agentId || "runtime");
         continue;
       }
-      const payload: Record<string, unknown> = { role, agent_id: agentId };
+      const payload: BrokerTeamMemberUpsertRequest = { role, agent_id: agentId };
       if (memberId) payload.member_id = memberId;
       if (item?.deployment_id) payload.deployment_id = String(item.deployment_id);
       if (Array.isArray(item?.capabilities)) payload.capabilities = item.capabilities;
@@ -577,7 +578,8 @@ export default function useBrokerTeamRunRuntimeMembersState({
     setRuntimeSaveBusy(true);
     try {
       for (const payload of payloads) {
-        await apiBrokerTeamMembersUpsert(base, teamIdTrimmed, payload, auth);
+        const resp = await apiBrokerTeamMembersUpsert(base, teamIdTrimmed, payload, auth);
+        if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "member create failed");
       }
       if (onMembersRefresh) {
         await onMembersRefresh(teamIdTrimmed);

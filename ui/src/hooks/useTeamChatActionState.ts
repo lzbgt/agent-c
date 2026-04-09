@@ -7,6 +7,8 @@ import {
   apiBrokerTeamRunGet,
   apiBrokerTeamRunGoalUpdate,
   type ApiAuth,
+  type BrokerGuidanceCreateRequest,
+  type BrokerTeamRunStatusResp,
 } from "../api";
 import type { Attachment } from "../components/PromptBar";
 import type {
@@ -62,13 +64,13 @@ export function useTeamChatActionState(args: TeamChatActionStateArgs) {
       if (!brokerChatAvailable) throw new Error("team chat unavailable");
       if (!brokerBaseTrimmed) throw new Error("missing broker base");
       if (!selectedTeamIdTrimmed) throw new Error("missing team_id");
-      return apiBrokerTeamRunCreate(brokerBaseTrimmed, selectedTeamIdTrimmed, { prompt: trimmed }, daemonAuth);
+      return apiBrokerTeamRunCreate(brokerBaseTrimmed, selectedTeamIdTrimmed, { run: { prompt: trimmed } }, daemonAuth);
     },
   });
 
   const waitForTeamMemberSessions = React.useCallback(
     async (runId: string) => {
-      let lastStatus: any = null;
+      let lastStatus: BrokerTeamRunStatusResp | null = null;
       for (let attempt = 0; attempt < 10; attempt += 1) {
         const status = await apiBrokerTeamRunGet(brokerBaseTrimmed, selectedTeamIdTrimmed, runId, daemonAuth);
         lastStatus = status;
@@ -84,7 +86,7 @@ export function useTeamChatActionState(args: TeamChatActionStateArgs) {
   );
 
   const broadcastTeamUploads = React.useCallback(
-    async (status: any, attachments: Attachment[]) => {
+    async (status: BrokerTeamRunStatusResp | null, attachments: Attachment[]) => {
       const uploads = collectTeamUploadFiles(attachments);
       if (uploads.length === 0) return { uploads: [], errors: [] as string[] };
 
@@ -95,24 +97,24 @@ export function useTeamChatActionState(args: TeamChatActionStateArgs) {
       const memberMeta: Record<string, { agent_id?: string; deployment_id?: string }> = {};
 
       for (const member of members) {
-        const id = String((member as any)?.member_id || "").trim();
+        const id = String(member?.member_id || "").trim();
         if (!id) continue;
         memberMeta[id] = {
-          agent_id: String((member as any)?.agent_id || "").trim() || undefined,
-          deployment_id: String((member as any)?.deployment_id || "").trim() || undefined,
+          agent_id: String(member?.agent_id || "").trim() || undefined,
+          deployment_id: String(member?.deployment_id || "").trim() || undefined,
         };
       }
       for (const job of memberJobs) {
-        const id = String((job as any)?.member_id || "").trim();
+        const id = String(job?.member_id || "").trim();
         if (!id) continue;
         memberMeta[id] = {
-          agent_id: String((job as any)?.agent_id || memberMeta[id]?.agent_id || "").trim() || undefined,
-          deployment_id: String((job as any)?.deployment_id || memberMeta[id]?.deployment_id || "").trim() || undefined,
+          agent_id: String(job?.agent_id || memberMeta[id]?.agent_id || "").trim() || undefined,
+          deployment_id: String(job?.deployment_id || memberMeta[id]?.deployment_id || "").trim() || undefined,
         };
       }
 
       const errors: string[] = [];
-      const uploadResults: any[] = [];
+      const uploadResults: Array<Record<string, unknown>> = [];
       for (const [memberIdRaw, sessionIdRaw] of Object.entries(memberSessions as Record<string, string>)) {
         const memberId = String(memberIdRaw || "").trim();
         const sid = String(sessionIdRaw || "").trim();
@@ -205,7 +207,7 @@ export function useTeamChatActionState(args: TeamChatActionStateArgs) {
           try {
             const runId = latestTeamRunId || "";
             const uploads = collectTeamUploadFiles(vars.attachments);
-            let uploadPayload: any = null;
+            let uploadPayload: Record<string, unknown> | null = null;
             if (uploads.length > 0) {
               if (!runId) {
                 setJobNotice("start a team run before attaching files");
@@ -219,7 +221,7 @@ export function useTeamChatActionState(args: TeamChatActionStateArgs) {
                 setJobNotice(`shared with errors: ${uploadResult.errors[0]}`);
               }
             }
-            const body: Record<string, any> = {
+            const body: BrokerGuidanceCreateRequest = {
               kind: "note",
               priority: "normal",
               message: trimmed,
@@ -259,7 +261,7 @@ export function useTeamChatActionState(args: TeamChatActionStateArgs) {
             const status = await waitForTeamMemberSessions(runId);
             const uploadResult = await broadcastTeamUploads(status, uploads);
             const fileNames = uploads.map((file) => file.name || "file").join(", ");
-            const guidanceBody: Record<string, any> = {
+            const guidanceBody: BrokerGuidanceCreateRequest = {
               kind: "resource",
               priority: "normal",
               message: `Shared files: ${fileNames}`,

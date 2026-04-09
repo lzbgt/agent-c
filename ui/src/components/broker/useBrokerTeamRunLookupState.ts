@@ -8,6 +8,7 @@ import {
   type ApiAuth,
 } from "../../api";
 import useLocalStorageState from "../../hooks/useLocalStorageState";
+import { asUnknownRecord } from "./brokerObjectUtils";
 import type { RuntimeMemberDraft } from "./teamRunPanelTypes";
 import type {
   MemberSession,
@@ -309,11 +310,36 @@ export default function useBrokerTeamRunLookupState({
   }, [runLookupResult, setRunRuntimeMembersJson]);
 
   const applyRuntimeMembersUpdate = React.useCallback(
-    async (members: RuntimeMemberDraft[], mode: string) => {
+    async (members: RuntimeMemberDraft[], mode: "replace" | "merge") => {
       const runId = resolveRunId();
       if (!teamIdTrimmed || !runId) {
         setRuntimeUpdateError("missing team_id or run id");
         return;
+      }
+      const normalizedMembers: TeamRunRuntimeMemberRow[] = [];
+      for (const member of members) {
+        const agentId = String(member?.agent_id || "").trim();
+        const role = String(member?.role || "").trim();
+        if (!agentId || !role) {
+          setRuntimeUpdateError("runtime members missing agent_id or role");
+          return;
+        }
+        const normalized: TeamRunRuntimeMemberRow = { agent_id: agentId, role };
+        const memberId = String(member?.member_id || "").trim();
+        if (memberId) normalized.member_id = memberId;
+        const deploymentId = String(member?.deployment_id || "").trim();
+        if (deploymentId) normalized.deployment_id = deploymentId;
+        if (Array.isArray(member?.capabilities)) {
+          normalized.capabilities = member.capabilities.map((item) => String(item).trim()).filter(Boolean);
+        }
+        const status = String(member?.status || "").trim();
+        if (status) normalized.status = status;
+        if (typeof member?.weight === "number" && Number.isFinite(member.weight)) {
+          normalized.weight = member.weight;
+        }
+        const meta = asUnknownRecord(member?.meta);
+        if (meta) normalized.meta = meta;
+        normalizedMembers.push(normalized);
       }
       setRuntimeUpdateError(null);
       setRuntimeUpdateNote("");
@@ -323,7 +349,7 @@ export default function useBrokerTeamRunLookupState({
           base,
           teamIdTrimmed,
           runId,
-          { mode, runtime_members: members },
+          { mode, runtime_members: normalizedMembers },
           auth,
         );
         if (!resp.ok) {
@@ -334,8 +360,8 @@ export default function useBrokerTeamRunLookupState({
           setRunRuntimeMembersJson(JSON.stringify(resp.runtime_members, null, 2));
           setRuntimeUpdateNote(`updated ${resp.runtime_members.length} runtime members`);
         } else {
-          setRunRuntimeMembersJson(JSON.stringify(members, null, 2));
-          setRuntimeUpdateNote(`updated ${members.length} runtime members`);
+          setRunRuntimeMembersJson(JSON.stringify(normalizedMembers, null, 2));
+          setRuntimeUpdateNote(`updated ${normalizedMembers.length} runtime members`);
         }
       } catch (err) {
         setRuntimeUpdateError(String(err));
@@ -363,7 +389,7 @@ export default function useBrokerTeamRunLookupState({
       setRuntimeUpdateError("runtime_members must be a JSON array of member objects");
       return;
     }
-    const mode = String(runtimeUpdateMode || "").trim() || "replace";
+    const mode = String(runtimeUpdateMode || "").trim().toLowerCase() === "merge" ? "merge" : "replace";
     await applyRuntimeMembersUpdate(parsed as RuntimeMemberDraft[], mode);
   }, [applyRuntimeMembersUpdate, runRuntimeMembersJson, runtimeUpdateMode]);
 

@@ -4,16 +4,21 @@ import {
   apiBrokerTeamGuidanceCreate,
   apiBrokerTeamGuidanceList,
   apiBrokerTeamGuidanceReceiptsList,
+  type BrokerGuidanceAckRequest,
+  type BrokerGuidanceCreateRequest,
+  type BrokerGuidanceEvent,
+  type BrokerGuidanceReceipt,
 } from "../../api";
 import { GUIDANCE_EVENT_TYPES, parseCsvList } from "./teamRunUtils";
 import { normalizeGuidanceList } from "./brokerTeamGuidanceUtils";
+import { parseUnknownRecordJson } from "./brokerObjectUtils";
 import type { BrokerTeamGuidancePanelProps, BrokerTeamGuidanceState } from "./brokerTeamGuidanceTypes";
 
 export default function useBrokerTeamGuidanceState(props: BrokerTeamGuidancePanelProps): BrokerTeamGuidanceState {
   const teamIdTrimmed = String(props.teamId || "").trim();
   const canQuery = props.canQuery && teamIdTrimmed.length > 0;
 
-  const [guidance, setGuidance] = React.useState<any[]>([]);
+  const [guidance, setGuidance] = React.useState<BrokerGuidanceEvent[]>([]);
   const [listBusy, setListBusy] = React.useState(false);
   const [listError, setListError] = React.useState<string | null>(null);
   const [statusFilter, setStatusFilter] = React.useState<string>("open");
@@ -30,7 +35,7 @@ export default function useBrokerTeamGuidanceState(props: BrokerTeamGuidancePane
   const [ackNote, setAckNote] = React.useState<string>("");
   const [ackBusyId, setAckBusyId] = React.useState<string>("");
   const [ackError, setAckError] = React.useState<string | null>(null);
-  const [receiptsByGuidanceId, setReceiptsByGuidanceId] = React.useState<Record<string, any[]>>({});
+  const [receiptsByGuidanceId, setReceiptsByGuidanceId] = React.useState<Record<string, BrokerGuidanceReceipt[]>>({});
   const [receiptsBusyId, setReceiptsBusyId] = React.useState<string>("");
   const [receiptsErrorByGuidanceId, setReceiptsErrorByGuidanceId] = React.useState<Record<string, string>>({});
   const [receiptsOpenByGuidanceId, setReceiptsOpenByGuidanceId] = React.useState<Record<string, boolean>>({});
@@ -114,10 +119,10 @@ export default function useBrokerTeamGuidanceState(props: BrokerTeamGuidancePane
     setCreateBusy(true);
     setCreateError(null);
     try {
-      let payload: Record<string, any> | undefined;
+      let payload: BrokerGuidanceCreateRequest["payload"];
       const rawPayload = payloadJson.trim();
-      if (rawPayload) payload = JSON.parse(rawPayload);
-      const body: Record<string, any> = { kind, priority, message: trimmedMessage };
+      if (rawPayload) payload = parseUnknownRecordJson(rawPayload, "payload");
+      const body: BrokerGuidanceCreateRequest = { kind, priority, message: trimmedMessage };
       const teamRun = teamRunFilter.trim();
       if (teamRun) body.team_run_id = teamRun;
       if (payload) body.payload = payload;
@@ -126,7 +131,13 @@ export default function useBrokerTeamGuidanceState(props: BrokerTeamGuidancePane
       const orchestrator = targetOrchestrator.trim();
       if (orchestrator) body.target_orchestrator_id = orchestrator;
       const expires = expiresUnixMs.trim();
-      if (expires) body.expires_unix_ms = Number(expires);
+      if (expires) {
+        const expiresValue = Number(expires);
+        if (!Number.isFinite(expiresValue)) {
+          throw new Error("expires_unix_ms must be a number");
+        }
+        body.expires_unix_ms = expiresValue;
+      }
       const resp = await apiBrokerTeamGuidanceCreate(props.base, teamIdTrimmed, body, props.auth);
       if (!resp.ok) throw new Error(resp.error || resp.err || "create guidance failed");
       setMessage("");
@@ -160,11 +171,12 @@ export default function useBrokerTeamGuidanceState(props: BrokerTeamGuidancePane
       setAckBusyId(guidanceId);
       setAckError(null);
       try {
+        const body: BrokerGuidanceAckRequest = { status: "acked", note: ackNote.trim(), ack_source: "human" };
         const resp = await apiBrokerTeamGuidanceAck(
           props.base,
           teamIdTrimmed,
           guidanceId,
-          { status: "acked", note: ackNote.trim(), ack_source: "human" },
+          body,
           props.auth,
         );
         if (!resp.ok) throw new Error(resp.error || resp.err || "ack failed");
@@ -202,7 +214,7 @@ export default function useBrokerTeamGuidanceState(props: BrokerTeamGuidancePane
     canQuery,
     teamIdTrimmed,
     guidanceEvents,
-    guidanceRows: normalizeGuidanceList(guidance),
+    guidanceRows: guidance,
     listBusy,
     listError,
     statusFilter,

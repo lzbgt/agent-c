@@ -3,6 +3,7 @@ import {
   apiBrokerTeamRunGoalUpdate,
   apiBrokerTeamRunHandoff,
   type ApiAuth,
+  type BrokerTeamRunGoalUpdateRequest,
 } from "../../api";
 import type {
   TeamRunGoalContractRow,
@@ -147,13 +148,15 @@ export default function useTeamRunStatusState(args: UseTeamRunStatusStateArgs) {
         return;
       }
     }
-    const event: TeamRunGoalEventInput = { type: eventType as TeamRunGoalEventType };
+    const body: BrokerTeamRunGoalUpdateRequest = {
+      event: { type: eventType as TeamRunGoalEventType, ts_unix_ms: Date.now() },
+    };
     const message = goalEventMessage.trim();
-    if (message) event.message = message;
-    if (dataObj) event.data = dataObj;
+    if (message && body.event) body.event.message = message;
+    if (dataObj && body.event) body.event.data = dataObj;
     setGoalUpdateBusy(true);
     try {
-      const resp = await apiBrokerTeamRunGoalUpdate(args.base, args.teamId, args.runId, { event }, args.auth);
+      const resp = await apiBrokerTeamRunGoalUpdate(args.base, args.teamId, args.runId, body, args.auth);
       if (!resp.ok) {
         setGoalUpdateError(resp.error || resp.err || "goal event failed");
         return;

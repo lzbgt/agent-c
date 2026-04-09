@@ -26,13 +26,19 @@ import {
   BrokerEventsReplayRespSchema,
   type BrokerEventsReplayResp,
   BrokerOrchestratorRunRespSchema,
+  type BrokerOrchestratorRunCreateRequest,
+  type BrokerOrchestratorRunHeartbeatRequest,
   type BrokerOrchestratorRunResp,
   BrokerOrchestratorRunListRespSchema,
   type BrokerOrchestratorRunListResp,
+  type BrokerOrchestratorRunUpdateRequest,
   BrokerOrchestratorSpawnRequestRespSchema,
+  type BrokerOrchestratorSpawnRequestCreateRequest,
   type BrokerOrchestratorSpawnRequestResp,
   BrokerOrchestratorSpawnRequestListRespSchema,
   type BrokerOrchestratorSpawnRequestListResp,
+  type BrokerOrchestratorSpawnRequestUpdateRequest,
+  type BrokerTeamCreateRequest,
   BrokerTeamCreateRespSchema,
   type BrokerTeamCreateResp,
   BrokerTeamDeleteRespSchema,
@@ -41,28 +47,41 @@ import {
   type BrokerTeamGetResp,
   BrokerTeamListRespSchema,
   type BrokerTeamListResp,
+  type BrokerTeamMemberUpsertRequest,
+  type BrokerTeamMemberUpdateRequest,
   BrokerTeamMemberListRespSchema,
   type BrokerTeamMemberListResp,
   BrokerTeamMemberUpsertRespSchema,
   type BrokerTeamMemberUpsertResp,
+  type BrokerGuidanceAckRequest,
   BrokerGuidanceAckRespSchema,
   type BrokerGuidanceAckResp,
+  type BrokerGuidanceCreateRequest,
   BrokerGuidanceCreateRespSchema,
   type BrokerGuidanceCreateResp,
   BrokerGuidanceListRespSchema,
   type BrokerGuidanceListResp,
   BrokerGuidanceReceiptListRespSchema,
   type BrokerGuidanceReceiptListResp,
+  type BrokerTeamQuorumRuleUpsertRequest,
   BrokerTeamQuorumRuleListRespSchema,
   type BrokerTeamQuorumRuleListResp,
   BrokerTeamQuorumRuleUpsertRespSchema,
   type BrokerTeamQuorumRuleUpsertResp,
+  type BrokerTeamRunApprovalCreateRequest,
+  type BrokerTeamRunGoalUpdateRequest,
+  type BrokerTeamRunHandoffUpdateRequest,
+  type BrokerTeamRunModeratorDirectiveRequest,
+  type BrokerTeamRunModeratorTaskRequest,
+  type BrokerTeamRunRequest,
+  type BrokerTeamRunRuntimeMembersUpdateRequest,
   BrokerTeamRunRespSchema,
   type BrokerTeamRunResp,
   BrokerTeamRunListRespSchema,
   type BrokerTeamRunListResp,
   BrokerTeamRunStatusRespSchema,
   type BrokerTeamRunStatusResp,
+  type BrokerTeamUpdateRequest,
   BrokerTeamRunGoalUpdateRespSchema,
   type BrokerTeamRunGoalUpdateResp,
   BrokerTeamRunHandoffRespSchema,
@@ -557,7 +576,7 @@ export async function apiBrokerOrchestratorRunsList(
 export async function apiBrokerOrchestratorRunCreate(
   brokerBase: string,
   teamId: string,
-  body: Record<string, any>,
+  body: BrokerOrchestratorRunCreateRequest,
   auth?: ApiAuth,
 ): Promise<BrokerOrchestratorRunResp> {
   const base = brokerBase.replace(/\/+$/, "");
@@ -593,7 +612,7 @@ export async function apiBrokerOrchestratorRunUpdate(
   brokerBase: string,
   teamId: string,
   runId: string,
-  body: Record<string, any>,
+  body: BrokerOrchestratorRunUpdateRequest,
   auth?: ApiAuth,
 ): Promise<BrokerOrchestratorRunResp> {
   const base = brokerBase.replace(/\/+$/, "");
@@ -612,7 +631,7 @@ export async function apiBrokerOrchestratorRunHeartbeat(
   brokerBase: string,
   teamId: string,
   runId: string,
-  body: Record<string, any> | undefined,
+  body: BrokerOrchestratorRunHeartbeatRequest | undefined,
   auth?: ApiAuth,
 ): Promise<BrokerOrchestratorRunResp> {
   const base = brokerBase.replace(/\/+$/, "");
@@ -659,7 +678,7 @@ export async function apiBrokerOrchestratorSpawnRequestsList(
 export async function apiBrokerOrchestratorSpawnRequestCreate(
   brokerBase: string,
   teamId: string,
-  body: Record<string, any>,
+  body: BrokerOrchestratorSpawnRequestCreateRequest,
   auth?: ApiAuth,
 ): Promise<BrokerOrchestratorSpawnRequestResp> {
   const base = brokerBase.replace(/\/+$/, "");
@@ -695,7 +714,7 @@ export async function apiBrokerOrchestratorSpawnRequestUpdate(
   brokerBase: string,
   teamId: string,
   spawnRequestId: string,
-  body: Record<string, any>,
+  body: BrokerOrchestratorSpawnRequestUpdateRequest,
   auth?: ApiAuth,
 ): Promise<BrokerOrchestratorSpawnRequestResp> {
   const base = brokerBase.replace(/\/+$/, "");
@@ -747,7 +766,7 @@ export async function apiBrokerTeamList(brokerBase: string, auth?: ApiAuth): Pro
 
 export async function apiBrokerTeamCreate(
   brokerBase: string,
-  body: Record<string, any>,
+  body: BrokerTeamCreateRequest,
   auth?: ApiAuth,
 ): Promise<BrokerTeamCreateResp> {
   const base = brokerBase.replace(/\/+$/, "");
@@ -763,7 +782,7 @@ export async function apiBrokerTeamCreate(
 export async function apiBrokerTeamUpdate(
   brokerBase: string,
   teamId: string,
-  body: Record<string, any>,
+  body: BrokerTeamUpdateRequest,
   auth?: ApiAuth,
 ): Promise<BrokerTeamGetResp> {
   const base = brokerBase.replace(/\/+$/, "");
@@ -819,7 +838,7 @@ export async function apiBrokerTeamMembersList(
 export async function apiBrokerTeamMembersUpsert(
   brokerBase: string,
   teamId: string,
-  body: Record<string, any>,
+  body: BrokerTeamMemberUpsertRequest,
   auth?: ApiAuth,
 ): Promise<BrokerTeamMemberUpsertResp> {
   const base = brokerBase.replace(/\/+$/, "");
@@ -838,7 +857,7 @@ export async function apiBrokerTeamMemberUpdate(
   brokerBase: string,
   teamId: string,
   memberId: string,
-  body: Record<string, any>,
+  body: BrokerTeamMemberUpdateRequest,
   auth?: ApiAuth,
 ): Promise<BrokerTeamMemberUpsertResp> {
   const base = brokerBase.replace(/\/+$/, "");
@@ -905,7 +924,7 @@ export async function apiBrokerTeamGuidanceList(
 export async function apiBrokerTeamGuidanceCreate(
   brokerBase: string,
   teamId: string,
-  body: Record<string, any>,
+  body: BrokerGuidanceCreateRequest,
   auth?: ApiAuth,
 ): Promise<BrokerGuidanceCreateResp> {
   const base = brokerBase.replace(/\/+$/, "");
@@ -924,7 +943,7 @@ export async function apiBrokerTeamGuidanceAck(
   brokerBase: string,
   teamId: string,
   guidanceId: string,
-  body?: Record<string, any>,
+  body?: BrokerGuidanceAckRequest,
   auth?: ApiAuth,
 ): Promise<BrokerGuidanceAckResp> {
   const base = brokerBase.replace(/\/+$/, "");
@@ -979,7 +998,7 @@ export async function apiBrokerTeamQuorumList(
 export async function apiBrokerTeamQuorumUpsert(
   brokerBase: string,
   teamId: string,
-  body: Record<string, any>,
+  body: BrokerTeamQuorumRuleUpsertRequest,
   auth?: ApiAuth,
 ): Promise<BrokerTeamQuorumRuleUpsertResp> {
   const base = brokerBase.replace(/\/+$/, "");
@@ -1016,7 +1035,7 @@ export async function apiBrokerTeamQuorumDelete(
 export async function apiBrokerTeamRunCreate(
   brokerBase: string,
   teamId: string,
-  body: Record<string, any>,
+  body: BrokerTeamRunRequest,
   auth?: ApiAuth,
 ): Promise<BrokerTeamRunResp> {
   const base = brokerBase.replace(/\/+$/, "");
@@ -1092,7 +1111,7 @@ export async function apiBrokerTeamRunGoalUpdate(
   brokerBase: string,
   teamId: string,
   teamRunId: string,
-  body: Record<string, any>,
+  body: BrokerTeamRunGoalUpdateRequest,
   auth?: ApiAuth,
 ): Promise<BrokerTeamRunGoalUpdateResp> {
   const base = brokerBase.replace(/\/+$/, "");
@@ -1112,7 +1131,7 @@ export async function apiBrokerTeamRunHandoff(
   brokerBase: string,
   teamId: string,
   teamRunId: string,
-  body: Record<string, any>,
+  body: BrokerTeamRunHandoffUpdateRequest,
   auth?: ApiAuth,
 ): Promise<BrokerTeamRunHandoffResp> {
   const base = brokerBase.replace(/\/+$/, "");
@@ -1132,7 +1151,7 @@ export async function apiBrokerTeamRunModeratorDirective(
   brokerBase: string,
   teamId: string,
   teamRunId: string,
-  body: Record<string, any>,
+  body: BrokerTeamRunModeratorDirectiveRequest,
   auth?: ApiAuth,
 ): Promise<BrokerTeamRunModeratorResp> {
   const base = brokerBase.replace(/\/+$/, "");
@@ -1152,7 +1171,7 @@ export async function apiBrokerTeamRunModeratorTask(
   brokerBase: string,
   teamId: string,
   teamRunId: string,
-  body: Record<string, any>,
+  body: BrokerTeamRunModeratorTaskRequest,
   auth?: ApiAuth,
 ): Promise<BrokerTeamRunModeratorResp> {
   const base = brokerBase.replace(/\/+$/, "");
@@ -1230,7 +1249,7 @@ export async function apiBrokerTeamRunApprovalsCreate(
   brokerBase: string,
   teamId: string,
   teamRunId: string,
-  body: Record<string, any>,
+  body: BrokerTeamRunApprovalCreateRequest,
   auth?: ApiAuth,
 ): Promise<BrokerTeamRunApprovalListResp> {
   const base = brokerBase.replace(/\/+$/, "");
@@ -1251,7 +1270,7 @@ export async function apiBrokerTeamRunRuntimeMembersUpdate(
   brokerBase: string,
   teamId: string,
   teamRunId: string,
-  body: Record<string, any>,
+  body: BrokerTeamRunRuntimeMembersUpdateRequest,
   auth?: ApiAuth,
 ): Promise<BrokerTeamRunStatusResp> {
   const base = brokerBase.replace(/\/+$/, "");
