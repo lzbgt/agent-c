@@ -1,12 +1,5 @@
 import React from "react";
-
-type DbClientEventRow = {
-  id?: number;
-  ts_unix_ms?: number;
-  type?: string | null;
-  data?: any;
-  data_json?: string | null;
-};
+import type { DbClientEventRow } from "../history/historyPanelData";
 
 function fmtTs(ts?: number) {
   if (typeof ts !== "number" || !Number.isFinite(ts) || ts <= 0) return "";
@@ -64,4 +57,3 @@ export default function DbClientEventsView({ events }: { events: DbClientEventRo
     </div>
   );
 }
-

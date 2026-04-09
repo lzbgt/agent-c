@@ -1,20 +1,5 @@
 import React from "react";
-
-type DbUiActionRow = {
-  id?: number;
-  run_id?: number;
-  ts_unix_ms?: number;
-  tool_call_id?: string | null;
-  type?: string | null;
-  title?: string | null;
-  message?: string | null;
-  path?: string | null;
-  mime?: string | null;
-  repeat?: number | null;
-  autoplay?: boolean | null;
-  action?: any;
-  action_json?: string | null;
-};
+import type { DbUiActionRow } from "../history/historyPanelData";
 
 function fmtTs(ts?: number) {
   if (typeof ts !== "number" || !Number.isFinite(ts) || ts <= 0) return "";
@@ -105,4 +90,3 @@ export default function DbUiActionsView({
     </div>
   );
 }
-

@@ -6,8 +6,34 @@ import {
   type ApiAuth,
 } from "../api";
 import { runConversationUiActionRpc } from "../components/conversation/conversationRpcExecutor";
+import type { ConversationRpcRuntime, RpcCleanupEntry } from "../components/conversation/conversationViewTypes";
 import type { SceneEntity } from "../components/SceneView";
+import {
+  normalizeSceneEntityStore,
+  type DbClientEventRow,
+  type DbUiActionRow,
+  type SessionArtifactRow,
+  type SessionSceneSnapshot,
+} from "../history/historyPanelData";
 import { SCENE_STORE_MAX, touchSceneStoreKey } from "../sceneCache";
+
+type UnknownRecord = Record<string, unknown>;
+
+type SceneOpResult = {
+  ok: boolean;
+  op?: string;
+  id?: string;
+  existed?: boolean;
+  action?: string;
+  error?: string;
+};
+
+const isUnknownRecord = (value: unknown): value is UnknownRecord =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const asRecord = (value: unknown): UnknownRecord => (isUnknownRecord(value) ? value : {});
+
+const asTrimmedString = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 
 type UseRuntimeClientEffectsArgs = {
   allowClientEffects: boolean;
@@ -15,12 +41,12 @@ type UseRuntimeClientEffectsArgs = {
   artifactCatalogSupported: boolean;
   client: { id: string; kind: string; instance_id: string };
   daemonAuth: ApiAuth;
-  dbClientEventsData: any;
-  dbUiActionsData: any;
+  dbClientEventRows: DbClientEventRow[];
+  dbUiActionRows: DbUiActionRow[];
   effectiveBase: string;
-  sessionArtifactsData: any;
+  sessionArtifactRows: SessionArtifactRow[];
   sessionId: string;
-  sessionSceneData: any;
+  sessionSceneSnapshot: SessionSceneSnapshot | null;
   sessionScopeKey: string;
   yolo: boolean;
 };
@@ -32,12 +58,12 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
     artifactCatalogSupported,
     client,
     daemonAuth,
-    dbClientEventsData,
-    dbUiActionsData,
+    dbClientEventRows,
+    dbUiActionRows,
     effectiveBase,
-    sessionArtifactsData,
+    sessionArtifactRows,
     sessionId,
-    sessionSceneData,
+    sessionSceneSnapshot,
     sessionScopeKey,
     yolo,
   } = args;
@@ -58,7 +84,7 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
   }, []);
 
   const applySceneOps = React.useCallback(
-    (sid: string, ops: any[]) => {
+    (sid: string, ops: unknown[]) => {
       const trimmedSessionId = String(sid || "").trim();
       if (!trimmedSessionId) throw new Error("missing session_id for scene ops");
       const storeKey = `${sessionScopeKey}::${trimmedSessionId}`;
@@ -67,33 +93,34 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
       touchSceneStore(storeKey);
 
       const now = Date.now();
-      const results: any[] = [];
+      const results: SceneOpResult[] = [];
       const genId = () => `ent-${now}-${Math.random().toString(16).slice(2)}`;
-      const getOpKind = (op: any): string => {
-        const kind = typeof op?.op === "string" ? op.op : typeof op?.kind === "string" ? op.kind : "";
+      const getOpKind = (op: UnknownRecord): string => {
+        const kind = typeof op.op === "string" ? op.op : typeof op.kind === "string" ? op.kind : "";
         return String(kind || "").trim();
       };
-      const getCreateKind = (op: any): string => {
-        const kind =
-          typeof op?.entity_kind === "string" ? op.entity_kind : typeof op?.entityKind === "string" ? op.entityKind : "";
+      const getCreateKind = (op: UnknownRecord): string => {
+        const kind = typeof op.entity_kind === "string" ? op.entity_kind : typeof op.entityKind === "string" ? op.entityKind : "";
         return String(kind || "").trim();
       };
-      const persistOps = (Array.isArray(ops) ? ops : []).filter((op) => getOpKind(op) !== "clear");
+      const opList = Array.isArray(ops) ? ops.slice(0, 100) : [];
+      const persistOps = opList.filter((op): op is UnknownRecord => isUnknownRecord(op) && getOpKind(op) !== "clear");
 
-      for (const opRaw of (Array.isArray(ops) ? ops : []).slice(0, 100)) {
+      for (const opRaw of opList) {
         try {
-          const op = opRaw && typeof opRaw === "object" ? opRaw : {};
+          const op = asRecord(opRaw);
           const kind = getOpKind(op);
           if (!kind) throw new Error("missing op");
           if (kind === "create") {
             const id = String(op.id ?? "").trim() || genId();
             const entityKind = getCreateKind(op);
             if (!entityKind) throw new Error("create requires entity_kind");
+            const props = isUnknownRecord(op.props) ? op.props : {};
             store[id] = {
               id,
               kind: entityKind,
               title: typeof op.title === "string" ? op.title : undefined,
-              props: op.props ?? {},
+              props,
               created_ms: now,
               updated_ms: now,
             };
@@ -105,7 +132,9 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
             if (!id) throw new Error("update requires id");
             const existing = store[id];
             if (!existing) throw new Error("entity not found");
-            existing.props = { ...(existing.props ?? {}), ...(op.props ?? {}) };
+            const prevProps = isUnknownRecord(existing.props) ? existing.props : {};
+            const nextProps = isUnknownRecord(op.props) ? op.props : {};
+            existing.props = { ...prevProps, ...nextProps };
             existing.updated_ms = now;
             results.push({ ok: true, op: "update", id });
             continue;
@@ -129,9 +158,10 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
             if (!action) throw new Error("action requires action");
             const existing = store[id];
             if (!existing) throw new Error("entity not found");
+            const prevProps = isUnknownRecord(existing.props) ? existing.props : {};
             existing.props = {
-              ...(existing.props ?? {}),
-              last_action: { name: action, args: op.args ?? {}, ts_unix_ms: now },
+              ...prevProps,
+              last_action: { name: action, args: op.args, ts_unix_ms: now },
             };
             existing.updated_ms = now;
             results.push({ ok: true, op: "action", id, action });
@@ -152,8 +182,8 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
             if (updated > 0) {
               lastSceneUpdatedMsRef.current[storeKey] = Math.max(lastSceneUpdatedMsRef.current[storeKey] || 0, updated);
             }
-            const scene = resp.scene && typeof resp.scene === "object" && !Array.isArray(resp.scene) ? (resp.scene as any) : null;
-            if (scene) {
+            if (isUnknownRecord(resp.scene)) {
+              const scene = normalizeSceneEntityStore(resp.scene);
               sceneBySessionRef.current[storeKey] = scene;
               touchSceneStore(storeKey);
               setSceneVersion((value) => value + 1);
@@ -169,24 +199,22 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
   React.useEffect(() => {
     const sid = typeof sessionId === "string" ? sessionId.trim() : "";
     if (!sid) return;
-    if (!sessionSceneData || sessionSceneData.ok !== true) return;
-    const updated = typeof sessionSceneData?.updated_unix_ms === "number" ? sessionSceneData.updated_unix_ms : 0;
+    if (!sessionSceneSnapshot) return;
+    const updated = typeof sessionSceneSnapshot.updated_unix_ms === "number" ? sessionSceneSnapshot.updated_unix_ms : 0;
     const key = sceneStoreKey;
     const hasPrev = Object.prototype.hasOwnProperty.call(lastSceneUpdatedMsRef.current, key);
     const prev = hasPrev ? lastSceneUpdatedMsRef.current[key] || 0 : -1;
     if (hasPrev && updated <= prev) return;
-    const scene = sessionSceneData?.scene;
-    if (!scene || typeof scene !== "object" || Array.isArray(scene)) return;
-    sceneBySessionRef.current[key] = scene as any;
+    sceneBySessionRef.current[key] = sessionSceneSnapshot.scene;
     lastSceneUpdatedMsRef.current[key] = updated;
     touchSceneStore(key);
     setSceneVersion((value) => value + 1);
-  }, [sceneStoreKey, sessionId, sessionSceneData, touchSceneStore]);
+  }, [sceneStoreKey, sessionId, sessionSceneSnapshot, touchSceneStore]);
 
   const postedCapsRef = React.useRef<Record<string, boolean>>({});
   const pendingAutoRunsRef = React.useRef<Record<string, () => void>>({});
   const probeRanRef = React.useRef<Record<string, number>>({});
-  const rpcCleanupRef = React.useRef<Record<string, any>>({});
+  const rpcCleanupRef = React.useRef<Record<string, RpcCleanupEntry>>({});
   const artifactBlobUrlsRef = React.useRef<string[]>([]);
   const markSeenWithLimit = React.useCallback((store: Record<string, number>, key: string, limit: number) => {
     if (!key) return;
@@ -204,8 +232,8 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
   const cleanupRpcEntry = React.useCallback((id: string) => {
     const entry = rpcCleanupRef.current[id];
     if (!entry) return false;
-    const cleanups = Array.isArray(entry?.cleanups) ? entry.cleanups : [];
-    cleanups.forEach((fn: any) => {
+    const cleanups = Array.isArray(entry.cleanups) ? entry.cleanups : [];
+    cleanups.forEach((fn) => {
       try {
         if (typeof fn === "function") fn();
       } catch {
@@ -215,7 +243,7 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
     delete rpcCleanupRef.current[id];
     return true;
   }, []);
-  const rpcRuntime = React.useMemo(
+  const rpcRuntime = React.useMemo<ConversationRpcRuntime>(
     () => ({
       pendingAutoRunsRef,
       probeRanRef,
@@ -283,22 +311,18 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
     if (!allowClientRpcs || !allowClientEffects) return;
     const sid = String(sessionId || "").trim();
     if (!sid) return;
-    const actionsRaw =
-      dbUiActionsData?.ok && Array.isArray(dbUiActionsData?.ui_actions) ? (dbUiActionsData.ui_actions as any[]) : [];
-    const clientEventsRaw =
-      dbClientEventsData?.ok && Array.isArray(dbClientEventsData?.client_events) ? (dbClientEventsData.client_events as any[]) : [];
 
     const ackedRpcIds = new Set<string>();
-    for (const clientEvent of clientEventsRaw) {
-      const type = typeof clientEvent?.type === "string" ? clientEvent.type : "";
+    for (const clientEvent of dbClientEventRows) {
+      const type = clientEvent.type || "";
       if (type !== "client_rpc_result") continue;
-      const data = clientEvent?.data ?? clientEvent?.data_json ?? {};
-      const rpcId = typeof data?.rpc_id === "string" ? data.rpc_id : typeof data?.probe_id === "string" ? data.probe_id : "";
+      const data: UnknownRecord = clientEvent.data ?? {};
+      const rpcId = asTrimmedString(data.rpc_id) || asTrimmedString(data.probe_id);
       if (rpcId) ackedRpcIds.add(rpcId);
     }
 
-    const actions = actionsRaw.slice().reverse().filter((row) => row && typeof row === "object");
-    const postClientEvent = async (type: string, data: any) => {
+    const actions = dbUiActionRows.slice().reverse();
+    const postClientEvent = async (type: string, data: unknown) => {
       await apiPostSessionUiEvent(
         effectiveBase,
         {
@@ -329,25 +353,25 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
     const run = async () => {
       for (const row of actions) {
         if (cancelled) return;
-        const id = typeof row?.id === "number" ? row.id : Number(row?.id ?? NaN);
+        const id = typeof row.id === "number" ? row.id : Number(row.id ?? NaN);
         if (!Number.isFinite(id)) continue;
         const key = `${sid}::ui_action_id::${id}`;
         if (appliedUiActionIdsRef.current[key]) continue;
-        const action = row?.action ?? {};
-        const actionType = typeof action?.type === "string" ? action.type : "";
+        const action: UnknownRecord = row.action ?? {};
+        const actionType = asTrimmedString(action.type);
         if (actionType !== "client_rpc" && actionType !== "collab_rpc" && actionType !== "client_probe") continue;
-        const toolCallId = typeof row?.tool_call_id === "string" ? String(row.tool_call_id) : "";
-        const rpcId = String(action?.rpc_id ?? action?.probe_id ?? toolCallId ?? "").trim();
+        const toolCallId = row.tool_call_id || "";
+        const rpcId = String(action.rpc_id ?? action.probe_id ?? toolCallId ?? "").trim();
         if (!rpcId) continue;
         if (ackedRpcIds.has(rpcId)) {
           markApplied(key);
           continue;
         }
-        const rpc = action?.rpc ?? action?.probe ?? {};
-        const rpcKind = String(rpc?.kind ?? "").trim();
+        const rpc = isUnknownRecord(action.rpc) ? action.rpc : isUnknownRecord(action.probe) ? action.probe : {};
+        const rpcKind = asTrimmedString(rpc.kind);
         if (!supportedAutoRunKinds.has(rpcKind)) continue;
         const autoRunRequested =
-          typeof action?.auto_run === "boolean" ? action.auto_run : typeof action?.auto === "boolean" ? action.auto : true;
+          typeof action.auto_run === "boolean" ? action.auto_run : typeof action.auto === "boolean" ? action.auto : true;
         if (!autoRunRequested) continue;
 
         markApplied(key);
@@ -363,17 +387,17 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
           toolCallId,
           rpcId,
           rpcKind,
-          rpcArgs: typeof rpc?.args === "object" && rpc?.args ? rpc.args : rpc,
+          rpcArgs: isUnknownRecord(rpc.args) ? rpc.args : rpc,
           sideEffectsRequested:
-            rpc?.side_effects === true ||
-            action?.side_effects === true ||
+            rpc.side_effects === true ||
+            action.side_effects === true ||
             rpcKind === "entity_apply" ||
             rpcKind === "media_play" ||
             rpcKind === "media_pause",
           postClientEvent,
           runtime: rpcRuntime,
           sceneEntities,
-          onSceneApply: (ops: any[]) => applySceneOps(sid, ops),
+          onSceneApply: (ops: unknown[]) => applySceneOps(sid, ops),
         });
       }
     };
@@ -387,8 +411,8 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
     applySceneOps,
     client,
     daemonAuth,
-    dbClientEventsData,
-    dbUiActionsData,
+    dbClientEventRows,
+    dbUiActionRows,
     effectiveBase,
     rpcRuntime,
     sceneEntities,
@@ -401,11 +425,10 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
     if (!artifactCatalogSupported) return;
     const sid = String(sessionId || "").trim();
     if (!sid) return;
-    const rows =
-      sessionArtifactsData?.ok && Array.isArray(sessionArtifactsData?.artifacts) ? (sessionArtifactsData.artifacts as any[]) : [];
+    const rows = sessionArtifactRows;
     if (rows.length === 0) return;
 
-    const safeString = (value: any) => (typeof value === "string" ? value : "");
+    const safeString = (value: unknown) => (typeof value === "string" ? value : "");
     const isAbsoluteLikePath = (path: string) => {
       const trimmed = (path || "").trim();
       if (!trimmed) return false;
@@ -414,7 +437,7 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
       if (trimmed.startsWith("\\\\")) return true;
       return false;
     };
-    const post = async (type: string, data: any) => {
+    const post = async (type: string, data: unknown) => {
       await apiPostSessionUiEvent(
         effectiveBase,
         {
@@ -430,14 +453,11 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
 
     rows
       .slice(0, 32)
-      .map((record: any) => {
-        const data = record?.data ?? {};
-        const artifact = data?.artifact ?? record?.artifact ?? {};
-        const toolCallId =
-          typeof data?.tool_call_id === "string" ? data.tool_call_id : typeof record?.tool_call_id === "string" ? record.tool_call_id : "";
-        return { artifact, toolCallId };
+      .map((record) => {
+        const artifact = isUnknownRecord(record.artifact) ? record.artifact : null;
+        return { artifact, toolCallId: record.tool_call_id || "", kind: record.kind || "", title: record.title || "", path: record.path || "", resolvedPath: record.resolved_path || "" };
       })
-      .filter((entry) => entry.toolCallId && entry.artifact && typeof entry.artifact === "object")
+      .filter((entry): entry is { artifact: UnknownRecord; toolCallId: string; kind: string; title: string; path: string; resolvedPath: string } => Boolean(entry.toolCallId && entry.artifact))
       .slice(0, 8)
       .forEach((entry) => {
         const toolCallId = String(entry.toolCallId || "").trim();
@@ -446,11 +466,11 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
         if (artifactAckedRef.current[key]) return;
         artifactAckedRef.current[key] = true;
 
-        const artifact: any = entry.artifact;
-        const path = safeString(artifact?.path);
-        const resolvedPath = safeString(artifact?.resolved_path);
-        const kind = safeString(artifact?.kind);
-        const title = safeString(artifact?.title) || path || "artifact";
+        const artifact = entry.artifact;
+        const path = entry.path || safeString(artifact.path);
+        const resolvedPath = entry.resolvedPath || safeString(artifact.resolved_path);
+        const kind = entry.kind || safeString(artifact.kind);
+        const title = entry.title || safeString(artifact.title) || path || "artifact";
         const preferredFetchPath = path && !isAbsoluteLikePath(path) ? path : yolo && resolvedPath ? resolvedPath : path;
         const fallbackFetchPath =
           yolo && preferredFetchPath === path && path && !isAbsoluteLikePath(path) && resolvedPath && isAbsoluteLikePath(resolvedPath)
@@ -459,7 +479,7 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
 
         void (async () => {
           const tryPaths = [preferredFetchPath, fallbackFetchPath].filter((pathValue) => typeof pathValue === "string" && pathValue.trim().length > 0);
-          let lastErr: any = null;
+          let lastErr: unknown = null;
           for (const pathValue of tryPaths) {
             const sidQuery = sid ? `&session_id=${encodeURIComponent(sid)}` : "";
             const src = `${effectiveBase}/api/v1/file?path=${encodeURIComponent(pathValue)}&yolo=${yolo ? "1" : "0"}${sidQuery}`;
@@ -493,7 +513,7 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
           });
         })().catch(() => {});
       });
-  }, [artifactCatalogSupported, client, daemonAuth, effectiveBase, sessionArtifactsData, sessionId, yolo]);
+  }, [artifactCatalogSupported, client, daemonAuth, effectiveBase, sessionArtifactRows, sessionId, yolo]);
 
   return {
     applySceneOps,

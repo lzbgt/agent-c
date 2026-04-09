@@ -19,12 +19,15 @@ import {
   extractSessionInfo,
 } from "../api";
 import {
+  normalizeDbClientEventRows,
   getDbRunNumericId,
+  normalizeDbUiActionRows,
   normalizeDbMessageRows,
   normalizeDbRunDetailRow,
   normalizeDbRunSummaryRows,
   normalizeHistoryEntries,
   normalizeSessionArtifactRows,
+  normalizeSessionSceneSnapshot,
   type DbRunDetailRow,
   type HistoryEntry,
 } from "../history/historyPanelData";
@@ -256,6 +259,8 @@ export function useAppSessionQueries(args: AppDataPlaneArgs) {
     [sessionArtifacts.data],
   );
 
+  const sessionSceneSnapshot = React.useMemo(() => normalizeSessionSceneSnapshot(sessionScene.data), [sessionScene.data]);
+
   const dbUiActions = useQuery({
     queryKey: ["db_ui_actions", effectiveBase, authKey, selectedSessionId],
     queryFn: () => apiGetDbUiActions(effectiveBase, selectedSessionId, daemonAuth, { limit: 100, offset: 0 }),
@@ -264,6 +269,11 @@ export function useAppSessionQueries(args: AppDataPlaneArgs) {
     retry: 1,
   });
 
+  const dbUiActionRows = React.useMemo(
+    () => (dbUiActions.data?.ok ? normalizeDbUiActionRows(dbUiActions.data.ui_actions) : []),
+    [dbUiActions.data],
+  );
+
   const dbClientEvents = useQuery({
     queryKey: ["db_client_events", effectiveBase, authKey, selectedSessionId],
     queryFn: () => apiGetDbClientEvents(effectiveBase, selectedSessionId, daemonAuth, { limit: 100, offset: 0 }),
@@ -271,6 +281,11 @@ export function useAppSessionQueries(args: AppDataPlaneArgs) {
     refetchInterval: activeJobId ? 1500 : 5000,
     retry: 1,
   });
+
+  const dbClientEventRows = React.useMemo(
+    () => (dbClientEvents.data?.ok ? normalizeDbClientEventRows(dbClientEvents.data.client_events) : []),
+    [dbClientEvents.data],
+  );
 
   const auditRefetch = audit.refetch;
   const sessionsRefetch = sessions.refetch;
@@ -281,12 +296,14 @@ export function useAppSessionQueries(args: AppDataPlaneArgs) {
     auditEntriesDesc,
     auditRefetch,
     daemonConfig,
+    dbClientEventRows,
     dbClientEvents,
     dbMessages,
     dbMessageRows,
     dbRunDetailsById,
     dbRuns,
     dbRunRows,
+    dbUiActionRows,
     dbUiActions,
     health,
     historyEntriesDesc,
@@ -303,6 +320,7 @@ export function useAppSessionQueries(args: AppDataPlaneArgs) {
     sessionArtifactsUnsupported,
     sessionClientEvents,
     sessionList,
+    sessionSceneSnapshot,
     sessionScene,
   };
 }

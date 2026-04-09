@@ -274,12 +274,12 @@ export default function App() {
   }, [chatTarget, teamAction]);
 
   const {
-    audit, auditRefetch, clearAllSessions, clearAllSessionsError, clearDaemonApiKey, daemonConfig, dbClientEvents,
-    dbMessages, dbMessageRows, dbRunDetailsById, dbRuns, dbRunRows, dbUiActions, deleteSession, deleteSessionError, health, historyEntriesDesc,
+    audit, auditRefetch, clearAllSessions, clearAllSessionsError, clearDaemonApiKey, daemonConfig, dbClientEventRows,
+    dbMessageRows, dbRunDetailsById, dbRunRows, dbUiActionRows, deleteSession, deleteSessionError, health, historyEntriesDesc,
     isLocalDaemonBase, missingBrokerAuthToken, missingDaemonAuthToken, newSession, attachSession, attachSessionError,
     renewSessionAttachment, renewSessionAttachmentError, releaseSessionAttachment, releaseSessionAttachmentError,
     sessionInfoData, sessionLeaseConflict, setSessionLeaseConflict, saveDaemonApiKey, saveDaemonDefaults, sessionsRefetch,
-    sessionsUnauthorized, sessionArtifacts, sessionArtifactRows, sessionArtifactsUnsupported, sessionList, sessionScene, updateDaemonDefaults,
+    sessionsUnauthorized, sessionArtifactRows, sessionArtifactsUnsupported, sessionList, sessionSceneSnapshot, updateDaemonDefaults,
   } = useAppDataPlane({
     activeJobId,
     allowClientEffects,
@@ -341,10 +341,10 @@ export default function App() {
     setLiveEvents,
     yolo,
     artifactCatalogSupported: !sessionArtifactsUnsupported,
-    dbClientEventsData: dbClientEvents.data,
-    dbUiActionsData: dbUiActions.data,
-    sessionArtifactsData: sessionArtifacts.data,
-    sessionSceneData: sessionScene.data,
+    dbClientEventRows,
+    dbUiActionRows,
+    sessionArtifactRows,
+    sessionSceneSnapshot,
   });
 
   React.useEffect(() => {

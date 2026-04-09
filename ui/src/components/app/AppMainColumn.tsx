@@ -1,7 +1,7 @@
 import React from "react";
 import type { ApiAuth } from "../../api";
 import HistoryPanel from "../HistoryPanel";
-import SceneView from "../SceneView";
+import SceneView, { type SceneEntity } from "../SceneView";
 import BrokerTeamConsole from "../broker/BrokerTeamConsole";
 import TeamHubCard from "./TeamHubCard";
 
@@ -14,8 +14,8 @@ type AppMainColumnProps = {
   client: { id: string; kind: string; instance_id: string };
   daemonAuth: ApiAuth;
   sessionId: string;
-  sceneEntities: any[];
-  onSceneApply: (ops: any[]) => void;
+  sceneEntities: SceneEntity[];
+  onSceneApply: (ops: unknown[]) => void;
   brokerChatAvailable: boolean;
   teamHubProps: React.ComponentProps<typeof TeamHubCard>;
   inlineTeamSetupOpen: boolean;

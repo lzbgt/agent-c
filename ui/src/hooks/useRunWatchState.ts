@@ -5,6 +5,7 @@ import {
   apiGetClientPrefs,
   apiGetJob,
   apiPostClientPrefs,
+  type AgentEvent,
   type ApiAuth,
 } from "../api";
 import { loadJson } from "../jsonUtils";
@@ -37,7 +38,7 @@ type UseRunWatchStateArgs = {
   setJobError: React.Dispatch<React.SetStateAction<string | null>>;
   setJobStatus: React.Dispatch<React.SetStateAction<string | null>>;
   setJobUpdatedMs: React.Dispatch<React.SetStateAction<number | null>>;
-  setLiveEvents: React.Dispatch<React.SetStateAction<any[]>>;
+  setLiveEvents: React.Dispatch<React.SetStateAction<AgentEvent[]>>;
 };
 
 export function useRunWatchState(args: UseRunWatchStateArgs) {
@@ -83,7 +84,7 @@ export function useRunWatchState(args: UseRunWatchStateArgs) {
 
   const parseJobsBySession = React.useCallback(() => {
     const value = loadJson(jobsBySessionJsonRef.current);
-    const jobs = value && typeof value === "object" ? (value as Record<string, any>) : {};
+    const jobs = value && typeof value === "object" && !Array.isArray(value) ? (value as RunWatchByScope) : {};
     const pruned = pruneJobsBySession(Date.now(), jobs);
     if (pruned.changed) {
       try {
@@ -211,7 +212,8 @@ export function useRunWatchState(args: UseRunWatchStateArgs) {
   const writeJobsBySession = React.useCallback<JobStoreWriter>(
     (mutate) => {
       setJobsBySessionJson((prevRaw) => {
-        const prev = (loadJson(String(prevRaw || "")) as Record<string, any>) || {};
+        const parsed = loadJson(String(prevRaw || ""));
+        const prev = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as RunWatchByScope) : {};
         const next = mutate(prev);
         scheduleRunWatchPersist(next);
         try {

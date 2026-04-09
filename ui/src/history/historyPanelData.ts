@@ -1,4 +1,5 @@
 import type { AgentEvent } from "../api";
+import type { SceneEntity } from "../components/SceneView";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -55,15 +56,47 @@ export type DbRunDetailRow = {
   tool_records: DbToolRecordRow[];
 };
 
+export type DbUiActionRow = {
+  id?: number;
+  run_id?: number;
+  ts_unix_ms?: number;
+  tool_call_id?: string;
+  type?: string;
+  title?: string;
+  message?: string;
+  path?: string;
+  mime?: string;
+  repeat?: number;
+  autoplay?: boolean;
+  action?: UnknownRecord;
+  action_json?: string;
+};
+
+export type DbClientEventRow = {
+  id?: number;
+  ts_unix_ms?: number;
+  type?: string;
+  data?: UnknownRecord;
+  data_json?: string;
+};
+
 export type SessionArtifactRow = {
   artifact: unknown;
   path?: string;
   resolved_path?: string;
+  tool_call_id?: string;
+  kind?: string;
+  title?: string;
 };
 
 export type ParsedToolArguments = {
   cmd?: string;
   argv?: string[];
+};
+
+export type SessionSceneSnapshot = {
+  updated_unix_ms?: number;
+  scene: Record<string, SceneEntity>;
 };
 
 export type PersistedConversationItem =
@@ -98,6 +131,18 @@ const asOptionalBoolean = (value: unknown): boolean | undefined => {
     if (lowered === "false" || lowered === "0") return false;
   }
   return undefined;
+};
+
+const parseUnknownRecordJson = (value: unknown): UnknownRecord | undefined => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    return isUnknownRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
 };
 
 const toAgentEvent = (value: unknown): AgentEvent | null => {
@@ -203,6 +248,44 @@ export const normalizeDbRunDetailRow = (value: unknown): DbRunDetailRow | null =
   };
 };
 
+const toDbUiActionRow = (value: unknown): DbUiActionRow | null => {
+  if (!isUnknownRecord(value)) return null;
+  return {
+    id: asFiniteNumber(value.id),
+    run_id: asFiniteNumber(value.run_id),
+    ts_unix_ms: asFiniteNumber(value.ts_unix_ms),
+    tool_call_id: asTrimmedString(value.tool_call_id),
+    type: asTrimmedString(value.type),
+    title: asTrimmedString(value.title),
+    message: typeof value.message === "string" ? value.message : undefined,
+    path: asTrimmedString(value.path),
+    mime: asTrimmedString(value.mime),
+    repeat: asFiniteNumber(value.repeat),
+    autoplay: asOptionalBoolean(value.autoplay),
+    action: isUnknownRecord(value.action) ? value.action : parseUnknownRecordJson(value.action_json),
+    action_json: typeof value.action_json === "string" ? value.action_json : undefined,
+  };
+};
+
+export const normalizeDbUiActionRows = (value: unknown): DbUiActionRow[] =>
+  Array.isArray(value) ? value.map((row) => toDbUiActionRow(row)).filter((row): row is DbUiActionRow => row !== null) : [];
+
+const toDbClientEventRow = (value: unknown): DbClientEventRow | null => {
+  if (!isUnknownRecord(value)) return null;
+  return {
+    id: asFiniteNumber(value.id),
+    ts_unix_ms: asFiniteNumber(value.ts_unix_ms),
+    type: asTrimmedString(value.type),
+    data: isUnknownRecord(value.data) ? value.data : parseUnknownRecordJson(value.data_json),
+    data_json: typeof value.data_json === "string" ? value.data_json : undefined,
+  };
+};
+
+export const normalizeDbClientEventRows = (value: unknown): DbClientEventRow[] =>
+  Array.isArray(value)
+    ? value.map((row) => toDbClientEventRow(row)).filter((row): row is DbClientEventRow => row !== null)
+    : [];
+
 export const normalizeSessionArtifactRows = (value: unknown): SessionArtifactRow[] => {
   if (!Array.isArray(value)) return [];
   return value.flatMap((row) => {
@@ -216,9 +299,49 @@ export const normalizeSessionArtifactRows = (value: unknown): SessionArtifactRow
         artifact,
         path: asTrimmedString(artifactRecord?.path),
         resolved_path: asTrimmedString(artifactRecord?.resolved_path),
+        tool_call_id:
+          asTrimmedString(nestedData?.tool_call_id) ??
+          asTrimmedString(row.tool_call_id) ??
+          asTrimmedString(artifactRecord?.tool_call_id),
+        kind: asTrimmedString(artifactRecord?.kind) ?? asTrimmedString(row.kind),
+        title: asTrimmedString(artifactRecord?.title) ?? asTrimmedString(row.title),
       },
     ];
   });
+};
+
+const toSceneEntity = (value: unknown, fallbackId?: string): SceneEntity | null => {
+  if (!isUnknownRecord(value)) return null;
+  const id = asTrimmedString(value.id) ?? asTrimmedString(fallbackId);
+  const kind = asTrimmedString(value.kind);
+  if (!id || !kind) return null;
+  return {
+    id,
+    kind,
+    title: asTrimmedString(value.title),
+    props: value.props,
+    created_ms: asFiniteNumber(value.created_ms),
+    updated_ms: asFiniteNumber(value.updated_ms),
+  };
+};
+
+export const normalizeSceneEntityStore = (value: unknown): Record<string, SceneEntity> => {
+  if (!isUnknownRecord(value)) return {};
+  const next: Record<string, SceneEntity> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    const entity = toSceneEntity(raw, key);
+    if (!entity) continue;
+    next[entity.id] = entity;
+  }
+  return next;
+};
+
+export const normalizeSessionSceneSnapshot = (value: unknown): SessionSceneSnapshot | null => {
+  if (!isUnknownRecord(value) || value.ok !== true) return null;
+  return {
+    updated_unix_ms: asFiniteNumber(value.updated_unix_ms),
+    scene: normalizeSceneEntityStore(value.scene),
+  };
 };
 
 export const parseToolArgumentsJson = (raw: string): ParsedToolArguments | null => {

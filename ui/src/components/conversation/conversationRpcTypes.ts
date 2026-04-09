@@ -1,4 +1,5 @@
 import type { ApiAuth } from "../../api";
+import type { SceneEntity } from "../SceneView";
 import type { ConversationRpcRuntime } from "./conversationViewTypes";
 
 export type ConversationUiActionRpcRequest = {
@@ -31,6 +32,6 @@ export type ConversationUiActionRpcExecutorInput = {
   sideEffectsRequested: boolean;
   postClientEvent: (type: string, payload: any) => Promise<void>;
   runtime: ConversationRpcRuntime;
-  sceneEntities?: any[];
-  onSceneApply?: (ops: any[]) => any;
+  sceneEntities?: SceneEntity[];
+  onSceneApply?: (ops: unknown[]) => unknown;
 };

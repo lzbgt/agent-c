@@ -1,7 +1,14 @@
 import type React from "react";
-import type { ApiAuth } from "../api";
+import type { AgentEvent, ApiAuth } from "../api";
+import type {
+  DbClientEventRow,
+  DbUiActionRow,
+  SessionArtifactRow,
+  SessionSceneSnapshot,
+} from "../history/historyPanelData";
+import type { RunWatchByScope } from "../runWatchPrefs";
 
-export type JobStoreWriter = (mutate: (prev: Record<string, any>) => Record<string, any>) => void;
+export type JobStoreWriter = (mutate: (prev: RunWatchByScope) => RunWatchByScope) => void;
 
 export type RuntimePlaneArgs = {
   activeJobId: string | null;
@@ -22,11 +29,11 @@ export type RuntimePlaneArgs = {
   setJobError: React.Dispatch<React.SetStateAction<string | null>>;
   setJobStatus: React.Dispatch<React.SetStateAction<string | null>>;
   setJobUpdatedMs: React.Dispatch<React.SetStateAction<number | null>>;
-  setLiveEvents: React.Dispatch<React.SetStateAction<any[]>>;
+  setLiveEvents: React.Dispatch<React.SetStateAction<AgentEvent[]>>;
   yolo: boolean;
   artifactCatalogSupported: boolean;
-  dbClientEventsData: any;
-  dbUiActionsData: any;
-  sessionArtifactsData: any;
-  sessionSceneData: any;
+  dbClientEventRows: DbClientEventRow[];
+  dbUiActionRows: DbUiActionRow[];
+  sessionArtifactRows: SessionArtifactRow[];
+  sessionSceneSnapshot: SessionSceneSnapshot | null;
 };
