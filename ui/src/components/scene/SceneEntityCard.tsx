@@ -4,7 +4,7 @@ import type { ApiAuth } from "../../api";
 import ArtifactView from "../ArtifactView";
 import Canvas2DEntityView from "./Canvas2DEntityView";
 import DomEntityView from "./DomEntityView";
-import type { SceneEntity, SceneScriptErrorArgs } from "./sceneViewTypes";
+import type { SceneClientRef, SceneEntity, SceneScriptErrorArgs } from "./sceneViewTypes";
 import { toTestIdPart } from "./sceneViewUtils";
 
 function JsonEntityView({ entity }: { entity: SceneEntity }) {
@@ -31,7 +31,7 @@ export default function SceneEntityCard({
 }: {
   allowAutoplay?: boolean;
   baseUrl?: string;
-  client?: any;
+  client?: SceneClientRef;
   daemonAuth?: ApiAuth;
   defaultExpandedCount: number;
   entity: SceneEntity;

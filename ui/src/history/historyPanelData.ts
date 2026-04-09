@@ -319,7 +319,7 @@ const toSceneEntity = (value: unknown, fallbackId?: string): SceneEntity | null 
     id,
     kind,
     title: asTrimmedString(value.title),
-    props: value.props,
+    props: isUnknownRecord(value.props) ? value.props : undefined,
     created_ms: asFiniteNumber(value.created_ms),
     updated_ms: asFiniteNumber(value.updated_ms),
   };

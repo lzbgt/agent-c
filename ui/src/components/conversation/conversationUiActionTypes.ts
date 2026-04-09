@@ -1,6 +1,8 @@
 import type { ApiAuth } from "../../api";
 import type { SceneEntity } from "../SceneView";
+import type { SceneEntityMutationOp } from "../scene/sceneViewTypes";
 import type { ConversationRpcRuntime } from "./conversationViewTypes";
+import type { UnknownRecord } from "./utils";
 
 export type ConversationUiActionCardProps = {
   baseUrl: string;
@@ -11,14 +13,14 @@ export type ConversationUiActionCardProps = {
   allowClientEffects: boolean;
   allowUnsafePageEval: boolean;
   disableAutoClientRpcs?: boolean;
-  data: any;
+  data: UnknownRecord;
   idx: number;
   ackedKeys: Record<string, number>;
   ackError: string | null;
   setAckError: (msg: string | null) => void;
   markAckedKey: (key: string) => void;
-  postClientEvent: (type: string, payload: any) => Promise<void>;
+  postClientEvent: (type: string, payload: unknown) => Promise<void>;
   runtime: ConversationRpcRuntime;
   sceneEntities?: SceneEntity[];
-  onSceneApply?: (ops: unknown[]) => unknown;
+  onSceneApply?: (ops: SceneEntityMutationOp[]) => unknown;
 };

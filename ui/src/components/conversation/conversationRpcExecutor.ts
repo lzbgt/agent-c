@@ -1,4 +1,5 @@
 import { daemonFetchInit, daemonHeaders } from "../../api";
+import { buildEntityApplyOps, capEventPayload } from "./conversationData";
 import {
   clampInt,
   createInlineWorker,
@@ -6,19 +7,33 @@ import {
   safeObject,
   safeTrunc,
   tryParseUrl,
+  type UnknownRecord,
 } from "./utils";
 import type { ConversationUiActionRpcExecutorInput } from "./conversationRpcTypes";
 
-function capForEvent(v: any) {
-  try {
-    const s = JSON.stringify(v);
-    const max = 32 * 1024;
-    if (s.length <= max) return v;
-    return { kind: "truncated", bytes: s.length, preview: s.slice(0, 2000) };
-  } catch {
-    return { kind: "unserializable" };
-  }
-}
+type DomQueryField =
+  | "tag"
+  | "text"
+  | "value"
+  | "checked"
+  | "dataset"
+  | "attrs"
+  | "currentSrc"
+  | "paused"
+  | "ended"
+  | "currentTime"
+  | "duration";
+
+type DomQueryItem = Partial<Record<DomQueryField, unknown>>;
+
+const isValueElement = (value: Element | null): value is HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement =>
+  value instanceof HTMLInputElement || value instanceof HTMLTextAreaElement || value instanceof HTMLSelectElement;
+
+const isCheckableElement = (value: Element | null): value is HTMLInputElement => value instanceof HTMLInputElement;
+
+const isMediaElement = (value: Element | null): value is HTMLMediaElement => value instanceof HTMLMediaElement;
+
+const getDomNodeTag = (value: Element): string => String(value.tagName || "").toLowerCase();
 
 function createConversationRpcHelpers({
   baseUrl,
@@ -33,7 +48,7 @@ function createConversationRpcHelpers({
   sceneEntities,
   onSceneApply,
 }: ConversationUiActionRpcExecutorInput & {
-  postRpcProgress: (name: string, payload?: any) => Promise<void>;
+  postRpcProgress: (name: string, payload?: unknown) => Promise<void>;
 }) {
   const safeFieldSet = new Set([
     "tag",
@@ -49,62 +64,64 @@ function createConversationRpcHelpers({
     "duration",
   ]);
 
-  const makeDomQuery = (args: any) => {
-    const selector = safeTrunc(String(args?.selector ?? ""), 200);
-    const limit = clampInt(args?.limit, 1, 20, 10);
-    const fieldsRaw = Array.isArray(args?.fields) ? args.fields : [];
+  const makeDomQuery = (args: UnknownRecord) => {
+    const selector = safeTrunc(String(args.selector ?? ""), 200);
+    const limit = clampInt(args.limit, 1, 20, 10);
+    const fieldsRaw = Array.isArray(args.fields) ? args.fields : [];
     let fields = fieldsRaw
-      .map((x: any) => String(x))
-      .filter((f: string) => safeFieldSet.has(f))
+      .map((value) => String(value))
+      .filter((field): field is DomQueryField => safeFieldSet.has(field))
       .slice(0, 20);
     if (fields.length === 0) fields = ["tag", "text"];
     if (!selector) throw new Error("dom_query requires selector");
     const els = Array.from(document.querySelectorAll(selector)).slice(0, limit);
     const items = els.map((el) => {
-      const out: any = {};
-      const asAny: any = el as any;
-      if (fields.includes("tag")) out.tag = el.tagName.toLowerCase();
+      const out: DomQueryItem = {};
+      if (fields.includes("tag")) out.tag = getDomNodeTag(el);
       if (fields.includes("text")) out.text = safeTrunc(String(el.textContent ?? "").trim(), 400);
-      if (fields.includes("value") && "value" in asAny) {
-        const inputType =
-          typeof (asAny as HTMLInputElement)?.type === "string" ? String((asAny as HTMLInputElement).type).toLowerCase() : "";
-        if (inputType === "password") out.value = "(redacted)";
-        else out.value = safeTrunc(String(asAny.value ?? ""), 200);
+      if (fields.includes("value") && isValueElement(el)) {
+        const inputType = el instanceof HTMLInputElement ? String(el.type || "").toLowerCase() : "";
+        out.value = inputType === "password" ? "(redacted)" : safeTrunc(String(el.value ?? ""), 200);
       }
-      if (fields.includes("checked") && "checked" in asAny) out.checked = !!asAny.checked;
+      if (fields.includes("checked") && isCheckableElement(el)) out.checked = !!el.checked;
       if (fields.includes("dataset")) {
-        const ds: any = asAny.dataset ?? {};
-        const keys = Object.keys(ds).slice(0, 20);
-        const dso: any = {};
-        keys.forEach((k: string) => {
-          dso[k] = isSensitiveKey(k) ? "(redacted)" : safeTrunc(String(ds[k] ?? ""), 200);
-        });
+        const ds = el instanceof HTMLElement ? el.dataset : undefined;
+        const dso: Record<string, string> = {};
+        if (ds) {
+          Object.keys(ds)
+            .slice(0, 20)
+            .forEach((key) => {
+              dso[key] = isSensitiveKey(key) ? "(redacted)" : safeTrunc(String(ds[key] ?? ""), 200);
+            });
+        }
         out.dataset = dso;
       }
       if (fields.includes("attrs")) {
         const names = Array.from(el.getAttributeNames ? el.getAttributeNames() : []).slice(0, 20);
-        const attrs: any = {};
+        const attrs: Record<string, string> = {};
         names.forEach((n) => {
           attrs[n] = isSensitiveKey(n) ? "(redacted)" : safeTrunc(String(el.getAttribute(n) ?? ""), 200);
         });
         out.attrs = attrs;
       }
-      if (fields.includes("currentSrc") && "currentSrc" in asAny) out.currentSrc = safeTrunc(String(asAny.currentSrc ?? ""), 300);
-      if (fields.includes("paused") && "paused" in asAny) out.paused = !!asAny.paused;
-      if (fields.includes("ended") && "ended" in asAny) out.ended = !!asAny.ended;
-      if (fields.includes("currentTime") && "currentTime" in asAny) out.currentTime = asAny.currentTime;
-      if (fields.includes("duration") && "duration" in asAny) out.duration = asAny.duration;
+      if (isMediaElement(el)) {
+        if (fields.includes("currentSrc")) out.currentSrc = safeTrunc(String(el.currentSrc ?? ""), 300);
+        if (fields.includes("paused")) out.paused = !!el.paused;
+        if (fields.includes("ended")) out.ended = !!el.ended;
+        if (fields.includes("currentTime")) out.currentTime = el.currentTime;
+        if (fields.includes("duration")) out.duration = el.duration;
+      }
       return out;
     });
     return { kind: "dom_query", selector, limit, fields, items };
   };
 
-  const makeDomApply = (args: any) => {
-    const opsRaw = Array.isArray(args?.ops) ? args.ops : [];
+  const makeDomApply = (args: UnknownRecord) => {
+    const opsRaw = Array.isArray(args.ops) ? args.ops : [];
     const ops = opsRaw.slice(0, 100);
-    const results: any[] = [];
+    const results: UnknownRecord[] = [];
 
-    const applyOne = (op: any) => {
+    const applyOne = (op: unknown): UnknownRecord => {
       const o = safeObject(op);
       const kind = String(o.op ?? o.kind ?? "").trim();
       if (!kind) throw new Error("dom_apply op missing op");
@@ -138,14 +155,14 @@ function createConversationRpcHelpers({
         const parentSel = String(o.parent_selector ?? o.parent ?? "body");
         const parent = (parentSel ? document.querySelector(parentSel) : document.body) ?? document.body;
         const insert = String(o.insert ?? "append");
-        if (insert === "prepend" && "prepend" in parent) (parent as any).prepend(el);
-        else (parent as any).append(el);
+        if (insert === "prepend") parent.insertBefore(el, parent.firstChild);
+        else parent.appendChild(el);
         return { op: "create", tag, parent_selector: parentSel, inserted: true };
       }
 
       const selector = String(o.selector ?? "");
       if (!selector) throw new Error(`${kind} requires selector`);
-      const nodes = Array.from(document.querySelectorAll(selector)).slice(0, limit) as any[];
+      const nodes = Array.from(document.querySelectorAll(selector)).slice(0, limit);
 
       if (kind === "remove") {
         let removed = 0;
@@ -258,92 +275,28 @@ function createConversationRpcHelpers({
     return { kind: "dom_apply", ops: results, applied: results.filter((r) => r && r.ok).length, total: results.length };
   };
 
-  const makeEntityApply = (args: any) => {
+  const makeEntityApply = (args: unknown) => {
     if (!onSceneApply) {
       throw new Error("entity_apply not supported (no scene handler)");
     }
-    if (Array.isArray(args?.ops)) {
-      const hasClear = args.ops.some((op: any) => String(op?.op ?? op?.kind ?? "").trim() === "clear");
-      if (hasClear) throw new Error("scene clear is disabled in WebUI");
-      return onSceneApply(args.ops);
-    }
-
-    if (Array.isArray(args?.entities)) {
-      const ops: any[] = [];
-      const ents = args.entities as any[];
-      for (const ent of ents.slice(0, 50)) {
-        if (!ent || typeof ent !== "object") continue;
-        const id = safeTrunc(String(ent?.id ?? ""), 200);
-        const entityKind = safeTrunc(String(ent?.entity_kind ?? ent?.entityKind ?? ent?.type ?? ent?.kind ?? ""), 100);
-        if (!id || !entityKind) continue;
-        const title = typeof ent?.title === "string" ? safeTrunc(String(ent.title), 200) : undefined;
-        const props = safeObject(ent?.props ?? ent ?? {});
-        ops.push({ op: "create", id, entity_kind: entityKind, title, props });
-        const actions = Array.isArray(ent?.actions) ? ent.actions : [];
-        for (const a of actions.slice(0, 20)) {
-          const name = safeTrunc(String(a?.name ?? a?.action ?? a?.kind ?? ""), 80);
-          if (!name) continue;
-          ops.push({ op: "action", id, action: name, args: safeObject(a?.args ?? a ?? {}) });
-        }
-      }
-      return onSceneApply(ops);
-    }
-
-    const id = safeTrunc(String(args?.id ?? ""), 200);
-    const entityKind = safeTrunc(String(args?.entity_kind ?? args?.entityKind ?? args?.type ?? args?.kind ?? ""), 100);
-    const props = safeObject(args?.props ?? {});
-    const titleFromProps = typeof props?.title === "string" ? safeTrunc(String(props.title), 200) : "";
-    const titleFromArgs = typeof args?.title === "string" ? safeTrunc(String(args.title), 200) : "";
-    const title = titleFromArgs || titleFromProps || "";
-
-    const ops: any[] = [];
-
-    if (id && entityKind && (Object.keys(props).length > 0 || title)) {
-      ops.push({
-        op: "create",
-        id,
-        entity_kind: entityKind,
-        title: title || undefined,
-        props,
-      });
-    } else if (id && Object.keys(props).length > 0) {
-      ops.push({ op: "update", id, props });
-    }
-
-    const actions = Array.isArray(args?.actions) ? args.actions : [];
-    for (const a of actions.slice(0, 20)) {
-      const name = safeTrunc(String(a?.name ?? a?.action ?? ""), 80);
-      if (!name) continue;
-      ops.push({ op: "action", id, action: name, args: safeObject(a?.args ?? {}) });
-    }
-    const singleAction = safeTrunc(String(args?.action ?? ""), 80);
-    if (singleAction) {
-      ops.push({ op: "action", id, action: singleAction, args: safeObject(args?.args ?? {}) });
-    }
-
-    if (args?.delete === true || args?.remove === true) {
-      ops.push({ op: "delete", id });
-    }
-    if (args?.clear === true) {
-      throw new Error("scene clear is disabled in WebUI");
-    }
-
+    const ops = buildEntityApplyOps(args);
+    if (ops.some((op) => op.op === "clear")) throw new Error("scene clear is disabled in WebUI");
     return onSceneApply(ops);
   };
 
-  const makeEntityQuery = (args: any) => {
+  const makeEntityQuery = (args: UnknownRecord) => {
     const ents = Array.isArray(sceneEntities) ? sceneEntities : [];
     const kind =
-      typeof args?.entity_kind === "string"
+      typeof args.entity_kind === "string"
         ? String(args.entity_kind).trim()
-        : typeof args?.kind === "string"
+        : typeof args.kind === "string"
           ? String(args.kind).trim()
           : "";
-    const idPrefix = typeof args?.id_prefix === "string" ? String(args.id_prefix).trim() : "";
-    const limit = clampInt(args?.limit, 1, 200, 50);
+    const idPrefix = typeof args.id_prefix === "string" ? String(args.id_prefix).trim() : "";
+    const limit = clampInt(args.limit, 1, 200, 50);
     const items = ents
-      .filter((e: any) => (kind ? String(e?.kind ?? "") === kind : true))
-      .filter((e: any) => (idPrefix ? String(e?.id ?? "").startsWith(idPrefix) : true))
+      .filter((entity) => (kind ? String(entity?.kind ?? "") === kind : true))
+      .filter((entity) => (idPrefix ? String(entity?.id ?? "").startsWith(idPrefix) : true))
       .slice(0, limit);
     return { kind: "entity_query", entity_kind: kind || undefined, id_prefix: idPrefix || undefined, count: items.length, items };
   };
@@ -352,7 +305,7 @@ function createConversationRpcHelpers({
     const els = Array.from(document.querySelectorAll("audio,video")).slice(0, 20) as HTMLMediaElement[];
     const items = els.map((el) => {
       const isVideo = el.tagName.toLowerCase() === "video";
-      const ds: any = (el as any).dataset || {};
+      const ds = el.dataset;
       const src = el.currentSrc || el.src || "";
       const u = src ? tryParseUrl(src) : null;
       const fromFilePath = u && u.pathname.endsWith("/api/v1/file") ? u.searchParams.get("path") || "" : "";
@@ -362,7 +315,7 @@ function createConversationRpcHelpers({
         path: safeTrunc(String(ds.path || fromFilePath || ""), 200),
         src: safeTrunc(String(src || ""), 300),
         paused: el.paused,
-        ended: (el as any).ended,
+        ended: el.ended,
         current_time: Number.isFinite(el.currentTime) ? el.currentTime : 0,
         duration: Number.isFinite(el.duration) ? el.duration : 0,
       };
@@ -370,28 +323,29 @@ function createConversationRpcHelpers({
     return { kind: "media_snapshot", items };
   };
 
-  const makeDomClick = (args: any) => {
-    const selector = safeTrunc(String(args?.selector ?? ""), 200);
+  const makeDomClick = (args: UnknownRecord) => {
+    const selector = safeTrunc(String(args.selector ?? ""), 200);
     if (!selector) throw new Error("dom_click requires selector");
-    const el = document.querySelector(selector) as any;
+    const el = document.querySelector(selector);
     if (!el) return { kind: "dom_click", selector, clicked: false };
-    if (typeof el.click === "function") {
-      el.click();
-      return { kind: "dom_click", selector, clicked: true, tag: String(el.tagName || "").toLowerCase() };
+    const clickable = el as Element & { click?: () => void };
+    if (typeof clickable.click === "function") {
+      clickable.click();
+      return { kind: "dom_click", selector, clicked: true, tag: getDomNodeTag(el) };
     }
     throw new Error("element has no click()");
   };
 
-  const makeDomSetValue = (args: any) => {
-    const selector = safeTrunc(String(args?.selector ?? ""), 200);
-    const rawValue = String(args?.value ?? "");
+  const makeDomSetValue = (args: UnknownRecord) => {
+    const selector = safeTrunc(String(args.selector ?? ""), 200);
+    const rawValue = String(args.value ?? "");
     const value = rawValue.length > 2000 ? rawValue.slice(0, 2000) : rawValue;
     if (!selector) throw new Error("dom_set_value requires selector");
-    const el = document.querySelector(selector) as any;
+    const el = document.querySelector(selector);
     if (!el) return { kind: "dom_set_value", selector, set: false };
-    if (!("value" in el)) throw new Error("element has no value");
+    if (!isValueElement(el)) throw new Error("element has no value");
     el.value = value;
-    const dispatch = args?.dispatch_events !== false;
+    const dispatch = args.dispatch_events !== false;
     if (dispatch) {
       try {
         el.dispatchEvent(new Event("input", { bubbles: true }));
@@ -403,15 +357,16 @@ function createConversationRpcHelpers({
     return { kind: "dom_set_value", selector, set: true };
   };
 
-  const makeArtifactUrl = async (args: any) => {
+  const makeArtifactUrl = async (args: UnknownRecord) => {
     const hdr = daemonHeaders(daemonAuth);
     const sid = typeof sessionId === "string" ? sessionId.trim() : "";
-    const path = safeTrunc(String(args?.path ?? args?.artifact?.path ?? ""), 4000).trim();
+    const artifact = safeObject(args.artifact);
+    const path = safeTrunc(String(args.path ?? artifact.path ?? ""), 4000).trim();
     const resolvedPath = safeTrunc(
-      String(args?.resolved_path ?? args?.resolvedPath ?? args?.artifact?.resolved_path ?? ""),
+      String(args.resolved_path ?? args.resolvedPath ?? artifact.resolved_path ?? ""),
       4000,
     ).trim();
-    const wantYolo = typeof args?.yolo === "boolean" ? args.yolo : yolo;
+    const wantYolo = typeof args.yolo === "boolean" ? args.yolo : yolo;
 
     if (!path && !resolvedPath) throw new Error("artifact_url requires path or resolved_path");
 
@@ -419,7 +374,7 @@ function createConversationRpcHelpers({
     if (path) tryPaths.push(path);
     if (wantYolo && resolvedPath && !tryPaths.includes(resolvedPath)) tryPaths.push(resolvedPath);
 
-    let lastErr: any = null;
+    let lastErr: unknown = null;
     for (const p of tryPaths) {
       const sidQ = sid ? `&session_id=${encodeURIComponent(sid)}` : "";
       const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${wantYolo ? "1" : "0"}${sidQ}`;
@@ -447,7 +402,7 @@ function createConversationRpcHelpers({
           url: u,
           source_path: p,
           content_type: ct || undefined,
-          size_bytes: typeof (b as any)?.size === "number" ? (b as any).size : undefined,
+          size_bytes: typeof b.size === "number" ? b.size : undefined,
         };
       } catch (e) {
         lastErr = e;
@@ -456,16 +411,16 @@ function createConversationRpcHelpers({
     throw lastErr || new Error("artifact_url failed");
   };
 
-  const makeMediaPlay = async (args: any) => {
-    const urlRaw = String(args?.url ?? args?.src ?? "").trim();
-    const pathRaw = String(args?.path ?? "").trim();
-    const resolvedPathRaw = String(args?.resolved_path ?? args?.resolvedPath ?? "").trim();
+  const makeMediaPlay = async (args: UnknownRecord) => {
+    const urlRaw = String(args.url ?? args.src ?? "").trim();
+    const pathRaw = String(args.path ?? "").trim();
+    const resolvedPathRaw = String(args.resolved_path ?? args.resolvedPath ?? "").trim();
 
-    const selector = safeTrunc(String(args?.selector ?? ""), 200).trim();
+    const selector = safeTrunc(String(args.selector ?? ""), 200).trim();
     if (selector) {
-      const el = document.querySelector(selector) as any;
+      const el = document.querySelector(selector);
       if (!el) return { kind: "media_play", selector, ok: false, error: "no element matched" };
-      if (typeof el.play !== "function") return { kind: "media_play", selector, ok: false, error: "element has no play()" };
+      if (!isMediaElement(el)) return { kind: "media_play", selector, ok: false, error: "element has no play()" };
       try {
         await el.play();
         return { kind: "media_play", selector, ok: true };
@@ -474,8 +429,8 @@ function createConversationRpcHelpers({
       }
     }
 
-    const id = safeTrunc(String(args?.id ?? args?.element_id ?? ""), 80).trim();
-    const tagRaw = String(args?.tag ?? args?.element ?? args?.kind ?? "").toLowerCase();
+    const id = safeTrunc(String(args.id ?? args.element_id ?? ""), 80).trim();
+    const tagRaw = String(args.tag ?? args.element ?? args.kind ?? "").toLowerCase();
     const tag = tagRaw.includes("video") ? "video" : "audio";
 
     let url = urlRaw;
@@ -483,14 +438,20 @@ function createConversationRpcHelpers({
       const u = await makeArtifactUrl({
         path: pathRaw,
         resolved_path: resolvedPathRaw,
-        yolo: typeof args?.yolo === "boolean" ? args.yolo : yolo,
+        yolo: typeof args.yolo === "boolean" ? args.yolo : yolo,
       });
-      url = String((u as any)?.url ?? "").trim();
+      url = typeof safeObject(u).url === "string" ? String(safeObject(u).url).trim() : "";
     }
     if (!url) return { kind: "media_play", ok: false, error: "media_play requires selector or url/path" };
 
-    let el: any = null;
-    if (id) el = document.getElementById(id);
+    let el: HTMLMediaElement | null = null;
+    if (id) {
+      const existing = document.getElementById(id);
+      if (existing && !isMediaElement(existing)) {
+        return { kind: "media_play", ok: false, created: false, tag, id, error: "existing element is not media" };
+      }
+      el = isMediaElement(existing) ? existing : null;
+    }
     if (!el) {
       el = document.createElement(tag);
       if (id) el.id = id;
@@ -503,19 +464,19 @@ function createConversationRpcHelpers({
     if (!el) return { kind: "media_play", ok: false, error: "failed to create element" };
 
     try {
-      el.controls = args?.controls !== false;
+      el.controls = args.controls !== false;
     } catch {}
     try {
-      if (typeof args?.autoplay === "boolean") el.autoplay = args.autoplay;
+      if (typeof args.autoplay === "boolean") el.autoplay = args.autoplay;
     } catch {}
     try {
-      if (typeof args?.loop === "boolean") el.loop = args.loop;
+      if (typeof args.loop === "boolean") el.loop = args.loop;
     } catch {}
     try {
-      if (typeof args?.muted === "boolean") el.muted = args.muted;
+      if (typeof args.muted === "boolean") el.muted = args.muted;
     } catch {}
     try {
-      if (typeof args?.volume === "number" && Number.isFinite(args.volume)) el.volume = Math.min(1, Math.max(0, args.volume));
+      if (typeof args.volume === "number" && Number.isFinite(args.volume)) el.volume = Math.min(1, Math.max(0, args.volume));
     } catch {}
     try {
       el.src = url;
@@ -529,18 +490,12 @@ function createConversationRpcHelpers({
     }
   };
 
-  const makeMediaPause = async (args: any) => {
-    const selector = safeTrunc(String(args?.selector ?? ""), 200).trim();
-    const id = safeTrunc(String(args?.id ?? args?.element_id ?? ""), 80).trim();
-    const el = selector
-      ? (document.querySelector(selector) as any)
-      : id
-        ? (document.getElementById(id) as any)
-        : null;
+  const makeMediaPause = async (args: UnknownRecord) => {
+    const selector = safeTrunc(String(args.selector ?? ""), 200).trim();
+    const id = safeTrunc(String(args.id ?? args.element_id ?? ""), 80).trim();
+    const candidate = selector ? document.querySelector(selector) : id ? document.getElementById(id) : null;
+    const el = isMediaElement(candidate) ? candidate : null;
     if (!el) return { kind: "media_pause", ok: false, selector: selector || undefined, id: id || undefined, error: "no element matched" };
-    if (typeof el.pause !== "function") {
-      return { kind: "media_pause", ok: false, selector: selector || undefined, id: id || undefined, error: "element has no pause()" };
-    }
     try {
       el.pause();
       return { kind: "media_pause", ok: true, selector: selector || undefined, id: id || undefined };
@@ -553,7 +508,7 @@ function createConversationRpcHelpers({
     const href = String(window?.location?.href ?? "");
     const u = href ? tryParseUrl(href) : null;
     const sp = u ? u.searchParams : null;
-    const searchParams: any = {};
+    const searchParams: Record<string, string> = {};
     let hasSensitive = false;
     if (sp) {
       const keys = Array.from(sp.keys()).slice(0, 40);
@@ -577,17 +532,21 @@ function createConversationRpcHelpers({
     };
   };
 
-  const makeMediaObserve = async (args: any) => {
-    const eventsRaw = Array.isArray(args?.events) ? args.events : ["play", "pause", "ended", "error"];
+  const makeMediaObserve = async (args: UnknownRecord) => {
+    const eventsRaw = Array.isArray(args.events) ? args.events : ["play", "pause", "ended", "error"];
     const allowed = new Set(["play", "pause", "ended", "error", "timeupdate"]);
     const events: string[] = eventsRaw
-      .map((x: any) => String(x))
+      .map((x) => String(x))
       .filter((x: string) => allowed.has(x))
       .slice(0, 5);
-    const selectorFromArgs = safeTrunc(String(args?.selector ?? ""), 200);
-    const toolId = safeTrunc(String(args?.tool_call_id ?? ""), 120);
-    const g: any = typeof globalThis !== "undefined" ? globalThis : {};
-    const cssEscape = typeof g?.CSS?.escape === "function" ? g.CSS.escape : (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, "");
+    const selectorFromArgs = safeTrunc(String(args.selector ?? ""), 200);
+    const toolId = safeTrunc(String(args.tool_call_id ?? ""), 120);
+    const globalRecord = typeof globalThis !== "undefined" ? safeObject(globalThis) : {};
+    const cssEscapeValue = safeObject(globalRecord.CSS).escape;
+    const cssEscape: (value: string) => string =
+      typeof cssEscapeValue === "function"
+        ? (value) => String((cssEscapeValue as (input: string) => unknown)(value))
+        : (value) => value.replace(/[^a-zA-Z0-9_-]/g, "");
     const sel =
       toolId.length > 0
         ? `audio[data-tool-call-id="${cssEscape(toolId)}"],video[data-tool-call-id="${cssEscape(toolId)}"]`
@@ -603,7 +562,7 @@ function createConversationRpcHelpers({
       current_time: Number.isFinite(el.currentTime) ? el.currentTime : 0,
       duration: Number.isFinite(el.duration) ? el.duration : 0,
       paused: !!el.paused,
-      ended: !!(el as any).ended,
+      ended: !!el.ended,
     });
 
     if (!runtime.rpcCleanupRef.current[rpcId]) {
@@ -639,9 +598,9 @@ function createConversationRpcHelpers({
     return { kind: "media_observe", selector: sel, observing: els.length, events };
   };
 
-  const makeMediaUnobserve = (args: any) => {
+  const makeMediaUnobserve = (args: UnknownRecord) => {
     const ids: string[] = [];
-    const addId = (v: any) => {
+    const addId = (v: unknown) => {
       const s = String(v ?? "").trim();
       if (s) ids.push(s);
     };
@@ -683,8 +642,8 @@ function createConversationRpcHelpers({
     return { kind: "state_snapshot", location: loc, media: media.items ?? [] };
   };
 
-  const makeNavigate = (args: any) => {
-    const url = safeTrunc(String(args?.url ?? args?.href ?? ""), 2000);
+  const makeNavigate = (args: UnknownRecord) => {
+    const url = safeTrunc(String(args.url ?? args.href ?? ""), 2000);
     if (!url) throw new Error("navigate requires url");
     const parsed = tryParseUrl(url);
     if (parsed && parsed.origin !== window.location.origin) {
@@ -694,15 +653,15 @@ function createConversationRpcHelpers({
     return { kind: "navigate", url };
   };
 
-  const makeOpenUrl = (args: any) => {
-    const urlRaw = safeTrunc(String(args?.url ?? args?.href ?? ""), 2000);
+  const makeOpenUrl = (args: UnknownRecord) => {
+    const urlRaw = safeTrunc(String(args.url ?? args.href ?? ""), 2000);
     if (!urlRaw) throw new Error("open_url requires url");
     const parsed = tryParseUrl(urlRaw);
     if (!parsed) throw new Error("open_url requires absolute http(s) URL");
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       throw new Error("open_url only supports http(s) URLs");
     }
-    const label = safeTrunc(String(args?.title ?? ""), 120);
+    const label = safeTrunc(String(args.title ?? ""), 120);
     const prompt = label ? `Open link?\n${label}\n${parsed.toString()}` : `Open link?\n${parsed.toString()}`;
     if (typeof window !== "undefined") {
       if (!window.confirm(prompt)) throw new Error("user declined");
@@ -711,7 +670,7 @@ function createConversationRpcHelpers({
     return { kind: "open_url", url: parsed.toString(), opened: true };
   };
 
-  const invokeByKind = async (kind: string, args: any): Promise<any> => {
+  const invokeByKind = async (kind: string, args: UnknownRecord): Promise<unknown> => {
     if (kind === "dom_query") return makeDomQuery(args);
     if (kind === "dom_apply") return makeDomApply(args);
     if (kind === "entity_apply") return makeEntityApply(args);
@@ -733,12 +692,12 @@ function createConversationRpcHelpers({
     throw new Error(`unsupported rpc.kind: ${kind}`);
   };
 
-  const makeScriptEval = async (args: any) => {
-    const code = String(args?.code ?? "");
+  const makeScriptEval = async (args: UnknownRecord) => {
+    const code = String(args.code ?? "");
     if (!code) throw new Error("script_eval requires code");
 
-    const timeoutMs = clampInt(args?.timeout_ms ?? args?.timeoutMs, 50, 60000, 8000);
-    const userArgs = typeof args?.args === "object" && args?.args ? args.args : {};
+    const timeoutMs = clampInt(args.timeout_ms ?? args.timeoutMs, 50, 60000, 8000);
+    const userArgs = safeObject(args.args);
 
     const workerSource = `
       "use strict";
@@ -819,17 +778,17 @@ function createConversationRpcHelpers({
     const runId = `${rpcId}::${Date.now()}::${Math.random().toString(16).slice(2)}`;
     let finished = false;
 
-    const respond = (id: number, ok: boolean, payload: any) => {
+    const respond = (id: number, ok: boolean, payload: unknown) => {
       worker.postMessage({ type: "resp", id, ok, ...(ok ? { result: payload } : { error: payload }) });
     };
 
-    const donePromise = new Promise<any>((resolve, reject) => {
+    const donePromise = new Promise<unknown>((resolve, reject) => {
       worker.onmessage = (evt) => {
-        const msg: any = evt && evt.data ? evt.data : {};
+        const msg = safeObject(evt?.data);
         if (msg.type === "call") {
           const id = Number(msg.id);
           const method = String(msg.method || "");
-          const cargs = msg.args ?? {};
+          const cargs = safeObject(msg.args);
           void (async () => {
             try {
               const sideEffectMethods = new Set([
@@ -845,7 +804,7 @@ function createConversationRpcHelpers({
               if (sideEffectMethods.has(method) && !allowClientEffects) {
                 throw new Error("side effects disabled by settings");
               }
-              let out: any = null;
+              let out: unknown = null;
               if (method === "dom.query") out = makeDomQuery(cargs);
               else if (method === "dom.click") out = makeDomClick(cargs);
               else if (method === "dom.set_value") out = makeDomSetValue(cargs);
@@ -881,7 +840,7 @@ function createConversationRpcHelpers({
       };
       worker.onerror = (e) => {
         if (finished) return;
-        reject(new Error(`worker error: ${String((e as any)?.message ?? e)}`));
+        reject(new Error(`worker error: ${String(e instanceof ErrorEvent ? e.message : e)}`));
       };
     });
 
@@ -902,49 +861,49 @@ function createConversationRpcHelpers({
     }
   };
 
-  const makePageEval = async (args: any) => {
+  const makePageEval = async (args: UnknownRecord) => {
     if (!allowUnsafePageEval) throw new Error("page_eval disabled by settings");
-    const code = String(args?.code ?? "");
+    const code = String(args.code ?? "");
     if (!code) throw new Error("page_eval requires code");
 
-    const timeoutMs = clampInt(args?.timeout_ms ?? args?.timeoutMs, 50, 60000, 8000);
-    const userArgs = typeof args?.args === "object" && args?.args ? args.args : {};
+    const timeoutMs = clampInt(args.timeout_ms ?? args.timeoutMs, 50, 60000, 8000);
+    const userArgs = safeObject(args.args);
 
     const api = {
-      progress: async (name: string, payload?: any) => {
+      progress: async (name: string, payload?: unknown) => {
         await postRpcProgress(name, payload ?? {});
         return true;
       },
       dom: {
-        query: async (q: any) => makeDomQuery(q || {}),
-        click: async (q: any) => makeDomClick(q || {}),
-        setValue: async (q: any) => makeDomSetValue(q || {}),
-        apply: async (q: any) => makeDomApply(q || {}),
+        query: async (q: unknown) => makeDomQuery(safeObject(q)),
+        click: async (q: unknown) => makeDomClick(safeObject(q)),
+        setValue: async (q: unknown) => makeDomSetValue(safeObject(q)),
+        apply: async (q: unknown) => makeDomApply(safeObject(q)),
       },
       scene: {
-        apply: async (q: any) => makeEntityApply(q || {}),
-        query: async (q: any) => makeEntityQuery(q || {}),
+        apply: async (q: unknown) => makeEntityApply(q),
+        query: async (q: unknown) => makeEntityQuery(safeObject(q)),
       },
       media: {
         snapshot: async () => makeMediaSnapshot(),
-        play: async (q: any) => makeMediaPlay(q || {}),
-        observe: async (q: any) => makeMediaObserve(q || {}),
-        unobserve: async (q: any) => makeMediaUnobserve(q || {}),
+        play: async (q: unknown) => makeMediaPlay(safeObject(q)),
+        observe: async (q: unknown) => makeMediaObserve(safeObject(q)),
+        unobserve: async (q: unknown) => makeMediaUnobserve(safeObject(q)),
       },
       location: {
         get: async () => makeLocation(),
       },
       nav: {
-        go: async (q: any) => makeNavigate(q || {}),
+        go: async (q: unknown) => makeNavigate(safeObject(q)),
       },
-      sleep: async (ms: any) => new Promise((r) => setTimeout(r, Math.max(0, Number(ms) || 0))),
+      sleep: async (ms: unknown) => new Promise((r) => setTimeout(r, Math.max(0, Number(ms) || 0))),
     };
 
     const runPromise = (async () => {
       const fn = new Function("api", "args", '"use strict"; return (async function() {\\n' + code + "\\n})();") as (
-        api: any,
-        args: any,
-      ) => Promise<any>;
+        api: Record<string, unknown>,
+        args: UnknownRecord,
+      ) => Promise<unknown>;
       return await fn(api, userArgs);
     })();
 
@@ -972,7 +931,7 @@ export async function runConversationUiActionRpc({
   postClientEvent,
   ...context
 }: ConversationUiActionRpcExecutorInput) {
-  const postRpcResult = async (ok: boolean, payload: any) => {
+  const postRpcResult = async (ok: boolean, payload: { elapsed_ms?: unknown; result?: unknown; error?: unknown }) => {
     const base = {
       rpc_id: rpcId,
       request_tool_call_id: toolCallId,
@@ -980,7 +939,7 @@ export async function runConversationUiActionRpc({
       ok,
       elapsed_ms: payload?.elapsed_ms,
     };
-    const eventData = ok ? { ...base, result: capForEvent(payload?.result) } : { ...base, error: String(payload?.error ?? "") };
+    const eventData = ok ? { ...base, result: capEventPayload(payload?.result) } : { ...base, error: String(payload?.error ?? "") };
     await postClientEvent("client_rpc_result", eventData);
     if (atype === "client_probe") {
       const legacyBase = {
@@ -991,12 +950,12 @@ export async function runConversationUiActionRpc({
         elapsed_ms: payload?.elapsed_ms,
       };
       const legacyData =
-        ok ? { ...legacyBase, result: capForEvent(payload?.result) } : { ...legacyBase, error: String(payload?.error ?? "") };
+        ok ? { ...legacyBase, result: capEventPayload(payload?.result) } : { ...legacyBase, error: String(payload?.error ?? "") };
       await postClientEvent("client_probe_result", legacyData);
     }
   };
 
-  const postRpcProgress = async (name: string, payload?: any) => {
+  const postRpcProgress = async (name: string, payload?: unknown) => {
     await postClientEvent("client_rpc_progress", {
       rpc_id: rpcId,
       rpc_kind: rpcKind,

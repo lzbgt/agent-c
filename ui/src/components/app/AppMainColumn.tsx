@@ -3,6 +3,7 @@ import type { ApiAuth } from "../../api";
 import HistoryPanel from "../HistoryPanel";
 import SceneView, { type SceneEntity } from "../SceneView";
 import BrokerTeamConsole from "../broker/BrokerTeamConsole";
+import type { SceneEntityMutationOp } from "../scene/sceneViewTypes";
 import TeamHubCard from "./TeamHubCard";
 
 type AppMainColumnProps = {
@@ -15,7 +16,7 @@ type AppMainColumnProps = {
   daemonAuth: ApiAuth;
   sessionId: string;
   sceneEntities: SceneEntity[];
-  onSceneApply: (ops: unknown[]) => void;
+  onSceneApply: (ops: SceneEntityMutationOp[]) => void;
   brokerChatAvailable: boolean;
   teamHubProps: React.ComponentProps<typeof TeamHubCard>;
   inlineTeamSetupOpen: boolean;

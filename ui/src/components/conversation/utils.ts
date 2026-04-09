@@ -1,4 +1,10 @@
-export function safeJsonParse(s: string): any | null {
+export type UnknownRecord = Record<string, unknown>;
+
+type AutoRunGlobal = typeof globalThis & {
+  __agentui_auto_run_once?: Record<string, boolean>;
+};
+
+export function safeJsonParse(s: string): unknown | null {
   try {
     return JSON.parse(s);
   } catch {
@@ -6,7 +12,7 @@ export function safeJsonParse(s: string): any | null {
   }
 }
 
-export function normalizeEventData(data: unknown): any {
+export function normalizeEventData(data: unknown): unknown {
   if (typeof data === "string") {
     return safeJsonParse(data) ?? data;
   }
@@ -30,9 +36,9 @@ export function clampInt(n: unknown, lo: number, hi: number, def: number): numbe
   return Math.min(Math.max(Math.trunc(v), lo), hi);
 }
 
-export function safeObject(v: any): Record<string, any> {
+export function safeObject(v: unknown): UnknownRecord {
   if (!v || typeof v !== "object" || Array.isArray(v)) return {};
-  return v as Record<string, any>;
+  return v as UnknownRecord;
 }
 
 export function isSensitiveKey(k: string): boolean {
@@ -61,18 +67,18 @@ export function tryParseUrl(s: string): URL | null {
 export function globalAutoRunOnceMap(): Record<string, boolean> {
   // React StrictMode in dev may mount/unmount/mount components, which resets refs.
   // Use a tiny global cache to avoid auto-running the same client RPC twice per page load.
-  const g = globalThis as any;
+  const g = globalThis as AutoRunGlobal;
   if (!g.__agentui_auto_run_once || typeof g.__agentui_auto_run_once !== "object") {
     g.__agentui_auto_run_once = {};
   }
-  const m = g.__agentui_auto_run_once as Record<string, boolean>;
+  const m = g.__agentui_auto_run_once;
   try {
     const n = Object.keys(m).length;
     if (n > 2000) g.__agentui_auto_run_once = {};
   } catch {
     // ignore
   }
-  return (g.__agentui_auto_run_once as Record<string, boolean>) || {};
+  return g.__agentui_auto_run_once || {};
 }
 
 export function createInlineWorker(source: string): Worker {

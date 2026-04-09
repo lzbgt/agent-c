@@ -1,8 +1,14 @@
 import React from "react";
 
 import { apiPostSessionUiEvent, extractSessionErrorMessage } from "../../api";
-import { normalizeEventData, safeObject } from "./utils";
-import type { ConversationRpcRuntime, ConversationToolCallSummaryById, ConversationViewProps } from "./conversationViewTypes";
+import {
+  buildConversationToolCallSummaryById,
+  buildEntityApplyOps,
+  capEventPayload,
+  getNormalizedEventRecord,
+  parseConversationUiAction,
+} from "./conversationData";
+import type { ConversationRpcRuntime, ConversationViewProps, RpcCleanupEntry } from "./conversationViewTypes";
 
 const ACKED_KEY_LIMIT = 2000;
 const LOCAL_UI_ACTION_LIMIT = 2000;
@@ -37,21 +43,11 @@ export default function useConversationViewState({
   const autoSceneApplyRef = React.useRef<Record<string, number>>({});
   const probeRanRef = React.useRef<Record<string, number>>({});
   const pendingAutoRunsRef = React.useRef<Record<string, () => void>>({});
-  const rpcCleanupRef = React.useRef<
-    Record<
-      string,
-      {
-        cleanups: Array<() => void>;
-        kind: string;
-        createdMs: number;
-        lastActiveMs: number;
-      }
-    >
-  >({});
+  const rpcCleanupRef = React.useRef<Record<string, RpcCleanupEntry>>({});
   const artifactBlobUrlsRef = React.useRef<string[]>([]);
 
   const postClientEvent = React.useCallback(
-    async (type: string, data: any) => {
+    async (type: string, data: unknown) => {
       const sid = typeof sessionId === "string" ? sessionId.trim() : "";
       if (sid.length === 0) {
         throw new Error("missing session_id");
@@ -108,14 +104,16 @@ export default function useConversationViewState({
     if (sid.length === 0) return;
     events.forEach((ev) => {
       if (ev.type !== "ui_action") return;
-      const data: any = normalizeEventData(ev.data);
-      const toolCallId = String(data?.tool_call_id ?? "");
+      const parsed = parseConversationUiAction(getNormalizedEventRecord(ev.data));
+      const toolCallId = parsed.toolCallId;
       if (!toolCallId) return;
       if (shownUiActionRef.current[toolCallId]) return;
-      const action = data?.action ?? {};
-      const atype = String(action?.type ?? "");
       markSeenWithLimit(shownUiActionRef.current, toolCallId, LOCAL_UI_ACTION_LIMIT);
-      void postClientEvent("ui_action_shown", { tool_call_id: toolCallId, action_type: atype, title: action?.title }).catch(() => {});
+      void postClientEvent("ui_action_shown", {
+        tool_call_id: toolCallId,
+        action_type: parsed.atype,
+        title: parsed.title,
+      }).catch(() => {});
     });
   }, [events, markSeenWithLimit, postClientEvent, sessionId]);
 
@@ -127,132 +125,58 @@ export default function useConversationViewState({
     const sid = typeof sessionId === "string" ? sessionId.trim() : "";
     if (!sid) return;
 
-    const safeTruncRaw = (value: string, max: number) => (value.length > max ? value.slice(0, max) : value);
-
-    const entityApplyArgsToOps = (args: any): any[] => {
-      if (Array.isArray(args?.ops)) return args.ops;
-
-      if (Array.isArray(args?.entities)) {
-        const ops: any[] = [];
-        for (const entity of (args.entities as any[]).slice(0, 50)) {
-          if (!entity || typeof entity !== "object") continue;
-          const id = safeTruncRaw(String(entity?.id ?? ""), 200);
-          const entityKind = safeTruncRaw(String(entity?.entity_kind ?? entity?.entityKind ?? entity?.type ?? entity?.kind ?? ""), 100);
-          if (!id || !entityKind) continue;
-          const title = typeof entity?.title === "string" ? safeTruncRaw(String(entity.title), 200) : undefined;
-          const props = safeObject(entity?.props ?? entity ?? {});
-          ops.push({ op: "create", id, entity_kind: entityKind, title, props });
-          const actions = Array.isArray(entity?.actions) ? entity.actions : [];
-          for (const action of actions.slice(0, 20)) {
-            const name = safeTruncRaw(String(action?.name ?? action?.action ?? action?.kind ?? ""), 80);
-            if (!name) continue;
-            ops.push({ op: "action", id, action: name, args: safeObject(action?.args ?? action ?? {}) });
-          }
-        }
-        return ops;
-      }
-
-      const id = safeTruncRaw(String(args?.id ?? ""), 200);
-      const entityKind = safeTruncRaw(String(args?.entity_kind ?? args?.entityKind ?? args?.type ?? args?.kind ?? ""), 100);
-      const props = safeObject(args?.props ?? {});
-      const titleFromProps = typeof (props as any)?.title === "string" ? safeTruncRaw(String((props as any).title), 200) : "";
-      const titleFromArgs = typeof args?.title === "string" ? safeTruncRaw(String(args.title), 200) : "";
-      const title = titleFromArgs || titleFromProps || "";
-
-      const ops: any[] = [];
-      if (id && entityKind && (Object.keys(props).length > 0 || title)) {
-        ops.push({ op: "create", id, entity_kind: entityKind, title: title || undefined, props });
-      } else if (id && Object.keys(props).length > 0) {
-        ops.push({ op: "update", id, props });
-      }
-      const actions = Array.isArray(args?.actions) ? args.actions : [];
-      for (const action of actions.slice(0, 20)) {
-        const name = safeTruncRaw(String(action?.name ?? action?.action ?? ""), 80);
-        if (!name) continue;
-        ops.push({ op: "action", id, action: name, args: safeObject(action?.args ?? {}) });
-      }
-      const singleAction = safeTruncRaw(String(args?.action ?? ""), 80);
-      if (singleAction) {
-        ops.push({ op: "action", id, action: singleAction, args: safeObject(args?.args ?? {}) });
-      }
-      if (args?.delete === true || args?.remove === true) {
-        ops.push({ op: "delete", id });
-      }
-      if (args?.clear === true) {
-        throw new Error("scene clear is disabled in WebUI");
-      }
-      return ops;
-    };
-
-    const capForEvent = (value: any) => {
-      try {
-        const serialized = JSON.stringify(value);
-        const max = 32 * 1024;
-        if (serialized.length <= max) return value;
-        return { kind: "truncated", bytes: serialized.length, preview: serialized.slice(0, 2000) };
-      } catch {
-        return { kind: "unserializable" };
-      }
-    };
-
     events.forEach((ev, idx) => {
       if (ev.type !== "ui_action") return;
-      const data: any = normalizeEventData(ev.data);
-      const toolCallId = String(data?.tool_call_id ?? "").trim();
-      const action = data?.action ?? {};
-      const atype = String(action?.type ?? "").trim();
-      if (atype !== "client_rpc" && atype !== "collab_rpc" && atype !== "client_probe") return;
-
-      const rpcId = String(action?.rpc_id ?? action?.probe_id ?? toolCallId ?? "").trim();
-      const rpc = action?.rpc ?? action?.probe ?? {};
-      const rpcKind = String(rpc?.kind ?? "").trim();
-      if (rpcKind !== "entity_apply") return;
-
-      const autoRunRequested =
-        typeof action?.auto_run === "boolean" ? action.auto_run : typeof action?.auto === "boolean" ? action.auto : true;
-      if (!autoRunRequested) return;
+      const parsed = parseConversationUiAction(getNormalizedEventRecord(ev.data));
+      if (!(parsed.atype === "client_rpc" || parsed.atype === "collab_rpc" || parsed.atype === "client_probe")) return;
+      if (parsed.rpcKind !== "entity_apply") return;
+      if (!parsed.autoRunRequested) return;
+      const toolCallId = parsed.toolCallId;
+      const rpcId = parsed.rpcId;
       if (!rpcId) return;
 
       const ackKey = `entity_apply:${toolCallId || rpcId || idx}`;
       if (autoSceneApplyRef.current[ackKey]) return;
       markSeenWithLimit(autoSceneApplyRef.current, ackKey, LOCAL_UI_ACTION_LIMIT);
 
-      const rpcArgs = typeof rpc?.args === "object" && rpc?.args ? rpc.args : rpc;
-      const ops = entityApplyArgsToOps(rpcArgs);
       try {
+        const ops = buildEntityApplyOps(parsed.rpcArgs);
+        if (ops.some((op) => op.op === "clear")) {
+          throw new Error("scene clear is disabled in WebUI");
+        }
         const result = onSceneApply(ops);
         void postClientEvent("client_rpc_result", {
           rpc_id: rpcId,
           request_tool_call_id: toolCallId,
-          rpc_kind: rpcKind,
+          rpc_kind: parsed.rpcKind,
           ok: true,
           elapsed_ms: 0,
-          result: capForEvent(result),
+          result: capEventPayload(result),
         }).catch(() => {});
-        if (atype === "client_probe") {
+        if (parsed.atype === "client_probe") {
           void postClientEvent("client_probe_result", {
             probe_id: rpcId,
             request_tool_call_id: toolCallId,
-            probe_kind: rpcKind,
+            probe_kind: parsed.rpcKind,
             ok: true,
             elapsed_ms: 0,
-            result: capForEvent(result),
+            result: capEventPayload(result),
           }).catch(() => {});
         }
       } catch (error) {
         void postClientEvent("client_rpc_result", {
           rpc_id: rpcId,
           request_tool_call_id: toolCallId,
-          rpc_kind: rpcKind,
+          rpc_kind: parsed.rpcKind,
           ok: false,
           elapsed_ms: 0,
           error: String(error),
         }).catch(() => {});
-        if (atype === "client_probe") {
+        if (parsed.atype === "client_probe") {
           void postClientEvent("client_probe_result", {
             probe_id: rpcId,
             request_tool_call_id: toolCallId,
-            probe_kind: rpcKind,
+            probe_kind: parsed.rpcKind,
             ok: false,
             elapsed_ms: 0,
             error: String(error),
@@ -262,27 +186,7 @@ export default function useConversationViewState({
     });
   }, [allowClientEffects, allowClientRpcs, disableAutoClientRpcs, events, markSeenWithLimit, onSceneApply, postClientEvent, sessionId]);
 
-  const toolCallSummaryById = React.useMemo<ConversationToolCallSummaryById>(() => {
-    const summaries: ConversationToolCallSummaryById = {};
-    for (const ev of events) {
-      if (ev.type !== "tool_result") continue;
-      const data: any = normalizeEventData(ev.data);
-      const toolCallId = typeof data?.tool_call_id === "string" ? String(data.tool_call_id) : "";
-      if (!toolCallId) continue;
-      const summary = data?.summary && typeof data.summary === "object" ? data.summary : null;
-      if (!summary) continue;
-      const cmd = typeof summary?.cmd === "string" ? String(summary.cmd) : "";
-      const argvRaw = Array.isArray(summary?.argv) ? summary.argv : null;
-      const argv =
-        argvRaw && argvRaw.length > 0
-          ? argvRaw.map((value: any) => (typeof value === "string" ? value : "")).filter(Boolean).join(" ")
-          : "";
-      if (cmd || argv) {
-        summaries[toolCallId] = { cmd: cmd || undefined, argv: argv || undefined };
-      }
-    }
-    return summaries;
-  }, [events]);
+  const toolCallSummaryById = React.useMemo(() => buildConversationToolCallSummaryById(events), [events]);
 
   const cleanupRpcEntry = React.useCallback((id: string) => {
     const entry = rpcCleanupRef.current[id];

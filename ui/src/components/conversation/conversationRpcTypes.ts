@@ -1,6 +1,8 @@
 import type { ApiAuth } from "../../api";
 import type { SceneEntity } from "../SceneView";
+import type { SceneEntityMutationOp } from "../scene/sceneViewTypes";
 import type { ConversationRpcRuntime } from "./conversationViewTypes";
+import type { UnknownRecord } from "./utils";
 
 export type ConversationUiActionRpcRequest = {
   atype: string;
@@ -8,7 +10,7 @@ export type ConversationUiActionRpcRequest = {
   toolCallId: string;
   rpcId: string;
   rpcKind: string;
-  rpcArgs: any;
+  rpcArgs: UnknownRecord;
   sideEffectsRequested: boolean;
   autoRunRequested: boolean;
   canRun: boolean;
@@ -28,10 +30,10 @@ export type ConversationUiActionRpcExecutorInput = {
   toolCallId: string;
   rpcId: string;
   rpcKind: string;
-  rpcArgs: any;
+  rpcArgs: UnknownRecord;
   sideEffectsRequested: boolean;
-  postClientEvent: (type: string, payload: any) => Promise<void>;
+  postClientEvent: (type: string, payload: unknown) => Promise<void>;
   runtime: ConversationRpcRuntime;
   sceneEntities?: SceneEntity[];
-  onSceneApply?: (ops: unknown[]) => unknown;
+  onSceneApply?: (ops: SceneEntityMutationOp[]) => unknown;
 };

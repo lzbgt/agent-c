@@ -2,6 +2,7 @@ import React from "react";
 
 import type { AgentEvent, ApiAuth } from "../../api";
 import type { SceneEntity } from "../SceneView";
+import type { SceneEntityMutationOp } from "../scene/sceneViewTypes";
 
 export type RpcCleanupEntry = {
   cleanups: Array<() => void>;
@@ -36,7 +37,7 @@ export type ConversationViewProps = {
   reverseOrder?: boolean;
   disableAutoClientRpcs?: boolean;
   sceneEntities?: SceneEntity[];
-  onSceneApply?: (ops: unknown[]) => unknown;
+  onSceneApply?: (ops: SceneEntityMutationOp[]) => unknown;
 };
 
 export type ConversationToolCallSummaryById = Record<string, { cmd?: string; argv?: string }>;

@@ -1,6 +1,7 @@
 import React from "react";
 
 import ConversationCard from "../ConversationCard";
+import { parseConversationUiAction } from "./conversationData";
 import { safeTrunc, tryParseUrl } from "./utils";
 import type { ConversationUiActionCardProps } from "./conversationUiActionTypes";
 
@@ -16,44 +17,44 @@ export default function ConversationUiActionAckCard({
   markAckedKey,
   postClientEvent,
 }: ConversationUiActionCardProps) {
-  const action = data?.action ?? {};
-  const atype = String(action?.type ?? "");
-  const title = String(action?.title ?? (atype ? `ui_action: ${atype}` : "ui_action"));
-  const toolCallId = String(data?.tool_call_id ?? "");
+  const parsed = parseConversationUiAction(data);
+  const action = parsed.action;
+  const atype = parsed.atype;
+  const title = parsed.title;
+  const toolCallId = parsed.toolCallId;
 
   if (atype === "request_client_state" || atype === "request_state") {
-    const queryId = String(action?.query_id ?? toolCallId ?? "").trim();
+    const queryId = parsed.queryId;
     const canAck = typeof sessionId === "string" && sessionId.trim().length > 0 && !!queryId;
     const ackKey = toolCallId ? `client_state:${toolCallId}` : `client_state:${queryId}`;
 
-    const gatherMediaSnapshot = (): any[] => {
+    const gatherMediaSnapshot = (): Array<Record<string, unknown>> => {
       if (typeof document === "undefined") return [];
       const els = Array.from(document.querySelectorAll("audio,video")).slice(0, 20);
       return els.map((el) => {
         const isVideo = el.tagName.toLowerCase() === "video";
-        const m: any = {
+        const mediaElement = el as HTMLMediaElement;
+        const dataset = mediaElement.dataset;
+        const snapshot: Record<string, unknown> = {
           kind: isVideo ? "video" : "audio",
-          paused: (el as any).paused,
-          ended: (el as any).ended,
+          paused: mediaElement.paused,
+          ended: mediaElement.ended,
         };
-        const src = (el as HTMLMediaElement).currentSrc || (el as HTMLMediaElement).src || "";
+        const src = mediaElement.currentSrc || mediaElement.src || "";
         if (src) {
-          m.src = safeTrunc(src, 300);
+          snapshot.src = safeTrunc(src, 300);
           const u = tryParseUrl(src);
           if (u && u.pathname.endsWith("/api/v1/file")) {
             const p = u.searchParams.get("path") || "";
-            if (p) m.path = safeTrunc(p, 200);
+            if (p) snapshot.path = safeTrunc(p, 200);
           }
         }
-        const ds: any = (el as any).dataset || {};
-        if (typeof ds.toolCallId === "string" && ds.toolCallId.length > 0) m.tool_call_id = ds.toolCallId;
-        if (typeof ds.path === "string" && ds.path.length > 0) m.path = safeTrunc(ds.path, 200);
+        if (typeof dataset.toolCallId === "string" && dataset.toolCallId.length > 0) snapshot.tool_call_id = dataset.toolCallId;
+        if (typeof dataset.path === "string" && dataset.path.length > 0) snapshot.path = safeTrunc(dataset.path, 200);
 
-        const ct = (el as any).currentTime;
-        if (typeof ct === "number" && Number.isFinite(ct)) m.current_time = ct;
-        const dur = (el as any).duration;
-        if (typeof dur === "number" && Number.isFinite(dur)) m.duration = dur;
-        return m;
+        if (Number.isFinite(mediaElement.currentTime)) snapshot.current_time = mediaElement.currentTime;
+        if (Number.isFinite(mediaElement.duration)) snapshot.duration = mediaElement.duration;
+        return snapshot;
       });
     };
 
@@ -94,7 +95,7 @@ export default function ConversationUiActionAckCard({
   }
 
   if (atype === "notify") {
-    const msg = String(action?.message ?? "");
+    const msg = typeof action.message === "string" ? action.message : "";
     const ackKey = toolCallId ? `tool_call:${toolCallId}` : `notify:${title}:${msg}`;
     const canAck = typeof sessionId === "string" && sessionId.trim().length > 0;
     return (

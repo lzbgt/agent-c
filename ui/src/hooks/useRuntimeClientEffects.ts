@@ -8,6 +8,7 @@ import {
 import { runConversationUiActionRpc } from "../components/conversation/conversationRpcExecutor";
 import type { ConversationRpcRuntime, RpcCleanupEntry } from "../components/conversation/conversationViewTypes";
 import type { SceneEntity } from "../components/SceneView";
+import type { SceneEntityMutationOp } from "../components/scene/sceneViewTypes";
 import {
   normalizeSceneEntityStore,
   type DbClientEventRow,
@@ -84,7 +85,7 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
   }, []);
 
   const applySceneOps = React.useCallback(
-    (sid: string, ops: unknown[]) => {
+    (sid: string, ops: SceneEntityMutationOp[]) => {
       const trimmedSessionId = String(sid || "").trim();
       if (!trimmedSessionId) throw new Error("missing session_id for scene ops");
       const storeKey = `${sessionScopeKey}::${trimmedSessionId}`;
@@ -104,7 +105,7 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
         return String(kind || "").trim();
       };
       const opList = Array.isArray(ops) ? ops.slice(0, 100) : [];
-      const persistOps = opList.filter((op): op is UnknownRecord => isUnknownRecord(op) && getOpKind(op) !== "clear");
+      const persistOps = opList.filter((op) => op.op !== "clear");
 
       for (const opRaw of opList) {
         try {
@@ -397,7 +398,7 @@ export function useRuntimeClientEffects(args: UseRuntimeClientEffectsArgs) {
           postClientEvent,
           runtime: rpcRuntime,
           sceneEntities,
-          onSceneApply: (ops: unknown[]) => applySceneOps(sid, ops),
+          onSceneApply: (ops: SceneEntityMutationOp[]) => applySceneOps(sid, ops),
         });
       }
     };

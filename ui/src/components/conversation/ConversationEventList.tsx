@@ -8,7 +8,12 @@ import LlmDebugView from "../LlmDebugView";
 import Markdown from "../Markdown";
 import ToolResultView from "../ToolResultView";
 import ConversationUiActionCard from "./ConversationUiActionCard";
-import { normalizeEventData, prettyJsonOrRaw, safeJsonParse } from "./utils";
+import {
+  buildToolCallPreviewFromArgs,
+  extractToolCallArgumentsText,
+  getNormalizedEventData,
+} from "./conversationData";
+import { prettyJsonOrRaw, safeObject } from "./utils";
 import type { ConversationToolCallSummaryById, ConversationViewProps } from "./conversationViewTypes";
 
 type ConversationEventListProps = Pick<
@@ -33,7 +38,7 @@ type ConversationEventListProps = Pick<
   ackError: string | null;
   ackedKeys: Record<string, number>;
   markAckedKey: (key: string) => void;
-  postClientEvent: (type: string, payload: any) => Promise<void>;
+  postClientEvent: (type: string, payload: unknown) => Promise<void>;
   rpcRuntime: React.ComponentProps<typeof ConversationUiActionCard>["runtime"];
   setAckError: (msg: string | null) => void;
   toolCallSummaryById: ConversationToolCallSummaryById;
@@ -72,7 +77,7 @@ export default function ConversationEventList(props: ConversationEventListProps)
   let streamedAssistant = "";
   let sawFinalAssistant = false;
   let sawToolOrAssistant = false;
-  let lastHeartbeat: any = null;
+  let lastHeartbeat: unknown = null;
 
   if (prompt.trim().length > 0) {
     items.push(
@@ -84,12 +89,13 @@ export default function ConversationEventList(props: ConversationEventListProps)
 
   events.forEach((ev: AgentEvent, idx: number) => {
     const type = ev.type;
-    const data: any = normalizeEventData(ev.data);
+    const rawData = getNormalizedEventData(ev.data);
+    const data = safeObject(rawData);
 
     if (type === "assistant_message") {
       sawFinalAssistant = true;
       sawToolOrAssistant = true;
-      const mm = parseAssistantMultimodal(data);
+      const mm = parseAssistantMultimodal(rawData);
       items.push(
         <Card key={`a-${idx}`} title="Assistant">
           <Markdown text={String(data.assistant_content ?? "")} />
@@ -109,29 +115,9 @@ export default function ConversationEventList(props: ConversationEventListProps)
     if (type === "tool_call") {
       sawToolOrAssistant = true;
       const name = String(data.tool_name ?? "");
-      const toolCallId = typeof data?.tool_call_id === "string" ? String(data.tool_call_id) : "";
-      const args =
-        typeof data.arguments_json === "string"
-          ? data.arguments_json
-          : data.arguments && typeof data.arguments === "object"
-            ? JSON.stringify(data.arguments)
-            : typeof data.args === "object" && data.args
-              ? JSON.stringify(data.args)
-              : "";
-      const parsedArgs = args ? safeJsonParse(args) : null;
-      const toolCallSummary = (() => {
-        if (!parsedArgs || typeof parsedArgs !== "object") return null;
-        if (name === "shell_exec") {
-          const cmd = typeof (parsedArgs as any)?.cmd === "string" ? String((parsedArgs as any).cmd) : "";
-          return cmd ? { label: "cmd", value: cmd } : null;
-        }
-        if (name === "proc_exec") {
-          const argvRaw = (parsedArgs as any)?.argv;
-          const argv = Array.isArray(argvRaw) ? argvRaw.map((value) => (typeof value === "string" ? value : "")).filter(Boolean) : [];
-          return argv.length > 0 ? { label: "argv", value: argv.join(" ") } : null;
-        }
-        return null;
-      })();
+      const toolCallId = typeof data.tool_call_id === "string" ? data.tool_call_id : "";
+      const args = extractToolCallArgumentsText(data);
+      const toolCallSummary = buildToolCallPreviewFromArgs(name, args);
       const summaryFromResult = toolCallId && toolCallSummaryById[toolCallId] ? toolCallSummaryById[toolCallId] : null;
       const inferredSummary = (() => {
         if (toolCallSummary) return toolCallSummary;
@@ -164,7 +150,7 @@ export default function ConversationEventList(props: ConversationEventListProps)
     if (type === "tool_result") {
       sawToolOrAssistant = true;
       const name = String(data.tool_name ?? "");
-      const toolCallId = typeof data?.tool_call_id === "string" ? String(data.tool_call_id) : "";
+      const toolCallId = typeof data.tool_call_id === "string" ? data.tool_call_id : "";
       const summaryFromResult = toolCallId && toolCallSummaryById[toolCallId] ? toolCallSummaryById[toolCallId] : null;
       const commandLine = summaryFromResult?.cmd ? summaryFromResult.cmd : summaryFromResult?.argv ? summaryFromResult.argv : "";
       if (typeof data.content === "string") {
@@ -190,10 +176,11 @@ export default function ConversationEventList(props: ConversationEventListProps)
         );
         return;
       }
-      if (data.summary && typeof data.summary === "object") {
+      const summaryRecord = safeObject(data.summary);
+      if (Object.keys(summaryRecord).length > 0) {
         let envelope = "";
         try {
-          envelope = JSON.stringify({ ok: (data.summary as any)?.ok ?? true, data: { ...(data.summary as any), tool: name } });
+          envelope = JSON.stringify({ ok: summaryRecord.ok ?? true, data: { ...summaryRecord, tool: name } });
         } catch {
           envelope = JSON.stringify({ ok: true, data: { tool: name } });
         }
@@ -231,7 +218,10 @@ export default function ConversationEventList(props: ConversationEventListProps)
 
     if (type === "artifact") {
       sawToolOrAssistant = true;
-      const artifact = { ...(data?.artifact ?? {}), tool_call_id: String(data?.tool_call_id ?? "") };
+      const artifact: Record<string, unknown> & { tool_call_id: string } = {
+        ...safeObject(data.artifact),
+        tool_call_id: String(data.tool_call_id ?? ""),
+      };
       const title = String(artifact?.title ?? artifact?.path ?? "artifact");
       items.push(
         <Card key={`af-${idx}`} title={`Artifact: ${title}`}>
@@ -278,7 +268,7 @@ export default function ConversationEventList(props: ConversationEventListProps)
     }
 
     if (type === "heartbeat") {
-      lastHeartbeat = data ?? {};
+      lastHeartbeat = rawData ?? {};
       return;
     }
 
@@ -343,7 +333,7 @@ export default function ConversationEventList(props: ConversationEventListProps)
         items.push(
           <Card key={`dbg-${type}-${idx}`} title={`Debug: ${type}`}>
             <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
-              {typeof data === "string" ? data : JSON.stringify(data, null, 2)}
+              {typeof rawData === "string" ? rawData : JSON.stringify(rawData, null, 2)}
             </pre>
           </Card>,
         );
@@ -357,7 +347,7 @@ export default function ConversationEventList(props: ConversationEventListProps)
       items.push(
         <Card key={`e-${idx}`} title="Error">
           <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-rose-500/30 bg-rose-500/10 p-3 text-xs leading-relaxed text-rose-100">
-            {typeof data === "string" ? data : JSON.stringify(data, null, 2)}
+            {typeof rawData === "string" ? rawData : JSON.stringify(rawData, null, 2)}
           </pre>
         </Card>,
       );

@@ -1,6 +1,7 @@
 import React from "react";
 import ConversationCard from "../ConversationCard";
 import ConversationUiActionAckCard from "./ConversationUiActionAckCard";
+import { parseConversationUiAction } from "./conversationData";
 import ConversationUiActionRpcCard from "./ConversationUiActionRpcCard";
 import type { ConversationUiActionCardProps } from "./conversationUiActionTypes";
 
@@ -27,9 +28,10 @@ export default function ConversationUiActionCard({
   sceneEntities,
   onSceneApply,
 }: ConversationUiActionCardProps) {
-  const action = data?.action ?? {};
-  const atype = String(action?.type ?? "");
-  const title = String(action?.title ?? (atype ? `ui_action: ${atype}` : "ui_action"));
+  const parsed = parseConversationUiAction(data);
+  const action = parsed.action;
+  const atype = parsed.atype;
+  const title = parsed.title;
   if (atype === "client_rpc" || atype === "collab_rpc" || atype === "client_probe") {
     return (
       <ConversationUiActionRpcCard

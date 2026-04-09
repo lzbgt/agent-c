@@ -2,11 +2,11 @@ import React from "react";
 
 import { apiPostSessionUiEvent, type ApiAuth } from "../../api";
 import useLocalStorageState from "../../hooks/useLocalStorageState";
-import type { SceneEntity } from "./sceneViewTypes";
+import type { SceneClientRef, SceneEntity } from "./sceneViewTypes";
 
 type UseSceneViewStateArgs = {
   baseUrl?: string;
-  client?: any;
+  client?: SceneClientRef;
   daemonAuth?: ApiAuth;
   entities: SceneEntity[];
   sessionId?: string;
@@ -19,11 +19,11 @@ export default function useSceneViewState(args: UseSceneViewStateArgs) {
 
   const sortedEntities = React.useMemo(() => {
     const copy = [...args.entities];
-    copy.sort((a: any, b: any) => {
-      const ta = typeof a?.updated_ms === "number" ? a.updated_ms : typeof a?.created_ms === "number" ? a.created_ms : 0;
-      const tb = typeof b?.updated_ms === "number" ? b.updated_ms : typeof b?.created_ms === "number" ? b.created_ms : 0;
+    copy.sort((a, b) => {
+      const ta = typeof a.updated_ms === "number" ? a.updated_ms : typeof a.created_ms === "number" ? a.created_ms : 0;
+      const tb = typeof b.updated_ms === "number" ? b.updated_ms : typeof b.created_ms === "number" ? b.created_ms : 0;
       if (ta !== tb) return tb - ta;
-      return String(b?.id || "").localeCompare(String(a?.id || ""));
+      return String(b.id || "").localeCompare(String(a.id || ""));
     });
     return copy;
   }, [args.entities]);
