@@ -42,7 +42,7 @@ export default function MediaPreviews({
 
   const hdr = React.useMemo(() => daemonHeaders(daemonAuth), [daemonAuth]);
   const hasAuthHeaders = React.useMemo(() => {
-    return typeof hdr.Authorization === "string" || typeof (hdr as any)["X-Agentd-Authorization"] === "string";
+    return typeof hdr.Authorization === "string" || typeof hdr["X-Agentd-Authorization"] === "string";
   }, [hdr]);
   const useCookieAuth = daemonAuth?.mode === "broker" && daemonAuth.useCookieAuth === true;
   const needsAuthenticatedFetch = hasAuthHeaders || useCookieAuth;

@@ -1,13 +1,31 @@
 import React from "react";
 import { apiPostSessionUiEvent, daemonFetchInit, type ApiAuth } from "../api";
 
-function safeString(v: any): string {
+type UnknownRecord = Record<string, unknown>;
+type ArtifactClientRef = { id?: string; kind?: string; instance_id?: string };
+type ArtifactAckGlobal = typeof globalThis & { __agentui_artifact_acked?: Record<string, boolean> };
+
+function isUnknownRecord(value: unknown): value is UnknownRecord {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function safeString(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
 
-function safeStringOrNull(v: any): string | null {
+function safeStringOrNull(v: unknown): string | null {
   const s = typeof v === "string" ? v.trim() : "";
   return s.length > 0 ? s : null;
+}
+
+function safeToString(v: unknown): string {
+  try {
+    if (typeof v === "string") return v;
+    if (isUnknownRecord(v) && typeof v.message === "string") return v.message;
+    return String(v);
+  } catch {
+    return "";
+  }
 }
 
 function guessKind(path: string): "image" | "audio" | "video" | "text" | "file" {
@@ -45,17 +63,18 @@ export default function ArtifactView({
 }: {
   baseUrl: string;
   yolo: boolean;
-  artifact: any;
+  artifact: unknown;
   allowAutoplay: boolean;
   sessionId?: string;
-  client?: { id?: string; kind?: string; instance_id?: string };
+  client?: ArtifactClientRef;
   daemonAuth?: ApiAuth;
 }) {
-  const path = safeString(artifact?.path);
-  const resolvedPath = safeString(artifact?.resolved_path);
-  const kind: string = safeString(artifact?.kind) || guessKind(path);
-  const title = safeString(artifact?.title) || path || "artifact";
-  const toolCallId = safeStringOrNull(artifact?.tool_call_id) ?? safeStringOrNull(artifact?.source_tool_call_id);
+  const artifactRecord = isUnknownRecord(artifact) ? artifact : {};
+  const path = safeString(artifactRecord.path);
+  const resolvedPath = safeString(artifactRecord.resolved_path);
+  const kind: string = safeString(artifactRecord.kind) || guessKind(path);
+  const title = safeString(artifactRecord.title) || path || "artifact";
+  const toolCallId = safeStringOrNull(artifactRecord.tool_call_id) ?? safeStringOrNull(artifactRecord.source_tool_call_id);
 
   // Artifact path agreement (WebUI client profile):
   // - Prefer a *relative* `artifact.path` so agentd can serve it from the session folder.
@@ -84,11 +103,11 @@ export default function ArtifactView({
   const renderedSentRef = React.useRef<boolean>(false);
   const renderFailedSentRef = React.useRef<boolean>(false);
   const globalAckMap = React.useMemo(() => {
-    const g: any = typeof globalThis !== "undefined" ? (globalThis as any) : {};
-    if (!g.__agentui_artifact_acked || typeof g.__agentui_artifact_acked !== "object") {
-      g.__agentui_artifact_acked = {};
+    const globalWithAck = globalThis as ArtifactAckGlobal;
+    if (!globalWithAck.__agentui_artifact_acked) {
+      globalWithAck.__agentui_artifact_acked = {};
     }
-    return g.__agentui_artifact_acked as Record<string, boolean>;
+    return globalWithAck.__agentui_artifact_acked;
   }, []);
 
   // Reset per-artifact ack state when switching to a different artifact (or different fetch path).
@@ -98,7 +117,7 @@ export default function ArtifactView({
   }, [activeFetchPath, toolCallId]);
 
   const postUiEvent = React.useCallback(
-    async (etype: string, data?: any) => {
+    async (etype: string, data?: unknown) => {
       const sid = typeof sessionId === "string" ? sessionId.trim() : "";
       if (sid.length === 0) return;
       try {
@@ -211,11 +230,11 @@ export default function ArtifactView({
         revoked = u;
         setBlobUrl(u);
       } catch (e) {
-        const name = typeof (e as any)?.name === "string" ? String((e as any).name) : "";
+        const name = e instanceof Error ? e.name : e instanceof DOMException ? e.name : "";
         if (ac.signal.aborted || name === "AbortError") {
           return;
         }
-        setFetchError(String(e));
+        setFetchError(safeToString(e));
         setBlobUrl(null);
       } finally {
         setLoading(false);

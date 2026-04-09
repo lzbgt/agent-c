@@ -1,8 +1,27 @@
 import React from "react";
 
-import { daemonFetchInit, daemonHeaders, type ApiAuth } from "../../api";
+import { type ApiAuth } from "../../api";
 import type { SceneEntity, SceneScriptErrorArgs } from "./sceneViewTypes";
-import { makeSceneConsole, safeString } from "./sceneViewUtils";
+import {
+  createSceneArtifactUrlResolver,
+  getSceneCleanup,
+  getSceneDaemonContext,
+  isSceneAutoplayUnlocked,
+  makeSceneConsole,
+  safeObject,
+  safeString,
+  safeToString,
+  type SceneDaemonContext,
+  type UnknownRecord,
+} from "./sceneViewUtils";
+
+type SceneDomScriptApi = {
+  root: HTMLDivElement;
+  daemon: SceneDaemonContext;
+  artifact: {
+    url: (path: unknown) => Promise<string>;
+  };
+};
 
 export default function DomEntityView({
   entity,
@@ -25,17 +44,17 @@ export default function DomEntityView({
   const cleanupRef = React.useRef<null | (() => void)>(null);
   const blobUrlsRef = React.useRef<string[]>([]);
 
-  const props = entity.props ?? {};
-  const htmlRaw = safeString(props?.html ?? props?.markup ?? props?.inner_html ?? props?.innerHTML);
+  const props = safeObject(entity.props);
+  const htmlRaw = safeString(props.html ?? props.markup ?? props.inner_html ?? props.innerHTML);
   const html = htmlRaw.length > 1_000_000 ? htmlRaw.slice(0, 1_000_000) : htmlRaw;
 
-  const scriptRaw = safeString(props?.script ?? props?.js ?? props?.code);
+  const scriptRaw = safeString(props.script ?? props.js ?? props.code);
   const script = scriptRaw.length > 1_000_000 ? scriptRaw.slice(0, 1_000_000) : scriptRaw;
 
-  const scriptArgs = props?.script_args ?? props?.args ?? {};
+  const scriptArgs = safeObject(props.script_args ?? props.args);
   const scriptArgsJson = React.useMemo(() => {
     try {
-      const s = JSON.stringify(scriptArgs ?? {});
+      const s = JSON.stringify(scriptArgs);
       return s.length > 128_000 ? s.slice(0, 128_000) : s;
     } catch {
       return "{}";
@@ -67,9 +86,10 @@ export default function DomEntityView({
       // ignore
     }
 
-    const reportError = (e: any) => {
-      const msg = String(e || "unknown error");
-      const stack = e && typeof e === "object" && typeof e.stack === "string" ? e.stack : "";
+    const reportError = (error: unknown) => {
+      const errorRecord = safeObject(error);
+      const msg = safeToString(error) || "unknown error";
+      const stack = safeString(errorRecord.stack);
       try {
         onScriptError?.({
           entity_id: entity.id,
@@ -86,33 +106,11 @@ export default function DomEntityView({
     if (!baseUrl || typeof yolo !== "boolean") return;
     if (!script || script.trim().length === 0) return;
 
-    const sid = safeString(sessionId).trim();
-    const tokenRaw = safeString((daemonAuth as any)?.token).trim();
-    const agentdTokenRaw = safeString((daemonAuth as any)?.agentdToken).trim();
-    const daemon = {
-      base_url: baseUrl,
-      yolo: !!yolo,
-      auth_token: tokenRaw.replace(/^bearer\\s+/i, "").trim(),
-      agentd_auth_token: agentdTokenRaw.replace(/^bearer\\s+/i, "").trim(),
-      headers: daemonHeaders(daemonAuth),
-      session_id: sid || undefined,
-    };
-    const api: any = {
+    const api: SceneDomScriptApi = {
       root,
-      daemon,
+      daemon: getSceneDaemonContext({ baseUrl, yolo: !!yolo, sessionId, daemonAuth }),
       artifact: {
-        url: async (path: any) => {
-          const p = String(path ?? "").trim();
-          if (!p) throw new Error("artifact.url requires path");
-          const sidQ = sid ? `&session_id=${encodeURIComponent(sid)}` : "";
-          const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${yolo ? "1" : "0"}${sidQ}`;
-          const r = await fetch(src, daemonFetchInit(daemonAuth));
-          if (!r.ok) throw new Error(`file fetch failed: ${r.status}`);
-          const b = await r.blob();
-          const u = URL.createObjectURL(b);
-          blobUrlsRef.current.push(u);
-          return u;
-        },
+        url: createSceneArtifactUrlResolver({ baseUrl, yolo: !!yolo, sessionId, daemonAuth, blobUrlsRef }),
       },
     };
 
@@ -141,12 +139,9 @@ return __fn;
           "args",
           "__console",
           '"use strict"; const console = __console; return (async function() {\n' + body + "\n})();",
-        ) as (api: any, args: any, __console: any) => Promise<any>;
+        ) as (api: SceneDomScriptApi, args: UnknownRecord, __console: Console) => Promise<unknown>;
         const res = await fn(api, scriptArgs, makeSceneConsole());
-        if (!cancelled && allowAutoplay) {
-          const g: any = typeof globalThis !== "undefined" ? (globalThis as any) : {};
-          const unlocked = !!g.__agentui_autoplay_unlocked;
-          if (unlocked && root) {
+        if (!cancelled && allowAutoplay && isSceneAutoplayUnlocked() && root) {
             const els = Array.from(root.querySelectorAll("audio,video")) as HTMLMediaElement[];
             for (const el of els) {
               try {
@@ -155,11 +150,9 @@ return __fn;
                 // ignore
               }
             }
-          }
         }
         if (cancelled) return;
-        if (typeof res === "function") cleanupRef.current = res as any;
-        else if (res && typeof res === "object" && typeof (res as any).cleanup === "function") cleanupRef.current = (res as any).cleanup;
+        cleanupRef.current = getSceneCleanup(res);
       } catch (e) {
         if (!cancelled) reportError(e);
       }

@@ -1,18 +1,20 @@
 import React from "react";
 
 const MEDIA_SELECTOR = "audio,video";
+type AutoplayGlobal = typeof globalThis & { __agentui_autoplay_unlocked?: boolean };
 
 export default function useAutoplayUnlock(allowAutoplay: boolean) {
   React.useEffect(() => {
-    const g: any = typeof globalThis !== "undefined" ? (globalThis as any) : {};
     if (!allowAutoplay) return;
+    const globalWithAutoplay = globalThis as AutoplayGlobal;
     const doc = typeof document !== "undefined" ? document : null;
 
     const tryPlayAll = () => {
       if (!doc) return;
       const nodes = Array.from(doc.querySelectorAll(MEDIA_SELECTOR));
       for (const node of nodes) {
-        const el = node as HTMLMediaElement;
+        if (!(node instanceof HTMLMediaElement)) continue;
+        const el = node;
         try {
           const result = el.play();
           if (result && typeof (result as Promise<void>).catch === "function") {
@@ -25,12 +27,12 @@ export default function useAutoplayUnlock(allowAutoplay: boolean) {
     };
 
     const unlock = () => {
-      if (g.__agentui_autoplay_unlocked) return;
-      g.__agentui_autoplay_unlocked = true;
+      if (globalWithAutoplay.__agentui_autoplay_unlocked) return;
+      globalWithAutoplay.__agentui_autoplay_unlocked = true;
       tryPlayAll();
     };
 
-    if (g.__agentui_autoplay_unlocked) {
+    if (globalWithAutoplay.__agentui_autoplay_unlocked) {
       tryPlayAll();
     }
 
