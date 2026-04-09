@@ -1,3 +1,7 @@
+import type { BrokerAgentInfo, BrokerTeamRunMemberJobSummary } from "../../api";
+import type { RuntimeMemberDraft } from "./teamRunPanelTypes";
+import type { TeamMemberRow } from "./types";
+
 export const TEAM_RUN_EVENT_TYPES = new Set([
   "team_run_created",
   "team_run_status",
@@ -38,11 +42,11 @@ export const fmtTs = (ms?: number | null) => {
   }
 };
 
-export const fmtSummary = (summary?: any) => {
+export const fmtSummary = (summary?: BrokerTeamRunMemberJobSummary | null) => {
   if (!summary || typeof summary !== "object") return "";
   const parts: string[] = [];
-  const pushIf = (key: string, label: string) => {
-    const val = summary?.[key];
+  const pushIf = (key: keyof BrokerTeamRunMemberJobSummary, label: string) => {
+    const val = summary[key];
     if (typeof val === "number") parts.push(`${label} ${val}`);
   };
   pushIf("total", "total");
@@ -67,16 +71,17 @@ export const parseCsvList = (raw?: string | null) => {
     .filter(Boolean);
 };
 
-export const normalizeRoleInstructionMap = (raw: any): Record<string, string> => {
+export const normalizeRoleInstructionMap = (raw: unknown): Record<string, string> => {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
   const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(raw)) {
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     const role = String(key || "").trim().toLowerCase();
     if (!role) continue;
     let instr = "";
     if (typeof value === "string") instr = value;
-    else if (value && typeof value === "object" && typeof (value as any).instruction === "string") {
-      instr = String((value as any).instruction);
+    else if (value && typeof value === "object" && !Array.isArray(value)) {
+      const instruction = (value as { instruction?: unknown }).instruction;
+      if (typeof instruction === "string") instr = instruction;
     }
     instr = instr.trim();
     if (instr) out[role] = instr;
@@ -84,14 +89,14 @@ export const normalizeRoleInstructionMap = (raw: any): Record<string, string> =>
   return out;
 };
 
-export const normalizeRolePromptMode = (raw: any): string => {
+export const normalizeRolePromptMode = (raw: unknown): string => {
   if (typeof raw !== "string") return "prepend";
   const mode = raw.trim().toLowerCase();
   if (mode === "append" || mode === "replace") return mode;
   return "prepend";
 };
 
-export const normalizeSharedMemoryMode = (raw: any): string => {
+export const normalizeSharedMemoryMode = (raw: unknown): string => {
   if (typeof raw !== "string") return "read_write";
   const mode = raw.trim().toLowerCase();
   if (mode === "read_only" || mode === "readonly") return "read_only";
@@ -105,25 +110,29 @@ export type RoleGraphEdge = {
   reason?: string;
 };
 
-export const normalizeRoleGraphEdges = (raw: any): RoleGraphEdge[] => {
-  let edgesRaw: any[] = [];
+export const normalizeRoleGraphEdges = (raw: unknown): RoleGraphEdge[] => {
+  let edgesRaw: unknown[] = [];
   if (Array.isArray(raw)) edgesRaw = raw;
-  else if (raw && typeof raw === "object" && Array.isArray((raw as any).edges)) edgesRaw = (raw as any).edges;
+  else if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const edges = (raw as { edges?: unknown }).edges;
+    if (Array.isArray(edges)) edgesRaw = edges;
+  }
   const out: RoleGraphEdge[] = [];
   for (const item of edgesRaw) {
-    if (!item || typeof item !== "object") continue;
-    const from = String((item as any).from_role || (item as any).from || "").trim().toLowerCase();
-    const to = String((item as any).to_role || (item as any).to || "").trim().toLowerCase();
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const itemObj = item as Record<string, unknown>;
+    const from = String(itemObj.from_role ?? itemObj.from ?? "").trim().toLowerCase();
+    const to = String(itemObj.to_role ?? itemObj.to ?? "").trim().toLowerCase();
     if (!from || !to) continue;
-    const reason = (item as any).reason ? String((item as any).reason).trim() : "";
+    const reason = itemObj.reason ? String(itemObj.reason).trim() : "";
     out.push({ from_role: from, to_role: to, reason: reason || undefined });
   }
   return out;
 };
 
-const normalizeRoleValue = (role: any): string => String(role || "").trim();
+const normalizeRoleValue = (role: unknown): string => String(role || "").trim();
 
-const isConnectedAgent = (agent: any): { connected: boolean; deploymentId: string } => {
+const isConnectedAgent = (agent: BrokerAgentInfo): { connected: boolean; deploymentId: string } => {
   const deployments = Array.isArray(agent?.deployments) ? agent.deployments : [];
   const connected = agent?.connected === true || deployments.length > 0;
   let deploymentId = "";
@@ -139,11 +148,11 @@ export const buildRuntimeAgentAdditions = ({
   membersList,
   role,
 }: {
-  runtimeAgentOptions: any[];
-  existingRuntime: any[];
-  membersList: any[];
+  runtimeAgentOptions: BrokerAgentInfo[];
+  existingRuntime: RuntimeMemberDraft[];
+  membersList: TeamMemberRow[];
   role: string;
-}): { additions: any[]; error?: string } => {
+}): { additions: RuntimeMemberDraft[]; error?: string } => {
   if (runtimeAgentOptions.length === 0) {
     return { additions: [], error: "load agents before adding connected agents" };
   }
@@ -156,13 +165,13 @@ export const buildRuntimeAgentAdditions = ({
     const aid = item?.agent_id ? String(item.agent_id).trim() : "";
     if (aid) seenAgentIds.add(aid);
   }
-  const additions: any[] = [];
+  const additions: RuntimeMemberDraft[] = [];
   for (const agent of runtimeAgentOptions) {
     const aid = String(agent?.agent_id || "").trim();
     if (!aid || seenAgentIds.has(aid)) continue;
     const { connected, deploymentId } = isConnectedAgent(agent);
     if (!connected) continue;
-    const entry: Record<string, any> = { agent_id: aid, role };
+    const entry: RuntimeMemberDraft = { agent_id: aid, role };
     if (deploymentId) entry.deployment_id = deploymentId;
     additions.push(entry);
     seenAgentIds.add(aid);
@@ -179,11 +188,11 @@ export const buildRoleAllocatedRuntimeMembers = ({
   membersList,
   roles,
 }: {
-  runtimeAgentOptions: any[];
-  existingRuntime: any[];
-  membersList: any[];
+  runtimeAgentOptions: BrokerAgentInfo[];
+  existingRuntime: RuntimeMemberDraft[];
+  membersList: TeamMemberRow[];
   roles: string[];
-}): { additions: any[]; warning?: string; error?: string } => {
+}): { additions: RuntimeMemberDraft[]; warning?: string; error?: string } => {
   if (runtimeAgentOptions.length === 0) {
     return { additions: [], error: "load agents before allocating by role" };
   }
@@ -218,7 +227,7 @@ export const buildRoleAllocatedRuntimeMembers = ({
   if (missingRoles.length === 0) {
     return { additions: [], error: "all role plan roles are already assigned" };
   }
-  const availableAgents: any[] = [];
+  const availableAgents: BrokerAgentInfo[] = [];
   for (const agent of runtimeAgentOptions) {
     const aid = String(agent?.agent_id || "").trim();
     if (!aid || seenAgentIds.has(aid)) continue;
@@ -229,7 +238,7 @@ export const buildRoleAllocatedRuntimeMembers = ({
   if (availableAgents.length === 0) {
     return { additions: [], error: "no connected agents available for role allocation" };
   }
-  const additions: any[] = [];
+  const additions: RuntimeMemberDraft[] = [];
   let agentIdx = 0;
   for (const role of missingRoles) {
     if (agentIdx >= availableAgents.length) break;
@@ -238,7 +247,7 @@ export const buildRoleAllocatedRuntimeMembers = ({
     const aid = String(agent?.agent_id || "").trim();
     if (!aid) continue;
     const { deploymentId } = isConnectedAgent(agent);
-    const entry: Record<string, any> = { agent_id: aid, role };
+    const entry: RuntimeMemberDraft = { agent_id: aid, role };
     if (deploymentId) entry.deployment_id = deploymentId;
     additions.push(entry);
   }

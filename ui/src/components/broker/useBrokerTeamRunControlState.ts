@@ -1,5 +1,6 @@
 import React from "react";
 import type { ApiAuth } from "../../api";
+import type { TeamRunCreateResult } from "./teamRunStatusTypes";
 import type { BrokerEventRow } from "./types";
 import useBrokerTeamRunApprovalsState from "./useBrokerTeamRunApprovalsState";
 import useBrokerTeamRunLookupState from "./useBrokerTeamRunLookupState";
@@ -11,7 +12,7 @@ type UseBrokerTeamRunControlStateArgs = {
   canQuery: boolean;
   teamIdTrimmed: string;
   quorumEvents?: BrokerEventRow[];
-  runResult: any | null;
+  runResult: TeamRunCreateResult | null;
   runRuntimeMembersJson: string;
   setRunRuntimeMembersJson: (value: string) => void;
 };

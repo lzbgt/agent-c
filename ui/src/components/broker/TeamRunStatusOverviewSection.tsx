@@ -1,12 +1,17 @@
 import React from "react";
 import RoleGraphPreview from "./RoleGraphPreview";
-import type { MemberSession } from "./teamRunStatusTypes";
+import type {
+  MemberSession,
+  TeamRunLookupResult,
+  TeamRunMemberJobSummaryRow,
+  TeamRunRuntimeMemberRow,
+} from "./teamRunStatusTypes";
 import type { RoleGraphEdge } from "./teamRunUtils";
 
 type TeamRunStatusOverviewSectionProps = {
-  run: any;
+  run: TeamRunLookupResult;
   fmtTs: (ms?: number | null) => string;
-  fmtSummary: (summary?: any) => string;
+  fmtSummary: (summary?: TeamRunMemberJobSummaryRow | null) => string;
   roleGraphEdges: RoleGraphEdge[];
   roleGraphRoles: string[];
   rolePromptMode: string;
@@ -14,14 +19,14 @@ type TeamRunStatusOverviewSectionProps = {
   sharedMemoryScope: string;
   sharedMemoryMode: string;
   autoAllocateRoles: boolean;
-  autoAllocateAllocated: any[];
-  autoAllocateMissing: any[];
+  autoAllocateAllocated: string[];
+  autoAllocateMissing: string[];
   autoAllocateWarning: string;
   runtimeUpdateBusy: boolean;
   canQuery: boolean;
   memberSessions: MemberSession[];
-  onRuntimeMemberToggle: (member: any) => Promise<void> | void;
-  onRuntimeMemberRemove: (member: any) => Promise<void> | void;
+  onRuntimeMemberToggle: (member: TeamRunRuntimeMemberRow) => Promise<void> | void;
+  onRuntimeMemberRemove: (member: TeamRunRuntimeMemberRow) => Promise<void> | void;
 };
 
 export default function TeamRunStatusOverviewSection(props: TeamRunStatusOverviewSectionProps) {
@@ -104,10 +109,10 @@ export default function TeamRunStatusOverviewSection(props: TeamRunStatusOvervie
           summary: {props.fmtSummary(run?.member_job_summary)}
         </div>
       ) : null}
-      {Array.isArray(run?.dispatch_errors) && run.dispatch_errors.length > 0 ? (
+      {(run.dispatch_errors ?? []).length > 0 ? (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200">
           dispatch errors:
-          {run.dispatch_errors.map((err: any, idx: number) => {
+          {(run.dispatch_errors ?? []).map((err, idx: number) => {
             const mid = err?.member_id ? String(err.member_id) : "";
             const aid = err?.agent_id ? String(err.agent_id) : "";
             const msg = err?.error ? String(err.error) : "dispatch error";
@@ -120,10 +125,10 @@ export default function TeamRunStatusOverviewSection(props: TeamRunStatusOvervie
           })}
         </div>
       ) : null}
-      {Array.isArray(run?.cancel_results) && run.cancel_results.length > 0 ? (
+      {(run.cancel_results ?? []).length > 0 ? (
         <div className="rounded-md border border-amber-400/20 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-100">
           cancel results:
-          {run.cancel_results.map((row: any, idx: number) => {
+          {(run.cancel_results ?? []).map((row, idx: number) => {
             const mid = row?.member_id ? String(row.member_id) : "";
             const aid = row?.agent_id ? String(row.agent_id) : "";
             const jobId = row?.job_id ? String(row.job_id) : "";
@@ -143,10 +148,10 @@ export default function TeamRunStatusOverviewSection(props: TeamRunStatusOvervie
           })}
         </div>
       ) : null}
-      {Array.isArray(run?.member_jobs) && run.member_jobs.length > 0 ? (
+      {(run.member_jobs ?? []).length > 0 ? (
         <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
           member jobs:
-          {run.member_jobs.map((job: any, idx: number) => {
+          {(run.member_jobs ?? []).map((job, idx: number) => {
             const mid = job?.member_id ? String(job.member_id) : "";
             const aid = job?.agent_id ? String(job.agent_id) : "";
             const jobId = job?.job_id ? String(job.job_id) : "";
@@ -182,10 +187,10 @@ export default function TeamRunStatusOverviewSection(props: TeamRunStatusOvervie
           ))}
         </div>
       ) : null}
-      {Array.isArray(run?.runtime_members) && run.runtime_members.length > 0 ? (
+      {(run.runtime_members ?? []).length > 0 ? (
         <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
           runtime members:
-          {run.runtime_members.map((m: any, idx: number) => {
+          {(run.runtime_members ?? []).map((m, idx: number) => {
             const agentId = m?.agent_id ? String(m.agent_id) : "";
             const role = m?.role ? String(m.role) : "";
             const mid = m?.member_id ? String(m.member_id) : "";

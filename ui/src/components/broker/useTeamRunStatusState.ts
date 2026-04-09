@@ -4,7 +4,19 @@ import {
   apiBrokerTeamRunHandoff,
   type ApiAuth,
 } from "../../api";
-import type { TeamRunHandoffEventRecord } from "./teamRunStatusTypes";
+import type {
+  TeamRunGoalContractRow,
+  TeamRunGoalEventInput,
+  TeamRunGoalEventRow,
+  TeamRunGoalEventType,
+  TeamRunHandoffEventInput,
+  TeamRunHandoffEventRecord,
+  TeamRunHandoffEventRow,
+  TeamRunHandoffKind,
+  TeamRunHandoffState,
+  TeamRunHandoffTransitionState,
+  TeamRunLookupResult,
+} from "./teamRunStatusTypes";
 import { normalizeHandoffEventRecord, parseLineList } from "./teamRunStatusUtils";
 
 type UseTeamRunStatusStateArgs = {
@@ -13,14 +25,14 @@ type UseTeamRunStatusStateArgs = {
   canWrite: boolean;
   teamId: string;
   runId: string;
-  run: any;
-  handoffEvents: any[];
+  run: TeamRunLookupResult | null;
+  handoffEvents: TeamRunHandoffEventRow[];
   onRefreshRun: (runId: string) => Promise<void> | void;
 };
 
 export default function useTeamRunStatusState(args: UseTeamRunStatusStateArgs) {
-  const goalContract = args.run?.goal_contract && typeof args.run.goal_contract === "object" ? args.run.goal_contract : null;
-  const goalEvents = Array.isArray(args.run?.goal_events) ? args.run.goal_events : [];
+  const goalContract = args.run?.goal_contract ?? null;
+  const goalEvents: TeamRunGoalEventRow[] = args.run?.goal_events ?? [];
   const lastInitRunId = React.useRef<string>("");
 
   const [goalContractGoal, setGoalContractGoal] = React.useState<string>("");
@@ -88,7 +100,7 @@ export default function useTeamRunStatusState(args: UseTeamRunStatusStateArgs) {
       setGoalUpdateError("goal contract is empty");
       return;
     }
-    const contract: Record<string, any> = {};
+    const contract: TeamRunGoalContractRow = {};
     if (goal) contract.goal = goal;
     if (criteria.length > 0) contract.success_criteria = criteria;
     if (constraints.length > 0) contract.constraints = constraints;
@@ -120,22 +132,22 @@ export default function useTeamRunStatusState(args: UseTeamRunStatusStateArgs) {
       setGoalUpdateError("goal event type must be progress, drift, or spawn_validation");
       return;
     }
-    let dataObj: Record<string, any> | undefined;
+    let dataObj: Record<string, unknown> | undefined;
     const rawData = goalEventData.trim();
     if (rawData) {
       try {
-        const parsed = JSON.parse(rawData);
+        const parsed = JSON.parse(rawData) as unknown;
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
           setGoalUpdateError("goal event data must be a JSON object");
           return;
         }
-        dataObj = parsed as Record<string, any>;
+        dataObj = parsed as Record<string, unknown>;
       } catch (err) {
         setGoalUpdateError(`goal event data invalid json: ${String(err)}`);
         return;
       }
     }
-    const event: Record<string, any> = { type: eventType };
+    const event: TeamRunGoalEventInput = { type: eventType as TeamRunGoalEventType };
     const message = goalEventMessage.trim();
     if (message) event.message = message;
     if (dataObj) event.data = dataObj;
@@ -157,7 +169,7 @@ export default function useTeamRunStatusState(args: UseTeamRunStatusStateArgs) {
 
   const emitHandoffEvent = async (
     mode: "manual" | "transition",
-    nextState: "proposed" | "accepted" | "declined" | "cancelled" = "proposed",
+    nextState: TeamRunHandoffState = "proposed",
     seed?: TeamRunHandoffEventRecord,
   ) => {
     setHandoffError(null);
@@ -168,32 +180,33 @@ export default function useTeamRunStatusState(args: UseTeamRunStatusStateArgs) {
     }
     const fromRole = (mode === "manual" ? handoffFromRole : seed?.from_role || "").trim();
     const toRole = (mode === "manual" ? handoffToRole : seed?.to_role || "").trim();
-    const kind = (mode === "manual" ? handoffKind : seed?.kind || "role").trim().toLowerCase();
+    const kindRaw = (mode === "manual" ? handoffKind : seed?.kind || "role").trim().toLowerCase();
     const handoffId = (mode === "manual" ? "" : seed?.handoff_id || "").trim();
     if (!handoffId && (!fromRole || !toRole)) {
       setHandoffError("handoff requires from_role and to_role");
       return;
     }
-    if (kind !== "role" && kind !== "cross_deployment") {
+    if (kindRaw !== "role" && kindRaw !== "cross_deployment") {
       setHandoffError("handoff kind must be role or cross_deployment");
       return;
     }
-    let dataObj: Record<string, any> | undefined;
+    const kind = kindRaw as TeamRunHandoffKind;
+    let dataObj: Record<string, unknown> | undefined;
     const rawData = mode === "manual" ? handoffData.trim() : "";
     if (rawData) {
       try {
-        const parsed = JSON.parse(rawData);
+        const parsed = JSON.parse(rawData) as unknown;
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
           setHandoffError("handoff data must be a JSON object");
           return;
         }
-        dataObj = parsed as Record<string, any>;
+        dataObj = parsed as Record<string, unknown>;
       } catch (err) {
         setHandoffError(`handoff data invalid json: ${String(err)}`);
         return;
       }
     }
-    const event: Record<string, any> = { kind, state: nextState };
+    const event: TeamRunHandoffEventInput = { kind, state: nextState };
     if (handoffId) event.handoff_id = handoffId;
     if (fromRole) event.from_role = fromRole;
     if (toRole) event.to_role = toRole;
@@ -286,7 +299,7 @@ export default function useTeamRunStatusState(args: UseTeamRunStatusStateArgs) {
     handleHandoffEvent: async () => emitHandoffEvent("manual", "proposed"),
     handleHandoffTransition: async (
       seed: TeamRunHandoffEventRecord,
-      nextState: "accepted" | "declined" | "cancelled",
+      nextState: TeamRunHandoffTransitionState,
     ) => emitHandoffEvent("transition", nextState, seed),
   };
 }

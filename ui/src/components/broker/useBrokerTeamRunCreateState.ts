@@ -10,7 +10,7 @@ type UseBrokerTeamRunCreateStateArgs = {
   canQuery: boolean;
   teamIdTrimmed: string;
   membersList: TeamMemberRow[];
-  teamMeta?: Record<string, any> | null;
+  teamMeta?: Record<string, unknown> | null;
   onMembersRefresh?: (teamId: string) => Promise<void> | void;
 };
 
@@ -34,14 +34,14 @@ export default function useBrokerTeamRunCreateState({
       (() => {
         const teamRoleOverridesDefaults =
           teamMeta?.role_overrides && typeof teamMeta.role_overrides === "object"
-            ? (teamMeta.role_overrides as Record<string, any>)
+            ? (teamMeta.role_overrides as Record<string, unknown>)
             : null;
         const teamRoleOverrideKeys = teamRoleOverridesDefaults
           ? Object.keys(teamRoleOverridesDefaults).map((key) => String(key)).filter(Boolean)
           : [];
         const teamRoleInstructionsDefaults =
-          teamMeta?.role_instructions && typeof teamMeta.role_instructions === "object"
-            ? (teamMeta.role_instructions as Record<string, string>)
+          teamMeta?.role_instructions && typeof teamMeta.role_instructions === "object" && !Array.isArray(teamMeta.role_instructions)
+            ? (teamMeta.role_instructions as Record<string, unknown>)
             : {};
         const teamRoleInstructionKeys = Object.keys(teamRoleInstructionsDefaults);
         const set = new Set<string>();

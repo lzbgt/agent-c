@@ -8,6 +8,14 @@ import {
   type ApiAuth,
 } from "../../api";
 import useLocalStorageState from "../../hooks/useLocalStorageState";
+import type { RuntimeMemberDraft } from "./teamRunPanelTypes";
+import type {
+  MemberSession,
+  TeamRunCreateResult,
+  TeamRunLookupResult,
+  TeamRunRecentRun,
+  TeamRunRuntimeMemberRow,
+} from "./teamRunStatusTypes";
 import { TEAM_RUN_EVENT_TYPES } from "./teamRunUtils";
 import type { BrokerEventRow } from "./types";
 
@@ -17,7 +25,7 @@ type UseBrokerTeamRunLookupStateArgs = {
   canQuery: boolean;
   teamIdTrimmed: string;
   quorumEvents?: BrokerEventRow[];
-  runResult: any | null;
+  runResult: TeamRunCreateResult | null;
   runRuntimeMembersJson: string;
   setRunRuntimeMembersJson: (value: string) => void;
 };
@@ -39,7 +47,7 @@ export default function useBrokerTeamRunLookupState({
   const [runLookupId, setRunLookupIdState] = React.useState<string>("");
   const [runLookupBusy, setRunLookupBusy] = React.useState<boolean>(false);
   const [runLookupError, setRunLookupError] = React.useState<string | null>(null);
-  const [runLookupResult, setRunLookupResult] = React.useState<any | null>(null);
+  const [runLookupResult, setRunLookupResult] = React.useState<TeamRunLookupResult | null>(null);
   const [runCancelBusy, setRunCancelBusy] = React.useState<boolean>(false);
   const [runCancelError, setRunCancelError] = React.useState<string | null>(null);
   const [runCancelNote, setRunCancelNote] = React.useState<string>("");
@@ -56,7 +64,7 @@ export default function useBrokerTeamRunLookupState({
   const [runtimeUpdateBusy, setRuntimeUpdateBusy] = React.useState<boolean>(false);
   const [runtimeUpdateError, setRuntimeUpdateError] = React.useState<string | null>(null);
   const [runtimeUpdateNote, setRuntimeUpdateNote] = React.useState<string>("");
-  const [recentRuns, setRecentRuns] = React.useState<any[]>([]);
+  const [recentRuns, setRecentRuns] = React.useState<TeamRunRecentRun[]>([]);
   const [recentRunsBusy, setRecentRunsBusy] = React.useState<boolean>(false);
   const [recentRunsError, setRecentRunsError] = React.useState<string | null>(null);
   const [recentRunsLive, setRecentRunsLive] = useLocalStorageState<boolean>("agentui.teamRunListAuto", false);
@@ -90,11 +98,11 @@ export default function useBrokerTeamRunLookupState({
     [setRunLookupByTeam, teamIdTrimmed],
   );
 
-  const recentRunsItems = Array.isArray(recentRuns) ? recentRuns : [];
+  const recentRunsItems = recentRuns;
   const runMemberSessions = React.useMemo(() => {
     const raw = runLookupResult?.member_sessions;
-    if (!raw || typeof raw !== "object") return [] as Array<{ memberId: string; sessionId: string }>;
-    return Object.entries(raw as Record<string, any>)
+    if (!raw || typeof raw !== "object") return [] as MemberSession[];
+    return Object.entries(raw)
       .map(([memberId, sessionId]) => ({
         memberId: String(memberId || ""),
         sessionId: String(sessionId || ""),
@@ -103,8 +111,8 @@ export default function useBrokerTeamRunLookupState({
   }, [runLookupResult]);
   const runMemberOptions = React.useMemo(() => {
     const out = new Set<string>();
-    const members = Array.isArray(runLookupResult?.members) ? runLookupResult.members : [];
-    const runtime = Array.isArray(runLookupResult?.runtime_members) ? runLookupResult.runtime_members : [];
+    const members = runLookupResult?.members ?? [];
+    const runtime = runLookupResult?.runtime_members ?? [];
     for (const member of members) {
       const memberId = String(member?.member_id || "").trim();
       if (memberId) out.add(memberId);
@@ -117,8 +125,8 @@ export default function useBrokerTeamRunLookupState({
   }, [runLookupResult]);
   const runAgentOptions = React.useMemo(() => {
     const out = new Set<string>();
-    const members = Array.isArray(runLookupResult?.members) ? runLookupResult.members : [];
-    const runtime = Array.isArray(runLookupResult?.runtime_members) ? runLookupResult.runtime_members : [];
+    const members = runLookupResult?.members ?? [];
+    const runtime = runLookupResult?.runtime_members ?? [];
     for (const member of members) {
       const agentId = String(member?.agent_id || "").trim();
       if (agentId) out.add(agentId);
@@ -131,8 +139,8 @@ export default function useBrokerTeamRunLookupState({
   }, [runLookupResult]);
   const runRoleOptions = React.useMemo(() => {
     const out = new Set<string>();
-    const members = Array.isArray(runLookupResult?.members) ? runLookupResult.members : [];
-    const runtime = Array.isArray(runLookupResult?.runtime_members) ? runLookupResult.runtime_members : [];
+    const members = runLookupResult?.members ?? [];
+    const runtime = runLookupResult?.runtime_members ?? [];
     for (const member of members) {
       const role = String(member?.role || "").trim();
       if (role) out.add(role);
@@ -194,7 +202,7 @@ export default function useBrokerTeamRunLookupState({
       if (!resp.ok) {
         throw new Error(resp.error || resp.err || resp.code || "team runs list failed");
       }
-      setRecentRuns(Array.isArray(resp.runs) ? resp.runs : []);
+      setRecentRuns(resp.runs ?? []);
     } catch (err) {
       setRecentRunsError(String(err));
     } finally {
@@ -291,8 +299,8 @@ export default function useBrokerTeamRunLookupState({
   }, [auth, base, resolveRunId, teamIdTrimmed, setRunLookupId]);
 
   const handleRuntimeMembersLoadFromRun = React.useCallback(() => {
-    const runtimeMembers = runLookupResult?.runtime_members;
-    if (!Array.isArray(runtimeMembers) || runtimeMembers.length === 0) {
+    const runtimeMembers = runLookupResult?.runtime_members ?? [];
+    if (runtimeMembers.length === 0) {
       setRuntimeUpdateError("no runtime members to load");
       return;
     }
@@ -301,7 +309,7 @@ export default function useBrokerTeamRunLookupState({
   }, [runLookupResult, setRunRuntimeMembersJson]);
 
   const applyRuntimeMembersUpdate = React.useCallback(
-    async (members: any[], mode: string) => {
+    async (members: RuntimeMemberDraft[], mode: string) => {
       const runId = resolveRunId();
       if (!teamIdTrimmed || !runId) {
         setRuntimeUpdateError("missing team_id or run id");
@@ -344,7 +352,7 @@ export default function useBrokerTeamRunLookupState({
       setRuntimeUpdateError("runtime members json required");
       return;
     }
-    let parsed: any = null;
+    let parsed: unknown = null;
     try {
       parsed = JSON.parse(raw);
     } catch (err) {
@@ -356,12 +364,12 @@ export default function useBrokerTeamRunLookupState({
       return;
     }
     const mode = String(runtimeUpdateMode || "").trim() || "replace";
-    await applyRuntimeMembersUpdate(parsed, mode);
+    await applyRuntimeMembersUpdate(parsed as RuntimeMemberDraft[], mode);
   }, [applyRuntimeMembersUpdate, runRuntimeMembersJson, runtimeUpdateMode]);
 
   const handleRuntimeMemberToggle = React.useCallback(
-    async (member: any) => {
-      const runtimeMembers = Array.isArray(runLookupResult?.runtime_members) ? runLookupResult.runtime_members : [];
+    async (member: TeamRunRuntimeMemberRow) => {
+      const runtimeMembers = runLookupResult?.runtime_members ?? [];
       if (runtimeMembers.length === 0) {
         setRuntimeUpdateError("load run status first");
         return;
@@ -372,7 +380,7 @@ export default function useBrokerTeamRunLookupState({
         setRuntimeUpdateError("runtime member missing id");
         return;
       }
-      const updated = runtimeMembers.map((item: any) => {
+      const updated = runtimeMembers.map((item) => {
         const existingMemberId = String(item?.member_id || "").trim();
         const existingAgentId = String(item?.agent_id || "").trim();
         const match = memberId ? existingMemberId === memberId : existingAgentId === agentId;
@@ -387,8 +395,8 @@ export default function useBrokerTeamRunLookupState({
   );
 
   const handleRuntimeMemberRemove = React.useCallback(
-    async (member: any) => {
-      const runtimeMembers = Array.isArray(runLookupResult?.runtime_members) ? runLookupResult.runtime_members : [];
+    async (member: TeamRunRuntimeMemberRow) => {
+      const runtimeMembers = runLookupResult?.runtime_members ?? [];
       if (runtimeMembers.length === 0) {
         setRuntimeUpdateError("load run status first");
         return;
@@ -399,7 +407,7 @@ export default function useBrokerTeamRunLookupState({
         setRuntimeUpdateError("runtime member missing id");
         return;
       }
-      const updated = runtimeMembers.filter((item: any) => {
+      const updated = runtimeMembers.filter((item) => {
         const existingMemberId = String(item?.member_id || "").trim();
         const existingAgentId = String(item?.agent_id || "").trim();
         if (memberId) return existingMemberId !== memberId;

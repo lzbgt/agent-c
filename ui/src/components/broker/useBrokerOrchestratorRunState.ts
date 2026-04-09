@@ -6,6 +6,7 @@ import {
   apiBrokerOrchestratorRunUpdate,
   apiBrokerOrchestratorRunsList,
   type ApiAuth,
+  type BrokerOrchestratorRun,
 } from "../../api";
 import useLocalStorageState from "../../hooks/useLocalStorageState";
 import { fmtTs } from "./teamRunUtils";
@@ -21,14 +22,15 @@ import {
   sortRevisions,
   toNumber,
 } from "./brokerOrchestratorRunUtils";
+import type { BrokerEventRow } from "./types";
 
 type UseBrokerOrchestratorRunStateArgs = {
   base: string;
   auth: ApiAuth;
   canQuery: boolean;
   teamId: string;
-  teamMeta?: Record<string, any> | null;
-  events?: Array<{ type?: string; ts_unix_ms?: number; event_id?: string; trace_id?: string; payload?: any }>;
+  teamMeta?: Record<string, unknown> | null;
+  events?: BrokerEventRow[];
 };
 
 export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestratorRunStateArgs) {
@@ -37,7 +39,7 @@ export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestrato
 
   const [listBusy, setListBusy] = React.useState(false);
   const [listError, setListError] = React.useState<string | null>(null);
-  const [runs, setRuns] = React.useState<any[]>([]);
+  const [runs, setRuns] = React.useState<BrokerOrchestratorRun[]>([]);
   const [statusFilter, setStatusFilter] = React.useState<string>("");
 
   const [createGoal, setCreateGoal] = React.useState<string>("");
@@ -56,7 +58,7 @@ export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestrato
   const [runId, setRunIdState] = React.useState<string>("");
   const [runBusy, setRunBusy] = React.useState<boolean>(false);
   const [runError, setRunError] = React.useState<string | null>(null);
-  const [runResult, setRunResult] = React.useState<any | null>(null);
+  const [runResult, setRunResult] = React.useState<BrokerOrchestratorRun | null>(null);
   const [showGoalRevisions, setShowGoalRevisions] = React.useState<boolean>(false);
   const [showRoleRevisions, setShowRoleRevisions] = React.useState<boolean>(false);
   const [showGoalContractJson, setShowGoalContractJson] = React.useState<boolean>(false);
@@ -520,11 +522,17 @@ export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestrato
         ? "No role plan revision events."
         : "No revision events yet.";
 
-  const currentOwner = currentMeta?.orchestrator_owner ? String(currentMeta.orchestrator_owner) : "";
-  const prevOwner = currentMeta?.orchestrator_owner_prev ? String(currentMeta.orchestrator_owner_prev) : "";
+  const currentOwner = typeof currentMeta?.orchestrator_owner === "string" ? currentMeta.orchestrator_owner : "";
+  const prevOwner =
+    typeof currentMeta?.orchestrator_owner_prev === "string" ? currentMeta.orchestrator_owner_prev : "";
   const allowTakeover =
-    currentMeta?.allow_takeover === undefined ? "default" : currentMeta.allow_takeover ? "true" : "false";
-  const rolePlanDefaults = teamMetaObj?.role_graph || teamMetaObj?.role_instructions ? "team meta" : "none";
+    currentMeta?.allow_takeover === undefined
+      ? "default"
+      : currentMeta.allow_takeover === true
+        ? "true"
+        : "false";
+  const rolePlanDefaults =
+    teamMetaObj && ("role_graph" in teamMetaObj || "role_instructions" in teamMetaObj) ? "team meta" : "none";
 
   return {
     teamIdTrimmed,

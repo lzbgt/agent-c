@@ -6,6 +6,7 @@ import {
   type ApiAuth,
 } from "../../api";
 import type { TeamRunApprovalRow } from "./teamRunPanelTypes";
+import type { TeamRunCreateResult, TeamRunLookupResult } from "./teamRunStatusTypes";
 
 type UseBrokerTeamRunApprovalsStateArgs = {
   base: string;
@@ -13,8 +14,8 @@ type UseBrokerTeamRunApprovalsStateArgs = {
   canQuery: boolean;
   teamIdTrimmed: string;
   runLookupId: string;
-  runLookupResult: any | null;
-  runResult: any | null;
+  runLookupResult: TeamRunLookupResult | null;
+  runResult: TeamRunCreateResult | null;
 };
 
 export default function useBrokerTeamRunApprovalsState({
@@ -83,7 +84,10 @@ export default function useBrokerTeamRunApprovalsState({
     setApprovalsError(null);
     setApprovalsBusy(true);
     try {
-      const payload: Record<string, any> = { member_id: memberId, decision };
+      const payload: { member_id: string; decision: string; rule_id?: string; reason?: string } = {
+        member_id: memberId,
+        decision,
+      };
       if (ruleId) payload.rule_id = ruleId;
       if (reason) payload.reason = reason;
       const resp = await apiBrokerTeamRunApprovalsCreate(base, teamIdTrimmed, runId, payload, auth);

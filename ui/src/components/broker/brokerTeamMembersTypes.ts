@@ -1,4 +1,7 @@
-export type BrokerTeamMemberRecord = Record<string, any>;
+import type { BrokerAgentInfo, BrokerDeploymentInfo } from "../../api";
+import type { TeamMemberRow } from "./types";
+
+export type BrokerTeamMemberRecord = TeamMemberRow;
 
 export type BrokerTeamMembersPanelProps = {
   canQuery: boolean;
@@ -8,9 +11,9 @@ export type BrokerTeamMembersPanelProps = {
   members: Array<BrokerTeamMemberRecord> | null;
   memberAgentsBusy: boolean;
   memberAgentsError: string | null;
-  memberAgentOptions: Array<BrokerTeamMemberRecord>;
-  memberAgentDeployments: Array<BrokerTeamMemberRecord>;
-  memberEditAgentDeployments: Array<BrokerTeamMemberRecord>;
+  memberAgentOptions: BrokerAgentInfo[];
+  memberAgentDeployments: BrokerDeploymentInfo[];
+  memberEditAgentDeployments: BrokerDeploymentInfo[];
   memberId: string;
   memberRole: string;
   memberStatus: string;
@@ -70,8 +73,8 @@ export type BrokerTeamMembersPanelProps = {
   onAddMember: () => void;
   onRefreshMemberAgents: () => void;
   onAddConnectedAgents: () => void;
-  onToggleMemberStatus: (member: BrokerTeamMemberRecord) => void;
-  onEditMember: (member: BrokerTeamMemberRecord) => void;
+  onToggleMemberStatus: (member: TeamMemberRow) => void;
+  onEditMember: (member: TeamMemberRow) => void;
   onDeleteMember: (memberId: string) => void;
   onSaveMemberEdit: () => void;
   onCancelMemberEdit: () => void;

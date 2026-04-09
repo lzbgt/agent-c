@@ -1,10 +1,15 @@
 import React from "react";
 import FieldLabel from "../FieldLabel";
+import type {
+  TeamRunGoalContractRow,
+  TeamRunGoalEventRow,
+  TeamRunLookupResult,
+} from "./teamRunStatusTypes";
 
 type TeamRunStatusGoalSectionProps = {
-  run: any;
-  goalContract: any;
-  goalEventRows: any[];
+  run: TeamRunLookupResult;
+  goalContract: TeamRunGoalContractRow | null;
+  goalEventRows: TeamRunGoalEventRow[];
   canWrite: boolean;
   goalContractGoal: string;
   setGoalContractGoal: (value: string) => void;
@@ -93,7 +98,7 @@ export default function TeamRunStatusGoalSection(props: TeamRunStatusGoalSection
         <div className="text-xs font-semibold text-white/80">Goal events (progress / drift / spawn_validation)</div>
         {props.goalEventRows.length > 0 ? (
           <div className="grid gap-1 text-[11px] text-white/60">
-            {props.goalEventRows.map((ev: any, idx: number) => {
+            {props.goalEventRows.map((ev, idx: number) => {
               const evType = ev?.type ? String(ev.type) : "event";
               const ts = typeof ev?.ts_unix_ms === "number" ? props.fmtTs(ev.ts_unix_ms) : "";
               const msg = ev?.message ? String(ev.message) : "";

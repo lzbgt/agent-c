@@ -1,8 +1,10 @@
 import React from "react";
+import type { BrokerAgentInfo, BrokerDeploymentInfo } from "../../api";
 import FieldLabel from "../FieldLabel";
 import TeamRunCreateAdvancedSection from "./TeamRunCreateAdvancedSection";
 import TeamRunCreateApprovalsSection from "./TeamRunCreateApprovalsSection";
 import TeamRunCreateRuntimeSection from "./TeamRunCreateRuntimeSection";
+import type { RuntimeMembersPreview, RuntimeSavePreview, RuntimeTeamDiff } from "./teamRunPanelTypes";
 
 export type InlineApproval = {
   member_id: string;
@@ -62,8 +64,8 @@ export type TeamRunCreatePanelProps = {
   runRolePlanOptions: string[];
   runRuntimeMembersJson: string;
   setRunRuntimeMembersJson: (value: string) => void;
-  runtimeMembersPreview: { items: any[]; error: string };
-  runtimeTeamDiff: { runtimeOnly: any[]; teamOnly: any[]; mismatched: any[] };
+  runtimeMembersPreview: RuntimeMembersPreview;
+  runtimeTeamDiff: RuntimeTeamDiff;
   handleSetAllRuntimeStatus: (status: "active" | "paused") => void;
   handleRemovePausedRuntimeMembers: () => void;
   handleCompactRuntimeMembers: () => void;
@@ -82,7 +84,7 @@ export type TeamRunCreatePanelProps = {
   setRuntimeMemberAgentId: (value: string) => void;
   runtimeMemberRole: string;
   setRuntimeMemberRole: (value: string) => void;
-  runtimeAgentOptions: any[];
+  runtimeAgentOptions: BrokerAgentInfo[];
   runtimeAgentsBusy: boolean;
   refreshRuntimeAgents: () => void;
   handleAddConnectedAgents: () => void;
@@ -91,11 +93,11 @@ export type TeamRunCreatePanelProps = {
   handleSaveRuntimeMembers: () => void;
   runtimeAgentsError: string | null;
   runtimeSaveError: string | null;
-  runtimeSavePreview: { newMembers: any[]; skipped: any[]; invalid: any[] };
+  runtimeSavePreview: RuntimeSavePreview;
   handleFixInvalidRuntimeMembers: () => void;
   runtimeMemberDeploymentId: string;
   setRuntimeMemberDeploymentId: (value: string) => void;
-  runtimeAgentDeployments: any[];
+  runtimeAgentDeployments: BrokerDeploymentInfo[];
   runtimeMemberCapabilities: string;
   setRuntimeMemberCapabilities: (value: string) => void;
   runtimeMemberBackendLabel: string;
@@ -124,7 +126,7 @@ export type TeamRunCreatePanelProps = {
   handleAddRunApproval: () => void;
   runError: string | null;
   runQuorum: { rules?: Array<{ rule_id?: string; min_approvals?: number; approved?: number; missing?: number }> } | null;
-  runResult: any | null;
+  runResult: { team_run_id?: string; status?: string; mode?: string } | null;
 };
 
 export default function TeamRunCreatePanel(props: TeamRunCreatePanelProps) {

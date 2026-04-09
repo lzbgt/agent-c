@@ -1,4 +1,4 @@
-export type ParsedJson = { ok: true; value: any } | { ok: false; error: string };
+export type ParsedJson = { ok: true; value: unknown } | { ok: false; error: string };
 
 export const parseJsonField = (raw: string, label: string): ParsedJson => {
   const trimmed = String(raw || "").trim();

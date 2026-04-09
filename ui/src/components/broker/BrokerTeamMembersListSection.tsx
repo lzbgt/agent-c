@@ -47,18 +47,21 @@ type BrokerTeamMembersListSectionProps = Pick<
 >;
 
 function buildMemberInfoBits(member: BrokerTeamMemberRecord) {
-  const meta = member?.meta && typeof member.meta === "object" ? (member.meta as Record<string, any>) : null;
-  const backendLabel = meta?.backend_label ? String(meta.backend_label) : "";
-  const overridesRaw = meta?.run_overrides && typeof meta.run_overrides === "object" ? meta.run_overrides : null;
+  const meta = member?.meta && typeof member.meta === "object" ? (member.meta as Record<string, unknown>) : null;
+  const backendLabel = typeof meta?.backend_label === "string" ? meta.backend_label : "";
+  const overridesRaw =
+    meta?.run_overrides && typeof meta.run_overrides === "object"
+      ? (meta.run_overrides as Record<string, unknown>)
+      : null;
   const overrideBits: string[] = [];
-  if (overridesRaw && typeof overridesRaw === "object") {
-    const model = (overridesRaw as any).model ? String((overridesRaw as any).model) : "";
-    const baseUrl = (overridesRaw as any).base_url ? String((overridesRaw as any).base_url) : "";
-    const summaryModel = (overridesRaw as any).summary_model ? String((overridesRaw as any).summary_model) : "";
-    const tools = (overridesRaw as any).tools ? String((overridesRaw as any).tools) : "";
-    const timeoutMs = (overridesRaw as any).timeout_ms;
-    const maxSteps = (overridesRaw as any).max_steps;
-    const streamAssistant = (overridesRaw as any).stream_assistant;
+  if (overridesRaw) {
+    const model = typeof overridesRaw.model === "string" ? overridesRaw.model : "";
+    const baseUrl = typeof overridesRaw.base_url === "string" ? overridesRaw.base_url : "";
+    const summaryModel = typeof overridesRaw.summary_model === "string" ? overridesRaw.summary_model : "";
+    const tools = typeof overridesRaw.tools === "string" ? overridesRaw.tools : "";
+    const timeoutMs = overridesRaw.timeout_ms;
+    const maxSteps = overridesRaw.max_steps;
+    const streamAssistant = overridesRaw.stream_assistant;
     if (model) overrideBits.push(`model ${model}`);
     if (summaryModel) overrideBits.push(`summary ${summaryModel}`);
     if (baseUrl) overrideBits.push(`base ${baseUrl}`);

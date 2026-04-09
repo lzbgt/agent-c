@@ -4,12 +4,15 @@ import {
   apiBrokerListAgents,
   apiBrokerTeamMembersUpsert,
   type ApiAuth,
+  type BrokerAgentInfo,
+  type BrokerDeploymentInfo,
 } from "../../api";
 import {
   buildRoleAllocatedRuntimeMembers,
   buildRuntimeAgentAdditions,
 } from "./teamRunUtils";
 import type {
+  RuntimeMemberDraft,
   RuntimeMembersPreview,
   RuntimeSavePreview,
   RuntimeTeamDiff,
@@ -51,7 +54,7 @@ export default function useBrokerTeamRunRuntimeMembersState({
   const [runtimeMemberTimeoutMs, setRuntimeMemberTimeoutMs] = React.useState<string>("");
   const [runtimeAgentsBusy, setRuntimeAgentsBusy] = React.useState<boolean>(false);
   const [runtimeAgentsError, setRuntimeAgentsError] = React.useState<string | null>(null);
-  const [runtimeAgents, setRuntimeAgents] = React.useState<any[] | null>(null);
+  const [runtimeAgents, setRuntimeAgents] = React.useState<BrokerAgentInfo[] | null>(null);
   const [runtimeSaveBusy, setRuntimeSaveBusy] = React.useState<boolean>(false);
   const [runtimeSaveError, setRuntimeSaveError] = React.useState<string | null>(null);
   const runtimeImportRef = React.useRef<HTMLInputElement | null>(null);
@@ -65,7 +68,7 @@ export default function useBrokerTeamRunRuntimeMembersState({
       if (!Array.isArray(parsed)) {
         return { items: [], error: "runtime_members must be a JSON array" };
       }
-      return { items: parsed, error: "" };
+      return { items: parsed as RuntimeMemberDraft[], error: "" };
     } catch (err) {
       return { items: [], error: `invalid runtime_members json: ${String(err)}` };
     }
@@ -76,7 +79,7 @@ export default function useBrokerTeamRunRuntimeMembersState({
     (agent) => String(agent?.agent_id || "") === String(runtimeMemberAgentId || "").trim(),
   );
   const runtimeAgentDeployments = Array.isArray(runtimeSelectedAgent?.deployments)
-    ? (runtimeSelectedAgent.deployments as any[])
+    ? (runtimeSelectedAgent.deployments as BrokerDeploymentInfo[])
     : [];
 
   const runtimeSavePreview = React.useMemo<RuntimeSavePreview>(() => {
@@ -89,9 +92,9 @@ export default function useBrokerTeamRunRuntimeMembersState({
     if (!Array.isArray(items) || items.length === 0) {
       return { newMembers: [], skipped: [], invalid: [] };
     }
-    const newMembers: any[] = [];
-    const skipped: any[] = [];
-    const invalid: any[] = [];
+    const newMembers: RuntimeSavePreview["newMembers"] = [];
+    const skipped: RuntimeSavePreview["skipped"] = [];
+    const invalid: RuntimeSavePreview["invalid"] = [];
     for (const item of items) {
       const memberId = item?.member_id ? String(item.member_id).trim() : "";
       const agentId = item?.agent_id ? String(item.agent_id).trim() : "";
@@ -126,8 +129,8 @@ export default function useBrokerTeamRunRuntimeMembersState({
       if (agentId) teamByAgentId.set(agentId, member);
     }
     const matched = new Set<string>();
-    const runtimeOnly: any[] = [];
-    const mismatched: any[] = [];
+    const runtimeOnly: RuntimeTeamDiff["runtimeOnly"] = [];
+    const mismatched: RuntimeTeamDiff["mismatched"] = [];
     for (const item of runtimeItems) {
       const memberId = item?.member_id ? String(item.member_id).trim() : "";
       const agentId = item?.agent_id ? String(item.agent_id).trim() : "";
@@ -187,7 +190,7 @@ export default function useBrokerTeamRunRuntimeMembersState({
       setRunError("runtime member role required");
       return;
     }
-    const entry: Record<string, any> = { agent_id: agentId, role };
+    const entry: RuntimeMemberDraft = { agent_id: agentId, role };
     const memberId = String(runtimeMemberId || "").trim();
     if (memberId) entry.member_id = memberId;
     const deploymentId = String(runtimeMemberDeploymentId || "").trim();
@@ -197,10 +200,10 @@ export default function useBrokerTeamRunRuntimeMembersState({
       .map((item) => item.trim())
       .filter(Boolean);
     if (capabilities.length > 0) entry.capabilities = capabilities;
-    const meta: Record<string, any> = {};
+    const meta: Record<string, unknown> = {};
     const backendLabel = String(runtimeMemberBackendLabel || "").trim();
     if (backendLabel) meta.backend_label = backendLabel;
-    const runOverrides: Record<string, any> = {};
+    const runOverrides: Record<string, unknown> = {};
     const model = String(runtimeMemberModel || "").trim();
     if (model) runOverrides.model = model;
     const baseUrl = String(runtimeMemberBaseUrl || "").trim();
@@ -214,13 +217,13 @@ export default function useBrokerTeamRunRuntimeMembersState({
     if (Object.keys(runOverrides).length > 0) meta.run_overrides = runOverrides;
     if (Object.keys(meta).length > 0) entry.meta = meta;
 
-    let items: any[] = [];
+    let items: RuntimeMemberDraft[] = [];
     const raw = String(runRuntimeMembersJson || "").trim();
     if (raw) {
       try {
-        const parsed = JSON.parse(raw);
+        const parsed = JSON.parse(raw) as unknown;
         if (Array.isArray(parsed)) {
-          items = parsed;
+          items = parsed as RuntimeMemberDraft[];
         } else {
           setRunError("runtime_members json must be an array");
           return;
@@ -313,7 +316,7 @@ export default function useBrokerTeamRunRuntimeMembersState({
     if (!Array.isArray(rawItems) || rawItems.length === 0) return;
     const compacted = rawItems
       .map((item) => {
-        const out: Record<string, any> = {};
+        const out: RuntimeMemberDraft = {};
         const memberId = item?.member_id ? String(item.member_id).trim() : "";
         const agentId = item?.agent_id ? String(item.agent_id).trim() : "";
         const deploymentId = item?.deployment_id ? String(item.deployment_id).trim() : "";
@@ -325,17 +328,17 @@ export default function useBrokerTeamRunRuntimeMembersState({
         if (role) out.role = role;
         if (status && status !== "active") out.status = status;
         if (Array.isArray(item?.capabilities)) {
-          const caps = item.capabilities.map((capability: any) => String(capability).trim()).filter(Boolean);
+          const caps = item.capabilities.map((capability) => String(capability).trim()).filter(Boolean);
           if (caps.length > 0) out.capabilities = caps;
         }
         if (typeof item?.weight === "number") out.weight = item.weight;
         if (item?.meta && typeof item.meta === "object") {
-          const meta: Record<string, any> = {};
-          for (const [key, value] of Object.entries(item.meta as Record<string, any>)) {
+          const meta: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(item.meta)) {
             if (value === null || value === undefined) continue;
             if (typeof value === "string" && value.trim() === "") continue;
             if (Array.isArray(value) && value.length === 0) continue;
-            if (typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0) continue;
+            if (typeof value === "object" && value !== null && !Array.isArray(value) && Object.keys(value).length === 0) continue;
             meta[key] = value;
           }
           if (Object.keys(meta).length > 0) out.meta = meta;
@@ -374,7 +377,7 @@ export default function useBrokerTeamRunRuntimeMembersState({
         if (!runtimeImportMerge) {
           setRunRuntimeMembersJson(trimmed);
         } else {
-          let incoming: any = null;
+          let incoming: unknown = null;
           try {
             incoming = JSON.parse(trimmed);
           } catch {
@@ -389,10 +392,10 @@ export default function useBrokerTeamRunRuntimeMembersState({
             return;
           }
           const merged = Array.isArray(existing) ? [...existing] : [];
-          for (const item of incoming) {
+          for (const item of incoming as RuntimeMemberDraft[]) {
             const agentId = item?.agent_id ? String(item.agent_id).trim() : "";
             const memberId = item?.member_id ? String(item.member_id).trim() : "";
-            const exists = merged.some((member: any) => {
+            const exists = merged.some((member) => {
               const existingMemberId = member?.member_id ? String(member.member_id).trim() : "";
               const existingAgentId = member?.agent_id ? String(member.agent_id).trim() : "";
               if (memberId && existingMemberId) return memberId === existingMemberId;
@@ -439,7 +442,7 @@ export default function useBrokerTeamRunRuntimeMembersState({
       return;
     }
     const payload = membersList.map((member) => {
-      const entry: Record<string, any> = {};
+      const entry: RuntimeMemberDraft = {};
       const memberId = String(member?.member_id || "").trim();
       const agentId = String(member?.agent_id || "").trim();
       const deploymentId = String(member?.deployment_id || "").trim();
@@ -456,12 +459,12 @@ export default function useBrokerTeamRunRuntimeMembersState({
         if (caps.length > 0) entry.capabilities = caps;
       }
       if (member?.meta && typeof member.meta === "object") {
-        const meta: Record<string, any> = {};
+        const meta: Record<string, unknown> = {};
         for (const [key, value] of Object.entries(member.meta)) {
           if (value === null || value === undefined) continue;
           if (typeof value === "string" && value.trim() === "") continue;
           if (Array.isArray(value) && value.length === 0) continue;
-          if (typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0) continue;
+          if (typeof value === "object" && value !== null && !Array.isArray(value) && Object.keys(value).length === 0) continue;
           meta[key] = value;
         }
         if (Object.keys(meta).length > 0) entry.meta = meta;
@@ -480,7 +483,7 @@ export default function useBrokerTeamRunRuntimeMembersState({
     const items = runtimeMembersPreview.items;
     if (!Array.isArray(items) || items.length === 0) return;
     const roleDefault = String(runtimeMemberRole || "").trim() || "executor";
-    const fixed: any[] = [];
+    const fixed: RuntimeMemberDraft[] = [];
     for (const item of items) {
       const agentId = item?.agent_id ? String(item.agent_id).trim() : "";
       const role = item?.role ? String(item.role).trim() : "";
@@ -543,7 +546,7 @@ export default function useBrokerTeamRunRuntimeMembersState({
       setRuntimeSaveError("no runtime members to save");
       return;
     }
-    const payloads: Record<string, any>[] = [];
+    const payloads: Array<Record<string, unknown>> = [];
     const invalid: string[] = [];
     for (const row of runtimeSavePreview.newMembers) {
       const item = row?.item ?? {};
@@ -554,7 +557,7 @@ export default function useBrokerTeamRunRuntimeMembersState({
         invalid.push(memberId || agentId || "runtime");
         continue;
       }
-      const payload: Record<string, any> = { role, agent_id: agentId };
+      const payload: Record<string, unknown> = { role, agent_id: agentId };
       if (memberId) payload.member_id = memberId;
       if (item?.deployment_id) payload.deployment_id = String(item.deployment_id);
       if (Array.isArray(item?.capabilities)) payload.capabilities = item.capabilities;

@@ -5,20 +5,22 @@ import {
   apiBrokerOrchestratorSpawnRequestUpdate,
   apiBrokerOrchestratorSpawnRequestsList,
   type ApiAuth,
+  type BrokerOrchestratorSpawnRequest,
 } from "../../api";
 import useLocalStorageState from "../../hooks/useLocalStorageState";
 import FieldLabel from "../FieldLabel";
 import { fmtTs } from "./teamRunUtils";
+import type { BrokerEventRow } from "./types";
 
 type SpawnPanelProps = {
   base: string;
   auth: ApiAuth;
   canQuery: boolean;
   teamId: string;
-  events?: Array<{ type?: string; ts_unix_ms?: number; event_id?: string; trace_id?: string; payload?: any }>;
+  events?: BrokerEventRow[];
 };
 
-type ParsedJson = { ok: true; value: any } | { ok: false; error: string };
+type ParsedJson = { ok: true; value: unknown } | { ok: false; error: string };
 
 const parseJsonField = (raw: string, label: string): ParsedJson => {
   const trimmed = String(raw || "").trim();
@@ -34,7 +36,7 @@ export default function BrokerOrchestratorSpawnPanel(props: SpawnPanelProps) {
   const teamIdTrimmed = String(props.teamId || "").trim();
   const [listBusy, setListBusy] = React.useState(false);
   const [listError, setListError] = React.useState<string | null>(null);
-  const [spawnRequests, setSpawnRequests] = React.useState<any[]>([]);
+  const [spawnRequests, setSpawnRequests] = React.useState<BrokerOrchestratorSpawnRequest[]>([]);
   const [statusFilter, setStatusFilter] = React.useState<string>("requested");
   const [runFilter, setRunFilter] = React.useState<string>("");
 
@@ -56,7 +58,7 @@ export default function BrokerOrchestratorSpawnPanel(props: SpawnPanelProps) {
   const [spawnId, setSpawnIdState] = React.useState<string>("");
   const [spawnBusy, setSpawnBusy] = React.useState<boolean>(false);
   const [spawnError, setSpawnError] = React.useState<string | null>(null);
-  const [spawnResult, setSpawnResult] = React.useState<any | null>(null);
+  const [spawnResult, setSpawnResult] = React.useState<BrokerOrchestratorSpawnRequest | null>(null);
 
   const [updateStatus, setUpdateStatus] = React.useState<string>("");
   const [updateRequirementsJson, setUpdateRequirementsJson] = React.useState<string>("");

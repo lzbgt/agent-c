@@ -80,6 +80,10 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     teamIdTrimmed: setupState.teamIdTrimmed,
     quorumEvents: props.quorumEvents,
   });
+  const teamMeta =
+    controlState.teamDetails?.meta && typeof controlState.teamDetails.meta === "object"
+      ? (controlState.teamDetails.meta as Record<string, unknown>)
+      : null;
 
   return (
     <section className={`rounded-md border border-white/10 bg-black/20 ${mode === "inline" ? "p-2" : "p-3"}`}>
@@ -163,11 +167,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             members={controlState.membersList}
             rules={controlState.rulesList}
             quorumEvents={teamEventsState.mergedTeamEvents}
-            teamMeta={
-              controlState.teamDetails?.meta && typeof controlState.teamDetails.meta === "object"
-                ? (controlState.teamDetails.meta as Record<string, any>)
-                : null
-            }
+            teamMeta={teamMeta}
             onMembersRefresh={controlState.refreshMembers}
             onTeamSelect={setupState.setTeamId}
           />
@@ -319,8 +319,8 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
           onAddMember={() => void controlState.handleAddMember()}
           onRefreshMemberAgents={() => void setupState.refreshMemberAgents()}
           onAddConnectedAgents={() => void controlState.handleAddConnectedAgentsToTeam()}
-          onToggleMemberStatus={(member) => void controlState.handleToggleMemberStatus(member as any)}
-          onEditMember={(member) => controlState.handleEditMember(member as any)}
+          onToggleMemberStatus={(member) => void controlState.handleToggleMemberStatus(member)}
+          onEditMember={(member) => controlState.handleEditMember(member)}
           onDeleteMember={(memberId) => void controlState.handleDeleteMember(memberId)}
           onSaveMemberEdit={() => void controlState.handleSaveMemberEdit()}
           onCancelMemberEdit={controlState.handleCancelMemberEdit}
@@ -426,11 +426,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
               auth={props.auth}
               canQuery={canQuery}
               teamId={setupState.teamIdTrimmed}
-              teamMeta={
-                controlState.teamDetails?.meta && typeof controlState.teamDetails.meta === "object"
-                  ? (controlState.teamDetails.meta as Record<string, any>)
-                  : null
-              }
+              teamMeta={teamMeta}
               events={teamEventsState.mergedOrchestratorEvents}
             />
           </SectionCard>

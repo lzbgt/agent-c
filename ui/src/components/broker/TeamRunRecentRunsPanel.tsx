@@ -1,5 +1,6 @@
 import React from "react";
 import FieldLabel from "../FieldLabel";
+import type { TeamRunMemberJobSummaryRow, TeamRunRecentRun } from "./teamRunStatusTypes";
 
 type TeamRunRecentRunsPanelProps = {
   canQuery: boolean;
@@ -13,9 +14,9 @@ type TeamRunRecentRunsPanelProps = {
   recentRunsBusy: boolean;
   onRefresh: () => void;
   recentRunsError: string | null;
-  recentRunsItems: any[];
+  recentRunsItems: TeamRunRecentRun[];
   fmtTs: (ms?: number | null) => string;
-  fmtSummary: (summary?: any) => string;
+  fmtSummary: (summary?: TeamRunMemberJobSummaryRow | null) => string;
   onLoadRun: (runId: string) => void;
 };
 
@@ -73,7 +74,7 @@ export default function TeamRunRecentRunsPanel(props: TeamRunRecentRunsPanelProp
       ) : null}
       {props.recentRunsItems.length > 0 ? (
         <div className="grid gap-1 text-[11px] text-white/70">
-          {props.recentRunsItems.map((row: any, idx: number) => {
+          {props.recentRunsItems.map((row, idx: number) => {
             const runId = String(row?.team_run_id || "");
             return (
               <div

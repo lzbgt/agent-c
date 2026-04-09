@@ -4,14 +4,15 @@ import BrokerOrchestratorRunMutationSection from "./BrokerOrchestratorRunMutatio
 import BrokerOrchestratorRunOverviewSection from "./BrokerOrchestratorRunOverviewSection";
 import BrokerOrchestratorRunRevisionsSection from "./BrokerOrchestratorRunRevisionsSection";
 import useBrokerOrchestratorRunState from "./useBrokerOrchestratorRunState";
+import type { BrokerEventRow } from "./types";
 
 type OrchestratorRunPanelProps = {
   base: string;
   auth: ApiAuth;
   canQuery: boolean;
   teamId: string;
-  teamMeta?: Record<string, any> | null;
-  events?: Array<{ type?: string; ts_unix_ms?: number; event_id?: string; trace_id?: string; payload?: any }>;
+  teamMeta?: Record<string, unknown> | null;
+  events?: BrokerEventRow[];
 };
 
 export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelProps) {

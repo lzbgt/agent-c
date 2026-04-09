@@ -1,11 +1,15 @@
 import React from "react";
 import FieldLabel from "../FieldLabel";
-import type { TeamRunHandoffEventRecord } from "./teamRunStatusTypes";
+import type {
+  TeamRunHandoffEventRecord,
+  TeamRunHandoffEventRow,
+  TeamRunHandoffTransitionState,
+} from "./teamRunStatusTypes";
 import { normalizeHandoffEventRecord } from "./teamRunStatusUtils";
 
 type TeamRunStatusHandoffSectionProps = {
   canWrite: boolean;
-  handoffEventRows: any[];
+  handoffEventRows: TeamRunHandoffEventRow[];
   handoffLatestById: Map<string, TeamRunHandoffEventRecord>;
   handoffKind: string;
   setHandoffKind: (value: string) => void;
@@ -34,7 +38,7 @@ type TeamRunStatusHandoffSectionProps = {
   onHandoffEvent: () => Promise<void> | void;
   onHandoffTransition: (
     seed: TeamRunHandoffEventRecord,
-    nextState: "accepted" | "declined" | "cancelled",
+    nextState: TeamRunHandoffTransitionState,
   ) => Promise<void> | void;
 };
 
@@ -44,7 +48,7 @@ export default function TeamRunStatusHandoffSection(props: TeamRunStatusHandoffS
       <div className="text-xs font-semibold text-white/80">Handoff events</div>
       {props.handoffEventRows.length > 0 ? (
         <div className="grid gap-1 text-[11px] text-white/60">
-          {props.handoffEventRows.map((ev: any, idx: number) => {
+          {props.handoffEventRows.map((ev, idx: number) => {
             const record = normalizeHandoffEventRecord(ev);
             const fromRole = record.from_role || "";
             const toRole = record.to_role || "";

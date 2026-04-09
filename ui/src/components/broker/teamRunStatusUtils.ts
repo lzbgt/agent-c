@@ -1,6 +1,6 @@
-import type { TeamRunHandoffEventRecord } from "./teamRunStatusTypes";
+import type { TeamRunHandoffEventRecord, TeamRunHandoffKind, TeamRunHandoffState } from "./teamRunStatusTypes";
 
-const HANDOFF_STATES = new Set(["proposed", "accepted", "declined", "cancelled"]);
+const HANDOFF_STATES = new Set<TeamRunHandoffState>(["proposed", "accepted", "declined", "cancelled"]);
 
 export const parseLineList = (raw: string): string[] =>
   String(raw || "")
@@ -8,11 +8,15 @@ export const parseLineList = (raw: string): string[] =>
     .map((item) => item.trim())
     .filter(Boolean);
 
-export function normalizeHandoffEventRecord(raw: any): TeamRunHandoffEventRecord {
-  if (!raw || typeof raw !== "object") return {};
+export function normalizeHandoffEventRecord(raw: unknown): TeamRunHandoffEventRecord {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
   const obj = raw as Record<string, unknown>;
-  const kind = typeof obj.kind === "string" && obj.kind.trim() ? obj.kind.trim().toLowerCase() : "role";
-  const state = typeof obj.state === "string" && obj.state.trim() ? obj.state.trim().toLowerCase() : "proposed";
+  const kindRaw = typeof obj.kind === "string" && obj.kind.trim() ? obj.kind.trim().toLowerCase() : "role";
+  const stateRaw = typeof obj.state === "string" && obj.state.trim() ? obj.state.trim().toLowerCase() : "proposed";
+  const kind: TeamRunHandoffKind = kindRaw === "cross_deployment" ? "cross_deployment" : "role";
+  const state: TeamRunHandoffState = HANDOFF_STATES.has(stateRaw as TeamRunHandoffState)
+    ? (stateRaw as TeamRunHandoffState)
+    : "proposed";
   return {
     handoff_id: typeof obj.handoff_id === "string" ? obj.handoff_id.trim() : undefined,
     kind,

@@ -38,9 +38,9 @@ type AgentMember = BrokerComponents["schemas"]["AgentMember"];
 type MembershipAuditRow = BrokerComponents["schemas"]["MembershipAuditRow"];
 export type BrokerAgentInfo = AgentInfo;
 export type BrokerDeploymentInfo = DeploymentInfo;
-type BrokerTeamRunGoalContract = BrokerComponents["schemas"]["TeamRunGoalContract"];
-type BrokerTeamRunGoalEvent = BrokerComponents["schemas"]["TeamRunGoalEvent"];
-type BrokerTeamRunHandoffEvent = BrokerComponents["schemas"]["TeamRunHandoffEvent"];
+export type BrokerTeamRunGoalContract = BrokerComponents["schemas"]["TeamRunGoalContract"];
+export type BrokerTeamRunGoalEvent = BrokerComponents["schemas"]["TeamRunGoalEvent"];
+export type BrokerTeamRunHandoffEvent = BrokerComponents["schemas"]["TeamRunHandoffEvent"];
 export type BrokerOrchestratorRun = BrokerComponents["schemas"]["OrchestratorRun"];
 export type BrokerOrchestratorRunResp = BrokerComponents["schemas"]["OrchestratorRunResponse"] & BrokerErrorFields;
 export type BrokerOrchestratorRunListResp = BrokerComponents["schemas"]["OrchestratorRunListResponse"] & BrokerErrorFields;
@@ -62,11 +62,11 @@ export type BrokerTeamQuorumRuleListResp =
   BrokerComponents["schemas"]["TeamQuorumRuleListResponse"] & BrokerErrorFields;
 export type BrokerTeamQuorumRuleUpsertResp =
   BrokerComponents["schemas"]["TeamQuorumRuleUpsertResponse"] & BrokerErrorFields;
-type BrokerTeamRunRuntimeMember = BrokerComponents["schemas"]["TeamRunRuntimeMember"];
-type BrokerTeamRunMemberJob = BrokerComponents["schemas"]["TeamRunMemberJob"];
-type BrokerTeamRunMemberJobSummary = BrokerComponents["schemas"]["TeamRunMemberJobSummary"];
-type BrokerTeamRunCancelResult = BrokerComponents["schemas"]["TeamRunCancelResult"];
-type BrokerTeamRunDispatchError = BrokerComponents["schemas"]["TeamRunDispatchError"];
+export type BrokerTeamRunRuntimeMember = BrokerComponents["schemas"]["TeamRunRuntimeMember"];
+export type BrokerTeamRunMemberJob = BrokerComponents["schemas"]["TeamRunMemberJob"];
+export type BrokerTeamRunMemberJobSummary = BrokerComponents["schemas"]["TeamRunMemberJobSummary"];
+export type BrokerTeamRunCancelResult = BrokerComponents["schemas"]["TeamRunCancelResult"];
+export type BrokerTeamRunDispatchError = BrokerComponents["schemas"]["TeamRunDispatchError"];
 export type BrokerTeamRunResp = BrokerComponents["schemas"]["TeamRunResponse"] & BrokerErrorFields;
 export type BrokerTeamRunSummary = BrokerComponents["schemas"]["TeamRunSummary"];
 export type BrokerTeamRunListResp = BrokerComponents["schemas"]["TeamRunListResponse"] & BrokerErrorFields;
@@ -78,9 +78,9 @@ export type BrokerTeamRunStatusResp = BrokerComponents["schemas"]["TeamRunStatus
 } & BrokerErrorFields;
 export type BrokerTeamRunGoalUpdateResp = BrokerComponents["schemas"]["TeamRunGoalUpdateResponse"] & BrokerErrorFields;
 export type BrokerTeamRunHandoffResp = BrokerComponents["schemas"]["TeamRunHandoffUpdateResponse"] & BrokerErrorFields;
-type BrokerTeamRunModeratorDispatch = BrokerComponents["schemas"]["TeamRunModeratorDispatch"];
-type BrokerTeamRunModeratorSkipped = BrokerComponents["schemas"]["TeamRunModeratorSkipped"];
-type BrokerTeamRunModeratorEvent = BrokerComponents["schemas"]["TeamRunModeratorEvent"];
+export type BrokerTeamRunModeratorDispatch = BrokerComponents["schemas"]["TeamRunModeratorDispatch"];
+export type BrokerTeamRunModeratorSkipped = BrokerComponents["schemas"]["TeamRunModeratorSkipped"];
+export type BrokerTeamRunModeratorEvent = BrokerComponents["schemas"]["TeamRunModeratorEvent"];
 export type BrokerTeamRunModeratorResp = BrokerComponents["schemas"]["TeamRunModeratorResponse"] & BrokerErrorFields;
 export type BrokerTeamRunModeratorEventsResp =
   BrokerComponents["schemas"]["TeamRunModeratorEventsResponse"] & BrokerErrorFields;

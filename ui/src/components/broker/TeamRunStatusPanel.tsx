@@ -3,8 +3,14 @@ import type { ApiAuth } from "../../api";
 import TeamRunStatusGoalSection from "./TeamRunStatusGoalSection";
 import TeamRunStatusHandoffSection from "./TeamRunStatusHandoffSection";
 import TeamRunStatusOverviewSection from "./TeamRunStatusOverviewSection";
+import type {
+  MemberSession,
+  TeamRunHandoffEventRow,
+  TeamRunLookupResult,
+  TeamRunMemberJobSummaryRow,
+  TeamRunRuntimeMemberRow,
+} from "./teamRunStatusTypes";
 import { normalizeRoleGraphEdges, normalizeRoleInstructionMap } from "./teamRunUtils";
-import type { MemberSession } from "./teamRunStatusTypes";
 import useTeamRunStatusState from "./useTeamRunStatusState";
 
 export type TeamRunStatusPanelProps = {
@@ -13,13 +19,13 @@ export type TeamRunStatusPanelProps = {
   canQuery: boolean;
   teamId: string;
   runId: string;
-  runLookupResult: any | null;
+  runLookupResult: TeamRunLookupResult | null;
   fmtTs: (ms?: number | null) => string;
-  fmtSummary: (summary?: any) => string;
+  fmtSummary: (summary?: TeamRunMemberJobSummaryRow | null) => string;
   runtimeUpdateBusy: boolean;
   memberSessions: MemberSession[];
-  onRuntimeMemberToggle: (member: any) => Promise<void> | void;
-  onRuntimeMemberRemove: (member: any) => Promise<void> | void;
+  onRuntimeMemberToggle: (member: TeamRunRuntimeMemberRow) => Promise<void> | void;
+  onRuntimeMemberRemove: (member: TeamRunRuntimeMemberRow) => Promise<void> | void;
   onRefreshRun: (runId: string) => Promise<void> | void;
 };
 
@@ -29,9 +35,7 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
   const teamId = String(props.teamId || "").trim();
   const canWrite = props.canQuery && !!teamId && !!runId;
 
-  const goalContract = run?.goal_contract && typeof run.goal_contract === "object" ? run.goal_contract : null;
-  const goalEvents = Array.isArray(run?.goal_events) ? run.goal_events : [];
-  const handoffEvents = Array.isArray(run?.handoff_events) ? run.handoff_events : [];
+  const handoffEvents: TeamRunHandoffEventRow[] = run?.handoff_events ?? [];
   const roleInstructions = normalizeRoleInstructionMap(run?.role_instructions);
   const rolePromptMode = typeof run?.role_prompt_mode === "string" ? String(run.role_prompt_mode) : "";
   const roleGraphEdges = normalizeRoleGraphEdges(run?.role_graph);
@@ -47,27 +51,21 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
       const key = String(role || "").trim().toLowerCase();
       if (key) set.add(key);
     }
-    if (Array.isArray(run?.members)) {
-      for (const member of run.members) {
-        const role = String(member?.role || "").trim().toLowerCase();
-        if (role) set.add(role);
-      }
+    for (const member of run?.members ?? []) {
+      const role = String(member?.role || "").trim().toLowerCase();
+      if (role) set.add(role);
     }
-    if (Array.isArray(run?.runtime_members)) {
-      for (const member of run.runtime_members) {
-        const role = String(member?.role || "").trim().toLowerCase();
-        if (role) set.add(role);
-      }
+    for (const member of run?.runtime_members ?? []) {
+      const role = String(member?.role || "").trim().toLowerCase();
+      if (role) set.add(role);
     }
     return Array.from(set).filter(Boolean).sort();
   }, [roleGraphEdges, roleInstructions, run?.members, run?.runtime_members]);
   const sharedMemoryScope = run?.shared_memory_scope_id ? String(run.shared_memory_scope_id) : "";
   const sharedMemoryMode = run?.shared_memory_mode ? String(run.shared_memory_mode) : "";
   const autoAllocateRoles = run?.auto_allocate_roles === true;
-  const autoAllocateAllocated = Array.isArray(run?.auto_allocate_allocated_roles)
-    ? run.auto_allocate_allocated_roles
-    : [];
-  const autoAllocateMissing = Array.isArray(run?.auto_allocate_missing_roles) ? run.auto_allocate_missing_roles : [];
+  const autoAllocateAllocated = run?.auto_allocate_allocated_roles ?? [];
+  const autoAllocateMissing = run?.auto_allocate_missing_roles ?? [];
   const autoAllocateWarning = run?.auto_allocate_warning ? String(run.auto_allocate_warning) : "";
   const roleInstructionCount = Object.keys(roleInstructions).length;
   const statusState = useTeamRunStatusState({

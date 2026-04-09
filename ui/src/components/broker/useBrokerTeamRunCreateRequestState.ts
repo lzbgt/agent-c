@@ -2,12 +2,13 @@ import React from "react";
 
 import { apiBrokerTeamRunCreate, type ApiAuth } from "../../api";
 import type { InlineApproval } from "./TeamRunCreatePanel";
+import type { QuorumEval, RuntimeMemberDraft } from "./teamRunPanelTypes";
+import type { TeamRunCreateResult } from "./teamRunStatusTypes";
 import {
   normalizeRoleInstructionMap,
   normalizeRolePromptMode,
   normalizeSharedMemoryMode,
 } from "./teamRunUtils";
-import type { QuorumEval } from "./teamRunPanelTypes";
 import type { TeamMemberRow } from "./types";
 
 type UseBrokerTeamRunCreateRequestStateArgs = {
@@ -15,7 +16,7 @@ type UseBrokerTeamRunCreateRequestStateArgs = {
   auth: ApiAuth;
   teamIdTrimmed: string;
   membersList: TeamMemberRow[];
-  teamMeta?: Record<string, any> | null;
+  teamMeta?: Record<string, unknown> | null;
   runRuntimeMembersJson: string;
   setRunError: React.Dispatch<React.SetStateAction<string | null>>;
 };
@@ -54,12 +55,12 @@ export default function useBrokerTeamRunCreateRequestState({
   const [runApprovalDecision, setRunApprovalDecision] = React.useState<"approve" | "deny">("approve");
   const [runApprovalReason, setRunApprovalReason] = React.useState<string>("");
   const [runBusy, setRunBusy] = React.useState<boolean>(false);
-  const [runResult, setRunResult] = React.useState<any | null>(null);
+  const [runResult, setRunResult] = React.useState<TeamRunCreateResult | null>(null);
   const [runQuorum, setRunQuorum] = React.useState<QuorumEval | null>(null);
 
   const teamRoleOverridesDefaults =
     teamMeta?.role_overrides && typeof teamMeta.role_overrides === "object"
-      ? (teamMeta.role_overrides as Record<string, any>)
+      ? (teamMeta.role_overrides as Record<string, unknown>)
       : null;
   const teamRoleOverrideKeys = teamRoleOverridesDefaults
     ? Object.keys(teamRoleOverridesDefaults).map((key) => String(key)).filter(Boolean)
@@ -129,7 +130,7 @@ export default function useBrokerTeamRunCreateRequestState({
       setRunQuorum(null);
       setRunBusy(true);
       try {
-        const runPayload: Record<string, any> = { prompt };
+        const runPayload: Record<string, unknown> = { prompt };
         const model = String(runModel || "").trim();
         if (model) runPayload.model = model;
         const tools = String(runTools || "").trim();
@@ -139,7 +140,7 @@ export default function useBrokerTeamRunCreateRequestState({
           runPayload.memory_scope_id = sharedScope;
           runPayload.memory_scope_mode = normalizeSharedMemoryMode(runSharedMemoryMode);
         }
-        const teamPayload: Record<string, any> = {};
+        const teamPayload: Record<string, unknown> = {};
         const role = String(runRole || "").trim();
         if (role) teamPayload.role = role;
         const rolesCsv = String(runRoles || "").trim();
@@ -164,7 +165,7 @@ export default function useBrokerTeamRunCreateRequestState({
         if (overridesMode === "explicit") {
           const rawOverrides = String(runMemberOverridesJson || "").trim();
           if (rawOverrides) {
-            let parsed: any = null;
+            let parsed: unknown = null;
             try {
               parsed = JSON.parse(rawOverrides);
             } catch (err) {
@@ -175,12 +176,12 @@ export default function useBrokerTeamRunCreateRequestState({
               setRunError("member_overrides must be an object keyed by member_id");
               return;
             }
-            teamPayload.member_overrides = parsed;
+            teamPayload.member_overrides = parsed as Record<string, unknown>;
           }
         }
         const roleOverridesRaw = String(runRoleOverridesJson || "").trim();
         if (roleOverridesRaw) {
-          let parsed: any = null;
+          let parsed: unknown = null;
           try {
             parsed = JSON.parse(roleOverridesRaw);
           } catch (err) {
@@ -191,7 +192,7 @@ export default function useBrokerTeamRunCreateRequestState({
             setRunError("role_overrides must be an object keyed by role");
             return;
           }
-          teamPayload.role_overrides = parsed;
+          teamPayload.role_overrides = parsed as Record<string, unknown>;
         }
         if (runRoleInstructionsOverride) {
           teamPayload.role_instructions = runRoleInstructions;
@@ -200,7 +201,7 @@ export default function useBrokerTeamRunCreateRequestState({
         }
         const runtimeMembersRaw = String(runRuntimeMembersJson || "").trim();
         if (runtimeMembersRaw) {
-          let parsed: any = null;
+          let parsed: unknown = null;
           try {
             parsed = JSON.parse(runtimeMembersRaw);
           } catch (err) {
@@ -211,7 +212,7 @@ export default function useBrokerTeamRunCreateRequestState({
             setRunError("runtime_members must be a JSON array of member objects");
             return;
           }
-          teamPayload.runtime_members = parsed;
+          teamPayload.runtime_members = parsed as RuntimeMemberDraft[];
         }
         if (runApprovals.length > 0) {
           teamPayload.approvals = runApprovals;
@@ -220,9 +221,9 @@ export default function useBrokerTeamRunCreateRequestState({
         if (!resp.ok) {
           setRunResult(null);
           setRunError(resp.error || resp.err || resp.code || "team run failed");
-          const quorum = (resp as any)?.quorum;
-          if (quorum && typeof quorum === "object") {
-            setRunQuorum(quorum as QuorumEval);
+          const quorumRaw = (resp as unknown as { quorum?: unknown }).quorum;
+          if (quorumRaw && typeof quorumRaw === "object" && !Array.isArray(quorumRaw)) {
+            setRunQuorum(quorumRaw as QuorumEval);
           }
           return;
         }
@@ -289,31 +290,32 @@ export default function useBrokerTeamRunCreateRequestState({
       setRunError("no team members loaded");
       return;
     }
-    const seed: Record<string, any> = {};
+    const seed: Record<string, unknown> = {};
     for (const member of membersList) {
       const memberId = String(member?.member_id || "").trim();
       if (!memberId) continue;
-      const meta = member?.meta && typeof member.meta === "object" ? (member.meta as Record<string, any>) : null;
+      const meta = member?.meta && typeof member.meta === "object" ? (member.meta as Record<string, unknown>) : null;
       const overridesRaw =
         meta?.run_overrides && typeof meta.run_overrides === "object"
-          ? (meta.run_overrides as Record<string, any>)
+          ? (meta.run_overrides as Record<string, unknown>)
           : null;
-      const entry: Record<string, any> = {};
+      const entry: Record<string, unknown> = {};
       if (overridesRaw) {
-        const model = overridesRaw.model ? String(overridesRaw.model) : "";
-        const baseUrl = overridesRaw.base_url ? String(overridesRaw.base_url) : "";
-        const summaryModel = overridesRaw.summary_model ? String(overridesRaw.summary_model) : "";
-        const tools = overridesRaw.tools ? String(overridesRaw.tools) : "";
-        const timeoutMs = overridesRaw.timeout_ms;
-        const maxSteps = overridesRaw.max_steps;
-        const streamAssistant = overridesRaw.stream_assistant;
+        const model = typeof overridesRaw.model === "string" ? overridesRaw.model : "";
+        const baseUrl = typeof overridesRaw.base_url === "string" ? overridesRaw.base_url : "";
+        const summaryModel = typeof overridesRaw.summary_model === "string" ? overridesRaw.summary_model : "";
+        const tools = typeof overridesRaw.tools === "string" ? overridesRaw.tools : "";
+        const timeoutMs = typeof overridesRaw.timeout_ms === "number" ? overridesRaw.timeout_ms : null;
+        const maxSteps = typeof overridesRaw.max_steps === "number" ? overridesRaw.max_steps : null;
+        const streamAssistant =
+          typeof overridesRaw.stream_assistant === "boolean" ? overridesRaw.stream_assistant : null;
         if (model) entry.model = model;
         if (baseUrl) entry.base_url = baseUrl;
         if (summaryModel) entry.summary_model = summaryModel;
         if (tools) entry.tools = tools;
-        if (Number.isFinite(timeoutMs)) entry.timeout_ms = timeoutMs;
-        if (Number.isFinite(maxSteps)) entry.max_steps = maxSteps;
-        if (typeof streamAssistant === "boolean") entry.stream_assistant = streamAssistant;
+        if (timeoutMs !== null) entry.timeout_ms = timeoutMs;
+        if (maxSteps !== null) entry.max_steps = maxSteps;
+        if (streamAssistant !== null) entry.stream_assistant = streamAssistant;
       }
       if (Object.keys(entry).length > 0) {
         seed[memberId] = entry;

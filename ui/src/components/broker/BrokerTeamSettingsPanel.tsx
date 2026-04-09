@@ -1,12 +1,13 @@
 import React from "react";
 import FieldLabel from "../FieldLabel";
+import type { TeamRow } from "./teamConsoleTypes";
 import TeamRolePlanEditor from "./TeamRolePlanEditor";
 import type { RoleGraphEdge } from "./teamRunUtils";
 
 type BrokerTeamSettingsPanelProps = {
   canQuery: boolean;
   teamId: string;
-  teamDetails: any | null;
+  teamDetails: TeamRow | null;
   teamEditName: string;
   teamEditTags: string;
   teamEditPolicyRef: string;

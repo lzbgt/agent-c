@@ -19,7 +19,7 @@ export type BrokerTeamRunPanelProps = {
   members: TeamMemberRow[];
   rules: TeamQuorumRuleRow[];
   quorumEvents?: BrokerEventRow[];
-  teamMeta?: Record<string, any> | null;
+  teamMeta?: Record<string, unknown> | null;
   onMembersRefresh?: (teamId: string) => Promise<void> | void;
   onTeamSelect?: (teamId: string) => void;
 };

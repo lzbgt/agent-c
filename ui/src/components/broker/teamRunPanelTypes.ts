@@ -1,4 +1,20 @@
+import type { BrokerTeamRunApproval, BrokerTeamRunRuntimeMember } from "../../api";
 import type { TeamMemberRow } from "./types";
+
+export type RuntimeMemberDraft = Partial<BrokerTeamRunRuntimeMember> & {
+  meta?: Record<string, unknown>;
+};
+
+export type RuntimePreviewRow = {
+  item: RuntimeMemberDraft;
+  reason: string;
+};
+
+export type RuntimeTeamDiffRow = {
+  item: RuntimeMemberDraft;
+  team: TeamMemberRow;
+  diffs: string[];
+};
 
 export type QuorumRuleEval = {
   rule_id?: string;
@@ -19,32 +35,21 @@ export type QuorumEval = {
   rules?: QuorumRuleEval[];
 };
 
-export type TeamRunApprovalRow = {
-  approval_id?: string;
-  team_id?: string;
-  team_run_id?: string;
-  rule_id?: string;
-  member_id?: string;
-  role?: string;
-  decision?: string;
-  reason?: string;
-  created_by?: string;
-  created_unix_ms?: number;
-};
+export type TeamRunApprovalRow = BrokerTeamRunApproval;
 
 export type RuntimeMembersPreview = {
-  items: any[];
+  items: RuntimeMemberDraft[];
   error: string;
 };
 
 export type RuntimeSavePreview = {
-  newMembers: any[];
-  skipped: any[];
-  invalid: any[];
+  newMembers: RuntimePreviewRow[];
+  skipped: RuntimePreviewRow[];
+  invalid: RuntimePreviewRow[];
 };
 
 export type RuntimeTeamDiff = {
-  runtimeOnly: any[];
+  runtimeOnly: RuntimeMemberDraft[];
   teamOnly: TeamMemberRow[];
-  mismatched: any[];
+  mismatched: RuntimeTeamDiffRow[];
 };

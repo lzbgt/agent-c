@@ -167,7 +167,7 @@ export default function TeamRunCreateRuntimeSection(props: TeamRunCreatePanelPro
                   {props.runtimeTeamDiff.mismatched.length > 0 ? (
                     <div>
                       mismatched:
-                      {props.runtimeTeamDiff.mismatched.map((row: any, idx: number) => {
+                      {props.runtimeTeamDiff.mismatched.map((row, idx) => {
                         const item = row?.item ?? {};
                         const mid = item?.member_id ? String(item.member_id) : "";
                         const aid = item?.agent_id ? String(item.agent_id) : "";
