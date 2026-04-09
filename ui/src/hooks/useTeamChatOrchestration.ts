@@ -6,6 +6,7 @@ import type { TeamChatOrchestrationArgs } from "./teamChatOrchestrationTypes";
 export type {
   TeamActionKind,
   TeamChatOrchestrationArgs,
+  TeamConversationItem,
   TeamQueuedAction,
 } from "./teamChatOrchestrationTypes";
 

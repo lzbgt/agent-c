@@ -1,6 +1,7 @@
 import React from "react";
 import Markdown from "../Markdown";
 import useLocalStorageState from "../../hooks/useLocalStorageState";
+import type { TeamConversationItem, TeamConversationPayload } from "../../hooks/teamChatOrchestrationTypes";
 
 type HighlightSnippet = {
   snippet: string;
@@ -52,8 +53,37 @@ type UseHistoryPanelTeamStateArgs = {
   effectiveBase: string;
   sessionId: string;
   teamId: string;
-  teamConversationItems: any[];
+  teamConversationItems: TeamConversationItem[];
 };
+
+type TeamTimelineEntry =
+  | { kind: "marker"; runId: string; ts: number }
+  | { kind: "item"; item: TeamConversationItem; ts: number };
+
+type TeamConversationGroup = {
+  key: string;
+  label: string;
+  items: TeamConversationItem[];
+  latest: number;
+  preview: string;
+};
+
+const isUnknownRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+function extractUploadNames(payload: TeamConversationPayload | undefined): string[] {
+  if (!payload || !isUnknownRecord(payload)) return [];
+  const uploads = Array.isArray(payload.uploads) ? payload.uploads : [];
+  return uploads.flatMap((upload) => {
+    if (!isUnknownRecord(upload)) return [];
+    const files = Array.isArray(upload.files) ? upload.files : [];
+    return files.flatMap((file) => {
+      if (!isUnknownRecord(file)) return [];
+      const name = String(file.name || file.path || "").trim();
+      return name ? [name] : [];
+    });
+  });
+}
 
 export default function useHistoryPanelTeamState(args: UseHistoryPanelTeamStateArgs) {
   const { effectiveBase, sessionId, teamId, teamConversationItems } = args;
@@ -215,7 +245,7 @@ export default function useHistoryPanelTeamState(args: UseHistoryPanelTeamStateA
   }, [effectiveBase, teamId]);
   const [teamPauseUpdates, setTeamPauseUpdates] = useLocalStorageState<boolean>(teamPauseKey, false);
 
-  const teamPausedItemsRef = React.useRef<any[] | null>(null);
+  const teamPausedItemsRef = React.useRef<TeamConversationItem[] | null>(null);
   const teamSearchRef = React.useRef<HTMLInputElement | null>(null);
   const lastAutoScrollTsRef = React.useRef<number>(0);
 
@@ -275,7 +305,7 @@ export default function useHistoryPanelTeamState(args: UseHistoryPanelTeamStateA
         return true;
       })
       .sort((a, b) => (a?.ts || 0) - (b?.ts || 0));
-    const out: Array<{ kind: "marker" | "item"; runId?: string; item?: any; ts: number }> = [];
+    const out: TeamTimelineEntry[] = [];
     let lastRunId = "";
     for (const item of items) {
       const ts = typeof item?.ts === "number" ? item.ts : 0;
@@ -299,7 +329,7 @@ export default function useHistoryPanelTeamState(args: UseHistoryPanelTeamStateA
   ]);
 
   const teamFilteredItems = React.useMemo(() => {
-    return teamTimelineItems.filter((entry) => entry.kind === "item");
+    return teamTimelineItems.flatMap((entry) => (entry.kind === "item" ? [entry.item] : []));
   }, [teamTimelineItems]);
   const teamFilteredCount = teamFilteredItems.length;
 
@@ -327,9 +357,9 @@ export default function useHistoryPanelTeamState(args: UseHistoryPanelTeamStateA
 
   const teamGroupedByAgent = React.useMemo(() => {
     if (!showTeamGroupByAgent) {
-      return [] as Array<{ key: string; label: string; items: any[]; latest: number; preview: string }>;
+      return [] as TeamConversationGroup[];
     }
-    const groups = new Map<string, { label: string; items: any[]; latest: number }>();
+    const groups = new Map<string, { label: string; items: TeamConversationItem[]; latest: number }>();
     for (const item of teamVisibleItems) {
       const meta = item?.meta ?? {};
       const agentLabel = typeof meta?.agent_id === "string" && meta.agent_id ? meta.agent_id : "";
@@ -441,15 +471,15 @@ export default function useHistoryPanelTeamState(args: UseHistoryPanelTeamStateA
   }, [jumpToLatest, jumpToTeamChat, openFilters, setShowTeamHeaders]);
 
   const renderTeamMessage = React.useCallback(
-    (item: any, idx: number) => {
-      const msg = item?.message ?? {};
-      const role = typeof msg?.role === "string" ? msg.role : "message";
-      const content = typeof msg?.content === "string" ? msg.content : "";
-      const ts = typeof item?.ts === "number" ? item.ts : 0;
+    (item: TeamConversationItem, idx: number) => {
+      const msg = item.message;
+      const role = typeof msg.role === "string" ? msg.role : "message";
+      const content = typeof msg.content === "string" ? msg.content : "";
+      const ts = typeof item.ts === "number" ? item.ts : 0;
       const when = ts ? new Date(ts).toLocaleString() : "";
-      const meta = item?.meta ?? {};
-      const roleLabel = typeof meta?.role === "string" && meta.role ? meta.role : role;
-      const agentLabel = typeof meta?.agent_id === "string" && meta.agent_id ? meta.agent_id : "";
+      const meta = item.meta;
+      const roleLabel = typeof meta.role === "string" && meta.role ? meta.role : role;
+      const agentLabel = typeof meta.agent_id === "string" && meta.agent_id ? meta.agent_id : "";
       const roleBadge =
         roleLabel === "guidance"
           ? "border-amber-400/30 bg-amber-500/10 text-amber-100"
@@ -468,14 +498,9 @@ export default function useHistoryPanelTeamState(args: UseHistoryPanelTeamStateA
               ? "border-indigo-400/30 bg-indigo-500/5"
               : "border-white/10 bg-white/5";
       if (agentLabel && mutedAgentSet.has(agentLabel)) return null;
-      const sessionLabel = typeof meta?.session_id === "string" ? meta.session_id : "";
+      const sessionLabel = typeof meta.session_id === "string" ? meta.session_id : "";
       const hasMeta = !!agentLabel || !!sessionLabel;
-      const payload = meta?.payload ?? {};
-      const uploads = Array.isArray(payload?.uploads) ? payload.uploads : [];
-      const uploadFiles = uploads.flatMap((u: any) => (Array.isArray(u?.files) ? u.files : []));
-      const uploadNames = uploadFiles
-        .map((f: any) => String(f?.name || f?.path || "").trim())
-        .filter((f: string) => f.length > 0);
+      const uploadNames = extractUploadNames(meta.payload);
       const highlightNeedle = teamSearch.trim();
       const highlightSnippet = highlightNeedle ? buildHighlightSnippet(content, highlightNeedle) : null;
       const compactLabel =

@@ -1,9 +1,10 @@
 import React from "react";
+import type { TeamConversationItem } from "../../hooks/teamChatOrchestrationTypes";
 import type { HistoryPanelTeamState } from "./useHistoryPanelTeamState";
 
 type HistoryPanelTeamTimelineSectionProps = {
   showTeamChat: boolean;
-  teamConversationItems: any[];
+  teamConversationItems: TeamConversationItem[];
   teamState: HistoryPanelTeamState;
 };
 

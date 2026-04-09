@@ -1,6 +1,7 @@
 import React from "react";
 import type { ApiAuth } from "../api";
 import useLocalStorageState from "../hooks/useLocalStorageState";
+import type { TeamConversationItem } from "../hooks/teamChatOrchestrationTypes";
 import type { SceneEntity } from "./SceneView";
 import ArtifactView from "./ArtifactView";
 import Markdown from "./Markdown";
@@ -34,7 +35,7 @@ export type HistoryPanelProps = {
   sceneEntities: SceneEntity[];
   onSceneApply: (ops: any[]) => void;
   onTraceIdClick: (traceId: string) => void;
-  teamConversationItems?: any[];
+  teamConversationItems?: TeamConversationItem[];
   teamId?: string;
   teamRunId?: string;
   teamRunCreatedMs?: number;

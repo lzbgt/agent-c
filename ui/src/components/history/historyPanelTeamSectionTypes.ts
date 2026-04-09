@@ -1,4 +1,5 @@
 import type React from "react";
+import type { TeamConversationItem } from "../../hooks/teamChatOrchestrationTypes";
 import type { HistoryPanelTeamState } from "./useHistoryPanelTeamState";
 
 export type HistoryPanelTeamSectionProps = {
@@ -6,7 +7,7 @@ export type HistoryPanelTeamSectionProps = {
   teamRunId: string;
   teamRunCreatedMs: number;
   teamRunStatus: string;
-  teamConversationItems: any[];
+  teamConversationItems: TeamConversationItem[];
   teamConversationWarnings: string[];
   teamState: HistoryPanelTeamState;
   setShowSystemMessages: React.Dispatch<React.SetStateAction<boolean>>;
