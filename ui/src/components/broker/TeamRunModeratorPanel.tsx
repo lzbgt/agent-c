@@ -1,10 +1,11 @@
 import React from "react";
 import FieldLabel from "../FieldLabel";
+import type { MemberSession, TeamRunModeratorEventRow } from "./teamRunStatusTypes";
 
 export type TeamRunModeratorPanelProps = {
   canQuery: boolean;
   runId: string;
-  memberSessions: Array<{ memberId: string; sessionId: string }>;
+  memberSessions: MemberSession[];
   roleOptions: string[];
   memberOptions: string[];
   agentOptions: string[];
@@ -21,7 +22,7 @@ export type TeamRunModeratorPanelProps = {
   busy: boolean;
   error: string | null;
   success: string | null;
-  events: any[];
+  events: TeamRunModeratorEventRow[];
   eventsBusy: boolean;
   eventsError: string | null;
   eventsTypes: string;
@@ -232,10 +233,16 @@ export default function TeamRunModeratorPanel(props: TeamRunModeratorPanelProps)
                 const mid = ev?.member_id ? String(ev.member_id) : "";
                 const typ = ev?.type ? String(ev.type) : "";
                 const ts = ev?.ts_unix_ms ? new Date(Number(ev.ts_unix_ms)).toLocaleString() : "";
-                const data = ev?.event?.data;
+                const eventPayload = ev?.event;
+                const data =
+                  eventPayload && typeof eventPayload === "object" && !Array.isArray(eventPayload)
+                    ? (eventPayload as Record<string, unknown>).data
+                    : null;
+                const summaryData =
+                  data && typeof data === "object" && !Array.isArray(data) ? (data as Record<string, unknown>) : null;
                 const summary =
-                  data && typeof data === "object"
-                    ? String(data.directive || data.title || data.detail || "")
+                  summaryData
+                    ? String(summaryData.directive || summaryData.title || summaryData.detail || "")
                     : "";
                 return (
                   <div key={`moderator-event-${mid}-${idx}`} className="flex flex-wrap gap-2">

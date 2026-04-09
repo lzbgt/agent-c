@@ -6,6 +6,7 @@ import {
   apiBrokerTeamRunModeratorTask,
   type ApiAuth,
 } from "../../api";
+import type { TeamRunModeratorEventRow } from "./teamRunStatusTypes";
 import { parseCsvList } from "./teamRunUtils";
 
 type UseBrokerTeamRunModeratorStateArgs = {
@@ -13,6 +14,29 @@ type UseBrokerTeamRunModeratorStateArgs = {
   auth: ApiAuth;
   teamIdTrimmed: string;
   resolveRunId: () => string;
+};
+
+type ModeratorTargets = {
+  roles?: string[];
+  member_ids?: string[];
+  agent_ids?: string[];
+};
+
+type ModeratorDirectivePayload = {
+  directive: string;
+  scope?: string;
+  assignees?: string[];
+  targets?: ModeratorTargets;
+  append_to_session: boolean;
+};
+
+type ModeratorTaskPayload = {
+  title: string;
+  detail?: string;
+  status?: string;
+  assignees?: string[];
+  targets?: ModeratorTargets;
+  append_to_session: boolean;
 };
 
 export default function useBrokerTeamRunModeratorState({
@@ -34,7 +58,7 @@ export default function useBrokerTeamRunModeratorState({
   const [moderatorBusy, setModeratorBusy] = React.useState<boolean>(false);
   const [moderatorError, setModeratorError] = React.useState<string | null>(null);
   const [moderatorSuccess, setModeratorSuccess] = React.useState<string | null>(null);
-  const [moderatorEvents, setModeratorEvents] = React.useState<any[]>([]);
+  const [moderatorEvents, setModeratorEvents] = React.useState<TeamRunModeratorEventRow[]>([]);
   const [moderatorEventsBusy, setModeratorEventsBusy] = React.useState<boolean>(false);
   const [moderatorEventsError, setModeratorEventsError] = React.useState<string | null>(null);
   const [moderatorEventsTypes, setModeratorEventsTypes] = React.useState<string>(
@@ -49,7 +73,7 @@ export default function useBrokerTeamRunModeratorState({
     const members = parseCsvList(moderatorTargetMembers);
     const agents = parseCsvList(moderatorTargetAgents);
     if (roles.length === 0 && members.length === 0 && agents.length === 0) return undefined;
-    return { roles, member_ids: members, agent_ids: agents };
+    return { roles, member_ids: members, agent_ids: agents } satisfies ModeratorTargets;
   }, [moderatorTargetAgents, moderatorTargetMembers, moderatorTargetRoles]);
 
   const handleModeratorDirectivePublish = React.useCallback(async () => {
@@ -67,15 +91,15 @@ export default function useBrokerTeamRunModeratorState({
     setModeratorError(null);
     setModeratorSuccess(null);
     try {
-      const payload: Record<string, any> = {
+      const assignees = parseCsvList(moderatorAssignees);
+      const payload: ModeratorDirectivePayload = {
         directive,
         scope: String(moderatorDirectiveScope || "").trim() || undefined,
-        assignees: parseCsvList(moderatorAssignees),
+        assignees: assignees.length > 0 ? assignees : undefined,
         targets: buildModeratorTargets(),
         append_to_session: moderatorAppendToSession,
       };
       if (!payload.scope) delete payload.scope;
-      if (!payload.assignees.length) delete payload.assignees;
       if (!payload.targets) delete payload.targets;
       const resp = await apiBrokerTeamRunModeratorDirective(base, teamIdTrimmed, runId, payload, auth);
       if (!resp.ok) {
@@ -118,17 +142,17 @@ export default function useBrokerTeamRunModeratorState({
     setModeratorError(null);
     setModeratorSuccess(null);
     try {
-      const payload: Record<string, any> = {
+      const assignees = parseCsvList(moderatorAssignees);
+      const payload: ModeratorTaskPayload = {
         title,
         detail: String(moderatorTaskDetail || "").trim() || undefined,
         status: String(moderatorTaskStatus || "").trim() || undefined,
-        assignees: parseCsvList(moderatorAssignees),
+        assignees: assignees.length > 0 ? assignees : undefined,
         targets: buildModeratorTargets(),
         append_to_session: moderatorAppendToSession,
       };
       if (!payload.detail) delete payload.detail;
       if (!payload.status) delete payload.status;
-      if (!payload.assignees.length) delete payload.assignees;
       if (!payload.targets) delete payload.targets;
       const resp = await apiBrokerTeamRunModeratorTask(base, teamIdTrimmed, runId, payload, auth);
       if (!resp.ok) {
@@ -186,7 +210,7 @@ export default function useBrokerTeamRunModeratorState({
       if (!resp.ok) {
         throw new Error(resp.error || resp.err || resp.code || "moderator events failed");
       }
-      setModeratorEvents(Array.isArray(resp.events) ? resp.events : []);
+      setModeratorEvents(resp.events ?? []);
       if (resp.skipped && Array.isArray(resp.skipped) && resp.skipped.length > 0) {
         setModeratorSuccess(`loaded ${resp.events?.length ?? 0} events (skipped ${resp.skipped.length})`);
       } else {

@@ -6,6 +6,9 @@ import type {
   BrokerTeamRunHandoffEvent,
   BrokerTeamRunMemberJob,
   BrokerTeamRunMemberJobSummary,
+  BrokerTeamRunModeratorDispatch,
+  BrokerTeamRunModeratorEvent,
+  BrokerTeamRunModeratorSkipped,
   BrokerTeamRunResp,
   BrokerTeamRunRuntimeMember,
   BrokerTeamRunStatusResp,
@@ -47,3 +50,6 @@ export type TeamRunMemberJobRow = BrokerTeamRunMemberJob;
 export type TeamRunDispatchErrorRow = BrokerTeamRunDispatchError;
 export type TeamRunCancelResultRow = BrokerTeamRunCancelResult;
 export type TeamRunMemberJobSummaryRow = BrokerTeamRunMemberJobSummary;
+export type TeamRunModeratorEventRow = BrokerTeamRunModeratorEvent;
+export type TeamRunModeratorDispatchRow = BrokerTeamRunModeratorDispatch;
+export type TeamRunModeratorSkippedRow = BrokerTeamRunModeratorSkipped;
