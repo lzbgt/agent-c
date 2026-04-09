@@ -67,3 +67,4 @@ declares its own status (draft/rolling/implemented) in the document header.
 ## Developer tooling
 
 - `skills_system_v0.md`: skills system manifest + apply/preview/validate flows (draft).
+- `runtime_skills_v0.md`: runtime skill manifest + layered extensibility model (draft).
