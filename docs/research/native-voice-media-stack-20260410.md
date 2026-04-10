@@ -155,15 +155,17 @@ Reference artifacts downloaded into the repo for exact vendor details:
 - Agentd now also has a first bounded outbound media path:
   - native providers can expose ABI v5 `submit_audio`
   - the builtin service submits processed agentd-owned PCM back to the provider
-  - the embedded provider encodes a 20 ms PCMU RTP frame, protects it with the
-    outbound libsrtp context, and transmits it over the same libjuice transport
+  - the embedded provider negotiates outbound G.711 payload type from the remote
+    SDP, encodes a 20 ms PCMU/PCMA RTP frame, protects it with the outbound
+    libsrtp context, and transmits it over the same libjuice transport
   - runtime status now persists outbound RTP and PCM-submit counters, including
     `rtp_packets_sent`, `rtp_payload_bytes_sent`,
     `audio_outbound_frames_sent`, and
-    `audio_pcm_samples_submitted_total`
+    `audio_pcm_samples_submitted_total`, plus selected outbound
+    payload/codec/rate/channel metadata
 - The remaining gap is that the outbound path is deliberately minimal: it uses
-  bounded PCMU frame generation rather than a full negotiated codec/RTCP/audio
-  playout and capture pipeline.
+  negotiated G.711 frame generation rather than RTCP/full-duplex behavior or
+  negotiated Opus transmit.
 
 ## Implications
 
@@ -187,8 +189,8 @@ At this scan point, the local machine is ready for:
 - optional audio I/O experiments using `opus` / `portaudio`
 
 It is **not** yet at a full embedded WebRTC/SRTP runtime. The remaining gap is
-no longer dependency discovery; it is the actual in-tree DTLS/RTP/media
-implementation.
+no longer dependency discovery or basic RTP ownership; it is fuller RTCP,
+full-duplex, and negotiated Opus media behavior.
 
 ## Recommended Next Technical Decision
 
