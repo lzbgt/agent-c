@@ -202,6 +202,10 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   st.audio_outbound_frames_sent = 2;
   st.audio_pcm_samples_submitted_total = 320;
   st.audio_last_outbound_samples = 160;
+  st.audio_outbound_payload_type = 8;
+  st.audio_outbound_codec_name = "PCMA";
+  st.audio_outbound_sample_rate_hz = 8000;
+  st.audio_outbound_channels = 1;
   st.audio_drain_events_total = 4;
   st.audio_pcm_samples_drained_total = 4800;
   st.audio_pcm_samples_owned = 2880;
@@ -280,6 +284,10 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(json["audio_outbound_frames_sent"].asInt64() == 2);
   assert(json["audio_pcm_samples_submitted_total"].asInt64() == 320);
   assert(json["audio_last_outbound_samples"].asInt64() == 160);
+  assert(json["audio_outbound_payload_type"].asInt64() == 8);
+  assert(json["audio_outbound_codec_name"].asString() == "PCMA");
+  assert(json["audio_outbound_sample_rate_hz"].asInt64() == 8000);
+  assert(json["audio_outbound_channels"].asInt64() == 1);
   assert(json["audio_drain_events_total"].asInt64() == 4);
   assert(json["audio_pcm_samples_drained_total"].asInt64() == 4800);
   assert(json["audio_pcm_samples_owned"].asInt64() == 2880);
@@ -358,6 +366,10 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(round_trip.audio_outbound_frames_sent == 2);
   assert(round_trip.audio_pcm_samples_submitted_total == 320);
   assert(round_trip.audio_last_outbound_samples == 160);
+  assert(round_trip.audio_outbound_payload_type == 8);
+  assert(round_trip.audio_outbound_codec_name == "PCMA");
+  assert(round_trip.audio_outbound_sample_rate_hz == 8000);
+  assert(round_trip.audio_outbound_channels == 1);
   assert(round_trip.audio_drain_events_total == 4);
   assert(round_trip.audio_pcm_samples_drained_total == 4800);
   assert(round_trip.audio_pcm_samples_owned == 2880);

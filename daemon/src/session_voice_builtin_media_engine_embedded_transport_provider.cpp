@@ -47,7 +47,8 @@ constexpr const char* kProviderVersion = "0.9.0";
 constexpr const char* kCapabilitiesJson =
   "{\"signaling\":true,\"audio_capture\":false,\"audio_render\":false,"
   "\"audio_decode\":true,\"audio_stage\":true,\"audio_drain\":true,"
-  "\"audio_owner_handoff\":true,\"audio_submit\":true,\"audio_outbound_pcmu\":true,"
+  "\"audio_owner_handoff\":true,\"audio_submit\":true,"
+  "\"audio_outbound_pcmu\":true,\"audio_outbound_pcma\":true,"
   "\"audio_codec_pcmu\":true,\"audio_codec_pcma\":true,\"audio_codec_opus\":true,"
   "\"ice\":true,\"dtls\":true,\"dtls_identity\":true,\"dtls_answer_shape\":true,"
   "\"dtls_handshake\":true,\"dtls_srtp_export\":true,"
@@ -61,7 +62,8 @@ constexpr const char* kCapabilitiesJson =
 constexpr const char* kCapabilitiesJson =
   "{\"signaling\":true,\"audio_capture\":false,\"audio_render\":false,"
   "\"audio_decode\":true,\"audio_stage\":true,\"audio_drain\":true,"
-  "\"audio_owner_handoff\":true,\"audio_submit\":true,\"audio_outbound_pcmu\":true,"
+  "\"audio_owner_handoff\":true,\"audio_submit\":true,"
+  "\"audio_outbound_pcmu\":true,\"audio_outbound_pcma\":true,"
   "\"audio_codec_pcmu\":true,\"audio_codec_pcma\":true,\"audio_codec_opus\":false,"
   "\"ice\":true,\"dtls\":true,\"dtls_identity\":true,\"dtls_answer_shape\":true,"
   "\"dtls_handshake\":true,\"dtls_srtp_export\":true,"
@@ -77,8 +79,7 @@ constexpr const char* kDtlsSrtpProfiles =
   "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32";
 constexpr long kDtlsDatagramMtu = 1200;
 constexpr size_t kAudioPcmStagingCapacitySamples = 48000 * 2 * 2;
-constexpr size_t kOutboundPcmuFrameSamples = 160;
-constexpr uint8_t kOutboundPcmuPayloadType = 0;
+constexpr size_t kOutboundG711FrameSamples = 160;
 constexpr uint32_t kOutboundRtpSsrc = 0xA6E17D01u;
 
 struct EmbeddedTransportState {
@@ -123,6 +124,10 @@ struct EmbeddedTransportState {
     uint64_t audio_outbound_frames_sent = 0;
     uint64_t audio_pcm_samples_submitted_total = 0;
     uint64_t audio_last_outbound_samples = 0;
+    int64_t audio_outbound_payload_type = -1;
+    int64_t audio_outbound_sample_rate_hz = 0;
+    int64_t audio_outbound_channels = 0;
+    std::string audio_outbound_codec_name;
     int64_t audio_last_sample_rate_hz = 0;
     int64_t audio_last_channels = 0;
     int64_t audio_last_frame_samples_per_channel = 0;
@@ -171,6 +176,10 @@ struct EmbeddedTransportState {
              audio_outbound_frames_sent == other.audio_outbound_frames_sent &&
              audio_pcm_samples_submitted_total == other.audio_pcm_samples_submitted_total &&
              audio_last_outbound_samples == other.audio_last_outbound_samples &&
+             audio_outbound_payload_type == other.audio_outbound_payload_type &&
+             audio_outbound_sample_rate_hz == other.audio_outbound_sample_rate_hz &&
+             audio_outbound_channels == other.audio_outbound_channels &&
+             audio_outbound_codec_name == other.audio_outbound_codec_name &&
              audio_last_sample_rate_hz == other.audio_last_sample_rate_hz &&
              audio_last_channels == other.audio_last_channels &&
              audio_last_frame_samples_per_channel ==
@@ -236,6 +245,10 @@ struct EmbeddedTransportState {
   uint64_t audio_outbound_frames_sent = 0;
   uint64_t audio_pcm_samples_submitted_total = 0;
   uint64_t audio_last_outbound_samples = 0;
+  int64_t audio_outbound_payload_type = -1;
+  int64_t audio_outbound_sample_rate_hz = 0;
+  int64_t audio_outbound_channels = 0;
+  std::string audio_outbound_codec_name;
   int64_t audio_last_sample_rate_hz = 0;
   int64_t audio_last_channels = 0;
   int64_t audio_last_frame_samples_per_channel = 0;
@@ -681,6 +694,43 @@ bool decode_inbound_audio_frame(
   return true;
 }
 
+void clear_outbound_audio_payload_selection(EmbeddedTransportState* engine) {
+  if (!engine) return;
+  engine->audio_outbound_payload_type = -1;
+  engine->audio_outbound_sample_rate_hz = 0;
+  engine->audio_outbound_channels = 0;
+  engine->audio_outbound_codec_name.clear();
+}
+
+bool select_outbound_audio_payload_from_remote_sdp(EmbeddedTransportState* engine) {
+  if (!engine) return false;
+  clear_outbound_audio_payload_selection(engine);
+
+  const agentd::RtpAudioPayloadSpec* selected = nullptr;
+  for (const auto& spec : engine->audio_decoder.payload_specs()) {
+    if (spec.sample_rate_hz != 8000 || spec.channels != 1) continue;
+    if (spec.codec_name == "PCMU") {
+      selected = &spec;
+      break;
+    }
+    if (!selected && spec.codec_name == "PCMA") {
+      selected = &spec;
+    }
+  }
+  if (!selected) {
+    engine->audio_outbound_last_error =
+      "remote SDP did not negotiate a supported outbound G.711 payload";
+    return false;
+  }
+
+  engine->audio_outbound_payload_type = selected->payload_type;
+  engine->audio_outbound_sample_rate_hz = selected->sample_rate_hz;
+  engine->audio_outbound_channels = selected->channels;
+  engine->audio_outbound_codec_name = selected->codec_name;
+  engine->audio_outbound_last_error.clear();
+  return true;
+}
+
 void write_u16_be(unsigned char* out, uint16_t value) {
   out[0] = static_cast<unsigned char>((value >> 8) & 0xFF);
   out[1] = static_cast<unsigned char>(value & 0xFF);
@@ -720,13 +770,44 @@ uint8_t encode_pcmu_sample(int16_t sample) {
   return static_cast<uint8_t>(encoded ^ mask);
 }
 
-std::vector<unsigned char> encode_pcm16_to_pcmu_20ms(
+uint8_t encode_pcma_sample(int16_t sample) {
+  static constexpr std::array<int, 8> kSegmentEnd = {{
+    0x1F, 0x3F, 0x7F, 0xFF, 0x1FF, 0x3FF, 0x7FF, 0xFFF,
+  }};
+
+  int value = static_cast<int>(sample);
+  uint8_t mask = 0xD5u;
+  if (value < 0) {
+    value = -value - 1;
+    mask = 0x55u;
+  }
+  value = std::min(value, 32635);
+
+  int segment = 0;
+  while (segment < static_cast<int>(kSegmentEnd.size()) && value > kSegmentEnd[segment]) {
+    segment += 1;
+  }
+  if (segment >= static_cast<int>(kSegmentEnd.size())) {
+    return static_cast<uint8_t>(0x7Fu ^ mask);
+  }
+
+  uint8_t encoded = static_cast<uint8_t>(segment << 4);
+  encoded |= static_cast<uint8_t>(
+    segment < 2 ? ((value >> 4) & 0x0F) : ((value >> (segment + 3)) & 0x0F));
+  return static_cast<uint8_t>(encoded ^ mask);
+}
+
+std::vector<unsigned char> encode_pcm16_to_g711_20ms(
   const int16_t* pcm,
   size_t pcm_samples,
   int sample_rate_hz,
-  int channels
+  int channels,
+  const std::string& codec_name
 ) {
-  std::vector<unsigned char> payload(kOutboundPcmuFrameSamples, encode_pcmu_sample(0));
+  const bool use_pcma = codec_name == "PCMA";
+  std::vector<unsigned char> payload(
+    kOutboundG711FrameSamples,
+    use_pcma ? encode_pcma_sample(0) : encode_pcmu_sample(0));
   if (!pcm || pcm_samples == 0 || sample_rate_hz <= 0 || channels <= 0) return payload;
 
   const size_t channels_sz = static_cast<size_t>(channels);
@@ -736,7 +817,9 @@ std::vector<unsigned char> encode_pcm16_to_pcmu_20ms(
     size_t source_frame =
       (static_cast<uint64_t>(i) * static_cast<uint64_t>(sample_rate_hz)) / 8000u;
     if (source_frame >= frame_count) source_frame = frame_count - 1;
-    payload[i] = encode_pcmu_sample(pcm[source_frame * channels_sz]);
+    payload[i] = use_pcma
+      ? encode_pcma_sample(pcm[source_frame * channels_sz])
+      : encode_pcmu_sample(pcm[source_frame * channels_sz]);
   }
   return payload;
 }
@@ -762,12 +845,19 @@ bool transmit_outbound_pcmu_rtp(
     if (out_err) *out_err = "outbound audio format unavailable";
     return false;
   }
+  if (engine->audio_outbound_payload_type < 0 ||
+      (engine->audio_outbound_codec_name != "PCMU" &&
+       engine->audio_outbound_codec_name != "PCMA")) {
+    if (out_err) *out_err = "outbound G.711 payload was not negotiated";
+    return false;
+  }
 
   const std::vector<unsigned char> payload =
-    encode_pcm16_to_pcmu_20ms(pcm, pcm_samples, sample_rate_hz, channels);
+    encode_pcm16_to_g711_20ms(
+      pcm, pcm_samples, sample_rate_hz, channels, engine->audio_outbound_codec_name);
   std::vector<unsigned char> plain(12 + payload.size());
   plain[0] = 0x80u;
-  plain[1] = kOutboundPcmuPayloadType;
+  plain[1] = static_cast<unsigned char>(engine->audio_outbound_payload_type);
   const uint16_t sequence = engine->outbound_rtp_sequence++;
   const uint32_t timestamp = engine->outbound_rtp_timestamp;
   engine->outbound_rtp_timestamp += static_cast<uint32_t>(payload.size());
@@ -798,7 +888,7 @@ bool transmit_outbound_pcmu_rtp(
 
   engine->rtp_packets_sent += 1;
   engine->rtp_payload_bytes_sent += payload.size();
-  engine->rtp_last_sent_payload_type = kOutboundPcmuPayloadType;
+  engine->rtp_last_sent_payload_type = engine->audio_outbound_payload_type;
   engine->rtp_last_sent_sequence = sequence;
   engine->rtp_last_sent_timestamp = timestamp;
   engine->rtp_last_sent_ssrc = engine->outbound_rtp_ssrc;
@@ -1145,6 +1235,10 @@ EmbeddedTransportState::AsyncProgressKey capture_async_progress_key(
   key.audio_outbound_frames_sent = state.audio_outbound_frames_sent;
   key.audio_pcm_samples_submitted_total = state.audio_pcm_samples_submitted_total;
   key.audio_last_outbound_samples = state.audio_last_outbound_samples;
+  key.audio_outbound_payload_type = state.audio_outbound_payload_type;
+  key.audio_outbound_sample_rate_hz = state.audio_outbound_sample_rate_hz;
+  key.audio_outbound_channels = state.audio_outbound_channels;
+  key.audio_outbound_codec_name = state.audio_outbound_codec_name;
   key.audio_last_sample_rate_hz = state.audio_last_sample_rate_hz;
   key.audio_last_channels = state.audio_last_channels;
   key.audio_last_frame_samples_per_channel = state.audio_last_frame_samples_per_channel;
@@ -1449,6 +1543,22 @@ std::string build_event_json(
   if (state.rtp_last_sent_ssrc > 0) {
     json += ",\"rtp_last_sent_ssrc\":" + std::to_string(state.rtp_last_sent_ssrc);
   }
+  if (state.audio_outbound_payload_type >= 0) {
+    json += ",\"audio_outbound_payload_type\":" +
+            std::to_string(state.audio_outbound_payload_type);
+  }
+  if (!state.audio_outbound_codec_name.empty()) {
+    json += ",\"audio_outbound_codec_name\":\"" +
+            json_escape(state.audio_outbound_codec_name) + "\"";
+  }
+  if (state.audio_outbound_sample_rate_hz > 0) {
+    json += ",\"audio_outbound_sample_rate_hz\":" +
+            std::to_string(state.audio_outbound_sample_rate_hz);
+  }
+  if (state.audio_outbound_channels > 0) {
+    json += ",\"audio_outbound_channels\":" +
+            std::to_string(state.audio_outbound_channels);
+  }
   if (state.audio_last_sample_rate_hz > 0) {
     json += ",\"audio_last_sample_rate_hz\":" +
             std::to_string(state.audio_last_sample_rate_hz);
@@ -1601,11 +1711,14 @@ int embedded_handle_remote_description(
   if (!remote_sdp.empty()) {
     if (!engine->audio_decoder.configure_from_remote_sdp(remote_sdp, &audio_err)) {
       engine->audio_last_error = audio_err;
+      clear_outbound_audio_payload_selection(engine);
     } else {
       engine->audio_last_error.clear();
+      (void)select_outbound_audio_payload_from_remote_sdp(engine);
     }
   } else {
     engine->audio_last_error = "remote SDP was empty";
+    clear_outbound_audio_payload_selection(engine);
   }
   if (!remote_sdp.empty()) {
     const int rc = juice_set_remote_description(engine->agent, remote_sdp.c_str());

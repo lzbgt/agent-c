@@ -307,6 +307,8 @@ A v0 smoke test should:
   `rtp_last_sent_timestamp`, `rtp_last_sent_ssrc`,
   `audio_frames_decoded`, `audio_pcm_samples_decoded`, `audio_pcm_samples_buffered`,
   `audio_outbound_frames_sent`, `audio_pcm_samples_submitted_total`, `audio_last_outbound_samples`,
+  `audio_outbound_payload_type`, `audio_outbound_codec_name`,
+  `audio_outbound_sample_rate_hz`, `audio_outbound_channels`,
   `audio_drain_events_total`, `audio_pcm_samples_drained_total`, `audio_pcm_samples_owned`,
   `audio_last_drain_samples`, `audio_process_events_total`,
   `audio_pcm_samples_processed_total`, `audio_last_process_samples`,

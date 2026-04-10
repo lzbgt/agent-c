@@ -43,6 +43,7 @@ static void assert_known_test_provider(
     assert(capabilities["audio_owner_handoff"].asBool());
     assert(capabilities["audio_submit"].asBool());
     assert(capabilities["audio_outbound_pcmu"].asBool());
+    assert(capabilities["audio_outbound_pcma"].asBool());
     assert(capabilities["audio_codec_pcmu"].asBool());
     assert(capabilities["audio_codec_pcma"].asBool());
     assert(capabilities.isMember("audio_codec_opus"));
@@ -321,6 +322,10 @@ static void test_media_engine_event_tracks_audio_drain_fields() {
   payload["audio_outbound_frames_sent"] = Json::Int64(1);
   payload["audio_pcm_samples_submitted_total"] = Json::Int64(160);
   payload["audio_last_outbound_samples"] = Json::Int64(160);
+  payload["audio_outbound_payload_type"] = Json::Int64(8);
+  payload["audio_outbound_codec_name"] = "PCMA";
+  payload["audio_outbound_sample_rate_hz"] = Json::Int64(8000);
+  payload["audio_outbound_channels"] = Json::Int64(1);
   payload["audio_drain_events_total"] = Json::Int64(3);
   payload["audio_pcm_samples_drained_total"] = Json::Int64(2880);
   payload["audio_pcm_samples_owned"] = Json::Int64(1440);
@@ -362,6 +367,10 @@ static void test_media_engine_event_tracks_audio_drain_fields() {
   assert(runtime.audio_outbound_frames_sent == 1);
   assert(runtime.audio_pcm_samples_submitted_total == 160);
   assert(runtime.audio_last_outbound_samples == 160);
+  assert(runtime.audio_outbound_payload_type == 8);
+  assert(runtime.audio_outbound_codec_name == "PCMA");
+  assert(runtime.audio_outbound_sample_rate_hz == 8000);
+  assert(runtime.audio_outbound_channels == 1);
   assert(runtime.audio_drain_events_total == 3);
   assert(runtime.audio_pcm_samples_drained_total == 2880);
   assert(runtime.audio_pcm_samples_owned == 1440);

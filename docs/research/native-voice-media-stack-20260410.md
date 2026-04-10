@@ -211,6 +211,9 @@ continue on the existing `native_plugin` seam and harden the current embedded
 provider from minimal PCMU transmit toward fuller negotiated bidirectional audio.
 The best factual candidate remains the narrower `libjuice + srtp + libusrsctp`
 family, because those dependencies are now locally installed, buildable, and
-covered by provider inspection/unit/smoke proof. The next concrete step after
-the bounded outbound PCMU transmit path is negotiated codec/RTCP behavior rather
-than more DTLS/SRTP/control-plane work.
+covered by provider inspection/unit/smoke proof. The bounded outbound RTP path
+now negotiates G.711 payload type from the remote SDP (`PCMU/8000/1` preferred,
+`PCMA/8000/1` fallback) and records that selection in runtime telemetry. The next
+concrete step after this negotiated G.711 transmit path is RTCP/full-duplex
+behavior and negotiated Opus transmit rather than more DTLS/SRTP/control-plane
+work.

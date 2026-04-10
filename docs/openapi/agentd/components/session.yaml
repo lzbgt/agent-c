@@ -318,6 +318,21 @@ VoiceWebRtcPeerRuntime:
       type: integer
       format: int64
       description: Encoded audio payload samples represented by the most recent outbound RTP transmit event.
+    audio_outbound_payload_type:
+      type: integer
+      format: int64
+      description: RTP payload type selected from the remote SDP for builtin native-plugin outbound audio.
+    audio_outbound_codec_name:
+      type: string
+      description: Codec selected from the remote SDP for builtin native-plugin outbound audio.
+    audio_outbound_sample_rate_hz:
+      type: integer
+      format: int64
+      description: Sample rate of the selected builtin native-plugin outbound audio codec.
+    audio_outbound_channels:
+      type: integer
+      format: int64
+      description: Channel count of the selected builtin native-plugin outbound audio codec.
     audio_drain_events_total:
       type: integer
       format: int64

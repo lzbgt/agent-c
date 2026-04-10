@@ -8263,6 +8263,23 @@ export interface components {
             audio_last_outbound_samples?: number;
             /**
              * Format: int64
+             * @description RTP payload type selected from the remote SDP for builtin native-plugin outbound audio.
+             */
+            audio_outbound_payload_type?: number;
+            /** @description Codec selected from the remote SDP for builtin native-plugin outbound audio. */
+            audio_outbound_codec_name?: string;
+            /**
+             * Format: int64
+             * @description Sample rate of the selected builtin native-plugin outbound audio codec.
+             */
+            audio_outbound_sample_rate_hz?: number;
+            /**
+             * Format: int64
+             * @description Channel count of the selected builtin native-plugin outbound audio codec.
+             */
+            audio_outbound_channels?: number;
+            /**
+             * Format: int64
              * @description Total number of provider-to-agentd PCM drain handoff events completed for the live builtin runtime.
              */
             audio_drain_events_total?: number;

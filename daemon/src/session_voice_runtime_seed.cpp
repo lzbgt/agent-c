@@ -77,6 +77,9 @@ std::shared_ptr<VoicePeerRuntime> make_voice_peer_runtime_state(
   st->audio_outbound_frames_sent = seed.audio_outbound_frames_sent;
   st->audio_pcm_samples_submitted_total = seed.audio_pcm_samples_submitted_total;
   st->audio_last_outbound_samples = seed.audio_last_outbound_samples;
+  st->audio_outbound_payload_type = seed.audio_outbound_payload_type;
+  st->audio_outbound_sample_rate_hz = seed.audio_outbound_sample_rate_hz;
+  st->audio_outbound_channels = seed.audio_outbound_channels;
   st->audio_drain_events_total = seed.audio_drain_events_total;
   st->audio_pcm_samples_drained_total = seed.audio_pcm_samples_drained_total;
   st->audio_pcm_samples_owned = seed.audio_pcm_samples_owned;
@@ -100,6 +103,7 @@ std::shared_ptr<VoicePeerRuntime> make_voice_peer_runtime_state(
   st->audio_last_channels = seed.audio_last_channels;
   st->audio_last_frame_samples_per_channel = seed.audio_last_frame_samples_per_channel;
   st->audio_last_codec_name = seed.audio_last_codec_name;
+  st->audio_outbound_codec_name = seed.audio_outbound_codec_name;
   st->audio_last_error = seed.audio_last_error;
   st->audio_outbound_last_error = seed.audio_outbound_last_error;
   st->audio_render_wav_path = seed.audio_render_wav_path;

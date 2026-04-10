@@ -96,6 +96,18 @@ Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   out["audio_pcm_samples_submitted_total"] =
     Json::Int64(st.audio_pcm_samples_submitted_total);
   out["audio_last_outbound_samples"] = Json::Int64(st.audio_last_outbound_samples);
+  if (st.audio_outbound_payload_type >= 0) {
+    out["audio_outbound_payload_type"] = Json::Int64(st.audio_outbound_payload_type);
+  }
+  if (!st.audio_outbound_codec_name.empty()) {
+    out["audio_outbound_codec_name"] = st.audio_outbound_codec_name;
+  }
+  if (st.audio_outbound_sample_rate_hz > 0) {
+    out["audio_outbound_sample_rate_hz"] = Json::Int64(st.audio_outbound_sample_rate_hz);
+  }
+  if (st.audio_outbound_channels > 0) {
+    out["audio_outbound_channels"] = Json::Int64(st.audio_outbound_channels);
+  }
   out["audio_drain_events_total"] = Json::Int64(st.audio_drain_events_total);
   out["audio_pcm_samples_drained_total"] = Json::Int64(st.audio_pcm_samples_drained_total);
   out["audio_pcm_samples_owned"] = Json::Int64(st.audio_pcm_samples_owned);
@@ -456,6 +468,25 @@ bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, s
       (v["audio_last_outbound_samples"].isInt64() ||
        v["audio_last_outbound_samples"].isUInt64())) {
     st.audio_last_outbound_samples = v["audio_last_outbound_samples"].asInt64();
+  }
+  if (v.isMember("audio_outbound_payload_type") &&
+      (v["audio_outbound_payload_type"].isInt64() ||
+       v["audio_outbound_payload_type"].isUInt64())) {
+    st.audio_outbound_payload_type = v["audio_outbound_payload_type"].asInt64();
+  }
+  if (v.isMember("audio_outbound_codec_name") &&
+      v["audio_outbound_codec_name"].isString()) {
+    st.audio_outbound_codec_name = trim_copy(v["audio_outbound_codec_name"].asString());
+  }
+  if (v.isMember("audio_outbound_sample_rate_hz") &&
+      (v["audio_outbound_sample_rate_hz"].isInt64() ||
+       v["audio_outbound_sample_rate_hz"].isUInt64())) {
+    st.audio_outbound_sample_rate_hz = v["audio_outbound_sample_rate_hz"].asInt64();
+  }
+  if (v.isMember("audio_outbound_channels") &&
+      (v["audio_outbound_channels"].isInt64() ||
+       v["audio_outbound_channels"].isUInt64())) {
+    st.audio_outbound_channels = v["audio_outbound_channels"].asInt64();
   }
   if (v.isMember("audio_drain_events_total") &&
       (v["audio_drain_events_total"].isInt64() || v["audio_drain_events_total"].isUInt64())) {

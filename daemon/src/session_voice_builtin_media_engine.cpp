@@ -1401,6 +1401,28 @@ void note_voice_peer_media_engine_event(
     runtime->audio_last_outbound_samples =
       payload["audio_last_outbound_samples"].asInt64();
   }
+  if (payload.isMember("audio_outbound_payload_type") &&
+      (payload["audio_outbound_payload_type"].isInt64() ||
+       payload["audio_outbound_payload_type"].isUInt64())) {
+    runtime->audio_outbound_payload_type =
+      payload["audio_outbound_payload_type"].asInt64();
+  }
+  if (payload.isMember("audio_outbound_codec_name") &&
+      payload["audio_outbound_codec_name"].isString()) {
+    runtime->audio_outbound_codec_name =
+      trim_copy(payload["audio_outbound_codec_name"].asString());
+  }
+  if (payload.isMember("audio_outbound_sample_rate_hz") &&
+      (payload["audio_outbound_sample_rate_hz"].isInt64() ||
+       payload["audio_outbound_sample_rate_hz"].isUInt64())) {
+    runtime->audio_outbound_sample_rate_hz =
+      payload["audio_outbound_sample_rate_hz"].asInt64();
+  }
+  if (payload.isMember("audio_outbound_channels") &&
+      (payload["audio_outbound_channels"].isInt64() ||
+       payload["audio_outbound_channels"].isUInt64())) {
+    runtime->audio_outbound_channels = payload["audio_outbound_channels"].asInt64();
+  }
   if (payload.isMember("audio_drain_events_total") &&
       (payload["audio_drain_events_total"].isInt64() || payload["audio_drain_events_total"].isUInt64())) {
     runtime->audio_drain_events_total = payload["audio_drain_events_total"].asInt64();

@@ -77,6 +77,9 @@ struct VoicePeerRuntime {
   int64_t audio_outbound_frames_sent = 0;
   int64_t audio_pcm_samples_submitted_total = 0;
   int64_t audio_last_outbound_samples = 0;
+  int64_t audio_outbound_payload_type = -1;
+  int64_t audio_outbound_sample_rate_hz = 0;
+  int64_t audio_outbound_channels = 0;
   int64_t audio_drain_events_total = 0;
   int64_t audio_pcm_samples_drained_total = 0;
   int64_t audio_pcm_samples_owned = 0;
@@ -100,6 +103,7 @@ struct VoicePeerRuntime {
   int64_t audio_last_channels = 0;
   int64_t audio_last_frame_samples_per_channel = 0;
   std::string audio_last_codec_name;
+  std::string audio_outbound_codec_name;
   std::string audio_last_error;
   std::string audio_outbound_last_error;
   std::string audio_render_wav_path;
@@ -206,6 +210,9 @@ struct VoicePeerRuntimeSeed {
   int64_t audio_outbound_frames_sent = 0;
   int64_t audio_pcm_samples_submitted_total = 0;
   int64_t audio_last_outbound_samples = 0;
+  int64_t audio_outbound_payload_type = -1;
+  int64_t audio_outbound_sample_rate_hz = 0;
+  int64_t audio_outbound_channels = 0;
   int64_t audio_drain_events_total = 0;
   int64_t audio_pcm_samples_drained_total = 0;
   int64_t audio_pcm_samples_owned = 0;
@@ -229,6 +236,7 @@ struct VoicePeerRuntimeSeed {
   int64_t audio_last_channels = 0;
   int64_t audio_last_frame_samples_per_channel = 0;
   std::string audio_last_codec_name;
+  std::string audio_outbound_codec_name;
   std::string audio_last_error;
   std::string audio_outbound_last_error;
   std::string audio_render_wav_path;
