@@ -38,6 +38,17 @@ std::string local_description() {
     "a=end-of-candidates\r\n";
 }
 
+std::string local_description_with_bare_candidate() {
+  return
+    "v=0\r\n"
+    "o=- 0 0 IN IP4 127.0.0.1\r\n"
+    "s=-\r\n"
+    "t=0 0\r\n"
+    "a=ice-ufrag:localUfrag\r\n"
+    "a=ice-pwd:localPassword\r\n"
+    "candidate:2 1 TCP 1518280447 127.0.0.1 55556 typ host tcptype active\r\n";
+}
+
 std::string offer_with_direction(const char* direction) {
   std::string offer = browser_offer();
   const std::string needle = "a=sendrecv\r\n";
@@ -45,6 +56,27 @@ std::string offer_with_direction(const char* direction) {
   assert(pos != std::string::npos);
   offer.replace(pos, needle.size(), std::string("a=") + direction + "\r\n");
   return offer;
+}
+
+std::string offer_with_audio_and_data_mline() {
+  std::string offer = browser_offer();
+  offer +=
+    "m=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n"
+    "c=IN IP4 0.0.0.0\r\n"
+    "a=mid:1\r\n"
+    "a=sctp-port:5000\r\n"
+    "a=max-message-size:262144\r\n";
+  return offer;
+}
+
+size_t count_occurrences(const std::string& value, const std::string& needle) {
+  size_t count = 0;
+  size_t pos = 0;
+  while ((pos = value.find(needle, pos)) != std::string::npos) {
+    count += 1;
+    pos += needle.size();
+  }
+  return count;
 }
 
 void test_active_answer_mirrors_browser_offer_media_contract() {
@@ -80,6 +112,45 @@ void test_active_answer_mirrors_browser_offer_media_contract() {
   assert(answer.find("a=msid:agentd_builtin_stream agentd_builtin_audio\r\n") != std::string::npos);
   assert(answer.find("a=ssrc:2799795457 cname:agentd-builtin-native\r\n") != std::string::npos);
   assert(answer.find("a=ssrc:2799795457 msid:agentd_builtin_stream agentd_builtin_audio\r\n") != std::string::npos);
+}
+
+void test_active_answer_normalizes_bare_local_candidate_lines() {
+  const std::string answer = agentd::build_builtin_active_answer_sdp({
+    browser_offer(),
+    local_description_with_bare_candidate(),
+    true,
+    "passive",
+    "AA:BB:CC",
+    2799795457u,
+    "agentd-builtin-native",
+    "agentd_builtin_stream",
+    "agentd_builtin_audio",
+  });
+
+  assert(answer.find("a=candidate:2 1 tcp") != std::string::npos);
+  assert(answer.find("\r\ncandidate:2 ") == std::string::npos);
+  assert(answer.find("a=candidate:2 1 TCP") == std::string::npos);
+}
+
+void test_active_answer_keeps_audio_ssrc_on_audio_mline_only() {
+  const std::string answer = agentd::build_builtin_active_answer_sdp({
+    offer_with_audio_and_data_mline(),
+    local_description(),
+    true,
+    "passive",
+    "AA:BB:CC",
+    2799795457u,
+    "agentd-builtin-native",
+    "agentd_builtin_stream",
+    "agentd_builtin_audio",
+  });
+
+  assert(answer.find("m=audio 9 UDP/TLS/RTP/SAVPF 111 0 8\r\n") != std::string::npos);
+  assert(answer.find("m=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n") != std::string::npos);
+  assert(count_occurrences(answer, "a=ssrc:2799795457 ") == 2);
+  const size_t app_pos = answer.find("m=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n");
+  assert(app_pos != std::string::npos);
+  assert(answer.find("a=ssrc:2799795457 ", app_pos) == std::string::npos);
 }
 
 void test_active_answer_respects_offer_direction() {
@@ -126,6 +197,10 @@ void test_falls_back_to_local_description_without_media_or_dtls_identity() {
     true,
     "passive",
     "AA:BB:CC",
+    0u,
+    "",
+    "",
+    "",
   }) == fallback);
   assert(agentd::build_builtin_active_answer_sdp({
     browser_offer(),
@@ -133,6 +208,10 @@ void test_falls_back_to_local_description_without_media_or_dtls_identity() {
     false,
     "passive",
     "AA:BB:CC",
+    0u,
+    "",
+    "",
+    "",
   }) == fallback);
 }
 
@@ -148,6 +227,8 @@ void test_sdp_marker_helpers_trim_inputs() {
 
 int main() {
   test_active_answer_mirrors_browser_offer_media_contract();
+  test_active_answer_normalizes_bare_local_candidate_lines();
+  test_active_answer_keeps_audio_ssrc_on_audio_mline_only();
   test_active_answer_respects_offer_direction();
   test_falls_back_to_local_description_without_media_or_dtls_identity();
   test_sdp_marker_helpers_trim_inputs();

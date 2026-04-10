@@ -52,17 +52,17 @@ bool starts_with(const std::string& value, const char* prefix) {
 }
 
 std::string normalize_candidate_line_for_browser_sdp(const std::string& line) {
-  if (!starts_with(line, "a=candidate:")) return line;
-  const size_t foundation_end = line.find(' ');
+  if (!starts_with(line, "a=candidate:") && !starts_with(line, "candidate:")) return line;
+  std::string out = starts_with(line, "candidate:") ? "a=" + line : line;
+  const size_t foundation_end = out.find(' ');
   if (foundation_end == std::string::npos) return line;
   const size_t component_begin = foundation_end + 1;
-  const size_t component_end = line.find(' ', component_begin);
+  const size_t component_end = out.find(' ', component_begin);
   if (component_end == std::string::npos) return line;
   const size_t transport_begin = component_end + 1;
-  const size_t transport_end = line.find(' ', transport_begin);
+  const size_t transport_end = out.find(' ', transport_begin);
   if (transport_end == std::string::npos) return line;
 
-  std::string out = line;
   for (size_t i = transport_begin; i < transport_end; ++i) {
     out[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(out[i])));
   }
@@ -77,7 +77,7 @@ std::vector<std::string> local_ice_lines_from_description(const std::string& sdp
         starts_with(line, "a=ice-pwd:")) {
       out.push_back(line);
       has_ice_credentials = true;
-    } else if (starts_with(line, "a=candidate:")) {
+    } else if (starts_with(line, "a=candidate:") || starts_with(line, "candidate:")) {
       out.push_back(normalize_candidate_line_for_browser_sdp(line));
     }
   }
@@ -114,6 +114,18 @@ std::string rewrite_mline_for_ice_answer(const std::string& line) {
 
 bool should_copy_session_attribute(const std::string& line) {
   return starts_with(line, "a=group:") || starts_with(line, "a=msid-semantic:");
+}
+
+std::string media_kind_from_mline(const std::string& line) {
+  if (!starts_with(line, "m=")) return "";
+  const size_t end = line.find(' ', 2);
+  std::string kind = end == std::string::npos
+    ? line.substr(2)
+    : line.substr(2, end - 2);
+  std::transform(kind.begin(), kind.end(), kind.begin(), [](unsigned char ch) {
+    return static_cast<char>(std::tolower(ch));
+  });
+  return kind;
 }
 
 bool should_copy_media_attribute(const std::string& line) {
@@ -195,6 +207,7 @@ std::string build_builtin_active_answer_sdp(const BuiltinSdpAnswerInput& input) 
   std::vector<std::string> media_lines;
   auto flush_media = [&]() {
     if (media_lines.empty()) return;
+    const bool media_is_audio = media_kind_from_mline(media_lines.front()) == "audio";
     out.push_back(rewrite_mline_for_ice_answer(media_lines.front()));
     out.push_back("c=IN IP4 0.0.0.0");
     for (size_t i = 1; i < media_lines.size(); ++i) {
@@ -205,7 +218,8 @@ std::string build_builtin_active_answer_sdp(const BuiltinSdpAnswerInput& input) 
     out.push_back("a=setup:" + input.dtls_setup_role);
     out.push_back("a=fingerprint:sha-256 " + input.dtls_fingerprint_sha256);
     for (const auto& line : local_ice_lines) out.push_back(line);
-    if (answer_direction_sends_media(answer_direction) && input.outbound_audio_ssrc != 0) {
+    if (media_is_audio && answer_direction_sends_media(answer_direction) &&
+        input.outbound_audio_ssrc != 0) {
       const std::string stream_id =
         non_empty_or_default(input.outbound_audio_stream_id, "agentd_builtin_stream");
       const std::string track_id =

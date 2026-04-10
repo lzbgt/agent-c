@@ -102,6 +102,10 @@ Reference artifacts downloaded into the repo for exact vendor details:
   - async media-progress coalescing state now lives in
     `session_voice_builtin_progress_key` with direct equality tests, reducing
     embedded-provider surface without changing progress-event semantics
+  - SDP answer hardening now normalizes bare local `candidate:` lines into
+    browser-safe `a=candidate:` lines and scopes provider-owned audio
+    `msid`/SSRC signaling to audio m-lines only when a browser offer also
+    contains non-audio sections
   - direct provider coverage now includes a local libjuice loopback peer that
     exchanges a real offer, consumes the candidate-bearing answer, trickles
     remote candidates back into the provider, and proves post-answer transport
