@@ -457,7 +457,11 @@ Current status:
 - Shipped: if the persisted daemon runtime config is corrupted to an invalid WebRTC default backend, agentd now
   rewrites that value back to `auto` on load and the runtime smoke proves the fallback returns to bundled default
   behavior rather than surfacing stale impossible state.
-- Still open: replace the managed Node/Playwright child runtime with an embedded long-lived agentd-native media service.
+- Shipped: the builtin `native_plugin` runtime now has an embedded provider over `libjuice + libsrtp2 + usrsctp + opus`
+  that answers browser offers with active media, terminates inbound RTP, processes decoded PCM, sends outbound RTP /
+  compound RTCP, and is covered by a headless-Chromium full-duplex smoke.
+- Still open: harden that embedded provider across broader browser/codec/candidate edge cases and reduce the still-large
+  provider surface before making it the default long-lived native media runtime.
 
 Proof:
 - `ctest` includes `broker_audio_signal_loopback_smoke`.

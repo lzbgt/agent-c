@@ -293,7 +293,11 @@ These are the most leveraged next steps grounded in current architecture:
    - Completed 2026-03-15: `broker_session_id` is now mutually exclusive with `broker_agent_id` /
      `broker_deployment_id`, and the runtime smoke proves that ambiguous mixed-mode start requests are rejected before
      any peer/runtime state is created.
-   - Remaining gap: replace the managed Node/Playwright child with an embedded long-lived agentd-native media service.
+   - Completed 2026-04-11: the builtin `native_plugin` path now has an embedded provider over `libjuice + libsrtp2 +
+     usrsctp + opus` that answers browser offers with active media, terminates inbound RTP, processes decoded PCM,
+     sends outbound RTP/compound RTCP, and is covered by a headless-Chromium full-duplex smoke.
+   - Still open: harden the embedded provider across broader browser/codec/candidate edge cases and reduce the
+     still-large provider surface before treating it as the default long-lived native media runtime.
 
 5) **Node consensus**
    - Centralized platform-led quorum and coordination are shipped.
