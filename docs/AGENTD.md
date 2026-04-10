@@ -505,9 +505,12 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   encode that PCM into a bounded Opus or PCMU/PCMA RTP frame, protect it with the outbound libsrtp context, and transmit
   it over the existing libjuice transport. After each successful outbound RTP frame, it also emits a reduced-size RTCP
   Sender Report (packet type `200`) with the same outbound SSRC, protects it with SRTCP, and surfaces inbound/outbound
-  RTCP counters and last-packet metadata. The Sender Report layout is pinned to the persisted RFC 3550 reference in
-  `docs/research/vendor-rfc3550-rtp-20260411.txt`; this is still a minimal RTCP proof, not a full RTCP scheduler or
-  receiver-report implementation. The repo also has direct in-tree DTLS/SRTP proof for the same OpenSSL/libsrtp configuration:
+  RTCP counters and last-packet metadata. It now also sends a bounded RTCP Receiver Report (packet type `201`) after
+  inbound RTP media arrives, reporting the inbound SSRC, extended highest sequence, fraction/cumulative loss, jitter, and
+  LSR/DLSR when a remote Sender Report was observed. The Sender/Receiver Report layouts are pinned to the persisted RFC
+  3550 reference in `docs/research/vendor-rfc3550-rtp-20260411.txt`; this is still a minimal RTCP proof, not a full
+  compound RTCP scheduler or broad browser-peer quality-reporting implementation. The repo also has direct in-tree
+  DTLS/SRTP proof for the same OpenSSL/libsrtp configuration:
   `session_voice_builtin_dtls_transport_tests` completes a DTLS 1.2 client/server handshake over datagram-memory BIOs,
   negotiates `SRTP_AES128_CM_SHA1_80`, exports DTLS-SRTP keying material, derives real inbound / outbound libsrtp
   contexts from that exporter output, and now proves outbound SRTP/SRTCP protect plus inbound unprotect/receive-side
@@ -531,7 +534,11 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `peer.rtp_last_sent_timestamp`, `peer.rtp_last_sent_ssrc`, `peer.rtcp_packets_received`,
   `peer.rtcp_packets_sent`, `peer.rtcp_payload_bytes_received`, `peer.rtcp_payload_bytes_sent`,
   `peer.rtcp_last_packet_type`, `peer.rtcp_last_ssrc`, `peer.rtcp_last_sent_packet_type`,
-  `peer.rtcp_last_sent_ssrc`, `peer.audio_frames_decoded`,
+  `peer.rtcp_last_sent_ssrc`, `peer.rtcp_sender_reports_sent`, `peer.rtcp_receiver_reports_sent`,
+  `peer.rtcp_receiver_report_blocks_sent`, `peer.rtcp_last_reported_rtp_ssrc`,
+  `peer.rtcp_last_report_fraction_lost`, `peer.rtcp_last_report_cumulative_lost`,
+  `peer.rtcp_last_report_highest_sequence`, `peer.rtcp_last_report_jitter`,
+  `peer.rtcp_last_report_lsr`, `peer.rtcp_last_report_dlsr`, `peer.audio_frames_decoded`,
   `peer.audio_pcm_samples_decoded`, `peer.audio_pcm_samples_buffered`,
   `peer.audio_outbound_frames_sent`, `peer.audio_pcm_samples_submitted_total`,
   `peer.audio_last_outbound_samples`, `peer.audio_outbound_payload_type`,

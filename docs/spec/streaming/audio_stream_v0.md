@@ -294,10 +294,12 @@ A v0 smoke test should:
   present, falls back to negotiated G.711, encodes a bounded Opus or PCMU/PCMA RTP frame, protects it with the outbound
   libsrtp context, and transmits it over libjuice. After each successful outbound RTP frame, it now emits a reduced-size
   RTCP Sender Report (`PT=200`) using the outbound SSRC, protects it with SRTCP, and persists inbound/outbound RTCP
-  counters plus last-packet metadata. The Sender Report packet layout is pinned to the persisted RFC 3550 reference in
-  `docs/research/vendor-rfc3550-rtp-20260411.txt`. The remaining gap is no longer basic outbound RTP, Opus ownership,
-  or one-shot Sender Report transmit; it is fuller RTCP cadence/receiver-report behavior and broader full-duplex
-  validation.
+  counters plus last-packet metadata. After inbound RTP arrives, it now also emits a bounded RTCP Receiver Report
+  (`PT=201`) with the inbound SSRC, fraction/cumulative loss, extended highest sequence, jitter, and `LSR`/`DLSR` when a
+  remote Sender Report was observed. The Sender/Receiver Report packet layouts are pinned to the persisted RFC 3550
+  reference in `docs/research/vendor-rfc3550-rtp-20260411.txt`. The remaining gap is no longer basic outbound RTP, Opus
+  ownership, or one-shot Sender/Receiver Report transmit; it is fuller compound RTCP cadence and broader browser-peer
+  full-duplex validation.
 - That runtime contract now also exposes the media-engine seam directly: planned/live builtin paths report
   `media_engine_kind=builtin_reserved|builtin_signaling_stub|builtin_native_plugin`, bundled/external runtimes report
   `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` now distinguish the
@@ -313,6 +315,11 @@ A v0 smoke test should:
   `rtcp_packets_received`, `rtcp_packets_sent`, `rtcp_payload_bytes_received`,
   `rtcp_payload_bytes_sent`, `rtcp_last_packet_type`, `rtcp_last_ssrc`,
   `rtcp_last_sent_packet_type`, `rtcp_last_sent_ssrc`,
+  `rtcp_sender_reports_sent`, `rtcp_receiver_reports_sent`,
+  `rtcp_receiver_report_blocks_sent`, `rtcp_last_reported_rtp_ssrc`,
+  `rtcp_last_report_fraction_lost`, `rtcp_last_report_cumulative_lost`,
+  `rtcp_last_report_highest_sequence`, `rtcp_last_report_jitter`,
+  `rtcp_last_report_lsr`, `rtcp_last_report_dlsr`,
   `audio_frames_decoded`, `audio_pcm_samples_decoded`, `audio_pcm_samples_buffered`,
   `audio_outbound_frames_sent`, `audio_pcm_samples_submitted_total`, `audio_last_outbound_samples`,
   `audio_outbound_payload_type`, `audio_outbound_codec_name`,

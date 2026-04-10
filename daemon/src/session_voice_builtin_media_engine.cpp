@@ -1352,6 +1352,23 @@ void note_voice_peer_media_engine_event(
        payload["rtcp_payload_bytes_sent"].isUInt64())) {
     runtime->rtcp_payload_bytes_sent = payload["rtcp_payload_bytes_sent"].asInt64();
   }
+  if (payload.isMember("rtcp_sender_reports_sent") &&
+      (payload["rtcp_sender_reports_sent"].isInt64() ||
+       payload["rtcp_sender_reports_sent"].isUInt64())) {
+    runtime->rtcp_sender_reports_sent = payload["rtcp_sender_reports_sent"].asInt64();
+  }
+  if (payload.isMember("rtcp_receiver_reports_sent") &&
+      (payload["rtcp_receiver_reports_sent"].isInt64() ||
+       payload["rtcp_receiver_reports_sent"].isUInt64())) {
+    runtime->rtcp_receiver_reports_sent =
+      payload["rtcp_receiver_reports_sent"].asInt64();
+  }
+  if (payload.isMember("rtcp_receiver_report_blocks_sent") &&
+      (payload["rtcp_receiver_report_blocks_sent"].isInt64() ||
+       payload["rtcp_receiver_report_blocks_sent"].isUInt64())) {
+    runtime->rtcp_receiver_report_blocks_sent =
+      payload["rtcp_receiver_report_blocks_sent"].asInt64();
+  }
   if (payload.isMember("rtp_last_payload_type") &&
       (payload["rtp_last_payload_type"].isInt64() || payload["rtp_last_payload_type"].isUInt64())) {
     runtime->rtp_last_payload_type = payload["rtp_last_payload_type"].asInt64();
@@ -1409,6 +1426,45 @@ void note_voice_peer_media_engine_event(
       (payload["rtcp_last_sent_ssrc"].isInt64() ||
        payload["rtcp_last_sent_ssrc"].isUInt64())) {
     runtime->rtcp_last_sent_ssrc = payload["rtcp_last_sent_ssrc"].asInt64();
+  }
+  if (payload.isMember("rtcp_last_reported_rtp_ssrc") &&
+      (payload["rtcp_last_reported_rtp_ssrc"].isInt64() ||
+       payload["rtcp_last_reported_rtp_ssrc"].isUInt64())) {
+    runtime->rtcp_last_reported_rtp_ssrc =
+      payload["rtcp_last_reported_rtp_ssrc"].asInt64();
+  }
+  if (payload.isMember("rtcp_last_report_fraction_lost") &&
+      (payload["rtcp_last_report_fraction_lost"].isInt64() ||
+       payload["rtcp_last_report_fraction_lost"].isUInt64())) {
+    runtime->rtcp_last_report_fraction_lost =
+      payload["rtcp_last_report_fraction_lost"].asInt64();
+  }
+  if (payload.isMember("rtcp_last_report_cumulative_lost") &&
+      (payload["rtcp_last_report_cumulative_lost"].isInt64() ||
+       payload["rtcp_last_report_cumulative_lost"].isUInt64())) {
+    runtime->rtcp_last_report_cumulative_lost =
+      payload["rtcp_last_report_cumulative_lost"].asInt64();
+  }
+  if (payload.isMember("rtcp_last_report_highest_sequence") &&
+      (payload["rtcp_last_report_highest_sequence"].isInt64() ||
+       payload["rtcp_last_report_highest_sequence"].isUInt64())) {
+    runtime->rtcp_last_report_highest_sequence =
+      payload["rtcp_last_report_highest_sequence"].asInt64();
+  }
+  if (payload.isMember("rtcp_last_report_jitter") &&
+      (payload["rtcp_last_report_jitter"].isInt64() ||
+       payload["rtcp_last_report_jitter"].isUInt64())) {
+    runtime->rtcp_last_report_jitter = payload["rtcp_last_report_jitter"].asInt64();
+  }
+  if (payload.isMember("rtcp_last_report_lsr") &&
+      (payload["rtcp_last_report_lsr"].isInt64() ||
+       payload["rtcp_last_report_lsr"].isUInt64())) {
+    runtime->rtcp_last_report_lsr = payload["rtcp_last_report_lsr"].asInt64();
+  }
+  if (payload.isMember("rtcp_last_report_dlsr") &&
+      (payload["rtcp_last_report_dlsr"].isInt64() ||
+       payload["rtcp_last_report_dlsr"].isUInt64())) {
+    runtime->rtcp_last_report_dlsr = payload["rtcp_last_report_dlsr"].asInt64();
   }
   if (payload.isMember("audio_frames_decoded") &&
       (payload["audio_frames_decoded"].isInt64() || payload["audio_frames_decoded"].isUInt64())) {

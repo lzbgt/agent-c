@@ -464,6 +464,17 @@ bool parse_rtcp_packet(
     out_info->report_count = static_cast<uint8_t>(packet[0] & 0x1Fu);
     out_info->length_words = length_words;
     out_info->ssrc = read_u32_be(packet + 4);
+    if (out_info->packet_type == 200 && declared_packet_size >= 28) {
+      out_info->sender_ntp_msw = read_u32_be(packet + 8);
+      out_info->sender_ntp_lsw = read_u32_be(packet + 12);
+      out_info->sender_rtp_timestamp = read_u32_be(packet + 16);
+      out_info->sender_packet_count = read_u32_be(packet + 20);
+      out_info->sender_octet_count = read_u32_be(packet + 24);
+      out_info->sender_report_lsr =
+        ((out_info->sender_ntp_msw & 0xFFFFu) << 16) |
+        ((out_info->sender_ntp_lsw >> 16) & 0xFFFFu);
+      out_info->has_sender_info = true;
+    }
     out_info->packet_size = declared_packet_size;
   }
   return true;

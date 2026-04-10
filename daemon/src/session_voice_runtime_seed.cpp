@@ -67,6 +67,9 @@ std::shared_ptr<VoicePeerRuntime> make_voice_peer_runtime_state(
   st->rtcp_packets_sent = seed.rtcp_packets_sent;
   st->rtcp_payload_bytes_received = seed.rtcp_payload_bytes_received;
   st->rtcp_payload_bytes_sent = seed.rtcp_payload_bytes_sent;
+  st->rtcp_sender_reports_sent = seed.rtcp_sender_reports_sent;
+  st->rtcp_receiver_reports_sent = seed.rtcp_receiver_reports_sent;
+  st->rtcp_receiver_report_blocks_sent = seed.rtcp_receiver_report_blocks_sent;
   st->rtp_last_payload_type = seed.rtp_last_payload_type;
   st->rtp_last_sequence = seed.rtp_last_sequence;
   st->rtp_last_timestamp = seed.rtp_last_timestamp;
@@ -79,6 +82,13 @@ std::shared_ptr<VoicePeerRuntime> make_voice_peer_runtime_state(
   st->rtcp_last_ssrc = seed.rtcp_last_ssrc;
   st->rtcp_last_sent_packet_type = seed.rtcp_last_sent_packet_type;
   st->rtcp_last_sent_ssrc = seed.rtcp_last_sent_ssrc;
+  st->rtcp_last_reported_rtp_ssrc = seed.rtcp_last_reported_rtp_ssrc;
+  st->rtcp_last_report_fraction_lost = seed.rtcp_last_report_fraction_lost;
+  st->rtcp_last_report_cumulative_lost = seed.rtcp_last_report_cumulative_lost;
+  st->rtcp_last_report_highest_sequence = seed.rtcp_last_report_highest_sequence;
+  st->rtcp_last_report_jitter = seed.rtcp_last_report_jitter;
+  st->rtcp_last_report_lsr = seed.rtcp_last_report_lsr;
+  st->rtcp_last_report_dlsr = seed.rtcp_last_report_dlsr;
   st->audio_frames_decoded = seed.audio_frames_decoded;
   st->audio_pcm_samples_decoded = seed.audio_pcm_samples_decoded;
   st->audio_pcm_samples_buffered = seed.audio_pcm_samples_buffered;

@@ -47,7 +47,7 @@ using agentd::resolve_dtls_srtp_profile_spec;
 using agentd::selected_dtls_srtp_profile_name;
 
 constexpr const char* kProviderName = "agentd_builtin_embedded_transport_provider";
-constexpr const char* kProviderVersion = "0.11.0";
+constexpr const char* kProviderVersion = "0.12.0";
 #if defined(AGENTD_HAVE_OPUS)
 constexpr const char* kCapabilitiesJson =
   "{\"signaling\":true,\"audio_capture\":false,\"audio_render\":false,"
@@ -59,7 +59,7 @@ constexpr const char* kCapabilitiesJson =
   "\"dtls_handshake\":true,\"dtls_srtp_export\":true,"
   "\"srtp_contexts\":true,\"poll_status\":true,"
   "\"srtp\":true,\"rtp_ingest\":true,\"rtp_transmit\":true,"
-  "\"rtcp_ingest\":true,\"rtcp_transmit\":true,\"sctp\":true,"
+  "\"rtcp_ingest\":true,\"rtcp_transmit\":true,\"rtcp_receiver_report\":true,\"sctp\":true,"
   "\"transport_family\":\"embedded_transport_primitives\","
   "\"embedded_transport_provider\":true,\"sample_provider\":false,"
   "\"real_media_engine\":false,\"remote_description_optional\":true,"
@@ -75,7 +75,7 @@ constexpr const char* kCapabilitiesJson =
   "\"dtls_handshake\":true,\"dtls_srtp_export\":true,"
   "\"srtp_contexts\":true,\"poll_status\":true,"
   "\"srtp\":true,\"rtp_ingest\":true,\"rtp_transmit\":true,"
-  "\"rtcp_ingest\":true,\"rtcp_transmit\":true,\"sctp\":true,"
+  "\"rtcp_ingest\":true,\"rtcp_transmit\":true,\"rtcp_receiver_report\":true,\"sctp\":true,"
   "\"transport_family\":\"embedded_transport_primitives\","
   "\"embedded_transport_provider\":true,\"sample_provider\":false,"
   "\"real_media_engine\":false,\"remote_description_optional\":true,"
@@ -91,8 +91,11 @@ constexpr size_t kOutboundOpusFrameSamplesPerChannel = 960;
 constexpr int kOutboundOpusMaxPayloadBytes = 1275;
 constexpr uint32_t kOutboundRtpSsrc = 0xA6E17D01u;
 constexpr uint8_t kRtcpPacketTypeSenderReport = 200;
+constexpr uint8_t kRtcpPacketTypeReceiverReport = 201;
 constexpr size_t kRtcpSenderReportBytes = 28;
+constexpr size_t kRtcpReceiverReportWithBlockBytes = 32;
 constexpr uint64_t kUnixToNtpEpochSeconds = 2208988800ULL;
+constexpr uint64_t kReceiverReportRtpPacketCadence = 50;
 
 struct EmbeddedTransportState {
   struct AsyncProgressKey {
@@ -126,6 +129,9 @@ struct EmbeddedTransportState {
     uint64_t rtcp_packets_sent = 0;
     uint64_t rtcp_payload_bytes_received = 0;
     uint64_t rtcp_payload_bytes_sent = 0;
+    uint64_t rtcp_sender_reports_sent = 0;
+    uint64_t rtcp_receiver_reports_sent = 0;
+    uint64_t rtcp_receiver_report_blocks_sent = 0;
     int64_t rtp_last_payload_type = -1;
     int64_t rtp_last_sequence = -1;
     uint64_t rtp_last_timestamp = 0;
@@ -138,6 +144,13 @@ struct EmbeddedTransportState {
     uint64_t rtcp_last_ssrc = 0;
     int64_t rtcp_last_sent_packet_type = -1;
     uint64_t rtcp_last_sent_ssrc = 0;
+    uint64_t rtcp_last_reported_rtp_ssrc = 0;
+    int64_t rtcp_last_report_fraction_lost = 0;
+    int64_t rtcp_last_report_cumulative_lost = 0;
+    uint64_t rtcp_last_report_highest_sequence = 0;
+    uint64_t rtcp_last_report_jitter = 0;
+    uint64_t rtcp_last_report_lsr = 0;
+    uint64_t rtcp_last_report_dlsr = 0;
     uint64_t audio_frames_decoded = 0;
     uint64_t audio_pcm_samples_decoded = 0;
     uint64_t audio_pcm_samples_buffered = 0;
@@ -187,6 +200,9 @@ struct EmbeddedTransportState {
              rtcp_packets_sent == other.rtcp_packets_sent &&
              rtcp_payload_bytes_received == other.rtcp_payload_bytes_received &&
              rtcp_payload_bytes_sent == other.rtcp_payload_bytes_sent &&
+             rtcp_sender_reports_sent == other.rtcp_sender_reports_sent &&
+             rtcp_receiver_reports_sent == other.rtcp_receiver_reports_sent &&
+             rtcp_receiver_report_blocks_sent == other.rtcp_receiver_report_blocks_sent &&
              rtp_last_payload_type == other.rtp_last_payload_type &&
              rtp_last_sequence == other.rtp_last_sequence &&
              rtp_last_timestamp == other.rtp_last_timestamp &&
@@ -199,6 +215,13 @@ struct EmbeddedTransportState {
              rtcp_last_ssrc == other.rtcp_last_ssrc &&
              rtcp_last_sent_packet_type == other.rtcp_last_sent_packet_type &&
              rtcp_last_sent_ssrc == other.rtcp_last_sent_ssrc &&
+             rtcp_last_reported_rtp_ssrc == other.rtcp_last_reported_rtp_ssrc &&
+             rtcp_last_report_fraction_lost == other.rtcp_last_report_fraction_lost &&
+             rtcp_last_report_cumulative_lost == other.rtcp_last_report_cumulative_lost &&
+             rtcp_last_report_highest_sequence == other.rtcp_last_report_highest_sequence &&
+             rtcp_last_report_jitter == other.rtcp_last_report_jitter &&
+             rtcp_last_report_lsr == other.rtcp_last_report_lsr &&
+             rtcp_last_report_dlsr == other.rtcp_last_report_dlsr &&
              audio_frames_decoded == other.audio_frames_decoded &&
              audio_pcm_samples_decoded == other.audio_pcm_samples_decoded &&
              audio_pcm_samples_buffered == other.audio_pcm_samples_buffered &&
@@ -265,6 +288,9 @@ struct EmbeddedTransportState {
   uint64_t rtcp_packets_sent = 0;
   uint64_t rtcp_payload_bytes_received = 0;
   uint64_t rtcp_payload_bytes_sent = 0;
+  uint64_t rtcp_sender_reports_sent = 0;
+  uint64_t rtcp_receiver_reports_sent = 0;
+  uint64_t rtcp_receiver_report_blocks_sent = 0;
   int64_t rtp_last_payload_type = -1;
   int64_t rtp_last_sequence = -1;
   uint64_t rtp_last_timestamp = 0;
@@ -277,6 +303,32 @@ struct EmbeddedTransportState {
   uint64_t rtcp_last_ssrc = 0;
   int64_t rtcp_last_sent_packet_type = -1;
   uint64_t rtcp_last_sent_ssrc = 0;
+  uint64_t rtcp_last_reported_rtp_ssrc = 0;
+  int64_t rtcp_last_report_fraction_lost = 0;
+  int64_t rtcp_last_report_cumulative_lost = 0;
+  uint64_t rtcp_last_report_highest_sequence = 0;
+  uint64_t rtcp_last_report_jitter = 0;
+  uint64_t rtcp_last_report_lsr = 0;
+  uint64_t rtcp_last_report_dlsr = 0;
+  bool inbound_rtp_source_initialized = false;
+  uint32_t inbound_rtp_source_ssrc = 0;
+  uint16_t inbound_rtp_base_sequence = 0;
+  uint16_t inbound_rtp_max_sequence = 0;
+  uint32_t inbound_rtp_sequence_cycles = 0;
+  uint32_t inbound_rtp_extended_highest_sequence = 0;
+  uint64_t inbound_rtp_source_packets_received = 0;
+  uint64_t inbound_rtp_prior_expected = 0;
+  uint64_t inbound_rtp_prior_received = 0;
+  uint64_t inbound_rtp_packets_since_last_receiver_report = 0;
+  bool inbound_rtp_transit_initialized = false;
+  int64_t inbound_rtp_last_transit = 0;
+  double inbound_rtp_jitter = 0.0;
+  uint32_t inbound_rtp_clock_rate_hz = 0;
+  bool inbound_remote_sender_report_seen = false;
+  uint32_t inbound_remote_sender_report_lsr = 0;
+  std::chrono::steady_clock::time_point inbound_remote_sender_report_received_at;
+  bool rtcp_receiver_report_sent = false;
+  std::chrono::steady_clock::time_point rtcp_last_receiver_report_at;
   uint64_t audio_frames_decoded = 0;
   uint64_t audio_pcm_samples_decoded = 0;
   uint64_t audio_pcm_samples_buffered = 0;
@@ -795,6 +847,15 @@ void write_u32_be(unsigned char* out, uint32_t value) {
   out[3] = static_cast<unsigned char>(value & 0xFF);
 }
 
+void write_i24_be(unsigned char* out, int64_t value) {
+  const int64_t clamped =
+    std::max<int64_t>(-8388608, std::min<int64_t>(8388607, value));
+  const uint32_t encoded = static_cast<uint32_t>(clamped) & 0x00FFFFFFu;
+  out[0] = static_cast<unsigned char>((encoded >> 16) & 0xFF);
+  out[1] = static_cast<unsigned char>((encoded >> 8) & 0xFF);
+  out[2] = static_cast<unsigned char>(encoded & 0xFF);
+}
+
 std::pair<uint32_t, uint32_t> current_ntp_timestamp_words() {
   using namespace std::chrono;
   const auto now = system_clock::now().time_since_epoch();
@@ -825,6 +886,168 @@ std::array<unsigned char, kRtcpSenderReportBytes> build_rtcp_sender_report(
   write_u32_be(out.data() + 16, rtp_timestamp);
   write_u32_be(out.data() + 20, static_cast<uint32_t>(engine.rtp_packets_sent));
   write_u32_be(out.data() + 24, static_cast<uint32_t>(engine.rtp_payload_bytes_sent));
+  return out;
+}
+
+uint64_t current_steady_microseconds() {
+  using namespace std::chrono;
+  return static_cast<uint64_t>(
+    duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count());
+}
+
+uint32_t elapsed_dlsr_units(std::chrono::steady_clock::time_point since) {
+  using namespace std::chrono;
+  const auto elapsed = steady_clock::now() - since;
+  const auto micros = duration_cast<microseconds>(elapsed).count();
+  if (micros <= 0) return 0;
+  const uint64_t units =
+    (static_cast<uint64_t>(micros) * static_cast<uint64_t>(65536)) /
+    static_cast<uint64_t>(1000000);
+  return static_cast<uint32_t>(std::min<uint64_t>(units, std::numeric_limits<uint32_t>::max()));
+}
+
+uint32_t rtp_arrival_units(uint64_t steady_us, uint32_t clock_rate_hz) {
+  if (clock_rate_hz == 0) return 0;
+  const long double units =
+    (static_cast<long double>(steady_us) * static_cast<long double>(clock_rate_hz)) /
+    static_cast<long double>(1000000.0L);
+  return static_cast<uint32_t>(static_cast<uint64_t>(units) & 0xFFFFFFFFu);
+}
+
+uint32_t report_jitter_sample(const EmbeddedTransportState& engine) {
+  if (engine.inbound_rtp_jitter <= 0.0) return 0;
+  const double bounded = std::min<double>(
+    engine.inbound_rtp_jitter,
+    static_cast<double>(std::numeric_limits<uint32_t>::max()));
+  return static_cast<uint32_t>(bounded + 0.5);
+}
+
+uint64_t inbound_rtp_expected_packets(const EmbeddedTransportState& engine) {
+  if (!engine.inbound_rtp_source_initialized) return 0;
+  if (engine.inbound_rtp_extended_highest_sequence < engine.inbound_rtp_base_sequence) {
+    return engine.inbound_rtp_source_packets_received;
+  }
+  return static_cast<uint64_t>(
+    engine.inbound_rtp_extended_highest_sequence -
+    static_cast<uint32_t>(engine.inbound_rtp_base_sequence) + 1u);
+}
+
+int64_t inbound_rtp_cumulative_lost(const EmbeddedTransportState& engine) {
+  return static_cast<int64_t>(inbound_rtp_expected_packets(engine)) -
+         static_cast<int64_t>(engine.inbound_rtp_source_packets_received);
+}
+
+uint8_t inbound_rtp_fraction_lost_since_last_report(const EmbeddedTransportState& engine) {
+  const uint64_t expected = inbound_rtp_expected_packets(engine);
+  const uint64_t expected_interval =
+    expected > engine.inbound_rtp_prior_expected
+      ? expected - engine.inbound_rtp_prior_expected
+      : 0;
+  const uint64_t received_interval =
+    engine.inbound_rtp_source_packets_received > engine.inbound_rtp_prior_received
+      ? engine.inbound_rtp_source_packets_received - engine.inbound_rtp_prior_received
+      : 0;
+  if (expected_interval == 0 || received_interval >= expected_interval) return 0;
+  const uint64_t lost_interval = expected_interval - received_interval;
+  return static_cast<uint8_t>(std::min<uint64_t>((lost_interval * 256u) / expected_interval, 255));
+}
+
+void note_inbound_rtp_packet_for_receiver_report(
+  EmbeddedTransportState* engine,
+  const agentd::ParsedRtpPacketInfo& rtp_info
+) {
+  if (!engine) return;
+  const agentd::RtpAudioPayloadSpec* spec =
+    engine->audio_decoder.resolve_payload_spec(rtp_info.payload_type);
+  const uint32_t clock_rate_hz =
+    spec && spec->sample_rate_hz > 0
+      ? static_cast<uint32_t>(spec->sample_rate_hz)
+      : static_cast<uint32_t>(std::max<int64_t>(engine->audio_last_sample_rate_hz, 8000));
+
+  if (!engine->inbound_rtp_source_initialized ||
+      engine->inbound_rtp_source_ssrc != rtp_info.ssrc) {
+    engine->inbound_rtp_source_initialized = true;
+    engine->inbound_rtp_source_ssrc = rtp_info.ssrc;
+    engine->inbound_rtp_clock_rate_hz = clock_rate_hz;
+    engine->inbound_rtp_base_sequence = rtp_info.sequence;
+    engine->inbound_rtp_max_sequence = rtp_info.sequence;
+    engine->inbound_rtp_sequence_cycles = 0;
+    engine->inbound_rtp_extended_highest_sequence = rtp_info.sequence;
+    engine->inbound_rtp_source_packets_received = 0;
+    engine->inbound_rtp_prior_expected = 0;
+    engine->inbound_rtp_prior_received = 0;
+    engine->inbound_rtp_packets_since_last_receiver_report = 0;
+    engine->inbound_rtp_transit_initialized = false;
+    engine->inbound_rtp_last_transit = 0;
+    engine->inbound_rtp_jitter = 0.0;
+    engine->inbound_remote_sender_report_seen = false;
+    engine->inbound_remote_sender_report_lsr = 0;
+  } else if (rtp_info.sequence < engine->inbound_rtp_max_sequence &&
+             static_cast<uint16_t>(engine->inbound_rtp_max_sequence - rtp_info.sequence) > 0x8000u) {
+    engine->inbound_rtp_sequence_cycles += 0x10000u;
+    engine->inbound_rtp_max_sequence = rtp_info.sequence;
+  } else if (rtp_info.sequence > engine->inbound_rtp_max_sequence) {
+    engine->inbound_rtp_max_sequence = rtp_info.sequence;
+  }
+
+  const uint32_t extended_sequence =
+    engine->inbound_rtp_sequence_cycles + static_cast<uint32_t>(rtp_info.sequence);
+  engine->inbound_rtp_extended_highest_sequence =
+    std::max(engine->inbound_rtp_extended_highest_sequence, extended_sequence);
+  engine->inbound_rtp_source_packets_received += 1;
+  engine->inbound_rtp_packets_since_last_receiver_report += 1;
+
+  const uint64_t arrival_us = current_steady_microseconds();
+  const uint32_t arrival_rtp_units = rtp_arrival_units(arrival_us, clock_rate_hz);
+  const int64_t transit =
+    static_cast<int64_t>(arrival_rtp_units) - static_cast<int64_t>(rtp_info.timestamp);
+  if (engine->inbound_rtp_transit_initialized) {
+    int64_t delta = transit - engine->inbound_rtp_last_transit;
+    if (delta < 0) delta = -delta;
+    engine->inbound_rtp_jitter +=
+      (static_cast<double>(delta) - engine->inbound_rtp_jitter) / 16.0;
+  } else {
+    engine->inbound_rtp_transit_initialized = true;
+  }
+  engine->inbound_rtp_last_transit = transit;
+}
+
+std::array<unsigned char, kRtcpReceiverReportWithBlockBytes> build_rtcp_receiver_report(
+  EmbeddedTransportState* engine
+) {
+  std::array<unsigned char, kRtcpReceiverReportWithBlockBytes> out{};
+  if (!engine || !engine->inbound_rtp_source_initialized) return out;
+
+  const uint8_t fraction_lost = inbound_rtp_fraction_lost_since_last_report(*engine);
+  const int64_t cumulative_lost = inbound_rtp_cumulative_lost(*engine);
+  const uint32_t jitter = report_jitter_sample(*engine);
+  const uint32_t lsr =
+    engine->inbound_remote_sender_report_seen ? engine->inbound_remote_sender_report_lsr : 0;
+  const uint32_t dlsr =
+    engine->inbound_remote_sender_report_seen
+      ? elapsed_dlsr_units(engine->inbound_remote_sender_report_received_at)
+      : 0;
+
+  out[0] = 0x81u;
+  out[1] = kRtcpPacketTypeReceiverReport;
+  write_u16_be(out.data() + 2, 7);
+  write_u32_be(out.data() + 4, engine->outbound_rtp_ssrc);
+  write_u32_be(out.data() + 8, engine->inbound_rtp_source_ssrc);
+  out[12] = fraction_lost;
+  write_i24_be(out.data() + 13, cumulative_lost);
+  write_u32_be(out.data() + 16, engine->inbound_rtp_extended_highest_sequence);
+  write_u32_be(out.data() + 20, jitter);
+  write_u32_be(out.data() + 24, lsr);
+  write_u32_be(out.data() + 28, dlsr);
+
+  engine->rtcp_last_reported_rtp_ssrc = engine->inbound_rtp_source_ssrc;
+  engine->rtcp_last_report_fraction_lost = fraction_lost;
+  engine->rtcp_last_report_cumulative_lost =
+    std::max<int64_t>(-8388608, std::min<int64_t>(8388607, cumulative_lost));
+  engine->rtcp_last_report_highest_sequence = engine->inbound_rtp_extended_highest_sequence;
+  engine->rtcp_last_report_jitter = jitter;
+  engine->rtcp_last_report_lsr = lsr;
+  engine->rtcp_last_report_dlsr = dlsr;
   return out;
 }
 
@@ -1108,10 +1331,89 @@ bool transmit_outbound_rtcp_sender_report(
 
   engine->rtcp_packets_sent += 1;
   engine->rtcp_payload_bytes_sent += plain.size();
+  engine->rtcp_sender_reports_sent += 1;
   engine->rtcp_last_sent_packet_type = kRtcpPacketTypeSenderReport;
   engine->rtcp_last_sent_ssrc = engine->outbound_rtp_ssrc;
   engine->rtcp_last_error.clear();
   return true;
+}
+
+bool receiver_report_due(const EmbeddedTransportState& engine) {
+  if (!engine.inbound_rtp_source_initialized || !engine.agent ||
+      !engine.outbound_srtp || !engine.srtp_outbound_ready) {
+    return false;
+  }
+  if (engine.rtcp_receiver_reports_sent == 0) return true;
+  if (engine.inbound_rtp_packets_since_last_receiver_report >=
+      kReceiverReportRtpPacketCadence) {
+    return true;
+  }
+  if (!engine.rtcp_receiver_report_sent) return true;
+  return std::chrono::steady_clock::now() - engine.rtcp_last_receiver_report_at >=
+         std::chrono::seconds(5);
+}
+
+bool transmit_outbound_rtcp_receiver_report(
+  EmbeddedTransportState* engine,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (!engine || !engine->agent || !engine->outbound_srtp || !engine->srtp_outbound_ready) {
+    if (out_err) *out_err = "outbound SRTCP transport not ready";
+    return false;
+  }
+  if (!engine->inbound_rtp_source_initialized) {
+    if (out_err) *out_err = "inbound RTP source not ready for receiver report";
+    return false;
+  }
+
+  const std::array<unsigned char, kRtcpReceiverReportWithBlockBytes> plain =
+    build_rtcp_receiver_report(engine);
+  std::vector<unsigned char> protected_packet;
+  std::string protect_err;
+  if (!agentd::protect_outbound_rtcp_packet(
+        engine->outbound_srtp,
+        plain.data(),
+        plain.size(),
+        &protected_packet,
+        &protect_err)) {
+    if (out_err) *out_err = protect_err;
+    return false;
+  }
+  const int rc = juice_send(
+    engine->agent,
+    reinterpret_cast<const char*>(protected_packet.data()),
+    protected_packet.size());
+  if (rc != JUICE_ERR_SUCCESS) {
+    if (out_err) {
+      *out_err = "libjuice RTCP receiver report send failed with code " +
+                 std::to_string(rc);
+    }
+    return false;
+  }
+
+  engine->rtcp_packets_sent += 1;
+  engine->rtcp_payload_bytes_sent += plain.size();
+  engine->rtcp_receiver_reports_sent += 1;
+  engine->rtcp_receiver_report_blocks_sent += 1;
+  engine->rtcp_last_sent_packet_type = kRtcpPacketTypeReceiverReport;
+  engine->rtcp_last_sent_ssrc = engine->outbound_rtp_ssrc;
+  engine->rtcp_last_error.clear();
+  engine->inbound_rtp_prior_expected = inbound_rtp_expected_packets(*engine);
+  engine->inbound_rtp_prior_received = engine->inbound_rtp_source_packets_received;
+  engine->inbound_rtp_packets_since_last_receiver_report = 0;
+  engine->rtcp_receiver_report_sent = true;
+  engine->rtcp_last_receiver_report_at = std::chrono::steady_clock::now();
+  return true;
+}
+
+void maybe_transmit_outbound_rtcp_receiver_report(EmbeddedTransportState* engine) {
+  if (!engine || !receiver_report_due(*engine)) return;
+  std::string rtcp_err;
+  if (!transmit_outbound_rtcp_receiver_report(engine, &rtcp_err)) {
+    engine->rtcp_last_error =
+      rtcp_err.empty() ? std::string("outbound RTCP receiver report transmit failed") : rtcp_err;
+  }
 }
 
 bool transmit_outbound_audio_rtp(
@@ -1251,10 +1553,16 @@ bool ingest_inbound_srtp_packet(
     engine->rtcp_payload_bytes_received += rtcp_info.packet_size;
     engine->rtcp_last_packet_type = rtcp_info.packet_type;
     engine->rtcp_last_ssrc = rtcp_info.ssrc;
+    if (rtcp_info.has_sender_info && rtcp_info.sender_report_lsr != 0) {
+      engine->inbound_remote_sender_report_seen = true;
+      engine->inbound_remote_sender_report_lsr = rtcp_info.sender_report_lsr;
+      engine->inbound_remote_sender_report_received_at = std::chrono::steady_clock::now();
+    }
     engine->rtcp_last_error.clear();
     return true;
   }
 
+  note_inbound_rtp_packet_for_receiver_report(engine, rtp_info);
   engine->rtp_packets_received += 1;
   engine->rtp_payload_bytes_received += rtp_info.payload_size;
   engine->rtp_last_payload_type = rtp_info.payload_type;
@@ -1269,6 +1577,7 @@ bool ingest_inbound_srtp_packet(
       rtp_info.payload_size,
       nullptr);
   }
+  maybe_transmit_outbound_rtcp_receiver_report(engine);
   return true;
 }
 
@@ -1538,6 +1847,9 @@ EmbeddedTransportState::AsyncProgressKey capture_async_progress_key(
   key.rtcp_packets_sent = state.rtcp_packets_sent;
   key.rtcp_payload_bytes_received = state.rtcp_payload_bytes_received;
   key.rtcp_payload_bytes_sent = state.rtcp_payload_bytes_sent;
+  key.rtcp_sender_reports_sent = state.rtcp_sender_reports_sent;
+  key.rtcp_receiver_reports_sent = state.rtcp_receiver_reports_sent;
+  key.rtcp_receiver_report_blocks_sent = state.rtcp_receiver_report_blocks_sent;
   key.rtp_last_payload_type = state.rtp_last_payload_type;
   key.rtp_last_sequence = state.rtp_last_sequence;
   key.rtp_last_timestamp = state.rtp_last_timestamp;
@@ -1550,6 +1862,13 @@ EmbeddedTransportState::AsyncProgressKey capture_async_progress_key(
   key.rtcp_last_ssrc = state.rtcp_last_ssrc;
   key.rtcp_last_sent_packet_type = state.rtcp_last_sent_packet_type;
   key.rtcp_last_sent_ssrc = state.rtcp_last_sent_ssrc;
+  key.rtcp_last_reported_rtp_ssrc = state.rtcp_last_reported_rtp_ssrc;
+  key.rtcp_last_report_fraction_lost = state.rtcp_last_report_fraction_lost;
+  key.rtcp_last_report_cumulative_lost = state.rtcp_last_report_cumulative_lost;
+  key.rtcp_last_report_highest_sequence = state.rtcp_last_report_highest_sequence;
+  key.rtcp_last_report_jitter = state.rtcp_last_report_jitter;
+  key.rtcp_last_report_lsr = state.rtcp_last_report_lsr;
+  key.rtcp_last_report_dlsr = state.rtcp_last_report_dlsr;
   key.audio_frames_decoded = state.audio_frames_decoded;
   key.audio_pcm_samples_decoded = state.audio_pcm_samples_decoded;
   key.audio_pcm_samples_buffered = state.audio_pcm_samples_buffered;
@@ -1812,6 +2131,10 @@ std::string build_event_json(
     ",\"rtcp_packets_sent\":" + std::to_string(state.rtcp_packets_sent) +
     ",\"rtcp_payload_bytes_received\":" + std::to_string(state.rtcp_payload_bytes_received) +
     ",\"rtcp_payload_bytes_sent\":" + std::to_string(state.rtcp_payload_bytes_sent) +
+    ",\"rtcp_sender_reports_sent\":" + std::to_string(state.rtcp_sender_reports_sent) +
+    ",\"rtcp_receiver_reports_sent\":" + std::to_string(state.rtcp_receiver_reports_sent) +
+    ",\"rtcp_receiver_report_blocks_sent\":" +
+    std::to_string(state.rtcp_receiver_report_blocks_sent) +
     ",\"audio_frames_decoded\":" + std::to_string(state.audio_frames_decoded) +
     ",\"audio_pcm_samples_decoded\":" + std::to_string(state.audio_pcm_samples_decoded) +
     ",\"audio_pcm_samples_buffered\":" + std::to_string(state.audio_pcm_samples_buffered) +
@@ -1885,6 +2208,22 @@ std::string build_event_json(
   }
   if (state.rtcp_last_sent_ssrc > 0) {
     json += ",\"rtcp_last_sent_ssrc\":" + std::to_string(state.rtcp_last_sent_ssrc);
+  }
+  if (state.rtcp_last_reported_rtp_ssrc > 0) {
+    json += ",\"rtcp_last_reported_rtp_ssrc\":" +
+            std::to_string(state.rtcp_last_reported_rtp_ssrc);
+    json += ",\"rtcp_last_report_fraction_lost\":" +
+            std::to_string(state.rtcp_last_report_fraction_lost);
+    json += ",\"rtcp_last_report_cumulative_lost\":" +
+            std::to_string(state.rtcp_last_report_cumulative_lost);
+    json += ",\"rtcp_last_report_highest_sequence\":" +
+            std::to_string(state.rtcp_last_report_highest_sequence);
+    json += ",\"rtcp_last_report_jitter\":" +
+            std::to_string(state.rtcp_last_report_jitter);
+    json += ",\"rtcp_last_report_lsr\":" +
+            std::to_string(state.rtcp_last_report_lsr);
+    json += ",\"rtcp_last_report_dlsr\":" +
+            std::to_string(state.rtcp_last_report_dlsr);
   }
   if (state.audio_outbound_payload_type >= 0) {
     json += ",\"audio_outbound_payload_type\":" +

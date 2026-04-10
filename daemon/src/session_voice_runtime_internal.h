@@ -67,6 +67,9 @@ struct VoicePeerRuntime {
   int64_t rtcp_packets_sent = 0;
   int64_t rtcp_payload_bytes_received = 0;
   int64_t rtcp_payload_bytes_sent = 0;
+  int64_t rtcp_sender_reports_sent = 0;
+  int64_t rtcp_receiver_reports_sent = 0;
+  int64_t rtcp_receiver_report_blocks_sent = 0;
   int64_t rtp_last_payload_type = -1;
   int64_t rtp_last_sequence = -1;
   int64_t rtp_last_timestamp = 0;
@@ -79,6 +82,13 @@ struct VoicePeerRuntime {
   int64_t rtcp_last_ssrc = 0;
   int64_t rtcp_last_sent_packet_type = -1;
   int64_t rtcp_last_sent_ssrc = 0;
+  int64_t rtcp_last_reported_rtp_ssrc = 0;
+  int64_t rtcp_last_report_fraction_lost = 0;
+  int64_t rtcp_last_report_cumulative_lost = 0;
+  int64_t rtcp_last_report_highest_sequence = 0;
+  int64_t rtcp_last_report_jitter = 0;
+  int64_t rtcp_last_report_lsr = 0;
+  int64_t rtcp_last_report_dlsr = 0;
   int64_t audio_frames_decoded = 0;
   int64_t audio_pcm_samples_decoded = 0;
   int64_t audio_pcm_samples_buffered = 0;
@@ -209,6 +219,9 @@ struct VoicePeerRuntimeSeed {
   int64_t rtcp_packets_sent = 0;
   int64_t rtcp_payload_bytes_received = 0;
   int64_t rtcp_payload_bytes_sent = 0;
+  int64_t rtcp_sender_reports_sent = 0;
+  int64_t rtcp_receiver_reports_sent = 0;
+  int64_t rtcp_receiver_report_blocks_sent = 0;
   int64_t rtp_last_payload_type = -1;
   int64_t rtp_last_sequence = -1;
   int64_t rtp_last_timestamp = 0;
@@ -221,6 +234,13 @@ struct VoicePeerRuntimeSeed {
   int64_t rtcp_last_ssrc = 0;
   int64_t rtcp_last_sent_packet_type = -1;
   int64_t rtcp_last_sent_ssrc = 0;
+  int64_t rtcp_last_reported_rtp_ssrc = 0;
+  int64_t rtcp_last_report_fraction_lost = 0;
+  int64_t rtcp_last_report_cumulative_lost = 0;
+  int64_t rtcp_last_report_highest_sequence = 0;
+  int64_t rtcp_last_report_jitter = 0;
+  int64_t rtcp_last_report_lsr = 0;
+  int64_t rtcp_last_report_dlsr = 0;
   int64_t audio_frames_decoded = 0;
   int64_t audio_pcm_samples_decoded = 0;
   int64_t audio_pcm_samples_buffered = 0;

@@ -413,6 +413,13 @@ void test_dtls_memory_loopback_derives_srtp_contexts_and_round_trips_rtp() {
   assert(parsed_rtcp.report_count == 0);
   assert(parsed_rtcp.length_words == 6);
   assert(parsed_rtcp.ssrc == 0x11223344u);
+  assert(parsed_rtcp.has_sender_info);
+  assert(parsed_rtcp.sender_ntp_msw == 0xEFC27A10u);
+  assert(parsed_rtcp.sender_ntp_lsw == 0x01020304u);
+  assert(parsed_rtcp.sender_rtp_timestamp == 0x01020304u);
+  assert(parsed_rtcp.sender_packet_count == 1);
+  assert(parsed_rtcp.sender_octet_count == sizeof(payload) - 1);
+  assert(parsed_rtcp.sender_report_lsr == 0x7A100102u);
 
   std::vector<unsigned char> protected_rtcp_packet;
   assert(agentd::protect_outbound_rtcp_packet(

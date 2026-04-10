@@ -8253,6 +8253,21 @@ export interface components {
             rtcp_payload_bytes_sent?: number;
             /**
              * Format: int64
+             * @description Number of outbound RTCP Sender Reports (`PT=200`) protected with SRTCP and transmitted by the current builtin native-plugin provider.
+             */
+            rtcp_sender_reports_sent?: number;
+            /**
+             * Format: int64
+             * @description Number of outbound RTCP Receiver Reports (`PT=201`) protected with SRTCP and transmitted by the current builtin native-plugin provider.
+             */
+            rtcp_receiver_reports_sent?: number;
+            /**
+             * Format: int64
+             * @description Number of RTCP Receiver Report blocks emitted by the current builtin native-plugin provider.
+             */
+            rtcp_receiver_report_blocks_sent?: number;
+            /**
+             * Format: int64
              * @description Packet type from the most recent successfully ingested RTCP packet, such as `200` for Sender Report.
              */
             rtcp_last_packet_type?: number;
@@ -8271,6 +8286,41 @@ export interface components {
              * @description SSRC from the most recent outbound RTCP packet protected and transmitted by the current builtin native-plugin provider.
              */
             rtcp_last_sent_ssrc?: number;
+            /**
+             * Format: int64
+             * @description RTP source SSRC from the most recent outbound RTCP Receiver Report block.
+             */
+            rtcp_last_reported_rtp_ssrc?: number;
+            /**
+             * Format: int64
+             * @description RFC 3550 fraction-lost byte from the most recent outbound RTCP Receiver Report block.
+             */
+            rtcp_last_report_fraction_lost?: number;
+            /**
+             * Format: int64
+             * @description RFC 3550 signed 24-bit cumulative packet-loss value from the most recent outbound RTCP Receiver Report block.
+             */
+            rtcp_last_report_cumulative_lost?: number;
+            /**
+             * Format: int64
+             * @description Extended highest RTP sequence number from the most recent outbound RTCP Receiver Report block.
+             */
+            rtcp_last_report_highest_sequence?: number;
+            /**
+             * Format: int64
+             * @description Interarrival jitter estimate from the most recent outbound RTCP Receiver Report block, expressed in RTP timestamp units.
+             */
+            rtcp_last_report_jitter?: number;
+            /**
+             * Format: int64
+             * @description Last Sender Report timestamp (`LSR`) echoed in the most recent outbound RTCP Receiver Report block.
+             */
+            rtcp_last_report_lsr?: number;
+            /**
+             * Format: int64
+             * @description Delay since Last Sender Report (`DLSR`) emitted in the most recent outbound RTCP Receiver Report block, in RFC 3550 1/65536-second units.
+             */
+            rtcp_last_report_dlsr?: number;
             /**
              * Format: int64
              * @description Number of inbound audio payloads successfully decoded into PCM by the current builtin native-plugin provider.

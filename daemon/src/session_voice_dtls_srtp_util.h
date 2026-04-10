@@ -55,6 +55,13 @@ struct ParsedRtcpPacketInfo {
   uint8_t report_count = 0;
   uint16_t length_words = 0;
   uint32_t ssrc = 0;
+  uint32_t sender_ntp_msw = 0;
+  uint32_t sender_ntp_lsw = 0;
+  uint32_t sender_rtp_timestamp = 0;
+  uint32_t sender_packet_count = 0;
+  uint32_t sender_octet_count = 0;
+  uint32_t sender_report_lsr = 0;
+  bool has_sender_info = false;
   size_t packet_size = 0;
 };
 
