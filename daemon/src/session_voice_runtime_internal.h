@@ -81,6 +81,12 @@ struct VoicePeerRuntime {
   int64_t audio_pcm_samples_rendered_total = 0;
   int64_t audio_render_window_samples = 0;
   int64_t audio_last_render_samples = 0;
+  bool audio_playback_enabled = false;
+  bool audio_playback_stream_open = false;
+  int64_t audio_playback_events_total = 0;
+  int64_t audio_pcm_samples_played_total = 0;
+  int64_t audio_pcm_samples_playback_queued = 0;
+  int64_t audio_last_playback_samples = 0;
   int64_t audio_last_sample_rate_hz = 0;
   int64_t audio_last_channels = 0;
   int64_t audio_last_frame_samples_per_channel = 0;
@@ -88,6 +94,8 @@ struct VoicePeerRuntime {
   std::string audio_last_error;
   std::string audio_render_wav_path;
   std::string audio_render_last_error;
+  std::string audio_playback_device_name;
+  std::string audio_playback_last_error;
   Json::Value native_media_provider = Json::Value(Json::nullValue);
   bool ready = false;
   bool running = false;
@@ -192,6 +200,12 @@ struct VoicePeerRuntimeSeed {
   int64_t audio_pcm_samples_rendered_total = 0;
   int64_t audio_render_window_samples = 0;
   int64_t audio_last_render_samples = 0;
+  bool audio_playback_enabled = false;
+  bool audio_playback_stream_open = false;
+  int64_t audio_playback_events_total = 0;
+  int64_t audio_pcm_samples_played_total = 0;
+  int64_t audio_pcm_samples_playback_queued = 0;
+  int64_t audio_last_playback_samples = 0;
   int64_t audio_last_sample_rate_hz = 0;
   int64_t audio_last_channels = 0;
   int64_t audio_last_frame_samples_per_channel = 0;
@@ -199,6 +213,8 @@ struct VoicePeerRuntimeSeed {
   std::string audio_last_error;
   std::string audio_render_wav_path;
   std::string audio_render_last_error;
+  std::string audio_playback_device_name;
+  std::string audio_playback_last_error;
   Json::Value native_media_provider = Json::Value(Json::nullValue);
   bool ready = false;
   bool running = false;

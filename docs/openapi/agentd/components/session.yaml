@@ -334,6 +334,28 @@ VoiceWebRtcPeerRuntime:
       type: integer
       format: int64
       description: PCM samples newly incorporated during the most recent successful WAV render update. This count includes all channels.
+    audio_playback_enabled:
+      type: boolean
+      description: Whether best-effort daemon-local speaker playback is enabled for the builtin runtime.
+    audio_playback_stream_open:
+      type: boolean
+      description: Whether the daemon currently has an open local playback stream for the builtin runtime.
+    audio_playback_events_total:
+      type: integer
+      format: int64
+      description: Total number of successful daemon-local playback writes completed from agentd-owned PCM.
+    audio_pcm_samples_played_total:
+      type: integer
+      format: int64
+      description: Total PCM samples written to the local playback sink. This count includes all channels.
+    audio_pcm_samples_playback_queued:
+      type: integer
+      format: int64
+      description: Number of PCM samples currently queued for best-effort daemon-local playback. This count includes all channels.
+    audio_last_playback_samples:
+      type: integer
+      format: int64
+      description: PCM samples written during the most recent successful daemon-local playback pass. This count includes all channels.
     audio_last_sample_rate_hz:
       type: integer
       format: int64
@@ -358,6 +380,12 @@ VoiceWebRtcPeerRuntime:
     audio_render_last_error:
       type: string
       description: Best-effort diagnostic string when agentd fails to update the rolling WAV render snapshot from consumed PCM.
+    audio_playback_device_name:
+      type: string
+      description: Best-effort local playback device name reported by PortAudio for daemon-local speaker output.
+    audio_playback_last_error:
+      type: string
+      description: Best-effort diagnostic string when daemon-local playback fails or cannot open the default output device.
     ready: { type: boolean }
     running: { type: boolean }
     pid: { type: integer, format: int64 }

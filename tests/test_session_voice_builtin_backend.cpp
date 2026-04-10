@@ -216,7 +216,11 @@ static void test_builtin_backend_enabled_native_plugin_starts_runtime() {
   assert(result.state->audio_pcm_samples_owned == 0);
   assert(result.state->audio_render_events_total == 0);
   assert(result.state->audio_pcm_samples_rendered_total == 0);
+  assert(result.state->audio_playback_enabled == false);
+  assert(result.state->audio_playback_events_total == 0);
+  assert(result.state->audio_pcm_samples_played_total == 0);
   assert(result.state->audio_render_wav_path.empty());
+  assert(result.state->audio_playback_device_name.empty());
   assert(result.state->media_engine_state == "signaling_ready");
   assert(result.state->media_events_total == 2);
   assert(result.state->managed_broker_session == false);

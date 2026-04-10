@@ -41,6 +41,7 @@ AgentdConfigResponse:
             broker_token_default_configured: { type: boolean }
             peer_tool_path_configured: { type: boolean }
             builtin_native_library_path_configured: { type: boolean }
+            builtin_local_playback_enabled: { type: boolean }
             builtin_available: { type: boolean }
             builtin_native_probe:
               $ref: "#/components/schemas/VoiceWebRtcPeerNativeMediaProviderProbe"
@@ -358,6 +359,10 @@ AgentdConfigUpdateRequest:
           type: string
           nullable: true
           description: Shared-library path for `audio_webrtc.builtin_mode=native_plugin` (null clears)
+        builtin_local_playback:
+          type: boolean
+          nullable: true
+          description: Best-effort default-output PortAudio playback for builtin managed WebRTC runtimes after agentd has already decoded and owned inbound PCM (null disables)
         builtin_mode:
           type: string
           nullable: true

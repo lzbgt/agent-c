@@ -145,10 +145,17 @@ Reference artifacts downloaded into the repo for exact vendor details:
     last render error
   - cleanup remains automatic because the WAV snapshot lives under the same
     runtime-artifact directory already swept by voice-runtime cleanup
+- Agentd now also has an opt-in best-effort local playback sink for that
+  consumed PCM:
+  - `audio_webrtc.builtin_local_playback=true` or
+    `AGENTD_AUDIO_WEBRTC_BUILTIN_LOCAL_PLAYBACK=1` mirrors processed PCM to the
+    default PortAudio output device
+  - runtime status now persists playback counters, queued sample depth, device
+    name, and last playback error
 - The remaining gap is that the provider still does not own a complete
   in-process media pipeline. `native_media_active` remains `false` until live
-  RTP is actually ingested, and agentd still does not yet play to a real local
-  audio device or transmit outbound media end to end inside the daemon.
+  RTP is actually ingested, and agentd still does not yet transmit outbound
+  media end to end inside the daemon.
 
 ## Implications
 

@@ -119,6 +119,9 @@ static void test_borrowed_broker_session_contract() {
   assert(out["planned_runtime"]["audio_render_events_total"].asInt64() == 0);
   assert(out["planned_runtime"]["audio_pcm_samples_rendered_total"].asInt64() == 0);
   assert(out["planned_runtime"]["audio_last_render_samples"].asInt64() == 0);
+  assert(out["planned_runtime"]["audio_playback_enabled"].asBool() == false);
+  assert(out["planned_runtime"]["audio_playback_events_total"].asInt64() == 0);
+  assert(out["planned_runtime"]["audio_pcm_samples_played_total"].asInt64() == 0);
   assert(out["planned_runtime"]["ready_file_path"].asString() == out["runtime_artifacts"]["ready_file_path"].asString());
   assert(out["broker_session"]["mode"].asString() == "borrowed");
   assert(out["broker_session"]["session_id"].asString() == "sess-1");
@@ -180,6 +183,9 @@ static void test_auto_create_broker_session_contract() {
   assert(out["planned_runtime"]["audio_render_events_total"].asInt64() == 0);
   assert(out["planned_runtime"]["audio_pcm_samples_rendered_total"].asInt64() == 0);
   assert(out["planned_runtime"]["audio_last_render_samples"].asInt64() == 0);
+  assert(out["planned_runtime"]["audio_playback_enabled"].asBool() == false);
+  assert(out["planned_runtime"]["audio_playback_events_total"].asInt64() == 0);
+  assert(out["planned_runtime"]["audio_pcm_samples_played_total"].asInt64() == 0);
   assert(out["planned_runtime"]["stdout_log_path"].asString() == out["runtime_artifacts"]["stdout_log_path"].asString());
 
   const agentd::VoicePeerBuiltinStartPreview preview =

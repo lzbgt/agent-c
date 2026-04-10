@@ -1274,6 +1274,36 @@ void note_voice_peer_media_engine_event(
        payload["audio_last_render_samples"].isUInt64())) {
     runtime->audio_last_render_samples = payload["audio_last_render_samples"].asInt64();
   }
+  if (payload.isMember("audio_playback_enabled") && payload["audio_playback_enabled"].isBool()) {
+    runtime->audio_playback_enabled = payload["audio_playback_enabled"].asBool();
+  }
+  if (payload.isMember("audio_playback_stream_open") &&
+      payload["audio_playback_stream_open"].isBool()) {
+    runtime->audio_playback_stream_open = payload["audio_playback_stream_open"].asBool();
+  }
+  if (payload.isMember("audio_playback_events_total") &&
+      (payload["audio_playback_events_total"].isInt64() ||
+       payload["audio_playback_events_total"].isUInt64())) {
+    runtime->audio_playback_events_total = payload["audio_playback_events_total"].asInt64();
+  }
+  if (payload.isMember("audio_pcm_samples_played_total") &&
+      (payload["audio_pcm_samples_played_total"].isInt64() ||
+       payload["audio_pcm_samples_played_total"].isUInt64())) {
+    runtime->audio_pcm_samples_played_total =
+      payload["audio_pcm_samples_played_total"].asInt64();
+  }
+  if (payload.isMember("audio_pcm_samples_playback_queued") &&
+      (payload["audio_pcm_samples_playback_queued"].isInt64() ||
+       payload["audio_pcm_samples_playback_queued"].isUInt64())) {
+    runtime->audio_pcm_samples_playback_queued =
+      payload["audio_pcm_samples_playback_queued"].asInt64();
+  }
+  if (payload.isMember("audio_last_playback_samples") &&
+      (payload["audio_last_playback_samples"].isInt64() ||
+       payload["audio_last_playback_samples"].isUInt64())) {
+    runtime->audio_last_playback_samples =
+      payload["audio_last_playback_samples"].asInt64();
+  }
   if (payload.isMember("audio_last_sample_rate_hz") &&
       (payload["audio_last_sample_rate_hz"].isInt64() || payload["audio_last_sample_rate_hz"].isUInt64())) {
     runtime->audio_last_sample_rate_hz = payload["audio_last_sample_rate_hz"].asInt64();
@@ -1301,6 +1331,16 @@ void note_voice_peer_media_engine_event(
       payload["audio_render_last_error"].isString()) {
     runtime->audio_render_last_error =
       trim_copy(payload["audio_render_last_error"].asString());
+  }
+  if (payload.isMember("audio_playback_device_name") &&
+      payload["audio_playback_device_name"].isString()) {
+    runtime->audio_playback_device_name =
+      trim_copy(payload["audio_playback_device_name"].asString());
+  }
+  if (payload.isMember("audio_playback_last_error") &&
+      payload["audio_playback_last_error"].isString()) {
+    runtime->audio_playback_last_error =
+      trim_copy(payload["audio_playback_last_error"].asString());
   }
   if (payload.isMember("native_media_provider") && payload["native_media_provider"].isObject()) {
     runtime->native_media_provider = payload["native_media_provider"];

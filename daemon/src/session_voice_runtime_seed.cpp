@@ -81,6 +81,12 @@ std::shared_ptr<VoicePeerRuntime> make_voice_peer_runtime_state(
   st->audio_pcm_samples_rendered_total = seed.audio_pcm_samples_rendered_total;
   st->audio_render_window_samples = seed.audio_render_window_samples;
   st->audio_last_render_samples = seed.audio_last_render_samples;
+  st->audio_playback_enabled = seed.audio_playback_enabled;
+  st->audio_playback_stream_open = seed.audio_playback_stream_open;
+  st->audio_playback_events_total = seed.audio_playback_events_total;
+  st->audio_pcm_samples_played_total = seed.audio_pcm_samples_played_total;
+  st->audio_pcm_samples_playback_queued = seed.audio_pcm_samples_playback_queued;
+  st->audio_last_playback_samples = seed.audio_last_playback_samples;
   st->audio_last_sample_rate_hz = seed.audio_last_sample_rate_hz;
   st->audio_last_channels = seed.audio_last_channels;
   st->audio_last_frame_samples_per_channel = seed.audio_last_frame_samples_per_channel;
@@ -88,6 +94,8 @@ std::shared_ptr<VoicePeerRuntime> make_voice_peer_runtime_state(
   st->audio_last_error = seed.audio_last_error;
   st->audio_render_wav_path = seed.audio_render_wav_path;
   st->audio_render_last_error = seed.audio_render_last_error;
+  st->audio_playback_device_name = seed.audio_playback_device_name;
+  st->audio_playback_last_error = seed.audio_playback_last_error;
   st->native_media_provider = seed.native_media_provider;
   st->ready = seed.ready;
   st->running = seed.running;

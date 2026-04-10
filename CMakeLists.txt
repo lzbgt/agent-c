@@ -76,6 +76,7 @@ set(AGENTD_VOICE_LIBJUICE_FOUND OFF)
 set(AGENTD_VOICE_LIBSRTP_FOUND OFF)
 set(AGENTD_VOICE_USRSCTP_FOUND OFF)
 set(AGENTD_VOICE_OPUS_FOUND OFF)
+set(AGENTD_VOICE_PORTAUDIO_FOUND OFF)
 if(PKG_CONFIG_FOUND)
   pkg_check_modules(LIBSRTP2 QUIET libsrtp2)
   if(LIBSRTP2_FOUND)
@@ -97,6 +98,13 @@ if(PKG_CONFIG_FOUND)
   pkg_check_modules(OPUS QUIET opus)
   if(OPUS_FOUND)
     set(AGENTD_VOICE_OPUS_FOUND ON)
+  endif()
+  pkg_check_modules(PORTAUDIO QUIET portaudio-2.0)
+  if(NOT PORTAUDIO_FOUND)
+    pkg_check_modules(PORTAUDIO QUIET portaudio)
+  endif()
+  if(PORTAUDIO_FOUND)
+    set(AGENTD_VOICE_PORTAUDIO_FOUND ON)
   endif()
 endif()
 find_path(AGENTD_VOICE_LIBJUICE_INCLUDE_DIR
@@ -361,6 +369,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/session_voice_signal_client.cpp
     daemon/src/session_voice_signal_negotiation.cpp
     daemon/src/session_voice_audio_process.cpp
+    daemon/src/session_voice_audio_playback.cpp
     daemon/src/session_voice_audio_wav.cpp
     daemon/src/session_voice_launch_flow.cpp
     daemon/src/session_voice_process_plan.cpp
@@ -448,6 +457,12 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     target_link_directories(agentd_lib PRIVATE ${SQLITE3_LIBRARY_DIRS})
     target_link_libraries(agentd_lib PUBLIC ${SQLITE3_LIBRARIES})
     target_compile_definitions(agentd_lib PRIVATE AGENT_HAVE_SQLITE3=1)
+  endif()
+  if(AGENTD_VOICE_PORTAUDIO_FOUND)
+    target_include_directories(agentd_lib PRIVATE ${PORTAUDIO_INCLUDE_DIRS})
+    target_link_directories(agentd_lib PUBLIC ${PORTAUDIO_LIBRARY_DIRS})
+    target_link_libraries(agentd_lib PUBLIC ${PORTAUDIO_LIBRARIES})
+    target_compile_definitions(agentd_lib PRIVATE AGENTD_HAVE_PORTAUDIO=1)
   endif()
 
   if(AGENTD_ENABLE_HTTP)
@@ -978,6 +993,31 @@ if(AGENT_BUILD_HOST)
     ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
   )
   add_test(NAME session_voice_audio_process_tests COMMAND session_voice_audio_process_tests)
+
+  add_executable(session_voice_audio_playback_tests
+    tests/test_session_voice_audio_playback.cpp
+    daemon/src/session_voice_audio_playback.cpp
+    daemon/src/string_util.cpp
+  )
+  target_compile_options(session_voice_audio_playback_tests PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_include_directories(session_voice_audio_playback_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
+    ${PORTAUDIO_INCLUDE_DIRS}
+  )
+  target_link_directories(session_voice_audio_playback_tests PRIVATE
+    ${PORTAUDIO_LIBRARY_DIRS}
+  )
+  target_link_libraries(session_voice_audio_playback_tests PRIVATE
+    ${PORTAUDIO_LIBRARIES}
+  )
+  if(AGENTD_VOICE_PORTAUDIO_FOUND)
+    target_compile_definitions(session_voice_audio_playback_tests PRIVATE
+      AGENTD_HAVE_PORTAUDIO=1
+    )
+  endif()
+  add_test(NAME session_voice_audio_playback_tests COMMAND session_voice_audio_playback_tests)
 
   add_executable(session_voice_audio_wav_tests
     tests/test_session_voice_audio_wav.cpp

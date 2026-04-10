@@ -148,6 +148,14 @@ bool load_runtime_config_best_effort(
               trim_copy(aw["builtin_native_library_path"].asString());
           }
         }
+        if (aw.isMember("builtin_local_playback")) {
+          if (aw["builtin_local_playback"].isNull()) {
+            cfg_io->audio_webrtc_builtin_local_playback = false;
+          } else if (aw["builtin_local_playback"].isBool()) {
+            cfg_io->audio_webrtc_builtin_local_playback =
+              aw["builtin_local_playback"].asBool();
+          }
+        }
         if (aw.isMember("builtin_mode")) {
           if (aw["builtin_mode"].isNull()) {
             cfg_io->audio_webrtc_builtin_mode.clear();
@@ -829,6 +837,7 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
     aw["builtin_native_library_path"] = cfg.audio_webrtc_builtin_native_library_path.empty()
       ? Json::Value(Json::nullValue)
       : Json::Value(cfg.audio_webrtc_builtin_native_library_path);
+    aw["builtin_local_playback"] = cfg.audio_webrtc_builtin_local_playback;
     aw["builtin_mode"] = cfg.audio_webrtc_builtin_mode.empty()
       ? Json::Value(Json::nullValue)
       : Json::Value(cfg.audio_webrtc_builtin_mode);

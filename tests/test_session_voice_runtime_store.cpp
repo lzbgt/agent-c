@@ -206,6 +206,12 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   st.audio_pcm_samples_rendered_total = 3360;
   st.audio_render_window_samples = 1920;
   st.audio_last_render_samples = 480;
+  st.audio_playback_enabled = true;
+  st.audio_playback_stream_open = true;
+  st.audio_playback_events_total = 2;
+  st.audio_pcm_samples_played_total = 2400;
+  st.audio_pcm_samples_playback_queued = 480;
+  st.audio_last_playback_samples = 960;
   st.audio_last_sample_rate_hz = 48000;
   st.audio_last_channels = 2;
   st.audio_last_frame_samples_per_channel = 960;
@@ -213,6 +219,8 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   st.audio_last_error = "decoder_warmup";
   st.audio_render_wav_path = "/tmp/agentd/voice-sid/audio_recent.wav";
   st.audio_render_last_error = "none";
+  st.audio_playback_device_name = "Built-in Output";
+  st.audio_playback_last_error = "";
   st.native_media_provider["abi_version"] = 4;
   st.native_media_provider["name"] = "agentd_builtin_sample_provider";
   st.native_media_provider["capabilities"]["transport_family"] = "sample_webrtc";
@@ -266,6 +274,12 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(json["audio_pcm_samples_rendered_total"].asInt64() == 3360);
   assert(json["audio_render_window_samples"].asInt64() == 1920);
   assert(json["audio_last_render_samples"].asInt64() == 480);
+  assert(json["audio_playback_enabled"].asBool() == true);
+  assert(json["audio_playback_stream_open"].asBool() == true);
+  assert(json["audio_playback_events_total"].asInt64() == 2);
+  assert(json["audio_pcm_samples_played_total"].asInt64() == 2400);
+  assert(json["audio_pcm_samples_playback_queued"].asInt64() == 480);
+  assert(json["audio_last_playback_samples"].asInt64() == 960);
   assert(json["audio_last_sample_rate_hz"].asInt64() == 48000);
   assert(json["audio_last_channels"].asInt64() == 2);
   assert(json["audio_last_frame_samples_per_channel"].asInt64() == 960);
@@ -273,6 +287,7 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(json["audio_last_error"].asString() == "decoder_warmup");
   assert(json["audio_render_wav_path"].asString() == "/tmp/agentd/voice-sid/audio_recent.wav");
   assert(json["audio_render_last_error"].asString() == "none");
+  assert(json["audio_playback_device_name"].asString() == "Built-in Output");
   assert(json["native_media_provider"]["abi_version"].asInt() == 4);
   assert(json["native_media_provider"]["name"].asString() == "agentd_builtin_sample_provider");
 
@@ -327,6 +342,12 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(round_trip.audio_pcm_samples_rendered_total == 3360);
   assert(round_trip.audio_render_window_samples == 1920);
   assert(round_trip.audio_last_render_samples == 480);
+  assert(round_trip.audio_playback_enabled == true);
+  assert(round_trip.audio_playback_stream_open == true);
+  assert(round_trip.audio_playback_events_total == 2);
+  assert(round_trip.audio_pcm_samples_played_total == 2400);
+  assert(round_trip.audio_pcm_samples_playback_queued == 480);
+  assert(round_trip.audio_last_playback_samples == 960);
   assert(round_trip.audio_last_sample_rate_hz == 48000);
   assert(round_trip.audio_last_channels == 2);
   assert(round_trip.audio_last_frame_samples_per_channel == 960);
@@ -334,6 +355,7 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(round_trip.audio_last_error == "decoder_warmup");
   assert(round_trip.audio_render_wav_path == "/tmp/agentd/voice-sid/audio_recent.wav");
   assert(round_trip.audio_render_last_error == "none");
+  assert(round_trip.audio_playback_device_name == "Built-in Output");
   assert(round_trip.native_media_provider["abi_version"].asInt() == 4);
   assert(round_trip.native_media_provider["capabilities"]["transport_family"].asString() == "sample_webrtc");
   assert(round_trip.native_media_provider["capabilities"]["sample_provider"].asBool());

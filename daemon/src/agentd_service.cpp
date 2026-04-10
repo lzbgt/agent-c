@@ -257,6 +257,9 @@ static void fill_env_defaults(DaemonConfig* cfg) {
       cfg->audio_webrtc_builtin_native_library_path = p;
     }
   }
+  if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_BUILTIN_LOCAL_PLAYBACK")) {
+    cfg->audio_webrtc_builtin_local_playback = env_truthy(p);
+  }
   if (cfg->audio_webrtc_builtin_mode.empty()) {
     if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_BUILTIN_MODE")) {
       const std::string mode = lower_copy(trim_copy(p));

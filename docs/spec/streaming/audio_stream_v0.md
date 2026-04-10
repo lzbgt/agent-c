@@ -308,9 +308,13 @@ A v0 smoke test should:
   `audio_last_peak_abs_pcm16`, `audio_last_rms_pcm16`,
   `audio_render_events_total`, `audio_pcm_samples_rendered_total`,
   `audio_render_window_samples`, `audio_last_render_samples`,
+  `audio_playback_enabled`, `audio_playback_stream_open`,
+  `audio_playback_events_total`, `audio_pcm_samples_played_total`,
+  `audio_pcm_samples_playback_queued`, `audio_last_playback_samples`,
   `audio_last_sample_rate_hz`, `audio_last_channels`, `audio_last_frame_samples_per_channel`,
-  `audio_last_codec_name`, `audio_last_error`, `audio_render_wav_path`, and
-  `audio_render_last_error`.
+  `audio_last_codec_name`, `audio_last_error`, `audio_render_wav_path`,
+  `audio_render_last_error`, `audio_playback_device_name`, and
+  `audio_playback_last_error`.
   Those fields can now also advance through provider-polled async status events rather than only through direct
   remote-description or remote-candidate callbacks.
 - Builtin runtime observability is now explicit too: normalized per-session JSONL events and the persisted/live runtime
@@ -329,8 +333,9 @@ A v0 smoke test should:
   `audio_webrtc.default_runtime_kind`) rather than env-only. `default_runtime_kind` may be `builtin`, `bundled`, or
   `external`: config/env can intentionally pin the native backend, while `builtin_mode=signaling_stub|native_plugin`
   controls whether the experimental in-process builtin runtime is launchable or still surfaces as unavailable. Daemon
-  startup also honors `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND`, `AGENTD_AUDIO_WEBRTC_BUILTIN_MODE`, and
-  `AGENTD_AUDIO_WEBRTC_BUILTIN_NATIVE_LIBRARY`, which surface as explicit runtime/config metadata.
+  startup also honors `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND`, `AGENTD_AUDIO_WEBRTC_BUILTIN_MODE`,
+  `AGENTD_AUDIO_WEBRTC_BUILTIN_NATIVE_LIBRARY`, and
+  `AGENTD_AUDIO_WEBRTC_BUILTIN_LOCAL_PLAYBACK`, which surface as explicit runtime/config metadata.
 - Safe daemon config now reports the same backend availability facts (`builtin_available`, `bundled_available`,
   `external_available`, `default_runtime_kind_available`) plus unavailable reasons, the explicit `builtin_mode`, and
   `builtin_native_probe`, so a configured default such as `external` can be seen as unavailable before start-time

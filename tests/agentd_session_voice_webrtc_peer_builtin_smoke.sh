@@ -254,6 +254,10 @@ if mode == "native_plugin":
     assert peer.get("audio_render_events_total", 0) == 0, obj
     assert peer.get("audio_pcm_samples_rendered_total", 0) == 0, obj
     assert peer.get("audio_last_render_samples", 0) == 0, obj
+    assert peer.get("audio_playback_enabled") is False, obj
+    assert peer.get("audio_playback_events_total", 0) == 0, obj
+    assert peer.get("audio_pcm_samples_played_total", 0) == 0, obj
+    assert not peer.get("audio_playback_device_name"), obj
     assert not peer.get("audio_render_wav_path"), obj
 else:
     assert peer.get("native_media_supported") is False, obj

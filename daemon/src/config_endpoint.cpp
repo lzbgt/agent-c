@@ -47,6 +47,7 @@ static Json::Value config_audio_webrtc_metadata_json(const DaemonConfig& cfg) {
     ? Json::Value("auto")
     : Json::Value(cfg.audio_webrtc_default_runtime_kind_from_env ? "env" : "config");
   out["builtin_mode"] = voice_peer_builtin_runtime_mode(cfg);
+  out["builtin_local_playback_enabled"] = cfg.audio_webrtc_builtin_local_playback;
   out["peer_tool_path_configured"] = out["tool_configured"];
   out.removeMember("tool_configured");
   out.removeMember("tool_path");
@@ -2038,7 +2039,7 @@ void handle_config_update_endpoint(
   }
 
   // Managed voice/WebRTC defaults:
-  // - audio_webrtc: { "broker_url": "...", "broker_token": "...", "peer_tool_path": "...", "builtin_native_library_path": "...", "builtin_mode": "signaling_stub|native_plugin", "default_runtime_kind": "builtin|bundled|external", "node_bin": "..." } (null clears)
+  // - audio_webrtc: { "broker_url": "...", "broker_token": "...", "peer_tool_path": "...", "builtin_native_library_path": "...", "builtin_local_playback": true|false|null, "builtin_mode": "signaling_stub|native_plugin", "default_runtime_kind": "builtin|bundled|external", "node_bin": "..." } (null clears where supported)
   if (args.isMember("audio_webrtc")) {
     if (!args["audio_webrtc"].isObject()) {
       Json::Value o(Json::objectValue);
@@ -2104,6 +2105,21 @@ void handle_config_update_endpoint(
         Json::Value o(Json::objectValue);
         o["ok"] = false;
         o["error"] = "audio_webrtc.builtin_native_library_path must be a string or null";
+        resp->status = 400;
+        resp->body = json_stringify(o);
+        return;
+      }
+    }
+    if (aw.isMember("builtin_local_playback")) {
+      const Json::Value& v = aw["builtin_local_playback"];
+      if (v.isNull()) {
+        next.audio_webrtc_builtin_local_playback = false;
+      } else if (v.isBool()) {
+        next.audio_webrtc_builtin_local_playback = v.asBool();
+      } else {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "audio_webrtc.builtin_local_playback must be a boolean or null";
         resp->status = 400;
         resp->body = json_stringify(o);
         return;

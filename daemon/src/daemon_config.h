@@ -157,6 +157,10 @@ struct DaemonConfig {
   // Optional native builtin media-engine provider library path used when
   // `audio_webrtc_builtin_mode=native_plugin`.
   std::string audio_webrtc_builtin_native_library_path;
+  // Optional best-effort local speaker playback for builtin voice runtimes.
+  // Disabled by default; when enabled, agentd mirrors processed builtin PCM to the
+  // default PortAudio output device when local playback support is compiled in.
+  bool audio_webrtc_builtin_local_playback = false;
   // Optional durable preferred backend for managed WebRTC runtime selection.
   // Empty means "auto" (prefer bundled when discoverable, else external).
   std::string audio_webrtc_default_runtime_kind;

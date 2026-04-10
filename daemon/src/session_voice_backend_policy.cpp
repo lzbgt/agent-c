@@ -210,6 +210,7 @@ Json::Value session_voice_webrtc_backend_metadata_json(const DaemonConfig& cfg) 
   out["builtin_available"] = builtin_reason.empty();
   out["builtin_mode"] = voice_peer_builtin_runtime_mode(cfg);
   out["builtin_native_library_path_configured"] = !builtin_voice_peer_native_library_path(cfg).empty();
+  out["builtin_local_playback_enabled"] = cfg.audio_webrtc_builtin_local_playback;
   if (out["builtin_mode"].asString() == "native_plugin" || out["builtin_native_library_path_configured"].asBool()) {
     out["builtin_native_probe"] = builtin_voice_peer_native_media_engine_probe_json(cfg);
   }

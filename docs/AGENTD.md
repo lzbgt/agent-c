@@ -395,6 +395,7 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   - `builtin_available=true|false`
   - `builtin_mode=disabled|signaling_stub|native_plugin`
   - `builtin_native_library_path_configured=true|false`
+  - `builtin_local_playback_enabled=true|false`
   - `builtin_native_probe.{configured,loadable,library_path,provider,error}`
   - `bundled_available=true|false`
   - `external_available=true|false`
@@ -525,10 +526,14 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `peer.audio_last_peak_abs_pcm16`, `peer.audio_last_rms_pcm16`,
   `peer.audio_render_events_total`, `peer.audio_pcm_samples_rendered_total`,
   `peer.audio_render_window_samples`, `peer.audio_last_render_samples`,
+  `peer.audio_playback_enabled`, `peer.audio_playback_stream_open`,
+  `peer.audio_playback_events_total`, `peer.audio_pcm_samples_played_total`,
+  `peer.audio_pcm_samples_playback_queued`, `peer.audio_last_playback_samples`,
   `peer.audio_last_sample_rate_hz`,
   `peer.audio_last_channels`, `peer.audio_last_frame_samples_per_channel`,
   `peer.audio_last_codec_name`, `peer.audio_last_error`, `peer.audio_render_wav_path`,
-  and `peer.audio_render_last_error`.
+  `peer.audio_render_last_error`, `peer.audio_playback_device_name`, and
+  `peer.audio_playback_last_error`.
   Those same fields can now advance on provider-polled async progress events too, not only on direct signaling
   callbacks.
 - Builtin runtime events are now normalized before persistence/logging too: every JSONL/runtime event carries the same
@@ -561,9 +566,10 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
 - Daemon startup also honors `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND=builtin|bundled|external`; runtime/config status
   then reports `default_runtime_kind_source=env` until a persisted daemon config override takes precedence.
 - Daemon startup also honors `AGENTD_AUDIO_WEBRTC_BUILTIN_MODE=signaling_stub|native_plugin` and
-  `AGENTD_AUDIO_WEBRTC_BUILTIN_NATIVE_LIBRARY=/abs/path/to/provider.{so,dylib,dll}`; runtime/config status then
-  reports the effective builtin mode and whether the native provider path is configured/loadable until a persisted
-  daemon config override takes precedence.
+  `AGENTD_AUDIO_WEBRTC_BUILTIN_NATIVE_LIBRARY=/abs/path/to/provider.{so,dylib,dll}` plus
+  `AGENTD_AUDIO_WEBRTC_BUILTIN_LOCAL_PLAYBACK=0|1|false|true|off|on|no|yes`; runtime/config status then
+  reports the effective builtin mode, whether the native provider path is configured/loadable, and whether local
+  builtin playback is enabled until a persisted daemon config override takes precedence.
 - Operators can inspect a candidate provider library without starting agentd via
   `python3 tools/inspect_voice_media_provider.py /abs/path/to/provider.{so,dylib,dll} --pretty`, which validates the
   exported symbol/ABI shape and prints the declared provider metadata/capabilities.
@@ -637,7 +643,7 @@ For debugging client/daemon mismatches (CORS, sandbox defaults, job GC), `agentd
 This endpoint requires auth when `--auth-token` is set. It intentionally does not include secrets.
 The WebUI surfaces this snapshot in Settings as “Daemon config”, including `state_dir`, `sessions_root_dir`,
 and `db_path` (SQLite; canonical daemon state store). For the managed WebRTC lane, the safe snapshot now also exposes
-`daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured,peer_tool_path_configured,builtin_native_library_path_configured,builtin_native_probe,builtin_available,builtin_mode,bundled_available,external_available,builtin_unavailable_reason,bundled_unavailable_reason,external_unavailable_reason,default_runtime_kind,default_runtime_kind_source,default_runtime_kind_available,default_runtime_kind_unavailable_reason,node_bin}`
+`daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured,peer_tool_path_configured,builtin_native_library_path_configured,builtin_local_playback_enabled,builtin_native_probe,builtin_available,builtin_mode,bundled_available,external_available,builtin_unavailable_reason,bundled_unavailable_reason,external_unavailable_reason,default_runtime_kind,default_runtime_kind_source,default_runtime_kind_available,default_runtime_kind_unavailable_reason,node_bin}`
 so operators can verify whether caller-free voice runtime bring-up and backend selection are configured without
 exposing the token itself.
 For the managed edge consensus lane, the safe snapshot now also exposes
@@ -714,7 +720,7 @@ curl -fsS \
 Notes:
 - The response never includes secrets. Use `GET /api/v1/config` to see booleans like `provider_keys_set`.
 - For managed voice/WebRTC broker defaults, `GET /api/v1/config` exposes only
-  `daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured,peer_tool_path_configured,builtin_native_library_path_configured,builtin_native_probe,builtin_available,builtin_mode,bundled_available,external_available,builtin_unavailable_reason,bundled_unavailable_reason,external_unavailable_reason,default_runtime_kind,default_runtime_kind_source,default_runtime_kind_available,default_runtime_kind_unavailable_reason,node_bin}`.
+  `daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured,peer_tool_path_configured,builtin_native_library_path_configured,builtin_local_playback_enabled,builtin_native_probe,builtin_available,builtin_mode,bundled_available,external_available,builtin_unavailable_reason,bundled_unavailable_reason,external_unavailable_reason,default_runtime_kind,default_runtime_kind_source,default_runtime_kind_available,default_runtime_kind_unavailable_reason,node_bin}`.
 - For the managed edge consensus helper seam, `GET /api/v1/config` exposes only
   `edge_consensus.{node_tool_path_configured,builtin_available,external_available,external_unavailable_reason,default_runtime_kind,default_runtime_kind_source,default_runtime_kind_available,default_runtime_kind_unavailable_reason,clusters_set,cluster_ids}`.
 - `POST /api/v1/edge/node/consensus_runtime` now uses bounded startup confirmation for both builtin and external managed

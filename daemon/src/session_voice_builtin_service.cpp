@@ -1,6 +1,7 @@
 #include "session_voice_builtin_service.h"
 
 #include "session_voice_audio_process.h"
+#include "session_voice_audio_playback.h"
 #include "session_voice_audio_wav.h"
 #include "session_voice_builtin_media_engine.h"
 #include "session_voice_process_plan.h"
@@ -37,15 +38,22 @@ struct BuiltinVoicePeerService {
   std::function<void(const VoicePeerRuntime&)> persist_runtime;
   std::deque<int16_t> owned_audio_pcm;
   std::deque<int16_t> rendered_audio_pcm;
+  std::deque<int16_t> playback_audio_pcm;
   int64_t owned_audio_drain_events_total = 0;
   int64_t owned_audio_pcm_samples_drained_total = 0;
   int64_t owned_audio_process_events_total = 0;
   int64_t owned_audio_pcm_samples_processed_total = 0;
   int64_t owned_audio_render_events_total = 0;
   int64_t owned_audio_pcm_samples_rendered_total = 0;
+  int64_t owned_audio_playback_events_total = 0;
+  int64_t owned_audio_pcm_samples_played_total = 0;
   int owned_audio_last_sample_rate_hz = 0;
   int owned_audio_last_channels = 0;
   std::string rendered_audio_wav_path;
+  bool local_playback_enabled = false;
+  std::string playback_device_name;
+  std::string playback_last_error;
+  std::unique_ptr<Pcm16AudioPlaybackSink> playback_sink;
   std::mutex mu;
   std::condition_variable cv;
   bool stop_requested = false;
@@ -59,6 +67,8 @@ std::map<std::string, std::shared_ptr<BuiltinVoicePeerService>> builtin_voice_pe
 constexpr size_t kBuiltinVoicePeerOwnedAudioCapacitySamples = 48000 * 2 * 2;
 constexpr size_t kBuiltinVoicePeerOwnedAudioProcessSamples = 4096;
 constexpr size_t kBuiltinVoicePeerRenderedAudioCapacitySamples = 48000 * 2 * 10;
+constexpr size_t kBuiltinVoicePeerPlaybackAudioCapacitySamples = 48000 * 2 * 5;
+constexpr size_t kBuiltinVoicePeerPlaybackChunkSamples = 4096;
 
 int64_t now_unix_ms() {
   using namespace std::chrono;
@@ -212,6 +222,7 @@ bool drain_builtin_voice_peer_media_engine_audio(
       int64_t drain_events_total = 0;
       int64_t pcm_samples_drained_total = 0;
       int64_t pcm_samples_owned = 0;
+      bool playback_format_changed = false;
       {
         std::lock_guard<std::mutex> lk(service->mu);
         service->owned_audio_drain_events_total += 1;
@@ -230,11 +241,15 @@ bool drain_builtin_voice_peer_media_engine_audio(
             service->owned_audio_last_sample_rate_hz > 0 &&
             service->owned_audio_last_sample_rate_hz != chunk.sample_rate_hz) {
           service->rendered_audio_pcm.clear();
+          service->playback_audio_pcm.clear();
+          playback_format_changed = true;
         }
         if (chunk.channels > 0 &&
             service->owned_audio_last_channels > 0 &&
             service->owned_audio_last_channels != chunk.channels) {
           service->rendered_audio_pcm.clear();
+          service->playback_audio_pcm.clear();
+          playback_format_changed = true;
         }
         if (chunk.sample_rate_hz > 0) {
           service->owned_audio_last_sample_rate_hz = chunk.sample_rate_hz;
@@ -242,6 +257,9 @@ bool drain_builtin_voice_peer_media_engine_audio(
         if (chunk.channels > 0) {
           service->owned_audio_last_channels = chunk.channels;
         }
+      }
+      if (playback_format_changed && service->playback_sink) {
+        service->playback_sink->close();
       }
       payload["event"] = "audio_chunk_drained";
       payload["audio_drain_events_total"] = Json::Int64(drain_events_total);
@@ -287,6 +305,11 @@ bool process_builtin_voice_peer_owned_audio(
     int64_t process_events_total = 0;
     int64_t pcm_samples_processed_total = 0;
     int64_t pcm_samples_owned = 0;
+    int64_t playback_queued = 0;
+    bool playback_enabled = false;
+    bool playback_stream_open = false;
+    std::string playback_device_name;
+    std::string playback_last_error;
     {
       std::lock_guard<std::mutex> lk(service->mu);
       if (service->owned_audio_pcm.empty()) return true;
@@ -307,6 +330,19 @@ bool process_builtin_voice_peer_owned_audio(
       while (service->rendered_audio_pcm.size() > kBuiltinVoicePeerRenderedAudioCapacitySamples) {
         service->rendered_audio_pcm.pop_front();
       }
+      playback_enabled = service->local_playback_enabled;
+      if (service->local_playback_enabled) {
+        for (const int16_t sample : samples) {
+          service->playback_audio_pcm.push_back(sample);
+        }
+        while (service->playback_audio_pcm.size() > kBuiltinVoicePeerPlaybackAudioCapacitySamples) {
+          service->playback_audio_pcm.pop_front();
+        }
+        playback_queued = static_cast<int64_t>(service->playback_audio_pcm.size());
+      }
+      playback_stream_open = service->playback_sink && service->playback_sink->is_open();
+      playback_device_name = service->playback_device_name;
+      playback_last_error = service->playback_last_error;
       process_events_total = service->owned_audio_process_events_total;
       pcm_samples_processed_total = service->owned_audio_pcm_samples_processed_total;
       pcm_samples_owned = static_cast<int64_t>(service->owned_audio_pcm.size());
@@ -329,6 +365,11 @@ bool process_builtin_voice_peer_owned_audio(
       Json::Int64(static_cast<int64_t>(summary.sample_count));
     payload["audio_last_peak_abs_pcm16"] = summary.peak_abs_pcm16;
     payload["audio_last_rms_pcm16"] = summary.rms_pcm16;
+    payload["audio_playback_enabled"] = playback_enabled;
+    payload["audio_playback_stream_open"] = playback_stream_open;
+    payload["audio_pcm_samples_playback_queued"] = Json::Int64(playback_queued);
+    if (!playback_device_name.empty()) payload["audio_playback_device_name"] = playback_device_name;
+    if (!playback_last_error.empty()) payload["audio_playback_last_error"] = playback_last_error;
     append_builtin_voice_peer_event_and_snapshot(
       service->stdout_log_path, service->session_id, payload, service->runtime, runtime_mu);
   }
@@ -442,6 +483,149 @@ bool render_builtin_voice_peer_owned_audio(
   return true;
 }
 
+bool playback_builtin_voice_peer_owned_audio(
+  const std::shared_ptr<BuiltinVoicePeerService>& service,
+  std::mutex& runtime_mu,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (!service) return true;
+
+  for (int i = 0; i < 32; ++i) {
+    std::vector<int16_t> samples;
+    int sample_rate_hz = 0;
+    int channels = 0;
+    bool enabled = false;
+    {
+      std::lock_guard<std::mutex> lk(service->mu);
+      enabled = service->local_playback_enabled;
+      if (!enabled) return true;
+      if (service->playback_audio_pcm.empty()) return true;
+      sample_rate_hz = service->owned_audio_last_sample_rate_hz;
+      channels = service->owned_audio_last_channels;
+      if (sample_rate_hz <= 0 || channels <= 0) {
+        service->playback_audio_pcm.clear();
+        service->playback_last_error = "audio playback format unavailable";
+        if (service->playback_sink) service->playback_sink->close();
+        service->playback_device_name.clear();
+        Json::Value payload = make_builtin_voice_peer_event("audio_chunk_playback_failed", service->session_id);
+        payload["media_engine_state"] = "media_active";
+        payload["native_media_active"] = true;
+        payload["audio_playback_enabled"] = true;
+        payload["audio_playback_stream_open"] = false;
+        payload["audio_pcm_samples_playback_queued"] = Json::Int64(0);
+        payload["audio_playback_last_error"] = service->playback_last_error;
+        append_builtin_voice_peer_event_and_snapshot(
+          service->stdout_log_path, service->session_id, payload, service->runtime, runtime_mu);
+        return true;
+      }
+
+      const size_t channels_sz = static_cast<size_t>(channels);
+      size_t chunk_samples =
+        std::min(kBuiltinVoicePeerPlaybackChunkSamples, service->playback_audio_pcm.size());
+      chunk_samples -= chunk_samples % channels_sz;
+      if (chunk_samples == 0) return true;
+      samples.reserve(chunk_samples);
+      for (size_t j = 0; j < chunk_samples; ++j) {
+        samples.push_back(service->playback_audio_pcm.front());
+        service->playback_audio_pcm.pop_front();
+      }
+    }
+
+    std::string playback_err;
+    if (!service->playback_sink) {
+      service->playback_sink = std::make_unique<Pcm16AudioPlaybackSink>();
+    }
+    if (!service->playback_sink->open(sample_rate_hz, channels, &playback_err)) {
+      {
+        std::lock_guard<std::mutex> lk(service->mu);
+        service->playback_audio_pcm.clear();
+        service->playback_device_name.clear();
+        service->playback_last_error = trim_copy(playback_err).empty()
+          ? "failed to open audio playback sink"
+          : playback_err;
+      }
+      service->playback_sink->close();
+      Json::Value payload = make_builtin_voice_peer_event("audio_chunk_playback_failed", service->session_id);
+      payload["media_engine_state"] = "media_active";
+      payload["native_media_active"] = true;
+      payload["audio_playback_enabled"] = true;
+      payload["audio_playback_stream_open"] = false;
+      payload["audio_pcm_samples_playback_queued"] = Json::Int64(0);
+      payload["audio_playback_last_error"] = trim_copy(playback_err).empty()
+        ? "failed to open audio playback sink"
+        : playback_err;
+      append_builtin_voice_peer_event_and_snapshot(
+        service->stdout_log_path, service->session_id, payload, service->runtime, runtime_mu);
+      return true;
+    }
+
+    size_t samples_written = 0;
+    if (!service->playback_sink->write_samples(
+          samples.data(), samples.size(), &samples_written, &playback_err)) {
+      std::string playback_device_name;
+      {
+        std::lock_guard<std::mutex> lk(service->mu);
+        service->playback_audio_pcm.clear();
+        service->playback_device_name = service->playback_sink->device_name();
+        playback_device_name = service->playback_device_name;
+        service->playback_last_error = trim_copy(playback_err).empty()
+          ? "failed to write audio playback sink"
+          : playback_err;
+      }
+      service->playback_sink->close();
+      Json::Value payload = make_builtin_voice_peer_event("audio_chunk_playback_failed", service->session_id);
+      payload["media_engine_state"] = "media_active";
+      payload["native_media_active"] = true;
+      payload["audio_playback_enabled"] = true;
+      payload["audio_playback_stream_open"] = false;
+      payload["audio_pcm_samples_playback_queued"] = Json::Int64(0);
+      if (!playback_device_name.empty()) {
+        payload["audio_playback_device_name"] = playback_device_name;
+      }
+      payload["audio_playback_last_error"] = trim_copy(playback_err).empty()
+        ? "failed to write audio playback sink"
+        : playback_err;
+      append_builtin_voice_peer_event_and_snapshot(
+        service->stdout_log_path, service->session_id, payload, service->runtime, runtime_mu);
+      return true;
+    }
+
+    int64_t playback_events_total = 0;
+    int64_t played_total = 0;
+    int64_t playback_queued = 0;
+    std::string playback_device_name;
+    {
+      std::lock_guard<std::mutex> lk(service->mu);
+      service->owned_audio_playback_events_total += 1;
+      service->owned_audio_pcm_samples_played_total +=
+        static_cast<int64_t>(samples_written);
+      service->playback_device_name = service->playback_sink->device_name();
+      service->playback_last_error.clear();
+      playback_events_total = service->owned_audio_playback_events_total;
+      played_total = service->owned_audio_pcm_samples_played_total;
+      playback_queued = static_cast<int64_t>(service->playback_audio_pcm.size());
+      playback_device_name = service->playback_device_name;
+    }
+
+    Json::Value payload = make_builtin_voice_peer_event("audio_chunk_played", service->session_id);
+    payload["media_engine_state"] = "media_active";
+    payload["native_media_active"] = true;
+    payload["audio_playback_enabled"] = true;
+    payload["audio_playback_stream_open"] = true;
+    payload["audio_playback_events_total"] = Json::Int64(playback_events_total);
+    payload["audio_pcm_samples_played_total"] = Json::Int64(played_total);
+    payload["audio_pcm_samples_playback_queued"] = Json::Int64(playback_queued);
+    payload["audio_last_playback_samples"] = Json::Int64(static_cast<int64_t>(samples_written));
+    if (!playback_device_name.empty()) payload["audio_playback_device_name"] = playback_device_name;
+    payload["audio_playback_last_error"] = "";
+    append_builtin_voice_peer_event_and_snapshot(
+      service->stdout_log_path, service->session_id, payload, service->runtime, runtime_mu);
+  }
+
+  return true;
+}
+
 bool drain_builtin_voice_peer_media_engine_outputs(
   const std::shared_ptr<BuiltinVoicePeerService>& service,
   std::mutex& runtime_mu,
@@ -462,6 +646,10 @@ bool drain_builtin_voice_peer_media_engine_outputs(
     return false;
   }
   if (!render_builtin_voice_peer_owned_audio(service, runtime_mu, &err)) {
+    if (out_err) *out_err = err;
+    return false;
+  }
+  if (!playback_builtin_voice_peer_owned_audio(service, runtime_mu, &err)) {
     if (out_err) *out_err = err;
     return false;
   }
@@ -686,10 +874,17 @@ void builtin_voice_peer_service_main(
     (void)drain_builtin_voice_peer_media_engine_outputs(service, runtime_mu, &drain_err);
   }
 
+  if (service->playback_sink) service->playback_sink->close();
+  {
+    std::lock_guard<std::mutex> lk(service->mu);
+    service->playback_device_name.clear();
+  }
   Json::Value terminal_event = make_builtin_voice_peer_event(
     terminal_error.empty() ? "builtin_runtime_stopped" : "builtin_runtime_failed",
     service->session_id);
   terminal_event["media_engine_state"] = terminal_error.empty() ? "stopped" : "failed";
+  terminal_event["audio_playback_enabled"] = service->local_playback_enabled;
+  terminal_event["audio_playback_stream_open"] = false;
   if (!terminal_error.empty()) terminal_event["error"] = terminal_error;
   if (remote_bye_received) terminal_event["remote_bye_received"] = true;
   if (stop_requested) terminal_event["stop_requested"] = true;
@@ -786,6 +981,7 @@ bool start_builtin_voice_peer_runtime_service(
   seed.deadline_ms = start_plan.deadline_ms;
   seed.poll_interval_ms = start_plan.poll_interval_ms;
   seed.tone_hz = start_plan.tone_hz;
+  seed.audio_playback_enabled = cfg.audio_webrtc_builtin_local_playback;
   apply_voice_peer_media_engine_info(media_engine->info(), &seed);
   set_voice_peer_media_engine_state(&seed, "starting", 0);
   seed.ready = true;
@@ -814,6 +1010,8 @@ bool start_builtin_voice_peer_runtime_service(
   started["media_engine_state"] = runtime->media_engine_state;
   started["native_media_supported"] = runtime->native_media_supported;
   started["native_media_active"] = runtime->native_media_active;
+  started["audio_playback_enabled"] = runtime->audio_playback_enabled;
+  started["audio_playback_stream_open"] = runtime->audio_playback_stream_open;
   if (runtime->native_media_provider.isObject()) {
     started["native_media_provider"] = runtime->native_media_provider;
   }
@@ -830,6 +1028,7 @@ bool start_builtin_voice_peer_runtime_service(
   service->stdout_log_path = artifacts.stdout_log_path;
   service->rendered_audio_wav_path =
     (std::filesystem::path(artifacts.runtime_dir) / "audio_recent.wav").string();
+  service->local_playback_enabled = cfg.audio_webrtc_builtin_local_playback;
   service->runtime = runtime;
   service->media_engine = std::move(media_engine);
   service->persist_runtime = persist_runtime;

@@ -6566,6 +6566,7 @@ export interface components {
                     broker_token_default_configured?: boolean;
                     peer_tool_path_configured?: boolean;
                     builtin_native_library_path_configured?: boolean;
+                    builtin_local_playback_enabled?: boolean;
                     builtin_available?: boolean;
                     builtin_native_probe?: components["schemas"]["VoiceWebRtcPeerNativeMediaProviderProbe"];
                     /** @enum {string} */
@@ -6873,6 +6874,8 @@ export interface components {
                 peer_tool_path?: string | null;
                 /** @description Shared-library path for `audio_webrtc.builtin_mode=native_plugin` (null clears) */
                 builtin_native_library_path?: string | null;
+                /** @description Best-effort default-output PortAudio playback for builtin managed WebRTC runtimes after agentd has already decoded and owned inbound PCM (null disables) */
+                builtin_local_playback?: boolean | null;
                 /**
                  * @description Experimental builtin managed WebRTC runtime mode. `signaling_stub` enables the in-process native signaling stub backend; `native_plugin` loads a process-local native media-engine provider shared library from `builtin_native_library_path`; null disables builtin runtime availability.
                  * @enum {string|null}
@@ -8278,6 +8281,30 @@ export interface components {
              * @description PCM samples newly incorporated during the most recent successful WAV render update. This count includes all channels.
              */
             audio_last_render_samples?: number;
+            /** @description Whether best-effort daemon-local speaker playback is enabled for the builtin runtime. */
+            audio_playback_enabled?: boolean;
+            /** @description Whether the daemon currently has an open local playback stream for the builtin runtime. */
+            audio_playback_stream_open?: boolean;
+            /**
+             * Format: int64
+             * @description Total number of successful daemon-local playback writes completed from agentd-owned PCM.
+             */
+            audio_playback_events_total?: number;
+            /**
+             * Format: int64
+             * @description Total PCM samples written to the local playback sink. This count includes all channels.
+             */
+            audio_pcm_samples_played_total?: number;
+            /**
+             * Format: int64
+             * @description Number of PCM samples currently queued for best-effort daemon-local playback. This count includes all channels.
+             */
+            audio_pcm_samples_playback_queued?: number;
+            /**
+             * Format: int64
+             * @description PCM samples written during the most recent successful daemon-local playback pass. This count includes all channels.
+             */
+            audio_last_playback_samples?: number;
             /**
              * Format: int64
              * @description Sample rate of the most recent successfully decoded inbound audio frame.
@@ -8301,6 +8328,10 @@ export interface components {
             audio_render_wav_path?: string;
             /** @description Best-effort diagnostic string when agentd fails to update the rolling WAV render snapshot from consumed PCM. */
             audio_render_last_error?: string;
+            /** @description Best-effort local playback device name reported by PortAudio for daemon-local speaker output. */
+            audio_playback_device_name?: string;
+            /** @description Best-effort diagnostic string when daemon-local playback fails or cannot open the default output device. */
+            audio_playback_last_error?: string;
             ready: boolean;
             running: boolean;
             /** Format: int64 */
