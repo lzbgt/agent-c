@@ -42,6 +42,8 @@ AgentdConfigResponse:
             peer_tool_path_configured: { type: boolean }
             builtin_native_library_path_configured: { type: boolean }
             builtin_available: { type: boolean }
+            builtin_native_probe:
+              $ref: "#/components/schemas/VoiceWebRtcPeerNativeMediaProviderProbe"
             builtin_mode:
               type: string
               enum: [disabled, signaling_stub, native_plugin]

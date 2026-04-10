@@ -181,9 +181,13 @@ static void test_native_plugin_builtin_contract_marks_native_media_path() {
   assert(out["mutating_broker_actions_deferred"].asBool() == false);
   assert(out["media_runtime_plan"]["media_engine_kind"].asString() == "builtin_native_plugin");
   assert(out["media_runtime_plan"]["native_media_supported"].asBool() == true);
+  assert(out["media_runtime_plan"]["native_media_provider"]["abi_version"].asInt() == 2);
+  assert(out["media_runtime_plan"]["native_media_provider"]["name"].asString() == "mock_native_plugin");
   assert(out["planned_runtime"]["media_engine_kind"].asString() == "builtin_native_plugin");
   assert(out["planned_runtime"]["native_media_supported"].asBool() == true);
   assert(out["planned_runtime"]["native_media_active"].asBool() == false);
+  assert(out["planned_runtime"]["native_media_provider"]["abi_version"].asInt() == 2);
+  assert(out["planned_runtime"]["native_media_provider"]["name"].asString() == "mock_native_plugin");
   assert(out["planned_runtime"].isMember("last_error") == false);
 }
 

@@ -55,6 +55,7 @@ Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   out["media_local_byes_sent"] = (Json::Int64)st.media_local_byes_sent;
   out["native_media_supported"] = st.native_media_supported;
   out["native_media_active"] = st.native_media_active;
+  if (st.native_media_provider.isObject()) out["native_media_provider"] = st.native_media_provider;
   out["ready"] = st.ready;
   out["running"] = st.running;
   if (!st.stderr_log_path.empty()) out["stderr_log_path"] = st.stderr_log_path;
@@ -244,6 +245,9 @@ bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, s
   }
   if (v.isMember("native_media_active") && v["native_media_active"].isBool()) {
     st.native_media_active = v["native_media_active"].asBool();
+  }
+  if (v.isMember("native_media_provider") && v["native_media_provider"].isObject()) {
+    st.native_media_provider = v["native_media_provider"];
   }
   if (v.isMember("ready") && v["ready"].isBool()) st.ready = v["ready"].asBool();
   if (v.isMember("running") && v["running"].isBool()) st.running = v["running"].asBool();

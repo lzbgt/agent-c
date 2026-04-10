@@ -195,6 +195,10 @@ schemas:
     $ref: ./components/session.yaml#/VoiceWebRtcPeerBuiltinStartStage
   VoiceWebRtcPeerBuiltinRuntimeArtifacts:
     $ref: ./components/session.yaml#/VoiceWebRtcPeerBuiltinRuntimeArtifacts
+  VoiceWebRtcPeerNativeMediaProvider:
+    $ref: ./components/session.yaml#/VoiceWebRtcPeerNativeMediaProvider
+  VoiceWebRtcPeerNativeMediaProviderProbe:
+    $ref: ./components/session.yaml#/VoiceWebRtcPeerNativeMediaProviderProbe
   VoiceWebRtcPeerMediaRuntimePlan:
     $ref: ./components/session.yaml#/VoiceWebRtcPeerMediaRuntimePlan
   VoiceWebRtcPeerBuiltinStartContract:

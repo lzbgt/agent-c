@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <cstring>
+#include <filesystem>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -85,6 +86,38 @@ void clear_c_buffer(char (&buf)[N]) {
   std::memset(buf, 0, N);
 }
 
+bool json_object_is_empty(const Json::Value& v) {
+  return !v.isObject() || v.getMemberNames().empty();
+}
+
+std::string provider_name_from_library_path(const std::string& library_path) {
+  if (library_path.empty()) return "";
+  return trim_copy(std::filesystem::path(library_path).filename().string());
+}
+
+bool parse_provider_capabilities_json(
+  const char* raw_json,
+  Json::Value* out_caps,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (out_caps) *out_caps = Json::Value(Json::nullValue);
+  const std::string raw = trim_copy(raw_json ? raw_json : "");
+  if (raw.empty()) return true;
+  Json::Value caps;
+  std::string err;
+  if (!json_parse_object(raw, &caps, &err)) {
+    if (out_err) {
+      *out_err = err.empty()
+        ? "builtin native media engine provider_capabilities_json must be a JSON object"
+        : "builtin native media engine provider_capabilities_json invalid: " + err;
+    }
+    return false;
+  }
+  if (out_caps) *out_caps = caps;
+  return true;
+}
+
 bool parse_media_plugin_event_json(
   const char* raw_json,
   const VoicePeerMediaEngineInfo& info,
@@ -111,15 +144,182 @@ bool parse_media_plugin_event_json(
   if (!payload.isMember("media_engine_kind")) payload["media_engine_kind"] = info.media_engine_kind;
   if (!payload.isMember("native_media_supported")) payload["native_media_supported"] = info.native_media_supported;
   if (!payload.isMember("native_media_active")) payload["native_media_active"] = info.native_media_active;
+  if (!payload.isMember("native_media_provider")) {
+    const Json::Value provider = voice_peer_media_engine_provider_json(info, true);
+    if (provider.isObject()) payload["native_media_provider"] = provider;
+  }
   if (out_event) *out_event = payload;
   return true;
 }
 
+struct VoiceMediaPluginApiBridge {
+  uint32_t abi_version = 0;
+  int (*create)(void** out_instance, char* err_buf, size_t err_buf_size) = nullptr;
+  void (*destroy)(void* instance) = nullptr;
+  int (*initialize)(
+    void* instance,
+    char* event_json_buf,
+    size_t event_json_buf_size,
+    char* err_buf,
+    size_t err_buf_size
+  ) = nullptr;
+  int (*handle_remote_description)(
+    void* instance,
+    const char* description_type,
+    const char* description_sdp,
+    uint64_t initial_remote_candidate_count,
+    char* answer_type_buf,
+    size_t answer_type_buf_size,
+    char* answer_sdp_buf,
+    size_t answer_sdp_buf_size,
+    char* event_json_buf,
+    size_t event_json_buf_size,
+    char* err_buf,
+    size_t err_buf_size
+  ) = nullptr;
+  int (*handle_remote_candidate)(
+    void* instance,
+    const char* candidate,
+    const char* sdp_mid,
+    int sdp_mline_index,
+    int has_sdp_mline_index,
+    char* event_json_buf,
+    size_t event_json_buf_size,
+    char* err_buf,
+    size_t err_buf_size
+  ) = nullptr;
+  void (*handle_remote_bye)(
+    void* instance,
+    const char* reason,
+    char* event_json_buf,
+    size_t event_json_buf_size
+  ) = nullptr;
+  void (*handle_local_shutdown)(
+    void* instance,
+    char* event_json_buf,
+    size_t event_json_buf_size
+  ) = nullptr;
+};
+
 struct VoiceMediaPluginProbe {
   void* handle = nullptr;
-  const agentd_voice_media_engine_provider_v1* api = nullptr;
+  VoiceMediaPluginApiBridge api;
   VoicePeerMediaEngineInfo info;
 };
+
+bool validate_voice_media_plugin_bridge(
+  const VoiceMediaPluginApiBridge& api,
+  std::string* out_err
+) {
+  if (!api.create || !api.destroy || !api.initialize || !api.handle_remote_description ||
+      !api.handle_remote_candidate || !api.handle_remote_bye || !api.handle_local_shutdown) {
+    if (out_err) *out_err = "builtin native media engine missing required callbacks";
+    return false;
+  }
+  return true;
+}
+
+bool populate_probe_from_api_v2(
+  const std::string& library_path,
+  const agentd_voice_media_engine_provider_v2* api,
+  VoiceMediaPluginProbe* out_probe,
+  std::string* out_err
+) {
+  if (!api) {
+    if (out_err) *out_err = "builtin native media engine returned null v2 API";
+    return false;
+  }
+  if (api->abi_version != AGENTD_VOICE_MEDIA_ENGINE_PROVIDER_ABI_V2) {
+    if (out_err) *out_err = "builtin native media engine ABI v2 mismatch";
+    return false;
+  }
+  const std::string kind = trim_copy(api->media_engine_kind ? api->media_engine_kind : "");
+  if (kind != "builtin_native_plugin") {
+    if (out_err) *out_err = "builtin native media engine reported unsupported media_engine_kind";
+    return false;
+  }
+  const std::string provider_name = trim_copy(api->provider_name ? api->provider_name : "");
+  if (provider_name.empty()) {
+    if (out_err) *out_err = "builtin native media engine missing provider_name";
+    return false;
+  }
+  Json::Value capabilities(Json::nullValue);
+  if (!parse_provider_capabilities_json(api->provider_capabilities_json, &capabilities, out_err)) {
+    return false;
+  }
+
+  VoiceMediaPluginApiBridge bridge;
+  bridge.abi_version = api->abi_version;
+  bridge.create = api->create;
+  bridge.destroy = api->destroy;
+  bridge.initialize = api->initialize;
+  bridge.handle_remote_description = api->handle_remote_description;
+  bridge.handle_remote_candidate = api->handle_remote_candidate;
+  bridge.handle_remote_bye = api->handle_remote_bye;
+  bridge.handle_local_shutdown = api->handle_local_shutdown;
+  if (!validate_voice_media_plugin_bridge(bridge, out_err)) return false;
+
+  if (out_probe) {
+    out_probe->api = bridge;
+    out_probe->info.media_engine_kind = kind;
+    out_probe->info.native_media_supported = api->native_media_supported != 0;
+    out_probe->info.native_media_active = false;
+    out_probe->info.provider_abi_version = static_cast<int>(api->abi_version);
+    out_probe->info.provider_name = provider_name;
+    out_probe->info.provider_version = trim_copy(api->provider_version ? api->provider_version : "");
+    out_probe->info.provider_library_path = library_path;
+    out_probe->info.provider_capabilities = capabilities;
+  }
+  return true;
+}
+
+bool populate_probe_from_api_v1(
+  const std::string& library_path,
+  const agentd_voice_media_engine_provider_v1* api,
+  VoiceMediaPluginProbe* out_probe,
+  std::string* out_err
+) {
+  if (!api) {
+    if (out_err) *out_err = "builtin native media engine returned null v1 API";
+    return false;
+  }
+  if (api->abi_version != AGENTD_VOICE_MEDIA_ENGINE_PROVIDER_ABI_V1) {
+    if (out_err) *out_err = "builtin native media engine ABI v1 mismatch";
+    return false;
+  }
+  const std::string kind = trim_copy(api->media_engine_kind ? api->media_engine_kind : "");
+  if (kind != "builtin_native_plugin") {
+    if (out_err) *out_err = "builtin native media engine reported unsupported media_engine_kind";
+    return false;
+  }
+
+  VoiceMediaPluginApiBridge bridge;
+  bridge.abi_version = api->abi_version;
+  bridge.create = api->create;
+  bridge.destroy = api->destroy;
+  bridge.initialize = api->initialize;
+  bridge.handle_remote_description = api->handle_remote_description;
+  bridge.handle_remote_candidate = api->handle_remote_candidate;
+  bridge.handle_remote_bye = api->handle_remote_bye;
+  bridge.handle_local_shutdown = api->handle_local_shutdown;
+  if (!validate_voice_media_plugin_bridge(bridge, out_err)) return false;
+
+  if (out_probe) {
+    Json::Value caps(Json::objectValue);
+    caps["legacy_abi_v1"] = true;
+    out_probe->api = bridge;
+    out_probe->info.media_engine_kind = kind;
+    out_probe->info.native_media_supported = api->native_media_supported != 0;
+    out_probe->info.native_media_active = false;
+    out_probe->info.provider_abi_version = static_cast<int>(api->abi_version);
+    out_probe->info.provider_name = provider_name_from_library_path(library_path);
+    if (out_probe->info.provider_name.empty()) out_probe->info.provider_name = "legacy_builtin_native_plugin";
+    out_probe->info.provider_version = "legacy_abi_v1";
+    out_probe->info.provider_library_path = library_path;
+    out_probe->info.provider_capabilities = caps;
+  }
+  return true;
+}
 
 bool probe_builtin_voice_peer_native_media_engine_impl(
   const DaemonConfig& cfg,
@@ -143,47 +343,42 @@ bool probe_builtin_voice_peer_native_media_engine_impl(
     return false;
   }
 
-  const auto get_api = reinterpret_cast<agentd_voice_media_engine_get_api_v1_fn>(
+  const auto get_api_v2 = reinterpret_cast<agentd_voice_media_engine_get_api_v2_fn>(
+    media_plugin_symbol(handle, AGENTD_VOICE_MEDIA_ENGINE_GET_API_V2_SYMBOL));
+  if (get_api_v2) {
+    VoiceMediaPluginProbe probe;
+    if (!populate_probe_from_api_v2(library_path, get_api_v2(), &probe, out_err)) {
+      media_plugin_close(handle);
+      return false;
+    }
+    if (out_probe) {
+      *out_probe = probe;
+      out_probe->handle = handle;
+      return true;
+    }
+    media_plugin_close(handle);
+    return true;
+  }
+
+  const auto get_api_v1 = reinterpret_cast<agentd_voice_media_engine_get_api_v1_fn>(
     media_plugin_symbol(handle, AGENTD_VOICE_MEDIA_ENGINE_GET_API_V1_SYMBOL));
-  if (!get_api) {
+  if (!get_api_v1) {
     if (out_err) {
-      *out_err = "builtin native media engine missing " AGENTD_VOICE_MEDIA_ENGINE_GET_API_V1_SYMBOL;
+      *out_err =
+        "builtin native media engine missing " AGENTD_VOICE_MEDIA_ENGINE_GET_API_V2_SYMBOL
+        " and " AGENTD_VOICE_MEDIA_ENGINE_GET_API_V1_SYMBOL;
     }
     media_plugin_close(handle);
     return false;
   }
-
-  const agentd_voice_media_engine_provider_v1* api = get_api();
-  if (!api) {
-    if (out_err) *out_err = "builtin native media engine returned null API";
+  VoiceMediaPluginProbe probe;
+  if (!populate_probe_from_api_v1(library_path, get_api_v1(), &probe, out_err)) {
     media_plugin_close(handle);
     return false;
   }
-  if (api->abi_version != AGENTD_VOICE_MEDIA_ENGINE_PROVIDER_ABI_V1) {
-    if (out_err) *out_err = "builtin native media engine ABI mismatch";
-    media_plugin_close(handle);
-    return false;
-  }
-  if (!api->create || !api->destroy || !api->initialize || !api->handle_remote_description ||
-      !api->handle_remote_candidate || !api->handle_remote_bye || !api->handle_local_shutdown) {
-    if (out_err) *out_err = "builtin native media engine missing required callbacks";
-    media_plugin_close(handle);
-    return false;
-  }
-
-  const std::string kind = trim_copy(api->media_engine_kind ? api->media_engine_kind : "");
-  if (kind != "builtin_native_plugin") {
-    if (out_err) *out_err = "builtin native media engine reported unsupported media_engine_kind";
-    media_plugin_close(handle);
-    return false;
-  }
-
   if (out_probe) {
+    *out_probe = probe;
     out_probe->handle = handle;
-    out_probe->api = api;
-    out_probe->info.media_engine_kind = kind;
-    out_probe->info.native_media_supported = api->native_media_supported != 0;
-    out_probe->info.native_media_active = false;
     return true;
   }
 
@@ -209,6 +404,8 @@ Json::Value make_engine_event(
   payload["media_engine_state"] = state;
   payload["native_media_supported"] = info.native_media_supported;
   payload["native_media_active"] = info.native_media_active;
+  const Json::Value provider = voice_peer_media_engine_provider_json(info, true);
+  if (provider.isObject()) payload["native_media_provider"] = provider;
   return payload;
 }
 
@@ -298,13 +495,13 @@ class BuiltinVoicePeerNativePluginEngine final : public VoicePeerBuiltinMediaEng
  public:
   BuiltinVoicePeerNativePluginEngine(
     void* handle,
-    const agentd_voice_media_engine_provider_v1* api,
+    const VoiceMediaPluginApiBridge& api,
     const VoicePeerMediaEngineInfo& info
   )
       : handle_(handle), api_(api), info_(info) {}
 
   ~BuiltinVoicePeerNativePluginEngine() override {
-    if (api_ && api_->destroy && instance_) api_->destroy(instance_);
+    if (api_.destroy && instance_) api_.destroy(instance_);
 #if AGENTD_HAVE_VOICE_MEDIA_PLUGIN_LOADER
     if (handle_) media_plugin_close(handle_);
 #endif
@@ -316,7 +513,7 @@ class BuiltinVoicePeerNativePluginEngine final : public VoicePeerBuiltinMediaEng
     char err_buf[kMediaPluginErrBufBytes];
     clear_c_buffer(err_buf);
     void* instance = nullptr;
-    if (!api_->create(&instance, err_buf, sizeof(err_buf)) || !instance) {
+    if (!api_.create(&instance, err_buf, sizeof(err_buf)) || !instance) {
       if (out_err) {
         *out_err = trim_copy(err_buf).empty()
           ? "builtin native media engine create failed"
@@ -343,7 +540,7 @@ class BuiltinVoicePeerNativePluginEngine final : public VoicePeerBuiltinMediaEng
     char err_buf[kMediaPluginErrBufBytes];
     clear_c_buffer(event_buf);
     clear_c_buffer(err_buf);
-    if (!api_->initialize(instance_, event_buf, sizeof(event_buf), err_buf, sizeof(err_buf))) {
+    if (!api_.initialize(instance_, event_buf, sizeof(event_buf), err_buf, sizeof(err_buf))) {
       if (out_err) {
         *out_err = trim_copy(err_buf).empty()
           ? "builtin native media engine initialize failed"
@@ -369,7 +566,7 @@ class BuiltinVoicePeerNativePluginEngine final : public VoicePeerBuiltinMediaEng
     clear_c_buffer(answer_sdp);
     clear_c_buffer(event_buf);
     clear_c_buffer(err_buf);
-    if (!api_->handle_remote_description(
+    if (!api_.handle_remote_description(
           instance_,
           ready.description.type.c_str(),
           ready.description.sdp.c_str(),
@@ -406,7 +603,7 @@ class BuiltinVoicePeerNativePluginEngine final : public VoicePeerBuiltinMediaEng
     char err_buf[kMediaPluginErrBufBytes];
     clear_c_buffer(event_buf);
     clear_c_buffer(err_buf);
-    if (!api_->handle_remote_candidate(
+    if (!api_.handle_remote_candidate(
           instance_,
           ingress.candidate.candidate.c_str(),
           ingress.candidate.sdp_mid.c_str(),
@@ -432,7 +629,7 @@ class BuiltinVoicePeerNativePluginEngine final : public VoicePeerBuiltinMediaEng
   ) override {
     char event_buf[kMediaPluginEventBufBytes];
     clear_c_buffer(event_buf);
-    api_->handle_remote_bye(instance_, ingress.bye.reason.c_str(), event_buf, sizeof(event_buf));
+    api_.handle_remote_bye(instance_, ingress.bye.reason.c_str(), event_buf, sizeof(event_buf));
     std::string ignored_err;
     parse_media_plugin_event_json(event_buf, info_, out_event, &ignored_err);
   }
@@ -442,14 +639,14 @@ class BuiltinVoicePeerNativePluginEngine final : public VoicePeerBuiltinMediaEng
   ) override {
     char event_buf[kMediaPluginEventBufBytes];
     clear_c_buffer(event_buf);
-    api_->handle_local_shutdown(instance_, event_buf, sizeof(event_buf));
+    api_.handle_local_shutdown(instance_, event_buf, sizeof(event_buf));
     std::string ignored_err;
     parse_media_plugin_event_json(event_buf, info_, out_event, &ignored_err);
   }
 
  private:
   void* handle_ = nullptr;
-  const agentd_voice_media_engine_provider_v1* api_ = nullptr;
+  VoiceMediaPluginApiBridge api_;
   void* instance_ = nullptr;
   VoicePeerMediaEngineInfo info_;
 };
@@ -458,6 +655,21 @@ class BuiltinVoicePeerNativePluginEngine final : public VoicePeerBuiltinMediaEng
 
 std::string builtin_voice_peer_native_library_path(const DaemonConfig& cfg) {
   return trim_copy(cfg.audio_webrtc_builtin_native_library_path);
+}
+
+Json::Value voice_peer_media_engine_provider_json(
+  const VoicePeerMediaEngineInfo& info,
+  bool include_library_path
+) {
+  Json::Value out(Json::objectValue);
+  if (info.provider_abi_version > 0) out["abi_version"] = info.provider_abi_version;
+  if (!trim_copy(info.provider_name).empty()) out["name"] = info.provider_name;
+  if (!trim_copy(info.provider_version).empty()) out["version"] = info.provider_version;
+  if (include_library_path && !trim_copy(info.provider_library_path).empty()) {
+    out["library_path"] = info.provider_library_path;
+  }
+  if (info.provider_capabilities.isObject()) out["capabilities"] = info.provider_capabilities;
+  return json_object_is_empty(out) ? Json::Value(Json::nullValue) : out;
 }
 
 bool builtin_voice_peer_native_media_engine_available(
@@ -472,6 +684,30 @@ bool builtin_voice_peer_native_media_engine_available(
   if (probe.handle) media_plugin_close(probe.handle);
 #endif
   return ok;
+}
+
+Json::Value builtin_voice_peer_native_media_engine_probe_json(const DaemonConfig& cfg) {
+  Json::Value out(Json::objectValue);
+  const std::string library_path = builtin_voice_peer_native_library_path(cfg);
+  out["configured"] = !library_path.empty();
+  if (!library_path.empty()) out["library_path"] = library_path;
+
+  VoiceMediaPluginProbe probe;
+  std::string err;
+  const bool ok = probe_builtin_voice_peer_native_media_engine_impl(cfg, &probe, &err);
+  out["loadable"] = ok;
+  if (ok) {
+    out["media_engine_kind"] = probe.info.media_engine_kind;
+    out["native_media_supported"] = probe.info.native_media_supported;
+    const Json::Value provider = voice_peer_media_engine_provider_json(probe.info, true);
+    if (provider.isObject()) out["provider"] = provider;
+  } else if (!trim_copy(err).empty()) {
+    out["error"] = err;
+  }
+#if AGENTD_HAVE_VOICE_MEDIA_PLUGIN_LOADER
+  if (probe.handle) media_plugin_close(probe.handle);
+#endif
+  return out;
 }
 
 VoicePeerMediaEngineInfo voice_peer_media_engine_info_for_runtime_kind(
@@ -512,6 +748,7 @@ void apply_voice_peer_media_engine_info(
   if (!plan) return;
   plan->media_engine_kind = info.media_engine_kind;
   plan->native_media_supported = info.native_media_supported;
+  plan->native_media_provider = voice_peer_media_engine_provider_json(info, true);
 }
 
 void apply_voice_peer_media_engine_info(
@@ -522,6 +759,7 @@ void apply_voice_peer_media_engine_info(
   seed->media_engine_kind = info.media_engine_kind;
   seed->native_media_supported = info.native_media_supported;
   seed->native_media_active = info.native_media_active;
+  seed->native_media_provider = voice_peer_media_engine_provider_json(info, true);
 }
 
 void apply_voice_peer_media_engine_info(
@@ -532,6 +770,7 @@ void apply_voice_peer_media_engine_info(
   runtime->media_engine_kind = info.media_engine_kind;
   runtime->native_media_supported = info.native_media_supported;
   runtime->native_media_active = info.native_media_active;
+  runtime->native_media_provider = voice_peer_media_engine_provider_json(info, true);
 }
 
 void set_voice_peer_media_engine_state(
@@ -578,6 +817,9 @@ void note_voice_peer_media_engine_event(
   }
   if (payload.isMember("native_media_active") && payload["native_media_active"].isBool()) {
     runtime->native_media_active = payload["native_media_active"].asBool();
+  }
+  if (payload.isMember("native_media_provider") && payload["native_media_provider"].isObject()) {
+    runtime->native_media_provider = payload["native_media_provider"];
   }
 
   runtime->media_events_total += 1;

@@ -220,6 +220,15 @@ assert peer.get("native_media_active") is expected_native_supported, obj
 assert peer.get("running") is True and peer.get("ready") is True, obj
 assert peer.get("managed_broker_session") is True, obj
 assert obj.get("builtin_start_contract", {}).get("mutating_broker_actions_deferred") is False, obj
+if mode == "native_plugin":
+    probe = obj.get("builtin_native_probe") or {}
+    provider = (peer.get("native_media_provider") or {})
+    assert probe.get("loadable") is True, obj
+    assert (probe.get("provider") or {}).get("abi_version") == 2, obj
+    assert (probe.get("provider") or {}).get("name") == "mock_native_plugin", obj
+    assert provider.get("abi_version") == 2, obj
+    assert provider.get("name") == "mock_native_plugin", obj
+    assert (provider.get("capabilities") or {}).get("transport_family") == "mock_webrtc", obj
 sid = peer.get("broker_session_id")
 assert sid, obj
 print(sid)
@@ -340,6 +349,9 @@ assert peer.get("media_remote_offers_seen") == 1, obj
 assert peer.get("media_answers_sent") == 1, obj
 assert peer.get("media_remote_byes_seen") == 1, obj
 assert peer.get("media_events_total", 0) >= 5, obj
+provider = peer.get("native_media_provider") or {}
+if provider:
+    assert provider.get("name") == "mock_native_plugin", obj
 req = urllib.request.Request(
     f"http://127.0.0.1:{port}/v1/audio/sessions/{broker_session_id}",
     headers={"Authorization": "Bearer audio-agentd-token"},

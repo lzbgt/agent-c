@@ -228,6 +228,22 @@ Current proof points:
 - `tests/test_tool_plugin_host_limits.cpp` (Windows host-limit validation surface)
 - `tools/verify_windows_build.ps1` (Windows build/test helper for plugin loader path)
 
+## Builtin voice media provider inspection
+
+The experimental builtin WebRTC native-provider seam is a separate C ABI from the
+tool-plugin ABI above. Operators can inspect a candidate builtin voice media
+provider shared library without starting `agentd`:
+
+```bash
+python3 tools/inspect_voice_media_provider.py \
+  ./build/libagentd_voice_builtin_media_engine_mock.dylib --pretty
+```
+
+The tool validates the exported provider symbol (`agentd_voice_media_engine_get_api_v2`
+preferred, `..._v1` as compatibility fallback), reports ABI version and required
+callback presence, and prints provider metadata such as `name`, `version`, and
+declared `capabilities`.
+
 ## References
 
 - tests/tool_server_echo.py (example tool server)

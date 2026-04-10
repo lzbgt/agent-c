@@ -47,6 +47,7 @@ Json::Value voice_peer_media_runtime_plan_json(
   out["poll_interval_ms"] = Json::Int64(plan.poll_interval_ms);
   out["tone_hz"] = Json::Int64(plan.tone_hz);
   out["native_media_supported"] = plan.native_media_supported;
+  if (plan.native_media_provider.isObject()) out["native_media_provider"] = plan.native_media_provider;
   return out;
 }
 

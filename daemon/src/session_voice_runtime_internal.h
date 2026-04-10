@@ -45,6 +45,7 @@ struct VoicePeerRuntime {
   bool managed_broker_session = false;
   bool native_media_supported = false;
   bool native_media_active = false;
+  Json::Value native_media_provider = Json::Value(Json::nullValue);
   bool ready = false;
   bool running = false;
   bool stale_persisted_record = false;
@@ -112,6 +113,7 @@ struct VoicePeerRuntimeSeed {
   bool managed_broker_session = false;
   bool native_media_supported = false;
   bool native_media_active = false;
+  Json::Value native_media_provider = Json::Value(Json::nullValue);
   bool ready = false;
   bool running = false;
 #if defined(_WIN32)

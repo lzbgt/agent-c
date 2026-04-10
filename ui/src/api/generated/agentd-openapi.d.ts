@@ -6567,6 +6567,7 @@ export interface components {
                     peer_tool_path_configured?: boolean;
                     builtin_native_library_path_configured?: boolean;
                     builtin_available?: boolean;
+                    builtin_native_probe?: components["schemas"]["VoiceWebRtcPeerNativeMediaProviderProbe"];
                     /** @enum {string} */
                     builtin_mode?: "disabled" | "signaling_stub" | "native_plugin";
                     bundled_available?: boolean;
@@ -7992,6 +7993,27 @@ export interface components {
             /** @enum {string} */
             stderr_format: "text";
         };
+        VoiceWebRtcPeerNativeMediaProvider: {
+            /** Format: int32 */
+            abi_version: number;
+            name: string;
+            version?: string;
+            /** @description Shared-library path for `native_plugin` providers when known to agentd. */
+            library_path?: string;
+            /** @description Provider-declared capability map exported by the native media-engine ABI. */
+            capabilities?: {
+                [key: string]: unknown;
+            };
+        };
+        VoiceWebRtcPeerNativeMediaProviderProbe: {
+            configured: boolean;
+            loadable: boolean;
+            library_path?: string;
+            media_engine_kind?: string;
+            native_media_supported?: boolean;
+            provider?: components["schemas"]["VoiceWebRtcPeerNativeMediaProvider"];
+            error?: string;
+        };
         VoiceWebRtcPeerMediaRuntimePlan: {
             /** @enum {string} */
             schema: "voice_webrtc_peer_media_runtime_plan_v1";
@@ -8022,6 +8044,7 @@ export interface components {
             tone_hz: number;
             /** @description Whether this runtime plan terminates media natively inside agentd instead of delegating RTP/media handling to the shipped browser peer. `builtin_native_plugin` plans report `true`; the shipped signaling stub still reports `false`. */
             native_media_supported: boolean;
+            native_media_provider?: components["schemas"]["VoiceWebRtcPeerNativeMediaProvider"];
         };
         VoiceWebRtcPeerBuiltinStartContract: {
             session_id: string;
@@ -8110,6 +8133,7 @@ export interface components {
             native_media_supported: boolean;
             /** @description Whether native media handling is currently active inside agentd for this runtime. Current shipped runtimes report `false`. */
             native_media_active: boolean;
+            native_media_provider?: components["schemas"]["VoiceWebRtcPeerNativeMediaProvider"];
             ready: boolean;
             running: boolean;
             /** Format: int64 */
@@ -8160,6 +8184,7 @@ export interface components {
             tool_configured: boolean;
             builtin_available: boolean;
             builtin_native_library_path_configured?: boolean;
+            builtin_native_probe?: components["schemas"]["VoiceWebRtcPeerNativeMediaProviderProbe"];
             /** @enum {string} */
             builtin_mode?: "disabled" | "signaling_stub" | "native_plugin";
             bundled_available: boolean;

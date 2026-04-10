@@ -30,6 +30,7 @@ struct VoicePeerMediaRuntimePlan {
   int64_t poll_interval_ms = 100;
   int64_t tone_hz = 440;
   bool native_media_supported = false;
+  Json::Value native_media_provider = Json::Value(Json::nullValue);
 };
 
 struct VoicePeerChildProcessPlan {

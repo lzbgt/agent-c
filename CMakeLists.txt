@@ -437,6 +437,16 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
   )
 
+  add_library(agentd_voice_builtin_media_engine_legacy_v1 MODULE
+    tests/fixtures/voice_builtin_media_engine_legacy_v1.cpp
+  )
+  target_compile_options(agentd_voice_builtin_media_engine_legacy_v1 PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_include_directories(agentd_voice_builtin_media_engine_legacy_v1 PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
+  )
+
   add_executable(agentd_tool_plugin_host
     tools/agentd_tool_plugin_host.cpp
   )
@@ -790,6 +800,7 @@ if(AGENT_BUILD_HOST)
   )
   target_compile_definitions(session_voice_builtin_contract_tests PRIVATE
     AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_mock>"
+    AGENTD_TEST_VOICE_MEDIA_ENGINE_LEGACY_V1_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_legacy_v1>"
   )
   target_link_libraries(session_voice_builtin_contract_tests PRIVATE agentd_lib)
   add_test(NAME session_voice_builtin_contract_tests COMMAND session_voice_builtin_contract_tests)
@@ -802,6 +813,7 @@ if(AGENT_BUILD_HOST)
   )
   target_compile_definitions(session_voice_builtin_media_engine_tests PRIVATE
     AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_mock>"
+    AGENTD_TEST_VOICE_MEDIA_ENGINE_LEGACY_V1_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_legacy_v1>"
   )
   target_link_libraries(session_voice_builtin_media_engine_tests PRIVATE agentd_lib)
   add_test(NAME session_voice_builtin_media_engine_tests COMMAND session_voice_builtin_media_engine_tests)
@@ -823,6 +835,7 @@ if(AGENT_BUILD_HOST)
   )
   target_compile_definitions(session_voice_builtin_backend_tests PRIVATE
     AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_mock>"
+    AGENTD_TEST_VOICE_MEDIA_ENGINE_LEGACY_V1_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_legacy_v1>"
   )
   target_link_libraries(session_voice_builtin_backend_tests PRIVATE agentd_lib)
   add_test(NAME session_voice_builtin_backend_tests COMMAND session_voice_builtin_backend_tests)

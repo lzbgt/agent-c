@@ -395,6 +395,7 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   - `builtin_available=true|false`
   - `builtin_mode=disabled|signaling_stub|native_plugin`
   - `builtin_native_library_path_configured=true|false`
+  - `builtin_native_probe.{configured,loadable,library_path,provider,error}`
   - `bundled_available=true|false`
   - `external_available=true|false`
   - `builtin_unavailable_reason`, `bundled_unavailable_reason`, `external_unavailable_reason`,
@@ -407,6 +408,7 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
     `peer.media_remote_candidates_seen`, `peer.media_remote_byes_seen`, `peer.media_local_byes_sent`
   - `peer.native_media_supported=true|false`
   - `peer.native_media_active=true|false`
+  - `peer.native_media_provider.{abi_version,name,version,library_path,capabilities}`
   so the shipped Node/Playwright peer is now clearly modeled as an explicit backend family with durable default
   selection rather than an implicit implementation detail, and the experimental in-process builtin backend is surfaced
   as a real launchable mode instead of only a reserved placeholder.
@@ -476,7 +478,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `AGENTD_AUDIO_WEBRTC_BUILTIN_NATIVE_LIBRARY`), `runtime_kind=builtin` loads a process-local media-engine provider
   shared library through a stable C ABI. Agentd validates provider ABI/version and required callbacks up front, marks
   builtin availability from real loadability instead of mode-only intent, and exposes the resulting runtime as
-  `peer.media_engine_kind=builtin_native_plugin`.
+  `peer.media_engine_kind=builtin_native_plugin`. The provider seam is now self-describing too:
+  `builtin_native_probe` surfaces provider ABI/name/version/capabilities plus load errors in config/runtime metadata,
+  and live/planned runtime snapshots persist the loaded provider details under `peer.native_media_provider`.
 - The builtin/runtime preview and live runtime snapshots now also expose the media-engine seam explicitly:
   `media_runtime_plan.media_engine_kind` / `peer.media_engine_kind` distinguish `builtin_reserved`,
   `builtin_signaling_stub`, `builtin_native_plugin`, and `browser_peer`, while `native_media_supported` /
@@ -515,6 +519,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `AGENTD_AUDIO_WEBRTC_BUILTIN_NATIVE_LIBRARY=/abs/path/to/provider.{so,dylib,dll}`; runtime/config status then
   reports the effective builtin mode and whether the native provider path is configured/loadable until a persisted
   daemon config override takes precedence.
+- Operators can inspect a candidate provider library without starting agentd via
+  `python3 tools/inspect_voice_media_provider.py /abs/path/to/provider.{so,dylib,dll} --pretty`, which validates the
+  exported symbol/ABI shape and prints the declared provider metadata/capabilities.
 - If persisted runtime config is corrupted to an invalid `audio_webrtc.default_runtime_kind`, agentd now self-heals it
   back to `auto` on load instead of reporting an impossible configured backend while silently falling back internally.
 - `POST /api/v1/session/voice_webrtc_peer` now also performs bounded startup confirmation. If the managed peer process
@@ -581,7 +588,7 @@ For debugging client/daemon mismatches (CORS, sandbox defaults, job GC), `agentd
 This endpoint requires auth when `--auth-token` is set. It intentionally does not include secrets.
 The WebUI surfaces this snapshot in Settings as “Daemon config”, including `state_dir`, `sessions_root_dir`,
 and `db_path` (SQLite; canonical daemon state store). For the managed WebRTC lane, the safe snapshot now also exposes
-`daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured,peer_tool_path_configured,builtin_native_library_path_configured,builtin_available,builtin_mode,bundled_available,external_available,builtin_unavailable_reason,bundled_unavailable_reason,external_unavailable_reason,default_runtime_kind,default_runtime_kind_source,default_runtime_kind_available,default_runtime_kind_unavailable_reason,node_bin}`
+`daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured,peer_tool_path_configured,builtin_native_library_path_configured,builtin_native_probe,builtin_available,builtin_mode,bundled_available,external_available,builtin_unavailable_reason,bundled_unavailable_reason,external_unavailable_reason,default_runtime_kind,default_runtime_kind_source,default_runtime_kind_available,default_runtime_kind_unavailable_reason,node_bin}`
 so operators can verify whether caller-free voice runtime bring-up and backend selection are configured without
 exposing the token itself.
 For the managed edge consensus lane, the safe snapshot now also exposes
@@ -658,7 +665,7 @@ curl -fsS \
 Notes:
 - The response never includes secrets. Use `GET /api/v1/config` to see booleans like `provider_keys_set`.
 - For managed voice/WebRTC broker defaults, `GET /api/v1/config` exposes only
-  `daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured,peer_tool_path_configured,builtin_native_library_path_configured,builtin_available,builtin_mode,bundled_available,external_available,builtin_unavailable_reason,bundled_unavailable_reason,external_unavailable_reason,default_runtime_kind,default_runtime_kind_source,default_runtime_kind_available,default_runtime_kind_unavailable_reason,node_bin}`.
+  `daemon.audio_webrtc.{broker_url_default_configured,broker_token_default_configured,peer_tool_path_configured,builtin_native_library_path_configured,builtin_native_probe,builtin_available,builtin_mode,bundled_available,external_available,builtin_unavailable_reason,bundled_unavailable_reason,external_unavailable_reason,default_runtime_kind,default_runtime_kind_source,default_runtime_kind_available,default_runtime_kind_unavailable_reason,node_bin}`.
 - For the managed edge consensus helper seam, `GET /api/v1/config` exposes only
   `edge_consensus.{node_tool_path_configured,builtin_available,external_available,external_unavailable_reason,default_runtime_kind,default_runtime_kind_source,default_runtime_kind_available,default_runtime_kind_unavailable_reason,clusters_set,cluster_ids}`.
 - `POST /api/v1/edge/node/consensus_runtime` now uses bounded startup confirmation for both builtin and external managed

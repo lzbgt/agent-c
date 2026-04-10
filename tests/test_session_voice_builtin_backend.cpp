@@ -2,6 +2,7 @@
 #include "session_voice_backend_policy.h"
 #include "session_voice_builtin_service.h"
 #include "session_voice_runtime_registry.h"
+#include "session_voice_runtime.h"
 #include "session_voice_runtime_store.h"
 
 #include <cassert>
@@ -18,6 +19,10 @@ using agentd::voice_peer_runtime_to_json;
 
 #ifndef AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH
 #define AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH ""
+#endif
+
+#ifndef AGENTD_TEST_VOICE_MEDIA_ENGINE_LEGACY_V1_PLUGIN_PATH
+#define AGENTD_TEST_VOICE_MEDIA_ENGINE_LEGACY_V1_PLUGIN_PATH ""
 #endif
 
 static VoicePeerStartPlan make_plan() {
@@ -168,6 +173,8 @@ static void test_builtin_backend_enabled_native_plugin_starts_runtime() {
   assert(result.state->media_engine_state == "signaling_ready");
   assert(result.state->media_events_total == 2);
   assert(result.state->managed_broker_session == false);
+  assert(result.state->native_media_provider["abi_version"].asInt() == 2);
+  assert(result.state->native_media_provider["name"].asString() == "mock_native_plugin");
 
   bool stopped = false;
   std::string stop_err;
@@ -181,6 +188,32 @@ static void test_builtin_backend_enabled_native_plugin_starts_runtime() {
   assert(stopped);
 }
 
+static void test_backend_metadata_reports_native_probe_details() {
+  DaemonConfig cfg;
+  cfg.audio_webrtc_builtin_mode = "native_plugin";
+  cfg.audio_webrtc_builtin_native_library_path = AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH;
+  const Json::Value meta = agentd::session_voice_webrtc_backend_metadata_json(cfg);
+  assert(meta["builtin_mode"].asString() == "native_plugin");
+  assert(meta["builtin_available"].asBool());
+  assert(meta["builtin_native_library_path_configured"].asBool());
+  assert(meta["builtin_native_probe"]["loadable"].asBool());
+  assert(meta["builtin_native_probe"]["provider"]["abi_version"].asInt() == 2);
+  assert(meta["builtin_native_probe"]["provider"]["name"].asString() == "mock_native_plugin");
+}
+
+static void test_backend_metadata_reports_legacy_v1_probe_details() {
+  DaemonConfig cfg;
+  cfg.audio_webrtc_builtin_mode = "native_plugin";
+  cfg.audio_webrtc_builtin_native_library_path = AGENTD_TEST_VOICE_MEDIA_ENGINE_LEGACY_V1_PLUGIN_PATH;
+  const Json::Value meta = agentd::session_voice_webrtc_backend_metadata_json(cfg);
+  assert(meta["builtin_mode"].asString() == "native_plugin");
+  assert(meta["builtin_available"].asBool());
+  assert(meta["builtin_native_probe"]["loadable"].asBool());
+  assert(meta["builtin_native_probe"]["provider"]["abi_version"].asInt() == 1);
+  assert(meta["builtin_native_probe"]["provider"]["version"].asString() == "legacy_abi_v1");
+  assert(meta["builtin_native_probe"]["provider"]["capabilities"]["legacy_abi_v1"].asBool());
+}
+
 }  // namespace
 
 int main() {
@@ -188,5 +221,7 @@ int main() {
   test_builtin_backend_borrowed_session_preview_is_not_managed();
   test_builtin_backend_enabled_signaling_stub_starts_runtime();
   test_builtin_backend_enabled_native_plugin_starts_runtime();
+  test_backend_metadata_reports_native_probe_details();
+  test_backend_metadata_reports_legacy_v1_probe_details();
   return 0;
 }

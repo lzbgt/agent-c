@@ -252,6 +252,8 @@ void builtin_voice_peer_service_main(
             sent_answer["media_engine_state"] = "signaling_active";
             sent_answer["native_media_supported"] = info.native_media_supported;
             sent_answer["native_media_active"] = info.native_media_active;
+            const Json::Value provider = voice_peer_media_engine_provider_json(info, true);
+            if (provider.isObject()) sent_answer["native_media_provider"] = provider;
           }
           append_builtin_voice_peer_event_and_snapshot(
             service->stdout_log_path, service->session_id, sent_answer, service->runtime, runtime_mu);
@@ -450,6 +452,9 @@ bool start_builtin_voice_peer_runtime_service(
   started["media_engine_state"] = runtime->media_engine_state;
   started["native_media_supported"] = runtime->native_media_supported;
   started["native_media_active"] = runtime->native_media_active;
+  if (runtime->native_media_provider.isObject()) {
+    started["native_media_provider"] = runtime->native_media_provider;
+  }
   append_builtin_voice_peer_event_and_snapshot(
     artifacts.stdout_log_path, session_id, started, runtime, runtime_mu);
 

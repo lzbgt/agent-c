@@ -264,7 +264,9 @@ A v0 smoke test should:
   `audio_webrtc.builtin_native_library_path` (or the matching `AGENTD_AUDIO_WEBRTC_*` env vars),
   `runtime_kind=builtin` now loads a process-local media-engine provider shared library through a stable C ABI. That
   gives agentd a real native backend load path, direct availability/loadability reporting, and smoke/unit proof without
-  yet baking a specific WebRTC/SRTP stack into the tree.
+  yet baking a specific WebRTC/SRTP stack into the tree. The provider seam is now self-describing: config/runtime
+  metadata expose `builtin_native_probe`, and live/planned builtin snapshots carry `native_media_provider` with the
+  loaded provider ABI/name/version/capabilities.
 - That runtime contract now also exposes the media-engine seam directly: planned/live builtin paths report
   `media_engine_kind=builtin_reserved|builtin_signaling_stub|builtin_native_plugin`, bundled/external runtimes report
   `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` now distinguish the
@@ -288,10 +290,13 @@ A v0 smoke test should:
   startup also honors `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND`, `AGENTD_AUDIO_WEBRTC_BUILTIN_MODE`, and
   `AGENTD_AUDIO_WEBRTC_BUILTIN_NATIVE_LIBRARY`, which surface as explicit runtime/config metadata.
 - Safe daemon config now reports the same backend availability facts (`builtin_available`, `bundled_available`,
-  `external_available`, `default_runtime_kind_available`) plus unavailable reasons and the explicit `builtin_mode`, so
-  a configured default such as `external` can be seen as unavailable before start-time failure, `builtin` can be seen
-  as intentionally disabled vs experimentally enabled, and misconfigured `node_bin` or native provider library can now
-  show up as an unlaunchable backend rather than only surfacing after a start request.
+  `external_available`, `default_runtime_kind_available`) plus unavailable reasons, the explicit `builtin_mode`, and
+  `builtin_native_probe`, so a configured default such as `external` can be seen as unavailable before start-time
+  failure, `builtin` can be seen as intentionally disabled vs experimentally enabled, and misconfigured `node_bin` or
+  native provider library can now show up as an unlaunchable backend rather than only surfacing after a start request.
+- Operators can inspect a candidate provider library offline via
+  `python3 tools/inspect_voice_media_provider.py /abs/path/to/provider.{so,dylib,dll} --pretty`, which validates the
+  exported provider symbol/ABI and prints the declared capability metadata before daemon bring-up.
 - If persisted daemon config is corrupted to an invalid `audio_webrtc.default_runtime_kind`, agentd now self-heals that
   field back to `auto` on load and rewrites the SQLite runtime-config record instead of surfacing impossible state.
 

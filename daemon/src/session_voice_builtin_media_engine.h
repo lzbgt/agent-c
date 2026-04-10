@@ -19,6 +19,11 @@ struct VoicePeerMediaEngineInfo {
   std::string media_engine_kind = "browser_peer";
   bool native_media_supported = false;
   bool native_media_active = false;
+  int provider_abi_version = 0;
+  std::string provider_name;
+  std::string provider_version;
+  std::string provider_library_path;
+  Json::Value provider_capabilities = Json::Value(Json::nullValue);
 };
 
 VoicePeerMediaEngineInfo voice_peer_media_engine_info_for_runtime_kind(
@@ -33,6 +38,13 @@ bool builtin_voice_peer_native_media_engine_available(
   VoicePeerMediaEngineInfo* out_info,
   std::string* out_err
 );
+
+Json::Value voice_peer_media_engine_provider_json(
+  const VoicePeerMediaEngineInfo& info,
+  bool include_library_path
+);
+
+Json::Value builtin_voice_peer_native_media_engine_probe_json(const DaemonConfig& cfg);
 
 void apply_voice_peer_media_engine_info(
   const VoicePeerMediaEngineInfo& info,

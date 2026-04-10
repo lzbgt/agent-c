@@ -49,6 +49,34 @@ VoiceWebRtcPeerBuiltinRuntimeArtifacts:
       type: string
       enum: [text]
 
+VoiceWebRtcPeerNativeMediaProvider:
+  type: object
+  required: [abi_version, name]
+  properties:
+    abi_version: { type: integer, format: int32 }
+    name: { type: string }
+    version: { type: string }
+    library_path:
+      type: string
+      description: Shared-library path for `native_plugin` providers when known to agentd.
+    capabilities:
+      type: object
+      additionalProperties: true
+      description: Provider-declared capability map exported by the native media-engine ABI.
+
+VoiceWebRtcPeerNativeMediaProviderProbe:
+  type: object
+  required: [configured, loadable]
+  properties:
+    configured: { type: boolean }
+    loadable: { type: boolean }
+    library_path: { type: string }
+    media_engine_kind: { type: string }
+    native_media_supported: { type: boolean }
+    provider:
+      $ref: "#/components/schemas/VoiceWebRtcPeerNativeMediaProvider"
+    error: { type: string }
+
 VoiceWebRtcPeerMediaRuntimePlan:
   type: object
   required: [schema, signaling_surface, runtime_kind, media_engine_kind, session_id, broker_url, managed_broker_session, sender_tag, ready_signal, ready_file_path, deadline_ms, poll_interval_ms, tone_hz, native_media_supported]
@@ -83,6 +111,8 @@ VoiceWebRtcPeerMediaRuntimePlan:
     native_media_supported:
       type: boolean
       description: Whether this runtime plan terminates media natively inside agentd instead of delegating RTP/media handling to the shipped browser peer. `builtin_native_plugin` plans report `true`; the shipped signaling stub still reports `false`.
+    native_media_provider:
+      $ref: "#/components/schemas/VoiceWebRtcPeerNativeMediaProvider"
 
 VoiceWebRtcPeerBuiltinStartContract:
   type: object
@@ -170,6 +200,8 @@ VoiceWebRtcPeerRuntime:
     native_media_active:
       type: boolean
       description: Whether native media handling is currently active inside agentd for this runtime. Current shipped runtimes report `false`.
+    native_media_provider:
+      $ref: "#/components/schemas/VoiceWebRtcPeerNativeMediaProvider"
     ready: { type: boolean }
     running: { type: boolean }
     pid: { type: integer, format: int64 }
@@ -227,6 +259,8 @@ VoiceWebRtcPeerResponse:
     tool_configured: { type: boolean }
     builtin_available: { type: boolean }
     builtin_native_library_path_configured: { type: boolean }
+    builtin_native_probe:
+      $ref: "#/components/schemas/VoiceWebRtcPeerNativeMediaProviderProbe"
     builtin_mode:
       type: string
       enum: [disabled, signaling_stub, native_plugin]

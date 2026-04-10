@@ -170,6 +170,9 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   st.media_local_byes_sent = 1;
   st.native_media_supported = false;
   st.native_media_active = false;
+  st.native_media_provider["abi_version"] = 2;
+  st.native_media_provider["name"] = "mock_native_plugin";
+  st.native_media_provider["capabilities"]["transport_family"] = "mock_webrtc";
 
   const Json::Value json = voice_peer_runtime_to_json(st);
   assert(json["media_engine_kind"].asString() == "builtin_signaling_stub");
@@ -183,6 +186,8 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(json["media_local_byes_sent"].asInt64() == 1);
   assert(json["native_media_supported"].asBool() == false);
   assert(json["native_media_active"].asBool() == false);
+  assert(json["native_media_provider"]["abi_version"].asInt() == 2);
+  assert(json["native_media_provider"]["name"].asString() == "mock_native_plugin");
 
   VoicePeerRuntime round_trip;
   std::string err;
@@ -199,6 +204,8 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(round_trip.media_local_byes_sent == 1);
   assert(round_trip.native_media_supported == false);
   assert(round_trip.native_media_active == false);
+  assert(round_trip.native_media_provider["abi_version"].asInt() == 2);
+  assert(round_trip.native_media_provider["capabilities"]["transport_family"].asString() == "mock_webrtc");
 }
 
 }  // namespace
