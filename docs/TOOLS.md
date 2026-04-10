@@ -236,13 +236,36 @@ provider shared library without starting `agentd`:
 
 ```bash
 python3 tools/inspect_voice_media_provider.py \
-  ./build/libagentd_voice_builtin_media_engine_mock.dylib --pretty
+  ./build/libagentd_voice_builtin_media_engine_sample.dylib --pretty
 ```
 
 The tool validates the exported provider symbol (`agentd_voice_media_engine_get_api_v2`
 preferred, `..._v1` as compatibility fallback), reports ABI version and required
 callback presence, and prints provider metadata such as `name`, `version`, and
 declared `capabilities`.
+
+## Native voice media stack readiness
+
+Before attempting a real embedded WebRTC/SRTP backend, inspect the local build
+machine for the required native dependencies:
+
+```bash
+python3 tools/check_voice_native_media_stack.py --pretty
+```
+
+The report checks the local `pkg-config` surface plus Homebrew formula
+availability for the current candidate dependency set:
+
+- `opus`
+- `portaudio`
+- `srtp`
+- `libusrsctp`
+- `libjuice`
+- `libdatachannel`
+
+It also summarizes whether the machine is currently ready for the narrower
+`libjuice + srtp + libusrsctp + opus + portaudio` candidate path without
+guessing from memory.
 
 ## References
 

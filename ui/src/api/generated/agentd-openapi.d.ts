@@ -8042,7 +8042,7 @@ export interface components {
             poll_interval_ms: number;
             /** Format: int64 */
             tone_hz: number;
-            /** @description Whether this runtime plan terminates media natively inside agentd instead of delegating RTP/media handling to the shipped browser peer. `builtin_native_plugin` plans report `true`; the shipped signaling stub still reports `false`. */
+            /** @description Whether this runtime plan terminates media natively inside agentd instead of delegating RTP/media handling to the shipped browser peer. `builtin_native_plugin` mirrors the loaded provider capability rather than the mode name alone, so the shipped sample provider still reports `false`. */
             native_media_supported: boolean;
             native_media_provider?: components["schemas"]["VoiceWebRtcPeerNativeMediaProvider"];
         };
@@ -8129,7 +8129,7 @@ export interface components {
             media_remote_byes_seen: number;
             /** Format: int64 */
             media_local_byes_sent: number;
-            /** @description Whether this runtime can terminate RTP/media natively inside agentd. Current shipped runtimes report `false`. */
+            /** @description Whether this runtime can terminate RTP/media natively inside agentd. Current shipped runtimes, including the builtin sample provider, still report `false`. */
             native_media_supported: boolean;
             /** @description Whether native media handling is currently active inside agentd for this runtime. Current shipped runtimes report `false`. */
             native_media_active: boolean;

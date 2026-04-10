@@ -51,12 +51,14 @@ static void test_runtime_kind_info_reports_reserved_and_stub_modes() {
   const auto native_info =
     voice_peer_media_engine_info_for_runtime_kind(native_cfg, "builtin");
   assert(native_info.media_engine_kind == "builtin_native_plugin");
-  assert(native_info.native_media_supported);
+  assert(!native_info.native_media_supported);
   assert(!native_info.native_media_active);
   assert(native_info.provider_abi_version == 2);
-  assert(native_info.provider_name == "mock_native_plugin");
-  assert(native_info.provider_version == "1.0.0");
-  assert(native_info.provider_capabilities["transport_family"].asString() == "mock_webrtc");
+  assert(native_info.provider_name == "agentd_builtin_sample_provider");
+  assert(native_info.provider_version == "0.1.0");
+  assert(native_info.provider_capabilities["transport_family"].asString() == "sample_webrtc");
+  assert(native_info.provider_capabilities["sample_provider"].asBool());
+  assert(native_info.provider_capabilities["real_media_engine"].asBool() == false);
 }
 
 static void test_builtin_media_engine_stub_answers_remote_offer() {
@@ -139,7 +141,7 @@ static void test_builtin_media_engine_stub_answers_remote_offer() {
   assert(runtime.media_local_byes_sent == 1);
 }
 
-static void test_builtin_media_engine_native_plugin_loads_and_reports_native_media() {
+static void test_builtin_media_engine_native_plugin_loads_sample_provider_metadata() {
   DaemonConfig cfg;
   cfg.audio_webrtc_builtin_mode = "native_plugin";
   cfg.audio_webrtc_builtin_native_library_path = AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH;
@@ -149,12 +151,13 @@ static void test_builtin_media_engine_native_plugin_loads_and_reports_native_med
   assert(engine);
   assert(err.empty());
   assert(engine->info().media_engine_kind == "builtin_native_plugin");
-  assert(engine->info().native_media_supported);
+  assert(!engine->info().native_media_supported);
   assert(!engine->info().native_media_active);
   assert(engine->info().provider_abi_version == 2);
-  assert(engine->info().provider_name == "mock_native_plugin");
-  assert(engine->info().provider_version == "1.0.0");
+  assert(engine->info().provider_name == "agentd_builtin_sample_provider");
+  assert(engine->info().provider_version == "0.1.0");
   assert(engine->info().provider_capabilities["ice"].asBool());
+  assert(engine->info().provider_capabilities["real_media_engine"].asBool() == false);
 
   VoicePeerRuntime runtime;
   Json::Value init_event(Json::nullValue);
@@ -162,12 +165,12 @@ static void test_builtin_media_engine_native_plugin_loads_and_reports_native_med
   assert(err.empty());
   note_voice_peer_media_engine_event(&runtime, init_event);
   assert(runtime.media_engine_kind == "builtin_native_plugin");
-  assert(runtime.native_media_supported);
-  assert(runtime.native_media_active);
+  assert(!runtime.native_media_supported);
+  assert(!runtime.native_media_active);
   assert(runtime.media_engine_state == "signaling_ready");
   assert(runtime.native_media_provider["abi_version"].asInt() == 2);
-  assert(runtime.native_media_provider["name"].asString() == "mock_native_plugin");
-  assert(runtime.native_media_provider["capabilities"]["transport_family"].asString() == "mock_webrtc");
+  assert(runtime.native_media_provider["name"].asString() == "agentd_builtin_sample_provider");
+  assert(runtime.native_media_provider["capabilities"]["transport_family"].asString() == "sample_webrtc");
 
   VoiceBrokerSignalRemoteDescriptionReady ready;
   ready.description.type = "offer";
@@ -179,10 +182,10 @@ static void test_builtin_media_engine_native_plugin_loads_and_reports_native_med
   assert(engine->handle_remote_description(ready, &answer, &answer_event, &err));
   assert(err.empty());
   assert(answer.type == "answer");
-  assert(answer.sdp == "native-plugin-answer");
+  assert(answer.sdp == "agentd-builtin-sample-answer");
   note_voice_peer_media_engine_event(&runtime, answer_event);
   assert(runtime.media_engine_state == "answer_ready");
-  assert(runtime.native_media_active);
+  assert(!runtime.native_media_active);
 }
 
 static void test_builtin_media_engine_legacy_v1_plugin_compatibility_defaults_metadata() {
@@ -195,7 +198,7 @@ static void test_builtin_media_engine_legacy_v1_plugin_compatibility_defaults_me
   assert(engine);
   assert(err.empty());
   assert(engine->info().media_engine_kind == "builtin_native_plugin");
-  assert(engine->info().native_media_supported);
+  assert(!engine->info().native_media_supported);
   assert(engine->info().provider_abi_version == 1);
   assert(!engine->info().provider_name.empty());
   assert(engine->info().provider_version == "legacy_abi_v1");
@@ -206,6 +209,8 @@ static void test_builtin_media_engine_legacy_v1_plugin_compatibility_defaults_me
   assert(engine->initialize(&runtime, &init_event, &err));
   assert(err.empty());
   note_voice_peer_media_engine_event(&runtime, init_event);
+  assert(!runtime.native_media_supported);
+  assert(!runtime.native_media_active);
   assert(runtime.native_media_provider["abi_version"].asInt() == 1);
   assert(runtime.native_media_provider["version"].asString() == "legacy_abi_v1");
 
@@ -228,10 +233,11 @@ static void test_builtin_native_probe_json_reports_provider_details() {
   assert(probe["configured"].asBool());
   assert(probe["loadable"].asBool());
   assert(probe["media_engine_kind"].asString() == "builtin_native_plugin");
-  assert(probe["native_media_supported"].asBool());
+  assert(probe["native_media_supported"].asBool() == false);
   assert(probe["provider"]["abi_version"].asInt() == 2);
-  assert(probe["provider"]["name"].asString() == "mock_native_plugin");
-  assert(probe["provider"]["capabilities"]["transport_family"].asString() == "mock_webrtc");
+  assert(probe["provider"]["name"].asString() == "agentd_builtin_sample_provider");
+  assert(probe["provider"]["capabilities"]["transport_family"].asString() == "sample_webrtc");
+  assert(probe["provider"]["capabilities"]["sample_provider"].asBool());
 }
 
 }  // namespace
@@ -239,7 +245,7 @@ static void test_builtin_native_probe_json_reports_provider_details() {
 int main() {
   test_runtime_kind_info_reports_reserved_and_stub_modes();
   test_builtin_media_engine_stub_answers_remote_offer();
-  test_builtin_media_engine_native_plugin_loads_and_reports_native_media();
+  test_builtin_media_engine_native_plugin_loads_sample_provider_metadata();
   test_builtin_media_engine_legacy_v1_plugin_compatibility_defaults_metadata();
   test_builtin_native_probe_json_reports_provider_details();
   return 0;

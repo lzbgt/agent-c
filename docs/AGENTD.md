@@ -481,6 +481,11 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `peer.media_engine_kind=builtin_native_plugin`. The provider seam is now self-describing too:
   `builtin_native_probe` surfaces provider ABI/name/version/capabilities plus load errors in config/runtime metadata,
   and live/planned runtime snapshots persist the loaded provider details under `peer.native_media_provider`.
+- The repo now also ships a daemon-owned sample provider module for that seam:
+  `./build/libagentd_voice_builtin_media_engine_sample.{dylib,so,dll}`. It proves the real native-provider load path
+  without depending on a test-only fixture, but it intentionally still reports
+  `peer.native_media_supported=false` / `peer.native_media_active=false` because it is only an answer-exchange sample,
+  not an embedded RTP/SRTP/WebRTC engine.
 - The builtin/runtime preview and live runtime snapshots now also expose the media-engine seam explicitly:
   `media_runtime_plan.media_engine_kind` / `peer.media_engine_kind` distinguish `builtin_reserved`,
   `builtin_signaling_stub`, `builtin_native_plugin`, and `browser_peer`, while `native_media_supported` /

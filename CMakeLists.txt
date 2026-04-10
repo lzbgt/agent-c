@@ -427,13 +427,13 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wpedantic>
   )
 
-  add_library(agentd_voice_builtin_media_engine_mock MODULE
-    tests/fixtures/voice_builtin_media_engine_mock.cpp
+  add_library(agentd_voice_builtin_media_engine_sample MODULE
+    daemon/src/session_voice_builtin_media_engine_sample_provider.cpp
   )
-  target_compile_options(agentd_voice_builtin_media_engine_mock PRIVATE
+  target_compile_options(agentd_voice_builtin_media_engine_sample PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
   )
-  target_include_directories(agentd_voice_builtin_media_engine_mock PRIVATE
+  target_include_directories(agentd_voice_builtin_media_engine_sample PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
   )
 
@@ -799,7 +799,7 @@ if(AGENT_BUILD_HOST)
     $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
   )
   target_compile_definitions(session_voice_builtin_contract_tests PRIVATE
-    AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_mock>"
+    AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_sample>"
     AGENTD_TEST_VOICE_MEDIA_ENGINE_LEGACY_V1_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_legacy_v1>"
   )
   target_link_libraries(session_voice_builtin_contract_tests PRIVATE agentd_lib)
@@ -812,7 +812,7 @@ if(AGENT_BUILD_HOST)
     $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
   )
   target_compile_definitions(session_voice_builtin_media_engine_tests PRIVATE
-    AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_mock>"
+    AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_sample>"
     AGENTD_TEST_VOICE_MEDIA_ENGINE_LEGACY_V1_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_legacy_v1>"
   )
   target_link_libraries(session_voice_builtin_media_engine_tests PRIVATE agentd_lib)
@@ -834,7 +834,7 @@ if(AGENT_BUILD_HOST)
     $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
   )
   target_compile_definitions(session_voice_builtin_backend_tests PRIVATE
-    AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_mock>"
+    AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_sample>"
     AGENTD_TEST_VOICE_MEDIA_ENGINE_LEGACY_V1_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_legacy_v1>"
   )
   target_link_libraries(session_voice_builtin_backend_tests PRIVATE agentd_lib)
@@ -1300,7 +1300,7 @@ if(AGENT_BUILD_HOST)
       COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_session_voice_webrtc_peer_builtin_smoke.sh
         $<TARGET_FILE:agentd>
         native_plugin
-        $<TARGET_FILE:agentd_voice_builtin_media_engine_mock>
+        $<TARGET_FILE:agentd_voice_builtin_media_engine_sample>
     )
     set_tests_properties(agentd_session_voice_webrtc_peer_builtin_native_plugin_smoke PROPERTIES SKIP_RETURN_CODE 77)
 

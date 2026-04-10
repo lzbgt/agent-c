@@ -52,8 +52,8 @@ int legacy_initialize(
   }
   return copy_text(
            "{\"ok\":true,\"event\":\"media_engine_initialized\",\"media_engine_state\":\"signaling_ready\","
-           "\"media_engine_kind\":\"builtin_native_plugin\",\"native_media_supported\":true,"
-           "\"native_media_active\":true,\"provider\":\"legacy_v1_mock\"}",
+           "\"media_engine_kind\":\"builtin_native_plugin\",\"native_media_supported\":false,"
+           "\"native_media_active\":false,\"provider\":\"legacy_v1_mock\"}",
            event_json_buf,
            event_json_buf_size)
     ? 1
@@ -92,8 +92,8 @@ int legacy_handle_remote_description(
   }
   std::string event =
     "{\"ok\":true,\"event\":\"legacy_answer_ready\",\"media_engine_state\":\"answer_ready\","
-    "\"media_engine_kind\":\"builtin_native_plugin\",\"native_media_supported\":true,"
-    "\"native_media_active\":true,\"initial_remote_candidate_count\":" +
+    "\"media_engine_kind\":\"builtin_native_plugin\",\"native_media_supported\":false,"
+    "\"native_media_active\":false,\"initial_remote_candidate_count\":" +
     std::to_string(initial_remote_candidate_count) + "}";
   return copy_text(event, event_json_buf, event_json_buf_size)
     ? 1
@@ -117,8 +117,8 @@ int legacy_handle_remote_candidate(
   }
   return copy_text(
            "{\"ok\":true,\"event\":\"remote_candidate_ready\",\"media_engine_state\":\"signaling_active\","
-           "\"media_engine_kind\":\"builtin_native_plugin\",\"native_media_supported\":true,"
-           "\"native_media_active\":true}",
+           "\"media_engine_kind\":\"builtin_native_plugin\",\"native_media_supported\":false,"
+           "\"native_media_active\":false}",
            event_json_buf,
            event_json_buf_size)
     ? 1
@@ -133,7 +133,7 @@ void legacy_handle_remote_bye(
 ) {
   std::string payload =
     "{\"ok\":true,\"event\":\"remote_bye\",\"media_engine_state\":\"stopped\","
-    "\"media_engine_kind\":\"builtin_native_plugin\",\"native_media_supported\":true,"
+    "\"media_engine_kind\":\"builtin_native_plugin\",\"native_media_supported\":false,"
     "\"native_media_active\":false";
   if (reason && *reason) payload += std::string(",\"reason\":\"") + reason + "\"";
   payload += "}";
@@ -147,7 +147,7 @@ void legacy_handle_local_shutdown(
 ) {
   (void)copy_text(
     "{\"ok\":true,\"event\":\"local_bye_sent\",\"media_engine_state\":\"stopping\","
-    "\"media_engine_kind\":\"builtin_native_plugin\",\"native_media_supported\":true,"
+    "\"media_engine_kind\":\"builtin_native_plugin\",\"native_media_supported\":false,"
     "\"native_media_active\":false,\"reason\":\"agentd_builtin_stop\"}",
     event_json_buf,
     event_json_buf_size);
@@ -156,7 +156,7 @@ void legacy_handle_local_shutdown(
 const agentd_voice_media_engine_provider_v1 kLegacyProvider = {
   AGENTD_VOICE_MEDIA_ENGINE_PROVIDER_ABI_V1,
   "builtin_native_plugin",
-  1,
+  0,
   &legacy_create,
   &legacy_destroy,
   &legacy_initialize,

@@ -1,6 +1,6 @@
 # Native Voice Media Stack Research
 
-Date: 2026-04-10
+Date: 2026-04-11
 
 ## Goal
 
@@ -15,8 +15,8 @@ pkg-config --list-all | rg 'opus|srtp|webrtc|datachannel|portaudio|pulse'
 pkg-config --modversion opus portaudio-2.0
 ls /opt/homebrew/include /opt/homebrew/lib | rg 'opus|srtp|webrtc|datachannel|portaudio|pulse'
 brew --version
-brew search libdatachannel libsrtp webrtc usrsctp libjuice
-brew info libdatachannel libsrtp usrsctp libjuice
+brew info libdatachannel srtp libusrsctp libjuice
+python3 tools/check_voice_native_media_stack.py --pretty
 rg -n "libdatachannel|libwebrtc|libsrtp|srtp|opus|portaudio|pulse|webrtc::|rtc::|RTP|SRTP|SDP" \
   daemon CMakeLists.txt tests docs tools --glob '!tests/*.sh' --glob '!tests/*.js'
 ```
@@ -37,10 +37,12 @@ rg -n "libdatachannel|libwebrtc|libsrtp|srtp|opus|portaudio|pulse|webrtc::|rtc::
   - no `libdatachannel`
   - no `libwebrtc`
   - no `usrsctp`
-- `brew search libdatachannel libsrtp webrtc usrsctp libjuice` returned no
-  direct matches except that `brew info` confirmed:
-  - `libjuice` exists in Homebrew Core
-  - `libjuice` was not installed locally at scan time
+- Homebrew formula availability is better than the original quick scan implied:
+  - `libjuice` exists in Homebrew Core and was not installed locally
+  - `srtp` exists in Homebrew Core and was not installed locally
+  - `libusrsctp` exists in Homebrew Core and was not installed locally
+  - `libdatachannel` still was **not** available as a Homebrew formula in this
+    environment
 - Repo scan across `daemon/`, `CMakeLists.txt`, native tests, and tooling found
   no in-tree integration for:
   - `libdatachannel`
@@ -54,7 +56,7 @@ rg -n "libdatachannel|libwebrtc|libsrtp|srtp|opus|portaudio|pulse|webrtc::|rtc::
   - `signaling_stub` mode
   - `native_plugin` mode
   - a loadable provider ABI
-  - mock-provider coverage
+  - a shipped sample provider target plus ABI-v1 compatibility fixture coverage
 - The repo did **not** yet have an actual embedded/native RTP media engine.
 
 ## Implications
@@ -70,6 +72,7 @@ At this scan point, the local machine is ready for:
 
 - provider ABI/tooling work
 - diagnostics/probe surfacing
+- shipped sample-provider bring-up and contract validation
 - optional audio I/O experiments using `opus` / `portaudio`
 
 It is **not** yet ready for a real embedded WebRTC/SRTP runtime without adding
@@ -80,15 +83,19 @@ new dependencies or vendoring a stack.
 Pick one concrete native backend family and wire it deliberately:
 
 - `libdatachannel` family:
-  - likely requires `libjuice` / ICE plumbing
-  - still needs explicit SRTP/audio integration choices
+  - not currently available as a Homebrew formula on this machine
+  - would likely require vendoring or manual source integration
 - full `libwebrtc` embed:
   - largest integration cost
   - strongest long-term browser/WebRTC parity
-- custom RTP/SRTP path:
-  - narrower surface
-  - higher protocol ownership burden
+- narrower `libjuice + srtp + libusrsctp + opus + portaudio` path:
+  - now confirmed possible from local package availability facts
+  - still requires explicit DTLS/SRTP/session implementation work in-tree
+  - avoids blocking on `libdatachannel` packaging
 
 Given the current repo and machine facts, the most pragmatic next move is to
 prototype against a chosen provider/backend family behind the existing
-`native_plugin` seam rather than expanding signaling-only behavior further.
+`native_plugin` seam rather than expanding signaling-only behavior further. The
+current best factual candidate is the narrower `libjuice + srtp + libusrsctp`
+family, because those dependencies are available through Homebrew even though
+they are not yet installed locally.

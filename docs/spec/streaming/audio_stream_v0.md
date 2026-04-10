@@ -267,6 +267,10 @@ A v0 smoke test should:
   yet baking a specific WebRTC/SRTP stack into the tree. The provider seam is now self-describing: config/runtime
   metadata expose `builtin_native_probe`, and live/planned builtin snapshots carry `native_media_provider` with the
   loaded provider ABI/name/version/capabilities.
+- The repo now also ships a daemon-owned sample provider module for that native-plugin seam. It proves the real
+  process-local provider path without depending on a test fixture, but it intentionally still reports
+  `native_media_supported=false` / `native_media_active=false` because it is only a signaling/answer-exchange sample,
+  not an embedded RTP/SRTP/WebRTC media engine yet.
 - That runtime contract now also exposes the media-engine seam directly: planned/live builtin paths report
   `media_engine_kind=builtin_reserved|builtin_signaling_stub|builtin_native_plugin`, bundled/external runtimes report
   `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` now distinguish the
@@ -297,6 +301,9 @@ A v0 smoke test should:
 - Operators can inspect a candidate provider library offline via
   `python3 tools/inspect_voice_media_provider.py /abs/path/to/provider.{so,dylib,dll} --pretty`, which validates the
   exported provider symbol/ABI and prints the declared capability metadata before daemon bring-up.
+- Operators can also inspect local native dependency readiness via
+  `python3 tools/check_voice_native_media_stack.py --pretty`, which checks installed `pkg-config` packages plus
+  Homebrew formula availability for `opus`, `portaudio`, `srtp`, `libusrsctp`, `libjuice`, and `libdatachannel`.
 - If persisted daemon config is corrupted to an invalid `audio_webrtc.default_runtime_kind`, agentd now self-heals that
   field back to `auto` on load and rewrites the SQLite runtime-config record instead of surfacing impossible state.
 
@@ -306,7 +313,7 @@ A v0 smoke test should:
 - Do we need a broker-issued ephemeral token for direct agentd signaling as a fallback?
 - How should the broker authenticate agentd participation (mTLS vs bearer)?
 - How should the shipped managed media peer move from a Node/Playwright child runtime into an embedded long-lived agentd-native media service?
-- Which concrete native WebRTC/SRTP stack should back `builtin_mode=native_plugin` when we replace the current mock
+- Which concrete native WebRTC/SRTP stack should back `builtin_mode=native_plugin` when we replace the shipped sample
   provider with a real embedded RTP/media engine?
 
 ## References
