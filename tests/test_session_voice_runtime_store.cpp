@@ -171,9 +171,15 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   st.native_media_supported = false;
   st.native_media_active = false;
   st.dtls_identity_ready = true;
+  st.dtls_handshake_ready = true;
+  st.dtls_exporter_ready = true;
   st.dtls_fingerprint_sha256 = "AA:BB:CC";
   st.dtls_setup_role = "passive";
   st.dtls_certificate_subject = "/CN=agentd builtin embedded transport";
+  st.dtls_handshake_state = "connected";
+  st.dtls_selected_srtp_profile = "SRTP_AES128_CM_SHA1_80";
+  st.dtls_packets_sent = 12;
+  st.dtls_packets_received = 9;
   st.native_media_provider["abi_version"] = 2;
   st.native_media_provider["name"] = "agentd_builtin_sample_provider";
   st.native_media_provider["capabilities"]["transport_family"] = "sample_webrtc";
@@ -192,9 +198,15 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(json["native_media_supported"].asBool() == false);
   assert(json["native_media_active"].asBool() == false);
   assert(json["dtls_identity_ready"].asBool());
+  assert(json["dtls_handshake_ready"].asBool());
+  assert(json["dtls_exporter_ready"].asBool());
   assert(json["dtls_fingerprint_sha256"].asString() == "AA:BB:CC");
   assert(json["dtls_setup_role"].asString() == "passive");
   assert(json["dtls_certificate_subject"].asString() == "/CN=agentd builtin embedded transport");
+  assert(json["dtls_handshake_state"].asString() == "connected");
+  assert(json["dtls_selected_srtp_profile"].asString() == "SRTP_AES128_CM_SHA1_80");
+  assert(json["dtls_packets_sent"].asInt64() == 12);
+  assert(json["dtls_packets_received"].asInt64() == 9);
   assert(json["native_media_provider"]["abi_version"].asInt() == 2);
   assert(json["native_media_provider"]["name"].asString() == "agentd_builtin_sample_provider");
 
@@ -214,9 +226,15 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(round_trip.native_media_supported == false);
   assert(round_trip.native_media_active == false);
   assert(round_trip.dtls_identity_ready);
+  assert(round_trip.dtls_handshake_ready);
+  assert(round_trip.dtls_exporter_ready);
   assert(round_trip.dtls_fingerprint_sha256 == "AA:BB:CC");
   assert(round_trip.dtls_setup_role == "passive");
   assert(round_trip.dtls_certificate_subject == "/CN=agentd builtin embedded transport");
+  assert(round_trip.dtls_handshake_state == "connected");
+  assert(round_trip.dtls_selected_srtp_profile == "SRTP_AES128_CM_SHA1_80");
+  assert(round_trip.dtls_packets_sent == 12);
+  assert(round_trip.dtls_packets_received == 9);
   assert(round_trip.native_media_provider["abi_version"].asInt() == 2);
   assert(round_trip.native_media_provider["capabilities"]["transport_family"].asString() == "sample_webrtc");
   assert(round_trip.native_media_provider["capabilities"]["sample_provider"].asBool());

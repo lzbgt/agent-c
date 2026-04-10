@@ -8136,12 +8136,30 @@ export interface components {
             native_media_provider?: components["schemas"]["VoiceWebRtcPeerNativeMediaProvider"];
             /** @description Whether the current builtin native-plugin provider has generated a local DTLS identity for diagnostics and answer shaping. Current bundled/browser runtimes omit this field; the embedded transport provider sets it when its ephemeral certificate and fingerprint are ready. */
             dtls_identity_ready?: boolean;
+            /** @description Whether the current builtin native-plugin provider has completed its in-process DTLS handshake and selected an SRTP profile. Current shipped runtimes may keep this `false` even when signaling is active because RTP/media termination is still not embedded. */
+            dtls_handshake_ready?: boolean;
+            /** @description Whether the current builtin native-plugin provider has successfully exported DTLS-SRTP keying material for the active handshake. */
+            dtls_exporter_ready?: boolean;
             /** @description Local ephemeral DTLS certificate fingerprint, formatted as uppercase colon-delimited SHA-256 bytes, when exposed by the current builtin native-plugin provider. */
             dtls_fingerprint_sha256?: string;
             /** @description Local DTLS answer role surfaced by the builtin native-plugin provider. Current embedded transport providers report `passive`. */
             dtls_setup_role?: string;
             /** @description Diagnostic subject string for the local ephemeral DTLS certificate when exposed by the builtin native-plugin provider. */
             dtls_certificate_subject?: string;
+            /** @description Best-effort DTLS handshake lifecycle for the current builtin native-plugin provider, such as `idle`, `ready_for_client_hello`, `handshaking`, `connected`, or `failed`. */
+            dtls_handshake_state?: string;
+            /** @description Negotiated DTLS-SRTP protection profile name when an in-process DTLS handshake has completed. */
+            dtls_selected_srtp_profile?: string;
+            /**
+             * Format: int64
+             * @description Number of DTLS datagrams the current builtin native-plugin provider has emitted through its transport path.
+             */
+            dtls_packets_sent?: number;
+            /**
+             * Format: int64
+             * @description Number of DTLS datagrams the current builtin native-plugin provider has consumed from its transport path.
+             */
+            dtls_packets_received?: number;
             ready: boolean;
             running: boolean;
             /** Format: int64 */

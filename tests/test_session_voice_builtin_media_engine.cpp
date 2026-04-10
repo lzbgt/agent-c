@@ -38,6 +38,9 @@ static void assert_known_test_provider(
     assert(capabilities["transport_family"].asString() == "embedded_transport_primitives");
     assert(capabilities["embedded_transport_provider"].asBool());
     assert(capabilities["ice"].asBool());
+    assert(capabilities["dtls"].asBool());
+    assert(capabilities["dtls_handshake"].asBool());
+    assert(capabilities["dtls_srtp_export"].asBool());
     assert(capabilities["srtp"].asBool());
     assert(capabilities["sctp"].asBool());
     assert(capabilities["real_media_engine"].asBool() == false);

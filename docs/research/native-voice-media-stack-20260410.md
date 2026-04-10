@@ -95,6 +95,14 @@ Reference artifacts downloaded into the repo for exact vendor details:
     exchanges a real offer, consumes the candidate-bearing answer, trickles
     remote candidates back into the provider, and proves post-answer transport
     progression with live libjuice state and candidate counters
+- The repo now also has a direct in-tree DTLS/SRTP proof slice independent of
+  that synthetic libjuice role quirk:
+  - `session_voice_builtin_dtls_transport_tests` completes a DTLS 1.2
+    client/server handshake using the same OpenSSL server/client configuration
+    the builtin provider now carries
+  - that test negotiates `SRTP_AES128_CM_SHA1_80`
+  - it also proves `SSL_export_keying_material(..., "EXTRACTOR-dtls_srtp", ...)`
+    succeeds, which is the exact prerequisite for SRTP context bring-up
 - The repo still does **not** yet have an actual embedded/native RTP media
   engine. The new provider uses real `libjuice` / `libsrtp` / `usrsctp`
   libraries, but it still reports `native_media_supported=false` and

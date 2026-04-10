@@ -123,6 +123,9 @@ static void test_embedded_transport_provider_loads_and_answers_remote_offer() {
   assert(engine->info().provider_capabilities["transport_family"].asString() ==
          "embedded_transport_primitives");
   assert(engine->info().provider_capabilities["ice"].asBool());
+  assert(engine->info().provider_capabilities["dtls"].asBool());
+  assert(engine->info().provider_capabilities["dtls_handshake"].asBool());
+  assert(engine->info().provider_capabilities["dtls_srtp_export"].asBool());
   assert(engine->info().provider_capabilities["srtp"].asBool());
   assert(engine->info().provider_capabilities["sctp"].asBool());
   assert(engine->info().provider_capabilities["real_media_engine"].asBool() == false);
@@ -137,6 +140,9 @@ static void test_embedded_transport_provider_loads_and_answers_remote_offer() {
   assert(init_event["libjuice_local_description_bytes"].asUInt64() > 0);
   assert(init_event["gather_started"].asBool());
   assert(init_event["dtls_identity_ready"].asBool());
+  assert(init_event["dtls_handshake_ready"].asBool() == false);
+  assert(init_event["dtls_exporter_ready"].asBool() == false);
+  assert(init_event["dtls_handshake_state"].asString() == "ready_for_client_hello");
   assert(init_event["dtls_setup_role"].asString() == "passive");
   assert(!init_event["dtls_fingerprint_sha256"].asString().empty());
   assert(!init_event["dtls_certificate_subject"].asString().empty());
@@ -291,7 +297,6 @@ static void test_embedded_transport_provider_reaches_local_ice_connectivity() {
     assert(!ctx.last_candidate_event["libjuice_selected_remote_address"].asString().empty());
   }
   assert(runtime.media_remote_candidates_seen >= 1);
-
   juice_destroy(remote_agent);
 }
 

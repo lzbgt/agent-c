@@ -205,6 +205,12 @@ VoiceWebRtcPeerRuntime:
     dtls_identity_ready:
       type: boolean
       description: Whether the current builtin native-plugin provider has generated a local DTLS identity for diagnostics and answer shaping. Current bundled/browser runtimes omit this field; the embedded transport provider sets it when its ephemeral certificate and fingerprint are ready.
+    dtls_handshake_ready:
+      type: boolean
+      description: Whether the current builtin native-plugin provider has completed its in-process DTLS handshake and selected an SRTP profile. Current shipped runtimes may keep this `false` even when signaling is active because RTP/media termination is still not embedded.
+    dtls_exporter_ready:
+      type: boolean
+      description: Whether the current builtin native-plugin provider has successfully exported DTLS-SRTP keying material for the active handshake.
     dtls_fingerprint_sha256:
       type: string
       description: Local ephemeral DTLS certificate fingerprint, formatted as uppercase colon-delimited SHA-256 bytes, when exposed by the current builtin native-plugin provider.
@@ -214,6 +220,20 @@ VoiceWebRtcPeerRuntime:
     dtls_certificate_subject:
       type: string
       description: Diagnostic subject string for the local ephemeral DTLS certificate when exposed by the builtin native-plugin provider.
+    dtls_handshake_state:
+      type: string
+      description: Best-effort DTLS handshake lifecycle for the current builtin native-plugin provider, such as `idle`, `ready_for_client_hello`, `handshaking`, `connected`, or `failed`.
+    dtls_selected_srtp_profile:
+      type: string
+      description: Negotiated DTLS-SRTP protection profile name when an in-process DTLS handshake has completed.
+    dtls_packets_sent:
+      type: integer
+      format: int64
+      description: Number of DTLS datagrams the current builtin native-plugin provider has emitted through its transport path.
+    dtls_packets_received:
+      type: integer
+      format: int64
+      description: Number of DTLS datagrams the current builtin native-plugin provider has consumed from its transport path.
     ready: { type: boolean }
     running: { type: boolean }
     pid: { type: integer, format: int64 }

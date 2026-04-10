@@ -501,6 +501,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
       ${USRSCTP_LIBRARY_DIRS}
     )
     target_link_libraries(agentd_voice_builtin_media_engine_embedded_transport PRIVATE
+      OpenSSL::SSL
       OpenSSL::Crypto
       ${LIBSRTP2_LIBRARIES}
       ${USRSCTP_LIBRARIES}
@@ -888,6 +889,15 @@ if(AGENT_BUILD_HOST)
   )
   target_link_libraries(session_voice_builtin_media_engine_tests PRIVATE agentd_lib)
   add_test(NAME session_voice_builtin_media_engine_tests COMMAND session_voice_builtin_media_engine_tests)
+
+  add_executable(session_voice_builtin_dtls_transport_tests
+    tests/test_session_voice_builtin_dtls_transport.cpp
+  )
+  target_compile_options(session_voice_builtin_dtls_transport_tests PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_link_libraries(session_voice_builtin_dtls_transport_tests PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+  add_test(NAME session_voice_builtin_dtls_transport_tests COMMAND session_voice_builtin_dtls_transport_tests)
 
   if(AGENTD_ENABLE_BUILTIN_EMBEDDED_TRANSPORT_PROVIDER)
     add_executable(session_voice_builtin_embedded_transport_provider_tests

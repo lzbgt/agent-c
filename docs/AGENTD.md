@@ -491,9 +491,11 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   DTLS/RTP media plane yet. What is now shipped and proved is narrower but real: the provider starts libjuice candidate
   gathering before returning its answer, emits a candidate-bearing answer SDP through the `native_plugin` ABI, generates
   an ephemeral DTLS identity, and mirrors browser-style media offers into an inactive answer shape with
-  `a=setup:passive` plus a surfaced SHA-256 fingerprint. The direct embedded-provider test coverage now proves both that
-  browser-shaped inactive answer contract and post-answer transport progression against a local libjuice loopback peer
-  instead of only "library loaded" or "answer string returned".
+  `a=setup:passive` plus a surfaced SHA-256 fingerprint. The repo now also has direct in-tree DTLS proof for the same
+  OpenSSL configuration: `session_voice_builtin_dtls_transport_tests` completes a DTLS 1.2 client/server handshake over
+  datagram-memory BIOs, negotiates `SRTP_AES128_CM_SHA1_80`, and exports DTLS-SRTP keying material. The embedded
+  provider itself now surfaces DTLS handshake/export telemetry too, even though the end-to-end native-plugin transport
+  path still does not terminate RTP inside agentd.
 - The builtin/runtime preview and live runtime snapshots now also expose the media-engine seam explicitly:
   `media_runtime_plan.media_engine_kind` / `peer.media_engine_kind` distinguish `builtin_reserved`,
   `builtin_signaling_stub`, `builtin_native_plugin`, and `browser_peer`, while `native_media_supported` /
@@ -501,7 +503,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   agentd.
 - Builtin native-plugin snapshots now also surface provider DTLS diagnostics when available:
   `peer.dtls_identity_ready`, `peer.dtls_fingerprint_sha256`, `peer.dtls_setup_role`, and
-  `peer.dtls_certificate_subject`.
+  `peer.dtls_certificate_subject`. When the provider advances further, it also persists
+  `peer.dtls_handshake_ready`, `peer.dtls_exporter_ready`, `peer.dtls_handshake_state`,
+  `peer.dtls_selected_srtp_profile`, `peer.dtls_packets_sent`, and `peer.dtls_packets_received`.
 - Builtin runtime events are now normalized before persistence/logging too: every JSONL/runtime event carries the same
   session/timestamp envelope, and the persisted/live runtime snapshot keeps explicit media-engine counters plus
   `media_engine_state` so operators can see whether the stub has only initialized, answered an offer, observed remote

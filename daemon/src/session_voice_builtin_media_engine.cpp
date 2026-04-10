@@ -821,6 +821,12 @@ void note_voice_peer_media_engine_event(
   if (payload.isMember("dtls_identity_ready") && payload["dtls_identity_ready"].isBool()) {
     runtime->dtls_identity_ready = payload["dtls_identity_ready"].asBool();
   }
+  if (payload.isMember("dtls_handshake_ready") && payload["dtls_handshake_ready"].isBool()) {
+    runtime->dtls_handshake_ready = payload["dtls_handshake_ready"].asBool();
+  }
+  if (payload.isMember("dtls_exporter_ready") && payload["dtls_exporter_ready"].isBool()) {
+    runtime->dtls_exporter_ready = payload["dtls_exporter_ready"].asBool();
+  }
   if (payload.isMember("dtls_fingerprint_sha256") && payload["dtls_fingerprint_sha256"].isString()) {
     runtime->dtls_fingerprint_sha256 = trim_copy(payload["dtls_fingerprint_sha256"].asString());
   }
@@ -829,6 +835,20 @@ void note_voice_peer_media_engine_event(
   }
   if (payload.isMember("dtls_certificate_subject") && payload["dtls_certificate_subject"].isString()) {
     runtime->dtls_certificate_subject = trim_copy(payload["dtls_certificate_subject"].asString());
+  }
+  if (payload.isMember("dtls_handshake_state") && payload["dtls_handshake_state"].isString()) {
+    runtime->dtls_handshake_state = trim_copy(payload["dtls_handshake_state"].asString());
+  }
+  if (payload.isMember("dtls_selected_srtp_profile") && payload["dtls_selected_srtp_profile"].isString()) {
+    runtime->dtls_selected_srtp_profile = trim_copy(payload["dtls_selected_srtp_profile"].asString());
+  }
+  if (payload.isMember("dtls_packets_sent") &&
+      (payload["dtls_packets_sent"].isInt64() || payload["dtls_packets_sent"].isUInt64())) {
+    runtime->dtls_packets_sent = payload["dtls_packets_sent"].asInt64();
+  }
+  if (payload.isMember("dtls_packets_received") &&
+      (payload["dtls_packets_received"].isInt64() || payload["dtls_packets_received"].isUInt64())) {
+    runtime->dtls_packets_received = payload["dtls_packets_received"].asInt64();
   }
   if (payload.isMember("native_media_provider") && payload["native_media_provider"].isObject()) {
     runtime->native_media_provider = payload["native_media_provider"];

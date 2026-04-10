@@ -6,6 +6,8 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <openssl/rsa.h>
+#include <openssl/ssl.h>
+#include <openssl/srtp.h>
 #include <openssl/x509.h>
 #include <srtp2/srtp.h>
 #include <usrsctp.h>
@@ -25,31 +27,45 @@
 namespace {
 
 constexpr const char* kProviderName = "agentd_builtin_embedded_transport_provider";
-constexpr const char* kProviderVersion = "0.3.0";
+constexpr const char* kProviderVersion = "0.4.0";
 constexpr const char* kCapabilitiesJson =
   "{\"signaling\":true,\"audio_capture\":false,\"audio_render\":false,"
-  "\"ice\":true,\"dtls\":false,\"dtls_identity\":true,\"dtls_answer_shape\":true,"
+  "\"ice\":true,\"dtls\":true,\"dtls_identity\":true,\"dtls_answer_shape\":true,"
+  "\"dtls_handshake\":true,\"dtls_srtp_export\":true,"
   "\"srtp\":true,\"sctp\":true,"
   "\"transport_family\":\"embedded_transport_primitives\","
   "\"embedded_transport_provider\":true,\"sample_provider\":false,"
   "\"real_media_engine\":false,\"remote_description_optional\":true,"
   "\"candidate_trickle_ingest\":true,\"candidate_trickle_emit\":false}";
 
+constexpr const char* kDtlsSrtpProfiles =
+  "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32";
+constexpr const char* kDtlsSrtpExporterLabel = "EXTRACTOR-dtls_srtp";
+constexpr size_t kDtlsSrtpExporterBytes = 2 * (16 + 14);
+constexpr long kDtlsDatagramMtu = 1200;
+
 struct EmbeddedTransportState {
   juice_agent_t* agent = nullptr;
   std::string local_description;
   std::string libjuice_state = "disconnected";
   std::string last_remote_description_error;
+  SSL_CTX* dtls_ctx = nullptr;
+  SSL* dtls_ssl = nullptr;
   EVP_PKEY* dtls_private_key = nullptr;
   X509* dtls_certificate = nullptr;
   std::string dtls_fingerprint_sha256;
   std::string dtls_setup_role = "passive";
   std::string dtls_certificate_subject;
+  std::string dtls_handshake_state = "idle";
+  std::string dtls_selected_srtp_profile;
+  std::string dtls_last_error;
   std::string selected_local_candidate;
   std::string selected_remote_candidate;
   std::string selected_local_address;
   std::string selected_remote_address;
   std::string last_answer_sdp_shape = "ice_only";
+  uint64_t dtls_packets_sent = 0;
+  uint64_t dtls_packets_received = 0;
   uint64_t offers_seen = 0;
   uint64_t remote_candidates_seen = 0;
   uint64_t local_candidates_observed = 0;
@@ -58,6 +74,8 @@ struct EmbeddedTransportState {
   bool remote_description_applied = false;
   bool transport_connectivity_ready = false;
   bool dtls_identity_ready = false;
+  bool dtls_handshake_ready = false;
+  bool dtls_exporter_ready = false;
 };
 
 std::mutex g_transport_runtime_mu;
@@ -343,6 +361,179 @@ bool generate_dtls_identity(EmbeddedTransportState* engine, std::string* out_err
   return true;
 }
 
+std::string ssl_error_text(SSL* ssl, int rc) {
+  const int ssl_err = ssl ? SSL_get_error(ssl, rc) : SSL_ERROR_SSL;
+  switch (ssl_err) {
+    case SSL_ERROR_NONE:
+      return "ssl_error_none";
+    case SSL_ERROR_WANT_READ:
+      return "ssl_want_read";
+    case SSL_ERROR_WANT_WRITE:
+      return "ssl_want_write";
+    case SSL_ERROR_ZERO_RETURN:
+      return "ssl_zero_return";
+    case SSL_ERROR_SYSCALL:
+      return "ssl_syscall";
+    case SSL_ERROR_SSL:
+    default:
+      break;
+  }
+  return "ssl_error_" + std::to_string(ssl_err) + ": " + openssl_last_error_text();
+}
+
+std::string selected_srtp_profile_name(SSL* ssl) {
+  if (!ssl) return "";
+  SRTP_PROTECTION_PROFILE* profile = SSL_get_selected_srtp_profile(ssl);
+  if (!profile || !profile->name) return "";
+  return std::string(profile->name);
+}
+
+bool export_dtls_srtp_keying_material(EmbeddedTransportState* engine) {
+  if (!engine || !engine->dtls_ssl) return false;
+  unsigned char keymat[kDtlsSrtpExporterBytes];
+  const int rc = SSL_export_keying_material(
+    engine->dtls_ssl,
+    keymat,
+    sizeof(keymat),
+    kDtlsSrtpExporterLabel,
+    std::strlen(kDtlsSrtpExporterLabel),
+    nullptr,
+    0,
+    0
+  );
+  OPENSSL_cleanse(keymat, sizeof(keymat));
+  return rc == 1;
+}
+
+void mark_dtls_failure(EmbeddedTransportState* engine, const std::string& err) {
+  if (!engine) return;
+  engine->dtls_handshake_state = "failed";
+  engine->dtls_last_error = err;
+}
+
+bool drain_dtls_outbound(EmbeddedTransportState* engine, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!engine || !engine->dtls_ssl || !engine->agent) return true;
+  BIO* wbio = SSL_get_wbio(engine->dtls_ssl);
+  if (!wbio) return true;
+  char packet[2048];
+  for (;;) {
+    const int n = BIO_read(wbio, packet, sizeof(packet));
+    if (n <= 0) break;
+    const int rc = juice_send(engine->agent, packet, static_cast<size_t>(n));
+    if (rc != JUICE_ERR_SUCCESS) {
+      const std::string err = "libjuice send failed with code " + std::to_string(rc);
+      mark_dtls_failure(engine, err);
+      if (out_err) *out_err = err;
+      return false;
+    }
+    engine->dtls_packets_sent += 1;
+  }
+  return true;
+}
+
+bool advance_dtls_handshake(EmbeddedTransportState* engine, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!engine || !engine->dtls_ssl) return true;
+  if (engine->dtls_handshake_ready) return true;
+  if (engine->dtls_handshake_state == "failed") {
+    if (out_err && !engine->dtls_last_error.empty()) *out_err = engine->dtls_last_error;
+    return false;
+  }
+  if (engine->dtls_handshake_state.empty() || engine->dtls_handshake_state == "idle") {
+    engine->dtls_handshake_state = "handshaking";
+  }
+
+  const int rc = SSL_do_handshake(engine->dtls_ssl);
+  std::string send_err;
+  if (!drain_dtls_outbound(engine, &send_err)) {
+    if (out_err) *out_err = send_err;
+    return false;
+  }
+  if (rc == 1) {
+    engine->dtls_handshake_ready = true;
+    engine->dtls_handshake_state = "connected";
+    engine->dtls_last_error.clear();
+    engine->dtls_selected_srtp_profile = selected_srtp_profile_name(engine->dtls_ssl);
+    engine->dtls_exporter_ready = export_dtls_srtp_keying_material(engine);
+    if (!engine->dtls_exporter_ready && out_err) {
+      *out_err = "openssl dtls exporter failed after handshake";
+    }
+    return true;
+  }
+
+  const int ssl_err = SSL_get_error(engine->dtls_ssl, rc);
+  if (ssl_err == SSL_ERROR_WANT_READ || ssl_err == SSL_ERROR_WANT_WRITE) {
+    engine->dtls_handshake_state = "handshaking";
+    engine->dtls_last_error.clear();
+    return true;
+  }
+
+  const std::string err = ssl_error_text(engine->dtls_ssl, rc);
+  mark_dtls_failure(engine, err);
+  if (out_err) *out_err = err;
+  return false;
+}
+
+bool ensure_dtls_transport(EmbeddedTransportState* engine, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!engine) {
+    if (out_err) *out_err = "missing instance";
+    return false;
+  }
+  if (engine->dtls_ssl) return true;
+  if (!engine->dtls_identity_ready && !generate_dtls_identity(engine, out_err)) return false;
+
+  using SslCtxPtr = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>;
+  using SslPtr = std::unique_ptr<SSL, decltype(&SSL_free)>;
+  using BioPtr = std::unique_ptr<BIO, decltype(&BIO_free)>;
+
+  SslCtxPtr ctx(SSL_CTX_new(DTLS_server_method()), SSL_CTX_free);
+  if (!ctx) {
+    if (out_err) *out_err = "openssl dtls ctx allocation failed: " + openssl_last_error_text();
+    return false;
+  }
+  if (SSL_CTX_set_min_proto_version(ctx.get(), DTLS1_2_VERSION) != 1) {
+    if (out_err) *out_err = "openssl dtls min proto init failed: " + openssl_last_error_text();
+    return false;
+  }
+  SSL_CTX_set_read_ahead(ctx.get(), 1);
+  if (SSL_CTX_use_certificate(ctx.get(), engine->dtls_certificate) != 1 ||
+      SSL_CTX_use_PrivateKey(ctx.get(), engine->dtls_private_key) != 1 ||
+      SSL_CTX_check_private_key(ctx.get()) != 1) {
+    if (out_err) *out_err = "openssl dtls cert/key install failed: " + openssl_last_error_text();
+    return false;
+  }
+  if (SSL_CTX_set_tlsext_use_srtp(ctx.get(), kDtlsSrtpProfiles) != 0) {
+    if (out_err) *out_err = "openssl dtls SRTP profile config failed: " + openssl_last_error_text();
+    return false;
+  }
+
+  SslPtr ssl(SSL_new(ctx.get()), SSL_free);
+  if (!ssl) {
+    if (out_err) *out_err = "openssl dtls ssl allocation failed: " + openssl_last_error_text();
+    return false;
+  }
+  BioPtr rbio(BIO_new(BIO_s_dgram_mem()), BIO_free);
+  BioPtr wbio(BIO_new(BIO_s_dgram_mem()), BIO_free);
+  if (!rbio || !wbio) {
+    if (out_err) *out_err = "openssl dtls bio allocation failed: " + openssl_last_error_text();
+    return false;
+  }
+  (void)BIO_ctrl(rbio.get(), BIO_CTRL_DGRAM_SET_MTU, kDtlsDatagramMtu, nullptr);
+  (void)BIO_ctrl(wbio.get(), BIO_CTRL_DGRAM_SET_MTU, kDtlsDatagramMtu, nullptr);
+  SSL_set_bio(ssl.get(), rbio.release(), wbio.release());
+  SSL_set_options(ssl.get(), SSL_OP_NO_QUERY_MTU);
+  SSL_set_mtu(ssl.get(), kDtlsDatagramMtu);
+  SSL_set_accept_state(ssl.get());
+
+  engine->dtls_ctx = ctx.release();
+  engine->dtls_ssl = ssl.release();
+  engine->dtls_handshake_state = "ready_for_client_hello";
+  engine->dtls_last_error.clear();
+  return true;
+}
+
 std::string build_answer_sdp(
   const std::string& remote_sdp,
   const EmbeddedTransportState& state
@@ -521,6 +712,24 @@ void on_gathering_done(juice_agent_t*, void* user_ptr) {
   engine->gathering_done = true;
 }
 
+void on_recv(juice_agent_t*, const char* data, size_t size, void* user_ptr) {
+  auto* engine = static_cast<EmbeddedTransportState*>(user_ptr);
+  if (!engine || !engine->dtls_ssl || !data || size == 0) return;
+  BIO* rbio = SSL_get_rbio(engine->dtls_ssl);
+  if (!rbio) return;
+  const int wrote = BIO_write(rbio, data, static_cast<int>(size));
+  if (wrote <= 0) {
+    mark_dtls_failure(engine, "openssl dtls inbound packet write failed: " + openssl_last_error_text());
+    return;
+  }
+  engine->dtls_packets_received += 1;
+  if (engine->dtls_handshake_state == "ready_for_client_hello") {
+    engine->dtls_handshake_state = "handshaking";
+  }
+  std::string err;
+  (void)advance_dtls_handshake(engine, &err);
+}
+
 bool ensure_agent(EmbeddedTransportState* engine, std::string* out_err) {
   if (out_err) out_err->clear();
   if (!engine) {
@@ -529,6 +738,7 @@ bool ensure_agent(EmbeddedTransportState* engine, std::string* out_err) {
   }
   if (engine->agent) return true;
   if (!generate_dtls_identity(engine, out_err)) return false;
+  if (!ensure_dtls_transport(engine, out_err)) return false;
 
   juice_config_t cfg;
   std::memset(&cfg, 0, sizeof(cfg));
@@ -536,6 +746,7 @@ bool ensure_agent(EmbeddedTransportState* engine, std::string* out_err) {
   cfg.cb_state_changed = &on_state_changed;
   cfg.cb_candidate = &on_candidate;
   cfg.cb_gathering_done = &on_gathering_done;
+  cfg.cb_recv = &on_recv;
   cfg.user_ptr = engine;
 
   engine->agent = juice_create(&cfg);
@@ -577,10 +788,15 @@ std::string build_event_json(
     ",\"provider\":\"" + std::string(kProviderName) + "\""
     ",\"transport_family\":\"embedded_transport_primitives\""
     ",\"dtls_identity_ready\":" + std::string(state.dtls_identity_ready ? "true" : "false") +
+    ",\"dtls_handshake_ready\":" + std::string(state.dtls_handshake_ready ? "true" : "false") +
+    ",\"dtls_exporter_ready\":" + std::string(state.dtls_exporter_ready ? "true" : "false") +
     ",\"dtls_setup_role\":\"" + json_escape(state.dtls_setup_role) + "\""
+    ",\"dtls_handshake_state\":\"" + json_escape(state.dtls_handshake_state) + "\""
     ",\"sdp_answer_shape\":\"" + json_escape(state.last_answer_sdp_shape) + "\""
     ",\"libjuice_state\":\"" + json_escape(state.libjuice_state) + "\""
     ",\"libjuice_local_description_bytes\":" + std::to_string(state.local_description.size()) +
+    ",\"dtls_packets_sent\":" + std::to_string(state.dtls_packets_sent) +
+    ",\"dtls_packets_received\":" + std::to_string(state.dtls_packets_received) +
     ",\"local_candidates_observed\":" + std::to_string(state.local_candidates_observed) +
     ",\"remote_candidates_seen\":" + std::to_string(state.remote_candidates_seen) +
     ",\"offers_seen\":" + std::to_string(state.offers_seen) +
@@ -598,6 +814,12 @@ std::string build_event_json(
   }
   if (!state.dtls_certificate_subject.empty()) {
     json += ",\"dtls_certificate_subject\":\"" + json_escape(state.dtls_certificate_subject) + "\"";
+  }
+  if (!state.dtls_selected_srtp_profile.empty()) {
+    json += ",\"dtls_selected_srtp_profile\":\"" + json_escape(state.dtls_selected_srtp_profile) + "\"";
+  }
+  if (!state.dtls_last_error.empty()) {
+    json += ",\"dtls_last_error\":\"" + json_escape(state.dtls_last_error) + "\"";
   }
   if (!state.selected_local_candidate.empty()) {
     json += ",\"libjuice_selected_local_candidate\":\"" +
@@ -642,6 +864,14 @@ void embedded_destroy(void* instance) {
     if (engine->agent) {
       juice_destroy(engine->agent);
       engine->agent = nullptr;
+    }
+    if (engine->dtls_ssl) {
+      SSL_free(engine->dtls_ssl);
+      engine->dtls_ssl = nullptr;
+    }
+    if (engine->dtls_ctx) {
+      SSL_CTX_free(engine->dtls_ctx);
+      engine->dtls_ctx = nullptr;
     }
     if (engine->dtls_certificate) {
       X509_free(engine->dtls_certificate);
@@ -724,6 +954,7 @@ int embedded_handle_remote_description(
     (void)juice_set_remote_gathering_done(engine->agent);
   }
   wait_for_transport_progress(engine, 250);
+  (void)advance_dtls_handshake(engine, nullptr);
   if (!refresh_local_description(engine, &err)) {
     write_error(err, err_buf, err_buf_size);
     return 0;
@@ -778,6 +1009,7 @@ int embedded_handle_remote_candidate(
   }
   engine->remote_candidates_seen += 1;
   wait_for_transport_progress(engine, 1500);
+  (void)advance_dtls_handshake(engine, nullptr);
   refresh_transport_snapshot(engine);
 
   const std::string payload =

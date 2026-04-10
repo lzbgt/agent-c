@@ -280,13 +280,18 @@ A v0 smoke test should:
   candidates before forming its answer, generates an ephemeral local DTLS identity, mirrors browser-style media offers
   into an inactive answer with `a=setup:passive` and a surfaced SHA-256 fingerprint, and has direct loopback coverage
   that exchanges a real libjuice offer plus trickled remote candidates through the provider ABI and observes transport
-  progression beyond the earlier "answer string only" boundary.
+  progression beyond the earlier "answer string only" boundary. The repo now also has a direct DTLS/SRTP proof slice in
+  `session_voice_builtin_dtls_transport_tests`: the same OpenSSL DTLS configuration used by the builtin native-plugin
+  provider completes an in-tree DTLS 1.2 handshake, negotiates `SRTP_AES128_CM_SHA1_80`, and exports DTLS-SRTP keying
+  material over datagram-memory BIOs.
 - That runtime contract now also exposes the media-engine seam directly: planned/live builtin paths report
   `media_engine_kind=builtin_reserved|builtin_signaling_stub|builtin_native_plugin`, bundled/external runtimes report
   `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` now distinguish the
   signaling-only stub from a loadable native media provider.
 - Builtin native-plugin runtime snapshots now also surface provider DTLS diagnostics when available through
-  `dtls_identity_ready`, `dtls_fingerprint_sha256`, `dtls_setup_role`, and `dtls_certificate_subject`.
+  `dtls_identity_ready`, `dtls_fingerprint_sha256`, `dtls_setup_role`, `dtls_certificate_subject`,
+  `dtls_handshake_ready`, `dtls_exporter_ready`, `dtls_handshake_state`, `dtls_selected_srtp_profile`,
+  `dtls_packets_sent`, and `dtls_packets_received`.
 - Builtin runtime observability is now explicit too: normalized per-session JSONL events and the persisted/live runtime
   snapshot both surface `media_engine_state` plus cumulative counters for offers, answers, candidates, and `bye`
   events, so the future native engine can inherit one operator-facing status contract instead of inventing telemetry

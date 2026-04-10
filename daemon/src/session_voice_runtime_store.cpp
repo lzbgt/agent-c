@@ -56,9 +56,17 @@ Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   out["native_media_supported"] = st.native_media_supported;
   out["native_media_active"] = st.native_media_active;
   out["dtls_identity_ready"] = st.dtls_identity_ready;
+  out["dtls_handshake_ready"] = st.dtls_handshake_ready;
+  out["dtls_exporter_ready"] = st.dtls_exporter_ready;
   if (!st.dtls_fingerprint_sha256.empty()) out["dtls_fingerprint_sha256"] = st.dtls_fingerprint_sha256;
   if (!st.dtls_setup_role.empty()) out["dtls_setup_role"] = st.dtls_setup_role;
   if (!st.dtls_certificate_subject.empty()) out["dtls_certificate_subject"] = st.dtls_certificate_subject;
+  if (!st.dtls_handshake_state.empty()) out["dtls_handshake_state"] = st.dtls_handshake_state;
+  if (!st.dtls_selected_srtp_profile.empty()) {
+    out["dtls_selected_srtp_profile"] = st.dtls_selected_srtp_profile;
+  }
+  out["dtls_packets_sent"] = Json::Int64(st.dtls_packets_sent);
+  out["dtls_packets_received"] = Json::Int64(st.dtls_packets_received);
   if (st.native_media_provider.isObject()) out["native_media_provider"] = st.native_media_provider;
   out["ready"] = st.ready;
   out["running"] = st.running;
@@ -253,6 +261,12 @@ bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, s
   if (v.isMember("dtls_identity_ready") && v["dtls_identity_ready"].isBool()) {
     st.dtls_identity_ready = v["dtls_identity_ready"].asBool();
   }
+  if (v.isMember("dtls_handshake_ready") && v["dtls_handshake_ready"].isBool()) {
+    st.dtls_handshake_ready = v["dtls_handshake_ready"].asBool();
+  }
+  if (v.isMember("dtls_exporter_ready") && v["dtls_exporter_ready"].isBool()) {
+    st.dtls_exporter_ready = v["dtls_exporter_ready"].asBool();
+  }
   if (v.isMember("dtls_fingerprint_sha256") && v["dtls_fingerprint_sha256"].isString()) {
     st.dtls_fingerprint_sha256 = trim_copy(v["dtls_fingerprint_sha256"].asString());
   }
@@ -261,6 +275,20 @@ bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, s
   }
   if (v.isMember("dtls_certificate_subject") && v["dtls_certificate_subject"].isString()) {
     st.dtls_certificate_subject = trim_copy(v["dtls_certificate_subject"].asString());
+  }
+  if (v.isMember("dtls_handshake_state") && v["dtls_handshake_state"].isString()) {
+    st.dtls_handshake_state = trim_copy(v["dtls_handshake_state"].asString());
+  }
+  if (v.isMember("dtls_selected_srtp_profile") && v["dtls_selected_srtp_profile"].isString()) {
+    st.dtls_selected_srtp_profile = trim_copy(v["dtls_selected_srtp_profile"].asString());
+  }
+  if (v.isMember("dtls_packets_sent") &&
+      (v["dtls_packets_sent"].isInt64() || v["dtls_packets_sent"].isUInt64())) {
+    st.dtls_packets_sent = v["dtls_packets_sent"].asInt64();
+  }
+  if (v.isMember("dtls_packets_received") &&
+      (v["dtls_packets_received"].isInt64() || v["dtls_packets_received"].isUInt64())) {
+    st.dtls_packets_received = v["dtls_packets_received"].asInt64();
   }
   if (v.isMember("native_media_provider") && v["native_media_provider"].isObject()) {
     st.native_media_provider = v["native_media_provider"];
