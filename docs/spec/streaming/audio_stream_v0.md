@@ -293,7 +293,9 @@ A v0 smoke test should:
   proves outbound SRTP protect plus inbound SRTP/RTP ingest and receive-side audio decode. Agentd can now also submit
   processed PCM back through the native-provider ABI; the embedded provider negotiates outbound Opus when `libopus` is
   present, falls back to negotiated G.711, encodes a bounded Opus or PCMU/PCMA RTP frame, protects it with the outbound
-  libsrtp context, and transmits it over libjuice. It now emits compound RTCP Sender Report packets (`PT=200` plus
+  libsrtp context, and transmits it over libjuice. Outbound payload selection and 20 ms Opus/G.711 RTP framing now live
+  behind the shared `session_voice_audio_encode` helper with direct unit coverage, and Opus is preferred when negotiated
+  even if G.711 appears earlier in the remote SDP. It now emits compound RTCP Sender Report packets (`PT=200` plus
   SDES/CNAME) using the outbound SSRC on a bounded first-frame / packet-count / time cadence instead of after every RTP
   frame, protects them with SRTCP, and persists inbound/outbound RTCP counters plus last-packet metadata. After inbound
   RTP arrives, it now also emits compound RTCP Receiver Report packets (`PT=201` plus SDES/CNAME) with the inbound SSRC,

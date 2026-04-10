@@ -164,6 +164,10 @@ Reference artifacts downloaded into the repo for exact vendor details:
     falls back to negotiated G.711 payload type from the remote SDP, encodes a
     20 ms Opus or PCMU/PCMA RTP frame, protects it with the outbound libsrtp
     context, and transmits it over the same libjuice transport
+  - outbound codec selection and 20 ms RTP payload framing now live in the
+    shared `session_voice_audio_encode` helper with direct unit coverage; the
+    helper prefers negotiated `OPUS/48000/1|2` when available even if G.711
+    appears earlier in the remote SDP
   - the provider now builds compound RTCP Sender Report packets (`PT=200` plus
     SDES/CNAME) from the same outbound SSRC on a bounded first-frame /
     packet-count / time cadence instead of after every RTP frame, protects
@@ -238,8 +242,9 @@ The best factual candidate remains the narrower `libjuice + srtp + libusrsctp`
 family, because those dependencies are now locally installed, buildable, and
 covered by provider inspection/unit/smoke proof. The bounded outbound RTP path
 now negotiates Opus when `libopus` is present, falls back to G.711 payload type
-from the remote SDP (`PCMU/8000/1` preferred, `PCMA/8000/1` fallback), records
-that selection in runtime telemetry, and emits a reduced-size SRTCP Sender
+from the remote SDP (`OPUS/48000/1|2` preferred when available, then
+`PCMU/8000/1`, then `PCMA/8000/1`), records that selection in runtime telemetry,
+and emits a reduced-size SRTCP Sender
 Report as part of a compound RTCP packet on a bounded cadence. It now also
 emits bounded compound SRTCP Receiver Report packets after inbound RTP media
 arrives. The next concrete step after this negotiated transmit path is broader

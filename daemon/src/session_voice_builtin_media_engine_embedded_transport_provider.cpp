@@ -1,4 +1,5 @@
 #include "session_voice_audio_decode.h"
+#include "session_voice_audio_encode.h"
 #include "session_voice_builtin_media_engine_plugin.h"
 #include "session_voice_builtin_sdp_answer.h"
 #include "session_voice_dtls_srtp_util.h"
@@ -16,19 +17,13 @@
 #include <srtp2/srtp.h>
 #include <usrsctp.h>
 
-#if defined(AGENTD_HAVE_OPUS)
-#include <opus.h>
-#endif
-
 #include <algorithm>
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <chrono>
 #include <deque>
-#include <limits>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -90,9 +85,6 @@ constexpr const char* kDtlsSrtpProfiles =
   "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32";
 constexpr long kDtlsDatagramMtu = 1200;
 constexpr size_t kAudioPcmStagingCapacitySamples = 48000 * 2 * 2;
-constexpr size_t kOutboundG711FrameSamples = 160;
-constexpr size_t kOutboundOpusFrameSamplesPerChannel = 960;
-constexpr int kOutboundOpusMaxPayloadBytes = 1275;
 constexpr uint32_t kOutboundRtpSsrc = 0xA6E17D01u;
 constexpr uint64_t kSenderReportRtpPacketCadence = 50;
 constexpr uint64_t kReceiverReportRtpPacketCadence = 50;
@@ -335,12 +327,8 @@ struct EmbeddedTransportState {
   uint16_t outbound_rtp_sequence = 1;
   uint32_t outbound_rtp_timestamp = 0;
   uint32_t outbound_rtp_ssrc = kOutboundRtpSsrc;
-#if defined(AGENTD_HAVE_OPUS)
-  OpusEncoder* outbound_opus_encoder = nullptr;
-  int outbound_opus_sample_rate_hz = 0;
-  int outbound_opus_channels = 0;
-#endif
   agentd::InboundRtpAudioDecoder audio_decoder;
+  agentd::OutboundRtpAudioEncoder outbound_audio_encoder;
   std::deque<int16_t> pcm_staging;
   std::mutex async_events_mu;
   std::deque<std::string> pending_async_events;
@@ -674,6 +662,7 @@ bool decode_inbound_audio_frame(
 
 void clear_outbound_audio_payload_selection(EmbeddedTransportState* engine) {
   if (!engine) return;
+  engine->outbound_audio_encoder.reset();
   engine->audio_outbound_payload_type = -1;
   engine->audio_outbound_sample_rate_hz = 0;
   engine->audio_outbound_channels = 0;
@@ -684,25 +673,16 @@ bool select_outbound_audio_payload_from_remote_sdp(EmbeddedTransportState* engin
   if (!engine) return false;
   clear_outbound_audio_payload_selection(engine);
 
-  const agentd::RtpAudioPayloadSpec* selected = nullptr;
-  for (const auto& spec : engine->audio_decoder.payload_specs()) {
-#if defined(AGENTD_HAVE_OPUS)
-    if (spec.codec_name == "OPUS" &&
-        spec.sample_rate_hz == 48000 &&
-        (spec.channels == 1 || spec.channels == 2)) {
-      selected = &spec;
-      break;
-    }
-#endif
-    if (spec.sample_rate_hz != 8000 || spec.channels != 1) continue;
-    if (spec.codec_name == "PCMU") {
-      selected = &spec;
-      break;
-    }
-    if (!selected && spec.codec_name == "PCMA") {
-      selected = &spec;
-    }
+  std::string select_err;
+  if (!engine->outbound_audio_encoder.select_payload(
+        engine->audio_decoder.payload_specs(), &select_err)) {
+    engine->audio_outbound_last_error = select_err.empty()
+      ? std::string("remote SDP did not negotiate a supported outbound audio payload")
+      : select_err;
+    return false;
   }
+  const agentd::RtpAudioPayloadSpec* selected =
+    engine->outbound_audio_encoder.selected_payload();
   if (!selected) {
     engine->audio_outbound_last_error =
       "remote SDP did not negotiate a supported outbound audio payload";
@@ -749,251 +729,6 @@ void note_inbound_rtp_packet_for_receiver_report(
       rtp_info.timestamp,
       clock_rate_hz,
     });
-}
-
-uint8_t encode_pcmu_sample(int16_t sample) {
-  constexpr int kBias = 0x84;
-  constexpr int kClip = 32635;
-  static constexpr std::array<int, 8> kSegmentEnd = {{
-    0xFF, 0x1FF, 0x3FF, 0x7FF, 0xFFF, 0x1FFF, 0x3FFF, 0x7FFF,
-  }};
-
-  int value = static_cast<int>(sample);
-  uint8_t mask = 0xFFu;
-  if (value < 0) {
-    value = -value;
-    mask = 0x7Fu;
-  }
-  value = std::min(value, kClip) + kBias;
-
-  int segment = 0;
-  while (segment < static_cast<int>(kSegmentEnd.size()) && value > kSegmentEnd[segment]) {
-    segment += 1;
-  }
-  if (segment >= static_cast<int>(kSegmentEnd.size())) {
-    return static_cast<uint8_t>(0x7Fu ^ mask);
-  }
-  const uint8_t encoded = static_cast<uint8_t>(
-    (segment << 4) | ((value >> (segment + 3)) & 0x0F));
-  return static_cast<uint8_t>(encoded ^ mask);
-}
-
-uint8_t encode_pcma_sample(int16_t sample) {
-  static constexpr std::array<int, 8> kSegmentEnd = {{
-    0x1F, 0x3F, 0x7F, 0xFF, 0x1FF, 0x3FF, 0x7FF, 0xFFF,
-  }};
-
-  int value = static_cast<int>(sample);
-  uint8_t mask = 0xD5u;
-  if (value < 0) {
-    value = -value - 1;
-    mask = 0x55u;
-  }
-  value = std::min(value, 32635);
-
-  int segment = 0;
-  while (segment < static_cast<int>(kSegmentEnd.size()) && value > kSegmentEnd[segment]) {
-    segment += 1;
-  }
-  if (segment >= static_cast<int>(kSegmentEnd.size())) {
-    return static_cast<uint8_t>(0x7Fu ^ mask);
-  }
-
-  uint8_t encoded = static_cast<uint8_t>(segment << 4);
-  encoded |= static_cast<uint8_t>(
-    segment < 2 ? ((value >> 4) & 0x0F) : ((value >> (segment + 3)) & 0x0F));
-  return static_cast<uint8_t>(encoded ^ mask);
-}
-
-std::vector<unsigned char> encode_pcm16_to_g711_20ms(
-  const int16_t* pcm,
-  size_t pcm_samples,
-  int sample_rate_hz,
-  int channels,
-  const std::string& codec_name
-) {
-  const bool use_pcma = codec_name == "PCMA";
-  std::vector<unsigned char> payload(
-    kOutboundG711FrameSamples,
-    use_pcma ? encode_pcma_sample(0) : encode_pcmu_sample(0));
-  if (!pcm || pcm_samples == 0 || sample_rate_hz <= 0 || channels <= 0) return payload;
-
-  const size_t channels_sz = static_cast<size_t>(channels);
-  const size_t frame_count = pcm_samples / channels_sz;
-  if (frame_count == 0) return payload;
-  for (size_t i = 0; i < payload.size(); ++i) {
-    size_t source_frame =
-      (static_cast<uint64_t>(i) * static_cast<uint64_t>(sample_rate_hz)) / 8000u;
-    if (source_frame >= frame_count) source_frame = frame_count - 1;
-    payload[i] = use_pcma
-      ? encode_pcma_sample(pcm[source_frame * channels_sz])
-      : encode_pcmu_sample(pcm[source_frame * channels_sz]);
-  }
-  return payload;
-}
-
-std::vector<int16_t> resample_interleaved_pcm16_20ms(
-  const int16_t* pcm,
-  size_t pcm_samples,
-  int source_sample_rate_hz,
-  int source_channels,
-  int target_sample_rate_hz,
-  int target_channels,
-  size_t target_samples_per_channel
-) {
-  std::vector<int16_t> out(target_samples_per_channel * static_cast<size_t>(target_channels), 0);
-  if (!pcm || pcm_samples == 0 ||
-      source_sample_rate_hz <= 0 || source_channels <= 0 ||
-      target_sample_rate_hz <= 0 || target_channels <= 0 ||
-      target_samples_per_channel == 0) {
-    return out;
-  }
-
-  const size_t source_channels_sz = static_cast<size_t>(source_channels);
-  const size_t target_channels_sz = static_cast<size_t>(target_channels);
-  const size_t source_frames = pcm_samples / source_channels_sz;
-  if (source_frames == 0) return out;
-
-  for (size_t frame = 0; frame < target_samples_per_channel; ++frame) {
-    size_t source_frame =
-      (static_cast<uint64_t>(frame) * static_cast<uint64_t>(source_sample_rate_hz)) /
-      static_cast<uint64_t>(target_sample_rate_hz);
-    if (source_frame >= source_frames) source_frame = source_frames - 1;
-    for (size_t channel = 0; channel < target_channels_sz; ++channel) {
-      const size_t source_channel =
-        std::min(channel, source_channels_sz - static_cast<size_t>(1));
-      out[frame * target_channels_sz + channel] =
-        pcm[source_frame * source_channels_sz + source_channel];
-    }
-  }
-  return out;
-}
-
-#if defined(AGENTD_HAVE_OPUS)
-bool ensure_outbound_opus_encoder(EmbeddedTransportState* engine, std::string* out_err) {
-  if (out_err) out_err->clear();
-  if (!engine) {
-    if (out_err) *out_err = "missing embedded transport state";
-    return false;
-  }
-  if (engine->audio_outbound_sample_rate_hz != 48000 ||
-      (engine->audio_outbound_channels != 1 && engine->audio_outbound_channels != 2)) {
-    if (out_err) *out_err = "unsupported outbound Opus RTP format";
-    return false;
-  }
-  const int sample_rate_hz = static_cast<int>(engine->audio_outbound_sample_rate_hz);
-  const int channels = static_cast<int>(engine->audio_outbound_channels);
-  if (engine->outbound_opus_encoder &&
-      engine->outbound_opus_sample_rate_hz == sample_rate_hz &&
-      engine->outbound_opus_channels == channels) {
-    return true;
-  }
-  if (engine->outbound_opus_encoder) {
-    opus_encoder_destroy(engine->outbound_opus_encoder);
-    engine->outbound_opus_encoder = nullptr;
-    engine->outbound_opus_sample_rate_hz = 0;
-    engine->outbound_opus_channels = 0;
-  }
-
-  int opus_err = OPUS_OK;
-  engine->outbound_opus_encoder =
-    opus_encoder_create(sample_rate_hz, channels, OPUS_APPLICATION_AUDIO, &opus_err);
-  if (!engine->outbound_opus_encoder) {
-    if (out_err) *out_err = std::string("opus encoder creation failed: ") + opus_strerror(opus_err);
-    return false;
-  }
-  engine->outbound_opus_sample_rate_hz = sample_rate_hz;
-  engine->outbound_opus_channels = channels;
-  return true;
-}
-
-bool encode_pcm16_to_opus_20ms(
-  EmbeddedTransportState* engine,
-  const int16_t* pcm,
-  size_t pcm_samples,
-  int sample_rate_hz,
-  int channels,
-  std::vector<unsigned char>* out_payload,
-  std::string* out_err
-) {
-  if (out_err) out_err->clear();
-  if (out_payload) out_payload->clear();
-  if (!out_payload) {
-    if (out_err) *out_err = "missing Opus payload output";
-    return false;
-  }
-  if (!ensure_outbound_opus_encoder(engine, out_err)) return false;
-
-  const int target_sample_rate_hz = static_cast<int>(engine->audio_outbound_sample_rate_hz);
-  const int target_channels = static_cast<int>(engine->audio_outbound_channels);
-  const std::vector<int16_t> opus_pcm = resample_interleaved_pcm16_20ms(
-    pcm,
-    pcm_samples,
-    sample_rate_hz,
-    channels,
-    target_sample_rate_hz,
-    target_channels,
-    kOutboundOpusFrameSamplesPerChannel);
-
-  std::array<unsigned char, kOutboundOpusMaxPayloadBytes> encoded{};
-  const int encoded_bytes = opus_encode(
-    engine->outbound_opus_encoder,
-    reinterpret_cast<const opus_int16*>(opus_pcm.data()),
-    static_cast<int>(kOutboundOpusFrameSamplesPerChannel),
-    encoded.data(),
-    static_cast<opus_int32>(encoded.size()));
-  if (encoded_bytes < 0) {
-    if (out_err) *out_err = std::string("opus encode failed: ") + opus_strerror(encoded_bytes);
-    return false;
-  }
-  if (encoded_bytes == 0) {
-    if (out_err) *out_err = "opus encode returned an empty payload";
-    return false;
-  }
-  out_payload->assign(encoded.data(), encoded.data() + encoded_bytes);
-  return true;
-}
-#endif
-
-bool encode_outbound_audio_payload_20ms(
-  EmbeddedTransportState* engine,
-  const int16_t* pcm,
-  size_t pcm_samples,
-  int sample_rate_hz,
-  int channels,
-  std::vector<unsigned char>* out_payload,
-  uint32_t* out_timestamp_increment,
-  std::string* out_err
-) {
-  if (out_err) out_err->clear();
-  if (out_payload) out_payload->clear();
-  if (out_timestamp_increment) *out_timestamp_increment = 0;
-  if (!engine || !out_payload || !out_timestamp_increment) {
-    if (out_err) *out_err = "missing outbound audio encode arguments";
-    return false;
-  }
-
-  if (engine->audio_outbound_codec_name == "PCMU" ||
-      engine->audio_outbound_codec_name == "PCMA") {
-    *out_payload = encode_pcm16_to_g711_20ms(
-      pcm, pcm_samples, sample_rate_hz, channels, engine->audio_outbound_codec_name);
-    *out_timestamp_increment = static_cast<uint32_t>(out_payload->size());
-    return true;
-  }
-
-#if defined(AGENTD_HAVE_OPUS)
-  if (engine->audio_outbound_codec_name == "OPUS") {
-    if (!encode_pcm16_to_opus_20ms(
-          engine, pcm, pcm_samples, sample_rate_hz, channels, out_payload, out_err)) {
-      return false;
-    }
-    *out_timestamp_increment = static_cast<uint32_t>(kOutboundOpusFrameSamplesPerChannel);
-    return true;
-  }
-#endif
-
-  if (out_err) *out_err = "outbound audio payload codec was not negotiated";
-  return false;
 }
 
 bool transmit_outbound_rtcp_sender_report(
@@ -1173,20 +908,18 @@ bool transmit_outbound_audio_rtp(
     return false;
   }
 
-  std::vector<unsigned char> payload;
-  uint32_t timestamp_increment = 0;
-  if (!encode_outbound_audio_payload_20ms(
-        engine,
+  agentd::EncodedRtpAudioPayload20ms encoded;
+  if (!engine->outbound_audio_encoder.encode_20ms(
         pcm,
         pcm_samples,
         sample_rate_hz,
         channels,
-        &payload,
-        &timestamp_increment,
+        &encoded,
         out_err)) {
     return false;
   }
-  std::vector<unsigned char> plain(12 + payload.size());
+  const uint32_t timestamp_increment = encoded.timestamp_increment;
+  std::vector<unsigned char> plain(12 + encoded.payload.size());
   plain[0] = 0x80u;
   plain[1] = static_cast<unsigned char>(engine->audio_outbound_payload_type);
   const uint16_t sequence = engine->outbound_rtp_sequence++;
@@ -1195,7 +928,7 @@ bool transmit_outbound_audio_rtp(
   write_u16_be(plain.data() + 2, sequence);
   write_u32_be(plain.data() + 4, timestamp);
   write_u32_be(plain.data() + 8, engine->outbound_rtp_ssrc);
-  std::memcpy(plain.data() + 12, payload.data(), payload.size());
+  std::memcpy(plain.data() + 12, encoded.payload.data(), encoded.payload.size());
 
   std::vector<unsigned char> protected_packet;
   std::string protect_err;
@@ -1218,7 +951,7 @@ bool transmit_outbound_audio_rtp(
   }
 
   engine->rtp_packets_sent += 1;
-  engine->rtp_payload_bytes_sent += payload.size();
+  engine->rtp_payload_bytes_sent += encoded.payload.size();
   engine->rtp_last_sent_payload_type = engine->audio_outbound_payload_type;
   engine->rtp_last_sent_sequence = sequence;
   engine->rtp_last_sent_timestamp = timestamp;
@@ -1584,12 +1317,6 @@ std::string derived_media_engine_state(const EmbeddedTransportState& state) {
   if (state.transport_connectivity_ready) return "transport_connected";
   if (state.remote_description_applied) return "signaling_active";
   return "signaling_ready";
-}
-
-void push_async_event_json(EmbeddedTransportState* engine, const std::string& payload) {
-  if (!engine || payload.empty()) return;
-  std::lock_guard<std::mutex> lk(engine->async_events_mu);
-  engine->pending_async_events.push_back(payload);
 }
 
 bool is_embedded_progress_event_json(const std::string& payload) {
@@ -2037,12 +1764,6 @@ void embedded_destroy(void* instance) {
       EVP_PKEY_free(engine->dtls_private_key);
       engine->dtls_private_key = nullptr;
     }
-#if defined(AGENTD_HAVE_OPUS)
-    if (engine->outbound_opus_encoder) {
-      opus_encoder_destroy(engine->outbound_opus_encoder);
-      engine->outbound_opus_encoder = nullptr;
-    }
-#endif
     delete engine;
   }
   release_transport_runtime();

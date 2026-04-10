@@ -504,9 +504,12 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   agentd-owned drained/retained PCM counters. Agentd now also submits processed PCM back through the native-provider
   ABI, and the embedded provider can negotiate outbound Opus when `libopus` is present, fall back to negotiated G.711,
   encode that PCM into a bounded Opus or PCMU/PCMA RTP frame, protect it with the outbound libsrtp context, and transmit
-  it over the existing libjuice transport. It also emits compound RTCP Sender Report packets (packet type `200` plus
-  SDES/CNAME) with the same outbound SSRC on a bounded first-frame / packet-count / time cadence instead of after every
-  RTP frame, protects them with SRTCP, and surfaces inbound/outbound RTCP counters and last-packet metadata. It now also
+  it over the existing libjuice transport. Outbound codec selection and 20 ms RTP audio payload framing now live behind
+  the shared `session_voice_audio_encode` helper with direct `session_voice_audio_encode_tests` coverage, and that helper
+  prefers negotiated `OPUS/48000/1|2` when available even if G.711 appears earlier in the remote SDP. It also emits
+  compound RTCP Sender Report packets (packet type `200` plus SDES/CNAME) with the same outbound SSRC on a bounded
+  first-frame / packet-count / time cadence instead of after every RTP frame, protects them with SRTCP, and surfaces
+  inbound/outbound RTCP counters and last-packet metadata. It now also
   sends compound RTCP Receiver Report packets (packet type `201` plus SDES/CNAME) after inbound RTP media arrives,
   reporting the inbound SSRC, extended highest sequence, fraction/cumulative loss, jitter, and LSR/DLSR when a remote
   Sender Report was observed. The Sender/Receiver Report layouts are pinned to the persisted RFC 3550 reference in
