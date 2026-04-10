@@ -1,12 +1,16 @@
 #include "session_voice_rtcp_report.h"
 
 #include <algorithm>
+#include <cstring>
 #include <limits>
 
 namespace agentd {
 namespace {
 
 constexpr uint64_t kUnixToNtpEpochSeconds = 2208988800ULL;
+constexpr uint8_t kRtcpSdesItemCname = 1;
+constexpr uint8_t kRtcpSdesItemEnd = 0;
+constexpr size_t kMaxSdesCnameBytes = 255;
 
 void write_u16_be(unsigned char* out, uint16_t value) {
   out[0] = static_cast<unsigned char>((value >> 8) & 0xFF);
@@ -235,6 +239,52 @@ RtcpReceiverReportPacket build_rtcp_receiver_report(
   write_u32_be(out.data() + 20, block.jitter);
   write_u32_be(out.data() + 24, block.lsr);
   write_u32_be(out.data() + 28, block.dlsr);
+  return out;
+}
+
+std::vector<unsigned char> build_rtcp_sdes_cname(
+  uint32_t sender_ssrc,
+  const std::string& cname) {
+  const size_t cname_size = std::min(cname.size(), kMaxSdesCnameBytes);
+  const size_t unpadded_size = 4 + 4 + 2 + cname_size + 1;
+  const size_t packet_size = ((unpadded_size + 3) / 4) * 4;
+  std::vector<unsigned char> out(packet_size, 0);
+  out[0] = 0x81u;
+  out[1] = kRtcpPacketTypeSourceDescription;
+  write_u16_be(out.data() + 2, static_cast<uint16_t>((packet_size / 4) - 1));
+  write_u32_be(out.data() + 4, sender_ssrc);
+  out[8] = kRtcpSdesItemCname;
+  out[9] = static_cast<unsigned char>(cname_size);
+  if (cname_size > 0) {
+    std::memcpy(out.data() + 10, cname.data(), cname_size);
+  }
+  out[10 + cname_size] = kRtcpSdesItemEnd;
+  return out;
+}
+
+std::vector<unsigned char> build_rtcp_sender_report_compound(
+  const RtcpSenderReportInput& input,
+  const std::string& cname) {
+  const RtcpSenderReportPacket sender_report = build_rtcp_sender_report(input);
+  std::vector<unsigned char> sdes = build_rtcp_sdes_cname(input.sender_ssrc, cname);
+  std::vector<unsigned char> out;
+  out.reserve(sender_report.size() + sdes.size());
+  out.insert(out.end(), sender_report.begin(), sender_report.end());
+  out.insert(out.end(), sdes.begin(), sdes.end());
+  return out;
+}
+
+std::vector<unsigned char> build_rtcp_receiver_report_compound(
+  uint32_t sender_ssrc,
+  const RtcpReceiverReportBlock& block,
+  const std::string& cname) {
+  const RtcpReceiverReportPacket receiver_report =
+    build_rtcp_receiver_report(sender_ssrc, block);
+  std::vector<unsigned char> sdes = build_rtcp_sdes_cname(sender_ssrc, cname);
+  std::vector<unsigned char> out;
+  out.reserve(receiver_report.size() + sdes.size());
+  out.insert(out.end(), receiver_report.begin(), receiver_report.end());
+  out.insert(out.end(), sdes.begin(), sdes.end());
   return out;
 }
 

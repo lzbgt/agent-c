@@ -503,14 +503,15 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   agentd-owned drained/retained PCM counters. Agentd now also submits processed PCM back through the native-provider
   ABI, and the embedded provider can negotiate outbound Opus when `libopus` is present, fall back to negotiated G.711,
   encode that PCM into a bounded Opus or PCMU/PCMA RTP frame, protect it with the outbound libsrtp context, and transmit
-  it over the existing libjuice transport. It also emits reduced-size RTCP Sender Reports (packet type `200`) with the
-  same outbound SSRC on a bounded first-frame / packet-count / time cadence instead of after every RTP frame, protects
-  them with SRTCP, and surfaces inbound/outbound RTCP counters and last-packet metadata. It now also sends a bounded
-  RTCP Receiver Report (packet type `201`) after inbound RTP media arrives, reporting the inbound SSRC, extended highest
-  sequence, fraction/cumulative loss, jitter, and LSR/DLSR when a remote Sender Report was observed. The Sender/Receiver
-  Report layouts are pinned to the persisted RFC 3550 reference in `docs/research/vendor-rfc3550-rtp-20260411.txt`, and the packet/report-block math now lives behind
-  the shared `session_voice_rtcp_report` helper with direct `session_voice_rtcp_report_tests` coverage; this is still a
-  minimal RTCP proof, not full compound RTCP packet emission or broad browser-peer quality-reporting implementation.
+  it over the existing libjuice transport. It also emits compound RTCP Sender Report packets (packet type `200` plus
+  SDES/CNAME) with the same outbound SSRC on a bounded first-frame / packet-count / time cadence instead of after every
+  RTP frame, protects them with SRTCP, and surfaces inbound/outbound RTCP counters and last-packet metadata. It now also
+  sends compound RTCP Receiver Report packets (packet type `201` plus SDES/CNAME) after inbound RTP media arrives,
+  reporting the inbound SSRC, extended highest sequence, fraction/cumulative loss, jitter, and LSR/DLSR when a remote
+  Sender Report was observed. The Sender/Receiver Report layouts are pinned to the persisted RFC 3550 reference in
+  `docs/research/vendor-rfc3550-rtp-20260411.txt`, and the packet/report-block math now lives behind the shared
+  `session_voice_rtcp_report` helper with direct `session_voice_rtcp_report_tests` coverage; this is still a minimal RTCP
+  proof, not broad browser-peer quality-reporting validation.
   The repo also has direct in-tree DTLS/SRTP proof for the same OpenSSL/libsrtp configuration:
   `session_voice_builtin_dtls_transport_tests` completes a DTLS 1.2 client/server handshake over datagram-memory BIOs,
   negotiates `SRTP_AES128_CM_SHA1_80`, exports DTLS-SRTP keying material, derives real inbound / outbound libsrtp

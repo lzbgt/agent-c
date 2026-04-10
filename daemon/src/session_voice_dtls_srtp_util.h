@@ -63,6 +63,9 @@ struct ParsedRtcpPacketInfo {
   uint32_t sender_report_lsr = 0;
   bool has_sender_info = false;
   size_t packet_size = 0;
+  size_t compound_packet_size = 0;
+  size_t compound_packet_count = 0;
+  bool is_compound = false;
 };
 
 std::string openssl_dtls_last_error_text();

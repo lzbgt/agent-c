@@ -55,6 +55,7 @@ static void assert_known_test_provider(
     assert(capabilities["rtp_transmit"].asBool());
     assert(capabilities["rtcp_ingest"].asBool());
     assert(capabilities["rtcp_transmit"].asBool());
+    assert(capabilities["rtcp_compound"].asBool());
     assert(capabilities["rtcp_receiver_report"].asBool());
     assert(capabilities["sctp"].asBool());
     assert(capabilities["real_media_engine"].asBool() == false);

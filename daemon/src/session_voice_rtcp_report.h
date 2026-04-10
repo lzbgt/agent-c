@@ -4,12 +4,15 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace agentd {
 
 inline constexpr uint8_t kRtcpPacketTypeSenderReport = 200;
 inline constexpr uint8_t kRtcpPacketTypeReceiverReport = 201;
+inline constexpr uint8_t kRtcpPacketTypeSourceDescription = 202;
 inline constexpr size_t kRtcpSenderReportBytes = 28;
 inline constexpr size_t kRtcpReceiverReportWithBlockBytes = 32;
 
@@ -96,6 +99,16 @@ RtcpSenderReportPacket build_rtcp_sender_report(
 RtcpReceiverReportPacket build_rtcp_receiver_report(
   uint32_t sender_ssrc,
   const RtcpReceiverReportBlock& block);
+std::vector<unsigned char> build_rtcp_sdes_cname(
+  uint32_t sender_ssrc,
+  const std::string& cname);
+std::vector<unsigned char> build_rtcp_sender_report_compound(
+  const RtcpSenderReportInput& input,
+  const std::string& cname);
+std::vector<unsigned char> build_rtcp_receiver_report_compound(
+  uint32_t sender_ssrc,
+  const RtcpReceiverReportBlock& block,
+  const std::string& cname);
 
 void mark_rtcp_receiver_report_sent(
   RtcpReceiverReportTracker* tracker,

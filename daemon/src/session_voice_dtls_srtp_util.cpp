@@ -458,6 +458,29 @@ bool parse_rtcp_packet(
     if (out_err) *out_err = "RTCP packet length exceeds buffer";
     return false;
   }
+  size_t compound_packet_size = declared_packet_size;
+  size_t compound_packet_count = 1;
+  while (compound_packet_size < packet_size) {
+    if (packet_size - compound_packet_size < 4) {
+      if (out_err) *out_err = "compound RTCP packet has trailing partial header";
+      return false;
+    }
+    const unsigned char* subpacket = packet + compound_packet_size;
+    if (!is_probable_rtcp_packet(subpacket, packet_size - compound_packet_size)) {
+      if (out_err) *out_err = "compound RTCP packet contains non-RTCP member";
+      return false;
+    }
+    const uint16_t subpacket_length_words = read_u16_be(subpacket + 2);
+    const size_t subpacket_size =
+      (static_cast<size_t>(subpacket_length_words) + static_cast<size_t>(1)) *
+      static_cast<size_t>(4);
+    if (subpacket_size == 0 || subpacket_size > packet_size - compound_packet_size) {
+      if (out_err) *out_err = "compound RTCP packet member length exceeds buffer";
+      return false;
+    }
+    compound_packet_size += subpacket_size;
+    compound_packet_count += 1;
+  }
 
   if (out_info) {
     out_info->packet_type = packet[1];
@@ -476,6 +499,9 @@ bool parse_rtcp_packet(
       out_info->has_sender_info = true;
     }
     out_info->packet_size = declared_packet_size;
+    out_info->compound_packet_size = compound_packet_size;
+    out_info->compound_packet_count = compound_packet_count;
+    out_info->is_compound = compound_packet_count > 1;
   }
   return true;
 }
@@ -609,7 +635,7 @@ bool protect_outbound_rtcp_packet(
   }
   ParsedRtcpPacketInfo rtcp_info;
   if (!parse_rtcp_packet(packet, packet_size, &rtcp_info, out_err)) return false;
-  if (rtcp_info.packet_size != packet_size) {
+  if (rtcp_info.compound_packet_size != packet_size) {
     if (out_err) *out_err = "outbound RTCP packet length mismatch";
     return false;
   }

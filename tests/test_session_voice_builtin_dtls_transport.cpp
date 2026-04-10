@@ -1,5 +1,4 @@
 #include <openssl/bn.h>
-#include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <openssl/ssl.h>
@@ -26,29 +25,6 @@ constexpr const char* kDtlsSrtpProfiles =
 constexpr const char* kDtlsSrtpExporterLabel = "EXTRACTOR-dtls_srtp";
 constexpr size_t kDtlsSrtpExporterBytes = 2 * (16 + 14);
 constexpr long kDtlsDatagramMtu = 1200;
-
-std::string openssl_error_text() {
-  const unsigned long err = ERR_get_error();
-  if (err == 0) return "openssl_error";
-  char buf[256];
-  std::memset(buf, 0, sizeof(buf));
-  ERR_error_string_n(err, buf, sizeof(buf));
-  return buf[0] ? std::string(buf) : std::string("openssl_error");
-}
-
-std::string ssl_error_text(SSL* ssl, int rc) {
-  const int ssl_err = ssl ? SSL_get_error(ssl, rc) : SSL_ERROR_SSL;
-  switch (ssl_err) {
-    case SSL_ERROR_WANT_READ:
-      return "ssl_want_read";
-    case SSL_ERROR_WANT_WRITE:
-      return "ssl_want_write";
-    case SSL_ERROR_ZERO_RETURN:
-      return "ssl_zero_return";
-    default:
-      return "ssl_error_" + std::to_string(ssl_err) + ": " + openssl_error_text();
-  }
-}
 
 std::string selected_srtp_profile_name(SSL* ssl) {
   if (!ssl) return "";

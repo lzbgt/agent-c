@@ -63,6 +63,7 @@ struct LoopbackRemoteContext {
   bool client_srtp_ready = false;
   int outbound_rtp_packets_observed = 0;
   int outbound_rtcp_packets_observed = 0;
+  int outbound_rtcp_compound_packets_observed = 0;
   uint8_t last_outbound_payload_type = 255;
   uint16_t last_outbound_sequence = 0;
   uint32_t last_outbound_timestamp = 0;
@@ -72,6 +73,7 @@ struct LoopbackRemoteContext {
   uint32_t last_outbound_rtcp_ssrc = 0;
   int outbound_rtcp_sender_reports_observed = 0;
   int outbound_rtcp_receiver_reports_observed = 0;
+  size_t last_outbound_rtcp_compound_packet_count = 0;
 };
 
 bool remote_transport_ready(const LoopbackRemoteContext& ctx) {
@@ -294,6 +296,11 @@ void on_loopback_remote_recv(juice_agent_t*, const char* data, size_t size, void
       ctx->outbound_rtcp_packets_observed += 1;
       ctx->last_outbound_rtcp_packet_type = parsed_rtcp.packet_type;
       ctx->last_outbound_rtcp_ssrc = parsed_rtcp.ssrc;
+      ctx->last_outbound_rtcp_compound_packet_count =
+        parsed_rtcp.compound_packet_count;
+      if (parsed_rtcp.is_compound) {
+        ctx->outbound_rtcp_compound_packets_observed += 1;
+      }
       if (parsed_rtcp.packet_type == 200) {
         ctx->outbound_rtcp_sender_reports_observed += 1;
       } else if (parsed_rtcp.packet_type == 201) {
@@ -397,6 +404,7 @@ static void test_embedded_transport_provider_loads_and_answers_remote_offer() {
   assert(engine->info().provider_capabilities["rtp_transmit"].asBool());
   assert(engine->info().provider_capabilities["rtcp_ingest"].asBool());
   assert(engine->info().provider_capabilities["rtcp_transmit"].asBool());
+  assert(engine->info().provider_capabilities["rtcp_compound"].asBool());
   assert(engine->info().provider_capabilities["rtcp_receiver_report"].asBool());
   assert(engine->info().provider_capabilities["audio_drain"].asBool());
   assert(engine->info().provider_capabilities["audio_owner_handoff"].asBool());
@@ -712,6 +720,8 @@ static void test_embedded_transport_provider_reaches_local_ice_connectivity() {
   assert(runtime.rtcp_last_report_highest_sequence >= 77);
   assert(ctx.outbound_rtcp_receiver_reports_observed >= 1);
   assert(ctx.last_outbound_rtcp_packet_type == 201);
+  assert(ctx.outbound_rtcp_compound_packets_observed >= 1);
+  assert(ctx.last_outbound_rtcp_compound_packet_count >= 2);
 
   agentd::VoicePeerBuiltinAudioChunk submit_chunk;
   submit_chunk.pcm_samples.assign(160, 2000);
@@ -744,6 +754,8 @@ static void test_embedded_transport_provider_reaches_local_ice_connectivity() {
   assert(ctx.outbound_rtcp_packets_observed >= 1);
   assert(ctx.outbound_rtcp_sender_reports_observed >= 1);
   assert(ctx.outbound_rtcp_receiver_reports_observed >= 1);
+  assert(ctx.outbound_rtcp_compound_packets_observed >= 2);
+  assert(ctx.last_outbound_rtcp_compound_packet_count >= 2);
   assert(ctx.last_outbound_payload_type == runtime.audio_outbound_payload_type);
   assert(ctx.last_outbound_ssrc == static_cast<uint32_t>(runtime.rtp_last_sent_ssrc));
   assert(ctx.last_outbound_payload_size > 0);

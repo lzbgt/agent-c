@@ -3,6 +3,7 @@
 #include <cassert>
 #include <chrono>
 #include <cstdint>
+#include <string>
 
 namespace {
 
@@ -42,6 +43,32 @@ void test_sender_report_packet_shape() {
   assert(read_u32_be(packet.data() + 16) == 0x01020304u);
   assert(read_u32_be(packet.data() + 20) == 7u);
   assert(read_u32_be(packet.data() + 24) == 160u);
+}
+
+void test_sdes_and_compound_packet_shape() {
+  const std::string cname = "agentd-test";
+  const auto sdes = agentd::build_rtcp_sdes_cname(0x11223344u, cname);
+  assert(sdes.size() % 4 == 0);
+  assert(sdes[0] == 0x81u);
+  assert(sdes[1] == agentd::kRtcpPacketTypeSourceDescription);
+  assert(read_u16_be(sdes.data() + 2) == (sdes.size() / 4) - 1);
+  assert(read_u32_be(sdes.data() + 4) == 0x11223344u);
+  assert(sdes[8] == 1);
+  assert(sdes[9] == cname.size());
+  assert(std::string(reinterpret_cast<const char*>(sdes.data() + 10), cname.size()) == cname);
+  assert(sdes[10 + cname.size()] == 0);
+
+  const auto compound = agentd::build_rtcp_sender_report_compound(
+    agentd::RtcpSenderReportInput{0x11223344u, 0x01020304u, 7, 160},
+    cname);
+  assert(compound.size() == agentd::kRtcpSenderReportBytes + sdes.size());
+  assert(compound[0] == 0x80u);
+  assert(compound[1] == agentd::kRtcpPacketTypeSenderReport);
+  assert(compound[agentd::kRtcpSenderReportBytes] == 0x81u);
+  assert(compound[agentd::kRtcpSenderReportBytes + 1] ==
+         agentd::kRtcpPacketTypeSourceDescription);
+  assert(read_u32_be(compound.data() + agentd::kRtcpSenderReportBytes + 4) ==
+         0x11223344u);
 }
 
 void test_receiver_report_tracks_rollover_and_dlsr() {
@@ -143,6 +170,7 @@ void test_receiver_report_interval_loss_after_mark() {
 
 int main() {
   test_sender_report_packet_shape();
+  test_sdes_and_compound_packet_shape();
   test_receiver_report_tracks_rollover_and_dlsr();
   test_receiver_report_interval_loss_after_mark();
   return 0;

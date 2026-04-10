@@ -48,7 +48,7 @@ using agentd::resolve_dtls_srtp_profile_spec;
 using agentd::selected_dtls_srtp_profile_name;
 
 constexpr const char* kProviderName = "agentd_builtin_embedded_transport_provider";
-constexpr const char* kProviderVersion = "0.12.0";
+constexpr const char* kProviderVersion = "0.13.0";
 #if defined(AGENTD_HAVE_OPUS)
 constexpr const char* kCapabilitiesJson =
   "{\"signaling\":true,\"audio_capture\":false,\"audio_render\":false,"
@@ -60,7 +60,8 @@ constexpr const char* kCapabilitiesJson =
   "\"dtls_handshake\":true,\"dtls_srtp_export\":true,"
   "\"srtp_contexts\":true,\"poll_status\":true,"
   "\"srtp\":true,\"rtp_ingest\":true,\"rtp_transmit\":true,"
-  "\"rtcp_ingest\":true,\"rtcp_transmit\":true,\"rtcp_receiver_report\":true,\"sctp\":true,"
+  "\"rtcp_ingest\":true,\"rtcp_transmit\":true,\"rtcp_compound\":true,"
+  "\"rtcp_receiver_report\":true,\"sctp\":true,"
   "\"transport_family\":\"embedded_transport_primitives\","
   "\"embedded_transport_provider\":true,\"sample_provider\":false,"
   "\"real_media_engine\":false,\"remote_description_optional\":true,"
@@ -76,7 +77,8 @@ constexpr const char* kCapabilitiesJson =
   "\"dtls_handshake\":true,\"dtls_srtp_export\":true,"
   "\"srtp_contexts\":true,\"poll_status\":true,"
   "\"srtp\":true,\"rtp_ingest\":true,\"rtp_transmit\":true,"
-  "\"rtcp_ingest\":true,\"rtcp_transmit\":true,\"rtcp_receiver_report\":true,\"sctp\":true,"
+  "\"rtcp_ingest\":true,\"rtcp_transmit\":true,\"rtcp_compound\":true,"
+  "\"rtcp_receiver_report\":true,\"sctp\":true,"
   "\"transport_family\":\"embedded_transport_primitives\","
   "\"embedded_transport_provider\":true,\"sample_provider\":false,"
   "\"real_media_engine\":false,\"remote_description_optional\":true,"
@@ -93,6 +95,7 @@ constexpr int kOutboundOpusMaxPayloadBytes = 1275;
 constexpr uint32_t kOutboundRtpSsrc = 0xA6E17D01u;
 constexpr uint64_t kSenderReportRtpPacketCadence = 50;
 constexpr uint64_t kReceiverReportRtpPacketCadence = 50;
+constexpr const char* kRtcpCname = "agentd-builtin-native";
 
 struct EmbeddedTransportState {
   struct AsyncProgressKey {
@@ -1107,13 +1110,13 @@ bool transmit_outbound_rtcp_sender_report(
     return false;
   }
 
-  const agentd::RtcpSenderReportPacket plain =
-    agentd::build_rtcp_sender_report(agentd::RtcpSenderReportInput{
+  const std::vector<unsigned char> plain =
+    agentd::build_rtcp_sender_report_compound(agentd::RtcpSenderReportInput{
       engine->outbound_rtp_ssrc,
       rtp_timestamp,
       engine->rtp_packets_sent,
       engine->rtp_payload_bytes_sent,
-    });
+    }, kRtcpCname);
   std::vector<unsigned char> protected_packet;
   std::string protect_err;
   if (!agentd::protect_outbound_rtcp_packet(
@@ -1191,8 +1194,11 @@ bool transmit_outbound_rtcp_receiver_report(
 
   const agentd::RtcpReceiverReportBlock report_block =
     agentd::snapshot_rtcp_receiver_report_block(engine->inbound_rtcp_report);
-  const agentd::RtcpReceiverReportPacket plain =
-    agentd::build_rtcp_receiver_report(engine->outbound_rtp_ssrc, report_block);
+  const std::vector<unsigned char> plain =
+    agentd::build_rtcp_receiver_report_compound(
+      engine->outbound_rtp_ssrc,
+      report_block,
+      kRtcpCname);
   std::vector<unsigned char> protected_packet;
   std::string protect_err;
   if (!agentd::protect_outbound_rtcp_packet(
