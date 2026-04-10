@@ -223,14 +223,25 @@ assert obj.get("builtin_start_contract", {}).get("mutating_broker_actions_deferr
 if mode == "native_plugin":
     probe = obj.get("builtin_native_probe") or {}
     provider = (peer.get("native_media_provider") or {})
+    provider_name = (provider.get("name") or "")
+    provider_caps = provider.get("capabilities") or {}
     assert probe.get("loadable") is True, obj
     assert probe.get("native_media_supported") is False, obj
     assert (probe.get("provider") or {}).get("abi_version") == 2, obj
-    assert (probe.get("provider") or {}).get("name") == "agentd_builtin_sample_provider", obj
+    assert (probe.get("provider") or {}).get("name") in {
+        "agentd_builtin_sample_provider",
+        "agentd_builtin_embedded_transport_provider",
+    }, obj
     assert provider.get("abi_version") == 2, obj
-    assert provider.get("name") == "agentd_builtin_sample_provider", obj
-    assert (provider.get("capabilities") or {}).get("transport_family") == "sample_webrtc", obj
-    assert (provider.get("capabilities") or {}).get("real_media_engine") is False, obj
+    assert provider_name in {
+        "agentd_builtin_sample_provider",
+        "agentd_builtin_embedded_transport_provider",
+    }, obj
+    assert provider_caps.get("transport_family") in {
+        "sample_webrtc",
+        "embedded_transport_primitives",
+    }, obj
+    assert provider_caps.get("real_media_engine") is False, obj
 sid = peer.get("broker_session_id")
 assert sid, obj
 print(sid)
@@ -284,10 +295,13 @@ mode = sys.argv[2]
 payload = msg.get("payload") or {}
 assert msg.get("type") == "answer", msg
 assert payload.get("type") == "answer", msg
-expected_sdp = "stub-answer"
-if mode == "native_plugin":
-    expected_sdp = "agentd-builtin-sample-answer"
-assert payload.get("sdp") == expected_sdp, msg
+if mode == "signaling_stub":
+    assert payload.get("sdp") == "stub-answer", msg
+else:
+    sdp = payload.get("sdp") or ""
+    assert sdp, msg
+    if sdp != "agentd-builtin-sample-answer":
+        assert "a=ice-ufrag:" in sdp, msg
 assert payload.get("sender_tag") == "agentd_runtime_peer", msg
 PY
 
@@ -355,7 +369,10 @@ assert peer.get("media_remote_byes_seen") == 1, obj
 assert peer.get("media_events_total", 0) >= 5, obj
 provider = peer.get("native_media_provider") or {}
 if provider:
-    assert provider.get("name") == "agentd_builtin_sample_provider", obj
+    assert provider.get("name") in {
+        "agentd_builtin_sample_provider",
+        "agentd_builtin_embedded_transport_provider",
+    }, obj
 req = urllib.request.Request(
     f"http://127.0.0.1:{port}/v1/audio/sessions/{broker_session_id}",
     headers={"Authorization": "Bearer audio-agentd-token"},

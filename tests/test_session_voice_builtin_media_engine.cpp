@@ -24,6 +24,28 @@ using agentd::voice_peer_media_engine_info_for_runtime_kind;
 #define AGENTD_TEST_VOICE_MEDIA_ENGINE_LEGACY_V1_PLUGIN_PATH ""
 #endif
 
+static void assert_known_test_provider(
+  const std::string& provider_name,
+  const Json::Value& capabilities
+) {
+  if (provider_name == "agentd_builtin_sample_provider") {
+    assert(capabilities["transport_family"].asString() == "sample_webrtc");
+    assert(capabilities["sample_provider"].asBool());
+    assert(capabilities["real_media_engine"].asBool() == false);
+    return;
+  }
+  if (provider_name == "agentd_builtin_embedded_transport_provider") {
+    assert(capabilities["transport_family"].asString() == "embedded_transport_primitives");
+    assert(capabilities["embedded_transport_provider"].asBool());
+    assert(capabilities["ice"].asBool());
+    assert(capabilities["srtp"].asBool());
+    assert(capabilities["sctp"].asBool());
+    assert(capabilities["real_media_engine"].asBool() == false);
+    return;
+  }
+  assert(false && "unexpected builtin native provider");
+}
+
 static void test_runtime_kind_info_reports_reserved_and_stub_modes() {
   DaemonConfig disabled_cfg;
   const auto disabled_info =
@@ -54,11 +76,9 @@ static void test_runtime_kind_info_reports_reserved_and_stub_modes() {
   assert(!native_info.native_media_supported);
   assert(!native_info.native_media_active);
   assert(native_info.provider_abi_version == 2);
-  assert(native_info.provider_name == "agentd_builtin_sample_provider");
-  assert(native_info.provider_version == "0.1.0");
-  assert(native_info.provider_capabilities["transport_family"].asString() == "sample_webrtc");
-  assert(native_info.provider_capabilities["sample_provider"].asBool());
-  assert(native_info.provider_capabilities["real_media_engine"].asBool() == false);
+  assert(!native_info.provider_name.empty());
+  assert(!native_info.provider_version.empty());
+  assert_known_test_provider(native_info.provider_name, native_info.provider_capabilities);
 }
 
 static void test_builtin_media_engine_stub_answers_remote_offer() {
@@ -154,10 +174,9 @@ static void test_builtin_media_engine_native_plugin_loads_sample_provider_metada
   assert(!engine->info().native_media_supported);
   assert(!engine->info().native_media_active);
   assert(engine->info().provider_abi_version == 2);
-  assert(engine->info().provider_name == "agentd_builtin_sample_provider");
-  assert(engine->info().provider_version == "0.1.0");
-  assert(engine->info().provider_capabilities["ice"].asBool());
-  assert(engine->info().provider_capabilities["real_media_engine"].asBool() == false);
+  assert(!engine->info().provider_name.empty());
+  assert(!engine->info().provider_version.empty());
+  assert_known_test_provider(engine->info().provider_name, engine->info().provider_capabilities);
 
   VoicePeerRuntime runtime;
   Json::Value init_event(Json::nullValue);
@@ -169,8 +188,10 @@ static void test_builtin_media_engine_native_plugin_loads_sample_provider_metada
   assert(!runtime.native_media_active);
   assert(runtime.media_engine_state == "signaling_ready");
   assert(runtime.native_media_provider["abi_version"].asInt() == 2);
-  assert(runtime.native_media_provider["name"].asString() == "agentd_builtin_sample_provider");
-  assert(runtime.native_media_provider["capabilities"]["transport_family"].asString() == "sample_webrtc");
+  assert(runtime.native_media_provider["name"].asString() == engine->info().provider_name);
+  assert_known_test_provider(
+    runtime.native_media_provider["name"].asString(),
+    runtime.native_media_provider["capabilities"]);
 
   VoiceBrokerSignalRemoteDescriptionReady ready;
   ready.description.type = "offer";
@@ -182,7 +203,12 @@ static void test_builtin_media_engine_native_plugin_loads_sample_provider_metada
   assert(engine->handle_remote_description(ready, &answer, &answer_event, &err));
   assert(err.empty());
   assert(answer.type == "answer");
-  assert(answer.sdp == "agentd-builtin-sample-answer");
+  if (engine->info().provider_name == "agentd_builtin_sample_provider") {
+    assert(answer.sdp == "agentd-builtin-sample-answer");
+  } else {
+    assert(!answer.sdp.empty());
+    assert(answer.sdp.find("a=ice-ufrag:") != std::string::npos);
+  }
   note_voice_peer_media_engine_event(&runtime, answer_event);
   assert(runtime.media_engine_state == "answer_ready");
   assert(!runtime.native_media_active);
@@ -235,9 +261,10 @@ static void test_builtin_native_probe_json_reports_provider_details() {
   assert(probe["media_engine_kind"].asString() == "builtin_native_plugin");
   assert(probe["native_media_supported"].asBool() == false);
   assert(probe["provider"]["abi_version"].asInt() == 2);
-  assert(probe["provider"]["name"].asString() == "agentd_builtin_sample_provider");
-  assert(probe["provider"]["capabilities"]["transport_family"].asString() == "sample_webrtc");
-  assert(probe["provider"]["capabilities"]["sample_provider"].asBool());
+  assert(!probe["provider"]["name"].asString().empty());
+  assert_known_test_provider(
+    probe["provider"]["name"].asString(),
+    probe["provider"]["capabilities"]);
 }
 
 }  // namespace

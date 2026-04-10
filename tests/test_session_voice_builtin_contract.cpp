@@ -16,6 +16,26 @@ using agentd::voice_peer_runtime_to_json;
 #define AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH ""
 #endif
 
+static void assert_known_test_provider(
+  const std::string& provider_name,
+  const Json::Value& capabilities
+) {
+  if (provider_name == "agentd_builtin_sample_provider") {
+    assert(capabilities["sample_provider"].asBool());
+    assert(capabilities["transport_family"].asString() == "sample_webrtc");
+    return;
+  }
+  if (provider_name == "agentd_builtin_embedded_transport_provider") {
+    assert(capabilities["embedded_transport_provider"].asBool());
+    assert(capabilities["transport_family"].asString() == "embedded_transport_primitives");
+    assert(capabilities["ice"].asBool());
+    assert(capabilities["srtp"].asBool());
+    assert(capabilities["sctp"].asBool());
+    return;
+  }
+  assert(false && "unexpected builtin native provider");
+}
+
 static void test_borrowed_broker_session_contract() {
   DaemonConfig cfg;
   cfg.state_dir = "/tmp/agentd-state";
@@ -182,13 +202,16 @@ static void test_native_plugin_builtin_contract_marks_native_media_path() {
   assert(out["media_runtime_plan"]["media_engine_kind"].asString() == "builtin_native_plugin");
   assert(out["media_runtime_plan"]["native_media_supported"].asBool() == false);
   assert(out["media_runtime_plan"]["native_media_provider"]["abi_version"].asInt() == 2);
-  assert(out["media_runtime_plan"]["native_media_provider"]["name"].asString() == "agentd_builtin_sample_provider");
-  assert(out["media_runtime_plan"]["native_media_provider"]["capabilities"]["sample_provider"].asBool());
+  assert(!out["media_runtime_plan"]["native_media_provider"]["name"].asString().empty());
+  assert_known_test_provider(
+    out["media_runtime_plan"]["native_media_provider"]["name"].asString(),
+    out["media_runtime_plan"]["native_media_provider"]["capabilities"]);
   assert(out["planned_runtime"]["media_engine_kind"].asString() == "builtin_native_plugin");
   assert(out["planned_runtime"]["native_media_supported"].asBool() == false);
   assert(out["planned_runtime"]["native_media_active"].asBool() == false);
   assert(out["planned_runtime"]["native_media_provider"]["abi_version"].asInt() == 2);
-  assert(out["planned_runtime"]["native_media_provider"]["name"].asString() == "agentd_builtin_sample_provider");
+  assert(out["planned_runtime"]["native_media_provider"]["name"].asString() ==
+         out["media_runtime_plan"]["native_media_provider"]["name"].asString());
   assert(out["planned_runtime"].isMember("last_error") == false);
 }
 

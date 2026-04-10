@@ -481,11 +481,14 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `peer.media_engine_kind=builtin_native_plugin`. The provider seam is now self-describing too:
   `builtin_native_probe` surfaces provider ABI/name/version/capabilities plus load errors in config/runtime metadata,
   and live/planned runtime snapshots persist the loaded provider details under `peer.native_media_provider`.
-- The repo now also ships a daemon-owned sample provider module for that seam:
-  `./build/libagentd_voice_builtin_media_engine_sample.{dylib,so,dll}`. It proves the real native-provider load path
-  without depending on a test-only fixture, but it intentionally still reports
-  `peer.native_media_supported=false` / `peer.native_media_active=false` because it is only an answer-exchange sample,
-  not an embedded RTP/SRTP/WebRTC engine.
+- The repo now ships two daemon-owned provider modules for that seam:
+  - `./build/libagentd_voice_builtin_media_engine_sample.{so,dylib,dll}` as the minimal answer-exchange sample
+  - `./build/libagentd_voice_builtin_media_engine_embedded_transport.{so,dylib,dll}` when `libjuice + libsrtp2 + usrsctp`
+    are available at build time
+  The embedded transport provider is still honest about the remaining gap: it uses real `libjuice`, `libsrtp`, and
+  `usrsctp` libraries and reports that provider metadata/capabilities through the normal runtime seam, but it still
+  reports `peer.native_media_supported=false` / `peer.native_media_active=false` because agentd has not embedded a full
+  DTLS/RTP media plane yet.
 - The builtin/runtime preview and live runtime snapshots now also expose the media-engine seam explicitly:
   `media_runtime_plan.media_engine_kind` / `peer.media_engine_kind` distinguish `builtin_reserved`,
   `builtin_signaling_stub`, `builtin_native_plugin`, and `browser_peer`, while `native_media_supported` /
@@ -527,6 +530,10 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
 - Operators can inspect a candidate provider library without starting agentd via
   `python3 tools/inspect_voice_media_provider.py /abs/path/to/provider.{so,dylib,dll} --pretty`, which validates the
   exported symbol/ABI shape and prints the declared provider metadata/capabilities.
+- Operators can also inspect local native dependency readiness through
+  `python3 tools/check_voice_native_media_stack.py --pretty`. That report now combines `pkg-config`, Homebrew, and
+  filesystem probing, so it correctly handles `libsrtp2`, the broken Homebrew `usrsctp.pc` include path, and the fact
+  that `libjuice` is installed locally without shipping a `pkg-config` file.
 - If persisted runtime config is corrupted to an invalid `audio_webrtc.default_runtime_kind`, agentd now self-heals it
   back to `auto` on load instead of reporting an impossible configured backend while silently falling back internally.
 - `POST /api/v1/session/voice_webrtc_peer` now also performs bounded startup confirmation. If the managed peer process

@@ -271,6 +271,12 @@ A v0 smoke test should:
   process-local provider path without depending on a test fixture, but it intentionally still reports
   `native_media_supported=false` / `native_media_active=false` because it is only a signaling/answer-exchange sample,
   not an embedded RTP/SRTP/WebRTC media engine yet.
+- When the local build has `libjuice + libsrtp2 + usrsctp` available, the repo now also builds an optional embedded
+  transport provider module for that same seam:
+  `./build/libagentd_voice_builtin_media_engine_embedded_transport.{so,dylib,dll}`. That provider uses the real ICE /
+  SRTP / SCTP dependency family and returns a real libjuice local description through the native-plugin ABI, but it
+  still correctly reports `native_media_supported=false` / `native_media_active=false` because the actual DTLS/RTP
+  media plane is still not embedded in agentd.
 - That runtime contract now also exposes the media-engine seam directly: planned/live builtin paths report
   `media_engine_kind=builtin_reserved|builtin_signaling_stub|builtin_native_plugin`, bundled/external runtimes report
   `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` now distinguish the
@@ -302,8 +308,8 @@ A v0 smoke test should:
   `python3 tools/inspect_voice_media_provider.py /abs/path/to/provider.{so,dylib,dll} --pretty`, which validates the
   exported provider symbol/ABI and prints the declared capability metadata before daemon bring-up.
 - Operators can also inspect local native dependency readiness via
-  `python3 tools/check_voice_native_media_stack.py --pretty`, which checks installed `pkg-config` packages plus
-  Homebrew formula availability for `opus`, `portaudio`, `srtp`, `libusrsctp`, `libjuice`, and `libdatachannel`.
+  `python3 tools/check_voice_native_media_stack.py --pretty`, which checks `pkg-config`, filesystem install surfaces,
+  and Homebrew formula availability for `opus`, `portaudio`, `srtp`, `libusrsctp`, `libjuice`, and `libdatachannel`.
 - If persisted daemon config is corrupted to an invalid `audio_webrtc.default_runtime_kind`, agentd now self-heals that
   field back to `auto` on load and rewrites the SQLite runtime-config record instead of surfacing impossible state.
 
@@ -313,8 +319,8 @@ A v0 smoke test should:
 - Do we need a broker-issued ephemeral token for direct agentd signaling as a fallback?
 - How should the broker authenticate agentd participation (mTLS vs bearer)?
 - How should the shipped managed media peer move from a Node/Playwright child runtime into an embedded long-lived agentd-native media service?
-- Which concrete native WebRTC/SRTP stack should back `builtin_mode=native_plugin` when we replace the shipped sample
-  provider with a real embedded RTP/media engine?
+- Which concrete native DTLS/RTP stack should replace the current dependency-backed embedded transport provider so
+  `builtin_mode=native_plugin` can report `native_media_supported=true` and terminate media fully inside agentd?
 
 ## References
 

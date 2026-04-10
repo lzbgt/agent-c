@@ -69,6 +69,52 @@ if(PKG_CONFIG_FOUND)
   endif()
 endif()
 
+set(AGENTD_ENABLE_BUILTIN_EMBEDDED_TRANSPORT_PROVIDER OFF)
+set(AGENTD_BUILTIN_VOICE_MEDIA_PLUGIN_TARGET agentd_voice_builtin_media_engine_sample)
+set(AGENTD_BUILTIN_VOICE_MEDIA_PLUGIN_PATH "$<TARGET_FILE:agentd_voice_builtin_media_engine_sample>")
+set(AGENTD_VOICE_LIBJUICE_FOUND OFF)
+set(AGENTD_VOICE_LIBSRTP_FOUND OFF)
+set(AGENTD_VOICE_USRSCTP_FOUND OFF)
+if(PKG_CONFIG_FOUND)
+  pkg_check_modules(LIBSRTP2 QUIET libsrtp2)
+  if(LIBSRTP2_FOUND)
+    set(AGENTD_VOICE_LIBSRTP_FOUND ON)
+  endif()
+  pkg_check_modules(USRSCTP QUIET usrsctp)
+  if(USRSCTP_FOUND)
+    find_path(AGENTD_VOICE_USRSCTP_INCLUDE_DIR
+      NAMES usrsctp.h
+      HINTS
+        /opt/homebrew/opt/libusrsctp/include
+        /usr/local/opt/libusrsctp/include
+        ${USRSCTP_PREFIX}/include
+    )
+    if(AGENTD_VOICE_USRSCTP_INCLUDE_DIR)
+      set(AGENTD_VOICE_USRSCTP_FOUND ON)
+    endif()
+  endif()
+endif()
+find_path(AGENTD_VOICE_LIBJUICE_INCLUDE_DIR
+  NAMES juice/juice.h
+  HINTS
+    /opt/homebrew/opt/libjuice/include
+    /usr/local/opt/libjuice/include
+)
+find_library(AGENTD_VOICE_LIBJUICE_LIBRARY
+  NAMES juice libjuice
+  HINTS
+    /opt/homebrew/opt/libjuice/lib
+    /usr/local/opt/libjuice/lib
+)
+if(AGENTD_VOICE_LIBJUICE_INCLUDE_DIR AND AGENTD_VOICE_LIBJUICE_LIBRARY)
+  set(AGENTD_VOICE_LIBJUICE_FOUND ON)
+endif()
+if(AGENTD_VOICE_LIBSRTP_FOUND AND AGENTD_VOICE_USRSCTP_FOUND AND AGENTD_VOICE_LIBJUICE_FOUND)
+  set(AGENTD_ENABLE_BUILTIN_EMBEDDED_TRANSPORT_PROVIDER ON)
+  set(AGENTD_BUILTIN_VOICE_MEDIA_PLUGIN_TARGET agentd_voice_builtin_media_engine_embedded_transport)
+  set(AGENTD_BUILTIN_VOICE_MEDIA_PLUGIN_PATH "$<TARGET_FILE:agentd_voice_builtin_media_engine_embedded_transport>")
+endif()
+
 target_compile_options(agent_core PRIVATE
   $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wpedantic>
 )
@@ -437,6 +483,30 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
   )
 
+  if(AGENTD_ENABLE_BUILTIN_EMBEDDED_TRANSPORT_PROVIDER)
+    add_library(agentd_voice_builtin_media_engine_embedded_transport MODULE
+      daemon/src/session_voice_builtin_media_engine_embedded_transport_provider.cpp
+    )
+    target_compile_options(agentd_voice_builtin_media_engine_embedded_transport PRIVATE
+      $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+    )
+    target_include_directories(agentd_voice_builtin_media_engine_embedded_transport PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
+      ${LIBSRTP2_INCLUDE_DIRS}
+      ${AGENTD_VOICE_USRSCTP_INCLUDE_DIR}
+      ${AGENTD_VOICE_LIBJUICE_INCLUDE_DIR}
+    )
+    target_link_directories(agentd_voice_builtin_media_engine_embedded_transport PRIVATE
+      ${LIBSRTP2_LIBRARY_DIRS}
+      ${USRSCTP_LIBRARY_DIRS}
+    )
+    target_link_libraries(agentd_voice_builtin_media_engine_embedded_transport PRIVATE
+      ${LIBSRTP2_LIBRARIES}
+      ${USRSCTP_LIBRARIES}
+      ${AGENTD_VOICE_LIBJUICE_LIBRARY}
+    )
+  endif()
+
   add_library(agentd_voice_builtin_media_engine_legacy_v1 MODULE
     tests/fixtures/voice_builtin_media_engine_legacy_v1.cpp
   )
@@ -799,7 +869,7 @@ if(AGENT_BUILD_HOST)
     $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
   )
   target_compile_definitions(session_voice_builtin_contract_tests PRIVATE
-    AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_sample>"
+    AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH="${AGENTD_BUILTIN_VOICE_MEDIA_PLUGIN_PATH}"
     AGENTD_TEST_VOICE_MEDIA_ENGINE_LEGACY_V1_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_legacy_v1>"
   )
   target_link_libraries(session_voice_builtin_contract_tests PRIVATE agentd_lib)
@@ -812,11 +882,42 @@ if(AGENT_BUILD_HOST)
     $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
   )
   target_compile_definitions(session_voice_builtin_media_engine_tests PRIVATE
-    AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_sample>"
+    AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH="${AGENTD_BUILTIN_VOICE_MEDIA_PLUGIN_PATH}"
     AGENTD_TEST_VOICE_MEDIA_ENGINE_LEGACY_V1_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_legacy_v1>"
   )
   target_link_libraries(session_voice_builtin_media_engine_tests PRIVATE agentd_lib)
   add_test(NAME session_voice_builtin_media_engine_tests COMMAND session_voice_builtin_media_engine_tests)
+
+  if(AGENTD_ENABLE_BUILTIN_EMBEDDED_TRANSPORT_PROVIDER)
+    add_executable(session_voice_builtin_embedded_transport_provider_tests
+      tests/test_session_voice_builtin_embedded_transport_provider.cpp
+    )
+    target_compile_options(session_voice_builtin_embedded_transport_provider_tests PRIVATE
+      $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+    )
+    target_compile_definitions(session_voice_builtin_embedded_transport_provider_tests PRIVATE
+      AGENTD_TEST_VOICE_MEDIA_ENGINE_EMBEDDED_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_embedded_transport>"
+    )
+    target_include_directories(session_voice_builtin_embedded_transport_provider_tests PRIVATE
+      ${LIBSRTP2_INCLUDE_DIRS}
+      ${AGENTD_VOICE_USRSCTP_INCLUDE_DIR}
+      ${AGENTD_VOICE_LIBJUICE_INCLUDE_DIR}
+    )
+    target_link_directories(session_voice_builtin_embedded_transport_provider_tests PRIVATE
+      ${LIBSRTP2_LIBRARY_DIRS}
+      ${USRSCTP_LIBRARY_DIRS}
+    )
+    target_link_libraries(session_voice_builtin_embedded_transport_provider_tests PRIVATE
+      agentd_lib
+      ${AGENTD_VOICE_LIBJUICE_LIBRARY}
+      ${LIBSRTP2_LIBRARIES}
+      ${USRSCTP_LIBRARIES}
+    )
+    add_test(
+      NAME session_voice_builtin_embedded_transport_provider_tests
+      COMMAND session_voice_builtin_embedded_transport_provider_tests
+    )
+  endif()
 
   add_executable(session_voice_broker_plan_tests
     tests/test_session_voice_broker_plan.cpp
@@ -834,7 +935,7 @@ if(AGENT_BUILD_HOST)
     $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
   )
   target_compile_definitions(session_voice_builtin_backend_tests PRIVATE
-    AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_sample>"
+    AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH="${AGENTD_BUILTIN_VOICE_MEDIA_PLUGIN_PATH}"
     AGENTD_TEST_VOICE_MEDIA_ENGINE_LEGACY_V1_PLUGIN_PATH="$<TARGET_FILE:agentd_voice_builtin_media_engine_legacy_v1>"
   )
   target_link_libraries(session_voice_builtin_backend_tests PRIVATE agentd_lib)
@@ -1300,7 +1401,7 @@ if(AGENT_BUILD_HOST)
       COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_session_voice_webrtc_peer_builtin_smoke.sh
         $<TARGET_FILE:agentd>
         native_plugin
-        $<TARGET_FILE:agentd_voice_builtin_media_engine_sample>
+        ${AGENTD_BUILTIN_VOICE_MEDIA_PLUGIN_PATH}
     )
     set_tests_properties(agentd_session_voice_webrtc_peer_builtin_native_plugin_smoke PROPERTIES SKIP_RETURN_CODE 77)
 

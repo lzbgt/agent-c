@@ -265,7 +265,10 @@ availability for the current candidate dependency set:
 
 It also summarizes whether the machine is currently ready for the narrower
 `libjuice + srtp + libusrsctp + opus + portaudio` candidate path without
-guessing from memory.
+guessing from memory. The checker now also uses filesystem probing for cases
+where package metadata is incomplete, such as `libjuice` lacking a local
+`pkg-config` file and Homebrew `usrsctp` publishing an incorrect include path in
+`usrsctp.pc`.
 
 ## References
 

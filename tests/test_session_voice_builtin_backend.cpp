@@ -25,6 +25,28 @@ using agentd::voice_peer_runtime_to_json;
 #define AGENTD_TEST_VOICE_MEDIA_ENGINE_LEGACY_V1_PLUGIN_PATH ""
 #endif
 
+static void assert_known_test_provider(
+  const std::string& provider_name,
+  const Json::Value& capabilities
+) {
+  if (provider_name == "agentd_builtin_sample_provider") {
+    assert(capabilities["sample_provider"].asBool());
+    assert(capabilities["transport_family"].asString() == "sample_webrtc");
+    assert(capabilities["real_media_engine"].asBool() == false);
+    return;
+  }
+  if (provider_name == "agentd_builtin_embedded_transport_provider") {
+    assert(capabilities["embedded_transport_provider"].asBool());
+    assert(capabilities["transport_family"].asString() == "embedded_transport_primitives");
+    assert(capabilities["ice"].asBool());
+    assert(capabilities["srtp"].asBool());
+    assert(capabilities["sctp"].asBool());
+    assert(capabilities["real_media_engine"].asBool() == false);
+    return;
+  }
+  assert(false && "unexpected builtin native provider");
+}
+
 static VoicePeerStartPlan make_plan() {
   VoicePeerStartPlan plan;
   plan.runtime_kind = "builtin";
@@ -174,8 +196,10 @@ static void test_builtin_backend_enabled_native_plugin_starts_runtime() {
   assert(result.state->media_events_total == 2);
   assert(result.state->managed_broker_session == false);
   assert(result.state->native_media_provider["abi_version"].asInt() == 2);
-  assert(result.state->native_media_provider["name"].asString() == "agentd_builtin_sample_provider");
-  assert(result.state->native_media_provider["capabilities"]["sample_provider"].asBool());
+  assert(!result.state->native_media_provider["name"].asString().empty());
+  assert_known_test_provider(
+    result.state->native_media_provider["name"].asString(),
+    result.state->native_media_provider["capabilities"]);
 
   bool stopped = false;
   std::string stop_err;
@@ -200,8 +224,10 @@ static void test_backend_metadata_reports_native_probe_details() {
   assert(meta["builtin_native_probe"]["loadable"].asBool());
   assert(meta["builtin_native_probe"]["native_media_supported"].asBool() == false);
   assert(meta["builtin_native_probe"]["provider"]["abi_version"].asInt() == 2);
-  assert(meta["builtin_native_probe"]["provider"]["name"].asString() == "agentd_builtin_sample_provider");
-  assert(meta["builtin_native_probe"]["provider"]["capabilities"]["real_media_engine"].asBool() == false);
+  assert(!meta["builtin_native_probe"]["provider"]["name"].asString().empty());
+  assert_known_test_provider(
+    meta["builtin_native_probe"]["provider"]["name"].asString(),
+    meta["builtin_native_probe"]["provider"]["capabilities"]);
 }
 
 static void test_backend_metadata_reports_legacy_v1_probe_details() {
