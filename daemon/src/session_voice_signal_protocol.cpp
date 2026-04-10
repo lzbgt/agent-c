@@ -1,5 +1,6 @@
 #include "session_voice_signal_protocol.h"
 
+#include "session_voice_sdp_candidate.h"
 #include "string_util.h"
 
 #include <memory>
@@ -80,14 +81,16 @@ bool parse_voice_broker_signal_candidate_payload(
     if (out_err) *out_err = "candidate payload must be an object";
     return false;
   }
-  if (!payload.isMember("candidate") || !payload["candidate"].isString() ||
-      trim_copy(payload["candidate"].asString()).empty()) {
+  if (!payload.isMember("candidate") || !payload["candidate"].isString()) {
     if (out_err) *out_err = "candidate payload missing candidate";
     return false;
   }
 
   VoiceBrokerSignalCandidate candidate;
-  candidate.candidate = trim_copy(payload["candidate"].asString());
+  const std::string raw_candidate = trim_copy(payload["candidate"].asString());
+  candidate.candidate = sdp_candidate_is_end_marker(raw_candidate)
+    ? std::string("a=end-of-candidates")
+    : normalize_sdp_candidate_line(raw_candidate);
   if (payload.isMember("sdpMid") && payload["sdpMid"].isString()) {
     candidate.sdp_mid = trim_copy(payload["sdpMid"].asString());
   }

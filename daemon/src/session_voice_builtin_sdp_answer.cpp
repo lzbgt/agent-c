@@ -1,5 +1,7 @@
 #include "session_voice_builtin_sdp_answer.h"
 
+#include "session_voice_sdp_candidate.h"
+
 #include <algorithm>
 #include <cctype>
 #include <sstream>
@@ -51,24 +53,6 @@ bool starts_with(const std::string& value, const char* prefix) {
   return value.rfind(prefix, 0) == 0;
 }
 
-std::string normalize_candidate_line_for_browser_sdp(const std::string& line) {
-  if (!starts_with(line, "a=candidate:") && !starts_with(line, "candidate:")) return line;
-  std::string out = starts_with(line, "candidate:") ? "a=" + line : line;
-  const size_t foundation_end = out.find(' ');
-  if (foundation_end == std::string::npos) return line;
-  const size_t component_begin = foundation_end + 1;
-  const size_t component_end = out.find(' ', component_begin);
-  if (component_end == std::string::npos) return line;
-  const size_t transport_begin = component_end + 1;
-  const size_t transport_end = out.find(' ', transport_begin);
-  if (transport_end == std::string::npos) return line;
-
-  for (size_t i = transport_begin; i < transport_end; ++i) {
-    out[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(out[i])));
-  }
-  return out;
-}
-
 std::vector<std::string> local_ice_lines_from_description(const std::string& sdp) {
   std::vector<std::string> out;
   bool has_ice_credentials = false;
@@ -78,7 +62,7 @@ std::vector<std::string> local_ice_lines_from_description(const std::string& sdp
       out.push_back(line);
       has_ice_credentials = true;
     } else if (starts_with(line, "a=candidate:") || starts_with(line, "candidate:")) {
-      out.push_back(normalize_candidate_line_for_browser_sdp(line));
+      out.push_back(normalize_sdp_candidate_line(line));
     }
   }
   if (has_ice_credentials) {
@@ -182,8 +166,7 @@ bool sdp_contains_media_section(const std::string& sdp) {
 }
 
 bool sdp_is_end_of_candidates_marker(const std::string& value) {
-  const std::string trimmed = trim_copy(value);
-  return trimmed == "a=end-of-candidates" || trimmed == "end-of-candidates";
+  return sdp_candidate_is_end_marker(value);
 }
 
 std::string build_builtin_active_answer_sdp(const BuiltinSdpAnswerInput& input) {

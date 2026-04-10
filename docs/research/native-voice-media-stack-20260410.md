@@ -106,6 +106,11 @@ Reference artifacts downloaded into the repo for exact vendor details:
     browser-safe `a=candidate:` lines and scopes provider-owned audio
     `msid`/SSRC signaling to audio m-lines only when a browser offer also
     contains non-audio sections
+  - ICE candidate normalization now lives in the shared
+    `session_voice_sdp_candidate` helper; signal parsing accepts browser
+    empty-candidate end markers as `a=end-of-candidates`, and the embedded
+    provider retries remote candidate ingestion with the normalized candidate
+    line if libjuice rejects the original browser payload
   - direct provider coverage now includes a local libjuice loopback peer that
     exchanges a real offer, consumes the candidate-bearing answer, trickles
     remote candidates back into the provider, and proves post-answer transport

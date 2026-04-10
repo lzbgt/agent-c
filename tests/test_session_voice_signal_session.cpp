@@ -97,6 +97,26 @@ static void test_candidate_ready_after_remote_description() {
   assert(ingress.candidate.candidate == "cand-2");
 }
 
+static void test_empty_candidate_payload_becomes_ready_end_marker() {
+  VoiceBrokerSignalSessionState state("agentd-runtime");
+  std::string err;
+  std::vector<agentd::VoiceBrokerSignalCandidate> drained;
+  assert(state.mark_remote_description_applied(&drained, &err));
+  assert(err.empty());
+
+  Json::Value candidate_payload(Json::objectValue);
+  candidate_payload["candidate"] = "";
+  candidate_payload["sender_tag"] = "webui-peer";
+
+  VoiceBrokerSignalIngress ingress;
+  assert(state.ingest_event(make_event("candidate", candidate_payload), &ingress, &err));
+  assert(err.empty());
+  assert(ingress.kind == VoiceBrokerSignalIngressKind::remote_candidate_ready);
+  assert(ingress.candidate.candidate == "a=end-of-candidates");
+  assert(state.received_candidate_count() == 1);
+  assert(state.pending_remote_candidate_count() == 0);
+}
+
 static void test_remote_bye_captures_close_reason() {
   VoiceBrokerSignalSessionState state("agentd-runtime");
   Json::Value payload(Json::objectValue);
@@ -153,6 +173,7 @@ int main() {
   test_self_sender_events_are_ignored();
   test_offer_then_candidate_queue_then_drain();
   test_candidate_ready_after_remote_description();
+  test_empty_candidate_payload_becomes_ready_end_marker();
   test_remote_bye_captures_close_reason();
   test_unknown_types_are_ignored();
   test_invalid_candidate_payload_fails_closed();

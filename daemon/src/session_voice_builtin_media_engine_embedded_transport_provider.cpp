@@ -6,6 +6,7 @@
 #include "session_voice_dtls_srtp_util.h"
 #include "session_voice_dtls_identity.h"
 #include "session_voice_rtcp_report.h"
+#include "session_voice_sdp_candidate.h"
 
 #include <juice/juice.h>
 #include <openssl/evp.h>
@@ -1658,17 +1659,17 @@ int embedded_handle_remote_candidate(
     return 0;
   }
   const std::string candidate_sdp = candidate ? std::string(candidate) : std::string();
-  if (candidate_sdp.empty()) {
-    write_error("remote candidate missing", err_buf, err_buf_size);
-    return 0;
-  }
-  if (agentd::sdp_is_end_of_candidates_marker(candidate_sdp)) {
+  if (agentd::sdp_candidate_is_end_marker(candidate_sdp)) {
     if (juice_set_remote_gathering_done(engine->agent) != JUICE_ERR_SUCCESS) {
       write_error("libjuice remote gathering-done rejected", err_buf, err_buf_size);
       return 0;
     }
   } else {
-    const int rc = juice_add_remote_candidate(engine->agent, candidate_sdp.c_str());
+    int rc = juice_add_remote_candidate(engine->agent, candidate_sdp.c_str());
+    const std::string normalized_candidate = agentd::normalize_sdp_candidate_line(candidate_sdp);
+    if (rc != JUICE_ERR_SUCCESS && normalized_candidate != candidate_sdp) {
+      rc = juice_add_remote_candidate(engine->agent, normalized_candidate.c_str());
+    }
     if (rc != JUICE_ERR_SUCCESS) {
       write_error("libjuice remote candidate rejected with code " + std::to_string(rc), err_buf, err_buf_size);
       return 0;

@@ -365,6 +365,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/session_voice_broker_plan.cpp
     daemon/src/session_voice_broker_session.cpp
     daemon/src/session_voice_signal_protocol.cpp
+    daemon/src/session_voice_sdp_candidate.cpp
     daemon/src/session_voice_signal_session.cpp
     daemon/src/session_voice_signal_client.cpp
     daemon/src/session_voice_signal_negotiation.cpp
@@ -511,6 +512,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
       daemon/src/session_voice_audio_decode.cpp
       daemon/src/session_voice_audio_encode.cpp
       daemon/src/session_voice_builtin_sdp_answer.cpp
+      daemon/src/session_voice_sdp_candidate.cpp
       daemon/src/session_voice_dtls_identity.cpp
       daemon/src/session_voice_dtls_srtp_util.cpp
       daemon/src/session_voice_rtcp_report.cpp
@@ -882,6 +884,18 @@ if(AGENT_BUILD_HOST)
   target_link_libraries(session_voice_signal_protocol_tests PRIVATE agentd_lib)
   add_test(NAME session_voice_signal_protocol_tests COMMAND session_voice_signal_protocol_tests)
 
+  add_executable(session_voice_sdp_candidate_tests
+    tests/test_session_voice_sdp_candidate.cpp
+    daemon/src/session_voice_sdp_candidate.cpp
+  )
+  target_compile_options(session_voice_sdp_candidate_tests PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_include_directories(session_voice_sdp_candidate_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
+  )
+  add_test(NAME session_voice_sdp_candidate_tests COMMAND session_voice_sdp_candidate_tests)
+
   add_executable(session_voice_signal_session_tests
     tests/test_session_voice_signal_session.cpp
   )
@@ -1103,6 +1117,7 @@ if(AGENT_BUILD_HOST)
   add_executable(session_voice_builtin_sdp_answer_tests
     tests/test_session_voice_builtin_sdp_answer.cpp
     daemon/src/session_voice_builtin_sdp_answer.cpp
+    daemon/src/session_voice_sdp_candidate.cpp
   )
   target_compile_options(session_voice_builtin_sdp_answer_tests PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>

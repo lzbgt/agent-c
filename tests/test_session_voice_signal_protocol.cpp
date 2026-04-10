@@ -58,7 +58,7 @@ static void test_description_payload_parse_and_build() {
 
 static void test_candidate_payload_parse() {
   Json::Value payload(Json::objectValue);
-  payload["candidate"] = "cand-1";
+  payload["candidate"] = "candidate:1 1 UDP 2122260223 127.0.0.1 55555 typ host";
   payload["sdpMid"] = "audio";
   payload["sdpMLineIndex"] = 0;
   payload["usernameFragment"] = "ufrag-1";
@@ -68,7 +68,7 @@ static void test_candidate_payload_parse() {
   std::string err;
   assert(parse_voice_broker_signal_candidate_payload(payload, &candidate, &err));
   assert(err.empty());
-  assert(candidate.candidate == "cand-1");
+  assert(candidate.candidate == "a=candidate:1 1 udp 2122260223 127.0.0.1 55555 typ host");
   assert(candidate.sdp_mid == "audio");
   assert(candidate.has_sdp_mline_index);
   assert(candidate.sdp_mline_index == 0);
@@ -77,11 +77,24 @@ static void test_candidate_payload_parse() {
 
   const Json::Value built = make_voice_broker_candidate_payload(candidate);
   assert(built.isObject());
-  assert(built["candidate"].asString() == "cand-1");
+  assert(built["candidate"].asString() == "a=candidate:1 1 udp 2122260223 127.0.0.1 55555 typ host");
   assert(built["sdpMid"].asString() == "audio");
   assert(built["sdpMLineIndex"].asInt() == 0);
   assert(built["usernameFragment"].asString() == "ufrag-1");
   assert(built["sender_tag"].asString() == "webui-peer");
+}
+
+static void test_empty_candidate_payload_is_end_marker() {
+  Json::Value payload(Json::objectValue);
+  payload["candidate"] = "";
+  payload["sender_tag"] = "webui-peer";
+
+  VoiceBrokerSignalCandidate candidate;
+  std::string err;
+  assert(parse_voice_broker_signal_candidate_payload(payload, &candidate, &err));
+  assert(err.empty());
+  assert(candidate.candidate == "a=end-of-candidates");
+  assert(candidate.sender_tag == "webui-peer");
 }
 
 static void test_bye_payload_parse_and_build() {
@@ -124,6 +137,7 @@ int main() {
   test_event_json_roundtrip_extracts_sender_tag();
   test_description_payload_parse_and_build();
   test_candidate_payload_parse();
+  test_empty_candidate_payload_is_end_marker();
   test_bye_payload_parse_and_build();
   test_invalid_payloads_rejected();
   return 0;

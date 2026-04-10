@@ -500,7 +500,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   direct keypair/fingerprint tests, and async media-progress coalescing state now lives behind
   `session_voice_builtin_progress_key` with direct equality coverage. The SDP answer helper now also normalizes bare
   local `candidate:` lines into browser-safe `a=candidate:` answer lines and scopes provider-owned audio `msid`/SSRC
-  signaling to audio m-lines when offers contain non-audio sections. It now also owns the first minimal in-process audio stage:
+  signaling to audio m-lines when offers contain non-audio sections. Shared candidate handling now also canonicalizes
+  browser empty-candidate end markers as `a=end-of-candidates`, and the embedded provider retries remote candidate
+  ingestion with the normalized candidate line if libjuice rejects the original browser payload. It now also owns the first minimal in-process audio stage:
   after receive-side SRTP unprotect it maps RTP payload types from the remote SDP, decodes `PCMU` / `PCMA` directly and
   `OPUS` through `libopus` when present at build time, and stages recent PCM samples in-process. Agentd now also owns
   the first bounded PCM handoff after that decode step: the embedded provider drains staged samples through the
