@@ -261,6 +261,29 @@ bool should_copy_session_attribute(const std::string& line) {
   return starts_with(line, "a=group:") || starts_with(line, "a=msid-semantic:");
 }
 
+std::string rewrite_session_attribute_for_answer(
+  const std::string& line,
+  const std::vector<std::string>& accepted_mids
+) {
+  if (!starts_with(line, "a=group:")) return line;
+  const std::vector<std::string> parts = split_space_tokens(line.substr(std::string("a=group:").size()));
+  if (parts.size() < 2) return line;
+  std::vector<std::string> filtered;
+  filtered.push_back(parts.front());
+  for (size_t i = 1; i < parts.size(); ++i) {
+    if (std::find(accepted_mids.begin(), accepted_mids.end(), parts[i]) != accepted_mids.end()) {
+      filtered.push_back(parts[i]);
+    }
+  }
+  if (filtered.size() < 2) return "";
+  std::string out = "a=group:";
+  for (size_t i = 0; i < filtered.size(); ++i) {
+    if (i > 0) out.push_back(' ');
+    out += filtered[i];
+  }
+  return out;
+}
+
 std::string media_kind_from_mline(const std::string& line) {
   if (!starts_with(line, "m=")) return "";
   const size_t end = line.find(' ', 2);
@@ -273,11 +296,20 @@ std::string media_kind_from_mline(const std::string& line) {
   return kind;
 }
 
+std::string mid_from_media_lines(const std::vector<std::string>& media_lines) {
+  for (const auto& line : media_lines) {
+    if (starts_with(line, "a=mid:")) return trim_copy(line.substr(std::string("a=mid:").size()));
+  }
+  return "";
+}
+
 bool should_copy_media_attribute(
   const std::string& line,
+  bool reject_media,
   bool media_is_audio,
   const std::vector<int>& audio_payload_types
 ) {
+  if (reject_media) return starts_with(line, "a=mid:");
   const bool recognized =
          starts_with(line, "a=mid:") ||
          starts_with(line, "a=rtcp-mux") ||
@@ -353,36 +385,45 @@ std::string build_builtin_active_answer_sdp(const BuiltinSdpAnswerInput& input) 
   out.push_back("o=- 0 0 IN IP4 127.0.0.1");
   out.push_back("s=-");
   out.push_back("t=0 0");
+  std::vector<std::string> session_attribute_lines;
   for (const auto& line : remote_lines) {
-    if (should_copy_session_attribute(line)) out.push_back(line);
+    if (should_copy_session_attribute(line)) session_attribute_lines.push_back(line);
   }
 
   bool in_media = false;
   std::vector<std::string> media_lines;
+  std::vector<std::string> media_answer_lines;
+  std::vector<std::string> accepted_mids;
   auto flush_media = [&]() {
     if (media_lines.empty()) return;
-    const bool media_is_audio = media_kind_from_mline(media_lines.front()) == "audio";
+    const std::string media_kind = media_kind_from_mline(media_lines.front());
+    const bool media_is_audio = media_kind == "audio";
+    const bool media_kind_supported = media_is_audio;
     const std::vector<int> audio_payload_types = media_is_audio
       ? answerable_audio_payload_types(media_lines)
       : std::vector<int>();
-    const bool reject_media = media_is_audio && audio_payload_types.empty();
-    out.push_back(rewrite_mline_for_ice_answer(
+    const bool reject_media = !media_kind_supported || (media_is_audio && audio_payload_types.empty());
+    media_answer_lines.push_back(rewrite_mline_for_ice_answer(
       media_lines.front(),
       audio_payload_types,
       reject_media));
-    out.push_back("c=IN IP4 0.0.0.0");
+    media_answer_lines.push_back("c=IN IP4 0.0.0.0");
     for (size_t i = 1; i < media_lines.size(); ++i) {
-      if (should_copy_media_attribute(media_lines[i], media_is_audio, audio_payload_types)) {
-        out.push_back(media_lines[i]);
+      if (should_copy_media_attribute(media_lines[i], reject_media, media_is_audio, audio_payload_types)) {
+        media_answer_lines.push_back(media_lines[i]);
       }
     }
     const std::string answer_direction = reject_media
       ? std::string("inactive")
       : answer_direction_for_media_lines(media_lines);
-    out.push_back("a=" + answer_direction);
-    out.push_back("a=setup:" + input.dtls_setup_role);
-    out.push_back("a=fingerprint:sha-256 " + input.dtls_fingerprint_sha256);
-    for (const auto& line : local_ice_lines) out.push_back(line);
+    media_answer_lines.push_back("a=" + answer_direction);
+    if (!reject_media) {
+      const std::string mid = mid_from_media_lines(media_lines);
+      if (!mid.empty()) accepted_mids.push_back(mid);
+      media_answer_lines.push_back("a=setup:" + input.dtls_setup_role);
+      media_answer_lines.push_back("a=fingerprint:sha-256 " + input.dtls_fingerprint_sha256);
+      for (const auto& line : local_ice_lines) media_answer_lines.push_back(line);
+    }
     if (media_is_audio && answer_direction_sends_media(answer_direction) &&
         input.outbound_audio_ssrc != 0) {
       const std::string stream_id =
@@ -393,9 +434,9 @@ std::string build_builtin_active_answer_sdp(const BuiltinSdpAnswerInput& input) 
         non_empty_or_default(input.outbound_audio_cname, "agentd-builtin-native");
       std::ostringstream ssrc;
       ssrc << input.outbound_audio_ssrc;
-      out.push_back("a=msid:" + stream_id + " " + track_id);
-      out.push_back("a=ssrc:" + ssrc.str() + " cname:" + cname);
-      out.push_back("a=ssrc:" + ssrc.str() + " msid:" + stream_id + " " + track_id);
+      media_answer_lines.push_back("a=msid:" + stream_id + " " + track_id);
+      media_answer_lines.push_back("a=ssrc:" + ssrc.str() + " cname:" + cname);
+      media_answer_lines.push_back("a=ssrc:" + ssrc.str() + " msid:" + stream_id + " " + track_id);
     }
     media_lines.clear();
   };
@@ -410,6 +451,11 @@ std::string build_builtin_active_answer_sdp(const BuiltinSdpAnswerInput& input) 
     if (in_media) media_lines.push_back(line);
   }
   flush_media();
+  for (const auto& line : session_attribute_lines) {
+    const std::string rewritten = rewrite_session_attribute_for_answer(line, accepted_mids);
+    if (!rewritten.empty()) out.push_back(rewritten);
+  }
+  out.insert(out.end(), media_answer_lines.begin(), media_answer_lines.end());
   return join_sdp_lines(out);
 }
 

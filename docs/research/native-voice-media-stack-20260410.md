@@ -106,6 +106,9 @@ Reference artifacts downloaded into the repo for exact vendor details:
     browser-safe `a=candidate:` lines and scopes provider-owned audio
     `msid`/SSRC signaling to audio m-lines only when a browser offer also
     contains non-audio sections
+  - unsupported non-audio browser m-lines such as datachannels are now rejected
+    as inactive/port-zero answer sections and filtered out of the active BUNDLE
+    group instead of being answered as provider-supported media
   - ICE candidate normalization now lives in the shared
     `session_voice_sdp_candidate` helper; signal parsing accepts browser
     empty-candidate end markers as `a=end-of-candidates`, and the embedded
@@ -236,8 +239,8 @@ At this scan point, the local machine is ready for:
 It is **not** yet at a full embedded WebRTC/SRTP runtime. The remaining gap is
 no longer dependency discovery, basic RTP ownership, negotiated Opus transmit,
 one-shot Sender/Receiver Report transmit, compound RTCP packet emission, active
-answer direction, or basic browser full-duplex proof; it is broader browser,
-codec, and candidate-edge hardening.
+answer direction, basic browser full-duplex proof, or unsupported non-audio
+section rejection; it is broader browser, codec, and candidate-edge hardening.
 
 ## Recommended Next Technical Decision
 

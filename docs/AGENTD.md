@@ -499,8 +499,10 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   arrives. The DTLS identity generation path now lives behind the shared `session_voice_dtls_identity` helper with
   direct keypair/fingerprint tests, and async media-progress coalescing state now lives behind
   `session_voice_builtin_progress_key` with direct equality coverage. The SDP answer helper now also normalizes bare
-  local `candidate:` lines into browser-safe `a=candidate:` answer lines and scopes provider-owned audio `msid`/SSRC
-  signaling to audio m-lines when offers contain non-audio sections. Shared candidate handling now also canonicalizes
+  local `candidate:` lines into browser-safe `a=candidate:` answer lines, scopes provider-owned audio `msid`/SSRC
+  signaling to audio m-lines when offers contain non-audio sections, and rejects unsupported non-audio browser m-lines
+  such as datachannels as inactive/port-zero while filtering them out of the active BUNDLE group. Shared candidate
+  handling now also canonicalizes
   browser empty-candidate end markers as `a=end-of-candidates`, and the embedded provider retries remote candidate
   ingestion with the normalized candidate line if libjuice rejects the original browser payload. Browser audio answers now
   also prune unsupported payloads: Opus is advertised only when this build has `libopus`, PCMU/PCMA G.711 remain supported,

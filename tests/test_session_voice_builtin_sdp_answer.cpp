@@ -60,6 +60,10 @@ std::string offer_with_direction(const char* direction) {
 
 std::string offer_with_audio_and_data_mline() {
   std::string offer = browser_offer();
+  const std::string group = "a=group:BUNDLE 0\r\n";
+  const size_t group_pos = offer.find(group);
+  assert(group_pos != std::string::npos);
+  offer.replace(group_pos, group.size(), "a=group:BUNDLE 0 1\r\n");
   offer +=
     "m=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n"
     "c=IN IP4 0.0.0.0\r\n"
@@ -67,6 +71,19 @@ std::string offer_with_audio_and_data_mline() {
     "a=sctp-port:5000\r\n"
     "a=max-message-size:262144\r\n";
   return offer;
+}
+
+std::string datachannel_only_offer() {
+  return
+    "v=0\r\n"
+    "o=- 1 2 IN IP4 127.0.0.1\r\n"
+    "s=-\r\n"
+    "t=0 0\r\n"
+    "a=group:BUNDLE data\r\n"
+    "m=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n"
+    "c=IN IP4 0.0.0.0\r\n"
+    "a=mid:data\r\n"
+    "a=sctp-port:5000\r\n";
 }
 
 std::string offer_with_telephone_event() {
@@ -109,6 +126,12 @@ size_t count_occurrences(const std::string& value, const std::string& needle) {
     pos += needle.size();
   }
   return count;
+}
+
+std::string substring_from(const std::string& value, const std::string& needle) {
+  const size_t pos = value.find(needle);
+  assert(pos != std::string::npos);
+  return value.substr(pos);
 }
 
 void test_active_answer_mirrors_browser_offer_media_contract() {
@@ -185,6 +208,9 @@ void test_active_answer_rejects_audio_mline_without_supported_payloads() {
   assert(answer.find("m=audio 0 UDP/TLS/RTP/SAVPF 13\r\n") != std::string::npos);
   assert(answer.find("a=inactive\r\n") != std::string::npos);
   assert(answer.find("a=rtpmap:13 CN/8000\r\n") == std::string::npos);
+  assert(answer.find("a=setup:passive\r\n") == std::string::npos);
+  assert(answer.find("a=fingerprint:sha-256 AA:BB:CC\r\n") == std::string::npos);
+  assert(answer.find("a=ice-ufrag:localUfrag\r\n") == std::string::npos);
   assert(answer.find("a=ssrc:2799795457 ") == std::string::npos);
 }
 
@@ -220,11 +246,42 @@ void test_active_answer_keeps_audio_ssrc_on_audio_mline_only() {
   });
 
   assert(answer.find(expected_answer_audio_mline()) != std::string::npos);
-  assert(answer.find("m=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n") != std::string::npos);
+  assert(answer.find("a=group:BUNDLE 0\r\n") != std::string::npos);
+  assert(answer.find("a=group:BUNDLE 0 1\r\n") == std::string::npos);
+  assert(answer.find("m=application 0 UDP/DTLS/SCTP webrtc-datachannel\r\n") != std::string::npos);
   assert(count_occurrences(answer, "a=ssrc:2799795457 ") == 2);
-  const size_t app_pos = answer.find("m=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n");
-  assert(app_pos != std::string::npos);
-  assert(answer.find("a=ssrc:2799795457 ", app_pos) == std::string::npos);
+  const std::string app_section =
+    substring_from(answer, "m=application 0 UDP/DTLS/SCTP webrtc-datachannel\r\n");
+  assert(app_section.find("a=mid:1\r\n") != std::string::npos);
+  assert(app_section.find("a=inactive\r\n") != std::string::npos);
+  assert(app_section.find("a=sctp-port:5000\r\n") == std::string::npos);
+  assert(app_section.find("a=max-message-size:262144\r\n") == std::string::npos);
+  assert(app_section.find("a=setup:passive\r\n") == std::string::npos);
+  assert(app_section.find("a=fingerprint:sha-256 AA:BB:CC\r\n") == std::string::npos);
+  assert(app_section.find("a=ice-ufrag:localUfrag\r\n") == std::string::npos);
+  assert(app_section.find("a=ssrc:2799795457 ") == std::string::npos);
+}
+
+void test_active_answer_omits_bundle_when_only_unsupported_media_exists() {
+  const std::string answer = agentd::build_builtin_active_answer_sdp({
+    datachannel_only_offer(),
+    local_description(),
+    true,
+    "passive",
+    "AA:BB:CC",
+    2799795457u,
+    "agentd-builtin-native",
+    "agentd_builtin_stream",
+    "agentd_builtin_audio",
+  });
+
+  assert(answer.find("a=group:BUNDLE") == std::string::npos);
+  assert(answer.find("m=application 0 UDP/DTLS/SCTP webrtc-datachannel\r\n") != std::string::npos);
+  assert(answer.find("a=mid:data\r\n") != std::string::npos);
+  assert(answer.find("a=inactive\r\n") != std::string::npos);
+  assert(answer.find("a=sctp-port:5000\r\n") == std::string::npos);
+  assert(answer.find("a=setup:passive\r\n") == std::string::npos);
+  assert(answer.find("a=fingerprint:sha-256 AA:BB:CC\r\n") == std::string::npos);
 }
 
 void test_active_answer_respects_offer_direction() {
@@ -305,6 +362,7 @@ int main() {
   test_active_answer_rejects_audio_mline_without_supported_payloads();
   test_active_answer_normalizes_bare_local_candidate_lines();
   test_active_answer_keeps_audio_ssrc_on_audio_mline_only();
+  test_active_answer_omits_bundle_when_only_unsupported_media_exists();
   test_active_answer_respects_offer_direction();
   test_falls_back_to_local_description_without_media_or_dtls_identity();
   test_sdp_marker_helpers_trim_inputs();
