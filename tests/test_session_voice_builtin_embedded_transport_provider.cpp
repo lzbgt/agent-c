@@ -270,6 +270,8 @@ static void test_embedded_transport_provider_loads_and_answers_remote_offer() {
   assert(engine->info().provider_capabilities["dtls_srtp_export"].asBool());
   assert(engine->info().provider_capabilities["srtp"].asBool());
   assert(engine->info().provider_capabilities["rtp_ingest"].asBool());
+  assert(engine->info().provider_capabilities["audio_drain"].asBool());
+  assert(engine->info().provider_capabilities["audio_owner_handoff"].asBool());
   assert(engine->info().provider_capabilities["sctp"].asBool());
   assert(engine->info().provider_capabilities["real_media_engine"].asBool() == false);
 
@@ -298,6 +300,14 @@ static void test_embedded_transport_provider_loads_and_answers_remote_offer() {
   assert(!init_event["srtp_version"].asString().empty());
   assert(runtime.native_media_provider["name"].asString() ==
          "agentd_builtin_embedded_transport_provider");
+  assert(runtime.native_media_provider["abi_version"].asInt() == 4);
+
+  agentd::VoicePeerBuiltinAudioChunk drained;
+  Json::Value drained_event(Json::nullValue);
+  assert(engine->drain_audio(&drained, &drained_event, &err));
+  assert(err.empty());
+  assert(drained.pcm_samples.empty());
+  assert(drained_event.isNull());
 
   VoiceBrokerSignalRemoteDescriptionReady ready;
   ready.description.type = "offer";

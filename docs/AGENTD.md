@@ -481,8 +481,8 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `peer.media_engine_kind=builtin_native_plugin`. The provider seam is now self-describing too:
   `builtin_native_probe` surfaces provider ABI/name/version/capabilities plus load errors in config/runtime metadata,
   and live/planned runtime snapshots persist the loaded provider details under `peer.native_media_provider`.
-  The current shipped providers now use pollable ABI v3, so agentd can drain provider-owned async status without
-  waiting for a new broker signaling ingress callback.
+  The current shipped providers now use pollable ABI v4, so agentd can drain provider-owned async status plus bounded
+  PCM handoff without waiting for a new broker signaling ingress callback.
 - The repo now ships two daemon-owned provider modules for that seam:
   - `./build/libagentd_voice_builtin_media_engine_sample.{so,dylib,dll}` as the minimal answer-exchange sample
   - `./build/libagentd_voice_builtin_media_engine_embedded_transport.{so,dylib,dll}` when `libjuice + libsrtp2 + usrsctp`
@@ -495,8 +495,11 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   shape with `a=setup:passive` plus a surfaced SHA-256 fingerprint, completes DTLS/SRTP setup, and now publishes RTP
   ingest counters/last-header fields once media arrives. It now also owns the first minimal in-process audio stage:
   after receive-side SRTP unprotect it maps RTP payload types from the remote SDP, decodes `PCMU` / `PCMA` directly and
-  `OPUS` through `libopus` when present at build time, and stages recent PCM samples in-process for the future render /
-  processing path. The repo also has direct in-tree DTLS/SRTP proof for the same OpenSSL/libsrtp configuration:
+  `OPUS` through `libopus` when present at build time, and stages recent PCM samples in-process. Agentd now also owns
+  the first bounded PCM handoff after that decode step: the embedded provider drains staged samples through the
+  `native_plugin` ABI into agentd-owned memory, and runtime status persists both provider-side buffered samples and
+  agentd-owned drained/retained PCM counters. The repo also has direct in-tree DTLS/SRTP proof for the same
+  OpenSSL/libsrtp configuration:
   `session_voice_builtin_dtls_transport_tests` completes a DTLS 1.2 client/server handshake over datagram-memory BIOs,
   negotiates `SRTP_AES128_CM_SHA1_80`, exports DTLS-SRTP keying material, derives real inbound / outbound libsrtp
   contexts from that exporter output, and now proves both protected RTP ingest and receive-side audio decode.
@@ -515,7 +518,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `peer.dtls_packets_received`, `peer.rtp_packets_received`, `peer.rtp_payload_bytes_received`,
   `peer.rtp_last_payload_type`, `peer.rtp_last_sequence`, `peer.rtp_last_timestamp`,
   `peer.rtp_last_ssrc`, `peer.audio_frames_decoded`, `peer.audio_pcm_samples_decoded`,
-  `peer.audio_pcm_samples_buffered`, `peer.audio_last_sample_rate_hz`,
+  `peer.audio_pcm_samples_buffered`, `peer.audio_drain_events_total`,
+  `peer.audio_pcm_samples_drained_total`, `peer.audio_pcm_samples_owned`,
+  `peer.audio_last_drain_samples`, `peer.audio_last_sample_rate_hz`,
   `peer.audio_last_channels`, `peer.audio_last_frame_samples_per_channel`,
   `peer.audio_last_codec_name`, and `peer.audio_last_error`.
   Those same fields can now advance on provider-polled async progress events too, not only on direct signaling

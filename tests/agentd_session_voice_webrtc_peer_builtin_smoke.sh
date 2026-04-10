@@ -225,12 +225,12 @@ if mode == "native_plugin":
     expected_native_supported = provider_name == "agentd_builtin_embedded_transport_provider"
     assert probe.get("loadable") is True, obj
     assert probe.get("native_media_supported") is expected_native_supported, obj
-    assert (probe.get("provider") or {}).get("abi_version") == 3, obj
+    assert (probe.get("provider") or {}).get("abi_version") == 4, obj
     assert (probe.get("provider") or {}).get("name") in {
         "agentd_builtin_sample_provider",
         "agentd_builtin_embedded_transport_provider",
     }, obj
-    assert provider.get("abi_version") == 3, obj
+    assert provider.get("abi_version") == 4, obj
     assert provider_name in {
         "agentd_builtin_sample_provider",
         "agentd_builtin_embedded_transport_provider",
@@ -239,9 +239,15 @@ if mode == "native_plugin":
         "sample_webrtc",
         "embedded_transport_primitives",
     }, obj
+    if provider_name == "agentd_builtin_embedded_transport_provider":
+        assert provider_caps.get("audio_drain") is True, obj
+        assert provider_caps.get("audio_owner_handoff") is True, obj
     assert provider_caps.get("real_media_engine") is False, obj
     assert peer.get("native_media_supported") is expected_native_supported, obj
     assert peer.get("native_media_active") is False, obj
+    assert peer.get("audio_drain_events_total", 0) == 0, obj
+    assert peer.get("audio_pcm_samples_drained_total", 0) == 0, obj
+    assert peer.get("audio_pcm_samples_owned", 0) == 0, obj
 else:
     assert peer.get("native_media_supported") is False, obj
     assert peer.get("native_media_active") is False, obj

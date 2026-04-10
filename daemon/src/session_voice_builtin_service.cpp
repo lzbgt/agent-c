@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -30,6 +31,9 @@ struct BuiltinVoicePeerService {
   std::weak_ptr<VoicePeerRuntime> runtime;
   std::unique_ptr<VoicePeerBuiltinMediaEngine> media_engine;
   std::function<void(const VoicePeerRuntime&)> persist_runtime;
+  std::deque<int16_t> owned_audio_pcm;
+  int64_t owned_audio_drain_events_total = 0;
+  int64_t owned_audio_pcm_samples_drained_total = 0;
   std::mutex mu;
   std::condition_variable cv;
   bool stop_requested = false;
@@ -39,6 +43,8 @@ struct BuiltinVoicePeerService {
 
 std::mutex builtin_voice_peer_services_mu;
 std::map<std::string, std::shared_ptr<BuiltinVoicePeerService>> builtin_voice_peer_services;
+
+constexpr size_t kBuiltinVoicePeerOwnedAudioCapacitySamples = 48000 * 2 * 2;
 
 int64_t now_unix_ms() {
   using namespace std::chrono;
@@ -100,6 +106,11 @@ void update_builtin_runtime_last_stdout(
   const Json::Value& payload
 );
 
+Json::Value make_builtin_voice_peer_event(
+  const std::string& event,
+  const std::string& session_id
+);
+
 void append_builtin_voice_peer_event_and_snapshot(
   const std::string& stdout_log_path,
   const std::string& session_id,
@@ -156,6 +167,99 @@ bool drain_builtin_voice_peer_media_engine_events(
   }
   if (out_err) *out_err = "builtin media engine poll_status exceeded drain limit";
   return false;
+}
+
+bool drain_builtin_voice_peer_media_engine_audio(
+  const std::shared_ptr<BuiltinVoicePeerService>& service,
+  std::mutex& runtime_mu,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (!service || !service->media_engine) return true;
+  for (int i = 0; i < 32; ++i) {
+    VoicePeerBuiltinAudioChunk chunk;
+    Json::Value event(Json::nullValue);
+    std::string drain_err;
+    if (!service->media_engine->drain_audio(&chunk, &event, &drain_err)) {
+      if (out_err) {
+        *out_err = trim_copy(drain_err).empty()
+          ? "builtin media engine drain_audio failed"
+          : drain_err;
+      }
+      return false;
+    }
+    if (chunk.pcm_samples.empty() && !event.isObject()) return true;
+
+    Json::Value payload = event.isObject()
+      ? event
+      : make_builtin_voice_peer_event("audio_chunk_drained", service->session_id);
+
+    if (!chunk.pcm_samples.empty()) {
+      int64_t drain_events_total = 0;
+      int64_t pcm_samples_drained_total = 0;
+      int64_t pcm_samples_owned = 0;
+      {
+        std::lock_guard<std::mutex> lk(service->mu);
+        service->owned_audio_drain_events_total += 1;
+        service->owned_audio_pcm_samples_drained_total +=
+          static_cast<int64_t>(chunk.pcm_samples.size());
+        for (const int16_t sample : chunk.pcm_samples) {
+          service->owned_audio_pcm.push_back(sample);
+        }
+        while (service->owned_audio_pcm.size() > kBuiltinVoicePeerOwnedAudioCapacitySamples) {
+          service->owned_audio_pcm.pop_front();
+        }
+        drain_events_total = service->owned_audio_drain_events_total;
+        pcm_samples_drained_total = service->owned_audio_pcm_samples_drained_total;
+        pcm_samples_owned = static_cast<int64_t>(service->owned_audio_pcm.size());
+      }
+      payload["event"] = "audio_chunk_drained";
+      payload["audio_drain_events_total"] = Json::Int64(drain_events_total);
+      payload["audio_pcm_samples_drained_total"] = Json::Int64(pcm_samples_drained_total);
+      payload["audio_pcm_samples_owned"] = Json::Int64(pcm_samples_owned);
+      payload["audio_last_drain_samples"] =
+        Json::Int64(static_cast<int64_t>(chunk.pcm_samples.size()));
+      if (!payload.isMember("audio_last_sample_rate_hz") && chunk.sample_rate_hz > 0) {
+        payload["audio_last_sample_rate_hz"] = chunk.sample_rate_hz;
+      }
+      if (!payload.isMember("audio_last_channels") && chunk.channels > 0) {
+        payload["audio_last_channels"] = chunk.channels;
+      }
+      if (!payload.isMember("audio_last_frame_samples_per_channel") &&
+          chunk.frame_samples_per_channel > 0) {
+        payload["audio_last_frame_samples_per_channel"] =
+          chunk.frame_samples_per_channel;
+      }
+      if (!payload.isMember("audio_last_codec_name") && !trim_copy(chunk.codec_name).empty()) {
+        payload["audio_last_codec_name"] = chunk.codec_name;
+      }
+      if (!payload.isMember("native_media_active")) payload["native_media_active"] = true;
+      if (!payload.isMember("media_engine_state")) payload["media_engine_state"] = "media_active";
+    }
+
+    append_builtin_voice_peer_event_and_snapshot(
+      service->stdout_log_path, service->session_id, payload, service->runtime, runtime_mu);
+  }
+  if (out_err) *out_err = "builtin media engine drain_audio exceeded drain limit";
+  return false;
+}
+
+bool drain_builtin_voice_peer_media_engine_outputs(
+  const std::shared_ptr<BuiltinVoicePeerService>& service,
+  std::mutex& runtime_mu,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  std::string err;
+  if (!drain_builtin_voice_peer_media_engine_events(service, runtime_mu, &err)) {
+    if (out_err) *out_err = err;
+    return false;
+  }
+  if (!drain_builtin_voice_peer_media_engine_audio(service, runtime_mu, &err)) {
+    if (out_err) *out_err = err;
+    return false;
+  }
+  return true;
 }
 
 void update_builtin_runtime_last_stdout(
@@ -259,7 +363,7 @@ void builtin_voice_peer_service_main(
             append_builtin_voice_peer_event_and_snapshot(
               service->stdout_log_path, service->session_id, answer_ready, service->runtime, runtime_mu);
           }
-          if (!drain_builtin_voice_peer_media_engine_events(service, runtime_mu, &callback_err)) {
+          if (!drain_builtin_voice_peer_media_engine_outputs(service, runtime_mu, &callback_err)) {
             return false;
           }
 
@@ -286,7 +390,7 @@ void builtin_voice_peer_service_main(
           }
           append_builtin_voice_peer_event_and_snapshot(
             service->stdout_log_path, service->session_id, sent_answer, service->runtime, runtime_mu);
-          if (!drain_builtin_voice_peer_media_engine_events(service, runtime_mu, &callback_err)) {
+          if (!drain_builtin_voice_peer_media_engine_outputs(service, runtime_mu, &callback_err)) {
             return false;
           }
           return true;
@@ -303,7 +407,7 @@ void builtin_voice_peer_service_main(
           }
           append_builtin_voice_peer_event_and_snapshot(
             service->stdout_log_path, service->session_id, candidate, service->runtime, runtime_mu);
-          if (!drain_builtin_voice_peer_media_engine_events(service, runtime_mu, &callback_err)) {
+          if (!drain_builtin_voice_peer_media_engine_outputs(service, runtime_mu, &callback_err)) {
             return false;
           }
           return true;
@@ -317,6 +421,9 @@ void builtin_voice_peer_service_main(
           }
           append_builtin_voice_peer_event_and_snapshot(
             service->stdout_log_path, service->session_id, bye, service->runtime, runtime_mu);
+          if (!drain_builtin_voice_peer_media_engine_outputs(service, runtime_mu, &callback_err)) {
+            return false;
+          }
           return false;
         }
         return true;
@@ -332,7 +439,7 @@ void builtin_voice_peer_service_main(
     if (ok) continue;
     if (builtin_voice_peer_stream_timed_out(stream_err)) {
       std::string poll_err;
-      if (!drain_builtin_voice_peer_media_engine_events(service, runtime_mu, &poll_err)) {
+      if (!drain_builtin_voice_peer_media_engine_outputs(service, runtime_mu, &poll_err)) {
         terminal_error = trim_copy(poll_err).empty()
           ? "builtin media engine poll_status failed"
           : poll_err;
@@ -369,6 +476,8 @@ void builtin_voice_peer_service_main(
     if (!trim_copy(send_err).empty()) sent_bye["warning"] = send_err;
     append_builtin_voice_peer_event_and_snapshot(
       service->stdout_log_path, service->session_id, sent_bye, service->runtime, runtime_mu);
+    std::string drain_err;
+    (void)drain_builtin_voice_peer_media_engine_outputs(service, runtime_mu, &drain_err);
   }
 
   Json::Value terminal_event = make_builtin_voice_peer_event(
@@ -514,10 +623,10 @@ bool start_builtin_voice_peer_runtime_service(
   service->media_engine = std::move(media_engine);
   service->persist_runtime = persist_runtime;
   std::string poll_err;
-  if (!drain_builtin_voice_peer_media_engine_events(service, runtime_mu, &poll_err)) {
+  if (!drain_builtin_voice_peer_media_engine_outputs(service, runtime_mu, &poll_err)) {
     if (out_err) {
       *out_err = trim_copy(poll_err).empty()
-        ? "failed to drain builtin media engine startup events"
+        ? "failed to drain builtin media engine startup output"
         : poll_err;
     }
     return false;

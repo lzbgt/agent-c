@@ -8215,6 +8215,26 @@ export interface components {
             audio_pcm_samples_buffered?: number;
             /**
              * Format: int64
+             * @description Total number of provider-to-agentd PCM drain handoff events completed for the live builtin runtime.
+             */
+            audio_drain_events_total?: number;
+            /**
+             * Format: int64
+             * @description Total PCM samples moved from the provider staging buffer into agentd-owned memory. This count includes all channels.
+             */
+            audio_pcm_samples_drained_total?: number;
+            /**
+             * Format: int64
+             * @description Number of PCM samples currently retained in agentd-owned memory after provider drain handoff. This count includes all channels.
+             */
+            audio_pcm_samples_owned?: number;
+            /**
+             * Format: int64
+             * @description PCM samples transferred during the most recent provider-to-agentd drain handoff. This count includes all channels.
+             */
+            audio_last_drain_samples?: number;
+            /**
+             * Format: int64
              * @description Sample rate of the most recent successfully decoded inbound audio frame.
              */
             audio_last_sample_rate_hz?: number;

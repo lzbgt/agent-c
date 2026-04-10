@@ -27,6 +27,8 @@ namespace {
 constexpr size_t kMediaPluginEventBufBytes = 8192;
 constexpr size_t kMediaPluginAnswerBufBytes = 4096;
 constexpr size_t kMediaPluginErrBufBytes = 1024;
+constexpr size_t kMediaPluginAudioDrainSamples = 4096;
+constexpr size_t kMediaPluginCodecNameBufBytes = 128;
 
 #if AGENTD_HAVE_VOICE_MEDIA_PLUGIN_LOADER
 std::string media_plugin_last_error() {
@@ -206,6 +208,21 @@ struct VoiceMediaPluginApiBridge {
     char* err_buf,
     size_t err_buf_size
   ) = nullptr;
+  int (*drain_audio)(
+    void* instance,
+    int16_t* pcm_buf,
+    size_t pcm_capacity_samples,
+    size_t* out_pcm_samples,
+    int* out_sample_rate_hz,
+    int* out_channels,
+    int* out_frame_samples_per_channel,
+    char* codec_name_buf,
+    size_t codec_name_buf_size,
+    char* event_json_buf,
+    size_t event_json_buf_size,
+    char* err_buf,
+    size_t err_buf_size
+  ) = nullptr;
 };
 
 struct VoiceMediaPluginProbe {
@@ -234,6 +251,74 @@ bool validate_voice_media_plugin_bridge_v3(
   if (!api.poll_status) {
     if (out_err) *out_err = "builtin native media engine missing required poll_status callback";
     return false;
+  }
+  return true;
+}
+
+bool validate_voice_media_plugin_bridge_v4(
+  const VoiceMediaPluginApiBridge& api,
+  std::string* out_err
+) {
+  if (!validate_voice_media_plugin_bridge_v3(api, out_err)) return false;
+  if (!api.drain_audio) {
+    if (out_err) *out_err = "builtin native media engine missing required drain_audio callback";
+    return false;
+  }
+  return true;
+}
+
+bool populate_probe_from_api_v4(
+  const std::string& library_path,
+  const agentd_voice_media_engine_provider_v4* api,
+  VoiceMediaPluginProbe* out_probe,
+  std::string* out_err
+) {
+  if (!api) {
+    if (out_err) *out_err = "builtin native media engine returned null v4 API";
+    return false;
+  }
+  if (api->abi_version != AGENTD_VOICE_MEDIA_ENGINE_PROVIDER_ABI_V4) {
+    if (out_err) *out_err = "builtin native media engine ABI v4 mismatch";
+    return false;
+  }
+  const std::string kind = trim_copy(api->media_engine_kind ? api->media_engine_kind : "");
+  if (kind != "builtin_native_plugin") {
+    if (out_err) *out_err = "builtin native media engine reported unsupported media_engine_kind";
+    return false;
+  }
+  const std::string provider_name = trim_copy(api->provider_name ? api->provider_name : "");
+  if (provider_name.empty()) {
+    if (out_err) *out_err = "builtin native media engine missing provider_name";
+    return false;
+  }
+  Json::Value capabilities(Json::nullValue);
+  if (!parse_provider_capabilities_json(api->provider_capabilities_json, &capabilities, out_err)) {
+    return false;
+  }
+
+  VoiceMediaPluginApiBridge bridge;
+  bridge.abi_version = api->abi_version;
+  bridge.create = api->create;
+  bridge.destroy = api->destroy;
+  bridge.initialize = api->initialize;
+  bridge.handle_remote_description = api->handle_remote_description;
+  bridge.handle_remote_candidate = api->handle_remote_candidate;
+  bridge.handle_remote_bye = api->handle_remote_bye;
+  bridge.handle_local_shutdown = api->handle_local_shutdown;
+  bridge.poll_status = api->poll_status;
+  bridge.drain_audio = api->drain_audio;
+  if (!validate_voice_media_plugin_bridge_v4(bridge, out_err)) return false;
+
+  if (out_probe) {
+    out_probe->api = bridge;
+    out_probe->info.media_engine_kind = kind;
+    out_probe->info.native_media_supported = api->native_media_supported != 0;
+    out_probe->info.native_media_active = false;
+    out_probe->info.provider_abi_version = static_cast<int>(api->abi_version);
+    out_probe->info.provider_name = provider_name;
+    out_probe->info.provider_version = trim_copy(api->provider_version ? api->provider_version : "");
+    out_probe->info.provider_library_path = library_path;
+    out_probe->info.provider_capabilities = capabilities;
   }
   return true;
 }
@@ -417,6 +502,23 @@ bool probe_builtin_voice_peer_native_media_engine_impl(
     return false;
   }
 
+  const auto get_api_v4 = reinterpret_cast<agentd_voice_media_engine_get_api_v4_fn>(
+    media_plugin_symbol(handle, AGENTD_VOICE_MEDIA_ENGINE_GET_API_V4_SYMBOL));
+  if (get_api_v4) {
+    VoiceMediaPluginProbe probe;
+    if (!populate_probe_from_api_v4(library_path, get_api_v4(), &probe, out_err)) {
+      media_plugin_close(handle);
+      return false;
+    }
+    if (out_probe) {
+      *out_probe = probe;
+      out_probe->handle = handle;
+      return true;
+    }
+    media_plugin_close(handle);
+    return true;
+  }
+
   const auto get_api_v3 = reinterpret_cast<agentd_voice_media_engine_get_api_v3_fn>(
     media_plugin_symbol(handle, AGENTD_VOICE_MEDIA_ENGINE_GET_API_V3_SYMBOL));
   if (get_api_v3) {
@@ -456,7 +558,8 @@ bool probe_builtin_voice_peer_native_media_engine_impl(
   if (!get_api_v1) {
     if (out_err) {
       *out_err =
-        "builtin native media engine missing " AGENTD_VOICE_MEDIA_ENGINE_GET_API_V3_SYMBOL
+        "builtin native media engine missing " AGENTD_VOICE_MEDIA_ENGINE_GET_API_V4_SYMBOL
+        ", " AGENTD_VOICE_MEDIA_ENGINE_GET_API_V3_SYMBOL
         ", " AGENTD_VOICE_MEDIA_ENGINE_GET_API_V2_SYMBOL
         " and " AGENTD_VOICE_MEDIA_ENGINE_GET_API_V1_SYMBOL;
     }
@@ -587,6 +690,17 @@ class BuiltinVoicePeerSignalingStubEngine final : public VoicePeerBuiltinMediaEn
     std::string* out_err
   ) override {
     if (out_err) out_err->clear();
+    if (out_event) *out_event = Json::Value(Json::nullValue);
+    return true;
+  }
+
+  bool drain_audio(
+    VoicePeerBuiltinAudioChunk* out_chunk,
+    Json::Value* out_event,
+    std::string* out_err
+  ) override {
+    if (out_err) out_err->clear();
+    if (out_chunk) *out_chunk = VoicePeerBuiltinAudioChunk{};
     if (out_event) *out_event = Json::Value(Json::nullValue);
     return true;
   }
@@ -766,6 +880,77 @@ class BuiltinVoicePeerNativePluginEngine final : public VoicePeerBuiltinMediaEng
     }
     if (trim_copy(event_buf).empty()) return true;
     return parse_media_plugin_event_json(event_buf, info_, out_event, out_err);
+  }
+
+  bool drain_audio(
+    VoicePeerBuiltinAudioChunk* out_chunk,
+    Json::Value* out_event,
+    std::string* out_err
+  ) override {
+    if (out_err) out_err->clear();
+    if (out_chunk) *out_chunk = VoicePeerBuiltinAudioChunk{};
+    if (out_event) *out_event = Json::Value(Json::nullValue);
+    if (!api_.drain_audio) return true;
+
+    int16_t pcm_buf[kMediaPluginAudioDrainSamples];
+    size_t pcm_samples = 0;
+    int sample_rate_hz = 0;
+    int channels = 0;
+    int frame_samples_per_channel = 0;
+    char codec_name[kMediaPluginCodecNameBufBytes];
+    char event_buf[kMediaPluginEventBufBytes];
+    char err_buf[kMediaPluginErrBufBytes];
+    clear_c_buffer(codec_name);
+    clear_c_buffer(event_buf);
+    clear_c_buffer(err_buf);
+    if (!api_.drain_audio(
+          instance_,
+          pcm_buf,
+          kMediaPluginAudioDrainSamples,
+          &pcm_samples,
+          &sample_rate_hz,
+          &channels,
+          &frame_samples_per_channel,
+          codec_name,
+          sizeof(codec_name),
+          event_buf,
+          sizeof(event_buf),
+          err_buf,
+          sizeof(err_buf))) {
+      if (out_err) {
+        *out_err = trim_copy(err_buf).empty()
+          ? "builtin native media engine drain_audio failed"
+          : trim_copy(err_buf);
+      }
+      return false;
+    }
+    if (out_chunk && pcm_samples > 0) {
+      out_chunk->pcm_samples.assign(pcm_buf, pcm_buf + pcm_samples);
+      out_chunk->sample_rate_hz = sample_rate_hz;
+      out_chunk->channels = channels;
+      out_chunk->frame_samples_per_channel = frame_samples_per_channel;
+      out_chunk->codec_name = trim_copy(codec_name);
+    }
+    const std::string raw_event = trim_copy(event_buf);
+    if (!raw_event.empty()) {
+      return parse_media_plugin_event_json(event_buf, info_, out_event, out_err);
+    }
+    if (pcm_samples == 0) return true;
+    if (out_event) {
+      Json::Value payload = make_engine_event(
+        info_,
+        "audio_chunk_drained",
+        info_.native_media_active ? "media_active" : "media_transport_ready");
+      payload["audio_last_drain_samples"] = Json::Int64(static_cast<int64_t>(pcm_samples));
+      if (sample_rate_hz > 0) payload["audio_last_sample_rate_hz"] = sample_rate_hz;
+      if (channels > 0) payload["audio_last_channels"] = channels;
+      if (frame_samples_per_channel > 0) {
+        payload["audio_last_frame_samples_per_channel"] = frame_samples_per_channel;
+      }
+      if (codec_name[0]) payload["audio_last_codec_name"] = trim_copy(codec_name);
+      *out_event = payload;
+    }
+    return true;
   }
 
  private:
@@ -1021,6 +1206,26 @@ void note_voice_peer_media_engine_event(
   if (payload.isMember("audio_pcm_samples_buffered") &&
       (payload["audio_pcm_samples_buffered"].isInt64() || payload["audio_pcm_samples_buffered"].isUInt64())) {
     runtime->audio_pcm_samples_buffered = payload["audio_pcm_samples_buffered"].asInt64();
+  }
+  if (payload.isMember("audio_drain_events_total") &&
+      (payload["audio_drain_events_total"].isInt64() || payload["audio_drain_events_total"].isUInt64())) {
+    runtime->audio_drain_events_total = payload["audio_drain_events_total"].asInt64();
+  }
+  if (payload.isMember("audio_pcm_samples_drained_total") &&
+      (payload["audio_pcm_samples_drained_total"].isInt64() ||
+       payload["audio_pcm_samples_drained_total"].isUInt64())) {
+    runtime->audio_pcm_samples_drained_total =
+      payload["audio_pcm_samples_drained_total"].asInt64();
+  }
+  if (payload.isMember("audio_pcm_samples_owned") &&
+      (payload["audio_pcm_samples_owned"].isInt64() ||
+       payload["audio_pcm_samples_owned"].isUInt64())) {
+    runtime->audio_pcm_samples_owned = payload["audio_pcm_samples_owned"].asInt64();
+  }
+  if (payload.isMember("audio_last_drain_samples") &&
+      (payload["audio_last_drain_samples"].isInt64() ||
+       payload["audio_last_drain_samples"].isUInt64())) {
+    runtime->audio_last_drain_samples = payload["audio_last_drain_samples"].asInt64();
   }
   if (payload.isMember("audio_last_sample_rate_hz") &&
       (payload["audio_last_sample_rate_hz"].isInt64() || payload["audio_last_sample_rate_hz"].isUInt64())) {

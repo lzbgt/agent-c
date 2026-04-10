@@ -80,6 +80,10 @@ Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   out["audio_frames_decoded"] = Json::Int64(st.audio_frames_decoded);
   out["audio_pcm_samples_decoded"] = Json::Int64(st.audio_pcm_samples_decoded);
   out["audio_pcm_samples_buffered"] = Json::Int64(st.audio_pcm_samples_buffered);
+  out["audio_drain_events_total"] = Json::Int64(st.audio_drain_events_total);
+  out["audio_pcm_samples_drained_total"] = Json::Int64(st.audio_pcm_samples_drained_total);
+  out["audio_pcm_samples_owned"] = Json::Int64(st.audio_pcm_samples_owned);
+  out["audio_last_drain_samples"] = Json::Int64(st.audio_last_drain_samples);
   if (st.audio_last_sample_rate_hz > 0) {
     out["audio_last_sample_rate_hz"] = Json::Int64(st.audio_last_sample_rate_hz);
   }
@@ -362,6 +366,23 @@ bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, s
   if (v.isMember("audio_pcm_samples_buffered") &&
       (v["audio_pcm_samples_buffered"].isInt64() || v["audio_pcm_samples_buffered"].isUInt64())) {
     st.audio_pcm_samples_buffered = v["audio_pcm_samples_buffered"].asInt64();
+  }
+  if (v.isMember("audio_drain_events_total") &&
+      (v["audio_drain_events_total"].isInt64() || v["audio_drain_events_total"].isUInt64())) {
+    st.audio_drain_events_total = v["audio_drain_events_total"].asInt64();
+  }
+  if (v.isMember("audio_pcm_samples_drained_total") &&
+      (v["audio_pcm_samples_drained_total"].isInt64() ||
+       v["audio_pcm_samples_drained_total"].isUInt64())) {
+    st.audio_pcm_samples_drained_total = v["audio_pcm_samples_drained_total"].asInt64();
+  }
+  if (v.isMember("audio_pcm_samples_owned") &&
+      (v["audio_pcm_samples_owned"].isInt64() || v["audio_pcm_samples_owned"].isUInt64())) {
+    st.audio_pcm_samples_owned = v["audio_pcm_samples_owned"].asInt64();
+  }
+  if (v.isMember("audio_last_drain_samples") &&
+      (v["audio_last_drain_samples"].isInt64() || v["audio_last_drain_samples"].isUInt64())) {
+    st.audio_last_drain_samples = v["audio_last_drain_samples"].asInt64();
   }
   if (v.isMember("audio_last_sample_rate_hz") &&
       (v["audio_last_sample_rate_hz"].isInt64() || v["audio_last_sample_rate_hz"].isUInt64())) {

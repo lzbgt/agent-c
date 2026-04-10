@@ -266,8 +266,9 @@ A v0 smoke test should:
   gives agentd a real native backend load path, direct availability/loadability reporting, and smoke/unit proof without
   yet baking a specific WebRTC/SRTP stack into the tree. The provider seam is now self-describing: config/runtime
   metadata expose `builtin_native_probe`, and live/planned builtin snapshots carry `native_media_provider` with the
-  loaded provider ABI/name/version/capabilities. The current shipped providers now use pollable ABI v3, so builtin
-  runtime progress can surface asynchronously even when no new broker signaling ingress arrives.
+  loaded provider ABI/name/version/capabilities. The current shipped providers now use pollable ABI v4, so builtin
+  runtime progress plus bounded PCM handoff can surface asynchronously even when no new broker signaling ingress
+  arrives.
 - The repo now also ships a daemon-owned sample provider module for that native-plugin seam. It proves the real
   process-local provider path without depending on a test fixture, but it intentionally still reports
   `native_media_supported=false` / `native_media_active=false` because it is only a signaling/answer-exchange sample,
@@ -283,8 +284,8 @@ A v0 smoke test should:
   now reuses the shared in-tree SRTP/RTP ingest utility that terminates inbound protected RTP into concrete header /
   payload counters. It now also owns a minimal receive-side audio stage: RTP payload types are mapped from the remote
   SDP, `PCMU` / `PCMA` payloads decode directly, and `OPUS` payloads decode through `libopus` when that library is
-  available at build time, with decoded PCM samples staged in-process for the future render / processing path. The
-  repo also has a direct DTLS/SRTP proof slice in
+  available at build time, with decoded PCM samples staged in-process and then drained through the provider ABI into
+  agentd-owned bounded PCM memory. The repo also has a direct DTLS/SRTP proof slice in
   `session_voice_builtin_dtls_transport_tests`: the same OpenSSL DTLS configuration used by the builtin native-plugin
   provider completes an in-tree DTLS 1.2 handshake, negotiates `SRTP_AES128_CM_SHA1_80`, exports DTLS-SRTP keying
   material over datagram-memory BIOs, derives real inbound/outbound libsrtp contexts from the exporter output, and now
@@ -301,6 +302,8 @@ A v0 smoke test should:
   `dtls_packets_sent`, `dtls_packets_received`, `rtp_packets_received`, `rtp_payload_bytes_received`,
   `rtp_last_payload_type`, `rtp_last_sequence`, `rtp_last_timestamp`, `rtp_last_ssrc`,
   `audio_frames_decoded`, `audio_pcm_samples_decoded`, `audio_pcm_samples_buffered`,
+  `audio_drain_events_total`, `audio_pcm_samples_drained_total`, `audio_pcm_samples_owned`,
+  `audio_last_drain_samples`,
   `audio_last_sample_rate_hz`, `audio_last_channels`, `audio_last_frame_samples_per_channel`,
   `audio_last_codec_name`, and `audio_last_error`.
   Those fields can now also advance through provider-polled async status events rather than only through direct

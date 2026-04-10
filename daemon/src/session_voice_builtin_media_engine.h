@@ -6,14 +6,24 @@
 
 #include <json/json.h>
 
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace agentd {
 
 struct VoicePeerMediaRuntimePlan;
 struct VoicePeerRuntime;
 struct VoicePeerRuntimeSeed;
+
+struct VoicePeerBuiltinAudioChunk {
+  std::vector<int16_t> pcm_samples;
+  int sample_rate_hz = 0;
+  int channels = 0;
+  int frame_samples_per_channel = 0;
+  std::string codec_name;
+};
 
 struct VoicePeerMediaEngineInfo {
   std::string media_engine_kind = "browser_peer";
@@ -113,6 +123,12 @@ class VoicePeerBuiltinMediaEngine {
   ) = 0;
 
   virtual bool poll_status(
+    Json::Value* out_event,
+    std::string* out_err
+  ) = 0;
+
+  virtual bool drain_audio(
+    VoicePeerBuiltinAudioChunk* out_chunk,
     Json::Value* out_event,
     std::string* out_err
   ) = 0;

@@ -9,6 +9,7 @@ import sys
 GET_API_V1_SYMBOL = "agentd_voice_media_engine_get_api_v1"
 GET_API_V2_SYMBOL = "agentd_voice_media_engine_get_api_v2"
 GET_API_V3_SYMBOL = "agentd_voice_media_engine_get_api_v3"
+GET_API_V4_SYMBOL = "agentd_voice_media_engine_get_api_v4"
 
 
 class ProviderV1(ctypes.Structure):
@@ -63,6 +64,26 @@ class ProviderV3(ctypes.Structure):
     ]
 
 
+class ProviderV4(ctypes.Structure):
+    _fields_ = [
+        ("abi_version", ctypes.c_uint32),
+        ("media_engine_kind", ctypes.c_char_p),
+        ("native_media_supported", ctypes.c_int),
+        ("provider_name", ctypes.c_char_p),
+        ("provider_version", ctypes.c_char_p),
+        ("provider_capabilities_json", ctypes.c_char_p),
+        ("create", ctypes.c_void_p),
+        ("destroy", ctypes.c_void_p),
+        ("initialize", ctypes.c_void_p),
+        ("handle_remote_description", ctypes.c_void_p),
+        ("handle_remote_candidate", ctypes.c_void_p),
+        ("handle_remote_bye", ctypes.c_void_p),
+        ("handle_local_shutdown", ctypes.c_void_p),
+        ("poll_status", ctypes.c_void_p),
+        ("drain_audio", ctypes.c_void_p),
+    ]
+
+
 def text(value) -> str:
     if not value:
         return ""
@@ -83,6 +104,8 @@ def callback_presence(api) -> dict:
     }
     if hasattr(api, "poll_status"):
         callbacks["poll_status"] = bool(api.poll_status)
+    if hasattr(api, "drain_audio"):
+        callbacks["drain_audio"] = bool(api.drain_audio)
     return callbacks
 
 
@@ -106,6 +129,48 @@ def inspect_provider(path: str) -> dict:
         lib = ctypes.CDLL(path)
     except OSError as exc:
         out["error"] = f"dlopen failed: {exc}"
+        return out
+
+    get_v4 = getattr(lib, GET_API_V4_SYMBOL, None)
+    if get_v4 is not None:
+        get_v4.restype = ctypes.POINTER(ProviderV4)
+        ptr = get_v4()
+        if not ptr:
+            out["error"] = "provider returned null v4 API"
+            return out
+        api = ptr.contents
+        caps = None
+        raw_caps = text(api.provider_capabilities_json)
+        try:
+            caps = parse_capabilities(raw_caps)
+        except ValueError as exc:
+            out["error"] = str(exc)
+            return out
+        callbacks = callback_presence(api)
+        out.update(
+            {
+                "ok": True,
+                "symbol": GET_API_V4_SYMBOL,
+                "abi_version": int(api.abi_version),
+                "media_engine_kind": text(api.media_engine_kind),
+                "native_media_supported": bool(api.native_media_supported),
+                "provider": {
+                    "abi_version": int(api.abi_version),
+                    "name": text(api.provider_name),
+                    "version": text(api.provider_version),
+                    "library_path": os.path.abspath(path),
+                },
+                "callbacks": callbacks,
+            }
+        )
+        if caps is not None:
+            out["provider"]["capabilities"] = caps
+        if not all(callbacks.values()):
+            out["ok"] = False
+            out["error"] = "provider missing required callbacks"
+        if not out["provider"]["name"]:
+            out["ok"] = False
+            out["error"] = "provider missing provider_name"
         return out
 
     get_v3 = getattr(lib, GET_API_V3_SYMBOL, None)
@@ -194,7 +259,10 @@ def inspect_provider(path: str) -> dict:
 
     get_v1 = getattr(lib, GET_API_V1_SYMBOL, None)
     if get_v1 is None:
-        out["error"] = f"missing {GET_API_V3_SYMBOL}, {GET_API_V2_SYMBOL} and {GET_API_V1_SYMBOL}"
+        out["error"] = (
+            f"missing {GET_API_V4_SYMBOL}, {GET_API_V3_SYMBOL}, "
+            f"{GET_API_V2_SYMBOL} and {GET_API_V1_SYMBOL}"
+        )
         return out
     get_v1.restype = ctypes.POINTER(ProviderV1)
     ptr = get_v1()

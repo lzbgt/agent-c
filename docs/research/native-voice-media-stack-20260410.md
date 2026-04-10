@@ -76,11 +76,13 @@ Reference artifacts downloaded into the repo for exact vendor details:
   provider target when the required native libraries are present:
   - `agentd_voice_builtin_media_engine_embedded_transport`
   - provider name `agentd_builtin_embedded_transport_provider`
-  - shipped provider ABI is now pollable v3 instead of callback-only v2
+  - shipped provider ABI is now pollable v4 instead of callback-only v2
   - capabilities:
     - `ice=true`
     - `srtp=true`
     - `sctp=true`
+    - `audio_drain=true`
+    - `audio_owner_handoff=true`
     - `transport_family=embedded_transport_primitives`
     - `real_media_engine=false`
 - The embedded transport provider now also proves a stronger factual boundary
@@ -126,6 +128,9 @@ Reference artifacts downloaded into the repo for exact vendor details:
   - `OPUS` decode is now wired through `libopus` when it is present at build
     time
   - decoded PCM samples are staged in-process behind bounded counters/telemetry
+  - staged PCM can now be drained through the provider ABI into agentd-owned
+    bounded PCM memory, so the daemon itself now owns a minimal receive-side
+    audio buffer instead of leaving all PCM ownership inside the provider
 - The remaining gap is that the provider still does not own a complete
   in-process media pipeline. `native_media_active` remains `false` until live
   RTP is actually ingested, and agentd still does not yet decode/play/process

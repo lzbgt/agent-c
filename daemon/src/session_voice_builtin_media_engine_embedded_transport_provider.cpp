@@ -40,11 +40,12 @@ using agentd::resolve_dtls_srtp_profile_spec;
 using agentd::selected_dtls_srtp_profile_name;
 
 constexpr const char* kProviderName = "agentd_builtin_embedded_transport_provider";
-constexpr const char* kProviderVersion = "0.7.0";
+constexpr const char* kProviderVersion = "0.8.0";
 #if defined(AGENTD_HAVE_OPUS)
 constexpr const char* kCapabilitiesJson =
   "{\"signaling\":true,\"audio_capture\":false,\"audio_render\":false,"
-  "\"audio_decode\":true,\"audio_stage\":true,"
+  "\"audio_decode\":true,\"audio_stage\":true,\"audio_drain\":true,"
+  "\"audio_owner_handoff\":true,"
   "\"audio_codec_pcmu\":true,\"audio_codec_pcma\":true,\"audio_codec_opus\":true,"
   "\"ice\":true,\"dtls\":true,\"dtls_identity\":true,\"dtls_answer_shape\":true,"
   "\"dtls_handshake\":true,\"dtls_srtp_export\":true,"
@@ -57,7 +58,8 @@ constexpr const char* kCapabilitiesJson =
 #else
 constexpr const char* kCapabilitiesJson =
   "{\"signaling\":true,\"audio_capture\":false,\"audio_render\":false,"
-  "\"audio_decode\":true,\"audio_stage\":true,"
+  "\"audio_decode\":true,\"audio_stage\":true,\"audio_drain\":true,"
+  "\"audio_owner_handoff\":true,"
   "\"audio_codec_pcmu\":true,\"audio_codec_pcma\":true,\"audio_codec_opus\":false,"
   "\"ice\":true,\"dtls\":true,\"dtls_identity\":true,\"dtls_answer_shape\":true,"
   "\"dtls_handshake\":true,\"dtls_srtp_export\":true,"
@@ -1553,8 +1555,79 @@ int embedded_poll_status(
   return 1;
 }
 
-const agentd_voice_media_engine_provider_v3 kEmbeddedProvider = {
-  AGENTD_VOICE_MEDIA_ENGINE_PROVIDER_ABI_V3,
+int embedded_drain_audio(
+  void* instance,
+  int16_t* pcm_buf,
+  size_t pcm_capacity_samples,
+  size_t* out_pcm_samples,
+  int* out_sample_rate_hz,
+  int* out_channels,
+  int* out_frame_samples_per_channel,
+  char* codec_name_buf,
+  size_t codec_name_buf_size,
+  char* event_json_buf,
+  size_t event_json_buf_size,
+  char* err_buf,
+  size_t err_buf_size
+) {
+  auto* engine = static_cast<EmbeddedTransportState*>(instance);
+  if (!engine) {
+    write_error("missing instance", err_buf, err_buf_size);
+    return 0;
+  }
+  if (!pcm_buf || pcm_capacity_samples == 0) {
+    write_error("missing pcm buffer", err_buf, err_buf_size);
+    return 0;
+  }
+  if (out_pcm_samples) *out_pcm_samples = 0;
+  if (out_sample_rate_hz) *out_sample_rate_hz = 0;
+  if (out_channels) *out_channels = 0;
+  if (out_frame_samples_per_channel) *out_frame_samples_per_channel = 0;
+  if (codec_name_buf && codec_name_buf_size > 0) codec_name_buf[0] = '\0';
+  if (event_json_buf && event_json_buf_size > 0) event_json_buf[0] = '\0';
+
+  if (engine->pcm_staging.empty()) return 1;
+
+  const size_t drain_samples = std::min(pcm_capacity_samples, engine->pcm_staging.size());
+  for (size_t i = 0; i < drain_samples; ++i) {
+    pcm_buf[i] = engine->pcm_staging.front();
+    engine->pcm_staging.pop_front();
+  }
+  engine->audio_pcm_samples_buffered = engine->pcm_staging.size();
+
+  if (out_pcm_samples) *out_pcm_samples = drain_samples;
+  if (out_sample_rate_hz) {
+    *out_sample_rate_hz = static_cast<int>(engine->audio_last_sample_rate_hz);
+  }
+  if (out_channels) *out_channels = static_cast<int>(engine->audio_last_channels);
+  if (out_frame_samples_per_channel) {
+    *out_frame_samples_per_channel =
+      static_cast<int>(engine->audio_last_frame_samples_per_channel);
+  }
+  if (codec_name_buf && codec_name_buf_size > 0 && !engine->audio_last_codec_name.empty()) {
+    if (!copy_text(engine->audio_last_codec_name, codec_name_buf, codec_name_buf_size)) {
+      write_error("codec name buffer too small", err_buf, err_buf_size);
+      return 0;
+    }
+  }
+
+  refresh_transport_snapshot(engine);
+  std::string payload = build_event_json(
+    *engine,
+    "audio_chunk_drained",
+    derived_media_engine_state(*engine),
+    0);
+  payload.pop_back();
+  payload += ",\"audio_last_drain_samples\":" + std::to_string(drain_samples) + "}";
+  if (!copy_text(payload, event_json_buf, event_json_buf_size)) {
+    write_error("event buffer too small", err_buf, err_buf_size);
+    return 0;
+  }
+  return 1;
+}
+
+const agentd_voice_media_engine_provider_v4 kEmbeddedProvider = {
+  AGENTD_VOICE_MEDIA_ENGINE_PROVIDER_ABI_V4,
   "builtin_native_plugin",
   1,
   kProviderName,
@@ -1568,10 +1641,11 @@ const agentd_voice_media_engine_provider_v3 kEmbeddedProvider = {
   &embedded_handle_remote_bye,
   &embedded_handle_local_shutdown,
   &embedded_poll_status,
+  &embedded_drain_audio,
 };
 
 }  // namespace
 
-extern "C" const agentd_voice_media_engine_provider_v3* agentd_voice_media_engine_get_api_v3() {
+extern "C" const agentd_voice_media_engine_provider_v4* agentd_voice_media_engine_get_api_v4() {
   return &kEmbeddedProvider;
 }

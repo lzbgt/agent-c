@@ -9,7 +9,7 @@
 namespace {
 
 constexpr const char* kProviderName = "agentd_builtin_sample_provider";
-constexpr const char* kProviderVersion = "0.2.0";
+constexpr const char* kProviderVersion = "0.3.0";
 constexpr const char* kAnswerSdp = "agentd-builtin-sample-answer";
 constexpr const char* kCapabilitiesJson =
   "{\"signaling\":true,\"audio_capture\":false,\"audio_render\":false,"
@@ -186,8 +186,32 @@ int sample_poll_status(
   return 1;
 }
 
-const agentd_voice_media_engine_provider_v3 kSampleProvider = {
-  AGENTD_VOICE_MEDIA_ENGINE_PROVIDER_ABI_V3,
+int sample_drain_audio(
+  void*,
+  int16_t*,
+  size_t,
+  size_t* out_pcm_samples,
+  int* out_sample_rate_hz,
+  int* out_channels,
+  int* out_frame_samples_per_channel,
+  char* codec_name_buf,
+  size_t codec_name_buf_size,
+  char* event_json_buf,
+  size_t event_json_buf_size,
+  char*,
+  size_t
+) {
+  if (out_pcm_samples) *out_pcm_samples = 0;
+  if (out_sample_rate_hz) *out_sample_rate_hz = 0;
+  if (out_channels) *out_channels = 0;
+  if (out_frame_samples_per_channel) *out_frame_samples_per_channel = 0;
+  if (codec_name_buf && codec_name_buf_size > 0) codec_name_buf[0] = '\0';
+  if (event_json_buf && event_json_buf_size > 0) event_json_buf[0] = '\0';
+  return 1;
+}
+
+const agentd_voice_media_engine_provider_v4 kSampleProvider = {
+  AGENTD_VOICE_MEDIA_ENGINE_PROVIDER_ABI_V4,
   "builtin_native_plugin",
   0,
   kProviderName,
@@ -201,10 +225,11 @@ const agentd_voice_media_engine_provider_v3 kSampleProvider = {
   &sample_handle_remote_bye,
   &sample_handle_local_shutdown,
   &sample_poll_status,
+  &sample_drain_audio,
 };
 
 }  // namespace
 
-extern "C" const agentd_voice_media_engine_provider_v3* agentd_voice_media_engine_get_api_v3() {
+extern "C" const agentd_voice_media_engine_provider_v4* agentd_voice_media_engine_get_api_v4() {
   return &kSampleProvider;
 }
