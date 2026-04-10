@@ -227,12 +227,12 @@ if mode == "native_plugin":
     provider_caps = provider.get("capabilities") or {}
     assert probe.get("loadable") is True, obj
     assert probe.get("native_media_supported") is False, obj
-    assert (probe.get("provider") or {}).get("abi_version") == 2, obj
+    assert (probe.get("provider") or {}).get("abi_version") == 3, obj
     assert (probe.get("provider") or {}).get("name") in {
         "agentd_builtin_sample_provider",
         "agentd_builtin_embedded_transport_provider",
     }, obj
-    assert provider.get("abi_version") == 2, obj
+    assert provider.get("abi_version") == 3, obj
     assert provider_name in {
         "agentd_builtin_sample_provider",
         "agentd_builtin_embedded_transport_provider",

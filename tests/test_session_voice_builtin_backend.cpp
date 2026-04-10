@@ -195,7 +195,7 @@ static void test_builtin_backend_enabled_native_plugin_starts_runtime() {
   assert(result.state->media_engine_state == "signaling_ready");
   assert(result.state->media_events_total == 2);
   assert(result.state->managed_broker_session == false);
-  assert(result.state->native_media_provider["abi_version"].asInt() == 2);
+  assert(result.state->native_media_provider["abi_version"].asInt() == 3);
   assert(!result.state->native_media_provider["name"].asString().empty());
   assert_known_test_provider(
     result.state->native_media_provider["name"].asString(),
@@ -223,7 +223,7 @@ static void test_backend_metadata_reports_native_probe_details() {
   assert(meta["builtin_native_library_path_configured"].asBool());
   assert(meta["builtin_native_probe"]["loadable"].asBool());
   assert(meta["builtin_native_probe"]["native_media_supported"].asBool() == false);
-  assert(meta["builtin_native_probe"]["provider"]["abi_version"].asInt() == 2);
+  assert(meta["builtin_native_probe"]["provider"]["abi_version"].asInt() == 3);
   assert(!meta["builtin_native_probe"]["provider"]["name"].asString().empty());
   assert_known_test_provider(
     meta["builtin_native_probe"]["provider"]["name"].asString(),

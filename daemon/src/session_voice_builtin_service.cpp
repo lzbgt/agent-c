@@ -132,6 +132,32 @@ void append_builtin_voice_peer_stderr_line(
   out << line << "\n";
 }
 
+bool drain_builtin_voice_peer_media_engine_events(
+  const std::shared_ptr<BuiltinVoicePeerService>& service,
+  std::mutex& runtime_mu,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (!service || !service->media_engine) return true;
+  for (int i = 0; i < 32; ++i) {
+    Json::Value event(Json::nullValue);
+    std::string poll_err;
+    if (!service->media_engine->poll_status(&event, &poll_err)) {
+      if (out_err) {
+        *out_err = trim_copy(poll_err).empty()
+          ? "builtin media engine poll_status failed"
+          : poll_err;
+      }
+      return false;
+    }
+    if (!event.isObject()) return true;
+    append_builtin_voice_peer_event_and_snapshot(
+      service->stdout_log_path, service->session_id, event, service->runtime, runtime_mu);
+  }
+  if (out_err) *out_err = "builtin media engine poll_status exceeded drain limit";
+  return false;
+}
+
 void update_builtin_runtime_last_stdout(
   VoicePeerRuntime* runtime,
   const Json::Value& payload
@@ -233,6 +259,9 @@ void builtin_voice_peer_service_main(
             append_builtin_voice_peer_event_and_snapshot(
               service->stdout_log_path, service->session_id, answer_ready, service->runtime, runtime_mu);
           }
+          if (!drain_builtin_voice_peer_media_engine_events(service, runtime_mu, &callback_err)) {
+            return false;
+          }
 
           answer.sender_tag = service->sender_tag;
           if (!send_voice_broker_answer(
@@ -257,6 +286,9 @@ void builtin_voice_peer_service_main(
           }
           append_builtin_voice_peer_event_and_snapshot(
             service->stdout_log_path, service->session_id, sent_answer, service->runtime, runtime_mu);
+          if (!drain_builtin_voice_peer_media_engine_events(service, runtime_mu, &callback_err)) {
+            return false;
+          }
           return true;
         }
 
@@ -271,6 +303,9 @@ void builtin_voice_peer_service_main(
           }
           append_builtin_voice_peer_event_and_snapshot(
             service->stdout_log_path, service->session_id, candidate, service->runtime, runtime_mu);
+          if (!drain_builtin_voice_peer_media_engine_events(service, runtime_mu, &callback_err)) {
+            return false;
+          }
           return true;
         }
 
@@ -295,7 +330,16 @@ void builtin_voice_peer_service_main(
     }
     if (remote_bye_received) break;
     if (ok) continue;
-    if (builtin_voice_peer_stream_timed_out(stream_err)) continue;
+    if (builtin_voice_peer_stream_timed_out(stream_err)) {
+      std::string poll_err;
+      if (!drain_builtin_voice_peer_media_engine_events(service, runtime_mu, &poll_err)) {
+        terminal_error = trim_copy(poll_err).empty()
+          ? "builtin media engine poll_status failed"
+          : poll_err;
+        break;
+      }
+      continue;
+    }
     terminal_error = trim_copy(stream_err).empty()
       ? "builtin voice_webrtc_peer signaling stream failed"
       : stream_err;
@@ -469,6 +513,15 @@ bool start_builtin_voice_peer_runtime_service(
   service->runtime = runtime;
   service->media_engine = std::move(media_engine);
   service->persist_runtime = persist_runtime;
+  std::string poll_err;
+  if (!drain_builtin_voice_peer_media_engine_events(service, runtime_mu, &poll_err)) {
+    if (out_err) {
+      *out_err = trim_copy(poll_err).empty()
+        ? "failed to drain builtin media engine startup events"
+        : poll_err;
+    }
+    return false;
+  }
   service->worker = std::thread(
     [service, &runtime_mu]() { builtin_voice_peer_service_main(service, runtime_mu); });
   store_builtin_voice_peer_service(service);

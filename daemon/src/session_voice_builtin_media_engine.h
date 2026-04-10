@@ -111,6 +111,11 @@ class VoicePeerBuiltinMediaEngine {
   virtual void handle_local_shutdown(
     Json::Value* out_event
   ) = 0;
+
+  virtual bool poll_status(
+    Json::Value* out_event,
+    std::string* out_err
+  ) = 0;
 };
 
 std::unique_ptr<VoicePeerBuiltinMediaEngine> make_builtin_voice_peer_media_engine(

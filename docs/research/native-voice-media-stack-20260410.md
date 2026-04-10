@@ -76,6 +76,7 @@ Reference artifacts downloaded into the repo for exact vendor details:
   provider target when the required native libraries are present:
   - `agentd_voice_builtin_media_engine_embedded_transport`
   - provider name `agentd_builtin_embedded_transport_provider`
+  - shipped provider ABI is now pollable v3 instead of callback-only v2
   - capabilities:
     - `ice=true`
     - `srtp=true`
@@ -105,6 +106,13 @@ Reference artifacts downloaded into the repo for exact vendor details:
     succeeds, which is the exact prerequisite for SRTP context bring-up
   - it now also derives inbound/outbound libsrtp contexts from that exporter
     output and successfully protects then unprotects a sample RTP packet
+- Agentd now also has the matching daemon-side async ingest seam for that
+  provider family:
+  - builtin media providers can expose a `poll_status` callback through ABI v3
+  - the builtin service loop now drains queued provider progress events between
+    broker signaling ingress timeouts
+  - the embedded provider uses that path to surface async libjuice / DTLS /
+    SRTP status progression without waiting for another signaling message
 - The repo still does **not** yet have an actual embedded/native RTP media
   engine. The new provider uses real `libjuice` / `libsrtp` / `usrsctp`
   libraries, but it still reports `native_media_supported=false` and

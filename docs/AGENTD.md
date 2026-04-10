@@ -481,6 +481,8 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `peer.media_engine_kind=builtin_native_plugin`. The provider seam is now self-describing too:
   `builtin_native_probe` surfaces provider ABI/name/version/capabilities plus load errors in config/runtime metadata,
   and live/planned runtime snapshots persist the loaded provider details under `peer.native_media_provider`.
+  The current shipped providers now use pollable ABI v3, so agentd can drain provider-owned async status without
+  waiting for a new broker signaling ingress callback.
 - The repo now ships two daemon-owned provider modules for that seam:
   - `./build/libagentd_voice_builtin_media_engine_sample.{so,dylib,dll}` as the minimal answer-exchange sample
   - `./build/libagentd_voice_builtin_media_engine_embedded_transport.{so,dylib,dll}` when `libjuice + libsrtp2 + usrsctp`
@@ -509,6 +511,8 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `peer.dtls_selected_srtp_profile`, `peer.srtp_contexts_ready`, `peer.srtp_inbound_ready`,
   `peer.srtp_outbound_ready`, `peer.srtp_last_error`, `peer.dtls_packets_sent`, and
   `peer.dtls_packets_received`.
+  Those same fields can now advance on provider-polled async progress events too, not only on direct signaling
+  callbacks.
 - Builtin runtime events are now normalized before persistence/logging too: every JSONL/runtime event carries the same
   session/timestamp envelope, and the persisted/live runtime snapshot keeps explicit media-engine counters plus
   `media_engine_state` so operators can see whether the stub has only initialized, answered an offer, observed remote

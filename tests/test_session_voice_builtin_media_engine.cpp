@@ -79,7 +79,7 @@ static void test_runtime_kind_info_reports_reserved_and_stub_modes() {
   assert(native_info.media_engine_kind == "builtin_native_plugin");
   assert(!native_info.native_media_supported);
   assert(!native_info.native_media_active);
-  assert(native_info.provider_abi_version == 2);
+  assert(native_info.provider_abi_version == 3);
   assert(!native_info.provider_name.empty());
   assert(!native_info.provider_version.empty());
   assert_known_test_provider(native_info.provider_name, native_info.provider_capabilities);
@@ -177,7 +177,7 @@ static void test_builtin_media_engine_native_plugin_loads_sample_provider_metada
   assert(engine->info().media_engine_kind == "builtin_native_plugin");
   assert(!engine->info().native_media_supported);
   assert(!engine->info().native_media_active);
-  assert(engine->info().provider_abi_version == 2);
+  assert(engine->info().provider_abi_version == 3);
   assert(!engine->info().provider_name.empty());
   assert(!engine->info().provider_version.empty());
   assert_known_test_provider(engine->info().provider_name, engine->info().provider_capabilities);
@@ -191,7 +191,11 @@ static void test_builtin_media_engine_native_plugin_loads_sample_provider_metada
   assert(!runtime.native_media_supported);
   assert(!runtime.native_media_active);
   assert(runtime.media_engine_state == "signaling_ready");
-  assert(runtime.native_media_provider["abi_version"].asInt() == 2);
+  assert(runtime.native_media_provider["abi_version"].asInt() == 3);
+  Json::Value polled(Json::nullValue);
+  assert(engine->poll_status(&polled, &err));
+  assert(err.empty());
+  assert(polled.isNull());
   assert(runtime.native_media_provider["name"].asString() == engine->info().provider_name);
   assert_known_test_provider(
     runtime.native_media_provider["name"].asString(),
@@ -264,7 +268,7 @@ static void test_builtin_native_probe_json_reports_provider_details() {
   assert(probe["loadable"].asBool());
   assert(probe["media_engine_kind"].asString() == "builtin_native_plugin");
   assert(probe["native_media_supported"].asBool() == false);
-  assert(probe["provider"]["abi_version"].asInt() == 2);
+  assert(probe["provider"]["abi_version"].asInt() == 3);
   assert(!probe["provider"]["name"].asString().empty());
   assert_known_test_provider(
     probe["provider"]["name"].asString(),

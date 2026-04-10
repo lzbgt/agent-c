@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <cstring>
 #include <chrono>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -38,12 +39,12 @@ using agentd::resolve_dtls_srtp_profile_spec;
 using agentd::selected_dtls_srtp_profile_name;
 
 constexpr const char* kProviderName = "agentd_builtin_embedded_transport_provider";
-constexpr const char* kProviderVersion = "0.4.0";
+constexpr const char* kProviderVersion = "0.5.0";
 constexpr const char* kCapabilitiesJson =
   "{\"signaling\":true,\"audio_capture\":false,\"audio_render\":false,"
   "\"ice\":true,\"dtls\":true,\"dtls_identity\":true,\"dtls_answer_shape\":true,"
   "\"dtls_handshake\":true,\"dtls_srtp_export\":true,"
-  "\"srtp_contexts\":true,"
+  "\"srtp_contexts\":true,\"poll_status\":true,"
   "\"srtp\":true,\"sctp\":true,"
   "\"transport_family\":\"embedded_transport_primitives\","
   "\"embedded_transport_provider\":true,\"sample_provider\":false,"
@@ -55,6 +56,56 @@ constexpr const char* kDtlsSrtpProfiles =
 constexpr long kDtlsDatagramMtu = 1200;
 
 struct EmbeddedTransportState {
+  struct AsyncProgressKey {
+    std::string libjuice_state;
+    std::string dtls_handshake_state;
+    std::string dtls_selected_srtp_profile;
+    std::string srtp_last_error;
+    std::string last_remote_description_error;
+    std::string selected_local_candidate;
+    std::string selected_remote_candidate;
+    std::string selected_local_address;
+    std::string selected_remote_address;
+    uint64_t offers_seen = 0;
+    uint64_t remote_candidates_seen = 0;
+    uint64_t local_candidates_observed = 0;
+    bool gathering_done = false;
+    bool gather_started = false;
+    bool remote_description_applied = false;
+    bool transport_connectivity_ready = false;
+    bool dtls_identity_ready = false;
+    bool dtls_handshake_ready = false;
+    bool dtls_exporter_ready = false;
+    bool srtp_contexts_ready = false;
+    bool srtp_inbound_ready = false;
+    bool srtp_outbound_ready = false;
+
+    bool operator==(const AsyncProgressKey& other) const {
+      return libjuice_state == other.libjuice_state &&
+             dtls_handshake_state == other.dtls_handshake_state &&
+             dtls_selected_srtp_profile == other.dtls_selected_srtp_profile &&
+             srtp_last_error == other.srtp_last_error &&
+             last_remote_description_error == other.last_remote_description_error &&
+             selected_local_candidate == other.selected_local_candidate &&
+             selected_remote_candidate == other.selected_remote_candidate &&
+             selected_local_address == other.selected_local_address &&
+             selected_remote_address == other.selected_remote_address &&
+             offers_seen == other.offers_seen &&
+             remote_candidates_seen == other.remote_candidates_seen &&
+             local_candidates_observed == other.local_candidates_observed &&
+             gathering_done == other.gathering_done &&
+             gather_started == other.gather_started &&
+             remote_description_applied == other.remote_description_applied &&
+             transport_connectivity_ready == other.transport_connectivity_ready &&
+             dtls_identity_ready == other.dtls_identity_ready &&
+             dtls_handshake_ready == other.dtls_handshake_ready &&
+             dtls_exporter_ready == other.dtls_exporter_ready &&
+             srtp_contexts_ready == other.srtp_contexts_ready &&
+             srtp_inbound_ready == other.srtp_inbound_ready &&
+             srtp_outbound_ready == other.srtp_outbound_ready;
+    }
+  };
+
   juice_agent_t* agent = nullptr;
   std::string local_description;
   std::string libjuice_state = "disconnected";
@@ -92,7 +143,18 @@ struct EmbeddedTransportState {
   bool srtp_contexts_ready = false;
   bool srtp_inbound_ready = false;
   bool srtp_outbound_ready = false;
+  std::mutex async_events_mu;
+  std::deque<std::string> pending_async_events;
+  AsyncProgressKey last_async_key;
+  bool last_async_key_initialized = false;
 };
+
+std::string build_event_json(
+  const EmbeddedTransportState& state,
+  const std::string& event_name,
+  const std::string& media_engine_state,
+  uint64_t initial_remote_candidate_count
+);
 
 std::mutex g_transport_runtime_mu;
 size_t g_transport_runtime_refs = 0;
@@ -698,6 +760,90 @@ void refresh_transport_snapshot(EmbeddedTransportState* engine) {
   }
 }
 
+EmbeddedTransportState::AsyncProgressKey capture_async_progress_key(
+  const EmbeddedTransportState& state
+) {
+  EmbeddedTransportState::AsyncProgressKey key;
+  key.libjuice_state = state.libjuice_state;
+  key.dtls_handshake_state = state.dtls_handshake_state;
+  key.dtls_selected_srtp_profile = state.dtls_selected_srtp_profile;
+  key.srtp_last_error = state.srtp_last_error;
+  key.last_remote_description_error = state.last_remote_description_error;
+  key.selected_local_candidate = state.selected_local_candidate;
+  key.selected_remote_candidate = state.selected_remote_candidate;
+  key.selected_local_address = state.selected_local_address;
+  key.selected_remote_address = state.selected_remote_address;
+  key.offers_seen = state.offers_seen;
+  key.remote_candidates_seen = state.remote_candidates_seen;
+  key.local_candidates_observed = state.local_candidates_observed;
+  key.gathering_done = state.gathering_done;
+  key.gather_started = state.gather_started;
+  key.remote_description_applied = state.remote_description_applied;
+  key.transport_connectivity_ready = state.transport_connectivity_ready;
+  key.dtls_identity_ready = state.dtls_identity_ready;
+  key.dtls_handshake_ready = state.dtls_handshake_ready;
+  key.dtls_exporter_ready = state.dtls_exporter_ready;
+  key.srtp_contexts_ready = state.srtp_contexts_ready;
+  key.srtp_inbound_ready = state.srtp_inbound_ready;
+  key.srtp_outbound_ready = state.srtp_outbound_ready;
+  return key;
+}
+
+std::string derived_media_engine_state(const EmbeddedTransportState& state) {
+  if (state.dtls_handshake_state == "failed") return "failed";
+  if (state.srtp_contexts_ready) return "media_transport_ready";
+  if (state.dtls_handshake_ready) return "dtls_connected";
+  if (state.transport_connectivity_ready) return "transport_connected";
+  if (state.remote_description_applied) return "signaling_active";
+  return "signaling_ready";
+}
+
+void push_async_event_json(EmbeddedTransportState* engine, const std::string& payload) {
+  if (!engine || payload.empty()) return;
+  std::lock_guard<std::mutex> lk(engine->async_events_mu);
+  engine->pending_async_events.push_back(payload);
+}
+
+void sync_async_progress_baseline(EmbeddedTransportState* engine) {
+  if (!engine) return;
+  std::lock_guard<std::mutex> lk(engine->async_events_mu);
+  engine->last_async_key = capture_async_progress_key(*engine);
+  engine->last_async_key_initialized = true;
+  engine->pending_async_events.clear();
+}
+
+void maybe_enqueue_progress_event(
+  EmbeddedTransportState* engine,
+  const std::string& event_name
+) {
+  if (!engine) return;
+  const EmbeddedTransportState::AsyncProgressKey current = capture_async_progress_key(*engine);
+  {
+    std::lock_guard<std::mutex> lk(engine->async_events_mu);
+    if (engine->last_async_key_initialized && current == engine->last_async_key) {
+      return;
+    }
+    engine->last_async_key = current;
+    engine->last_async_key_initialized = true;
+  }
+  const std::string payload = build_event_json(
+    *engine,
+    event_name.empty() ? std::string("embedded_transport_progress") : event_name,
+    derived_media_engine_state(*engine),
+    0);
+  push_async_event_json(engine, payload);
+}
+
+bool pop_async_event_json(EmbeddedTransportState* engine, std::string* out_payload) {
+  if (out_payload) out_payload->clear();
+  if (!engine) return false;
+  std::lock_guard<std::mutex> lk(engine->async_events_mu);
+  if (engine->pending_async_events.empty()) return false;
+  if (out_payload) *out_payload = engine->pending_async_events.front();
+  engine->pending_async_events.pop_front();
+  return true;
+}
+
 void wait_for_local_gathering(EmbeddedTransportState* engine, int timeout_ms) {
   if (!engine || !engine->agent || timeout_ms <= 0) return;
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
@@ -757,6 +903,8 @@ void on_state_changed(juice_agent_t*, juice_state_t state, void* user_ptr) {
   auto* engine = static_cast<EmbeddedTransportState*>(user_ptr);
   if (!engine) return;
   engine->libjuice_state = juice_state_text(state);
+  refresh_transport_snapshot(engine);
+  maybe_enqueue_progress_event(engine, "embedded_transport_progress");
 }
 
 void on_candidate(juice_agent_t*, const char*, void* user_ptr) {
@@ -769,6 +917,8 @@ void on_gathering_done(juice_agent_t*, void* user_ptr) {
   auto* engine = static_cast<EmbeddedTransportState*>(user_ptr);
   if (!engine) return;
   engine->gathering_done = true;
+  refresh_transport_snapshot(engine);
+  maybe_enqueue_progress_event(engine, "embedded_transport_progress");
 }
 
 void on_recv(juice_agent_t*, const char* data, size_t size, void* user_ptr) {
@@ -787,6 +937,8 @@ void on_recv(juice_agent_t*, const char* data, size_t size, void* user_ptr) {
   }
   std::string err;
   (void)advance_dtls_handshake(engine, &err);
+  refresh_transport_snapshot(engine);
+  maybe_enqueue_progress_event(engine, "embedded_transport_progress");
 }
 
 bool ensure_agent(EmbeddedTransportState* engine, std::string* out_err) {
@@ -973,6 +1125,7 @@ int embedded_initialize(
     return 0;
   }
   refresh_transport_snapshot(engine);
+  sync_async_progress_baseline(engine);
   const std::string payload = build_event_json(*engine, "media_engine_initialized", "signaling_ready", 0);
   if (!copy_text(payload, event_json_buf, event_json_buf_size)) {
     write_error("event buffer too small", err_buf, err_buf_size);
@@ -1036,6 +1189,7 @@ int embedded_handle_remote_description(
   engine->last_answer_sdp_shape = contains_media_section(split_sdp_lines(remote_sdp))
     ? "browser_offer_mirrored_inactive"
     : "ice_only";
+  sync_async_progress_baseline(engine);
   const std::string answer_sdp = build_answer_sdp(remote_sdp, *engine);
 
   if (!copy_text("answer", answer_type_buf, answer_type_buf_size) ||
@@ -1084,6 +1238,7 @@ int embedded_handle_remote_candidate(
   wait_for_transport_progress(engine, 1500);
   (void)advance_dtls_handshake(engine, nullptr);
   refresh_transport_snapshot(engine);
+  sync_async_progress_baseline(engine);
 
   const std::string payload =
     build_event_json(*engine, "remote_candidate_ready", "signaling_active", 0);
@@ -1103,6 +1258,7 @@ void embedded_handle_remote_bye(
   auto* engine = static_cast<EmbeddedTransportState*>(instance);
   if (!engine) return;
   refresh_transport_snapshot(engine);
+  sync_async_progress_baseline(engine);
   std::string payload = build_event_json(*engine, "remote_bye", "stopped", 0);
   payload.pop_back();
   if (reason && reason[0]) {
@@ -1120,14 +1276,39 @@ void embedded_handle_local_shutdown(
   auto* engine = static_cast<EmbeddedTransportState*>(instance);
   if (!engine) return;
   refresh_transport_snapshot(engine);
+  sync_async_progress_baseline(engine);
   std::string payload = build_event_json(*engine, "local_bye_sent", "stopping", 0);
   payload.pop_back();
   payload += ",\"reason\":\"agentd_builtin_stop\"}";
   (void)copy_text(payload, event_json_buf, event_json_buf_size);
 }
 
-const agentd_voice_media_engine_provider_v2 kEmbeddedProvider = {
-  AGENTD_VOICE_MEDIA_ENGINE_PROVIDER_ABI_V2,
+int embedded_poll_status(
+  void* instance,
+  char* event_json_buf,
+  size_t event_json_buf_size,
+  char* err_buf,
+  size_t err_buf_size
+) {
+  auto* engine = static_cast<EmbeddedTransportState*>(instance);
+  if (!engine) {
+    write_error("missing instance", err_buf, err_buf_size);
+    return 0;
+  }
+  std::string payload;
+  if (!pop_async_event_json(engine, &payload)) {
+    if (event_json_buf && event_json_buf_size > 0) event_json_buf[0] = '\0';
+    return 1;
+  }
+  if (!copy_text(payload, event_json_buf, event_json_buf_size)) {
+    write_error("event buffer too small", err_buf, err_buf_size);
+    return 0;
+  }
+  return 1;
+}
+
+const agentd_voice_media_engine_provider_v3 kEmbeddedProvider = {
+  AGENTD_VOICE_MEDIA_ENGINE_PROVIDER_ABI_V3,
   "builtin_native_plugin",
   0,
   kProviderName,
@@ -1140,10 +1321,11 @@ const agentd_voice_media_engine_provider_v2 kEmbeddedProvider = {
   &embedded_handle_remote_candidate,
   &embedded_handle_remote_bye,
   &embedded_handle_local_shutdown,
+  &embedded_poll_status,
 };
 
 }  // namespace
 
-extern "C" const agentd_voice_media_engine_provider_v2* agentd_voice_media_engine_get_api_v2() {
+extern "C" const agentd_voice_media_engine_provider_v3* agentd_voice_media_engine_get_api_v3() {
   return &kEmbeddedProvider;
 }

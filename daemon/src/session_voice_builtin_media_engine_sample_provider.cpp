@@ -9,12 +9,12 @@
 namespace {
 
 constexpr const char* kProviderName = "agentd_builtin_sample_provider";
-constexpr const char* kProviderVersion = "0.1.0";
+constexpr const char* kProviderVersion = "0.2.0";
 constexpr const char* kAnswerSdp = "agentd-builtin-sample-answer";
 constexpr const char* kCapabilitiesJson =
   "{\"signaling\":true,\"audio_capture\":false,\"audio_render\":false,"
   "\"ice\":true,\"dtls\":false,\"srtp\":false,\"transport_family\":\"sample_webrtc\","
-  "\"sample_provider\":true,\"real_media_engine\":false}";
+  "\"sample_provider\":true,\"poll_status\":true,\"real_media_engine\":false}";
 
 struct SampleVoiceMediaEngineState {
   uint64_t offers_seen = 0;
@@ -173,8 +173,21 @@ void sample_handle_local_shutdown(
     event_json_buf_size);
 }
 
-const agentd_voice_media_engine_provider_v2 kSampleProvider = {
-  AGENTD_VOICE_MEDIA_ENGINE_PROVIDER_ABI_V2,
+int sample_poll_status(
+  void*,
+  char* event_json_buf,
+  size_t event_json_buf_size,
+  char*,
+  size_t
+) {
+  if (event_json_buf && event_json_buf_size > 0) {
+    event_json_buf[0] = '\0';
+  }
+  return 1;
+}
+
+const agentd_voice_media_engine_provider_v3 kSampleProvider = {
+  AGENTD_VOICE_MEDIA_ENGINE_PROVIDER_ABI_V3,
   "builtin_native_plugin",
   0,
   kProviderName,
@@ -187,10 +200,11 @@ const agentd_voice_media_engine_provider_v2 kSampleProvider = {
   &sample_handle_remote_candidate,
   &sample_handle_remote_bye,
   &sample_handle_local_shutdown,
+  &sample_poll_status,
 };
 
 }  // namespace
 
-extern "C" const agentd_voice_media_engine_provider_v2* agentd_voice_media_engine_get_api_v2() {
+extern "C" const agentd_voice_media_engine_provider_v3* agentd_voice_media_engine_get_api_v3() {
   return &kSampleProvider;
 }

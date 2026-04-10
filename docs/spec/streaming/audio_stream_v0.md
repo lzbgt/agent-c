@@ -266,7 +266,8 @@ A v0 smoke test should:
   gives agentd a real native backend load path, direct availability/loadability reporting, and smoke/unit proof without
   yet baking a specific WebRTC/SRTP stack into the tree. The provider seam is now self-describing: config/runtime
   metadata expose `builtin_native_probe`, and live/planned builtin snapshots carry `native_media_provider` with the
-  loaded provider ABI/name/version/capabilities.
+  loaded provider ABI/name/version/capabilities. The current shipped providers now use pollable ABI v3, so builtin
+  runtime progress can surface asynchronously even when no new broker signaling ingress arrives.
 - The repo now also ships a daemon-owned sample provider module for that native-plugin seam. It proves the real
   process-local provider path without depending on a test fixture, but it intentionally still reports
   `native_media_supported=false` / `native_media_active=false` because it is only a signaling/answer-exchange sample,
@@ -295,6 +296,8 @@ A v0 smoke test should:
   `dtls_handshake_ready`, `dtls_exporter_ready`, `dtls_handshake_state`, `dtls_selected_srtp_profile`,
   `srtp_contexts_ready`, `srtp_inbound_ready`, `srtp_outbound_ready`, `srtp_last_error`,
   `dtls_packets_sent`, and `dtls_packets_received`.
+  Those fields can now also advance through provider-polled async status events rather than only through direct
+  remote-description or remote-candidate callbacks.
 - Builtin runtime observability is now explicit too: normalized per-session JSONL events and the persisted/live runtime
   snapshot both surface `media_engine_state` plus cumulative counters for offers, answers, candidates, and `bye`
   events, so the future native engine can inherit one operator-facing status contract instead of inventing telemetry

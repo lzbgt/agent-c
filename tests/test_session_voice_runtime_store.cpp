@@ -184,7 +184,7 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   st.srtp_last_error = "none";
   st.dtls_packets_sent = 12;
   st.dtls_packets_received = 9;
-  st.native_media_provider["abi_version"] = 2;
+  st.native_media_provider["abi_version"] = 3;
   st.native_media_provider["name"] = "agentd_builtin_sample_provider";
   st.native_media_provider["capabilities"]["transport_family"] = "sample_webrtc";
   st.native_media_provider["capabilities"]["sample_provider"] = true;
@@ -215,7 +215,7 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(json["srtp_last_error"].asString() == "none");
   assert(json["dtls_packets_sent"].asInt64() == 12);
   assert(json["dtls_packets_received"].asInt64() == 9);
-  assert(json["native_media_provider"]["abi_version"].asInt() == 2);
+  assert(json["native_media_provider"]["abi_version"].asInt() == 3);
   assert(json["native_media_provider"]["name"].asString() == "agentd_builtin_sample_provider");
 
   VoicePeerRuntime round_trip;
@@ -247,7 +247,7 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(round_trip.srtp_last_error == "none");
   assert(round_trip.dtls_packets_sent == 12);
   assert(round_trip.dtls_packets_received == 9);
-  assert(round_trip.native_media_provider["abi_version"].asInt() == 2);
+  assert(round_trip.native_media_provider["abi_version"].asInt() == 3);
   assert(round_trip.native_media_provider["capabilities"]["transport_family"].asString() == "sample_webrtc");
   assert(round_trip.native_media_provider["capabilities"]["sample_provider"].asBool());
 }
