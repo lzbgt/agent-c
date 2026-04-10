@@ -159,10 +159,11 @@ Reference artifacts downloaded into the repo for exact vendor details:
     falls back to negotiated G.711 payload type from the remote SDP, encodes a
     20 ms Opus or PCMU/PCMA RTP frame, protects it with the outbound libsrtp
     context, and transmits it over the same libjuice transport
-  - after each successful outbound RTP frame, the provider now builds a
-    reduced-size RTCP Sender Report (`PT=200`) from the same outbound SSRC,
-    protects it with SRTCP, and transmits it over libjuice; the packet layout
-    is pinned to the persisted RFC 3550 reference in
+  - the provider now builds reduced-size RTCP Sender Reports (`PT=200`) from
+    the same outbound SSRC on a bounded first-frame / packet-count / time
+    cadence instead of after every RTP frame, protects them with SRTCP, and
+    transmits them over libjuice; the packet layout is pinned to the persisted
+    RFC 3550 reference in
     `docs/research/vendor-rfc3550-rtp-20260411.txt`
   - after inbound RTP arrives, the provider now emits a bounded RTCP Receiver
     Report (`PT=201`) with RFC 3550 report-block stats for the inbound SSRC
@@ -177,7 +178,7 @@ Reference artifacts downloaded into the repo for exact vendor details:
     and last-packet metadata
 - The remaining gap is that the outbound path is deliberately minimal: it uses
   single-frame negotiated Opus/G.711 generation and bounded reduced-size
-  Sender/Receiver Reports rather than fuller compound RTCP cadence and broader
+  Sender/Receiver Reports rather than compound RTCP packets and broader
   browser-peer full-duplex validation.
 
 ## Implications
@@ -203,7 +204,7 @@ At this scan point, the local machine is ready for:
 
 It is **not** yet at a full embedded WebRTC/SRTP runtime. The remaining gap is
 no longer dependency discovery, basic RTP ownership, negotiated Opus transmit,
-or one-shot Sender/Receiver Report transmit; it is fuller compound RTCP cadence
+or one-shot Sender/Receiver Report transmit; it is compound RTCP packet emission
 and broader full-duplex validation.
 
 ## Recommended Next Technical Decision
@@ -232,8 +233,8 @@ covered by provider inspection/unit/smoke proof. The bounded outbound RTP path
 now negotiates Opus when `libopus` is present, falls back to G.711 payload type
 from the remote SDP (`PCMU/8000/1` preferred, `PCMA/8000/1` fallback), records
 that selection in runtime telemetry, and emits a reduced-size SRTCP Sender
-Report after successful outbound frames. It now also emits a bounded SRTCP
-Receiver Report after inbound RTP media arrives. The next concrete step after
-this negotiated transmit path is fuller compound RTCP cadence and broader
-browser-peer full-duplex validation rather than more
+Report on a bounded cadence. It now also emits a bounded SRTCP Receiver Report
+after inbound RTP media arrives. The next concrete step after this negotiated
+transmit path is compound RTCP packet emission and broader browser-peer
+full-duplex validation rather than more
 DTLS/SRTP/control-plane work.

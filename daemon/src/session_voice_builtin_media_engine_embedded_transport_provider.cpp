@@ -91,6 +91,7 @@ constexpr size_t kOutboundG711FrameSamples = 160;
 constexpr size_t kOutboundOpusFrameSamplesPerChannel = 960;
 constexpr int kOutboundOpusMaxPayloadBytes = 1275;
 constexpr uint32_t kOutboundRtpSsrc = 0xA6E17D01u;
+constexpr uint64_t kSenderReportRtpPacketCadence = 50;
 constexpr uint64_t kReceiverReportRtpPacketCadence = 50;
 
 struct EmbeddedTransportState {
@@ -306,6 +307,9 @@ struct EmbeddedTransportState {
   uint64_t rtcp_last_report_jitter = 0;
   uint64_t rtcp_last_report_lsr = 0;
   uint64_t rtcp_last_report_dlsr = 0;
+  bool rtcp_sender_report_sent = false;
+  std::chrono::steady_clock::time_point rtcp_last_sender_report_at;
+  uint64_t rtp_packets_sent_at_last_sender_report = 0;
   agentd::RtcpReceiverReportTracker inbound_rtcp_report;
   uint64_t audio_frames_decoded = 0;
   uint64_t audio_pcm_samples_decoded = 0;
@@ -1136,7 +1140,24 @@ bool transmit_outbound_rtcp_sender_report(
   engine->rtcp_last_sent_packet_type = agentd::kRtcpPacketTypeSenderReport;
   engine->rtcp_last_sent_ssrc = engine->outbound_rtp_ssrc;
   engine->rtcp_last_error.clear();
+  engine->rtcp_sender_report_sent = true;
+  engine->rtcp_last_sender_report_at = std::chrono::steady_clock::now();
+  engine->rtp_packets_sent_at_last_sender_report = engine->rtp_packets_sent;
   return true;
+}
+
+bool sender_report_due(const EmbeddedTransportState& engine) {
+  if (!engine.agent || !engine.outbound_srtp || !engine.srtp_outbound_ready) {
+    return false;
+  }
+  if (engine.rtcp_sender_reports_sent == 0) return true;
+  if (!engine.rtcp_sender_report_sent) return true;
+  if (engine.rtp_packets_sent >=
+      engine.rtp_packets_sent_at_last_sender_report + kSenderReportRtpPacketCadence) {
+    return true;
+  }
+  return std::chrono::steady_clock::now() - engine.rtcp_last_sender_report_at >=
+         std::chrono::seconds(5);
 }
 
 bool receiver_report_due(const EmbeddedTransportState& engine) {
@@ -1303,10 +1324,12 @@ bool transmit_outbound_audio_rtp(
   engine->audio_pcm_samples_submitted_total += pcm_samples;
   engine->audio_last_outbound_samples = timestamp_increment;
   engine->audio_outbound_last_error.clear();
-  std::string rtcp_err;
-  if (!transmit_outbound_rtcp_sender_report(engine, timestamp, &rtcp_err)) {
-    engine->rtcp_last_error =
-      rtcp_err.empty() ? std::string("outbound RTCP sender report transmit failed") : rtcp_err;
+  if (sender_report_due(*engine)) {
+    std::string rtcp_err;
+    if (!transmit_outbound_rtcp_sender_report(engine, timestamp, &rtcp_err)) {
+      engine->rtcp_last_error =
+        rtcp_err.empty() ? std::string("outbound RTCP sender report transmit failed") : rtcp_err;
+    }
   }
   return true;
 }

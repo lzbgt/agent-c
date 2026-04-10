@@ -292,11 +292,11 @@ A v0 smoke test should:
   proves outbound SRTP protect plus inbound SRTP/RTP ingest and receive-side audio decode. Agentd can now also submit
   processed PCM back through the native-provider ABI; the embedded provider negotiates outbound Opus when `libopus` is
   present, falls back to negotiated G.711, encodes a bounded Opus or PCMU/PCMA RTP frame, protects it with the outbound
-  libsrtp context, and transmits it over libjuice. After each successful outbound RTP frame, it now emits a reduced-size
-  RTCP Sender Report (`PT=200`) using the outbound SSRC, protects it with SRTCP, and persists inbound/outbound RTCP
-  counters plus last-packet metadata. After inbound RTP arrives, it now also emits a bounded RTCP Receiver Report
-  (`PT=201`) with the inbound SSRC, fraction/cumulative loss, extended highest sequence, jitter, and `LSR`/`DLSR` when a
-  remote Sender Report was observed. The Sender/Receiver Report packet layouts are pinned to the persisted RFC 3550
+  libsrtp context, and transmits it over libjuice. It now emits reduced-size RTCP Sender Reports (`PT=200`) using the
+  outbound SSRC on a bounded first-frame / packet-count / time cadence instead of after every RTP frame, protects them
+  with SRTCP, and persists inbound/outbound RTCP counters plus last-packet metadata. After inbound RTP arrives, it now
+  also emits a bounded RTCP Receiver Report (`PT=201`) with the inbound SSRC, fraction/cumulative loss, extended highest
+  sequence, jitter, and `LSR`/`DLSR` when a remote Sender Report was observed. The Sender/Receiver Report packet layouts are pinned to the persisted RFC 3550
   reference in `docs/research/vendor-rfc3550-rtp-20260411.txt`, and the report-block tracking/packet builder now has a
   shared `session_voice_rtcp_report` helper with direct unit coverage. The remaining gap is no longer basic outbound
   RTP, Opus ownership, or one-shot Sender/Receiver Report transmit; it is fuller compound RTCP cadence and broader

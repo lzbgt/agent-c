@@ -730,6 +730,7 @@ static void test_embedded_transport_provider_reaches_local_ice_connectivity() {
   assert(submit_event["rtcp_last_sent_packet_type"].asInt64() == 200);
   assert(runtime.rtcp_packets_sent >= 1);
   assert(runtime.rtcp_last_sent_packet_type == 200);
+  const auto sender_reports_after_first_submit = runtime.rtcp_sender_reports_sent;
 
   const auto media_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
   while (std::chrono::steady_clock::now() < media_deadline) {
@@ -747,6 +748,25 @@ static void test_embedded_transport_provider_reaches_local_ice_connectivity() {
   assert(ctx.last_outbound_ssrc == static_cast<uint32_t>(runtime.rtp_last_sent_ssrc));
   assert(ctx.last_outbound_payload_size > 0);
   assert(ctx.last_outbound_rtcp_ssrc == static_cast<uint32_t>(runtime.rtcp_last_sent_ssrc));
+
+  Json::Value second_submit_event(Json::nullValue);
+  assert(engine->submit_audio(submit_chunk, &second_submit_event, &err));
+  assert(err.empty());
+  note_voice_peer_media_engine_event(&runtime, second_submit_event);
+  assert(second_submit_event["event"].asString() == "audio_chunk_transmitted");
+  assert(second_submit_event["rtp_packets_sent"].asUInt64() >= 2);
+  assert(runtime.rtcp_sender_reports_sent == sender_reports_after_first_submit);
+
+  const auto second_media_deadline =
+    std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (std::chrono::steady_clock::now() < second_media_deadline) {
+    if (ctx.outbound_rtp_packets_observed >= 2) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+  assert(ctx.outbound_rtp_packets_observed >= 2);
+  assert(ctx.outbound_rtcp_sender_reports_observed == sender_reports_after_first_submit);
 
   agentd::destroy_dtls_srtp_session_pair(&ctx.client_srtp_sessions);
   destroy_endpoint(&ctx.client);
