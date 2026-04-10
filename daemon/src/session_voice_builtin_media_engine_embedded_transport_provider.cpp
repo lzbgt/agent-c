@@ -1,6 +1,7 @@
 #include "session_voice_audio_decode.h"
 #include "session_voice_builtin_media_engine_plugin.h"
 #include "session_voice_dtls_srtp_util.h"
+#include "session_voice_rtcp_report.h"
 
 #include <juice/juice.h>
 #include <openssl/bn.h>
@@ -90,11 +91,6 @@ constexpr size_t kOutboundG711FrameSamples = 160;
 constexpr size_t kOutboundOpusFrameSamplesPerChannel = 960;
 constexpr int kOutboundOpusMaxPayloadBytes = 1275;
 constexpr uint32_t kOutboundRtpSsrc = 0xA6E17D01u;
-constexpr uint8_t kRtcpPacketTypeSenderReport = 200;
-constexpr uint8_t kRtcpPacketTypeReceiverReport = 201;
-constexpr size_t kRtcpSenderReportBytes = 28;
-constexpr size_t kRtcpReceiverReportWithBlockBytes = 32;
-constexpr uint64_t kUnixToNtpEpochSeconds = 2208988800ULL;
 constexpr uint64_t kReceiverReportRtpPacketCadence = 50;
 
 struct EmbeddedTransportState {
@@ -310,25 +306,7 @@ struct EmbeddedTransportState {
   uint64_t rtcp_last_report_jitter = 0;
   uint64_t rtcp_last_report_lsr = 0;
   uint64_t rtcp_last_report_dlsr = 0;
-  bool inbound_rtp_source_initialized = false;
-  uint32_t inbound_rtp_source_ssrc = 0;
-  uint16_t inbound_rtp_base_sequence = 0;
-  uint16_t inbound_rtp_max_sequence = 0;
-  uint32_t inbound_rtp_sequence_cycles = 0;
-  uint32_t inbound_rtp_extended_highest_sequence = 0;
-  uint64_t inbound_rtp_source_packets_received = 0;
-  uint64_t inbound_rtp_prior_expected = 0;
-  uint64_t inbound_rtp_prior_received = 0;
-  uint64_t inbound_rtp_packets_since_last_receiver_report = 0;
-  bool inbound_rtp_transit_initialized = false;
-  int64_t inbound_rtp_last_transit = 0;
-  double inbound_rtp_jitter = 0.0;
-  uint32_t inbound_rtp_clock_rate_hz = 0;
-  bool inbound_remote_sender_report_seen = false;
-  uint32_t inbound_remote_sender_report_lsr = 0;
-  std::chrono::steady_clock::time_point inbound_remote_sender_report_received_at;
-  bool rtcp_receiver_report_sent = false;
-  std::chrono::steady_clock::time_point rtcp_last_receiver_report_at;
+  agentd::RtcpReceiverReportTracker inbound_rtcp_report;
   uint64_t audio_frames_decoded = 0;
   uint64_t audio_pcm_samples_decoded = 0;
   uint64_t audio_pcm_samples_buffered = 0;
@@ -847,111 +825,6 @@ void write_u32_be(unsigned char* out, uint32_t value) {
   out[3] = static_cast<unsigned char>(value & 0xFF);
 }
 
-void write_i24_be(unsigned char* out, int64_t value) {
-  const int64_t clamped =
-    std::max<int64_t>(-8388608, std::min<int64_t>(8388607, value));
-  const uint32_t encoded = static_cast<uint32_t>(clamped) & 0x00FFFFFFu;
-  out[0] = static_cast<unsigned char>((encoded >> 16) & 0xFF);
-  out[1] = static_cast<unsigned char>((encoded >> 8) & 0xFF);
-  out[2] = static_cast<unsigned char>(encoded & 0xFF);
-}
-
-std::pair<uint32_t, uint32_t> current_ntp_timestamp_words() {
-  using namespace std::chrono;
-  const auto now = system_clock::now().time_since_epoch();
-  const auto seconds_part = duration_cast<seconds>(now);
-  const auto nanos_part = duration_cast<nanoseconds>(now - seconds_part);
-  const uint64_t ntp_seconds =
-    static_cast<uint64_t>(seconds_part.count()) + kUnixToNtpEpochSeconds;
-  const uint64_t ntp_fraction =
-    (static_cast<uint64_t>(nanos_part.count()) << 32) / 1000000000ULL;
-  return {
-    static_cast<uint32_t>(ntp_seconds & 0xFFFFFFFFu),
-    static_cast<uint32_t>(ntp_fraction & 0xFFFFFFFFu),
-  };
-}
-
-std::array<unsigned char, kRtcpSenderReportBytes> build_rtcp_sender_report(
-  const EmbeddedTransportState& engine,
-  uint32_t rtp_timestamp
-) {
-  std::array<unsigned char, kRtcpSenderReportBytes> out{};
-  const auto ntp = current_ntp_timestamp_words();
-  out[0] = 0x80u;
-  out[1] = kRtcpPacketTypeSenderReport;
-  write_u16_be(out.data() + 2, 6);
-  write_u32_be(out.data() + 4, engine.outbound_rtp_ssrc);
-  write_u32_be(out.data() + 8, ntp.first);
-  write_u32_be(out.data() + 12, ntp.second);
-  write_u32_be(out.data() + 16, rtp_timestamp);
-  write_u32_be(out.data() + 20, static_cast<uint32_t>(engine.rtp_packets_sent));
-  write_u32_be(out.data() + 24, static_cast<uint32_t>(engine.rtp_payload_bytes_sent));
-  return out;
-}
-
-uint64_t current_steady_microseconds() {
-  using namespace std::chrono;
-  return static_cast<uint64_t>(
-    duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count());
-}
-
-uint32_t elapsed_dlsr_units(std::chrono::steady_clock::time_point since) {
-  using namespace std::chrono;
-  const auto elapsed = steady_clock::now() - since;
-  const auto micros = duration_cast<microseconds>(elapsed).count();
-  if (micros <= 0) return 0;
-  const uint64_t units =
-    (static_cast<uint64_t>(micros) * static_cast<uint64_t>(65536)) /
-    static_cast<uint64_t>(1000000);
-  return static_cast<uint32_t>(std::min<uint64_t>(units, std::numeric_limits<uint32_t>::max()));
-}
-
-uint32_t rtp_arrival_units(uint64_t steady_us, uint32_t clock_rate_hz) {
-  if (clock_rate_hz == 0) return 0;
-  const long double units =
-    (static_cast<long double>(steady_us) * static_cast<long double>(clock_rate_hz)) /
-    static_cast<long double>(1000000.0L);
-  return static_cast<uint32_t>(static_cast<uint64_t>(units) & 0xFFFFFFFFu);
-}
-
-uint32_t report_jitter_sample(const EmbeddedTransportState& engine) {
-  if (engine.inbound_rtp_jitter <= 0.0) return 0;
-  const double bounded = std::min<double>(
-    engine.inbound_rtp_jitter,
-    static_cast<double>(std::numeric_limits<uint32_t>::max()));
-  return static_cast<uint32_t>(bounded + 0.5);
-}
-
-uint64_t inbound_rtp_expected_packets(const EmbeddedTransportState& engine) {
-  if (!engine.inbound_rtp_source_initialized) return 0;
-  if (engine.inbound_rtp_extended_highest_sequence < engine.inbound_rtp_base_sequence) {
-    return engine.inbound_rtp_source_packets_received;
-  }
-  return static_cast<uint64_t>(
-    engine.inbound_rtp_extended_highest_sequence -
-    static_cast<uint32_t>(engine.inbound_rtp_base_sequence) + 1u);
-}
-
-int64_t inbound_rtp_cumulative_lost(const EmbeddedTransportState& engine) {
-  return static_cast<int64_t>(inbound_rtp_expected_packets(engine)) -
-         static_cast<int64_t>(engine.inbound_rtp_source_packets_received);
-}
-
-uint8_t inbound_rtp_fraction_lost_since_last_report(const EmbeddedTransportState& engine) {
-  const uint64_t expected = inbound_rtp_expected_packets(engine);
-  const uint64_t expected_interval =
-    expected > engine.inbound_rtp_prior_expected
-      ? expected - engine.inbound_rtp_prior_expected
-      : 0;
-  const uint64_t received_interval =
-    engine.inbound_rtp_source_packets_received > engine.inbound_rtp_prior_received
-      ? engine.inbound_rtp_source_packets_received - engine.inbound_rtp_prior_received
-      : 0;
-  if (expected_interval == 0 || received_interval >= expected_interval) return 0;
-  const uint64_t lost_interval = expected_interval - received_interval;
-  return static_cast<uint8_t>(std::min<uint64_t>((lost_interval * 256u) / expected_interval, 255));
-}
-
 void note_inbound_rtp_packet_for_receiver_report(
   EmbeddedTransportState* engine,
   const agentd::ParsedRtpPacketInfo& rtp_info
@@ -964,91 +837,14 @@ void note_inbound_rtp_packet_for_receiver_report(
       ? static_cast<uint32_t>(spec->sample_rate_hz)
       : static_cast<uint32_t>(std::max<int64_t>(engine->audio_last_sample_rate_hz, 8000));
 
-  if (!engine->inbound_rtp_source_initialized ||
-      engine->inbound_rtp_source_ssrc != rtp_info.ssrc) {
-    engine->inbound_rtp_source_initialized = true;
-    engine->inbound_rtp_source_ssrc = rtp_info.ssrc;
-    engine->inbound_rtp_clock_rate_hz = clock_rate_hz;
-    engine->inbound_rtp_base_sequence = rtp_info.sequence;
-    engine->inbound_rtp_max_sequence = rtp_info.sequence;
-    engine->inbound_rtp_sequence_cycles = 0;
-    engine->inbound_rtp_extended_highest_sequence = rtp_info.sequence;
-    engine->inbound_rtp_source_packets_received = 0;
-    engine->inbound_rtp_prior_expected = 0;
-    engine->inbound_rtp_prior_received = 0;
-    engine->inbound_rtp_packets_since_last_receiver_report = 0;
-    engine->inbound_rtp_transit_initialized = false;
-    engine->inbound_rtp_last_transit = 0;
-    engine->inbound_rtp_jitter = 0.0;
-    engine->inbound_remote_sender_report_seen = false;
-    engine->inbound_remote_sender_report_lsr = 0;
-  } else if (rtp_info.sequence < engine->inbound_rtp_max_sequence &&
-             static_cast<uint16_t>(engine->inbound_rtp_max_sequence - rtp_info.sequence) > 0x8000u) {
-    engine->inbound_rtp_sequence_cycles += 0x10000u;
-    engine->inbound_rtp_max_sequence = rtp_info.sequence;
-  } else if (rtp_info.sequence > engine->inbound_rtp_max_sequence) {
-    engine->inbound_rtp_max_sequence = rtp_info.sequence;
-  }
-
-  const uint32_t extended_sequence =
-    engine->inbound_rtp_sequence_cycles + static_cast<uint32_t>(rtp_info.sequence);
-  engine->inbound_rtp_extended_highest_sequence =
-    std::max(engine->inbound_rtp_extended_highest_sequence, extended_sequence);
-  engine->inbound_rtp_source_packets_received += 1;
-  engine->inbound_rtp_packets_since_last_receiver_report += 1;
-
-  const uint64_t arrival_us = current_steady_microseconds();
-  const uint32_t arrival_rtp_units = rtp_arrival_units(arrival_us, clock_rate_hz);
-  const int64_t transit =
-    static_cast<int64_t>(arrival_rtp_units) - static_cast<int64_t>(rtp_info.timestamp);
-  if (engine->inbound_rtp_transit_initialized) {
-    int64_t delta = transit - engine->inbound_rtp_last_transit;
-    if (delta < 0) delta = -delta;
-    engine->inbound_rtp_jitter +=
-      (static_cast<double>(delta) - engine->inbound_rtp_jitter) / 16.0;
-  } else {
-    engine->inbound_rtp_transit_initialized = true;
-  }
-  engine->inbound_rtp_last_transit = transit;
-}
-
-std::array<unsigned char, kRtcpReceiverReportWithBlockBytes> build_rtcp_receiver_report(
-  EmbeddedTransportState* engine
-) {
-  std::array<unsigned char, kRtcpReceiverReportWithBlockBytes> out{};
-  if (!engine || !engine->inbound_rtp_source_initialized) return out;
-
-  const uint8_t fraction_lost = inbound_rtp_fraction_lost_since_last_report(*engine);
-  const int64_t cumulative_lost = inbound_rtp_cumulative_lost(*engine);
-  const uint32_t jitter = report_jitter_sample(*engine);
-  const uint32_t lsr =
-    engine->inbound_remote_sender_report_seen ? engine->inbound_remote_sender_report_lsr : 0;
-  const uint32_t dlsr =
-    engine->inbound_remote_sender_report_seen
-      ? elapsed_dlsr_units(engine->inbound_remote_sender_report_received_at)
-      : 0;
-
-  out[0] = 0x81u;
-  out[1] = kRtcpPacketTypeReceiverReport;
-  write_u16_be(out.data() + 2, 7);
-  write_u32_be(out.data() + 4, engine->outbound_rtp_ssrc);
-  write_u32_be(out.data() + 8, engine->inbound_rtp_source_ssrc);
-  out[12] = fraction_lost;
-  write_i24_be(out.data() + 13, cumulative_lost);
-  write_u32_be(out.data() + 16, engine->inbound_rtp_extended_highest_sequence);
-  write_u32_be(out.data() + 20, jitter);
-  write_u32_be(out.data() + 24, lsr);
-  write_u32_be(out.data() + 28, dlsr);
-
-  engine->rtcp_last_reported_rtp_ssrc = engine->inbound_rtp_source_ssrc;
-  engine->rtcp_last_report_fraction_lost = fraction_lost;
-  engine->rtcp_last_report_cumulative_lost =
-    std::max<int64_t>(-8388608, std::min<int64_t>(8388607, cumulative_lost));
-  engine->rtcp_last_report_highest_sequence = engine->inbound_rtp_extended_highest_sequence;
-  engine->rtcp_last_report_jitter = jitter;
-  engine->rtcp_last_report_lsr = lsr;
-  engine->rtcp_last_report_dlsr = dlsr;
-  return out;
+  agentd::note_rtcp_receiver_report_rtp_packet(
+    &engine->inbound_rtcp_report,
+    agentd::RtcpReceiverReportRtpPacket{
+      rtp_info.ssrc,
+      rtp_info.sequence,
+      rtp_info.timestamp,
+      clock_rate_hz,
+    });
 }
 
 uint8_t encode_pcmu_sample(int16_t sample) {
@@ -1307,8 +1103,13 @@ bool transmit_outbound_rtcp_sender_report(
     return false;
   }
 
-  const std::array<unsigned char, kRtcpSenderReportBytes> plain =
-    build_rtcp_sender_report(*engine, rtp_timestamp);
+  const agentd::RtcpSenderReportPacket plain =
+    agentd::build_rtcp_sender_report(agentd::RtcpSenderReportInput{
+      engine->outbound_rtp_ssrc,
+      rtp_timestamp,
+      engine->rtp_packets_sent,
+      engine->rtp_payload_bytes_sent,
+    });
   std::vector<unsigned char> protected_packet;
   std::string protect_err;
   if (!agentd::protect_outbound_rtcp_packet(
@@ -1332,24 +1133,24 @@ bool transmit_outbound_rtcp_sender_report(
   engine->rtcp_packets_sent += 1;
   engine->rtcp_payload_bytes_sent += plain.size();
   engine->rtcp_sender_reports_sent += 1;
-  engine->rtcp_last_sent_packet_type = kRtcpPacketTypeSenderReport;
+  engine->rtcp_last_sent_packet_type = agentd::kRtcpPacketTypeSenderReport;
   engine->rtcp_last_sent_ssrc = engine->outbound_rtp_ssrc;
   engine->rtcp_last_error.clear();
   return true;
 }
 
 bool receiver_report_due(const EmbeddedTransportState& engine) {
-  if (!engine.inbound_rtp_source_initialized || !engine.agent ||
+  if (!agentd::rtcp_receiver_report_has_source(engine.inbound_rtcp_report) || !engine.agent ||
       !engine.outbound_srtp || !engine.srtp_outbound_ready) {
     return false;
   }
   if (engine.rtcp_receiver_reports_sent == 0) return true;
-  if (engine.inbound_rtp_packets_since_last_receiver_report >=
+  if (engine.inbound_rtcp_report.packets_since_last_report >=
       kReceiverReportRtpPacketCadence) {
     return true;
   }
-  if (!engine.rtcp_receiver_report_sent) return true;
-  return std::chrono::steady_clock::now() - engine.rtcp_last_receiver_report_at >=
+  if (!engine.inbound_rtcp_report.receiver_report_sent) return true;
+  return std::chrono::steady_clock::now() - engine.inbound_rtcp_report.last_receiver_report_at >=
          std::chrono::seconds(5);
 }
 
@@ -1362,13 +1163,15 @@ bool transmit_outbound_rtcp_receiver_report(
     if (out_err) *out_err = "outbound SRTCP transport not ready";
     return false;
   }
-  if (!engine->inbound_rtp_source_initialized) {
+  if (!agentd::rtcp_receiver_report_has_source(engine->inbound_rtcp_report)) {
     if (out_err) *out_err = "inbound RTP source not ready for receiver report";
     return false;
   }
 
-  const std::array<unsigned char, kRtcpReceiverReportWithBlockBytes> plain =
-    build_rtcp_receiver_report(engine);
+  const agentd::RtcpReceiverReportBlock report_block =
+    agentd::snapshot_rtcp_receiver_report_block(engine->inbound_rtcp_report);
+  const agentd::RtcpReceiverReportPacket plain =
+    agentd::build_rtcp_receiver_report(engine->outbound_rtp_ssrc, report_block);
   std::vector<unsigned char> protected_packet;
   std::string protect_err;
   if (!agentd::protect_outbound_rtcp_packet(
@@ -1396,14 +1199,17 @@ bool transmit_outbound_rtcp_receiver_report(
   engine->rtcp_payload_bytes_sent += plain.size();
   engine->rtcp_receiver_reports_sent += 1;
   engine->rtcp_receiver_report_blocks_sent += 1;
-  engine->rtcp_last_sent_packet_type = kRtcpPacketTypeReceiverReport;
+  engine->rtcp_last_sent_packet_type = agentd::kRtcpPacketTypeReceiverReport;
   engine->rtcp_last_sent_ssrc = engine->outbound_rtp_ssrc;
+  engine->rtcp_last_reported_rtp_ssrc = report_block.reported_rtp_ssrc;
+  engine->rtcp_last_report_fraction_lost = report_block.fraction_lost;
+  engine->rtcp_last_report_cumulative_lost = report_block.cumulative_lost;
+  engine->rtcp_last_report_highest_sequence = report_block.extended_highest_sequence;
+  engine->rtcp_last_report_jitter = report_block.jitter;
+  engine->rtcp_last_report_lsr = report_block.lsr;
+  engine->rtcp_last_report_dlsr = report_block.dlsr;
   engine->rtcp_last_error.clear();
-  engine->inbound_rtp_prior_expected = inbound_rtp_expected_packets(*engine);
-  engine->inbound_rtp_prior_received = engine->inbound_rtp_source_packets_received;
-  engine->inbound_rtp_packets_since_last_receiver_report = 0;
-  engine->rtcp_receiver_report_sent = true;
-  engine->rtcp_last_receiver_report_at = std::chrono::steady_clock::now();
+  agentd::mark_rtcp_receiver_report_sent(&engine->inbound_rtcp_report);
   return true;
 }
 
@@ -1554,9 +1360,9 @@ bool ingest_inbound_srtp_packet(
     engine->rtcp_last_packet_type = rtcp_info.packet_type;
     engine->rtcp_last_ssrc = rtcp_info.ssrc;
     if (rtcp_info.has_sender_info && rtcp_info.sender_report_lsr != 0) {
-      engine->inbound_remote_sender_report_seen = true;
-      engine->inbound_remote_sender_report_lsr = rtcp_info.sender_report_lsr;
-      engine->inbound_remote_sender_report_received_at = std::chrono::steady_clock::now();
+      agentd::note_rtcp_receiver_report_sender_report(
+        &engine->inbound_rtcp_report,
+        rtcp_info.sender_report_lsr);
     }
     engine->rtcp_last_error.clear();
     return true;

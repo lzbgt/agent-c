@@ -167,6 +167,8 @@ Reference artifacts downloaded into the repo for exact vendor details:
   - after inbound RTP arrives, the provider now emits a bounded RTCP Receiver
     Report (`PT=201`) with RFC 3550 report-block stats for the inbound SSRC
     and protects/transmits it with SRTCP over the same libjuice path
+  - Sender/Receiver Report packet formatting and report-block tracking now live
+    in the shared `session_voice_rtcp_report` helper with direct unit coverage
   - runtime status now persists outbound RTP and PCM-submit counters, including
     `rtp_packets_sent`, `rtp_payload_bytes_sent`,
     `audio_outbound_frames_sent`, and
