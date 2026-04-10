@@ -1,3 +1,5 @@
+import { safeObject, type UnknownRecord } from "./jsonUtils";
+
 export type ConnectionMode = "direct" | "broker";
 export type ToolMode = "host" | "basic" | "none";
 export type HostPolicy = "full" | "readonly";
@@ -150,10 +152,10 @@ const DEFAULTS: AgentUIDefaults = {
   serverPrefsMode: "auto",
 };
 
-const env = (() => {
+const env: UnknownRecord = (() => {
   try {
     // Vite injects env at build time.
-    return (import.meta as any).env || {};
+    return safeObject(import.meta.env);
   } catch {
     return {};
   }

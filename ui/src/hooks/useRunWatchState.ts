@@ -8,11 +8,12 @@ import {
   type AgentEvent,
   type ApiAuth,
 } from "../api";
-import { loadJson } from "../jsonUtils";
+import { loadJson, safeObject } from "../jsonUtils";
 import { pruneJobsBySession } from "../jobStore";
 import {
   extractRunWatchByScope,
   mergeRunWatchByScope,
+  type RunWatchEntry,
   runWatchMapsEqual,
   type RunWatchByScope,
 } from "../runWatchPrefs";
@@ -22,6 +23,26 @@ import type { JobStoreWriter } from "./runtimePlaneTypes";
 const RUN_WATCH_PREFS_KIND = "run_watch";
 const RUN_WATCH_PREFS_VERSION = 1;
 const RUN_WATCH_PERSIST_MIN_INTERVAL_MS = 5000;
+
+const parseRunWatchByScope = (value: unknown): RunWatchByScope => {
+  const record = safeObject(value);
+  const next: RunWatchByScope = {};
+  for (const [key, entryValue] of Object.entries(record)) {
+    const entryRecord = safeObject(entryValue);
+    if (Object.keys(entryRecord).length === 0) continue;
+    const entry: RunWatchEntry = { ...entryRecord };
+    if (typeof entryRecord.job_id === "string") entry.job_id = entryRecord.job_id;
+    if (typeof entryRecord.cursor === "number" && Number.isFinite(entryRecord.cursor)) entry.cursor = entryRecord.cursor;
+    if (typeof entryRecord.started_unix_ms === "number" && Number.isFinite(entryRecord.started_unix_ms)) {
+      entry.started_unix_ms = entryRecord.started_unix_ms;
+    }
+    if (typeof entryRecord.updated_unix_ms === "number" && Number.isFinite(entryRecord.updated_unix_ms)) {
+      entry.updated_unix_ms = entryRecord.updated_unix_ms;
+    }
+    next[key] = entry;
+  }
+  return next;
+};
 
 type UseRunWatchStateArgs = {
   activeJobId: string | null;
@@ -83,8 +104,7 @@ export function useRunWatchState(args: UseRunWatchStateArgs) {
   }, [runWatchCanUse, runWatchServerStatus]);
 
   const parseJobsBySession = React.useCallback(() => {
-    const value = loadJson(jobsBySessionJsonRef.current);
-    const jobs = value && typeof value === "object" && !Array.isArray(value) ? (value as RunWatchByScope) : {};
+    const jobs = parseRunWatchByScope(loadJson(jobsBySessionJsonRef.current));
     const pruned = pruneJobsBySession(Date.now(), jobs);
     if (pruned.changed) {
       try {
@@ -212,8 +232,7 @@ export function useRunWatchState(args: UseRunWatchStateArgs) {
   const writeJobsBySession = React.useCallback<JobStoreWriter>(
     (mutate) => {
       setJobsBySessionJson((prevRaw) => {
-        const parsed = loadJson(String(prevRaw || ""));
-        const prev = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as RunWatchByScope) : {};
+        const prev = parseRunWatchByScope(loadJson(String(prevRaw || "")));
         const next = mutate(prev);
         scheduleRunWatchPersist(next);
         try {

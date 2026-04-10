@@ -60,8 +60,9 @@ export default function useAppShellState({
   const [sessionByScopeJson, setSessionByScopeJson] = useLocalStorageState("agentui.sessionByScope", "{}");
   const [sessionByBaseJson] = useLocalStorageState("agentui.sessionByBase", "{}");
   const sessionId = React.useMemo(() => {
-    const map = (loadJson(sessionByScopeJson) as Record<string, any>) || {};
-    const scoped = typeof map?.[sessionScopeKey] === "string" ? String(map[sessionScopeKey]) : "";
+    const map = loadJson(sessionByScopeJson) ?? {};
+    const scopedValue = map[sessionScopeKey];
+    const scoped = typeof scopedValue === "string" ? scopedValue : "";
     return scoped.trim().length > 0 ? scoped.trim() : "default";
   }, [sessionByScopeJson, sessionScopeKey]);
   const [sessionLeaseSeconds, setSessionLeaseSeconds] = useLocalStorageState<string>("agentui.sessionLeaseSeconds", "90");
@@ -69,7 +70,7 @@ export default function useAppShellState({
     (sid: string) => {
       const nextSid = String(sid || "").trim() || "default";
       setSessionByScopeJson((prevRaw) => {
-        const prev = (loadJson(String(prevRaw || "")) as Record<string, any>) || {};
+        const prev = loadJson(String(prevRaw || "")) ?? {};
         const next = { ...prev, [sessionScopeKey]: nextSid };
         try {
           return JSON.stringify(next);
@@ -87,12 +88,12 @@ export default function useAppShellState({
 
   React.useEffect(() => {
     if (typeof window === "undefined" || !window.localStorage) return;
-    const scopeMap = (loadJson(String(sessionByScopeJson || "")) as Record<string, any>) || {};
+    const scopeMap = loadJson(String(sessionByScopeJson || "")) ?? {};
     const have =
       typeof scopeMap?.[sessionScopeKey] === "string" && String(scopeMap[sessionScopeKey]).trim().length > 0;
     if (have) return;
 
-    const baseMap = (loadJson(String(sessionByBaseJson || "")) as Record<string, any>) || {};
+    const baseMap = loadJson(String(sessionByBaseJson || "")) ?? {};
     const legacyBase = typeof baseMap?.[effectiveBase] === "string" ? String(baseMap[effectiveBase]) : "";
     const legacyBaseTrim = legacyBase.trim();
     if (legacyBaseTrim) {

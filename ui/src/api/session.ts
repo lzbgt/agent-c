@@ -1,3 +1,4 @@
+import { safeJsonParse, safeObject, type UnknownRecord } from "../jsonUtils";
 import { daemonFetchInit, type ApiAuth } from "./auth";
 import {
   AuditSchema,
@@ -7,6 +8,7 @@ import {
   NewSessionRespSchema,
   type NewSessionResp,
   SessionArtifactsSchema,
+  SessionAttachmentSchema,
   SessionAttachmentActionRespSchema,
   SessionOperatorRespSchema,
   type SessionAttachment,
@@ -17,6 +19,8 @@ import {
   type SessionOperatorResp,
   SessionClientEventsSchema,
   type SessionClientEventsResp,
+  SessionErrorEnvelopeSchema,
+  SessionInfoSchema,
   SessionSchema,
   type SessionResp,
   SessionSceneApplyReqSchema,
@@ -94,18 +98,17 @@ function buildCodexwLeaseHeaders(opts?: SessionLeaseRequestOptions): Record<stri
   return headers;
 }
 
-async function parseJsonSafe(response: Response): Promise<any> {
+async function parseJsonSafe(response: Response): Promise<UnknownRecord> {
   const text = await response.text();
   if (!text) return {};
-  try {
-    return JSON.parse(text);
-  } catch {
-    return {
-      ok: response.ok,
-      status: response.status,
-      error: text,
-    };
-  }
+  const parsed = safeJsonParse(text);
+  const record = safeObject(parsed);
+  if (Object.keys(record).length > 0) return record;
+  return {
+    ok: response.ok,
+    status: response.status,
+    error: text,
+  };
 }
 
 async function fetchJsonWithFallback(
@@ -113,12 +116,12 @@ async function fetchJsonWithFallback(
   auth?: ApiAuth,
   init?: RequestInit,
   extraHeaders?: Record<string, string>,
-): Promise<any> {
-  let last: any = null;
+): Promise<UnknownRecord> {
+  let last: UnknownRecord | null = null;
   for (const url of urls) {
     const response = await fetch(url, daemonFetchInit(auth, init, extraHeaders));
     const json = await parseJsonSafe(response);
-    const merged = typeof json === "object" && json ? { status: response.status, ...json } : { status: response.status, ok: response.ok };
+    const merged = { status: response.status, ...json };
     last = merged;
     if (response.ok) return merged;
     if (response.status !== 404 && response.status !== 405) return merged;
@@ -155,63 +158,64 @@ function normalizeSessionId(value: unknown): string | undefined {
 }
 
 export function extractSessionInfo(payload: unknown): SessionInfo | undefined {
-  if (!payload || typeof payload !== "object") return undefined;
-  const record = payload as Record<string, any>;
-  const nested = record.session;
-  if (nested && typeof nested === "object") {
-    return {
+  const record = safeObject(payload);
+  const nested = safeObject(record.session);
+  if (Object.keys(nested).length > 0) {
+    const parsed = SessionInfoSchema.safeParse({
       ...nested,
-      session_id: normalizeSessionId((nested as any).session_id) ?? normalizeSessionId(record.session_id),
+      session_id: normalizeSessionId(nested.session_id) ?? normalizeSessionId(record.session_id),
       attachment: extractSessionAttachment(nested),
-      messages: Array.isArray((nested as any).messages) ? (nested as any).messages : undefined,
-    } as SessionInfo;
+      messages: Array.isArray(nested.messages) ? nested.messages : undefined,
+    });
+    return parsed.success ? parsed.data : undefined;
   }
   const sessionId = normalizeSessionId(record.session_id);
   if (!sessionId && !Array.isArray(record.messages) && !record.attachment) return undefined;
-  return {
+  const parsed = SessionInfoSchema.safeParse({
     ...record,
     session_id: sessionId,
     attachment: extractSessionAttachment(record),
     messages: Array.isArray(record.messages) ? record.messages : undefined,
-  } as SessionInfo;
+  });
+  return parsed.success ? parsed.data : undefined;
 }
 
 export function extractSessionAttachment(payload: unknown): SessionAttachment | undefined {
-  if (!payload || typeof payload !== "object") return undefined;
-  const record = payload as Record<string, any>;
-  const nested = record.attachment;
-  if (nested && typeof nested === "object") return nested as SessionAttachment;
-  const session = record.session;
-  if (session && typeof session === "object" && (session as any).attachment && typeof (session as any).attachment === "object") {
-    return (session as any).attachment as SessionAttachment;
-  }
+  const record = safeObject(payload);
+  const nested = SessionAttachmentSchema.safeParse(record.attachment);
+  if (nested.success) return nested.data;
+  const session = safeObject(record.session);
+  const sessionAttachment = SessionAttachmentSchema.safeParse(session.attachment);
+  if (sessionAttachment.success) return sessionAttachment.data;
   return undefined;
 }
 
 export function extractSessionErrorEnvelope(payload: unknown): SessionErrorEnvelope | undefined {
-  if (!payload || typeof payload !== "object") return undefined;
-  const record = payload as Record<string, any>;
-  const nested = record.error;
-  if (nested && typeof nested === "object") return nested as SessionErrorEnvelope;
-  if (record.error_detail && typeof record.error_detail === "object") return record.error_detail as SessionErrorEnvelope;
-  if (record.error_details && typeof record.error_details === "object") {
-    return {
-      ...(record.error_details as Record<string, any>),
+  const record = safeObject(payload);
+  const nested = SessionErrorEnvelopeSchema.safeParse(record.error);
+  if (nested.success) return nested.data;
+  const errorDetail = SessionErrorEnvelopeSchema.safeParse(record.error_detail);
+  if (errorDetail.success) return errorDetail.data;
+  const errorDetails = safeObject(record.error_details);
+  if (Object.keys(errorDetails).length > 0) {
+    const parsed = SessionErrorEnvelopeSchema.safeParse({
+      ...errorDetails,
       code: typeof record.code === "string" ? record.code : undefined,
-    } as SessionErrorEnvelope;
+    });
+    return parsed.success ? parsed.data : undefined;
   }
   if (typeof record.message === "string" || typeof record.code === "string") {
-    return {
+    const parsed = SessionErrorEnvelopeSchema.safeParse({
       code: typeof record.code === "string" ? record.code : undefined,
       message: typeof record.message === "string" ? record.message : undefined,
-    };
+    });
+    return parsed.success ? parsed.data : undefined;
   }
   return undefined;
 }
 
 export function extractSessionErrorMessage(payload: unknown): string | undefined {
-  if (!payload || typeof payload !== "object") return undefined;
-  const record = payload as Record<string, any>;
+  const record = safeObject(payload);
   if (typeof record.error === "string" && record.error.trim()) return record.error.trim();
   if (typeof record.err === "string" && record.err.trim()) return record.err.trim();
   const envelope = extractSessionErrorEnvelope(payload);
@@ -225,11 +229,12 @@ export function extractSessionIds(payload: SessionsResp | undefined): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const row of raw) {
+    const record = safeObject(row);
     const sessionId =
       typeof row === "string"
         ? row.trim()
-        : row && typeof row === "object" && typeof (row as any).session_id === "string"
-          ? String((row as any).session_id).trim()
+        : typeof record.session_id === "string"
+          ? record.session_id.trim()
           : "";
     if (!sessionId || seen.has(sessionId)) continue;
     seen.add(sessionId);
@@ -342,7 +347,7 @@ export async function apiNewSession(
   auth?: ApiAuth,
   opts?: NewSessionOptions,
 ): Promise<NewSessionResp> {
-  const payload: any = {};
+  const payload: Record<string, unknown> = {};
   if (opts?.sessionId) payload.session_id = String(opts.sessionId);
   if (typeof opts?.createFiles === "boolean") payload.create_files = opts.createFiles;
   if (opts?.threadId) payload.thread_id = String(opts.threadId).trim();
@@ -416,7 +421,7 @@ export async function apiAttachSession(
   opts?: SessionLeaseRequestOptions & { threadId?: string },
 ): Promise<SessionAttachmentActionResp> {
   const aliasRoot = brokerAliasRootFromBase(base);
-  const payload: Record<string, any> = {};
+  const payload: Record<string, unknown> = {};
   if (opts?.threadId) payload.thread_id = String(opts.threadId).trim();
   const sid = encodeURIComponent(sessionId);
   const json = await fetchJsonWithFallback(

@@ -85,7 +85,7 @@ export type RunRequest = z.infer<typeof RunRequestSchema>;
 export const EventSchema = z.object({
   type: z.string(),
   trace_id: z.string().optional(),
-  data: z.any().optional(),
+  data: z.unknown().optional(),
 });
 export type AgentEvent = z.infer<typeof EventSchema>;
 
@@ -120,6 +120,17 @@ export const RunAsyncRespSchema = z.object({
 });
 export type RunAsyncResp = z.infer<typeof RunAsyncRespSchema>;
 
+export const JobCancelRespSchema = z
+  .object({
+    ok: z.boolean().optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+    status: z.number().optional(),
+  })
+  .passthrough();
+export type JobCancelResp = z.infer<typeof JobCancelRespSchema>;
+
 export const JobRespSchema = z.object({
   ok: z.boolean(),
   job_id: z.string().optional(),
@@ -141,9 +152,9 @@ export type JobResp = z.infer<typeof JobRespSchema>;
 
 export const RunReplayBundleSchema = z.object({
   schema: z.string().optional(),
-  request: z.any().optional(),
-  response: z.any().optional(),
-  tool_records: z.array(z.any()).optional(),
+  request: z.unknown().optional(),
+  response: z.unknown().optional(),
+  tool_records: z.array(z.unknown()).optional(),
 });
 export type RunReplayBundle = z.infer<typeof RunReplayBundleSchema>;
 
@@ -173,8 +184,8 @@ export const RunAttestationBundleSchema = z
     session_id: z.string().optional(),
     agent_id: z.string().optional(),
     deployment_id: z.string().optional(),
-    issuer: z.any().optional(),
-    attest: z.any().optional(),
+    issuer: z.unknown().optional(),
+    attest: z.unknown().optional(),
   })
   .passthrough();
 export type RunAttestationBundle = z.infer<typeof RunAttestationBundleSchema>;

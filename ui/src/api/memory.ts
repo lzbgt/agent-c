@@ -19,6 +19,8 @@ import {
   type MemorySalienceResp,
 } from "./schemas/memory";
 
+type MemoryMutationBody = Record<string, unknown>;
+
 export type MemoryQueryParams = {
   sinceUtcMs?: number;
   untilUtcMs?: number;
@@ -110,7 +112,7 @@ export async function apiMemoryCorrelate(
 
 export async function apiMemoryCorrelationIndexBuild(
   base: string,
-  body: Record<string, any>,
+  body: MemoryMutationBody,
   auth?: ApiAuth,
 ): Promise<MemoryCorrelationIndexResp> {
   const r = await fetch(
@@ -177,7 +179,7 @@ export async function apiMemorySalience(
 
 export async function apiMemoryRetentionEnforce(
   base: string,
-  body: Record<string, any>,
+  body: MemoryMutationBody,
   auth?: ApiAuth,
 ): Promise<MemoryRetentionResp> {
   const r = await fetch(
@@ -205,7 +207,7 @@ export async function apiMemoryRecapsList(
 
 export async function apiMemoryRecapsCreate(
   base: string,
-  body: Record<string, any>,
+  body: MemoryMutationBody,
   auth?: ApiAuth,
 ): Promise<MemoryRecapsResp> {
   const r = await fetch(

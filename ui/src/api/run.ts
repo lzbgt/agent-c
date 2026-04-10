@@ -1,5 +1,8 @@
+import { safeObject } from "../jsonUtils";
 import { daemonFetchInit, type ApiAuth } from "./auth";
 import {
+  JobCancelRespSchema,
+  type JobCancelResp,
   JobRespSchema,
   type JobResp,
   RunAttestationRespSchema,
@@ -17,11 +20,20 @@ import {
 function newTraceId(): string {
   // Must match agentd's safe trace_id character set: [A-Za-z0-9_.:@-]
   // Prefer a stable, low-collision value when available.
-  const anyCrypto: any = (globalThis as any).crypto;
-  if (anyCrypto && typeof anyCrypto.randomUUID === "function") {
-    return `trace_${anyCrypto.randomUUID()}`;
+  const cryptoApi =
+    typeof globalThis === "object" && "crypto" in globalThis ? globalThis.crypto : undefined;
+  if (cryptoApi && typeof cryptoApi.randomUUID === "function") {
+    return `trace_${cryptoApi.randomUUID()}`;
   }
   return `trace_${Date.now()}_${Math.random().toString(16).slice(2)}_${Math.random().toString(16).slice(2)}`;
+}
+
+async function parseJsonObject(response: Response): Promise<Record<string, unknown>> {
+  try {
+    return safeObject(await response.json());
+  } catch {
+    return {};
+  }
 }
 
 function ensureTraceId(req: RunRequest): RunRequest {
@@ -73,22 +85,17 @@ export async function apiGetJobProgress(
   return JobRespSchema.parse(j);
 }
 
-export async function apiCancelJob(base: string, jobId: string, auth?: ApiAuth): Promise<any> {
+export async function apiCancelJob(base: string, jobId: string, auth?: ApiAuth): Promise<JobCancelResp> {
   const r = await fetch(`${base}/api/v1/job/cancel?job_id=${encodeURIComponent(jobId)}`, daemonFetchInit(auth, { method: "POST" }));
-  const j = await r.json();
-  return j;
+  const j = await parseJsonObject(r);
+  return JobCancelRespSchema.parse({ ok: r.ok, status: r.status, ...j });
 }
 
 export async function apiRunReplay(base: string, runId: string, auth?: ApiAuth): Promise<RunReplayResp> {
   const rid = String(runId || "").trim();
   if (!rid) throw new Error("missing run_id");
   const r = await fetch(`${base}/api/v1/run/replay?run_id=${encodeURIComponent(rid)}`, daemonFetchInit(auth));
-  let j: any = {};
-  try {
-    j = await r.json();
-  } catch {
-    j = {};
-  }
+  const j = await parseJsonObject(r);
   if (!r.ok) {
     return RunReplayRespSchema.parse({ ok: false, ...j });
   }
@@ -99,12 +106,7 @@ export async function apiRunAttestation(base: string, runId: string, auth?: ApiA
   const rid = String(runId || "").trim();
   if (!rid) throw new Error("missing run_id");
   const r = await fetch(`${base}/api/v1/run/attestation?run_id=${encodeURIComponent(rid)}`, daemonFetchInit(auth));
-  let j: any = {};
-  try {
-    j = await r.json();
-  } catch {
-    j = {};
-  }
+  const j = await parseJsonObject(r);
   if (!r.ok) {
     return RunAttestationRespSchema.parse({ ok: false, ...j });
   }
