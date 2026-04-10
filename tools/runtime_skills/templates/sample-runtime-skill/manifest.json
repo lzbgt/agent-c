@@ -1,0 +1,31 @@
+{
+  "skill_id": "my-runtime-skill",
+  "version": "0.1.0",
+  "description": "Describe the reusable runtime behavior bundle here.",
+  "kind": "instruction_pack",
+  "requires": {
+    "tools": [],
+    "plugins": [],
+    "features": []
+  },
+  "inputs_schema": {
+    "type": "object",
+    "properties": {
+      "goal": {
+        "type": "string"
+      }
+    },
+    "required": ["goal"],
+    "additionalProperties": false
+  },
+  "instruction_fragments": {
+    "shared": [
+      "Replace this with the shared instructions for the runtime skill."
+    ]
+  },
+  "policy_preset": {},
+  "ui": {
+    "label": "My Runtime Skill",
+    "category": "local"
+  }
+}

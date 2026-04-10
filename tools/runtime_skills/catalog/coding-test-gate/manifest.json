@@ -1,0 +1,49 @@
+{
+  "skill_id": "coding-test-gate",
+  "version": "0.1.0",
+  "description": "Coding workflow bundle that requires a verification gate before handoff.",
+  "kind": "workflow_bundle",
+  "requires": {
+    "tools": [],
+    "plugins": [],
+    "features": ["approval_queue"]
+  },
+  "inputs_schema": {
+    "type": "object",
+    "properties": {
+      "goal": {
+        "type": "string"
+      },
+      "test_command": {
+        "type": "string"
+      }
+    },
+    "required": ["goal", "test_command"],
+    "additionalProperties": false
+  },
+  "instruction_fragments": {
+    "shared": [
+      "Prefer fundamental fixes over ad-hoc tweaks.",
+      "Run verification before handoff.",
+      "Keep documentation and implementation in sync."
+    ]
+  },
+  "policy_preset": {
+    "approval_mode": "tool_gate",
+    "max_steps": 50
+  },
+  "workflow_template": {
+    "lanes": [
+      { "id": "plan", "label": "Plan" },
+      { "id": "implement", "label": "Implement" },
+      { "id": "verify", "label": "Verify" }
+    ],
+    "gates": [
+      { "after": "verify", "requires": "tests_pass" }
+    ]
+  },
+  "ui": {
+    "label": "Coding with Test Gate",
+    "category": "workflow-patterns"
+  }
+}

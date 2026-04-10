@@ -27,6 +27,7 @@ project.local.md
 tools/_agentd_broker_mtls_test_certs/
 tools/_compose_mtls/
 tools/skills/local/
+tools/runtime_skills/local/
 memory/
 session_*/
 docs/artifacts/

@@ -1,7 +1,7 @@
 # Runtime Skills System (v0)
 
 Date: 2026-04-10
-Status: draft
+Status: draft (local catalog tooling implemented)
 
 ## Summary
 
@@ -260,6 +260,25 @@ Expected UX:
 
 This gives a shorter path for common cases without taking away the low-level
 power-user surface.
+
+## Current v0 tooling
+
+The repo now ships a local data-only catalog + CLI under `tools/runtime_skills/`:
+
+- `validate_manifest.py`
+  - validates runtime skill manifests without executing code
+- `list_skills.py`
+  - lists the discovered catalog entries in the v0 search order
+- `resolve_skill.py`
+  - materializes a runtime skill by `skill_id` plus JSON inputs
+  - YAML input files are also supported when `PyYAML` is installed
+- `create_skill.py`
+  - scaffolds a local runtime skill under `tools/runtime_skills/local/`
+- `catalog/`
+  - example shipped runtime skills
+
+This is intentionally a lightweight operator surface. It does not yet imply
+daemon-native loading, broker-native registry sync, or WebUI form rendering.
 
 ## Interaction with MCP
 

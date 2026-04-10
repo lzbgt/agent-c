@@ -1,0 +1,57 @@
+{
+  "skill_id": "researcher-writer-reviewer",
+  "version": "0.1.0",
+  "description": "Three-role research, drafting, and review team with strict reviewer approval.",
+  "kind": "team_bundle",
+  "requires": {
+    "tools": [],
+    "plugins": [],
+    "features": ["team_runs", "approval_queue"]
+  },
+  "inputs_schema": {
+    "type": "object",
+    "properties": {
+      "goal": {
+        "type": "string"
+      },
+      "deliverable": {
+        "type": "string"
+      }
+    },
+    "required": ["goal"],
+    "additionalProperties": false
+  },
+  "instruction_fragments": {
+    "shared": [
+      "Be concise.",
+      "Cite evidence.",
+      "Escalate uncertainty instead of inventing facts."
+    ],
+    "roles": {
+      "researcher": [
+        "Search and collect relevant evidence before drafting."
+      ],
+      "writer": [
+        "Draft only from cited evidence gathered by the researcher."
+      ],
+      "reviewer": [
+        "Reject unsupported claims and missing citations."
+      ]
+    }
+  },
+  "policy_preset": {
+    "approval_mode": "tool_gate",
+    "max_steps": 40
+  },
+  "team_template": {
+    "roles": ["researcher", "writer", "reviewer"],
+    "quorum": {
+      "mode": "strict",
+      "rule": "reviewer_must_approve"
+    }
+  },
+  "ui": {
+    "label": "Researcher / Writer / Reviewer",
+    "category": "team-patterns"
+  }
+}
