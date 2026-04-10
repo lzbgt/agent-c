@@ -296,11 +296,11 @@ A v0 smoke test should:
   outbound SSRC on a bounded first-frame / packet-count / time cadence instead of after every RTP frame, protects them
   with SRTCP, and persists inbound/outbound RTCP counters plus last-packet metadata. After inbound RTP arrives, it now
   also emits a bounded RTCP Receiver Report (`PT=201`) with the inbound SSRC, fraction/cumulative loss, extended highest
-  sequence, jitter, and `LSR`/`DLSR` when a remote Sender Report was observed. The Sender/Receiver Report packet layouts are pinned to the persisted RFC 3550
-  reference in `docs/research/vendor-rfc3550-rtp-20260411.txt`, and the report-block tracking/packet builder now has a
-  shared `session_voice_rtcp_report` helper with direct unit coverage. The remaining gap is no longer basic outbound
-  RTP, Opus ownership, or one-shot Sender/Receiver Report transmit; it is fuller compound RTCP cadence and broader
-  browser-peer full-duplex validation.
+  sequence, jitter, and `LSR`/`DLSR` when a remote Sender Report was observed. The Sender/Receiver Report packet layouts
+  are pinned to the persisted RFC 3550 reference in `docs/research/vendor-rfc3550-rtp-20260411.txt`, and the report-block
+  tracking/packet builder now has a shared `session_voice_rtcp_report` helper with direct unit coverage. The remaining
+  gap is no longer basic outbound RTP, Opus ownership, one-shot Sender/Receiver Report transmit, or per-frame Sender
+  Report spam; it is compound RTCP packet emission and broader browser-peer full-duplex validation.
 - That runtime contract now also exposes the media-engine seam directly: planned/live builtin paths report
   `media_engine_kind=builtin_reserved|builtin_signaling_stub|builtin_native_plugin`, bundled/external runtimes report
   `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` now distinguish the
