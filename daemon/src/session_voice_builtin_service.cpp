@@ -1,5 +1,6 @@
 #include "session_voice_builtin_service.h"
 
+#include "session_voice_audio_process.h"
 #include "session_voice_builtin_media_engine.h"
 #include "session_voice_process_plan.h"
 #include "session_voice_runtime_plan.h"
@@ -10,12 +11,14 @@
 #include "string_util.h"
 
 #include <chrono>
+#include <algorithm>
 #include <condition_variable>
 #include <deque>
 #include <filesystem>
 #include <fstream>
 #include <map>
 #include <thread>
+#include <vector>
 
 namespace agentd {
 namespace {
@@ -34,6 +37,8 @@ struct BuiltinVoicePeerService {
   std::deque<int16_t> owned_audio_pcm;
   int64_t owned_audio_drain_events_total = 0;
   int64_t owned_audio_pcm_samples_drained_total = 0;
+  int64_t owned_audio_process_events_total = 0;
+  int64_t owned_audio_pcm_samples_processed_total = 0;
   std::mutex mu;
   std::condition_variable cv;
   bool stop_requested = false;
@@ -45,6 +50,7 @@ std::mutex builtin_voice_peer_services_mu;
 std::map<std::string, std::shared_ptr<BuiltinVoicePeerService>> builtin_voice_peer_services;
 
 constexpr size_t kBuiltinVoicePeerOwnedAudioCapacitySamples = 48000 * 2 * 2;
+constexpr size_t kBuiltinVoicePeerOwnedAudioProcessSamples = 4096;
 
 int64_t now_unix_ms() {
   using namespace std::chrono;
@@ -244,6 +250,62 @@ bool drain_builtin_voice_peer_media_engine_audio(
   return false;
 }
 
+bool process_builtin_voice_peer_owned_audio(
+  const std::shared_ptr<BuiltinVoicePeerService>& service,
+  std::mutex& runtime_mu,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (!service) return true;
+
+  for (int i = 0; i < 32; ++i) {
+    std::vector<int16_t> samples;
+    int64_t process_events_total = 0;
+    int64_t pcm_samples_processed_total = 0;
+    int64_t pcm_samples_owned = 0;
+    {
+      std::lock_guard<std::mutex> lk(service->mu);
+      if (service->owned_audio_pcm.empty()) return true;
+
+      const size_t process_samples =
+        std::min(kBuiltinVoicePeerOwnedAudioProcessSamples, service->owned_audio_pcm.size());
+      samples.reserve(process_samples);
+      for (size_t j = 0; j < process_samples; ++j) {
+        samples.push_back(service->owned_audio_pcm.front());
+        service->owned_audio_pcm.pop_front();
+      }
+      service->owned_audio_process_events_total += 1;
+      service->owned_audio_pcm_samples_processed_total +=
+        static_cast<int64_t>(samples.size());
+      process_events_total = service->owned_audio_process_events_total;
+      pcm_samples_processed_total = service->owned_audio_pcm_samples_processed_total;
+      pcm_samples_owned = static_cast<int64_t>(service->owned_audio_pcm.size());
+    }
+
+    Pcm16AudioProcessSummary summary;
+    if (!summarize_pcm16_audio(samples.data(), samples.size(), &summary)) {
+      if (out_err) *out_err = "failed to summarize builtin owned audio";
+      return false;
+    }
+
+    Json::Value payload = make_builtin_voice_peer_event("audio_chunk_processed", service->session_id);
+    payload["media_engine_state"] = "media_active";
+    payload["native_media_active"] = true;
+    payload["audio_process_events_total"] = Json::Int64(process_events_total);
+    payload["audio_pcm_samples_processed_total"] =
+      Json::Int64(pcm_samples_processed_total);
+    payload["audio_pcm_samples_owned"] = Json::Int64(pcm_samples_owned);
+    payload["audio_last_process_samples"] =
+      Json::Int64(static_cast<int64_t>(summary.sample_count));
+    payload["audio_last_peak_abs_pcm16"] = summary.peak_abs_pcm16;
+    payload["audio_last_rms_pcm16"] = summary.rms_pcm16;
+    append_builtin_voice_peer_event_and_snapshot(
+      service->stdout_log_path, service->session_id, payload, service->runtime, runtime_mu);
+  }
+
+  return true;
+}
+
 bool drain_builtin_voice_peer_media_engine_outputs(
   const std::shared_ptr<BuiltinVoicePeerService>& service,
   std::mutex& runtime_mu,
@@ -256,6 +318,10 @@ bool drain_builtin_voice_peer_media_engine_outputs(
     return false;
   }
   if (!drain_builtin_voice_peer_media_engine_audio(service, runtime_mu, &err)) {
+    if (out_err) *out_err = err;
+    return false;
+  }
+  if (!process_builtin_voice_peer_owned_audio(service, runtime_mu, &err)) {
     if (out_err) *out_err = err;
     return false;
   }

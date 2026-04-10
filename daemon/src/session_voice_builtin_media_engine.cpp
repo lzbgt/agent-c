@@ -1227,6 +1227,32 @@ void note_voice_peer_media_engine_event(
        payload["audio_last_drain_samples"].isUInt64())) {
     runtime->audio_last_drain_samples = payload["audio_last_drain_samples"].asInt64();
   }
+  if (payload.isMember("audio_process_events_total") &&
+      (payload["audio_process_events_total"].isInt64() ||
+       payload["audio_process_events_total"].isUInt64())) {
+    runtime->audio_process_events_total = payload["audio_process_events_total"].asInt64();
+  }
+  if (payload.isMember("audio_pcm_samples_processed_total") &&
+      (payload["audio_pcm_samples_processed_total"].isInt64() ||
+       payload["audio_pcm_samples_processed_total"].isUInt64())) {
+    runtime->audio_pcm_samples_processed_total =
+      payload["audio_pcm_samples_processed_total"].asInt64();
+  }
+  if (payload.isMember("audio_last_process_samples") &&
+      (payload["audio_last_process_samples"].isInt64() ||
+       payload["audio_last_process_samples"].isUInt64())) {
+    runtime->audio_last_process_samples = payload["audio_last_process_samples"].asInt64();
+  }
+  if (payload.isMember("audio_last_peak_abs_pcm16") &&
+      (payload["audio_last_peak_abs_pcm16"].isInt64() ||
+       payload["audio_last_peak_abs_pcm16"].isUInt64())) {
+    runtime->audio_last_peak_abs_pcm16 = payload["audio_last_peak_abs_pcm16"].asInt64();
+  }
+  if (payload.isMember("audio_last_rms_pcm16") &&
+      (payload["audio_last_rms_pcm16"].isInt64() ||
+       payload["audio_last_rms_pcm16"].isUInt64())) {
+    runtime->audio_last_rms_pcm16 = payload["audio_last_rms_pcm16"].asInt64();
+  }
   if (payload.isMember("audio_last_sample_rate_hz") &&
       (payload["audio_last_sample_rate_hz"].isInt64() || payload["audio_last_sample_rate_hz"].isUInt64())) {
     runtime->audio_last_sample_rate_hz = payload["audio_last_sample_rate_hz"].asInt64();

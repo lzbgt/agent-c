@@ -303,7 +303,9 @@ A v0 smoke test should:
   `rtp_last_payload_type`, `rtp_last_sequence`, `rtp_last_timestamp`, `rtp_last_ssrc`,
   `audio_frames_decoded`, `audio_pcm_samples_decoded`, `audio_pcm_samples_buffered`,
   `audio_drain_events_total`, `audio_pcm_samples_drained_total`, `audio_pcm_samples_owned`,
-  `audio_last_drain_samples`,
+  `audio_last_drain_samples`, `audio_process_events_total`,
+  `audio_pcm_samples_processed_total`, `audio_last_process_samples`,
+  `audio_last_peak_abs_pcm16`, `audio_last_rms_pcm16`,
   `audio_last_sample_rate_hz`, `audio_last_channels`, `audio_last_frame_samples_per_channel`,
   `audio_last_codec_name`, and `audio_last_error`.
   Those fields can now also advance through provider-polled async status events rather than only through direct

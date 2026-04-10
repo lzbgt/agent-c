@@ -131,10 +131,17 @@ Reference artifacts downloaded into the repo for exact vendor details:
   - staged PCM can now be drained through the provider ABI into agentd-owned
     bounded PCM memory, so the daemon itself now owns a minimal receive-side
     audio buffer instead of leaving all PCM ownership inside the provider
+- Agentd now also consumes that owned PCM through a bounded in-process monitor
+  stage:
+  - provider-drained PCM is no longer only counted and retained
+  - the builtin service loop now consumes bounded chunks, computes peak/RMS
+    telemetry, and persists process counters in the runtime snapshot
+  - this makes the daemon a real minimal in-process audio owner rather than
+    only a handoff sink between provider staging and status counters
 - The remaining gap is that the provider still does not own a complete
   in-process media pipeline. `native_media_active` remains `false` until live
-  RTP is actually ingested, and agentd still does not yet decode/play/process
-  audio frames end to end inside the daemon.
+  RTP is actually ingested, and agentd still does not yet render or transmit
+  audio end to end inside the daemon.
 
 ## Implications
 
@@ -183,4 +190,6 @@ transport provider's receive-side-only behavior with a real in-process audio
 path. The best factual candidate remains the narrower
 `libjuice + srtp + libusrsctp` family, because those dependencies are now
 locally installed, buildable, and covered by provider inspection/unit/smoke
-proof.
+proof. The next concrete step after the new bounded monitor stage is a local
+render/process/transmit consumer for the agentd-owned PCM queue rather than
+more DTLS/SRTP/control-plane work.

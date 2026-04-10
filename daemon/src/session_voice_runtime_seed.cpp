@@ -72,6 +72,11 @@ std::shared_ptr<VoicePeerRuntime> make_voice_peer_runtime_state(
   st->audio_pcm_samples_drained_total = seed.audio_pcm_samples_drained_total;
   st->audio_pcm_samples_owned = seed.audio_pcm_samples_owned;
   st->audio_last_drain_samples = seed.audio_last_drain_samples;
+  st->audio_process_events_total = seed.audio_process_events_total;
+  st->audio_pcm_samples_processed_total = seed.audio_pcm_samples_processed_total;
+  st->audio_last_process_samples = seed.audio_last_process_samples;
+  st->audio_last_peak_abs_pcm16 = seed.audio_last_peak_abs_pcm16;
+  st->audio_last_rms_pcm16 = seed.audio_last_rms_pcm16;
   st->audio_last_sample_rate_hz = seed.audio_last_sample_rate_hz;
   st->audio_last_channels = seed.audio_last_channels;
   st->audio_last_frame_samples_per_channel = seed.audio_last_frame_samples_per_channel;

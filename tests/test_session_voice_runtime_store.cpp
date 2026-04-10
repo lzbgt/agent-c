@@ -197,6 +197,11 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   st.audio_pcm_samples_drained_total = 4800;
   st.audio_pcm_samples_owned = 2880;
   st.audio_last_drain_samples = 960;
+  st.audio_process_events_total = 3;
+  st.audio_pcm_samples_processed_total = 3360;
+  st.audio_last_process_samples = 480;
+  st.audio_last_peak_abs_pcm16 = 14000;
+  st.audio_last_rms_pcm16 = 9000;
   st.audio_last_sample_rate_hz = 48000;
   st.audio_last_channels = 2;
   st.audio_last_frame_samples_per_channel = 960;
@@ -246,6 +251,11 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(json["audio_pcm_samples_drained_total"].asInt64() == 4800);
   assert(json["audio_pcm_samples_owned"].asInt64() == 2880);
   assert(json["audio_last_drain_samples"].asInt64() == 960);
+  assert(json["audio_process_events_total"].asInt64() == 3);
+  assert(json["audio_pcm_samples_processed_total"].asInt64() == 3360);
+  assert(json["audio_last_process_samples"].asInt64() == 480);
+  assert(json["audio_last_peak_abs_pcm16"].asInt64() == 14000);
+  assert(json["audio_last_rms_pcm16"].asInt64() == 9000);
   assert(json["audio_last_sample_rate_hz"].asInt64() == 48000);
   assert(json["audio_last_channels"].asInt64() == 2);
   assert(json["audio_last_frame_samples_per_channel"].asInt64() == 960);
@@ -296,6 +306,11 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(round_trip.audio_pcm_samples_drained_total == 4800);
   assert(round_trip.audio_pcm_samples_owned == 2880);
   assert(round_trip.audio_last_drain_samples == 960);
+  assert(round_trip.audio_process_events_total == 3);
+  assert(round_trip.audio_pcm_samples_processed_total == 3360);
+  assert(round_trip.audio_last_process_samples == 480);
+  assert(round_trip.audio_last_peak_abs_pcm16 == 14000);
+  assert(round_trip.audio_last_rms_pcm16 == 9000);
   assert(round_trip.audio_last_sample_rate_hz == 48000);
   assert(round_trip.audio_last_channels == 2);
   assert(round_trip.audio_last_frame_samples_per_channel == 960);

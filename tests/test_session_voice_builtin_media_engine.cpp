@@ -305,7 +305,7 @@ static void test_builtin_native_probe_json_reports_provider_details() {
 static void test_media_engine_event_tracks_audio_drain_fields() {
   VoicePeerRuntime runtime;
   Json::Value payload(Json::objectValue);
-  payload["event"] = "audio_chunk_drained";
+  payload["event"] = "audio_chunk_processed";
   payload["media_engine_state"] = "media_active";
   payload["native_media_supported"] = true;
   payload["native_media_active"] = true;
@@ -313,6 +313,11 @@ static void test_media_engine_event_tracks_audio_drain_fields() {
   payload["audio_pcm_samples_drained_total"] = Json::Int64(2880);
   payload["audio_pcm_samples_owned"] = Json::Int64(1440);
   payload["audio_last_drain_samples"] = Json::Int64(960);
+  payload["audio_process_events_total"] = Json::Int64(2);
+  payload["audio_pcm_samples_processed_total"] = Json::Int64(1920);
+  payload["audio_last_process_samples"] = Json::Int64(480);
+  payload["audio_last_peak_abs_pcm16"] = Json::Int64(12000);
+  payload["audio_last_rms_pcm16"] = Json::Int64(8000);
   payload["audio_last_sample_rate_hz"] = Json::Int64(48000);
   payload["audio_last_channels"] = Json::Int64(2);
   payload["audio_last_frame_samples_per_channel"] = Json::Int64(480);
@@ -325,6 +330,11 @@ static void test_media_engine_event_tracks_audio_drain_fields() {
   assert(runtime.audio_pcm_samples_drained_total == 2880);
   assert(runtime.audio_pcm_samples_owned == 1440);
   assert(runtime.audio_last_drain_samples == 960);
+  assert(runtime.audio_process_events_total == 2);
+  assert(runtime.audio_pcm_samples_processed_total == 1920);
+  assert(runtime.audio_last_process_samples == 480);
+  assert(runtime.audio_last_peak_abs_pcm16 == 12000);
+  assert(runtime.audio_last_rms_pcm16 == 8000);
   assert(runtime.audio_last_sample_rate_hz == 48000);
   assert(runtime.audio_last_channels == 2);
   assert(runtime.audio_last_frame_samples_per_channel == 480);

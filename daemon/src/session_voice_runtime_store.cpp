@@ -84,6 +84,12 @@ Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   out["audio_pcm_samples_drained_total"] = Json::Int64(st.audio_pcm_samples_drained_total);
   out["audio_pcm_samples_owned"] = Json::Int64(st.audio_pcm_samples_owned);
   out["audio_last_drain_samples"] = Json::Int64(st.audio_last_drain_samples);
+  out["audio_process_events_total"] = Json::Int64(st.audio_process_events_total);
+  out["audio_pcm_samples_processed_total"] =
+    Json::Int64(st.audio_pcm_samples_processed_total);
+  out["audio_last_process_samples"] = Json::Int64(st.audio_last_process_samples);
+  out["audio_last_peak_abs_pcm16"] = Json::Int64(st.audio_last_peak_abs_pcm16);
+  out["audio_last_rms_pcm16"] = Json::Int64(st.audio_last_rms_pcm16);
   if (st.audio_last_sample_rate_hz > 0) {
     out["audio_last_sample_rate_hz"] = Json::Int64(st.audio_last_sample_rate_hz);
   }
@@ -383,6 +389,32 @@ bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, s
   if (v.isMember("audio_last_drain_samples") &&
       (v["audio_last_drain_samples"].isInt64() || v["audio_last_drain_samples"].isUInt64())) {
     st.audio_last_drain_samples = v["audio_last_drain_samples"].asInt64();
+  }
+  if (v.isMember("audio_process_events_total") &&
+      (v["audio_process_events_total"].isInt64() ||
+       v["audio_process_events_total"].isUInt64())) {
+    st.audio_process_events_total = v["audio_process_events_total"].asInt64();
+  }
+  if (v.isMember("audio_pcm_samples_processed_total") &&
+      (v["audio_pcm_samples_processed_total"].isInt64() ||
+       v["audio_pcm_samples_processed_total"].isUInt64())) {
+    st.audio_pcm_samples_processed_total =
+      v["audio_pcm_samples_processed_total"].asInt64();
+  }
+  if (v.isMember("audio_last_process_samples") &&
+      (v["audio_last_process_samples"].isInt64() ||
+       v["audio_last_process_samples"].isUInt64())) {
+    st.audio_last_process_samples = v["audio_last_process_samples"].asInt64();
+  }
+  if (v.isMember("audio_last_peak_abs_pcm16") &&
+      (v["audio_last_peak_abs_pcm16"].isInt64() ||
+       v["audio_last_peak_abs_pcm16"].isUInt64())) {
+    st.audio_last_peak_abs_pcm16 = v["audio_last_peak_abs_pcm16"].asInt64();
+  }
+  if (v.isMember("audio_last_rms_pcm16") &&
+      (v["audio_last_rms_pcm16"].isInt64() ||
+       v["audio_last_rms_pcm16"].isUInt64())) {
+    st.audio_last_rms_pcm16 = v["audio_last_rms_pcm16"].asInt64();
   }
   if (v.isMember("audio_last_sample_rate_hz") &&
       (v["audio_last_sample_rate_hz"].isInt64() || v["audio_last_sample_rate_hz"].isUInt64())) {

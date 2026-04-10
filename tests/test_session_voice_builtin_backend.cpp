@@ -211,6 +211,9 @@ static void test_builtin_backend_enabled_native_plugin_starts_runtime() {
   assert(result.state->native_media_active == false);
   assert(result.state->audio_frames_decoded == 0);
   assert(result.state->audio_pcm_samples_decoded == 0);
+  assert(result.state->audio_process_events_total == 0);
+  assert(result.state->audio_pcm_samples_processed_total == 0);
+  assert(result.state->audio_pcm_samples_owned == 0);
   assert(result.state->media_engine_state == "signaling_ready");
   assert(result.state->media_events_total == 2);
   assert(result.state->managed_broker_session == false);

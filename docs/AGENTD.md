@@ -520,7 +520,10 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `peer.rtp_last_ssrc`, `peer.audio_frames_decoded`, `peer.audio_pcm_samples_decoded`,
   `peer.audio_pcm_samples_buffered`, `peer.audio_drain_events_total`,
   `peer.audio_pcm_samples_drained_total`, `peer.audio_pcm_samples_owned`,
-  `peer.audio_last_drain_samples`, `peer.audio_last_sample_rate_hz`,
+  `peer.audio_last_drain_samples`, `peer.audio_process_events_total`,
+  `peer.audio_pcm_samples_processed_total`, `peer.audio_last_process_samples`,
+  `peer.audio_last_peak_abs_pcm16`, `peer.audio_last_rms_pcm16`,
+  `peer.audio_last_sample_rate_hz`,
   `peer.audio_last_channels`, `peer.audio_last_frame_samples_per_channel`,
   `peer.audio_last_codec_name`, and `peer.audio_last_error`.
   Those same fields can now advance on provider-polled async progress events too, not only on direct signaling

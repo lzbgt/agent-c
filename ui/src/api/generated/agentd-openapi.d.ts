@@ -8235,6 +8235,31 @@ export interface components {
             audio_last_drain_samples?: number;
             /**
              * Format: int64
+             * @description Total number of agentd-side PCM processing passes completed after provider drain handoff.
+             */
+            audio_process_events_total?: number;
+            /**
+             * Format: int64
+             * @description Total PCM samples consumed by agentd's bounded in-process audio monitor after provider drain handoff. This count includes all channels.
+             */
+            audio_pcm_samples_processed_total?: number;
+            /**
+             * Format: int64
+             * @description PCM samples consumed during the most recent agentd-side processing pass. This count includes all channels.
+             */
+            audio_last_process_samples?: number;
+            /**
+             * Format: int64
+             * @description Peak absolute PCM16 sample magnitude from the most recent agentd-side processing pass.
+             */
+            audio_last_peak_abs_pcm16?: number;
+            /**
+             * Format: int64
+             * @description RMS PCM16 sample magnitude from the most recent agentd-side processing pass.
+             */
+            audio_last_rms_pcm16?: number;
+            /**
+             * Format: int64
              * @description Sample rate of the most recent successfully decoded inbound audio frame.
              */
             audio_last_sample_rate_hz?: number;
