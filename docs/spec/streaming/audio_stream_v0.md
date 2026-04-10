@@ -313,10 +313,11 @@ A v0 smoke test should:
   remote candidate ingestion with the normalized candidate line if libjuice rejects the original browser payload. Browser
   audio answers now also prune unsupported audio payloads instead of mirroring the full offer: Opus is advertised only
   when this build has `libopus`, PCMU/PCMA G.711 remain supported, telephone-event-style non-audio payloads are dropped,
-  and unsupported audio m-lines are rejected as inactive/port-zero. The remaining gap is no longer basic outbound RTP,
+  unsupported audio m-lines are rejected as inactive/port-zero, and extra audio m-lines are rejected so the answer
+  advertises only the single provider-owned audio stream. The remaining gap is no longer basic outbound RTP,
   Opus ownership, one-shot Sender/Receiver Report transmit, per-frame Sender Report spam, compound packet emission,
-  answer direction, basic browser full-duplex proof, or unsupported non-audio section rejection; it is broader browser,
-  codec, and candidate-edge hardening.
+  answer direction, basic browser full-duplex proof, unsupported non-audio section rejection, or multi-audio m-line
+  rejection; it is broader browser, codec, and candidate-edge hardening.
 - That runtime contract now also exposes the media-engine seam directly: planned/live builtin paths report
   `media_engine_kind=builtin_reserved|builtin_signaling_stub|builtin_native_plugin`, bundled/external runtimes report
   `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` now distinguish the

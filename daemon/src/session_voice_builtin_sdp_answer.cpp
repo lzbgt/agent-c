@@ -391,6 +391,7 @@ std::string build_builtin_active_answer_sdp(const BuiltinSdpAnswerInput& input) 
   }
 
   bool in_media = false;
+  bool accepted_audio_media = false;
   std::vector<std::string> media_lines;
   std::vector<std::string> media_answer_lines;
   std::vector<std::string> accepted_mids;
@@ -402,7 +403,8 @@ std::string build_builtin_active_answer_sdp(const BuiltinSdpAnswerInput& input) 
     const std::vector<int> audio_payload_types = media_is_audio
       ? answerable_audio_payload_types(media_lines)
       : std::vector<int>();
-    const bool reject_media = !media_kind_supported || (media_is_audio && audio_payload_types.empty());
+    const bool reject_media =
+      !media_kind_supported || (media_is_audio && (audio_payload_types.empty() || accepted_audio_media));
     media_answer_lines.push_back(rewrite_mline_for_ice_answer(
       media_lines.front(),
       audio_payload_types,
@@ -420,6 +422,7 @@ std::string build_builtin_active_answer_sdp(const BuiltinSdpAnswerInput& input) 
     if (!reject_media) {
       const std::string mid = mid_from_media_lines(media_lines);
       if (!mid.empty()) accepted_mids.push_back(mid);
+      if (media_is_audio) accepted_audio_media = true;
       media_answer_lines.push_back("a=setup:" + input.dtls_setup_role);
       media_answer_lines.push_back("a=fingerprint:sha-256 " + input.dtls_fingerprint_sha256);
       for (const auto& line : local_ice_lines) media_answer_lines.push_back(line);

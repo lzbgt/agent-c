@@ -119,6 +119,9 @@ Reference artifacts downloaded into the repo for exact vendor details:
     `libopus`, PCMU/PCMA G.711 remain supported, telephone-event-style
     non-audio payloads are dropped, and unsupported audio m-lines are rejected
     as inactive/port-zero
+  - extra audio m-lines are now rejected as inactive/port-zero so the active
+    answer exposes only the single provider-owned audio stream and filters the
+    rejected audio mid out of the active BUNDLE group
   - direct provider coverage now includes a local libjuice loopback peer that
     exchanges a real offer, consumes the candidate-bearing answer, trickles
     remote candidates back into the provider, and proves post-answer transport
@@ -239,8 +242,9 @@ At this scan point, the local machine is ready for:
 It is **not** yet at a full embedded WebRTC/SRTP runtime. The remaining gap is
 no longer dependency discovery, basic RTP ownership, negotiated Opus transmit,
 one-shot Sender/Receiver Report transmit, compound RTCP packet emission, active
-answer direction, basic browser full-duplex proof, or unsupported non-audio
-section rejection; it is broader browser, codec, and candidate-edge hardening.
+answer direction, basic browser full-duplex proof, unsupported non-audio section
+rejection, or multi-audio m-line rejection; it is broader browser, codec, and
+candidate-edge hardening.
 
 ## Recommended Next Technical Decision
 

@@ -73,6 +73,24 @@ std::string offer_with_audio_and_data_mline() {
   return offer;
 }
 
+std::string offer_with_two_audio_mlines() {
+  std::string offer = browser_offer();
+  const std::string group = "a=group:BUNDLE 0\r\n";
+  const size_t group_pos = offer.find(group);
+  assert(group_pos != std::string::npos);
+  offer.replace(group_pos, group.size(), "a=group:BUNDLE 0 1\r\n");
+  offer +=
+    "m=audio 9 UDP/TLS/RTP/SAVPF 111 0 8\r\n"
+    "c=IN IP4 0.0.0.0\r\n"
+    "a=mid:1\r\n"
+    "a=sendrecv\r\n"
+    "a=rtcp-mux\r\n"
+    "a=rtpmap:111 opus/48000/2\r\n"
+    "a=rtpmap:0 PCMU/8000\r\n"
+    "a=rtpmap:8 PCMA/8000\r\n";
+  return offer;
+}
+
 std::string datachannel_only_offer() {
   return
     "v=0\r\n"
@@ -284,6 +302,35 @@ void test_active_answer_omits_bundle_when_only_unsupported_media_exists() {
   assert(answer.find("a=fingerprint:sha-256 AA:BB:CC\r\n") == std::string::npos);
 }
 
+void test_active_answer_rejects_extra_audio_mlines() {
+  const std::string answer = agentd::build_builtin_active_answer_sdp({
+    offer_with_two_audio_mlines(),
+    local_description(),
+    true,
+    "passive",
+    "AA:BB:CC",
+    2799795457u,
+    "agentd-builtin-native",
+    "agentd_builtin_stream",
+    "agentd_builtin_audio",
+  });
+
+  assert(answer.find("a=group:BUNDLE 0\r\n") != std::string::npos);
+  assert(answer.find("a=group:BUNDLE 0 1\r\n") == std::string::npos);
+  assert(count_occurrences(answer, expected_answer_audio_mline()) == 1);
+  assert(answer.find("m=audio 0 UDP/TLS/RTP/SAVPF 111 0 8\r\n") != std::string::npos);
+  assert(count_occurrences(answer, "a=setup:passive\r\n") == 1);
+  assert(count_occurrences(answer, "a=fingerprint:sha-256 AA:BB:CC\r\n") == 1);
+  assert(count_occurrences(answer, "a=ssrc:2799795457 ") == 2);
+  const std::string second_audio_section =
+    substring_from(answer, "m=audio 0 UDP/TLS/RTP/SAVPF 111 0 8\r\n");
+  assert(second_audio_section.find("a=mid:1\r\n") != std::string::npos);
+  assert(second_audio_section.find("a=inactive\r\n") != std::string::npos);
+  assert(second_audio_section.find("a=rtpmap:111 opus/48000/2\r\n") == std::string::npos);
+  assert(second_audio_section.find("a=setup:passive\r\n") == std::string::npos);
+  assert(second_audio_section.find("a=ssrc:2799795457 ") == std::string::npos);
+}
+
 void test_active_answer_respects_offer_direction() {
   assert(agentd::build_builtin_active_answer_sdp({
     offer_with_direction("sendonly"),
@@ -363,6 +410,7 @@ int main() {
   test_active_answer_normalizes_bare_local_candidate_lines();
   test_active_answer_keeps_audio_ssrc_on_audio_mline_only();
   test_active_answer_omits_bundle_when_only_unsupported_media_exists();
+  test_active_answer_rejects_extra_audio_mlines();
   test_active_answer_respects_offer_direction();
   test_falls_back_to_local_description_without_media_or_dtls_identity();
   test_sdp_marker_helpers_trim_inputs();

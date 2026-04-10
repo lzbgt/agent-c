@@ -506,8 +506,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   browser empty-candidate end markers as `a=end-of-candidates`, and the embedded provider retries remote candidate
   ingestion with the normalized candidate line if libjuice rejects the original browser payload. Browser audio answers now
   also prune unsupported payloads: Opus is advertised only when this build has `libopus`, PCMU/PCMA G.711 remain supported,
-  non-audio payloads such as telephone-event are dropped, and audio m-lines without any supported payload are rejected as
-  inactive/port-zero. It now also owns the first minimal in-process audio stage:
+  non-audio payloads such as telephone-event are dropped, audio m-lines without any supported payload are rejected as
+  inactive/port-zero, and extra audio m-lines are rejected so the answer advertises only the single provider-owned audio
+  stream. It now also owns the first minimal in-process audio stage:
   after receive-side SRTP unprotect it maps RTP payload types from the remote SDP, decodes `PCMU` / `PCMA` directly and
   `OPUS` through `libopus` when present at build time, and stages recent PCM samples in-process. Agentd now also owns
   the first bounded PCM handoff after that decode step: the embedded provider drains staged samples through the
