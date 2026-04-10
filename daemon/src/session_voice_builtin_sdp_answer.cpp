@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <limits>
 #include <sstream>
 #include <vector>
 
@@ -53,6 +54,36 @@ bool starts_with(const std::string& value, const char* prefix) {
   return value.rfind(prefix, 0) == 0;
 }
 
+std::string upper_copy(std::string value) {
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+    return static_cast<char>(std::toupper(ch));
+  });
+  return value;
+}
+
+std::vector<std::string> split_space_tokens(const std::string& line) {
+  std::istringstream stream(line);
+  std::vector<std::string> out;
+  std::string token;
+  while (stream >> token) out.push_back(token);
+  return out;
+}
+
+bool parse_int(const std::string& value, int* out) {
+  if (!out) return false;
+  try {
+    const long long parsed = std::stoll(value);
+    if (parsed < std::numeric_limits<int>::min() ||
+        parsed > std::numeric_limits<int>::max()) {
+      return false;
+    }
+    *out = static_cast<int>(parsed);
+    return true;
+  } catch (...) {
+    return false;
+  }
+}
+
 std::vector<std::string> local_ice_lines_from_description(const std::string& sdp) {
   std::vector<std::string> out;
   bool has_ice_credentials = false;
@@ -77,17 +108,147 @@ std::vector<std::string> local_ice_lines_from_description(const std::string& sdp
   return out;
 }
 
-std::string rewrite_mline_for_ice_answer(const std::string& line) {
-  if (!starts_with(line, "m=")) return line;
-  std::vector<std::string> parts;
-  size_t start = 2;
-  while (start <= line.size()) {
-    const size_t next = line.find(' ', start);
-    parts.push_back(next == std::string::npos ? line.substr(start) : line.substr(start, next - start));
-    if (next == std::string::npos) break;
-    start = next + 1;
+std::vector<int> mline_payload_types(const std::string& line) {
+  std::vector<int> out;
+  if (!starts_with(line, "m=")) return out;
+  const std::vector<std::string> parts = split_space_tokens(line.substr(2));
+  for (size_t i = 3; i < parts.size(); ++i) {
+    int payload_type = -1;
+    if (parse_int(parts[i], &payload_type) && payload_type >= 0 && payload_type <= 127) {
+      out.push_back(payload_type);
+    }
   }
-  if (parts.size() >= 2) parts[1] = "9";
+  return out;
+}
+
+bool rtpmap_for_payload(
+  const std::string& line,
+  int payload_type,
+  std::string* out_codec,
+  int* out_rate,
+  int* out_channels
+) {
+  if (!starts_with(line, "a=rtpmap:")) return false;
+  const std::string rest = line.substr(std::string("a=rtpmap:").size());
+  const size_t space = rest.find(' ');
+  if (space == std::string::npos) return false;
+  int parsed_payload_type = -1;
+  if (!parse_int(trim_copy(rest.substr(0, space)), &parsed_payload_type) ||
+      parsed_payload_type != payload_type) {
+    return false;
+  }
+
+  const std::string encoding = trim_copy(rest.substr(space + 1));
+  const size_t slash_1 = encoding.find('/');
+  if (slash_1 == std::string::npos) return false;
+  const size_t slash_2 = encoding.find('/', slash_1 + 1);
+  if (out_codec) *out_codec = upper_copy(trim_copy(encoding.substr(0, slash_1)));
+  if (out_rate) {
+    const std::string rate_token = slash_2 == std::string::npos
+      ? encoding.substr(slash_1 + 1)
+      : encoding.substr(slash_1 + 1, slash_2 - slash_1 - 1);
+    int rate = 0;
+    *out_rate = parse_int(trim_copy(rate_token), &rate) ? rate : 0;
+  }
+  if (out_channels) {
+    int channels = 1;
+    if (slash_2 != std::string::npos) {
+      int parsed_channels = 0;
+      if (parse_int(trim_copy(encoding.substr(slash_2 + 1)), &parsed_channels) &&
+          parsed_channels > 0) {
+        channels = parsed_channels;
+      }
+    }
+    *out_channels = channels;
+  }
+  return true;
+}
+
+bool audio_payload_type_supported_for_answer(
+  const std::vector<std::string>& media_lines,
+  int payload_type
+) {
+  std::string codec;
+  int rate = 0;
+  int channels = 1;
+  if (payload_type == 0) {
+    codec = "PCMU";
+    rate = 8000;
+    channels = 1;
+  } else if (payload_type == 8) {
+    codec = "PCMA";
+    rate = 8000;
+    channels = 1;
+  }
+  for (const auto& line : media_lines) {
+    (void)rtpmap_for_payload(line, payload_type, &codec, &rate, &channels);
+  }
+
+  if ((codec == "PCMU" || codec == "PCMA") && rate == 8000 && channels == 1) {
+    return true;
+  }
+#if defined(AGENTD_HAVE_OPUS)
+  if (codec == "OPUS" && rate == 48000 && (channels == 1 || channels == 2)) {
+    return true;
+  }
+#endif
+  return false;
+}
+
+std::vector<int> answerable_audio_payload_types(
+  const std::vector<std::string>& media_lines
+) {
+  if (media_lines.empty()) return {};
+  std::vector<int> out;
+  for (const int payload_type : mline_payload_types(media_lines.front())) {
+    if (audio_payload_type_supported_for_answer(media_lines, payload_type)) {
+      out.push_back(payload_type);
+    }
+  }
+  return out;
+}
+
+bool vector_contains_int(const std::vector<int>& values, int needle) {
+  return std::find(values.begin(), values.end(), needle) != values.end();
+}
+
+bool media_attribute_payload_type(const std::string& line, int* out_payload_type) {
+  const char* prefixes[] = {"a=rtpmap:", "a=fmtp:", "a=rtcp-fb:"};
+  for (const char* prefix : prefixes) {
+    if (!starts_with(line, prefix)) continue;
+    const std::string rest = line.substr(std::string(prefix).size());
+    const size_t end = rest.find_first_of(" \t");
+    const std::string token = trim_copy(end == std::string::npos ? rest : rest.substr(0, end));
+    if (token == "*") return false;
+    int payload_type = -1;
+    if (!parse_int(token, &payload_type)) return false;
+    if (out_payload_type) *out_payload_type = payload_type;
+    return true;
+  }
+  return false;
+}
+
+std::string rewrite_mline_for_ice_answer(
+  const std::string& line,
+  const std::vector<int>& audio_payload_types,
+  bool reject_media
+) {
+  if (!starts_with(line, "m=")) return line;
+  std::vector<std::string> parts = split_space_tokens(line.substr(2));
+  if (parts.size() >= 2) parts[1] = reject_media ? "0" : "9";
+  if (!reject_media && !parts.empty() && upper_copy(parts[0]) == "AUDIO" &&
+      parts.size() > 3 && !audio_payload_types.empty()) {
+    std::vector<std::string> filtered;
+    filtered.insert(filtered.end(), parts.begin(), parts.begin() + 3);
+    for (size_t i = 3; i < parts.size(); ++i) {
+      int payload_type = -1;
+      if (parse_int(parts[i], &payload_type) &&
+          vector_contains_int(audio_payload_types, payload_type)) {
+        filtered.push_back(parts[i]);
+      }
+    }
+    parts = std::move(filtered);
+  }
   std::string out = "m=";
   for (size_t i = 0; i < parts.size(); ++i) {
     if (i > 0) out.push_back(' ');
@@ -112,8 +273,13 @@ std::string media_kind_from_mline(const std::string& line) {
   return kind;
 }
 
-bool should_copy_media_attribute(const std::string& line) {
-  return starts_with(line, "a=mid:") ||
+bool should_copy_media_attribute(
+  const std::string& line,
+  bool media_is_audio,
+  const std::vector<int>& audio_payload_types
+) {
+  const bool recognized =
+         starts_with(line, "a=mid:") ||
          starts_with(line, "a=rtcp-mux") ||
          starts_with(line, "a=rtcp-rsize") ||
          starts_with(line, "a=rtcp-mux-only") ||
@@ -124,6 +290,11 @@ bool should_copy_media_attribute(const std::string& line) {
          starts_with(line, "a=extmap-allow-mixed") ||
          starts_with(line, "a=sctp-port:") ||
          starts_with(line, "a=max-message-size:");
+  if (!recognized) return false;
+  if (!media_is_audio) return true;
+  int payload_type = -1;
+  if (!media_attribute_payload_type(line, &payload_type)) return true;
+  return vector_contains_int(audio_payload_types, payload_type);
 }
 
 bool is_media_direction_attribute(const std::string& line) {
@@ -191,12 +362,23 @@ std::string build_builtin_active_answer_sdp(const BuiltinSdpAnswerInput& input) 
   auto flush_media = [&]() {
     if (media_lines.empty()) return;
     const bool media_is_audio = media_kind_from_mline(media_lines.front()) == "audio";
-    out.push_back(rewrite_mline_for_ice_answer(media_lines.front()));
+    const std::vector<int> audio_payload_types = media_is_audio
+      ? answerable_audio_payload_types(media_lines)
+      : std::vector<int>();
+    const bool reject_media = media_is_audio && audio_payload_types.empty();
+    out.push_back(rewrite_mline_for_ice_answer(
+      media_lines.front(),
+      audio_payload_types,
+      reject_media));
     out.push_back("c=IN IP4 0.0.0.0");
     for (size_t i = 1; i < media_lines.size(); ++i) {
-      if (should_copy_media_attribute(media_lines[i])) out.push_back(media_lines[i]);
+      if (should_copy_media_attribute(media_lines[i], media_is_audio, audio_payload_types)) {
+        out.push_back(media_lines[i]);
+      }
     }
-    const std::string answer_direction = answer_direction_for_media_lines(media_lines);
+    const std::string answer_direction = reject_media
+      ? std::string("inactive")
+      : answer_direction_for_media_lines(media_lines);
     out.push_back("a=" + answer_direction);
     out.push_back("a=setup:" + input.dtls_setup_role);
     out.push_back("a=fingerprint:sha-256 " + input.dtls_fingerprint_sha256);

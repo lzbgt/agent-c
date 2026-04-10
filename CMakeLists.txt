@@ -1125,6 +1125,11 @@ if(AGENT_BUILD_HOST)
   target_include_directories(session_voice_builtin_sdp_answer_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
   )
+  if(AGENTD_VOICE_OPUS_FOUND)
+    target_compile_definitions(session_voice_builtin_sdp_answer_tests PRIVATE
+      AGENTD_HAVE_OPUS=1
+    )
+  endif()
   add_test(NAME session_voice_builtin_sdp_answer_tests COMMAND session_voice_builtin_sdp_answer_tests)
 
   if(AGENTD_ENABLE_BUILTIN_EMBEDDED_TRANSPORT_PROVIDER)

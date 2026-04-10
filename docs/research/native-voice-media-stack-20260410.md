@@ -111,6 +111,11 @@ Reference artifacts downloaded into the repo for exact vendor details:
     empty-candidate end markers as `a=end-of-candidates`, and the embedded
     provider retries remote candidate ingestion with the normalized candidate
     line if libjuice rejects the original browser payload
+  - browser audio answers now prune unsupported audio payloads instead of
+    mirroring the whole offer: Opus is advertised only when this build has
+    `libopus`, PCMU/PCMA G.711 remain supported, telephone-event-style
+    non-audio payloads are dropped, and unsupported audio m-lines are rejected
+    as inactive/port-zero
   - direct provider coverage now includes a local libjuice loopback peer that
     exchanges a real offer, consumes the candidate-bearing answer, trickles
     remote candidates back into the provider, and proves post-answer transport

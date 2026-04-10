@@ -308,10 +308,12 @@ A v0 smoke test should:
   hardening now also normalizes bare local `candidate:` lines into `a=candidate:` answer lines and keeps provider-owned
   audio `msid`/SSRC signaling scoped to audio m-lines when offers contain non-audio sections. Shared candidate handling
   now also canonicalizes browser empty-candidate end markers as `a=end-of-candidates`, and the embedded provider retries
-  remote candidate ingestion with the normalized candidate line if libjuice rejects the original browser payload. The
-  remaining gap is no longer basic outbound RTP, Opus ownership, one-shot Sender/Receiver Report transmit, per-frame
-  Sender Report spam, compound packet emission, answer direction, or basic browser full-duplex proof; it is broader
-  browser, codec, and candidate-edge hardening.
+  remote candidate ingestion with the normalized candidate line if libjuice rejects the original browser payload. Browser
+  audio answers now also prune unsupported audio payloads instead of mirroring the full offer: Opus is advertised only
+  when this build has `libopus`, PCMU/PCMA G.711 remain supported, telephone-event-style non-audio payloads are dropped,
+  and unsupported audio m-lines are rejected as inactive/port-zero. The remaining gap is no longer basic outbound RTP,
+  Opus ownership, one-shot Sender/Receiver Report transmit, per-frame Sender Report spam, compound packet emission,
+  answer direction, or basic browser full-duplex proof; it is broader browser, codec, and candidate-edge hardening.
 - That runtime contract now also exposes the media-engine seam directly: planned/live builtin paths report
   `media_engine_kind=builtin_reserved|builtin_signaling_stub|builtin_native_plugin`, bundled/external runtimes report
   `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` now distinguish the
