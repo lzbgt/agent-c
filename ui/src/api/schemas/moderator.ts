@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+const UnknownRecordSchema = z.record(z.string(), z.unknown());
+
 export const ModeratorActorSchema = z
   .object({
     role: z.string().optional(),
@@ -15,7 +17,7 @@ export const ModeratorDirectiveReqSchema = z.object({
   scope: z.string().optional(),
   assignees: z.array(z.string()).optional(),
   priority: z.number().int().optional(),
-  metadata: z.record(z.any()).optional(),
+  metadata: UnknownRecordSchema.optional(),
   actor: ModeratorActorSchema.optional(),
   append_to_session: z.boolean().optional(),
   ts_unix_ms: z.number().int().optional(),
@@ -29,7 +31,7 @@ export const ModeratorTaskReqSchema = z.object({
   priority: z.number().int().optional(),
   tags: z.array(z.string()).optional(),
   assignees: z.array(z.string()).optional(),
-  metadata: z.record(z.any()).optional(),
+  metadata: UnknownRecordSchema.optional(),
   status: z.string().optional(),
   actor: ModeratorActorSchema.optional(),
   append_to_session: z.boolean().optional(),
@@ -42,7 +44,7 @@ export const ModeratorEventSchema = z
     type: z.string().optional(),
     ts_unix_ms: z.number().optional(),
     actor: ModeratorActorSchema.optional(),
-    data: z.any().optional(),
+    data: UnknownRecordSchema.optional(),
   })
   .passthrough();
 export type ModeratorEvent = z.infer<typeof ModeratorEventSchema>;

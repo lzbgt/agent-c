@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+const UnknownValueSchema = z.unknown();
+
 export const ToolDefsRespSchema = z.object({
   ok: z.boolean(),
   tools: z.string().optional(),
@@ -42,14 +44,14 @@ export const OpenRouterModelsRespSchema = z.object({
       z.object({
         id: z.string(),
         name: z.string().optional(),
-        context_length: z.any().optional(),
+        context_length: UnknownValueSchema.optional(),
         total_usd_per_million: z.number().optional(),
         prompt_usd_per_million: z.number().optional(),
         completion_usd_per_million: z.number().optional(),
         supports_tools: z.boolean().optional(),
         supports_multimodal_input: z.boolean().optional(),
-        input_modalities: z.any().optional(),
-        output_modalities: z.any().optional(),
+        input_modalities: UnknownValueSchema.optional(),
+        output_modalities: UnknownValueSchema.optional(),
       }),
     )
     .optional(),

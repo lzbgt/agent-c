@@ -130,7 +130,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                 }}
                 onDownloadJson={() => {
                   try {
-                    const download = (payload: any) => {
+                    const download = (payload: unknown) => {
                       const text = JSON.stringify(payload, null, 2);
                       const blob = new Blob([text], { type: "application/json" });
                       const url = URL.createObjectURL(blob);
