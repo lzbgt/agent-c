@@ -248,6 +248,9 @@ if mode == "native_plugin":
     assert peer.get("audio_drain_events_total", 0) == 0, obj
     assert peer.get("audio_pcm_samples_drained_total", 0) == 0, obj
     assert peer.get("audio_pcm_samples_owned", 0) == 0, obj
+    assert peer.get("audio_process_events_total", 0) == 0, obj
+    assert peer.get("audio_pcm_samples_processed_total", 0) == 0, obj
+    assert peer.get("audio_last_process_samples", 0) == 0, obj
 else:
     assert peer.get("native_media_supported") is False, obj
     assert peer.get("native_media_active") is False, obj
