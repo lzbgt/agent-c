@@ -501,9 +501,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   the first bounded PCM handoff after that decode step: the embedded provider drains staged samples through the
   `native_plugin` ABI into agentd-owned memory, and runtime status persists both provider-side buffered samples and
   agentd-owned drained/retained PCM counters. Agentd now also submits processed PCM back through the native-provider
-  ABI, and the embedded provider can encode that PCM into a bounded PCMU RTP frame, protect it with the outbound libsrtp
-  context, and transmit it over the existing libjuice transport. The repo also has direct in-tree DTLS/SRTP proof for the same
-  OpenSSL/libsrtp configuration:
+  ABI, and the embedded provider can negotiate outbound G.711 payload selection from the remote SDP, encode that PCM
+  into a bounded PCMU/PCMA RTP frame, protect it with the outbound libsrtp context, and transmit it over the existing
+  libjuice transport. The repo also has direct in-tree DTLS/SRTP proof for the same OpenSSL/libsrtp configuration:
   `session_voice_builtin_dtls_transport_tests` completes a DTLS 1.2 client/server handshake over datagram-memory BIOs,
   negotiates `SRTP_AES128_CM_SHA1_80`, exports DTLS-SRTP keying material, derives real inbound / outbound libsrtp
   contexts from that exporter output, and now proves outbound SRTP protect plus inbound unprotect/receive-side audio
