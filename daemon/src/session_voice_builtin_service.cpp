@@ -1,5 +1,6 @@
 #include "session_voice_builtin_service.h"
 
+#include "session_voice_builtin_media_engine.h"
 #include "session_voice_process_plan.h"
 #include "session_voice_runtime_plan.h"
 #include "session_voice_runtime_seed.h"
@@ -27,6 +28,7 @@ struct BuiltinVoicePeerService {
   std::string ready_file_path;
   std::string stdout_log_path;
   std::weak_ptr<VoicePeerRuntime> runtime;
+  std::unique_ptr<VoicePeerBuiltinMediaEngine> media_engine;
   std::function<void(const VoicePeerRuntime&)> persist_runtime;
   std::mutex mu;
   std::condition_variable cv;
@@ -91,6 +93,25 @@ void append_builtin_voice_peer_stdout_line(
   Json::StreamWriterBuilder wb;
   wb["indentation"] = "";
   out << Json::writeString(wb, payload) << "\n";
+}
+
+void update_builtin_runtime_last_stdout(
+  VoicePeerRuntime* runtime,
+  const Json::Value& payload
+);
+
+void append_builtin_voice_peer_event_and_snapshot(
+  const std::string& stdout_log_path,
+  const Json::Value& payload,
+  const std::weak_ptr<VoicePeerRuntime>& runtime_weak,
+  std::mutex& runtime_mu
+) {
+  if (!payload.isObject()) return;
+  append_builtin_voice_peer_stdout_line(stdout_log_path, payload);
+  if (auto runtime = runtime_weak.lock()) {
+    std::lock_guard<std::mutex> lk(runtime_mu);
+    update_builtin_runtime_last_stdout(runtime.get(), payload);
+  }
 }
 
 void append_builtin_voice_peer_stderr_line(
@@ -186,15 +207,24 @@ void builtin_voice_peer_service_main(
 
           Json::Value seen_offer = make_builtin_voice_peer_event("remote_offer_seen", service->session_id);
           seen_offer["initial_remote_candidate_count"] = Json::UInt64(ready.initial_remote_candidates.size());
-          append_builtin_voice_peer_stdout_line(service->stdout_log_path, seen_offer);
-          if (auto runtime = service->runtime.lock()) {
-            std::lock_guard<std::mutex> lk(runtime_mu);
-            update_builtin_runtime_last_stdout(runtime.get(), seen_offer);
-          }
+          append_builtin_voice_peer_event_and_snapshot(
+            service->stdout_log_path, seen_offer, service->runtime, runtime_mu);
 
           VoiceBrokerSignalDescription answer;
-          answer.type = "answer";
-          answer.sdp = "stub-answer";
+          Json::Value answer_ready(Json::nullValue);
+          if (!service->media_engine ||
+              !service->media_engine->handle_remote_description(
+                ready, &answer, &answer_ready, &callback_err)) {
+            if (trim_copy(callback_err).empty()) {
+              callback_err = "builtin media engine failed to process remote description";
+            }
+            return false;
+          }
+          if (answer_ready.isObject()) {
+            append_builtin_voice_peer_event_and_snapshot(
+              service->stdout_log_path, answer_ready, service->runtime, runtime_mu);
+          }
+
           answer.sender_tag = service->sender_tag;
           if (!send_voice_broker_answer(
                 service->broker_url,
@@ -207,34 +237,39 @@ void builtin_voice_peer_service_main(
 
           Json::Value sent_answer = make_builtin_voice_peer_event("stub_answer_sent", service->session_id);
           sent_answer["remote_offer_type"] = ready.description.type;
-          append_builtin_voice_peer_stdout_line(service->stdout_log_path, sent_answer);
-          if (auto runtime = service->runtime.lock()) {
-            std::lock_guard<std::mutex> lk(runtime_mu);
-            update_builtin_runtime_last_stdout(runtime.get(), sent_answer);
+          if (service->media_engine) {
+            const VoicePeerMediaEngineInfo info = service->media_engine->info();
+            sent_answer["media_engine_kind"] = info.media_engine_kind;
+            sent_answer["native_media_supported"] = info.native_media_supported;
+            sent_answer["native_media_active"] = info.native_media_active;
           }
+          append_builtin_voice_peer_event_and_snapshot(
+            service->stdout_log_path, sent_answer, service->runtime, runtime_mu);
           return true;
         }
 
         if (ingress.kind == VoiceBrokerSignalIngressKind::remote_candidate_ready) {
-          Json::Value candidate = make_builtin_voice_peer_event("remote_candidate_ready", service->session_id);
-          candidate["candidate"] = ingress.candidate.candidate;
-          append_builtin_voice_peer_stdout_line(service->stdout_log_path, candidate);
-          if (auto runtime = service->runtime.lock()) {
-            std::lock_guard<std::mutex> lk(runtime_mu);
-            update_builtin_runtime_last_stdout(runtime.get(), candidate);
+          Json::Value candidate(Json::nullValue);
+          if (!service->media_engine ||
+              !service->media_engine->handle_remote_candidate(ingress, &candidate, &callback_err)) {
+            if (trim_copy(callback_err).empty()) {
+              callback_err = "builtin media engine failed to process remote candidate";
+            }
+            return false;
           }
+          append_builtin_voice_peer_event_and_snapshot(
+            service->stdout_log_path, candidate, service->runtime, runtime_mu);
           return true;
         }
 
         if (ingress.kind == VoiceBrokerSignalIngressKind::remote_bye) {
           remote_bye_received = true;
-          Json::Value bye = make_builtin_voice_peer_event("remote_bye", service->session_id);
-          if (!trim_copy(ingress.bye.reason).empty()) bye["reason"] = ingress.bye.reason;
-          append_builtin_voice_peer_stdout_line(service->stdout_log_path, bye);
-          if (auto runtime = service->runtime.lock()) {
-            std::lock_guard<std::mutex> lk(runtime_mu);
-            update_builtin_runtime_last_stdout(runtime.get(), bye);
+          Json::Value bye(Json::nullValue);
+          if (service->media_engine) {
+            service->media_engine->handle_remote_bye(ingress, &bye);
           }
+          append_builtin_voice_peer_event_and_snapshot(
+            service->stdout_log_path, bye, service->runtime, runtime_mu);
           return false;
         }
         return true;
@@ -269,10 +304,15 @@ void builtin_voice_peer_service_main(
     std::string send_err;
     (void)send_voice_broker_bye(
       service->broker_url, service->broker_token, service->broker_session_id, bye, &send_err);
-    Json::Value sent_bye = make_builtin_voice_peer_event("local_bye_sent", service->session_id);
-    sent_bye["reason"] = bye.reason;
+    Json::Value sent_bye(Json::nullValue);
+    if (service->media_engine) service->media_engine->handle_local_shutdown(&sent_bye);
+    if (!sent_bye.isObject()) {
+      sent_bye = make_builtin_voice_peer_event("local_bye_sent", service->session_id);
+      sent_bye["reason"] = bye.reason;
+    }
     if (!trim_copy(send_err).empty()) sent_bye["warning"] = send_err;
-    append_builtin_voice_peer_stdout_line(service->stdout_log_path, sent_bye);
+    append_builtin_voice_peer_event_and_snapshot(
+      service->stdout_log_path, sent_bye, service->runtime, runtime_mu);
   }
 
   if (auto runtime = service->runtime.lock()) {
@@ -329,6 +369,18 @@ bool start_builtin_voice_peer_runtime_service(
   ec.clear();
   std::filesystem::remove(std::filesystem::path(artifacts.stderr_log_path), ec);
 
+  std::string media_engine_err;
+  std::unique_ptr<VoicePeerBuiltinMediaEngine> media_engine =
+    make_builtin_voice_peer_media_engine(cfg, &media_engine_err);
+  if (!media_engine) {
+    if (out_err) {
+      *out_err = trim_copy(media_engine_err).empty()
+        ? "builtin media engine unavailable"
+        : media_engine_err;
+    }
+    return false;
+  }
+
   write_builtin_voice_peer_ready_file(artifacts.ready_file_path, session_id);
 
   VoicePeerRuntimeSeed seed;
@@ -348,18 +400,34 @@ bool start_builtin_voice_peer_runtime_service(
   seed.deadline_ms = start_plan.deadline_ms;
   seed.poll_interval_ms = start_plan.poll_interval_ms;
   seed.tone_hz = start_plan.tone_hz;
+  apply_voice_peer_media_engine_info(media_engine->info(), &seed);
   seed.ready = true;
   seed.running = true;
   auto runtime = make_voice_peer_runtime_state(seed);
 
+  Json::Value init_event(Json::nullValue);
+  std::string init_err;
+  if (!media_engine->initialize(runtime.get(), &init_event, &init_err)) {
+    if (out_err) {
+      *out_err = trim_copy(init_err).empty()
+        ? "failed to initialize builtin media engine"
+        : init_err;
+    }
+    return false;
+  }
+  if (init_event.isObject()) {
+    append_builtin_voice_peer_event_and_snapshot(
+      artifacts.stdout_log_path, init_event, runtime, runtime_mu);
+  }
+
   Json::Value started = make_builtin_voice_peer_event("builtin_runtime_started", session_id);
   started["broker_session_id"] = binding.broker_session_id;
   started["managed_broker_session"] = binding.managed_broker_session;
-  append_builtin_voice_peer_stdout_line(artifacts.stdout_log_path, started);
-  {
-    std::lock_guard<std::mutex> lk(runtime_mu);
-    update_builtin_runtime_last_stdout(runtime.get(), started);
-  }
+  started["media_engine_kind"] = runtime->media_engine_kind;
+  started["native_media_supported"] = runtime->native_media_supported;
+  started["native_media_active"] = runtime->native_media_active;
+  append_builtin_voice_peer_event_and_snapshot(
+    artifacts.stdout_log_path, started, runtime, runtime_mu);
 
   auto service = std::make_shared<BuiltinVoicePeerService>();
   service->session_id = trim_copy(session_id);
@@ -370,6 +438,7 @@ bool start_builtin_voice_peer_runtime_service(
   service->ready_file_path = artifacts.ready_file_path;
   service->stdout_log_path = artifacts.stdout_log_path;
   service->runtime = runtime;
+  service->media_engine = std::move(media_engine);
   service->persist_runtime = persist_runtime;
   service->worker = std::thread(
     [service, &runtime_mu]() { builtin_voice_peer_service_main(service, runtime_mu); });

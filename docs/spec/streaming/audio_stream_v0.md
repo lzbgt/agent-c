@@ -192,6 +192,9 @@ A v0 smoke test should:
   - `default_runtime_kind_available=true|false`
   - `default_runtime_kind_unavailable_reason`
   - `peer.runtime_kind=builtin|bundled|external`
+  - `peer.media_engine_kind=builtin_reserved|builtin_signaling_stub|browser_peer`
+  - `peer.native_media_supported=true|false`
+  - `peer.native_media_active=true|false`
   so the current shipped Node/Playwright path is a named bundled backend with an explicit `external` override, and the
   experimental in-process builtin backend is surfaced as a real managed runtime mode rather than an API-only placeholder.
 - The shipped bundled/external backend now persists DB-backed runtime snapshots plus per-session stdout logs, so
@@ -252,6 +255,10 @@ A v0 smoke test should:
   emits a normal builtin runtime snapshot, answers remote offers with a stub SDP answer, and terminates on remote or
   local `bye`. It is intentionally limited to signaling/runtime control; the real agentd-native RTP/WebRTC media
   engine is still the remaining gap.
+- That runtime contract now also exposes the media-engine seam directly: planned/live builtin paths report
+  `media_engine_kind=builtin_reserved|builtin_signaling_stub`, bundled/external runtimes report
+  `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` remain `false` until the real
+  embedded agentd-native RTP engine exists.
 - Those planned builtin previews now also fail closed at persistence boundaries: agentd refuses to persist
   `status_source=planned`, and any stale planned record is self-healed through `cleanup_on_corrupt_record` instead of
   being recovered as if it were a real runtime.

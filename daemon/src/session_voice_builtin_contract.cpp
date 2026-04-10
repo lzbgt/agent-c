@@ -1,5 +1,6 @@
 #include "session_voice_builtin_contract.h"
 
+#include "session_voice_builtin_media_engine.h"
 #include "session_voice_backend_policy.h"
 #include "session_voice_broker_plan.h"
 #include "session_voice_launch_flow.h"
@@ -23,14 +24,19 @@ VoicePeerBuiltinStartPreview build_voice_peer_builtin_start_preview(
     voice_peer_launch_startup_sequence_json(start_plan, !builtin_voice_peer_runtime_enabled(cfg));
   const Json::Value runtime_artifacts = voice_peer_runtime_artifacts_json(artifacts);
   const Json::Value broker_session = voice_peer_broker_session_plan_json(broker_session_plan);
-  const Json::Value media_runtime_plan = voice_peer_media_runtime_plan_json(
+  VoicePeerMediaRuntimePlan media_runtime_plan =
     make_voice_peer_media_runtime_plan(
       session_id,
       start_plan,
       artifacts,
-      broker_session_plan));
+      broker_session_plan);
+  apply_voice_peer_media_engine_info(
+    voice_peer_media_engine_info_for_runtime_kind(cfg, start_plan.runtime_kind),
+    &media_runtime_plan);
+  const Json::Value media_runtime_plan_json = voice_peer_media_runtime_plan_json(media_runtime_plan);
   VoicePeerBuiltinStartPreview out;
   out.planned_runtime = make_planned_voice_peer_runtime(
+    cfg,
     session_id,
     start_plan,
     artifacts,
@@ -50,7 +56,7 @@ VoicePeerBuiltinStartPreview build_voice_peer_builtin_start_preview(
   out.contract["startup_sequence"] = startup_sequence;
   out.contract["runtime_artifacts"] = runtime_artifacts;
   out.contract["broker_session"] = broker_session;
-  out.contract["media_runtime_plan"] = media_runtime_plan;
+  out.contract["media_runtime_plan"] = media_runtime_plan_json;
   out.contract["planned_runtime"] = voice_peer_runtime_to_json(out.planned_runtime);
   return out;
 }

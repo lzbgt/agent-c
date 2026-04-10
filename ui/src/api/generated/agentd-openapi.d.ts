@@ -7995,6 +7995,11 @@ export interface components {
             signaling_surface: "voice_webrtc_peer";
             /** @enum {string} */
             runtime_kind: "builtin" | "bundled" | "external";
+            /**
+             * @description Concrete media-engine family the selected runtime will use. `browser_peer` means the shipped browser-backed RTP path, `builtin_reserved` means builtin was selected but native media is still disabled, and `builtin_signaling_stub` means the experimental in-process signaling-only builtin runtime.
+             * @enum {string}
+             */
+            media_engine_kind: "builtin_reserved" | "builtin_signaling_stub" | "browser_peer";
             session_id: string;
             broker_session_id?: string;
             broker_url: string;
@@ -8011,6 +8016,8 @@ export interface components {
             poll_interval_ms: number;
             /** Format: int64 */
             tone_hz: number;
+            /** @description Whether this runtime plan terminates media natively inside agentd instead of delegating RTP/media handling to the shipped browser peer. Current shipped values are `false`. */
+            native_media_supported: boolean;
         };
         VoiceWebRtcPeerBuiltinStartContract: {
             session_id: string;
@@ -8041,6 +8048,11 @@ export interface components {
             schema: "session_voice_webrtc_peer_runtime_v1";
             /** @enum {string} */
             runtime_kind: "builtin" | "bundled" | "external";
+            /**
+             * @description Concrete media-engine family for the live or planned runtime. `browser_peer` means the bundled/external browser-backed RTP path, `builtin_reserved` means builtin was requested but native media is still unavailable, and `builtin_signaling_stub` means the experimental in-process signaling-only builtin runtime.
+             * @enum {string}
+             */
+            media_engine_kind: "builtin_reserved" | "builtin_signaling_stub" | "browser_peer";
             /** @enum {string} */
             status_source: "memory" | "persisted" | "planned";
             session_id: string;
@@ -8065,6 +8077,10 @@ export interface components {
             poll_interval_ms: number;
             /** Format: int64 */
             tone_hz: number;
+            /** @description Whether this runtime can terminate RTP/media natively inside agentd. Current shipped runtimes report `false`. */
+            native_media_supported: boolean;
+            /** @description Whether native media handling is currently active inside agentd for this runtime. Current shipped runtimes report `false`. */
+            native_media_active: boolean;
             ready: boolean;
             running: boolean;
             /** Format: int64 */

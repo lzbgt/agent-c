@@ -51,7 +51,7 @@ VoiceWebRtcPeerBuiltinRuntimeArtifacts:
 
 VoiceWebRtcPeerMediaRuntimePlan:
   type: object
-  required: [schema, signaling_surface, runtime_kind, session_id, broker_url, managed_broker_session, sender_tag, ready_signal, ready_file_path, deadline_ms, poll_interval_ms, tone_hz]
+  required: [schema, signaling_surface, runtime_kind, media_engine_kind, session_id, broker_url, managed_broker_session, sender_tag, ready_signal, ready_file_path, deadline_ms, poll_interval_ms, tone_hz, native_media_supported]
   properties:
     schema:
       type: string
@@ -62,6 +62,10 @@ VoiceWebRtcPeerMediaRuntimePlan:
     runtime_kind:
       type: string
       enum: [builtin, bundled, external]
+    media_engine_kind:
+      type: string
+      enum: [builtin_reserved, builtin_signaling_stub, browser_peer]
+      description: Concrete media-engine family the selected runtime will use. `browser_peer` means the shipped browser-backed RTP path, `builtin_reserved` means builtin was selected but native media is still disabled, and `builtin_signaling_stub` means the experimental in-process signaling-only builtin runtime.
     session_id: { type: string }
     broker_session_id: { type: string }
     broker_url: { type: string }
@@ -76,6 +80,9 @@ VoiceWebRtcPeerMediaRuntimePlan:
     deadline_ms: { type: integer, format: int64 }
     poll_interval_ms: { type: integer, format: int64 }
     tone_hz: { type: integer, format: int64 }
+    native_media_supported:
+      type: boolean
+      description: Whether this runtime plan terminates media natively inside agentd instead of delegating RTP/media handling to the shipped browser peer. Current shipped values are `false`.
 
 VoiceWebRtcPeerBuiltinStartContract:
   type: object
@@ -110,12 +117,16 @@ VoiceWebRtcPeerBuiltinStartContract:
 
 VoiceWebRtcPeerRuntime:
   type: object
-  required: [schema, runtime_kind, status_source, session_id, broker_url, sender_tag, tool_path, node_bin, started_unix_ms, deadline_ms, poll_interval_ms, tone_hz, ready, running]
+  required: [schema, runtime_kind, media_engine_kind, status_source, session_id, broker_url, sender_tag, tool_path, node_bin, started_unix_ms, deadline_ms, poll_interval_ms, tone_hz, native_media_supported, native_media_active, ready, running]
   properties:
     schema: { type: string, enum: [session_voice_webrtc_peer_runtime_v1] }
     runtime_kind:
       type: string
       enum: [builtin, bundled, external]
+    media_engine_kind:
+      type: string
+      enum: [builtin_reserved, builtin_signaling_stub, browser_peer]
+      description: Concrete media-engine family for the live or planned runtime. `browser_peer` means the bundled/external browser-backed RTP path, `builtin_reserved` means builtin was requested but native media is still unavailable, and `builtin_signaling_stub` means the experimental in-process signaling-only builtin runtime.
     status_source:
       type: string
       enum: [memory, persisted, planned]
@@ -136,6 +147,12 @@ VoiceWebRtcPeerRuntime:
     deadline_ms: { type: integer, format: int64 }
     poll_interval_ms: { type: integer, format: int64 }
     tone_hz: { type: integer, format: int64 }
+    native_media_supported:
+      type: boolean
+      description: Whether this runtime can terminate RTP/media natively inside agentd. Current shipped runtimes report `false`.
+    native_media_active:
+      type: boolean
+      description: Whether native media handling is currently active inside agentd for this runtime. Current shipped runtimes report `false`.
     ready: { type: boolean }
     running: { type: boolean }
     pid: { type: integer, format: int64 }

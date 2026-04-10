@@ -1,0 +1,84 @@
+#pragma once
+
+#include "daemon_config.h"
+#include "session_voice_signal_protocol.h"
+#include "session_voice_signal_session.h"
+
+#include <json/json.h>
+
+#include <memory>
+#include <string>
+
+namespace agentd {
+
+struct VoicePeerMediaRuntimePlan;
+struct VoicePeerRuntime;
+struct VoicePeerRuntimeSeed;
+
+struct VoicePeerMediaEngineInfo {
+  std::string media_engine_kind = "browser_peer";
+  bool native_media_supported = false;
+  bool native_media_active = false;
+};
+
+VoicePeerMediaEngineInfo voice_peer_media_engine_info_for_runtime_kind(
+  const DaemonConfig& cfg,
+  const std::string& runtime_kind
+);
+
+void apply_voice_peer_media_engine_info(
+  const VoicePeerMediaEngineInfo& info,
+  VoicePeerMediaRuntimePlan* plan
+);
+
+void apply_voice_peer_media_engine_info(
+  const VoicePeerMediaEngineInfo& info,
+  VoicePeerRuntimeSeed* seed
+);
+
+void apply_voice_peer_media_engine_info(
+  const VoicePeerMediaEngineInfo& info,
+  VoicePeerRuntime* runtime
+);
+
+class VoicePeerBuiltinMediaEngine {
+ public:
+  virtual ~VoicePeerBuiltinMediaEngine() = default;
+
+  virtual VoicePeerMediaEngineInfo info() const = 0;
+
+  virtual bool initialize(
+    VoicePeerRuntime* runtime,
+    Json::Value* out_event,
+    std::string* out_err
+  ) = 0;
+
+  virtual bool handle_remote_description(
+    const VoiceBrokerSignalRemoteDescriptionReady& ready,
+    VoiceBrokerSignalDescription* out_answer,
+    Json::Value* out_event,
+    std::string* out_err
+  ) = 0;
+
+  virtual bool handle_remote_candidate(
+    const VoiceBrokerSignalIngress& ingress,
+    Json::Value* out_event,
+    std::string* out_err
+  ) = 0;
+
+  virtual void handle_remote_bye(
+    const VoiceBrokerSignalIngress& ingress,
+    Json::Value* out_event
+  ) = 0;
+
+  virtual void handle_local_shutdown(
+    Json::Value* out_event
+  ) = 0;
+};
+
+std::unique_ptr<VoicePeerBuiltinMediaEngine> make_builtin_voice_peer_media_engine(
+  const DaemonConfig& cfg,
+  std::string* out_err
+);
+
+}  // namespace agentd

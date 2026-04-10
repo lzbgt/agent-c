@@ -150,11 +150,39 @@ static void test_recover_reports_cleanup_for_planned_runtime_record() {
 #endif
 }
 
+static void test_runtime_json_round_trips_media_engine_fields() {
+  VoicePeerRuntime st;
+  st.session_id = "voice-sid";
+  st.runtime_kind = "builtin";
+  st.media_engine_kind = "builtin_signaling_stub";
+  st.status_source = "memory";
+  st.broker_url = "http://broker";
+  st.sender_tag = "agentd_runtime_peer";
+  st.tool_path = "@builtin";
+  st.node_bin = "@builtin";
+  st.native_media_supported = false;
+  st.native_media_active = false;
+
+  const Json::Value json = voice_peer_runtime_to_json(st);
+  assert(json["media_engine_kind"].asString() == "builtin_signaling_stub");
+  assert(json["native_media_supported"].asBool() == false);
+  assert(json["native_media_active"].asBool() == false);
+
+  VoicePeerRuntime round_trip;
+  std::string err;
+  assert(agentd::voice_peer_runtime_from_json(json, &round_trip, &err));
+  assert(err.empty());
+  assert(round_trip.media_engine_kind == "builtin_signaling_stub");
+  assert(round_trip.native_media_supported == false);
+  assert(round_trip.native_media_active == false);
+}
+
 }  // namespace
 
 int main() {
   test_persist_rejects_planned_runtime_preview();
   test_load_self_heals_planned_runtime_record();
   test_recover_reports_cleanup_for_planned_runtime_record();
+  test_runtime_json_round_trips_media_engine_fields();
   return 0;
 }

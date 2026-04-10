@@ -33,6 +33,7 @@ Json::Value voice_peer_media_runtime_plan_json(
   out["schema"] = plan.schema;
   out["signaling_surface"] = plan.signaling_surface;
   out["runtime_kind"] = plan.runtime_kind;
+  out["media_engine_kind"] = plan.media_engine_kind;
   out["session_id"] = plan.session_id;
   if (!plan.broker_session_id.empty()) out["broker_session_id"] = plan.broker_session_id;
   out["broker_url"] = plan.broker_url;
@@ -45,6 +46,7 @@ Json::Value voice_peer_media_runtime_plan_json(
   out["deadline_ms"] = Json::Int64(plan.deadline_ms);
   out["poll_interval_ms"] = Json::Int64(plan.poll_interval_ms);
   out["tone_hz"] = Json::Int64(plan.tone_hz);
+  out["native_media_supported"] = plan.native_media_supported;
   return out;
 }
 

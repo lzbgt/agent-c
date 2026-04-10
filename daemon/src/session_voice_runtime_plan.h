@@ -28,6 +28,7 @@ Json::Value voice_peer_runtime_artifacts_json(
 );
 
 VoicePeerRuntime make_planned_voice_peer_runtime(
+  const DaemonConfig& cfg,
   const std::string& session_id,
   const VoicePeerStartPlan& start_plan,
   const VoicePeerRuntimeArtifactsPlan& artifacts,

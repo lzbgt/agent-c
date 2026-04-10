@@ -17,6 +17,7 @@ namespace agentd {
 struct VoicePeerRuntime {
   std::string runtime_kind = "external";
   std::string status_source = "memory";
+  std::string media_engine_kind = "browser_peer";
   std::string session_id;
   std::string broker_session_id;
   std::string broker_url;
@@ -34,6 +35,8 @@ struct VoicePeerRuntime {
   int64_t poll_interval_ms = 100;
   int64_t tone_hz = 440;
   bool managed_broker_session = false;
+  bool native_media_supported = false;
+  bool native_media_active = false;
   bool ready = false;
   bool running = false;
   bool stale_persisted_record = false;
@@ -75,6 +78,7 @@ struct VoicePeerChildLaunchConfig {
 
 struct VoicePeerRuntimeSeed {
   std::string runtime_kind = "external";
+  std::string media_engine_kind = "browser_peer";
   std::string session_id;
   std::string broker_session_id;
   std::string broker_url;
@@ -90,6 +94,8 @@ struct VoicePeerRuntimeSeed {
   int64_t poll_interval_ms = 100;
   int64_t tone_hz = 440;
   bool managed_broker_session = false;
+  bool native_media_supported = false;
+  bool native_media_active = false;
   bool ready = false;
   bool running = false;
 #if defined(_WIN32)

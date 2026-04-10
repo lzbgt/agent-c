@@ -38,6 +38,7 @@ static void test_builtin_backend_returns_planned_runtime_state() {
   assert(result.http_status == 501);
   assert(result.state);
   assert(result.state->runtime_kind == "builtin");
+  assert(result.state->media_engine_kind == "builtin_reserved");
   assert(result.state->status_source == "planned");
   assert(result.state->session_id == "voice-sid");
   assert(result.state->broker_url == "http://broker");
@@ -52,6 +53,8 @@ static void test_builtin_backend_returns_planned_runtime_state() {
   assert(!result.state->running);
   assert(!result.state->ready);
   assert(result.state->last_error == result.error);
+  assert(result.state->native_media_supported == false);
+  assert(result.state->native_media_active == false);
   assert(result.backend_info["builtin_start_contract"].isObject());
   assert(result.backend_info["builtin_start_contract"]["media_runtime_plan"]["schema"].asString() ==
          "voice_webrtc_peer_media_runtime_plan_v1");
@@ -101,8 +104,11 @@ static void test_builtin_backend_enabled_signaling_stub_starts_runtime() {
   assert(result.startup_confirmed);
   assert(result.state);
   assert(result.state->runtime_kind == "builtin");
+  assert(result.state->media_engine_kind == "builtin_signaling_stub");
   assert(result.state->running);
   assert(result.state->ready);
+  assert(result.state->native_media_supported == false);
+  assert(result.state->native_media_active == false);
   assert(result.state->managed_broker_session == false);
   assert(result.backend_info["builtin_start_contract"]["mutating_broker_actions_deferred"].asBool() == false);
   assert(result.backend_info["builtin_start_contract"]["planned_runtime"].isObject());

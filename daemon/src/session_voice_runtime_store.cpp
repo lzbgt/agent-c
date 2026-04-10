@@ -28,6 +28,7 @@ Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   Json::Value out(Json::objectValue);
   out["schema"] = "session_voice_webrtc_peer_runtime_v1";
   out["runtime_kind"] = st.runtime_kind;
+  out["media_engine_kind"] = st.media_engine_kind;
   out["status_source"] = st.status_source.empty() ? "memory" : st.status_source;
   out["session_id"] = st.session_id;
   if (!st.broker_session_id.empty()) out["broker_session_id"] = st.broker_session_id;
@@ -44,6 +45,8 @@ Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   out["deadline_ms"] = (Json::Int64)st.deadline_ms;
   out["poll_interval_ms"] = (Json::Int64)st.poll_interval_ms;
   out["tone_hz"] = (Json::Int64)st.tone_hz;
+  out["native_media_supported"] = st.native_media_supported;
+  out["native_media_active"] = st.native_media_active;
   out["ready"] = st.ready;
   out["running"] = st.running;
   if (!st.stderr_log_path.empty()) out["stderr_log_path"] = st.stderr_log_path;
@@ -174,6 +177,9 @@ bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, s
   }
   VoicePeerRuntime st;
   if (v.isMember("runtime_kind") && v["runtime_kind"].isString()) st.runtime_kind = trim_copy(v["runtime_kind"].asString());
+  if (v.isMember("media_engine_kind") && v["media_engine_kind"].isString()) {
+    st.media_engine_kind = trim_copy(v["media_engine_kind"].asString());
+  }
   if (v.isMember("status_source") && v["status_source"].isString()) st.status_source = trim_copy(v["status_source"].asString());
   if (v.isMember("session_id") && v["session_id"].isString()) st.session_id = trim_copy(v["session_id"].asString());
   if (v.isMember("broker_session_id") && v["broker_session_id"].isString()) st.broker_session_id = trim_copy(v["broker_session_id"].asString());
@@ -193,6 +199,12 @@ bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, s
   if (v.isMember("tone_hz") && (v["tone_hz"].isInt64() || v["tone_hz"].isUInt64())) st.tone_hz = v["tone_hz"].asInt64();
   if (v.isMember("managed_broker_session") && v["managed_broker_session"].isBool()) {
     st.managed_broker_session = v["managed_broker_session"].asBool();
+  }
+  if (v.isMember("native_media_supported") && v["native_media_supported"].isBool()) {
+    st.native_media_supported = v["native_media_supported"].asBool();
+  }
+  if (v.isMember("native_media_active") && v["native_media_active"].isBool()) {
+    st.native_media_active = v["native_media_active"].asBool();
   }
   if (v.isMember("ready") && v["ready"].isBool()) st.ready = v["ready"].asBool();
   if (v.isMember("running") && v["running"].isBool()) st.running = v["running"].asBool();

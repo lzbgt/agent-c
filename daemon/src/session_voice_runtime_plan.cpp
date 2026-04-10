@@ -1,5 +1,6 @@
 #include "session_voice_runtime_plan.h"
 
+#include "session_voice_builtin_media_engine.h"
 #include "session_voice_process_plan.h"
 #include "session_voice_runtime_store.h"
 #include "string_util.h"
@@ -88,6 +89,7 @@ Json::Value voice_peer_runtime_artifacts_json(
 }
 
 VoicePeerRuntime make_planned_voice_peer_runtime(
+  const DaemonConfig& cfg,
   const std::string& session_id,
   const VoicePeerStartPlan& start_plan,
   const VoicePeerRuntimeArtifactsPlan& artifacts,
@@ -97,6 +99,9 @@ VoicePeerRuntime make_planned_voice_peer_runtime(
     session_id, start_plan, artifacts, broker_session_plan);
   VoicePeerRuntime runtime;
   apply_media_runtime_plan_fields(media_plan, &runtime);
+  apply_voice_peer_media_engine_info(
+    voice_peer_media_engine_info_for_runtime_kind(cfg, start_plan.runtime_kind),
+    &runtime);
   runtime.status_source = "planned";
   runtime.tool_path =
     start_plan.runtime_kind == "builtin" ? "@builtin" : start_plan.resolved_tool_path;
@@ -129,6 +134,9 @@ VoicePeerRuntimeSeed make_spawned_voice_peer_runtime_seed(
   runtime_seed.ready = false;
   runtime_seed.running = true;
   runtime_seed.pid = pid;
+  apply_voice_peer_media_engine_info(
+    voice_peer_media_engine_info_for_runtime_kind(DaemonConfig{}, launch_cfg.runtime_kind),
+    &runtime_seed);
   return runtime_seed;
 }
 

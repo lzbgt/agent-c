@@ -399,6 +399,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   - `builtin_unavailable_reason`, `bundled_unavailable_reason`, `external_unavailable_reason`,
     `default_runtime_kind_unavailable_reason`
   - `peer.runtime_kind=builtin|bundled|external`
+  - `peer.media_engine_kind=builtin_reserved|builtin_signaling_stub|browser_peer`
+  - `peer.native_media_supported=true|false`
+  - `peer.native_media_active=true|false`
   so the shipped Node/Playwright peer is now clearly modeled as an explicit backend family with durable default
   selection rather than an implicit implementation detail, and the experimental in-process builtin backend is surfaced
   as a real launchable mode instead of only a reserved placeholder.
@@ -463,6 +466,11 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   offers with a stub SDP answer, tracks remote candidates/`bye`, and participates in the same managed broker-session
   lifecycle as the bundled/external backends. This is an experimental signaling/runtime slice only; it does not yet
   replace the shipped browser-based RTP/media transport with native WebRTC media.
+- The builtin/runtime preview and live runtime snapshots now also expose the media-engine seam explicitly:
+  `media_runtime_plan.media_engine_kind` / `peer.media_engine_kind` distinguish `builtin_reserved`,
+  `builtin_signaling_stub`, and `browser_peer`, while `native_media_supported` / `native_media_active` make it
+  explicit that the currently shipped builtin mode still stops at signaling/runtime control rather than terminating RTP
+  natively inside agentd.
 - `broker_session_id` is now mutually exclusive with `broker_agent_id` / `broker_deployment_id`; agentd rejects that
   ambiguous mixed mode at request validation time instead of silently ignoring the auto-create fields.
 - `POST /api/v1/session/voice_webrtc_peer` now supports daemon-level broker defaults through

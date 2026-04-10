@@ -17,6 +17,7 @@ struct VoicePeerMediaRuntimePlan {
   std::string schema = "voice_webrtc_peer_media_runtime_plan_v1";
   std::string signaling_surface = "voice_webrtc_peer";
   std::string runtime_kind = "external";
+  std::string media_engine_kind = "browser_peer";
   std::string session_id;
   std::string broker_session_id;
   std::string broker_url;
@@ -28,6 +29,7 @@ struct VoicePeerMediaRuntimePlan {
   int64_t deadline_ms = 15000;
   int64_t poll_interval_ms = 100;
   int64_t tone_hz = 440;
+  bool native_media_supported = false;
 };
 
 struct VoicePeerChildProcessPlan {
