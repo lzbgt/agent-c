@@ -849,6 +849,12 @@ schemas:
             description: Ephemeral per-run members (not persisted in team registry).
             items:
               $ref: "#/components/schemas/TeamRunRuntimeMember"
+          goal_contract:
+            $ref: "#/components/schemas/TeamRunGoalContract"
+          runtime_skill:
+            type: object
+            additionalProperties: true
+            description: Runtime-skill audit metadata attached by a materialized team bundle.
           quorum_policy:
             type: object
             properties:
@@ -998,6 +1004,10 @@ schemas:
       role_prompt_mode:
         type: string
         description: Prompt composition mode for role instructions (prepend/append/replace).
+      runtime_skill:
+        type: object
+        description: Runtime-skill audit metadata captured in the team run payload.
+        additionalProperties: true
       members:
         type: array
         items:

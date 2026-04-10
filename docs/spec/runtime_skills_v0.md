@@ -1,7 +1,7 @@
 # Runtime Skills System (v0)
 
 Date: 2026-04-10
-Status: draft (local catalog tooling plus agentd/WebUI workflow integration implemented)
+Status: draft (catalog tooling, agentd APIs, WebUI workflow integration, and broker team-run integration implemented)
 
 ## Summary
 
@@ -205,6 +205,22 @@ For `workflow_bundle` skills, the v0 materializer currently:
 - attaches a `runtime_skill` audit block with `skill_id`, `skill_version`,
   `manifest_sha256`, and resolved inputs
 
+For `team_bundle` skills, the v0 materializer currently:
+
+- accepts either a compact `team_template` object or a wrapped
+  `team_template.{run,team}` payload
+- synthesizes `run.prompt` from `inputs.goal` plus optional `deliverable` when
+  the manifest does not supply a prompt directly
+- derives `team.role_instructions` from `instruction_fragments.shared` plus
+  `instruction_fragments.roles` when the manifest omits them
+- seeds `team.roles` from the derived role-instruction keys when absent
+- seeds `team.goal_contract` from `goal` and `deliverable` when absent
+- copies `policy_preset.max_steps` into `run.max_steps` when absent
+- enables `team.quorum_policy.mode=auto` when the manifest implies approval or
+  quorum gating but leaves the execution policy unset
+- attaches `team.runtime_skill` audit metadata with `skill_id`,
+  `skill_version`, `manifest_sha256`, and resolved inputs
+
 Resolution must fail early if:
 
 - a required tool is missing
@@ -264,6 +280,7 @@ Current v0 implementation status:
   - `GET /api/v1/runtime_skills`
   - `POST /api/v1/runtime_skills/resolve`
 - the WebUI workflow composer can now start from `workflow_bundle` skills
+- the broker team-run UI can now start from `team_bundle` skills
 
 ## WebUI / CLI UX
 
@@ -278,7 +295,9 @@ Implemented now:
 
 - the workflow composer consumes the local daemon catalog for `workflow_bundle`
   entries and materializes them directly into composer JSON
-- team-run / broker integration is still pending follow-up work
+- the broker team-run panel consumes the same daemon catalog for `team_bundle`
+  entries and materializes them into the broker team-run form while preserving
+  `runtime_skill`, `goal_contract`, and other hidden team/run payload fields
 
 This gives a shorter path for common cases without taking away the low-level
 power-user surface.
@@ -299,8 +318,9 @@ The repo now ships a local data-only catalog + CLI under `tools/runtime_skills/`
 - `catalog/`
   - example shipped runtime skills
 
-This is intentionally a lightweight operator surface. It does not yet imply
-daemon-native loading, broker-native registry sync, or WebUI form rendering.
+This is intentionally a lightweight operator surface. It does not yet imply a
+broker-native registry, remote package distribution, or server-side form
+rendering beyond the current daemon-backed resolve flow.
 
 ## Interaction with MCP
 

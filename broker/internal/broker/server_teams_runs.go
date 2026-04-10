@@ -1259,6 +1259,10 @@ func (s *Server) teamRunStatusResponse(ctx context.Context, p *Principal, run *d
 	if raw, ok := teamMeta["role_prompt_mode"]; ok {
 		rolePromptMode = raw
 	}
+	var runtimeSkill any
+	if raw, ok := teamMeta["runtime_skill"]; ok {
+		runtimeSkill = raw
+	}
 	var runOverridesMode any
 	if raw, ok := teamMeta["run_overrides_mode"]; ok {
 		runOverridesMode = raw
@@ -1354,6 +1358,9 @@ func (s *Server) teamRunStatusResponse(ctx context.Context, p *Principal, run *d
 	}
 	if rolePromptMode != nil {
 		resp["role_prompt_mode"] = rolePromptMode
+	}
+	if runtimeSkill != nil {
+		resp["runtime_skill"] = runtimeSkill
 	}
 	if runOverridesMode != nil {
 		resp["run_overrides_mode"] = runOverridesMode

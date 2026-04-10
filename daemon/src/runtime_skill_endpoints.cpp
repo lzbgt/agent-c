@@ -438,7 +438,7 @@ static Json::Value capabilities_to_json() {
   caps["tools"] = Json::Value(Json::arrayValue);
   caps["plugins"] = Json::Value(Json::arrayValue);
   Json::Value features(Json::arrayValue);
-  for (const char* feature : {"approval_queue", "runtime_skills", "workflow_composer", "workflow_submit"}) {
+  for (const char* feature : {"approval_queue", "runtime_skills", "team_runs", "workflow_composer", "workflow_submit"}) {
     features.append(feature);
   }
   caps["features"] = features;
@@ -638,6 +638,167 @@ static Json::Value materialize_workflow_request(
   return workflow;
 }
 
+static Json::Value runtime_skill_audit_block(
+  const RuntimeSkillEntry& entry,
+  const Json::Value& inputs
+) {
+  Json::Value runtime_skill(Json::objectValue);
+  runtime_skill["skill_id"] = entry.manifest["skill_id"].asString();
+  runtime_skill["skill_version"] = entry.manifest["version"].asString();
+  runtime_skill["manifest_sha256"] = manifest_hash_hex(entry.manifest);
+  runtime_skill["inputs"] = inputs;
+  return runtime_skill;
+}
+
+static std::string trimmed_string_or_empty(const Json::Value& value) {
+  return value.isString() ? trim_copy(value.asString()) : "";
+}
+
+static Json::Value materialize_role_instructions(const RuntimeSkillEntry& entry) {
+  const Json::Value fragments = entry.manifest.get("instruction_fragments", Json::Value(Json::nullValue));
+  if (!fragments.isObject()) return Json::Value(Json::objectValue);
+
+  const Json::Value shared_raw = fragments.get("shared", Json::Value(Json::arrayValue));
+  std::vector<std::string> shared_lines;
+  if (shared_raw.isArray()) {
+    for (Json::ArrayIndex i = 0; i < shared_raw.size(); ++i) {
+      if (!shared_raw[i].isString()) continue;
+      const std::string line = trim_copy(shared_raw[i].asString());
+      if (!line.empty()) shared_lines.push_back(line);
+    }
+  }
+
+  const Json::Value roles_raw = fragments.get("roles", Json::Value(Json::nullValue));
+  if (!roles_raw.isObject()) return Json::Value(Json::objectValue);
+
+  Json::Value out(Json::objectValue);
+  for (const auto& role_key : roles_raw.getMemberNames()) {
+    const std::string role = lower_copy(trim_copy(role_key));
+    if (role.empty()) continue;
+
+    std::vector<std::string> lines = shared_lines;
+    const Json::Value role_fragments = roles_raw[role_key];
+    if (role_fragments.isArray()) {
+      for (Json::ArrayIndex i = 0; i < role_fragments.size(); ++i) {
+        if (!role_fragments[i].isString()) continue;
+        const std::string line = trim_copy(role_fragments[i].asString());
+        if (!line.empty()) lines.push_back(line);
+      }
+    }
+    if (lines.empty()) continue;
+
+    std::string joined;
+    for (size_t i = 0; i < lines.size(); ++i) {
+      if (i > 0) joined += "\n";
+      joined += lines[i];
+    }
+    out[role] = joined;
+  }
+  return out;
+}
+
+static Json::Value materialize_team_run_request(
+  const RuntimeSkillEntry& entry,
+  const Json::Value& inputs,
+  std::string* out_err
+) {
+  const Json::Value team_template = entry.manifest.get("team_template", Json::Value(Json::nullValue));
+  if (team_template.isNull()) return Json::Value(Json::nullValue);
+  if (!team_template.isObject()) {
+    if (out_err) *out_err = "team_template must be an object";
+    return Json::Value(Json::nullValue);
+  }
+
+  Json::Value run_request(Json::objectValue);
+  Json::Value team_request(Json::objectValue);
+  if (team_template.isMember("run") || team_template.isMember("team")) {
+    Json::Value raw_run = team_template.get("run", Json::Value(Json::objectValue));
+    Json::Value raw_team = team_template.get("team", Json::Value(Json::objectValue));
+    if (raw_run.isNull()) raw_run = Json::Value(Json::objectValue);
+    if (raw_team.isNull()) raw_team = Json::Value(Json::objectValue);
+    if (!raw_run.isObject()) {
+      if (out_err) *out_err = "team_template.run must be an object when present";
+      return Json::Value(Json::nullValue);
+    }
+    if (!raw_team.isObject()) {
+      if (out_err) *out_err = "team_template.team must be an object when present";
+      return Json::Value(Json::nullValue);
+    }
+    run_request = raw_run;
+    team_request = raw_team;
+  } else {
+    team_request = team_template;
+  }
+
+  const std::string goal = trimmed_string_or_empty(inputs.get("goal", Json::Value(Json::nullValue)));
+  const std::string deliverable = trimmed_string_or_empty(inputs.get("deliverable", Json::Value(Json::nullValue)));
+  std::string prompt = trimmed_string_or_empty(run_request.get("prompt", Json::Value(Json::nullValue)));
+  if (prompt.empty()) {
+    if (goal.empty()) {
+      if (out_err) *out_err = "team runtime skills require team_template.run.prompt or inputs.goal";
+      return Json::Value(Json::nullValue);
+    }
+    prompt = goal;
+    if (!deliverable.empty()) prompt += "\n\nDeliverable:\n" + deliverable;
+    run_request["prompt"] = prompt;
+  }
+
+  const Json::Value role_instructions = materialize_role_instructions(entry);
+  if (!team_request.isMember("roles") && role_instructions.isObject() && !role_instructions.getMemberNames().empty()) {
+    Json::Value roles(Json::arrayValue);
+    for (const auto& role : role_instructions.getMemberNames()) roles.append(role);
+    team_request["roles"] = roles;
+  }
+
+  if (!team_request.isMember("role_instructions")) {
+    if (role_instructions.isObject() && !role_instructions.getMemberNames().empty()) {
+      team_request["role_instructions"] = role_instructions;
+    }
+  } else if (!team_request["role_instructions"].isObject()) {
+    if (out_err) *out_err = "team_template.role_instructions must be an object when present";
+    return Json::Value(Json::nullValue);
+  }
+
+  if (team_request.isMember("role_instructions") && !team_request.isMember("role_prompt_mode")) {
+    team_request["role_prompt_mode"] = "prepend";
+  }
+
+  if (!team_request.isMember("goal_contract")) {
+    Json::Value goal_contract(Json::objectValue);
+    if (!goal.empty()) goal_contract["goal"] = goal;
+    if (!deliverable.empty()) {
+      Json::Value success_criteria(Json::arrayValue);
+      success_criteria.append(deliverable);
+      goal_contract["success_criteria"] = success_criteria;
+    }
+    if (!goal_contract.getMemberNames().empty()) team_request["goal_contract"] = goal_contract;
+  }
+
+  const Json::Value policy_preset = entry.manifest.get("policy_preset", Json::Value(Json::objectValue));
+  if (policy_preset.isObject()) {
+    const Json::Value max_steps = policy_preset.get("max_steps", Json::Value(Json::nullValue));
+    if (!run_request.isMember("max_steps") &&
+        (max_steps.isInt64() || max_steps.isUInt64() || max_steps.isInt() || max_steps.isUInt())) {
+      run_request["max_steps"] = max_steps;
+    }
+    const std::string approval_mode = trimmed_string_or_empty(
+      policy_preset.get("approval_mode", Json::Value(Json::nullValue))
+    );
+    if (!team_request.isMember("quorum_policy") &&
+        (!approval_mode.empty() || team_request.isMember("quorum"))) {
+      Json::Value quorum_policy(Json::objectValue);
+      quorum_policy["mode"] = "auto";
+      team_request["quorum_policy"] = quorum_policy;
+    }
+  }
+
+  team_request["runtime_skill"] = runtime_skill_audit_block(entry, inputs);
+  Json::Value out(Json::objectValue);
+  out["run"] = run_request;
+  out["team"] = team_request;
+  return out;
+}
+
 static bool apply_common_headers(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
@@ -788,6 +949,13 @@ void handle_runtime_skill_resolve_endpoint(
     return;
   }
   if (!workflow_request.isNull()) materialized["workflow_request"] = workflow_request;
+  const Json::Value team_run_request = materialize_team_run_request(entry, out["inputs"], &err);
+  if (!err.empty()) {
+    resp->status = 400;
+    resp->body = json_error_body(err);
+    return;
+  }
+  if (!team_run_request.isNull()) materialized["team_run_request"] = team_run_request;
   out["materialized"] = materialized;
   out["capabilities_checked"] = true;
   out["capabilities"] = capabilities;

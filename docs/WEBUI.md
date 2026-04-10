@@ -104,6 +104,8 @@ Secret handling:
 - Team run panel can cancel async runs and surfaces the aggregated member job summary plus cancel results.
 - Team run panel supports per-role run overrides JSON (applied before member overrides; allowlist enforced server-side).
 - Team run panel can seed role overrides from team defaults (`meta.role_overrides`) when present.
+- Team run panel now includes a **Runtime skill** section that lists `team_bundle` skills from the connected agentd, renders manifest-backed input fields when possible, and materializes them into the broker team-run form.
+- Applying a `team_bundle` preserves hidden run/team payload fields such as `runtime_skill`, `goal_contract`, and `run.max_steps` instead of flattening them away when the broker request is submitted.
 - Team run status lookup surfaces applied overrides (`role_overrides_applied` / `member_overrides_applied`) with an expand toggle.
 - Team run status lookup supports auto refresh on team run SSE events.
 - Team run status lookup surfaces `member_sessions` for moderator broadcasts and includes a moderator panel to publish directives/tasks to selected roles or members.

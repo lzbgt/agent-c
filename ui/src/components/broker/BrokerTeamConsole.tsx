@@ -18,6 +18,7 @@ import type { BrokerEventRow } from "./types";
 
 export type BrokerTeamConsoleProps = {
   base: string;
+  daemonBase: string;
   auth: ApiAuth;
   authKey: string;
   clientId: string;
@@ -161,6 +162,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         <SectionCard title="Team run" description="Start and monitor team runs." defaultOpen={true}>
           <BrokerTeamRunPanel
             base={props.base}
+            daemonBase={props.daemonBase}
             auth={props.auth}
             canQuery={canQuery}
             teamId={setupState.teamIdTrimmed}

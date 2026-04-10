@@ -71,6 +71,13 @@ RuntimeSkillResolveResponse:
       additionalProperties: true
     materialized:
       type: object
+      properties:
+        workflow_request:
+          type: object
+          additionalProperties: true
+        team_run_request:
+          type: object
+          additionalProperties: true
       additionalProperties: true
     capabilities_checked: { type: boolean }
     capabilities:

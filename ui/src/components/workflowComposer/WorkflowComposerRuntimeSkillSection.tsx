@@ -6,7 +6,7 @@ import type {
   RuntimeSkillSummary,
 } from "../../api/schemas/runtime_skills";
 
-type WorkflowComposerRuntimeSkillSectionProps = {
+export type WorkflowComposerRuntimeSkillSectionProps = {
   applyBusy: boolean;
   inputsJson: string;
   inputsParseError: string | null;
@@ -19,6 +19,11 @@ type WorkflowComposerRuntimeSkillSectionProps = {
   onApply: () => void;
   onSelectSkill: (skillId: string) => void;
   onSetInputsJson: (next: string) => void;
+  applyLabel?: string;
+  emptyStateCopy?: string;
+  loadingCopy?: string;
+  sectionDescription?: string;
+  sectionTitle?: string;
 };
 
 const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
@@ -73,14 +78,21 @@ export default function WorkflowComposerRuntimeSkillSection(props: WorkflowCompo
     props.onSetInputsJson(toPrettyJson(next));
   };
 
+  const applyLabel = props.applyLabel || "Apply skill";
+  const emptyStateCopy =
+    props.emptyStateCopy || "Select a workflow bundle to materialize it into the composer.";
+  const loadingCopy = props.loadingCopy || "Loading runtime skills…";
+  const sectionDescription =
+    props.sectionDescription ||
+    "Start from a reusable workflow bundle instead of hand-authoring the JSON.";
+  const sectionTitle = props.sectionTitle || "Runtime skill";
+
   return (
     <div className="mt-3 rounded-md border border-white/10 bg-black/20 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <div className="text-xs font-semibold text-white/70">Runtime skill</div>
-          <div className="text-[11px] text-white/50">
-            Start from a reusable workflow bundle instead of hand-authoring the JSON.
-          </div>
+          <div className="text-xs font-semibold text-white/70">{sectionTitle}</div>
+          <div className="text-[11px] text-white/50">{sectionDescription}</div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
           <label className="flex items-center gap-1">
@@ -105,12 +117,12 @@ export default function WorkflowComposerRuntimeSkillSection(props: WorkflowCompo
             onClick={props.onApply}
             disabled={!props.selectedSkill || props.applyBusy}
           >
-            {props.applyBusy ? "Applying…" : "Apply skill"}
+            {props.applyBusy ? "Applying…" : applyLabel}
           </button>
         </div>
       </div>
 
-      {props.loading ? <div className="mt-2 text-xs text-white/50">Loading runtime skills…</div> : null}
+      {props.loading ? <div className="mt-2 text-xs text-white/50">{loadingCopy}</div> : null}
       {props.loadError ? <div className="mt-2 text-xs text-rose-200">{props.loadError}</div> : null}
       {props.runtimeSkillError ? <div className="mt-2 text-xs text-rose-200">{props.runtimeSkillError}</div> : null}
 
@@ -192,7 +204,7 @@ export default function WorkflowComposerRuntimeSkillSection(props: WorkflowCompo
           </div>
         </>
       ) : props.skills.length > 0 && !props.loading ? (
-        <div className="mt-2 text-xs text-white/45">Select a workflow bundle to materialize it into the composer.</div>
+        <div className="mt-2 text-xs text-white/45">{emptyStateCopy}</div>
       ) : null}
     </div>
   );

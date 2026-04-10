@@ -1,8 +1,10 @@
 import React from "react";
 import type { BrokerAgentInfo, BrokerDeploymentInfo } from "../../api";
+import type { RuntimeSkillSummary } from "../../api/schemas/runtime_skills";
 import FieldLabel from "../FieldLabel";
 import TeamRunCreateAdvancedSection from "./TeamRunCreateAdvancedSection";
 import TeamRunCreateApprovalsSection from "./TeamRunCreateApprovalsSection";
+import TeamRunCreateRuntimeSkillSection from "./TeamRunCreateRuntimeSkillSection";
 import TeamRunCreateRuntimeSection from "./TeamRunCreateRuntimeSection";
 import type { RuntimeMembersPreview, RuntimeSavePreview, RuntimeTeamDiff } from "./teamRunPanelTypes";
 
@@ -16,6 +18,18 @@ export type InlineApproval = {
 export type TeamRunCreatePanelProps = {
   canQuery: boolean;
   teamId: string;
+  runtimeSkillApplyBusy: boolean;
+  runtimeSkillInputsJson: string;
+  runtimeSkillInputsParseError: string | null;
+  runtimeSkillListError: string | null;
+  runtimeSkillListLoading: boolean;
+  runtimeSkillError: string | null;
+  selectedRuntimeSkill: RuntimeSkillSummary | null;
+  runtimeSkillId: string;
+  runtimeSkills: RuntimeSkillSummary[];
+  onApplyRuntimeSkill: () => void;
+  onSelectRuntimeSkill: (skillId: string) => void;
+  onSetRuntimeSkillInputsJson: (next: string) => void;
   runPrompt: string;
   setRunPrompt: (value: string) => void;
   runModel: string;
@@ -135,6 +149,20 @@ export default function TeamRunCreatePanel(props: TeamRunCreatePanelProps) {
     <>
       <div className="text-xs font-semibold text-white/80">Team run</div>
       <div className="text-[11px] text-white/50">Creates a run across team members; prompt is required.</div>
+      <TeamRunCreateRuntimeSkillSection
+        applyBusy={props.runtimeSkillApplyBusy}
+        inputsJson={props.runtimeSkillInputsJson}
+        inputsParseError={props.runtimeSkillInputsParseError}
+        loadError={props.runtimeSkillListError}
+        loading={props.runtimeSkillListLoading}
+        runtimeSkillError={props.runtimeSkillError}
+        selectedSkill={props.selectedRuntimeSkill}
+        selectedSkillId={props.runtimeSkillId}
+        skills={props.runtimeSkills}
+        onApply={props.onApplyRuntimeSkill}
+        onSelectSkill={props.onSelectRuntimeSkill}
+        onSetInputsJson={props.onSetRuntimeSkillInputsJson}
+      />
       <div className="flex flex-wrap items-center gap-2">
         <FieldLabel>Prompt</FieldLabel>
         <input

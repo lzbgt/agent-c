@@ -469,6 +469,126 @@ def _materialize_workflow_request(
     return workflow_request
 
 
+def _runtime_skill_audit_block(
+    manifest: Mapping[str, Any], inputs: Mapping[str, Any]
+) -> Dict[str, Any]:
+    return {
+        "skill_id": manifest["skill_id"],
+        "skill_version": manifest["version"],
+        "manifest_sha256": manifest_hash(manifest),
+        "inputs": dict(inputs),
+    }
+
+
+def _as_trimmed_string(value: Any) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _clone_json_object(value: Mapping[str, Any]) -> Dict[str, Any]:
+    return json.loads(json.dumps(dict(value), ensure_ascii=False))
+
+
+def _materialize_role_instructions(
+    manifest: Mapping[str, Any],
+) -> Dict[str, str]:
+    fragments = manifest.get("instruction_fragments")
+    if not isinstance(fragments, dict):
+        return {}
+
+    shared_raw = fragments.get("shared")
+    shared = [item.strip() for item in shared_raw if isinstance(item, str) and item.strip()] if isinstance(shared_raw, list) else []
+    roles_raw = fragments.get("roles")
+    if not isinstance(roles_raw, dict):
+        return {}
+
+    role_instructions: Dict[str, str] = {}
+    for role, role_fragments in roles_raw.items():
+        if not isinstance(role, str) or not role.strip():
+            continue
+        lines = list(shared)
+        if isinstance(role_fragments, list):
+            lines.extend(item.strip() for item in role_fragments if isinstance(item, str) and item.strip())
+        if lines:
+            role_instructions[role.strip().lower()] = "\n".join(lines)
+    return role_instructions
+
+
+def _materialize_team_run_request(
+    manifest: Mapping[str, Any], inputs: Mapping[str, Any]
+) -> Dict[str, Any] | None:
+    team_template = manifest.get("team_template")
+    if team_template is None:
+        return None
+    if not isinstance(team_template, dict):
+        raise RuntimeSkillError("team_template must be an object")
+
+    if "run" in team_template or "team" in team_template:
+        raw_run = team_template.get("run", {})
+        raw_team = team_template.get("team", {})
+        if raw_run is None:
+            raw_run = {}
+        if raw_team is None:
+            raw_team = {}
+        if not isinstance(raw_run, dict):
+            raise RuntimeSkillError("team_template.run must be an object when present")
+        if not isinstance(raw_team, dict):
+            raise RuntimeSkillError("team_template.team must be an object when present")
+        run_request = _clone_json_object(raw_run)
+        team_request = _clone_json_object(raw_team)
+    else:
+        run_request = {}
+        team_request = _clone_json_object(team_template)
+
+    goal = _as_trimmed_string(inputs.get("goal"))
+    deliverable = _as_trimmed_string(inputs.get("deliverable"))
+    prompt = _as_trimmed_string(run_request.get("prompt"))
+    if not prompt:
+        if not goal:
+            raise RuntimeSkillError(
+                "team runtime skills require team_template.run.prompt or inputs.goal"
+            )
+        prompt = goal
+        if deliverable:
+            prompt = f"{prompt}\n\nDeliverable:\n{deliverable}"
+        run_request["prompt"] = prompt
+
+    if "roles" not in team_request:
+        role_instructions = _materialize_role_instructions(manifest)
+        if role_instructions:
+            team_request["roles"] = list(role_instructions.keys())
+
+    if "role_instructions" not in team_request:
+        role_instructions = _materialize_role_instructions(manifest)
+        if role_instructions:
+            team_request["role_instructions"] = role_instructions
+    elif not isinstance(team_request.get("role_instructions"), dict):
+        raise RuntimeSkillError("team_template.role_instructions must be an object when present")
+
+    if team_request.get("role_instructions") and "role_prompt_mode" not in team_request:
+        team_request["role_prompt_mode"] = "prepend"
+
+    if "goal_contract" not in team_request:
+        goal_contract: Dict[str, Any] = {}
+        if goal:
+            goal_contract["goal"] = goal
+        if deliverable:
+            goal_contract["success_criteria"] = [deliverable]
+        if goal_contract:
+            team_request["goal_contract"] = goal_contract
+
+    policy_preset = manifest.get("policy_preset")
+    if isinstance(policy_preset, dict):
+        max_steps = policy_preset.get("max_steps")
+        if isinstance(max_steps, int) and max_steps >= 0 and "max_steps" not in run_request:
+            run_request["max_steps"] = max_steps
+        approval_mode = _as_trimmed_string(policy_preset.get("approval_mode"))
+        if "quorum_policy" not in team_request and (approval_mode or team_request.get("quorum") is not None):
+            team_request["quorum_policy"] = {"mode": "auto"}
+
+    team_request["runtime_skill"] = _runtime_skill_audit_block(manifest, inputs)
+    return {"run": run_request, "team": team_request}
+
+
 def build_resolution_document(
     entry: RuntimeSkillEntry,
     *,
@@ -507,6 +627,7 @@ def build_resolution_document(
         },
         "materialized": {
             "workflow_request": _materialize_workflow_request(manifest, inputs),
+            "team_run_request": _materialize_team_run_request(manifest, inputs),
         },
         "capabilities_checked": bool(capabilities),
     }

@@ -670,6 +670,7 @@ export default function App() {
                   mode: "inline",
                   forcedTab: "setup",
                   base: connection.brokerBase,
+                  daemonBase: effectiveBase,
                   auth: daemonAuth,
                   authKey,
                   clientId: client.id,
@@ -754,6 +755,7 @@ export default function App() {
                 brokerPanel={{
                   enabled: connectionMode === "broker",
                   brokerBase: connection.brokerBase,
+                  daemonBase: effectiveBase,
                   brokerAgentId: connection.brokerAgentId,
                   setBrokerAgentId: connection.setBrokerAgentId,
                   auth: daemonAuth,

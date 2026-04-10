@@ -13,6 +13,7 @@ import type { ApiAuth } from "../../api";
 
 export type BrokerTeamRunPanelProps = {
   base: string;
+  daemonBase: string;
   auth: ApiAuth;
   canQuery: boolean;
   teamId: string;
@@ -52,6 +53,7 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
 
   const createState = useBrokerTeamRunCreateState({
     base: props.base,
+    daemonBase: props.daemonBase,
     auth: props.auth,
     canQuery: props.canQuery,
     teamIdTrimmed,
@@ -76,6 +78,18 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
       <TeamRunCreatePanel
         canQuery={props.canQuery}
         teamId={teamIdTrimmed}
+        runtimeSkillApplyBusy={createState.runtimeSkillApplyBusy}
+        runtimeSkillInputsJson={createState.runtimeSkillInputsJson}
+        runtimeSkillInputsParseError={createState.runtimeSkillInputsParseError}
+        runtimeSkillListError={createState.runtimeSkillListError}
+        runtimeSkillListLoading={createState.runtimeSkillListLoading}
+        runtimeSkillError={createState.runtimeSkillError}
+        selectedRuntimeSkill={createState.selectedRuntimeSkill}
+        runtimeSkillId={createState.runtimeSkillId}
+        runtimeSkills={createState.runtimeSkills}
+        onApplyRuntimeSkill={() => void createState.applyRuntimeSkill()}
+        onSelectRuntimeSkill={createState.selectRuntimeSkill}
+        onSetRuntimeSkillInputsJson={createState.setRuntimeSkillInputsJson}
         runPrompt={createState.runPrompt}
         setRunPrompt={createState.setRunPrompt}
         runModel={createState.runModel}

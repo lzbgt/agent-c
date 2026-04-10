@@ -57,6 +57,7 @@ type AppAdvancedPanelProps = {
   brokerPanel: {
     enabled: boolean;
     brokerBase: string;
+    daemonBase: string;
     brokerAgentId: string;
     setBrokerAgentId: (next: string) => void;
     auth: ApiAuth;
@@ -162,6 +163,7 @@ export default function AppAdvancedPanel(props: AppAdvancedPanelProps) {
             if (!open) props.setAdvancedPage("");
           }}
           brokerBase={props.brokerPanel.brokerBase}
+          daemonBase={props.brokerPanel.daemonBase}
           brokerAgentId={props.brokerPanel.brokerAgentId}
           setBrokerAgentId={props.brokerPanel.setBrokerAgentId}
           auth={props.brokerPanel.auth}

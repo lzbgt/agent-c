@@ -15,6 +15,7 @@ export type BrokerPanelProps = {
   open: boolean;
   onToggle: (open: boolean) => void;
   brokerBase: string;
+  daemonBase: string;
   brokerAgentId: string;
   setBrokerAgentId: (next: string) => void;
   auth: ApiAuth;
@@ -82,6 +83,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
             {state.brokerPage === "teams" ? (
               <BrokerTeamConsole
                 base={state.base}
+                daemonBase={props.daemonBase}
                 auth={props.auth}
                 authKey={props.authKey}
                 clientId={props.clientId}

@@ -18,7 +18,45 @@ type UseBrokerTeamRunCreateRequestStateArgs = {
   membersList: TeamMemberRow[];
   teamMeta?: Record<string, unknown> | null;
   runRuntimeMembersJson: string;
+  setRunRuntimeMembersJson: React.Dispatch<React.SetStateAction<string>>;
   setRunError: React.Dispatch<React.SetStateAction<string | null>>;
+};
+
+type MaterializedTeamRunRequest = {
+  run?: Record<string, unknown>;
+  team?: Record<string, unknown>;
+};
+
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+const cloneRecord = (value: Record<string, unknown>) =>
+  JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+
+const trimString = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+
+const toPrettyJson = (value: unknown) => JSON.stringify(value, null, 2);
+
+const pickNumberString = (value: unknown, fallback: string) =>
+  typeof value === "number" && Number.isFinite(value) ? String(value) : fallback;
+
+const asApprovalEntry = (value: unknown): InlineApproval | null => {
+  if (typeof value === "string" && value.trim()) {
+    return { member_id: value.trim(), decision: "approve" };
+  }
+  if (!isObjectRecord(value)) return null;
+  const memberId = trimString(value.member_id);
+  if (!memberId) return null;
+  const decision = trimString(value.decision).toLowerCase();
+  const entry: InlineApproval = {
+    member_id: memberId,
+    decision: decision === "deny" ? "deny" : "approve",
+  };
+  const ruleId = trimString(value.rule_id);
+  const reason = trimString(value.reason);
+  if (ruleId) entry.rule_id = ruleId;
+  if (reason) entry.reason = reason;
+  return entry;
 };
 
 export default function useBrokerTeamRunCreateRequestState({
@@ -28,6 +66,7 @@ export default function useBrokerTeamRunCreateRequestState({
   membersList,
   teamMeta,
   runRuntimeMembersJson,
+  setRunRuntimeMembersJson,
   setRunError,
 }: UseBrokerTeamRunCreateRequestStateArgs) {
   const [runPrompt, setRunPrompt] = React.useState<string>("");
@@ -57,6 +96,8 @@ export default function useBrokerTeamRunCreateRequestState({
   const [runBusy, setRunBusy] = React.useState<boolean>(false);
   const [runResult, setRunResult] = React.useState<TeamRunCreateResult | null>(null);
   const [runQuorum, setRunQuorum] = React.useState<QuorumEval | null>(null);
+  const [runExtraPayload, setRunExtraPayload] = React.useState<Record<string, unknown>>({});
+  const [teamExtraPayload, setTeamExtraPayload] = React.useState<Record<string, unknown>>({});
 
   const teamRoleOverridesDefaults =
     teamMeta?.role_overrides && typeof teamMeta.role_overrides === "object"
@@ -130,38 +171,61 @@ export default function useBrokerTeamRunCreateRequestState({
       setRunQuorum(null);
       setRunBusy(true);
       try {
-        const runPayload: Record<string, unknown> = { prompt };
+        const runPayload: Record<string, unknown> = cloneRecord(runExtraPayload);
+        runPayload.prompt = prompt;
         const model = String(runModel || "").trim();
         if (model) runPayload.model = model;
+        else delete runPayload.model;
         const tools = String(runTools || "").trim();
         if (tools) runPayload.tools = tools;
+        else delete runPayload.tools;
         const sharedScope = String(runSharedMemoryScope || "").trim();
         if (sharedScope) {
           runPayload.memory_scope_id = sharedScope;
           runPayload.memory_scope_mode = normalizeSharedMemoryMode(runSharedMemoryMode);
+        } else {
+          delete runPayload.memory_scope_id;
+          delete runPayload.memory_scope_mode;
         }
-        const teamPayload: Record<string, unknown> = {};
+        const teamPayload: Record<string, unknown> = cloneRecord(teamExtraPayload);
         const role = String(runRole || "").trim();
         if (role) teamPayload.role = role;
+        else delete teamPayload.role;
         const rolesCsv = String(runRoles || "").trim();
         if (rolesCsv) teamPayload.roles = rolesCsv.split(",").map((item) => item.trim()).filter(Boolean);
+        else delete teamPayload.roles;
         const concurrency = Number.parseInt(String(runConcurrency || ""), 10);
         if (Number.isFinite(concurrency)) teamPayload.max_concurrency = concurrency;
+        else delete teamPayload.max_concurrency;
         const timeout = Number.parseInt(String(runTimeoutMs || ""), 10);
         if (Number.isFinite(timeout)) teamPayload.timeout_ms = timeout;
+        else delete teamPayload.timeout_ms;
         const mode = String(runMode || "").trim();
         if (mode) teamPayload.mode = mode;
+        else delete teamPayload.mode;
         const quorumMode = String(runQuorumMode || "").trim();
-        if (quorumMode) teamPayload.quorum_policy = { mode: quorumMode };
+        if (quorumMode) {
+          const quorumPolicy = isObjectRecord(teamPayload.quorum_policy)
+            ? cloneRecord(teamPayload.quorum_policy)
+            : {};
+          quorumPolicy.mode = quorumMode;
+          teamPayload.quorum_policy = quorumPolicy;
+        } else {
+          delete teamPayload.quorum_policy;
+        }
         if (runAutoAllocateRoles) {
           teamPayload.auto_allocate_roles = true;
           const maxMembers = Number.parseInt(String(runAutoAllocateMaxMembers || "").trim(), 10);
           if (Number.isFinite(maxMembers)) {
             teamPayload.auto_allocate_max_members = maxMembers;
           }
+        } else {
+          delete teamPayload.auto_allocate_roles;
+          delete teamPayload.auto_allocate_max_members;
         }
         const overridesMode = String(runOverridesMode || "").trim();
         if (overridesMode) teamPayload.run_overrides_mode = overridesMode;
+        else delete teamPayload.run_overrides_mode;
         if (overridesMode === "explicit") {
           const rawOverrides = String(runMemberOverridesJson || "").trim();
           if (rawOverrides) {
@@ -178,6 +242,9 @@ export default function useBrokerTeamRunCreateRequestState({
             }
             teamPayload.member_overrides = parsed as Record<string, unknown>;
           }
+          if (!rawOverrides) delete teamPayload.member_overrides;
+        } else {
+          delete teamPayload.member_overrides;
         }
         const roleOverridesRaw = String(runRoleOverridesJson || "").trim();
         if (roleOverridesRaw) {
@@ -193,11 +260,17 @@ export default function useBrokerTeamRunCreateRequestState({
             return;
           }
           teamPayload.role_overrides = parsed as Record<string, unknown>;
+        } else {
+          delete teamPayload.role_overrides;
         }
         if (runRoleInstructionsOverride) {
           teamPayload.role_instructions = runRoleInstructions;
           const promptMode = String(runRolePromptMode || "").trim();
           if (promptMode) teamPayload.role_prompt_mode = promptMode;
+          else delete teamPayload.role_prompt_mode;
+        } else {
+          delete teamPayload.role_instructions;
+          delete teamPayload.role_prompt_mode;
         }
         const runtimeMembersRaw = String(runRuntimeMembersJson || "").trim();
         if (runtimeMembersRaw) {
@@ -213,9 +286,13 @@ export default function useBrokerTeamRunCreateRequestState({
             return;
           }
           teamPayload.runtime_members = parsed as RuntimeMemberDraft[];
+        } else {
+          delete teamPayload.runtime_members;
         }
         if (runApprovals.length > 0) {
           teamPayload.approvals = runApprovals;
+        } else {
+          delete teamPayload.approvals;
         }
         const resp = await apiBrokerTeamRunCreate(base, teamIdTrimmed, { run: runPayload, team: teamPayload }, auth);
         if (!resp.ok) {
@@ -264,8 +341,143 @@ export default function useBrokerTeamRunCreateRequestState({
       runSharedMemoryScope,
       runTimeoutMs,
       runTools,
+      runExtraPayload,
+      teamExtraPayload,
       teamIdTrimmed,
       setRunError,
+    ],
+  );
+
+  const applyMaterializedTeamRunRequest = React.useCallback(
+    (payload: MaterializedTeamRunRequest) => {
+      const runPayload = isObjectRecord(payload.run) ? cloneRecord(payload.run) : {};
+      const teamPayload = isObjectRecord(payload.team) ? cloneRecord(payload.team) : {};
+
+      setRunPrompt(trimString(runPayload.prompt));
+      delete runPayload.prompt;
+
+      setRunModel(trimString(runPayload.model));
+      delete runPayload.model;
+
+      setRunTools(trimString(runPayload.tools) || "host");
+      delete runPayload.tools;
+
+      const sharedScope =
+        trimString(runPayload.memory_scope_id) || trimString(teamPayload.shared_memory_scope_id);
+      setRunSharedMemoryScope(sharedScope);
+      delete runPayload.memory_scope_id;
+      delete teamPayload.shared_memory_scope_id;
+
+      const sharedModeSource =
+        runPayload.memory_scope_mode ?? teamPayload.shared_memory_mode ?? teamPayload.memory_scope_mode ?? "read_write";
+      setRunSharedMemoryMode(normalizeSharedMemoryMode(sharedModeSource));
+      delete runPayload.memory_scope_mode;
+      delete teamPayload.shared_memory_mode;
+      delete teamPayload.memory_scope_mode;
+
+      setRunMode(trimString(teamPayload.mode) || "async");
+      delete teamPayload.mode;
+
+      setRunRole(trimString(teamPayload.role));
+      delete teamPayload.role;
+
+      const roles = Array.isArray(teamPayload.roles)
+        ? teamPayload.roles.map((value) => trimString(value)).filter(Boolean)
+        : [];
+      setRunRoles(roles.join(","));
+      delete teamPayload.roles;
+
+      setRunConcurrency(pickNumberString(teamPayload.max_concurrency, "1"));
+      delete teamPayload.max_concurrency;
+
+      setRunTimeoutMs(pickNumberString(teamPayload.timeout_ms, "60000"));
+      delete teamPayload.timeout_ms;
+
+      const quorumPolicy = isObjectRecord(teamPayload.quorum_policy)
+        ? cloneRecord(teamPayload.quorum_policy)
+        : null;
+      setRunQuorumMode(trimString(quorumPolicy?.mode) || "auto");
+      if (quorumPolicy) {
+        delete quorumPolicy.mode;
+        if (Object.keys(quorumPolicy).length > 0) {
+          teamPayload.quorum_policy = quorumPolicy;
+        } else {
+          delete teamPayload.quorum_policy;
+        }
+      } else {
+        delete teamPayload.quorum_policy;
+      }
+
+      const autoAllocateRoles = teamPayload.auto_allocate_roles === true;
+      setRunAutoAllocateRoles(autoAllocateRoles);
+      delete teamPayload.auto_allocate_roles;
+      setRunAutoAllocateMaxMembers(
+        autoAllocateRoles ? pickNumberString(teamPayload.auto_allocate_max_members, "") : "",
+      );
+      delete teamPayload.auto_allocate_max_members;
+
+      const overridesMode = trimString(teamPayload.run_overrides_mode) || "member_meta";
+      setRunOverridesMode(overridesMode);
+      delete teamPayload.run_overrides_mode;
+
+      const memberOverrides = isObjectRecord(teamPayload.member_overrides)
+        ? cloneRecord(teamPayload.member_overrides)
+        : null;
+      setRunMemberOverridesJson(memberOverrides ? toPrettyJson(memberOverrides) : "");
+      delete teamPayload.member_overrides;
+      if (memberOverrides && overridesMode === "member_meta") {
+        setRunOverridesMode("explicit");
+      }
+
+      const roleOverrides = isObjectRecord(teamPayload.role_overrides)
+        ? cloneRecord(teamPayload.role_overrides)
+        : null;
+      setRunRoleOverridesJson(roleOverrides ? toPrettyJson(roleOverrides) : "");
+      delete teamPayload.role_overrides;
+
+      const roleInstructions = normalizeRoleInstructionMap(teamPayload.role_instructions);
+      delete teamPayload.role_instructions;
+      if (Object.keys(roleInstructions).length > 0) {
+        setRunRoleInstructionsOverride(true);
+        setRunRoleInstructions(roleInstructions);
+        setRunRolePromptMode(normalizeRolePromptMode(teamPayload.role_prompt_mode) || "prepend");
+      } else {
+        setRunRoleInstructionsOverride(false);
+        setRunRoleInstructions({});
+        setRunRolePromptMode("prepend");
+      }
+      delete teamPayload.role_prompt_mode;
+
+      const runtimeMembers = Array.isArray(teamPayload.runtime_members) ? teamPayload.runtime_members : null;
+      setRunRuntimeMembersJson(runtimeMembers && runtimeMembers.length > 0 ? toPrettyJson(runtimeMembers) : "");
+      delete teamPayload.runtime_members;
+
+      const approvalsRaw = Array.isArray(teamPayload.approvals) ? teamPayload.approvals : null;
+      const mappedApprovals = approvalsRaw
+        ? approvalsRaw
+            .map(asApprovalEntry)
+            .filter((value): value is InlineApproval => value !== null)
+        : [];
+      if (approvalsRaw && mappedApprovals.length === approvalsRaw.length) {
+        setRunApprovals(mappedApprovals);
+        delete teamPayload.approvals;
+      } else {
+        setRunApprovals([]);
+      }
+      setRunApprovalMemberId("");
+      setRunApprovalRuleId("");
+      setRunApprovalReason("");
+      setRunApprovalDecision("approve");
+
+      setRunExtraPayload(runPayload);
+      setTeamExtraPayload(teamPayload);
+      setRunResult(null);
+      setRunQuorum(null);
+      setRunError(null);
+    },
+    [
+      setRunError,
+      setRunRuntimeMembersJson,
     ],
   );
 
@@ -334,7 +546,10 @@ export default function useBrokerTeamRunCreateRequestState({
     setRunSharedMemoryMode(teamSharedMemoryModeDefault);
     setRunAutoAllocateRoles(false);
     setRunAutoAllocateMaxMembers("");
-  }, [teamIdTrimmed, teamSharedMemoryModeDefault, teamSharedMemoryScopeDefault]);
+    setRunExtraPayload({});
+    setTeamExtraPayload({});
+    setRunRuntimeMembersJson("");
+  }, [setRunRuntimeMembersJson, teamIdTrimmed, teamSharedMemoryModeDefault, teamSharedMemoryScopeDefault]);
 
   React.useEffect(() => {
     if (!teamIdTrimmed) return;
@@ -405,6 +620,7 @@ export default function useBrokerTeamRunCreateRequestState({
     runRolePlanOptions,
     handleAddRunApproval,
     handleCreateRun,
+    applyMaterializedTeamRunRequest,
     handleSeedRoleOverrides,
     handleSeedRoleInstructions,
     handleSeedExplicitOverrides,

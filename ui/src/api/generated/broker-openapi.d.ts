@@ -4677,6 +4677,11 @@ export interface components {
                 timeout_ms?: number;
                 /** @description Ephemeral per-run members (not persisted in team registry). */
                 runtime_members?: components["schemas"]["TeamRunRuntimeMember"][];
+                goal_contract?: components["schemas"]["TeamRunGoalContract"];
+                /** @description Runtime-skill audit metadata attached by a materialized team bundle. */
+                runtime_skill?: {
+                    [key: string]: unknown;
+                };
                 /** @description Quorum enforcement mode for team_run rules (default auto). */
                 quorum_policy?: {
                     /** @enum {string} */
@@ -4791,6 +4796,10 @@ export interface components {
             };
             /** @description Prompt composition mode for role instructions (prepend/append/replace). */
             role_prompt_mode?: string;
+            /** @description Runtime-skill audit metadata captured in the team run payload. */
+            runtime_skill?: {
+                [key: string]: unknown;
+            };
             members?: components["schemas"]["TeamMember"][];
             /** @description Runtime members included in the team run (if provided). */
             runtime_members?: components["schemas"]["TeamRunRuntimeMember"][];

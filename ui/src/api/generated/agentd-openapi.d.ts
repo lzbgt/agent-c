@@ -10547,6 +10547,13 @@ export interface components {
                 [key: string]: unknown;
             };
             materialized?: {
+                workflow_request?: {
+                    [key: string]: unknown;
+                };
+                team_run_request?: {
+                    [key: string]: unknown;
+                };
+            } & {
                 [key: string]: unknown;
             };
             capabilities_checked?: boolean;

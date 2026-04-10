@@ -86,6 +86,7 @@ export const RuntimeSkillResolveRespSchema = z
     materialized: z
       .object({
         workflow_request: z.record(z.string(), z.unknown()).optional(),
+        team_run_request: z.record(z.string(), z.unknown()).optional(),
       })
       .passthrough()
       .optional(),

@@ -90,6 +90,19 @@ skills. The materialized request:
 - seeds `defaults.max_steps` from `policy_preset.max_steps` when absent
 - attaches `runtime_skill.{skill_id,skill_version,manifest_sha256,inputs}` for audit
 
+For `team_bundle` skills, the resolver also emits
+`materialized.team_run_request`. The materialized request:
+
+- accepts either a compact `team_template` object or `team_template.{run,team}`
+- synthesizes `run.prompt` from `inputs.goal` plus optional `deliverable` when
+  the manifest omits an explicit prompt
+- derives `team.role_instructions` and `team.roles` from
+  `instruction_fragments`
+- seeds `team.goal_contract` from the resolved inputs when absent
+- seeds `run.max_steps` from `policy_preset.max_steps` when absent
+- attaches `team.runtime_skill.{skill_id,skill_version,manifest_sha256,inputs}`
+  for audit
+
 Create a new local runtime skill from the template:
 
 ```bash
@@ -111,4 +124,7 @@ python3 tools/runtime_skills/create_skill.py my-runtime-skill
   - `POST /api/v1/runtime_skills/resolve`
 - The WebUI workflow composer consumes those endpoints to offer “start from skill”
   for `workflow_bundle` entries.
+- The broker team-run panel consumes the same endpoints for `team_bundle`
+  entries and preserves the materialized hidden payload fields when submitting
+  the broker request.
 - Validation is data-only and does not execute arbitrary code.
