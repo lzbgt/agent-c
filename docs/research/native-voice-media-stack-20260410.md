@@ -95,6 +95,10 @@ Reference artifacts downloaded into the repo for exact vendor details:
     credentials, and mirrors browser-style media offers into an active
     direction-compatible answer with `a=setup:passive`, a surfaced `sha-256`
     fingerprint, and provider-owned outbound `msid`/SSRC signaling
+  - ephemeral DTLS identity generation now lives in the shared
+    `session_voice_dtls_identity` helper with direct unit proof for certificate /
+    key / fingerprint output, leaving the embedded provider to own transport
+    state instead of raw certificate construction
   - direct provider coverage now includes a local libjuice loopback peer that
     exchanges a real offer, consumes the candidate-bearing answer, trickles
     remote candidates back into the provider, and proves post-answer transport

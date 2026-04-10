@@ -511,6 +511,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
       daemon/src/session_voice_audio_decode.cpp
       daemon/src/session_voice_audio_encode.cpp
       daemon/src/session_voice_builtin_sdp_answer.cpp
+      daemon/src/session_voice_dtls_identity.cpp
       daemon/src/session_voice_dtls_srtp_util.cpp
       daemon/src/session_voice_rtcp_report.cpp
     )
@@ -960,6 +961,21 @@ if(AGENT_BUILD_HOST)
     endif()
   endif()
   add_test(NAME session_voice_builtin_dtls_transport_tests COMMAND session_voice_builtin_dtls_transport_tests)
+
+  add_executable(session_voice_dtls_identity_tests
+    tests/test_session_voice_dtls_identity.cpp
+    daemon/src/session_voice_dtls_identity.cpp
+  )
+  target_compile_options(session_voice_dtls_identity_tests PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_include_directories(session_voice_dtls_identity_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
+  )
+  target_link_libraries(session_voice_dtls_identity_tests PRIVATE
+    OpenSSL::Crypto
+  )
+  add_test(NAME session_voice_dtls_identity_tests COMMAND session_voice_dtls_identity_tests)
 
   add_executable(session_voice_audio_decode_tests
     tests/test_session_voice_audio_decode.cpp
