@@ -1,5 +1,16 @@
 import React from "react";
-import { apiGetJob, apiGetJobProgress, daemonFetchInit, type AgentEvent, type ApiAuth, type RunResponse } from "../api";
+import {
+  EventSchema,
+  RunResponseSchema,
+  apiGetJob,
+  apiGetJobProgress,
+  daemonFetchInit,
+  type AgentEvent,
+  type ApiAuth,
+  type JobResp,
+  type RunResponse,
+} from "../api";
+import { safeJsonParse, safeObject } from "../jsonUtils";
 import { appendLiveEvents, capLiveEvents } from "../liveEvents";
 import { readSseStream } from "../sse";
 import { sleep } from "../timeUtils";
@@ -28,6 +39,37 @@ export type JobStreamingArgs = {
   auditRefetch: () => unknown;
   sessionsRefetch: () => unknown;
 };
+
+type JobDonePayload = {
+  status: string;
+  error: string | null;
+  result?: RunResponse;
+};
+
+function parseCursorBase(raw: string): number | null {
+  const data = safeObject(safeJsonParse(raw));
+  return typeof data.cursor_base === "number" ? data.cursor_base : null;
+}
+
+function parseStreamAgentEvent(raw: string): AgentEvent | null {
+  const parsed = EventSchema.safeParse(safeJsonParse(raw));
+  return parsed.success ? parsed.data : null;
+}
+
+function parseJobDonePayload(raw: string): JobDonePayload {
+  const data = safeObject(safeJsonParse(raw));
+  const status = typeof data.status === "string" ? data.status : "done";
+  const error =
+    status === "error" || status === "interrupted"
+      ? (typeof data.error === "string" ? data.error : null)
+      : null;
+  const result = RunResponseSchema.safeParse(data.result);
+  return {
+    status,
+    error,
+    result: result.success ? result.data : undefined,
+  };
+}
 
 export default function useJobStreaming(args: JobStreamingArgs) {
   const {
@@ -58,14 +100,14 @@ export default function useJobStreaming(args: JobStreamingArgs) {
     if (!activeJobId) return;
     let cancelled = false;
     const jobId = activeJobId;
-    let watchdogTimer: any = null;
+    let watchdogTimer: ReturnType<typeof setInterval> | null = null;
 
     const startPolling = () => {
       (async () => {
         // Poll job progress + stream events via cursor.
         for (;;) {
           if (cancelled) return;
-          let job: any;
+          let job: JobResp;
           try {
             job = await apiGetJobProgress(effectiveBase, jobId, daemonAuth, { cursor: cursorRef.current, maxEvents: 256 });
           } catch (e) {
@@ -247,34 +289,24 @@ export default function useJobStreaming(args: JobStreamingArgs) {
             if (Number.isFinite(n)) cursorRef.current = n + 1;
           }
           if (evt.event === "reset") {
-            try {
-              const data = JSON.parse(String(evt.data || "{}"));
-              if (typeof data?.cursor_base === "number") {
-                cursorRef.current = data.cursor_base;
-              }
-            } catch {
-              // ignore
+            const cursorBase = parseCursorBase(String(evt.data || "{}"));
+            if (cursorBase !== null) {
+              cursorRef.current = cursorBase;
             }
             setLiveEvents([]);
           } else if (evt.event === "agent_event") {
-            try {
-              const ev = JSON.parse(String(evt.data || "{}"));
+            const ev = parseStreamAgentEvent(String(evt.data || "{}"));
+            if (ev) {
               setLiveEvents((prev) => appendLiveEvents(prev, ev));
-            } catch {
-              // ignore malformed
             }
           } else if (evt.event === "job_done") {
             if (cancelled) return;
             try {
-              const data = JSON.parse(String(evt.data || "{}"));
-              setJobStatus(typeof data?.status === "string" ? data.status : "done");
-              setJobError(
-                typeof data?.status === "string" && (data.status === "error" || data.status === "interrupted")
-                  ? (typeof data?.error === "string" ? data.error : null)
-                  : null,
-              );
+              const data = parseJobDonePayload(String(evt.data || "{}"));
+              setJobStatus(data.status);
+              setJobError(data.error);
               setJobNotice(null);
-              if (data?.result) {
+              if (data.result) {
                 setResult(data.result);
                 setLastCompletedPrompt(lastRunPromptRef.current);
               }
@@ -317,43 +349,36 @@ export default function useJobStreaming(args: JobStreamingArgs) {
         es.onopen = () => {
           // ok
         };
-        es.addEventListener("reset", (evt: any) => {
+        es.addEventListener("reset", (evt: Event) => {
           if (cancelled) return;
-          try {
-            const data = JSON.parse(String(evt.data || "{}"));
-            if (typeof data?.cursor_base === "number") {
-              cursorRef.current = data.cursor_base;
-            }
-          } catch {
-            // ignore
+          const message = evt instanceof MessageEvent ? evt : null;
+          const cursorBase = parseCursorBase(String(message?.data || "{}"));
+          if (cursorBase !== null) {
+            cursorRef.current = cursorBase;
           }
           setLiveEvents([]);
         });
-        es.addEventListener("agent_event", (evt: any) => {
+        es.addEventListener("agent_event", (evt: Event) => {
           if (cancelled) return;
-          try {
-            const ev = JSON.parse(String(evt.data || "{}"));
-            if (evt && typeof evt.lastEventId === "string" && evt.lastEventId.length > 0) {
-              const n = Number(evt.lastEventId);
-              if (Number.isFinite(n)) cursorRef.current = n + 1;
-            }
+          const message = evt instanceof MessageEvent ? evt : null;
+          const ev = parseStreamAgentEvent(String(message?.data || "{}"));
+          if (message && typeof message.lastEventId === "string" && message.lastEventId.length > 0) {
+            const n = Number(message.lastEventId);
+            if (Number.isFinite(n)) cursorRef.current = n + 1;
+          }
+          if (ev) {
             setLiveEvents((prev) => appendLiveEvents(prev, ev));
-          } catch {
-            // ignore malformed
           }
         });
-        es.addEventListener("job_done", (evt: any) => {
+        es.addEventListener("job_done", (evt: Event) => {
           if (cancelled) return;
+          const message = evt instanceof MessageEvent ? evt : null;
           try {
-            const data = JSON.parse(String(evt.data || "{}"));
-            setJobStatus(typeof data?.status === "string" ? data.status : "done");
-            setJobError(
-              typeof data?.status === "string" && (data.status === "error" || data.status === "interrupted")
-                ? (typeof data?.error === "string" ? data.error : null)
-                : null,
-            );
+            const data = parseJobDonePayload(String(message?.data || "{}"));
+            setJobStatus(data.status);
+            setJobError(data.error);
             setJobNotice(null);
-            if (data?.result) {
+            if (data.result) {
               setResult(data.result);
               setLastCompletedPrompt(lastRunPromptRef.current);
             }

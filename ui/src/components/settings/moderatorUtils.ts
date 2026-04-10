@@ -1,4 +1,5 @@
 import type { ModeratorEvent } from "../../api";
+import { safeObject } from "../../jsonUtils";
 
 export type JsonDiffEntry = { path: string; a: unknown; b: unknown };
 
@@ -52,15 +53,15 @@ export function collectJsonDiffs(a: unknown, b: unknown, path: string, out: Json
 }
 
 export function formatModeratorEventSummary(event: ModeratorEvent) {
-  const type = typeof event?.type === "string" ? event.type : "";
-  const data = event?.data && typeof event.data === "object" ? (event.data as any) : {};
+  const type = typeof event.type === "string" ? event.type : "";
+  const data = safeObject(event.data);
   if (type === "moderator_directive") {
-    const directive = typeof data?.directive === "string" ? data.directive : "";
+    const directive = typeof data.directive === "string" ? data.directive : "";
     return directive || "(directive)";
   }
   if (type === "moderator_task_published") {
-    const task = data?.task && typeof data.task === "object" ? data.task : {};
-    const title = typeof task?.title === "string" ? task.title : "";
+    const task = safeObject(data.task);
+    const title = typeof task.title === "string" ? task.title : "";
     return title || "(task)";
   }
   return "";

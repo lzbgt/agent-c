@@ -1,5 +1,5 @@
 import React from "react";
-import type { ModeratorEvent } from "../../api";
+import { ModeratorEventSchema, type ModeratorEvent } from "../../api";
 import { collectJsonDiffs, formatDiffValue, formatModeratorEventSummary, type JsonDiffEntry } from "./moderatorUtils";
 
 type SettingsModeratorPinsSectionProps = {
@@ -19,6 +19,28 @@ type SettingsModeratorPinsSectionProps = {
   pinnedCompareDiffOnly: boolean;
   setPinnedCompareDiffOnly: React.Dispatch<React.SetStateAction<boolean>>;
 };
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error.trim()) return error;
+  return fallback;
+}
+
+function parsePinnedEventsImport(value: unknown): Record<string, ModeratorEvent> {
+  const nextPins: Record<string, ModeratorEvent> = {};
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+      const parsed = ModeratorEventSchema.safeParse(raw);
+      if (parsed.success) nextPins[key] = parsed.data;
+    }
+  } else if (Array.isArray(value)) {
+    value.forEach((raw, idx) => {
+      const parsed = ModeratorEventSchema.safeParse(raw);
+      if (parsed.success) nextPins[`import-${idx}`] = parsed.data;
+    });
+  }
+  return nextPins;
+}
 
 export default function SettingsModeratorPinsSection(props: SettingsModeratorPinsSectionProps) {
   const {
@@ -58,8 +80,8 @@ export default function SettingsModeratorPinsSection(props: SettingsModeratorPin
                 anchor.click();
                 URL.revokeObjectURL(url);
                 showPinNotice("Exported pins", true);
-              } catch (err: any) {
-                showPinNotice(String(err?.message || "export failed"), false);
+              } catch (err: unknown) {
+                showPinNotice(errorMessage(err, "export failed"), false);
               }
             }}
           >
@@ -91,25 +113,14 @@ export default function SettingsModeratorPinsSection(props: SettingsModeratorPin
           if (!file) return;
           try {
             const text = await file.text();
-            const parsed = JSON.parse(text);
-            let nextPins: Record<string, ModeratorEvent> = {};
-            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-              for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-                if (value && typeof value === "object") {
-                  nextPins[key] = value as ModeratorEvent;
-                }
-              }
-            } else if (Array.isArray(parsed)) {
-              parsed.forEach((event, idx) => {
-                if (event && typeof event === "object") {
-                  nextPins[`import-${idx}`] = event as ModeratorEvent;
-                }
-              });
+            const nextPins = parsePinnedEventsImport(JSON.parse(text) as unknown);
+            if (Object.keys(nextPins).length === 0) {
+              throw new Error("No valid moderator events found in import");
             }
             updateModeratorPinnedEvents(nextPins);
             showPinNotice("Imported pins", true);
-          } catch (err: any) {
-            showPinNotice(String(err?.message || "import failed"), false);
+          } catch (err: unknown) {
+            showPinNotice(errorMessage(err, "import failed"), false);
           } finally {
             if (pinImportRef.current) pinImportRef.current.value = "";
           }
@@ -117,10 +128,9 @@ export default function SettingsModeratorPinsSection(props: SettingsModeratorPin
       />
       <div className="mt-2 grid gap-2">
         {moderatorPinnedEntries.map(([key, event]) => {
-          const type = typeof event?.type === "string" ? event.type : "event";
-          const ts = typeof event?.ts_unix_ms === "number" ? new Date(event.ts_unix_ms).toLocaleString() : "";
-          const actor = event?.actor && typeof event.actor === "object" ? (event.actor as any) : {};
-          const actorId = typeof actor?.id === "string" ? actor.id : "";
+          const type = typeof event.type === "string" ? event.type : "event";
+          const ts = typeof event.ts_unix_ms === "number" ? new Date(event.ts_unix_ms).toLocaleString() : "";
+          const actorId = typeof event.actor?.id === "string" ? event.actor.id : "";
           const summary = formatModeratorEventSummary(event);
           return (
             <div key={`pinned-${key}`} className="rounded-md border border-white/5 bg-black/30 p-2 text-[11px] text-white/70">

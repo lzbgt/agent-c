@@ -6,6 +6,14 @@ type SettingsConnectionExecutionSectionProps = Pick<
   "run" | "automationProfiles" | "automationDefault" | "automationOverrideAllowed"
 >;
 
+function isToolMode(value: string): value is SettingsConnectionSectionProps["run"]["tools"] {
+  return value === "host" || value === "basic" || value === "none";
+}
+
+function isHostPolicy(value: string): value is SettingsConnectionSectionProps["run"]["hostPolicy"] {
+  return value === "full" || value === "readonly";
+}
+
 export default function SettingsConnectionExecutionSection(props: SettingsConnectionExecutionSectionProps) {
   const { run, automationProfiles, automationDefault, automationOverrideAllowed } = props;
 
@@ -16,7 +24,10 @@ export default function SettingsConnectionExecutionSection(props: SettingsConnec
         <select
           className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
           value={run.tools}
-          onChange={(e) => run.setTools(e.target.value as any)}
+          onChange={(e) => {
+            const next = e.target.value;
+            if (isToolMode(next)) run.setTools(next);
+          }}
         >
           <option value="host">host</option>
           <option value="basic">basic</option>
@@ -28,7 +39,10 @@ export default function SettingsConnectionExecutionSection(props: SettingsConnec
         <select
           className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
           value={run.hostPolicy}
-          onChange={(e) => run.setHostPolicy(e.target.value as any)}
+          onChange={(e) => {
+            const next = e.target.value;
+            if (isHostPolicy(next)) run.setHostPolicy(next);
+          }}
           disabled={run.tools !== "host"}
         >
           <option value="full">full</option>

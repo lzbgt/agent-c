@@ -11,6 +11,10 @@ type SettingsConnectionProfilesSectionProps = Pick<
   | "serverPrefsAutoNote"
 >;
 
+function isConnectionMode(value: string): value is SettingsConnectionSectionProps["connection"]["mode"] {
+  return value === "direct" || value === "broker";
+}
+
 export default function SettingsConnectionProfilesSection(props: SettingsConnectionProfilesSectionProps) {
   const { connection, client, serverPrefsCanSync, serverPrefsTarget, serverPrefsStatusLabel, serverPrefsAutoNote } = props;
 
@@ -156,7 +160,10 @@ export default function SettingsConnectionProfilesSection(props: SettingsConnect
       <select
         className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
         value={connection.mode}
-        onChange={(e) => connection.setMode(e.target.value as any)}
+        onChange={(e) => {
+          const next = e.target.value;
+          if (isConnectionMode(next)) connection.setMode(next);
+        }}
       >
         <option value="direct">direct (agentd)</option>
         <option value="broker">broker (OIDC + agent_id)</option>

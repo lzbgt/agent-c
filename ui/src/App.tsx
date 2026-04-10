@@ -6,6 +6,7 @@ import {
   type Caps,
   type AgentEvent,
 } from "./api";
+import { safeObject } from "./jsonUtils";
 import { brokerBaseFromProxy } from "./utils/brokerBase";
 import HistoryPanel from "./components/HistoryPanel";
 import SceneView from "./components/SceneView";
@@ -28,6 +29,15 @@ import useTeamChatOrchestration from "./hooks/useTeamChatOrchestration";
 import useTraceLookup from "./hooks/useTraceLookup";
 import useUiSettings from "./hooks/useUiSettings";
 import { buildWorkflowDefaults } from "./workflowDefaults";
+
+type AppShellStyle = React.CSSProperties & {
+  "--topbar-h": string;
+  "--promptbar-h": string;
+};
+
+type AppGridStyle = React.CSSProperties & {
+  "--tools-col": string;
+};
 
 export default function App() {
   const ui = useUiSettings();
@@ -127,14 +137,9 @@ export default function App() {
   const clientId = clientSettings.clientId;
   const clientInstanceIdRef = React.useRef<string>(
     (() => {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const g: any = typeof globalThis !== "undefined" ? globalThis : {};
-        if (g.crypto && typeof g.crypto.randomUUID === "function") {
-          return `tab-${g.crypto.randomUUID()}`;
-        }
-      } catch {
-        // ignore
+      const cryptoApi = typeof globalThis === "object" ? globalThis.crypto : undefined;
+      if (cryptoApi && typeof cryptoApi.randomUUID === "function") {
+        return `tab-${cryptoApi.randomUUID()}`;
       }
       return `tab-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     })(),
@@ -192,8 +197,11 @@ export default function App() {
       ? automationProfileTrim
       : undefined;
   const workflowDefaults = buildWorkflowDefaults(runSettings);
-  const jobsEnabled = (capsData as any)?.features?.jobs?.enabled !== false;
-  const uploadMaxBytesRaw = (capsData as any)?.limits?.upload_max_bytes;
+  const capsFeatures = safeObject(capsData?.features);
+  const capsJobs = safeObject(capsFeatures.jobs);
+  const capsLimits = safeObject(capsData?.limits);
+  const jobsEnabled = capsJobs.enabled !== false;
+  const uploadMaxBytesRaw = capsLimits.upload_max_bytes;
   const uploadMaxBytes = typeof uploadMaxBytesRaw === "number" && Number.isFinite(uploadMaxBytesRaw) ? uploadMaxBytesRaw : undefined;
   const uploadsEnabled = uploadMaxBytes === undefined ? true : uploadMaxBytes > 0;
   const effectiveUseAsync = useAsync && jobsEnabled;
@@ -228,8 +236,8 @@ export default function App() {
 
   const lastHeartbeat = React.useMemo(() => {
     for (let i = liveEvents.length - 1; i >= 0; i--) {
-      const ev: any = liveEvents[i];
-      if (ev && typeof ev === "object" && ev.type === "heartbeat") {
+      const ev = liveEvents[i];
+      if (ev.type === "heartbeat") {
         return ev.data ?? null;
       }
     }
@@ -237,8 +245,8 @@ export default function App() {
   }, [liveEvents]);
 
   const jobProgressLabel = React.useMemo(() => {
-    const hb: any = lastHeartbeat && typeof lastHeartbeat === "object" ? lastHeartbeat : null;
-    const phase = hb && typeof hb.phase === "number" ? hb.phase : null;
+    const hb = safeObject(lastHeartbeat);
+    const phase = typeof hb.phase === "number" ? hb.phase : null;
     if (phase === 1) return "waiting_llm";
     if (phase === 2) return "running_tool";
     if (phase === 0) return "idle";
@@ -526,14 +534,16 @@ export default function App() {
     }
   }, [advancedPage, focusAdvancedPanel, setFocusAdvancedPanel]);
 
+  const appShellStyle: AppShellStyle = {
+    "--topbar-h": `${topbarHeightPx}px`,
+    "--promptbar-h": `${promptbarHeightPx}px`,
+  };
+  const appGridStyle: AppGridStyle = {
+    "--tools-col": toolsCollapsed ? "72px" : "minmax(140px,12vw)",
+  };
+
   return (
-    <div
-      className="h-screen w-full bg-slate-950 text-white"
-      style={{
-        ["--topbar-h" as any]: `${topbarHeightPx}px`,
-        ["--promptbar-h" as any]: `${promptbarHeightPx}px`,
-      }}
-    >
+    <div className="h-screen w-full bg-slate-950 text-white" style={appShellStyle}>
       <AppHeader
         topbarRef={topbarRef}
         profiles={connection.profiles}
@@ -577,9 +587,7 @@ export default function App() {
                   ? advancedGridCols
                   : "lg:grid-cols-[var(--tools-col)_minmax(0,1fr)]"
               }`}
-              style={{
-                ["--tools-col" as any]: toolsCollapsed ? "72px" : "minmax(140px,12vw)",
-              }}
+              style={appGridStyle}
             >
               <AppToolsSidebar
                 advancedPages={advancedPages}

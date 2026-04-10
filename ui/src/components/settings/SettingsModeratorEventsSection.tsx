@@ -180,12 +180,11 @@ export default function SettingsModeratorEventsSection(props: SettingsModeratorE
           <div className="text-white/40">{moderatorEventsList.length === 0 ? "No events loaded yet." : "No events match the filter."}</div>
         ) : (
           moderatorEventsFiltered.map((event, idx) => {
-            const type = typeof event?.type === "string" ? event.type : "event";
-            const ts = typeof event?.ts_unix_ms === "number" ? new Date(event.ts_unix_ms).toLocaleString() : "";
-            const actor = event?.actor && typeof event.actor === "object" ? (event.actor as any) : {};
-            const actorId = typeof actor?.id === "string" ? actor.id : "";
+            const type = typeof event.type === "string" ? event.type : "event";
+            const ts = typeof event.ts_unix_ms === "number" ? new Date(event.ts_unix_ms).toLocaleString() : "";
+            const actorId = typeof event.actor?.id === "string" ? event.actor.id : "";
             const summary = formatModeratorEventSummary(event);
-            const key = `${type}-${event?.ts_unix_ms ?? "0"}-${idx}`;
+            const key = `${type}-${event.ts_unix_ms ?? "0"}-${idx}`;
             const isPinned = !!moderatorPinnedEvents[key];
             const isExpanded = moderatorEventsExpanded[key] === true;
             return (

@@ -2,6 +2,7 @@ import React from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRun, apiRunAsync, type ApiAuth, type RunRequest, type RunResponse, type AgentEvent } from "../api";
 import type { Attachment } from "../components/PromptBar";
+import { safeObject } from "../jsonUtils";
 import type { JobStoreWriter } from "./runtimePlaneTypes";
 
 export type QueuedRun = { prompt: string; attachments: Attachment[]; queued_unix_ms: number };
@@ -167,17 +168,20 @@ export default function useRunExecution(args: RunExecutionArgs) {
         const value = toolCallLimitsTrim;
         if (value.startsWith("[") || value.startsWith("{")) {
           try {
-            const json: any = JSON.parse(value);
+            const json: unknown = JSON.parse(value);
             const entries = Array.isArray(json) ? json : [json];
             parsedToolCallLimits = entries
               .map((item) => {
-                const tool = String(item?.tool ?? item?.name ?? "").trim();
-                const max_calls = Number(item?.max_calls ?? item?.maxCalls ?? item?.max ?? item?.limit ?? NaN);
+                const record = safeObject(item);
+                const toolSource = typeof record.tool === "string" ? record.tool : typeof record.name === "string" ? record.name : "";
+                const rawLimit = record.max_calls ?? record.maxCalls ?? record.max ?? record.limit;
+                const tool = String(toolSource).trim();
+                const max_calls = Number(rawLimit ?? NaN);
                 if (!tool) return null;
                 if (!Number.isFinite(max_calls) || max_calls < 0) return null;
                 return { tool, max_calls: Math.floor(max_calls) };
               })
-              .filter(Boolean) as { tool: string; max_calls: number }[];
+              .filter((entry): entry is { tool: string; max_calls: number } => entry !== null);
           } catch (error) {
             throw new Error(`Invalid tool call limits JSON: ${String(error)}`);
           }
