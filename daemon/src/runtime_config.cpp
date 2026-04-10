@@ -58,6 +58,11 @@ static bool is_valid_voice_runtime_kind(const std::string& s_in) {
   return s == "builtin" || s == "bundled" || s == "external";
 }
 
+static bool is_valid_voice_builtin_mode(const std::string& s_in) {
+  const std::string s = lower_copy(trim_copy(s_in));
+  return s.empty() || s == "signaling_stub";
+}
+
 static bool is_valid_edge_consensus_runtime_kind(const std::string& s_in) {
   const std::string s = lower_copy(trim_copy(s_in));
   return s == "builtin" || s == "external";
@@ -133,6 +138,19 @@ bool load_runtime_config_best_effort(
           if (aw["peer_tool_path"].isNull()) cfg_io->audio_webrtc_peer_tool_path.clear();
           else if (aw["peer_tool_path"].isString()) {
             cfg_io->audio_webrtc_peer_tool_path = trim_copy(aw["peer_tool_path"].asString());
+          }
+        }
+        if (aw.isMember("builtin_mode")) {
+          if (aw["builtin_mode"].isNull()) {
+            cfg_io->audio_webrtc_builtin_mode.clear();
+          } else if (aw["builtin_mode"].isString()) {
+            const std::string mode = lower_copy(trim_copy(aw["builtin_mode"].asString()));
+            if (is_valid_voice_builtin_mode(mode)) {
+              cfg_io->audio_webrtc_builtin_mode = mode;
+            } else {
+              cfg_io->audio_webrtc_builtin_mode.clear();
+              should_rewrite_runtime_config = true;
+            }
           }
         }
         if (aw.isMember("default_runtime_kind")) {
@@ -800,6 +818,9 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
     aw["peer_tool_path"] = cfg.audio_webrtc_peer_tool_path.empty()
       ? Json::Value(Json::nullValue)
       : Json::Value(cfg.audio_webrtc_peer_tool_path);
+    aw["builtin_mode"] = cfg.audio_webrtc_builtin_mode.empty()
+      ? Json::Value(Json::nullValue)
+      : Json::Value(cfg.audio_webrtc_builtin_mode);
     aw["default_runtime_kind"] = cfg.audio_webrtc_default_runtime_kind.empty()
       ? Json::Value(Json::nullValue)
       : Json::Value(cfg.audio_webrtc_default_runtime_kind);

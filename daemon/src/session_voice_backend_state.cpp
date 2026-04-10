@@ -1,5 +1,6 @@
 #include "session_voice_backend_state.h"
 
+#include "session_voice_builtin_service.h"
 #include "session_voice_child_runtime.h"
 
 #include <chrono>
@@ -12,19 +13,9 @@
 namespace agentd {
 namespace {
 
-int64_t now_unix_ms() {
-  using namespace std::chrono;
-  return (int64_t)duration_cast<std::chrono::milliseconds>(
-           std::chrono::system_clock::now().time_since_epoch())
-    .count();
-}
-
 void apply_builtin_voice_peer_runtime_state(VoicePeerRuntime* st) {
-  if (!st || !st->running) return;
-  st->running = false;
-  st->ready = false;
-  if (st->ended_unix_ms <= 0) st->ended_unix_ms = now_unix_ms();
-  if (st->last_error.empty()) st->last_error = "builtin voice_webrtc_peer runtime not implemented";
+  if (!st) return;
+  refresh_builtin_voice_peer_runtime_state(st);
 }
 
 }  // namespace
@@ -55,11 +46,14 @@ bool stop_voice_peer_runtime_backend_process(
   }
 
   if (st->runtime_kind == "builtin") {
-    if (was_running) {
+    if (was_running && !stop_builtin_voice_peer_runtime_service(st, runtime_mu, timeout_ms, out_stopped, out_err)) {
+      return false;
+    }
+    if (!was_running) {
       std::lock_guard<std::mutex> lk(runtime_mu);
       apply_builtin_voice_peer_runtime_state(st.get());
+      if (out_stopped) *out_stopped = !st->running;
     }
-    if (out_stopped) *out_stopped = was_running;
     return true;
   }
 

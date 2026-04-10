@@ -40,7 +40,10 @@ AgentdConfigResponse:
             broker_url_default_configured: { type: boolean }
             broker_token_default_configured: { type: boolean }
             peer_tool_path_configured: { type: boolean }
-            builtin_available: { type: boolean, enum: [false] }
+            builtin_available: { type: boolean }
+            builtin_mode:
+              type: string
+              enum: [disabled, signaling_stub]
             bundled_available: { type: boolean }
             external_available: { type: boolean }
             builtin_unavailable_reason: { type: string }
@@ -348,6 +351,11 @@ AgentdConfigUpdateRequest:
           type: string
           nullable: true
           description: External helper tool path for `runtime_kind=external` (null clears)
+        builtin_mode:
+          type: string
+          nullable: true
+          enum: [signaling_stub]
+          description: Experimental builtin managed WebRTC runtime mode. `signaling_stub` enables the in-process native signaling stub backend; null disables builtin runtime availability.
         default_runtime_kind:
           type: string
           nullable: true
@@ -434,7 +442,10 @@ AgentdConfigUpdateResponse:
         broker_url_default_configured: { type: boolean }
         broker_token_default_configured: { type: boolean }
         peer_tool_path_configured: { type: boolean }
-        builtin_available: { type: boolean, enum: [false] }
+        builtin_available: { type: boolean }
+        builtin_mode:
+          type: string
+          enum: [disabled, signaling_stub]
         bundled_available: { type: boolean }
         external_available: { type: boolean }
         builtin_unavailable_reason: { type: string }

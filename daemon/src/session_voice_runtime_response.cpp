@@ -67,6 +67,7 @@ void voice_peer_apply_start_backend_success(
   std::lock_guard<std::mutex> lk(runtime_mu);
   refresh_voice_peer_runtime_backend_state(start_result.state.get());
   voice_peer_add_runtime_snapshot(cfg, *start_result.state, out);
+  merge_json_object_fields(start_result.backend_info, out);
 }
 
 }  // namespace agentd

@@ -10,6 +10,10 @@ namespace agentd {
 
 std::string discover_bundled_audio_peer_tool_path(const DaemonConfig& cfg);
 
+std::string voice_peer_builtin_runtime_mode(const DaemonConfig& cfg);
+
+bool builtin_voice_peer_runtime_enabled(const DaemonConfig& cfg);
+
 std::string default_voice_peer_runtime_kind(const DaemonConfig& cfg);
 
 std::string default_voice_peer_runtime_kind_source(const DaemonConfig& cfg);

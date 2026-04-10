@@ -128,10 +128,30 @@ static void test_auto_create_broker_session_contract() {
   assert(voice_peer_runtime_to_json(preview.planned_runtime) == out["planned_runtime"]);
 }
 
+static void test_enabled_builtin_contract_marks_runtime_live_path() {
+  DaemonConfig cfg;
+  cfg.state_dir = "/tmp/agentd-state";
+  cfg.audio_webrtc_builtin_mode = "signaling_stub";
+  VoicePeerStartPlan plan;
+  plan.runtime_kind = "builtin";
+  plan.effective_broker_url = "http://broker";
+  plan.requested_broker_session_id = "sess-enabled";
+  plan.requested_broker_session_preflighted = true;
+  plan.requested_broker_session_mode = "webrtc";
+  plan.sender_tag = "agentd_runtime_peer";
+
+  const Json::Value out = session_voice_builtin_start_contract_json(cfg, "voice-sid", plan);
+  assert(out["mutating_broker_actions_deferred"].asBool() == false);
+  assert(out["startup_sequence"][1]["deferred"].asBool() == false);
+  assert(out["planned_runtime"].isObject());
+  assert(out["planned_runtime"].isMember("last_error") == false);
+}
+
 }  // namespace
 
 int main() {
   test_borrowed_broker_session_contract();
   test_auto_create_broker_session_contract();
+  test_enabled_builtin_contract_marks_runtime_live_path();
   return 0;
 }

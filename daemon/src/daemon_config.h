@@ -147,6 +147,11 @@ struct DaemonConfig {
   // This remains a host-side helper, but agentd can own its lifecycle through a first-class API.
   std::string audio_webrtc_peer_tool_path;
   std::string audio_webrtc_peer_node_bin = "node";
+  // Optional experimental builtin runtime mode for the managed WebRTC voice runtime.
+  // Empty means disabled. `signaling_stub` enables an in-process native signaling/runtime
+  // service that can own broker session lifecycle and answer offers with the shared stub
+  // signaling helper, but it does not replace the shipped browser RTP media path yet.
+  std::string audio_webrtc_builtin_mode;
   // Optional durable preferred backend for managed WebRTC runtime selection.
   // Empty means "auto" (prefer bundled when discoverable, else external).
   std::string audio_webrtc_default_runtime_kind;

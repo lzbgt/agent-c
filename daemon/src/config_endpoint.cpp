@@ -10,6 +10,7 @@
 #include "runtime_config.h"
 #include "provider_util.h"
 #include "mount_allowlist.h"
+#include "session_voice_backend_policy.h"
 #include "session_voice_runtime.h"
 #include "string_util.h"
 
@@ -45,6 +46,7 @@ static Json::Value config_audio_webrtc_metadata_json(const DaemonConfig& cfg) {
   out["default_runtime_kind_source"] = cfg.audio_webrtc_default_runtime_kind.empty()
     ? Json::Value("auto")
     : Json::Value(cfg.audio_webrtc_default_runtime_kind_from_env ? "env" : "config");
+  out["builtin_mode"] = voice_peer_builtin_runtime_mode(cfg);
   out["peer_tool_path_configured"] = out["tool_configured"];
   out.removeMember("tool_configured");
   out.removeMember("tool_path");
@@ -2036,7 +2038,7 @@ void handle_config_update_endpoint(
   }
 
   // Managed voice/WebRTC defaults:
-  // - audio_webrtc: { "broker_url": "...", "broker_token": "...", "peer_tool_path": "...", "default_runtime_kind": "builtin|bundled|external", "node_bin": "..." } (null clears)
+  // - audio_webrtc: { "broker_url": "...", "broker_token": "...", "peer_tool_path": "...", "builtin_mode": "signaling_stub", "default_runtime_kind": "builtin|bundled|external", "node_bin": "..." } (null clears)
   if (args.isMember("audio_webrtc")) {
     if (!args["audio_webrtc"].isObject()) {
       Json::Value o(Json::objectValue);
@@ -2087,6 +2089,30 @@ void handle_config_update_endpoint(
         Json::Value o(Json::objectValue);
         o["ok"] = false;
         o["error"] = "audio_webrtc.peer_tool_path must be a string or null";
+        resp->status = 400;
+        resp->body = json_stringify(o);
+        return;
+      }
+    }
+    if (aw.isMember("builtin_mode")) {
+      const Json::Value& v = aw["builtin_mode"];
+      if (v.isNull()) {
+        next.audio_webrtc_builtin_mode.clear();
+      } else if (v.isString()) {
+        const std::string mode = lower_copy(trim_copy(v.asString()));
+        if (!mode.empty() && mode != "signaling_stub") {
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "audio_webrtc.builtin_mode must be signaling_stub or null";
+          resp->status = 400;
+          resp->body = json_stringify(o);
+          return;
+        }
+        next.audio_webrtc_builtin_mode = mode;
+      } else {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "audio_webrtc.builtin_mode must be a string or null";
         resp->status = 400;
         resp->body = json_stringify(o);
         return;

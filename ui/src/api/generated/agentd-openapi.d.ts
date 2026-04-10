@@ -6565,8 +6565,9 @@ export interface components {
                     broker_url_default_configured?: boolean;
                     broker_token_default_configured?: boolean;
                     peer_tool_path_configured?: boolean;
-                    /** @enum {boolean} */
-                    builtin_available?: false;
+                    builtin_available?: boolean;
+                    /** @enum {string} */
+                    builtin_mode?: "disabled" | "signaling_stub";
                     bundled_available?: boolean;
                     external_available?: boolean;
                     builtin_unavailable_reason?: string;
@@ -6869,6 +6870,11 @@ export interface components {
                 /** @description External helper tool path for `runtime_kind=external` (null clears) */
                 peer_tool_path?: string | null;
                 /**
+                 * @description Experimental builtin managed WebRTC runtime mode. `signaling_stub` enables the in-process native signaling stub backend; null disables builtin runtime availability.
+                 * @enum {string|null}
+                 */
+                builtin_mode?: "signaling_stub" | null;
+                /**
                  * @description Preferred default managed WebRTC backend when callers omit `runtime_kind` (null resets to auto selection)
                  * @enum {string|null}
                  */
@@ -6961,8 +6967,9 @@ export interface components {
                 broker_url_default_configured?: boolean;
                 broker_token_default_configured?: boolean;
                 peer_tool_path_configured?: boolean;
-                /** @enum {boolean} */
-                builtin_available?: false;
+                builtin_available?: boolean;
+                /** @enum {string} */
+                builtin_mode?: "disabled" | "signaling_stub";
                 bundled_available?: boolean;
                 external_available?: boolean;
                 builtin_unavailable_reason?: string;
@@ -8075,11 +8082,11 @@ export interface components {
             /** @enum {string} */
             action: "start" | "stop";
             /**
-             * @description Optional backend selector for `action=start`; ignored on `action=stop`. `bundled` uses the shipped repo-local Node/Playwright peer when discoverable, `external` uses an operator-configured helper path, and `builtin` is reserved for the future embedded agentd-native media service. The reserved `builtin` path still applies the same request and non-mutating broker-session preflight validation before returning its current not-implemented response.
+             * @description Optional backend selector for `action=start`; ignored on `action=stop`. `bundled` uses the shipped repo-local Node/Playwright peer when discoverable, `external` uses an operator-configured helper path, and `builtin` uses the experimental in-process native signaling stub when `audio_webrtc.builtin_mode=signaling_stub` or `AGENTD_AUDIO_WEBRTC_BUILTIN_MODE=signaling_stub` is enabled. When builtin mode is disabled, the same request and non-mutating broker-session preflight validation still applies before returning the unavailable response.
              * @enum {string}
              */
             runtime_kind?: "builtin" | "bundled" | "external";
-            /** @description Optional existing broker audio-session id. Must not be combined with `broker_agent_id` or `broker_deployment_id`; when supplied, agentd preflights that broker session before launch, and the same borrowed-session validation also applies to reserved `runtime_kind=builtin` requests before they fail not implemented. */
+            /** @description Optional existing broker audio-session id. Must not be combined with `broker_agent_id` or `broker_deployment_id`; when supplied, agentd preflights that broker session before launch, and the same borrowed-session validation also applies to `runtime_kind=builtin`. */
             broker_session_id?: string;
             /** @description Optional broker `agent_id` used to auto-create a broker audio session when `broker_session_id` is omitted. */
             broker_agent_id?: string;
@@ -8106,8 +8113,9 @@ export interface components {
             ok: boolean;
             session_id: string;
             tool_configured: boolean;
-            /** @enum {boolean} */
-            builtin_available: false;
+            builtin_available: boolean;
+            /** @enum {string} */
+            builtin_mode?: "disabled" | "signaling_stub";
             bundled_available: boolean;
             external_available: boolean;
             builtin_unavailable_reason?: string;
@@ -8149,8 +8157,9 @@ export interface components {
             ok: boolean;
             session_id: string;
             tool_configured: boolean;
-            /** @enum {boolean} */
-            builtin_available: false;
+            builtin_available: boolean;
+            /** @enum {string} */
+            builtin_mode?: "disabled" | "signaling_stub";
             bundled_available: boolean;
             external_available: boolean;
             builtin_unavailable_reason?: string;

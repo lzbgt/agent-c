@@ -48,7 +48,7 @@ Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   out["running"] = st.running;
   if (!st.stderr_log_path.empty()) out["stderr_log_path"] = st.stderr_log_path;
   if (!st.ready_file_path.empty()) out["ready_file_path"] = st.ready_file_path;
-  if (st.running) {
+  if (st.running && st.runtime_kind != "builtin") {
     out["pid"] = (Json::Int64)st.pid;
   } else {
     out["exit_code"] = st.exit_code;

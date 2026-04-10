@@ -143,6 +143,10 @@ void handle_session_voice_webrtc_peer_start_action(
 
   voice_peer_apply_start_backend_success(
     cfg, voice_peer_runtime_registry_mutex(), start_result, out);
+  if (db && start_result.state) {
+    std::string perr;
+    (void)persist_voice_peer_runtime_record(db, *start_result.state, &perr);
+  }
   (*out)["ok"] = true;
   (*out)["started"] = true;
   (*out)["startup_confirmed"] = start_result.startup_confirmed;

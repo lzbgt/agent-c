@@ -78,7 +78,22 @@ static std::string configured_default_voice_peer_runtime_kind(const DaemonConfig
   return "";
 }
 
+static std::string configured_voice_peer_builtin_runtime_mode(const DaemonConfig& cfg) {
+  const std::string mode = lower_copy(trim_copy(cfg.audio_webrtc_builtin_mode));
+  if (mode == "signaling_stub") return mode;
+  return "";
+}
+
 }  // namespace
+
+std::string voice_peer_builtin_runtime_mode(const DaemonConfig& cfg) {
+  const std::string configured = configured_voice_peer_builtin_runtime_mode(cfg);
+  return configured.empty() ? "disabled" : configured;
+}
+
+bool builtin_voice_peer_runtime_enabled(const DaemonConfig& cfg) {
+  return !configured_voice_peer_builtin_runtime_mode(cfg).empty();
+}
 
 std::string discover_bundled_audio_peer_tool_path(const DaemonConfig& cfg) {
   std::vector<std::filesystem::path> candidates;
@@ -120,7 +135,11 @@ std::string default_voice_peer_runtime_kind(const DaemonConfig& cfg) {
 
 std::string voice_peer_backend_unavailable_reason(const DaemonConfig& cfg, const std::string& runtime_kind) {
   const std::string kind = lower_copy(trim_copy(runtime_kind));
-  if (kind == "builtin") return "builtin voice_webrtc_peer runtime not implemented";
+  if (kind == "builtin") {
+    return builtin_voice_peer_runtime_enabled(cfg)
+      ? ""
+      : "builtin voice_webrtc_peer runtime disabled";
+  }
 
   const std::string node_bin = trim_copy(
     cfg.audio_webrtc_peer_node_bin.empty() ? std::string("node") : cfg.audio_webrtc_peer_node_bin);
@@ -178,7 +197,8 @@ Json::Value session_voice_webrtc_backend_metadata_json(const DaemonConfig& cfg) 
   const std::string default_reason = voice_peer_backend_unavailable_reason(cfg, default_runtime_kind);
 
   Json::Value out(Json::objectValue);
-  out["builtin_available"] = false;
+  out["builtin_available"] = builtin_reason.empty();
+  out["builtin_mode"] = voice_peer_builtin_runtime_mode(cfg);
   out["bundled_available"] = bundled_reason.empty();
   out["external_available"] = external_reason.empty();
   out["default_runtime_kind"] = default_runtime_kind;

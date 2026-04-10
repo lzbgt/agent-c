@@ -313,6 +313,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/session_voice_process_plan.cpp
     daemon/src/session_voice_builtin_contract.cpp
     daemon/src/session_voice_builtin_backend.cpp
+    daemon/src/session_voice_builtin_service.cpp
     daemon/src/session_voice_child_backend.cpp
     daemon/src/session_voice_broker_client.cpp
     daemon/src/session_voice_child_runtime.cpp
@@ -1246,6 +1247,12 @@ if(AGENT_BUILD_HOST)
         $<TARGET_FILE:agentd>
     )
     set_tests_properties(agentd_session_voice_webrtc_peer_runtime_smoke PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(
+      NAME agentd_session_voice_webrtc_peer_builtin_smoke
+      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_session_voice_webrtc_peer_builtin_smoke.sh
+        $<TARGET_FILE:agentd>
+    )
+    set_tests_properties(agentd_session_voice_webrtc_peer_builtin_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
     if(AGENT_ENABLE_SQLITE3)
       add_test(NAME agentd_db_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_smoke.sh $<TARGET_FILE:agentd>)

@@ -20,7 +20,7 @@ VoicePeerBuiltinStartPreview build_voice_peer_builtin_start_preview(
   const VoicePeerBrokerSessionPlan broker_session_plan =
     make_voice_peer_broker_session_plan(start_plan);
   const Json::Value startup_sequence =
-    voice_peer_launch_startup_sequence_json(start_plan, true);
+    voice_peer_launch_startup_sequence_json(start_plan, !builtin_voice_peer_runtime_enabled(cfg));
   const Json::Value runtime_artifacts = voice_peer_runtime_artifacts_json(artifacts);
   const Json::Value broker_session = voice_peer_broker_session_plan_json(broker_session_plan);
   const Json::Value media_runtime_plan = voice_peer_media_runtime_plan_json(
@@ -37,9 +37,6 @@ VoicePeerBuiltinStartPreview build_voice_peer_builtin_start_preview(
     broker_session_plan);
   out.planned_runtime.last_error =
     voice_peer_backend_unavailable_reason(cfg, start_plan.runtime_kind);
-  if (trim_copy(out.planned_runtime.last_error).empty()) {
-    out.planned_runtime.last_error = "builtin voice_webrtc_peer runtime not implemented";
-  }
   out.contract["session_id"] = session_id;
   out.contract["runtime_kind"] = "builtin";
   out.contract["signaling_surface"] = "voice_webrtc_peer";
@@ -49,7 +46,7 @@ VoicePeerBuiltinStartPreview build_voice_peer_builtin_start_preview(
   out.contract["poll_interval_ms"] = Json::Int64(start_plan.poll_interval_ms);
   out.contract["tone_hz"] = Json::Int64(start_plan.tone_hz);
   out.contract["startup_wait_ms"] = Json::Int64(start_plan.startup_wait_ms);
-  out.contract["mutating_broker_actions_deferred"] = true;
+  out.contract["mutating_broker_actions_deferred"] = !builtin_voice_peer_runtime_enabled(cfg);
   out.contract["startup_sequence"] = startup_sequence;
   out.contract["runtime_artifacts"] = runtime_artifacts;
   out.contract["broker_session"] = broker_session;
