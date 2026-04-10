@@ -24,6 +24,7 @@ bundle_and_generate() {
   local spec_name="$1"
   local bundled="${tmp_dir}/${spec_name}.openapi.yaml"
   local output="${tmp_dir}/${spec_name}-openapi.d.ts"
+  python3 "${ROOT}/tools/check_openapi_component_refs.py" "${ROOT}/docs/openapi/${spec_name}.yaml"
   python3 "${ROOT}/tools/openapi_bundle.py" "${ROOT}/docs/openapi/${spec_name}.yaml" -o "${bundled}"
   NPM_CONFIG_CACHE="${ROOT}/.npm-cache" "${OPENAPI_TYPESCRIPT_BIN}" "${bundled}" -o "${output}"
 }

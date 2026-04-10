@@ -4369,6 +4369,7 @@ export interface components {
             teams: components["schemas"]["Team"][];
         };
         TeamCreateRequest: {
+            team_id?: string;
             display_name: string;
             tags?: string[];
             policy_ref?: string;

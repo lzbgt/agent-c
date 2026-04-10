@@ -69,6 +69,74 @@ schemas:
     $ref: ./components/config.yaml#/AgentdConfigUpdateRequest
   AgentdConfigUpdateResponse:
     $ref: ./components/config.yaml#/AgentdConfigUpdateResponse
+  EdgeAuthTrustRootsAttestation:
+    $ref: ./components/config.yaml#/EdgeAuthTrustRootsAttestation
+  EdgeAuthTrustRootsBundle:
+    $ref: ./components/config.yaml#/EdgeAuthTrustRootsBundle
+  EdgeAuthTrustRootsResponse:
+    $ref: ./components/config.yaml#/EdgeAuthTrustRootsResponse
+  EdgeAuthTrustRootsSendRequest:
+    $ref: ./components/config.yaml#/EdgeAuthTrustRootsSendRequest
+  EdgeAuthTrustRootsSendResponse:
+    $ref: ./components/config.yaml#/EdgeAuthTrustRootsSendResponse
+  EdgeAuthTrustRootsRotateRequest:
+    $ref: ./components/config.yaml#/EdgeAuthTrustRootsRotateRequest
+  EdgeAuthTrustRootsRotateResponse:
+    $ref: ./components/config.yaml#/EdgeAuthTrustRootsRotateResponse
+  EdgeAuthCertRootsAttestation:
+    $ref: ./components/config.yaml#/EdgeAuthCertRootsAttestation
+  EdgeAuthCertRootsBundle:
+    $ref: ./components/config.yaml#/EdgeAuthCertRootsBundle
+  EdgeAuthCertRootsResponse:
+    $ref: ./components/config.yaml#/EdgeAuthCertRootsResponse
+  EdgeAuthCertRootsRotateRequest:
+    $ref: ./components/config.yaml#/EdgeAuthCertRootsRotateRequest
+  EdgeAuthCertRootsRotateResponse:
+    $ref: ./components/config.yaml#/EdgeAuthCertRootsRotateResponse
+  EdgeAuthCertRootsSendRequest:
+    $ref: ./components/config.yaml#/EdgeAuthCertRootsSendRequest
+  EdgeAuthCertRootsSendResponse:
+    $ref: ./components/config.yaml#/EdgeAuthCertRootsSendResponse
+  EdgeAuthCertRootsVerifyChainRequest:
+    $ref: ./components/config.yaml#/EdgeAuthCertRootsVerifyChainRequest
+  EdgeAuthCertRootsVerifyChainResponse:
+    $ref: ./components/config.yaml#/EdgeAuthCertRootsVerifyChainResponse
+  EdgeAuthNodeBinding:
+    $ref: ./components/config.yaml#/EdgeAuthNodeBinding
+  EdgeAuthNodeBindingResponse:
+    $ref: ./components/config.yaml#/EdgeAuthNodeBindingResponse
+  EdgeAuthProvisionNodeRequest:
+    $ref: ./components/config.yaml#/EdgeAuthProvisionNodeRequest
+  EdgeAuthProvisionNodeResponse:
+    $ref: ./components/config.yaml#/EdgeAuthProvisionNodeResponse
+  EdgeAuthRevocationsAttest:
+    $ref: ./components/config.yaml#/EdgeAuthRevocationsAttest
+  EdgeAuthRevocationsBundle:
+    $ref: ./components/config.yaml#/EdgeAuthRevocationsBundle
+  EdgeAuthRevocationsResponse:
+    $ref: ./components/config.yaml#/EdgeAuthRevocationsResponse
+  EdgeAuthRevocationsSendRequest:
+    $ref: ./components/config.yaml#/EdgeAuthRevocationsSendRequest
+  EdgeAuthRevocationsSendResponse:
+    $ref: ./components/config.yaml#/EdgeAuthRevocationsSendResponse
+  EdgeAuthRevocationsUpdateRequest:
+    $ref: ./components/config.yaml#/EdgeAuthRevocationsUpdateRequest
+  EdgeAuthRevocationsUpdateResponse:
+    $ref: ./components/config.yaml#/EdgeAuthRevocationsUpdateResponse
+  EdgeConsensusMembershipAttest:
+    $ref: ./components/config.yaml#/EdgeConsensusMembershipAttest
+  EdgeConsensusMembershipBundle:
+    $ref: ./components/config.yaml#/EdgeConsensusMembershipBundle
+  EdgeConsensusMembershipResponse:
+    $ref: ./components/config.yaml#/EdgeConsensusMembershipResponse
+  EdgeConsensusMembershipRotateRequest:
+    $ref: ./components/config.yaml#/EdgeConsensusMembershipRotateRequest
+  EdgeConsensusMembershipRotateResponse:
+    $ref: ./components/config.yaml#/EdgeConsensusMembershipRotateResponse
+  EdgeConsensusMembershipSendRequest:
+    $ref: ./components/config.yaml#/EdgeConsensusMembershipSendRequest
+  EdgeConsensusMembershipSendResponse:
+    $ref: ./components/config.yaml#/EdgeConsensusMembershipSendResponse
   OtaUpdateRequest:
     $ref: ./components/ota.yaml#/OtaUpdateRequest
   OtaUpdateResponse:
@@ -119,6 +187,18 @@ schemas:
     $ref: ./components/memory.yaml#/MemoryCorrelateResponse
   MemoryQueryResponse:
     $ref: ./components/memory.yaml#/MemoryQueryResponse
+  VoiceWebRtcPeerBackendPolicyDrift:
+    $ref: ./components/session.yaml#/VoiceWebRtcPeerBackendPolicyDrift
+  VoiceWebRtcPeerBuiltinBrokerSessionContract:
+    $ref: ./components/session.yaml#/VoiceWebRtcPeerBuiltinBrokerSessionContract
+  VoiceWebRtcPeerBuiltinStartStage:
+    $ref: ./components/session.yaml#/VoiceWebRtcPeerBuiltinStartStage
+  VoiceWebRtcPeerBuiltinRuntimeArtifacts:
+    $ref: ./components/session.yaml#/VoiceWebRtcPeerBuiltinRuntimeArtifacts
+  VoiceWebRtcPeerMediaRuntimePlan:
+    $ref: ./components/session.yaml#/VoiceWebRtcPeerMediaRuntimePlan
+  VoiceWebRtcPeerBuiltinStartContract:
+    $ref: ./components/session.yaml#/VoiceWebRtcPeerBuiltinStartContract
   VoiceWebRtcPeerRuntime:
     $ref: ./components/session.yaml#/VoiceWebRtcPeerRuntime
   VoiceWebRtcPeerRequest:
@@ -127,10 +207,44 @@ schemas:
     $ref: ./components/session.yaml#/VoiceWebRtcPeerResponse
   VoiceWebRtcPeerStatusResponse:
     $ref: ./components/session.yaml#/VoiceWebRtcPeerStatusResponse
+  EdgeEncryptedBody:
+    $ref: ./components/edge.yaml#/EdgeEncryptedBody
   EdgeMessageEnvelope:
     $ref: ./components/edge.yaml#/EdgeMessageEnvelope
+  EdgeNodeConsensusStatus:
+    $ref: ./components/edge.yaml#/EdgeNodeConsensusStatus
+  EdgeConsensusClusterPolicy:
+    $ref: ./components/edge.yaml#/EdgeConsensusClusterPolicy
+  EdgeTrustEpochs:
+    $ref: ./components/edge.yaml#/EdgeTrustEpochs
+  EdgeNodeConsensusRuntime:
+    $ref: ./components/edge.yaml#/EdgeNodeConsensusRuntime
+  EdgeNodeSummary:
+    $ref: ./components/edge.yaml#/EdgeNodeSummary
+  EdgeNodesResponse:
+    $ref: ./components/edge.yaml#/EdgeNodesResponse
+  EdgeNodeRecordResponse:
+    $ref: ./components/edge.yaml#/EdgeNodeRecordResponse
+  EdgeNodeConsensusRuntimeRequest:
+    $ref: ./components/edge.yaml#/EdgeNodeConsensusRuntimeRequest
+  EdgeNodeConsensusRuntimeResponse:
+    $ref: ./components/edge.yaml#/EdgeNodeConsensusRuntimeResponse
+  EdgeNodeConsensusRuntimeStatusResponse:
+    $ref: ./components/edge.yaml#/EdgeNodeConsensusRuntimeStatusResponse
   EdgeOutboxResponse:
     $ref: ./components/edge.yaml#/EdgeOutboxResponse
+  EdgeNodeCapsResponse:
+    $ref: ./components/edge.yaml#/EdgeNodeCapsResponse
+  EdgeNodeManifestAttestation:
+    $ref: ./components/edge.yaml#/EdgeNodeManifestAttestation
+  EdgeNodeManifestBundle:
+    $ref: ./components/edge.yaml#/EdgeNodeManifestBundle
+  EdgeNodeManifestBundleResponse:
+    $ref: ./components/edge.yaml#/EdgeNodeManifestBundleResponse
+  EdgeNodeManifestBundleSendRequest:
+    $ref: ./components/edge.yaml#/EdgeNodeManifestBundleSendRequest
+  EdgeNodeManifestBundleSendResponse:
+    $ref: ./components/edge.yaml#/EdgeNodeManifestBundleSendResponse
   EdgeTaskAssignRequest:
     $ref: ./components/edge.yaml#/EdgeTaskAssignRequest
   EdgeRuleUpsertRequest:
@@ -241,6 +355,8 @@ schemas:
     $ref: ./components/workflow.yaml#/WorkflowDelegateParallelAggregateSpec
   WorkflowEdgeInvokeSpec:
     $ref: ./components/workflow.yaml#/WorkflowEdgeInvokeSpec
+  AvmCapsuleHostEffects:
+    $ref: ./components/workflow.yaml#/AvmCapsuleHostEffects
   AvmCapsuleRunArgs:
     $ref: ./components/workflow.yaml#/AvmCapsuleRunArgs
   WorkflowSubmitRequest:

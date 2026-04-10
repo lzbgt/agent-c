@@ -447,6 +447,1015 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/edge/auth/trust_roots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get safe edge auth trust-root bundle
+         * @description Returns the current durable edge-auth trust-root set as a first-class bundle.
+         *
+         *     Notes:
+         *     - HMAC secrets are not returned; only `hmac_kids` are exposed.
+         *     - Ed25519 public keys are returned because they are trust roots, not secrets.
+         *     - When run-attestation signing keys are configured, the bundle includes an `attest` block.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Trust-root bundle */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EdgeAuthTrustRootsResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/edge/auth/trust_roots/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate durable edge auth trust roots
+         * @description Applies a monotonic trust-root rotation epoch and updates the current HMAC / Ed25519
+         *     trust-root set.
+         *
+         *     Notes:
+         *     - Requires Bearer auth when daemon auth is enabled.
+         *     - `mode:"replace"` clears the current trust-root set before applying the request body.
+         *     - `rotation_epoch` must be strictly greater than the current epoch.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["EdgeAuthTrustRootsRotateRequest"];
+                };
+            };
+            responses: {
+                /** @description Rotation acknowledged */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EdgeAuthTrustRootsRotateResponse"];
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Rotation epoch conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/edge/auth/trust_roots/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enqueue the signed trust-root bundle to one node outbox
+         * @description Builds the current signed `edge_auth_trust_roots_v1` bundle and enqueues it to the
+         *     recipient node as a `PLATFORM_TRUST_ROOTS_BUNDLE` outbox message. When
+         *     `confidential_kid` is set, the outbox envelope uses `body_enc` instead of plaintext `body`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["EdgeAuthTrustRootsSendRequest"];
+                };
+            };
+            responses: {
+                /** @description Bundle queued for node delivery */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EdgeAuthTrustRootsSendResponse"];
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Target node not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/edge/auth/cert_roots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get safe edge auth certificate-root bundle
+         * @description Returns the current durable PEM certificate-root bundle as a first-class signed artifact.
+         *
+         *     Notes:
+         *     - This is a control-plane distribution surface for certificate/root-chain material.
+         *     - It does not imply full X.509 path validation is already enforced for UM-BMP envelopes.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Certificate-root bundle */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EdgeAuthCertRootsResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/edge/auth/cert_roots/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate durable edge auth certificate roots
+         * @description Applies a monotonic certificate-root epoch and updates the current PEM certificate-root set.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["EdgeAuthCertRootsRotateRequest"];
+                };
+            };
+            responses: {
+                /** @description Rotation acknowledged */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EdgeAuthCertRootsRotateResponse"];
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Rotation epoch conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/edge/auth/cert_roots/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enqueue the signed certificate-root bundle to one node outbox
+         * @description Builds the current signed `edge_auth_cert_roots_v1` bundle and enqueues it to the
+         *     recipient node as a `PLATFORM_CERT_ROOTS_BUNDLE` outbox message. When
+         *     `confidential_kid` is set, the outbox envelope uses `body_enc` instead of plaintext `body`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["EdgeAuthCertRootsSendRequest"];
+                };
+            };
+            responses: {
+                /** @description Bundle queued for node delivery */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EdgeAuthCertRootsSendResponse"];
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Target node not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/edge/auth/cert_roots/verify_chain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify a certificate chain against the current stored certificate roots
+         * @description Uses the current durable PEM certificate-root set to verify a submitted certificate chain.
+         *
+         *     Notes:
+         *     - This is a structured operator/control-plane verification surface.
+         *     - It narrows the gap toward X.509 enforcement, but does not yet mean `/api/v1/edge/message`
+         *       enforces certificate chains inline for UM-BMP envelopes.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["EdgeAuthCertRootsVerifyChainRequest"];
+                };
+            };
+            responses: {
+                /** @description Verification result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EdgeAuthCertRootsVerifyChainResponse"];
+                    };
+                };
+                /** @description Invalid request or malformed PEM material */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/edge/auth/node_binding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inspect effective edge auth binding for one node */
+        get: {
+            parameters: {
+                query: {
+                    node_id: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Binding summary */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EdgeAuthNodeBindingResponse"];
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/edge/auth/provision_node": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Provision edge auth trust roots for one node
+         * @description Helper endpoint for per-node trust-root bootstrap and rotation. Applies the requested
+         *     key material, enforces the current `edge_auth_kid_policy`, advances the trust-root epoch,
+         *     and returns both the updated trust-root bundle and the effective node binding.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["EdgeAuthProvisionNodeRequest"];
+                };
+            };
+            responses: {
+                /** @description Provisioning acknowledged */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EdgeAuthProvisionNodeResponse"];
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Kid policy or epoch conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/edge/auth/revocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get safe edge auth revocation bundle
+         * @description Returns the durable edge-auth revocation set as a first-class bundle.
+         *
+         *     Notes:
+         *     - Revoked kids and revoked node ids are returned.
+         *     - When run-attestation signing keys are configured, the bundle includes an `attest` block.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Revocation bundle */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EdgeAuthRevocationsResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/edge/auth/revocations/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update durable edge auth revocations
+         * @description Applies a monotonic revocation epoch and updates the current revoked kid / revoked node set.
+         *
+         *     Notes:
+         *     - Requires Bearer auth when daemon auth is enabled.
+         *     - `mode:"replace"` clears the current revocation set before applying the request body.
+         *     - `rotation_epoch` must be strictly greater than the current epoch.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["EdgeAuthRevocationsUpdateRequest"];
+                };
+            };
+            responses: {
+                /** @description Revocation update acknowledged */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EdgeAuthRevocationsUpdateResponse"];
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Revocation epoch conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/edge/auth/revocations/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enqueue the signed revocation bundle to one node outbox
+         * @description Builds the current signed `edge_auth_revocations_v1` bundle and enqueues it to the
+         *     recipient node as a `PLATFORM_REVOCATIONS_BUNDLE` outbox message. When
+         *     `confidential_kid` is set, the outbox envelope uses `body_enc` instead of plaintext `body`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["EdgeAuthRevocationsSendRequest"];
+                };
+            };
+            responses: {
+                /** @description Bundle queued for node delivery */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EdgeAuthRevocationsSendResponse"];
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Target node not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/edge/consensus/membership": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get signed edge consensus membership bundle
+         * @description Returns the durable per-cluster consensus membership and retry policy as a first-class bundle.
+         *
+         *     Notes:
+         *     - `cluster_id` is required.
+         *     - The bundle carries `membership_epoch`, `member_node_ids`, `campaign_delay_ms`, `campaign_retry_ms`,
+         *       `campaign_retry_max_ms`, and `campaign_retry_backoff_factor`.
+         *     - When run-attestation signing keys are configured, the bundle includes an `attest` block.
+         */
+        get: {
+            parameters: {
+                query: {
+                    cluster_id: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Consensus membership bundle */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EdgeConsensusMembershipResponse"];
+                    };
+                };
+                /** @description Invalid cluster id */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Cluster policy not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/edge/consensus/membership/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update durable edge consensus membership policy
+         * @description Applies a monotonic membership epoch for one cluster and stores the durable member set plus retry timing defaults.
+         *
+         *     Notes:
+         *     - Requires Bearer auth when daemon auth is enabled.
+         *     - `mode:"replace"` clears the current stored member set before applying the request body.
+         *     - `membership_epoch` must be strictly greater than the current epoch for the cluster.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["EdgeConsensusMembershipRotateRequest"];
+                };
+            };
+            responses: {
+                /** @description Membership policy update acknowledged */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EdgeConsensusMembershipRotateResponse"];
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Membership epoch conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/edge/consensus/membership/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enqueue the signed consensus membership bundle to one node outbox
+         * @description Builds the current signed `edge_consensus_membership_v1` bundle and enqueues it to the
+         *     recipient node as a `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE` outbox message. When
+         *     `confidential_kid` is set, the outbox envelope uses `body_enc` instead of plaintext `body`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["EdgeConsensusMembershipSendRequest"];
+                };
+            };
+            responses: {
+                /** @description Membership bundle queued for node delivery */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EdgeConsensusMembershipSendResponse"];
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Target node or cluster policy not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/client/prefs": {
         parameters: {
             query?: never;
@@ -1212,6 +2221,7 @@ export interface paths {
                             result_hash?: string;
                             trace_hash?: string;
                             state_hash?: string;
+                            host_effects?: components["schemas"]["AvmCapsuleHostEffects"];
                             /** @description Validated additional mounts forwarded to the capsule runner. */
                             mounts?: components["schemas"]["AvmCapsuleMountResult"][];
                             /** Format: int32 */
@@ -2462,6 +3472,105 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runtime_skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List runtime skills from the local catalog search path */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Optional kind filter such as `workflow_bundle` or `team_bundle`. */
+                    kind?: string;
+                    /** @description Optional UI category filter. */
+                    category?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Runtime skill summaries plus daemon-known capability hints */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RuntimeSkillListResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runtime_skills/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve a runtime skill into a materialized request document */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RuntimeSkillResolveRequest"];
+                };
+            };
+            responses: {
+                /** @description Resolved runtime skill document */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RuntimeSkillResolveResponse"];
+                    };
+                };
+                /** @description Validation error or missing runtime requirements */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Runtime skill not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workflow": {
         parameters: {
             query?: never;
@@ -2998,7 +4107,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Ingest an UM-BMP message envelope (edge interop) */
+        /**
+         * Ingest an UM-BMP message envelope (edge interop)
+         * @description Accepts either plaintext `body` or AES-GCM encrypted `body_enc`. When
+         *     `edge_confidentiality_required=true`, plaintext `body` is rejected and callers must send `body_enc`.
+         *     Validated `CONSENSUS_FRAME` bodies are relayed onto recipient node outboxes as platform-forwarded
+         *     peer frames, and the sender node’s consensus summary is persisted into node observability surfaces.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -3081,7 +4196,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List registered edge nodes */
+        /**
+         * List edge nodes
+         * @description Returns stored edge-node registry rows plus synthetic runtime-backed summaries for
+         *     managed consensus runtimes that currently have no registry row. Those synthetic rows
+         *     keep `consensus_runtime` visible with zero `last_hello_utc_ms` /
+         *     `last_heartbeat_utc_ms`.
+         */
         get: {
             parameters: {
                 query?: {
@@ -3098,7 +4219,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["EdgeNodesResponse"];
+                    };
                 };
             };
         };
@@ -3117,7 +4240,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get node registry record (summary) */
+        /**
+         * Get node registry record (summary)
+         * @description Returns the stored edge-node registry record when present. If no registry row exists
+         *     but a managed consensus runtime does, the response now falls back to a synthetic
+         *     runtime-backed node record with zero `last_hello_utc_ms` / `last_heartbeat_utc_ms`,
+         *     `has_manifest=false`, and the current `consensus_runtime` snapshot.
+         */
         get: {
             parameters: {
                 query: {
@@ -3134,12 +4263,192 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["EdgeNodeRecordResponse"];
+                    };
                 };
             };
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/edge/node/consensus_runtime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect managed autonomous consensus-node runtime status
+         * @description Returns managed runtime state plus the latest structured result emitted by the
+         *     builtin or external backend, including loop status fields such as campaign
+         *     attempts and retry timing. Active managed runtimes now also expose a best-effort
+         *     `runtime.live_status` snapshot while the loop is still running, so operator reads
+         *     can inspect current term, campaign attempts, member/trust identity, and leader
+         *     freshness state before terminal result. Builtin runtimes expose it directly
+         *     in-process; external runtimes expose it while their stdout remains attached to
+         *     agentd. When durable cluster policy has drifted underneath
+         *     a still-running runtime, the returned runtime snapshot includes
+         *     `cluster_policy_drift`. When the daemon's current edge-auth epochs have
+         *     drifted underneath a still-running runtime, the returned runtime snapshot
+         *     also includes `trust_epoch_drift`.
+         */
+        get: {
+            parameters: {
+                query: {
+                    node_id: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Runtime status */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EdgeNodeConsensusRuntimeStatusResponse"];
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Start or stop a managed autonomous consensus-node runtime
+         * @description Starts or stops the managed autonomous consensus runtime. `builtin` is the
+         *     in-agentd backend and now runs over daemon-local transport inside agentd
+         *     rather than calling back through the daemon's HTTP listener.
+         *     When callers omit `runtime_kind`, agentd now uses the configured default
+         *     managed consensus backend (`edge_consensus.default_runtime_kind`) or falls
+         *     back to builtin auto selection. Start requests can explicitly set
+         *     `runtime_kind=external` to keep using the standalone helper for bring-up or
+         *     debug parity. Runtime status now reports whether that external helper seam is
+         *     actually launchable before start, and `/api/v1/config/update` can persist
+         *     `edge_consensus.{node_tool_path,default_runtime_kind}` instead of relying only
+         *     on `AGENTD_EDGE_CONSENSUS_NODE_TOOL` / `AGENTD_EDGE_CONSENSUS_DEFAULT_RUNTIME_KIND`.
+         *     Managed starts now also use a bounded startup confirmation window and fail
+         *     closed if the builtin loop or external helper exits immediately with failure.
+         *     For `runtime_kind=builtin`, `daemon_url` and `auth_token` request overrides
+         *     are ignored as transport details.
+         *     Start requests can still return success when a managed runtime finishes very
+         *     quickly with a successful commit during that same confirmation window. Stop
+         *     requests now return `reason=not_running` when the runtime already finished and
+         *     include the final runtime snapshot instead of reporting a false positive stop.
+         *     Repeating the same running start request is idempotent, but trying to reuse the
+         *     same `node_id` for a different running runtime configuration now returns `409`
+         *     with the existing runtime snapshot instead of pretending the requested runtime
+         *     was started. Conflict matching uses the effective runtime config, not only the
+         *     top-level identity fields, so changed timing/member/transport inputs are also
+         *     rejected while the runtime is active.
+         *     Terminal managed runtime snapshots are now persisted in agentd DB meta, so
+         *     `GET /api/v1/edge/node/consensus_runtime` can recover the last finished/stopped
+         *     runtime across agentd restart with `runtime.status_source=persisted`, and a
+         *     still-live external helper can also be recovered from its persisted running
+         *     snapshot. If that recovered live external helper is later stopped through
+         *     agentd, the persisted final runtime snapshot now also preserves the stop
+         *     signal/result. Stale builtin `running=true` records and corrupt persisted runtime
+         *     records are now self-healed by clearing the bad record and local runtime
+         *     artifacts instead of surfacing stale managed state forever.
+         *     Start requests can also set
+         *     `campaign_delay_ms` for the first election, `campaign_retry_ms` for the base
+         *     retry interval, `campaign_retry_max_ms` for the backoff ceiling, and
+         *     `campaign_retry_backoff_factor` for bounded exponential retry growth when
+         *     quorum is not reached before peers arrive, plus `leader_heartbeat_ms` and
+         *     `leader_lease_ms` for leader freshness / failover timing, plus
+         *     `lease_expiry_recampaign_delay_ms` for a bounded cooldown before followers
+         *     re-campaign after expiring a stale leader, and
+         *     `membership_epoch` plus `member_node_ids` for explicit member-set compatibility.
+         *     When those fields are omitted and a durable `/api/v1/edge/consensus/membership`
+         *     policy exists for the cluster, the runtime defaults from that stored bundle.
+         *     If callers omit `trust_roots_epoch`, `revocations_epoch`, or
+         *     `cert_roots_epoch`, the runtime now defaults those from the daemon's current
+         *     `edge_auth_*_epoch` policy instead of falling back to zero.
+         *     If that durable cluster policy is rotated while a runtime is still active,
+         *     responses now surface `runtime.cluster_policy_drift` with the changed fields
+         *     plus the current rotated policy; restart remains the adoption boundary. If
+         *     the daemon's current trust epochs rotate underneath a still-running runtime,
+         *     responses now also surface `runtime.trust_epoch_drift` with the changed
+         *     fields plus `current_trust_epochs`, and restart remains the adoption
+         *     boundary there too.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["EdgeNodeConsensusRuntimeRequest"];
+                };
+            };
+            responses: {
+                /** @description Managed runtime updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EdgeNodeConsensusRuntimeResponse"];
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Runtime start/stop failed */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EdgeNodeConsensusRuntimeResponse"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -3170,12 +4479,129 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["EdgeNodeCapsResponse"];
+                    };
                 };
             };
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/edge/node/manifest_bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get platform-signed node manifest bundle
+         * @description Returns the stored node capability manifest plus derived tool/tag/presence surfaces
+         *     as one manifest bundle. When run-attestation signing keys are configured, agentd signs
+         *     the bundle as a first-class verified artifact.
+         */
+        get: {
+            parameters: {
+                query: {
+                    node_id: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Node manifest bundle */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EdgeNodeManifestBundleResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/edge/node/manifest_bundle/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a platform-signed node manifest bundle to another node via outbox
+         * @description Builds the signed manifest bundle for `subject_node_id` and enqueues it to the
+         *     UM-BMP outbox of `target_node_id` as `PLATFORM_MANIFEST_BUNDLE`. When
+         *     `confidential_kid` is set, the outbox envelope uses `body_enc` instead of plaintext `body`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["EdgeNodeManifestBundleSendRequest"];
+                };
+            };
+            responses: {
+                /** @description Manifest bundle enqueued */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EdgeNodeManifestBundleSendResponse"];
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Node or manifest not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -4060,11 +5486,22 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        /** Delete a session and cascade its persisted evidence */
+        /**
+         * Delete a session and cascade its persisted evidence
+         * @description Deletes the canonical session row and its dependent persisted evidence. If the
+         *     session currently owns a managed `voice_webrtc_peer` runtime, agentd first
+         *     stops that peer, deletes any owned broker audio session, clears the persisted
+         *     runtime/artifact state, and returns a `voice_runtime_cleanup` summary. If the
+         *     deleted peer had been recovered as a live persisted runtime after an agentd
+         *     restart, that cleanup summary now preserves the final terminal peer snapshot
+         *     before the runtime record is cleared.
+         */
         delete: {
             parameters: {
                 query: {
                     session_id: string;
+                    /** @description Optional broker bearer token used to clean up an agentd-owned voice broker session if the deleted session currently has a managed `voice_webrtc_peer` runtime. */
+                    broker_token?: string;
                 };
                 header?: never;
                 path?: never;
@@ -4084,6 +5521,9 @@ export interface paths {
                             deleted_from_db: boolean;
                             legacy_cleanup_attempted?: boolean;
                             legacy_any_deleted?: boolean;
+                            voice_runtime_cleanup?: {
+                                [key: string]: unknown;
+                            };
                             error?: string;
                         };
                     };
@@ -4307,6 +5747,214 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/session/voice_webrtc_peer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect the managed session-scoped WebRTC media peer runtime
+         * @description Returns managed WebRTC media-peer runtime status. The default shipped backend
+         *     is now `bundled`, which discovers the repo-local Node/Playwright peer helper
+         *     without requiring `AGENTD_AUDIO_WEBRTC_PEER_TOOL`. `external` remains available
+         *     for operator-configured helper paths, and `builtin` is still reserved for the
+         *     future embedded agentd-native media service. Bundled/external runtimes persist
+         *     runtime records and stdout logs, so status can be recovered across agentd
+         *     restarts with `peer.status_source=persisted`. When `peer.managed_broker_session=true`,
+         *     the runtime also records which broker `agent_id`/`deployment_id` was used for
+         *     agentd-owned broker audio-session creation. The response also reports whether
+         *     daemon-level broker URL/token defaults are configured, so callers can discover
+         *     whether per-request broker fields are optional. If the canonical session row no
+         *     longer exists but stale runtime state still does, the status read now self-heals
+         *     that stale runtime, clears local runtime artifacts, and reports the cleanup in
+         *     `cleanup_on_missing_session`. Persisted `running=true` runtime records left
+         *     behind by a dead daemon process are also self-healed on read through
+         *     `cleanup_on_stale_record` instead of being surfaced as a fake stopped peer.
+         *     If daemon backend policy rotates under a still-running bundled/external peer,
+         *     status also surfaces `backend_policy_drift` with the current effective start
+         *     policy instead of leaving that mismatch implicit.
+         */
+        get: {
+            parameters: {
+                query: {
+                    session_id: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Voice WebRTC peer status */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VoiceWebRtcPeerStatusResponse"];
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Read failed */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Start or stop the managed session-scoped WebRTC media peer runtime
+         * @description Starts or stops the managed WebRTC media peer for a session. `bundled` is the
+         *     default shipped backend and launches the repo-local Node/Playwright peer when
+         *     discoverable. `external` remains available for operator-configured helper
+         *     paths. `builtin` is reserved for a future embedded agentd-native media service
+         *     and currently returns a not-implemented response, but it now still applies the
+         *     same request validation and non-mutating borrowed broker-session preflight
+         *     before that final `501`. Valid builtin requests also surface
+         *     `builtin_start_contract` so callers can inspect the native start intent and
+         *     staged startup sequence plus the shared safe `media_runtime_plan`, planned runtime artifact layout, and runtime preview, and that same preview now also
+         *     appears in top-level `peer` with `status_source=planned`, without a fake runtime being persisted. If a bundled/external peer
+         *     is still alive after an agentd restart, `start` returns `already_running`
+         *     from the recovered persisted runtime record only when the effective resolved
+         *     runtime config remains compatible with that live runtime; conflicting explicit,
+         *     config-driven, or now-unlaunchable start requests now return `409` with the
+         *     existing runtime snapshot instead. When daemon backend policy rotates under a
+         *     still-running bundled/external peer, both status and those `409` conflict
+         *     responses also surface `backend_policy_drift` so callers can see the current
+         *     effective start policy behind the mismatch.
+         *     That running-runtime conflict path also wins over the reserved `builtin`
+         *     selector, so an explicit `runtime_kind=builtin` request against a live bundled
+         *     or external runtime returns `409` instead of a misleading not-implemented
+         *     response. `broker_url` and `broker_token` may be omitted when daemon defaults
+         *     are configured through env or `/api/v1/config/update`. `broker_session_id` is
+         *     optional when `broker_agent_id` is provided; in that mode agentd creates and
+         *     owns the broker audio session before launching the peer. On `stop`, callers may
+         *     also provide `broker_token`, but when a daemon default token is configured
+         *     agentd can use that default to delete an owned broker audio session after an
+         *     ungraceful child exit that skipped the peer's best-effort `bye`. `start` now
+         *     also waits for a bounded startup confirmation window and fails closed if the
+         *     child exits before readiness, cleaning up any agentd-owned broker audio session
+         *     instead of leaving an orphan behind. If the only recovered runtime state is a
+         *     stale persisted `running=true` record from a dead daemon process, `stop`
+         *     returns `reason=not_running` and `start` first clears that stale record via
+         *     `cleanup_on_stale_record` before proceeding. If the runtime record exists but
+         *     the peer has already exited, `stop` now also returns `reason=not_running`
+         *     while still attempting owned broker-session cleanup when applicable. If a persisted
+         *     preview record (`status_source=planned`) is ever encountered, status/start/stop
+         *     now self-heal it through `cleanup_on_corrupt_record` instead of treating preview
+         *     metadata as a real runtime snapshot. If a live
+         *     bundled/external peer is recovered from persisted running state after agentd
+         *     restart, a later `stop` now also preserves the final terminal signal/result in
+         *     the persisted runtime snapshot.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["VoiceWebRtcPeerRequest"];
+                };
+            };
+            responses: {
+                /** @description Voice WebRTC peer action applied */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VoiceWebRtcPeerResponse"];
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Session not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflicting explicit start request against a running managed peer */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VoiceWebRtcPeerResponse"];
+                    };
+                };
+                /** @description Start or stop failed */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VoiceWebRtcPeerResponse"];
+                    };
+                };
+                /** @description Unsupported runtime platform */
+                501: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VoiceWebRtcPeerResponse"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -4913,6 +6561,27 @@ export interface components {
                 db_path?: string | null;
                 state_dir?: string | null;
                 sessions_root_dir?: string | null;
+                audio_webrtc?: {
+                    broker_url_default_configured?: boolean;
+                    broker_token_default_configured?: boolean;
+                    peer_tool_path_configured?: boolean;
+                    /** @enum {boolean} */
+                    builtin_available?: false;
+                    bundled_available?: boolean;
+                    external_available?: boolean;
+                    builtin_unavailable_reason?: string;
+                    bundled_unavailable_reason?: string;
+                    external_unavailable_reason?: string;
+                    /** @enum {string|null} */
+                    default_runtime_kind?: "builtin" | "bundled" | "external" | null;
+                    /** @enum {string} */
+                    default_runtime_kind_source?: "auto" | "env" | "config";
+                    default_runtime_kind_available?: boolean;
+                    default_runtime_kind_unavailable_reason?: string;
+                    node_bin?: string;
+                } & {
+                    [key: string]: unknown;
+                };
                 /** Format: int64 */
                 max_steps_default?: number;
                 /** Format: int64 */
@@ -4963,12 +6632,56 @@ export interface components {
                 hmac_keys_set?: number;
                 /** Format: int64 */
                 ed25519_pubkeys_set?: number;
+                /** Format: int64 */
+                trust_roots_epoch?: number;
+                /** Format: int64 */
+                trust_roots_updated_utc_ms?: number;
+                /** Format: int64 */
+                cert_roots_set?: number;
+                /** Format: int64 */
+                cert_roots_epoch?: number;
+                /** Format: int64 */
+                cert_roots_updated_utc_ms?: number;
+                require_manifest_cert_chain?: boolean;
+                /** Format: int64 */
+                revoked_kids_set?: number;
+                /** Format: int64 */
+                revoked_node_ids_set?: number;
+                /** Format: int64 */
+                revocations_epoch?: number;
+                /** Format: int64 */
+                revocations_updated_utc_ms?: number;
             } & {
                 [key: string]: unknown;
             };
             edge_attest: {
                 required?: boolean;
                 require_sig?: boolean;
+            } & {
+                [key: string]: unknown;
+            };
+            edge_confidentiality: {
+                required?: boolean;
+                /** Format: int64 */
+                keys_set?: number;
+            } & {
+                [key: string]: unknown;
+            };
+            edge_consensus?: {
+                node_tool_path_configured?: boolean;
+                /** @enum {boolean} */
+                builtin_available?: true;
+                external_available?: boolean;
+                external_unavailable_reason?: string;
+                /** @enum {string} */
+                default_runtime_kind?: "builtin" | "external";
+                /** @enum {string} */
+                default_runtime_kind_source?: "auto" | "env" | "config";
+                default_runtime_kind_available?: boolean;
+                default_runtime_kind_unavailable_reason?: string;
+                /** Format: int64 */
+                clusters_set?: number;
+                cluster_ids?: string[];
             } & {
                 [key: string]: unknown;
             };
@@ -5035,12 +6748,35 @@ export interface components {
             edge_auth_require_seq?: boolean;
             /** @description Key selection policy for authenticated node envelopes (any|match_node|node_prefix) */
             edge_auth_kid_policy?: string;
+            /** @description When true, `NODE_CAPS_RSP.body.manifest.identity.{cert_pem,cert_chain_pem}` must verify against the stored PEM cert-root set */
+            edge_auth_require_manifest_cert_chain?: boolean;
+            /** @description When true, `/api/v1/edge/message` requires encrypted `body_enc` instead of plaintext `body` */
+            edge_confidentiality_required?: boolean;
+            /**
+             * Format: int64
+             * @description Optional explicit trust-root rotation epoch metadata (also updated by `/api/v1/edge/auth/trust_roots/rotate`)
+             */
+            edge_auth_trust_roots_epoch?: number;
+            /**
+             * Format: int64
+             * @description Optional explicit cert-root rotation epoch metadata (also updated by `/api/v1/edge/auth/cert_roots/rotate`)
+             */
+            edge_auth_cert_roots_epoch?: number;
+            /**
+             * Format: int64
+             * @description Optional explicit revocation epoch metadata (also updated by `/api/v1/edge/auth/revocations/update`)
+             */
+            edge_auth_revocations_epoch?: number;
             /** @description Map of `kid` → shared secret for edge envelope auth (null clears that kid) */
             edge_auth_hmac_keys?: {
                 [key: string]: string | null;
             };
             /** @description Map of `kid` → base64(pubkey32) for Ed25519 edge envelope auth (null clears that kid) */
             edge_auth_ed25519_pubkeys?: {
+                [key: string]: string | null;
+            };
+            /** @description Map of `kid` → shared secret for AES-GCM encrypted `body_enc` payloads (null clears that kid) */
+            edge_confidentiality_keys?: {
                 [key: string]: string | null;
             };
             /** @description Default base_url (used for provider inference and some clients) */
@@ -5125,6 +6861,30 @@ export interface components {
             provider_keys?: {
                 [key: string]: string | null;
             };
+            audio_webrtc?: {
+                /** @description Default broker base URL for managed WebRTC voice runtimes (null clears) */
+                broker_url?: string | null;
+                /** @description Default broker bearer token for managed WebRTC voice runtimes (null clears) */
+                broker_token?: string | null;
+                /** @description External helper tool path for `runtime_kind=external` (null clears) */
+                peer_tool_path?: string | null;
+                /**
+                 * @description Preferred default managed WebRTC backend when callers omit `runtime_kind` (null resets to auto selection)
+                 * @enum {string|null}
+                 */
+                default_runtime_kind?: "builtin" | "bundled" | "external" | null;
+                /** @description Node launcher binary for bundled or external managed WebRTC peers (null resets to `node`) */
+                node_bin?: string | null;
+            };
+            edge_consensus?: {
+                /** @description External helper tool path for `runtime_kind=external` managed consensus runtimes (null clears) */
+                node_tool_path?: string | null;
+                /**
+                 * @description Preferred default managed consensus backend when callers omit `runtime_kind` (null resets to builtin auto selection)
+                 * @enum {string|null}
+                 */
+                default_runtime_kind?: "builtin" | "external" | null;
+            };
             blob_store?: components["schemas"]["BlobStoreUpdate"];
             blob_store_secrets?: components["schemas"]["BlobStoreSecretsUpdate"];
             blob_tier?: components["schemas"]["BlobTierConfig"];
@@ -5197,12 +6957,61 @@ export interface components {
                 max_calls: number;
             }[];
             proxy_url_set: boolean;
+            audio_webrtc?: {
+                broker_url_default_configured?: boolean;
+                broker_token_default_configured?: boolean;
+                peer_tool_path_configured?: boolean;
+                /** @enum {boolean} */
+                builtin_available?: false;
+                bundled_available?: boolean;
+                external_available?: boolean;
+                builtin_unavailable_reason?: string;
+                bundled_unavailable_reason?: string;
+                external_unavailable_reason?: string;
+                /** @enum {string|null} */
+                default_runtime_kind?: "builtin" | "bundled" | "external" | null;
+                /** @enum {string} */
+                default_runtime_kind_source?: "auto" | "env" | "config";
+                default_runtime_kind_available?: boolean;
+                default_runtime_kind_unavailable_reason?: string;
+                node_bin?: string;
+            } & {
+                [key: string]: unknown;
+            };
+            edge_consensus?: {
+                node_tool_path_configured?: boolean;
+                /** @enum {boolean} */
+                builtin_available?: true;
+                external_available?: boolean;
+                external_unavailable_reason?: string;
+                /** @enum {string} */
+                default_runtime_kind?: "builtin" | "external";
+                /** @enum {string} */
+                default_runtime_kind_source?: "auto" | "env" | "config";
+                default_runtime_kind_available?: boolean;
+                default_runtime_kind_unavailable_reason?: string;
+            } & {
+                [key: string]: unknown;
+            };
             edge_auth_required: boolean;
             edge_auth_require_ts?: boolean;
             /** Format: int64 */
             edge_auth_max_skew_ms?: number;
             edge_auth_require_seq?: boolean;
             edge_auth_kid_policy?: string;
+            /** Format: int64 */
+            edge_auth_trust_roots_epoch?: number;
+            /** Format: int64 */
+            edge_auth_trust_roots_updated_utc_ms?: number;
+            /** Format: int64 */
+            edge_auth_cert_roots_epoch?: number;
+            /** Format: int64 */
+            edge_auth_cert_roots_updated_utc_ms?: number;
+            /** Format: int64 */
+            edge_auth_revocations_epoch?: number;
+            /** Format: int64 */
+            edge_auth_revocations_updated_utc_ms?: number;
+            edge_confidentiality_required: boolean;
             edge_attest_required: boolean;
             edge_attest_require_sig: boolean;
             memory?: {
@@ -5259,6 +7068,16 @@ export interface components {
              * @description Number of Ed25519 pubkeys currently provisioned (pubkeys are not returned)
              */
             edge_auth_ed25519_pubkeys_set: number;
+            /**
+             * Format: int64
+             * @description Number of PEM certificate-root bundles currently provisioned
+             */
+            edge_auth_cert_roots_set: number;
+            /**
+             * Format: int64
+             * @description Number of confidentiality keys currently provisioned (secrets are not returned)
+             */
+            edge_confidentiality_keys_set: number;
             /** @description Best-effort echo of workflow outbound HTTP policy knobs after update */
             engines?: {
                 [key: string]: unknown;
@@ -5273,6 +7092,439 @@ export interface components {
             };
             blob_store?: components["schemas"]["BlobStoreConfig"];
             blob_tier?: components["schemas"]["BlobTierConfig"];
+        };
+        EdgeAuthTrustRootsAttestation: {
+            /** @enum {string} */
+            schema: "edge_auth_trust_roots_attest_v1";
+            /** Format: int64 */
+            ts_utc_ms: number;
+            /** Format: int64 */
+            rotation_epoch: number;
+            /** @enum {string} */
+            signing_schema: "edge_auth_trust_roots_v1";
+            /** @enum {string} */
+            alg: "hmac-sha256" | "ed25519";
+            kid: string;
+            /** @description Present for Ed25519 signatures */
+            pubkey?: string;
+            sig: string;
+        };
+        EdgeAuthTrustRootsBundle: {
+            /** @enum {string} */
+            schema: "edge_auth_trust_roots_v1";
+            /** Format: int64 */
+            created_utc_ms: number;
+            /** Format: int64 */
+            rotation_epoch: number;
+            /** Format: int64 */
+            updated_utc_ms: number;
+            auth_required: boolean;
+            require_ts: boolean;
+            /** Format: int64 */
+            max_skew_ms: number;
+            require_seq: boolean;
+            kid_policy: string;
+            hmac_kids: string[];
+            ed25519_pubkeys: {
+                [key: string]: string;
+            };
+            attest?: components["schemas"]["EdgeAuthTrustRootsAttestation"];
+        };
+        EdgeAuthTrustRootsResponse: {
+            ok: boolean;
+            trust_roots: components["schemas"]["EdgeAuthTrustRootsBundle"];
+        };
+        EdgeAuthTrustRootsSendRequest: {
+            /** @description Recipient node that will receive the trust-root bundle via outbox */
+            target_node_id: string;
+            /** @description Optional configured confidentiality `kid`; when set, the outbox envelope is emitted with `body_enc` */
+            confidential_kid?: string;
+        };
+        EdgeAuthTrustRootsSendResponse: {
+            ok: boolean;
+            target_node_id: string;
+            /** Format: int64 */
+            outbox_id: number;
+            confidential_kid?: string;
+            trust_roots: components["schemas"]["EdgeAuthTrustRootsBundle"];
+        };
+        EdgeAuthTrustRootsRotateRequest: {
+            /**
+             * @description Whether to merge into or replace the current trust-root set
+             * @enum {string}
+             */
+            mode?: "merge" | "replace";
+            /**
+             * Format: int64
+             * @description Optional explicit monotonic rotation epoch; defaults to current+1
+             */
+            rotation_epoch?: number;
+            /** @description Map of `kid` → shared secret for HMAC trust roots (null clears that kid) */
+            edge_auth_hmac_keys?: {
+                [key: string]: string | null;
+            };
+            /** @description Map of `kid` → base64(pubkey32) for Ed25519 trust roots (null clears that kid) */
+            edge_auth_ed25519_pubkeys?: {
+                [key: string]: string | null;
+            };
+        };
+        EdgeAuthTrustRootsRotateResponse: {
+            ok: boolean;
+            /** Format: int64 */
+            rotation_epoch: number;
+            /** Format: int64 */
+            updated_utc_ms: number;
+            /** Format: int64 */
+            edge_auth_hmac_keys_set: number;
+            /** Format: int64 */
+            edge_auth_ed25519_pubkeys_set: number;
+            trust_roots: components["schemas"]["EdgeAuthTrustRootsBundle"];
+        };
+        EdgeAuthCertRootsAttestation: {
+            /** @enum {string} */
+            schema: "edge_auth_cert_roots_attest_v1";
+            /** Format: int64 */
+            ts_utc_ms: number;
+            /** Format: int64 */
+            rotation_epoch: number;
+            /** @enum {string} */
+            signing_schema: "edge_auth_cert_roots_v1";
+            /** @enum {string} */
+            alg: "hmac-sha256" | "ed25519";
+            kid: string;
+            /** @description Present for Ed25519 signatures */
+            pubkey?: string;
+            sig: string;
+        };
+        EdgeAuthCertRootsBundle: {
+            /** @enum {string} */
+            schema: "edge_auth_cert_roots_v1";
+            /** Format: int64 */
+            created_utc_ms: number;
+            /** Format: int64 */
+            rotation_epoch: number;
+            /** Format: int64 */
+            updated_utc_ms: number;
+            cert_roots_pem: {
+                [key: string]: string;
+            };
+            attest?: components["schemas"]["EdgeAuthCertRootsAttestation"];
+        };
+        EdgeAuthCertRootsResponse: {
+            ok: boolean;
+            cert_roots: components["schemas"]["EdgeAuthCertRootsBundle"];
+        };
+        EdgeAuthCertRootsRotateRequest: {
+            /**
+             * @description Whether to merge into or replace the current certificate-root set
+             * @enum {string}
+             */
+            mode?: "merge" | "replace";
+            /**
+             * Format: int64
+             * @description Optional explicit monotonic certificate-root epoch; defaults to current+1
+             */
+            rotation_epoch?: number;
+            /** @description Map of `kid` → PEM certificate/root-chain blob (null clears that kid) */
+            edge_auth_cert_roots_pem: {
+                [key: string]: string | null;
+            };
+        };
+        EdgeAuthCertRootsRotateResponse: {
+            ok: boolean;
+            /** Format: int64 */
+            rotation_epoch: number;
+            /** Format: int64 */
+            updated_utc_ms: number;
+            /** Format: int64 */
+            edge_auth_cert_roots_set: number;
+            cert_roots: components["schemas"]["EdgeAuthCertRootsBundle"];
+        };
+        EdgeAuthCertRootsSendRequest: {
+            /** @description Recipient node that will receive the certificate-root bundle via outbox */
+            target_node_id: string;
+            /** @description Optional configured confidentiality `kid`; when set, the outbox envelope is emitted with `body_enc` */
+            confidential_kid?: string;
+        };
+        EdgeAuthCertRootsSendResponse: {
+            ok: boolean;
+            target_node_id: string;
+            /** Format: int64 */
+            outbox_id: number;
+            confidential_kid?: string;
+            cert_roots: components["schemas"]["EdgeAuthCertRootsBundle"];
+        };
+        EdgeAuthCertRootsVerifyChainRequest: {
+            /** @description PEM leaf certificate to verify against the current stored certificate-root set */
+            cert_pem: string;
+            /** @description Optional PEM intermediate certificate blobs supplied as untrusted chain material */
+            untrusted_cert_pem?: string[];
+        };
+        EdgeAuthCertRootsVerifyChainResponse: {
+            ok: boolean;
+            verified: boolean;
+            /** Format: int64 */
+            rotation_epoch: number;
+            /** Format: int64 */
+            updated_utc_ms: number;
+            /** Format: int64 */
+            edge_auth_cert_roots_set: number;
+            /** Format: int32 */
+            verify_error_code: number;
+            /** Format: int32 */
+            verify_error_depth: number;
+            verify_error: string | null;
+            leaf_subject: string | null;
+            leaf_issuer: string | null;
+            leaf_sha256: string | null;
+            verified_chain_subjects: string[];
+            verified_chain_sha256: string[];
+            matched_root_kids: string[];
+        };
+        EdgeAuthNodeBinding: {
+            node_id: string;
+            kid_policy: string;
+            /** Format: int64 */
+            trust_roots_epoch: number;
+            /** Format: int64 */
+            trust_roots_updated_utc_ms: number;
+            /** Format: int64 */
+            revocations_epoch: number;
+            /** Format: int64 */
+            revocations_updated_utc_ms: number;
+            recommended_hmac_kid: string;
+            recommended_ed25519_kid: string;
+            node_id_revoked: boolean;
+            matching_hmac_kids: string[];
+            matching_ed25519_kids: string[];
+            revoked_matching_hmac_kids: string[];
+            revoked_matching_ed25519_kids: string[];
+            kid_policy_satisfied: boolean;
+        };
+        EdgeAuthNodeBindingResponse: {
+            ok: boolean;
+            binding: components["schemas"]["EdgeAuthNodeBinding"];
+        };
+        EdgeAuthProvisionNodeRequest: {
+            node_id: string;
+            /** @enum {string} */
+            mode?: "merge" | "replace";
+            /** Format: int64 */
+            rotation_epoch?: number;
+            /** @description Defaults to `node_id` */
+            hmac_kid?: string;
+            /** @description Shared secret to provision for HMAC envelope auth */
+            hmac_secret?: string;
+            /** @description Remove the specified/default HMAC kid */
+            clear_hmac?: boolean;
+            /** @description Defaults to `node_id` */
+            ed25519_kid?: string;
+            /** @description Base64 of 32-byte Ed25519 public key */
+            ed25519_pubkey?: string;
+            /** @description Remove the specified/default Ed25519 kid */
+            clear_ed25519?: boolean;
+        };
+        EdgeAuthProvisionNodeResponse: {
+            ok: boolean;
+            /** Format: int64 */
+            rotation_epoch: number;
+            /** Format: int64 */
+            updated_utc_ms: number;
+            provisioned: {
+                [key: string]: unknown;
+            };
+            binding: components["schemas"]["EdgeAuthNodeBinding"];
+            trust_roots: components["schemas"]["EdgeAuthTrustRootsBundle"];
+        };
+        EdgeAuthRevocationsAttest: {
+            /** @enum {string} */
+            schema: "edge_auth_revocations_attest_v1";
+            /** Format: int64 */
+            ts_utc_ms: number;
+            /** Format: int64 */
+            rotation_epoch: number;
+            /** @enum {string} */
+            signing_schema: "edge_auth_revocations_v1";
+            /** @enum {string} */
+            alg: "hmac-sha256" | "ed25519";
+            kid: string;
+            pubkey?: string;
+            sig: string;
+        };
+        EdgeAuthRevocationsBundle: {
+            /** @enum {string} */
+            schema: "edge_auth_revocations_v1";
+            /** Format: int64 */
+            created_utc_ms: number;
+            /** Format: int64 */
+            rotation_epoch: number;
+            /** Format: int64 */
+            updated_utc_ms: number;
+            revoked_kids: string[];
+            revoked_node_ids: string[];
+            attest?: components["schemas"]["EdgeAuthRevocationsAttest"];
+        };
+        EdgeAuthRevocationsResponse: {
+            ok: boolean;
+            revocations: components["schemas"]["EdgeAuthRevocationsBundle"];
+        };
+        EdgeAuthRevocationsSendRequest: {
+            /** @description Recipient node that will receive the revocation bundle via outbox */
+            target_node_id: string;
+            /** @description Optional configured confidentiality `kid`; when set, the outbox envelope is emitted with `body_enc` */
+            confidential_kid?: string;
+        };
+        EdgeAuthRevocationsSendResponse: {
+            ok: boolean;
+            target_node_id: string;
+            /** Format: int64 */
+            outbox_id: number;
+            confidential_kid?: string;
+            revocations: components["schemas"]["EdgeAuthRevocationsBundle"];
+        };
+        EdgeAuthRevocationsUpdateRequest: {
+            /**
+             * @description Whether to merge into or replace the current revocation set
+             * @enum {string}
+             */
+            mode?: "merge" | "replace";
+            /**
+             * Format: int64
+             * @description Optional explicit monotonic revocation epoch; defaults to current+1
+             */
+            rotation_epoch?: number;
+            revoked_kids?: string[];
+            revoked_node_ids?: string[];
+        };
+        EdgeAuthRevocationsUpdateResponse: {
+            ok: boolean;
+            /** Format: int64 */
+            rotation_epoch: number;
+            /** Format: int64 */
+            updated_utc_ms: number;
+            /** Format: int64 */
+            revoked_kids_set: number;
+            /** Format: int64 */
+            revoked_node_ids_set: number;
+            revocations: components["schemas"]["EdgeAuthRevocationsBundle"];
+        };
+        EdgeConsensusMembershipAttest: {
+            /** @enum {string} */
+            schema: "edge_consensus_membership_attest_v1";
+            /** Format: int64 */
+            ts_utc_ms: number;
+            cluster_id: string;
+            /** Format: int64 */
+            membership_epoch: number;
+            /** @enum {string} */
+            signing_schema: "edge_consensus_membership_v1";
+            /** @enum {string} */
+            alg: "hmac-sha256" | "ed25519";
+            kid: string;
+            /** @description Present for Ed25519 signatures */
+            pubkey?: string;
+            sig: string;
+        };
+        EdgeConsensusMembershipBundle: {
+            /** @enum {string} */
+            schema: "edge_consensus_membership_v1";
+            /** Format: int64 */
+            created_utc_ms: number;
+            cluster_id: string;
+            /** Format: int64 */
+            membership_epoch: number;
+            /** Format: int64 */
+            updated_utc_ms: number;
+            /** Format: int64 */
+            campaign_delay_ms: number;
+            /** Format: int64 */
+            campaign_retry_ms: number;
+            /** Format: int64 */
+            campaign_retry_max_ms: number;
+            /** Format: int64 */
+            campaign_retry_backoff_factor: number;
+            /** Format: int64 */
+            leader_heartbeat_ms: number;
+            /** Format: int64 */
+            leader_lease_ms: number;
+            /** Format: int64 */
+            lease_expiry_recampaign_delay_ms: number;
+            member_node_ids: string[];
+            attest?: components["schemas"]["EdgeConsensusMembershipAttest"];
+        };
+        EdgeConsensusMembershipResponse: {
+            ok: boolean;
+            cluster_id: string;
+            membership: components["schemas"]["EdgeConsensusMembershipBundle"];
+        };
+        EdgeConsensusMembershipRotateRequest: {
+            cluster_id: string;
+            /**
+             * @description Whether to merge into or replace the current member set for this cluster
+             * @enum {string}
+             */
+            mode?: "merge" | "replace";
+            /**
+             * Format: int64
+             * @description Optional explicit monotonic membership epoch; defaults to current+1 for the cluster
+             */
+            membership_epoch?: number;
+            member_node_ids: string[];
+            /** Format: int64 */
+            campaign_delay_ms?: number;
+            /** Format: int64 */
+            campaign_retry_ms?: number;
+            /** Format: int64 */
+            campaign_retry_max_ms?: number;
+            /** Format: int64 */
+            campaign_retry_backoff_factor?: number;
+            /** Format: int64 */
+            leader_heartbeat_ms?: number;
+            /** Format: int64 */
+            leader_lease_ms?: number;
+            /** Format: int64 */
+            lease_expiry_recampaign_delay_ms?: number;
+        };
+        EdgeConsensusMembershipRotateResponse: {
+            ok: boolean;
+            cluster_id: string;
+            /** Format: int64 */
+            membership_epoch: number;
+            /** Format: int64 */
+            updated_utc_ms: number;
+            /** Format: int64 */
+            campaign_delay_ms: number;
+            /** Format: int64 */
+            campaign_retry_ms: number;
+            /** Format: int64 */
+            campaign_retry_max_ms: number;
+            /** Format: int64 */
+            campaign_retry_backoff_factor: number;
+            /** Format: int64 */
+            leader_heartbeat_ms: number;
+            /** Format: int64 */
+            leader_lease_ms: number;
+            /** Format: int64 */
+            lease_expiry_recampaign_delay_ms: number;
+            /** Format: int64 */
+            member_count: number;
+            membership: components["schemas"]["EdgeConsensusMembershipBundle"];
+        };
+        EdgeConsensusMembershipSendRequest: {
+            cluster_id: string;
+            /** @description Recipient node that will receive the membership bundle via outbox */
+            target_node_id: string;
+            /** @description Optional configured confidentiality `kid`; when set, the outbox envelope is emitted with `body_enc` */
+            confidential_kid?: string;
+        };
+        EdgeConsensusMembershipSendResponse: {
+            ok: boolean;
+            cluster_id: string;
+            target_node_id: string;
+            /** Format: int64 */
+            outbox_id: number;
+            confidential_kid?: string;
+            membership: components["schemas"]["EdgeConsensusMembershipBundle"];
         };
         OtaUpdateRequest: {
             /** @description OTA artifact URL (https/file) */
@@ -5697,6 +7949,254 @@ export interface components {
                 };
             }[];
         };
+        VoiceWebRtcPeerBackendPolicyDrift: {
+            changed_fields: string[];
+            current_effective_start: {
+                [key: string]: unknown;
+            };
+        };
+        VoiceWebRtcPeerBuiltinBrokerSessionContract: {
+            /** @enum {string} */
+            mode: "borrowed" | "auto_create";
+            preflighted: boolean;
+            session_id?: string;
+            session_mode?: string;
+            agent_id?: string;
+            deployment_id?: string;
+        };
+        VoiceWebRtcPeerBuiltinStartStage: {
+            /** @enum {string} */
+            stage: "borrowed_broker_session_preflight" | "auto_create_broker_session" | "launch_runtime" | "startup_confirmation" | "startup_failure_cleanup";
+            deferred: boolean;
+        };
+        VoiceWebRtcPeerBuiltinRuntimeArtifacts: {
+            runtime_dir: string;
+            ready_file_path: string;
+            stdout_log_path: string;
+            stderr_log_path: string;
+            /** @enum {string} */
+            ready_signal: "ready_file";
+            /** @enum {string} */
+            stdout_format: "jsonl";
+            /** @enum {string} */
+            stderr_format: "text";
+        };
+        VoiceWebRtcPeerMediaRuntimePlan: {
+            /** @enum {string} */
+            schema: "voice_webrtc_peer_media_runtime_plan_v1";
+            /** @enum {string} */
+            signaling_surface: "voice_webrtc_peer";
+            /** @enum {string} */
+            runtime_kind: "builtin" | "bundled" | "external";
+            session_id: string;
+            broker_session_id?: string;
+            broker_url: string;
+            managed_broker_session: boolean;
+            broker_agent_id?: string;
+            broker_deployment_id?: string;
+            sender_tag: string;
+            /** @enum {string} */
+            ready_signal: "ready_file";
+            ready_file_path: string;
+            /** Format: int64 */
+            deadline_ms: number;
+            /** Format: int64 */
+            poll_interval_ms: number;
+            /** Format: int64 */
+            tone_hz: number;
+        };
+        VoiceWebRtcPeerBuiltinStartContract: {
+            session_id: string;
+            /** @enum {string} */
+            runtime_kind: "builtin";
+            /** @enum {string} */
+            signaling_surface: "voice_webrtc_peer";
+            broker_url: string;
+            sender_tag: string;
+            /** Format: int64 */
+            deadline_ms: number;
+            /** Format: int64 */
+            poll_interval_ms: number;
+            /** Format: int64 */
+            tone_hz: number;
+            /** Format: int64 */
+            startup_wait_ms: number;
+            /** @enum {boolean} */
+            mutating_broker_actions_deferred: true;
+            startup_sequence: components["schemas"]["VoiceWebRtcPeerBuiltinStartStage"][];
+            runtime_artifacts: components["schemas"]["VoiceWebRtcPeerBuiltinRuntimeArtifacts"];
+            broker_session: components["schemas"]["VoiceWebRtcPeerBuiltinBrokerSessionContract"];
+            media_runtime_plan: components["schemas"]["VoiceWebRtcPeerMediaRuntimePlan"];
+            planned_runtime: components["schemas"]["VoiceWebRtcPeerRuntime"];
+        };
+        VoiceWebRtcPeerRuntime: {
+            /** @enum {string} */
+            schema: "session_voice_webrtc_peer_runtime_v1";
+            /** @enum {string} */
+            runtime_kind: "builtin" | "bundled" | "external";
+            /** @enum {string} */
+            status_source: "memory" | "persisted" | "planned";
+            session_id: string;
+            broker_session_id?: string;
+            broker_url: string;
+            managed_broker_session?: boolean;
+            broker_agent_id?: string;
+            broker_deployment_id?: string;
+            sender_tag: string;
+            tool_path: string;
+            node_bin: string;
+            ready_file_path?: string;
+            stdout_log_path?: string;
+            stderr_log_path?: string;
+            /** Format: int64 */
+            started_unix_ms: number;
+            /** Format: int64 */
+            ended_unix_ms?: number;
+            /** Format: int64 */
+            deadline_ms: number;
+            /** Format: int64 */
+            poll_interval_ms: number;
+            /** Format: int64 */
+            tone_hz: number;
+            ready: boolean;
+            running: boolean;
+            /** Format: int64 */
+            pid?: number;
+            exit_code?: number;
+            exit_signal?: number;
+            last_error?: string;
+            last_stdout_line?: string;
+            last_stdout?: {
+                [key: string]: unknown;
+            };
+        };
+        VoiceWebRtcPeerRequest: {
+            session_id: string;
+            /** @enum {string} */
+            action: "start" | "stop";
+            /**
+             * @description Optional backend selector for `action=start`; ignored on `action=stop`. `bundled` uses the shipped repo-local Node/Playwright peer when discoverable, `external` uses an operator-configured helper path, and `builtin` is reserved for the future embedded agentd-native media service. The reserved `builtin` path still applies the same request and non-mutating broker-session preflight validation before returning its current not-implemented response.
+             * @enum {string}
+             */
+            runtime_kind?: "builtin" | "bundled" | "external";
+            /** @description Optional existing broker audio-session id. Must not be combined with `broker_agent_id` or `broker_deployment_id`; when supplied, agentd preflights that broker session before launch, and the same borrowed-session validation also applies to reserved `runtime_kind=builtin` requests before they fail not implemented. */
+            broker_session_id?: string;
+            /** @description Optional broker `agent_id` used to auto-create a broker audio session when `broker_session_id` is omitted. */
+            broker_agent_id?: string;
+            /** @description Optional broker `deployment_id` passed through when agentd auto-creates the broker audio session. Must be omitted when `broker_session_id` is supplied. */
+            broker_deployment_id?: string;
+            /** @description Optional broker base URL override. When omitted, agentd uses its configured default broker URL if available. */
+            broker_url?: string;
+            /** @description Broker bearer token override used for session creation on `start`, and optionally reused on `stop` so agentd can delete an owned broker audio session itself if the child peer died before sending `bye`. When omitted, agentd uses its configured default broker token if available. */
+            broker_token?: string;
+            sender_tag?: string;
+            /** Format: int64 */
+            deadline_ms?: number;
+            /** Format: int64 */
+            poll_interval_ms?: number;
+            /** Format: int64 */
+            tone_hz?: number;
+            /**
+             * Format: int64
+             * @description Optional bounded startup confirmation window in ms. Agentd waits up to this long for the peer to become ready and fails the start if the child exits before readiness.
+             */
+            startup_wait_ms?: number;
+        };
+        VoiceWebRtcPeerResponse: {
+            ok: boolean;
+            session_id: string;
+            tool_configured: boolean;
+            /** @enum {boolean} */
+            builtin_available: false;
+            bundled_available: boolean;
+            external_available: boolean;
+            builtin_unavailable_reason?: string;
+            bundled_unavailable_reason?: string;
+            external_unavailable_reason?: string;
+            broker_url_default_configured?: boolean;
+            broker_token_default_configured?: boolean;
+            startup_confirmed?: boolean;
+            /** @enum {string} */
+            default_runtime_kind: "builtin" | "bundled" | "external";
+            /** @enum {string} */
+            default_runtime_kind_source: "auto" | "env" | "config";
+            default_runtime_kind_available: boolean;
+            default_runtime_kind_unavailable_reason?: string;
+            bundled_tool_path?: string;
+            tool_path?: string;
+            node_bin: string;
+            started?: boolean;
+            stopped?: boolean;
+            broker_session_deleted?: boolean;
+            broker_session_delete_error?: string;
+            startup_cleanup?: {
+                [key: string]: unknown;
+            };
+            cleanup_on_corrupt_record?: {
+                [key: string]: unknown;
+            };
+            cleanup_on_stale_record?: {
+                [key: string]: unknown;
+            };
+            already_running?: boolean;
+            reason?: string;
+            error?: string;
+            builtin_start_contract?: components["schemas"]["VoiceWebRtcPeerBuiltinStartContract"];
+            backend_policy_drift?: components["schemas"]["VoiceWebRtcPeerBackendPolicyDrift"];
+            peer?: components["schemas"]["VoiceWebRtcPeerRuntime"] | null;
+        };
+        VoiceWebRtcPeerStatusResponse: {
+            ok: boolean;
+            session_id: string;
+            tool_configured: boolean;
+            /** @enum {boolean} */
+            builtin_available: false;
+            bundled_available: boolean;
+            external_available: boolean;
+            builtin_unavailable_reason?: string;
+            bundled_unavailable_reason?: string;
+            external_unavailable_reason?: string;
+            broker_url_default_configured?: boolean;
+            broker_token_default_configured?: boolean;
+            /** @enum {string} */
+            default_runtime_kind: "builtin" | "bundled" | "external";
+            /** @enum {string} */
+            default_runtime_kind_source: "auto" | "env" | "config";
+            default_runtime_kind_available: boolean;
+            default_runtime_kind_unavailable_reason?: string;
+            bundled_tool_path?: string;
+            tool_path?: string;
+            node_bin: string;
+            session_exists: boolean;
+            running: boolean;
+            error?: string;
+            cleanup_on_corrupt_record?: {
+                [key: string]: unknown;
+            };
+            cleanup_on_stale_record?: {
+                [key: string]: unknown;
+            };
+            cleanup_on_missing_session?: {
+                [key: string]: unknown;
+            };
+            backend_policy_drift?: components["schemas"]["VoiceWebRtcPeerBackendPolicyDrift"];
+            peer?: components["schemas"]["VoiceWebRtcPeerRuntime"] | null;
+        };
+        EdgeEncryptedBody: {
+            /** @enum {string} */
+            schema: "umbmp_body_enc_v1";
+            /** @enum {string} */
+            alg: "aes-256-gcm";
+            kid: string;
+            /** @description Base64 of a 12-byte AES-GCM IV */
+            iv: string;
+            /** @description Base64 of a 16-byte AES-GCM authentication tag */
+            tag: string;
+            /** @description Base64 ciphertext of the compact JSON body object */
+            ct: string;
+            /** @enum {string} */
+            content_type: "application/json";
+        };
         EdgeMessageEnvelope: {
             msg_id: string;
             /** Format: int64 */
@@ -5705,15 +8205,304 @@ export interface components {
             from: string;
             /** @description Destination address or null */
             to: string | null;
-            body: {
+            /** @description Plaintext UM-BMP body object. Mutually exclusive with `body_enc`. */
+            body?: {
                 [key: string]: unknown;
             };
+            body_enc?: components["schemas"]["EdgeEncryptedBody"];
             auth?: {
                 [key: string]: unknown;
             };
             trace?: {
                 [key: string]: unknown;
             };
+        };
+        EdgeNodeConsensusStatus: {
+            /** @enum {string} */
+            schema: "edge_node_consensus_status_v1";
+            /** Format: int64 */
+            updated_utc_ms: number;
+            last_msg_id?: string;
+            last_frame_id: string;
+            /** @enum {string} */
+            last_frame_kind: "vote_request" | "vote_grant" | "leader_commit";
+            /** Format: int64 */
+            current_term: number;
+            decision_sha256?: string;
+            candidate_node_id?: string;
+            leader_node_id?: string;
+            granted?: boolean;
+            from: {
+                [key: string]: unknown;
+            };
+            target_node_ids?: string[];
+            /** Format: int64 */
+            forwarded_count?: number;
+            /** Format: int64 */
+            vote_witness_count?: number;
+            vote_witnesses?: {
+                [key: string]: unknown;
+            }[];
+        };
+        EdgeConsensusClusterPolicy: {
+            /** @enum {string} */
+            schema: "edge_consensus_cluster_policy_v1";
+            cluster_id: string;
+            /** Format: int64 */
+            membership_epoch: number;
+            /** Format: int64 */
+            updated_utc_ms: number;
+            /** Format: int64 */
+            campaign_delay_ms: number;
+            /** Format: int64 */
+            campaign_retry_ms: number;
+            /** Format: int64 */
+            campaign_retry_max_ms: number;
+            /** Format: int64 */
+            campaign_retry_backoff_factor: number;
+            /** Format: int64 */
+            leader_heartbeat_ms: number;
+            /** Format: int64 */
+            leader_lease_ms: number;
+            /** Format: int64 */
+            lease_expiry_recampaign_delay_ms: number;
+            member_node_ids: string[];
+        };
+        EdgeTrustEpochs: {
+            /** Format: int64 */
+            trust_roots_epoch: number;
+            /** Format: int64 */
+            revocations_epoch: number;
+            /** Format: int64 */
+            cert_roots_epoch: number;
+        };
+        EdgeNodeConsensusRuntime: {
+            /** @enum {string} */
+            schema: "edge_node_consensus_runtime_v1";
+            /** @enum {string} */
+            runtime_kind: "builtin" | "external";
+            /** @enum {string} */
+            status_source: "memory" | "persisted";
+            node_id: string;
+            cluster_id: string;
+            manifest_sha256: string;
+            decision_sha256?: string;
+            peer_node_ids: string[];
+            member_node_ids: string[];
+            /** @description For `runtime_kind=builtin`, this is normalized to `@local` because the builtin loop uses daemon-local transport instead of self-HTTP. */
+            daemon_url: string;
+            tool_path: string;
+            model?: string;
+            fw_git_sha?: string;
+            stderr_log_path?: string;
+            /** Format: int64 */
+            started_unix_ms: number;
+            /** Format: int64 */
+            ended_unix_ms?: number;
+            /** Format: int64 */
+            campaign_delay_ms: number;
+            /** Format: int64 */
+            campaign_retry_ms: number;
+            /** Format: int64 */
+            campaign_retry_max_ms: number;
+            /** Format: int64 */
+            campaign_retry_backoff_factor: number;
+            /** Format: int64 */
+            leader_heartbeat_ms: number;
+            /** Format: int64 */
+            leader_lease_ms: number;
+            /** Format: int64 */
+            lease_expiry_recampaign_delay_ms: number;
+            /** Format: int64 */
+            poll_interval_ms: number;
+            /** Format: int64 */
+            deadline_ms: number;
+            /** Format: int64 */
+            cluster_size: number;
+            /** Format: int64 */
+            outbox_limit: number;
+            trust_epochs: components["schemas"]["EdgeTrustEpochs"];
+            /** Format: int64 */
+            membership_epoch: number;
+            running: boolean;
+            /** Format: int64 */
+            pid?: number;
+            exit_code?: number;
+            exit_signal?: number;
+            last_error?: string;
+            last_stdout_line?: string;
+            last_stdout?: {
+                [key: string]: unknown;
+            };
+            result?: {
+                [key: string]: unknown;
+            };
+            /** @description Best-effort live loop status for an active managed runtime, mirroring the consensus loop status object while the runtime is still running. Builtin runtimes expose it directly in-process; external runtimes expose it while their stdout remains attached to agentd. */
+            live_status?: {
+                [key: string]: unknown;
+            };
+            cluster_policy_drift?: {
+                cluster_id: string;
+                changed_fields: string[];
+                current_policy: components["schemas"]["EdgeConsensusClusterPolicy"];
+            };
+            trust_epoch_drift?: {
+                changed_fields: string[];
+                current_trust_epochs: components["schemas"]["EdgeTrustEpochs"];
+            };
+        };
+        EdgeNodeSummary: {
+            node_id: string;
+            model?: string;
+            fw_git_sha?: string;
+            caps_sha256?: string;
+            /** Format: int64 */
+            last_hello_utc_ms: number;
+            /** Format: int64 */
+            last_heartbeat_utc_ms: number;
+            consensus?: components["schemas"]["EdgeNodeConsensusStatus"];
+            consensus_runtime?: components["schemas"]["EdgeNodeConsensusRuntime"];
+        };
+        EdgeNodesResponse: {
+            ok: boolean;
+            nodes: components["schemas"]["EdgeNodeSummary"][];
+        };
+        EdgeNodeRecordResponse: {
+            ok: boolean;
+            node: components["schemas"]["EdgeNodeSummary"] & {
+                tags?: string[];
+                tools?: {
+                    [key: string]: unknown;
+                }[];
+                hardware_presence?: {
+                    [key: string]: unknown;
+                };
+                health?: {
+                    [key: string]: unknown;
+                };
+                identity_cert_verify?: {
+                    [key: string]: unknown;
+                };
+                has_manifest?: boolean;
+                consensus_runtime?: components["schemas"]["EdgeNodeConsensusRuntime"];
+            };
+        };
+        EdgeNodeConsensusRuntimeRequest: {
+            /** @enum {string} */
+            action: "start" | "stop";
+            /**
+             * @description Optional runtime backend selector. Defaults to the configured managed consensus backend when present, otherwise builtin auto; `external` keeps using the standalone helper for bring-up/debug.
+             * @enum {string}
+             */
+            runtime_kind?: "builtin" | "external";
+            node_id: string;
+            cluster_id?: string;
+            manifest_sha256?: string;
+            decision_sha256?: string;
+            peer_node_ids?: string[];
+            member_node_ids?: string[];
+            /** Format: int64 */
+            cluster_size?: number;
+            /** Format: int64 */
+            outbox_limit?: number;
+            /** Format: int64 */
+            campaign_delay_ms?: number;
+            /** Format: int64 */
+            campaign_retry_ms?: number;
+            /** Format: int64 */
+            campaign_retry_max_ms?: number;
+            /** Format: int64 */
+            campaign_retry_backoff_factor?: number;
+            /** Format: int64 */
+            leader_heartbeat_ms?: number;
+            /** Format: int64 */
+            leader_lease_ms?: number;
+            /** Format: int64 */
+            lease_expiry_recampaign_delay_ms?: number;
+            /** Format: int64 */
+            poll_interval_ms?: number;
+            /** Format: int64 */
+            deadline_ms?: number;
+            /**
+             * Format: int64
+             * @description Optional override; defaults to the daemon's current `edge_auth_trust_roots_epoch`.
+             */
+            trust_roots_epoch?: number;
+            /**
+             * Format: int64
+             * @description Optional override; defaults to the daemon's current `edge_auth_revocations_epoch`.
+             */
+            revocations_epoch?: number;
+            /**
+             * Format: int64
+             * @description Optional override; defaults to the daemon's current `edge_auth_cert_roots_epoch`.
+             */
+            cert_roots_epoch?: number;
+            /** Format: int64 */
+            membership_epoch?: number;
+            /** @description Optional override for the external helper transport; ignored for `runtime_kind=builtin`, which uses daemon-local transport. */
+            daemon_url?: string;
+            /** @description Optional override for the managed external helper; ignored for `runtime_kind=builtin`. */
+            auth_token?: string;
+            model?: string;
+            fw_git_sha?: string;
+        };
+        EdgeNodeConsensusRuntimeResponse: {
+            ok: boolean;
+            node_id: string;
+            tool_configured: boolean;
+            builtin_available: boolean;
+            external_available: boolean;
+            external_unavailable_reason?: string;
+            /** @enum {string} */
+            default_runtime_kind: "builtin" | "external";
+            /** @enum {string} */
+            default_runtime_kind_source: "auto" | "env" | "config";
+            default_runtime_kind_available: boolean;
+            default_runtime_kind_unavailable_reason?: string;
+            tool_path?: string;
+            default_daemon_url: string;
+            started?: boolean;
+            startup_confirmed?: boolean;
+            stopped?: boolean;
+            already_running?: boolean;
+            reason?: string;
+            error?: string;
+            runtime?: components["schemas"]["EdgeNodeConsensusRuntime"] | null;
+            cleanup_on_corrupt_record?: {
+                [key: string]: unknown;
+            };
+            cleanup_on_stale_record?: {
+                [key: string]: unknown;
+            };
+            cluster_policy?: components["schemas"]["EdgeConsensusClusterPolicy"];
+        };
+        EdgeNodeConsensusRuntimeStatusResponse: {
+            ok: boolean;
+            node_id: string;
+            tool_configured: boolean;
+            builtin_available: boolean;
+            external_available: boolean;
+            external_unavailable_reason?: string;
+            /** @enum {string} */
+            default_runtime_kind: "builtin" | "external";
+            /** @enum {string} */
+            default_runtime_kind_source: "auto" | "env" | "config";
+            default_runtime_kind_available: boolean;
+            default_runtime_kind_unavailable_reason?: string;
+            tool_path?: string;
+            default_daemon_url: string;
+            node_exists: boolean;
+            running: boolean;
+            node_consensus?: components["schemas"]["EdgeNodeConsensusStatus"];
+            runtime?: components["schemas"]["EdgeNodeConsensusRuntime"] | null;
+            cleanup_on_corrupt_record?: {
+                [key: string]: unknown;
+            };
+            cleanup_on_stale_record?: {
+                [key: string]: unknown;
+            };
+            cluster_policy?: components["schemas"]["EdgeConsensusClusterPolicy"];
         };
         EdgeOutboxResponse: {
             ok: boolean;
@@ -5731,6 +8520,84 @@ export interface components {
                 msg_raw?: string;
                 parse_error?: string;
             }[];
+        };
+        EdgeNodeCapsResponse: {
+            ok: boolean;
+            node_id: string;
+            manifest: {
+                [key: string]: unknown;
+            };
+        };
+        EdgeNodeManifestAttestation: {
+            /** @enum {string} */
+            schema: "edge_node_manifest_attest_v1";
+            /** Format: int64 */
+            ts_utc_ms: number;
+            /** @enum {string} */
+            signing_schema: "edge_node_manifest_bundle_v1";
+            node_id: string;
+            caps_sha256?: string;
+            manifest_sha256: string;
+            /** @enum {string} */
+            alg: "hmac-sha256" | "ed25519";
+            kid: string;
+            /** @description Present for Ed25519 signatures */
+            pubkey?: string;
+            sig: string;
+        };
+        EdgeNodeManifestBundle: {
+            /** @enum {string} */
+            schema: "edge_node_manifest_bundle_v1";
+            /** Format: int64 */
+            created_utc_ms: number;
+            node_id: string;
+            caps_sha256?: string;
+            manifest_sha256: string;
+            /** @enum {string} */
+            manifest_sha256_alg: "agent_json_c14n_v1";
+            model?: string;
+            fw_git_sha?: string;
+            /** Format: int64 */
+            last_hello_utc_ms: number;
+            /** Format: int64 */
+            last_heartbeat_utc_ms: number;
+            manifest: {
+                [key: string]: unknown;
+            };
+            tools?: {
+                [key: string]: unknown;
+            }[];
+            tags?: string[];
+            hardware_presence?: {
+                [key: string]: unknown;
+            };
+            /** @description Best-effort verification summary for `manifest.identity.{cert_pem,cert_chain_pem}` against the current PEM cert-root set */
+            identity_cert_verify?: {
+                [key: string]: unknown;
+            };
+            attest?: components["schemas"]["EdgeNodeManifestAttestation"];
+        };
+        EdgeNodeManifestBundleResponse: {
+            ok: boolean;
+            node_id: string;
+            bundle: components["schemas"]["EdgeNodeManifestBundle"];
+        };
+        EdgeNodeManifestBundleSendRequest: {
+            /** @description Recipient node that will receive the bundle via outbox */
+            target_node_id: string;
+            /** @description Node whose manifest bundle will be signed and delivered */
+            subject_node_id: string;
+            /** @description Optional configured confidentiality `kid`; when set, the outbox envelope is emitted with `body_enc` */
+            confidential_kid?: string;
+        };
+        EdgeNodeManifestBundleSendResponse: {
+            ok: boolean;
+            target_node_id: string;
+            subject_node_id: string;
+            /** Format: int64 */
+            outbox_id: number;
+            confidential_kid?: string;
+            bundle: components["schemas"]["EdgeNodeManifestBundle"];
         };
         EdgeTaskAssignRequest: {
             /** @description Optional trace correlation object (best-effort). Recommended field: trace_id. */
@@ -6158,6 +9025,7 @@ export interface components {
             /** Format: int64 */
             run_id?: number;
             session_id?: string;
+            node_id?: string;
             agent_id?: string;
             deployment_id?: string;
             issuer?: {
@@ -7064,14 +9932,14 @@ export interface components {
              *     Notes:
              *     - When `require_distinct_nodes=true`, this pointer is used to count votes across distinct nodes.
              *     - Otherwise, it is only an observability/correlation surface (does not change quorum semantics).
-             *     - Default: `/edge/node_id` (populated by `kind:edge_invoke` results).
+             *     - Default: `/avm/attest/node_id` when the active pointers are AVM hash pointers, otherwise `/edge/node_id`.
              */
             node_pointer?: string;
             /**
              * @description For mode=quorum_hashes, when true, count votes across **distinct node identities** instead of per-task votes.
              *
              *     Semantics:
-             *     - Node identity is read from `node_pointer` (default `/edge/node_id`).
+             *     - Node identity is read from `node_pointer` (default `/avm/attest/node_id` for AVM hash joins, otherwise `/edge/node_id`).
              *     - Each distinct node contributes at most one vote per pointer:
              *       the vote is taken from the first task_id (in task_ids order) that has a non-empty string at that pointer.
              *     - Tasks missing a node_id at node_pointer do not contribute votes when this is enabled (fail-closed).
@@ -7426,7 +10294,7 @@ export interface components {
              *     (for quorum_hashes correlation; also used when require_distinct_nodes=true).
              *
              *     For `kind:delegate_parallel` with `mode=quorum_hashes`, the server defaults this to `/effective_base_url`.
-             *     (The aggregate engine's default is `/edge/node_id`.)
+             *     (The aggregate engine otherwise defaults to `/avm/attest/node_id` for AVM hash joins or `/edge/node_id`.)
              */
             node_pointer?: string;
             /**
@@ -7522,6 +10390,20 @@ export interface components {
             /** @description Allow dispatch for tools marked side_effect_level=high. */
             allow_high_side_effect?: boolean;
         };
+        /**
+         * @description Explicit host-effect requests for AVM capsule execution. Effects are denied by default and only
+         *     become usable when both the request asks for them and the operator enables the corresponding
+         *     daemon env gate (`AGENTD_AVM_ALLOW_FS`, `AGENTD_AVM_ALLOW_PROC`, `AGENTD_AVM_ALLOW_NET`).
+         *     Additional mounts require `fs=true`. `allow_domains` requires `net=true`.
+         */
+        AvmCapsuleHostEffects: {
+            /** @description Request filesystem host effects. Required when `mounts` is non-empty. */
+            fs?: boolean;
+            /** @description Request host process interaction effects. */
+            proc?: boolean;
+            /** @description Request host network effects. Required when `allow_domains` is set. */
+            net?: boolean;
+        };
         AvmCapsuleRunArgs: {
             /** @description Base64-encoded `.obc` bytes */
             obc_base64: string;
@@ -7564,6 +10446,7 @@ export interface components {
             time_start_ns?: number;
             /** @description CSV allowlist passed to AVM `--allow-domains` (still virtualized by capsule defaults) */
             allow_domains?: string;
+            host_effects?: components["schemas"]["AvmCapsuleHostEffects"];
             /**
              * @description Optional additional host mounts for AVM-aware capsule runners. Each mount is validated against
              *     the daemon sandbox mount allowlist before execution; missing or rejected allowlists fail closed.
@@ -7606,6 +10489,72 @@ export interface components {
             };
             workflow_limits?: components["schemas"]["WorkflowLimits"];
             tasks: components["schemas"]["WorkflowTaskSpec"][];
+        };
+        RuntimeSkillSummary: {
+            skill_id: string;
+            version: string;
+            kind: string;
+            description: string;
+            category?: string;
+            label?: string;
+            source_manifest?: string;
+            root?: string;
+            requires?: {
+                [key: string]: unknown;
+            };
+            inputs_schema?: {
+                [key: string]: unknown;
+            } | null;
+            ui?: {
+                [key: string]: unknown;
+            };
+            has_workflow_template?: boolean;
+            has_team_template?: boolean;
+            has_policy_preset?: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        RuntimeSkillListResponse: {
+            ok: boolean;
+            skills: components["schemas"]["RuntimeSkillSummary"][];
+            capabilities: {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        RuntimeSkillResolveRequest: {
+            skill_id: string;
+            inputs?: {
+                [key: string]: unknown;
+            };
+        };
+        RuntimeSkillResolveResponse: {
+            ok: boolean;
+            skill_id: string;
+            skill_version: string;
+            description?: string;
+            kind: string;
+            manifest_sha256: string;
+            source_manifest?: string;
+            inputs?: {
+                [key: string]: unknown;
+            };
+            manifest: {
+                [key: string]: unknown;
+            };
+            resolved?: {
+                [key: string]: unknown;
+            };
+            materialized?: {
+                [key: string]: unknown;
+            };
+            capabilities_checked?: boolean;
+            capabilities?: {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
         };
         WorkflowSchedule: {
             schedule_id: string;

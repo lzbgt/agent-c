@@ -15,6 +15,11 @@ agentd schemas, edit the domain-specific files under
 `broker.yaml`) focused on metadata, tags, and top-level `$ref` wiring so
 tooling can resolve the full contract.
 
+When a fragment under `agentd/components/` or `broker/components/` references
+`#/components/schemas/...`, that schema must also be exported through the
+spec-local `components.yaml` index. The UI type generator now validates those
+exports before bundling so missing registry entries fail with a focused error.
+
 ## Bundling helper
 
 For consumers that do not resolve `$ref` values, use:
@@ -22,6 +27,8 @@ For consumers that do not resolve `$ref` values, use:
 ```bash
 tools/openapi_bundle.py docs/openapi/agentd.yaml -o out/agentd.openapi.yaml
 tools/openapi_bundle.py docs/openapi/broker.yaml -o out/broker.openapi.yaml
+python3 tools/check_openapi_component_refs.py docs/openapi/agentd.yaml
+python3 tools/check_openapi_component_refs.py docs/openapi/broker.yaml
 ```
 
 ## WebUI generated types
