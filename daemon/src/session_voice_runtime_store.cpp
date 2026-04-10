@@ -90,6 +90,11 @@ Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   out["audio_last_process_samples"] = Json::Int64(st.audio_last_process_samples);
   out["audio_last_peak_abs_pcm16"] = Json::Int64(st.audio_last_peak_abs_pcm16);
   out["audio_last_rms_pcm16"] = Json::Int64(st.audio_last_rms_pcm16);
+  out["audio_render_events_total"] = Json::Int64(st.audio_render_events_total);
+  out["audio_pcm_samples_rendered_total"] =
+    Json::Int64(st.audio_pcm_samples_rendered_total);
+  out["audio_render_window_samples"] = Json::Int64(st.audio_render_window_samples);
+  out["audio_last_render_samples"] = Json::Int64(st.audio_last_render_samples);
   if (st.audio_last_sample_rate_hz > 0) {
     out["audio_last_sample_rate_hz"] = Json::Int64(st.audio_last_sample_rate_hz);
   }
@@ -102,6 +107,10 @@ Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   }
   if (!st.audio_last_codec_name.empty()) out["audio_last_codec_name"] = st.audio_last_codec_name;
   if (!st.audio_last_error.empty()) out["audio_last_error"] = st.audio_last_error;
+  if (!st.audio_render_wav_path.empty()) out["audio_render_wav_path"] = st.audio_render_wav_path;
+  if (!st.audio_render_last_error.empty()) {
+    out["audio_render_last_error"] = st.audio_render_last_error;
+  }
   if (st.native_media_provider.isObject()) out["native_media_provider"] = st.native_media_provider;
   out["ready"] = st.ready;
   out["running"] = st.running;
@@ -416,6 +425,27 @@ bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, s
        v["audio_last_rms_pcm16"].isUInt64())) {
     st.audio_last_rms_pcm16 = v["audio_last_rms_pcm16"].asInt64();
   }
+  if (v.isMember("audio_render_events_total") &&
+      (v["audio_render_events_total"].isInt64() ||
+       v["audio_render_events_total"].isUInt64())) {
+    st.audio_render_events_total = v["audio_render_events_total"].asInt64();
+  }
+  if (v.isMember("audio_pcm_samples_rendered_total") &&
+      (v["audio_pcm_samples_rendered_total"].isInt64() ||
+       v["audio_pcm_samples_rendered_total"].isUInt64())) {
+    st.audio_pcm_samples_rendered_total =
+      v["audio_pcm_samples_rendered_total"].asInt64();
+  }
+  if (v.isMember("audio_render_window_samples") &&
+      (v["audio_render_window_samples"].isInt64() ||
+       v["audio_render_window_samples"].isUInt64())) {
+    st.audio_render_window_samples = v["audio_render_window_samples"].asInt64();
+  }
+  if (v.isMember("audio_last_render_samples") &&
+      (v["audio_last_render_samples"].isInt64() ||
+       v["audio_last_render_samples"].isUInt64())) {
+    st.audio_last_render_samples = v["audio_last_render_samples"].asInt64();
+  }
   if (v.isMember("audio_last_sample_rate_hz") &&
       (v["audio_last_sample_rate_hz"].isInt64() || v["audio_last_sample_rate_hz"].isUInt64())) {
     st.audio_last_sample_rate_hz = v["audio_last_sample_rate_hz"].asInt64();
@@ -435,6 +465,12 @@ bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, s
   }
   if (v.isMember("audio_last_error") && v["audio_last_error"].isString()) {
     st.audio_last_error = trim_copy(v["audio_last_error"].asString());
+  }
+  if (v.isMember("audio_render_wav_path") && v["audio_render_wav_path"].isString()) {
+    st.audio_render_wav_path = v["audio_render_wav_path"].asString();
+  }
+  if (v.isMember("audio_render_last_error") && v["audio_render_last_error"].isString()) {
+    st.audio_render_last_error = trim_copy(v["audio_render_last_error"].asString());
   }
   if (v.isMember("native_media_provider") && v["native_media_provider"].isObject()) {
     st.native_media_provider = v["native_media_provider"];

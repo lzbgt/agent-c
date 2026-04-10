@@ -1,6 +1,7 @@
 #include "session_voice_builtin_service.h"
 
 #include "session_voice_audio_process.h"
+#include "session_voice_audio_wav.h"
 #include "session_voice_builtin_media_engine.h"
 #include "session_voice_process_plan.h"
 #include "session_voice_runtime_plan.h"
@@ -35,10 +36,16 @@ struct BuiltinVoicePeerService {
   std::unique_ptr<VoicePeerBuiltinMediaEngine> media_engine;
   std::function<void(const VoicePeerRuntime&)> persist_runtime;
   std::deque<int16_t> owned_audio_pcm;
+  std::deque<int16_t> rendered_audio_pcm;
   int64_t owned_audio_drain_events_total = 0;
   int64_t owned_audio_pcm_samples_drained_total = 0;
   int64_t owned_audio_process_events_total = 0;
   int64_t owned_audio_pcm_samples_processed_total = 0;
+  int64_t owned_audio_render_events_total = 0;
+  int64_t owned_audio_pcm_samples_rendered_total = 0;
+  int owned_audio_last_sample_rate_hz = 0;
+  int owned_audio_last_channels = 0;
+  std::string rendered_audio_wav_path;
   std::mutex mu;
   std::condition_variable cv;
   bool stop_requested = false;
@@ -51,6 +58,7 @@ std::map<std::string, std::shared_ptr<BuiltinVoicePeerService>> builtin_voice_pe
 
 constexpr size_t kBuiltinVoicePeerOwnedAudioCapacitySamples = 48000 * 2 * 2;
 constexpr size_t kBuiltinVoicePeerOwnedAudioProcessSamples = 4096;
+constexpr size_t kBuiltinVoicePeerRenderedAudioCapacitySamples = 48000 * 2 * 10;
 
 int64_t now_unix_ms() {
   using namespace std::chrono;
@@ -218,6 +226,22 @@ bool drain_builtin_voice_peer_media_engine_audio(
         drain_events_total = service->owned_audio_drain_events_total;
         pcm_samples_drained_total = service->owned_audio_pcm_samples_drained_total;
         pcm_samples_owned = static_cast<int64_t>(service->owned_audio_pcm.size());
+        if (chunk.sample_rate_hz > 0 &&
+            service->owned_audio_last_sample_rate_hz > 0 &&
+            service->owned_audio_last_sample_rate_hz != chunk.sample_rate_hz) {
+          service->rendered_audio_pcm.clear();
+        }
+        if (chunk.channels > 0 &&
+            service->owned_audio_last_channels > 0 &&
+            service->owned_audio_last_channels != chunk.channels) {
+          service->rendered_audio_pcm.clear();
+        }
+        if (chunk.sample_rate_hz > 0) {
+          service->owned_audio_last_sample_rate_hz = chunk.sample_rate_hz;
+        }
+        if (chunk.channels > 0) {
+          service->owned_audio_last_channels = chunk.channels;
+        }
       }
       payload["event"] = "audio_chunk_drained";
       payload["audio_drain_events_total"] = Json::Int64(drain_events_total);
@@ -277,6 +301,12 @@ bool process_builtin_voice_peer_owned_audio(
       service->owned_audio_process_events_total += 1;
       service->owned_audio_pcm_samples_processed_total +=
         static_cast<int64_t>(samples.size());
+      for (const int16_t sample : samples) {
+        service->rendered_audio_pcm.push_back(sample);
+      }
+      while (service->rendered_audio_pcm.size() > kBuiltinVoicePeerRenderedAudioCapacitySamples) {
+        service->rendered_audio_pcm.pop_front();
+      }
       process_events_total = service->owned_audio_process_events_total;
       pcm_samples_processed_total = service->owned_audio_pcm_samples_processed_total;
       pcm_samples_owned = static_cast<int64_t>(service->owned_audio_pcm.size());
@@ -306,6 +336,112 @@ bool process_builtin_voice_peer_owned_audio(
   return true;
 }
 
+bool render_builtin_voice_peer_owned_audio(
+  const std::shared_ptr<BuiltinVoicePeerService>& service,
+  std::mutex& runtime_mu,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (!service) return true;
+
+  for (int i = 0; i < 32; ++i) {
+    std::vector<int16_t> snapshot_samples;
+    int sample_rate_hz = 0;
+    int channels = 0;
+    std::string wav_path;
+    {
+      std::lock_guard<std::mutex> lk(service->mu);
+      if (service->owned_audio_pcm_samples_processed_total <=
+          service->owned_audio_pcm_samples_rendered_total) {
+        return true;
+      }
+
+      sample_rate_hz = service->owned_audio_last_sample_rate_hz;
+      channels = service->owned_audio_last_channels;
+      if (sample_rate_hz <= 0 || channels <= 0) {
+        service->rendered_audio_pcm.clear();
+        service->owned_audio_pcm_samples_rendered_total =
+          service->owned_audio_pcm_samples_processed_total;
+        Json::Value payload = make_builtin_voice_peer_event("audio_chunk_render_failed", service->session_id);
+        payload["media_engine_state"] = "media_active";
+        payload["native_media_active"] = true;
+        if (!service->rendered_audio_wav_path.empty()) {
+          payload["audio_render_wav_path"] = service->rendered_audio_wav_path;
+        }
+        payload["audio_render_last_error"] = "audio render format unavailable";
+        append_builtin_voice_peer_event_and_snapshot(
+          service->stdout_log_path, service->session_id, payload, service->runtime, runtime_mu);
+        return true;
+      }
+      if (service->rendered_audio_pcm.empty()) return true;
+
+      if (!service->rendered_audio_pcm.empty() &&
+          service->rendered_audio_pcm.size() % static_cast<size_t>(channels) != 0) {
+        service->rendered_audio_pcm.clear();
+      }
+      while (service->rendered_audio_pcm.size() > kBuiltinVoicePeerRenderedAudioCapacitySamples) {
+        service->rendered_audio_pcm.pop_front();
+      }
+      snapshot_samples.assign(
+        service->rendered_audio_pcm.begin(), service->rendered_audio_pcm.end());
+      wav_path = service->rendered_audio_wav_path;
+    }
+
+    std::string render_err;
+    if (!write_pcm16_wav_file(
+          wav_path,
+          snapshot_samples.data(),
+          snapshot_samples.size(),
+          sample_rate_hz,
+          channels,
+          &render_err)) {
+      Json::Value payload = make_builtin_voice_peer_event("audio_chunk_render_failed", service->session_id);
+      payload["media_engine_state"] = "media_active";
+      payload["native_media_active"] = true;
+      if (!wav_path.empty()) payload["audio_render_wav_path"] = wav_path;
+      payload["audio_render_last_error"] = render_err.empty()
+        ? "failed to write audio render wav"
+        : render_err;
+      append_builtin_voice_peer_event_and_snapshot(
+        service->stdout_log_path, service->session_id, payload, service->runtime, runtime_mu);
+      return true;
+    }
+
+    int64_t render_events_total = 0;
+    int64_t rendered_total = 0;
+    int64_t render_window_samples = 0;
+    int64_t last_render_samples = 0;
+    {
+      std::lock_guard<std::mutex> lk(service->mu);
+      const int64_t processed_since_render =
+        service->owned_audio_pcm_samples_processed_total -
+        service->owned_audio_pcm_samples_rendered_total;
+      service->owned_audio_render_events_total += 1;
+      if (processed_since_render > 0) {
+        service->owned_audio_pcm_samples_rendered_total += processed_since_render;
+        last_render_samples = processed_since_render;
+      }
+      render_events_total = service->owned_audio_render_events_total;
+      rendered_total = service->owned_audio_pcm_samples_rendered_total;
+      render_window_samples = static_cast<int64_t>(service->rendered_audio_pcm.size());
+    }
+
+    Json::Value payload = make_builtin_voice_peer_event("audio_chunk_rendered", service->session_id);
+    payload["media_engine_state"] = "media_active";
+    payload["native_media_active"] = true;
+    payload["audio_render_events_total"] = Json::Int64(render_events_total);
+    payload["audio_pcm_samples_rendered_total"] = Json::Int64(rendered_total);
+    payload["audio_render_window_samples"] = Json::Int64(render_window_samples);
+    payload["audio_last_render_samples"] = Json::Int64(last_render_samples);
+    payload["audio_render_wav_path"] = wav_path;
+    payload["audio_render_last_error"] = "";
+    append_builtin_voice_peer_event_and_snapshot(
+      service->stdout_log_path, service->session_id, payload, service->runtime, runtime_mu);
+  }
+
+  return true;
+}
+
 bool drain_builtin_voice_peer_media_engine_outputs(
   const std::shared_ptr<BuiltinVoicePeerService>& service,
   std::mutex& runtime_mu,
@@ -322,6 +458,10 @@ bool drain_builtin_voice_peer_media_engine_outputs(
     return false;
   }
   if (!process_builtin_voice_peer_owned_audio(service, runtime_mu, &err)) {
+    if (out_err) *out_err = err;
+    return false;
+  }
+  if (!render_builtin_voice_peer_owned_audio(service, runtime_mu, &err)) {
     if (out_err) *out_err = err;
     return false;
   }
@@ -611,6 +751,9 @@ bool start_builtin_voice_peer_runtime_service(
   std::filesystem::remove(std::filesystem::path(artifacts.stdout_log_path), ec);
   ec.clear();
   std::filesystem::remove(std::filesystem::path(artifacts.stderr_log_path), ec);
+  ec.clear();
+  std::filesystem::remove(
+    std::filesystem::path(artifacts.runtime_dir) / "audio_recent.wav", ec);
 
   std::string media_engine_err;
   std::unique_ptr<VoicePeerBuiltinMediaEngine> media_engine =
@@ -685,6 +828,8 @@ bool start_builtin_voice_peer_runtime_service(
   service->sender_tag = start_plan.sender_tag;
   service->ready_file_path = artifacts.ready_file_path;
   service->stdout_log_path = artifacts.stdout_log_path;
+  service->rendered_audio_wav_path =
+    (std::filesystem::path(artifacts.runtime_dir) / "audio_recent.wav").string();
   service->runtime = runtime;
   service->media_engine = std::move(media_engine);
   service->persist_runtime = persist_runtime;

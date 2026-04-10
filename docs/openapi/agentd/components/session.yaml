@@ -318,6 +318,22 @@ VoiceWebRtcPeerRuntime:
       type: integer
       format: int64
       description: RMS PCM16 sample magnitude from the most recent agentd-side processing pass.
+    audio_render_events_total:
+      type: integer
+      format: int64
+      description: Total number of successful agentd-side WAV render updates completed from consumed PCM.
+    audio_pcm_samples_rendered_total:
+      type: integer
+      format: int64
+      description: Total PCM samples incorporated into the rolling runtime-local WAV render snapshot. This count includes all channels.
+    audio_render_window_samples:
+      type: integer
+      format: int64
+      description: PCM samples currently retained in the rolling runtime-local WAV snapshot. This count includes all channels.
+    audio_last_render_samples:
+      type: integer
+      format: int64
+      description: PCM samples newly incorporated during the most recent successful WAV render update. This count includes all channels.
     audio_last_sample_rate_hz:
       type: integer
       format: int64
@@ -336,6 +352,12 @@ VoiceWebRtcPeerRuntime:
     audio_last_error:
       type: string
       description: Best-effort diagnostic string when receive-side audio decode or PCM staging fails for the current builtin native-plugin provider.
+    audio_render_wav_path:
+      type: string
+      description: Absolute runtime-local path to the rolling bounded WAV snapshot rendered by agentd from consumed builtin PCM.
+    audio_render_last_error:
+      type: string
+      description: Best-effort diagnostic string when agentd fails to update the rolling WAV render snapshot from consumed PCM.
     ready: { type: boolean }
     running: { type: boolean }
     pid: { type: integer, format: int64 }

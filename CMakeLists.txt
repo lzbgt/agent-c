@@ -361,6 +361,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/session_voice_signal_client.cpp
     daemon/src/session_voice_signal_negotiation.cpp
     daemon/src/session_voice_audio_process.cpp
+    daemon/src/session_voice_audio_wav.cpp
     daemon/src/session_voice_launch_flow.cpp
     daemon/src/session_voice_process_plan.cpp
     daemon/src/session_voice_builtin_media_engine.cpp
@@ -977,6 +978,18 @@ if(AGENT_BUILD_HOST)
     ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
   )
   add_test(NAME session_voice_audio_process_tests COMMAND session_voice_audio_process_tests)
+
+  add_executable(session_voice_audio_wav_tests
+    tests/test_session_voice_audio_wav.cpp
+    daemon/src/session_voice_audio_wav.cpp
+  )
+  target_compile_options(session_voice_audio_wav_tests PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_include_directories(session_voice_audio_wav_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
+  )
+  add_test(NAME session_voice_audio_wav_tests COMMAND session_voice_audio_wav_tests)
 
   if(AGENTD_ENABLE_BUILTIN_EMBEDDED_TRANSPORT_PROVIDER)
     add_executable(session_voice_builtin_embedded_transport_provider_tests

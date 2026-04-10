@@ -77,11 +77,17 @@ std::shared_ptr<VoicePeerRuntime> make_voice_peer_runtime_state(
   st->audio_last_process_samples = seed.audio_last_process_samples;
   st->audio_last_peak_abs_pcm16 = seed.audio_last_peak_abs_pcm16;
   st->audio_last_rms_pcm16 = seed.audio_last_rms_pcm16;
+  st->audio_render_events_total = seed.audio_render_events_total;
+  st->audio_pcm_samples_rendered_total = seed.audio_pcm_samples_rendered_total;
+  st->audio_render_window_samples = seed.audio_render_window_samples;
+  st->audio_last_render_samples = seed.audio_last_render_samples;
   st->audio_last_sample_rate_hz = seed.audio_last_sample_rate_hz;
   st->audio_last_channels = seed.audio_last_channels;
   st->audio_last_frame_samples_per_channel = seed.audio_last_frame_samples_per_channel;
   st->audio_last_codec_name = seed.audio_last_codec_name;
   st->audio_last_error = seed.audio_last_error;
+  st->audio_render_wav_path = seed.audio_render_wav_path;
+  st->audio_render_last_error = seed.audio_render_last_error;
   st->native_media_provider = seed.native_media_provider;
   st->ready = seed.ready;
   st->running = seed.running;

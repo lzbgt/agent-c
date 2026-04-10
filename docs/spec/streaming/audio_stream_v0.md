@@ -306,8 +306,11 @@ A v0 smoke test should:
   `audio_last_drain_samples`, `audio_process_events_total`,
   `audio_pcm_samples_processed_total`, `audio_last_process_samples`,
   `audio_last_peak_abs_pcm16`, `audio_last_rms_pcm16`,
+  `audio_render_events_total`, `audio_pcm_samples_rendered_total`,
+  `audio_render_window_samples`, `audio_last_render_samples`,
   `audio_last_sample_rate_hz`, `audio_last_channels`, `audio_last_frame_samples_per_channel`,
-  `audio_last_codec_name`, and `audio_last_error`.
+  `audio_last_codec_name`, `audio_last_error`, `audio_render_wav_path`, and
+  `audio_render_last_error`.
   Those fields can now also advance through provider-polled async status events rather than only through direct
   remote-description or remote-candidate callbacks.
 - Builtin runtime observability is now explicit too: normalized per-session JSONL events and the persisted/live runtime

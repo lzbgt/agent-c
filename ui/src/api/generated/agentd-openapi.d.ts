@@ -8260,6 +8260,26 @@ export interface components {
             audio_last_rms_pcm16?: number;
             /**
              * Format: int64
+             * @description Total number of successful agentd-side WAV render updates completed from consumed PCM.
+             */
+            audio_render_events_total?: number;
+            /**
+             * Format: int64
+             * @description Total PCM samples incorporated into the rolling runtime-local WAV render snapshot. This count includes all channels.
+             */
+            audio_pcm_samples_rendered_total?: number;
+            /**
+             * Format: int64
+             * @description PCM samples currently retained in the rolling runtime-local WAV snapshot. This count includes all channels.
+             */
+            audio_render_window_samples?: number;
+            /**
+             * Format: int64
+             * @description PCM samples newly incorporated during the most recent successful WAV render update. This count includes all channels.
+             */
+            audio_last_render_samples?: number;
+            /**
+             * Format: int64
              * @description Sample rate of the most recent successfully decoded inbound audio frame.
              */
             audio_last_sample_rate_hz?: number;
@@ -8277,6 +8297,10 @@ export interface components {
             audio_last_codec_name?: string;
             /** @description Best-effort diagnostic string when receive-side audio decode or PCM staging fails for the current builtin native-plugin provider. */
             audio_last_error?: string;
+            /** @description Absolute runtime-local path to the rolling bounded WAV snapshot rendered by agentd from consumed builtin PCM. */
+            audio_render_wav_path?: string;
+            /** @description Best-effort diagnostic string when agentd fails to update the rolling WAV render snapshot from consumed PCM. */
+            audio_render_last_error?: string;
             ready: boolean;
             running: boolean;
             /** Format: int64 */

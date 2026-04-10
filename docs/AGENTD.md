@@ -523,9 +523,12 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `peer.audio_last_drain_samples`, `peer.audio_process_events_total`,
   `peer.audio_pcm_samples_processed_total`, `peer.audio_last_process_samples`,
   `peer.audio_last_peak_abs_pcm16`, `peer.audio_last_rms_pcm16`,
+  `peer.audio_render_events_total`, `peer.audio_pcm_samples_rendered_total`,
+  `peer.audio_render_window_samples`, `peer.audio_last_render_samples`,
   `peer.audio_last_sample_rate_hz`,
   `peer.audio_last_channels`, `peer.audio_last_frame_samples_per_channel`,
-  `peer.audio_last_codec_name`, and `peer.audio_last_error`.
+  `peer.audio_last_codec_name`, `peer.audio_last_error`, `peer.audio_render_wav_path`,
+  and `peer.audio_render_last_error`.
   Those same fields can now advance on provider-polled async progress events too, not only on direct signaling
   callbacks.
 - Builtin runtime events are now normalized before persistence/logging too: every JSONL/runtime event carries the same

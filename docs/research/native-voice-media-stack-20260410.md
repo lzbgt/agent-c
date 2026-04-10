@@ -138,10 +138,17 @@ Reference artifacts downloaded into the repo for exact vendor details:
     telemetry, and persists process counters in the runtime snapshot
   - this makes the daemon a real minimal in-process audio owner rather than
     only a handoff sink between provider staging and status counters
+- Agentd now also has a first concrete local render sink for that consumed PCM:
+  - the builtin service loop rewrites a bounded rolling `audio_recent.wav`
+    snapshot under the runtime directory
+  - runtime status now persists render counters plus the current WAV path and
+    last render error
+  - cleanup remains automatic because the WAV snapshot lives under the same
+    runtime-artifact directory already swept by voice-runtime cleanup
 - The remaining gap is that the provider still does not own a complete
   in-process media pipeline. `native_media_active` remains `false` until live
-  RTP is actually ingested, and agentd still does not yet render or transmit
-  audio end to end inside the daemon.
+  RTP is actually ingested, and agentd still does not yet play to a real local
+  audio device or transmit outbound media end to end inside the daemon.
 
 ## Implications
 
@@ -191,5 +198,5 @@ path. The best factual candidate remains the narrower
 `libjuice + srtp + libusrsctp` family, because those dependencies are now
 locally installed, buildable, and covered by provider inspection/unit/smoke
 proof. The next concrete step after the new bounded monitor stage is a local
-render/process/transmit consumer for the agentd-owned PCM queue rather than
+playback/process/transmit consumer for the agentd-owned PCM queue rather than
 more DTLS/SRTP/control-plane work.

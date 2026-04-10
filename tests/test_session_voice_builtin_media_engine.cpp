@@ -318,10 +318,16 @@ static void test_media_engine_event_tracks_audio_drain_fields() {
   payload["audio_last_process_samples"] = Json::Int64(480);
   payload["audio_last_peak_abs_pcm16"] = Json::Int64(12000);
   payload["audio_last_rms_pcm16"] = Json::Int64(8000);
+  payload["audio_render_events_total"] = Json::Int64(2);
+  payload["audio_pcm_samples_rendered_total"] = Json::Int64(1920);
+  payload["audio_render_window_samples"] = Json::Int64(1920);
+  payload["audio_last_render_samples"] = Json::Int64(480);
   payload["audio_last_sample_rate_hz"] = Json::Int64(48000);
   payload["audio_last_channels"] = Json::Int64(2);
   payload["audio_last_frame_samples_per_channel"] = Json::Int64(480);
   payload["audio_last_codec_name"] = "PCMU";
+  payload["audio_render_wav_path"] = "/tmp/audio_recent.wav";
+  payload["audio_render_last_error"] = "";
   note_voice_peer_media_engine_event(&runtime, payload);
   assert(runtime.media_engine_state == "media_active");
   assert(runtime.native_media_supported);
@@ -335,10 +341,16 @@ static void test_media_engine_event_tracks_audio_drain_fields() {
   assert(runtime.audio_last_process_samples == 480);
   assert(runtime.audio_last_peak_abs_pcm16 == 12000);
   assert(runtime.audio_last_rms_pcm16 == 8000);
+  assert(runtime.audio_render_events_total == 2);
+  assert(runtime.audio_pcm_samples_rendered_total == 1920);
+  assert(runtime.audio_render_window_samples == 1920);
+  assert(runtime.audio_last_render_samples == 480);
   assert(runtime.audio_last_sample_rate_hz == 48000);
   assert(runtime.audio_last_channels == 2);
   assert(runtime.audio_last_frame_samples_per_channel == 480);
   assert(runtime.audio_last_codec_name == "PCMU");
+  assert(runtime.audio_render_wav_path == "/tmp/audio_recent.wav");
+  assert(runtime.audio_render_last_error.empty());
 }
 
 }  // namespace
