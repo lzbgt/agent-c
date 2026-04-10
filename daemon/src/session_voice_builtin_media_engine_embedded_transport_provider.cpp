@@ -8,8 +8,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <chrono>
 #include <mutex>
 #include <string>
+#include <thread>
 
 namespace {
 
@@ -28,11 +30,17 @@ struct EmbeddedTransportState {
   std::string local_description;
   std::string libjuice_state = "disconnected";
   std::string last_remote_description_error;
+  std::string selected_local_candidate;
+  std::string selected_remote_candidate;
+  std::string selected_local_address;
+  std::string selected_remote_address;
   uint64_t offers_seen = 0;
   uint64_t remote_candidates_seen = 0;
   uint64_t local_candidates_observed = 0;
   bool gathering_done = false;
+  bool gather_started = false;
   bool remote_description_applied = false;
+  bool transport_connectivity_ready = false;
 };
 
 std::mutex g_transport_runtime_mu;
@@ -85,6 +93,83 @@ std::string json_escape(const std::string& value) {
 std::string juice_state_text(juice_state_t state) {
   const char* raw = juice_state_to_string(state);
   return raw ? std::string(raw) : std::string("unknown");
+}
+
+bool refresh_local_description(EmbeddedTransportState* engine, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!engine || !engine->agent) {
+    if (out_err) *out_err = "missing libjuice agent";
+    return false;
+  }
+  char description[JUICE_MAX_SDP_STRING_LEN];
+  std::memset(description, 0, sizeof(description));
+  if (juice_get_local_description(engine->agent, description, sizeof(description)) != JUICE_ERR_SUCCESS) {
+    if (out_err) *out_err = "libjuice local description generation failed";
+    return false;
+  }
+  engine->local_description = description;
+  return true;
+}
+
+void refresh_transport_snapshot(EmbeddedTransportState* engine) {
+  if (!engine || !engine->agent) return;
+
+  const juice_state_t state = juice_get_state(engine->agent);
+  engine->libjuice_state = juice_state_text(state);
+
+  char local_candidate[JUICE_MAX_CANDIDATE_SDP_STRING_LEN];
+  char remote_candidate[JUICE_MAX_CANDIDATE_SDP_STRING_LEN];
+  std::memset(local_candidate, 0, sizeof(local_candidate));
+  std::memset(remote_candidate, 0, sizeof(remote_candidate));
+  if (juice_get_selected_candidates(
+        engine->agent,
+        local_candidate,
+        sizeof(local_candidate),
+        remote_candidate,
+        sizeof(remote_candidate)) == JUICE_ERR_SUCCESS) {
+    engine->selected_local_candidate = local_candidate;
+    engine->selected_remote_candidate = remote_candidate;
+    engine->transport_connectivity_ready = true;
+  }
+
+  char local_address[JUICE_MAX_ADDRESS_STRING_LEN];
+  char remote_address[JUICE_MAX_ADDRESS_STRING_LEN];
+  std::memset(local_address, 0, sizeof(local_address));
+  std::memset(remote_address, 0, sizeof(remote_address));
+  if (juice_get_selected_addresses(
+        engine->agent,
+        local_address,
+        sizeof(local_address),
+        remote_address,
+        sizeof(remote_address)) == JUICE_ERR_SUCCESS) {
+    engine->selected_local_address = local_address;
+    engine->selected_remote_address = remote_address;
+    engine->transport_connectivity_ready = true;
+  }
+
+  if (state == JUICE_STATE_CONNECTED || state == JUICE_STATE_COMPLETED) {
+    engine->transport_connectivity_ready = true;
+  }
+}
+
+void wait_for_local_gathering(EmbeddedTransportState* engine, int timeout_ms) {
+  if (!engine || !engine->agent || timeout_ms <= 0) return;
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  while (std::chrono::steady_clock::now() < deadline) {
+    refresh_transport_snapshot(engine);
+    if (engine->gathering_done || engine->local_candidates_observed > 0) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+}
+
+void wait_for_transport_progress(EmbeddedTransportState* engine, int timeout_ms) {
+  if (!engine || !engine->agent || timeout_ms <= 0) return;
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  while (std::chrono::steady_clock::now() < deadline) {
+    refresh_transport_snapshot(engine);
+    if (engine->transport_connectivity_ready) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
 }
 
 bool reserve_transport_runtime(std::string* out_err) {
@@ -163,15 +248,20 @@ bool ensure_agent(EmbeddedTransportState* engine, std::string* out_err) {
   }
   engine->libjuice_state = juice_state_text(juice_get_state(engine->agent));
 
-  char description[JUICE_MAX_SDP_STRING_LEN];
-  std::memset(description, 0, sizeof(description));
-  if (juice_get_local_description(engine->agent, description, sizeof(description)) != JUICE_ERR_SUCCESS) {
+  if (juice_gather_candidates(engine->agent) != JUICE_ERR_SUCCESS) {
     juice_destroy(engine->agent);
     engine->agent = nullptr;
-    if (out_err) *out_err = "libjuice local description generation failed";
+    if (out_err) *out_err = "libjuice candidate gathering failed";
     return false;
   }
-  engine->local_description = description;
+  engine->gather_started = true;
+  wait_for_local_gathering(engine, 500);
+  if (!refresh_local_description(engine, out_err)) {
+    juice_destroy(engine->agent);
+    engine->agent = nullptr;
+    return false;
+  }
+  refresh_transport_snapshot(engine);
   return true;
 }
 
@@ -195,11 +285,30 @@ std::string build_event_json(
     ",\"remote_candidates_seen\":" + std::to_string(state.remote_candidates_seen) +
     ",\"offers_seen\":" + std::to_string(state.offers_seen) +
     ",\"initial_remote_candidate_count\":" + std::to_string(initial_remote_candidate_count) +
+    ",\"gather_started\":" + std::string(state.gather_started ? "true" : "false") +
     ",\"remote_description_applied\":" +
     std::string(state.remote_description_applied ? "true" : "false") +
     ",\"gathering_done\":" + std::string(state.gathering_done ? "true" : "false") +
+    ",\"transport_connectivity_ready\":" +
+    std::string(state.transport_connectivity_ready ? "true" : "false") +
     ",\"srtp_version\":\"" + json_escape(srtp_version ? std::string(srtp_version) : std::string("unknown")) + "\""
     ",\"usrsctp_initialized\":true";
+  if (!state.selected_local_candidate.empty()) {
+    json += ",\"libjuice_selected_local_candidate\":\"" +
+            json_escape(state.selected_local_candidate) + "\"";
+  }
+  if (!state.selected_remote_candidate.empty()) {
+    json += ",\"libjuice_selected_remote_candidate\":\"" +
+            json_escape(state.selected_remote_candidate) + "\"";
+  }
+  if (!state.selected_local_address.empty()) {
+    json += ",\"libjuice_selected_local_address\":\"" +
+            json_escape(state.selected_local_address) + "\"";
+  }
+  if (!state.selected_remote_address.empty()) {
+    json += ",\"libjuice_selected_remote_address\":\"" +
+            json_escape(state.selected_remote_address) + "\"";
+  }
   if (!state.last_remote_description_error.empty()) {
     json += ",\"remote_description_error\":\"" + json_escape(state.last_remote_description_error) + "\"";
   }
@@ -246,6 +355,7 @@ int embedded_initialize(
     write_error(err, err_buf, err_buf_size);
     return 0;
   }
+  refresh_transport_snapshot(engine);
   const std::string payload = build_event_json(*engine, "media_engine_initialized", "signaling_ready", 0);
   if (!copy_text(payload, event_json_buf, event_json_buf_size)) {
     write_error("event buffer too small", err_buf, err_buf_size);
@@ -288,7 +398,7 @@ int embedded_handle_remote_description(
     const int rc = juice_set_remote_description(engine->agent, remote_sdp.c_str());
     if (rc == JUICE_ERR_SUCCESS) {
       engine->remote_description_applied = true;
-      engine->libjuice_state = juice_state_text(juice_get_state(engine->agent));
+      refresh_transport_snapshot(engine);
     } else {
       engine->last_remote_description_error =
         "libjuice remote description rejected with code " + std::to_string(rc);
@@ -299,6 +409,12 @@ int embedded_handle_remote_description(
   if (initial_remote_candidate_count == 0) {
     (void)juice_set_remote_gathering_done(engine->agent);
   }
+  wait_for_transport_progress(engine, 250);
+  if (!refresh_local_description(engine, &err)) {
+    write_error(err, err_buf, err_buf_size);
+    return 0;
+  }
+  refresh_transport_snapshot(engine);
 
   if (!copy_text("answer", answer_type_buf, answer_type_buf_size) ||
       !copy_text(engine->local_description, answer_sdp_buf, answer_sdp_buf_size)) {
@@ -343,7 +459,8 @@ int embedded_handle_remote_candidate(
     return 0;
   }
   engine->remote_candidates_seen += 1;
-  engine->libjuice_state = juice_state_text(juice_get_state(engine->agent));
+  wait_for_transport_progress(engine, 1500);
+  refresh_transport_snapshot(engine);
 
   const std::string payload =
     build_event_json(*engine, "remote_candidate_ready", "signaling_active", 0);
@@ -362,6 +479,7 @@ void embedded_handle_remote_bye(
 ) {
   auto* engine = static_cast<EmbeddedTransportState*>(instance);
   if (!engine) return;
+  refresh_transport_snapshot(engine);
   std::string payload = build_event_json(*engine, "remote_bye", "stopped", 0);
   payload.pop_back();
   if (reason && reason[0]) {
@@ -378,6 +496,7 @@ void embedded_handle_local_shutdown(
 ) {
   auto* engine = static_cast<EmbeddedTransportState*>(instance);
   if (!engine) return;
+  refresh_transport_snapshot(engine);
   std::string payload = build_event_json(*engine, "local_bye_sent", "stopping", 0);
   payload.pop_back();
   payload += ",\"reason\":\"agentd_builtin_stop\"}";

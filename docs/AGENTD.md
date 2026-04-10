@@ -488,7 +488,10 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   The embedded transport provider is still honest about the remaining gap: it uses real `libjuice`, `libsrtp`, and
   `usrsctp` libraries and reports that provider metadata/capabilities through the normal runtime seam, but it still
   reports `peer.native_media_supported=false` / `peer.native_media_active=false` because agentd has not embedded a full
-  DTLS/RTP media plane yet.
+  DTLS/RTP media plane yet. What is now shipped and proved is narrower but real: the provider starts libjuice candidate
+  gathering before returning its answer, emits a candidate-bearing answer SDP through the `native_plugin` ABI, and the
+  direct embedded-provider test coverage now proves post-answer transport progression against a local libjuice loopback
+  peer instead of only "library loaded" or "answer string returned".
 - The builtin/runtime preview and live runtime snapshots now also expose the media-engine seam explicitly:
   `media_runtime_plan.media_engine_kind` / `peer.media_engine_kind` distinguish `builtin_reserved`,
   `builtin_signaling_stub`, `builtin_native_plugin`, and `browser_peer`, while `native_media_supported` /

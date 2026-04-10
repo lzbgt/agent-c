@@ -82,6 +82,16 @@ Reference artifacts downloaded into the repo for exact vendor details:
     - `sctp=true`
     - `transport_family=embedded_transport_primitives`
     - `real_media_engine=false`
+- The embedded transport provider now also proves a stronger factual boundary
+  than "library loads":
+  - it starts real `libjuice` candidate gathering before generating the answer
+    SDP returned through the provider ABI
+  - the returned answer SDP now carries gathered ICE candidates instead of only
+    credentials
+  - direct provider coverage now includes a local libjuice loopback peer that
+    exchanges a real offer, consumes the candidate-bearing answer, trickles
+    remote candidates back into the provider, and proves post-answer transport
+    progression with live libjuice state and candidate counters
 - The repo still does **not** yet have an actual embedded/native RTP media
   engine. The new provider uses real `libjuice` / `libsrtp` / `usrsctp`
   libraries, but it still reports `native_media_supported=false` and
