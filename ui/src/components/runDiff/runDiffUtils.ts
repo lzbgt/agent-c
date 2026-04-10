@@ -1,5 +1,67 @@
+import { safeJsonParse, safeObject } from "../../jsonUtils";
+
 export type JsonDiffEntry = { path: string; a: unknown; b: unknown };
 export const MAX_DIFFS = 200;
+export type UsageSummary = Record<string, number>;
+
+type RunRowLike = {
+  response_json?: unknown;
+  response?: unknown;
+};
+
+type EventRowLike = {
+  event_id?: unknown;
+  id?: unknown;
+  ts_unix_ms?: unknown;
+  ts?: unknown;
+  type?: unknown;
+  data_json?: unknown;
+  data?: unknown;
+};
+
+type ArtifactRowLike = {
+  id?: unknown;
+  path?: unknown;
+  kind?: unknown;
+  mime?: unknown;
+  title?: unknown;
+  tool_call_id?: unknown;
+  autoplay?: unknown;
+  repeat?: unknown;
+  artifact_json?: unknown;
+  artifact?: unknown;
+};
+
+export type NormalizedEvent = {
+  id: string | number | null;
+  ts_unix_ms: number | null;
+  type: string;
+  data: unknown;
+};
+
+export type NormalizedArtifact = {
+  id: string | number | null;
+  path: string;
+  kind: string;
+  mime: string;
+  title: string;
+  tool_call_id: string;
+  autoplay: unknown;
+  repeat: unknown;
+  artifact_json: unknown;
+};
+
+function asFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function asStringOrEmpty(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function asId(value: unknown): string | number | null {
+  return typeof value === "string" || typeof value === "number" ? value : null;
+}
 
 export const stringifyJson = (value: unknown) => {
   try {
@@ -11,11 +73,7 @@ export const stringifyJson = (value: unknown) => {
 
 export const parseJsonLoose = (value: unknown) => {
   if (typeof value === "string") {
-    try {
-      return JSON.parse(value);
-    } catch {
-      return value;
-    }
+    return safeJsonParse(value) ?? value;
   }
   return value;
 };
@@ -98,14 +156,14 @@ export const diffJsonWithPath = (a: unknown, b: unknown, path: string, maxDiffs 
   return out;
 };
 
-export const extractUsage = (resp: any) => {
-  if (!resp || typeof resp !== "object") return null;
-  const usage = resp.usage && typeof resp.usage === "object" ? resp.usage : {};
-  const totalTokens = usage.total_tokens ?? resp.total_tokens;
-  const promptTokens = usage.prompt_tokens ?? resp.prompt_tokens;
-  const completionTokens = usage.completion_tokens ?? resp.completion_tokens;
-  const totalCost = resp.total_cost ?? resp.cost ?? usage.total_cost ?? usage.cost;
-  const out: Record<string, number> = {};
+export const extractUsage = (resp: unknown): UsageSummary | null => {
+  const record = safeObject(resp);
+  const usage = safeObject(record.usage);
+  const totalTokens = usage.total_tokens ?? record.total_tokens;
+  const promptTokens = usage.prompt_tokens ?? record.prompt_tokens;
+  const completionTokens = usage.completion_tokens ?? record.completion_tokens;
+  const totalCost = record.total_cost ?? record.cost ?? usage.total_cost ?? usage.cost;
+  const out: UsageSummary = {};
   if (typeof totalTokens === "number") out.total_tokens = totalTokens;
   if (typeof promptTokens === "number") out.prompt_tokens = promptTokens;
   if (typeof completionTokens === "number") out.completion_tokens = completionTokens;
@@ -113,13 +171,13 @@ export const extractUsage = (resp: any) => {
   return Object.keys(out).length > 0 ? out : null;
 };
 
-export const extractUsageFromRunRow = (run: any) => {
-  if (!run || typeof run !== "object") return null;
-  const response = parseJsonLoose(run.response_json ?? run.response);
+export const extractUsageFromRunRow = (run: RunRowLike | unknown) => {
+  const record = safeObject(run);
+  const response = parseJsonLoose(record.response_json ?? record.response);
   return extractUsage(response);
 };
 
-export const formatUsage = (usage?: Record<string, number> | null) => {
+export const formatUsage = (usage?: UsageSummary | null) => {
   if (!usage) return "";
   const parts: string[] = [];
   if (typeof usage.total_tokens === "number") parts.push(`tokens ${usage.total_tokens}`);
@@ -129,7 +187,7 @@ export const formatUsage = (usage?: Record<string, number> | null) => {
   return parts.join(" · ");
 };
 
-export const formatUsageDelta = (a?: Record<string, number> | null, b?: Record<string, number> | null) => {
+export const formatUsageDelta = (a?: UsageSummary | null, b?: UsageSummary | null) => {
   if (!a || !b) return "";
   const keys = Array.from(new Set([...Object.keys(a), ...Object.keys(b)])).sort();
   const parts: string[] = [];
@@ -145,12 +203,13 @@ export const formatUsageDelta = (a?: Record<string, number> | null, b?: Record<s
   return parts.join(" · ");
 };
 
-export const normalizeEvent = (row: any) => {
-  const data = parseJsonLoose(row?.data_json ?? row?.data);
+export const normalizeEvent = (row: EventRowLike | unknown): NormalizedEvent => {
+  const record = safeObject(row);
+  const data = parseJsonLoose(record.data_json ?? record.data);
   return {
-    id: row?.event_id ?? row?.id ?? null,
-    ts_unix_ms: row?.ts_unix_ms ?? row?.ts ?? null,
-    type: row?.type ?? "",
+    id: asId(record.event_id ?? record.id),
+    ts_unix_ms: asFiniteNumber(record.ts_unix_ms ?? record.ts),
+    type: asStringOrEmpty(record.type),
     data,
   };
 };
@@ -164,22 +223,24 @@ export const countByType = (events: Array<{ type: string }>) => {
   return counts;
 };
 
-export const normalizeArtifact = (row: any) => {
-  const artifactJson = parseJsonLoose(row?.artifact_json ?? row?.artifact ?? row);
+export const normalizeArtifact = (row: ArtifactRowLike | unknown): NormalizedArtifact => {
+  const record = safeObject(row);
+  const artifactJson = parseJsonLoose(record.artifact_json ?? record.artifact ?? row);
+  const artifactJsonRecord = safeObject(artifactJson);
   return {
-    id: row?.id ?? null,
-    path: row?.path ?? artifactJson?.path ?? "",
-    kind: row?.kind ?? artifactJson?.kind ?? "",
-    mime: row?.mime ?? artifactJson?.mime ?? "",
-    title: row?.title ?? artifactJson?.title ?? "",
-    tool_call_id: row?.tool_call_id ?? artifactJson?.tool_call_id ?? "",
-    autoplay: row?.autoplay ?? artifactJson?.autoplay,
-    repeat: row?.repeat ?? artifactJson?.repeat,
+    id: asId(record.id),
+    path: asStringOrEmpty(record.path ?? artifactJsonRecord.path),
+    kind: asStringOrEmpty(record.kind ?? artifactJsonRecord.kind),
+    mime: asStringOrEmpty(record.mime ?? artifactJsonRecord.mime),
+    title: asStringOrEmpty(record.title ?? artifactJsonRecord.title),
+    tool_call_id: asStringOrEmpty(record.tool_call_id ?? artifactJsonRecord.tool_call_id),
+    autoplay: record.autoplay ?? artifactJsonRecord.autoplay,
+    repeat: record.repeat ?? artifactJsonRecord.repeat,
     artifact_json: artifactJson,
   };
 };
 
-export const artifactFingerprint = (artifact: ReturnType<typeof normalizeArtifact>) =>
+export const artifactFingerprint = (artifact: NormalizedArtifact) =>
   stringifyJson({
     path: artifact.path,
     kind: artifact.kind,
@@ -191,7 +252,7 @@ export const artifactFingerprint = (artifact: ReturnType<typeof normalizeArtifac
     artifact_json: artifact.artifact_json,
   });
 
-export const formatArtifactSummary = (artifact?: ReturnType<typeof normalizeArtifact> | null) => {
+export const formatArtifactSummary = (artifact?: NormalizedArtifact | null) => {
   if (!artifact) return "";
   const parts = [artifact.path || "(no path)"];
   if (artifact.kind) parts.push(artifact.kind);
@@ -204,23 +265,23 @@ export type ReplayDiffState = {
   requestDiffs: JsonDiffEntry[];
   responseDiffs: JsonDiffEntry[];
   toolDiffs: JsonDiffEntry[];
-  usageA: Record<string, number> | null;
-  usageB: Record<string, number> | null;
+  usageA: UsageSummary | null;
+  usageB: UsageSummary | null;
 };
 
 export type DbDiffState = {
-  eventsA: Array<ReturnType<typeof normalizeEvent>>;
-  eventsB: Array<ReturnType<typeof normalizeEvent>>;
+  eventsA: NormalizedEvent[];
+  eventsB: NormalizedEvent[];
   eventDiffs: JsonDiffEntry[];
   typeDiffs: Array<{ type: string; a: number; b: number }>;
-  added: Array<{ key: string; item: ReturnType<typeof normalizeArtifact> }>;
-  removed: Array<{ key: string; item: ReturnType<typeof normalizeArtifact> }>;
+  added: Array<{ key: string; item: NormalizedArtifact }>;
+  removed: Array<{ key: string; item: NormalizedArtifact }>;
   changed: Array<{
     key: string;
-    a: ReturnType<typeof normalizeArtifact>;
-    b: ReturnType<typeof normalizeArtifact>;
+    a: NormalizedArtifact;
+    b: NormalizedArtifact;
     diffs: JsonDiffEntry[];
   }>;
-  usageDbA: Record<string, number> | null;
-  usageDbB: Record<string, number> | null;
+  usageDbA: UsageSummary | null;
+  usageDbB: UsageSummary | null;
 };

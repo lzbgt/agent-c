@@ -2,8 +2,15 @@ import React from "react";
 
 import { apiCancelJob, apiPostSessionUpload } from "../../api";
 import useLocalStorageState from "../../hooks/useLocalStorageState";
+import { safeObject } from "../../jsonUtils";
 import type { Attachment, PromptBarProps } from "./promptBarTypes";
 import { fileToBase64, guessMimeFromName, isSafeSessionId, sanitizeUploadName } from "./promptBarUtils";
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error.trim()) return error;
+  return fallback;
+}
 
 export default function usePromptBarState(props: PromptBarProps) {
   const [attachments, setAttachments] = React.useState<Attachment[]>([]);
@@ -108,11 +115,11 @@ export default function usePromptBarState(props: PromptBarProps) {
       try {
         const payloadFiles: { name: string; mime?: string; data_base64: string; bytes?: number }[] = [];
         for (const file of list.slice(0, 16)) {
-          if (typeof (file as any)?.size === "number" && (file as any).size > uploadMaxBytes) continue;
+          if (typeof file.size === "number" && file.size > uploadMaxBytes) continue;
           const name = sanitizeUploadName(file.name || "upload.bin");
           const mime = String(file.type || "").trim() || guessMimeFromName(name) || undefined;
           const data_base64 = await fileToBase64(file);
-          payloadFiles.push({ name, mime, data_base64, bytes: (file as any)?.size });
+          payloadFiles.push({ name, mime, data_base64, bytes: file.size });
         }
         if (payloadFiles.length === 0) {
           props.setJobNotice("no files uploaded (too large or invalid)");
@@ -138,12 +145,13 @@ export default function usePromptBarState(props: PromptBarProps) {
           props.daemonAuth,
         );
         if (!resp.ok) {
-          const errors = (resp as any)?.errors;
+          const respRecord = safeObject(resp);
+          const errors = Array.isArray(respRecord.errors) ? respRecord.errors : [];
           if (Array.isArray(errors) && errors.length > 0) {
-            const err0 = errors[0] || {};
-            const code = typeof err0?.code === "string" ? err0.code : "";
-            const msg = typeof err0?.error === "string" ? err0.error : "";
-            const name = typeof err0?.name === "string" ? err0.name : "";
+            const err0 = safeObject(errors[0]);
+            const code = typeof err0.code === "string" ? err0.code : "";
+            const msg = typeof err0.error === "string" ? err0.error : "";
+            const name = typeof err0.name === "string" ? err0.name : "";
             const detail = [code, msg].filter(Boolean).join(": ");
             props.setJobNotice(`upload failed${name ? ` (${name})` : ""}: ${detail || "upload failed"}`);
           } else {
@@ -154,18 +162,18 @@ export default function usePromptBarState(props: PromptBarProps) {
 
         const uploaded =
           (resp.files || [])
-            .map((item: any) => {
-              const path = typeof item?.path === "string" ? item.path : "";
+            .map((item): Attachment | null => {
+              const path = typeof item.path === "string" ? item.path : "";
               if (!path) return null;
               return {
                 path,
-                name: typeof item?.name === "string" ? item.name : undefined,
-                mime: typeof item?.mime === "string" ? item.mime : undefined,
-                kind: typeof item?.kind === "string" ? item.kind : undefined,
-                bytes: typeof item?.bytes === "number" ? item.bytes : undefined,
-              } as Attachment;
+                name: typeof item.name === "string" ? item.name : undefined,
+                mime: typeof item.mime === "string" ? item.mime : undefined,
+                kind: typeof item.kind === "string" ? item.kind : undefined,
+                bytes: typeof item.bytes === "number" ? item.bytes : undefined,
+              };
             })
-            .filter(Boolean) as Attachment[];
+            .filter((item): item is Attachment => item !== null);
         if (uploaded.length === 0) {
           props.setJobNotice("upload succeeded but returned no file paths");
           return;
@@ -178,8 +186,8 @@ export default function usePromptBarState(props: PromptBarProps) {
           return merged;
         });
         props.setJobNotice(`uploaded ${uploaded.length} file(s)`);
-      } catch (error) {
-        props.setJobNotice(`upload failed: ${String(error)}`);
+      } catch (error: unknown) {
+        props.setJobNotice(`upload failed: ${errorMessage(error, "upload failed")}`);
       } finally {
         setUploadBusy(false);
       }

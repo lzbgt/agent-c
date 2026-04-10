@@ -227,7 +227,7 @@ export default function VoicePanel(props: VoicePanelProps) {
               clients: {state.statsQuery.data?.client_count ?? 0}
             </div>
             <div className="rounded-md border border-white/10 bg-black/30 px-2 py-2">
-              counts: play {String((state.counts as any)?.media_play ?? 0)} · pause {String((state.counts as any)?.media_pause ?? 0)} · snapshot {String((state.counts as any)?.media_snapshot ?? 0)}
+              counts: play {String(state.counts["media_play"] ?? 0)} · pause {String(state.counts["media_pause"] ?? 0)} · snapshot {String(state.counts["media_snapshot"] ?? 0)}
             </div>
           </div>
 

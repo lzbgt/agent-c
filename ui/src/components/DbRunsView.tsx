@@ -1,4 +1,5 @@
 import React from "react";
+import { safeObject } from "../jsonUtils";
 
 type DbRunRow = {
   run_id?: number;
@@ -11,7 +12,7 @@ type DbRunRow = {
   steps_executed?: number | null;
   tool_calls_total?: number | null;
   last_error_reason?: string | null;
-  last_error?: any;
+  last_error?: unknown;
 };
 
 function fmtTs(ts?: number) {
@@ -62,11 +63,14 @@ export default function DbRunsView({
                 const stopReason = String(r.stop_reason ?? "");
                 const steps = typeof r.steps_executed === "number" ? r.steps_executed : "";
                 const toolCalls = typeof r.tool_calls_total === "number" ? r.tool_calls_total : "";
+                const lastError = safeObject(r.last_error);
                 const lastReason =
                   (r.last_error_reason && String(r.last_error_reason)) ||
-                  (r.last_error && typeof r.last_error === "object"
-                    ? String(r.last_error.reason ?? r.last_error.error ?? "")
-                    : "");
+                  (typeof lastError.reason === "string"
+                    ? lastError.reason
+                    : typeof lastError.error === "string"
+                      ? lastError.error
+                      : "");
                 return (
                   <tr
                     key={`${id}_${idx}`}

@@ -6,6 +6,7 @@ import {
   type ApiAuth,
   type SessionVoiceControlReq,
   type SessionVoiceControlResp,
+  type SessionVoiceStatsResp,
 } from "../../api";
 
 type UseVoicePanelStateArgs = {
@@ -91,9 +92,9 @@ export default function useVoicePanelState(args: UseVoicePanelStateArgs) {
     },
   });
 
-  const counts = statsQuery.data?.counts && typeof statsQuery.data.counts === "object" ? statsQuery.data.counts : {};
-  const clients = Array.isArray(statsQuery.data?.clients) ? statsQuery.data.clients : [];
-  const recentResults = Array.isArray(statsQuery.data?.recent_results) ? statsQuery.data.recent_results : [];
+  const counts: NonNullable<SessionVoiceStatsResp["counts"]> = statsQuery.data?.counts ?? {};
+  const clients: NonNullable<SessionVoiceStatsResp["clients"]> = statsQuery.data?.clients ?? [];
+  const recentResults: NonNullable<SessionVoiceStatsResp["recent_results"]> = statsQuery.data?.recent_results ?? [];
 
   return {
     actionError,
