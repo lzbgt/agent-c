@@ -204,6 +204,6 @@ transport provider's receive-side-only behavior with a real in-process audio
 path. The best factual candidate remains the narrower
 `libjuice + srtp + libusrsctp` family, because those dependencies are now
 locally installed, buildable, and covered by provider inspection/unit/smoke
-proof. The next concrete step after the new bounded monitor stage is a local
-playback/process/transmit consumer for the agentd-owned PCM queue rather than
+proof. The next concrete step after the new bounded local playback sink is
+outbound media generation/transmit from the agentd-owned PCM path rather than
 more DTLS/SRTP/control-plane work.
