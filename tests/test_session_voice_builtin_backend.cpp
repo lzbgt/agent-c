@@ -38,6 +38,11 @@ static void assert_known_test_provider(
   if (provider_name == "agentd_builtin_embedded_transport_provider") {
     assert(capabilities["embedded_transport_provider"].asBool());
     assert(capabilities["transport_family"].asString() == "embedded_transport_primitives");
+    assert(capabilities["audio_decode"].asBool());
+    assert(capabilities["audio_stage"].asBool());
+    assert(capabilities["audio_codec_pcmu"].asBool());
+    assert(capabilities["audio_codec_pcma"].asBool());
+    assert(capabilities.isMember("audio_codec_opus"));
     assert(capabilities["ice"].asBool());
     assert(capabilities["srtp"].asBool());
     assert(capabilities["rtp_ingest"].asBool());
@@ -202,6 +207,8 @@ static void test_builtin_backend_enabled_native_plugin_starts_runtime() {
          expected_native_supported_for_provider(
            result.state->native_media_provider["name"].asString()));
   assert(result.state->native_media_active == false);
+  assert(result.state->audio_frames_decoded == 0);
+  assert(result.state->audio_pcm_samples_decoded == 0);
   assert(result.state->media_engine_state == "signaling_ready");
   assert(result.state->media_events_total == 2);
   assert(result.state->managed_broker_session == false);

@@ -190,6 +190,14 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   st.rtp_last_sequence = 321;
   st.rtp_last_timestamp = 0x01020304;
   st.rtp_last_ssrc = 0x11223344;
+  st.audio_frames_decoded = 7;
+  st.audio_pcm_samples_decoded = 6720;
+  st.audio_pcm_samples_buffered = 1920;
+  st.audio_last_sample_rate_hz = 48000;
+  st.audio_last_channels = 2;
+  st.audio_last_frame_samples_per_channel = 960;
+  st.audio_last_codec_name = "OPUS";
+  st.audio_last_error = "decoder_warmup";
   st.native_media_provider["abi_version"] = 3;
   st.native_media_provider["name"] = "agentd_builtin_sample_provider";
   st.native_media_provider["capabilities"]["transport_family"] = "sample_webrtc";
@@ -227,6 +235,14 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(json["rtp_last_sequence"].asInt64() == 321);
   assert(json["rtp_last_timestamp"].asInt64() == 0x01020304);
   assert(json["rtp_last_ssrc"].asInt64() == 0x11223344);
+  assert(json["audio_frames_decoded"].asInt64() == 7);
+  assert(json["audio_pcm_samples_decoded"].asInt64() == 6720);
+  assert(json["audio_pcm_samples_buffered"].asInt64() == 1920);
+  assert(json["audio_last_sample_rate_hz"].asInt64() == 48000);
+  assert(json["audio_last_channels"].asInt64() == 2);
+  assert(json["audio_last_frame_samples_per_channel"].asInt64() == 960);
+  assert(json["audio_last_codec_name"].asString() == "OPUS");
+  assert(json["audio_last_error"].asString() == "decoder_warmup");
   assert(json["native_media_provider"]["abi_version"].asInt() == 3);
   assert(json["native_media_provider"]["name"].asString() == "agentd_builtin_sample_provider");
 
@@ -265,6 +281,14 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(round_trip.rtp_last_sequence == 321);
   assert(round_trip.rtp_last_timestamp == 0x01020304);
   assert(round_trip.rtp_last_ssrc == 0x11223344);
+  assert(round_trip.audio_frames_decoded == 7);
+  assert(round_trip.audio_pcm_samples_decoded == 6720);
+  assert(round_trip.audio_pcm_samples_buffered == 1920);
+  assert(round_trip.audio_last_sample_rate_hz == 48000);
+  assert(round_trip.audio_last_channels == 2);
+  assert(round_trip.audio_last_frame_samples_per_channel == 960);
+  assert(round_trip.audio_last_codec_name == "OPUS");
+  assert(round_trip.audio_last_error == "decoder_warmup");
   assert(round_trip.native_media_provider["abi_version"].asInt() == 3);
   assert(round_trip.native_media_provider["capabilities"]["transport_family"].asString() == "sample_webrtc");
   assert(round_trip.native_media_provider["capabilities"]["sample_provider"].asBool());

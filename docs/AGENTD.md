@@ -493,12 +493,14 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   libjuice candidate gathering before returning its answer, emits a candidate-bearing answer SDP through the
   `native_plugin` ABI, generates an ephemeral DTLS identity, mirrors browser-style media offers into an inactive answer
   shape with `a=setup:passive` plus a surfaced SHA-256 fingerprint, completes DTLS/SRTP setup, and now publishes RTP
-  ingest counters/last-header fields once media arrives. The repo also has direct in-tree DTLS/SRTP proof for the same
-  OpenSSL/libsrtp configuration: `session_voice_builtin_dtls_transport_tests` completes a DTLS 1.2 client/server
-  handshake over datagram-memory BIOs, negotiates `SRTP_AES128_CM_SHA1_80`, exports DTLS-SRTP keying material, derives
-  real inbound / outbound libsrtp contexts from that exporter output, and now proves the shared inbound SRTP/RTP ingest
-  utility by parsing protected RTP into payload-type / sequence / timestamp / SSRC metadata. `peer.native_media_active`
-  remains `false` until live RTP is actually ingested for a runtime.
+  ingest counters/last-header fields once media arrives. It now also owns the first minimal in-process audio stage:
+  after receive-side SRTP unprotect it maps RTP payload types from the remote SDP, decodes `PCMU` / `PCMA` directly and
+  `OPUS` through `libopus` when present at build time, and stages recent PCM samples in-process for the future render /
+  processing path. The repo also has direct in-tree DTLS/SRTP proof for the same OpenSSL/libsrtp configuration:
+  `session_voice_builtin_dtls_transport_tests` completes a DTLS 1.2 client/server handshake over datagram-memory BIOs,
+  negotiates `SRTP_AES128_CM_SHA1_80`, exports DTLS-SRTP keying material, derives real inbound / outbound libsrtp
+  contexts from that exporter output, and now proves both protected RTP ingest and receive-side audio decode.
+  `peer.native_media_active` remains `false` until live RTP is actually ingested for a runtime.
 - The builtin/runtime preview and live runtime snapshots now also expose the media-engine seam explicitly:
   `media_runtime_plan.media_engine_kind` / `peer.media_engine_kind` distinguish `builtin_reserved`,
   `builtin_signaling_stub`, `builtin_native_plugin`, and `browser_peer`, while `native_media_supported` /
@@ -511,8 +513,11 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `peer.dtls_selected_srtp_profile`, `peer.srtp_contexts_ready`, `peer.srtp_inbound_ready`,
   `peer.srtp_outbound_ready`, `peer.srtp_last_error`, `peer.dtls_packets_sent`, and
   `peer.dtls_packets_received`, `peer.rtp_packets_received`, `peer.rtp_payload_bytes_received`,
-  `peer.rtp_last_payload_type`, `peer.rtp_last_sequence`, `peer.rtp_last_timestamp`, and
-  `peer.rtp_last_ssrc`.
+  `peer.rtp_last_payload_type`, `peer.rtp_last_sequence`, `peer.rtp_last_timestamp`,
+  `peer.rtp_last_ssrc`, `peer.audio_frames_decoded`, `peer.audio_pcm_samples_decoded`,
+  `peer.audio_pcm_samples_buffered`, `peer.audio_last_sample_rate_hz`,
+  `peer.audio_last_channels`, `peer.audio_last_frame_samples_per_channel`,
+  `peer.audio_last_codec_name`, and `peer.audio_last_error`.
   Those same fields can now advance on provider-polled async progress events too, not only on direct signaling
   callbacks.
 - Builtin runtime events are now normalized before persistence/logging too: every JSONL/runtime event carries the same

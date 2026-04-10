@@ -1,3 +1,4 @@
+#include "session_voice_audio_decode.h"
 #include "session_voice_builtin_media_engine_plugin.h"
 #include "session_voice_dtls_srtp_util.h"
 
@@ -39,9 +40,12 @@ using agentd::resolve_dtls_srtp_profile_spec;
 using agentd::selected_dtls_srtp_profile_name;
 
 constexpr const char* kProviderName = "agentd_builtin_embedded_transport_provider";
-constexpr const char* kProviderVersion = "0.6.0";
+constexpr const char* kProviderVersion = "0.7.0";
+#if defined(AGENTD_HAVE_OPUS)
 constexpr const char* kCapabilitiesJson =
   "{\"signaling\":true,\"audio_capture\":false,\"audio_render\":false,"
+  "\"audio_decode\":true,\"audio_stage\":true,"
+  "\"audio_codec_pcmu\":true,\"audio_codec_pcma\":true,\"audio_codec_opus\":true,"
   "\"ice\":true,\"dtls\":true,\"dtls_identity\":true,\"dtls_answer_shape\":true,"
   "\"dtls_handshake\":true,\"dtls_srtp_export\":true,"
   "\"srtp_contexts\":true,\"poll_status\":true,"
@@ -50,10 +54,25 @@ constexpr const char* kCapabilitiesJson =
   "\"embedded_transport_provider\":true,\"sample_provider\":false,"
   "\"real_media_engine\":false,\"remote_description_optional\":true,"
   "\"candidate_trickle_ingest\":true,\"candidate_trickle_emit\":false}";
+#else
+constexpr const char* kCapabilitiesJson =
+  "{\"signaling\":true,\"audio_capture\":false,\"audio_render\":false,"
+  "\"audio_decode\":true,\"audio_stage\":true,"
+  "\"audio_codec_pcmu\":true,\"audio_codec_pcma\":true,\"audio_codec_opus\":false,"
+  "\"ice\":true,\"dtls\":true,\"dtls_identity\":true,\"dtls_answer_shape\":true,"
+  "\"dtls_handshake\":true,\"dtls_srtp_export\":true,"
+  "\"srtp_contexts\":true,\"poll_status\":true,"
+  "\"srtp\":true,\"rtp_ingest\":true,\"rtcp_ingest\":true,\"sctp\":true,"
+  "\"transport_family\":\"embedded_transport_primitives\","
+  "\"embedded_transport_provider\":true,\"sample_provider\":false,"
+  "\"real_media_engine\":false,\"remote_description_optional\":true,"
+  "\"candidate_trickle_ingest\":true,\"candidate_trickle_emit\":false}";
+#endif
 
 constexpr const char* kDtlsSrtpProfiles =
   "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32";
 constexpr long kDtlsDatagramMtu = 1200;
+constexpr size_t kAudioPcmStagingCapacitySamples = 48000 * 2 * 2;
 
 struct EmbeddedTransportState {
   struct AsyncProgressKey {
@@ -85,6 +104,14 @@ struct EmbeddedTransportState {
     int64_t rtp_last_sequence = -1;
     uint64_t rtp_last_timestamp = 0;
     uint64_t rtp_last_ssrc = 0;
+    uint64_t audio_frames_decoded = 0;
+    uint64_t audio_pcm_samples_decoded = 0;
+    uint64_t audio_pcm_samples_buffered = 0;
+    int64_t audio_last_sample_rate_hz = 0;
+    int64_t audio_last_channels = 0;
+    int64_t audio_last_frame_samples_per_channel = 0;
+    std::string audio_last_codec_name;
+    std::string audio_last_error;
 
     bool operator==(const AsyncProgressKey& other) const {
       return libjuice_state == other.libjuice_state &&
@@ -114,7 +141,16 @@ struct EmbeddedTransportState {
              rtp_last_payload_type == other.rtp_last_payload_type &&
              rtp_last_sequence == other.rtp_last_sequence &&
              rtp_last_timestamp == other.rtp_last_timestamp &&
-             rtp_last_ssrc == other.rtp_last_ssrc;
+             rtp_last_ssrc == other.rtp_last_ssrc &&
+             audio_frames_decoded == other.audio_frames_decoded &&
+             audio_pcm_samples_decoded == other.audio_pcm_samples_decoded &&
+             audio_pcm_samples_buffered == other.audio_pcm_samples_buffered &&
+             audio_last_sample_rate_hz == other.audio_last_sample_rate_hz &&
+             audio_last_channels == other.audio_last_channels &&
+             audio_last_frame_samples_per_channel ==
+               other.audio_last_frame_samples_per_channel &&
+             audio_last_codec_name == other.audio_last_codec_name &&
+             audio_last_error == other.audio_last_error;
     }
   };
 
@@ -161,6 +197,16 @@ struct EmbeddedTransportState {
   int64_t rtp_last_sequence = -1;
   uint64_t rtp_last_timestamp = 0;
   uint64_t rtp_last_ssrc = 0;
+  uint64_t audio_frames_decoded = 0;
+  uint64_t audio_pcm_samples_decoded = 0;
+  uint64_t audio_pcm_samples_buffered = 0;
+  int64_t audio_last_sample_rate_hz = 0;
+  int64_t audio_last_channels = 0;
+  int64_t audio_last_frame_samples_per_channel = 0;
+  std::string audio_last_codec_name;
+  std::string audio_last_error;
+  agentd::InboundRtpAudioDecoder audio_decoder;
+  std::deque<int16_t> pcm_staging;
   std::mutex async_events_mu;
   std::deque<std::string> pending_async_events;
   AsyncProgressKey last_async_key;
@@ -550,6 +596,51 @@ bool ensure_srtp_contexts(EmbeddedTransportState* engine, std::string* out_err) 
   return engine->srtp_contexts_ready;
 }
 
+void stage_decoded_audio_frame(
+  EmbeddedTransportState* engine,
+  const agentd::DecodedAudioFrame& frame
+) {
+  if (!engine) return;
+  engine->audio_frames_decoded += 1;
+  engine->audio_pcm_samples_decoded += frame.pcm_samples.size();
+  engine->audio_last_codec_name = frame.codec_name;
+  engine->audio_last_sample_rate_hz = frame.sample_rate_hz;
+  engine->audio_last_channels = frame.channels;
+  engine->audio_last_frame_samples_per_channel = frame.samples_per_channel;
+  engine->audio_last_error.clear();
+  for (const int16_t sample : frame.pcm_samples) {
+    engine->pcm_staging.push_back(sample);
+  }
+  while (engine->pcm_staging.size() > kAudioPcmStagingCapacitySamples) {
+    engine->pcm_staging.pop_front();
+  }
+  engine->audio_pcm_samples_buffered = engine->pcm_staging.size();
+}
+
+bool decode_inbound_audio_frame(
+  EmbeddedTransportState* engine,
+  uint8_t payload_type,
+  const unsigned char* payload,
+  size_t payload_size,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (!engine || !payload || payload_size == 0) {
+    if (out_err) *out_err = "missing inbound audio payload";
+    return false;
+  }
+  agentd::DecodedAudioFrame frame;
+  std::string decode_err;
+  if (!engine->audio_decoder.decode_payload(
+        payload_type, payload, payload_size, &frame, &decode_err)) {
+    engine->audio_last_error = decode_err;
+    if (out_err) *out_err = decode_err;
+    return false;
+  }
+  stage_decoded_audio_frame(engine, frame);
+  return true;
+}
+
 bool ingest_inbound_srtp_packet(
   EmbeddedTransportState* engine,
   const char* data,
@@ -599,6 +690,14 @@ bool ingest_inbound_srtp_packet(
   engine->rtp_last_sequence = rtp_info.sequence;
   engine->rtp_last_timestamp = rtp_info.timestamp;
   engine->rtp_last_ssrc = rtp_info.ssrc;
+  if (rtp_info.payload_size > 0) {
+    (void)decode_inbound_audio_frame(
+      engine,
+      rtp_info.payload_type,
+      packet.data() + rtp_info.payload_offset,
+      rtp_info.payload_size,
+      nullptr);
+  }
   return true;
 }
 
@@ -866,6 +965,14 @@ EmbeddedTransportState::AsyncProgressKey capture_async_progress_key(
   key.rtp_last_sequence = state.rtp_last_sequence;
   key.rtp_last_timestamp = state.rtp_last_timestamp;
   key.rtp_last_ssrc = state.rtp_last_ssrc;
+  key.audio_frames_decoded = state.audio_frames_decoded;
+  key.audio_pcm_samples_decoded = state.audio_pcm_samples_decoded;
+  key.audio_pcm_samples_buffered = state.audio_pcm_samples_buffered;
+  key.audio_last_sample_rate_hz = state.audio_last_sample_rate_hz;
+  key.audio_last_channels = state.audio_last_channels;
+  key.audio_last_frame_samples_per_channel = state.audio_last_frame_samples_per_channel;
+  key.audio_last_codec_name = state.audio_last_codec_name;
+  key.audio_last_error = state.audio_last_error;
   return key;
 }
 
@@ -1100,6 +1207,9 @@ std::string build_event_json(
     ",\"dtls_packets_received\":" + std::to_string(state.dtls_packets_received) +
     ",\"rtp_packets_received\":" + std::to_string(state.rtp_packets_received) +
     ",\"rtp_payload_bytes_received\":" + std::to_string(state.rtp_payload_bytes_received) +
+    ",\"audio_frames_decoded\":" + std::to_string(state.audio_frames_decoded) +
+    ",\"audio_pcm_samples_decoded\":" + std::to_string(state.audio_pcm_samples_decoded) +
+    ",\"audio_pcm_samples_buffered\":" + std::to_string(state.audio_pcm_samples_buffered) +
     ",\"local_candidates_observed\":" + std::to_string(state.local_candidates_observed) +
     ",\"remote_candidates_seen\":" + std::to_string(state.remote_candidates_seen) +
     ",\"offers_seen\":" + std::to_string(state.offers_seen) +
@@ -1138,6 +1248,24 @@ std::string build_event_json(
   }
   if (state.rtp_last_ssrc > 0) {
     json += ",\"rtp_last_ssrc\":" + std::to_string(state.rtp_last_ssrc);
+  }
+  if (state.audio_last_sample_rate_hz > 0) {
+    json += ",\"audio_last_sample_rate_hz\":" +
+            std::to_string(state.audio_last_sample_rate_hz);
+  }
+  if (state.audio_last_channels > 0) {
+    json += ",\"audio_last_channels\":" + std::to_string(state.audio_last_channels);
+  }
+  if (state.audio_last_frame_samples_per_channel > 0) {
+    json += ",\"audio_last_frame_samples_per_channel\":" +
+            std::to_string(state.audio_last_frame_samples_per_channel);
+  }
+  if (!state.audio_last_codec_name.empty()) {
+    json += ",\"audio_last_codec_name\":\"" +
+            json_escape(state.audio_last_codec_name) + "\"";
+  }
+  if (!state.audio_last_error.empty()) {
+    json += ",\"audio_last_error\":\"" + json_escape(state.audio_last_error) + "\"";
   }
   if (!state.selected_local_candidate.empty()) {
     json += ",\"libjuice_selected_local_candidate\":\"" +
@@ -1265,6 +1393,16 @@ int embedded_handle_remote_description(
   engine->last_remote_description_error.clear();
 
   const std::string remote_sdp = description_sdp ? std::string(description_sdp) : std::string();
+  std::string audio_err;
+  if (!remote_sdp.empty()) {
+    if (!engine->audio_decoder.configure_from_remote_sdp(remote_sdp, &audio_err)) {
+      engine->audio_last_error = audio_err;
+    } else {
+      engine->audio_last_error.clear();
+    }
+  } else {
+    engine->audio_last_error = "remote SDP was empty";
+  }
   if (!remote_sdp.empty()) {
     const int rc = juice_set_remote_description(engine->agent, remote_sdp.c_str());
     if (rc == JUICE_ERR_SUCCESS) {

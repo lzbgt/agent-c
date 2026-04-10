@@ -8198,6 +8198,40 @@ export interface components {
              * @description SSRC from the most recent successfully ingested RTP packet.
              */
             rtp_last_ssrc?: number;
+            /**
+             * Format: int64
+             * @description Number of inbound audio payloads successfully decoded into PCM by the current builtin native-plugin provider.
+             */
+            audio_frames_decoded?: number;
+            /**
+             * Format: int64
+             * @description Total PCM samples produced by the current builtin native-plugin provider after receive-side audio decode. This count includes all channels.
+             */
+            audio_pcm_samples_decoded?: number;
+            /**
+             * Format: int64
+             * @description Number of decoded PCM samples currently retained in the provider's in-process staging buffer for future audio-path ownership.
+             */
+            audio_pcm_samples_buffered?: number;
+            /**
+             * Format: int64
+             * @description Sample rate of the most recent successfully decoded inbound audio frame.
+             */
+            audio_last_sample_rate_hz?: number;
+            /**
+             * Format: int64
+             * @description Channel count of the most recent successfully decoded inbound audio frame.
+             */
+            audio_last_channels?: number;
+            /**
+             * Format: int64
+             * @description Samples per channel in the most recent successfully decoded inbound audio frame.
+             */
+            audio_last_frame_samples_per_channel?: number;
+            /** @description Codec name for the most recent successfully decoded inbound audio frame, such as `OPUS`, `PCMU`, or `PCMA`. */
+            audio_last_codec_name?: string;
+            /** @description Best-effort diagnostic string when receive-side audio decode or PCM staging fails for the current builtin native-plugin provider. */
+            audio_last_error?: string;
             ready: boolean;
             running: boolean;
             /** Format: int64 */

@@ -75,6 +75,7 @@ set(AGENTD_BUILTIN_VOICE_MEDIA_PLUGIN_PATH "$<TARGET_FILE:agentd_voice_builtin_m
 set(AGENTD_VOICE_LIBJUICE_FOUND OFF)
 set(AGENTD_VOICE_LIBSRTP_FOUND OFF)
 set(AGENTD_VOICE_USRSCTP_FOUND OFF)
+set(AGENTD_VOICE_OPUS_FOUND OFF)
 if(PKG_CONFIG_FOUND)
   pkg_check_modules(LIBSRTP2 QUIET libsrtp2)
   if(LIBSRTP2_FOUND)
@@ -92,6 +93,10 @@ if(PKG_CONFIG_FOUND)
     if(AGENTD_VOICE_USRSCTP_INCLUDE_DIR)
       set(AGENTD_VOICE_USRSCTP_FOUND ON)
     endif()
+  endif()
+  pkg_check_modules(OPUS QUIET opus)
+  if(OPUS_FOUND)
+    set(AGENTD_VOICE_OPUS_FOUND ON)
   endif()
 endif()
 find_path(AGENTD_VOICE_LIBJUICE_INCLUDE_DIR
@@ -486,6 +491,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
   if(AGENTD_ENABLE_BUILTIN_EMBEDDED_TRANSPORT_PROVIDER)
     add_library(agentd_voice_builtin_media_engine_embedded_transport MODULE
       daemon/src/session_voice_builtin_media_engine_embedded_transport_provider.cpp
+      daemon/src/session_voice_audio_decode.cpp
       daemon/src/session_voice_dtls_srtp_util.cpp
     )
     target_compile_options(agentd_voice_builtin_media_engine_embedded_transport PRIVATE
@@ -494,20 +500,28 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     target_include_directories(agentd_voice_builtin_media_engine_embedded_transport PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
       ${LIBSRTP2_INCLUDE_DIRS}
+      ${OPUS_INCLUDE_DIRS}
       ${AGENTD_VOICE_USRSCTP_INCLUDE_DIR}
       ${AGENTD_VOICE_LIBJUICE_INCLUDE_DIR}
     )
     target_link_directories(agentd_voice_builtin_media_engine_embedded_transport PRIVATE
       ${LIBSRTP2_LIBRARY_DIRS}
+      ${OPUS_LIBRARY_DIRS}
       ${USRSCTP_LIBRARY_DIRS}
     )
     target_link_libraries(agentd_voice_builtin_media_engine_embedded_transport PRIVATE
       OpenSSL::SSL
       OpenSSL::Crypto
       ${LIBSRTP2_LIBRARIES}
+      ${OPUS_LIBRARIES}
       ${USRSCTP_LIBRARIES}
       ${AGENTD_VOICE_LIBJUICE_LIBRARY}
     )
+    if(AGENTD_VOICE_OPUS_FOUND)
+      target_compile_definitions(agentd_voice_builtin_media_engine_embedded_transport PRIVATE
+        AGENTD_HAVE_OPUS=1
+      )
+    endif()
   endif()
 
   add_library(agentd_voice_builtin_media_engine_legacy_v1 MODULE
@@ -900,6 +914,7 @@ if(AGENT_BUILD_HOST)
   target_link_libraries(session_voice_builtin_dtls_transport_tests PRIVATE OpenSSL::SSL OpenSSL::Crypto)
   if(AGENTD_ENABLE_BUILTIN_EMBEDDED_TRANSPORT_PROVIDER)
     target_sources(session_voice_builtin_dtls_transport_tests PRIVATE
+      daemon/src/session_voice_audio_decode.cpp
       daemon/src/session_voice_dtls_srtp_util.cpp
     )
     target_compile_definitions(session_voice_builtin_dtls_transport_tests PRIVATE
@@ -908,15 +923,47 @@ if(AGENT_BUILD_HOST)
     target_include_directories(session_voice_builtin_dtls_transport_tests PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
       ${LIBSRTP2_INCLUDE_DIRS}
+      ${OPUS_INCLUDE_DIRS}
     )
     target_link_directories(session_voice_builtin_dtls_transport_tests PRIVATE
       ${LIBSRTP2_LIBRARY_DIRS}
+      ${OPUS_LIBRARY_DIRS}
     )
     target_link_libraries(session_voice_builtin_dtls_transport_tests PRIVATE
       ${LIBSRTP2_LIBRARIES}
+      ${OPUS_LIBRARIES}
     )
+    if(AGENTD_VOICE_OPUS_FOUND)
+      target_compile_definitions(session_voice_builtin_dtls_transport_tests PRIVATE
+        AGENTD_HAVE_OPUS=1
+      )
+    endif()
   endif()
   add_test(NAME session_voice_builtin_dtls_transport_tests COMMAND session_voice_builtin_dtls_transport_tests)
+
+  add_executable(session_voice_audio_decode_tests
+    tests/test_session_voice_audio_decode.cpp
+    daemon/src/session_voice_audio_decode.cpp
+  )
+  target_compile_options(session_voice_audio_decode_tests PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_include_directories(session_voice_audio_decode_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
+    ${OPUS_INCLUDE_DIRS}
+  )
+  target_link_directories(session_voice_audio_decode_tests PRIVATE
+    ${OPUS_LIBRARY_DIRS}
+  )
+  target_link_libraries(session_voice_audio_decode_tests PRIVATE
+    ${OPUS_LIBRARIES}
+  )
+  if(AGENTD_VOICE_OPUS_FOUND)
+    target_compile_definitions(session_voice_audio_decode_tests PRIVATE
+      AGENTD_HAVE_OPUS=1
+    )
+  endif()
+  add_test(NAME session_voice_audio_decode_tests COMMAND session_voice_audio_decode_tests)
 
   if(AGENTD_ENABLE_BUILTIN_EMBEDDED_TRANSPORT_PROVIDER)
     add_executable(session_voice_builtin_embedded_transport_provider_tests

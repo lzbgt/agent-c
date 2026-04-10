@@ -37,6 +37,11 @@ static void assert_known_test_provider(
   if (provider_name == "agentd_builtin_embedded_transport_provider") {
     assert(capabilities["transport_family"].asString() == "embedded_transport_primitives");
     assert(capabilities["embedded_transport_provider"].asBool());
+    assert(capabilities["audio_decode"].asBool());
+    assert(capabilities["audio_stage"].asBool());
+    assert(capabilities["audio_codec_pcmu"].asBool());
+    assert(capabilities["audio_codec_pcma"].asBool());
+    assert(capabilities.isMember("audio_codec_opus"));
     assert(capabilities["ice"].asBool());
     assert(capabilities["dtls"].asBool());
     assert(capabilities["dtls_handshake"].asBool());
@@ -231,6 +236,8 @@ static void test_builtin_media_engine_native_plugin_loads_sample_provider_metada
   note_voice_peer_media_engine_event(&runtime, answer_event);
   assert(runtime.media_engine_state == "answer_ready");
   assert(!runtime.native_media_active);
+  assert(runtime.audio_frames_decoded == 0);
+  assert(runtime.audio_pcm_samples_decoded == 0);
 }
 
 static void test_builtin_media_engine_legacy_v1_plugin_compatibility_defaults_metadata() {

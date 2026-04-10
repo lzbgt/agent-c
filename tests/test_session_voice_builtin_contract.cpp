@@ -28,6 +28,11 @@ static void assert_known_test_provider(
   if (provider_name == "agentd_builtin_embedded_transport_provider") {
     assert(capabilities["embedded_transport_provider"].asBool());
     assert(capabilities["transport_family"].asString() == "embedded_transport_primitives");
+    assert(capabilities["audio_decode"].asBool());
+    assert(capabilities["audio_stage"].asBool());
+    assert(capabilities["audio_codec_pcmu"].asBool());
+    assert(capabilities["audio_codec_pcma"].asBool());
+    assert(capabilities.isMember("audio_codec_opus"));
     assert(capabilities["ice"].asBool());
     assert(capabilities["srtp"].asBool());
     assert(capabilities["rtp_ingest"].asBool());

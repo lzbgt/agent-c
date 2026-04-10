@@ -7,6 +7,7 @@
 #include <openssl/x509.h>
 
 #if defined(AGENTD_HAVE_DTLS_SRTP_SESSION_PAIR)
+#include "session_voice_audio_decode.h"
 #include "session_voice_dtls_srtp_util.h"
 #include <srtp2/srtp.h>
 #endif
@@ -387,6 +388,47 @@ void test_dtls_memory_loopback_derives_srtp_contexts_and_round_trips_rtp() {
   assert(parsed_rtp.timestamp == 0x01020304u);
   assert(parsed_rtp.ssrc == 0x11223344u);
   assert(parsed_rtp.payload_size == sizeof(payload) - 1);
+
+  std::array<unsigned char, 256> audio_packet{};
+  const unsigned char audio_payload[] = {0xFFu, 0x7Fu, 0x00u, 0x80u};
+  const int audio_plain_len = 12 + static_cast<int>(sizeof(audio_payload));
+  audio_packet[0] = 0x80;
+  audio_packet[1] = 0;
+  write_u16_be(audio_packet.data() + 2, 2);
+  write_u32_be(audio_packet.data() + 4, 0x05060708u);
+  write_u32_be(audio_packet.data() + 8, 0x99AABBCCu);
+  std::memcpy(audio_packet.data() + 12, audio_payload, sizeof(audio_payload));
+
+  int protected_audio_len = audio_plain_len;
+  assert(srtp_protect(server_sessions.outbound, audio_packet.data(), &protected_audio_len) ==
+         srtp_err_status_ok);
+  err.clear();
+  assert(agentd::unprotect_inbound_srtp_packet(
+    client_sessions.inbound,
+    audio_packet.data(),
+    static_cast<size_t>(protected_audio_len),
+    &parsed_rtp,
+    &was_rtcp,
+    &err));
+  assert(err.empty());
+  assert(!was_rtcp);
+  assert(parsed_rtp.payload_type == 0);
+  assert(parsed_rtp.payload_size == sizeof(audio_payload));
+
+  agentd::InboundRtpAudioDecoder audio_decoder;
+  agentd::DecodedAudioFrame decoded_audio;
+  assert(audio_decoder.decode_payload(
+    parsed_rtp.payload_type,
+    audio_packet.data() + parsed_rtp.payload_offset,
+    parsed_rtp.payload_size,
+    &decoded_audio,
+    &err));
+  assert(err.empty());
+  assert(decoded_audio.codec_name == "PCMU");
+  assert(decoded_audio.sample_rate_hz == 8000);
+  assert(decoded_audio.channels == 1);
+  assert(decoded_audio.samples_per_channel == static_cast<int>(sizeof(audio_payload)));
+  assert(decoded_audio.pcm_samples.size() == sizeof(audio_payload));
 
   agentd::destroy_dtls_srtp_session_pair(&client_sessions);
   agentd::destroy_dtls_srtp_session_pair(&server_sessions);

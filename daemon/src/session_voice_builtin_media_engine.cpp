@@ -1010,6 +1010,38 @@ void note_voice_peer_media_engine_event(
       (payload["rtp_last_ssrc"].isInt64() || payload["rtp_last_ssrc"].isUInt64())) {
     runtime->rtp_last_ssrc = payload["rtp_last_ssrc"].asInt64();
   }
+  if (payload.isMember("audio_frames_decoded") &&
+      (payload["audio_frames_decoded"].isInt64() || payload["audio_frames_decoded"].isUInt64())) {
+    runtime->audio_frames_decoded = payload["audio_frames_decoded"].asInt64();
+  }
+  if (payload.isMember("audio_pcm_samples_decoded") &&
+      (payload["audio_pcm_samples_decoded"].isInt64() || payload["audio_pcm_samples_decoded"].isUInt64())) {
+    runtime->audio_pcm_samples_decoded = payload["audio_pcm_samples_decoded"].asInt64();
+  }
+  if (payload.isMember("audio_pcm_samples_buffered") &&
+      (payload["audio_pcm_samples_buffered"].isInt64() || payload["audio_pcm_samples_buffered"].isUInt64())) {
+    runtime->audio_pcm_samples_buffered = payload["audio_pcm_samples_buffered"].asInt64();
+  }
+  if (payload.isMember("audio_last_sample_rate_hz") &&
+      (payload["audio_last_sample_rate_hz"].isInt64() || payload["audio_last_sample_rate_hz"].isUInt64())) {
+    runtime->audio_last_sample_rate_hz = payload["audio_last_sample_rate_hz"].asInt64();
+  }
+  if (payload.isMember("audio_last_channels") &&
+      (payload["audio_last_channels"].isInt64() || payload["audio_last_channels"].isUInt64())) {
+    runtime->audio_last_channels = payload["audio_last_channels"].asInt64();
+  }
+  if (payload.isMember("audio_last_frame_samples_per_channel") &&
+      (payload["audio_last_frame_samples_per_channel"].isInt64() ||
+       payload["audio_last_frame_samples_per_channel"].isUInt64())) {
+    runtime->audio_last_frame_samples_per_channel =
+      payload["audio_last_frame_samples_per_channel"].asInt64();
+  }
+  if (payload.isMember("audio_last_codec_name") && payload["audio_last_codec_name"].isString()) {
+    runtime->audio_last_codec_name = trim_copy(payload["audio_last_codec_name"].asString());
+  }
+  if (payload.isMember("audio_last_error") && payload["audio_last_error"].isString()) {
+    runtime->audio_last_error = trim_copy(payload["audio_last_error"].asString());
+  }
   if (payload.isMember("native_media_provider") && payload["native_media_provider"].isObject()) {
     runtime->native_media_provider = payload["native_media_provider"];
   }

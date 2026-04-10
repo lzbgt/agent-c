@@ -119,6 +119,13 @@ Reference artifacts downloaded into the repo for exact vendor details:
   can terminate inbound SRTP/RTP packets far enough to parse payload-type /
   sequence / timestamp / SSRC metadata. That is why it now truthfully reports
   `native_media_supported=true` for receive-side media ownership.
+- The repo now also has a minimal receive-side audio stage instead of only RTP
+  termination counters:
+  - RTP payload types are mapped from the remote SDP offer
+  - `PCMU` and `PCMA` decode directly in-tree
+  - `OPUS` decode is now wired through `libopus` when it is present at build
+    time
+  - decoded PCM samples are staged in-process behind bounded counters/telemetry
 - The remaining gap is that the provider still does not own a complete
   in-process media pipeline. `native_media_active` remains `false` until live
   RTP is actually ingested, and agentd still does not yet decode/play/process

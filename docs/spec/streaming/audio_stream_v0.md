@@ -281,12 +281,15 @@ A v0 smoke test should:
   gathers local ICE candidates before forming its answer, generates an ephemeral local DTLS identity, mirrors
   browser-style media offers into an inactive answer with `a=setup:passive` and a surfaced SHA-256 fingerprint, and
   now reuses the shared in-tree SRTP/RTP ingest utility that terminates inbound protected RTP into concrete header /
-  payload counters. The repo also has a direct DTLS/SRTP proof slice in
+  payload counters. It now also owns a minimal receive-side audio stage: RTP payload types are mapped from the remote
+  SDP, `PCMU` / `PCMA` payloads decode directly, and `OPUS` payloads decode through `libopus` when that library is
+  available at build time, with decoded PCM samples staged in-process for the future render / processing path. The
+  repo also has a direct DTLS/SRTP proof slice in
   `session_voice_builtin_dtls_transport_tests`: the same OpenSSL DTLS configuration used by the builtin native-plugin
   provider completes an in-tree DTLS 1.2 handshake, negotiates `SRTP_AES128_CM_SHA1_80`, exports DTLS-SRTP keying
   material over datagram-memory BIOs, derives real inbound/outbound libsrtp contexts from the exporter output, and now
-  proves inbound SRTP/RTP ingest by parsing the protected packet into payload-type / sequence / timestamp / SSRC
-  metadata. The remaining gap is no longer inbound RTP termination; it is a fuller bidirectional in-process audio path.
+  proves inbound SRTP/RTP ingest plus receive-side audio decode. The remaining gap is no longer inbound RTP
+  termination; it is a fuller bidirectional in-process audio path.
 - That runtime contract now also exposes the media-engine seam directly: planned/live builtin paths report
   `media_engine_kind=builtin_reserved|builtin_signaling_stub|builtin_native_plugin`, bundled/external runtimes report
   `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` now distinguish the
@@ -296,7 +299,10 @@ A v0 smoke test should:
   `dtls_handshake_ready`, `dtls_exporter_ready`, `dtls_handshake_state`, `dtls_selected_srtp_profile`,
   `srtp_contexts_ready`, `srtp_inbound_ready`, `srtp_outbound_ready`, `srtp_last_error`,
   `dtls_packets_sent`, `dtls_packets_received`, `rtp_packets_received`, `rtp_payload_bytes_received`,
-  `rtp_last_payload_type`, `rtp_last_sequence`, `rtp_last_timestamp`, and `rtp_last_ssrc`.
+  `rtp_last_payload_type`, `rtp_last_sequence`, `rtp_last_timestamp`, `rtp_last_ssrc`,
+  `audio_frames_decoded`, `audio_pcm_samples_decoded`, `audio_pcm_samples_buffered`,
+  `audio_last_sample_rate_hz`, `audio_last_channels`, `audio_last_frame_samples_per_channel`,
+  `audio_last_codec_name`, and `audio_last_error`.
   Those fields can now also advance through provider-polled async status events rather than only through direct
   remote-description or remote-candidate callbacks.
 - Builtin runtime observability is now explicit too: normalized per-session JSONL events and the persisted/live runtime
