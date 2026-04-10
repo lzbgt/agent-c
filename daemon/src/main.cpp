@@ -50,6 +50,7 @@
 #include "config_store.h"
 #include "runtime_config.h"
 #include "provider_util.h"
+#include "runtime_skill_endpoints.h"
 
 #include "agent_db.h"
 
@@ -1550,6 +1551,16 @@ int main(int argc, char** argv) {
   server.handle("POST", "/api/v1/avm/capsule_run", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_avm_capsule_run_endpoint(cur, cors_cfg, req, resp);
+  });
+
+  server.handle("GET", "/api/v1/runtime_skills", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_runtime_skill_list_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+
+  server.handle("POST", "/api/v1/runtime_skills/resolve", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_runtime_skill_resolve_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   server.handle("POST", "/api/v1/workflow/submit", [&](const HttpRequest& req, HttpResponse* resp) {

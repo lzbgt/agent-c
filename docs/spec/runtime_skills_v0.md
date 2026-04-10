@@ -1,7 +1,7 @@
 # Runtime Skills System (v0)
 
 Date: 2026-04-10
-Status: draft (local catalog tooling implemented)
+Status: draft (local catalog tooling plus agentd/WebUI workflow integration implemented)
 
 ## Summary
 
@@ -197,6 +197,14 @@ Applying a runtime skill means:
 4. materialize the concrete run/team/workflow request
 5. persist the resolved skill metadata into run history for replay/audit
 
+For `workflow_bundle` skills, the v0 materializer currently:
+
+- deep-copies `workflow_template`
+- merges user inputs into top-level `inputs`
+- copies `policy_preset.max_steps` into `defaults.max_steps` when absent
+- attaches a `runtime_skill` audit block with `skill_id`, `skill_version`,
+  `manifest_sha256`, and resolved inputs
+
 Resolution must fail early if:
 
 - a required tool is missing
@@ -249,6 +257,14 @@ Reasonable v0 search order:
 
 The v0 implementation does not need a network package manager.
 
+Current v0 implementation status:
+
+- local CLI tooling exists under `tools/runtime_skills/`
+- agentd exposes:
+  - `GET /api/v1/runtime_skills`
+  - `POST /api/v1/runtime_skills/resolve`
+- the WebUI workflow composer can now start from `workflow_bundle` skills
+
 ## WebUI / CLI UX
 
 Expected UX:
@@ -257,6 +273,12 @@ Expected UX:
   `inputs_schema`
 - CLI can materialize a skill by `skill_id` plus JSON/YAML inputs
 - Team/workflow panels can offer "start from skill" alongside raw JSON mode
+
+Implemented now:
+
+- the workflow composer consumes the local daemon catalog for `workflow_bundle`
+  entries and materializes them directly into composer JSON
+- team-run / broker integration is still pending follow-up work
 
 This gives a shorter path for common cases without taking away the low-level
 power-user surface.

@@ -1,0 +1,79 @@
+RuntimeSkillSummary:
+  type: object
+  required: [skill_id, version, kind, description]
+  properties:
+    skill_id: { type: string }
+    version: { type: string }
+    kind: { type: string }
+    description: { type: string }
+    category: { type: string }
+    label: { type: string }
+    source_manifest: { type: string }
+    root: { type: string }
+    requires:
+      type: object
+      additionalProperties: true
+    inputs_schema:
+      type: object
+      additionalProperties: true
+      nullable: true
+    ui:
+      type: object
+      additionalProperties: true
+    has_workflow_template: { type: boolean }
+    has_team_template: { type: boolean }
+    has_policy_preset: { type: boolean }
+  additionalProperties: true
+
+RuntimeSkillListResponse:
+  type: object
+  required: [ok, skills, capabilities]
+  properties:
+    ok: { type: boolean }
+    skills:
+      type: array
+      items:
+        $ref: "#/components/schemas/RuntimeSkillSummary"
+    capabilities:
+      type: object
+      additionalProperties: true
+  additionalProperties: true
+
+RuntimeSkillResolveRequest:
+  type: object
+  required: [skill_id]
+  properties:
+    skill_id: { type: string }
+    inputs:
+      type: object
+      additionalProperties: true
+  additionalProperties: false
+
+RuntimeSkillResolveResponse:
+  type: object
+  required: [ok, skill_id, skill_version, kind, manifest_sha256, manifest]
+  properties:
+    ok: { type: boolean }
+    skill_id: { type: string }
+    skill_version: { type: string }
+    description: { type: string }
+    kind: { type: string }
+    manifest_sha256: { type: string }
+    source_manifest: { type: string }
+    inputs:
+      type: object
+      additionalProperties: true
+    manifest:
+      type: object
+      additionalProperties: true
+    resolved:
+      type: object
+      additionalProperties: true
+    materialized:
+      type: object
+      additionalProperties: true
+    capabilities_checked: { type: boolean }
+    capabilities:
+      type: object
+      additionalProperties: true
+  additionalProperties: true

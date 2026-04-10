@@ -245,6 +245,14 @@ schemas:
     $ref: ./components/workflow.yaml#/AvmCapsuleRunArgs
   WorkflowSubmitRequest:
     $ref: ./components/workflow.yaml#/WorkflowSubmitRequest
+  RuntimeSkillSummary:
+    $ref: ./components/runtime_skills.yaml#/RuntimeSkillSummary
+  RuntimeSkillListResponse:
+    $ref: ./components/runtime_skills.yaml#/RuntimeSkillListResponse
+  RuntimeSkillResolveRequest:
+    $ref: ./components/runtime_skills.yaml#/RuntimeSkillResolveRequest
+  RuntimeSkillResolveResponse:
+    $ref: ./components/runtime_skills.yaml#/RuntimeSkillResolveResponse
   WorkflowSchedule:
     $ref: ./components/workflow_schedule.yaml#/WorkflowSchedule
   WorkflowScheduleRun:

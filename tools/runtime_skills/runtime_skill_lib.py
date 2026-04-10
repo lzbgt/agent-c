@@ -424,6 +424,51 @@ def validate_inputs(inputs: Any, schema: Any, path: str = "inputs") -> None:
     raise RuntimeSkillError(f"{path} uses unsupported schema type: {expected_type}")
 
 
+def _materialize_workflow_request(
+    manifest: Mapping[str, Any], inputs: Mapping[str, Any]
+) -> Dict[str, Any] | None:
+    workflow_template = manifest.get("workflow_template")
+    if workflow_template is None:
+        return None
+    if not isinstance(workflow_template, dict):
+        raise RuntimeSkillError("workflow_template must be an object")
+
+    workflow_request = json.loads(json.dumps(workflow_template, ensure_ascii=False))
+    existing_inputs = workflow_request.get("inputs")
+    if existing_inputs is None:
+        merged_inputs: Dict[str, Any] = {}
+    elif isinstance(existing_inputs, dict):
+        merged_inputs = dict(existing_inputs)
+    else:
+        raise RuntimeSkillError("workflow_template.inputs must be an object when present")
+    merged_inputs.update(dict(inputs))
+    if merged_inputs:
+        workflow_request["inputs"] = merged_inputs
+
+    defaults = workflow_request.get("defaults")
+    if defaults is None:
+        defaults = {}
+    elif not isinstance(defaults, dict):
+        raise RuntimeSkillError("workflow_template.defaults must be an object when present")
+    else:
+        defaults = dict(defaults)
+    policy_preset = manifest.get("policy_preset")
+    if isinstance(policy_preset, dict):
+        max_steps = policy_preset.get("max_steps")
+        if isinstance(max_steps, int) and max_steps >= 0 and "max_steps" not in defaults:
+            defaults["max_steps"] = max_steps
+    if defaults:
+        workflow_request["defaults"] = defaults
+
+    workflow_request["runtime_skill"] = {
+        "skill_id": manifest["skill_id"],
+        "skill_version": manifest["version"],
+        "manifest_sha256": manifest_hash(manifest),
+        "inputs": dict(inputs),
+    }
+    return workflow_request
+
+
 def build_resolution_document(
     entry: RuntimeSkillEntry,
     *,
@@ -459,6 +504,9 @@ def build_resolution_document(
             "team_template": manifest.get("team_template", {}),
             "workflow_template": manifest.get("workflow_template", {}),
             "ui": manifest.get("ui", {}),
+        },
+        "materialized": {
+            "workflow_request": _materialize_workflow_request(manifest, inputs),
         },
         "capabilities_checked": bool(capabilities),
     }

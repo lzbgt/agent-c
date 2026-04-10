@@ -82,6 +82,14 @@ python3 tools/runtime_skills/resolve_skill.py coding-test-gate \
   --feature approval_queue
 ```
 
+The resolver now emits `materialized.workflow_request` for `workflow_bundle`
+skills. The materialized request:
+
+- deep-copies `workflow_template`
+- merges user inputs into `workflow_request.inputs`
+- seeds `defaults.max_steps` from `policy_preset.max_steps` when absent
+- attaches `runtime_skill.{skill_id,skill_version,manifest_sha256,inputs}` for audit
+
 Create a new local runtime skill from the template:
 
 ```bash
@@ -98,4 +106,9 @@ python3 tools/runtime_skills/create_skill.py my-runtime-skill
   - normalized `manifest_sha256`
   - input values
   - the manifest snapshot
+- agentd now exposes the same catalog through:
+  - `GET /api/v1/runtime_skills`
+  - `POST /api/v1/runtime_skills/resolve`
+- The WebUI workflow composer consumes those endpoints to offer “start from skill”
+  for `workflow_bundle` entries.
 - Validation is data-only and does not execute arbitrary code.

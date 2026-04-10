@@ -296,6 +296,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/run_endpoints_internal.cpp
     daemon/src/run_memory_context.cpp
     daemon/src/run_multimodal.cpp
+    daemon/src/runtime_skill_endpoints.cpp
     daemon/src/trace_endpoints.cpp
     daemon/src/trace_id_util.cpp
     daemon/src/scene_store.cpp

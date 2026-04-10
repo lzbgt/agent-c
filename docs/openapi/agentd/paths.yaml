@@ -2104,6 +2104,59 @@
             schema:
               $ref: "#/components/schemas/ErrorResponse"
 
+/api/v1/runtime_skills:
+  get:
+    tags: [runtime_skills]
+    summary: List runtime skills from the local catalog search path
+    parameters:
+      - in: query
+        name: kind
+        required: false
+        schema: { type: string }
+        description: Optional kind filter such as `workflow_bundle` or `team_bundle`.
+      - in: query
+        name: category
+        required: false
+        schema: { type: string }
+        description: Optional UI category filter.
+    responses:
+      "200":
+        description: Runtime skill summaries plus daemon-known capability hints
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuntimeSkillListResponse"
+
+/api/v1/runtime_skills/resolve:
+  post:
+    tags: [runtime_skills]
+    summary: Resolve a runtime skill into a materialized request document
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/RuntimeSkillResolveRequest"
+    responses:
+      "200":
+        description: Resolved runtime skill document
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuntimeSkillResolveResponse"
+      "400":
+        description: Validation error or missing runtime requirements
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "404":
+        description: Runtime skill not found
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
 /api/v1/workflow:
   get:
     tags: [workflows]

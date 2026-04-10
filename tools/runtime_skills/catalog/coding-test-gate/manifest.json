@@ -33,13 +33,30 @@
     "max_steps": 50
   },
   "workflow_template": {
-    "lanes": [
-      { "id": "plan", "label": "Plan" },
-      { "id": "implement", "label": "Implement" },
-      { "id": "verify", "label": "Verify" }
-    ],
-    "gates": [
-      { "after": "verify", "requires": "tests_pass" }
+    "tasks": [
+      {
+        "task_id": "plan",
+        "request": {
+          "prompt": "Draft a concrete implementation plan for the goal `${input.goal}`. Include the required verification command `${input.test_command}` and call out the main risks before any code changes.",
+          "no_session": true
+        }
+      },
+      {
+        "task_id": "implement",
+        "depends_on": ["plan"],
+        "request": {
+          "prompt": "Implement the goal `${input.goal}` using this plan:\n${task.plan.assistant_text}\nExplain the intended code changes, note assumptions, and do not claim tests passed unless they actually did.",
+          "no_session": true
+        }
+      },
+      {
+        "task_id": "verify",
+        "depends_on": ["implement"],
+        "request": {
+          "prompt": "Prepare the verification gate for `${input.goal}`. Required test command: `${input.test_command}`.\nSummarize the checks that must pass based on this implementation summary:\n${task.implement.assistant_text}",
+          "no_session": true
+        }
+      }
     ]
   },
   "ui": {

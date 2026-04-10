@@ -1,6 +1,7 @@
 import React from "react";
 
 import WorkflowComposerBody from "./workflowComposer/WorkflowComposerBody";
+import WorkflowComposerRuntimeSkillSection from "./workflowComposer/WorkflowComposerRuntimeSkillSection";
 import WorkflowComposerStatus from "./workflowComposer/WorkflowComposerStatus";
 import WorkflowComposerToolbar from "./workflowComposer/WorkflowComposerToolbar";
 import type { WorkflowComposerProps } from "./workflowComposer/workflowComposerTypes";
@@ -21,6 +22,21 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
         onApplyTemplate={state.applyTemplate}
         onSubmitDemoAndWait={state.submitDemoAndWait}
         onFormatJson={state.formatJson}
+      />
+
+      <WorkflowComposerRuntimeSkillSection
+        applyBusy={state.runtimeSkillApplyBusy}
+        inputsJson={state.runtimeSkillInputsJson}
+        inputsParseError={state.runtimeSkillInputsParseError}
+        loadError={state.runtimeSkillListError}
+        loading={state.runtimeSkillListLoading}
+        runtimeSkillError={state.runtimeSkillError}
+        selectedSkill={state.selectedRuntimeSkill}
+        selectedSkillId={state.runtimeSkillId}
+        skills={state.runtimeSkills}
+        onApply={() => void state.applyRuntimeSkill()}
+        onSelectSkill={state.selectRuntimeSkill}
+        onSetInputsJson={state.setRuntimeSkillInputsJson}
       />
 
       <WorkflowComposerBody

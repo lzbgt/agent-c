@@ -37,6 +37,7 @@
 #include "provider_util.h"
 #include "run_endpoints.h"
 #include "run_replay_endpoint.h"
+#include "runtime_skill_endpoints.h"
 #include "trace_endpoints.h"
 #include "workflow_endpoints.h"
 #include "workflow_engine.h"
@@ -1296,6 +1297,15 @@ struct AgentdService::Impl {
     server.handle("GET", "/api/v1/trace", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_trace_lookup_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+
+    server.handle("GET", "/api/v1/runtime_skills", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_runtime_skill_list_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("POST", "/api/v1/runtime_skills/resolve", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_runtime_skill_resolve_endpoint(cur, cors_cfg, &db, req, resp);
     });
 
     // Workflow endpoints.

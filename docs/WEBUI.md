@@ -221,6 +221,9 @@ The WebUI includes a **Workflows** panel for durable workflow inspection:
   - The schedule create form can copy a POST curl request for the current cron/spec.
 
 This panel includes a **Workflow composer** with JSON and Graph modes:
+- JSON mode now includes a **Runtime skill** section that lists local `workflow_bundle` runtime skills from the connected agentd and materializes them directly into the composer.
+- Runtime-skill inputs are rendered from the manifest `inputs_schema` when possible, with a raw JSON editor available for advanced cases.
+- Applying a runtime skill writes a concrete workflow payload into the composer JSON, including `runtime_skill` audit metadata.
 - JSON templates for LLM DAG workflows (A→B/C) and `agentd_parallel` collaboration templates.
 - JSON template includes an `agentd_parallel` demo preset with longer timeout and example goal input.
 - JSON mode includes a “Demo → Graph” button to load the demo template directly into the graph editor.

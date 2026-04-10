@@ -20,6 +20,7 @@ tags:
   - name: run
   - name: jobs
   - name: workflows
+  - name: runtime_skills
   - name: tools
   - name: avm
   - name: memory

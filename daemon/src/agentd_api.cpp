@@ -27,6 +27,7 @@
 #include "provider_util.h"
 #include "run_endpoints.h"
 #include "run_replay_endpoint.h"
+#include "runtime_skill_endpoints.h"
 #include "trace_endpoints.h"
 #include "workflow_endpoints.h"
 #include "workflow_schedule_endpoints.h"
@@ -1036,6 +1037,17 @@ bool AgentdApi::init(std::string* out_error) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();
     handle_trace_lookup_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+
+  impl_->route("GET", "/api/v1/runtime_skills", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_runtime_skill_list_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route("POST", "/api/v1/runtime_skills/resolve", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_runtime_skill_resolve_endpoint(cur, self->cors_cfg, &self->db, req, resp);
   });
 
   // Workflow endpoints (durable graphs; execution requires the workflow engine, which is owned by AgentdService/agentd).

@@ -11,6 +11,7 @@ export * from "./api/approvals";
 export * from "./api/workflow";
 export * from "./api/workflow_schedule";
 export * from "./api/moderator";
+export * from "./api/runtime_skills";
 
 export * from "./api/schemas/daemon";
 export * from "./api/schemas/run";
@@ -24,3 +25,4 @@ export * from "./api/schemas/approvals";
 export * from "./api/schemas/workflow";
 export * from "./api/schemas/workflow_schedule";
 export * from "./api/schemas/moderator";
+export * from "./api/schemas/runtime_skills";
