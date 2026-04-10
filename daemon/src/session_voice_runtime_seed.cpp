@@ -18,6 +18,7 @@ std::shared_ptr<VoicePeerRuntime> make_voice_peer_runtime_state(
   auto st = std::make_shared<VoicePeerRuntime>();
   st->runtime_kind = seed.runtime_kind;
   st->media_engine_kind = seed.media_engine_kind;
+  st->media_engine_state = seed.media_engine_state;
   st->session_id = seed.session_id;
   st->broker_session_id = seed.broker_session_id;
   st->broker_url = seed.broker_url;
@@ -33,6 +34,14 @@ std::shared_ptr<VoicePeerRuntime> make_voice_peer_runtime_state(
   st->deadline_ms = seed.deadline_ms;
   st->poll_interval_ms = seed.poll_interval_ms;
   st->tone_hz = seed.tone_hz;
+  st->media_state_updated_unix_ms =
+    seed.media_state_updated_unix_ms > 0 ? seed.media_state_updated_unix_ms : st->started_unix_ms;
+  st->media_events_total = seed.media_events_total;
+  st->media_remote_offers_seen = seed.media_remote_offers_seen;
+  st->media_answers_sent = seed.media_answers_sent;
+  st->media_remote_candidates_seen = seed.media_remote_candidates_seen;
+  st->media_remote_byes_seen = seed.media_remote_byes_seen;
+  st->media_local_byes_sent = seed.media_local_byes_sent;
   st->managed_broker_session = seed.managed_broker_session;
   st->native_media_supported = seed.native_media_supported;
   st->native_media_active = seed.native_media_active;

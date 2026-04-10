@@ -18,6 +18,7 @@ struct VoicePeerRuntime {
   std::string runtime_kind = "external";
   std::string status_source = "memory";
   std::string media_engine_kind = "browser_peer";
+  std::string media_engine_state = "idle";
   std::string session_id;
   std::string broker_session_id;
   std::string broker_url;
@@ -34,6 +35,13 @@ struct VoicePeerRuntime {
   int64_t deadline_ms = 15000;
   int64_t poll_interval_ms = 100;
   int64_t tone_hz = 440;
+  int64_t media_state_updated_unix_ms = 0;
+  int64_t media_events_total = 0;
+  int64_t media_remote_offers_seen = 0;
+  int64_t media_answers_sent = 0;
+  int64_t media_remote_candidates_seen = 0;
+  int64_t media_remote_byes_seen = 0;
+  int64_t media_local_byes_sent = 0;
   bool managed_broker_session = false;
   bool native_media_supported = false;
   bool native_media_active = false;
@@ -79,6 +87,7 @@ struct VoicePeerChildLaunchConfig {
 struct VoicePeerRuntimeSeed {
   std::string runtime_kind = "external";
   std::string media_engine_kind = "browser_peer";
+  std::string media_engine_state = "idle";
   std::string session_id;
   std::string broker_session_id;
   std::string broker_url;
@@ -93,6 +102,13 @@ struct VoicePeerRuntimeSeed {
   int64_t deadline_ms = 15000;
   int64_t poll_interval_ms = 100;
   int64_t tone_hz = 440;
+  int64_t media_state_updated_unix_ms = 0;
+  int64_t media_events_total = 0;
+  int64_t media_remote_offers_seen = 0;
+  int64_t media_answers_sent = 0;
+  int64_t media_remote_candidates_seen = 0;
+  int64_t media_remote_byes_seen = 0;
+  int64_t media_local_byes_sent = 0;
   bool managed_broker_session = false;
   bool native_media_supported = false;
   bool native_media_active = false;

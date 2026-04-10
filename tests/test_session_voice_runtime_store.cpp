@@ -155,16 +155,32 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   st.session_id = "voice-sid";
   st.runtime_kind = "builtin";
   st.media_engine_kind = "builtin_signaling_stub";
+  st.media_engine_state = "signaling_active";
   st.status_source = "memory";
   st.broker_url = "http://broker";
   st.sender_tag = "agentd_runtime_peer";
   st.tool_path = "@builtin";
   st.node_bin = "@builtin";
+  st.media_state_updated_unix_ms = 1234;
+  st.media_events_total = 5;
+  st.media_remote_offers_seen = 1;
+  st.media_answers_sent = 1;
+  st.media_remote_candidates_seen = 2;
+  st.media_remote_byes_seen = 0;
+  st.media_local_byes_sent = 1;
   st.native_media_supported = false;
   st.native_media_active = false;
 
   const Json::Value json = voice_peer_runtime_to_json(st);
   assert(json["media_engine_kind"].asString() == "builtin_signaling_stub");
+  assert(json["media_engine_state"].asString() == "signaling_active");
+  assert(json["media_state_updated_unix_ms"].asInt64() == 1234);
+  assert(json["media_events_total"].asInt64() == 5);
+  assert(json["media_remote_offers_seen"].asInt64() == 1);
+  assert(json["media_answers_sent"].asInt64() == 1);
+  assert(json["media_remote_candidates_seen"].asInt64() == 2);
+  assert(json["media_remote_byes_seen"].asInt64() == 0);
+  assert(json["media_local_byes_sent"].asInt64() == 1);
   assert(json["native_media_supported"].asBool() == false);
   assert(json["native_media_active"].asBool() == false);
 
@@ -173,6 +189,14 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(agentd::voice_peer_runtime_from_json(json, &round_trip, &err));
   assert(err.empty());
   assert(round_trip.media_engine_kind == "builtin_signaling_stub");
+  assert(round_trip.media_engine_state == "signaling_active");
+  assert(round_trip.media_state_updated_unix_ms == 1234);
+  assert(round_trip.media_events_total == 5);
+  assert(round_trip.media_remote_offers_seen == 1);
+  assert(round_trip.media_answers_sent == 1);
+  assert(round_trip.media_remote_candidates_seen == 2);
+  assert(round_trip.media_remote_byes_seen == 0);
+  assert(round_trip.media_local_byes_sent == 1);
   assert(round_trip.native_media_supported == false);
   assert(round_trip.native_media_active == false);
 }

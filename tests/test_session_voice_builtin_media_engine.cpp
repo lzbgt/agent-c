@@ -13,6 +13,7 @@ using agentd::VoiceBrokerSignalIngressKind;
 using agentd::VoiceBrokerSignalRemoteDescriptionReady;
 using agentd::VoicePeerRuntime;
 using agentd::make_builtin_voice_peer_media_engine;
+using agentd::note_voice_peer_media_engine_event;
 using agentd::voice_peer_media_engine_info_for_runtime_kind;
 
 static void test_runtime_kind_info_reports_reserved_and_stub_modes() {
@@ -53,6 +54,10 @@ static void test_builtin_media_engine_stub_answers_remote_offer() {
   assert(err.empty());
   assert(runtime.media_engine_kind == "builtin_signaling_stub");
   assert(init_event["event"].asString() == "media_engine_initialized");
+  assert(init_event["media_engine_state"].asString() == "starting");
+  note_voice_peer_media_engine_event(&runtime, init_event);
+  assert(runtime.media_engine_state == "starting");
+  assert(runtime.media_events_total == 1);
 
   VoiceBrokerSignalRemoteDescriptionReady ready;
   ready.description.type = "offer";
@@ -66,7 +71,11 @@ static void test_builtin_media_engine_stub_answers_remote_offer() {
   assert(answer.type == "answer");
   assert(answer.sdp == "stub-answer");
   assert(answer_event["event"].asString() == "stub_answer_ready");
+  assert(answer_event["media_engine_state"].asString() == "answer_ready");
   assert(answer_event["initial_remote_candidate_count"].asUInt() == 2u);
+  note_voice_peer_media_engine_event(&runtime, answer_event);
+  assert(runtime.media_engine_state == "answer_ready");
+  assert(runtime.media_events_total == 2);
 
   VoiceBrokerSignalIngress candidate;
   candidate.kind = VoiceBrokerSignalIngressKind::remote_candidate_ready;
@@ -79,9 +88,13 @@ static void test_builtin_media_engine_stub_answers_remote_offer() {
   assert(engine->handle_remote_candidate(candidate, &candidate_event, &err));
   assert(err.empty());
   assert(candidate_event["event"].asString() == "remote_candidate_ready");
+  assert(candidate_event["media_engine_state"].asString() == "signaling_active");
   assert(candidate_event["candidate"].asString() == "candidate:1");
   assert(candidate_event["sdpMid"].asString() == "audio");
   assert(candidate_event["sdpMLineIndex"].asInt() == 0);
+  note_voice_peer_media_engine_event(&runtime, candidate_event);
+  assert(runtime.media_engine_state == "signaling_active");
+  assert(runtime.media_remote_candidates_seen == 1);
 
   VoiceBrokerSignalIngress bye;
   bye.kind = VoiceBrokerSignalIngressKind::remote_bye;
@@ -89,12 +102,20 @@ static void test_builtin_media_engine_stub_answers_remote_offer() {
   Json::Value bye_event(Json::nullValue);
   engine->handle_remote_bye(bye, &bye_event);
   assert(bye_event["event"].asString() == "remote_bye");
+  assert(bye_event["media_engine_state"].asString() == "stopped");
   assert(bye_event["reason"].asString() == "remote_done");
+  note_voice_peer_media_engine_event(&runtime, bye_event);
+  assert(runtime.media_engine_state == "stopped");
+  assert(runtime.media_remote_byes_seen == 1);
 
   Json::Value shutdown_event(Json::nullValue);
   engine->handle_local_shutdown(&shutdown_event);
   assert(shutdown_event["event"].asString() == "local_bye_sent");
+  assert(shutdown_event["media_engine_state"].asString() == "stopping");
   assert(shutdown_event["reason"].asString() == "agentd_builtin_stop");
+  note_voice_peer_media_engine_event(&runtime, shutdown_event);
+  assert(runtime.media_engine_state == "stopping");
+  assert(runtime.media_local_byes_sent == 1);
 }
 
 }  // namespace

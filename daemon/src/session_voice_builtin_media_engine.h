@@ -41,6 +41,23 @@ void apply_voice_peer_media_engine_info(
   VoicePeerRuntime* runtime
 );
 
+void set_voice_peer_media_engine_state(
+  VoicePeerRuntimeSeed* seed,
+  const std::string& state,
+  int64_t ts_unix_ms
+);
+
+void set_voice_peer_media_engine_state(
+  VoicePeerRuntime* runtime,
+  const std::string& state,
+  int64_t ts_unix_ms
+);
+
+void note_voice_peer_media_engine_event(
+  VoicePeerRuntime* runtime,
+  const Json::Value& payload
+);
+
 class VoicePeerBuiltinMediaEngine {
  public:
   virtual ~VoicePeerBuiltinMediaEngine() = default;

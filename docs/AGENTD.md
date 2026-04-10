@@ -400,6 +400,10 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
     `default_runtime_kind_unavailable_reason`
   - `peer.runtime_kind=builtin|bundled|external`
   - `peer.media_engine_kind=builtin_reserved|builtin_signaling_stub|browser_peer`
+  - `peer.media_engine_state=planned|starting|signaling_ready|answer_ready|signaling_active|stopping|stopped|failed`
+  - `peer.media_state_updated_unix_ms`
+  - `peer.media_events_total`, `peer.media_remote_offers_seen`, `peer.media_answers_sent`,
+    `peer.media_remote_candidates_seen`, `peer.media_remote_byes_seen`, `peer.media_local_byes_sent`
   - `peer.native_media_supported=true|false`
   - `peer.native_media_active=true|false`
   so the shipped Node/Playwright peer is now clearly modeled as an explicit backend family with durable default
@@ -471,6 +475,10 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `builtin_signaling_stub`, and `browser_peer`, while `native_media_supported` / `native_media_active` make it
   explicit that the currently shipped builtin mode still stops at signaling/runtime control rather than terminating RTP
   natively inside agentd.
+- Builtin runtime events are now normalized before persistence/logging too: every JSONL/runtime event carries the same
+  session/timestamp envelope, and the persisted/live runtime snapshot keeps explicit media-engine counters plus
+  `media_engine_state` so operators can see whether the stub has only initialized, answered an offer, observed remote
+  ICE, or terminated, without scraping raw event lines.
 - `broker_session_id` is now mutually exclusive with `broker_agent_id` / `broker_deployment_id`; agentd rejects that
   ambiguous mixed mode at request validation time instead of silently ignoring the auto-create fields.
 - `POST /api/v1/session/voice_webrtc_peer` now supports daemon-level broker defaults through

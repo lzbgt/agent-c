@@ -102,6 +102,8 @@ VoicePeerRuntime make_planned_voice_peer_runtime(
   apply_voice_peer_media_engine_info(
     voice_peer_media_engine_info_for_runtime_kind(cfg, start_plan.runtime_kind),
     &runtime);
+  runtime.media_engine_state = "planned";
+  runtime.media_state_updated_unix_ms = 0;
   runtime.status_source = "planned";
   runtime.tool_path =
     start_plan.runtime_kind == "builtin" ? "@builtin" : start_plan.resolved_tool_path;
@@ -137,6 +139,7 @@ VoicePeerRuntimeSeed make_spawned_voice_peer_runtime_seed(
   apply_voice_peer_media_engine_info(
     voice_peer_media_engine_info_for_runtime_kind(DaemonConfig{}, launch_cfg.runtime_kind),
     &runtime_seed);
+  set_voice_peer_media_engine_state(&runtime_seed, "starting", 0);
   return runtime_seed;
 }
 

@@ -193,6 +193,10 @@ A v0 smoke test should:
   - `default_runtime_kind_unavailable_reason`
   - `peer.runtime_kind=builtin|bundled|external`
   - `peer.media_engine_kind=builtin_reserved|builtin_signaling_stub|browser_peer`
+  - `peer.media_engine_state=planned|starting|signaling_ready|answer_ready|signaling_active|stopping|stopped|failed`
+  - `peer.media_state_updated_unix_ms`
+  - `peer.media_events_total`, `peer.media_remote_offers_seen`, `peer.media_answers_sent`,
+    `peer.media_remote_candidates_seen`, `peer.media_remote_byes_seen`, `peer.media_local_byes_sent`
   - `peer.native_media_supported=true|false`
   - `peer.native_media_active=true|false`
   so the current shipped Node/Playwright path is a named bundled backend with an explicit `external` override, and the
@@ -259,6 +263,10 @@ A v0 smoke test should:
   `media_engine_kind=builtin_reserved|builtin_signaling_stub`, bundled/external runtimes report
   `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` remain `false` until the real
   embedded agentd-native RTP engine exists.
+- Builtin runtime observability is now explicit too: normalized per-session JSONL events and the persisted/live runtime
+  snapshot both surface `media_engine_state` plus cumulative counters for offers, answers, candidates, and `bye`
+  events, so the future native engine can inherit one operator-facing status contract instead of inventing telemetry
+  after RTP lands.
 - Those planned builtin previews now also fail closed at persistence boundaries: agentd refuses to persist
   `status_source=planned`, and any stale planned record is self-healed through `cleanup_on_corrupt_record` instead of
   being recovered as if it were a real runtime.

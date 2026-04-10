@@ -88,8 +88,10 @@ static void test_spawned_runtime_seed_carries_launch_and_artifacts() {
   assert(seed.tone_hz == 333);
   assert(seed.managed_broker_session);
   assert(seed.media_engine_kind == "browser_peer");
+  assert(seed.media_engine_state == "starting");
   assert(!seed.native_media_supported);
   assert(!seed.native_media_active);
+  assert(seed.media_events_total == 0);
   assert(!seed.ready);
   assert(seed.running);
 #if defined(_WIN32)
@@ -129,6 +131,7 @@ static void test_planned_runtime_matches_start_plan_and_artifacts() {
     make_planned_voice_peer_runtime(cfg, "voice-sid", plan, artifacts, broker_session_plan);
   assert(runtime.runtime_kind == "builtin");
   assert(runtime.media_engine_kind == "builtin_reserved");
+  assert(runtime.media_engine_state == "planned");
   assert(runtime.status_source == "planned");
   assert(runtime.session_id == "voice-sid");
   assert(runtime.broker_session_id.empty());
@@ -157,6 +160,7 @@ static void test_planned_runtime_matches_start_plan_and_artifacts() {
   assert(runtime.tone_hz == media_plan.tone_hz);
   assert(!runtime.native_media_supported);
   assert(!runtime.native_media_active);
+  assert(runtime.media_events_total == 0);
   assert(!runtime.ready);
   assert(!runtime.running);
 }
@@ -189,6 +193,7 @@ static void test_planned_runtime_follows_borrowed_broker_session_plan() {
   assert(runtime.broker_agent_id.empty());
   assert(runtime.broker_deployment_id.empty());
   assert(runtime.media_engine_kind == "builtin_reserved");
+  assert(runtime.media_engine_state == "planned");
 }
 
 static void test_spawned_runtime_seed_matches_child_process_media_plan() {
@@ -240,6 +245,7 @@ static void test_spawned_runtime_seed_matches_child_process_media_plan() {
   assert(seed.tone_hz == process_plan.media_runtime_plan.tone_hz);
   assert(seed.media_engine_kind == "browser_peer");
   assert(process_plan.media_runtime_plan.media_engine_kind == "browser_peer");
+  assert(seed.media_engine_state == "starting");
   assert(!seed.native_media_supported);
   assert(!seed.native_media_active);
   assert(process_plan.media_runtime_plan.native_media_supported == false);

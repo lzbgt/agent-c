@@ -196,6 +196,13 @@ assert obj.get("ok") is True, obj
 assert obj.get("builtin_available") is True, obj
 peer = obj.get("peer") or {}
 assert peer.get("runtime_kind") == "builtin", obj
+assert peer.get("media_engine_kind") == "builtin_signaling_stub", obj
+assert peer.get("media_engine_state") == "signaling_ready", obj
+assert peer.get("media_events_total") == 2, obj
+assert peer.get("media_answers_sent") == 0, obj
+assert peer.get("media_remote_offers_seen") == 0, obj
+assert peer.get("native_media_supported") is False, obj
+assert peer.get("native_media_active") is False, obj
 assert peer.get("running") is True and peer.get("ready") is True, obj
 assert peer.get("managed_broker_session") is True, obj
 assert obj.get("builtin_start_contract", {}).get("mutating_broker_actions_deferred") is False, obj
@@ -270,7 +277,17 @@ for _ in $(seq 1 40); do
 import json, sys
 obj = json.loads(sys.argv[1])
 peer = obj.get("peer")
-if peer and peer.get("running") is False and (peer.get("last_stdout") or {}).get("event") == "remote_bye":
+last_stdout = (peer or {}).get("last_stdout") or {}
+if (
+    peer
+    and peer.get("running") is False
+    and last_stdout.get("event") == "builtin_runtime_stopped"
+    and last_stdout.get("remote_bye_received") is True
+    and peer.get("media_engine_state") == "stopped"
+    and peer.get("media_remote_offers_seen") == 1
+    and peer.get("media_answers_sent") == 1
+    and peer.get("media_remote_byes_seen") == 1
+):
     raise SystemExit(0)
 raise SystemExit(1)
 PY
@@ -302,6 +319,11 @@ assert obj.get("broker_session_deleted") is True, obj
 peer = obj.get("peer") or {}
 assert peer.get("runtime_kind") == "builtin", obj
 assert peer.get("running") is False, obj
+assert peer.get("media_engine_state") == "stopped", obj
+assert peer.get("media_remote_offers_seen") == 1, obj
+assert peer.get("media_answers_sent") == 1, obj
+assert peer.get("media_remote_byes_seen") == 1, obj
+assert peer.get("media_events_total", 0) >= 5, obj
 req = urllib.request.Request(
     f"http://127.0.0.1:{port}/v1/audio/sessions/{broker_session_id}",
     headers={"Authorization": "Bearer audio-agentd-token"},

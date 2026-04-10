@@ -102,15 +102,23 @@ void update_builtin_runtime_last_stdout(
 
 void append_builtin_voice_peer_event_and_snapshot(
   const std::string& stdout_log_path,
+  const std::string& session_id,
   const Json::Value& payload,
   const std::weak_ptr<VoicePeerRuntime>& runtime_weak,
   std::mutex& runtime_mu
 ) {
   if (!payload.isObject()) return;
-  append_builtin_voice_peer_stdout_line(stdout_log_path, payload);
+  Json::Value normalized = payload;
+  if (!normalized.isMember("ok")) normalized["ok"] = true;
+  if (!normalized.isMember("event")) normalized["event"] = "builtin_runtime_event";
+  if (!normalized.isMember("session_id")) normalized["session_id"] = session_id;
+  if (!normalized.isMember("runtime_kind")) normalized["runtime_kind"] = "builtin";
+  if (!normalized.isMember("ts_unix_ms")) normalized["ts_unix_ms"] = Json::Int64(now_unix_ms());
+  append_builtin_voice_peer_stdout_line(stdout_log_path, normalized);
   if (auto runtime = runtime_weak.lock()) {
     std::lock_guard<std::mutex> lk(runtime_mu);
-    update_builtin_runtime_last_stdout(runtime.get(), payload);
+    update_builtin_runtime_last_stdout(runtime.get(), normalized);
+    note_voice_peer_media_engine_event(runtime.get(), normalized);
   }
 }
 
@@ -207,8 +215,9 @@ void builtin_voice_peer_service_main(
 
           Json::Value seen_offer = make_builtin_voice_peer_event("remote_offer_seen", service->session_id);
           seen_offer["initial_remote_candidate_count"] = Json::UInt64(ready.initial_remote_candidates.size());
+          seen_offer["media_engine_state"] = "signaling_ready";
           append_builtin_voice_peer_event_and_snapshot(
-            service->stdout_log_path, seen_offer, service->runtime, runtime_mu);
+            service->stdout_log_path, service->session_id, seen_offer, service->runtime, runtime_mu);
 
           VoiceBrokerSignalDescription answer;
           Json::Value answer_ready(Json::nullValue);
@@ -222,7 +231,7 @@ void builtin_voice_peer_service_main(
           }
           if (answer_ready.isObject()) {
             append_builtin_voice_peer_event_and_snapshot(
-              service->stdout_log_path, answer_ready, service->runtime, runtime_mu);
+              service->stdout_log_path, service->session_id, answer_ready, service->runtime, runtime_mu);
           }
 
           answer.sender_tag = service->sender_tag;
@@ -240,11 +249,12 @@ void builtin_voice_peer_service_main(
           if (service->media_engine) {
             const VoicePeerMediaEngineInfo info = service->media_engine->info();
             sent_answer["media_engine_kind"] = info.media_engine_kind;
+            sent_answer["media_engine_state"] = "signaling_active";
             sent_answer["native_media_supported"] = info.native_media_supported;
             sent_answer["native_media_active"] = info.native_media_active;
           }
           append_builtin_voice_peer_event_and_snapshot(
-            service->stdout_log_path, sent_answer, service->runtime, runtime_mu);
+            service->stdout_log_path, service->session_id, sent_answer, service->runtime, runtime_mu);
           return true;
         }
 
@@ -258,7 +268,7 @@ void builtin_voice_peer_service_main(
             return false;
           }
           append_builtin_voice_peer_event_and_snapshot(
-            service->stdout_log_path, candidate, service->runtime, runtime_mu);
+            service->stdout_log_path, service->session_id, candidate, service->runtime, runtime_mu);
           return true;
         }
 
@@ -269,7 +279,7 @@ void builtin_voice_peer_service_main(
             service->media_engine->handle_remote_bye(ingress, &bye);
           }
           append_builtin_voice_peer_event_and_snapshot(
-            service->stdout_log_path, bye, service->runtime, runtime_mu);
+            service->stdout_log_path, service->session_id, bye, service->runtime, runtime_mu);
           return false;
         }
         return true;
@@ -312,8 +322,18 @@ void builtin_voice_peer_service_main(
     }
     if (!trim_copy(send_err).empty()) sent_bye["warning"] = send_err;
     append_builtin_voice_peer_event_and_snapshot(
-      service->stdout_log_path, sent_bye, service->runtime, runtime_mu);
+      service->stdout_log_path, service->session_id, sent_bye, service->runtime, runtime_mu);
   }
+
+  Json::Value terminal_event = make_builtin_voice_peer_event(
+    terminal_error.empty() ? "builtin_runtime_stopped" : "builtin_runtime_failed",
+    service->session_id);
+  terminal_event["media_engine_state"] = terminal_error.empty() ? "stopped" : "failed";
+  if (!terminal_error.empty()) terminal_event["error"] = terminal_error;
+  if (remote_bye_received) terminal_event["remote_bye_received"] = true;
+  if (stop_requested) terminal_event["stop_requested"] = true;
+  append_builtin_voice_peer_event_and_snapshot(
+    service->stdout_log_path, service->session_id, terminal_event, service->runtime, runtime_mu);
 
   if (auto runtime = service->runtime.lock()) {
     VoicePeerRuntime persisted_snapshot;
@@ -322,6 +342,8 @@ void builtin_voice_peer_service_main(
       std::lock_guard<std::mutex> lk(runtime_mu);
       runtime->running = false;
       if (runtime->ended_unix_ms <= 0) runtime->ended_unix_ms = now_unix_ms();
+      set_voice_peer_media_engine_state(
+        runtime.get(), terminal_error.empty() ? "stopped" : "failed", runtime->ended_unix_ms);
       runtime->exit_code = terminal_error.empty() ? 0 : 1;
       if (!terminal_error.empty()) runtime->last_error = terminal_error;
       should_persist = !runtime->suppress_persist;
@@ -401,6 +423,7 @@ bool start_builtin_voice_peer_runtime_service(
   seed.poll_interval_ms = start_plan.poll_interval_ms;
   seed.tone_hz = start_plan.tone_hz;
   apply_voice_peer_media_engine_info(media_engine->info(), &seed);
+  set_voice_peer_media_engine_state(&seed, "starting", 0);
   seed.ready = true;
   seed.running = true;
   auto runtime = make_voice_peer_runtime_state(seed);
@@ -417,17 +440,18 @@ bool start_builtin_voice_peer_runtime_service(
   }
   if (init_event.isObject()) {
     append_builtin_voice_peer_event_and_snapshot(
-      artifacts.stdout_log_path, init_event, runtime, runtime_mu);
+      artifacts.stdout_log_path, session_id, init_event, runtime, runtime_mu);
   }
 
   Json::Value started = make_builtin_voice_peer_event("builtin_runtime_started", session_id);
   started["broker_session_id"] = binding.broker_session_id;
   started["managed_broker_session"] = binding.managed_broker_session;
   started["media_engine_kind"] = runtime->media_engine_kind;
+  started["media_engine_state"] = "signaling_ready";
   started["native_media_supported"] = runtime->native_media_supported;
   started["native_media_active"] = runtime->native_media_active;
   append_builtin_voice_peer_event_and_snapshot(
-    artifacts.stdout_log_path, started, runtime, runtime_mu);
+    artifacts.stdout_log_path, session_id, started, runtime, runtime_mu);
 
   auto service = std::make_shared<BuiltinVoicePeerService>();
   service->session_id = trim_copy(session_id);
@@ -460,6 +484,7 @@ void refresh_builtin_voice_peer_runtime_state(VoicePeerRuntime* st) {
   if (st->running) {
     st->running = false;
     if (st->ended_unix_ms <= 0) st->ended_unix_ms = now_unix_ms();
+    set_voice_peer_media_engine_state(st, "failed", st->ended_unix_ms);
     if (trim_copy(st->last_error).empty()) {
       st->last_error = "builtin voice_webrtc_peer runtime exited";
     }

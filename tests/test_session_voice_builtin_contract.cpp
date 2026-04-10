@@ -64,6 +64,7 @@ static void test_borrowed_broker_session_contract() {
   assert(out["planned_runtime"]["schema"].asString() == "session_voice_webrtc_peer_runtime_v1");
   assert(out["planned_runtime"]["runtime_kind"].asString() == "builtin");
   assert(out["planned_runtime"]["media_engine_kind"].asString() == "builtin_reserved");
+  assert(out["planned_runtime"]["media_engine_state"].asString() == "planned");
   assert(out["planned_runtime"]["status_source"].asString() == "planned");
   assert(out["planned_runtime"]["session_id"].asString() == "voice-sid");
   assert(out["planned_runtime"]["broker_session_id"].asString() == "sess-1");
@@ -72,6 +73,7 @@ static void test_borrowed_broker_session_contract() {
   assert(out["planned_runtime"]["node_bin"].asString() == "@builtin");
   assert(out["planned_runtime"]["ready"].asBool() == false);
   assert(out["planned_runtime"]["running"].asBool() == false);
+  assert(out["planned_runtime"]["media_events_total"].asInt64() == 0);
   assert(out["planned_runtime"]["ready_file_path"].asString() == out["runtime_artifacts"]["ready_file_path"].asString());
   assert(out["broker_session"]["mode"].asString() == "borrowed");
   assert(out["broker_session"]["session_id"].asString() == "sess-1");
@@ -117,6 +119,7 @@ static void test_auto_create_broker_session_contract() {
   assert(out["planned_runtime"]["schema"].asString() == "session_voice_webrtc_peer_runtime_v1");
   assert(out["planned_runtime"]["runtime_kind"].asString() == "builtin");
   assert(out["planned_runtime"]["media_engine_kind"].asString() == "builtin_reserved");
+  assert(out["planned_runtime"]["media_engine_state"].asString() == "planned");
   assert(out["planned_runtime"]["status_source"].asString() == "planned");
   assert(out["planned_runtime"]["session_id"].asString() == "voice-sid");
   assert(out["planned_runtime"]["managed_broker_session"].asBool() == true);
@@ -125,6 +128,7 @@ static void test_auto_create_broker_session_contract() {
   assert(out["planned_runtime"]["tool_path"].asString() == "@builtin");
   assert(out["planned_runtime"]["node_bin"].asString() == "@builtin");
   assert(out["planned_runtime"]["broker_session_id"].isNull());
+  assert(out["planned_runtime"]["media_events_total"].asInt64() == 0);
   assert(out["planned_runtime"]["stdout_log_path"].asString() == out["runtime_artifacts"]["stdout_log_path"].asString());
 
   const agentd::VoicePeerBuiltinStartPreview preview =
@@ -152,6 +156,7 @@ static void test_enabled_builtin_contract_marks_runtime_live_path() {
   assert(out["media_runtime_plan"]["native_media_supported"].asBool() == false);
   assert(out["planned_runtime"].isObject());
   assert(out["planned_runtime"]["media_engine_kind"].asString() == "builtin_signaling_stub");
+  assert(out["planned_runtime"]["media_engine_state"].asString() == "planned");
   assert(out["planned_runtime"].isMember("last_error") == false);
 }
 

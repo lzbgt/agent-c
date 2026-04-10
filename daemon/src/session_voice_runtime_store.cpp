@@ -29,6 +29,7 @@ Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   out["schema"] = "session_voice_webrtc_peer_runtime_v1";
   out["runtime_kind"] = st.runtime_kind;
   out["media_engine_kind"] = st.media_engine_kind;
+  out["media_engine_state"] = st.media_engine_state;
   out["status_source"] = st.status_source.empty() ? "memory" : st.status_source;
   out["session_id"] = st.session_id;
   if (!st.broker_session_id.empty()) out["broker_session_id"] = st.broker_session_id;
@@ -45,6 +46,13 @@ Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   out["deadline_ms"] = (Json::Int64)st.deadline_ms;
   out["poll_interval_ms"] = (Json::Int64)st.poll_interval_ms;
   out["tone_hz"] = (Json::Int64)st.tone_hz;
+  out["media_state_updated_unix_ms"] = (Json::Int64)st.media_state_updated_unix_ms;
+  out["media_events_total"] = (Json::Int64)st.media_events_total;
+  out["media_remote_offers_seen"] = (Json::Int64)st.media_remote_offers_seen;
+  out["media_answers_sent"] = (Json::Int64)st.media_answers_sent;
+  out["media_remote_candidates_seen"] = (Json::Int64)st.media_remote_candidates_seen;
+  out["media_remote_byes_seen"] = (Json::Int64)st.media_remote_byes_seen;
+  out["media_local_byes_sent"] = (Json::Int64)st.media_local_byes_sent;
   out["native_media_supported"] = st.native_media_supported;
   out["native_media_active"] = st.native_media_active;
   out["ready"] = st.ready;
@@ -180,6 +188,9 @@ bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, s
   if (v.isMember("media_engine_kind") && v["media_engine_kind"].isString()) {
     st.media_engine_kind = trim_copy(v["media_engine_kind"].asString());
   }
+  if (v.isMember("media_engine_state") && v["media_engine_state"].isString()) {
+    st.media_engine_state = trim_copy(v["media_engine_state"].asString());
+  }
   if (v.isMember("status_source") && v["status_source"].isString()) st.status_source = trim_copy(v["status_source"].asString());
   if (v.isMember("session_id") && v["session_id"].isString()) st.session_id = trim_copy(v["session_id"].asString());
   if (v.isMember("broker_session_id") && v["broker_session_id"].isString()) st.broker_session_id = trim_copy(v["broker_session_id"].asString());
@@ -197,6 +208,34 @@ bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, s
   if (v.isMember("deadline_ms") && (v["deadline_ms"].isInt64() || v["deadline_ms"].isUInt64())) st.deadline_ms = v["deadline_ms"].asInt64();
   if (v.isMember("poll_interval_ms") && (v["poll_interval_ms"].isInt64() || v["poll_interval_ms"].isUInt64())) st.poll_interval_ms = v["poll_interval_ms"].asInt64();
   if (v.isMember("tone_hz") && (v["tone_hz"].isInt64() || v["tone_hz"].isUInt64())) st.tone_hz = v["tone_hz"].asInt64();
+  if (v.isMember("media_state_updated_unix_ms") &&
+      (v["media_state_updated_unix_ms"].isInt64() || v["media_state_updated_unix_ms"].isUInt64())) {
+    st.media_state_updated_unix_ms = v["media_state_updated_unix_ms"].asInt64();
+  }
+  if (v.isMember("media_events_total") &&
+      (v["media_events_total"].isInt64() || v["media_events_total"].isUInt64())) {
+    st.media_events_total = v["media_events_total"].asInt64();
+  }
+  if (v.isMember("media_remote_offers_seen") &&
+      (v["media_remote_offers_seen"].isInt64() || v["media_remote_offers_seen"].isUInt64())) {
+    st.media_remote_offers_seen = v["media_remote_offers_seen"].asInt64();
+  }
+  if (v.isMember("media_answers_sent") &&
+      (v["media_answers_sent"].isInt64() || v["media_answers_sent"].isUInt64())) {
+    st.media_answers_sent = v["media_answers_sent"].asInt64();
+  }
+  if (v.isMember("media_remote_candidates_seen") &&
+      (v["media_remote_candidates_seen"].isInt64() || v["media_remote_candidates_seen"].isUInt64())) {
+    st.media_remote_candidates_seen = v["media_remote_candidates_seen"].asInt64();
+  }
+  if (v.isMember("media_remote_byes_seen") &&
+      (v["media_remote_byes_seen"].isInt64() || v["media_remote_byes_seen"].isUInt64())) {
+    st.media_remote_byes_seen = v["media_remote_byes_seen"].asInt64();
+  }
+  if (v.isMember("media_local_byes_sent") &&
+      (v["media_local_byes_sent"].isInt64() || v["media_local_byes_sent"].isUInt64())) {
+    st.media_local_byes_sent = v["media_local_byes_sent"].asInt64();
+  }
   if (v.isMember("managed_broker_session") && v["managed_broker_session"].isBool()) {
     st.managed_broker_session = v["managed_broker_session"].asBool();
   }

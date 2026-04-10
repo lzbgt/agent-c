@@ -8053,6 +8053,11 @@ export interface components {
              * @enum {string}
              */
             media_engine_kind: "builtin_reserved" | "builtin_signaling_stub" | "browser_peer";
+            /**
+             * @description Best-effort lifecycle state for the selected media engine. Current builtin runtime transitions through `starting`, `signaling_ready`, `answer_ready`, `signaling_active`, and terminal `stopped|failed`; planned previews use `planned`.
+             * @enum {string}
+             */
+            media_engine_state: "idle" | "planned" | "starting" | "signaling_ready" | "answer_ready" | "signaling_active" | "stopping" | "stopped" | "failed";
             /** @enum {string} */
             status_source: "memory" | "persisted" | "planned";
             session_id: string;
@@ -8077,6 +8082,26 @@ export interface components {
             poll_interval_ms: number;
             /** Format: int64 */
             tone_hz: number;
+            /**
+             * Format: int64
+             * @description Unix ms timestamp for the most recent `media_engine_state` transition; `0` is used by deterministic planned previews.
+             */
+            media_state_updated_unix_ms: number;
+            /**
+             * Format: int64
+             * @description Total number of normalized builtin media-engine events observed for this runtime snapshot.
+             */
+            media_events_total: number;
+            /** Format: int64 */
+            media_remote_offers_seen: number;
+            /** Format: int64 */
+            media_answers_sent: number;
+            /** Format: int64 */
+            media_remote_candidates_seen: number;
+            /** Format: int64 */
+            media_remote_byes_seen: number;
+            /** Format: int64 */
+            media_local_byes_sent: number;
             /** @description Whether this runtime can terminate RTP/media natively inside agentd. Current shipped runtimes report `false`. */
             native_media_supported: boolean;
             /** @description Whether native media handling is currently active inside agentd for this runtime. Current shipped runtimes report `false`. */
