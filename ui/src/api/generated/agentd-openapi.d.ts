@@ -8140,6 +8140,12 @@ export interface components {
             dtls_handshake_ready?: boolean;
             /** @description Whether the current builtin native-plugin provider has successfully exported DTLS-SRTP keying material for the active handshake. */
             dtls_exporter_ready?: boolean;
+            /** @description Whether the current builtin native-plugin provider has derived the negotiated DTLS-SRTP key block and created both inbound and outbound libsrtp contexts. Current shipped runtimes may still keep `native_media_supported=false` because RTP/media termination is not embedded yet even when these contexts are ready. */
+            srtp_contexts_ready?: boolean;
+            /** @description Whether the inbound libsrtp receive context has been created for the negotiated DTLS-SRTP profile. */
+            srtp_inbound_ready?: boolean;
+            /** @description Whether the outbound libsrtp send context has been created for the negotiated DTLS-SRTP profile. */
+            srtp_outbound_ready?: boolean;
             /** @description Local ephemeral DTLS certificate fingerprint, formatted as uppercase colon-delimited SHA-256 bytes, when exposed by the current builtin native-plugin provider. */
             dtls_fingerprint_sha256?: string;
             /** @description Local DTLS answer role surfaced by the builtin native-plugin provider. Current embedded transport providers report `passive`. */
@@ -8150,6 +8156,8 @@ export interface components {
             dtls_handshake_state?: string;
             /** @description Negotiated DTLS-SRTP protection profile name when an in-process DTLS handshake has completed. */
             dtls_selected_srtp_profile?: string;
+            /** @description Best-effort diagnostic string when DTLS-SRTP key split or libsrtp session creation fails inside the builtin native-plugin provider. */
+            srtp_last_error?: string;
             /**
              * Format: int64
              * @description Number of DTLS datagrams the current builtin native-plugin provider has emitted through its transport path.

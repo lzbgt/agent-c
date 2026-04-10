@@ -58,6 +58,9 @@ Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   out["dtls_identity_ready"] = st.dtls_identity_ready;
   out["dtls_handshake_ready"] = st.dtls_handshake_ready;
   out["dtls_exporter_ready"] = st.dtls_exporter_ready;
+  out["srtp_contexts_ready"] = st.srtp_contexts_ready;
+  out["srtp_inbound_ready"] = st.srtp_inbound_ready;
+  out["srtp_outbound_ready"] = st.srtp_outbound_ready;
   if (!st.dtls_fingerprint_sha256.empty()) out["dtls_fingerprint_sha256"] = st.dtls_fingerprint_sha256;
   if (!st.dtls_setup_role.empty()) out["dtls_setup_role"] = st.dtls_setup_role;
   if (!st.dtls_certificate_subject.empty()) out["dtls_certificate_subject"] = st.dtls_certificate_subject;
@@ -65,6 +68,7 @@ Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   if (!st.dtls_selected_srtp_profile.empty()) {
     out["dtls_selected_srtp_profile"] = st.dtls_selected_srtp_profile;
   }
+  if (!st.srtp_last_error.empty()) out["srtp_last_error"] = st.srtp_last_error;
   out["dtls_packets_sent"] = Json::Int64(st.dtls_packets_sent);
   out["dtls_packets_received"] = Json::Int64(st.dtls_packets_received);
   if (st.native_media_provider.isObject()) out["native_media_provider"] = st.native_media_provider;
@@ -267,6 +271,15 @@ bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, s
   if (v.isMember("dtls_exporter_ready") && v["dtls_exporter_ready"].isBool()) {
     st.dtls_exporter_ready = v["dtls_exporter_ready"].asBool();
   }
+  if (v.isMember("srtp_contexts_ready") && v["srtp_contexts_ready"].isBool()) {
+    st.srtp_contexts_ready = v["srtp_contexts_ready"].asBool();
+  }
+  if (v.isMember("srtp_inbound_ready") && v["srtp_inbound_ready"].isBool()) {
+    st.srtp_inbound_ready = v["srtp_inbound_ready"].asBool();
+  }
+  if (v.isMember("srtp_outbound_ready") && v["srtp_outbound_ready"].isBool()) {
+    st.srtp_outbound_ready = v["srtp_outbound_ready"].asBool();
+  }
   if (v.isMember("dtls_fingerprint_sha256") && v["dtls_fingerprint_sha256"].isString()) {
     st.dtls_fingerprint_sha256 = trim_copy(v["dtls_fingerprint_sha256"].asString());
   }
@@ -281,6 +294,9 @@ bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, s
   }
   if (v.isMember("dtls_selected_srtp_profile") && v["dtls_selected_srtp_profile"].isString()) {
     st.dtls_selected_srtp_profile = trim_copy(v["dtls_selected_srtp_profile"].asString());
+  }
+  if (v.isMember("srtp_last_error") && v["srtp_last_error"].isString()) {
+    st.srtp_last_error = trim_copy(v["srtp_last_error"].asString());
   }
   if (v.isMember("dtls_packets_sent") &&
       (v["dtls_packets_sent"].isInt64() || v["dtls_packets_sent"].isUInt64())) {

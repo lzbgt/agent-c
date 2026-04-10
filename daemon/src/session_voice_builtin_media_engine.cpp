@@ -827,6 +827,15 @@ void note_voice_peer_media_engine_event(
   if (payload.isMember("dtls_exporter_ready") && payload["dtls_exporter_ready"].isBool()) {
     runtime->dtls_exporter_ready = payload["dtls_exporter_ready"].asBool();
   }
+  if (payload.isMember("srtp_contexts_ready") && payload["srtp_contexts_ready"].isBool()) {
+    runtime->srtp_contexts_ready = payload["srtp_contexts_ready"].asBool();
+  }
+  if (payload.isMember("srtp_inbound_ready") && payload["srtp_inbound_ready"].isBool()) {
+    runtime->srtp_inbound_ready = payload["srtp_inbound_ready"].asBool();
+  }
+  if (payload.isMember("srtp_outbound_ready") && payload["srtp_outbound_ready"].isBool()) {
+    runtime->srtp_outbound_ready = payload["srtp_outbound_ready"].asBool();
+  }
   if (payload.isMember("dtls_fingerprint_sha256") && payload["dtls_fingerprint_sha256"].isString()) {
     runtime->dtls_fingerprint_sha256 = trim_copy(payload["dtls_fingerprint_sha256"].asString());
   }
@@ -841,6 +850,9 @@ void note_voice_peer_media_engine_event(
   }
   if (payload.isMember("dtls_selected_srtp_profile") && payload["dtls_selected_srtp_profile"].isString()) {
     runtime->dtls_selected_srtp_profile = trim_copy(payload["dtls_selected_srtp_profile"].asString());
+  }
+  if (payload.isMember("srtp_last_error") && payload["srtp_last_error"].isString()) {
+    runtime->srtp_last_error = trim_copy(payload["srtp_last_error"].asString());
   }
   if (payload.isMember("dtls_packets_sent") &&
       (payload["dtls_packets_sent"].isInt64() || payload["dtls_packets_sent"].isUInt64())) {

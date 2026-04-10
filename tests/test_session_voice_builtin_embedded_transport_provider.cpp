@@ -142,6 +142,9 @@ static void test_embedded_transport_provider_loads_and_answers_remote_offer() {
   assert(init_event["dtls_identity_ready"].asBool());
   assert(init_event["dtls_handshake_ready"].asBool() == false);
   assert(init_event["dtls_exporter_ready"].asBool() == false);
+  assert(init_event["srtp_contexts_ready"].asBool() == false);
+  assert(init_event["srtp_inbound_ready"].asBool() == false);
+  assert(init_event["srtp_outbound_ready"].asBool() == false);
   assert(init_event["dtls_handshake_state"].asString() == "ready_for_client_hello");
   assert(init_event["dtls_setup_role"].asString() == "passive");
   assert(!init_event["dtls_fingerprint_sha256"].asString().empty());
@@ -169,6 +172,7 @@ static void test_embedded_transport_provider_loads_and_answers_remote_offer() {
   assert(answer_event["transport_family"].asString() == "embedded_transport_primitives");
   assert(answer_event["media_engine_state"].asString() == "answer_ready");
   assert(answer_event["sdp_answer_shape"].asString() == "ice_only");
+  assert(answer_event["srtp_contexts_ready"].asBool() == false);
   assert(runtime.media_engine_state == "answer_ready");
 }
 

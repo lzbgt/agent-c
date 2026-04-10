@@ -6,10 +6,17 @@
 #include <openssl/srtp.h>
 #include <openssl/x509.h>
 
+#if defined(AGENTD_HAVE_DTLS_SRTP_SESSION_PAIR)
+#include "session_voice_dtls_srtp_util.h"
+#include <srtp2/srtp.h>
+#endif
+
+#include <array>
 #include <cassert>
 #include <cstring>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -271,9 +278,110 @@ void test_dtls_memory_loopback_negotiates_srtp_and_exporter() {
   X509_free(cert);
 }
 
+#if defined(AGENTD_HAVE_DTLS_SRTP_SESSION_PAIR)
+void write_u16_be(unsigned char* out, uint16_t value) {
+  out[0] = static_cast<unsigned char>((value >> 8) & 0xFF);
+  out[1] = static_cast<unsigned char>(value & 0xFF);
+}
+
+void write_u32_be(unsigned char* out, uint32_t value) {
+  out[0] = static_cast<unsigned char>((value >> 24) & 0xFF);
+  out[1] = static_cast<unsigned char>((value >> 16) & 0xFF);
+  out[2] = static_cast<unsigned char>((value >> 8) & 0xFF);
+  out[3] = static_cast<unsigned char>(value & 0xFF);
+}
+
+void test_dtls_memory_loopback_derives_srtp_contexts_and_round_trips_rtp() {
+  assert(srtp_init() == srtp_err_status_ok);
+
+  EVP_PKEY* key = nullptr;
+  X509* cert = nullptr;
+  assert(generate_ephemeral_dtls_identity(&key, &cert));
+
+  DtlsEndpoint server;
+  DtlsEndpoint client;
+  assert(configure_server_endpoint(&server, key, cert));
+  assert(configure_client_endpoint(&client));
+
+  for (int i = 0; i < 128; ++i) {
+    advance_handshake(&client);
+    pump_outbound_packets(&client, &server);
+    advance_handshake(&server);
+    pump_outbound_packets(&server, &client);
+    if (client.handshake_ready && server.handshake_ready) break;
+  }
+
+  assert(client.handshake_ready);
+  assert(server.handshake_ready);
+  assert(server.selected_srtp_profile == "SRTP_AES128_CM_SHA1_80");
+  assert(client.selected_srtp_profile == "SRTP_AES128_CM_SHA1_80");
+
+  agentd::DtlsSrtpProfileSpec profile;
+  std::string err;
+  assert(agentd::resolve_dtls_srtp_profile_spec(server.selected_srtp_profile, &profile, &err));
+  assert(err.empty());
+
+  std::vector<unsigned char> exporter_keying_material;
+  assert(agentd::export_dtls_srtp_keying_material(server.ssl, profile, &exporter_keying_material, &err));
+  assert(err.empty());
+
+  agentd::DtlsSrtpKeyBlock key_block;
+  assert(agentd::derive_dtls_srtp_key_block(
+    profile,
+    exporter_keying_material.data(),
+    exporter_keying_material.size(),
+    &key_block,
+    &err));
+  assert(err.empty());
+
+  agentd::DtlsSrtpSessionPair server_sessions;
+  agentd::DtlsSrtpSessionPair client_sessions;
+  assert(agentd::create_dtls_srtp_session_pair(
+    key_block, agentd::DtlsSrtpLocalRole::server, &server_sessions, &err));
+  assert(err.empty());
+  assert(agentd::create_dtls_srtp_session_pair(
+    key_block, agentd::DtlsSrtpLocalRole::client, &client_sessions, &err));
+  assert(err.empty());
+  assert(server_sessions.inbound_ready);
+  assert(server_sessions.outbound_ready);
+  assert(client_sessions.inbound_ready);
+  assert(client_sessions.outbound_ready);
+
+  std::array<unsigned char, 256> packet{};
+  const char payload[] = "embedded-srtp-rtp";
+  const int plain_len = 12 + static_cast<int>(sizeof(payload) - 1);
+  packet[0] = 0x80;
+  packet[1] = 111;
+  write_u16_be(packet.data() + 2, 1);
+  write_u32_be(packet.data() + 4, 0x01020304u);
+  write_u32_be(packet.data() + 8, 0x11223344u);
+  std::memcpy(packet.data() + 12, payload, sizeof(payload) - 1);
+
+  int protected_len = plain_len;
+  assert(srtp_protect(server_sessions.outbound, packet.data(), &protected_len) == srtp_err_status_ok);
+  assert(protected_len > plain_len);
+
+  int unprotected_len = protected_len;
+  assert(srtp_unprotect(client_sessions.inbound, packet.data(), &unprotected_len) == srtp_err_status_ok);
+  assert(unprotected_len == plain_len);
+  assert(std::memcmp(packet.data() + 12, payload, sizeof(payload) - 1) == 0);
+
+  agentd::destroy_dtls_srtp_session_pair(&client_sessions);
+  agentd::destroy_dtls_srtp_session_pair(&server_sessions);
+  destroy_endpoint(&client);
+  destroy_endpoint(&server);
+  EVP_PKEY_free(key);
+  X509_free(cert);
+  assert(srtp_shutdown() == srtp_err_status_ok);
+}
+#endif
+
 }  // namespace
 
 int main() {
   test_dtls_memory_loopback_negotiates_srtp_and_exporter();
+#if defined(AGENTD_HAVE_DTLS_SRTP_SESSION_PAIR)
+  test_dtls_memory_loopback_derives_srtp_contexts_and_round_trips_rtp();
+#endif
   return 0;
 }

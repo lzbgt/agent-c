@@ -1,4 +1,5 @@
 #include "session_voice_builtin_media_engine_plugin.h"
+#include "session_voice_dtls_srtp_util.h"
 
 #include <juice/juice.h>
 #include <openssl/bn.h>
@@ -26,12 +27,23 @@
 
 namespace {
 
+using agentd::DtlsSrtpKeyBlock;
+using agentd::DtlsSrtpLocalRole;
+using agentd::DtlsSrtpProfileSpec;
+using agentd::DtlsSrtpSessionPair;
+using agentd::create_dtls_srtp_session_pair;
+using agentd::derive_dtls_srtp_key_block;
+using agentd::export_dtls_srtp_keying_material;
+using agentd::resolve_dtls_srtp_profile_spec;
+using agentd::selected_dtls_srtp_profile_name;
+
 constexpr const char* kProviderName = "agentd_builtin_embedded_transport_provider";
 constexpr const char* kProviderVersion = "0.4.0";
 constexpr const char* kCapabilitiesJson =
   "{\"signaling\":true,\"audio_capture\":false,\"audio_render\":false,"
   "\"ice\":true,\"dtls\":true,\"dtls_identity\":true,\"dtls_answer_shape\":true,"
   "\"dtls_handshake\":true,\"dtls_srtp_export\":true,"
+  "\"srtp_contexts\":true,"
   "\"srtp\":true,\"sctp\":true,"
   "\"transport_family\":\"embedded_transport_primitives\","
   "\"embedded_transport_provider\":true,\"sample_provider\":false,"
@@ -40,8 +52,6 @@ constexpr const char* kCapabilitiesJson =
 
 constexpr const char* kDtlsSrtpProfiles =
   "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32";
-constexpr const char* kDtlsSrtpExporterLabel = "EXTRACTOR-dtls_srtp";
-constexpr size_t kDtlsSrtpExporterBytes = 2 * (16 + 14);
 constexpr long kDtlsDatagramMtu = 1200;
 
 struct EmbeddedTransportState {
@@ -51,6 +61,8 @@ struct EmbeddedTransportState {
   std::string last_remote_description_error;
   SSL_CTX* dtls_ctx = nullptr;
   SSL* dtls_ssl = nullptr;
+  srtp_t inbound_srtp = nullptr;
+  srtp_t outbound_srtp = nullptr;
   EVP_PKEY* dtls_private_key = nullptr;
   X509* dtls_certificate = nullptr;
   std::string dtls_fingerprint_sha256;
@@ -59,6 +71,7 @@ struct EmbeddedTransportState {
   std::string dtls_handshake_state = "idle";
   std::string dtls_selected_srtp_profile;
   std::string dtls_last_error;
+  std::string srtp_last_error;
   std::string selected_local_candidate;
   std::string selected_remote_candidate;
   std::string selected_local_address;
@@ -76,6 +89,9 @@ struct EmbeddedTransportState {
   bool dtls_identity_ready = false;
   bool dtls_handshake_ready = false;
   bool dtls_exporter_ready = false;
+  bool srtp_contexts_ready = false;
+  bool srtp_inbound_ready = false;
+  bool srtp_outbound_ready = false;
 };
 
 std::mutex g_transport_runtime_mu;
@@ -381,34 +397,73 @@ std::string ssl_error_text(SSL* ssl, int rc) {
   return "ssl_error_" + std::to_string(ssl_err) + ": " + openssl_last_error_text();
 }
 
-std::string selected_srtp_profile_name(SSL* ssl) {
-  if (!ssl) return "";
-  SRTP_PROTECTION_PROFILE* profile = SSL_get_selected_srtp_profile(ssl);
-  if (!profile || !profile->name) return "";
-  return std::string(profile->name);
-}
-
-bool export_dtls_srtp_keying_material(EmbeddedTransportState* engine) {
-  if (!engine || !engine->dtls_ssl) return false;
-  unsigned char keymat[kDtlsSrtpExporterBytes];
-  const int rc = SSL_export_keying_material(
-    engine->dtls_ssl,
-    keymat,
-    sizeof(keymat),
-    kDtlsSrtpExporterLabel,
-    std::strlen(kDtlsSrtpExporterLabel),
-    nullptr,
-    0,
-    0
-  );
-  OPENSSL_cleanse(keymat, sizeof(keymat));
-  return rc == 1;
-}
-
 void mark_dtls_failure(EmbeddedTransportState* engine, const std::string& err) {
   if (!engine) return;
   engine->dtls_handshake_state = "failed";
   engine->dtls_last_error = err;
+}
+
+bool ensure_srtp_contexts(EmbeddedTransportState* engine, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!engine) {
+    if (out_err) *out_err = "missing instance";
+    return false;
+  }
+  if (engine->srtp_contexts_ready) return true;
+  if (!engine->dtls_ssl || !engine->dtls_handshake_ready) {
+    if (out_err) *out_err = "DTLS handshake not ready for SRTP context creation";
+    return false;
+  }
+  if (engine->dtls_selected_srtp_profile.empty()) {
+    if (out_err) *out_err = "missing negotiated DTLS-SRTP profile";
+    return false;
+  }
+
+  DtlsSrtpProfileSpec profile;
+  std::string err;
+  if (!resolve_dtls_srtp_profile_spec(engine->dtls_selected_srtp_profile, &profile, &err)) {
+    engine->srtp_last_error = err;
+    if (out_err) *out_err = err;
+    return false;
+  }
+
+  std::vector<unsigned char> exporter_keying_material;
+  if (!export_dtls_srtp_keying_material(
+        engine->dtls_ssl, profile, &exporter_keying_material, &err)) {
+    engine->srtp_last_error = err;
+    if (out_err) *out_err = err;
+    return false;
+  }
+  engine->dtls_exporter_ready = true;
+
+  DtlsSrtpKeyBlock key_block;
+  if (!derive_dtls_srtp_key_block(
+        profile,
+        exporter_keying_material.data(),
+        exporter_keying_material.size(),
+        &key_block,
+        &err)) {
+    engine->srtp_last_error = err;
+    if (out_err) *out_err = err;
+    return false;
+  }
+
+  DtlsSrtpSessionPair sessions;
+  if (!create_dtls_srtp_session_pair(key_block, DtlsSrtpLocalRole::server, &sessions, &err)) {
+    engine->srtp_last_error = err;
+    if (out_err) *out_err = err;
+    return false;
+  }
+
+  engine->inbound_srtp = sessions.inbound;
+  engine->outbound_srtp = sessions.outbound;
+  sessions.inbound = nullptr;
+  sessions.outbound = nullptr;
+  engine->srtp_inbound_ready = engine->inbound_srtp != nullptr;
+  engine->srtp_outbound_ready = engine->outbound_srtp != nullptr;
+  engine->srtp_contexts_ready = engine->srtp_inbound_ready && engine->srtp_outbound_ready;
+  engine->srtp_last_error.clear();
+  return engine->srtp_contexts_ready;
 }
 
 bool drain_dtls_outbound(EmbeddedTransportState* engine, std::string* out_err) {
@@ -454,10 +509,14 @@ bool advance_dtls_handshake(EmbeddedTransportState* engine, std::string* out_err
     engine->dtls_handshake_ready = true;
     engine->dtls_handshake_state = "connected";
     engine->dtls_last_error.clear();
-    engine->dtls_selected_srtp_profile = selected_srtp_profile_name(engine->dtls_ssl);
-    engine->dtls_exporter_ready = export_dtls_srtp_keying_material(engine);
-    if (!engine->dtls_exporter_ready && out_err) {
-      *out_err = "openssl dtls exporter failed after handshake";
+    engine->dtls_selected_srtp_profile = selected_dtls_srtp_profile_name(engine->dtls_ssl);
+    if (engine->dtls_selected_srtp_profile.empty()) {
+      if (out_err) *out_err = "openssl DTLS-SRTP profile negotiation failed";
+      return true;
+    }
+    std::string srtp_err;
+    if (!ensure_srtp_contexts(engine, &srtp_err) && out_err && !srtp_err.empty()) {
+      *out_err = srtp_err;
     }
     return true;
   }
@@ -790,6 +849,9 @@ std::string build_event_json(
     ",\"dtls_identity_ready\":" + std::string(state.dtls_identity_ready ? "true" : "false") +
     ",\"dtls_handshake_ready\":" + std::string(state.dtls_handshake_ready ? "true" : "false") +
     ",\"dtls_exporter_ready\":" + std::string(state.dtls_exporter_ready ? "true" : "false") +
+    ",\"srtp_contexts_ready\":" + std::string(state.srtp_contexts_ready ? "true" : "false") +
+    ",\"srtp_inbound_ready\":" + std::string(state.srtp_inbound_ready ? "true" : "false") +
+    ",\"srtp_outbound_ready\":" + std::string(state.srtp_outbound_ready ? "true" : "false") +
     ",\"dtls_setup_role\":\"" + json_escape(state.dtls_setup_role) + "\""
     ",\"dtls_handshake_state\":\"" + json_escape(state.dtls_handshake_state) + "\""
     ",\"sdp_answer_shape\":\"" + json_escape(state.last_answer_sdp_shape) + "\""
@@ -820,6 +882,9 @@ std::string build_event_json(
   }
   if (!state.dtls_last_error.empty()) {
     json += ",\"dtls_last_error\":\"" + json_escape(state.dtls_last_error) + "\"";
+  }
+  if (!state.srtp_last_error.empty()) {
+    json += ",\"srtp_last_error\":\"" + json_escape(state.srtp_last_error) + "\"";
   }
   if (!state.selected_local_candidate.empty()) {
     json += ",\"libjuice_selected_local_candidate\":\"" +
@@ -864,6 +929,14 @@ void embedded_destroy(void* instance) {
     if (engine->agent) {
       juice_destroy(engine->agent);
       engine->agent = nullptr;
+    }
+    if (engine->inbound_srtp) {
+      (void)srtp_dealloc(engine->inbound_srtp);
+      engine->inbound_srtp = nullptr;
+    }
+    if (engine->outbound_srtp) {
+      (void)srtp_dealloc(engine->outbound_srtp);
+      engine->outbound_srtp = nullptr;
     }
     if (engine->dtls_ssl) {
       SSL_free(engine->dtls_ssl);

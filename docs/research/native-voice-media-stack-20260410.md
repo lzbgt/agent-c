@@ -103,6 +103,8 @@ Reference artifacts downloaded into the repo for exact vendor details:
   - that test negotiates `SRTP_AES128_CM_SHA1_80`
   - it also proves `SSL_export_keying_material(..., "EXTRACTOR-dtls_srtp", ...)`
     succeeds, which is the exact prerequisite for SRTP context bring-up
+  - it now also derives inbound/outbound libsrtp contexts from that exporter
+    output and successfully protects then unprotects a sample RTP packet
 - The repo still does **not** yet have an actual embedded/native RTP media
   engine. The new provider uses real `libjuice` / `libsrtp` / `usrsctp`
   libraries, but it still reports `native_media_supported=false` and

@@ -486,6 +486,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
   if(AGENTD_ENABLE_BUILTIN_EMBEDDED_TRANSPORT_PROVIDER)
     add_library(agentd_voice_builtin_media_engine_embedded_transport MODULE
       daemon/src/session_voice_builtin_media_engine_embedded_transport_provider.cpp
+      daemon/src/session_voice_dtls_srtp_util.cpp
     )
     target_compile_options(agentd_voice_builtin_media_engine_embedded_transport PRIVATE
       $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
@@ -897,6 +898,24 @@ if(AGENT_BUILD_HOST)
     $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
   )
   target_link_libraries(session_voice_builtin_dtls_transport_tests PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+  if(AGENTD_ENABLE_BUILTIN_EMBEDDED_TRANSPORT_PROVIDER)
+    target_sources(session_voice_builtin_dtls_transport_tests PRIVATE
+      daemon/src/session_voice_dtls_srtp_util.cpp
+    )
+    target_compile_definitions(session_voice_builtin_dtls_transport_tests PRIVATE
+      AGENTD_HAVE_DTLS_SRTP_SESSION_PAIR=1
+    )
+    target_include_directories(session_voice_builtin_dtls_transport_tests PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
+      ${LIBSRTP2_INCLUDE_DIRS}
+    )
+    target_link_directories(session_voice_builtin_dtls_transport_tests PRIVATE
+      ${LIBSRTP2_LIBRARY_DIRS}
+    )
+    target_link_libraries(session_voice_builtin_dtls_transport_tests PRIVATE
+      ${LIBSRTP2_LIBRARIES}
+    )
+  endif()
   add_test(NAME session_voice_builtin_dtls_transport_tests COMMAND session_voice_builtin_dtls_transport_tests)
 
   if(AGENTD_ENABLE_BUILTIN_EMBEDDED_TRANSPORT_PROVIDER)

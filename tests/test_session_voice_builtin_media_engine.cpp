@@ -41,6 +41,7 @@ static void assert_known_test_provider(
     assert(capabilities["dtls"].asBool());
     assert(capabilities["dtls_handshake"].asBool());
     assert(capabilities["dtls_srtp_export"].asBool());
+    assert(capabilities["srtp_contexts"].asBool());
     assert(capabilities["srtp"].asBool());
     assert(capabilities["sctp"].asBool());
     assert(capabilities["real_media_engine"].asBool() == false);
