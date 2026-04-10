@@ -6,20 +6,23 @@ import {
   MemoryCorrelateRespSchema,
   type MemoryCorrelateResp,
   MemoryCorrelationIndexRespSchema,
+  type MemoryCorrelationIndexBuildRequest,
   type MemoryCorrelationIndexResp,
   MemoryIndexRespSchema,
   type MemoryIndexResp,
   MemoryQueryRespSchema,
   type MemoryQueryResp,
-  MemoryRecapsRespSchema,
-  type MemoryRecapsResp,
+  MemoryRecapRespSchema,
+  type MemoryRecapRequest,
+  type MemoryRecapResp,
+  MemoryRecapsListRespSchema,
+  type MemoryRecapsListResp,
+  type MemoryRetentionEnforceRequest,
   MemoryRetentionRespSchema,
   type MemoryRetentionResp,
   MemorySalienceRespSchema,
   type MemorySalienceResp,
 } from "./schemas/memory";
-
-type MemoryMutationBody = Record<string, unknown>;
 
 export type MemoryQueryParams = {
   sinceUtcMs?: number;
@@ -112,7 +115,7 @@ export async function apiMemoryCorrelate(
 
 export async function apiMemoryCorrelationIndexBuild(
   base: string,
-  body: MemoryMutationBody,
+  body: MemoryCorrelationIndexBuildRequest,
   auth?: ApiAuth,
 ): Promise<MemoryCorrelationIndexResp> {
   const r = await fetch(
@@ -179,7 +182,7 @@ export async function apiMemorySalience(
 
 export async function apiMemoryRetentionEnforce(
   base: string,
-  body: MemoryMutationBody,
+  body: MemoryRetentionEnforceRequest,
   auth?: ApiAuth,
 ): Promise<MemoryRetentionResp> {
   const r = await fetch(
@@ -194,7 +197,7 @@ export async function apiMemoryRecapsList(
   base: string,
   params: MemoryRecapsListParams,
   auth?: ApiAuth,
-): Promise<MemoryRecapsResp> {
+): Promise<MemoryRecapsListResp> {
   const qs = new URLSearchParams();
   addQueryParam(qs, "limit", params.limit);
   addQueryParam(qs, "include_summary", params.includeSummary);
@@ -202,18 +205,18 @@ export async function apiMemoryRecapsList(
   const url = qs.toString() ? `${base}/api/v1/memory/recaps?${qs.toString()}` : `${base}/api/v1/memory/recaps`;
   const r = await fetch(url, daemonFetchInit(auth));
   const j = await r.json();
-  return MemoryRecapsRespSchema.parse(j);
+  return MemoryRecapsListRespSchema.parse(j);
 }
 
 export async function apiMemoryRecapsCreate(
   base: string,
-  body: MemoryMutationBody,
+  body: MemoryRecapRequest,
   auth?: ApiAuth,
-): Promise<MemoryRecapsResp> {
+): Promise<MemoryRecapResp> {
   const r = await fetch(
     `${base}/api/v1/memory/recaps`,
     daemonFetchInit(auth, { method: "POST", body: JSON.stringify(body ?? {}) }, { "Content-Type": "application/json" }),
   );
   const j = await r.json();
-  return MemoryRecapsRespSchema.parse(j);
+  return MemoryRecapRespSchema.parse(j);
 }

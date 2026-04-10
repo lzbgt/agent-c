@@ -8,12 +8,14 @@ import {
   apiReleaseSessionAttachment,
   apiRenewSessionAttachment,
   apiUpdateDaemonConfig,
+  type DaemonConfigUpdateReq,
   extractSessionAttachment,
   extractSessionErrorEnvelope,
   extractSessionErrorMessage,
   extractSessionIds,
   type ApiAuth,
 } from "../api";
+import { safeObject } from "../jsonUtils";
 import type { AppDataPlaneArgs, SessionLeaseConflict } from "./appDataPlaneTypes";
 
 type MutationQueryHandles = {
@@ -65,17 +67,19 @@ function parseLeaseSeconds(raw: string): number {
 
 function buildLeaseConflict(payload: unknown): SessionLeaseConflict | null {
   const errorEnvelope = extractSessionErrorEnvelope(payload);
-  const code = String(errorEnvelope?.code || (payload && typeof payload === "object" ? (payload as any).code : "") || "").trim();
+  const payloadRecord = safeObject(payload);
+  const code = String(errorEnvelope?.code || payloadRecord.code || "").trim();
   if (code !== "attachment_conflict") return null;
-  const details = errorEnvelope?.details && typeof errorEnvelope.details === "object" ? errorEnvelope.details : {};
+  const details = safeObject(errorEnvelope?.details);
+  const requestedClientId = details.requested_client_id;
   return {
     requestedClientId:
-      typeof (details as any).requested_client_id === "string"
-        ? String((details as any).requested_client_id)
-        : (details as any).requested_client_id === null
+      typeof requestedClientId === "string"
+        ? String(requestedClientId)
+        : requestedClientId === null
           ? null
           : null,
-    currentAttachment: extractSessionAttachment({ attachment: (details as any).current_attachment }),
+    currentAttachment: extractSessionAttachment({ attachment: details.current_attachment }),
     code,
     message: String(errorEnvelope?.message || "active attachment lease blocks this mutation"),
     retryable: errorEnvelope?.retryable !== false,
@@ -256,7 +260,7 @@ export function useAppSessionMutations(args: UseAppSessionMutationsArgs) {
   });
 
   const updateDaemonDefaults = useMutation({
-    mutationFn: async (payload: any) => {
+    mutationFn: async (payload: DaemonConfigUpdateReq) => {
       const resp = await apiUpdateDaemonConfig(effectiveBase, payload, daemonAuth);
       if (!resp.ok) throw new Error(resp.error || "update failed");
       return resp;

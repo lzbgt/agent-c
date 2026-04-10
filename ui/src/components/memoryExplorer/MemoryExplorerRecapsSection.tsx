@@ -281,13 +281,13 @@ export default function MemoryExplorerRecapsSection(props: MemoryExplorerRecapsS
               <div className="text-[11px] text-white/50">
                 Showing {props.recaps.filteredList.length} of {props.recaps.list.length} recap snapshots
               </div>
-              {props.recaps.filteredList.map((item: any) => {
-                const recapPath = String(item?.recap_path || "");
-                const kind = String(item?.kind || "manual");
-                const ts = String(item?.ts_utc || "");
-                const model = String(item?.model || "");
-                const bytes = typeof item?.bytes === "number" ? `${item.bytes} bytes` : "size unknown";
-                const summary = String(item?.summary_text || "");
+              {props.recaps.filteredList.map((item) => {
+                const recapPath = String(item.recap_path || "");
+                const kind = String(item.kind || "manual");
+                const ts = String(item.ts_utc || "");
+                const model = String(item.model || "");
+                const bytes = typeof item.bytes === "number" ? `${item.bytes} bytes` : "size unknown";
+                const summary = String(item.summary_text || "");
                 return (
                   <div key={recapPath || `${kind}-${ts}`} className="rounded-md border border-white/10 bg-black/30 px-2 py-1">
                     <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/80">

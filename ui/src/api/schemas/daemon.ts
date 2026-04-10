@@ -15,6 +15,38 @@ export type ClientPrefs = AgentdComponents["schemas"]["ClientPrefsResponse"];
 export type ClientPrefsUpdateReq = AgentdComponents["schemas"]["ClientPrefsUpdateRequest"];
 
 const UnknownRecordSchema = z.record(z.string(), z.unknown());
+const ProviderKeysSetSchema = z
+  .object({
+    deepseek: z.boolean().optional(),
+    openrouter: z.boolean().optional(),
+    moonshot: z.boolean().optional(),
+    openai: z.boolean().optional(),
+  })
+  .catchall(z.unknown());
+const DaemonMemoryConfigSchema = z
+  .object({
+    consolidate_interval_ms: z.number().int().nonnegative().optional(),
+    consolidate_daily_days: z.number().int().nonnegative().optional(),
+    consolidate_keep_checkpoints: z.number().int().nonnegative().optional(),
+    recap_daily_interval_ms: z.number().int().nonnegative().optional(),
+    recap_weekly_interval_ms: z.number().int().nonnegative().optional(),
+    recap_daily_days: z.number().int().nonnegative().optional(),
+    recap_weekly_days: z.number().int().nonnegative().optional(),
+    retention_interval_ms: z.number().int().nonnegative().optional(),
+    retention_daily_max_days: z.number().int().nonnegative().optional(),
+    retention_daily_max_bytes: z.number().int().nonnegative().optional(),
+    retention_checkpoint_max_days: z.number().int().nonnegative().optional(),
+    retention_checkpoint_max_count: z.number().int().nonnegative().optional(),
+    retention_structured_deprecate_days: z.number().int().nonnegative().optional(),
+    retention_structured_deprecate_max_entries: z.number().int().nonnegative().optional(),
+    salience_daily_days: z.number().int().nonnegative().optional(),
+    salience_max_items: z.number().int().nonnegative().optional(),
+    salience_structured_max_items: z.number().int().nonnegative().optional(),
+    salience_daily_max_items: z.number().int().nonnegative().optional(),
+    salience_half_life_days: z.number().nonnegative().optional(),
+    salience_importance_weight: z.number().nonnegative().optional(),
+  })
+  .passthrough();
 
 export const HealthSchema: z.ZodType<Health> = z.object({
   ok: z.boolean(),
@@ -210,19 +242,13 @@ export const DaemonConfigSchema = z
         timeout_ms: z.number().optional(),
         proxy_url_set: z.boolean().optional(),
         api_key_set: z.boolean().optional(),
-        provider_keys_set: z
-          .object({
-            deepseek: z.boolean().optional(),
-            openrouter: z.boolean().optional(),
-            moonshot: z.boolean().optional(),
-            openai: z.boolean().optional(),
-          })
-          .optional(),
+        provider_keys_set: ProviderKeysSetSchema.optional(),
         auth_enabled: z.boolean().optional(),
         allow_unauthenticated_non_loopback: z.boolean().optional(),
         auth_cookie_name: z.string().optional(),
       })
       .optional(),
+    memory: DaemonMemoryConfigSchema.optional(),
     cors: z
       .object({
         enabled: z.boolean().optional(),
@@ -285,6 +311,7 @@ export const DaemonConfigUpdateReqSchema = z
       .optional(),
     proxy_url: z.string().nullable().optional(),
     timeout_ms: z.number().int().positive().optional(),
+    memory: DaemonMemoryConfigSchema.optional(),
     // Either set explicit mapping...
     provider_keys: z.record(z.string(), z.string().nullable()).optional(),
     // ...or set a single key for inferred/explicit provider.
@@ -315,7 +342,8 @@ export const DaemonConfigUpdateRespSchema = z
       )
       .optional(),
     proxy_url_set: z.boolean().optional(),
-    provider_keys_set: z.any().optional(),
+    provider_keys_set: ProviderKeysSetSchema.optional(),
+    memory: DaemonMemoryConfigSchema.optional(),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),

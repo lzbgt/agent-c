@@ -1,5 +1,21 @@
 import { z } from "zod";
 
+const UnknownRecordSchema = z.record(z.string(), z.unknown());
+const SessionMessageSchema = z.object({
+  role: z.string().optional(),
+  content: z.string().optional(),
+  mm_json: z.string().optional(),
+  mm_bytes: z.number().optional(),
+  mm_truncated: z.number().optional(),
+});
+const SessionClientSchema = z
+  .object({
+    id: z.string().optional(),
+    kind: z.string().optional(),
+    instance_id: z.string().optional(),
+  })
+  .passthrough();
+
 export const SessionAttachmentSchema = z
   .object({
     client_id: z.string().nullable().optional(),
@@ -17,17 +33,7 @@ export const SessionInfoSchema = z
     working: z.boolean().optional(),
     last_turn_id: z.string().nullable().optional(),
     attachment: SessionAttachmentSchema.optional(),
-    messages: z
-      .array(
-        z.object({
-          role: z.string().optional(),
-          content: z.string().optional(),
-          mm_json: z.string().optional(),
-          mm_bytes: z.number().optional(),
-          mm_truncated: z.number().optional(),
-        }),
-      )
-      .optional(),
+    messages: z.array(SessionMessageSchema).optional(),
   })
   .passthrough();
 export type SessionInfo = z.infer<typeof SessionInfoSchema>;
@@ -37,7 +43,7 @@ export const SessionErrorEnvelopeSchema = z
     code: z.string().optional(),
     message: z.string().optional(),
     retryable: z.boolean().optional(),
-    details: z.record(z.any()).optional(),
+    details: UnknownRecordSchema.optional(),
   })
   .passthrough();
 export type SessionErrorEnvelope = z.infer<typeof SessionErrorEnvelopeSchema>;
@@ -116,7 +122,7 @@ export const SessionSceneSchema = z
     ok: z.boolean(),
     session_id: z.string().optional(),
     updated_unix_ms: z.number().optional(),
-    scene: z.record(z.any()).optional(),
+    scene: UnknownRecordSchema.optional(),
     error: SessionErrorValueSchema.optional(),
     err: z.string().optional(),
     code: z.string().optional(),
@@ -126,7 +132,7 @@ export type SessionSceneResp = z.infer<typeof SessionSceneSchema>;
 
 export const SessionSceneApplyReqSchema = z.object({
   session_id: z.string().min(1),
-  ops: z.array(z.any()),
+  ops: z.array(z.unknown()),
 });
 export type SessionSceneApplyReq = z.infer<typeof SessionSceneApplyReqSchema>;
 
@@ -135,8 +141,8 @@ export const SessionSceneApplyRespSchema = z
     ok: z.boolean(),
     session_id: z.string().optional(),
     updated_unix_ms: z.number().optional(),
-    apply: z.any().optional(),
-    scene: z.record(z.any()).optional(),
+    apply: z.unknown().optional(),
+    scene: UnknownRecordSchema.optional(),
     warning: z.string().optional(),
     error: SessionErrorValueSchema.optional(),
     err: z.string().optional(),
@@ -150,14 +156,8 @@ export const SessionUiEventReqSchema = z.object({
   type: z.string().min(1),
   ts_unix_ms: z.number().optional(),
   // Optional client identity (collaboration protocol).
-  client: z
-    .object({
-      id: z.string().optional(),
-      kind: z.string().optional(),
-      instance_id: z.string().optional(),
-    })
-    .optional(),
-  data: z.any().optional(),
+  client: SessionClientSchema.optional(),
+  data: z.unknown().optional(),
   append_to_session: z.boolean().optional(),
 });
 export type SessionUiEventReq = z.infer<typeof SessionUiEventReqSchema>;
@@ -207,7 +207,7 @@ export const SessionVoiceControlRespSchema = z
     tool_call_id: z.string().optional(),
     ts_unix_ms: z.number().optional(),
     pending_client_execution: z.boolean().optional(),
-    ui_action: z.record(z.any()).optional(),
+    ui_action: UnknownRecordSchema.optional(),
     error: SessionErrorValueSchema.optional(),
     err: z.string().optional(),
     code: z.string().optional(),
@@ -224,11 +224,11 @@ export const SessionVoiceStatsSchema = z
     scanned_events: z.number().optional(),
     client_count: z.number().optional(),
     result_count: z.number().optional(),
-    clients: z.array(z.any()).optional(),
-    counts: z.record(z.any()).optional(),
-    latest_result: z.record(z.any()).optional(),
-    latest_snapshot: z.record(z.any()).optional(),
-    recent_results: z.array(z.any()).optional(),
+    clients: z.array(UnknownRecordSchema).optional(),
+    counts: z.record(z.string(), z.number()).optional(),
+    latest_result: UnknownRecordSchema.optional(),
+    latest_snapshot: UnknownRecordSchema.optional(),
+    recent_results: z.array(UnknownRecordSchema).optional(),
     error: SessionErrorValueSchema.optional(),
     err: z.string().optional(),
     code: z.string().optional(),
@@ -248,7 +248,7 @@ export const NewSessionRespSchema = z
     code: z.string().optional(),
     status: z.number().optional(),
     error_detail: SessionErrorEnvelopeSchema.optional(),
-    error_details: z.record(z.any()).optional(),
+    error_details: UnknownRecordSchema.optional(),
   })
   .passthrough();
 export type NewSessionResp = z.infer<typeof NewSessionRespSchema>;
@@ -268,7 +268,7 @@ export type DeleteSessionResp = z.infer<typeof DeleteSessionRespSchema>;
 export const AuditSchema = z.object({
   ok: z.boolean(),
   session_id: z.string().optional(),
-  entries: z.array(z.any()).optional(),
+  entries: z.array(z.unknown()).optional(),
   error: SessionErrorValueSchema.optional(),
   err: z.string().optional(),
   code: z.string().optional(),
@@ -282,7 +282,7 @@ export const SessionClientEventsSchema = z.object({
   session_id: z.string().optional(),
   max_bytes: z.number().optional(),
   count: z.number().optional(),
-  events: z.array(z.any()).optional(),
+  events: z.array(z.unknown()).optional(),
   error: SessionErrorValueSchema.optional(),
   err: z.string().optional(),
   code: z.string().optional(),
@@ -295,7 +295,7 @@ export const SessionArtifactsSchema = z.object({
   ok: z.boolean(),
   session_id: z.string().optional(),
   count: z.number().optional(),
-  artifacts: z.array(z.any()).optional(),
+  artifacts: z.array(z.unknown()).optional(),
   error: SessionErrorValueSchema.optional(),
   err: z.string().optional(),
   code: z.string().optional(),
@@ -310,7 +310,7 @@ export const SessionAttachmentActionRespSchema = z
     session_id: z.string().optional(),
     session: SessionInfoSchema.optional(),
     attachment: SessionAttachmentSchema.optional(),
-    operation: z.record(z.any()).optional(),
+    operation: UnknownRecordSchema.optional(),
     error: SessionErrorValueSchema.optional(),
     err: z.string().optional(),
     code: z.string().optional(),

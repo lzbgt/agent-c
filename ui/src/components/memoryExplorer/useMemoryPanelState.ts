@@ -12,6 +12,22 @@ import {
   apiMemorySalience,
   apiUpdateDaemonConfig,
   type ApiAuth,
+  type DaemonConfigResp,
+  type DaemonConfigUpdateReq,
+  type DaemonConfigUpdateResp,
+  type MemoryCheckpointsResp,
+  type MemoryCorrelateResp,
+  type MemoryCorrelationIndexBuildRequest,
+  type MemoryCorrelationIndexResp,
+  type MemoryIndexResp,
+  type MemoryQueryResp,
+  type MemoryRecapRequest,
+  type MemoryRecapResp,
+  type MemoryRecapsListItem,
+  type MemoryRecapsListResp,
+  type MemoryRetentionEnforceRequest,
+  type MemoryRetentionResp,
+  type MemorySalienceResp,
 } from "../../api";
 
 export type MemoryPanelStateArgs = {
@@ -56,7 +72,7 @@ export type MemoryQueryState = {
   setLimit: React.Dispatch<React.SetStateAction<string>>;
   structuredPath: string;
   setStructuredPath: React.Dispatch<React.SetStateAction<string>>;
-  result: any | null;
+  result: MemoryQueryResp | null;
   error: string | null;
   busy: boolean;
   run: () => Promise<void>;
@@ -74,10 +90,10 @@ export type MemoryCorrelationState = {
   setMaxEntries: React.Dispatch<React.SetStateAction<string>>;
   timeline: boolean;
   setTimeline: React.Dispatch<React.SetStateAction<boolean>>;
-  result: any | null;
+  result: MemoryCorrelateResp | null;
   error: string | null;
   busy: boolean;
-  indexResult: any | null;
+  indexResult: MemoryCorrelationIndexResp | null;
   indexError: string | null;
   indexBusy: boolean;
   run: () => Promise<void>;
@@ -90,7 +106,7 @@ export type MemoryCheckpointsState = {
   setLimit: React.Dispatch<React.SetStateAction<string>>;
   structuredPath: string;
   setStructuredPath: React.Dispatch<React.SetStateAction<string>>;
-  result: any | null;
+  result: MemoryCheckpointsResp | null;
   error: string | null;
   busy: boolean;
   run: () => Promise<void>;
@@ -110,7 +126,7 @@ export type MemoryIndexState = {
   setIncludeSession: React.Dispatch<React.SetStateAction<boolean>>;
   dailyDays: string;
   setDailyDays: React.Dispatch<React.SetStateAction<string>>;
-  result: any | null;
+  result: MemoryIndexResp | null;
   error: string | null;
   busy: boolean;
   run: () => Promise<void>;
@@ -134,7 +150,7 @@ export type MemorySalienceState = {
   setHalfLifeDays: React.Dispatch<React.SetStateAction<string>>;
   importanceWeight: string;
   setImportanceWeight: React.Dispatch<React.SetStateAction<string>>;
-  result: any | null;
+  result: MemorySalienceResp | null;
   error: string | null;
   busy: boolean;
   run: () => Promise<void>;
@@ -174,12 +190,12 @@ export type MemoryRecapsState = {
   setHalfLifeDays: React.Dispatch<React.SetStateAction<string>>;
   importanceWeight: string;
   setImportanceWeight: React.Dispatch<React.SetStateAction<string>>;
-  result: any | null;
+  result: MemoryRecapsListResp | MemoryRecapResp | null;
   error: string | null;
   listBusy: boolean;
   generateBusy: boolean;
-  list: any[];
-  filteredList: any[];
+  list: MemoryRecapsListItem[];
+  filteredList: MemoryRecapsListItem[];
   runList: () => Promise<void>;
   runGenerate: () => Promise<void>;
   clear: () => void;
@@ -195,7 +211,7 @@ export type MemoryRecapsState = {
     summaryModel: string;
     busy: boolean;
     error: string | null;
-    result: any | null;
+    result: DaemonConfigUpdateResp | null;
     load: () => Promise<void>;
     apply: () => Promise<void>;
   };
@@ -216,7 +232,7 @@ export type MemoryRetentionState = {
   setStructuredDeprecateDays: React.Dispatch<React.SetStateAction<string>>;
   structuredDeprecateMaxEntries: string;
   setStructuredDeprecateMaxEntries: React.Dispatch<React.SetStateAction<string>>;
-  result: any | null;
+  result: MemoryRetentionResp | null;
   error: string | null;
   busy: boolean;
   run: () => Promise<void>;
@@ -235,6 +251,9 @@ export type MemoryPanelState = {
   retention: MemoryRetentionState;
 };
 
+type MemoryConfig = NonNullable<DaemonConfigResp["memory"]>;
+type MemoryRecapsResult = MemoryRecapsListResp | MemoryRecapResp;
+
 export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelState {
   const base = String(args.baseUrl || "").trim().replace(/\/+$/, "");
   const canQuery = base.length > 0;
@@ -242,7 +261,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
   const [queryPrefix, setQueryPrefix] = React.useState("");
   const [queryLimit, setQueryLimit] = React.useState("50");
   const [queryStructuredPath, setQueryStructuredPath] = React.useState("");
-  const [queryResult, setQueryResult] = React.useState<any | null>(null);
+  const [queryResult, setQueryResult] = React.useState<MemoryQueryResp | null>(null);
   const [queryError, setQueryError] = React.useState<string | null>(null);
   const [queryBusy, setQueryBusy] = React.useState(false);
 
@@ -251,16 +270,16 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
   const [correlateStructuredPath, setCorrelateStructuredPath] = React.useState("");
   const [correlateMaxEntries, setCorrelateMaxEntries] = React.useState("50");
   const [correlateTimeline, setCorrelateTimeline] = React.useState(false);
-  const [correlateResult, setCorrelateResult] = React.useState<any | null>(null);
+  const [correlateResult, setCorrelateResult] = React.useState<MemoryCorrelateResp | null>(null);
   const [correlateError, setCorrelateError] = React.useState<string | null>(null);
   const [correlateBusy, setCorrelateBusy] = React.useState(false);
-  const [correlationIndexResult, setCorrelationIndexResult] = React.useState<any | null>(null);
+  const [correlationIndexResult, setCorrelationIndexResult] = React.useState<MemoryCorrelationIndexResp | null>(null);
   const [correlationIndexError, setCorrelationIndexError] = React.useState<string | null>(null);
   const [correlationIndexBusy, setCorrelationIndexBusy] = React.useState(false);
 
   const [checkpointLimit, setCheckpointLimit] = React.useState("20");
   const [checkpointStructuredPath, setCheckpointStructuredPath] = React.useState("");
-  const [checkpointResult, setCheckpointResult] = React.useState<any | null>(null);
+  const [checkpointResult, setCheckpointResult] = React.useState<MemoryCheckpointsResp | null>(null);
   const [checkpointError, setCheckpointError] = React.useState<string | null>(null);
   const [checkpointBusy, setCheckpointBusy] = React.useState(false);
 
@@ -270,7 +289,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
   const [indexIncludeDaily, setIndexIncludeDaily] = React.useState(true);
   const [indexIncludeSession, setIndexIncludeSession] = React.useState(false);
   const [indexDailyDays, setIndexDailyDays] = React.useState("2");
-  const [indexResult, setIndexResult] = React.useState<any | null>(null);
+  const [indexResult, setIndexResult] = React.useState<MemoryIndexResp | null>(null);
   const [indexError, setIndexError] = React.useState<string | null>(null);
   const [indexBusy, setIndexBusy] = React.useState(false);
 
@@ -282,7 +301,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
   const [salienceDailyMaxItems, setSalienceDailyMaxItems] = React.useState("6");
   const [salienceHalfLifeDays, setSalienceHalfLifeDays] = React.useState("14");
   const [salienceImportanceWeight, setSalienceImportanceWeight] = React.useState("0.35");
-  const [salienceResult, setSalienceResult] = React.useState<any | null>(null);
+  const [salienceResult, setSalienceResult] = React.useState<MemorySalienceResp | null>(null);
   const [salienceError, setSalienceError] = React.useState<string | null>(null);
   const [salienceBusy, setSalienceBusy] = React.useState(false);
 
@@ -302,7 +321,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
   const [recapsDailyMaxItems, setRecapsDailyMaxItems] = React.useState("6");
   const [recapsHalfLifeDays, setRecapsHalfLifeDays] = React.useState("14");
   const [recapsImportanceWeight, setRecapsImportanceWeight] = React.useState("0.35");
-  const [recapsResult, setRecapsResult] = React.useState<any | null>(null);
+  const [recapsResult, setRecapsResult] = React.useState<MemoryRecapsResult | null>(null);
   const [recapsError, setRecapsError] = React.useState<string | null>(null);
   const [recapsListBusy, setRecapsListBusy] = React.useState(false);
   const [recapsGenerateBusy, setRecapsGenerateBusy] = React.useState(false);
@@ -313,7 +332,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
   const [recapScheduleWeeklyDays, setRecapScheduleWeeklyDays] = React.useState("7");
   const [recapScheduleBusy, setRecapScheduleBusy] = React.useState(false);
   const [recapScheduleError, setRecapScheduleError] = React.useState<string | null>(null);
-  const [recapScheduleResult, setRecapScheduleResult] = React.useState<any | null>(null);
+  const [recapScheduleResult, setRecapScheduleResult] = React.useState<DaemonConfigUpdateResp | null>(null);
   const [recapSummaryModel, setRecapSummaryModel] = React.useState("");
 
   const [retentionDryRun, setRetentionDryRun] = React.useState(true);
@@ -323,7 +342,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
   const [retentionCheckpointMaxCount, setRetentionCheckpointMaxCount] = React.useState("200");
   const [retentionStructuredDeprecateDays, setRetentionStructuredDeprecateDays] = React.useState("90");
   const [retentionStructuredDeprecateMaxEntries, setRetentionStructuredDeprecateMaxEntries] = React.useState("50");
-  const [retentionResult, setRetentionResult] = React.useState<any | null>(null);
+  const [retentionResult, setRetentionResult] = React.useState<MemoryRetentionResp | null>(null);
   const [retentionError, setRetentionError] = React.useState<string | null>(null);
   const [retentionBusy, setRetentionBusy] = React.useState(false);
 
@@ -406,7 +425,8 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
     }
     setCorrelationIndexBusy(true);
     try {
-      const res = await apiMemoryCorrelationIndexBuild(base, {}, args.auth);
+      const payload: MemoryCorrelationIndexBuildRequest = {};
+      const res = await apiMemoryCorrelationIndexBuild(base, payload, args.auth);
       if (!res.ok) throw new Error(res.error || "correlation index build failed");
       setCorrelationIndexResult(res);
     } catch (e) {
@@ -560,7 +580,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
       setRecapsError("missing base URL");
       return;
     }
-    const payload: Record<string, any> = {
+    const payload: MemoryRecapRequest = {
       dry_run: recapsDryRun,
       write_file: recapsWriteFile,
       include_structured: recapsIncludeStructured,
@@ -625,12 +645,12 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
     try {
       const res = await apiGetConfig(base, args.auth);
       if (!res.ok) throw new Error(res.error || res.err || "config load failed");
-      const mem = (res as any).memory || {};
-      const daemon = (res as any).daemon || {};
-      setRecapScheduleDailyIntervalMs(String(mem.recap_daily_interval_ms ?? "0"));
-      setRecapScheduleWeeklyIntervalMs(String(mem.recap_weekly_interval_ms ?? "0"));
-      setRecapScheduleDailyDays(String(mem.recap_daily_days ?? "1"));
-      setRecapScheduleWeeklyDays(String(mem.recap_weekly_days ?? "7"));
+      const memory: MemoryConfig = res.memory ?? {};
+      const daemon = res.daemon ?? {};
+      setRecapScheduleDailyIntervalMs(String(memory.recap_daily_interval_ms ?? "0"));
+      setRecapScheduleWeeklyIntervalMs(String(memory.recap_weekly_interval_ms ?? "0"));
+      setRecapScheduleDailyDays(String(memory.recap_daily_days ?? "1"));
+      setRecapScheduleWeeklyDays(String(memory.recap_weekly_days ?? "7"));
       setRecapSummaryModel(String(daemon.summary_model || ""));
     } catch (e) {
       setRecapScheduleError(String(e));
@@ -646,7 +666,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
       setRecapScheduleError("missing base URL");
       return;
     }
-    const memory: Record<string, any> = {};
+    const memory: NonNullable<DaemonConfigUpdateReq["memory"]> = {};
     const dailyInterval = parseOptionalInt(recapScheduleDailyIntervalMs, 0);
     if (dailyInterval !== undefined) memory.recap_daily_interval_ms = dailyInterval;
     const weeklyInterval = parseOptionalInt(recapScheduleWeeklyIntervalMs, 0);
@@ -686,7 +706,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
       setRetentionError("missing base URL");
       return;
     }
-    const payload: Record<string, any> = { dry_run: retentionDryRun };
+    const payload: MemoryRetentionEnforceRequest = { dry_run: retentionDryRun };
     const dailyDays = parseOptionalInt(retentionDailyMaxDays, 0);
     if (dailyDays !== undefined) payload.daily_max_days = dailyDays;
     const dailyBytes = parseOptionalInt(retentionDailyMaxBytes, 0);
@@ -723,18 +743,18 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
     retentionStructuredDeprecateMaxEntries,
   ]);
 
-  const recapsList = React.useMemo(
-    () => (Array.isArray((recapsResult as any)?.recaps) ? (recapsResult as any).recaps : []),
-    [recapsResult],
-  );
+  const recapsList = React.useMemo<MemoryRecapsListItem[]>(() => {
+    if (!recapsResult || !("recaps" in recapsResult) || !Array.isArray(recapsResult.recaps)) return [];
+    return recapsResult.recaps;
+  }, [recapsResult]);
   const recapsKindFilterValue = recapsKindFilter.trim().toLowerCase();
   const recapsHaveKind = React.useMemo(
-    () => recapsList.some((item: any) => String(item?.kind || "").trim().length > 0),
+    () => recapsList.some((item) => String(item.kind || "").trim().length > 0),
     [recapsList],
   );
   const recapsFiltered = React.useMemo(() => {
     if (!recapsKindFilterValue || !recapsHaveKind) return recapsList;
-    return recapsList.filter((item: any) => String(item?.kind || "").toLowerCase() === recapsKindFilterValue);
+    return recapsList.filter((item) => String(item.kind || "").toLowerCase() === recapsKindFilterValue);
   }, [recapsHaveKind, recapsKindFilterValue, recapsList]);
 
   return {

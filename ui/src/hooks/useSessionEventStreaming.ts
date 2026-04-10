@@ -1,5 +1,6 @@
 import React from "react";
 import { daemonFetchInit, type AgentEvent, type ApiAuth, buildSessionEventsStreamUrl } from "../api";
+import { safeJsonParse, safeObject } from "../jsonUtils";
 import { readSseStream, type SseEvent } from "../sse";
 import { sleep } from "../timeUtils";
 
@@ -55,26 +56,28 @@ function readPersistedSessionStream(key: string): PersistedSessionStreamState {
   try {
     const raw = window.localStorage.getItem(key);
     if (!raw) return EMPTY_PERSISTED_STATE;
-    const parsed = JSON.parse(raw) as Partial<PersistedSessionStreamState>;
-    const rawEvents = Array.isArray(parsed?.events) ? parsed.events : [];
+    const parsed = safeObject(safeJsonParse(raw));
+    const rawEvents = Array.isArray(parsed.events) ? parsed.events : [];
     const events = rawEvents
       .filter((entry) => entry && typeof entry === "object")
-      .map((entry: any) => ({
-        id: typeof entry.id === "string" && entry.id.trim() ? entry.id.trim() : undefined,
-        event: typeof entry.event === "string" && entry.event.trim() ? entry.event.trim() : "message",
-        data: typeof entry.data === "string" ? entry.data : "",
-        receivedAtMs:
-          typeof entry.receivedAtMs === "number" && Number.isFinite(entry.receivedAtMs) && entry.receivedAtMs > 0
-            ? entry.receivedAtMs
-            : Date.now(),
-      }));
+      .map((entry) => {
+        const record = safeObject(entry);
+        return {
+          id: typeof record.id === "string" && record.id.trim() ? record.id.trim() : undefined,
+          event: typeof record.event === "string" && record.event.trim() ? record.event.trim() : "message",
+          data: typeof record.data === "string" ? record.data : "",
+          receivedAtMs:
+            typeof record.receivedAtMs === "number" && Number.isFinite(record.receivedAtMs) && record.receivedAtMs > 0
+              ? record.receivedAtMs
+              : Date.now(),
+        };
+      });
     return {
       version: SESSION_STREAM_SCHEMA_VERSION,
-      lastEventId: typeof parsed?.lastEventId === "string" ? parsed.lastEventId.trim() : "",
+      lastEventId: typeof parsed.lastEventId === "string" ? parsed.lastEventId.trim() : "",
       lastEventAtMs:
-        typeof parsed?.lastEventAtMs === "number" && Number.isFinite(parsed.lastEventAtMs) ? parsed.lastEventAtMs : null,
-      updatedMs:
-        typeof parsed?.updatedMs === "number" && Number.isFinite(parsed.updatedMs) ? parsed.updatedMs : null,
+        typeof parsed.lastEventAtMs === "number" && Number.isFinite(parsed.lastEventAtMs) ? parsed.lastEventAtMs : null,
+      updatedMs: typeof parsed.updatedMs === "number" && Number.isFinite(parsed.updatedMs) ? parsed.updatedMs : null,
       events: events.slice(-SESSION_STREAM_MAX_EVENTS),
     };
   } catch {
@@ -91,34 +94,34 @@ function writePersistedSessionStream(key: string, state: PersistedSessionStreamS
   }
 }
 
-function parseEventData(raw: string): any {
+function parseEventData(raw: string): unknown {
   if (!raw) return {};
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return raw;
-  }
+  return safeJsonParse(raw) ?? raw;
 }
 
 function materializeAgentEvents(state: PersistedSessionStreamState): AgentEvent[] {
   return state.events.map((entry) => {
     const parsed = parseEventData(entry.data);
-    if (parsed && typeof parsed === "object" && typeof parsed.type === "string") {
-      if (Object.prototype.hasOwnProperty.call(parsed, "data")) {
-        return parsed as AgentEvent;
+    const record = safeObject(parsed);
+    if (typeof record.type === "string") {
+      if (Object.prototype.hasOwnProperty.call(record, "data")) {
+        return {
+          type: record.type,
+          trace_id: typeof record.trace_id === "string" ? record.trace_id : undefined,
+          data: record.data,
+        };
       }
-      const record = parsed as Record<string, any>;
       const { type, trace_id, ...rest } = record;
       return {
         type: String(type),
         trace_id: typeof trace_id === "string" ? trace_id : undefined,
         data: rest,
-      } as AgentEvent;
+      };
     }
     return {
       type: entry.event || "message",
       data: parsed,
-    } as AgentEvent;
+    };
   });
 }
 
