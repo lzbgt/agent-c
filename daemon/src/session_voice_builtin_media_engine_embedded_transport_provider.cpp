@@ -1592,6 +1592,25 @@ void push_async_event_json(EmbeddedTransportState* engine, const std::string& pa
   engine->pending_async_events.push_back(payload);
 }
 
+bool is_embedded_progress_event_json(const std::string& payload) {
+  return payload.find("\"event\":\"embedded_transport_progress\"") != std::string::npos;
+}
+
+void push_or_coalesce_async_event_json(
+  EmbeddedTransportState* engine,
+  const std::string& payload
+) {
+  if (!engine || payload.empty()) return;
+  std::lock_guard<std::mutex> lk(engine->async_events_mu);
+  if (is_embedded_progress_event_json(payload) &&
+      !engine->pending_async_events.empty() &&
+      is_embedded_progress_event_json(engine->pending_async_events.back())) {
+    engine->pending_async_events.back() = payload;
+    return;
+  }
+  engine->pending_async_events.push_back(payload);
+}
+
 void sync_async_progress_baseline(EmbeddedTransportState* engine) {
   if (!engine) return;
   std::lock_guard<std::mutex> lk(engine->async_events_mu);
@@ -1619,7 +1638,7 @@ void maybe_enqueue_progress_event(
     event_name.empty() ? std::string("embedded_transport_progress") : event_name,
     derived_media_engine_state(*engine),
     0);
-  push_async_event_json(engine, payload);
+  push_or_coalesce_async_event_json(engine, payload);
 }
 
 bool pop_async_event_json(EmbeddedTransportState* engine, std::string* out_payload) {
@@ -2118,15 +2137,19 @@ int embedded_handle_remote_description(
   }
   refresh_transport_snapshot(engine);
   engine->last_answer_sdp_shape = agentd::sdp_contains_media_section(remote_sdp)
-    ? "browser_offer_mirrored_inactive"
+    ? "browser_offer_mirrored_active"
     : "ice_only";
   sync_async_progress_baseline(engine);
-  const std::string answer_sdp = agentd::build_builtin_inactive_answer_sdp({
+  const std::string answer_sdp = agentd::build_builtin_active_answer_sdp({
     remote_sdp,
     engine->local_description,
     engine->dtls_identity_ready,
     engine->dtls_setup_role,
     engine->dtls_fingerprint_sha256,
+    engine->outbound_rtp_ssrc,
+    kRtcpCname,
+    "agentd_builtin_stream",
+    "agentd_builtin_audio",
   });
 
   if (!copy_text("answer", answer_type_buf, answer_type_buf_size) ||

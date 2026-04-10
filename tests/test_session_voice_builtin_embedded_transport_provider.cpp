@@ -514,7 +514,8 @@ static void test_embedded_transport_provider_mirrors_browser_offer_shape_with_dt
   assert(answer.type == "answer");
   assert(answer.sdp.find("m=audio 9 UDP/TLS/RTP/SAVPF 111 0 8") != std::string::npos);
   assert(answer.sdp.find("a=mid:0") != std::string::npos);
-  assert(answer.sdp.find("a=inactive") != std::string::npos);
+  assert(answer.sdp.find("a=sendrecv") != std::string::npos);
+  assert(answer.sdp.find("a=inactive") == std::string::npos);
   assert(answer.sdp.find("a=setup:passive") != std::string::npos);
   assert(answer.sdp.find("a=fingerprint:sha-256 ") != std::string::npos);
   assert(answer.sdp.find(runtime.dtls_fingerprint_sha256) != std::string::npos);
@@ -522,7 +523,7 @@ static void test_embedded_transport_provider_mirrors_browser_offer_shape_with_dt
   assert(answer.sdp.find("a=candidate:") != std::string::npos);
   assert(answer_event["dtls_identity_ready"].asBool());
   assert(answer_event["dtls_setup_role"].asString() == "passive");
-  assert(answer_event["sdp_answer_shape"].asString() == "browser_offer_mirrored_inactive");
+  assert(answer_event["sdp_answer_shape"].asString() == "browser_offer_mirrored_active");
   assert(answer_event["dtls_fingerprint_sha256"].asString() == runtime.dtls_fingerprint_sha256);
   if (engine->info().provider_capabilities["audio_outbound_opus"].asBool()) {
     assert(answer_event["audio_outbound_payload_type"].asInt64() == 111);

@@ -493,8 +493,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `libsrtp`, and `usrsctp` libraries, reports `peer.native_media_supported=true`, and now terminates inbound SRTP/RTP
   packets inside agentd. The current provider starts
   libjuice candidate gathering before returning its answer, emits a candidate-bearing answer SDP through the
-  `native_plugin` ABI, generates an ephemeral DTLS identity, mirrors browser-style media offers into an inactive answer
-  shape with `a=setup:passive` plus a surfaced SHA-256 fingerprint, completes DTLS/SRTP setup, and now publishes RTP
+  `native_plugin` ABI, generates an ephemeral DTLS identity, mirrors browser-style media offers into an active
+  direction-compatible answer with `a=setup:passive`, a surfaced SHA-256 fingerprint, and provider-owned outbound
+  `msid`/SSRC signaling, completes DTLS/SRTP setup, and now publishes RTP
   ingest counters/last-header fields once media arrives. It now also owns the first minimal in-process audio stage:
   after receive-side SRTP unprotect it maps RTP payload types from the remote SDP, decodes `PCMU` / `PCMA` directly and
   `OPUS` through `libopus` when present at build time, and stages recent PCM samples in-process. Agentd now also owns
@@ -511,7 +512,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   Sender Report was observed. The Sender/Receiver Report layouts are pinned to the persisted RFC 3550 reference in
   `docs/research/vendor-rfc3550-rtp-20260411.txt`, and the packet/report-block math now lives behind the shared
   `session_voice_rtcp_report` helper with direct `session_voice_rtcp_report_tests` coverage; this is still a minimal RTCP
-  proof, not broad browser-peer quality-reporting validation.
+  proof, not broad browser-peer quality-reporting validation. The native-plugin smoke uses headless Chromium when
+  Playwright is available and now proves active browser full-duplex media by requiring browser outbound/inbound RTP
+  stats plus agentd RTP receive/send, decode, outbound audio, and RTCP counters.
   The repo also has direct in-tree DTLS/SRTP proof for the same OpenSSL/libsrtp configuration:
   `session_voice_builtin_dtls_transport_tests` completes a DTLS 1.2 client/server handshake over datagram-memory BIOs,
   negotiates `SRTP_AES128_CM_SHA1_80`, exports DTLS-SRTP keying material, derives real inbound / outbound libsrtp

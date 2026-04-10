@@ -279,8 +279,343 @@ print(sid)
 PY
 )"
 
-ANSWER_FILE="${LOG_DIR}/agentd_voice_builtin_answer_${DAEMON_PORT}.json"
-python3 - "${BROKER_PORT}" "${BROKER_SESSION_ID}" "${ANSWER_FILE}" <<'PY' >>"${LOG_FILE}" 2>&1 &
+REMOTE_BYE_SENT="0"
+USE_BROWSER_NATIVE_PLUGIN_SMOKE="0"
+if [[ "${BUILTIN_MODE}" == "native_plugin" && "${BUILTIN_NATIVE_LIBRARY}" == *"embedded_transport"* ]]; then
+  if ROOT_PATH="${ROOT}" node - <<'JS' >/dev/null 2>&1
+const path = require("path");
+try {
+  const { chromium } = require(path.resolve(process.env.ROOT_PATH, "ui/node_modules/playwright"));
+  process.exit(chromium ? 0 : 1);
+} catch (_) {
+  process.exit(1);
+}
+JS
+  then
+    USE_BROWSER_NATIVE_PLUGIN_SMOKE="1"
+  fi
+fi
+
+if [[ "${USE_BROWSER_NATIVE_PLUGIN_SMOKE}" == "1" ]]; then
+  ROOT_PATH="${ROOT}" node - "${BROKER_PORT}" "${BROKER_SESSION_ID}" "${DAEMON_URL}" "${DAEMON_TOKEN}" "${SESSION_ID}" <<'JS' >>"${LOG_FILE}" 2>&1
+const path = require("path");
+const { chromium } = require(path.resolve(process.env.ROOT_PATH, "ui/node_modules/playwright"));
+
+const [brokerPort, brokerSessionId, daemonUrl, daemonToken, sessionId] = process.argv.slice(2);
+const brokerUrl = `http://127.0.0.1:${brokerPort}`;
+const senderTag = "webui-browser-full-duplex-peer";
+
+function join(base, suffix) {
+  return base.replace(/\/+$/, "") + (suffix.startsWith("/") ? suffix : "/" + suffix);
+}
+
+async function sendSignal(type, payload) {
+  const bodyPayload = payload && typeof payload === "object"
+    ? { ...payload, sender_tag: senderTag }
+    : { sender_tag: senderTag };
+  const res = await fetch(join(brokerUrl, `/v1/audio/sessions/${encodeURIComponent(brokerSessionId)}/signal`), {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer audio-webui-token",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ type, payload: bodyPayload }),
+  });
+  if (!res.ok) {
+    throw new Error(`send signal ${type} failed: http ${res.status} ${await res.text()}`);
+  }
+}
+
+async function fetchPeerStatus() {
+  const res = await fetch(
+    join(daemonUrl, `/api/v1/session/voice_webrtc_peer?session_id=${encodeURIComponent(sessionId)}`),
+    { headers: { Authorization: `Bearer ${daemonToken}` } },
+  );
+  if (!res.ok) throw new Error(`agentd status failed: http ${res.status} ${await res.text()}`);
+  return await res.json();
+}
+
+async function run() {
+  const browser = await chromium.launch({
+    headless: true,
+    args: ["--autoplay-policy=no-user-gesture-required"],
+  });
+  const page = await browser.newPage();
+  await page.exposeFunction("__agentdBuiltinBrowserSendSignal", async (type, payload) => {
+    await sendSignal(type, payload || {});
+  });
+  await page.setContent(`<!doctype html><html><body><script>
+  (() => {
+    const state = {
+      answerSeen: false,
+      remoteDescriptionSet: false,
+      sentCandidateCount: 0,
+      receivedCandidateCount: 0,
+      remoteTrackCount: 0,
+      connectionState: "new",
+      iceConnectionState: "new",
+      signalingState: "stable",
+      outboundPacketsSent: 0,
+      outboundBytesSent: 0,
+      inboundPacketsReceived: 0,
+      inboundBytesReceived: 0,
+      error: "",
+    };
+    let peer = null;
+    let audioCtx = null;
+    let oscillator = null;
+    let gain = null;
+    let dest = null;
+    let remoteAudio = null;
+    let pendingRemoteCandidates = [];
+
+    function candidatePayload(candidate) {
+      if (!candidate) return null;
+      if (typeof candidate.toJSON === "function") return candidate.toJSON();
+      return {
+        candidate: candidate.candidate,
+        sdpMid: candidate.sdpMid ?? undefined,
+        sdpMLineIndex: candidate.sdpMLineIndex ?? undefined,
+        usernameFragment: candidate.usernameFragment ?? undefined,
+      };
+    }
+
+    async function waitForIceGatheringComplete(pc) {
+      if (pc.iceGatheringState === "complete") return;
+      await new Promise((resolve) => {
+        const timeout = setTimeout(resolve, 3000);
+        pc.addEventListener("icegatheringstatechange", () => {
+          if (pc.iceGatheringState === "complete") {
+            clearTimeout(timeout);
+            resolve();
+          }
+        });
+      });
+    }
+
+    async function ensurePeer() {
+      if (peer) return peer;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      dest = audioCtx.createMediaStreamDestination();
+      gain = audioCtx.createGain();
+      gain.gain.value = 0.035;
+      oscillator = audioCtx.createOscillator();
+      oscillator.type = "sine";
+      oscillator.frequency.value = 440;
+      oscillator.connect(gain);
+      gain.connect(dest);
+      oscillator.start();
+      if (typeof audioCtx.resume === "function") await audioCtx.resume();
+
+      peer = new RTCPeerConnection();
+      for (const track of dest.stream.getAudioTracks()) peer.addTrack(track, dest.stream);
+      remoteAudio = document.createElement("audio");
+      remoteAudio.autoplay = true;
+      document.body.appendChild(remoteAudio);
+      peer.onconnectionstatechange = () => { state.connectionState = peer.connectionState || "new"; };
+      peer.oniceconnectionstatechange = () => { state.iceConnectionState = peer.iceConnectionState || "new"; };
+      peer.onsignalingstatechange = () => { state.signalingState = peer.signalingState || "stable"; };
+      peer.onicecandidate = async (event) => {
+        if (!event.candidate) return;
+        state.sentCandidateCount += 1;
+      };
+      peer.ontrack = (event) => {
+        state.remoteTrackCount += 1;
+        remoteAudio.srcObject = event.streams && event.streams[0]
+          ? event.streams[0]
+          : new MediaStream([event.track]);
+      };
+      return peer;
+    }
+
+    async function startOffer() {
+      const pc = await ensurePeer();
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await waitForIceGatheringComplete(pc);
+      await window.__agentdBuiltinBrowserSendSignal("offer", {
+        type: pc.localDescription.type,
+        sdp: pc.localDescription.sdp,
+      });
+    }
+
+    async function handleSignal(ev) {
+      const pc = await ensurePeer();
+      if (!ev || typeof ev !== "object") return;
+      if (ev.type === "answer") {
+        const payload = ev.payload || {};
+        if (!payload.sdp) return;
+        state.answerSeen = true;
+        const answerSdp = String(payload.sdp).endsWith("\\n") ? String(payload.sdp) : String(payload.sdp) + "\\r\\n";
+        try {
+          await pc.setRemoteDescription({ type: payload.type || "answer", sdp: answerSdp });
+        } catch (err) {
+          throw new Error(
+            "browser remote answer SDP rejected: " +
+            (err && err.message ? err.message : String(err)) +
+            "\\nsignalingState=" +
+            pc.signalingState +
+            "\\nlocalDescription=" +
+            (pc.localDescription && pc.localDescription.sdp ? pc.localDescription.sdp : "") +
+            "\\nanswer=" +
+            "\\n" +
+            answerSdp,
+          );
+        }
+        state.remoteDescriptionSet = true;
+        for (const candidate of pendingRemoteCandidates) await pc.addIceCandidate(candidate);
+        pendingRemoteCandidates = [];
+        return;
+      }
+      if (ev.type === "candidate") {
+        const payload = ev.payload || {};
+        if (!payload.candidate) return;
+        if (!pc.remoteDescription) pendingRemoteCandidates.push(payload);
+        else await pc.addIceCandidate(payload);
+        state.receivedCandidateCount += 1;
+      }
+    }
+
+    async function getState() {
+      if (peer) {
+        const stats = await peer.getStats();
+        for (const report of stats.values()) {
+          const mediaType = report.mediaType || report.kind || "";
+          if (report.type === "outbound-rtp" && mediaType === "audio") {
+            state.outboundPacketsSent = Math.max(state.outboundPacketsSent, report.packetsSent || 0);
+            state.outboundBytesSent = Math.max(state.outboundBytesSent, report.bytesSent || 0);
+          }
+          if (report.type === "inbound-rtp" && mediaType === "audio") {
+            state.inboundPacketsReceived = Math.max(
+              state.inboundPacketsReceived,
+              report.packetsReceived || 0,
+            );
+            state.inboundBytesReceived = Math.max(state.inboundBytesReceived, report.bytesReceived || 0);
+          }
+        }
+      }
+      return { ...state };
+    }
+
+    window.__agentdBuiltinBrowserStartOffer = startOffer;
+    window.__agentdBuiltinBrowserHandleSignal = handleSignal;
+    window.__agentdBuiltinBrowserGetState = getState;
+  })();
+  </script></body></html>`);
+
+  const streamAbort = new AbortController();
+  let streamReadyResolve;
+  let streamReadyReject;
+  const streamReady = new Promise((resolve, reject) => {
+    streamReadyResolve = resolve;
+    streamReadyReject = reject;
+  });
+  const streamPromise = (async () => {
+    const res = await fetch(join(brokerUrl, `/v1/audio/sessions/${encodeURIComponent(brokerSessionId)}/signal/stream`), {
+      method: "GET",
+      headers: {
+        Authorization: "Bearer audio-webui-token",
+        Accept: "text/event-stream",
+      },
+      signal: streamAbort.signal,
+    });
+    if (!res.ok || !res.body) throw new Error(`signal stream failed: http ${res.status}`);
+    streamReadyResolve();
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      for (;;) {
+        const idx = buffer.indexOf("\n");
+        if (idx < 0) break;
+        let line = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 1);
+        if (line.endsWith("\r")) line = line.slice(0, -1);
+        if (!line.startsWith("data:")) continue;
+        const raw = line.slice(5).trim();
+        if (!raw) continue;
+        let ev;
+        try {
+          ev = JSON.parse(raw);
+        } catch (_) {
+          continue;
+        }
+        const payload = ev && ev.payload && typeof ev.payload === "object" ? ev.payload : {};
+        if (String(payload.sender_tag || "").trim() === senderTag) continue;
+        await page.evaluate((msg) => window.__agentdBuiltinBrowserHandleSignal(msg), ev);
+      }
+    }
+  })().catch((err) => {
+    if (streamReadyReject) streamReadyReject(err);
+    if (err && (err.name === "AbortError" || String(err).includes("AbortError"))) return;
+    throw err;
+  });
+
+  await streamReady;
+  await page.evaluate(() => window.__agentdBuiltinBrowserStartOffer());
+
+  const deadline = Date.now() + 25000;
+  let finalState = null;
+  let finalPeer = null;
+  while (Date.now() < deadline) {
+    finalState = await page.evaluate(() => window.__agentdBuiltinBrowserGetState());
+    finalPeer = (await fetchPeerStatus()).peer || {};
+    if (
+      finalState.answerSeen &&
+      finalState.remoteDescriptionSet &&
+      finalState.outboundPacketsSent > 0 &&
+      finalState.inboundPacketsReceived > 0 &&
+      finalPeer.native_media_active === true &&
+      (finalPeer.rtp_packets_received || 0) > 0 &&
+      (finalPeer.rtp_packets_sent || 0) > 0 &&
+      (finalPeer.audio_frames_decoded || 0) > 0 &&
+      (finalPeer.audio_outbound_frames_sent || 0) > 0 &&
+      (finalPeer.rtcp_packets_sent || 0) > 0
+    ) {
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+
+  if (
+    !finalState ||
+    !finalPeer ||
+    !finalState.answerSeen ||
+    !finalState.remoteDescriptionSet ||
+    finalState.outboundPacketsSent <= 0 ||
+    finalState.inboundPacketsReceived <= 0 ||
+    finalPeer.native_media_active !== true ||
+    (finalPeer.rtp_packets_received || 0) <= 0 ||
+    (finalPeer.rtp_packets_sent || 0) <= 0 ||
+    (finalPeer.audio_frames_decoded || 0) <= 0 ||
+    (finalPeer.audio_outbound_frames_sent || 0) <= 0 ||
+    (finalPeer.rtcp_packets_sent || 0) <= 0
+  ) {
+    throw new Error(`native browser full-duplex media did not converge: ${JSON.stringify({
+      browser: finalState,
+      peer: finalPeer,
+    })}`);
+  }
+
+  await sendSignal("bye", { reason: "browser_full_duplex_done" });
+  streamAbort.abort();
+  await browser.close();
+  await streamPromise.catch(() => {});
+  process.stdout.write(JSON.stringify({ ok: true, browser: finalState, peer: finalPeer }) + "\n");
+}
+
+run().catch((err) => {
+  process.stderr.write(String(err) + "\n");
+  process.exit(1);
+});
+JS
+  REMOTE_BYE_SENT="1"
+else
+  ANSWER_FILE="${LOG_DIR}/agentd_voice_builtin_answer_${DAEMON_PORT}.json"
+  python3 - "${BROKER_PORT}" "${BROKER_SESSION_ID}" "${ANSWER_FILE}" <<'PY' >>"${LOG_FILE}" 2>&1 &
 import json
 import sys
 import urllib.request
@@ -308,18 +643,18 @@ with urllib.request.urlopen(req, timeout=15) as resp:
             raise SystemExit(0)
 raise SystemExit("answer not observed")
 PY
-LISTENER_PID=$!
+  LISTENER_PID=$!
 
-sleep 0.5
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer audio-webui-token" \
-  -H "Content-Type: application/json" \
-  -d '{"type":"offer","payload":{"type":"offer","sdp":"stub-offer","sender_tag":"webui-peer"}}' \
-  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${BROKER_SESSION_ID}/signal" >/dev/null
+  sleep 0.5
+  curl -fsS --noproxy "*" --max-time 10 \
+    -H "Authorization: Bearer audio-webui-token" \
+    -H "Content-Type: application/json" \
+    -d '{"type":"offer","payload":{"type":"offer","sdp":"stub-offer","sender_tag":"webui-peer"}}' \
+    "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${BROKER_SESSION_ID}/signal" >/dev/null
 
-wait "${LISTENER_PID}"
+  wait "${LISTENER_PID}"
 
-python3 - "${ANSWER_FILE}" "${BUILTIN_MODE}" <<'PY'
+  python3 - "${ANSWER_FILE}" "${BUILTIN_MODE}" <<'PY'
 import json, sys
 msg = json.load(open(sys.argv[1], "r", encoding="utf-8"))
 mode = sys.argv[2]
@@ -335,12 +670,15 @@ else:
         assert "a=ice-ufrag:" in sdp, msg
 assert payload.get("sender_tag") == "agentd_runtime_peer", msg
 PY
+fi
 
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer audio-webui-token" \
-  -H "Content-Type: application/json" \
-  -d '{"type":"bye","payload":{"reason":"webui_done","sender_tag":"webui-peer"}}' \
-  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${BROKER_SESSION_ID}/signal" >/dev/null
+if [[ "${REMOTE_BYE_SENT}" == "0" ]]; then
+  curl -fsS --noproxy "*" --max-time 10 \
+    -H "Authorization: Bearer audio-webui-token" \
+    -H "Content-Type: application/json" \
+    -d '{"type":"bye","payload":{"reason":"webui_done","sender_tag":"webui-peer"}}' \
+    "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${BROKER_SESSION_ID}/signal" >/dev/null
+fi
 
 STATUS_JSON=""
 for _ in $(seq 1 40); do

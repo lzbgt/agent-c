@@ -190,8 +190,9 @@ bool drain_builtin_voice_peer_media_engine_events(
     append_builtin_voice_peer_event_and_snapshot(
       service->stdout_log_path, service->session_id, event, service->runtime, runtime_mu);
   }
-  if (out_err) *out_err = "builtin media engine poll_status exceeded drain limit";
-  return false;
+  // The provider may enqueue high-rate media progress while RTP is flowing. Hitting
+  // this per-cycle cap is backpressure, not a terminal media-engine failure.
+  return true;
 }
 
 bool drain_builtin_voice_peer_media_engine_audio(
@@ -292,8 +293,8 @@ bool drain_builtin_voice_peer_media_engine_audio(
     append_builtin_voice_peer_event_and_snapshot(
       service->stdout_log_path, service->session_id, payload, service->runtime, runtime_mu);
   }
-  if (out_err) *out_err = "builtin media engine drain_audio exceeded drain limit";
-  return false;
+  // Leave remaining buffered PCM for the next service tick instead of failing the peer.
+  return true;
 }
 
 bool process_builtin_voice_peer_owned_audio(

@@ -92,12 +92,17 @@ Reference artifacts downloaded into the repo for exact vendor details:
   - it now generates an ephemeral local DTLS identity and fingerprint for that
     answer path
   - the returned answer SDP now carries gathered ICE candidates instead of only
-    credentials, and mirrors browser-style media offers into an inactive answer
-    with `a=setup:passive` plus a surfaced `sha-256` fingerprint
+    credentials, and mirrors browser-style media offers into an active
+    direction-compatible answer with `a=setup:passive`, a surfaced `sha-256`
+    fingerprint, and provider-owned outbound `msid`/SSRC signaling
   - direct provider coverage now includes a local libjuice loopback peer that
     exchanges a real offer, consumes the candidate-bearing answer, trickles
     remote candidates back into the provider, and proves post-answer transport
     progression with live libjuice state and candidate counters
+  - the native-plugin smoke now uses headless Chromium when Playwright is
+    available and proves active browser full-duplex media against the embedded
+    provider, including browser outbound/inbound RTP stats and agentd RTP
+    receive/send, decode, outbound audio, and RTCP counters
 - The repo now also has a direct in-tree DTLS/SRTP proof slice independent of
   that synthetic libjuice role quirk:
   - `session_voice_builtin_dtls_transport_tests` completes a DTLS 1.2
@@ -177,10 +182,10 @@ Reference artifacts downloaded into the repo for exact vendor details:
     `audio_pcm_samples_submitted_total`, plus selected outbound
     payload/codec/rate/channel metadata plus inbound/outbound RTCP counters
     and last-packet metadata
-- The remaining gap is that the outbound path is deliberately minimal: it uses
-  single-frame negotiated Opus/G.711 generation and bounded reduced-size
-  Sender/Receiver Report cadence rather than broader browser-peer full-duplex
-  validation.
+- The remaining gap is that the outbound path is deliberately minimal even
+  after browser full-duplex proof: it uses single-frame negotiated Opus/G.711
+  generation, bounded compound Sender/Receiver Report cadence, and one
+  Chromium smoke rather than broad browser/codec/candidate-edge hardening.
 
 ## Implications
 
@@ -205,8 +210,9 @@ At this scan point, the local machine is ready for:
 
 It is **not** yet at a full embedded WebRTC/SRTP runtime. The remaining gap is
 no longer dependency discovery, basic RTP ownership, negotiated Opus transmit,
-one-shot Sender/Receiver Report transmit, or compound RTCP packet emission; it
-is broader full-duplex validation.
+one-shot Sender/Receiver Report transmit, compound RTCP packet emission, active
+answer direction, or basic browser full-duplex proof; it is broader browser,
+codec, and candidate-edge hardening.
 
 ## Recommended Next Technical Decision
 
@@ -237,5 +243,5 @@ that selection in runtime telemetry, and emits a reduced-size SRTCP Sender
 Report as part of a compound RTCP packet on a bounded cadence. It now also
 emits bounded compound SRTCP Receiver Report packets after inbound RTP media
 arrives. The next concrete step after this negotiated transmit path is broader
-browser-peer full-duplex validation rather than more
+browser/codec/candidate hardening and provider-size reduction rather than more
 DTLS/SRTP/control-plane work.

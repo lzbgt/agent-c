@@ -29,13 +29,18 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
+function normalizeSdpForBrowser(sdp: string): string {
+  if (!sdp) return sdp;
+  return sdp.endsWith("\n") ? sdp : `${sdp}\r\n`;
+}
+
 function parseSessionDescription(type: "offer" | "answer", payload: unknown): RTCSessionDescriptionInit | null {
   const record = asRecord(payload);
   if (!record) return null;
   const sdp = typeof record.sdp === "string" ? record.sdp : "";
   if (!sdp) return null;
   const descType = typeof record.type === "string" && record.type ? record.type : type;
-  return { type: descType as RTCSdpType, sdp };
+  return { type: descType as RTCSdpType, sdp: normalizeSdpForBrowser(sdp) };
 }
 
 function parseIceCandidate(payload: unknown): RTCIceCandidateInit | null {

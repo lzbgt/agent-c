@@ -280,7 +280,8 @@ A v0 smoke test should:
   reports `native_media_supported=true` for receive-side native media ownership while still keeping
   `native_media_active=false` until live RTP is actually ingested. The stronger proof point now is that the provider
   gathers local ICE candidates before forming its answer, generates an ephemeral local DTLS identity, mirrors
-  browser-style media offers into an inactive answer with `a=setup:passive` and a surfaced SHA-256 fingerprint, and
+  browser-style media offers into an active direction-compatible answer with `a=setup:passive`, a surfaced
+  SHA-256 fingerprint, and provider-owned outbound `msid`/SSRC signaling, and
   now reuses the shared in-tree SRTP/RTP ingest utility that terminates inbound protected RTP into concrete header /
   payload counters. It now also owns a minimal receive-side audio stage: RTP payload types are mapped from the remote
   SDP, `PCMU` / `PCMA` payloads decode directly, and `OPUS` payloads decode through `libopus` when that library is
@@ -299,9 +300,12 @@ A v0 smoke test should:
   fraction/cumulative loss, extended highest sequence, jitter, and `LSR`/`DLSR` when a remote Sender Report was observed.
   The Sender/Receiver Report packet layouts are pinned to the persisted RFC 3550 reference in
   `docs/research/vendor-rfc3550-rtp-20260411.txt`, and the report-block tracking/packet builder now has a shared
-  `session_voice_rtcp_report` helper with direct unit coverage. The remaining gap is no longer basic outbound RTP, Opus
-  ownership, one-shot Sender/Receiver Report transmit, per-frame Sender Report spam, or compound packet emission; it is
-  broader browser-peer full-duplex validation.
+  `session_voice_rtcp_report` helper with direct unit coverage. The native-plugin smoke now uses headless Chromium when
+  Playwright is available and proves active browser full-duplex media against the embedded provider, including browser
+  outbound/inbound RTP stats and agentd RTP receive/send, decode, outbound audio, and RTCP counters. The remaining gap
+  is no longer basic outbound RTP, Opus ownership, one-shot Sender/Receiver Report transmit, per-frame Sender Report
+  spam, compound packet emission, answer direction, or basic browser full-duplex proof; it is broader browser, codec,
+  and candidate-edge hardening.
 - That runtime contract now also exposes the media-engine seam directly: planned/live builtin paths report
   `media_engine_kind=builtin_reserved|builtin_signaling_stub|builtin_native_plugin`, bundled/external runtimes report
   `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` now distinguish the
