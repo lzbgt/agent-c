@@ -45,6 +45,10 @@ struct VoicePeerRuntime {
   bool managed_broker_session = false;
   bool native_media_supported = false;
   bool native_media_active = false;
+  bool dtls_identity_ready = false;
+  std::string dtls_fingerprint_sha256;
+  std::string dtls_setup_role;
+  std::string dtls_certificate_subject;
   Json::Value native_media_provider = Json::Value(Json::nullValue);
   bool ready = false;
   bool running = false;
@@ -113,6 +117,10 @@ struct VoicePeerRuntimeSeed {
   bool managed_broker_session = false;
   bool native_media_supported = false;
   bool native_media_active = false;
+  bool dtls_identity_ready = false;
+  std::string dtls_fingerprint_sha256;
+  std::string dtls_setup_role;
+  std::string dtls_certificate_subject;
   Json::Value native_media_provider = Json::Value(Json::nullValue);
   bool ready = false;
   bool running = false;

@@ -818,6 +818,18 @@ void note_voice_peer_media_engine_event(
   if (payload.isMember("native_media_active") && payload["native_media_active"].isBool()) {
     runtime->native_media_active = payload["native_media_active"].asBool();
   }
+  if (payload.isMember("dtls_identity_ready") && payload["dtls_identity_ready"].isBool()) {
+    runtime->dtls_identity_ready = payload["dtls_identity_ready"].asBool();
+  }
+  if (payload.isMember("dtls_fingerprint_sha256") && payload["dtls_fingerprint_sha256"].isString()) {
+    runtime->dtls_fingerprint_sha256 = trim_copy(payload["dtls_fingerprint_sha256"].asString());
+  }
+  if (payload.isMember("dtls_setup_role") && payload["dtls_setup_role"].isString()) {
+    runtime->dtls_setup_role = trim_copy(payload["dtls_setup_role"].asString());
+  }
+  if (payload.isMember("dtls_certificate_subject") && payload["dtls_certificate_subject"].isString()) {
+    runtime->dtls_certificate_subject = trim_copy(payload["dtls_certificate_subject"].asString());
+  }
   if (payload.isMember("native_media_provider") && payload["native_media_provider"].isObject()) {
     runtime->native_media_provider = payload["native_media_provider"];
   }

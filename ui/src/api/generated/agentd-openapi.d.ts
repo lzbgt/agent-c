@@ -8134,6 +8134,14 @@ export interface components {
             /** @description Whether native media handling is currently active inside agentd for this runtime. Current shipped runtimes report `false`. */
             native_media_active: boolean;
             native_media_provider?: components["schemas"]["VoiceWebRtcPeerNativeMediaProvider"];
+            /** @description Whether the current builtin native-plugin provider has generated a local DTLS identity for diagnostics and answer shaping. Current bundled/browser runtimes omit this field; the embedded transport provider sets it when its ephemeral certificate and fingerprint are ready. */
+            dtls_identity_ready?: boolean;
+            /** @description Local ephemeral DTLS certificate fingerprint, formatted as uppercase colon-delimited SHA-256 bytes, when exposed by the current builtin native-plugin provider. */
+            dtls_fingerprint_sha256?: string;
+            /** @description Local DTLS answer role surfaced by the builtin native-plugin provider. Current embedded transport providers report `passive`. */
+            dtls_setup_role?: string;
+            /** @description Diagnostic subject string for the local ephemeral DTLS certificate when exposed by the builtin native-plugin provider. */
+            dtls_certificate_subject?: string;
             ready: boolean;
             running: boolean;
             /** Format: int64 */

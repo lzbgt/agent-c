@@ -489,14 +489,19 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `usrsctp` libraries and reports that provider metadata/capabilities through the normal runtime seam, but it still
   reports `peer.native_media_supported=false` / `peer.native_media_active=false` because agentd has not embedded a full
   DTLS/RTP media plane yet. What is now shipped and proved is narrower but real: the provider starts libjuice candidate
-  gathering before returning its answer, emits a candidate-bearing answer SDP through the `native_plugin` ABI, and the
-  direct embedded-provider test coverage now proves post-answer transport progression against a local libjuice loopback
-  peer instead of only "library loaded" or "answer string returned".
+  gathering before returning its answer, emits a candidate-bearing answer SDP through the `native_plugin` ABI, generates
+  an ephemeral DTLS identity, and mirrors browser-style media offers into an inactive answer shape with
+  `a=setup:passive` plus a surfaced SHA-256 fingerprint. The direct embedded-provider test coverage now proves both that
+  browser-shaped inactive answer contract and post-answer transport progression against a local libjuice loopback peer
+  instead of only "library loaded" or "answer string returned".
 - The builtin/runtime preview and live runtime snapshots now also expose the media-engine seam explicitly:
   `media_runtime_plan.media_engine_kind` / `peer.media_engine_kind` distinguish `builtin_reserved`,
   `builtin_signaling_stub`, `builtin_native_plugin`, and `browser_peer`, while `native_media_supported` /
   `native_media_active` make it explicit whether media is still signaling-only or actually hosted natively inside
   agentd.
+- Builtin native-plugin snapshots now also surface provider DTLS diagnostics when available:
+  `peer.dtls_identity_ready`, `peer.dtls_fingerprint_sha256`, `peer.dtls_setup_role`, and
+  `peer.dtls_certificate_subject`.
 - Builtin runtime events are now normalized before persistence/logging too: every JSONL/runtime event carries the same
   session/timestamp envelope, and the persisted/live runtime snapshot keeps explicit media-engine counters plus
   `media_engine_state` so operators can see whether the stub has only initialized, answered an offer, observed remote

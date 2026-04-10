@@ -55,6 +55,10 @@ Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   out["media_local_byes_sent"] = (Json::Int64)st.media_local_byes_sent;
   out["native_media_supported"] = st.native_media_supported;
   out["native_media_active"] = st.native_media_active;
+  out["dtls_identity_ready"] = st.dtls_identity_ready;
+  if (!st.dtls_fingerprint_sha256.empty()) out["dtls_fingerprint_sha256"] = st.dtls_fingerprint_sha256;
+  if (!st.dtls_setup_role.empty()) out["dtls_setup_role"] = st.dtls_setup_role;
+  if (!st.dtls_certificate_subject.empty()) out["dtls_certificate_subject"] = st.dtls_certificate_subject;
   if (st.native_media_provider.isObject()) out["native_media_provider"] = st.native_media_provider;
   out["ready"] = st.ready;
   out["running"] = st.running;
@@ -245,6 +249,18 @@ bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, s
   }
   if (v.isMember("native_media_active") && v["native_media_active"].isBool()) {
     st.native_media_active = v["native_media_active"].asBool();
+  }
+  if (v.isMember("dtls_identity_ready") && v["dtls_identity_ready"].isBool()) {
+    st.dtls_identity_ready = v["dtls_identity_ready"].asBool();
+  }
+  if (v.isMember("dtls_fingerprint_sha256") && v["dtls_fingerprint_sha256"].isString()) {
+    st.dtls_fingerprint_sha256 = trim_copy(v["dtls_fingerprint_sha256"].asString());
+  }
+  if (v.isMember("dtls_setup_role") && v["dtls_setup_role"].isString()) {
+    st.dtls_setup_role = trim_copy(v["dtls_setup_role"].asString());
+  }
+  if (v.isMember("dtls_certificate_subject") && v["dtls_certificate_subject"].isString()) {
+    st.dtls_certificate_subject = trim_copy(v["dtls_certificate_subject"].asString());
   }
   if (v.isMember("native_media_provider") && v["native_media_provider"].isObject()) {
     st.native_media_provider = v["native_media_provider"];

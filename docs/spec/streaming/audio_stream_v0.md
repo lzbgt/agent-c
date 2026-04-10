@@ -277,13 +277,16 @@ A v0 smoke test should:
   SRTP / SCTP dependency family and returns a real libjuice local description through the native-plugin ABI, but it
   still correctly reports `native_media_supported=false` / `native_media_active=false` because the actual DTLS/RTP
   media plane is still not embedded in agentd. The stronger proof point now is that the provider gathers local ICE
-  candidates before forming its answer, returns a candidate-bearing answer SDP, and has direct loopback coverage that
-  exchanges a real libjuice offer plus trickled remote candidates through the provider ABI and observes transport
+  candidates before forming its answer, generates an ephemeral local DTLS identity, mirrors browser-style media offers
+  into an inactive answer with `a=setup:passive` and a surfaced SHA-256 fingerprint, and has direct loopback coverage
+  that exchanges a real libjuice offer plus trickled remote candidates through the provider ABI and observes transport
   progression beyond the earlier "answer string only" boundary.
 - That runtime contract now also exposes the media-engine seam directly: planned/live builtin paths report
   `media_engine_kind=builtin_reserved|builtin_signaling_stub|builtin_native_plugin`, bundled/external runtimes report
   `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` now distinguish the
   signaling-only stub from a loadable native media provider.
+- Builtin native-plugin runtime snapshots now also surface provider DTLS diagnostics when available through
+  `dtls_identity_ready`, `dtls_fingerprint_sha256`, `dtls_setup_role`, and `dtls_certificate_subject`.
 - Builtin runtime observability is now explicit too: normalized per-session JSONL events and the persisted/live runtime
   snapshot both surface `media_engine_state` plus cumulative counters for offers, answers, candidates, and `bye`
   events, so the future native engine can inherit one operator-facing status contract instead of inventing telemetry

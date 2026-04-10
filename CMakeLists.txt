@@ -501,6 +501,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
       ${USRSCTP_LIBRARY_DIRS}
     )
     target_link_libraries(agentd_voice_builtin_media_engine_embedded_transport PRIVATE
+      OpenSSL::Crypto
       ${LIBSRTP2_LIBRARIES}
       ${USRSCTP_LIBRARIES}
       ${AGENTD_VOICE_LIBJUICE_LIBRARY}

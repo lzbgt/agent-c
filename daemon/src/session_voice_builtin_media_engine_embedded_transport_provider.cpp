@@ -1,25 +1,35 @@
 #include "session_voice_builtin_media_engine_plugin.h"
 
 #include <juice/juice.h>
+#include <openssl/bn.h>
+#include <openssl/err.h>
+#include <openssl/evp.h>
+#include <openssl/rand.h>
+#include <openssl/rsa.h>
+#include <openssl/x509.h>
 #include <srtp2/srtp.h>
 #include <usrsctp.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <chrono>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 
 constexpr const char* kProviderName = "agentd_builtin_embedded_transport_provider";
-constexpr const char* kProviderVersion = "0.2.0";
+constexpr const char* kProviderVersion = "0.3.0";
 constexpr const char* kCapabilitiesJson =
   "{\"signaling\":true,\"audio_capture\":false,\"audio_render\":false,"
-  "\"ice\":true,\"dtls\":false,\"srtp\":true,\"sctp\":true,"
+  "\"ice\":true,\"dtls\":false,\"dtls_identity\":true,\"dtls_answer_shape\":true,"
+  "\"srtp\":true,\"sctp\":true,"
   "\"transport_family\":\"embedded_transport_primitives\","
   "\"embedded_transport_provider\":true,\"sample_provider\":false,"
   "\"real_media_engine\":false,\"remote_description_optional\":true,"
@@ -30,10 +40,16 @@ struct EmbeddedTransportState {
   std::string local_description;
   std::string libjuice_state = "disconnected";
   std::string last_remote_description_error;
+  EVP_PKEY* dtls_private_key = nullptr;
+  X509* dtls_certificate = nullptr;
+  std::string dtls_fingerprint_sha256;
+  std::string dtls_setup_role = "passive";
+  std::string dtls_certificate_subject;
   std::string selected_local_candidate;
   std::string selected_remote_candidate;
   std::string selected_local_address;
   std::string selected_remote_address;
+  std::string last_answer_sdp_shape = "ice_only";
   uint64_t offers_seen = 0;
   uint64_t remote_candidates_seen = 0;
   uint64_t local_candidates_observed = 0;
@@ -41,6 +57,7 @@ struct EmbeddedTransportState {
   bool gather_started = false;
   bool remote_description_applied = false;
   bool transport_connectivity_ready = false;
+  bool dtls_identity_ready = false;
 };
 
 std::mutex g_transport_runtime_mu;
@@ -90,9 +107,288 @@ std::string json_escape(const std::string& value) {
   return out;
 }
 
+std::string openssl_last_error_text() {
+  const unsigned long err = ERR_get_error();
+  if (err == 0) return "openssl_error";
+  char buf[256];
+  std::memset(buf, 0, sizeof(buf));
+  ERR_error_string_n(err, buf, sizeof(buf));
+  return buf[0] ? std::string(buf) : std::string("openssl_error");
+}
+
+std::string trim_copy(const std::string& value) {
+  size_t begin = 0;
+  while (begin < value.size() &&
+         (value[begin] == ' ' || value[begin] == '\t' ||
+          value[begin] == '\r' || value[begin] == '\n')) {
+    begin += 1;
+  }
+  size_t end = value.size();
+  while (end > begin &&
+         (value[end - 1] == ' ' || value[end - 1] == '\t' ||
+          value[end - 1] == '\r' || value[end - 1] == '\n')) {
+    end -= 1;
+  }
+  return value.substr(begin, end - begin);
+}
+
 std::string juice_state_text(juice_state_t state) {
   const char* raw = juice_state_to_string(state);
   return raw ? std::string(raw) : std::string("unknown");
+}
+
+std::string x509_name_to_string(X509_NAME* name) {
+  if (!name) return "";
+  char* raw = X509_NAME_oneline(name, nullptr, 0);
+  if (!raw) return "";
+  std::string out = raw;
+  OPENSSL_free(raw);
+  return out;
+}
+
+std::string sha256_fingerprint_text(X509* cert) {
+  if (!cert) return "";
+  unsigned char md[EVP_MAX_MD_SIZE];
+  unsigned int md_len = 0;
+  if (X509_digest(cert, EVP_sha256(), md, &md_len) != 1 || md_len == 0) return "";
+  static const char* kHex = "0123456789ABCDEF";
+  std::string out;
+  out.reserve(md_len * 3);
+  for (unsigned int i = 0; i < md_len; ++i) {
+    if (i > 0) out.push_back(':');
+    out.push_back(kHex[(md[i] >> 4) & 0x0F]);
+    out.push_back(kHex[md[i] & 0x0F]);
+  }
+  return out;
+}
+
+std::vector<std::string> split_sdp_lines(const std::string& sdp) {
+  std::vector<std::string> out;
+  size_t start = 0;
+  while (start < sdp.size()) {
+    size_t end = sdp.find('\n', start);
+    std::string line = end == std::string::npos ? sdp.substr(start) : sdp.substr(start, end - start);
+    line = trim_copy(line);
+    if (!line.empty()) out.push_back(line);
+    if (end == std::string::npos) break;
+    start = end + 1;
+  }
+  return out;
+}
+
+std::string join_sdp_lines(const std::vector<std::string>& lines) {
+  std::string out;
+  for (const auto& line : lines) {
+    out += line;
+    out += "\r\n";
+  }
+  return out;
+}
+
+bool starts_with(const std::string& value, const char* prefix) {
+  return value.rfind(prefix, 0) == 0;
+}
+
+bool contains_media_section(const std::vector<std::string>& lines) {
+  return std::any_of(lines.begin(), lines.end(), [](const std::string& line) {
+    return starts_with(line, "m=");
+  });
+}
+
+std::vector<std::string> local_ice_lines_from_description(const std::string& sdp) {
+  std::vector<std::string> out;
+  for (const auto& line : split_sdp_lines(sdp)) {
+    if (starts_with(line, "a=ice-ufrag:") ||
+        starts_with(line, "a=ice-pwd:") ||
+        starts_with(line, "a=ice-options:") ||
+        starts_with(line, "a=candidate:") ||
+        line == "a=end-of-candidates") {
+      out.push_back(line);
+    }
+  }
+  return out;
+}
+
+std::string rewrite_mline_for_inactive_answer(const std::string& line) {
+  if (!starts_with(line, "m=")) return line;
+  std::vector<std::string> parts;
+  size_t start = 2;
+  while (start <= line.size()) {
+    const size_t next = line.find(' ', start);
+    parts.push_back(next == std::string::npos ? line.substr(start) : line.substr(start, next - start));
+    if (next == std::string::npos) break;
+    start = next + 1;
+  }
+  if (parts.size() >= 2) parts[1] = "9";
+  std::string out = "m=";
+  for (size_t i = 0; i < parts.size(); ++i) {
+    if (i > 0) out.push_back(' ');
+    out += parts[i];
+  }
+  return out;
+}
+
+bool should_copy_session_attribute(const std::string& line) {
+  return starts_with(line, "a=group:") || starts_with(line, "a=msid-semantic:");
+}
+
+bool should_copy_media_attribute(const std::string& line) {
+  return starts_with(line, "a=mid:") ||
+         starts_with(line, "a=rtcp-mux") ||
+         starts_with(line, "a=rtcp-rsize") ||
+         starts_with(line, "a=rtcp-mux-only") ||
+         starts_with(line, "a=rtpmap:") ||
+         starts_with(line, "a=fmtp:") ||
+         starts_with(line, "a=rtcp-fb:") ||
+         starts_with(line, "a=extmap:") ||
+         starts_with(line, "a=extmap-allow-mixed") ||
+         starts_with(line, "a=sctp-port:") ||
+         starts_with(line, "a=max-message-size:");
+}
+
+bool generate_dtls_identity(EmbeddedTransportState* engine, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!engine) {
+    if (out_err) *out_err = "missing instance";
+    return false;
+  }
+  if (engine->dtls_identity_ready) return true;
+
+  using PkeyCtxPtr = std::unique_ptr<EVP_PKEY_CTX, decltype(&EVP_PKEY_CTX_free)>;
+  using PkeyPtr = std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)>;
+  using X509Ptr = std::unique_ptr<X509, decltype(&X509_free)>;
+  using ASN1IntPtr = std::unique_ptr<ASN1_INTEGER, decltype(&ASN1_INTEGER_free)>;
+  using BnPtr = std::unique_ptr<BIGNUM, decltype(&BN_free)>;
+
+  PkeyCtxPtr keygen_ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr), EVP_PKEY_CTX_free);
+  if (!keygen_ctx) {
+    if (out_err) *out_err = "openssl keygen ctx allocation failed: " + openssl_last_error_text();
+    return false;
+  }
+  if (EVP_PKEY_keygen_init(keygen_ctx.get()) != 1 ||
+      EVP_PKEY_CTX_set_rsa_keygen_bits(keygen_ctx.get(), 2048) != 1) {
+    if (out_err) *out_err = "openssl keygen init failed: " + openssl_last_error_text();
+    return false;
+  }
+
+  EVP_PKEY* raw_key = nullptr;
+  if (EVP_PKEY_keygen(keygen_ctx.get(), &raw_key) != 1 || !raw_key) {
+    if (out_err) *out_err = "openssl key generation failed: " + openssl_last_error_text();
+    return false;
+  }
+  PkeyPtr key(raw_key, EVP_PKEY_free);
+
+  X509Ptr cert(X509_new(), X509_free);
+  if (!cert) {
+    if (out_err) *out_err = "openssl x509 allocation failed: " + openssl_last_error_text();
+    return false;
+  }
+  if (X509_set_version(cert.get(), 2) != 1) {
+    if (out_err) *out_err = "openssl x509 version init failed: " + openssl_last_error_text();
+    return false;
+  }
+
+  unsigned char serial_bytes[8];
+  if (RAND_bytes(serial_bytes, sizeof(serial_bytes)) != 1) {
+    if (out_err) *out_err = "openssl random serial generation failed: " + openssl_last_error_text();
+    return false;
+  }
+  BnPtr serial_bn(BN_bin2bn(serial_bytes, sizeof(serial_bytes), nullptr), BN_free);
+  if (!serial_bn) {
+    if (out_err) *out_err = "openssl serial bignum allocation failed: " + openssl_last_error_text();
+    return false;
+  }
+  ASN1IntPtr serial(BN_to_ASN1_INTEGER(serial_bn.get(), nullptr), ASN1_INTEGER_free);
+  if (!serial || X509_set_serialNumber(cert.get(), serial.get()) != 1) {
+    if (out_err) *out_err = "openssl serial assignment failed: " + openssl_last_error_text();
+    return false;
+  }
+
+  if (!X509_gmtime_adj(X509_get_notBefore(cert.get()), 0) ||
+      !X509_gmtime_adj(X509_get_notAfter(cert.get()), 7 * 24 * 60 * 60L) ||
+      X509_set_pubkey(cert.get(), key.get()) != 1) {
+    if (out_err) *out_err = "openssl certificate setup failed: " + openssl_last_error_text();
+    return false;
+  }
+
+  X509_NAME* name = X509_get_subject_name(cert.get());
+  if (!name ||
+      X509_NAME_add_entry_by_txt(
+        name,
+        "CN",
+        MBSTRING_ASC,
+        reinterpret_cast<const unsigned char*>("agentd builtin embedded transport"),
+        -1,
+        -1,
+        0) != 1 ||
+      X509_set_issuer_name(cert.get(), name) != 1) {
+    if (out_err) *out_err = "openssl certificate subject init failed: " + openssl_last_error_text();
+    return false;
+  }
+
+  if (X509_sign(cert.get(), key.get(), EVP_sha256()) <= 0) {
+    if (out_err) *out_err = "openssl certificate signing failed: " + openssl_last_error_text();
+    return false;
+  }
+
+  engine->dtls_fingerprint_sha256 = sha256_fingerprint_text(cert.get());
+  engine->dtls_certificate_subject = x509_name_to_string(X509_get_subject_name(cert.get()));
+  if (engine->dtls_fingerprint_sha256.empty()) {
+    if (out_err) *out_err = "openssl certificate fingerprint generation failed";
+    return false;
+  }
+  engine->dtls_private_key = key.release();
+  engine->dtls_certificate = cert.release();
+  engine->dtls_identity_ready = true;
+  return true;
+}
+
+std::string build_answer_sdp(
+  const std::string& remote_sdp,
+  const EmbeddedTransportState& state
+) {
+  const std::vector<std::string> remote_lines = split_sdp_lines(remote_sdp);
+  if (!contains_media_section(remote_lines) || !state.dtls_identity_ready) {
+    return state.local_description;
+  }
+
+  const std::vector<std::string> local_ice_lines = local_ice_lines_from_description(state.local_description);
+  std::vector<std::string> out;
+  out.push_back("v=0");
+  out.push_back("o=- 0 0 IN IP4 127.0.0.1");
+  out.push_back("s=-");
+  out.push_back("t=0 0");
+  for (const auto& line : remote_lines) {
+    if (should_copy_session_attribute(line)) out.push_back(line);
+  }
+
+  bool in_media = false;
+  std::vector<std::string> media_lines;
+  auto flush_media = [&]() {
+    if (media_lines.empty()) return;
+    out.push_back(rewrite_mline_for_inactive_answer(media_lines.front()));
+    out.push_back("c=IN IP4 0.0.0.0");
+    for (size_t i = 1; i < media_lines.size(); ++i) {
+      if (should_copy_media_attribute(media_lines[i])) out.push_back(media_lines[i]);
+    }
+    out.push_back("a=inactive");
+    out.push_back("a=setup:" + state.dtls_setup_role);
+    out.push_back("a=fingerprint:sha-256 " + state.dtls_fingerprint_sha256);
+    for (const auto& line : local_ice_lines) out.push_back(line);
+    media_lines.clear();
+  };
+
+  for (const auto& line : remote_lines) {
+    if (starts_with(line, "m=")) {
+      if (in_media) flush_media();
+      in_media = true;
+      media_lines.push_back(line);
+      continue;
+    }
+    if (in_media) media_lines.push_back(line);
+  }
+  flush_media();
+  return join_sdp_lines(out);
 }
 
 bool refresh_local_description(EmbeddedTransportState* engine, std::string* out_err) {
@@ -232,6 +528,7 @@ bool ensure_agent(EmbeddedTransportState* engine, std::string* out_err) {
     return false;
   }
   if (engine->agent) return true;
+  if (!generate_dtls_identity(engine, out_err)) return false;
 
   juice_config_t cfg;
   std::memset(&cfg, 0, sizeof(cfg));
@@ -279,6 +576,9 @@ std::string build_event_json(
     ",\"native_media_supported\":false,\"native_media_active\":false"
     ",\"provider\":\"" + std::string(kProviderName) + "\""
     ",\"transport_family\":\"embedded_transport_primitives\""
+    ",\"dtls_identity_ready\":" + std::string(state.dtls_identity_ready ? "true" : "false") +
+    ",\"dtls_setup_role\":\"" + json_escape(state.dtls_setup_role) + "\""
+    ",\"sdp_answer_shape\":\"" + json_escape(state.last_answer_sdp_shape) + "\""
     ",\"libjuice_state\":\"" + json_escape(state.libjuice_state) + "\""
     ",\"libjuice_local_description_bytes\":" + std::to_string(state.local_description.size()) +
     ",\"local_candidates_observed\":" + std::to_string(state.local_candidates_observed) +
@@ -293,6 +593,12 @@ std::string build_event_json(
     std::string(state.transport_connectivity_ready ? "true" : "false") +
     ",\"srtp_version\":\"" + json_escape(srtp_version ? std::string(srtp_version) : std::string("unknown")) + "\""
     ",\"usrsctp_initialized\":true";
+  if (!state.dtls_fingerprint_sha256.empty()) {
+    json += ",\"dtls_fingerprint_sha256\":\"" + json_escape(state.dtls_fingerprint_sha256) + "\"";
+  }
+  if (!state.dtls_certificate_subject.empty()) {
+    json += ",\"dtls_certificate_subject\":\"" + json_escape(state.dtls_certificate_subject) + "\"";
+  }
   if (!state.selected_local_candidate.empty()) {
     json += ",\"libjuice_selected_local_candidate\":\"" +
             json_escape(state.selected_local_candidate) + "\"";
@@ -336,6 +642,14 @@ void embedded_destroy(void* instance) {
     if (engine->agent) {
       juice_destroy(engine->agent);
       engine->agent = nullptr;
+    }
+    if (engine->dtls_certificate) {
+      X509_free(engine->dtls_certificate);
+      engine->dtls_certificate = nullptr;
+    }
+    if (engine->dtls_private_key) {
+      EVP_PKEY_free(engine->dtls_private_key);
+      engine->dtls_private_key = nullptr;
     }
     delete engine;
   }
@@ -415,9 +729,13 @@ int embedded_handle_remote_description(
     return 0;
   }
   refresh_transport_snapshot(engine);
+  engine->last_answer_sdp_shape = contains_media_section(split_sdp_lines(remote_sdp))
+    ? "browser_offer_mirrored_inactive"
+    : "ice_only";
+  const std::string answer_sdp = build_answer_sdp(remote_sdp, *engine);
 
   if (!copy_text("answer", answer_type_buf, answer_type_buf_size) ||
-      !copy_text(engine->local_description, answer_sdp_buf, answer_sdp_buf_size)) {
+      !copy_text(answer_sdp, answer_sdp_buf, answer_sdp_buf_size)) {
     write_error("answer buffer too small", err_buf, err_buf_size);
     return 0;
   }

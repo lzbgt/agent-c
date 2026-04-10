@@ -86,8 +86,11 @@ Reference artifacts downloaded into the repo for exact vendor details:
   than "library loads":
   - it starts real `libjuice` candidate gathering before generating the answer
     SDP returned through the provider ABI
+  - it now generates an ephemeral local DTLS identity and fingerprint for that
+    answer path
   - the returned answer SDP now carries gathered ICE candidates instead of only
-    credentials
+    credentials, and mirrors browser-style media offers into an inactive answer
+    with `a=setup:passive` plus a surfaced `sha-256` fingerprint
   - direct provider coverage now includes a local libjuice loopback peer that
     exchanges a real offer, consumes the candidate-bearing answer, trickles
     remote candidates back into the provider, and proves post-answer transport

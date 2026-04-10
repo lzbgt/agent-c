@@ -81,6 +81,31 @@ std::string make_libjuice_offer_sdp() {
   return offer;
 }
 
+std::string make_browser_style_offer_sdp() {
+  return
+    "v=0\r\n"
+    "o=- 4962323985234234 2 IN IP4 127.0.0.1\r\n"
+    "s=-\r\n"
+    "t=0 0\r\n"
+    "a=group:BUNDLE 0\r\n"
+    "a=msid-semantic: WMS\r\n"
+    "m=audio 9 UDP/TLS/RTP/SAVPF 111 0 8\r\n"
+    "c=IN IP4 0.0.0.0\r\n"
+    "a=mid:0\r\n"
+    "a=sendrecv\r\n"
+    "a=rtcp-mux\r\n"
+    "a=rtcp-rsize\r\n"
+    "a=rtpmap:111 opus/48000/2\r\n"
+    "a=rtpmap:0 PCMU/8000\r\n"
+    "a=rtpmap:8 PCMA/8000\r\n"
+    "a=ice-ufrag:remoteUfrag\r\n"
+    "a=ice-pwd:remotePassword123\r\n"
+    "a=fingerprint:sha-256 11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00\r\n"
+    "a=setup:actpass\r\n"
+    "a=candidate:1 1 UDP 2113667327 192.168.0.11 40000 typ host\r\n"
+    "a=end-of-candidates\r\n";
+}
+
 static void test_embedded_transport_provider_loads_and_answers_remote_offer() {
   DaemonConfig cfg;
   cfg.audio_webrtc_builtin_mode = "native_plugin";
@@ -111,6 +136,10 @@ static void test_embedded_transport_provider_loads_and_answers_remote_offer() {
   assert(init_event["transport_family"].asString() == "embedded_transport_primitives");
   assert(init_event["libjuice_local_description_bytes"].asUInt64() > 0);
   assert(init_event["gather_started"].asBool());
+  assert(init_event["dtls_identity_ready"].asBool());
+  assert(init_event["dtls_setup_role"].asString() == "passive");
+  assert(!init_event["dtls_fingerprint_sha256"].asString().empty());
+  assert(!init_event["dtls_certificate_subject"].asString().empty());
   assert(init_event["usrsctp_initialized"].asBool());
   assert(!init_event["srtp_version"].asString().empty());
   assert(runtime.native_media_provider["name"].asString() ==
@@ -133,7 +162,55 @@ static void test_embedded_transport_provider_loads_and_answers_remote_offer() {
   assert(answer_event["remote_description_applied"].asBool());
   assert(answer_event["transport_family"].asString() == "embedded_transport_primitives");
   assert(answer_event["media_engine_state"].asString() == "answer_ready");
+  assert(answer_event["sdp_answer_shape"].asString() == "ice_only");
   assert(runtime.media_engine_state == "answer_ready");
+}
+
+static void test_embedded_transport_provider_mirrors_browser_offer_shape_with_dtls_identity() {
+  DaemonConfig cfg;
+  cfg.audio_webrtc_builtin_mode = "native_plugin";
+  cfg.audio_webrtc_builtin_native_library_path =
+    AGENTD_TEST_VOICE_MEDIA_ENGINE_EMBEDDED_PLUGIN_PATH;
+
+  std::string err;
+  auto engine = make_builtin_voice_peer_media_engine(cfg, &err);
+  assert(engine);
+  assert(err.empty());
+  assert(engine->info().provider_name == "agentd_builtin_embedded_transport_provider");
+
+  VoicePeerRuntime runtime;
+  Json::Value init_event(Json::nullValue);
+  assert(engine->initialize(&runtime, &init_event, &err));
+  assert(err.empty());
+  note_voice_peer_media_engine_event(&runtime, init_event);
+  assert(runtime.dtls_identity_ready);
+  assert(!runtime.dtls_fingerprint_sha256.empty());
+  assert(runtime.dtls_setup_role == "passive");
+  assert(!runtime.dtls_certificate_subject.empty());
+
+  VoiceBrokerSignalRemoteDescriptionReady ready;
+  ready.description.type = "offer";
+  ready.description.sdp = make_browser_style_offer_sdp();
+  ready.initial_remote_candidates.resize(1);
+
+  VoiceBrokerSignalDescription answer;
+  Json::Value answer_event(Json::nullValue);
+  assert(engine->handle_remote_description(ready, &answer, &answer_event, &err));
+  assert(err.empty());
+  note_voice_peer_media_engine_event(&runtime, answer_event);
+  assert(answer.type == "answer");
+  assert(answer.sdp.find("m=audio 9 UDP/TLS/RTP/SAVPF 111 0 8") != std::string::npos);
+  assert(answer.sdp.find("a=mid:0") != std::string::npos);
+  assert(answer.sdp.find("a=inactive") != std::string::npos);
+  assert(answer.sdp.find("a=setup:passive") != std::string::npos);
+  assert(answer.sdp.find("a=fingerprint:sha-256 ") != std::string::npos);
+  assert(answer.sdp.find(runtime.dtls_fingerprint_sha256) != std::string::npos);
+  assert(answer.sdp.find("a=ice-ufrag:") != std::string::npos);
+  assert(answer.sdp.find("a=candidate:") != std::string::npos);
+  assert(answer_event["dtls_identity_ready"].asBool());
+  assert(answer_event["dtls_setup_role"].asString() == "passive");
+  assert(answer_event["sdp_answer_shape"].asString() == "browser_offer_mirrored_inactive");
+  assert(answer_event["dtls_fingerprint_sha256"].asString() == runtime.dtls_fingerprint_sha256);
 }
 
 static void test_embedded_transport_provider_reaches_local_ice_connectivity() {
@@ -222,6 +299,7 @@ static void test_embedded_transport_provider_reaches_local_ice_connectivity() {
 
 int main() {
   test_embedded_transport_provider_loads_and_answers_remote_offer();
+  test_embedded_transport_provider_mirrors_browser_offer_shape_with_dtls_identity();
   test_embedded_transport_provider_reaches_local_ice_connectivity();
   return 0;
 }
