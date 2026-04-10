@@ -1,44 +1,23 @@
-export type UnknownRecord = Record<string, unknown>;
+import {
+  normalizeEventData,
+  prettyJsonOrRaw,
+  safeJsonParse,
+  safeObject,
+  safeTrunc,
+} from "../../jsonUtils";
+
+export type { UnknownRecord } from "../../jsonUtils";
 
 type AutoRunGlobal = typeof globalThis & {
   __agentui_auto_run_once?: Record<string, boolean>;
 };
 
-export function safeJsonParse(s: string): unknown | null {
-  try {
-    return JSON.parse(s);
-  } catch {
-    return null;
-  }
-}
-
-export function normalizeEventData(data: unknown): unknown {
-  if (typeof data === "string") {
-    return safeJsonParse(data) ?? data;
-  }
-  return data ?? {};
-}
-
-export function prettyJsonOrRaw(s: string) {
-  const parsed = safeJsonParse(s);
-  if (!parsed) return s;
-  return JSON.stringify(parsed, null, 2);
-}
-
-export function safeTrunc(s: string, max: number): string {
-  if (s.length <= max) return s;
-  return s.slice(0, Math.max(0, max - 1)) + "…";
-}
+export { normalizeEventData, prettyJsonOrRaw, safeJsonParse, safeObject, safeTrunc };
 
 export function clampInt(n: unknown, lo: number, hi: number, def: number): number {
   const v = typeof n === "number" ? n : Number(n);
   if (!Number.isFinite(v)) return def;
   return Math.min(Math.max(Math.trunc(v), lo), hi);
-}
-
-export function safeObject(v: unknown): UnknownRecord {
-  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
-  return v as UnknownRecord;
 }
 
 export function isSensitiveKey(k: string): boolean {

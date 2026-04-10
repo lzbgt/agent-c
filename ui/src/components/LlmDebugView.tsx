@@ -1,39 +1,29 @@
 import React from "react";
+import { isUnknownRecord, safeJsonParse, safeObject, safeTrunc, type UnknownRecord } from "../jsonUtils";
 
-function safeJsonParse(s: string): any | null {
-  try {
-    return JSON.parse(s);
-  } catch {
-    return null;
-  }
-}
-
-function safeTrunc(s: string, max: number): string {
-  const v = String(s ?? "");
-  if (v.length <= max) return v;
-  return v.slice(0, Math.max(0, max - 1)) + "…";
-}
-
-function renderMaybePrettyJson(s: string): { ok: true; pretty: string; parsed: any } | { ok: false; raw: string } {
-  const parsed = safeJsonParse(s);
-  if (!parsed) return { ok: false, raw: s };
+function renderMaybePrettyJson(raw: string): { ok: true; pretty: string; parsed: unknown } | { ok: false; raw: string } {
+  const parsed = safeJsonParse(raw);
+  if (parsed === null) return { ok: false, raw };
   return { ok: true, pretty: JSON.stringify(parsed, null, 2), parsed };
 }
 
-function renderMessagePreview(content: any): string {
+function renderMessagePreview(content: unknown): string {
   if (typeof content === "string") return safeTrunc(content, 300);
   if (Array.isArray(content)) {
-    // Multimodal content blocks; keep it readable.
-    const parts = content.slice(0, 10).map((p) => {
-      if (!p || typeof p !== "object") return safeTrunc(String(p ?? ""), 80);
-      const t = typeof p.type === "string" ? p.type : "part";
-      if (t === "text" && typeof p.text === "string") return safeTrunc(p.text, 120);
-      if (t === "image_url") return safeTrunc(String(p.image_url?.url ?? "image_url"), 120);
-      return safeTrunc(JSON.stringify(p), 160);
+    const parts = content.slice(0, 10).map((partValue) => {
+      const part = safeObject(partValue);
+      if (Object.keys(part).length === 0) return safeTrunc(String(partValue ?? ""), 80);
+      const kind = typeof part.type === "string" ? part.type : "part";
+      if (kind === "text" && typeof part.text === "string") return safeTrunc(part.text, 120);
+      if (kind === "image_url") {
+        const image = safeObject(part.image_url);
+        return safeTrunc(typeof image.url === "string" ? image.url : "image_url", 120);
+      }
+      return safeTrunc(JSON.stringify(part), 160);
     });
     return safeTrunc(parts.join(" | "), 300);
   }
-  if (content && typeof content === "object") return safeTrunc(JSON.stringify(content), 300);
+  if (isUnknownRecord(content)) return safeTrunc(JSON.stringify(content), 300);
   return safeTrunc(String(content ?? ""), 300);
 }
 
@@ -49,41 +39,52 @@ function chip(text: string, tone: "neutral" | "good" | "warn" | "bad" = "neutral
   return <span className={`rounded-md px-2 py-1 text-[11px] ${cls}`}>{text}</span>;
 }
 
+function getMessageRows(parsed: unknown): UnknownRecord[] | null {
+  if (!isUnknownRecord(parsed) || !Array.isArray(parsed.messages)) return null;
+  return parsed.messages.map((message) => safeObject(message));
+}
+
 export default function LlmDebugView({
   kind,
   data,
 }: {
   kind: "request" | "response";
-  data: any;
+  data: unknown;
 }) {
-  const attempt = typeof data?.attempt === "number" ? data.attempt : null;
-  const stream = typeof data?.stream === "boolean" ? data.stream : null;
-  const httpStatus = typeof data?.http_status === "number" ? data.http_status : null;
+  const dataRecord = safeObject(data);
+  const attempt = typeof dataRecord.attempt === "number" ? dataRecord.attempt : null;
+  const stream = typeof dataRecord.stream === "boolean" ? dataRecord.stream : null;
+  const httpStatus = typeof dataRecord.http_status === "number" ? dataRecord.http_status : null;
   const truncated =
     kind === "request"
-      ? typeof data?.request_truncated === "boolean"
-        ? data.request_truncated
+      ? typeof dataRecord.request_truncated === "boolean"
+        ? dataRecord.request_truncated
         : null
-      : typeof data?.response_truncated === "boolean"
-        ? data.response_truncated
+      : typeof dataRecord.response_truncated === "boolean"
+        ? dataRecord.response_truncated
         : null;
 
   const raw =
     kind === "request"
-      ? typeof data?.request_json === "string"
-        ? data.request_json
+      ? typeof dataRecord.request_json === "string"
+        ? dataRecord.request_json
         : null
-      : typeof data?.response_body === "string"
-        ? data.response_body
+      : typeof dataRecord.response_body === "string"
+        ? dataRecord.response_body
         : null;
 
   const pretty = raw ? renderMaybePrettyJson(raw) : null;
   const parsed = pretty && pretty.ok ? pretty.parsed : null;
+  const parsedRecord = safeObject(parsed);
 
-  const model = kind === "request" && parsed && typeof parsed.model === "string" ? parsed.model : null;
+  const model = kind === "request" && typeof parsedRecord.model === "string" ? parsedRecord.model : null;
   const toolsCount =
-    kind === "request" && parsed && Array.isArray(parsed.tools) ? parsed.tools.length : kind === "request" && parsed && Array.isArray(parsed.functions) ? parsed.functions.length : null;
-  const messages = kind === "request" && parsed && Array.isArray(parsed.messages) ? parsed.messages : null;
+    kind === "request" && Array.isArray(parsedRecord.tools)
+      ? parsedRecord.tools.length
+      : kind === "request" && Array.isArray(parsedRecord.functions)
+        ? parsedRecord.functions.length
+        : null;
+  const messages = kind === "request" ? getMessageRows(parsed) : null;
 
   return (
     <div>
@@ -116,13 +117,13 @@ export default function LlmDebugView({
                 </tr>
               </thead>
               <tbody>
-                {messages.slice(0, 200).map((m: any, idx: number) => {
-                  const role = typeof m?.role === "string" ? m.role : "";
-                  const content = m?.content;
+                {messages.slice(0, 200).map((message, index) => {
+                  const role = typeof message.role === "string" ? message.role : "";
+                  const content = message.content;
                   const preview = renderMessagePreview(content);
                   const len = typeof content === "string" ? content.length : JSON.stringify(content ?? "").length;
                   return (
-                    <tr key={idx} className="border-t border-white/5">
+                    <tr key={index} className="border-t border-white/5">
                       <td className="px-3 py-2 font-mono text-white/70">{role}</td>
                       <td className="px-3 py-2 font-mono text-white/60">{len}</td>
                       <td className="px-3 py-2 whitespace-pre-wrap">{preview}</td>
@@ -150,4 +151,3 @@ export default function LlmDebugView({
     </div>
   );
 }
-

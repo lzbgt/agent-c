@@ -1,29 +1,9 @@
 import React from "react";
 import type { AgentEvent } from "../api";
+import { normalizeEventData, prettyJsonOrRaw, safeObject } from "../jsonUtils";
 import Markdown from "./Markdown";
 import LlmDebugView from "./LlmDebugView";
 import ToolResultView from "./ToolResultView";
-
-function safeJsonParse(s: string): any | null {
-  try {
-    return JSON.parse(s);
-  } catch {
-    return null;
-  }
-}
-
-function normalizeEventData(data: unknown): any {
-  if (typeof data === "string") {
-    return safeJsonParse(data) ?? data;
-  }
-  return data ?? {};
-}
-
-function prettyJsonOrRaw(s: string) {
-  const parsed = safeJsonParse(s);
-  if (!parsed) return s;
-  return JSON.stringify(parsed, null, 2);
-}
 
 function EventCard({
   baseUrl,
@@ -36,14 +16,15 @@ function EventCard({
 }) {
   const [open, setOpen] = React.useState(true);
   const type = ev.type;
-  const data: any = normalizeEventData(ev.data);
+  const data = normalizeEventData(ev.data);
+  const dataRecord = safeObject(data);
 
   const title = (() => {
     if (type === "user_message") return "User";
     if (type === "assistant_message") return "Assistant";
     if (type === "assistant_delta") return "Assistant delta";
-    if (type === "tool_call") return `Tool call: ${data.tool_name ?? ""}`;
-    if (type === "tool_result") return `Tool result: ${data.tool_name ?? ""}`;
+    if (type === "tool_call") return `Tool call: ${typeof dataRecord.tool_name === "string" ? dataRecord.tool_name : ""}`;
+    if (type === "tool_result") return `Tool result: ${typeof dataRecord.tool_name === "string" ? dataRecord.tool_name : ""}`;
     if (type === "llm_request") return "LLM request";
     if (type === "llm_response") return "LLM response";
     if (type === "error") return "Error";
@@ -66,31 +47,31 @@ function EventCard({
         <div className="px-3 pb-3">
           {type === "user_message" ? (
             <>
-              <Markdown text={String(data.user_content ?? "")} />
-              {typeof data.user_mm_json === "string" && data.user_mm_json.length > 0 ? (
+              <Markdown text={typeof dataRecord.user_content === "string" ? dataRecord.user_content : ""} />
+              {typeof dataRecord.user_mm_json === "string" && dataRecord.user_mm_json.length > 0 ? (
                 <pre className="mt-3 overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
-                  {prettyJsonOrRaw(data.user_mm_json)}
+                  {prettyJsonOrRaw(dataRecord.user_mm_json)}
                 </pre>
               ) : null}
             </>
           ) : type === "assistant_message" ? (
-            <Markdown text={String(data.assistant_content ?? "")} />
+            <Markdown text={typeof dataRecord.assistant_content === "string" ? dataRecord.assistant_content : ""} />
           ) : type === "assistant_delta" ? (
             <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
-              {typeof data.delta === "string" ? data.delta : JSON.stringify(data, null, 2)}
+              {typeof dataRecord.delta === "string" ? dataRecord.delta : JSON.stringify(data, null, 2)}
             </pre>
           ) : type === "tool_result" ? (
-            typeof data.content === "string" ? (
-              <ToolResultView baseUrl={baseUrl} yolo={yolo} content={data.content} />
+            typeof dataRecord.content === "string" ? (
+              <ToolResultView baseUrl={baseUrl} yolo={yolo} content={dataRecord.content} />
             ) : (
               <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
-                {data.summary ? JSON.stringify(data.summary, null, 2) : "(enable verbose to capture tool output)"}
+                {dataRecord.summary !== undefined ? JSON.stringify(dataRecord.summary, null, 2) : "(enable verbose to capture tool output)"}
               </pre>
             )
           ) : type === "tool_call" ? (
             <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
-              {typeof data.arguments_json === "string"
-                ? prettyJsonOrRaw(data.arguments_json)
+              {typeof dataRecord.arguments_json === "string"
+                ? prettyJsonOrRaw(dataRecord.arguments_json)
                 : "(enable verbose to capture arguments)"}
             </pre>
           ) : type === "llm_request" ? (

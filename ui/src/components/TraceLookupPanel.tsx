@@ -1,4 +1,5 @@
 import React from "react";
+import type { AgentdTraceResp, BrokerTraceResp } from "../api";
 import TraceIdTimelineView from "./TraceIdTimelineView";
 
 export type TraceLookupPanelProps = {
@@ -13,8 +14,8 @@ export type TraceLookupPanelProps = {
   connectionMode: "direct" | "broker";
   baseUrl: string;
   yolo: boolean;
-  agentdTrace: any | null;
-  brokerTrace: any | null;
+  agentdTrace: AgentdTraceResp | null;
+  brokerTrace: BrokerTraceResp | null;
 };
 
 export default function TraceLookupPanel(props: TraceLookupPanelProps) {

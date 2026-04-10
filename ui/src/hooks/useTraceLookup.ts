@@ -1,6 +1,12 @@
 import React from "react";
 import { useMutation } from "@tanstack/react-query";
-import { apiAgentdTrace, apiBrokerTrace, type ApiAuth } from "../api";
+import {
+  apiAgentdTrace,
+  apiBrokerTrace,
+  type AgentdTraceResp,
+  type ApiAuth,
+  type BrokerTraceResp,
+} from "../api";
 
 export type TraceLookupArgs = {
   brokerBase: string;
@@ -9,11 +15,15 @@ export type TraceLookupArgs = {
   effectiveBase: string;
 };
 
+type TraceLookupResult =
+  | { mode: "broker"; data: BrokerTraceResp }
+  | { mode: "direct"; data: AgentdTraceResp };
+
 export default function useTraceLookup(args: TraceLookupArgs) {
   const { brokerBase, connectionMode, daemonAuth, effectiveBase } = args;
   const [traceLookupError, setTraceLookupError] = React.useState<string | null>(null);
-  const [traceLookupAgentd, setTraceLookupAgentd] = React.useState<any | null>(null);
-  const [traceLookupBroker, setTraceLookupBroker] = React.useState<any | null>(null);
+  const [traceLookupAgentd, setTraceLookupAgentd] = React.useState<AgentdTraceResp | null>(null);
+  const [traceLookupBroker, setTraceLookupBroker] = React.useState<BrokerTraceResp | null>(null);
 
   const clearTraceLookup = React.useCallback(() => {
     setTraceLookupError(null);
@@ -21,7 +31,7 @@ export default function useTraceLookup(args: TraceLookupArgs) {
     setTraceLookupBroker(null);
   }, []);
 
-  const traceLookup = useMutation({
+  const traceLookup = useMutation<TraceLookupResult, Error, string>({
     mutationFn: async (traceIdRaw: string) => {
       const traceId = String(traceIdRaw || "").trim();
       if (!traceId) throw new Error("missing trace_id");
@@ -42,7 +52,7 @@ export default function useTraceLookup(args: TraceLookupArgs) {
       }
     },
     onError: (error) => {
-      setTraceLookupError(String(error));
+      setTraceLookupError(error instanceof Error ? error.message : String(error));
     },
   });
 

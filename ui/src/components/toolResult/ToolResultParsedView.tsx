@@ -1,19 +1,22 @@
 import React from "react";
 import Markdown from "../Markdown";
 import type { ApiAuth } from "../../api";
+import { safeObject, type UnknownRecord } from "../../jsonUtils";
 import type { useToolResultViewState } from "./useToolResultViewState";
 import {
   DiffBlock,
   EntriesView,
   firstNLines,
   looksLikeMarkdown,
+  normalizeToolResultEntries,
+  normalizeToolResultSearchMatches,
   SearchMatchesView,
 } from "./toolResultUtils";
 
 type ToolResultParsedViewProps = {
   content: string;
   daemonAuth?: ApiAuth;
-  parsed: any;
+  parsed: UnknownRecord;
   sessionId?: string;
   state: ReturnType<typeof useToolResultViewState>;
   yolo: boolean;
@@ -21,29 +24,33 @@ type ToolResultParsedViewProps = {
 
 export default function ToolResultParsedView(props: ToolResultParsedViewProps) {
   const { parsed, state } = props;
-  const toolName = typeof parsed?.data?.tool === "string" ? parsed.data.tool : "";
-  const patch = typeof parsed?.data?.patch === "string" ? parsed.data.patch : null;
-  const hasOutput = typeof parsed?.data?.output === "string";
-  const output = hasOutput ? (parsed.data.output as string) : null;
-  const cmd = typeof parsed?.data?.cmd === "string" ? parsed.data.cmd : null;
-  const argv = Array.isArray(parsed?.data?.argv) ? parsed.data.argv : null;
-  const matches = Array.isArray(parsed?.data?.matches) ? parsed.data.matches : null;
-  const entries = Array.isArray(parsed?.data?.entries) ? parsed.data.entries : null;
-  const toolPath = typeof parsed?.data?.path === "string" ? parsed.data.path : null;
+  const data = safeObject(parsed.data);
+  const apply = safeObject(data.apply);
+  const toolName = typeof data.tool === "string" ? data.tool : "";
+  const patch = typeof data.patch === "string" ? data.patch : null;
+  const output = typeof data.output === "string" ? data.output : null;
+  const hasOutput = output !== null;
+  const cmd = typeof data.cmd === "string" ? data.cmd : null;
+  const argv = Array.isArray(data.argv)
+    ? data.argv.filter((value): value is string => typeof value === "string" && value.length > 0)
+    : null;
+  const matches = normalizeToolResultSearchMatches(data.matches);
+  const entries = normalizeToolResultEntries(data.entries);
+  const toolPath = typeof data.path === "string" ? data.path : null;
   const exitCode =
-    typeof parsed?.data?.exit_code === "number"
-      ? parsed.data.exit_code
-      : typeof parsed?.data?.apply?.exit_code === "number"
-        ? parsed.data.apply.exit_code
+    typeof data.exit_code === "number"
+      ? data.exit_code
+      : typeof apply.exit_code === "number"
+        ? apply.exit_code
         : null;
-  const ok = typeof parsed?.ok === "boolean" ? parsed.ok : null;
-  const error = typeof parsed?.error === "string" ? parsed.error : null;
-  const protocolViolation = parsed?.protocol_violation === true;
-  const timedOut = typeof parsed?.data?.timed_out === "boolean" ? parsed.data.timed_out : null;
-  const waitForType = typeof parsed?.data?.wait_for_type === "string" ? String(parsed.data.wait_for_type) : null;
-  const waitTimeoutMs = typeof parsed?.data?.timeout_ms === "number" ? parsed.data.timeout_ms : null;
-  const lastType = typeof parsed?.data?.last_type === "string" ? String(parsed.data.last_type) : null;
-  const lastTsUnixMs = typeof parsed?.data?.last_ts_unix_ms === "number" ? parsed.data.last_ts_unix_ms : null;
+  const ok = typeof parsed.ok === "boolean" ? parsed.ok : null;
+  const error = typeof parsed.error === "string" ? parsed.error : null;
+  const protocolViolation = parsed.protocol_violation === true;
+  const timedOut = typeof data.timed_out === "boolean" ? data.timed_out : null;
+  const waitForType = typeof data.wait_for_type === "string" ? data.wait_for_type : null;
+  const waitTimeoutMs = typeof data.timeout_ms === "number" ? data.timeout_ms : null;
+  const lastType = typeof data.last_type === "string" ? data.last_type : null;
+  const lastTsUnixMs = typeof data.last_ts_unix_ms === "number" ? data.last_ts_unix_ms : null;
 
   const isWaitTool = new Set([
     "client_wait_event",
@@ -164,7 +171,7 @@ export default function ToolResultParsedView(props: ToolResultParsedViewProps) {
             <div className="mb-2 rounded-md border border-white/10 bg-black/20 p-2">
               <div className="mb-1 text-[11px] font-semibold text-white/70">Command</div>
               <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-white/90">
-                argv: {(argv as any[]).map((x) => (typeof x === "string" ? x : "")).filter((x) => x.length > 0).join(" ")}
+                argv: {argv.join(" ")}
               </pre>
             </div>
           ) : null}
@@ -208,8 +215,8 @@ export default function ToolResultParsedView(props: ToolResultParsedViewProps) {
         </details>
       ) : null}
 
-      {toolName === "text_search" && matches ? <SearchMatchesView matches={matches} /> : null}
-      {(toolName === "fs_list" || toolName === "fs_find") && entries ? (
+      {toolName === "text_search" && matches.length > 0 ? <SearchMatchesView matches={matches} /> : null}
+      {(toolName === "fs_list" || toolName === "fs_find") && entries.length > 0 ? (
         <EntriesView entries={entries} title={toolName === "fs_find" ? "Found" : "Entries"} />
       ) : null}
 

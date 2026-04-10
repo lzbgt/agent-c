@@ -1,5 +1,6 @@
 import React from "react";
-import type { ApiAuth } from "../../api";
+import type { AgentdTraceResp, ApiAuth, BrokerTraceResp } from "../../api";
+import type { WorkflowDefaults } from "../../workflowTypes";
 import ApprovalQueuePanel from "../ApprovalQueuePanel";
 import BrokerPanel from "../BrokerPanel";
 import MemoryPanel from "../MemoryPanel";
@@ -23,8 +24,8 @@ type AppAdvancedPanelProps = {
     connectionMode: "direct" | "broker";
     baseUrl: string;
     yolo: boolean;
-    agentdTrace: any | null;
-    brokerTrace: any | null;
+    agentdTrace: AgentdTraceResp | null;
+    brokerTrace: BrokerTraceResp | null;
   };
   runDiffPanel: {
     baseUrl: string;
@@ -48,7 +49,7 @@ type AppAdvancedPanelProps = {
     auth: ApiAuth;
     authKey?: string;
     clientId?: string;
-    workflowDefaults?: Record<string, any>;
+    workflowDefaults?: WorkflowDefaults;
     workflowTargets?: string[];
     workflowBearerEnv?: string;
     onTraceIdClick: (traceId: string) => void;

@@ -1,4 +1,7 @@
 import React from "react";
+import { safeObject, safeJsonParse } from "../../jsonUtils";
+
+export { safeJsonParse };
 
 export type ToolResultUiPrefs = {
   showRaw?: boolean;
@@ -6,12 +9,45 @@ export type ToolResultUiPrefs = {
   renderMode?: "auto" | "text" | "markdown";
 };
 
-export function safeJsonParse(s: string): any | null {
-  try {
-    return JSON.parse(s);
-  } catch {
-    return null;
-  }
+export type ToolResultSearchMatch = {
+  path: string;
+  line?: number;
+  column?: number;
+  snippet: string;
+};
+
+export type ToolResultEntry = {
+  path: string;
+  type?: string;
+  size_bytes?: number;
+};
+
+export function normalizeToolResultSearchMatches(matches: unknown): ToolResultSearchMatch[] {
+  if (!Array.isArray(matches)) return [];
+  return matches
+    .map((matchValue) => {
+      const match = safeObject(matchValue);
+      const path = typeof match.path === "string" ? match.path : "";
+      const line = typeof match.line === "number" ? match.line : undefined;
+      const column = typeof match.column === "number" ? match.column : undefined;
+      const snippet = typeof match.snippet === "string" ? match.snippet : "";
+      return { path, line, column, snippet };
+    })
+    .filter((match) => match.path.length > 0 || match.snippet.length > 0);
+}
+
+export function normalizeToolResultEntries(entries: unknown): ToolResultEntry[] {
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .map((entryValue) => {
+      const entry = safeObject(entryValue);
+      return {
+        path: typeof entry.path === "string" ? entry.path : "",
+        type: typeof entry.type === "string" ? entry.type : undefined,
+        size_bytes: typeof entry.size_bytes === "number" ? entry.size_bytes : undefined,
+      };
+    })
+    .filter((entry) => entry.path.length > 0);
 }
 
 export function looksLikeMarkdown(s: string) {
@@ -51,9 +87,8 @@ export function DiffBlock({ text }: { text: string }) {
   );
 }
 
-export function SearchMatchesView({ matches }: { matches: any[] }) {
-  const items = Array.isArray(matches) ? matches : [];
-  if (items.length === 0) return null;
+export function SearchMatchesView({ matches }: { matches: ToolResultSearchMatch[] }) {
+  if (matches.length === 0) return null;
   return (
     <div className="mt-3">
       <div className="mb-1 text-xs font-semibold text-white/70">Matches</div>
@@ -68,20 +103,12 @@ export function SearchMatchesView({ matches }: { matches: any[] }) {
             </tr>
           </thead>
           <tbody>
-            {items.slice(0, 200).map((match, index) => (
+            {matches.slice(0, 200).map((match, index) => (
               <tr key={index} className="border-t border-white/5">
-                <td className="px-2 py-2 font-mono text-[11px] text-white/80">
-                  {typeof match?.path === "string" ? match.path : ""}
-                </td>
-                <td className="px-2 py-2 font-mono text-[11px] text-white/80">
-                  {typeof match?.line === "number" ? match.line : ""}
-                </td>
-                <td className="px-2 py-2 font-mono text-[11px] text-white/80">
-                  {typeof match?.column === "number" ? match.column : ""}
-                </td>
-                <td className="px-2 py-2 font-mono text-[11px] whitespace-pre-wrap">
-                  {typeof match?.snippet === "string" ? match.snippet : ""}
-                </td>
+                <td className="px-2 py-2 font-mono text-[11px] text-white/80">{match.path}</td>
+                <td className="px-2 py-2 font-mono text-[11px] text-white/80">{match.line ?? ""}</td>
+                <td className="px-2 py-2 font-mono text-[11px] text-white/80">{match.column ?? ""}</td>
+                <td className="px-2 py-2 font-mono text-[11px] whitespace-pre-wrap">{match.snippet}</td>
               </tr>
             ))}
           </tbody>
@@ -91,9 +118,8 @@ export function SearchMatchesView({ matches }: { matches: any[] }) {
   );
 }
 
-export function EntriesView({ entries, title }: { entries: any[]; title?: string }) {
-  const items = Array.isArray(entries) ? entries : [];
-  if (items.length === 0) return null;
+export function EntriesView({ entries, title }: { entries: ToolResultEntry[]; title?: string }) {
+  if (entries.length === 0) return null;
   return (
     <div className="mt-3">
       <div className="mb-1 text-xs font-semibold text-white/70">{title ?? "Entries"}</div>
@@ -107,17 +133,11 @@ export function EntriesView({ entries, title }: { entries: any[]; title?: string
             </tr>
           </thead>
           <tbody>
-            {items.slice(0, 200).map((entry, index) => (
+            {entries.slice(0, 200).map((entry, index) => (
               <tr key={index} className="border-t border-white/5">
-                <td className="px-2 py-2 font-mono text-[11px] text-white/80">
-                  {typeof entry?.path === "string" ? entry.path : ""}
-                </td>
-                <td className="px-2 py-2 font-mono text-[11px] text-white/80">
-                  {typeof entry?.type === "string" ? entry.type : ""}
-                </td>
-                <td className="px-2 py-2 font-mono text-[11px] text-white/80">
-                  {typeof entry?.size_bytes === "number" ? entry.size_bytes : ""}
-                </td>
+                <td className="px-2 py-2 font-mono text-[11px] text-white/80">{entry.path}</td>
+                <td className="px-2 py-2 font-mono text-[11px] text-white/80">{entry.type ?? ""}</td>
+                <td className="px-2 py-2 font-mono text-[11px] text-white/80">{entry.size_bytes ?? ""}</td>
               </tr>
             ))}
           </tbody>

@@ -1,5 +1,6 @@
 import React from "react";
 import type { ApiAuth } from "../api";
+import { isUnknownRecord } from "../jsonUtils";
 import ToolResultParsedView from "./toolResult/ToolResultParsedView";
 import ToolResultPlainTextView from "./toolResult/ToolResultPlainTextView";
 import { safeJsonParse } from "./toolResult/toolResultUtils";
@@ -27,7 +28,7 @@ export default function ToolResultView({
   });
 
   const parsed = safeJsonParse(content);
-  if (parsed && typeof parsed === "object") {
+  if (isUnknownRecord(parsed)) {
     return (
       <ToolResultParsedView
         content={content}
