@@ -977,6 +977,20 @@ if(AGENT_BUILD_HOST)
   )
   add_test(NAME session_voice_dtls_identity_tests COMMAND session_voice_dtls_identity_tests)
 
+  add_executable(session_voice_builtin_progress_key_tests
+    tests/test_session_voice_builtin_progress_key.cpp
+  )
+  target_compile_options(session_voice_builtin_progress_key_tests PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_include_directories(session_voice_builtin_progress_key_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
+  )
+  add_test(
+    NAME session_voice_builtin_progress_key_tests
+    COMMAND session_voice_builtin_progress_key_tests
+  )
+
   add_executable(session_voice_audio_decode_tests
     tests/test_session_voice_audio_decode.cpp
     daemon/src/session_voice_audio_decode.cpp

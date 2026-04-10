@@ -99,6 +99,9 @@ Reference artifacts downloaded into the repo for exact vendor details:
     `session_voice_dtls_identity` helper with direct unit proof for certificate /
     key / fingerprint output, leaving the embedded provider to own transport
     state instead of raw certificate construction
+  - async media-progress coalescing state now lives in
+    `session_voice_builtin_progress_key` with direct equality tests, reducing
+    embedded-provider surface without changing progress-event semantics
   - direct provider coverage now includes a local libjuice loopback peer that
     exchanges a real offer, consumes the candidate-bearing answer, trickles
     remote candidates back into the provider, and proves post-answer transport

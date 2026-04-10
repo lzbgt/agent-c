@@ -497,7 +497,8 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   direction-compatible answer with `a=setup:passive`, a surfaced SHA-256 fingerprint, and provider-owned outbound
   `msid`/SSRC signaling, completes DTLS/SRTP setup, and now publishes RTP ingest counters/last-header fields once media
   arrives. The DTLS identity generation path now lives behind the shared `session_voice_dtls_identity` helper with
-  direct keypair/fingerprint tests. It now also owns the first minimal in-process audio stage:
+  direct keypair/fingerprint tests, and async media-progress coalescing state now lives behind
+  `session_voice_builtin_progress_key` with direct equality coverage. It now also owns the first minimal in-process audio stage:
   after receive-side SRTP unprotect it maps RTP payload types from the remote SDP, decodes `PCMU` / `PCMA` directly and
   `OPUS` through `libopus` when present at build time, and stages recent PCM samples in-process. Agentd now also owns
   the first bounded PCM handoff after that decode step: the embedded provider drains staged samples through the

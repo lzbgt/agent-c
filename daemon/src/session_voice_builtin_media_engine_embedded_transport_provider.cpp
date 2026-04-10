@@ -1,6 +1,7 @@
 #include "session_voice_audio_decode.h"
 #include "session_voice_audio_encode.h"
 #include "session_voice_builtin_media_engine_plugin.h"
+#include "session_voice_builtin_progress_key.h"
 #include "session_voice_builtin_sdp_answer.h"
 #include "session_voice_dtls_srtp_util.h"
 #include "session_voice_dtls_identity.h"
@@ -89,151 +90,6 @@ constexpr uint64_t kReceiverReportRtpPacketCadence = 50;
 constexpr const char* kRtcpCname = "agentd-builtin-native";
 
 struct EmbeddedTransportState {
-  struct AsyncProgressKey {
-    std::string libjuice_state;
-    std::string dtls_handshake_state;
-    std::string dtls_selected_srtp_profile;
-    std::string srtp_last_error;
-    std::string last_remote_description_error;
-    std::string selected_local_candidate;
-    std::string selected_remote_candidate;
-    std::string selected_local_address;
-    std::string selected_remote_address;
-    uint64_t offers_seen = 0;
-    uint64_t remote_candidates_seen = 0;
-    uint64_t local_candidates_observed = 0;
-    bool gathering_done = false;
-    bool gather_started = false;
-    bool remote_description_applied = false;
-    bool transport_connectivity_ready = false;
-    bool dtls_identity_ready = false;
-    bool dtls_handshake_ready = false;
-    bool dtls_exporter_ready = false;
-    bool srtp_contexts_ready = false;
-    bool srtp_inbound_ready = false;
-    bool srtp_outbound_ready = false;
-    uint64_t rtp_packets_received = 0;
-    uint64_t rtp_payload_bytes_received = 0;
-    uint64_t rtp_packets_sent = 0;
-    uint64_t rtp_payload_bytes_sent = 0;
-    uint64_t rtcp_packets_received = 0;
-    uint64_t rtcp_packets_sent = 0;
-    uint64_t rtcp_payload_bytes_received = 0;
-    uint64_t rtcp_payload_bytes_sent = 0;
-    uint64_t rtcp_sender_reports_sent = 0;
-    uint64_t rtcp_receiver_reports_sent = 0;
-    uint64_t rtcp_receiver_report_blocks_sent = 0;
-    int64_t rtp_last_payload_type = -1;
-    int64_t rtp_last_sequence = -1;
-    uint64_t rtp_last_timestamp = 0;
-    uint64_t rtp_last_ssrc = 0;
-    int64_t rtp_last_sent_payload_type = -1;
-    int64_t rtp_last_sent_sequence = -1;
-    uint64_t rtp_last_sent_timestamp = 0;
-    uint64_t rtp_last_sent_ssrc = 0;
-    int64_t rtcp_last_packet_type = -1;
-    uint64_t rtcp_last_ssrc = 0;
-    int64_t rtcp_last_sent_packet_type = -1;
-    uint64_t rtcp_last_sent_ssrc = 0;
-    uint64_t rtcp_last_reported_rtp_ssrc = 0;
-    int64_t rtcp_last_report_fraction_lost = 0;
-    int64_t rtcp_last_report_cumulative_lost = 0;
-    uint64_t rtcp_last_report_highest_sequence = 0;
-    uint64_t rtcp_last_report_jitter = 0;
-    uint64_t rtcp_last_report_lsr = 0;
-    uint64_t rtcp_last_report_dlsr = 0;
-    uint64_t audio_frames_decoded = 0;
-    uint64_t audio_pcm_samples_decoded = 0;
-    uint64_t audio_pcm_samples_buffered = 0;
-    uint64_t audio_outbound_frames_sent = 0;
-    uint64_t audio_pcm_samples_submitted_total = 0;
-    uint64_t audio_last_outbound_samples = 0;
-    int64_t audio_outbound_payload_type = -1;
-    int64_t audio_outbound_sample_rate_hz = 0;
-    int64_t audio_outbound_channels = 0;
-    std::string audio_outbound_codec_name;
-    int64_t audio_last_sample_rate_hz = 0;
-    int64_t audio_last_channels = 0;
-    int64_t audio_last_frame_samples_per_channel = 0;
-    std::string audio_last_codec_name;
-    std::string audio_last_error;
-    std::string audio_outbound_last_error;
-    std::string rtcp_last_error;
-
-    bool operator==(const AsyncProgressKey& other) const {
-      return libjuice_state == other.libjuice_state &&
-             dtls_handshake_state == other.dtls_handshake_state &&
-             dtls_selected_srtp_profile == other.dtls_selected_srtp_profile &&
-             srtp_last_error == other.srtp_last_error &&
-             last_remote_description_error == other.last_remote_description_error &&
-             selected_local_candidate == other.selected_local_candidate &&
-             selected_remote_candidate == other.selected_remote_candidate &&
-             selected_local_address == other.selected_local_address &&
-             selected_remote_address == other.selected_remote_address &&
-             offers_seen == other.offers_seen &&
-             remote_candidates_seen == other.remote_candidates_seen &&
-             local_candidates_observed == other.local_candidates_observed &&
-             gathering_done == other.gathering_done &&
-             gather_started == other.gather_started &&
-             remote_description_applied == other.remote_description_applied &&
-             transport_connectivity_ready == other.transport_connectivity_ready &&
-             dtls_identity_ready == other.dtls_identity_ready &&
-             dtls_handshake_ready == other.dtls_handshake_ready &&
-             dtls_exporter_ready == other.dtls_exporter_ready &&
-             srtp_contexts_ready == other.srtp_contexts_ready &&
-             srtp_inbound_ready == other.srtp_inbound_ready &&
-             srtp_outbound_ready == other.srtp_outbound_ready &&
-             rtp_packets_received == other.rtp_packets_received &&
-             rtp_payload_bytes_received == other.rtp_payload_bytes_received &&
-             rtp_packets_sent == other.rtp_packets_sent &&
-             rtp_payload_bytes_sent == other.rtp_payload_bytes_sent &&
-             rtcp_packets_received == other.rtcp_packets_received &&
-             rtcp_packets_sent == other.rtcp_packets_sent &&
-             rtcp_payload_bytes_received == other.rtcp_payload_bytes_received &&
-             rtcp_payload_bytes_sent == other.rtcp_payload_bytes_sent &&
-             rtcp_sender_reports_sent == other.rtcp_sender_reports_sent &&
-             rtcp_receiver_reports_sent == other.rtcp_receiver_reports_sent &&
-             rtcp_receiver_report_blocks_sent == other.rtcp_receiver_report_blocks_sent &&
-             rtp_last_payload_type == other.rtp_last_payload_type &&
-             rtp_last_sequence == other.rtp_last_sequence &&
-             rtp_last_timestamp == other.rtp_last_timestamp &&
-             rtp_last_ssrc == other.rtp_last_ssrc &&
-             rtp_last_sent_payload_type == other.rtp_last_sent_payload_type &&
-             rtp_last_sent_sequence == other.rtp_last_sent_sequence &&
-             rtp_last_sent_timestamp == other.rtp_last_sent_timestamp &&
-             rtp_last_sent_ssrc == other.rtp_last_sent_ssrc &&
-             rtcp_last_packet_type == other.rtcp_last_packet_type &&
-             rtcp_last_ssrc == other.rtcp_last_ssrc &&
-             rtcp_last_sent_packet_type == other.rtcp_last_sent_packet_type &&
-             rtcp_last_sent_ssrc == other.rtcp_last_sent_ssrc &&
-             rtcp_last_reported_rtp_ssrc == other.rtcp_last_reported_rtp_ssrc &&
-             rtcp_last_report_fraction_lost == other.rtcp_last_report_fraction_lost &&
-             rtcp_last_report_cumulative_lost == other.rtcp_last_report_cumulative_lost &&
-             rtcp_last_report_highest_sequence == other.rtcp_last_report_highest_sequence &&
-             rtcp_last_report_jitter == other.rtcp_last_report_jitter &&
-             rtcp_last_report_lsr == other.rtcp_last_report_lsr &&
-             rtcp_last_report_dlsr == other.rtcp_last_report_dlsr &&
-             audio_frames_decoded == other.audio_frames_decoded &&
-             audio_pcm_samples_decoded == other.audio_pcm_samples_decoded &&
-             audio_pcm_samples_buffered == other.audio_pcm_samples_buffered &&
-             audio_outbound_frames_sent == other.audio_outbound_frames_sent &&
-             audio_pcm_samples_submitted_total == other.audio_pcm_samples_submitted_total &&
-             audio_last_outbound_samples == other.audio_last_outbound_samples &&
-             audio_outbound_payload_type == other.audio_outbound_payload_type &&
-             audio_outbound_sample_rate_hz == other.audio_outbound_sample_rate_hz &&
-             audio_outbound_channels == other.audio_outbound_channels &&
-             audio_outbound_codec_name == other.audio_outbound_codec_name &&
-             audio_last_sample_rate_hz == other.audio_last_sample_rate_hz &&
-             audio_last_channels == other.audio_last_channels &&
-             audio_last_frame_samples_per_channel ==
-               other.audio_last_frame_samples_per_channel &&
-             audio_last_codec_name == other.audio_last_codec_name &&
-             audio_last_error == other.audio_last_error &&
-             audio_outbound_last_error == other.audio_outbound_last_error &&
-             rtcp_last_error == other.rtcp_last_error;
-    }
-  };
-
   juice_agent_t* agent = nullptr;
   std::string local_description;
   std::string libjuice_state = "disconnected";
@@ -330,7 +186,7 @@ struct EmbeddedTransportState {
   std::deque<int16_t> pcm_staging;
   std::mutex async_events_mu;
   std::deque<std::string> pending_async_events;
-  AsyncProgressKey last_async_key;
+  agentd::BuiltinVoiceAsyncProgressKey last_async_key;
   bool last_async_key_initialized = false;
 };
 
@@ -1126,10 +982,10 @@ void refresh_transport_snapshot(EmbeddedTransportState* engine) {
   }
 }
 
-EmbeddedTransportState::AsyncProgressKey capture_async_progress_key(
+agentd::BuiltinVoiceAsyncProgressKey capture_async_progress_key(
   const EmbeddedTransportState& state
 ) {
-  EmbeddedTransportState::AsyncProgressKey key;
+  agentd::BuiltinVoiceAsyncProgressKey key;
   key.libjuice_state = state.libjuice_state;
   key.dtls_handshake_state = state.dtls_handshake_state;
   key.dtls_selected_srtp_profile = state.dtls_selected_srtp_profile;
@@ -1247,7 +1103,7 @@ void maybe_enqueue_progress_event(
   const std::string& event_name
 ) {
   if (!engine) return;
-  const EmbeddedTransportState::AsyncProgressKey current = capture_async_progress_key(*engine);
+  const agentd::BuiltinVoiceAsyncProgressKey current = capture_async_progress_key(*engine);
   {
     std::lock_guard<std::mutex> lk(engine->async_events_mu);
     if (engine->last_async_key_initialized && current == engine->last_async_key) {
