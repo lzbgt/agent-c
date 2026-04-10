@@ -16,6 +16,10 @@ using agentd::make_builtin_voice_peer_media_engine;
 using agentd::note_voice_peer_media_engine_event;
 using agentd::voice_peer_media_engine_info_for_runtime_kind;
 
+#ifndef AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH
+#define AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH ""
+#endif
+
 static void test_runtime_kind_info_reports_reserved_and_stub_modes() {
   DaemonConfig disabled_cfg;
   const auto disabled_info =
@@ -36,6 +40,15 @@ static void test_runtime_kind_info_reports_reserved_and_stub_modes() {
     voice_peer_media_engine_info_for_runtime_kind(enabled_cfg, "bundled");
   assert(child_info.media_engine_kind == "browser_peer");
   assert(!child_info.native_media_supported);
+
+  DaemonConfig native_cfg;
+  native_cfg.audio_webrtc_builtin_mode = "native_plugin";
+  native_cfg.audio_webrtc_builtin_native_library_path = AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH;
+  const auto native_info =
+    voice_peer_media_engine_info_for_runtime_kind(native_cfg, "builtin");
+  assert(native_info.media_engine_kind == "builtin_native_plugin");
+  assert(native_info.native_media_supported);
+  assert(!native_info.native_media_active);
 }
 
 static void test_builtin_media_engine_stub_answers_remote_offer() {
@@ -54,9 +67,9 @@ static void test_builtin_media_engine_stub_answers_remote_offer() {
   assert(err.empty());
   assert(runtime.media_engine_kind == "builtin_signaling_stub");
   assert(init_event["event"].asString() == "media_engine_initialized");
-  assert(init_event["media_engine_state"].asString() == "starting");
+  assert(init_event["media_engine_state"].asString() == "signaling_ready");
   note_voice_peer_media_engine_event(&runtime, init_event);
-  assert(runtime.media_engine_state == "starting");
+  assert(runtime.media_engine_state == "signaling_ready");
   assert(runtime.media_events_total == 1);
 
   VoiceBrokerSignalRemoteDescriptionReady ready;
@@ -118,10 +131,50 @@ static void test_builtin_media_engine_stub_answers_remote_offer() {
   assert(runtime.media_local_byes_sent == 1);
 }
 
+static void test_builtin_media_engine_native_plugin_loads_and_reports_native_media() {
+  DaemonConfig cfg;
+  cfg.audio_webrtc_builtin_mode = "native_plugin";
+  cfg.audio_webrtc_builtin_native_library_path = AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH;
+
+  std::string err;
+  auto engine = make_builtin_voice_peer_media_engine(cfg, &err);
+  assert(engine);
+  assert(err.empty());
+  assert(engine->info().media_engine_kind == "builtin_native_plugin");
+  assert(engine->info().native_media_supported);
+  assert(!engine->info().native_media_active);
+
+  VoicePeerRuntime runtime;
+  Json::Value init_event(Json::nullValue);
+  assert(engine->initialize(&runtime, &init_event, &err));
+  assert(err.empty());
+  note_voice_peer_media_engine_event(&runtime, init_event);
+  assert(runtime.media_engine_kind == "builtin_native_plugin");
+  assert(runtime.native_media_supported);
+  assert(runtime.native_media_active);
+  assert(runtime.media_engine_state == "signaling_ready");
+
+  VoiceBrokerSignalRemoteDescriptionReady ready;
+  ready.description.type = "offer";
+  ready.description.sdp = "remote-offer";
+  ready.initial_remote_candidates.resize(1);
+
+  agentd::VoiceBrokerSignalDescription answer;
+  Json::Value answer_event(Json::nullValue);
+  assert(engine->handle_remote_description(ready, &answer, &answer_event, &err));
+  assert(err.empty());
+  assert(answer.type == "answer");
+  assert(answer.sdp == "native-plugin-answer");
+  note_voice_peer_media_engine_event(&runtime, answer_event);
+  assert(runtime.media_engine_state == "answer_ready");
+  assert(runtime.native_media_active);
+}
+
 }  // namespace
 
 int main() {
   test_runtime_kind_info_reports_reserved_and_stub_modes();
   test_builtin_media_engine_stub_answers_remote_offer();
+  test_builtin_media_engine_native_plugin_loads_and_reports_native_media();
   return 0;
 }

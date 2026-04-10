@@ -183,7 +183,8 @@ A v0 smoke test should:
   it and target the actual managed runtime state for the session.
 - The managed runtime contract now explicitly reports:
   - `builtin_available=true|false`
-  - `builtin_mode=disabled|signaling_stub`
+  - `builtin_mode=disabled|signaling_stub|native_plugin`
+  - `builtin_native_library_path_configured=true|false`
   - `bundled_available=true|false`
   - `external_available=true|false`
   - `builtin_unavailable_reason`, `bundled_unavailable_reason`, `external_unavailable_reason`
@@ -192,7 +193,7 @@ A v0 smoke test should:
   - `default_runtime_kind_available=true|false`
   - `default_runtime_kind_unavailable_reason`
   - `peer.runtime_kind=builtin|bundled|external`
-  - `peer.media_engine_kind=builtin_reserved|builtin_signaling_stub|browser_peer`
+  - `peer.media_engine_kind=builtin_reserved|builtin_signaling_stub|builtin_native_plugin|browser_peer`
   - `peer.media_engine_state=planned|starting|signaling_ready|answer_ready|signaling_active|stopping|stopped|failed`
   - `peer.media_state_updated_unix_ms`
   - `peer.media_events_total`, `peer.media_remote_offers_seen`, `peer.media_answers_sent`,
@@ -259,10 +260,15 @@ A v0 smoke test should:
   emits a normal builtin runtime snapshot, answers remote offers with a stub SDP answer, and terminates on remote or
   local `bye`. It is intentionally limited to signaling/runtime control; the real agentd-native RTP/WebRTC media
   engine is still the remaining gap.
+- When builtin mode is enabled through `audio_webrtc.builtin_mode=native_plugin` plus
+  `audio_webrtc.builtin_native_library_path` (or the matching `AGENTD_AUDIO_WEBRTC_*` env vars),
+  `runtime_kind=builtin` now loads a process-local media-engine provider shared library through a stable C ABI. That
+  gives agentd a real native backend load path, direct availability/loadability reporting, and smoke/unit proof without
+  yet baking a specific WebRTC/SRTP stack into the tree.
 - That runtime contract now also exposes the media-engine seam directly: planned/live builtin paths report
-  `media_engine_kind=builtin_reserved|builtin_signaling_stub`, bundled/external runtimes report
-  `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` remain `false` until the real
-  embedded agentd-native RTP engine exists.
+  `media_engine_kind=builtin_reserved|builtin_signaling_stub|builtin_native_plugin`, bundled/external runtimes report
+  `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` now distinguish the
+  signaling-only stub from a loadable native media provider.
 - Builtin runtime observability is now explicit too: normalized per-session JSONL events and the persisted/live runtime
   snapshot both surface `media_engine_state` plus cumulative counters for offers, answers, candidates, and `bye`
   events, so the future native engine can inherit one operator-facing status contract instead of inventing telemetry
@@ -275,17 +281,17 @@ A v0 smoke test should:
 - That managed runtime now also performs bounded startup confirmation and fails closed when the child exits before ready,
   cleaning up any agentd-owned broker audio session created for the failed start.
 - The operator-configured backend seam is now also durable daemon config (`audio_webrtc.peer_tool_path`,
-  `audio_webrtc.node_bin`, `audio_webrtc.builtin_mode`, and `audio_webrtc.default_runtime_kind`) rather than env-only.
-  `default_runtime_kind` may be `builtin`, `bundled`, or `external`: config/env can intentionally pin the native
-  backend, while `builtin_mode=signaling_stub` controls whether the experimental in-process builtin runtime is
-  launchable or still surfaces as unavailable. Daemon startup also honors
-  `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND` and `AGENTD_AUDIO_WEBRTC_BUILTIN_MODE`, which surface as
-  `default_runtime_kind_source=env` and `builtin_mode=signaling_stub` respectively.
+  `audio_webrtc.node_bin`, `audio_webrtc.builtin_mode`, `audio_webrtc.builtin_native_library_path`, and
+  `audio_webrtc.default_runtime_kind`) rather than env-only. `default_runtime_kind` may be `builtin`, `bundled`, or
+  `external`: config/env can intentionally pin the native backend, while `builtin_mode=signaling_stub|native_plugin`
+  controls whether the experimental in-process builtin runtime is launchable or still surfaces as unavailable. Daemon
+  startup also honors `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND`, `AGENTD_AUDIO_WEBRTC_BUILTIN_MODE`, and
+  `AGENTD_AUDIO_WEBRTC_BUILTIN_NATIVE_LIBRARY`, which surface as explicit runtime/config metadata.
 - Safe daemon config now reports the same backend availability facts (`builtin_available`, `bundled_available`,
   `external_available`, `default_runtime_kind_available`) plus unavailable reasons and the explicit `builtin_mode`, so
   a configured default such as `external` can be seen as unavailable before start-time failure, `builtin` can be seen
-  as intentionally disabled vs experimentally enabled, and misconfigured `node_bin` now shows up as an unlaunchable
-  backend rather than only surfacing after a start request.
+  as intentionally disabled vs experimentally enabled, and misconfigured `node_bin` or native provider library can now
+  show up as an unlaunchable backend rather than only surfacing after a start request.
 - If persisted daemon config is corrupted to an invalid `audio_webrtc.default_runtime_kind`, agentd now self-heals that
   field back to `auto` on load and rewrites the SQLite runtime-config record instead of surfacing impossible state.
 
@@ -295,7 +301,8 @@ A v0 smoke test should:
 - Do we need a broker-issued ephemeral token for direct agentd signaling as a fallback?
 - How should the broker authenticate agentd participation (mTLS vs bearer)?
 - How should the shipped managed media peer move from a Node/Playwright child runtime into an embedded long-lived agentd-native media service?
-- How should the builtin backend graduate from the current signaling-stub runtime to terminating WebRTC/SRTP natively inside agentd without inheriting the current child-process browser dependency?
+- Which concrete native WebRTC/SRTP stack should back `builtin_mode=native_plugin` when we replace the current mock
+  provider with a real embedded RTP/media engine?
 
 ## References
 

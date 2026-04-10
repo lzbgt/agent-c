@@ -26,6 +26,14 @@ VoicePeerMediaEngineInfo voice_peer_media_engine_info_for_runtime_kind(
   const std::string& runtime_kind
 );
 
+std::string builtin_voice_peer_native_library_path(const DaemonConfig& cfg);
+
+bool builtin_voice_peer_native_media_engine_available(
+  const DaemonConfig& cfg,
+  VoicePeerMediaEngineInfo* out_info,
+  std::string* out_err
+);
+
 void apply_voice_peer_media_engine_info(
   const VoicePeerMediaEngineInfo& info,
   VoicePeerMediaRuntimePlan* plan

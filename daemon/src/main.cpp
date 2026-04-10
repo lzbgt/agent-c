@@ -752,10 +752,15 @@ int main(int argc, char** argv) {
   if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_PEER_NODE_BIN")) {
     cfg.audio_webrtc_peer_node_bin = p;
   }
+  if (cfg.audio_webrtc_builtin_native_library_path.empty()) {
+    if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_BUILTIN_NATIVE_LIBRARY")) {
+      cfg.audio_webrtc_builtin_native_library_path = p;
+    }
+  }
   if (cfg.audio_webrtc_builtin_mode.empty()) {
     if (const char* p = getenv_s("AGENTD_AUDIO_WEBRTC_BUILTIN_MODE")) {
       const std::string mode = lower_copy(trim_copy(p));
-      if (mode == "signaling_stub") cfg.audio_webrtc_builtin_mode = mode;
+      if (mode == "signaling_stub" || mode == "native_plugin") cfg.audio_webrtc_builtin_mode = mode;
     }
   }
   if (cfg.audio_webrtc_default_runtime_kind.empty()) {

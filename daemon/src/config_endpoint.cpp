@@ -2038,7 +2038,7 @@ void handle_config_update_endpoint(
   }
 
   // Managed voice/WebRTC defaults:
-  // - audio_webrtc: { "broker_url": "...", "broker_token": "...", "peer_tool_path": "...", "builtin_mode": "signaling_stub", "default_runtime_kind": "builtin|bundled|external", "node_bin": "..." } (null clears)
+  // - audio_webrtc: { "broker_url": "...", "broker_token": "...", "peer_tool_path": "...", "builtin_native_library_path": "...", "builtin_mode": "signaling_stub|native_plugin", "default_runtime_kind": "builtin|bundled|external", "node_bin": "..." } (null clears)
   if (args.isMember("audio_webrtc")) {
     if (!args["audio_webrtc"].isObject()) {
       Json::Value o(Json::objectValue);
@@ -2094,16 +2094,31 @@ void handle_config_update_endpoint(
         return;
       }
     }
+    if (aw.isMember("builtin_native_library_path")) {
+      const Json::Value& v = aw["builtin_native_library_path"];
+      if (v.isNull()) {
+        next.audio_webrtc_builtin_native_library_path.clear();
+      } else if (v.isString()) {
+        next.audio_webrtc_builtin_native_library_path = trim_copy(v.asString());
+      } else {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "audio_webrtc.builtin_native_library_path must be a string or null";
+        resp->status = 400;
+        resp->body = json_stringify(o);
+        return;
+      }
+    }
     if (aw.isMember("builtin_mode")) {
       const Json::Value& v = aw["builtin_mode"];
       if (v.isNull()) {
         next.audio_webrtc_builtin_mode.clear();
       } else if (v.isString()) {
         const std::string mode = lower_copy(trim_copy(v.asString()));
-        if (!mode.empty() && mode != "signaling_stub") {
+        if (!mode.empty() && mode != "signaling_stub" && mode != "native_plugin") {
           Json::Value o(Json::objectValue);
           o["ok"] = false;
-          o["error"] = "audio_webrtc.builtin_mode must be signaling_stub or null";
+          o["error"] = "audio_webrtc.builtin_mode must be signaling_stub, native_plugin, or null";
           resp->status = 400;
           resp->body = json_stringify(o);
           return;

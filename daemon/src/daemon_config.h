@@ -151,7 +151,12 @@ struct DaemonConfig {
   // Empty means disabled. `signaling_stub` enables an in-process native signaling/runtime
   // service that can own broker session lifecycle and answer offers with the shared stub
   // signaling helper, but it does not replace the shipped browser RTP media path yet.
+  // `native_plugin` loads a process-local media-engine provider shared library via
+  // `audio_webrtc_builtin_native_library_path`.
   std::string audio_webrtc_builtin_mode;
+  // Optional native builtin media-engine provider library path used when
+  // `audio_webrtc_builtin_mode=native_plugin`.
+  std::string audio_webrtc_builtin_native_library_path;
   // Optional durable preferred backend for managed WebRTC runtime selection.
   // Empty means "auto" (prefer bundled when discoverable, else external).
   std::string audio_webrtc_default_runtime_kind;

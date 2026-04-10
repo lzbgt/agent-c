@@ -1,5 +1,6 @@
 #include "session_voice_backend_policy.h"
 
+#include "session_voice_builtin_media_engine.h"
 #include "string_util.h"
 
 #include <cstdlib>
@@ -80,7 +81,7 @@ static std::string configured_default_voice_peer_runtime_kind(const DaemonConfig
 
 static std::string configured_voice_peer_builtin_runtime_mode(const DaemonConfig& cfg) {
   const std::string mode = lower_copy(trim_copy(cfg.audio_webrtc_builtin_mode));
-  if (mode == "signaling_stub") return mode;
+  if (mode == "signaling_stub" || mode == "native_plugin") return mode;
   return "";
 }
 
@@ -136,9 +137,18 @@ std::string default_voice_peer_runtime_kind(const DaemonConfig& cfg) {
 std::string voice_peer_backend_unavailable_reason(const DaemonConfig& cfg, const std::string& runtime_kind) {
   const std::string kind = lower_copy(trim_copy(runtime_kind));
   if (kind == "builtin") {
-    return builtin_voice_peer_runtime_enabled(cfg)
-      ? ""
-      : "builtin voice_webrtc_peer runtime disabled";
+    const std::string builtin_mode = voice_peer_builtin_runtime_mode(cfg);
+    if (builtin_mode == "disabled") return "builtin voice_webrtc_peer runtime disabled";
+    if (builtin_mode == "native_plugin") {
+      VoicePeerMediaEngineInfo native_info;
+      std::string native_err;
+      if (!builtin_voice_peer_native_media_engine_available(cfg, &native_info, &native_err)) {
+        return trim_copy(native_err).empty()
+          ? "builtin native media engine unavailable"
+          : native_err;
+      }
+    }
+    return "";
   }
 
   const std::string node_bin = trim_copy(
@@ -199,6 +209,7 @@ Json::Value session_voice_webrtc_backend_metadata_json(const DaemonConfig& cfg) 
   Json::Value out(Json::objectValue);
   out["builtin_available"] = builtin_reason.empty();
   out["builtin_mode"] = voice_peer_builtin_runtime_mode(cfg);
+  out["builtin_native_library_path_configured"] = !builtin_voice_peer_native_library_path(cfg).empty();
   out["bundled_available"] = bundled_reason.empty();
   out["external_available"] = external_reason.empty();
   out["default_runtime_kind"] = default_runtime_kind;

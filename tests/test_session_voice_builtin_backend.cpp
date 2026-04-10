@@ -16,6 +16,10 @@ using agentd::voice_peer_runtime_registry_mutex;
 using agentd::start_voice_peer_builtin_backend;
 using agentd::voice_peer_runtime_to_json;
 
+#ifndef AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH
+#define AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH ""
+#endif
+
 static VoicePeerStartPlan make_plan() {
   VoicePeerStartPlan plan;
   plan.runtime_kind = "builtin";
@@ -138,11 +142,51 @@ static void test_builtin_backend_enabled_signaling_stub_starts_runtime() {
   }
 }
 
+static void test_builtin_backend_enabled_native_plugin_starts_runtime() {
+  DaemonConfig cfg;
+  cfg.state_dir = "/tmp/agentd-state";
+  cfg.audio_webrtc_builtin_mode = "native_plugin";
+  cfg.audio_webrtc_builtin_native_library_path = AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH;
+  VoicePeerStartPlan plan = make_plan();
+  plan.effective_broker_url = "http://127.0.0.1:9";
+  plan.broker_token = "tok";
+  plan.requested_broker_session_id = "sess-native";
+  plan.requested_broker_session_preflighted = true;
+  plan.requested_broker_session_mode = "webrtc";
+  plan.broker_agent_id.clear();
+  plan.broker_deployment_id.clear();
+
+  VoicePeerBackendStartResult result;
+  assert(start_voice_peer_builtin_backend(cfg, "voice-sid-native", plan, &result));
+  assert(result.ok);
+  assert(result.http_status == 200);
+  assert(result.state);
+  assert(result.state->runtime_kind == "builtin");
+  assert(result.state->media_engine_kind == "builtin_native_plugin");
+  assert(result.state->native_media_supported);
+  assert(result.state->native_media_active);
+  assert(result.state->media_engine_state == "signaling_ready");
+  assert(result.state->media_events_total == 2);
+  assert(result.state->managed_broker_session == false);
+
+  bool stopped = false;
+  std::string stop_err;
+  assert(stop_builtin_voice_peer_runtime_service(
+    result.state,
+    voice_peer_runtime_registry_mutex(),
+    3000,
+    &stopped,
+    &stop_err));
+  assert(stop_err.empty());
+  assert(stopped);
+}
+
 }  // namespace
 
 int main() {
   test_builtin_backend_returns_planned_runtime_state();
   test_builtin_backend_borrowed_session_preview_is_not_managed();
   test_builtin_backend_enabled_signaling_stub_starts_runtime();
+  test_builtin_backend_enabled_native_plugin_starts_runtime();
   return 0;
 }

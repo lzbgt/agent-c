@@ -6565,9 +6565,10 @@ export interface components {
                     broker_url_default_configured?: boolean;
                     broker_token_default_configured?: boolean;
                     peer_tool_path_configured?: boolean;
+                    builtin_native_library_path_configured?: boolean;
                     builtin_available?: boolean;
                     /** @enum {string} */
-                    builtin_mode?: "disabled" | "signaling_stub";
+                    builtin_mode?: "disabled" | "signaling_stub" | "native_plugin";
                     bundled_available?: boolean;
                     external_available?: boolean;
                     builtin_unavailable_reason?: string;
@@ -6869,11 +6870,13 @@ export interface components {
                 broker_token?: string | null;
                 /** @description External helper tool path for `runtime_kind=external` (null clears) */
                 peer_tool_path?: string | null;
+                /** @description Shared-library path for `audio_webrtc.builtin_mode=native_plugin` (null clears) */
+                builtin_native_library_path?: string | null;
                 /**
-                 * @description Experimental builtin managed WebRTC runtime mode. `signaling_stub` enables the in-process native signaling stub backend; null disables builtin runtime availability.
+                 * @description Experimental builtin managed WebRTC runtime mode. `signaling_stub` enables the in-process native signaling stub backend; `native_plugin` loads a process-local native media-engine provider shared library from `builtin_native_library_path`; null disables builtin runtime availability.
                  * @enum {string|null}
                  */
-                builtin_mode?: "signaling_stub" | null;
+                builtin_mode?: "signaling_stub" | "native_plugin" | null;
                 /**
                  * @description Preferred default managed WebRTC backend when callers omit `runtime_kind` (null resets to auto selection)
                  * @enum {string|null}
@@ -6967,9 +6970,10 @@ export interface components {
                 broker_url_default_configured?: boolean;
                 broker_token_default_configured?: boolean;
                 peer_tool_path_configured?: boolean;
+                builtin_native_library_path_configured?: boolean;
                 builtin_available?: boolean;
                 /** @enum {string} */
-                builtin_mode?: "disabled" | "signaling_stub";
+                builtin_mode?: "disabled" | "signaling_stub" | "native_plugin";
                 bundled_available?: boolean;
                 external_available?: boolean;
                 builtin_unavailable_reason?: string;
@@ -7996,10 +8000,10 @@ export interface components {
             /** @enum {string} */
             runtime_kind: "builtin" | "bundled" | "external";
             /**
-             * @description Concrete media-engine family the selected runtime will use. `browser_peer` means the shipped browser-backed RTP path, `builtin_reserved` means builtin was selected but native media is still disabled, and `builtin_signaling_stub` means the experimental in-process signaling-only builtin runtime.
+             * @description Concrete media-engine family the selected runtime will use. `browser_peer` means the shipped browser-backed RTP path, `builtin_reserved` means builtin was selected but native media is still disabled, `builtin_signaling_stub` means the experimental in-process signaling-only builtin runtime, and `builtin_native_plugin` means builtin loads a process-local native media-engine provider shared library.
              * @enum {string}
              */
-            media_engine_kind: "builtin_reserved" | "builtin_signaling_stub" | "browser_peer";
+            media_engine_kind: "builtin_reserved" | "builtin_signaling_stub" | "builtin_native_plugin" | "browser_peer";
             session_id: string;
             broker_session_id?: string;
             broker_url: string;
@@ -8016,7 +8020,7 @@ export interface components {
             poll_interval_ms: number;
             /** Format: int64 */
             tone_hz: number;
-            /** @description Whether this runtime plan terminates media natively inside agentd instead of delegating RTP/media handling to the shipped browser peer. Current shipped values are `false`. */
+            /** @description Whether this runtime plan terminates media natively inside agentd instead of delegating RTP/media handling to the shipped browser peer. `builtin_native_plugin` plans report `true`; the shipped signaling stub still reports `false`. */
             native_media_supported: boolean;
         };
         VoiceWebRtcPeerBuiltinStartContract: {
@@ -8049,10 +8053,10 @@ export interface components {
             /** @enum {string} */
             runtime_kind: "builtin" | "bundled" | "external";
             /**
-             * @description Concrete media-engine family for the live or planned runtime. `browser_peer` means the bundled/external browser-backed RTP path, `builtin_reserved` means builtin was requested but native media is still unavailable, and `builtin_signaling_stub` means the experimental in-process signaling-only builtin runtime.
+             * @description Concrete media-engine family for the live or planned runtime. `browser_peer` means the bundled/external browser-backed RTP path, `builtin_reserved` means builtin was requested but native media is still unavailable, `builtin_signaling_stub` means the experimental in-process signaling-only builtin runtime, and `builtin_native_plugin` means builtin loads a process-local native media-engine provider shared library.
              * @enum {string}
              */
-            media_engine_kind: "builtin_reserved" | "builtin_signaling_stub" | "browser_peer";
+            media_engine_kind: "builtin_reserved" | "builtin_signaling_stub" | "builtin_native_plugin" | "browser_peer";
             /**
              * @description Best-effort lifecycle state for the selected media engine. Current builtin runtime transitions through `starting`, `signaling_ready`, `answer_ready`, `signaling_active`, and terminal `stopped|failed`; planned previews use `planned`.
              * @enum {string}
@@ -8123,7 +8127,7 @@ export interface components {
             /** @enum {string} */
             action: "start" | "stop";
             /**
-             * @description Optional backend selector for `action=start`; ignored on `action=stop`. `bundled` uses the shipped repo-local Node/Playwright peer when discoverable, `external` uses an operator-configured helper path, and `builtin` uses the experimental in-process native signaling stub when `audio_webrtc.builtin_mode=signaling_stub` or `AGENTD_AUDIO_WEBRTC_BUILTIN_MODE=signaling_stub` is enabled. When builtin mode is disabled, the same request and non-mutating broker-session preflight validation still applies before returning the unavailable response.
+             * @description Optional backend selector for `action=start`; ignored on `action=stop`. `bundled` uses the shipped repo-local Node/Playwright peer when discoverable, `external` uses an operator-configured helper path, and `builtin` uses either the in-process signaling stub (`audio_webrtc.builtin_mode=signaling_stub`) or a process-local native media-engine provider shared library (`audio_webrtc.builtin_mode=native_plugin` plus `audio_webrtc.builtin_native_library_path`). When builtin mode is disabled or unavailable, the same request and non-mutating broker-session preflight validation still applies before returning the unavailable response.
              * @enum {string}
              */
             runtime_kind?: "builtin" | "bundled" | "external";
@@ -8155,8 +8159,9 @@ export interface components {
             session_id: string;
             tool_configured: boolean;
             builtin_available: boolean;
+            builtin_native_library_path_configured?: boolean;
             /** @enum {string} */
-            builtin_mode?: "disabled" | "signaling_stub";
+            builtin_mode?: "disabled" | "signaling_stub" | "native_plugin";
             bundled_available: boolean;
             external_available: boolean;
             builtin_unavailable_reason?: string;
@@ -8199,8 +8204,9 @@ export interface components {
             session_id: string;
             tool_configured: boolean;
             builtin_available: boolean;
+            builtin_native_library_path_configured?: boolean;
             /** @enum {string} */
-            builtin_mode?: "disabled" | "signaling_stub";
+            builtin_mode?: "disabled" | "signaling_stub" | "native_plugin";
             bundled_available: boolean;
             external_available: boolean;
             builtin_unavailable_reason?: string;

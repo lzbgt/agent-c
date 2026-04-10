@@ -6,8 +6,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/agentd_smoke_lib.sh"
 
 AGENTD_BIN="${1:-}"
+BUILTIN_MODE="${2:-signaling_stub}"
+BUILTIN_NATIVE_LIBRARY="${3:-}"
 if [[ -z "${AGENTD_BIN}" ]]; then
-  echo "usage: $0 <agentd>" >&2
+  echo "usage: $0 <agentd> [signaling_stub|native_plugin] [builtin_native_library]" >&2
   exit 2
 fi
 if [[ ! -x "${AGENTD_BIN}" ]]; then
@@ -30,9 +32,10 @@ if [[ -f "${PG_LIB}" ]]; then
 fi
 
 ROOT="$(agentd_smoke_project_root)"
+MODE_TAG="$(printf '%s' "${BUILTIN_MODE}" | tr -cs '[:alnum:]' '_' | sed 's/^_//;s/_$//')"
 LOG_DIR="${ROOT}/build"
 mkdir -p "${LOG_DIR}"
-LOG_FILE="${LOG_DIR}/agentd_session_voice_webrtc_peer_builtin_smoke.log"
+LOG_FILE="${LOG_DIR}/agentd_session_voice_webrtc_peer_builtin_smoke_${MODE_TAG}.log"
 
 PG_DSN_OVERRIDE="${AGENTD_TEST_PG_DSN:-}"
 USE_DOCKER="1"
@@ -55,7 +58,7 @@ if [[ "${USE_DOCKER}" == "0" && -z "${PG_DSN_OVERRIDE}" ]]; then
   fi
 fi
 
-POSTGRES_NAME="agentd_voice_builtin_smoke"
+POSTGRES_NAME="agentd_voice_builtin_smoke_${MODE_TAG}"
 BROKER_PID=""
 PG_PORT=""
 BROKER_PORT=""
@@ -157,14 +160,22 @@ fi
 
 DAEMON_TOKEN="agentd-builtin-smoke-token"
 export AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}"
-export AGENTD_AUDIO_WEBRTC_BUILTIN_MODE="signaling_stub"
+export AGENTD_AUDIO_WEBRTC_BUILTIN_MODE="${BUILTIN_MODE}"
 export AGENTD_AUDIO_WEBRTC_BROKER_URL="http://127.0.0.1:${BROKER_PORT}"
 export AGENTD_AUDIO_WEBRTC_BROKER_TOKEN="audio-agentd-token"
+if [[ "${BUILTIN_MODE}" == "native_plugin" ]]; then
+  if [[ -z "${BUILTIN_NATIVE_LIBRARY}" || ! -f "${BUILTIN_NATIVE_LIBRARY}" ]]; then
+    echo "SKIP: builtin native media engine library missing for native_plugin mode" >&2
+    exit 77
+  fi
+  export AGENTD_AUDIO_WEBRTC_BUILTIN_NATIVE_LIBRARY="${BUILTIN_NATIVE_LIBRARY}"
+fi
 agentd_smoke_start "${AGENTD_BIN}" "127.0.0.1" "${DAEMON_PORT}" "agentd_session_voice_webrtc_peer_builtin_smoke" >>"${LOG_FILE}" 2>&1
 unset AGENTD_AUTH_TOKEN
 unset AGENTD_AUDIO_WEBRTC_BUILTIN_MODE
 unset AGENTD_AUDIO_WEBRTC_BROKER_URL
 unset AGENTD_AUDIO_WEBRTC_BROKER_TOKEN
+unset AGENTD_AUDIO_WEBRTC_BUILTIN_NATIVE_LIBRARY
 
 DAEMON_URL="http://127.0.0.1:${DAEMON_PORT}"
 for _ in $(seq 1 100); do
@@ -189,20 +200,23 @@ START_JSON="$(curl -fsS --noproxy "*" --max-time 10 \
   -d "{\"session_id\":\"${SESSION_ID}\",\"action\":\"start\",\"runtime_kind\":\"builtin\",\"broker_agent_id\":\"a-1\",\"broker_deployment_id\":\"builtin-smoke\"}" \
   "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
 
-BROKER_SESSION_ID="$(python3 - "${START_JSON}" <<'PY'
+BROKER_SESSION_ID="$(python3 - "${START_JSON}" "${BUILTIN_MODE}" <<'PY'
 import json, sys
 obj = json.loads(sys.argv[1])
+mode = sys.argv[2]
 assert obj.get("ok") is True, obj
 assert obj.get("builtin_available") is True, obj
 peer = obj.get("peer") or {}
 assert peer.get("runtime_kind") == "builtin", obj
-assert peer.get("media_engine_kind") == "builtin_signaling_stub", obj
+expected_kind = "builtin_signaling_stub" if mode == "signaling_stub" else "builtin_native_plugin"
+expected_native_supported = mode == "native_plugin"
+assert peer.get("media_engine_kind") == expected_kind, obj
 assert peer.get("media_engine_state") == "signaling_ready", obj
 assert peer.get("media_events_total") == 2, obj
 assert peer.get("media_answers_sent") == 0, obj
 assert peer.get("media_remote_offers_seen") == 0, obj
-assert peer.get("native_media_supported") is False, obj
-assert peer.get("native_media_active") is False, obj
+assert peer.get("native_media_supported") is expected_native_supported, obj
+assert peer.get("native_media_active") is expected_native_supported, obj
 assert peer.get("running") is True and peer.get("ready") is True, obj
 assert peer.get("managed_broker_session") is True, obj
 assert obj.get("builtin_start_contract", {}).get("mutating_broker_actions_deferred") is False, obj
@@ -252,13 +266,15 @@ curl -fsS --noproxy "*" --max-time 10 \
 
 wait "${LISTENER_PID}"
 
-python3 - "${ANSWER_FILE}" <<'PY'
+python3 - "${ANSWER_FILE}" "${BUILTIN_MODE}" <<'PY'
 import json, sys
 msg = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+mode = sys.argv[2]
 payload = msg.get("payload") or {}
 assert msg.get("type") == "answer", msg
 assert payload.get("type") == "answer", msg
-assert payload.get("sdp") == "stub-answer", msg
+expected_sdp = "stub-answer" if mode == "signaling_stub" else "native-plugin-answer"
+assert payload.get("sdp") == expected_sdp, msg
 assert payload.get("sender_tag") == "agentd_runtime_peer", msg
 PY
 
@@ -336,4 +352,4 @@ except urllib.error.HTTPError as exc:
         raise
 PY
 
-echo "agentd_session_voice_webrtc_peer_builtin_smoke OK"
+echo "agentd_session_voice_webrtc_peer_builtin_smoke ${BUILTIN_MODE} OK"

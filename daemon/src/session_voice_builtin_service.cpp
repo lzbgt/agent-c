@@ -244,7 +244,7 @@ void builtin_voice_peer_service_main(
             return false;
           }
 
-          Json::Value sent_answer = make_builtin_voice_peer_event("stub_answer_sent", service->session_id);
+          Json::Value sent_answer = make_builtin_voice_peer_event("answer_sent", service->session_id);
           sent_answer["remote_offer_type"] = ready.description.type;
           if (service->media_engine) {
             const VoicePeerMediaEngineInfo info = service->media_engine->info();
@@ -447,7 +447,7 @@ bool start_builtin_voice_peer_runtime_service(
   started["broker_session_id"] = binding.broker_session_id;
   started["managed_broker_session"] = binding.managed_broker_session;
   started["media_engine_kind"] = runtime->media_engine_kind;
-  started["media_engine_state"] = "signaling_ready";
+  started["media_engine_state"] = runtime->media_engine_state;
   started["native_media_supported"] = runtime->native_media_supported;
   started["native_media_active"] = runtime->native_media_active;
   append_builtin_voice_peer_event_and_snapshot(

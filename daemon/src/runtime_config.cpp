@@ -60,7 +60,7 @@ static bool is_valid_voice_runtime_kind(const std::string& s_in) {
 
 static bool is_valid_voice_builtin_mode(const std::string& s_in) {
   const std::string s = lower_copy(trim_copy(s_in));
-  return s.empty() || s == "signaling_stub";
+  return s.empty() || s == "signaling_stub" || s == "native_plugin";
 }
 
 static bool is_valid_edge_consensus_runtime_kind(const std::string& s_in) {
@@ -138,6 +138,14 @@ bool load_runtime_config_best_effort(
           if (aw["peer_tool_path"].isNull()) cfg_io->audio_webrtc_peer_tool_path.clear();
           else if (aw["peer_tool_path"].isString()) {
             cfg_io->audio_webrtc_peer_tool_path = trim_copy(aw["peer_tool_path"].asString());
+          }
+        }
+        if (aw.isMember("builtin_native_library_path")) {
+          if (aw["builtin_native_library_path"].isNull()) {
+            cfg_io->audio_webrtc_builtin_native_library_path.clear();
+          } else if (aw["builtin_native_library_path"].isString()) {
+            cfg_io->audio_webrtc_builtin_native_library_path =
+              trim_copy(aw["builtin_native_library_path"].asString());
           }
         }
         if (aw.isMember("builtin_mode")) {
@@ -818,6 +826,9 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
     aw["peer_tool_path"] = cfg.audio_webrtc_peer_tool_path.empty()
       ? Json::Value(Json::nullValue)
       : Json::Value(cfg.audio_webrtc_peer_tool_path);
+    aw["builtin_native_library_path"] = cfg.audio_webrtc_builtin_native_library_path.empty()
+      ? Json::Value(Json::nullValue)
+      : Json::Value(cfg.audio_webrtc_builtin_native_library_path);
     aw["builtin_mode"] = cfg.audio_webrtc_builtin_mode.empty()
       ? Json::Value(Json::nullValue)
       : Json::Value(cfg.audio_webrtc_builtin_mode);

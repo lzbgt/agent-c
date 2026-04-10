@@ -12,6 +12,10 @@ using agentd::build_voice_peer_builtin_start_preview;
 using agentd::DaemonConfig;
 using agentd::voice_peer_runtime_to_json;
 
+#ifndef AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH
+#define AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH ""
+#endif
+
 static void test_borrowed_broker_session_contract() {
   DaemonConfig cfg;
   cfg.state_dir = "/tmp/agentd-state";
@@ -160,11 +164,35 @@ static void test_enabled_builtin_contract_marks_runtime_live_path() {
   assert(out["planned_runtime"].isMember("last_error") == false);
 }
 
+static void test_native_plugin_builtin_contract_marks_native_media_path() {
+  DaemonConfig cfg;
+  cfg.state_dir = "/tmp/agentd-state";
+  cfg.audio_webrtc_builtin_mode = "native_plugin";
+  cfg.audio_webrtc_builtin_native_library_path = AGENTD_TEST_VOICE_MEDIA_ENGINE_PLUGIN_PATH;
+  VoicePeerStartPlan plan;
+  plan.runtime_kind = "builtin";
+  plan.effective_broker_url = "http://broker";
+  plan.requested_broker_session_id = "sess-native";
+  plan.requested_broker_session_preflighted = true;
+  plan.requested_broker_session_mode = "webrtc";
+  plan.sender_tag = "agentd_runtime_peer";
+
+  const Json::Value out = session_voice_builtin_start_contract_json(cfg, "voice-sid", plan);
+  assert(out["mutating_broker_actions_deferred"].asBool() == false);
+  assert(out["media_runtime_plan"]["media_engine_kind"].asString() == "builtin_native_plugin");
+  assert(out["media_runtime_plan"]["native_media_supported"].asBool() == true);
+  assert(out["planned_runtime"]["media_engine_kind"].asString() == "builtin_native_plugin");
+  assert(out["planned_runtime"]["native_media_supported"].asBool() == true);
+  assert(out["planned_runtime"]["native_media_active"].asBool() == false);
+  assert(out["planned_runtime"].isMember("last_error") == false);
+}
+
 }  // namespace
 
 int main() {
   test_borrowed_broker_session_contract();
   test_auto_create_broker_session_contract();
   test_enabled_builtin_contract_marks_runtime_live_path();
+  test_native_plugin_builtin_contract_marks_native_media_path();
   return 0;
 }
