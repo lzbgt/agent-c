@@ -71,6 +71,12 @@ Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   if (!st.srtp_last_error.empty()) out["srtp_last_error"] = st.srtp_last_error;
   out["dtls_packets_sent"] = Json::Int64(st.dtls_packets_sent);
   out["dtls_packets_received"] = Json::Int64(st.dtls_packets_received);
+  out["rtp_packets_received"] = Json::Int64(st.rtp_packets_received);
+  out["rtp_payload_bytes_received"] = Json::Int64(st.rtp_payload_bytes_received);
+  if (st.rtp_last_payload_type >= 0) out["rtp_last_payload_type"] = Json::Int64(st.rtp_last_payload_type);
+  if (st.rtp_last_sequence >= 0) out["rtp_last_sequence"] = Json::Int64(st.rtp_last_sequence);
+  if (st.rtp_last_timestamp > 0) out["rtp_last_timestamp"] = Json::Int64(st.rtp_last_timestamp);
+  if (st.rtp_last_ssrc > 0) out["rtp_last_ssrc"] = Json::Int64(st.rtp_last_ssrc);
   if (st.native_media_provider.isObject()) out["native_media_provider"] = st.native_media_provider;
   out["ready"] = st.ready;
   out["running"] = st.running;
@@ -305,6 +311,30 @@ bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, s
   if (v.isMember("dtls_packets_received") &&
       (v["dtls_packets_received"].isInt64() || v["dtls_packets_received"].isUInt64())) {
     st.dtls_packets_received = v["dtls_packets_received"].asInt64();
+  }
+  if (v.isMember("rtp_packets_received") &&
+      (v["rtp_packets_received"].isInt64() || v["rtp_packets_received"].isUInt64())) {
+    st.rtp_packets_received = v["rtp_packets_received"].asInt64();
+  }
+  if (v.isMember("rtp_payload_bytes_received") &&
+      (v["rtp_payload_bytes_received"].isInt64() || v["rtp_payload_bytes_received"].isUInt64())) {
+    st.rtp_payload_bytes_received = v["rtp_payload_bytes_received"].asInt64();
+  }
+  if (v.isMember("rtp_last_payload_type") &&
+      (v["rtp_last_payload_type"].isInt64() || v["rtp_last_payload_type"].isUInt64())) {
+    st.rtp_last_payload_type = v["rtp_last_payload_type"].asInt64();
+  }
+  if (v.isMember("rtp_last_sequence") &&
+      (v["rtp_last_sequence"].isInt64() || v["rtp_last_sequence"].isUInt64())) {
+    st.rtp_last_sequence = v["rtp_last_sequence"].asInt64();
+  }
+  if (v.isMember("rtp_last_timestamp") &&
+      (v["rtp_last_timestamp"].isInt64() || v["rtp_last_timestamp"].isUInt64())) {
+    st.rtp_last_timestamp = v["rtp_last_timestamp"].asInt64();
+  }
+  if (v.isMember("rtp_last_ssrc") &&
+      (v["rtp_last_ssrc"].isInt64() || v["rtp_last_ssrc"].isUInt64())) {
+    st.rtp_last_ssrc = v["rtp_last_ssrc"].asInt64();
   }
   if (v.isMember("native_media_provider") && v["native_media_provider"].isObject()) {
     st.native_media_provider = v["native_media_provider"];

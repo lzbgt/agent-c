@@ -402,7 +402,7 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
     `default_runtime_kind_unavailable_reason`
   - `peer.runtime_kind=builtin|bundled|external`
   - `peer.media_engine_kind=builtin_reserved|builtin_signaling_stub|builtin_native_plugin|browser_peer`
-  - `peer.media_engine_state=planned|starting|signaling_ready|answer_ready|signaling_active|stopping|stopped|failed`
+  - `peer.media_engine_state=planned|starting|signaling_ready|answer_ready|signaling_active|transport_connected|dtls_connected|media_transport_ready|media_active|stopping|stopped|failed`
   - `peer.media_state_updated_unix_ms`
   - `peer.media_events_total`, `peer.media_remote_offers_seen`, `peer.media_answers_sent`,
     `peer.media_remote_candidates_seen`, `peer.media_remote_byes_seen`, `peer.media_local_byes_sent`
@@ -487,18 +487,18 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   - `./build/libagentd_voice_builtin_media_engine_sample.{so,dylib,dll}` as the minimal answer-exchange sample
   - `./build/libagentd_voice_builtin_media_engine_embedded_transport.{so,dylib,dll}` when `libjuice + libsrtp2 + usrsctp`
     are available at build time
-  The embedded transport provider is still honest about the remaining gap: it uses real `libjuice`, `libsrtp`, and
-  `usrsctp` libraries and reports that provider metadata/capabilities through the normal runtime seam, but it still
-  reports `peer.native_media_supported=false` / `peer.native_media_active=false` because agentd has not embedded a full
-  DTLS/RTP media plane yet. What is now shipped and proved is narrower but real: the provider starts libjuice candidate
-  gathering before returning its answer, emits a candidate-bearing answer SDP through the `native_plugin` ABI, generates
-  an ephemeral DTLS identity, and mirrors browser-style media offers into an inactive answer shape with
-  `a=setup:passive` plus a surfaced SHA-256 fingerprint. The repo now also has direct in-tree DTLS proof for the same
-  OpenSSL configuration: `session_voice_builtin_dtls_transport_tests` completes a DTLS 1.2 client/server handshake over
-  datagram-memory BIOs, negotiates `SRTP_AES128_CM_SHA1_80`, exports DTLS-SRTP keying material, derives real inbound /
-  outbound libsrtp contexts from that exporter output, and successfully protects then unprotects a sample RTP packet.
-  The embedded provider itself now surfaces DTLS and SRTP-session readiness telemetry too, even though the end-to-end
-  native-plugin transport path still does not terminate RTP audio inside agentd.
+  The embedded transport provider now crosses a stricter threshold than the sample provider: it uses real `libjuice`,
+  `libsrtp`, and `usrsctp` libraries, reports `peer.native_media_supported=true`, and now terminates inbound SRTP/RTP
+  packets inside agentd. What is still *not* shipped is a full bidirectional audio engine. The current provider starts
+  libjuice candidate gathering before returning its answer, emits a candidate-bearing answer SDP through the
+  `native_plugin` ABI, generates an ephemeral DTLS identity, mirrors browser-style media offers into an inactive answer
+  shape with `a=setup:passive` plus a surfaced SHA-256 fingerprint, completes DTLS/SRTP setup, and now publishes RTP
+  ingest counters/last-header fields once media arrives. The repo also has direct in-tree DTLS/SRTP proof for the same
+  OpenSSL/libsrtp configuration: `session_voice_builtin_dtls_transport_tests` completes a DTLS 1.2 client/server
+  handshake over datagram-memory BIOs, negotiates `SRTP_AES128_CM_SHA1_80`, exports DTLS-SRTP keying material, derives
+  real inbound / outbound libsrtp contexts from that exporter output, and now proves the shared inbound SRTP/RTP ingest
+  utility by parsing protected RTP into payload-type / sequence / timestamp / SSRC metadata. `peer.native_media_active`
+  remains `false` until live RTP is actually ingested for a runtime.
 - The builtin/runtime preview and live runtime snapshots now also expose the media-engine seam explicitly:
   `media_runtime_plan.media_engine_kind` / `peer.media_engine_kind` distinguish `builtin_reserved`,
   `builtin_signaling_stub`, `builtin_native_plugin`, and `browser_peer`, while `native_media_supported` /
@@ -510,7 +510,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   `peer.dtls_handshake_ready`, `peer.dtls_exporter_ready`, `peer.dtls_handshake_state`,
   `peer.dtls_selected_srtp_profile`, `peer.srtp_contexts_ready`, `peer.srtp_inbound_ready`,
   `peer.srtp_outbound_ready`, `peer.srtp_last_error`, `peer.dtls_packets_sent`, and
-  `peer.dtls_packets_received`.
+  `peer.dtls_packets_received`, `peer.rtp_packets_received`, `peer.rtp_payload_bytes_received`,
+  `peer.rtp_last_payload_type`, `peer.rtp_last_sequence`, `peer.rtp_last_timestamp`, and
+  `peer.rtp_last_ssrc`.
   Those same fields can now advance on provider-polled async progress events too, not only on direct signaling
   callbacks.
 - Builtin runtime events are now normalized before persistence/logging too: every JSONL/runtime event carries the same

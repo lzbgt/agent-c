@@ -40,11 +40,19 @@ static void assert_known_test_provider(
     assert(capabilities["transport_family"].asString() == "embedded_transport_primitives");
     assert(capabilities["ice"].asBool());
     assert(capabilities["srtp"].asBool());
+    assert(capabilities["rtp_ingest"].asBool());
     assert(capabilities["sctp"].asBool());
     assert(capabilities["real_media_engine"].asBool() == false);
     return;
   }
   assert(false && "unexpected builtin native provider");
+}
+
+static bool expected_native_supported_for_provider(const std::string& provider_name) {
+  if (provider_name == "agentd_builtin_sample_provider") return false;
+  if (provider_name == "agentd_builtin_embedded_transport_provider") return true;
+  assert(false && "unexpected builtin native provider");
+  return false;
 }
 
 static VoicePeerStartPlan make_plan() {
@@ -190,7 +198,9 @@ static void test_builtin_backend_enabled_native_plugin_starts_runtime() {
   assert(result.state);
   assert(result.state->runtime_kind == "builtin");
   assert(result.state->media_engine_kind == "builtin_native_plugin");
-  assert(result.state->native_media_supported == false);
+  assert(result.state->native_media_supported ==
+         expected_native_supported_for_provider(
+           result.state->native_media_provider["name"].asString()));
   assert(result.state->native_media_active == false);
   assert(result.state->media_engine_state == "signaling_ready");
   assert(result.state->media_events_total == 2);
@@ -222,9 +232,11 @@ static void test_backend_metadata_reports_native_probe_details() {
   assert(meta["builtin_available"].asBool());
   assert(meta["builtin_native_library_path_configured"].asBool());
   assert(meta["builtin_native_probe"]["loadable"].asBool());
-  assert(meta["builtin_native_probe"]["native_media_supported"].asBool() == false);
   assert(meta["builtin_native_probe"]["provider"]["abi_version"].asInt() == 3);
   assert(!meta["builtin_native_probe"]["provider"]["name"].asString().empty());
+  assert(meta["builtin_native_probe"]["native_media_supported"].asBool() ==
+         expected_native_supported_for_provider(
+           meta["builtin_native_probe"]["provider"]["name"].asString()));
   assert_known_test_provider(
     meta["builtin_native_probe"]["provider"]["name"].asString(),
     meta["builtin_native_probe"]["provider"]["capabilities"]);

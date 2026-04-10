@@ -39,13 +39,13 @@ using agentd::resolve_dtls_srtp_profile_spec;
 using agentd::selected_dtls_srtp_profile_name;
 
 constexpr const char* kProviderName = "agentd_builtin_embedded_transport_provider";
-constexpr const char* kProviderVersion = "0.5.0";
+constexpr const char* kProviderVersion = "0.6.0";
 constexpr const char* kCapabilitiesJson =
   "{\"signaling\":true,\"audio_capture\":false,\"audio_render\":false,"
   "\"ice\":true,\"dtls\":true,\"dtls_identity\":true,\"dtls_answer_shape\":true,"
   "\"dtls_handshake\":true,\"dtls_srtp_export\":true,"
   "\"srtp_contexts\":true,\"poll_status\":true,"
-  "\"srtp\":true,\"sctp\":true,"
+  "\"srtp\":true,\"rtp_ingest\":true,\"rtcp_ingest\":true,\"sctp\":true,"
   "\"transport_family\":\"embedded_transport_primitives\","
   "\"embedded_transport_provider\":true,\"sample_provider\":false,"
   "\"real_media_engine\":false,\"remote_description_optional\":true,"
@@ -79,6 +79,12 @@ struct EmbeddedTransportState {
     bool srtp_contexts_ready = false;
     bool srtp_inbound_ready = false;
     bool srtp_outbound_ready = false;
+    uint64_t rtp_packets_received = 0;
+    uint64_t rtp_payload_bytes_received = 0;
+    int64_t rtp_last_payload_type = -1;
+    int64_t rtp_last_sequence = -1;
+    uint64_t rtp_last_timestamp = 0;
+    uint64_t rtp_last_ssrc = 0;
 
     bool operator==(const AsyncProgressKey& other) const {
       return libjuice_state == other.libjuice_state &&
@@ -102,7 +108,13 @@ struct EmbeddedTransportState {
              dtls_exporter_ready == other.dtls_exporter_ready &&
              srtp_contexts_ready == other.srtp_contexts_ready &&
              srtp_inbound_ready == other.srtp_inbound_ready &&
-             srtp_outbound_ready == other.srtp_outbound_ready;
+             srtp_outbound_ready == other.srtp_outbound_ready &&
+             rtp_packets_received == other.rtp_packets_received &&
+             rtp_payload_bytes_received == other.rtp_payload_bytes_received &&
+             rtp_last_payload_type == other.rtp_last_payload_type &&
+             rtp_last_sequence == other.rtp_last_sequence &&
+             rtp_last_timestamp == other.rtp_last_timestamp &&
+             rtp_last_ssrc == other.rtp_last_ssrc;
     }
   };
 
@@ -143,6 +155,12 @@ struct EmbeddedTransportState {
   bool srtp_contexts_ready = false;
   bool srtp_inbound_ready = false;
   bool srtp_outbound_ready = false;
+  uint64_t rtp_packets_received = 0;
+  uint64_t rtp_payload_bytes_received = 0;
+  int64_t rtp_last_payload_type = -1;
+  int64_t rtp_last_sequence = -1;
+  uint64_t rtp_last_timestamp = 0;
+  uint64_t rtp_last_ssrc = 0;
   std::mutex async_events_mu;
   std::deque<std::string> pending_async_events;
   AsyncProgressKey last_async_key;
@@ -283,6 +301,10 @@ std::string join_sdp_lines(const std::vector<std::string>& lines) {
 
 bool starts_with(const std::string& value, const char* prefix) {
   return value.rfind(prefix, 0) == 0;
+}
+
+bool is_end_of_candidates_marker(const std::string& value) {
+  return value == "a=end-of-candidates" || value == "end-of-candidates";
 }
 
 bool contains_media_section(const std::vector<std::string>& lines) {
@@ -526,6 +548,58 @@ bool ensure_srtp_contexts(EmbeddedTransportState* engine, std::string* out_err) 
   engine->srtp_contexts_ready = engine->srtp_inbound_ready && engine->srtp_outbound_ready;
   engine->srtp_last_error.clear();
   return engine->srtp_contexts_ready;
+}
+
+bool ingest_inbound_srtp_packet(
+  EmbeddedTransportState* engine,
+  const char* data,
+  size_t size,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (!engine || !data || size == 0) {
+    if (out_err) *out_err = "missing inbound media packet";
+    return false;
+  }
+  if (!engine->srtp_inbound_ready || !engine->inbound_srtp) {
+    if (out_err) *out_err = "inbound SRTP context not ready";
+    return false;
+  }
+
+  std::vector<unsigned char> packet(
+    reinterpret_cast<const unsigned char*>(data),
+    reinterpret_cast<const unsigned char*>(data) + size);
+  int packet_len = static_cast<int>(packet.size());
+  if (packet_len <= 0) {
+    if (out_err) *out_err = "empty inbound media packet";
+    return false;
+  }
+
+  agentd::ParsedRtpPacketInfo rtp_info;
+  bool was_rtcp = false;
+  std::string ingest_err;
+  if (!agentd::unprotect_inbound_srtp_packet(
+        engine->inbound_srtp,
+        packet.data(),
+        static_cast<size_t>(packet_len),
+        &rtp_info,
+        &was_rtcp,
+        &ingest_err)) {
+    engine->srtp_last_error = ingest_err;
+    if (out_err) *out_err = ingest_err;
+    return false;
+  }
+  engine->srtp_last_error.clear();
+
+  if (was_rtcp) return true;
+
+  engine->rtp_packets_received += 1;
+  engine->rtp_payload_bytes_received += rtp_info.payload_size;
+  engine->rtp_last_payload_type = rtp_info.payload_type;
+  engine->rtp_last_sequence = rtp_info.sequence;
+  engine->rtp_last_timestamp = rtp_info.timestamp;
+  engine->rtp_last_ssrc = rtp_info.ssrc;
+  return true;
 }
 
 bool drain_dtls_outbound(EmbeddedTransportState* engine, std::string* out_err) {
@@ -786,11 +860,18 @@ EmbeddedTransportState::AsyncProgressKey capture_async_progress_key(
   key.srtp_contexts_ready = state.srtp_contexts_ready;
   key.srtp_inbound_ready = state.srtp_inbound_ready;
   key.srtp_outbound_ready = state.srtp_outbound_ready;
+  key.rtp_packets_received = state.rtp_packets_received;
+  key.rtp_payload_bytes_received = state.rtp_payload_bytes_received;
+  key.rtp_last_payload_type = state.rtp_last_payload_type;
+  key.rtp_last_sequence = state.rtp_last_sequence;
+  key.rtp_last_timestamp = state.rtp_last_timestamp;
+  key.rtp_last_ssrc = state.rtp_last_ssrc;
   return key;
 }
 
 std::string derived_media_engine_state(const EmbeddedTransportState& state) {
   if (state.dtls_handshake_state == "failed") return "failed";
+  if (state.rtp_packets_received > 0) return "media_active";
   if (state.srtp_contexts_ready) return "media_transport_ready";
   if (state.dtls_handshake_ready) return "dtls_connected";
   if (state.transport_connectivity_ready) return "transport_connected";
@@ -924,19 +1005,24 @@ void on_gathering_done(juice_agent_t*, void* user_ptr) {
 void on_recv(juice_agent_t*, const char* data, size_t size, void* user_ptr) {
   auto* engine = static_cast<EmbeddedTransportState*>(user_ptr);
   if (!engine || !engine->dtls_ssl || !data || size == 0) return;
-  BIO* rbio = SSL_get_rbio(engine->dtls_ssl);
-  if (!rbio) return;
-  const int wrote = BIO_write(rbio, data, static_cast<int>(size));
-  if (wrote <= 0) {
-    mark_dtls_failure(engine, "openssl dtls inbound packet write failed: " + openssl_last_error_text());
-    return;
-  }
-  engine->dtls_packets_received += 1;
-  if (engine->dtls_handshake_state == "ready_for_client_hello") {
-    engine->dtls_handshake_state = "handshaking";
-  }
+  const auto* bytes = reinterpret_cast<const unsigned char*>(data);
   std::string err;
-  (void)advance_dtls_handshake(engine, &err);
+  if (agentd::is_probable_dtls_packet(bytes, size)) {
+    BIO* rbio = SSL_get_rbio(engine->dtls_ssl);
+    if (!rbio) return;
+    const int wrote = BIO_write(rbio, data, static_cast<int>(size));
+    if (wrote <= 0) {
+      mark_dtls_failure(engine, "openssl dtls inbound packet write failed: " + openssl_last_error_text());
+      return;
+    }
+    engine->dtls_packets_received += 1;
+    if (engine->dtls_handshake_state == "ready_for_client_hello") {
+      engine->dtls_handshake_state = "handshaking";
+    }
+    (void)advance_dtls_handshake(engine, &err);
+  } else if (agentd::is_probable_rtp_or_rtcp_packet(bytes, size)) {
+    (void)ingest_inbound_srtp_packet(engine, data, size, &err);
+  }
   refresh_transport_snapshot(engine);
   maybe_enqueue_progress_event(engine, "embedded_transport_progress");
 }
@@ -995,7 +1081,8 @@ std::string build_event_json(
     std::string("{\"ok\":true,\"event\":\"") + json_escape(event_name) +
     "\",\"media_engine_state\":\"" + json_escape(media_engine_state) +
     "\",\"media_engine_kind\":\"builtin_native_plugin\""
-    ",\"native_media_supported\":false,\"native_media_active\":false"
+    ",\"native_media_supported\":true"
+    ",\"native_media_active\":" + std::string(state.rtp_packets_received > 0 ? "true" : "false") +
     ",\"provider\":\"" + std::string(kProviderName) + "\""
     ",\"transport_family\":\"embedded_transport_primitives\""
     ",\"dtls_identity_ready\":" + std::string(state.dtls_identity_ready ? "true" : "false") +
@@ -1011,6 +1098,8 @@ std::string build_event_json(
     ",\"libjuice_local_description_bytes\":" + std::to_string(state.local_description.size()) +
     ",\"dtls_packets_sent\":" + std::to_string(state.dtls_packets_sent) +
     ",\"dtls_packets_received\":" + std::to_string(state.dtls_packets_received) +
+    ",\"rtp_packets_received\":" + std::to_string(state.rtp_packets_received) +
+    ",\"rtp_payload_bytes_received\":" + std::to_string(state.rtp_payload_bytes_received) +
     ",\"local_candidates_observed\":" + std::to_string(state.local_candidates_observed) +
     ",\"remote_candidates_seen\":" + std::to_string(state.remote_candidates_seen) +
     ",\"offers_seen\":" + std::to_string(state.offers_seen) +
@@ -1037,6 +1126,18 @@ std::string build_event_json(
   }
   if (!state.srtp_last_error.empty()) {
     json += ",\"srtp_last_error\":\"" + json_escape(state.srtp_last_error) + "\"";
+  }
+  if (state.rtp_last_payload_type >= 0) {
+    json += ",\"rtp_last_payload_type\":" + std::to_string(state.rtp_last_payload_type);
+  }
+  if (state.rtp_last_sequence >= 0) {
+    json += ",\"rtp_last_sequence\":" + std::to_string(state.rtp_last_sequence);
+  }
+  if (state.rtp_last_timestamp > 0) {
+    json += ",\"rtp_last_timestamp\":" + std::to_string(state.rtp_last_timestamp);
+  }
+  if (state.rtp_last_ssrc > 0) {
+    json += ",\"rtp_last_ssrc\":" + std::to_string(state.rtp_last_ssrc);
   }
   if (!state.selected_local_candidate.empty()) {
     json += ",\"libjuice_selected_local_candidate\":\"" +
@@ -1229,12 +1330,19 @@ int embedded_handle_remote_candidate(
     write_error("remote candidate missing", err_buf, err_buf_size);
     return 0;
   }
-  const int rc = juice_add_remote_candidate(engine->agent, candidate_sdp.c_str());
-  if (rc != JUICE_ERR_SUCCESS) {
-    write_error("libjuice remote candidate rejected with code " + std::to_string(rc), err_buf, err_buf_size);
-    return 0;
+  if (is_end_of_candidates_marker(trim_copy(candidate_sdp))) {
+    if (juice_set_remote_gathering_done(engine->agent) != JUICE_ERR_SUCCESS) {
+      write_error("libjuice remote gathering-done rejected", err_buf, err_buf_size);
+      return 0;
+    }
+  } else {
+    const int rc = juice_add_remote_candidate(engine->agent, candidate_sdp.c_str());
+    if (rc != JUICE_ERR_SUCCESS) {
+      write_error("libjuice remote candidate rejected with code " + std::to_string(rc), err_buf, err_buf_size);
+      return 0;
+    }
+    engine->remote_candidates_seen += 1;
   }
-  engine->remote_candidates_seen += 1;
   wait_for_transport_progress(engine, 1500);
   (void)advance_dtls_handshake(engine, nullptr);
   refresh_transport_snapshot(engine);
@@ -1310,7 +1418,7 @@ int embedded_poll_status(
 const agentd_voice_media_engine_provider_v3 kEmbeddedProvider = {
   AGENTD_VOICE_MEDIA_ENGINE_PROVIDER_ABI_V3,
   "builtin_native_plugin",
-  0,
+  1,
   kProviderName,
   kProviderVersion,
   kCapabilitiesJson,

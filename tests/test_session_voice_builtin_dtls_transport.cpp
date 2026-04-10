@@ -361,10 +361,32 @@ void test_dtls_memory_loopback_derives_srtp_contexts_and_round_trips_rtp() {
   assert(srtp_protect(server_sessions.outbound, packet.data(), &protected_len) == srtp_err_status_ok);
   assert(protected_len > plain_len);
 
-  int unprotected_len = protected_len;
-  assert(srtp_unprotect(client_sessions.inbound, packet.data(), &unprotected_len) == srtp_err_status_ok);
-  assert(unprotected_len == plain_len);
-  assert(std::memcmp(packet.data() + 12, payload, sizeof(payload) - 1) == 0);
+  agentd::ParsedRtpPacketInfo parsed_rtp;
+  bool was_rtcp = false;
+  assert(agentd::is_probable_rtp_or_rtcp_packet(packet.data(), static_cast<size_t>(protected_len)));
+  assert(!agentd::unprotect_inbound_srtp_packet(
+    nullptr,
+    packet.data(),
+    static_cast<size_t>(protected_len),
+    &parsed_rtp,
+    &was_rtcp,
+    &err));
+  assert(err == "missing inbound SRTP session");
+  err.clear();
+  assert(agentd::unprotect_inbound_srtp_packet(
+    client_sessions.inbound,
+    packet.data(),
+    static_cast<size_t>(protected_len),
+    &parsed_rtp,
+    &was_rtcp,
+    &err));
+  assert(err.empty());
+  assert(!was_rtcp);
+  assert(parsed_rtp.payload_type == 111);
+  assert(parsed_rtp.sequence == 1);
+  assert(parsed_rtp.timestamp == 0x01020304u);
+  assert(parsed_rtp.ssrc == 0x11223344u);
+  assert(parsed_rtp.payload_size == sizeof(payload) - 1);
 
   agentd::destroy_dtls_srtp_session_pair(&client_sessions);
   agentd::destroy_dtls_srtp_session_pair(&server_sessions);

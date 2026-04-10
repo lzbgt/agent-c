@@ -59,6 +59,12 @@ struct VoicePeerRuntime {
   std::string srtp_last_error;
   int64_t dtls_packets_sent = 0;
   int64_t dtls_packets_received = 0;
+  int64_t rtp_packets_received = 0;
+  int64_t rtp_payload_bytes_received = 0;
+  int64_t rtp_last_payload_type = -1;
+  int64_t rtp_last_sequence = -1;
+  int64_t rtp_last_timestamp = 0;
+  int64_t rtp_last_ssrc = 0;
   Json::Value native_media_provider = Json::Value(Json::nullValue);
   bool ready = false;
   bool running = false;
@@ -141,6 +147,12 @@ struct VoicePeerRuntimeSeed {
   std::string srtp_last_error;
   int64_t dtls_packets_sent = 0;
   int64_t dtls_packets_received = 0;
+  int64_t rtp_packets_received = 0;
+  int64_t rtp_payload_bytes_received = 0;
+  int64_t rtp_last_payload_type = -1;
+  int64_t rtp_last_sequence = -1;
+  int64_t rtp_last_timestamp = 0;
+  int64_t rtp_last_ssrc = 0;
   Json::Value native_media_provider = Json::Value(Json::nullValue);
   bool ready = false;
   bool running = false;

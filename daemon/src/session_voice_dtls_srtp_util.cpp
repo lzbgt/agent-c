@@ -104,6 +104,18 @@ bool create_single_srtp_session(
   return true;
 }
 
+uint16_t read_u16_be(const unsigned char* in) {
+  return static_cast<uint16_t>((static_cast<uint16_t>(in[0]) << 8) |
+                               static_cast<uint16_t>(in[1]));
+}
+
+uint32_t read_u32_be(const unsigned char* in) {
+  return (static_cast<uint32_t>(in[0]) << 24) |
+         (static_cast<uint32_t>(in[1]) << 16) |
+         (static_cast<uint32_t>(in[2]) << 8) |
+         static_cast<uint32_t>(in[3]);
+}
+
 }  // namespace
 
 std::string openssl_dtls_last_error_text() {
@@ -338,6 +350,125 @@ bool create_dtls_srtp_session_pair(
   }
   out_pair->outbound_ready = out_pair->outbound != nullptr;
   return true;
+}
+
+bool is_probable_dtls_packet(const unsigned char* data, size_t size) {
+  if (!data || size == 0) return false;
+  const uint8_t first = data[0];
+  return first >= 20 && first <= 63;
+}
+
+bool is_probable_rtp_or_rtcp_packet(const unsigned char* data, size_t size) {
+  if (!data || size < 2) return false;
+  return (data[0] & 0xC0u) == 0x80u;
+}
+
+bool is_probable_rtcp_packet(const unsigned char* data, size_t size) {
+  if (!is_probable_rtp_or_rtcp_packet(data, size)) return false;
+  const uint8_t packet_type = data[1];
+  return packet_type >= 192 && packet_type <= 223;
+}
+
+bool parse_rtp_packet(
+  const unsigned char* packet,
+  size_t packet_size,
+  ParsedRtpPacketInfo* out_info,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (out_info) *out_info = ParsedRtpPacketInfo();
+  if (!packet || packet_size < 12) {
+    if (out_err) *out_err = "RTP packet too short";
+    return false;
+  }
+  if ((packet[0] & 0xC0u) != 0x80u) {
+    if (out_err) *out_err = "unsupported RTP version";
+    return false;
+  }
+
+  const bool has_padding = (packet[0] & 0x20u) != 0;
+  const bool has_extension = (packet[0] & 0x10u) != 0;
+  const size_t csrc_count = static_cast<size_t>(packet[0] & 0x0Fu);
+  size_t header_size = 12 + (csrc_count * 4);
+  if (packet_size < header_size) {
+    if (out_err) *out_err = "RTP CSRC list truncated";
+    return false;
+  }
+  if (has_extension) {
+    if (packet_size < header_size + 4) {
+      if (out_err) *out_err = "RTP extension header truncated";
+      return false;
+    }
+    const uint16_t extension_words = read_u16_be(packet + header_size + 2);
+    header_size += 4 + (static_cast<size_t>(extension_words) * 4);
+    if (packet_size < header_size) {
+      if (out_err) *out_err = "RTP extension payload truncated";
+      return false;
+    }
+  }
+
+  size_t payload_size = packet_size - header_size;
+  if (has_padding) {
+    const size_t padding_bytes = static_cast<size_t>(packet[packet_size - 1]);
+    if (padding_bytes == 0 || padding_bytes > payload_size) {
+      if (out_err) *out_err = "invalid RTP padding";
+      return false;
+    }
+    payload_size -= padding_bytes;
+  }
+
+  if (out_info) {
+    out_info->payload_type = static_cast<uint8_t>(packet[1] & 0x7Fu);
+    out_info->sequence = read_u16_be(packet + 2);
+    out_info->timestamp = read_u32_be(packet + 4);
+    out_info->ssrc = read_u32_be(packet + 8);
+    out_info->payload_offset = header_size;
+    out_info->payload_size = payload_size;
+  }
+  return true;
+}
+
+bool unprotect_inbound_srtp_packet(
+  srtp_t inbound_session,
+  const unsigned char* packet,
+  size_t packet_size,
+  ParsedRtpPacketInfo* out_info,
+  bool* out_was_rtcp,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (out_info) *out_info = ParsedRtpPacketInfo();
+  if (out_was_rtcp) *out_was_rtcp = false;
+  if (!inbound_session) {
+    if (out_err) *out_err = "missing inbound SRTP session";
+    return false;
+  }
+  if (!packet || packet_size == 0) {
+    if (out_err) *out_err = "missing inbound SRTP packet";
+    return false;
+  }
+
+  std::vector<unsigned char> mutable_packet(packet, packet + packet_size);
+  int mutable_len = static_cast<int>(mutable_packet.size());
+  const bool rtcp = is_probable_rtcp_packet(mutable_packet.data(), mutable_packet.size());
+  const srtp_err_status_t status = rtcp
+    ? srtp_unprotect_rtcp(inbound_session, mutable_packet.data(), &mutable_len)
+    : srtp_unprotect(inbound_session, mutable_packet.data(), &mutable_len);
+  if (status != srtp_err_status_ok) {
+    if (out_err) {
+      *out_err = std::string(rtcp ? "inbound SRTCP unprotect failed: " : "inbound SRTP unprotect failed: ") +
+                 srtp_err_status_text(status);
+    }
+    return false;
+  }
+
+  if (out_was_rtcp) *out_was_rtcp = rtcp;
+  if (rtcp) return true;
+  return parse_rtp_packet(
+    mutable_packet.data(),
+    static_cast<size_t>(mutable_len),
+    out_info,
+    out_err);
 }
 
 void destroy_dtls_srtp_session_pair(DtlsSrtpSessionPair* pair) {

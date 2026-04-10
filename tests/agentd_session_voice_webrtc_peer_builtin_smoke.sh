@@ -209,14 +209,11 @@ assert obj.get("builtin_available") is True, obj
 peer = obj.get("peer") or {}
 assert peer.get("runtime_kind") == "builtin", obj
 expected_kind = "builtin_signaling_stub" if mode == "signaling_stub" else "builtin_native_plugin"
-expected_native_supported = False
 assert peer.get("media_engine_kind") == expected_kind, obj
 assert peer.get("media_engine_state") == "signaling_ready", obj
 assert peer.get("media_events_total") == 2, obj
 assert peer.get("media_answers_sent") == 0, obj
 assert peer.get("media_remote_offers_seen") == 0, obj
-assert peer.get("native_media_supported") is expected_native_supported, obj
-assert peer.get("native_media_active") is expected_native_supported, obj
 assert peer.get("running") is True and peer.get("ready") is True, obj
 assert peer.get("managed_broker_session") is True, obj
 assert obj.get("builtin_start_contract", {}).get("mutating_broker_actions_deferred") is False, obj
@@ -225,8 +222,9 @@ if mode == "native_plugin":
     provider = (peer.get("native_media_provider") or {})
     provider_name = (provider.get("name") or "")
     provider_caps = provider.get("capabilities") or {}
+    expected_native_supported = provider_name == "agentd_builtin_embedded_transport_provider"
     assert probe.get("loadable") is True, obj
-    assert probe.get("native_media_supported") is False, obj
+    assert probe.get("native_media_supported") is expected_native_supported, obj
     assert (probe.get("provider") or {}).get("abi_version") == 3, obj
     assert (probe.get("provider") or {}).get("name") in {
         "agentd_builtin_sample_provider",
@@ -242,6 +240,11 @@ if mode == "native_plugin":
         "embedded_transport_primitives",
     }, obj
     assert provider_caps.get("real_media_engine") is False, obj
+    assert peer.get("native_media_supported") is expected_native_supported, obj
+    assert peer.get("native_media_active") is False, obj
+else:
+    assert peer.get("native_media_supported") is False, obj
+    assert peer.get("native_media_active") is False, obj
 sid = peer.get("broker_session_id")
 assert sid, obj
 print(sid)

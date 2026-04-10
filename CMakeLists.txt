@@ -921,6 +921,7 @@ if(AGENT_BUILD_HOST)
   if(AGENTD_ENABLE_BUILTIN_EMBEDDED_TRANSPORT_PROVIDER)
     add_executable(session_voice_builtin_embedded_transport_provider_tests
       tests/test_session_voice_builtin_embedded_transport_provider.cpp
+      daemon/src/session_voice_dtls_srtp_util.cpp
     )
     target_compile_options(session_voice_builtin_embedded_transport_provider_tests PRIVATE
       $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>

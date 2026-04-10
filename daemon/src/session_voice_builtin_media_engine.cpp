@@ -986,6 +986,30 @@ void note_voice_peer_media_engine_event(
       (payload["dtls_packets_received"].isInt64() || payload["dtls_packets_received"].isUInt64())) {
     runtime->dtls_packets_received = payload["dtls_packets_received"].asInt64();
   }
+  if (payload.isMember("rtp_packets_received") &&
+      (payload["rtp_packets_received"].isInt64() || payload["rtp_packets_received"].isUInt64())) {
+    runtime->rtp_packets_received = payload["rtp_packets_received"].asInt64();
+  }
+  if (payload.isMember("rtp_payload_bytes_received") &&
+      (payload["rtp_payload_bytes_received"].isInt64() || payload["rtp_payload_bytes_received"].isUInt64())) {
+    runtime->rtp_payload_bytes_received = payload["rtp_payload_bytes_received"].asInt64();
+  }
+  if (payload.isMember("rtp_last_payload_type") &&
+      (payload["rtp_last_payload_type"].isInt64() || payload["rtp_last_payload_type"].isUInt64())) {
+    runtime->rtp_last_payload_type = payload["rtp_last_payload_type"].asInt64();
+  }
+  if (payload.isMember("rtp_last_sequence") &&
+      (payload["rtp_last_sequence"].isInt64() || payload["rtp_last_sequence"].isUInt64())) {
+    runtime->rtp_last_sequence = payload["rtp_last_sequence"].asInt64();
+  }
+  if (payload.isMember("rtp_last_timestamp") &&
+      (payload["rtp_last_timestamp"].isInt64() || payload["rtp_last_timestamp"].isUInt64())) {
+    runtime->rtp_last_timestamp = payload["rtp_last_timestamp"].asInt64();
+  }
+  if (payload.isMember("rtp_last_ssrc") &&
+      (payload["rtp_last_ssrc"].isInt64() || payload["rtp_last_ssrc"].isUInt64())) {
+    runtime->rtp_last_ssrc = payload["rtp_last_ssrc"].asInt64();
+  }
   if (payload.isMember("native_media_provider") && payload["native_media_provider"].isObject()) {
     runtime->native_media_provider = payload["native_media_provider"];
   }

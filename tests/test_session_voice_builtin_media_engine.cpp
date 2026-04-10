@@ -43,11 +43,19 @@ static void assert_known_test_provider(
     assert(capabilities["dtls_srtp_export"].asBool());
     assert(capabilities["srtp_contexts"].asBool());
     assert(capabilities["srtp"].asBool());
+    assert(capabilities["rtp_ingest"].asBool());
     assert(capabilities["sctp"].asBool());
     assert(capabilities["real_media_engine"].asBool() == false);
     return;
   }
   assert(false && "unexpected builtin native provider");
+}
+
+static bool expected_native_supported_for_provider(const std::string& provider_name) {
+  if (provider_name == "agentd_builtin_sample_provider") return false;
+  if (provider_name == "agentd_builtin_embedded_transport_provider") return true;
+  assert(false && "unexpected builtin native provider");
+  return false;
 }
 
 static void test_runtime_kind_info_reports_reserved_and_stub_modes() {
@@ -77,7 +85,8 @@ static void test_runtime_kind_info_reports_reserved_and_stub_modes() {
   const auto native_info =
     voice_peer_media_engine_info_for_runtime_kind(native_cfg, "builtin");
   assert(native_info.media_engine_kind == "builtin_native_plugin");
-  assert(!native_info.native_media_supported);
+  assert(native_info.native_media_supported ==
+         expected_native_supported_for_provider(native_info.provider_name));
   assert(!native_info.native_media_active);
   assert(native_info.provider_abi_version == 3);
   assert(!native_info.provider_name.empty());
@@ -175,7 +184,8 @@ static void test_builtin_media_engine_native_plugin_loads_sample_provider_metada
   assert(engine);
   assert(err.empty());
   assert(engine->info().media_engine_kind == "builtin_native_plugin");
-  assert(!engine->info().native_media_supported);
+  assert(engine->info().native_media_supported ==
+         expected_native_supported_for_provider(engine->info().provider_name));
   assert(!engine->info().native_media_active);
   assert(engine->info().provider_abi_version == 3);
   assert(!engine->info().provider_name.empty());
@@ -188,7 +198,8 @@ static void test_builtin_media_engine_native_plugin_loads_sample_provider_metada
   assert(err.empty());
   note_voice_peer_media_engine_event(&runtime, init_event);
   assert(runtime.media_engine_kind == "builtin_native_plugin");
-  assert(!runtime.native_media_supported);
+  assert(runtime.native_media_supported ==
+         expected_native_supported_for_provider(engine->info().provider_name));
   assert(!runtime.native_media_active);
   assert(runtime.media_engine_state == "signaling_ready");
   assert(runtime.native_media_provider["abi_version"].asInt() == 3);
@@ -267,9 +278,10 @@ static void test_builtin_native_probe_json_reports_provider_details() {
   assert(probe["configured"].asBool());
   assert(probe["loadable"].asBool());
   assert(probe["media_engine_kind"].asString() == "builtin_native_plugin");
-  assert(probe["native_media_supported"].asBool() == false);
   assert(probe["provider"]["abi_version"].asInt() == 3);
   assert(!probe["provider"]["name"].asString().empty());
+  assert(probe["native_media_supported"].asBool() ==
+         expected_native_supported_for_provider(probe["provider"]["name"].asString()));
   assert_known_test_provider(
     probe["provider"]["name"].asString(),
     probe["provider"]["capabilities"]);

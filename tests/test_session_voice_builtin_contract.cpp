@@ -30,10 +30,18 @@ static void assert_known_test_provider(
     assert(capabilities["transport_family"].asString() == "embedded_transport_primitives");
     assert(capabilities["ice"].asBool());
     assert(capabilities["srtp"].asBool());
+    assert(capabilities["rtp_ingest"].asBool());
     assert(capabilities["sctp"].asBool());
     return;
   }
   assert(false && "unexpected builtin native provider");
+}
+
+static bool expected_native_supported_for_provider(const std::string& provider_name) {
+  if (provider_name == "agentd_builtin_sample_provider") return false;
+  if (provider_name == "agentd_builtin_embedded_transport_provider") return true;
+  assert(false && "unexpected builtin native provider");
+  return false;
 }
 
 static void test_borrowed_broker_session_contract() {
@@ -200,14 +208,18 @@ static void test_native_plugin_builtin_contract_marks_native_media_path() {
   const Json::Value out = session_voice_builtin_start_contract_json(cfg, "voice-sid", plan);
   assert(out["mutating_broker_actions_deferred"].asBool() == false);
   assert(out["media_runtime_plan"]["media_engine_kind"].asString() == "builtin_native_plugin");
-  assert(out["media_runtime_plan"]["native_media_supported"].asBool() == false);
   assert(out["media_runtime_plan"]["native_media_provider"]["abi_version"].asInt() == 3);
   assert(!out["media_runtime_plan"]["native_media_provider"]["name"].asString().empty());
+  assert(out["media_runtime_plan"]["native_media_supported"].asBool() ==
+         expected_native_supported_for_provider(
+           out["media_runtime_plan"]["native_media_provider"]["name"].asString()));
   assert_known_test_provider(
     out["media_runtime_plan"]["native_media_provider"]["name"].asString(),
     out["media_runtime_plan"]["native_media_provider"]["capabilities"]);
   assert(out["planned_runtime"]["media_engine_kind"].asString() == "builtin_native_plugin");
-  assert(out["planned_runtime"]["native_media_supported"].asBool() == false);
+  assert(out["planned_runtime"]["native_media_supported"].asBool() ==
+         expected_native_supported_for_provider(
+           out["planned_runtime"]["native_media_provider"]["name"].asString()));
   assert(out["planned_runtime"]["native_media_active"].asBool() == false);
   assert(out["planned_runtime"]["native_media_provider"]["abi_version"].asInt() == 3);
   assert(out["planned_runtime"]["native_media_provider"]["name"].asString() ==

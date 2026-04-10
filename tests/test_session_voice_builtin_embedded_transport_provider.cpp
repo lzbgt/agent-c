@@ -1,14 +1,20 @@
 #include "session_voice_builtin_media_engine.h"
+#include "session_voice_dtls_srtp_util.h"
 
 #include "session_voice_runtime_internal.h"
 
 #include <juice/juice.h>
+#include <openssl/ssl.h>
+#include <openssl/srtp.h>
 
+#include <array>
 #include <cassert>
 #include <chrono>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 
@@ -16,22 +22,133 @@ using agentd::DaemonConfig;
 using agentd::VoiceBrokerSignalDescription;
 using agentd::VoiceBrokerSignalRemoteDescriptionReady;
 using agentd::VoicePeerRuntime;
+using agentd::DtlsSrtpKeyBlock;
+using agentd::DtlsSrtpLocalRole;
+using agentd::DtlsSrtpProfileSpec;
+using agentd::DtlsSrtpSessionPair;
+using agentd::create_dtls_srtp_session_pair;
+using agentd::derive_dtls_srtp_key_block;
+using agentd::export_dtls_srtp_keying_material;
 using agentd::make_builtin_voice_peer_media_engine;
 using agentd::note_voice_peer_media_engine_event;
+using agentd::resolve_dtls_srtp_profile_spec;
+using agentd::selected_dtls_srtp_profile_name;
 
 #ifndef AGENTD_TEST_VOICE_MEDIA_ENGINE_EMBEDDED_PLUGIN_PATH
 #define AGENTD_TEST_VOICE_MEDIA_ENGINE_EMBEDDED_PLUGIN_PATH ""
 #endif
 
+struct DtlsEndpoint {
+  SSL_CTX* ctx = nullptr;
+  SSL* ssl = nullptr;
+  bool handshake_ready = false;
+  std::string selected_srtp_profile;
+  int packets_sent = 0;
+  int packets_received = 0;
+};
+
 struct LoopbackRemoteContext {
   agentd::VoicePeerBuiltinMediaEngine* engine = nullptr;
   VoicePeerRuntime* runtime = nullptr;
+  juice_agent_t* remote_agent = nullptr;
+  DtlsEndpoint client;
   juice_state_t remote_state = JUICE_STATE_DISCONNECTED;
   Json::Value last_candidate_event = Json::Value(Json::nullValue);
+  Json::Value last_polled_event = Json::Value(Json::nullValue);
   std::string last_error;
   int candidate_events = 0;
   bool gathering_done = false;
+  bool rtp_media_observed = false;
+  bool dtls_handshake_started = false;
+  bool dtls_handshake_ready = false;
 };
+
+void destroy_endpoint(DtlsEndpoint* endpoint) {
+  if (!endpoint) return;
+  if (endpoint->ssl) {
+    SSL_free(endpoint->ssl);
+    endpoint->ssl = nullptr;
+  }
+  if (endpoint->ctx) {
+    SSL_CTX_free(endpoint->ctx);
+    endpoint->ctx = nullptr;
+  }
+}
+
+bool configure_client_endpoint(DtlsEndpoint* endpoint) {
+  assert(endpoint);
+  endpoint->ctx = SSL_CTX_new(DTLS_client_method());
+  if (!endpoint->ctx) return false;
+  if (SSL_CTX_set_min_proto_version(endpoint->ctx, DTLS1_2_VERSION) != 1) return false;
+  SSL_CTX_set_read_ahead(endpoint->ctx, 1);
+  SSL_CTX_set_verify(endpoint->ctx, SSL_VERIFY_NONE, nullptr);
+  if (SSL_CTX_set_tlsext_use_srtp(
+        endpoint->ctx,
+        "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32") != 0) {
+    return false;
+  }
+
+  endpoint->ssl = SSL_new(endpoint->ctx);
+  if (!endpoint->ssl) return false;
+  BIO* rbio = BIO_new(BIO_s_dgram_mem());
+  BIO* wbio = BIO_new(BIO_s_dgram_mem());
+  assert(rbio);
+  assert(wbio);
+  (void)BIO_ctrl(rbio, BIO_CTRL_DGRAM_SET_MTU, 1200, nullptr);
+  (void)BIO_ctrl(wbio, BIO_CTRL_DGRAM_SET_MTU, 1200, nullptr);
+  SSL_set_bio(endpoint->ssl, rbio, wbio);
+  SSL_set_options(endpoint->ssl, SSL_OP_NO_QUERY_MTU);
+  SSL_set_mtu(endpoint->ssl, 1200);
+  SSL_set_connect_state(endpoint->ssl);
+  return true;
+}
+
+bool pump_outbound_packets_to_remote_agent(LoopbackRemoteContext* ctx) {
+  assert(ctx);
+  assert(ctx->remote_agent);
+  BIO* wbio = SSL_get_wbio(ctx->client.ssl);
+  assert(wbio);
+  char packet[2048];
+  for (;;) {
+    const int n = BIO_read(wbio, packet, sizeof(packet));
+    if (n <= 0) break;
+    const int rc = juice_send(ctx->remote_agent, packet, static_cast<size_t>(n));
+    if (rc != JUICE_ERR_SUCCESS) {
+      ctx->last_error = "remote libjuice send failed with code " + std::to_string(rc);
+      return false;
+    }
+    ctx->client.packets_sent += 1;
+  }
+  return true;
+}
+
+void advance_client_dtls_handshake(LoopbackRemoteContext* ctx) {
+  assert(ctx);
+  assert(ctx->client.ssl);
+  if (ctx->client.handshake_ready) return;
+  const int rc = SSL_do_handshake(ctx->client.ssl);
+  assert(pump_outbound_packets_to_remote_agent(ctx));
+  if (rc == 1) {
+    ctx->client.handshake_ready = true;
+    ctx->dtls_handshake_ready = true;
+    ctx->client.selected_srtp_profile = selected_dtls_srtp_profile_name(ctx->client.ssl);
+    return;
+  }
+  const int ssl_err = SSL_get_error(ctx->client.ssl, rc);
+  assert(ssl_err == SSL_ERROR_WANT_READ || ssl_err == SSL_ERROR_WANT_WRITE);
+}
+
+void write_u16_be(unsigned char* out, uint16_t value) {
+  out[0] = static_cast<unsigned char>((value >> 8) & 0xFF);
+  out[1] = static_cast<unsigned char>(value & 0xFF);
+}
+
+void write_u32_be(unsigned char* out, uint32_t value) {
+  out[0] = static_cast<unsigned char>((value >> 24) & 0xFF);
+  out[1] = static_cast<unsigned char>((value >> 16) & 0xFF);
+  out[2] = static_cast<unsigned char>((value >> 8) & 0xFF);
+  out[3] = static_cast<unsigned char>(value & 0xFF);
+}
 
 void on_loopback_remote_state_changed(juice_agent_t*, juice_state_t state, void* user_ptr) {
   auto* ctx = static_cast<LoopbackRemoteContext*>(user_ptr);
@@ -62,7 +179,32 @@ void on_loopback_remote_candidate(juice_agent_t*, const char* sdp, void* user_pt
 void on_loopback_remote_gathering_done(juice_agent_t*, void* user_ptr) {
   auto* ctx = static_cast<LoopbackRemoteContext*>(user_ptr);
   assert(ctx);
+  assert(ctx->engine);
+  assert(ctx->runtime);
   ctx->gathering_done = true;
+
+  agentd::VoiceBrokerSignalIngress ingress;
+  ingress.kind = agentd::VoiceBrokerSignalIngressKind::remote_candidate_ready;
+  ingress.candidate.candidate = "a=end-of-candidates";
+
+  Json::Value event(Json::nullValue);
+  std::string err;
+  const bool ok = ctx->engine->handle_remote_candidate(ingress, &event, &err);
+  assert(ok);
+  assert(err.empty());
+  note_voice_peer_media_engine_event(ctx->runtime, event);
+  ctx->last_candidate_event = event;
+}
+
+void on_loopback_remote_recv(juice_agent_t*, const char* data, size_t size, void* user_ptr) {
+  auto* ctx = static_cast<LoopbackRemoteContext*>(user_ptr);
+  assert(ctx);
+  assert(ctx->client.ssl);
+  BIO* rbio = SSL_get_rbio(ctx->client.ssl);
+  assert(rbio);
+  assert(BIO_write(rbio, data, static_cast<int>(size)) == static_cast<int>(size));
+  ctx->client.packets_received += 1;
+  advance_client_dtls_handshake(ctx);
 }
 
 std::string make_libjuice_offer_sdp() {
@@ -117,7 +259,7 @@ static void test_embedded_transport_provider_loads_and_answers_remote_offer() {
   assert(engine);
   assert(err.empty());
   assert(engine->info().media_engine_kind == "builtin_native_plugin");
-  assert(!engine->info().native_media_supported);
+  assert(engine->info().native_media_supported);
   assert(engine->info().provider_name == "agentd_builtin_embedded_transport_provider");
   assert(engine->info().provider_capabilities["embedded_transport_provider"].asBool());
   assert(engine->info().provider_capabilities["transport_family"].asString() ==
@@ -127,6 +269,7 @@ static void test_embedded_transport_provider_loads_and_answers_remote_offer() {
   assert(engine->info().provider_capabilities["dtls_handshake"].asBool());
   assert(engine->info().provider_capabilities["dtls_srtp_export"].asBool());
   assert(engine->info().provider_capabilities["srtp"].asBool());
+  assert(engine->info().provider_capabilities["rtp_ingest"].asBool());
   assert(engine->info().provider_capabilities["sctp"].asBool());
   assert(engine->info().provider_capabilities["real_media_engine"].asBool() == false);
 
@@ -146,6 +289,8 @@ static void test_embedded_transport_provider_loads_and_answers_remote_offer() {
   assert(init_event["srtp_inbound_ready"].asBool() == false);
   assert(init_event["srtp_outbound_ready"].asBool() == false);
   assert(init_event["dtls_handshake_state"].asString() == "ready_for_client_hello");
+  assert(init_event["native_media_supported"].asBool());
+  assert(init_event["native_media_active"].asBool() == false);
   assert(init_event["dtls_setup_role"].asString() == "passive");
   assert(!init_event["dtls_fingerprint_sha256"].asString().empty());
   assert(!init_event["dtls_certificate_subject"].asString().empty());
@@ -174,6 +319,8 @@ static void test_embedded_transport_provider_loads_and_answers_remote_offer() {
   assert(answer_event["sdp_answer_shape"].asString() == "ice_only");
   assert(answer_event["srtp_contexts_ready"].asBool() == false);
   assert(runtime.media_engine_state == "answer_ready");
+  assert(runtime.native_media_supported);
+  assert(!runtime.native_media_active);
 }
 
 static void test_embedded_transport_provider_mirrors_browser_offer_shape_with_dtls_identity() {
@@ -194,6 +341,8 @@ static void test_embedded_transport_provider_mirrors_browser_offer_shape_with_dt
   assert(err.empty());
   note_voice_peer_media_engine_event(&runtime, init_event);
   assert(runtime.dtls_identity_ready);
+  assert(runtime.native_media_supported);
+  assert(!runtime.native_media_active);
   assert(!runtime.dtls_fingerprint_sha256.empty());
   assert(runtime.dtls_setup_role == "passive");
   assert(!runtime.dtls_certificate_subject.empty());

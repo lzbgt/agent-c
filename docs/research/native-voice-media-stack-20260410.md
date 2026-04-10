@@ -113,11 +113,16 @@ Reference artifacts downloaded into the repo for exact vendor details:
     broker signaling ingress timeouts
   - the embedded provider uses that path to surface async libjuice / DTLS /
     SRTP status progression without waiting for another signaling message
-- The repo still does **not** yet have an actual embedded/native RTP media
-  engine. The new provider uses real `libjuice` / `libsrtp` / `usrsctp`
-  libraries, but it still reports `native_media_supported=false` and
-  `native_media_active=false` because the DTLS/RTP media plane is not embedded
-  yet.
+- The repo still does **not** yet have a full embedded/native audio engine.
+  The embedded provider now uses real `libjuice` / `libsrtp` / `usrsctp`
+  libraries, derives live SRTP contexts from the negotiated DTLS exporter, and
+  can terminate inbound SRTP/RTP packets far enough to parse payload-type /
+  sequence / timestamp / SSRC metadata. That is why it now truthfully reports
+  `native_media_supported=true` for receive-side media ownership.
+- The remaining gap is that the provider still does not own a complete
+  in-process media pipeline. `native_media_active` remains `false` until live
+  RTP is actually ingested, and agentd still does not yet decode/play/process
+  audio frames end to end inside the daemon.
 
 ## Implications
 
@@ -127,8 +132,9 @@ The highest-confidence next implementation path is:
 2. Require future native providers to declare capabilities and ABI metadata.
 3. Keep the current dependency-backed embedded provider as the transport
    primitives bring-up lane.
-4. Replace that provider's current ICE/SRTP/SCTP library bring-up with a real
-   in-process DTLS/RTP media engine instead of adding more signaling-only glue.
+4. Replace that provider's current transport/receive-side proof path with a
+   real in-process DTLS/SRTP/RTP audio engine instead of adding more
+   control-plane glue.
 
 At this scan point, the local machine is ready for:
 
@@ -161,8 +167,8 @@ Pick one concrete native backend family and wire it deliberately:
 
 Given the current repo and machine facts, the most pragmatic next move is to
 continue on the existing `native_plugin` seam and replace the current embedded
-transport provider's non-media stub behavior with real DTLS/RTP handling rather
-than expanding signaling-only behavior further. The best factual candidate
-remains the narrower `libjuice + srtp + libusrsctp` family, because those
-dependencies are now locally installed, buildable, and covered by provider
-inspection/unit/smoke proof.
+transport provider's receive-side-only behavior with a real in-process audio
+path. The best factual candidate remains the narrower
+`libjuice + srtp + libusrsctp` family, because those dependencies are now
+locally installed, buildable, and covered by provider inspection/unit/smoke
+proof.

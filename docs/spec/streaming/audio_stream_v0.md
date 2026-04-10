@@ -275,18 +275,18 @@ A v0 smoke test should:
 - When the local build has `libjuice + libsrtp2 + usrsctp` available, the repo now also builds an optional embedded
   transport provider module for that same seam:
   `./build/libagentd_voice_builtin_media_engine_embedded_transport.{so,dylib,dll}`. That provider uses the real ICE /
-  SRTP / SCTP dependency family and returns a real libjuice local description through the native-plugin ABI, but it
-  still correctly reports `native_media_supported=false` / `native_media_active=false` because the actual DTLS/RTP
-  media plane is still not embedded in agentd. The stronger proof point now is that the provider gathers local ICE
-  candidates before forming its answer, generates an ephemeral local DTLS identity, mirrors browser-style media offers
-  into an inactive answer with `a=setup:passive` and a surfaced SHA-256 fingerprint, and has direct loopback coverage
-  that exchanges a real libjuice offer plus trickled remote candidates through the provider ABI and observes transport
-  progression beyond the earlier "answer string only" boundary. The repo now also has a direct DTLS/SRTP proof slice in
+  SRTP / SCTP dependency family and returns a real libjuice local description through the native-plugin ABI. It now
+  reports `native_media_supported=true` for receive-side native media ownership while still keeping
+  `native_media_active=false` until live RTP is actually ingested. The stronger proof point now is that the provider
+  gathers local ICE candidates before forming its answer, generates an ephemeral local DTLS identity, mirrors
+  browser-style media offers into an inactive answer with `a=setup:passive` and a surfaced SHA-256 fingerprint, and
+  now reuses the shared in-tree SRTP/RTP ingest utility that terminates inbound protected RTP into concrete header /
+  payload counters. The repo also has a direct DTLS/SRTP proof slice in
   `session_voice_builtin_dtls_transport_tests`: the same OpenSSL DTLS configuration used by the builtin native-plugin
-  provider completes an in-tree DTLS 1.2 handshake, negotiates `SRTP_AES128_CM_SHA1_80`, and exports DTLS-SRTP keying
-  material over datagram-memory BIOs. That same proof now also derives real inbound/outbound libsrtp contexts from the
-  exporter output and successfully protects then unprotects a sample RTP packet, so the remaining gap is RTP media
-  termination rather than DTLS or SRTP key schedule uncertainty.
+  provider completes an in-tree DTLS 1.2 handshake, negotiates `SRTP_AES128_CM_SHA1_80`, exports DTLS-SRTP keying
+  material over datagram-memory BIOs, derives real inbound/outbound libsrtp contexts from the exporter output, and now
+  proves inbound SRTP/RTP ingest by parsing the protected packet into payload-type / sequence / timestamp / SSRC
+  metadata. The remaining gap is no longer inbound RTP termination; it is a fuller bidirectional in-process audio path.
 - That runtime contract now also exposes the media-engine seam directly: planned/live builtin paths report
   `media_engine_kind=builtin_reserved|builtin_signaling_stub|builtin_native_plugin`, bundled/external runtimes report
   `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` now distinguish the
@@ -295,7 +295,8 @@ A v0 smoke test should:
   `dtls_identity_ready`, `dtls_fingerprint_sha256`, `dtls_setup_role`, `dtls_certificate_subject`,
   `dtls_handshake_ready`, `dtls_exporter_ready`, `dtls_handshake_state`, `dtls_selected_srtp_profile`,
   `srtp_contexts_ready`, `srtp_inbound_ready`, `srtp_outbound_ready`, `srtp_last_error`,
-  `dtls_packets_sent`, and `dtls_packets_received`.
+  `dtls_packets_sent`, `dtls_packets_received`, `rtp_packets_received`, `rtp_payload_bytes_received`,
+  `rtp_last_payload_type`, `rtp_last_sequence`, `rtp_last_timestamp`, and `rtp_last_ssrc`.
   Those fields can now also advance through provider-polled async status events rather than only through direct
   remote-description or remote-candidate callbacks.
 - Builtin runtime observability is now explicit too: normalized per-session JSONL events and the persisted/live runtime

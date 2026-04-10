@@ -4,6 +4,7 @@
 #include <srtp2/srtp.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -40,6 +41,15 @@ struct DtlsSrtpSessionPair {
   bool outbound_ready = false;
 };
 
+struct ParsedRtpPacketInfo {
+  uint8_t payload_type = 0;
+  uint16_t sequence = 0;
+  uint32_t timestamp = 0;
+  uint32_t ssrc = 0;
+  size_t payload_offset = 0;
+  size_t payload_size = 0;
+};
+
 std::string openssl_dtls_last_error_text();
 std::string srtp_err_status_text(srtp_err_status_t status);
 std::string selected_dtls_srtp_profile_name(SSL* ssl);
@@ -66,6 +76,24 @@ bool create_dtls_srtp_session_pair(
   const DtlsSrtpKeyBlock& key_block,
   DtlsSrtpLocalRole local_role,
   DtlsSrtpSessionPair* out_pair,
+  std::string* out_err);
+
+bool is_probable_dtls_packet(const unsigned char* data, size_t size);
+bool is_probable_rtp_or_rtcp_packet(const unsigned char* data, size_t size);
+bool is_probable_rtcp_packet(const unsigned char* data, size_t size);
+
+bool parse_rtp_packet(
+  const unsigned char* packet,
+  size_t packet_size,
+  ParsedRtpPacketInfo* out_info,
+  std::string* out_err);
+
+bool unprotect_inbound_srtp_packet(
+  srtp_t inbound_session,
+  const unsigned char* packet,
+  size_t packet_size,
+  ParsedRtpPacketInfo* out_info,
+  bool* out_was_rtcp,
   std::string* out_err);
 
 void destroy_dtls_srtp_session_pair(DtlsSrtpSessionPair* pair);

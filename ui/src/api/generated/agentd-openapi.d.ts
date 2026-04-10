@@ -8081,10 +8081,10 @@ export interface components {
              */
             media_engine_kind: "builtin_reserved" | "builtin_signaling_stub" | "builtin_native_plugin" | "browser_peer";
             /**
-             * @description Best-effort lifecycle state for the selected media engine. Current builtin runtime transitions through `starting`, `signaling_ready`, `answer_ready`, `signaling_active`, and terminal `stopped|failed`; planned previews use `planned`.
+             * @description Best-effort lifecycle state for the selected media engine. Builtin runtimes can now also surface `transport_connected`, `dtls_connected`, `media_transport_ready`, and `media_active` as the embedded native-plugin provider advances from ICE to DTLS/SRTP setup and then live RTP ingest; planned previews use `planned`.
              * @enum {string}
              */
-            media_engine_state: "idle" | "planned" | "starting" | "signaling_ready" | "answer_ready" | "signaling_active" | "stopping" | "stopped" | "failed";
+            media_engine_state: "idle" | "planned" | "starting" | "signaling_ready" | "answer_ready" | "signaling_active" | "transport_connected" | "dtls_connected" | "media_transport_ready" | "media_active" | "stopping" | "stopped" | "failed";
             /** @enum {string} */
             status_source: "memory" | "persisted" | "planned";
             session_id: string;
@@ -8129,9 +8129,9 @@ export interface components {
             media_remote_byes_seen: number;
             /** Format: int64 */
             media_local_byes_sent: number;
-            /** @description Whether this runtime can terminate RTP/media natively inside agentd. Current shipped runtimes, including the builtin sample provider, still report `false`. */
+            /** @description Whether this runtime can terminate RTP/media natively inside agentd. `builtin_native_plugin` mirrors the loaded provider capability rather than the mode name alone, so the shipped sample provider still reports `false` while the embedded transport provider now reports `true` for inbound SRTP/RTP termination. */
             native_media_supported: boolean;
-            /** @description Whether native media handling is currently active inside agentd for this runtime. Current shipped runtimes report `false`. */
+            /** @description Whether native media handling is currently active inside agentd for this runtime. Embedded native-plugin providers may support native media while still reporting `false` here until they have actually ingested media packets for the live session. */
             native_media_active: boolean;
             native_media_provider?: components["schemas"]["VoiceWebRtcPeerNativeMediaProvider"];
             /** @description Whether the current builtin native-plugin provider has generated a local DTLS identity for diagnostics and answer shaping. Current bundled/browser runtimes omit this field; the embedded transport provider sets it when its ephemeral certificate and fingerprint are ready. */
@@ -8140,7 +8140,7 @@ export interface components {
             dtls_handshake_ready?: boolean;
             /** @description Whether the current builtin native-plugin provider has successfully exported DTLS-SRTP keying material for the active handshake. */
             dtls_exporter_ready?: boolean;
-            /** @description Whether the current builtin native-plugin provider has derived the negotiated DTLS-SRTP key block and created both inbound and outbound libsrtp contexts. Current shipped runtimes may still keep `native_media_supported=false` because RTP/media termination is not embedded yet even when these contexts are ready. */
+            /** @description Whether the current builtin native-plugin provider has derived the negotiated DTLS-SRTP key block and created both inbound and outbound libsrtp contexts. */
             srtp_contexts_ready?: boolean;
             /** @description Whether the inbound libsrtp receive context has been created for the negotiated DTLS-SRTP profile. */
             srtp_inbound_ready?: boolean;
@@ -8168,6 +8168,36 @@ export interface components {
              * @description Number of DTLS datagrams the current builtin native-plugin provider has consumed from its transport path.
              */
             dtls_packets_received?: number;
+            /**
+             * Format: int64
+             * @description Number of inbound RTP packets successfully unprotected and terminated by the current builtin native-plugin provider.
+             */
+            rtp_packets_received?: number;
+            /**
+             * Format: int64
+             * @description Total RTP payload bytes successfully ingested after SRTP unprotect and RTP header parsing.
+             */
+            rtp_payload_bytes_received?: number;
+            /**
+             * Format: int64
+             * @description Payload type from the most recent successfully ingested RTP packet.
+             */
+            rtp_last_payload_type?: number;
+            /**
+             * Format: int64
+             * @description Sequence number from the most recent successfully ingested RTP packet.
+             */
+            rtp_last_sequence?: number;
+            /**
+             * Format: int64
+             * @description RTP timestamp from the most recent successfully ingested RTP packet.
+             */
+            rtp_last_timestamp?: number;
+            /**
+             * Format: int64
+             * @description SSRC from the most recent successfully ingested RTP packet.
+             */
+            rtp_last_ssrc?: number;
             ready: boolean;
             running: boolean;
             /** Format: int64 */

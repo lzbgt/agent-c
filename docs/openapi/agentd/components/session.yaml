@@ -159,8 +159,8 @@ VoiceWebRtcPeerRuntime:
       description: Concrete media-engine family for the live or planned runtime. `browser_peer` means the bundled/external browser-backed RTP path, `builtin_reserved` means builtin was requested but native media is still unavailable, `builtin_signaling_stub` means the experimental in-process signaling-only builtin runtime, and `builtin_native_plugin` means builtin loads a process-local native media-engine provider shared library.
     media_engine_state:
       type: string
-      enum: [idle, planned, starting, signaling_ready, answer_ready, signaling_active, stopping, stopped, failed]
-      description: Best-effort lifecycle state for the selected media engine. Current builtin runtime transitions through `starting`, `signaling_ready`, `answer_ready`, `signaling_active`, and terminal `stopped|failed`; planned previews use `planned`.
+      enum: [idle, planned, starting, signaling_ready, answer_ready, signaling_active, transport_connected, dtls_connected, media_transport_ready, media_active, stopping, stopped, failed]
+      description: Best-effort lifecycle state for the selected media engine. Builtin runtimes can now also surface `transport_connected`, `dtls_connected`, `media_transport_ready`, and `media_active` as the embedded native-plugin provider advances from ICE to DTLS/SRTP setup and then live RTP ingest; planned previews use `planned`.
     status_source:
       type: string
       enum: [memory, persisted, planned]
@@ -196,10 +196,10 @@ VoiceWebRtcPeerRuntime:
     media_local_byes_sent: { type: integer, format: int64 }
     native_media_supported:
       type: boolean
-      description: Whether this runtime can terminate RTP/media natively inside agentd. Current shipped runtimes, including the builtin sample provider, still report `false`.
+      description: Whether this runtime can terminate RTP/media natively inside agentd. `builtin_native_plugin` mirrors the loaded provider capability rather than the mode name alone, so the shipped sample provider still reports `false` while the embedded transport provider now reports `true` for inbound SRTP/RTP termination.
     native_media_active:
       type: boolean
-      description: Whether native media handling is currently active inside agentd for this runtime. Current shipped runtimes report `false`.
+      description: Whether native media handling is currently active inside agentd for this runtime. Embedded native-plugin providers may support native media while still reporting `false` here until they have actually ingested media packets for the live session.
     native_media_provider:
       $ref: "#/components/schemas/VoiceWebRtcPeerNativeMediaProvider"
     dtls_identity_ready:
@@ -213,7 +213,7 @@ VoiceWebRtcPeerRuntime:
       description: Whether the current builtin native-plugin provider has successfully exported DTLS-SRTP keying material for the active handshake.
     srtp_contexts_ready:
       type: boolean
-      description: Whether the current builtin native-plugin provider has derived the negotiated DTLS-SRTP key block and created both inbound and outbound libsrtp contexts. Current shipped runtimes may still keep `native_media_supported=false` because RTP/media termination is not embedded yet even when these contexts are ready.
+      description: Whether the current builtin native-plugin provider has derived the negotiated DTLS-SRTP key block and created both inbound and outbound libsrtp contexts.
     srtp_inbound_ready:
       type: boolean
       description: Whether the inbound libsrtp receive context has been created for the negotiated DTLS-SRTP profile.
@@ -246,6 +246,30 @@ VoiceWebRtcPeerRuntime:
       type: integer
       format: int64
       description: Number of DTLS datagrams the current builtin native-plugin provider has consumed from its transport path.
+    rtp_packets_received:
+      type: integer
+      format: int64
+      description: Number of inbound RTP packets successfully unprotected and terminated by the current builtin native-plugin provider.
+    rtp_payload_bytes_received:
+      type: integer
+      format: int64
+      description: Total RTP payload bytes successfully ingested after SRTP unprotect and RTP header parsing.
+    rtp_last_payload_type:
+      type: integer
+      format: int64
+      description: Payload type from the most recent successfully ingested RTP packet.
+    rtp_last_sequence:
+      type: integer
+      format: int64
+      description: Sequence number from the most recent successfully ingested RTP packet.
+    rtp_last_timestamp:
+      type: integer
+      format: int64
+      description: RTP timestamp from the most recent successfully ingested RTP packet.
+    rtp_last_ssrc:
+      type: integer
+      format: int64
+      description: SSRC from the most recent successfully ingested RTP packet.
     ready: { type: boolean }
     running: { type: boolean }
     pid: { type: integer, format: int64 }

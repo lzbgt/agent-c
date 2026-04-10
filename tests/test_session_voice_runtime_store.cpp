@@ -184,6 +184,12 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   st.srtp_last_error = "none";
   st.dtls_packets_sent = 12;
   st.dtls_packets_received = 9;
+  st.rtp_packets_received = 3;
+  st.rtp_payload_bytes_received = 480;
+  st.rtp_last_payload_type = 96;
+  st.rtp_last_sequence = 321;
+  st.rtp_last_timestamp = 0x01020304;
+  st.rtp_last_ssrc = 0x11223344;
   st.native_media_provider["abi_version"] = 3;
   st.native_media_provider["name"] = "agentd_builtin_sample_provider";
   st.native_media_provider["capabilities"]["transport_family"] = "sample_webrtc";
@@ -215,6 +221,12 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(json["srtp_last_error"].asString() == "none");
   assert(json["dtls_packets_sent"].asInt64() == 12);
   assert(json["dtls_packets_received"].asInt64() == 9);
+  assert(json["rtp_packets_received"].asInt64() == 3);
+  assert(json["rtp_payload_bytes_received"].asInt64() == 480);
+  assert(json["rtp_last_payload_type"].asInt64() == 96);
+  assert(json["rtp_last_sequence"].asInt64() == 321);
+  assert(json["rtp_last_timestamp"].asInt64() == 0x01020304);
+  assert(json["rtp_last_ssrc"].asInt64() == 0x11223344);
   assert(json["native_media_provider"]["abi_version"].asInt() == 3);
   assert(json["native_media_provider"]["name"].asString() == "agentd_builtin_sample_provider");
 
@@ -247,6 +259,12 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(round_trip.srtp_last_error == "none");
   assert(round_trip.dtls_packets_sent == 12);
   assert(round_trip.dtls_packets_received == 9);
+  assert(round_trip.rtp_packets_received == 3);
+  assert(round_trip.rtp_payload_bytes_received == 480);
+  assert(round_trip.rtp_last_payload_type == 96);
+  assert(round_trip.rtp_last_sequence == 321);
+  assert(round_trip.rtp_last_timestamp == 0x01020304);
+  assert(round_trip.rtp_last_ssrc == 0x11223344);
   assert(round_trip.native_media_provider["abi_version"].asInt() == 3);
   assert(round_trip.native_media_provider["capabilities"]["transport_family"].asString() == "sample_webrtc");
   assert(round_trip.native_media_provider["capabilities"]["sample_provider"].asBool());
