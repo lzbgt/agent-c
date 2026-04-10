@@ -245,6 +245,7 @@ if mode == "native_plugin":
         assert provider_caps.get("audio_submit") is True, obj
         assert provider_caps.get("audio_outbound_pcmu") is True, obj
         assert provider_caps.get("audio_outbound_pcma") is True, obj
+        assert isinstance(provider_caps.get("audio_outbound_opus"), bool), obj
         assert provider_caps.get("rtp_transmit") is True, obj
     assert provider_caps.get("real_media_engine") is False, obj
     assert peer.get("native_media_supported") is expected_native_supported, obj

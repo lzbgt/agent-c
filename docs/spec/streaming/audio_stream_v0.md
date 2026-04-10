@@ -290,10 +290,10 @@ A v0 smoke test should:
   provider completes an in-tree DTLS 1.2 handshake, negotiates `SRTP_AES128_CM_SHA1_80`, exports DTLS-SRTP keying
   material over datagram-memory BIOs, derives real inbound/outbound libsrtp contexts from the exporter output, and now
   proves outbound SRTP protect plus inbound SRTP/RTP ingest and receive-side audio decode. Agentd can now also submit
-  processed PCM back through the native-provider ABI; the embedded provider negotiates outbound G.711 payload selection
-  from the remote SDP, encodes a bounded PCMU/PCMA RTP frame, protects it with the outbound libsrtp context, and
-  transmits it over libjuice. The remaining gap is no longer basic outbound RTP ownership; it is RTCP/full-duplex
-  behavior plus negotiated Opus transmit.
+  processed PCM back through the native-provider ABI; the embedded provider negotiates outbound Opus when `libopus` is
+  present, falls back to negotiated G.711, encodes a bounded Opus or PCMU/PCMA RTP frame, protects it with the outbound
+  libsrtp context, and transmits it over libjuice. The remaining gap is no longer basic outbound RTP or Opus ownership;
+  it is RTCP/full-duplex behavior.
 - That runtime contract now also exposes the media-engine seam directly: planned/live builtin paths report
   `media_engine_kind=builtin_reserved|builtin_signaling_stub|builtin_native_plugin`, bundled/external runtimes report
   `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` now distinguish the

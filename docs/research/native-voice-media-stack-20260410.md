@@ -155,17 +155,18 @@ Reference artifacts downloaded into the repo for exact vendor details:
 - Agentd now also has a first bounded outbound media path:
   - native providers can expose ABI v5 `submit_audio`
   - the builtin service submits processed agentd-owned PCM back to the provider
-  - the embedded provider negotiates outbound G.711 payload type from the remote
-    SDP, encodes a 20 ms PCMU/PCMA RTP frame, protects it with the outbound
-    libsrtp context, and transmits it over the same libjuice transport
+  - the embedded provider negotiates outbound Opus when `libopus` is present,
+    falls back to negotiated G.711 payload type from the remote SDP, encodes a
+    20 ms Opus or PCMU/PCMA RTP frame, protects it with the outbound libsrtp
+    context, and transmits it over the same libjuice transport
   - runtime status now persists outbound RTP and PCM-submit counters, including
     `rtp_packets_sent`, `rtp_payload_bytes_sent`,
     `audio_outbound_frames_sent`, and
     `audio_pcm_samples_submitted_total`, plus selected outbound
     payload/codec/rate/channel metadata
 - The remaining gap is that the outbound path is deliberately minimal: it uses
-  negotiated G.711 frame generation rather than RTCP/full-duplex behavior or
-  negotiated Opus transmit.
+  single-frame negotiated Opus/G.711 generation rather than fuller
+  RTCP/full-duplex behavior.
 
 ## Implications
 
@@ -210,12 +211,13 @@ Pick one concrete native backend family and wire it deliberately:
 
 Given the current repo and machine facts, the most pragmatic next move is to
 continue on the existing `native_plugin` seam and harden the current embedded
-provider from minimal PCMU transmit toward fuller negotiated bidirectional audio.
+provider from bounded negotiated Opus/G.711 transmit toward fuller
+bidirectional audio.
 The best factual candidate remains the narrower `libjuice + srtp + libusrsctp`
 family, because those dependencies are now locally installed, buildable, and
 covered by provider inspection/unit/smoke proof. The bounded outbound RTP path
-now negotiates G.711 payload type from the remote SDP (`PCMU/8000/1` preferred,
-`PCMA/8000/1` fallback) and records that selection in runtime telemetry. The next
-concrete step after this negotiated G.711 transmit path is RTCP/full-duplex
-behavior and negotiated Opus transmit rather than more DTLS/SRTP/control-plane
-work.
+now negotiates Opus when `libopus` is present, falls back to G.711 payload type
+from the remote SDP (`PCMU/8000/1` preferred, `PCMA/8000/1` fallback), and
+records that selection in runtime telemetry. The next concrete step after this
+negotiated transmit path is RTCP/full-duplex behavior rather than more
+DTLS/SRTP/control-plane work.

@@ -44,6 +44,7 @@ static void assert_known_test_provider(
     assert(capabilities["audio_submit"].asBool());
     assert(capabilities["audio_outbound_pcmu"].asBool());
     assert(capabilities["audio_outbound_pcma"].asBool());
+    assert(capabilities["audio_outbound_opus"].isBool());
     assert(capabilities["audio_codec_pcmu"].asBool());
     assert(capabilities["audio_codec_pcma"].asBool());
     assert(capabilities.isMember("audio_codec_opus"));

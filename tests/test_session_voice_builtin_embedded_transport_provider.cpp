@@ -354,6 +354,7 @@ static void test_embedded_transport_provider_loads_and_answers_remote_offer() {
   assert(engine->info().provider_capabilities["audio_submit"].asBool());
   assert(engine->info().provider_capabilities["audio_outbound_pcmu"].asBool());
   assert(engine->info().provider_capabilities["audio_outbound_pcma"].asBool());
+  assert(engine->info().provider_capabilities["audio_outbound_opus"].isBool());
   assert(engine->info().provider_capabilities["sctp"].asBool());
   assert(engine->info().provider_capabilities["real_media_engine"].asBool() == false);
 
@@ -466,10 +467,17 @@ static void test_embedded_transport_provider_mirrors_browser_offer_shape_with_dt
   assert(answer_event["dtls_setup_role"].asString() == "passive");
   assert(answer_event["sdp_answer_shape"].asString() == "browser_offer_mirrored_inactive");
   assert(answer_event["dtls_fingerprint_sha256"].asString() == runtime.dtls_fingerprint_sha256);
-  assert(answer_event["audio_outbound_payload_type"].asInt64() == 0);
-  assert(answer_event["audio_outbound_codec_name"].asString() == "PCMU");
-  assert(answer_event["audio_outbound_sample_rate_hz"].asInt64() == 8000);
-  assert(answer_event["audio_outbound_channels"].asInt64() == 1);
+  if (engine->info().provider_capabilities["audio_outbound_opus"].asBool()) {
+    assert(answer_event["audio_outbound_payload_type"].asInt64() == 111);
+    assert(answer_event["audio_outbound_codec_name"].asString() == "OPUS");
+    assert(answer_event["audio_outbound_sample_rate_hz"].asInt64() == 48000);
+    assert(answer_event["audio_outbound_channels"].asInt64() == 2);
+  } else {
+    assert(answer_event["audio_outbound_payload_type"].asInt64() == 0);
+    assert(answer_event["audio_outbound_codec_name"].asString() == "PCMU");
+    assert(answer_event["audio_outbound_sample_rate_hz"].asInt64() == 8000);
+    assert(answer_event["audio_outbound_channels"].asInt64() == 1);
+  }
 }
 
 static void test_embedded_transport_provider_selects_pcma_when_pcmu_is_unavailable() {
