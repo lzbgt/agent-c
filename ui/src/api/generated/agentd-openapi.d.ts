@@ -8134,7 +8134,7 @@ export interface components {
             media_local_byes_sent: number;
             /** @description Whether this runtime can terminate RTP/media natively inside agentd. `builtin_native_plugin` mirrors the loaded provider capability rather than the mode name alone, so the shipped sample provider still reports `false` while the embedded transport provider now reports `true` for inbound SRTP/RTP termination. */
             native_media_supported: boolean;
-            /** @description Whether native media handling is currently active inside agentd for this runtime. Embedded native-plugin providers may support native media while still reporting `false` here until they have actually ingested media packets for the live session. */
+            /** @description Whether native media handling is currently active inside agentd for this runtime. Embedded native-plugin providers may support native media while still reporting `false` here until they have actually ingested or transmitted media/control packets for the live session. */
             native_media_active: boolean;
             native_media_provider?: components["schemas"]["VoiceWebRtcPeerNativeMediaProvider"];
             /** @description Whether the current builtin native-plugin provider has generated a local DTLS identity for diagnostics and answer shaping. Current bundled/browser runtimes omit this field; the embedded transport provider sets it when its ephemeral certificate and fingerprint are ready. */
@@ -8231,6 +8231,46 @@ export interface components {
              * @description SSRC from the most recent outbound RTP packet protected and transmitted by the current builtin native-plugin provider.
              */
             rtp_last_sent_ssrc?: number;
+            /**
+             * Format: int64
+             * @description Number of inbound RTCP packets successfully unprotected and parsed by the current builtin native-plugin provider.
+             */
+            rtcp_packets_received?: number;
+            /**
+             * Format: int64
+             * @description Number of outbound RTCP packets protected with SRTCP and transmitted by the current builtin native-plugin provider.
+             */
+            rtcp_packets_sent?: number;
+            /**
+             * Format: int64
+             * @description Total RTCP bytes successfully ingested after SRTCP unprotect and RTCP header parsing.
+             */
+            rtcp_payload_bytes_received?: number;
+            /**
+             * Format: int64
+             * @description Total outbound RTCP bytes submitted to SRTCP protect by the current builtin native-plugin provider.
+             */
+            rtcp_payload_bytes_sent?: number;
+            /**
+             * Format: int64
+             * @description Packet type from the most recent successfully ingested RTCP packet, such as `200` for Sender Report.
+             */
+            rtcp_last_packet_type?: number;
+            /**
+             * Format: int64
+             * @description SSRC from the most recent successfully ingested RTCP packet.
+             */
+            rtcp_last_ssrc?: number;
+            /**
+             * Format: int64
+             * @description Packet type from the most recent outbound RTCP packet protected and transmitted by the current builtin native-plugin provider.
+             */
+            rtcp_last_sent_packet_type?: number;
+            /**
+             * Format: int64
+             * @description SSRC from the most recent outbound RTCP packet protected and transmitted by the current builtin native-plugin provider.
+             */
+            rtcp_last_sent_ssrc?: number;
             /**
              * Format: int64
              * @description Number of inbound audio payloads successfully decoded into PCM by the current builtin native-plugin provider.
@@ -8388,6 +8428,8 @@ export interface components {
             audio_last_error?: string;
             /** @description Best-effort diagnostic string when agentd-submitted PCM cannot be encoded, SRTP-protected, or transmitted by the current builtin native-plugin provider. */
             audio_outbound_last_error?: string;
+            /** @description Best-effort diagnostic string from the most recent builtin native-plugin RTCP ingest or transmit failure. */
+            rtcp_last_error?: string;
             /** @description Absolute runtime-local path to the rolling bounded WAV snapshot rendered by agentd from consumed builtin PCM. */
             audio_render_wav_path?: string;
             /** @description Best-effort diagnostic string when agentd fails to update the rolling WAV render snapshot from consumed PCM. */

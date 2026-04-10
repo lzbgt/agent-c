@@ -50,6 +50,14 @@ struct ParsedRtpPacketInfo {
   size_t payload_size = 0;
 };
 
+struct ParsedRtcpPacketInfo {
+  uint8_t packet_type = 0;
+  uint8_t report_count = 0;
+  uint16_t length_words = 0;
+  uint32_t ssrc = 0;
+  size_t packet_size = 0;
+};
+
 std::string openssl_dtls_last_error_text();
 std::string srtp_err_status_text(srtp_err_status_t status);
 std::string selected_dtls_srtp_profile_name(SSL* ssl);
@@ -88,15 +96,29 @@ bool parse_rtp_packet(
   ParsedRtpPacketInfo* out_info,
   std::string* out_err);
 
+bool parse_rtcp_packet(
+  const unsigned char* packet,
+  size_t packet_size,
+  ParsedRtcpPacketInfo* out_info,
+  std::string* out_err);
+
 bool unprotect_inbound_srtp_packet(
   srtp_t inbound_session,
   const unsigned char* packet,
   size_t packet_size,
   ParsedRtpPacketInfo* out_info,
   bool* out_was_rtcp,
-  std::string* out_err);
+  std::string* out_err,
+  ParsedRtcpPacketInfo* out_rtcp_info = nullptr);
 
 bool protect_outbound_rtp_packet(
+  srtp_t outbound_session,
+  const unsigned char* packet,
+  size_t packet_size,
+  std::vector<unsigned char>* out_protected_packet,
+  std::string* out_err);
+
+bool protect_outbound_rtcp_packet(
   srtp_t outbound_session,
   const unsigned char* packet,
   size_t packet_size,

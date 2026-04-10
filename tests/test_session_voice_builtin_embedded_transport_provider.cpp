@@ -62,12 +62,32 @@ struct LoopbackRemoteContext {
   bool dtls_handshake_ready = false;
   bool client_srtp_ready = false;
   int outbound_rtp_packets_observed = 0;
+  int outbound_rtcp_packets_observed = 0;
   uint8_t last_outbound_payload_type = 255;
   uint16_t last_outbound_sequence = 0;
   uint32_t last_outbound_timestamp = 0;
   uint32_t last_outbound_ssrc = 0;
   size_t last_outbound_payload_size = 0;
+  uint8_t last_outbound_rtcp_packet_type = 0;
+  uint32_t last_outbound_rtcp_ssrc = 0;
 };
+
+bool remote_transport_ready(const LoopbackRemoteContext& ctx) {
+  return ctx.remote_state == JUICE_STATE_CONNECTED ||
+         ctx.remote_state == JUICE_STATE_COMPLETED;
+}
+
+bool event_transport_ready(const Json::Value& event) {
+  return event.isObject() &&
+         event.isMember("transport_connectivity_ready") &&
+         event["transport_connectivity_ready"].isBool() &&
+         event["transport_connectivity_ready"].asBool();
+}
+
+bool provider_transport_ready(const LoopbackRemoteContext& ctx) {
+  return event_transport_ready(ctx.last_candidate_event) ||
+         event_transport_ready(ctx.last_polled_event);
+}
 
 void destroy_endpoint(DtlsEndpoint* endpoint) {
   if (!endpoint) return;
@@ -132,6 +152,7 @@ void advance_client_dtls_handshake(LoopbackRemoteContext* ctx) {
   assert(ctx);
   assert(ctx->client.ssl);
   if (ctx->client.handshake_ready) return;
+  if (!remote_transport_ready(*ctx)) return;
   const int rc = SSL_do_handshake(ctx->client.ssl);
   assert(pump_outbound_packets_to_remote_agent(ctx));
   if (rc == 1) {
@@ -236,6 +257,7 @@ void on_loopback_remote_recv(juice_agent_t*, const char* data, size_t size, void
       !agentd::is_probable_dtls_packet(bytes, size)) {
     assert(ensure_client_srtp_sessions(ctx));
     agentd::ParsedRtpPacketInfo parsed_rtp;
+    agentd::ParsedRtcpPacketInfo parsed_rtcp;
     bool was_rtcp = false;
     std::string err;
     assert(agentd::unprotect_inbound_srtp_packet(
@@ -244,7 +266,8 @@ void on_loopback_remote_recv(juice_agent_t*, const char* data, size_t size, void
       size,
       &parsed_rtp,
       &was_rtcp,
-      &err));
+      &err,
+      &parsed_rtcp));
     assert(err.empty());
     if (!was_rtcp) {
       ctx->outbound_rtp_packets_observed += 1;
@@ -253,6 +276,10 @@ void on_loopback_remote_recv(juice_agent_t*, const char* data, size_t size, void
       ctx->last_outbound_timestamp = parsed_rtp.timestamp;
       ctx->last_outbound_ssrc = parsed_rtp.ssrc;
       ctx->last_outbound_payload_size = parsed_rtp.payload_size;
+    } else {
+      ctx->outbound_rtcp_packets_observed += 1;
+      ctx->last_outbound_rtcp_packet_type = parsed_rtcp.packet_type;
+      ctx->last_outbound_rtcp_ssrc = parsed_rtcp.ssrc;
     }
     return;
   }
@@ -349,6 +376,8 @@ static void test_embedded_transport_provider_loads_and_answers_remote_offer() {
   assert(engine->info().provider_capabilities["srtp"].asBool());
   assert(engine->info().provider_capabilities["rtp_ingest"].asBool());
   assert(engine->info().provider_capabilities["rtp_transmit"].asBool());
+  assert(engine->info().provider_capabilities["rtcp_ingest"].asBool());
+  assert(engine->info().provider_capabilities["rtcp_transmit"].asBool());
   assert(engine->info().provider_capabilities["audio_drain"].asBool());
   assert(engine->info().provider_capabilities["audio_owner_handoff"].asBool());
   assert(engine->info().provider_capabilities["audio_submit"].asBool());
@@ -575,8 +604,7 @@ static void test_embedded_transport_provider_reaches_local_ice_connectivity() {
 
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
   while (std::chrono::steady_clock::now() < deadline) {
-    if (ctx.candidate_events > 0 &&
-        ctx.remote_state != JUICE_STATE_DISCONNECTED) {
+    if (ctx.candidate_events > 0 && remote_transport_ready(ctx)) {
       break;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -584,20 +612,71 @@ static void test_embedded_transport_provider_reaches_local_ice_connectivity() {
 
   assert(ctx.gathering_done);
   assert(ctx.candidate_events > 0);
-  assert(ctx.remote_state != JUICE_STATE_DISCONNECTED);
+  assert(remote_transport_ready(ctx));
   assert(ctx.last_error.empty());
   assert(ctx.last_candidate_event["event"].asString() == "remote_candidate_ready");
   assert(ctx.last_candidate_event["remote_candidates_seen"].asUInt64() >= 1);
   assert(ctx.last_candidate_event["local_candidates_observed"].asUInt64() >= 1);
   assert(!ctx.last_candidate_event["libjuice_state"].asString().empty());
   assert(ctx.last_candidate_event.isMember("transport_connectivity_ready"));
-  if (ctx.last_candidate_event["transport_connectivity_ready"].asBool()) {
+  if (event_transport_ready(ctx.last_candidate_event)) {
     assert(!ctx.last_candidate_event["libjuice_selected_local_candidate"].asString().empty());
     assert(!ctx.last_candidate_event["libjuice_selected_remote_candidate"].asString().empty());
     assert(!ctx.last_candidate_event["libjuice_selected_local_address"].asString().empty());
     assert(!ctx.last_candidate_event["libjuice_selected_remote_address"].asString().empty());
   }
   assert(runtime.media_remote_candidates_seen >= 1);
+
+  for (int i = 0; i < 128; ++i) {
+    Json::Value polled_event(Json::nullValue);
+    std::string poll_err;
+    assert(engine->poll_status(&polled_event, &poll_err));
+    assert(poll_err.empty());
+    if (polled_event.isObject()) {
+      note_voice_peer_media_engine_event(&runtime, polled_event);
+      ctx.last_polled_event = polled_event;
+    }
+    if (remote_transport_ready(ctx) && provider_transport_ready(ctx)) {
+      advance_client_dtls_handshake(&ctx);
+    }
+    if (ctx.dtls_handshake_ready && runtime.srtp_contexts_ready) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+  assert(ctx.dtls_handshake_ready);
+  assert(ensure_client_srtp_sessions(&ctx));
+  assert(runtime.srtp_inbound_ready);
+  assert(runtime.srtp_outbound_ready);
+
+  agentd::VoicePeerBuiltinAudioChunk submit_chunk;
+  submit_chunk.pcm_samples.assign(160, 2000);
+  submit_chunk.sample_rate_hz = 8000;
+  submit_chunk.channels = 1;
+  submit_chunk.frame_samples_per_channel = 160;
+  submit_chunk.codec_name = "PCM16";
+
+  Json::Value submit_event(Json::nullValue);
+  assert(engine->submit_audio(submit_chunk, &submit_event, &err));
+  assert(err.empty());
+  note_voice_peer_media_engine_event(&runtime, submit_event);
+  assert(submit_event["event"].asString() == "audio_chunk_transmitted");
+  assert(submit_event["rtp_packets_sent"].asUInt64() >= 1);
+  assert(submit_event["rtcp_packets_sent"].asUInt64() >= 1);
+  assert(submit_event["rtcp_last_sent_packet_type"].asInt64() == 200);
+  assert(runtime.rtcp_packets_sent >= 1);
+  assert(runtime.rtcp_last_sent_packet_type == 200);
+
+  const auto media_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (std::chrono::steady_clock::now() < media_deadline) {
+    if (ctx.outbound_rtp_packets_observed > 0 && ctx.outbound_rtcp_packets_observed > 0) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+  assert(ctx.outbound_rtp_packets_observed >= 1);
+  assert(ctx.outbound_rtcp_packets_observed >= 1);
+  assert(ctx.last_outbound_payload_type == runtime.audio_outbound_payload_type);
+  assert(ctx.last_outbound_ssrc == static_cast<uint32_t>(runtime.rtp_last_sent_ssrc));
+  assert(ctx.last_outbound_payload_size > 0);
+  assert(ctx.last_outbound_rtcp_packet_type == 200);
+  assert(ctx.last_outbound_rtcp_ssrc == static_cast<uint32_t>(runtime.rtcp_last_sent_ssrc));
 
   agentd::destroy_dtls_srtp_session_pair(&ctx.client_srtp_sessions);
   destroy_endpoint(&ctx.client);

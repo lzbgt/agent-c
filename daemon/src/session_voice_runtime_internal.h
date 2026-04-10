@@ -63,6 +63,10 @@ struct VoicePeerRuntime {
   int64_t rtp_payload_bytes_received = 0;
   int64_t rtp_packets_sent = 0;
   int64_t rtp_payload_bytes_sent = 0;
+  int64_t rtcp_packets_received = 0;
+  int64_t rtcp_packets_sent = 0;
+  int64_t rtcp_payload_bytes_received = 0;
+  int64_t rtcp_payload_bytes_sent = 0;
   int64_t rtp_last_payload_type = -1;
   int64_t rtp_last_sequence = -1;
   int64_t rtp_last_timestamp = 0;
@@ -71,6 +75,10 @@ struct VoicePeerRuntime {
   int64_t rtp_last_sent_sequence = -1;
   int64_t rtp_last_sent_timestamp = 0;
   int64_t rtp_last_sent_ssrc = 0;
+  int64_t rtcp_last_packet_type = -1;
+  int64_t rtcp_last_ssrc = 0;
+  int64_t rtcp_last_sent_packet_type = -1;
+  int64_t rtcp_last_sent_ssrc = 0;
   int64_t audio_frames_decoded = 0;
   int64_t audio_pcm_samples_decoded = 0;
   int64_t audio_pcm_samples_buffered = 0;
@@ -106,6 +114,7 @@ struct VoicePeerRuntime {
   std::string audio_outbound_codec_name;
   std::string audio_last_error;
   std::string audio_outbound_last_error;
+  std::string rtcp_last_error;
   std::string audio_render_wav_path;
   std::string audio_render_last_error;
   std::string audio_playback_device_name;
@@ -196,6 +205,10 @@ struct VoicePeerRuntimeSeed {
   int64_t rtp_payload_bytes_received = 0;
   int64_t rtp_packets_sent = 0;
   int64_t rtp_payload_bytes_sent = 0;
+  int64_t rtcp_packets_received = 0;
+  int64_t rtcp_packets_sent = 0;
+  int64_t rtcp_payload_bytes_received = 0;
+  int64_t rtcp_payload_bytes_sent = 0;
   int64_t rtp_last_payload_type = -1;
   int64_t rtp_last_sequence = -1;
   int64_t rtp_last_timestamp = 0;
@@ -204,6 +217,10 @@ struct VoicePeerRuntimeSeed {
   int64_t rtp_last_sent_sequence = -1;
   int64_t rtp_last_sent_timestamp = 0;
   int64_t rtp_last_sent_ssrc = 0;
+  int64_t rtcp_last_packet_type = -1;
+  int64_t rtcp_last_ssrc = 0;
+  int64_t rtcp_last_sent_packet_type = -1;
+  int64_t rtcp_last_sent_ssrc = 0;
   int64_t audio_frames_decoded = 0;
   int64_t audio_pcm_samples_decoded = 0;
   int64_t audio_pcm_samples_buffered = 0;
@@ -239,6 +256,7 @@ struct VoicePeerRuntimeSeed {
   std::string audio_outbound_codec_name;
   std::string audio_last_error;
   std::string audio_outbound_last_error;
+  std::string rtcp_last_error;
   std::string audio_render_wav_path;
   std::string audio_render_last_error;
   std::string audio_playback_device_name;

@@ -56,6 +56,8 @@ static void assert_known_test_provider(
     assert(capabilities["srtp"].asBool());
     assert(capabilities["rtp_ingest"].asBool());
     assert(capabilities["rtp_transmit"].asBool());
+    assert(capabilities["rtcp_ingest"].asBool());
+    assert(capabilities["rtcp_transmit"].asBool());
     assert(capabilities["sctp"].asBool());
     assert(capabilities["real_media_engine"].asBool() == false);
     return;
@@ -316,10 +318,18 @@ static void test_media_engine_event_tracks_audio_drain_fields() {
   payload["native_media_active"] = true;
   payload["rtp_packets_sent"] = Json::Int64(1);
   payload["rtp_payload_bytes_sent"] = Json::Int64(160);
+  payload["rtcp_packets_received"] = Json::Int64(1);
+  payload["rtcp_packets_sent"] = Json::Int64(1);
+  payload["rtcp_payload_bytes_received"] = Json::Int64(28);
+  payload["rtcp_payload_bytes_sent"] = Json::Int64(28);
   payload["rtp_last_sent_payload_type"] = Json::Int64(0);
   payload["rtp_last_sent_sequence"] = Json::Int64(12);
   payload["rtp_last_sent_timestamp"] = Json::Int64(320);
   payload["rtp_last_sent_ssrc"] = Json::Int64(0xA6E17D01);
+  payload["rtcp_last_packet_type"] = Json::Int64(201);
+  payload["rtcp_last_ssrc"] = Json::Int64(0x10203040);
+  payload["rtcp_last_sent_packet_type"] = Json::Int64(200);
+  payload["rtcp_last_sent_ssrc"] = Json::Int64(0xA6E17D01);
   payload["audio_outbound_frames_sent"] = Json::Int64(1);
   payload["audio_pcm_samples_submitted_total"] = Json::Int64(160);
   payload["audio_last_outbound_samples"] = Json::Int64(160);
@@ -355,16 +365,25 @@ static void test_media_engine_event_tracks_audio_drain_fields() {
   payload["audio_playback_device_name"] = "Built-in Output";
   payload["audio_playback_last_error"] = "";
   payload["audio_outbound_last_error"] = "";
+  payload["rtcp_last_error"] = "";
   note_voice_peer_media_engine_event(&runtime, payload);
   assert(runtime.media_engine_state == "media_active");
   assert(runtime.native_media_supported);
   assert(runtime.native_media_active);
   assert(runtime.rtp_packets_sent == 1);
   assert(runtime.rtp_payload_bytes_sent == 160);
+  assert(runtime.rtcp_packets_received == 1);
+  assert(runtime.rtcp_packets_sent == 1);
+  assert(runtime.rtcp_payload_bytes_received == 28);
+  assert(runtime.rtcp_payload_bytes_sent == 28);
   assert(runtime.rtp_last_sent_payload_type == 0);
   assert(runtime.rtp_last_sent_sequence == 12);
   assert(runtime.rtp_last_sent_timestamp == 320);
   assert(runtime.rtp_last_sent_ssrc == 0xA6E17D01);
+  assert(runtime.rtcp_last_packet_type == 201);
+  assert(runtime.rtcp_last_ssrc == 0x10203040);
+  assert(runtime.rtcp_last_sent_packet_type == 200);
+  assert(runtime.rtcp_last_sent_ssrc == 0xA6E17D01);
   assert(runtime.audio_outbound_frames_sent == 1);
   assert(runtime.audio_pcm_samples_submitted_total == 160);
   assert(runtime.audio_last_outbound_samples == 160);
@@ -400,6 +419,7 @@ static void test_media_engine_event_tracks_audio_drain_fields() {
   assert(runtime.audio_playback_device_name == "Built-in Output");
   assert(runtime.audio_playback_last_error.empty());
   assert(runtime.audio_outbound_last_error.empty());
+  assert(runtime.rtcp_last_error.empty());
 }
 
 }  // namespace

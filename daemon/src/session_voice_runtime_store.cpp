@@ -75,6 +75,10 @@ Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   out["rtp_payload_bytes_received"] = Json::Int64(st.rtp_payload_bytes_received);
   out["rtp_packets_sent"] = Json::Int64(st.rtp_packets_sent);
   out["rtp_payload_bytes_sent"] = Json::Int64(st.rtp_payload_bytes_sent);
+  out["rtcp_packets_received"] = Json::Int64(st.rtcp_packets_received);
+  out["rtcp_packets_sent"] = Json::Int64(st.rtcp_packets_sent);
+  out["rtcp_payload_bytes_received"] = Json::Int64(st.rtcp_payload_bytes_received);
+  out["rtcp_payload_bytes_sent"] = Json::Int64(st.rtcp_payload_bytes_sent);
   if (st.rtp_last_payload_type >= 0) out["rtp_last_payload_type"] = Json::Int64(st.rtp_last_payload_type);
   if (st.rtp_last_sequence >= 0) out["rtp_last_sequence"] = Json::Int64(st.rtp_last_sequence);
   if (st.rtp_last_timestamp > 0) out["rtp_last_timestamp"] = Json::Int64(st.rtp_last_timestamp);
@@ -89,6 +93,16 @@ Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
     out["rtp_last_sent_timestamp"] = Json::Int64(st.rtp_last_sent_timestamp);
   }
   if (st.rtp_last_sent_ssrc > 0) out["rtp_last_sent_ssrc"] = Json::Int64(st.rtp_last_sent_ssrc);
+  if (st.rtcp_last_packet_type >= 0) {
+    out["rtcp_last_packet_type"] = Json::Int64(st.rtcp_last_packet_type);
+  }
+  if (st.rtcp_last_ssrc > 0) out["rtcp_last_ssrc"] = Json::Int64(st.rtcp_last_ssrc);
+  if (st.rtcp_last_sent_packet_type >= 0) {
+    out["rtcp_last_sent_packet_type"] = Json::Int64(st.rtcp_last_sent_packet_type);
+  }
+  if (st.rtcp_last_sent_ssrc > 0) {
+    out["rtcp_last_sent_ssrc"] = Json::Int64(st.rtcp_last_sent_ssrc);
+  }
   out["audio_frames_decoded"] = Json::Int64(st.audio_frames_decoded);
   out["audio_pcm_samples_decoded"] = Json::Int64(st.audio_pcm_samples_decoded);
   out["audio_pcm_samples_buffered"] = Json::Int64(st.audio_pcm_samples_buffered);
@@ -145,6 +159,7 @@ Json::Value voice_peer_runtime_to_json(const VoicePeerRuntime& st) {
   if (!st.audio_outbound_last_error.empty()) {
     out["audio_outbound_last_error"] = st.audio_outbound_last_error;
   }
+  if (!st.rtcp_last_error.empty()) out["rtcp_last_error"] = st.rtcp_last_error;
   if (!st.audio_render_wav_path.empty()) out["audio_render_wav_path"] = st.audio_render_wav_path;
   if (!st.audio_render_last_error.empty()) {
     out["audio_render_last_error"] = st.audio_render_last_error;
@@ -406,6 +421,23 @@ bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, s
       (v["rtp_payload_bytes_sent"].isInt64() || v["rtp_payload_bytes_sent"].isUInt64())) {
     st.rtp_payload_bytes_sent = v["rtp_payload_bytes_sent"].asInt64();
   }
+  if (v.isMember("rtcp_packets_received") &&
+      (v["rtcp_packets_received"].isInt64() || v["rtcp_packets_received"].isUInt64())) {
+    st.rtcp_packets_received = v["rtcp_packets_received"].asInt64();
+  }
+  if (v.isMember("rtcp_packets_sent") &&
+      (v["rtcp_packets_sent"].isInt64() || v["rtcp_packets_sent"].isUInt64())) {
+    st.rtcp_packets_sent = v["rtcp_packets_sent"].asInt64();
+  }
+  if (v.isMember("rtcp_payload_bytes_received") &&
+      (v["rtcp_payload_bytes_received"].isInt64() ||
+       v["rtcp_payload_bytes_received"].isUInt64())) {
+    st.rtcp_payload_bytes_received = v["rtcp_payload_bytes_received"].asInt64();
+  }
+  if (v.isMember("rtcp_payload_bytes_sent") &&
+      (v["rtcp_payload_bytes_sent"].isInt64() || v["rtcp_payload_bytes_sent"].isUInt64())) {
+    st.rtcp_payload_bytes_sent = v["rtcp_payload_bytes_sent"].asInt64();
+  }
   if (v.isMember("rtp_last_payload_type") &&
       (v["rtp_last_payload_type"].isInt64() || v["rtp_last_payload_type"].isUInt64())) {
     st.rtp_last_payload_type = v["rtp_last_payload_type"].asInt64();
@@ -440,6 +472,23 @@ bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, s
   if (v.isMember("rtp_last_sent_ssrc") &&
       (v["rtp_last_sent_ssrc"].isInt64() || v["rtp_last_sent_ssrc"].isUInt64())) {
     st.rtp_last_sent_ssrc = v["rtp_last_sent_ssrc"].asInt64();
+  }
+  if (v.isMember("rtcp_last_packet_type") &&
+      (v["rtcp_last_packet_type"].isInt64() || v["rtcp_last_packet_type"].isUInt64())) {
+    st.rtcp_last_packet_type = v["rtcp_last_packet_type"].asInt64();
+  }
+  if (v.isMember("rtcp_last_ssrc") &&
+      (v["rtcp_last_ssrc"].isInt64() || v["rtcp_last_ssrc"].isUInt64())) {
+    st.rtcp_last_ssrc = v["rtcp_last_ssrc"].asInt64();
+  }
+  if (v.isMember("rtcp_last_sent_packet_type") &&
+      (v["rtcp_last_sent_packet_type"].isInt64() ||
+       v["rtcp_last_sent_packet_type"].isUInt64())) {
+    st.rtcp_last_sent_packet_type = v["rtcp_last_sent_packet_type"].asInt64();
+  }
+  if (v.isMember("rtcp_last_sent_ssrc") &&
+      (v["rtcp_last_sent_ssrc"].isInt64() || v["rtcp_last_sent_ssrc"].isUInt64())) {
+    st.rtcp_last_sent_ssrc = v["rtcp_last_sent_ssrc"].asInt64();
   }
   if (v.isMember("audio_frames_decoded") &&
       (v["audio_frames_decoded"].isInt64() || v["audio_frames_decoded"].isUInt64())) {
@@ -601,6 +650,9 @@ bool voice_peer_runtime_from_json(const Json::Value& v, VoicePeerRuntime* out, s
   }
   if (v.isMember("audio_outbound_last_error") && v["audio_outbound_last_error"].isString()) {
     st.audio_outbound_last_error = trim_copy(v["audio_outbound_last_error"].asString());
+  }
+  if (v.isMember("rtcp_last_error") && v["rtcp_last_error"].isString()) {
+    st.rtcp_last_error = trim_copy(v["rtcp_last_error"].asString());
   }
   if (v.isMember("audio_render_wav_path") && v["audio_render_wav_path"].isString()) {
     st.audio_render_wav_path = v["audio_render_wav_path"].asString();

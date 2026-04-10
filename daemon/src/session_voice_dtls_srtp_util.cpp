@@ -430,16 +430,57 @@ bool parse_rtp_packet(
   return true;
 }
 
+bool parse_rtcp_packet(
+  const unsigned char* packet,
+  size_t packet_size,
+  ParsedRtcpPacketInfo* out_info,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (out_info) *out_info = ParsedRtcpPacketInfo();
+  if (!packet || packet_size < 8) {
+    if (out_err) *out_err = "RTCP packet too short";
+    return false;
+  }
+  if ((packet[0] & 0xC0u) != 0x80u) {
+    if (out_err) *out_err = "unsupported RTCP version";
+    return false;
+  }
+  if (!is_probable_rtcp_packet(packet, packet_size)) {
+    if (out_err) *out_err = "packet is not RTCP";
+    return false;
+  }
+
+  const uint16_t length_words = read_u16_be(packet + 2);
+  const size_t declared_packet_size =
+    (static_cast<size_t>(length_words) + static_cast<size_t>(1)) * static_cast<size_t>(4);
+  if (declared_packet_size > packet_size) {
+    if (out_err) *out_err = "RTCP packet length exceeds buffer";
+    return false;
+  }
+
+  if (out_info) {
+    out_info->packet_type = packet[1];
+    out_info->report_count = static_cast<uint8_t>(packet[0] & 0x1Fu);
+    out_info->length_words = length_words;
+    out_info->ssrc = read_u32_be(packet + 4);
+    out_info->packet_size = declared_packet_size;
+  }
+  return true;
+}
+
 bool unprotect_inbound_srtp_packet(
   srtp_t inbound_session,
   const unsigned char* packet,
   size_t packet_size,
   ParsedRtpPacketInfo* out_info,
   bool* out_was_rtcp,
-  std::string* out_err
+  std::string* out_err,
+  ParsedRtcpPacketInfo* out_rtcp_info
 ) {
   if (out_err) out_err->clear();
   if (out_info) *out_info = ParsedRtpPacketInfo();
+  if (out_rtcp_info) *out_rtcp_info = ParsedRtcpPacketInfo();
   if (out_was_rtcp) *out_was_rtcp = false;
   if (!inbound_session) {
     if (out_err) *out_err = "missing inbound SRTP session";
@@ -465,7 +506,13 @@ bool unprotect_inbound_srtp_packet(
   }
 
   if (out_was_rtcp) *out_was_rtcp = rtcp;
-  if (rtcp) return true;
+  if (rtcp) {
+    return parse_rtcp_packet(
+      mutable_packet.data(),
+      static_cast<size_t>(mutable_len),
+      out_rtcp_info,
+      out_err);
+  }
   return parse_rtp_packet(
     mutable_packet.data(),
     static_cast<size_t>(mutable_len),
@@ -517,6 +564,62 @@ bool protect_outbound_rtp_packet(
   }
   if (mutable_len <= 0) {
     if (out_err) *out_err = "outbound SRTP protect returned an empty packet";
+    return false;
+  }
+  mutable_packet.resize(static_cast<size_t>(mutable_len));
+  *out_protected_packet = std::move(mutable_packet);
+  return true;
+}
+
+bool protect_outbound_rtcp_packet(
+  srtp_t outbound_session,
+  const unsigned char* packet,
+  size_t packet_size,
+  std::vector<unsigned char>* out_protected_packet,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (out_protected_packet) out_protected_packet->clear();
+  if (!outbound_session) {
+    if (out_err) *out_err = "missing outbound SRTCP session";
+    return false;
+  }
+  if (!packet || packet_size == 0) {
+    if (out_err) *out_err = "missing outbound RTCP packet";
+    return false;
+  }
+  if (!is_probable_rtcp_packet(packet, packet_size)) {
+    if (out_err) *out_err = "outbound packet is not RTCP";
+    return false;
+  }
+  if (!out_protected_packet) {
+    if (out_err) *out_err = "missing protected RTCP output";
+    return false;
+  }
+  ParsedRtcpPacketInfo rtcp_info;
+  if (!parse_rtcp_packet(packet, packet_size, &rtcp_info, out_err)) return false;
+  if (rtcp_info.packet_size != packet_size) {
+    if (out_err) *out_err = "outbound RTCP packet length mismatch";
+    return false;
+  }
+  if (packet_size > static_cast<size_t>(std::numeric_limits<int>::max() - SRTP_MAX_TRAILER_LEN)) {
+    if (out_err) *out_err = "outbound RTCP packet too large";
+    return false;
+  }
+
+  std::vector<unsigned char> mutable_packet(packet, packet + packet_size);
+  mutable_packet.resize(packet_size + SRTP_MAX_TRAILER_LEN);
+  int mutable_len = static_cast<int>(packet_size);
+  const srtp_err_status_t status =
+    srtp_protect_rtcp(outbound_session, mutable_packet.data(), &mutable_len);
+  if (status != srtp_err_status_ok) {
+    if (out_err) {
+      *out_err = "outbound SRTCP protect failed: " + srtp_err_status_text(status);
+    }
+    return false;
+  }
+  if (mutable_len <= 0) {
+    if (out_err) *out_err = "outbound SRTCP protect returned an empty packet";
     return false;
   }
   mutable_packet.resize(static_cast<size_t>(mutable_len));

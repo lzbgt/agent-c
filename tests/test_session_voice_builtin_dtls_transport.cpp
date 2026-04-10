@@ -395,6 +395,51 @@ void test_dtls_memory_loopback_derives_srtp_contexts_and_round_trips_rtp() {
   assert(parsed_rtp.ssrc == 0x11223344u);
   assert(parsed_rtp.payload_size == sizeof(payload) - 1);
 
+  std::array<unsigned char, 28> rtcp_sr{};
+  rtcp_sr[0] = 0x80;
+  rtcp_sr[1] = 200;
+  write_u16_be(rtcp_sr.data() + 2, 6);
+  write_u32_be(rtcp_sr.data() + 4, 0x11223344u);
+  write_u32_be(rtcp_sr.data() + 8, 0xEFC27A10u);
+  write_u32_be(rtcp_sr.data() + 12, 0x01020304u);
+  write_u32_be(rtcp_sr.data() + 16, 0x01020304u);
+  write_u32_be(rtcp_sr.data() + 20, 1);
+  write_u32_be(rtcp_sr.data() + 24, static_cast<uint32_t>(sizeof(payload) - 1));
+
+  agentd::ParsedRtcpPacketInfo parsed_rtcp;
+  assert(agentd::parse_rtcp_packet(rtcp_sr.data(), rtcp_sr.size(), &parsed_rtcp, &err));
+  assert(err.empty());
+  assert(parsed_rtcp.packet_type == 200);
+  assert(parsed_rtcp.report_count == 0);
+  assert(parsed_rtcp.length_words == 6);
+  assert(parsed_rtcp.ssrc == 0x11223344u);
+
+  std::vector<unsigned char> protected_rtcp_packet;
+  assert(agentd::protect_outbound_rtcp_packet(
+    server_sessions.outbound,
+    rtcp_sr.data(),
+    rtcp_sr.size(),
+    &protected_rtcp_packet,
+    &err));
+  assert(err.empty());
+  assert(protected_rtcp_packet.size() > rtcp_sr.size());
+  assert(agentd::is_probable_rtcp_packet(
+    protected_rtcp_packet.data(),
+    protected_rtcp_packet.size()));
+  err.clear();
+  assert(agentd::unprotect_inbound_srtp_packet(
+    client_sessions.inbound,
+    protected_rtcp_packet.data(),
+    protected_rtcp_packet.size(),
+    &parsed_rtp,
+    &was_rtcp,
+    &err,
+    &parsed_rtcp));
+  assert(err.empty());
+  assert(was_rtcp);
+  assert(parsed_rtcp.packet_type == 200);
+  assert(parsed_rtcp.ssrc == 0x11223344u);
+
   std::array<unsigned char, 256> audio_packet{};
   const unsigned char audio_payload[] = {0xFFu, 0x7Fu, 0x00u, 0x80u};
   const int audio_plain_len = 12 + static_cast<int>(sizeof(audio_payload));

@@ -63,6 +63,10 @@ std::shared_ptr<VoicePeerRuntime> make_voice_peer_runtime_state(
   st->rtp_payload_bytes_received = seed.rtp_payload_bytes_received;
   st->rtp_packets_sent = seed.rtp_packets_sent;
   st->rtp_payload_bytes_sent = seed.rtp_payload_bytes_sent;
+  st->rtcp_packets_received = seed.rtcp_packets_received;
+  st->rtcp_packets_sent = seed.rtcp_packets_sent;
+  st->rtcp_payload_bytes_received = seed.rtcp_payload_bytes_received;
+  st->rtcp_payload_bytes_sent = seed.rtcp_payload_bytes_sent;
   st->rtp_last_payload_type = seed.rtp_last_payload_type;
   st->rtp_last_sequence = seed.rtp_last_sequence;
   st->rtp_last_timestamp = seed.rtp_last_timestamp;
@@ -71,6 +75,10 @@ std::shared_ptr<VoicePeerRuntime> make_voice_peer_runtime_state(
   st->rtp_last_sent_sequence = seed.rtp_last_sent_sequence;
   st->rtp_last_sent_timestamp = seed.rtp_last_sent_timestamp;
   st->rtp_last_sent_ssrc = seed.rtp_last_sent_ssrc;
+  st->rtcp_last_packet_type = seed.rtcp_last_packet_type;
+  st->rtcp_last_ssrc = seed.rtcp_last_ssrc;
+  st->rtcp_last_sent_packet_type = seed.rtcp_last_sent_packet_type;
+  st->rtcp_last_sent_ssrc = seed.rtcp_last_sent_ssrc;
   st->audio_frames_decoded = seed.audio_frames_decoded;
   st->audio_pcm_samples_decoded = seed.audio_pcm_samples_decoded;
   st->audio_pcm_samples_buffered = seed.audio_pcm_samples_buffered;
@@ -106,6 +114,7 @@ std::shared_ptr<VoicePeerRuntime> make_voice_peer_runtime_state(
   st->audio_outbound_codec_name = seed.audio_outbound_codec_name;
   st->audio_last_error = seed.audio_last_error;
   st->audio_outbound_last_error = seed.audio_outbound_last_error;
+  st->rtcp_last_error = seed.rtcp_last_error;
   st->audio_render_wav_path = seed.audio_render_wav_path;
   st->audio_render_last_error = seed.audio_render_last_error;
   st->audio_playback_device_name = seed.audio_playback_device_name;

@@ -1,7 +1,7 @@
 # Audio Streaming (v0)
 
 Date: 2026-02-19
-Status: implemented rolling foundation (broker signaling relay + session status APIs + WebUI voice-session controls + browser-side WebRTC negotiation client + managed agentd-side media peer runtime + embedded builtin native-plugin RTP proof); embedded agentd-native media service is still not a full WebRTC runtime, but the runtime contract now exposes explicit `bundled`, `external`, `builtin=signaling_stub`, and `builtin=native_plugin` backend seams and the shipped backends now have durable restart-aware status recovery
+Status: implemented rolling foundation (broker signaling relay + session status APIs + WebUI voice-session controls + browser-side WebRTC negotiation client + managed agentd-side media peer runtime + embedded builtin native-plugin RTP/RTCP proof); embedded agentd-native media service is still not a full WebRTC runtime, but the runtime contract now exposes explicit `bundled`, `external`, `builtin=signaling_stub`, and `builtin=native_plugin` backend seams and the shipped backends now have durable restart-aware status recovery
 
 ## Goals
 
@@ -292,8 +292,12 @@ A v0 smoke test should:
   proves outbound SRTP protect plus inbound SRTP/RTP ingest and receive-side audio decode. Agentd can now also submit
   processed PCM back through the native-provider ABI; the embedded provider negotiates outbound Opus when `libopus` is
   present, falls back to negotiated G.711, encodes a bounded Opus or PCMU/PCMA RTP frame, protects it with the outbound
-  libsrtp context, and transmits it over libjuice. The remaining gap is no longer basic outbound RTP or Opus ownership;
-  it is RTCP/full-duplex behavior.
+  libsrtp context, and transmits it over libjuice. After each successful outbound RTP frame, it now emits a reduced-size
+  RTCP Sender Report (`PT=200`) using the outbound SSRC, protects it with SRTCP, and persists inbound/outbound RTCP
+  counters plus last-packet metadata. The Sender Report packet layout is pinned to the persisted RFC 3550 reference in
+  `docs/research/vendor-rfc3550-rtp-20260411.txt`. The remaining gap is no longer basic outbound RTP, Opus ownership,
+  or one-shot Sender Report transmit; it is fuller RTCP cadence/receiver-report behavior and broader full-duplex
+  validation.
 - That runtime contract now also exposes the media-engine seam directly: planned/live builtin paths report
   `media_engine_kind=builtin_reserved|builtin_signaling_stub|builtin_native_plugin`, bundled/external runtimes report
   `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` now distinguish the
@@ -306,6 +310,9 @@ A v0 smoke test should:
   `rtp_packets_sent`, `rtp_payload_bytes_sent`, `rtp_last_payload_type`, `rtp_last_sequence`,
   `rtp_last_timestamp`, `rtp_last_ssrc`, `rtp_last_sent_payload_type`, `rtp_last_sent_sequence`,
   `rtp_last_sent_timestamp`, `rtp_last_sent_ssrc`,
+  `rtcp_packets_received`, `rtcp_packets_sent`, `rtcp_payload_bytes_received`,
+  `rtcp_payload_bytes_sent`, `rtcp_last_packet_type`, `rtcp_last_ssrc`,
+  `rtcp_last_sent_packet_type`, `rtcp_last_sent_ssrc`,
   `audio_frames_decoded`, `audio_pcm_samples_decoded`, `audio_pcm_samples_buffered`,
   `audio_outbound_frames_sent`, `audio_pcm_samples_submitted_total`, `audio_last_outbound_samples`,
   `audio_outbound_payload_type`, `audio_outbound_codec_name`,
@@ -320,7 +327,8 @@ A v0 smoke test should:
   `audio_playback_events_total`, `audio_pcm_samples_played_total`,
   `audio_pcm_samples_playback_queued`, `audio_last_playback_samples`,
   `audio_last_sample_rate_hz`, `audio_last_channels`, `audio_last_frame_samples_per_channel`,
-  `audio_last_codec_name`, `audio_last_error`, `audio_outbound_last_error`, `audio_render_wav_path`,
+  `audio_last_codec_name`, `audio_last_error`, `audio_outbound_last_error`, `rtcp_last_error`,
+  `audio_render_wav_path`,
   `audio_render_last_error`, `audio_playback_device_name`, and
   `audio_playback_last_error`.
   Those fields can now also advance through provider-polled async status events rather than only through direct

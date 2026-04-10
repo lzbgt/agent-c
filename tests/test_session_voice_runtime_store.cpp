@@ -188,6 +188,10 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   st.rtp_payload_bytes_received = 480;
   st.rtp_packets_sent = 2;
   st.rtp_payload_bytes_sent = 320;
+  st.rtcp_packets_received = 1;
+  st.rtcp_packets_sent = 2;
+  st.rtcp_payload_bytes_received = 28;
+  st.rtcp_payload_bytes_sent = 56;
   st.rtp_last_payload_type = 96;
   st.rtp_last_sequence = 321;
   st.rtp_last_timestamp = 0x01020304;
@@ -196,6 +200,10 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   st.rtp_last_sent_sequence = 22;
   st.rtp_last_sent_timestamp = 0x05060708;
   st.rtp_last_sent_ssrc = 0xA6E17D01;
+  st.rtcp_last_packet_type = 201;
+  st.rtcp_last_ssrc = 0x10203040;
+  st.rtcp_last_sent_packet_type = 200;
+  st.rtcp_last_sent_ssrc = 0xA6E17D01;
   st.audio_frames_decoded = 7;
   st.audio_pcm_samples_decoded = 6720;
   st.audio_pcm_samples_buffered = 1920;
@@ -231,6 +239,7 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   st.audio_last_codec_name = "OPUS";
   st.audio_last_error = "decoder_warmup";
   st.audio_outbound_last_error = "outbound_warmup";
+  st.rtcp_last_error = "rtcp_warmup";
   st.audio_render_wav_path = "/tmp/agentd/voice-sid/audio_recent.wav";
   st.audio_render_last_error = "none";
   st.audio_playback_device_name = "Built-in Output";
@@ -270,6 +279,10 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(json["rtp_payload_bytes_received"].asInt64() == 480);
   assert(json["rtp_packets_sent"].asInt64() == 2);
   assert(json["rtp_payload_bytes_sent"].asInt64() == 320);
+  assert(json["rtcp_packets_received"].asInt64() == 1);
+  assert(json["rtcp_packets_sent"].asInt64() == 2);
+  assert(json["rtcp_payload_bytes_received"].asInt64() == 28);
+  assert(json["rtcp_payload_bytes_sent"].asInt64() == 56);
   assert(json["rtp_last_payload_type"].asInt64() == 96);
   assert(json["rtp_last_sequence"].asInt64() == 321);
   assert(json["rtp_last_timestamp"].asInt64() == 0x01020304);
@@ -278,6 +291,10 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(json["rtp_last_sent_sequence"].asInt64() == 22);
   assert(json["rtp_last_sent_timestamp"].asInt64() == 0x05060708);
   assert(json["rtp_last_sent_ssrc"].asInt64() == 0xA6E17D01);
+  assert(json["rtcp_last_packet_type"].asInt64() == 201);
+  assert(json["rtcp_last_ssrc"].asInt64() == 0x10203040);
+  assert(json["rtcp_last_sent_packet_type"].asInt64() == 200);
+  assert(json["rtcp_last_sent_ssrc"].asInt64() == 0xA6E17D01);
   assert(json["audio_frames_decoded"].asInt64() == 7);
   assert(json["audio_pcm_samples_decoded"].asInt64() == 6720);
   assert(json["audio_pcm_samples_buffered"].asInt64() == 1920);
@@ -313,6 +330,7 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(json["audio_last_codec_name"].asString() == "OPUS");
   assert(json["audio_last_error"].asString() == "decoder_warmup");
   assert(json["audio_outbound_last_error"].asString() == "outbound_warmup");
+  assert(json["rtcp_last_error"].asString() == "rtcp_warmup");
   assert(json["audio_render_wav_path"].asString() == "/tmp/agentd/voice-sid/audio_recent.wav");
   assert(json["audio_render_last_error"].asString() == "none");
   assert(json["audio_playback_device_name"].asString() == "Built-in Output");
@@ -352,6 +370,10 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(round_trip.rtp_payload_bytes_received == 480);
   assert(round_trip.rtp_packets_sent == 2);
   assert(round_trip.rtp_payload_bytes_sent == 320);
+  assert(round_trip.rtcp_packets_received == 1);
+  assert(round_trip.rtcp_packets_sent == 2);
+  assert(round_trip.rtcp_payload_bytes_received == 28);
+  assert(round_trip.rtcp_payload_bytes_sent == 56);
   assert(round_trip.rtp_last_payload_type == 96);
   assert(round_trip.rtp_last_sequence == 321);
   assert(round_trip.rtp_last_timestamp == 0x01020304);
@@ -360,6 +382,10 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(round_trip.rtp_last_sent_sequence == 22);
   assert(round_trip.rtp_last_sent_timestamp == 0x05060708);
   assert(round_trip.rtp_last_sent_ssrc == 0xA6E17D01);
+  assert(round_trip.rtcp_last_packet_type == 201);
+  assert(round_trip.rtcp_last_ssrc == 0x10203040);
+  assert(round_trip.rtcp_last_sent_packet_type == 200);
+  assert(round_trip.rtcp_last_sent_ssrc == 0xA6E17D01);
   assert(round_trip.audio_frames_decoded == 7);
   assert(round_trip.audio_pcm_samples_decoded == 6720);
   assert(round_trip.audio_pcm_samples_buffered == 1920);
@@ -395,6 +421,7 @@ static void test_runtime_json_round_trips_media_engine_fields() {
   assert(round_trip.audio_last_codec_name == "OPUS");
   assert(round_trip.audio_last_error == "decoder_warmup");
   assert(round_trip.audio_outbound_last_error == "outbound_warmup");
+  assert(round_trip.rtcp_last_error == "rtcp_warmup");
   assert(round_trip.audio_render_wav_path == "/tmp/agentd/voice-sid/audio_recent.wav");
   assert(round_trip.audio_render_last_error == "none");
   assert(round_trip.audio_playback_device_name == "Built-in Output");

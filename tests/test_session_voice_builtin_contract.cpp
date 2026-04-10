@@ -43,6 +43,8 @@ static void assert_known_test_provider(
     assert(capabilities["srtp"].asBool());
     assert(capabilities["rtp_ingest"].asBool());
     assert(capabilities["rtp_transmit"].asBool());
+    assert(capabilities["rtcp_ingest"].asBool());
+    assert(capabilities["rtcp_transmit"].asBool());
     assert(capabilities["sctp"].asBool());
     return;
   }

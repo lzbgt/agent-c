@@ -159,14 +159,21 @@ Reference artifacts downloaded into the repo for exact vendor details:
     falls back to negotiated G.711 payload type from the remote SDP, encodes a
     20 ms Opus or PCMU/PCMA RTP frame, protects it with the outbound libsrtp
     context, and transmits it over the same libjuice transport
+  - after each successful outbound RTP frame, the provider now builds a
+    reduced-size RTCP Sender Report (`PT=200`) from the same outbound SSRC,
+    protects it with SRTCP, and transmits it over libjuice; the packet layout
+    is pinned to the persisted RFC 3550 reference in
+    `docs/research/vendor-rfc3550-rtp-20260411.txt`
   - runtime status now persists outbound RTP and PCM-submit counters, including
     `rtp_packets_sent`, `rtp_payload_bytes_sent`,
     `audio_outbound_frames_sent`, and
     `audio_pcm_samples_submitted_total`, plus selected outbound
-    payload/codec/rate/channel metadata
+    payload/codec/rate/channel metadata plus inbound/outbound RTCP counters
+    and last-packet metadata
 - The remaining gap is that the outbound path is deliberately minimal: it uses
-  single-frame negotiated Opus/G.711 generation rather than fuller
-  RTCP/full-duplex behavior.
+  single-frame negotiated Opus/G.711 generation and one-shot reduced-size
+  Sender Reports rather than fuller RTCP cadence, receiver reports, and broader
+  browser-peer full-duplex validation.
 
 ## Implications
 
@@ -176,9 +183,9 @@ The highest-confidence next implementation path is:
 2. Require future native providers to declare capabilities and ABI metadata.
 3. Keep the current dependency-backed embedded provider as the transport
    primitives bring-up lane.
-4. Grow the embedded provider's new inbound/decode/PCM-submit/outbound-PCMU
-   path into a fuller negotiated in-process DTLS/SRTP/RTP audio engine instead
-   of adding more control-plane glue.
+4. Grow the embedded provider's new inbound/decode/PCM-submit/outbound
+   RTP/SRTCP path into a fuller negotiated in-process DTLS/SRTP/RTP audio
+   engine instead of adding more control-plane glue.
 
 At this scan point, the local machine is ready for:
 
@@ -190,8 +197,9 @@ At this scan point, the local machine is ready for:
 - optional audio I/O experiments using `opus` / `portaudio`
 
 It is **not** yet at a full embedded WebRTC/SRTP runtime. The remaining gap is
-no longer dependency discovery or basic RTP ownership; it is fuller RTCP,
-full-duplex, and negotiated Opus media behavior.
+no longer dependency discovery, basic RTP ownership, negotiated Opus transmit,
+or one-shot Sender Report transmit; it is fuller RTCP cadence/receiver-report
+behavior and broader full-duplex validation.
 
 ## Recommended Next Technical Decision
 
@@ -217,7 +225,9 @@ The best factual candidate remains the narrower `libjuice + srtp + libusrsctp`
 family, because those dependencies are now locally installed, buildable, and
 covered by provider inspection/unit/smoke proof. The bounded outbound RTP path
 now negotiates Opus when `libopus` is present, falls back to G.711 payload type
-from the remote SDP (`PCMU/8000/1` preferred, `PCMA/8000/1` fallback), and
-records that selection in runtime telemetry. The next concrete step after this
-negotiated transmit path is RTCP/full-duplex behavior rather than more
+from the remote SDP (`PCMU/8000/1` preferred, `PCMA/8000/1` fallback), records
+that selection in runtime telemetry, and emits a reduced-size SRTCP Sender
+Report after successful outbound frames. The next concrete step after this
+negotiated transmit path is fuller RTCP cadence/receiver-report handling and
+broader browser-peer full-duplex validation rather than more
 DTLS/SRTP/control-plane work.
