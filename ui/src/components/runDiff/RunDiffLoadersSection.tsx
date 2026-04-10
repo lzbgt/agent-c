@@ -1,4 +1,5 @@
 import FieldLabel from "../FieldLabel";
+import { safeObject } from "../../jsonUtils";
 import type { RunDiffPanelState } from "./useRunDiffPanelState";
 import { extractUsageFromRunRow, formatUsage, formatUsageDelta } from "./runDiffUtils";
 
@@ -8,6 +9,9 @@ type RunDiffLoadersSectionProps = Pick<
 >;
 
 export default function RunDiffLoadersSection(props: RunDiffLoadersSectionProps) {
+  const dbRunA = safeObject(props.sideA.db?.run);
+  const dbRunB = safeObject(props.sideB.db?.run);
+
   return (
     <section className="grid gap-3" data-testid="run-diff-loaders-section">
       <div className="flex flex-wrap items-center gap-2">
@@ -149,22 +153,22 @@ export default function RunDiffLoadersSection(props: RunDiffLoadersSectionProps)
 
       {(props.sideA.db || props.sideB.db || props.sideA.attestation || props.sideB.attestation) && (
         <div className="grid gap-2 rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70">
-          {props.sideA.db?.run ? (
+          {Object.keys(dbRunA).length > 0 ? (
             <div>
-              <div>A · db run {props.sideA.db.run?.run_id ?? "?"}</div>
-              {formatUsage(extractUsageFromRunRow(props.sideA.db.run)) ? (
-                <div className="text-white/50">db usage: {formatUsage(extractUsageFromRunRow(props.sideA.db.run))}</div>
+              <div>A · db run {String(dbRunA.run_id ?? "?")}</div>
+              {formatUsage(extractUsageFromRunRow(dbRunA)) ? (
+                <div className="text-white/50">db usage: {formatUsage(extractUsageFromRunRow(dbRunA))}</div>
               ) : null}
-              {props.sideA.db.run?.replay_sha256 ? <div className="text-white/50">replay_sha256: {props.sideA.db.run?.replay_sha256}</div> : null}
+              {dbRunA.replay_sha256 ? <div className="text-white/50">replay_sha256: {String(dbRunA.replay_sha256)}</div> : null}
             </div>
           ) : null}
-          {props.sideB.db?.run ? (
+          {Object.keys(dbRunB).length > 0 ? (
             <div>
-              <div>B · db run {props.sideB.db.run?.run_id ?? "?"}</div>
-              {formatUsage(extractUsageFromRunRow(props.sideB.db.run)) ? (
-                <div className="text-white/50">db usage: {formatUsage(extractUsageFromRunRow(props.sideB.db.run))}</div>
+              <div>B · db run {String(dbRunB.run_id ?? "?")}</div>
+              {formatUsage(extractUsageFromRunRow(dbRunB)) ? (
+                <div className="text-white/50">db usage: {formatUsage(extractUsageFromRunRow(dbRunB))}</div>
               ) : null}
-              {props.sideB.db.run?.replay_sha256 ? <div className="text-white/50">replay_sha256: {props.sideB.db.run?.replay_sha256}</div> : null}
+              {dbRunB.replay_sha256 ? <div className="text-white/50">replay_sha256: {String(dbRunB.replay_sha256)}</div> : null}
             </div>
           ) : null}
           {props.sideA.attestation?.attestation ? (

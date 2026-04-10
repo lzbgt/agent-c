@@ -1,4 +1,5 @@
 import React from "react";
+import type { OpenRouterModelsResp } from "../../api";
 import type { RunSettings } from "../../hooks/uiSettingsTypes";
 import FieldLabel from "../FieldLabel";
 import { ToggleRow } from "./SettingsControls";
@@ -8,7 +9,7 @@ type SettingsOpenRouterSectionProps = {
   fetchOpenRouterModelsPending: boolean;
   fetchOpenRouterModelsError: string | null;
   onFetchOpenRouterModels: () => void;
-  openrouterModels: any | null;
+  openrouterModels: OpenRouterModelsResp | null;
 };
 
 export default function SettingsOpenRouterSection(props: SettingsOpenRouterSectionProps) {
@@ -87,11 +88,11 @@ export default function SettingsOpenRouterSection(props: SettingsOpenRouterSecti
             ) : null}
             {Array.isArray(openrouterModels.models) && openrouterModels.models.length > 0 ? (
               <div className="mt-3 max-h-48 overflow-auto rounded-md border border-white/10">
-                {openrouterModels.models.slice(0, 50).map((m: any) => {
-                  const id = typeof m?.id === "string" ? m.id : "";
+                {openrouterModels.models.slice(0, 50).map((model) => {
+                  const id = typeof model.id === "string" ? model.id : "";
                   if (!id) return null;
-                  const total = typeof m?.total_usd_per_million === "number" ? m.total_usd_per_million : null;
-                  const ctx = typeof m?.context_length === "number" ? m.context_length : null;
+                  const total = typeof model.total_usd_per_million === "number" ? model.total_usd_per_million : null;
+                  const ctx = typeof model.context_length === "number" ? model.context_length : null;
                   return (
                     <button
                       key={id}

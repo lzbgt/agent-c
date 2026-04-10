@@ -1,12 +1,13 @@
 import React from "react";
+import type { SessionOperatorResp } from "../../api";
 
-import { capabilityRefOf, capabilitySummary, jsonText } from "./settingsBrokerSessionOperatorUtils";
+import { capabilityRefOf, capabilitySummary, jsonText, type SessionOperatorRow } from "./settingsBrokerSessionOperatorUtils";
 
 type Props = {
   selectedCapabilityRef: string;
   setSelectedCapabilityRef: React.Dispatch<React.SetStateAction<string>>;
-  capabilityRows: any[];
-  capabilityDetail: { data: any };
+  capabilityRows: SessionOperatorRow[];
+  capabilityDetail: { data: SessionOperatorResp | undefined };
 };
 
 export default function SettingsBrokerSessionCapabilitiesSection(props: Props) {

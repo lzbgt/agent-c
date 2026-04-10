@@ -1,12 +1,15 @@
 import { z } from "zod";
 
+const UnknownValueSchema = z.unknown();
+const UnknownArraySchema = z.array(UnknownValueSchema);
+
 export const DbRunsSchema = z.object({
   ok: z.boolean(),
   session_id: z.string().optional(),
   limit: z.number().optional(),
   offset: z.number().optional(),
   count: z.number().optional(),
-  runs: z.array(z.any()).optional(),
+  runs: UnknownArraySchema.optional(),
   error: z.string().optional(),
   err: z.string().optional(),
   code: z.string().optional(),
@@ -15,11 +18,11 @@ export type DbRunsResp = z.infer<typeof DbRunsSchema>;
 
 export const DbRunSchema = z.object({
   ok: z.boolean(),
-  run: z.any().optional(),
-  events: z.array(z.any()).optional(),
-  tool_records: z.array(z.any()).optional(),
-  artifacts: z.array(z.any()).optional(),
-  ui_actions: z.array(z.any()).optional(),
+  run: UnknownValueSchema.optional(),
+  events: UnknownArraySchema.optional(),
+  tool_records: UnknownArraySchema.optional(),
+  artifacts: UnknownArraySchema.optional(),
+  ui_actions: UnknownArraySchema.optional(),
   error: z.string().optional(),
   err: z.string().optional(),
   code: z.string().optional(),
@@ -32,7 +35,7 @@ export const DbArtifactsSchema = z.object({
   limit: z.number().optional(),
   offset: z.number().optional(),
   count: z.number().optional(),
-  artifacts: z.array(z.any()).optional(),
+  artifacts: UnknownArraySchema.optional(),
   error: z.string().optional(),
   err: z.string().optional(),
   code: z.string().optional(),
@@ -45,7 +48,7 @@ export const DbUiActionsSchema = z.object({
   limit: z.number().optional(),
   offset: z.number().optional(),
   count: z.number().optional(),
-  ui_actions: z.array(z.any()).optional(),
+  ui_actions: UnknownArraySchema.optional(),
   error: z.string().optional(),
   err: z.string().optional(),
   code: z.string().optional(),
@@ -57,7 +60,7 @@ export const DbSessionsSchema = z.object({
   limit: z.number().optional(),
   offset: z.number().optional(),
   count: z.number().optional(),
-  sessions: z.array(z.any()).optional(),
+  sessions: UnknownArraySchema.optional(),
   error: z.string().optional(),
   err: z.string().optional(),
   code: z.string().optional(),
@@ -72,7 +75,7 @@ export const DbMessagesSchema = z.object({
   max_content_bytes: z.number().optional(),
   max_mm_bytes: z.number().optional(),
   count: z.number().optional(),
-  messages: z.array(z.any()).optional(),
+  messages: UnknownArraySchema.optional(),
   error: z.string().optional(),
   err: z.string().optional(),
   code: z.string().optional(),
@@ -85,7 +88,7 @@ export const DbClientEventsSchema = z.object({
   limit: z.number().optional(),
   offset: z.number().optional(),
   count: z.number().optional(),
-  client_events: z.array(z.any()).optional(),
+  client_events: UnknownArraySchema.optional(),
   error: z.string().optional(),
   err: z.string().optional(),
   code: z.string().optional(),

@@ -62,10 +62,30 @@ export default function SettingsBrokerSessionOperatorsSection(props: SettingsBro
             shellNotice={state.shellNotice}
             shellRows={state.shellRows}
             shellDetail={state.shellDetail}
-            startShell={state.startShell}
-            pollShell={state.pollShell}
-            sendShell={state.sendShell}
-            terminateShell={state.terminateShell}
+            startShell={{
+              isPending: state.startShell.isPending,
+              isError: state.startShell.isError,
+              error: state.startShell.error,
+              mutateAsync: () => state.startShell.mutateAsync(),
+            }}
+            pollShell={{
+              isPending: state.pollShell.isPending,
+              isError: state.pollShell.isError,
+              error: state.pollShell.error,
+              mutateAsync: () => state.pollShell.mutateAsync(),
+            }}
+            sendShell={{
+              isPending: state.sendShell.isPending,
+              isError: state.sendShell.isError,
+              error: state.sendShell.error,
+              mutateAsync: () => state.sendShell.mutateAsync(),
+            }}
+            terminateShell={{
+              isPending: state.terminateShell.isPending,
+              isError: state.terminateShell.isError,
+              error: state.terminateShell.error,
+              mutateAsync: () => state.terminateShell.mutateAsync(),
+            }}
           />
 
           <SettingsBrokerSessionServicesSection
@@ -80,9 +100,24 @@ export default function SettingsBrokerSessionOperatorsSection(props: SettingsBro
             serviceNotice={state.serviceNotice}
             serviceRows={state.serviceRows}
             serviceDetail={state.serviceDetail}
-            attachService={state.attachService}
-            waitService={state.waitService}
-            runService={state.runService}
+            attachService={{
+              isPending: state.attachService.isPending,
+              isError: state.attachService.isError,
+              error: state.attachService.error,
+              mutateAsync: () => state.attachService.mutateAsync(),
+            }}
+            waitService={{
+              isPending: state.waitService.isPending,
+              isError: state.waitService.isError,
+              error: state.waitService.error,
+              mutateAsync: () => state.waitService.mutateAsync(),
+            }}
+            runService={{
+              isPending: state.runService.isPending,
+              isError: state.runService.isError,
+              error: state.runService.error,
+              mutateAsync: () => state.runService.mutateAsync(),
+            }}
           />
 
           <SettingsBrokerSessionCapabilitiesSection

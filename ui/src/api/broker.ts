@@ -1,5 +1,6 @@
 import { daemonFetchInit, daemonHeaders, type ApiAuth } from "./auth";
 import { addQueryParam } from "./query";
+import { safeObject, type UnknownRecord } from "../jsonUtils";
 import {
   BrokerAgentsRespSchema,
   BrokerAuthSessionRespSchema,
@@ -100,6 +101,38 @@ import {
   type ClientPrefsUpdateReq,
 } from "./schemas/daemon";
 import type { MemoryRecapsListParams, MemorySalienceParams } from "./memory";
+
+type BrokerJsonStatusResp = {
+  status: number;
+  data: UnknownRecord | null;
+};
+
+type BrokerAgentMemberMutationResp = {
+  ok: boolean;
+  error?: string;
+};
+
+function withDeploymentIds(body: Record<string, unknown>, deploymentIds?: string[]): Record<string, unknown> {
+  const payload: Record<string, unknown> = { ...body };
+  if (Array.isArray(deploymentIds) && deploymentIds.length > 0) {
+    payload.deployment_ids = deploymentIds;
+  }
+  return payload;
+}
+
+function readBrokerError(value: unknown, fallback = "request failed"): string {
+  const record = safeObject(value);
+  const message = record.error ?? record.err;
+  return typeof message === "string" && message.trim() ? message : fallback;
+}
+
+async function parseOptionalJsonRecord(response: Response): Promise<UnknownRecord | null> {
+  try {
+    return safeObject(await response.json());
+  } catch {
+    return null;
+  }
+}
 
 export async function apiBrokerListAgents(brokerBase: string, auth?: ApiAuth): Promise<BrokerAgentsResp> {
   const base = brokerBase.replace(/\/+$/, "");
@@ -231,7 +264,7 @@ export async function apiBrokerProxyJson(
   body: unknown,
   auth?: ApiAuth,
   deploymentId?: string,
-): Promise<{ status: number; data: any }> {
+): Promise<BrokerJsonStatusResp> {
   const base = brokerBase.replace(/\/+$/, "");
   const id = String(agentId || "").trim();
   if (!id) throw new Error("missing agent_id");
@@ -243,50 +276,37 @@ export async function apiBrokerProxyJson(
     `${base}/v1/agents/${encodeURIComponent(id)}/proxy${p}`,
     daemonFetchInit(auth, { method, body: body === undefined ? undefined : JSON.stringify(body) }, headers),
   );
-  let data: any = null;
-  try {
-    data = await r.json();
-  } catch {
-    data = null;
-  }
+  const data = await parseOptionalJsonRecord(r);
   return { status: r.status, data };
 }
 
 export async function apiBrokerOtaUpdate(
   brokerBase: string,
   agentId: string,
-  body: Record<string, any>,
+  body: Record<string, unknown>,
   auth?: ApiAuth,
   deploymentId?: string,
-): Promise<{ status: number; data: any }> {
+): Promise<BrokerJsonStatusResp> {
   return apiBrokerProxyJson(brokerBase, agentId, "/api/v1/ota/update", "POST", body, auth, deploymentId);
 }
 
 export async function apiBrokerOtaUpdateBulk(
   brokerBase: string,
   agentId: string,
-  body: Record<string, any>,
+  body: Record<string, unknown>,
   auth?: ApiAuth,
   deploymentIds?: string[],
-): Promise<{ status: number; data: any }> {
+): Promise<BrokerJsonStatusResp> {
   const base = brokerBase.replace(/\/+$/, "");
   const id = String(agentId || "").trim();
   if (!id) throw new Error("missing agent_id");
   const headers = daemonHeaders(auth, { "Content-Type": "application/json" });
-  const payload: Record<string, any> = { ...body };
-  if (Array.isArray(deploymentIds) && deploymentIds.length > 0) {
-    payload.deployment_ids = deploymentIds;
-  }
+  const payload = withDeploymentIds(body, deploymentIds);
   const r = await fetch(
     `${base}/v1/agents/${encodeURIComponent(id)}/ota/update`,
     daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, headers),
   );
-  let data: any = null;
-  try {
-    data = await r.json();
-  } catch {
-    data = null;
-  }
+  const data = await parseOptionalJsonRecord(r);
   return { status: r.status, data };
 }
 
@@ -295,7 +315,7 @@ export async function apiBrokerOtaStatus(
   agentId: string,
   auth?: ApiAuth,
   deploymentId?: string,
-): Promise<{ status: number; data: any }> {
+): Promise<BrokerJsonStatusResp> {
   return apiBrokerProxyJson(brokerBase, agentId, "/api/v1/ota/status", "GET", undefined, auth, deploymentId);
 }
 
@@ -304,7 +324,7 @@ export async function apiBrokerOtaStatusBulk(
   agentId: string,
   auth?: ApiAuth,
   deploymentIds?: string[],
-): Promise<{ status: number; data: any }> {
+): Promise<BrokerJsonStatusResp> {
   const base = brokerBase.replace(/\/+$/, "");
   const id = String(agentId || "").trim();
   if (!id) throw new Error("missing agent_id");
@@ -315,40 +335,27 @@ export async function apiBrokerOtaStatusBulk(
   const qs = params.toString();
   const url = `${base}/v1/agents/${encodeURIComponent(id)}/ota/status${qs ? `?${qs}` : ""}`;
   const r = await fetch(url, daemonFetchInit(auth));
-  let data: any = null;
-  try {
-    data = await r.json();
-  } catch {
-    data = null;
-  }
+  const data = await parseOptionalJsonRecord(r);
   return { status: r.status, data };
 }
 
 export async function apiBrokerMemoryRetentionBulk(
   brokerBase: string,
   agentId: string,
-  body: Record<string, any>,
+  body: Record<string, unknown>,
   auth?: ApiAuth,
   deploymentIds?: string[],
-): Promise<{ status: number; data: any }> {
+): Promise<BrokerJsonStatusResp> {
   const base = brokerBase.replace(/\/+$/, "");
   const id = String(agentId || "").trim();
   if (!id) throw new Error("missing agent_id");
   const headers = daemonHeaders(auth, { "Content-Type": "application/json" });
-  const payload: Record<string, any> = { ...(body ?? {}) };
-  if (Array.isArray(deploymentIds) && deploymentIds.length > 0) {
-    payload.deployment_ids = deploymentIds;
-  }
+  const payload = withDeploymentIds(body ?? {}, deploymentIds);
   const r = await fetch(
     `${base}/v1/agents/${encodeURIComponent(id)}/memory/retention/enforce`,
     daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, headers),
   );
-  let data: any = null;
-  try {
-    data = await r.json();
-  } catch {
-    data = null;
-  }
+  const data = await parseOptionalJsonRecord(r);
   return { status: r.status, data };
 }
 
@@ -358,7 +365,7 @@ export async function apiBrokerMemoryRecapsListBulk(
   params: MemoryRecapsListParams,
   auth?: ApiAuth,
   deploymentIds?: string[],
-): Promise<{ status: number; data: any }> {
+): Promise<BrokerJsonStatusResp> {
   const base = brokerBase.replace(/\/+$/, "");
   const id = String(agentId || "").trim();
   if (!id) throw new Error("missing agent_id");
@@ -371,12 +378,7 @@ export async function apiBrokerMemoryRecapsListBulk(
   }
   const url = `${base}/v1/agents/${encodeURIComponent(id)}/memory/recaps${qs.toString() ? `?${qs.toString()}` : ""}`;
   const r = await fetch(url, daemonFetchInit(auth));
-  let data: any = null;
-  try {
-    data = await r.json();
-  } catch {
-    data = null;
-  }
+  const data = await parseOptionalJsonRecord(r);
   return { status: r.status, data };
 }
 
@@ -386,7 +388,7 @@ export async function apiBrokerMemorySalienceBulk(
   params: MemorySalienceParams,
   auth?: ApiAuth,
   deploymentIds?: string[],
-): Promise<{ status: number; data: any }> {
+): Promise<BrokerJsonStatusResp> {
   const base = brokerBase.replace(/\/+$/, "");
   const id = String(agentId || "").trim();
   if (!id) throw new Error("missing agent_id");
@@ -404,40 +406,27 @@ export async function apiBrokerMemorySalienceBulk(
   }
   const url = `${base}/v1/agents/${encodeURIComponent(id)}/memory/salience${qs.toString() ? `?${qs.toString()}` : ""}`;
   const r = await fetch(url, daemonFetchInit(auth));
-  let data: any = null;
-  try {
-    data = await r.json();
-  } catch {
-    data = null;
-  }
+  const data = await parseOptionalJsonRecord(r);
   return { status: r.status, data };
 }
 
 export async function apiBrokerMemoryRecapsCreateBulk(
   brokerBase: string,
   agentId: string,
-  body: Record<string, any>,
+  body: Record<string, unknown>,
   auth?: ApiAuth,
   deploymentIds?: string[],
-): Promise<{ status: number; data: any }> {
+): Promise<BrokerJsonStatusResp> {
   const base = brokerBase.replace(/\/+$/, "");
   const id = String(agentId || "").trim();
   if (!id) throw new Error("missing agent_id");
   const headers = daemonHeaders(auth, { "Content-Type": "application/json" });
-  const payload: Record<string, any> = { ...(body ?? {}) };
-  if (Array.isArray(deploymentIds) && deploymentIds.length > 0) {
-    payload.deployment_ids = deploymentIds;
-  }
+  const payload = withDeploymentIds(body ?? {}, deploymentIds);
   const r = await fetch(
     `${base}/v1/agents/${encodeURIComponent(id)}/memory/recaps`,
     daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, headers),
   );
-  let data: any = null;
-  try {
-    data = await r.json();
-  } catch {
-    data = null;
-  }
+  const data = await parseOptionalJsonRecord(r);
   return { status: r.status, data };
 }
 
@@ -455,7 +444,7 @@ export async function apiBrokerUpsertMember(
   agentId: string,
   req: { user_sub: string; role?: string },
   auth?: ApiAuth,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<BrokerAgentMemberMutationResp> {
   const base = brokerBase.replace(/\/+$/, "");
   const id = String(agentId || "").trim();
   if (!id) throw new Error("missing agent_id");
@@ -473,10 +462,10 @@ export async function apiBrokerUpsertMember(
       { "Content-Type": "application/json" },
     ),
   );
-  const j = await r.json();
-  if (!j || typeof j !== "object") throw new Error("bad json");
+  const j = safeObject(await r.json());
+  if (Object.keys(j).length === 0) throw new Error("bad json");
   if (j.ok === true) return { ok: true };
-  return { ok: false, error: String((j as any).error || (j as any).err || "request failed") };
+  return { ok: false, error: readBrokerError(j) };
 }
 
 export async function apiBrokerDeleteMember(
@@ -484,7 +473,7 @@ export async function apiBrokerDeleteMember(
   agentId: string,
   userSub: string,
   auth?: ApiAuth,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<BrokerAgentMemberMutationResp> {
   const base = brokerBase.replace(/\/+$/, "");
   const id = String(agentId || "").trim();
   if (!id) throw new Error("missing agent_id");
@@ -494,10 +483,10 @@ export async function apiBrokerDeleteMember(
     `${base}/v1/agents/${encodeURIComponent(id)}/members/${encodeURIComponent(sub)}`,
     daemonFetchInit(auth, { method: "DELETE" }),
   );
-  const j = await r.json();
-  if (!j || typeof j !== "object") throw new Error("bad json");
+  const j = safeObject(await r.json());
+  if (Object.keys(j).length === 0) throw new Error("bad json");
   if (j.ok === true) return { ok: true };
-  return { ok: false, error: String((j as any).error || (j as any).err || "request failed") };
+  return { ok: false, error: readBrokerError(j) };
 }
 
 export async function apiBrokerGetMembershipAudit(

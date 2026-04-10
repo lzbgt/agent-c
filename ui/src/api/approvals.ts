@@ -25,7 +25,7 @@ export type ApprovalDecisionReq = {
   note?: string;
 };
 
-async function parseJsonOrThrow(r: Response): Promise<any> {
+async function parseJsonOrThrow(r: Response): Promise<unknown> {
   const text = await r.text();
   try {
     return JSON.parse(text);

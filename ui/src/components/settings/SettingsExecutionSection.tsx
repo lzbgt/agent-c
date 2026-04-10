@@ -1,5 +1,5 @@
 import React from "react";
-import type { Caps, DaemonConfigResp } from "../../api";
+import type { Caps, DaemonConfigResp, OpenRouterModelsResp } from "../../api";
 import type { ClientSettings, ConnectionSettings, RunSettings } from "../../hooks/uiSettingsTypes";
 import SettingsCapabilitiesSection from "./SettingsCapabilitiesSection";
 import SettingsClientPreferencesSection from "./SettingsClientPreferencesSection";
@@ -42,7 +42,7 @@ type SettingsExecutionSectionProps = {
   fetchOpenRouterModelsPending: boolean;
   fetchOpenRouterModelsError: string | null;
   onFetchOpenRouterModels: () => void;
-  openrouterModels: any | null;
+  openrouterModels: OpenRouterModelsResp | null;
 };
 
 export default function SettingsExecutionSection(props: SettingsExecutionSectionProps) {

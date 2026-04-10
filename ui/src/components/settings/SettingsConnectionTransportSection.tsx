@@ -153,11 +153,11 @@ export default function SettingsConnectionTransportSection(props: SettingsConnec
         ) : null}
         {brokerAgents && brokerAgents.length > 0 ? (
           <div className="mt-2 max-h-40 overflow-auto rounded-md border border-white/10 bg-black/20">
-            {brokerAgents.map((a: any) => {
-              const id = typeof a?.agent_id === "string" ? a.agent_id : "";
+            {brokerAgents.map((agent) => {
+              const id = typeof agent.agent_id === "string" ? agent.agent_id : "";
               if (!id) return null;
-              const connected = a?.connected === true;
-              const lastSeen = typeof a?.last_seen_unix_ms === "number" ? a.last_seen_unix_ms : 0;
+              const connected = agent.connected === true;
+              const lastSeen = typeof agent.last_seen_unix_ms === "number" ? agent.last_seen_unix_ms : 0;
               const selected = String(connection.brokerAgentId || "").trim() === id;
               return (
                 <button
@@ -173,7 +173,7 @@ export default function SettingsConnectionTransportSection(props: SettingsConnec
                       connection.setBrokerDeploymentId("");
                     }
                   }}
-                  title={a?.remote_addr ? `remote=${String(a.remote_addr)}` : ""}
+                  title={agent.remote_addr ? `remote=${String(agent.remote_addr)}` : ""}
                 >
                   <span className="font-mono text-white/80">{id}</span>
                   <span className="text-white/60">
@@ -229,11 +229,11 @@ export default function SettingsConnectionTransportSection(props: SettingsConnec
         ) : null}
         {brokerDeployments && brokerDeployments.length > 0 ? (
           <div className="mt-2 max-h-40 overflow-auto rounded-md border border-white/10 bg-black/20">
-            {brokerDeployments.map((d: any) => {
-              const id = typeof d?.deployment_id === "string" ? d.deployment_id : "";
+            {brokerDeployments.map((deployment) => {
+              const id = typeof deployment.deployment_id === "string" ? deployment.deployment_id : "";
               if (!id) return null;
-              const connected = d?.connected === true;
-              const lastSeen = typeof d?.last_seen_unix_ms === "number" ? d.last_seen_unix_ms : 0;
+              const connected = deployment.connected === true;
+              const lastSeen = typeof deployment.last_seen_unix_ms === "number" ? deployment.last_seen_unix_ms : 0;
               const selected = String(connection.brokerDeploymentId || "").trim() === id;
               const isDefault = brokerDeploymentsDefaultId && brokerDeploymentsDefaultId === id;
               return (
@@ -245,7 +245,7 @@ export default function SettingsConnectionTransportSection(props: SettingsConnec
                     selected ? "bg-white/10" : "",
                   ].join(" ")}
                   onClick={() => connection.setBrokerDeploymentId(id)}
-                  title={d?.remote_addr ? `remote=${String(d.remote_addr)}` : ""}
+                  title={deployment.remote_addr ? `remote=${String(deployment.remote_addr)}` : ""}
                 >
                   <span className="font-mono text-white/80">{id}</span>
                   <span className="text-white/60">

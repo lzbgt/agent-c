@@ -1,5 +1,11 @@
 import React from "react";
-import type { Diagnostics, DiagnosticsProviders } from "../../api/schemas/daemon";
+import type {
+  Diagnostics,
+  DiagnosticsProviderTestResp,
+  DiagnosticsProviders,
+  SandboxMountValidateResp,
+} from "../../api/schemas/daemon";
+import { safeObject } from "../../jsonUtils";
 import { SectionHeader } from "./SettingsControls";
 
 function formatBytes(n?: number | null) {
@@ -26,6 +32,12 @@ function formatDuration(ms?: number | null) {
   return `${rem}s`;
 }
 
+type ProviderTestState = {
+  status: "running" | "ok" | "error";
+  data?: DiagnosticsProviderTestResp;
+  error?: string | null;
+};
+
 type SettingsDiagnosticsSectionProps = {
   diagnostics: Diagnostics | undefined;
   diagnosticsProviders: DiagnosticsProviders | undefined;
@@ -44,10 +56,10 @@ type SettingsDiagnosticsSectionProps = {
   setSandboxMountIsMain: React.Dispatch<React.SetStateAction<boolean>>;
   sandboxMountPending: boolean;
   sandboxMountError: string | null;
-  sandboxMountResult: unknown;
+  sandboxMountResult: SandboxMountValidateResp | null;
   onValidateSandboxMount: () => void;
   canValidateSandboxMount: boolean;
-  providerTests: Record<string, any>;
+  providerTests: Record<string, ProviderTestState>;
   onRunProviderTest: (provider: string) => void;
 };
 
@@ -77,13 +89,10 @@ export default function SettingsDiagnosticsSection(props: SettingsDiagnosticsSec
     onRunProviderTest,
   } = props;
 
-  const providerEntries =
-    diagnosticsProviders && diagnosticsProviders.providers && typeof diagnosticsProviders.providers === "object"
-      ? (diagnosticsProviders.providers as Record<string, any>)
-      : {};
-  const deepseekKeyPresent = providerEntries?.deepseek?.key_present === true;
-  const moonshotKeyPresent = providerEntries?.moonshot?.key_present === true;
-  const glmKeyPresent = providerEntries?.glm?.key_present === true;
+  const providerEntries = safeObject(diagnosticsProviders?.providers);
+  const deepseekKeyPresent = safeObject(providerEntries.deepseek).key_present === true;
+  const moonshotKeyPresent = safeObject(providerEntries.moonshot).key_present === true;
+  const glmKeyPresent = safeObject(providerEntries.glm).key_present === true;
   const providerStatus = (name: string) => {
     const entry = providerTests[name];
     if (!entry) return null;
@@ -92,6 +101,9 @@ export default function SettingsDiagnosticsSection(props: SettingsDiagnosticsSec
     if (entry.status === "error") return <span className="text-rose-200">error</span>;
     return null;
   };
+  const allowlist = safeObject(diagnostics?.sandbox_mount_allowlist);
+  const jobs = safeObject(diagnostics?.jobs);
+  const workflows = safeObject(diagnostics?.workflows);
 
   return (
     <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
@@ -127,32 +139,23 @@ export default function SettingsDiagnosticsSection(props: SettingsDiagnosticsSec
             <span className="text-white/50"> · {formatBytes(diagnostics.db.size_bytes)}</span>
           ) : null}
         </div>
-        {diagnostics?.sandbox_mount_allowlist && typeof diagnostics.sandbox_mount_allowlist === "object" ? (
+        {Object.keys(allowlist).length > 0 ? (
           <div>
             mount allowlist:{" "}
             <code className="text-white/70">
-              {typeof (diagnostics.sandbox_mount_allowlist as any).path === "string"
-                ? (diagnostics.sandbox_mount_allowlist as any).path
-                : "(unknown)"}
+              {typeof allowlist.path === "string" ? allowlist.path : "(unknown)"}
             </code>
             <span className="text-white/50">
               {" "}
-              · present {String((diagnostics.sandbox_mount_allowlist as any).present ?? false)} · loaded{" "}
-              {String((diagnostics.sandbox_mount_allowlist as any).loaded ?? false)}
+              · present {String(allowlist.present ?? false)} · loaded {String(allowlist.loaded ?? false)}
             </span>
-            {typeof (diagnostics.sandbox_mount_allowlist as any).allowed_roots === "number" ? (
-              <span className="text-white/50"> · roots {(diagnostics.sandbox_mount_allowlist as any).allowed_roots}</span>
+            {typeof allowlist.allowed_roots === "number" ? (
+              <span className="text-white/50"> · roots {allowlist.allowed_roots}</span>
             ) : null}
-            {typeof (diagnostics.sandbox_mount_allowlist as any).blocked_patterns === "number" ? (
-              <span className="text-white/50">
-                {" "}
-                · blocked {(diagnostics.sandbox_mount_allowlist as any).blocked_patterns}
-              </span>
+            {typeof allowlist.blocked_patterns === "number" ? (
+              <span className="text-white/50"> · blocked {allowlist.blocked_patterns}</span>
             ) : null}
-            {typeof (diagnostics.sandbox_mount_allowlist as any).error === "string" &&
-            (diagnostics.sandbox_mount_allowlist as any).error ? (
-              <div className="text-rose-200">allowlist error: {(diagnostics.sandbox_mount_allowlist as any).error}</div>
-            ) : null}
+            {typeof allowlist.error === "string" && allowlist.error ? <div className="text-rose-200">allowlist error: {allowlist.error}</div> : null}
           </div>
         ) : null}
         <div className="rounded-md border border-white/10 bg-black/20 p-2">
@@ -210,15 +213,15 @@ export default function SettingsDiagnosticsSection(props: SettingsDiagnosticsSec
             ) : null}
           </div>
         </div>
-        {diagnostics?.jobs && typeof diagnostics.jobs === "object" ? (
+        {Object.keys(jobs).length > 0 ? (
           <div>
-            jobs total: <code className="text-white/70">{String((diagnostics.jobs as any).total ?? "(unknown)")}</code>
+            jobs total: <code className="text-white/70">{String(jobs.total ?? "(unknown)")}</code>
           </div>
         ) : null}
-        {diagnostics?.workflows && typeof diagnostics.workflows === "object" ? (
+        {Object.keys(workflows).length > 0 ? (
           <div>
             workflows queued:{" "}
-            <code className="text-white/70">{String((diagnostics.workflows as any).tasks_queued_ready ?? "(unknown)")}</code>
+            <code className="text-white/70">{String(workflows.tasks_queued_ready ?? "(unknown)")}</code>
           </div>
         ) : null}
         {Array.isArray(diagnostics?.warnings) && diagnostics?.warnings.length > 0 ? (
@@ -242,13 +245,14 @@ export default function SettingsDiagnosticsSection(props: SettingsDiagnosticsSec
         <div className="text-[11px] font-semibold text-white/60">Providers</div>
         <div className="mt-2 rounded-md border border-white/10 bg-black/20">
           {["deepseek", "moonshot", "glm", "openrouter", "openai"].map((name) => {
-            const provider = providerEntries[name] || {};
+            const provider = safeObject(providerEntries[name]);
             const keyPresent = provider.key_present === true;
             const label =
               name === "moonshot" ? "Kimi (Moonshot CN)" : name === "glm" ? "GLM (Zhipu)" : name;
+            const sourceRecord = safeObject(provider.source);
             const source =
-              provider.source && typeof provider.source === "object"
-                ? `${provider.source.kind ?? "source"}:${provider.source.label ?? "unknown"}`
+              Object.keys(sourceRecord).length > 0
+                ? `${String(sourceRecord.kind ?? "source")}:${String(sourceRecord.label ?? "unknown")}`
                 : "";
             const baseUrl = typeof provider.base_url === "string" ? provider.base_url : "";
             const model = typeof provider.model === "string" ? provider.model : "";

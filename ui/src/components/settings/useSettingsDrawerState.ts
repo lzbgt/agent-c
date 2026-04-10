@@ -1,7 +1,17 @@
 import React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
-import type { ModeratorEvent } from "../../api";
+import type {
+  BrokerAgentInfo,
+  BrokerDeploymentInfo,
+  Caps,
+  DiagnosticsProviderTestResp,
+  ModeratorDirectiveReq,
+  ModeratorEvent,
+  ModeratorTaskReq,
+  OpenRouterModelsResp,
+  SandboxMountValidateResp,
+} from "../../api";
 import {
   apiBrokerListAgents,
   apiBrokerListDeployments,
@@ -15,6 +25,7 @@ import {
   apiPostSandboxMountValidate,
 } from "../../api";
 import useLocalStorageState from "../../hooks/useLocalStorageState";
+import { safeObject } from "../../jsonUtils";
 import { formatModeratorEventSummary } from "./moderatorUtils";
 import type { SettingsDrawerProps } from "./settingsDrawerTypes";
 
@@ -51,16 +62,22 @@ function appendCsvValue(raw: string, value: string) {
   return items.join(", ");
 }
 
+type ProviderTestState = {
+  status: "running" | "ok" | "error";
+  data?: DiagnosticsProviderTestResp;
+  error?: string | null;
+};
+
 export default function useSettingsDrawerState(props: SettingsDrawerProps) {
   const { connection, run, client } = props;
   const [clearAllArmed, setClearAllArmed] = React.useState<boolean>(false);
   const clearAllArmTimeoutRef = React.useRef<number>(0);
   const [brokerAgentsBusy, setBrokerAgentsBusy] = React.useState<boolean>(false);
   const [brokerAgentsError, setBrokerAgentsError] = React.useState<string | null>(null);
-  const [brokerAgents, setBrokerAgents] = React.useState<any[] | null>(null);
+  const [brokerAgents, setBrokerAgents] = React.useState<BrokerAgentInfo[] | null>(null);
   const [brokerDeploymentsBusy, setBrokerDeploymentsBusy] = React.useState<boolean>(false);
   const [brokerDeploymentsError, setBrokerDeploymentsError] = React.useState<string | null>(null);
-  const [brokerDeployments, setBrokerDeployments] = React.useState<any[] | null>(null);
+  const [brokerDeployments, setBrokerDeployments] = React.useState<BrokerDeploymentInfo[] | null>(null);
   const [brokerDeploymentsDefaultId, setBrokerDeploymentsDefaultId] = React.useState<string | null>(null);
   const [moderatorDirective, setModeratorDirective] = React.useState<string>("");
   const [moderatorDirectiveScope, setModeratorDirectiveScope] = React.useState<string>("");
@@ -95,7 +112,7 @@ export default function useSettingsDrawerState(props: SettingsDrawerProps) {
     "/workspace/extra",
   );
   const [sandboxMountIsMain, setSandboxMountIsMain] = useLocalStorageState<boolean>("agentui.sandboxMountIsMain", true);
-  const [sandboxMountResult, setSandboxMountResult] = React.useState<any | null>(null);
+  const [sandboxMountResult, setSandboxMountResult] = React.useState<SandboxMountValidateResp | null>(null);
   const [sandboxMountError, setSandboxMountError] = React.useState<string | null>(null);
   const [copyNotice, setCopyNotice] = React.useState<string | null>(null);
   const [pinNotice, setPinNotice] = React.useState<string | null>(null);
@@ -129,7 +146,7 @@ export default function useSettingsDrawerState(props: SettingsDrawerProps) {
         }
       })()
     : null;
-  const [openrouterModels, setOpenrouterModels] = React.useState<any | null>(null);
+  const [openrouterModels, setOpenrouterModels] = React.useState<OpenRouterModelsResp | null>(null);
 
   React.useEffect(() => {
     if (!props.open) setClearAllArmed(false);
@@ -184,10 +201,9 @@ export default function useSettingsDrawerState(props: SettingsDrawerProps) {
       const bb = String(connection.brokerBase || "").trim().replace(/\/+$/, "");
       const withScheme = /^https?:\/\//i.test(bb) ? bb : `https://${bb}`;
       const r = await apiBrokerListAgents(withScheme, connection.daemonAuth);
-      const agents = Array.isArray((r as any)?.agents) ? ((r as any).agents as any[]) : [];
-      setBrokerAgents(agents);
+      setBrokerAgents(r.agents);
       if (!String(connection.brokerAgentId || "").trim()) {
-        const connected = agents.find((a) => a && a.connected === true);
+        const connected = r.agents.find((agent) => agent.connected === true);
         if (connected && typeof connected.agent_id === "string") connection.setBrokerAgentId(connected.agent_id);
       }
     } catch (e) {
@@ -207,9 +223,8 @@ export default function useSettingsDrawerState(props: SettingsDrawerProps) {
       const agentId = String(connection.brokerAgentId || "").trim();
       if (!agentId) throw new Error("missing agent_id");
       const r = await apiBrokerListDeployments(withScheme, agentId, connection.daemonAuth);
-      const deployments = Array.isArray((r as any)?.deployments) ? ((r as any).deployments as any[]) : [];
-      setBrokerDeployments(deployments);
-      const defaultId = typeof (r as any)?.default_deployment_id === "string" ? String((r as any).default_deployment_id) : "";
+      setBrokerDeployments(r.deployments);
+      const defaultId = typeof r.default_deployment_id === "string" ? r.default_deployment_id : "";
       setBrokerDeploymentsDefaultId(defaultId || null);
     } catch (e) {
       setBrokerDeploymentsError(String(e));
@@ -247,7 +262,7 @@ export default function useSettingsDrawerState(props: SettingsDrawerProps) {
     },
   });
 
-  const [providerTests, setProviderTests] = React.useState<Record<string, any>>({});
+  const [providerTests, setProviderTests] = React.useState<Record<string, ProviderTestState>>({});
   const runProviderTest = React.useCallback(
     async (provider: string) => {
       const key = String(provider || "").trim();
@@ -332,7 +347,12 @@ export default function useSettingsDrawerState(props: SettingsDrawerProps) {
     if (!Number.isFinite(parsed) || parsed <= 0) return 1024 * 1024;
     return Math.min(parsed, 4 * 1024 * 1024);
   }, [moderatorEventsMaxBytes]);
-  const moderatorEventsEnabled = (props.caps.data as any)?.features?.moderator?.events !== false;
+  const capsData: Caps | undefined = props.caps.data;
+  const capsFeatures = safeObject(capsData?.features);
+  const jobsFeatureCaps = safeObject(capsFeatures.jobs);
+  const automationFeatureCaps = safeObject(capsFeatures.automation);
+  const moderatorFeatureCaps = safeObject(capsFeatures.moderator);
+  const moderatorEventsEnabled = moderatorFeatureCaps.events !== false;
   const moderatorEvents = useQuery({
     queryKey: [
       "moderatorEvents",
@@ -356,7 +376,6 @@ export default function useSettingsDrawerState(props: SettingsDrawerProps) {
   const daemonDefaults = cfg?.daemon;
   const baseUrlLabel = String(run.baseUrl || "").trim();
   const diag = diagnostics.data;
-  const capsData = props.caps.data;
   const moderatorPinnedScope = React.useMemo(() => {
     const base = String(connection.effectiveBase || "").trim();
     const sid = String(props.session.id || "").trim();
@@ -400,13 +419,13 @@ export default function useSettingsDrawerState(props: SettingsDrawerProps) {
     const list = Array.isArray(brokerAgents) ? brokerAgents : [];
     return list
       .map((agent) => {
-        const id = typeof agent?.agent_id === "string" ? agent.agent_id : "";
+        const id = typeof agent.agent_id === "string" ? agent.agent_id : "";
         if (!id) return null;
-        const connected = agent?.connected === true;
+        const connected = agent.connected === true;
         const label = connected ? `${id} · connected` : id;
         return { id, label, connected };
       })
-      .filter(Boolean) as Array<{ id: string; label: string; connected: boolean }>;
+      .filter((option): option is { id: string; label: string; connected: boolean } => option !== null);
   }, [brokerAgents]);
   const capsJson = React.useMemo(() => (capsData ? JSON.stringify(capsData, null, 2) : ""), [capsData]);
   const capsAge = React.useMemo(() => {
@@ -414,19 +433,16 @@ export default function useSettingsDrawerState(props: SettingsDrawerProps) {
     const age = Math.max(0, Date.now() - props.caps.updatedMs);
     return formatDuration(age);
   }, [props.caps.updatedMs]);
-  const jobsEnabled = (capsData as any)?.features?.jobs?.enabled !== false;
-  const automationCaps = (capsData as any)?.features?.automation;
+  const jobsEnabled = jobsFeatureCaps.enabled !== false;
   const automationProfiles = React.useMemo(() => {
-    const raw = automationCaps?.profiles;
-    const list = Array.isArray(raw) ? raw.filter((p: any) => typeof p === "string") : [];
+    const raw = automationFeatureCaps.profiles;
+    const list = Array.isArray(raw) ? raw.filter((profile): profile is string => typeof profile === "string") : [];
     return list.length ? list : ["full", "guided", "strict", "custom"];
-  }, [automationCaps?.profiles]);
-  const automationDefault =
-    automationCaps && typeof automationCaps.default_profile === "string" ? automationCaps.default_profile : "";
-  const automationOverrideAllowed = automationCaps ? automationCaps.per_run_override !== false : true;
-  const moderatorCaps = (capsData as any)?.features?.moderator;
-  const moderatorDirectivesEnabled = moderatorCaps ? moderatorCaps.directives !== false : true;
-  const moderatorTasksEnabled = moderatorCaps ? moderatorCaps.tasks !== false : true;
+  }, [automationFeatureCaps.profiles]);
+  const automationDefault = typeof automationFeatureCaps.default_profile === "string" ? automationFeatureCaps.default_profile : "";
+  const automationOverrideAllowed = automationFeatureCaps.per_run_override !== false;
+  const moderatorDirectivesEnabled = moderatorFeatureCaps.directives !== false;
+  const moderatorTasksEnabled = moderatorFeatureCaps.tasks !== false;
 
   const publishModeratorDirective = React.useCallback(async () => {
     const sid = String(props.session.id || "").trim();
@@ -445,7 +461,7 @@ export default function useSettingsDrawerState(props: SettingsDrawerProps) {
     setModeratorError(null);
     setModeratorSuccess(null);
     try {
-      const req: any = {
+      const req: ModeratorDirectiveReq = {
         session_id: sid,
         directive,
         append_to_session: moderatorAppendToSession,
@@ -457,8 +473,8 @@ export default function useSettingsDrawerState(props: SettingsDrawerProps) {
       if (!resp.ok) throw new Error(resp.error || "failed to publish directive");
       setModeratorDirective("");
       setModeratorSuccess("directive published");
-    } catch (err: any) {
-      setModeratorError(String(err?.message || err));
+    } catch (err: unknown) {
+      setModeratorError(err instanceof Error ? err.message : String(err));
     } finally {
       setModeratorBusy(false);
     }
@@ -490,7 +506,7 @@ export default function useSettingsDrawerState(props: SettingsDrawerProps) {
     setModeratorError(null);
     setModeratorSuccess(null);
     try {
-      const req: any = {
+      const req: ModeratorTaskReq = {
         session_id: sid,
         title,
         detail: detail || undefined,
@@ -503,8 +519,8 @@ export default function useSettingsDrawerState(props: SettingsDrawerProps) {
       setModeratorTaskTitle("");
       setModeratorTaskDetail("");
       setModeratorSuccess("task published");
-    } catch (err: any) {
-      setModeratorError(String(err?.message || err));
+    } catch (err: unknown) {
+      setModeratorError(err instanceof Error ? err.message : String(err));
     } finally {
       setModeratorBusy(false);
     }
@@ -607,8 +623,8 @@ export default function useSettingsDrawerState(props: SettingsDrawerProps) {
     if (!moderatorEventsFilterValue) return moderatorEventsList;
     return moderatorEventsList.filter((event) => {
       const type = typeof event?.type === "string" ? event.type : "";
-      const actor = event?.actor && typeof event.actor === "object" ? (event.actor as any) : {};
-      const actorId = typeof actor?.id === "string" ? actor.id : "";
+      const actor = safeObject(event?.actor);
+      const actorId = typeof actor.id === "string" ? actor.id : "";
       const summary = formatModeratorEventSummary(event);
       const haystacks = [type, actorId, summary];
       for (const h of haystacks) {
@@ -636,8 +652,8 @@ export default function useSettingsDrawerState(props: SettingsDrawerProps) {
     return moderatorPinnedEntries.map(([key, event]) => {
       const type = typeof event?.type === "string" ? event.type : "event";
       const ts = typeof event?.ts_unix_ms === "number" ? new Date(event.ts_unix_ms).toLocaleString() : "";
-      const actor = event?.actor && typeof event.actor === "object" ? (event.actor as any) : {};
-      const actorId = typeof actor?.id === "string" ? actor.id : "";
+      const actor = safeObject(event?.actor);
+      const actorId = typeof actor.id === "string" ? actor.id : "";
       const summary = formatModeratorEventSummary(event);
       const labelParts = [type, actorId, summary].filter(Boolean);
       const label = labelParts.length > 0 ? `${labelParts.join(" · ")}${ts ? ` · ${ts}` : ""}` : ts || key;

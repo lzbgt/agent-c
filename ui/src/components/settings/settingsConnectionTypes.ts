@@ -1,3 +1,4 @@
+import type { BrokerAgentInfo, BrokerDeploymentInfo } from "../../api";
 import type { ClientSettings, ConnectionSettings, RunSettings } from "../../hooks/uiSettingsTypes";
 
 export type SessionSettings = {
@@ -58,10 +59,10 @@ export type SettingsConnectionSectionProps = {
   brokerAuthReady: boolean;
   brokerAgentsBusy: boolean;
   brokerAgentsError: string | null;
-  brokerAgents: any[] | null;
+  brokerAgents: BrokerAgentInfo[] | null;
   brokerDeploymentsBusy: boolean;
   brokerDeploymentsError: string | null;
-  brokerDeployments: any[] | null;
+  brokerDeployments: BrokerDeploymentInfo[] | null;
   brokerDeploymentsDefaultId: string | null;
   listBrokerAgents: () => Promise<void>;
   listBrokerDeployments: () => Promise<void>;

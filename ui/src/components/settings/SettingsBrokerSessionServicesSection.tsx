@@ -1,6 +1,13 @@
 import React from "react";
+import type { SessionOperatorResp } from "../../api";
 
-import { jsonText, serviceRefOf, serviceSummary } from "./settingsBrokerSessionOperatorUtils";
+import {
+  jsonText,
+  serviceRefOf,
+  serviceSummary,
+  type SessionOperatorMutation,
+  type SessionOperatorRow,
+} from "./settingsBrokerSessionOperatorUtils";
 
 type Props = {
   selectedServiceRef: string;
@@ -12,11 +19,11 @@ type Props = {
   serviceArgsJson: string;
   setServiceArgsJson: React.Dispatch<React.SetStateAction<string>>;
   serviceNotice: string | null;
-  serviceRows: any[];
-  serviceDetail: { data: any };
-  attachService: any;
-  waitService: any;
-  runService: any;
+  serviceRows: SessionOperatorRow[];
+  serviceDetail: { data: SessionOperatorResp | undefined };
+  attachService: SessionOperatorMutation;
+  waitService: SessionOperatorMutation;
+  runService: SessionOperatorMutation;
 };
 
 export default function SettingsBrokerSessionServicesSection(props: Props) {

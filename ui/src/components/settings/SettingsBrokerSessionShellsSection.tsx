@@ -1,7 +1,15 @@
 import React from "react";
+import type { SessionOperatorResp } from "../../api";
 
 import FieldLabel from "../FieldLabel";
-import { jsonText, shellOutputText, shellRefOf, shellSummary } from "./settingsBrokerSessionOperatorUtils";
+import {
+  jsonText,
+  shellOutputText,
+  shellRefOf,
+  shellSummary,
+  type SessionOperatorMutation,
+  type SessionOperatorRow,
+} from "./settingsBrokerSessionOperatorUtils";
 
 type Props = {
   shellCommand: string;
@@ -15,12 +23,12 @@ type Props = {
   shellInput: string;
   setShellInput: React.Dispatch<React.SetStateAction<string>>;
   shellNotice: string | null;
-  shellRows: any[];
-  shellDetail: { data: any; refetch: () => Promise<unknown> };
-  startShell: any;
-  pollShell: any;
-  sendShell: any;
-  terminateShell: any;
+  shellRows: SessionOperatorRow[];
+  shellDetail: { data: SessionOperatorResp | undefined };
+  startShell: SessionOperatorMutation;
+  pollShell: SessionOperatorMutation;
+  sendShell: SessionOperatorMutation;
+  terminateShell: SessionOperatorMutation;
 };
 
 export default function SettingsBrokerSessionShellsSection(props: Props) {

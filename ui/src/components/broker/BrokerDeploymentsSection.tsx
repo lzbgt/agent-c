@@ -1,4 +1,5 @@
 import React from "react";
+import type { BrokerDeploymentInfo } from "../../api";
 import FieldLabel from "../FieldLabel";
 import { asFiniteNumber, normalizeDeploymentId, type BrokerFanoutResult } from "./brokerPanelUtils";
 import { fmtTs } from "./useBrokerPanelState";
@@ -8,13 +9,13 @@ type BrokerDeploymentsSectionProps = {
   agentId: string;
   isFetching: boolean;
   error: unknown;
-  deployments: any[];
+  deployments: BrokerDeploymentInfo[];
   defaultDeploymentId: string;
   selectedDeploymentSet: Set<string>;
   selectedDeployments: string[];
   toggleDeployment: (id: string) => void;
-  selectConnectedDeployments: (deployments: any[]) => void;
-  selectAllDeployments: (deployments: any[]) => void;
+  selectConnectedDeployments: (deployments: BrokerDeploymentInfo[]) => void;
+  selectAllDeployments: (deployments: BrokerDeploymentInfo[]) => void;
   onRefresh: () => void;
   otaUrl: string;
   setOtaUrl: (value: string) => void;
@@ -105,9 +106,9 @@ export default function BrokerDeploymentsSection(props: BrokerDeploymentsSection
           ) : null}
           <div className="grid gap-2">
             {deployments.map((dep) => {
-              const id = normalizeDeploymentId(dep?.deployment_id);
+              const id = normalizeDeploymentId(dep.deployment_id);
               const selected = selectedDeploymentSet.has(id);
-              const connected = dep?.connected === true;
+              const connected = dep.connected === true;
               return (
                 <label
                   key={id}
