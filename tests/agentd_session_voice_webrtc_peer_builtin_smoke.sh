@@ -225,12 +225,12 @@ if mode == "native_plugin":
     expected_native_supported = provider_name == "agentd_builtin_embedded_transport_provider"
     assert probe.get("loadable") is True, obj
     assert probe.get("native_media_supported") is expected_native_supported, obj
-    assert (probe.get("provider") or {}).get("abi_version") == 4, obj
+    assert (probe.get("provider") or {}).get("abi_version") == 5, obj
     assert (probe.get("provider") or {}).get("name") in {
         "agentd_builtin_sample_provider",
         "agentd_builtin_embedded_transport_provider",
     }, obj
-    assert provider.get("abi_version") == 4, obj
+    assert provider.get("abi_version") == 5, obj
     assert provider_name in {
         "agentd_builtin_sample_provider",
         "agentd_builtin_embedded_transport_provider",
@@ -242,9 +242,17 @@ if mode == "native_plugin":
     if provider_name == "agentd_builtin_embedded_transport_provider":
         assert provider_caps.get("audio_drain") is True, obj
         assert provider_caps.get("audio_owner_handoff") is True, obj
+        assert provider_caps.get("audio_submit") is True, obj
+        assert provider_caps.get("audio_outbound_pcmu") is True, obj
+        assert provider_caps.get("rtp_transmit") is True, obj
     assert provider_caps.get("real_media_engine") is False, obj
     assert peer.get("native_media_supported") is expected_native_supported, obj
     assert peer.get("native_media_active") is False, obj
+    assert peer.get("rtp_packets_sent", 0) == 0, obj
+    assert peer.get("rtp_payload_bytes_sent", 0) == 0, obj
+    assert peer.get("audio_outbound_frames_sent", 0) == 0, obj
+    assert peer.get("audio_pcm_samples_submitted_total", 0) == 0, obj
+    assert peer.get("audio_last_outbound_samples", 0) == 0, obj
     assert peer.get("audio_drain_events_total", 0) == 0, obj
     assert peer.get("audio_pcm_samples_drained_total", 0) == 0, obj
     assert peer.get("audio_pcm_samples_owned", 0) == 0, obj

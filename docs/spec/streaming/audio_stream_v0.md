@@ -266,9 +266,9 @@ A v0 smoke test should:
   gives agentd a real native backend load path, direct availability/loadability reporting, and smoke/unit proof without
   yet baking a specific WebRTC/SRTP stack into the tree. The provider seam is now self-describing: config/runtime
   metadata expose `builtin_native_probe`, and live/planned builtin snapshots carry `native_media_provider` with the
-  loaded provider ABI/name/version/capabilities. The current shipped providers now use pollable ABI v4, so builtin
-  runtime progress plus bounded PCM handoff can surface asynchronously even when no new broker signaling ingress
-  arrives.
+  loaded provider ABI/name/version/capabilities. The current shipped providers now use pollable ABI v5, so builtin
+  runtime progress, bounded PCM handoff, and agentd-to-provider outbound PCM submission can surface asynchronously even
+  when no new broker signaling ingress arrives.
 - The repo now also ships a daemon-owned sample provider module for that native-plugin seam. It proves the real
   process-local provider path without depending on a test fixture, but it intentionally still reports
   `native_media_supported=false` / `native_media_active=false` because it is only a signaling/answer-exchange sample,
@@ -289,8 +289,10 @@ A v0 smoke test should:
   `session_voice_builtin_dtls_transport_tests`: the same OpenSSL DTLS configuration used by the builtin native-plugin
   provider completes an in-tree DTLS 1.2 handshake, negotiates `SRTP_AES128_CM_SHA1_80`, exports DTLS-SRTP keying
   material over datagram-memory BIOs, derives real inbound/outbound libsrtp contexts from the exporter output, and now
-  proves inbound SRTP/RTP ingest plus receive-side audio decode. The remaining gap is no longer inbound RTP
-  termination; it is a fuller bidirectional in-process audio path.
+  proves outbound SRTP protect plus inbound SRTP/RTP ingest and receive-side audio decode. Agentd can now also submit
+  processed PCM back through the native-provider ABI; the embedded provider encodes a bounded PCMU RTP frame, protects it
+  with the outbound libsrtp context, and transmits it over libjuice. The remaining gap is no longer basic outbound RTP
+  ownership; it is replacing the minimal PCMU submit path with fuller negotiated bidirectional audio behavior.
 - That runtime contract now also exposes the media-engine seam directly: planned/live builtin paths report
   `media_engine_kind=builtin_reserved|builtin_signaling_stub|builtin_native_plugin`, bundled/external runtimes report
   `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` now distinguish the
@@ -300,8 +302,11 @@ A v0 smoke test should:
   `dtls_handshake_ready`, `dtls_exporter_ready`, `dtls_handshake_state`, `dtls_selected_srtp_profile`,
   `srtp_contexts_ready`, `srtp_inbound_ready`, `srtp_outbound_ready`, `srtp_last_error`,
   `dtls_packets_sent`, `dtls_packets_received`, `rtp_packets_received`, `rtp_payload_bytes_received`,
-  `rtp_last_payload_type`, `rtp_last_sequence`, `rtp_last_timestamp`, `rtp_last_ssrc`,
+  `rtp_packets_sent`, `rtp_payload_bytes_sent`, `rtp_last_payload_type`, `rtp_last_sequence`,
+  `rtp_last_timestamp`, `rtp_last_ssrc`, `rtp_last_sent_payload_type`, `rtp_last_sent_sequence`,
+  `rtp_last_sent_timestamp`, `rtp_last_sent_ssrc`,
   `audio_frames_decoded`, `audio_pcm_samples_decoded`, `audio_pcm_samples_buffered`,
+  `audio_outbound_frames_sent`, `audio_pcm_samples_submitted_total`, `audio_last_outbound_samples`,
   `audio_drain_events_total`, `audio_pcm_samples_drained_total`, `audio_pcm_samples_owned`,
   `audio_last_drain_samples`, `audio_process_events_total`,
   `audio_pcm_samples_processed_total`, `audio_last_process_samples`,
@@ -312,7 +317,7 @@ A v0 smoke test should:
   `audio_playback_events_total`, `audio_pcm_samples_played_total`,
   `audio_pcm_samples_playback_queued`, `audio_last_playback_samples`,
   `audio_last_sample_rate_hz`, `audio_last_channels`, `audio_last_frame_samples_per_channel`,
-  `audio_last_codec_name`, `audio_last_error`, `audio_render_wav_path`,
+  `audio_last_codec_name`, `audio_last_error`, `audio_outbound_last_error`, `audio_render_wav_path`,
   `audio_render_last_error`, `audio_playback_device_name`, and
   `audio_playback_last_error`.
   Those fields can now also advance through provider-polled async status events rather than only through direct

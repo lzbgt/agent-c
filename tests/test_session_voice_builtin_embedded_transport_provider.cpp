@@ -7,11 +7,9 @@
 #include <openssl/ssl.h>
 #include <openssl/srtp.h>
 
-#include <array>
 #include <cassert>
 #include <chrono>
 #include <cstring>
-#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
@@ -52,6 +50,7 @@ struct LoopbackRemoteContext {
   VoicePeerRuntime* runtime = nullptr;
   juice_agent_t* remote_agent = nullptr;
   DtlsEndpoint client;
+  DtlsSrtpSessionPair client_srtp_sessions;
   juice_state_t remote_state = JUICE_STATE_DISCONNECTED;
   Json::Value last_candidate_event = Json::Value(Json::nullValue);
   Json::Value last_polled_event = Json::Value(Json::nullValue);
@@ -61,6 +60,13 @@ struct LoopbackRemoteContext {
   bool rtp_media_observed = false;
   bool dtls_handshake_started = false;
   bool dtls_handshake_ready = false;
+  bool client_srtp_ready = false;
+  int outbound_rtp_packets_observed = 0;
+  uint8_t last_outbound_payload_type = 255;
+  uint16_t last_outbound_sequence = 0;
+  uint32_t last_outbound_timestamp = 0;
+  uint32_t last_outbound_ssrc = 0;
+  size_t last_outbound_payload_size = 0;
 };
 
 void destroy_endpoint(DtlsEndpoint* endpoint) {
@@ -138,16 +144,41 @@ void advance_client_dtls_handshake(LoopbackRemoteContext* ctx) {
   assert(ssl_err == SSL_ERROR_WANT_READ || ssl_err == SSL_ERROR_WANT_WRITE);
 }
 
-void write_u16_be(unsigned char* out, uint16_t value) {
-  out[0] = static_cast<unsigned char>((value >> 8) & 0xFF);
-  out[1] = static_cast<unsigned char>(value & 0xFF);
-}
+bool ensure_client_srtp_sessions(LoopbackRemoteContext* ctx) {
+  assert(ctx);
+  if (ctx->client_srtp_ready) return true;
+  if (!ctx->client.handshake_ready) return false;
 
-void write_u32_be(unsigned char* out, uint32_t value) {
-  out[0] = static_cast<unsigned char>((value >> 24) & 0xFF);
-  out[1] = static_cast<unsigned char>((value >> 16) & 0xFF);
-  out[2] = static_cast<unsigned char>((value >> 8) & 0xFF);
-  out[3] = static_cast<unsigned char>(value & 0xFF);
+  DtlsSrtpProfileSpec profile;
+  std::string err;
+  assert(resolve_dtls_srtp_profile_spec(ctx->client.selected_srtp_profile, &profile, &err));
+  assert(err.empty());
+
+  std::vector<unsigned char> exporter_keying_material;
+  assert(export_dtls_srtp_keying_material(
+    ctx->client.ssl,
+    profile,
+    &exporter_keying_material,
+    &err));
+  assert(err.empty());
+
+  DtlsSrtpKeyBlock key_block;
+  assert(derive_dtls_srtp_key_block(
+    profile,
+    exporter_keying_material.data(),
+    exporter_keying_material.size(),
+    &key_block,
+    &err));
+  assert(err.empty());
+
+  assert(create_dtls_srtp_session_pair(
+    key_block,
+    DtlsSrtpLocalRole::client,
+    &ctx->client_srtp_sessions,
+    &err));
+  assert(err.empty());
+  ctx->client_srtp_ready = true;
+  return true;
 }
 
 void on_loopback_remote_state_changed(juice_agent_t*, juice_state_t state, void* user_ptr) {
@@ -200,6 +231,31 @@ void on_loopback_remote_recv(juice_agent_t*, const char* data, size_t size, void
   auto* ctx = static_cast<LoopbackRemoteContext*>(user_ptr);
   assert(ctx);
   assert(ctx->client.ssl);
+  const auto* bytes = reinterpret_cast<const unsigned char*>(data);
+  if (agentd::is_probable_rtp_or_rtcp_packet(bytes, size) &&
+      !agentd::is_probable_dtls_packet(bytes, size)) {
+    assert(ensure_client_srtp_sessions(ctx));
+    agentd::ParsedRtpPacketInfo parsed_rtp;
+    bool was_rtcp = false;
+    std::string err;
+    assert(agentd::unprotect_inbound_srtp_packet(
+      ctx->client_srtp_sessions.inbound,
+      bytes,
+      size,
+      &parsed_rtp,
+      &was_rtcp,
+      &err));
+    assert(err.empty());
+    if (!was_rtcp) {
+      ctx->outbound_rtp_packets_observed += 1;
+      ctx->last_outbound_payload_type = parsed_rtp.payload_type;
+      ctx->last_outbound_sequence = parsed_rtp.sequence;
+      ctx->last_outbound_timestamp = parsed_rtp.timestamp;
+      ctx->last_outbound_ssrc = parsed_rtp.ssrc;
+      ctx->last_outbound_payload_size = parsed_rtp.payload_size;
+    }
+    return;
+  }
   BIO* rbio = SSL_get_rbio(ctx->client.ssl);
   assert(rbio);
   assert(BIO_write(rbio, data, static_cast<int>(size)) == static_cast<int>(size));
@@ -270,8 +326,11 @@ static void test_embedded_transport_provider_loads_and_answers_remote_offer() {
   assert(engine->info().provider_capabilities["dtls_srtp_export"].asBool());
   assert(engine->info().provider_capabilities["srtp"].asBool());
   assert(engine->info().provider_capabilities["rtp_ingest"].asBool());
+  assert(engine->info().provider_capabilities["rtp_transmit"].asBool());
   assert(engine->info().provider_capabilities["audio_drain"].asBool());
   assert(engine->info().provider_capabilities["audio_owner_handoff"].asBool());
+  assert(engine->info().provider_capabilities["audio_submit"].asBool());
+  assert(engine->info().provider_capabilities["audio_outbound_pcmu"].asBool());
   assert(engine->info().provider_capabilities["sctp"].asBool());
   assert(engine->info().provider_capabilities["real_media_engine"].asBool() == false);
 
@@ -300,7 +359,7 @@ static void test_embedded_transport_provider_loads_and_answers_remote_offer() {
   assert(!init_event["srtp_version"].asString().empty());
   assert(runtime.native_media_provider["name"].asString() ==
          "agentd_builtin_embedded_transport_provider");
-  assert(runtime.native_media_provider["abi_version"].asInt() == 4);
+  assert(runtime.native_media_provider["abi_version"].asInt() == 5);
 
   agentd::VoicePeerBuiltinAudioChunk drained;
   Json::Value drained_event(Json::nullValue);
@@ -403,6 +462,7 @@ static void test_embedded_transport_provider_reaches_local_ice_connectivity() {
   LoopbackRemoteContext ctx;
   ctx.engine = engine.get();
   ctx.runtime = &runtime;
+  assert(configure_client_endpoint(&ctx.client));
 
   juice_config_t remote_cfg;
   std::memset(&remote_cfg, 0, sizeof(remote_cfg));
@@ -410,10 +470,12 @@ static void test_embedded_transport_provider_reaches_local_ice_connectivity() {
   remote_cfg.cb_state_changed = &on_loopback_remote_state_changed;
   remote_cfg.cb_candidate = &on_loopback_remote_candidate;
   remote_cfg.cb_gathering_done = &on_loopback_remote_gathering_done;
+  remote_cfg.cb_recv = &on_loopback_remote_recv;
   remote_cfg.user_ptr = &ctx;
 
   juice_agent_t* remote_agent = juice_create(&remote_cfg);
   assert(remote_agent);
+  ctx.remote_agent = remote_agent;
 
   char offer_buf[JUICE_MAX_SDP_STRING_LEN];
   std::memset(offer_buf, 0, sizeof(offer_buf));
@@ -460,6 +522,9 @@ static void test_embedded_transport_provider_reaches_local_ice_connectivity() {
     assert(!ctx.last_candidate_event["libjuice_selected_remote_address"].asString().empty());
   }
   assert(runtime.media_remote_candidates_seen >= 1);
+
+  agentd::destroy_dtls_srtp_session_pair(&ctx.client_srtp_sessions);
+  destroy_endpoint(&ctx.client);
   juice_destroy(remote_agent);
 }
 

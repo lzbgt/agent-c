@@ -8183,6 +8183,16 @@ export interface components {
             rtp_payload_bytes_received?: number;
             /**
              * Format: int64
+             * @description Number of outbound RTP packets protected with SRTP and transmitted by the current builtin native-plugin provider.
+             */
+            rtp_packets_sent?: number;
+            /**
+             * Format: int64
+             * @description Total outbound RTP payload bytes encoded and submitted to the native transport by the current builtin native-plugin provider.
+             */
+            rtp_payload_bytes_sent?: number;
+            /**
+             * Format: int64
              * @description Payload type from the most recent successfully ingested RTP packet.
              */
             rtp_last_payload_type?: number;
@@ -8203,6 +8213,26 @@ export interface components {
             rtp_last_ssrc?: number;
             /**
              * Format: int64
+             * @description Payload type from the most recent outbound RTP packet protected and transmitted by the current builtin native-plugin provider.
+             */
+            rtp_last_sent_payload_type?: number;
+            /**
+             * Format: int64
+             * @description Sequence number from the most recent outbound RTP packet protected and transmitted by the current builtin native-plugin provider.
+             */
+            rtp_last_sent_sequence?: number;
+            /**
+             * Format: int64
+             * @description RTP timestamp from the most recent outbound RTP packet protected and transmitted by the current builtin native-plugin provider.
+             */
+            rtp_last_sent_timestamp?: number;
+            /**
+             * Format: int64
+             * @description SSRC from the most recent outbound RTP packet protected and transmitted by the current builtin native-plugin provider.
+             */
+            rtp_last_sent_ssrc?: number;
+            /**
+             * Format: int64
              * @description Number of inbound audio payloads successfully decoded into PCM by the current builtin native-plugin provider.
              */
             audio_frames_decoded?: number;
@@ -8216,6 +8246,21 @@ export interface components {
              * @description Number of decoded PCM samples currently retained in the provider's in-process staging buffer for future audio-path ownership.
              */
             audio_pcm_samples_buffered?: number;
+            /**
+             * Format: int64
+             * @description Number of agentd-submitted PCM chunks encoded into outbound RTP audio frames by the current builtin native-plugin provider.
+             */
+            audio_outbound_frames_sent?: number;
+            /**
+             * Format: int64
+             * @description Total PCM samples handed from agentd-owned memory back into the builtin native-plugin provider for outbound media transmit.
+             */
+            audio_pcm_samples_submitted_total?: number;
+            /**
+             * Format: int64
+             * @description Encoded audio payload samples represented by the most recent outbound RTP transmit event.
+             */
+            audio_last_outbound_samples?: number;
             /**
              * Format: int64
              * @description Total number of provider-to-agentd PCM drain handoff events completed for the live builtin runtime.
@@ -8324,6 +8369,8 @@ export interface components {
             audio_last_codec_name?: string;
             /** @description Best-effort diagnostic string when receive-side audio decode or PCM staging fails for the current builtin native-plugin provider. */
             audio_last_error?: string;
+            /** @description Best-effort diagnostic string when agentd-submitted PCM cannot be encoded, SRTP-protected, or transmitted by the current builtin native-plugin provider. */
+            audio_outbound_last_error?: string;
             /** @description Absolute runtime-local path to the rolling bounded WAV snapshot rendered by agentd from consumed builtin PCM. */
             audio_render_wav_path?: string;
             /** @description Best-effort diagnostic string when agentd fails to update the rolling WAV render snapshot from consumed PCM. */

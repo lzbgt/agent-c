@@ -358,17 +358,23 @@ void test_dtls_memory_loopback_derives_srtp_contexts_and_round_trips_rtp() {
   write_u32_be(packet.data() + 8, 0x11223344u);
   std::memcpy(packet.data() + 12, payload, sizeof(payload) - 1);
 
-  int protected_len = plain_len;
-  assert(srtp_protect(server_sessions.outbound, packet.data(), &protected_len) == srtp_err_status_ok);
-  assert(protected_len > plain_len);
+  std::vector<unsigned char> protected_packet;
+  assert(agentd::protect_outbound_rtp_packet(
+    server_sessions.outbound,
+    packet.data(),
+    static_cast<size_t>(plain_len),
+    &protected_packet,
+    &err));
+  assert(err.empty());
+  assert(protected_packet.size() > static_cast<size_t>(plain_len));
 
   agentd::ParsedRtpPacketInfo parsed_rtp;
   bool was_rtcp = false;
-  assert(agentd::is_probable_rtp_or_rtcp_packet(packet.data(), static_cast<size_t>(protected_len)));
+  assert(agentd::is_probable_rtp_or_rtcp_packet(protected_packet.data(), protected_packet.size()));
   assert(!agentd::unprotect_inbound_srtp_packet(
     nullptr,
-    packet.data(),
-    static_cast<size_t>(protected_len),
+    protected_packet.data(),
+    protected_packet.size(),
     &parsed_rtp,
     &was_rtcp,
     &err));
@@ -376,8 +382,8 @@ void test_dtls_memory_loopback_derives_srtp_contexts_and_round_trips_rtp() {
   err.clear();
   assert(agentd::unprotect_inbound_srtp_packet(
     client_sessions.inbound,
-    packet.data(),
-    static_cast<size_t>(protected_len),
+    protected_packet.data(),
+    protected_packet.size(),
     &parsed_rtp,
     &was_rtcp,
     &err));
@@ -399,14 +405,19 @@ void test_dtls_memory_loopback_derives_srtp_contexts_and_round_trips_rtp() {
   write_u32_be(audio_packet.data() + 8, 0x99AABBCCu);
   std::memcpy(audio_packet.data() + 12, audio_payload, sizeof(audio_payload));
 
-  int protected_audio_len = audio_plain_len;
-  assert(srtp_protect(server_sessions.outbound, audio_packet.data(), &protected_audio_len) ==
-         srtp_err_status_ok);
+  std::vector<unsigned char> protected_audio_packet;
+  assert(agentd::protect_outbound_rtp_packet(
+    server_sessions.outbound,
+    audio_packet.data(),
+    static_cast<size_t>(audio_plain_len),
+    &protected_audio_packet,
+    &err));
+  assert(err.empty());
   err.clear();
   assert(agentd::unprotect_inbound_srtp_packet(
     client_sessions.inbound,
-    audio_packet.data(),
-    static_cast<size_t>(protected_audio_len),
+    protected_audio_packet.data(),
+    protected_audio_packet.size(),
     &parsed_rtp,
     &was_rtcp,
     &err));

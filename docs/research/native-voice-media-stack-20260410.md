@@ -152,10 +152,18 @@ Reference artifacts downloaded into the repo for exact vendor details:
     default PortAudio output device
   - runtime status now persists playback counters, queued sample depth, device
     name, and last playback error
-- The remaining gap is that the provider still does not own a complete
-  in-process media pipeline. `native_media_active` remains `false` until live
-  RTP is actually ingested, and agentd still does not yet transmit outbound
-  media end to end inside the daemon.
+- Agentd now also has a first bounded outbound media path:
+  - native providers can expose ABI v5 `submit_audio`
+  - the builtin service submits processed agentd-owned PCM back to the provider
+  - the embedded provider encodes a 20 ms PCMU RTP frame, protects it with the
+    outbound libsrtp context, and transmits it over the same libjuice transport
+  - runtime status now persists outbound RTP and PCM-submit counters, including
+    `rtp_packets_sent`, `rtp_payload_bytes_sent`,
+    `audio_outbound_frames_sent`, and
+    `audio_pcm_samples_submitted_total`
+- The remaining gap is that the outbound path is deliberately minimal: it uses
+  bounded PCMU frame generation rather than a full negotiated codec/RTCP/audio
+  playout and capture pipeline.
 
 ## Implications
 
@@ -165,9 +173,9 @@ The highest-confidence next implementation path is:
 2. Require future native providers to declare capabilities and ABI metadata.
 3. Keep the current dependency-backed embedded provider as the transport
    primitives bring-up lane.
-4. Replace that provider's current transport/receive-side proof path with a
-   real in-process DTLS/SRTP/RTP audio engine instead of adding more
-   control-plane glue.
+4. Grow the embedded provider's new inbound/decode/PCM-submit/outbound-PCMU
+   path into a fuller negotiated in-process DTLS/SRTP/RTP audio engine instead
+   of adding more control-plane glue.
 
 At this scan point, the local machine is ready for:
 
@@ -199,11 +207,10 @@ Pick one concrete native backend family and wire it deliberately:
   - avoids blocking on `libdatachannel` packaging
 
 Given the current repo and machine facts, the most pragmatic next move is to
-continue on the existing `native_plugin` seam and replace the current embedded
-transport provider's receive-side-only behavior with a real in-process audio
-path. The best factual candidate remains the narrower
-`libjuice + srtp + libusrsctp` family, because those dependencies are now
-locally installed, buildable, and covered by provider inspection/unit/smoke
-proof. The next concrete step after the new bounded local playback sink is
-outbound media generation/transmit from the agentd-owned PCM path rather than
-more DTLS/SRTP/control-plane work.
+continue on the existing `native_plugin` seam and harden the current embedded
+provider from minimal PCMU transmit toward fuller negotiated bidirectional audio.
+The best factual candidate remains the narrower `libjuice + srtp + libusrsctp`
+family, because those dependencies are now locally installed, buildable, and
+covered by provider inspection/unit/smoke proof. The next concrete step after
+the bounded outbound PCMU transmit path is negotiated codec/RTCP behavior rather
+than more DTLS/SRTP/control-plane work.

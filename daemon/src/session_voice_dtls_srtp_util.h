@@ -96,6 +96,13 @@ bool unprotect_inbound_srtp_packet(
   bool* out_was_rtcp,
   std::string* out_err);
 
+bool protect_outbound_rtp_packet(
+  srtp_t outbound_session,
+  const unsigned char* packet,
+  size_t packet_size,
+  std::vector<unsigned char>* out_protected_packet,
+  std::string* out_err);
+
 void destroy_dtls_srtp_session_pair(DtlsSrtpSessionPair* pair);
 
 }  // namespace agentd

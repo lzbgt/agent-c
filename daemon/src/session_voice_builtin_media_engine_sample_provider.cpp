@@ -9,7 +9,7 @@
 namespace {
 
 constexpr const char* kProviderName = "agentd_builtin_sample_provider";
-constexpr const char* kProviderVersion = "0.3.0";
+constexpr const char* kProviderVersion = "0.4.0";
 constexpr const char* kAnswerSdp = "agentd-builtin-sample-answer";
 constexpr const char* kCapabilitiesJson =
   "{\"signaling\":true,\"audio_capture\":false,\"audio_render\":false,"
@@ -210,8 +210,25 @@ int sample_drain_audio(
   return 1;
 }
 
-const agentd_voice_media_engine_provider_v4 kSampleProvider = {
-  AGENTD_VOICE_MEDIA_ENGINE_PROVIDER_ABI_V4,
+int sample_submit_audio(
+  void*,
+  const int16_t*,
+  size_t,
+  int,
+  int,
+  int,
+  const char*,
+  char* event_json_buf,
+  size_t event_json_buf_size,
+  char*,
+  size_t
+) {
+  if (event_json_buf && event_json_buf_size > 0) event_json_buf[0] = '\0';
+  return 1;
+}
+
+const agentd_voice_media_engine_provider_v5 kSampleProvider = {
+  AGENTD_VOICE_MEDIA_ENGINE_PROVIDER_ABI_V5,
   "builtin_native_plugin",
   0,
   kProviderName,
@@ -226,10 +243,11 @@ const agentd_voice_media_engine_provider_v4 kSampleProvider = {
   &sample_handle_local_shutdown,
   &sample_poll_status,
   &sample_drain_audio,
+  &sample_submit_audio,
 };
 
 }  // namespace
 
-extern "C" const agentd_voice_media_engine_provider_v4* agentd_voice_media_engine_get_api_v4() {
+extern "C" const agentd_voice_media_engine_provider_v5* agentd_voice_media_engine_get_api_v5() {
   return &kSampleProvider;
 }

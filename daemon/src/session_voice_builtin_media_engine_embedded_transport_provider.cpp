@@ -15,12 +15,14 @@
 #include <usrsctp.h>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <chrono>
 #include <deque>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -40,17 +42,17 @@ using agentd::resolve_dtls_srtp_profile_spec;
 using agentd::selected_dtls_srtp_profile_name;
 
 constexpr const char* kProviderName = "agentd_builtin_embedded_transport_provider";
-constexpr const char* kProviderVersion = "0.8.0";
+constexpr const char* kProviderVersion = "0.9.0";
 #if defined(AGENTD_HAVE_OPUS)
 constexpr const char* kCapabilitiesJson =
   "{\"signaling\":true,\"audio_capture\":false,\"audio_render\":false,"
   "\"audio_decode\":true,\"audio_stage\":true,\"audio_drain\":true,"
-  "\"audio_owner_handoff\":true,"
+  "\"audio_owner_handoff\":true,\"audio_submit\":true,\"audio_outbound_pcmu\":true,"
   "\"audio_codec_pcmu\":true,\"audio_codec_pcma\":true,\"audio_codec_opus\":true,"
   "\"ice\":true,\"dtls\":true,\"dtls_identity\":true,\"dtls_answer_shape\":true,"
   "\"dtls_handshake\":true,\"dtls_srtp_export\":true,"
   "\"srtp_contexts\":true,\"poll_status\":true,"
-  "\"srtp\":true,\"rtp_ingest\":true,\"rtcp_ingest\":true,\"sctp\":true,"
+  "\"srtp\":true,\"rtp_ingest\":true,\"rtp_transmit\":true,\"rtcp_ingest\":true,\"sctp\":true,"
   "\"transport_family\":\"embedded_transport_primitives\","
   "\"embedded_transport_provider\":true,\"sample_provider\":false,"
   "\"real_media_engine\":false,\"remote_description_optional\":true,"
@@ -59,12 +61,12 @@ constexpr const char* kCapabilitiesJson =
 constexpr const char* kCapabilitiesJson =
   "{\"signaling\":true,\"audio_capture\":false,\"audio_render\":false,"
   "\"audio_decode\":true,\"audio_stage\":true,\"audio_drain\":true,"
-  "\"audio_owner_handoff\":true,"
+  "\"audio_owner_handoff\":true,\"audio_submit\":true,\"audio_outbound_pcmu\":true,"
   "\"audio_codec_pcmu\":true,\"audio_codec_pcma\":true,\"audio_codec_opus\":false,"
   "\"ice\":true,\"dtls\":true,\"dtls_identity\":true,\"dtls_answer_shape\":true,"
   "\"dtls_handshake\":true,\"dtls_srtp_export\":true,"
   "\"srtp_contexts\":true,\"poll_status\":true,"
-  "\"srtp\":true,\"rtp_ingest\":true,\"rtcp_ingest\":true,\"sctp\":true,"
+  "\"srtp\":true,\"rtp_ingest\":true,\"rtp_transmit\":true,\"rtcp_ingest\":true,\"sctp\":true,"
   "\"transport_family\":\"embedded_transport_primitives\","
   "\"embedded_transport_provider\":true,\"sample_provider\":false,"
   "\"real_media_engine\":false,\"remote_description_optional\":true,"
@@ -75,6 +77,9 @@ constexpr const char* kDtlsSrtpProfiles =
   "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32";
 constexpr long kDtlsDatagramMtu = 1200;
 constexpr size_t kAudioPcmStagingCapacitySamples = 48000 * 2 * 2;
+constexpr size_t kOutboundPcmuFrameSamples = 160;
+constexpr uint8_t kOutboundPcmuPayloadType = 0;
+constexpr uint32_t kOutboundRtpSsrc = 0xA6E17D01u;
 
 struct EmbeddedTransportState {
   struct AsyncProgressKey {
@@ -102,18 +107,28 @@ struct EmbeddedTransportState {
     bool srtp_outbound_ready = false;
     uint64_t rtp_packets_received = 0;
     uint64_t rtp_payload_bytes_received = 0;
+    uint64_t rtp_packets_sent = 0;
+    uint64_t rtp_payload_bytes_sent = 0;
     int64_t rtp_last_payload_type = -1;
     int64_t rtp_last_sequence = -1;
     uint64_t rtp_last_timestamp = 0;
     uint64_t rtp_last_ssrc = 0;
+    int64_t rtp_last_sent_payload_type = -1;
+    int64_t rtp_last_sent_sequence = -1;
+    uint64_t rtp_last_sent_timestamp = 0;
+    uint64_t rtp_last_sent_ssrc = 0;
     uint64_t audio_frames_decoded = 0;
     uint64_t audio_pcm_samples_decoded = 0;
     uint64_t audio_pcm_samples_buffered = 0;
+    uint64_t audio_outbound_frames_sent = 0;
+    uint64_t audio_pcm_samples_submitted_total = 0;
+    uint64_t audio_last_outbound_samples = 0;
     int64_t audio_last_sample_rate_hz = 0;
     int64_t audio_last_channels = 0;
     int64_t audio_last_frame_samples_per_channel = 0;
     std::string audio_last_codec_name;
     std::string audio_last_error;
+    std::string audio_outbound_last_error;
 
     bool operator==(const AsyncProgressKey& other) const {
       return libjuice_state == other.libjuice_state &&
@@ -140,19 +155,29 @@ struct EmbeddedTransportState {
              srtp_outbound_ready == other.srtp_outbound_ready &&
              rtp_packets_received == other.rtp_packets_received &&
              rtp_payload_bytes_received == other.rtp_payload_bytes_received &&
+             rtp_packets_sent == other.rtp_packets_sent &&
+             rtp_payload_bytes_sent == other.rtp_payload_bytes_sent &&
              rtp_last_payload_type == other.rtp_last_payload_type &&
              rtp_last_sequence == other.rtp_last_sequence &&
              rtp_last_timestamp == other.rtp_last_timestamp &&
              rtp_last_ssrc == other.rtp_last_ssrc &&
+             rtp_last_sent_payload_type == other.rtp_last_sent_payload_type &&
+             rtp_last_sent_sequence == other.rtp_last_sent_sequence &&
+             rtp_last_sent_timestamp == other.rtp_last_sent_timestamp &&
+             rtp_last_sent_ssrc == other.rtp_last_sent_ssrc &&
              audio_frames_decoded == other.audio_frames_decoded &&
              audio_pcm_samples_decoded == other.audio_pcm_samples_decoded &&
              audio_pcm_samples_buffered == other.audio_pcm_samples_buffered &&
+             audio_outbound_frames_sent == other.audio_outbound_frames_sent &&
+             audio_pcm_samples_submitted_total == other.audio_pcm_samples_submitted_total &&
+             audio_last_outbound_samples == other.audio_last_outbound_samples &&
              audio_last_sample_rate_hz == other.audio_last_sample_rate_hz &&
              audio_last_channels == other.audio_last_channels &&
              audio_last_frame_samples_per_channel ==
                other.audio_last_frame_samples_per_channel &&
              audio_last_codec_name == other.audio_last_codec_name &&
-             audio_last_error == other.audio_last_error;
+             audio_last_error == other.audio_last_error &&
+             audio_outbound_last_error == other.audio_outbound_last_error;
     }
   };
 
@@ -195,18 +220,31 @@ struct EmbeddedTransportState {
   bool srtp_outbound_ready = false;
   uint64_t rtp_packets_received = 0;
   uint64_t rtp_payload_bytes_received = 0;
+  uint64_t rtp_packets_sent = 0;
+  uint64_t rtp_payload_bytes_sent = 0;
   int64_t rtp_last_payload_type = -1;
   int64_t rtp_last_sequence = -1;
   uint64_t rtp_last_timestamp = 0;
   uint64_t rtp_last_ssrc = 0;
+  int64_t rtp_last_sent_payload_type = -1;
+  int64_t rtp_last_sent_sequence = -1;
+  uint64_t rtp_last_sent_timestamp = 0;
+  uint64_t rtp_last_sent_ssrc = 0;
   uint64_t audio_frames_decoded = 0;
   uint64_t audio_pcm_samples_decoded = 0;
   uint64_t audio_pcm_samples_buffered = 0;
+  uint64_t audio_outbound_frames_sent = 0;
+  uint64_t audio_pcm_samples_submitted_total = 0;
+  uint64_t audio_last_outbound_samples = 0;
   int64_t audio_last_sample_rate_hz = 0;
   int64_t audio_last_channels = 0;
   int64_t audio_last_frame_samples_per_channel = 0;
   std::string audio_last_codec_name;
   std::string audio_last_error;
+  std::string audio_outbound_last_error;
+  uint16_t outbound_rtp_sequence = 1;
+  uint32_t outbound_rtp_timestamp = 0;
+  uint32_t outbound_rtp_ssrc = kOutboundRtpSsrc;
   agentd::InboundRtpAudioDecoder audio_decoder;
   std::deque<int16_t> pcm_staging;
   std::mutex async_events_mu;
@@ -643,6 +681,134 @@ bool decode_inbound_audio_frame(
   return true;
 }
 
+void write_u16_be(unsigned char* out, uint16_t value) {
+  out[0] = static_cast<unsigned char>((value >> 8) & 0xFF);
+  out[1] = static_cast<unsigned char>(value & 0xFF);
+}
+
+void write_u32_be(unsigned char* out, uint32_t value) {
+  out[0] = static_cast<unsigned char>((value >> 24) & 0xFF);
+  out[1] = static_cast<unsigned char>((value >> 16) & 0xFF);
+  out[2] = static_cast<unsigned char>((value >> 8) & 0xFF);
+  out[3] = static_cast<unsigned char>(value & 0xFF);
+}
+
+uint8_t encode_pcmu_sample(int16_t sample) {
+  constexpr int kBias = 0x84;
+  constexpr int kClip = 32635;
+  static constexpr std::array<int, 8> kSegmentEnd = {{
+    0xFF, 0x1FF, 0x3FF, 0x7FF, 0xFFF, 0x1FFF, 0x3FFF, 0x7FFF,
+  }};
+
+  int value = static_cast<int>(sample);
+  uint8_t mask = 0xFFu;
+  if (value < 0) {
+    value = -value;
+    mask = 0x7Fu;
+  }
+  value = std::min(value, kClip) + kBias;
+
+  int segment = 0;
+  while (segment < static_cast<int>(kSegmentEnd.size()) && value > kSegmentEnd[segment]) {
+    segment += 1;
+  }
+  if (segment >= static_cast<int>(kSegmentEnd.size())) {
+    return static_cast<uint8_t>(0x7Fu ^ mask);
+  }
+  const uint8_t encoded = static_cast<uint8_t>(
+    (segment << 4) | ((value >> (segment + 3)) & 0x0F));
+  return static_cast<uint8_t>(encoded ^ mask);
+}
+
+std::vector<unsigned char> encode_pcm16_to_pcmu_20ms(
+  const int16_t* pcm,
+  size_t pcm_samples,
+  int sample_rate_hz,
+  int channels
+) {
+  std::vector<unsigned char> payload(kOutboundPcmuFrameSamples, encode_pcmu_sample(0));
+  if (!pcm || pcm_samples == 0 || sample_rate_hz <= 0 || channels <= 0) return payload;
+
+  const size_t channels_sz = static_cast<size_t>(channels);
+  const size_t frame_count = pcm_samples / channels_sz;
+  if (frame_count == 0) return payload;
+  for (size_t i = 0; i < payload.size(); ++i) {
+    size_t source_frame =
+      (static_cast<uint64_t>(i) * static_cast<uint64_t>(sample_rate_hz)) / 8000u;
+    if (source_frame >= frame_count) source_frame = frame_count - 1;
+    payload[i] = encode_pcmu_sample(pcm[source_frame * channels_sz]);
+  }
+  return payload;
+}
+
+bool transmit_outbound_pcmu_rtp(
+  EmbeddedTransportState* engine,
+  const int16_t* pcm,
+  size_t pcm_samples,
+  int sample_rate_hz,
+  int channels,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (!engine || !pcm || pcm_samples == 0) {
+    if (out_err) *out_err = "missing outbound audio samples";
+    return false;
+  }
+  if (!engine->agent || !engine->srtp_outbound_ready || !engine->outbound_srtp) {
+    if (out_err) *out_err = "outbound SRTP transport not ready";
+    return false;
+  }
+  if (sample_rate_hz <= 0 || channels <= 0) {
+    if (out_err) *out_err = "outbound audio format unavailable";
+    return false;
+  }
+
+  const std::vector<unsigned char> payload =
+    encode_pcm16_to_pcmu_20ms(pcm, pcm_samples, sample_rate_hz, channels);
+  std::vector<unsigned char> plain(12 + payload.size());
+  plain[0] = 0x80u;
+  plain[1] = kOutboundPcmuPayloadType;
+  const uint16_t sequence = engine->outbound_rtp_sequence++;
+  const uint32_t timestamp = engine->outbound_rtp_timestamp;
+  engine->outbound_rtp_timestamp += static_cast<uint32_t>(payload.size());
+  write_u16_be(plain.data() + 2, sequence);
+  write_u32_be(plain.data() + 4, timestamp);
+  write_u32_be(plain.data() + 8, engine->outbound_rtp_ssrc);
+  std::memcpy(plain.data() + 12, payload.data(), payload.size());
+
+  std::vector<unsigned char> protected_packet;
+  std::string protect_err;
+  if (!agentd::protect_outbound_rtp_packet(
+        engine->outbound_srtp,
+        plain.data(),
+        plain.size(),
+        &protected_packet,
+        &protect_err)) {
+    if (out_err) *out_err = protect_err;
+    return false;
+  }
+  const int rc = juice_send(
+    engine->agent,
+    reinterpret_cast<const char*>(protected_packet.data()),
+    protected_packet.size());
+  if (rc != JUICE_ERR_SUCCESS) {
+    if (out_err) *out_err = "libjuice RTP send failed with code " + std::to_string(rc);
+    return false;
+  }
+
+  engine->rtp_packets_sent += 1;
+  engine->rtp_payload_bytes_sent += payload.size();
+  engine->rtp_last_sent_payload_type = kOutboundPcmuPayloadType;
+  engine->rtp_last_sent_sequence = sequence;
+  engine->rtp_last_sent_timestamp = timestamp;
+  engine->rtp_last_sent_ssrc = engine->outbound_rtp_ssrc;
+  engine->audio_outbound_frames_sent += 1;
+  engine->audio_pcm_samples_submitted_total += pcm_samples;
+  engine->audio_last_outbound_samples = payload.size();
+  engine->audio_outbound_last_error.clear();
+  return true;
+}
+
 bool ingest_inbound_srtp_packet(
   EmbeddedTransportState* engine,
   const char* data,
@@ -963,24 +1129,34 @@ EmbeddedTransportState::AsyncProgressKey capture_async_progress_key(
   key.srtp_outbound_ready = state.srtp_outbound_ready;
   key.rtp_packets_received = state.rtp_packets_received;
   key.rtp_payload_bytes_received = state.rtp_payload_bytes_received;
+  key.rtp_packets_sent = state.rtp_packets_sent;
+  key.rtp_payload_bytes_sent = state.rtp_payload_bytes_sent;
   key.rtp_last_payload_type = state.rtp_last_payload_type;
   key.rtp_last_sequence = state.rtp_last_sequence;
   key.rtp_last_timestamp = state.rtp_last_timestamp;
   key.rtp_last_ssrc = state.rtp_last_ssrc;
+  key.rtp_last_sent_payload_type = state.rtp_last_sent_payload_type;
+  key.rtp_last_sent_sequence = state.rtp_last_sent_sequence;
+  key.rtp_last_sent_timestamp = state.rtp_last_sent_timestamp;
+  key.rtp_last_sent_ssrc = state.rtp_last_sent_ssrc;
   key.audio_frames_decoded = state.audio_frames_decoded;
   key.audio_pcm_samples_decoded = state.audio_pcm_samples_decoded;
   key.audio_pcm_samples_buffered = state.audio_pcm_samples_buffered;
+  key.audio_outbound_frames_sent = state.audio_outbound_frames_sent;
+  key.audio_pcm_samples_submitted_total = state.audio_pcm_samples_submitted_total;
+  key.audio_last_outbound_samples = state.audio_last_outbound_samples;
   key.audio_last_sample_rate_hz = state.audio_last_sample_rate_hz;
   key.audio_last_channels = state.audio_last_channels;
   key.audio_last_frame_samples_per_channel = state.audio_last_frame_samples_per_channel;
   key.audio_last_codec_name = state.audio_last_codec_name;
   key.audio_last_error = state.audio_last_error;
+  key.audio_outbound_last_error = state.audio_outbound_last_error;
   return key;
 }
 
 std::string derived_media_engine_state(const EmbeddedTransportState& state) {
   if (state.dtls_handshake_state == "failed") return "failed";
-  if (state.rtp_packets_received > 0) return "media_active";
+  if (state.rtp_packets_received > 0 || state.rtp_packets_sent > 0) return "media_active";
   if (state.srtp_contexts_ready) return "media_transport_ready";
   if (state.dtls_handshake_ready) return "dtls_connected";
   if (state.transport_connectivity_ready) return "transport_connected";
@@ -1191,7 +1367,8 @@ std::string build_event_json(
     "\",\"media_engine_state\":\"" + json_escape(media_engine_state) +
     "\",\"media_engine_kind\":\"builtin_native_plugin\""
     ",\"native_media_supported\":true"
-    ",\"native_media_active\":" + std::string(state.rtp_packets_received > 0 ? "true" : "false") +
+    ",\"native_media_active\":" +
+    std::string((state.rtp_packets_received > 0 || state.rtp_packets_sent > 0) ? "true" : "false") +
     ",\"provider\":\"" + std::string(kProviderName) + "\""
     ",\"transport_family\":\"embedded_transport_primitives\""
     ",\"dtls_identity_ready\":" + std::string(state.dtls_identity_ready ? "true" : "false") +
@@ -1209,9 +1386,15 @@ std::string build_event_json(
     ",\"dtls_packets_received\":" + std::to_string(state.dtls_packets_received) +
     ",\"rtp_packets_received\":" + std::to_string(state.rtp_packets_received) +
     ",\"rtp_payload_bytes_received\":" + std::to_string(state.rtp_payload_bytes_received) +
+    ",\"rtp_packets_sent\":" + std::to_string(state.rtp_packets_sent) +
+    ",\"rtp_payload_bytes_sent\":" + std::to_string(state.rtp_payload_bytes_sent) +
     ",\"audio_frames_decoded\":" + std::to_string(state.audio_frames_decoded) +
     ",\"audio_pcm_samples_decoded\":" + std::to_string(state.audio_pcm_samples_decoded) +
     ",\"audio_pcm_samples_buffered\":" + std::to_string(state.audio_pcm_samples_buffered) +
+    ",\"audio_outbound_frames_sent\":" + std::to_string(state.audio_outbound_frames_sent) +
+    ",\"audio_pcm_samples_submitted_total\":" +
+    std::to_string(state.audio_pcm_samples_submitted_total) +
+    ",\"audio_last_outbound_samples\":" + std::to_string(state.audio_last_outbound_samples) +
     ",\"local_candidates_observed\":" + std::to_string(state.local_candidates_observed) +
     ",\"remote_candidates_seen\":" + std::to_string(state.remote_candidates_seen) +
     ",\"offers_seen\":" + std::to_string(state.offers_seen) +
@@ -1251,6 +1434,21 @@ std::string build_event_json(
   if (state.rtp_last_ssrc > 0) {
     json += ",\"rtp_last_ssrc\":" + std::to_string(state.rtp_last_ssrc);
   }
+  if (state.rtp_last_sent_payload_type >= 0) {
+    json += ",\"rtp_last_sent_payload_type\":" +
+            std::to_string(state.rtp_last_sent_payload_type);
+  }
+  if (state.rtp_last_sent_sequence >= 0) {
+    json += ",\"rtp_last_sent_sequence\":" +
+            std::to_string(state.rtp_last_sent_sequence);
+  }
+  if (state.rtp_last_sent_timestamp > 0 || state.rtp_packets_sent > 0) {
+    json += ",\"rtp_last_sent_timestamp\":" +
+            std::to_string(state.rtp_last_sent_timestamp);
+  }
+  if (state.rtp_last_sent_ssrc > 0) {
+    json += ",\"rtp_last_sent_ssrc\":" + std::to_string(state.rtp_last_sent_ssrc);
+  }
   if (state.audio_last_sample_rate_hz > 0) {
     json += ",\"audio_last_sample_rate_hz\":" +
             std::to_string(state.audio_last_sample_rate_hz);
@@ -1268,6 +1466,10 @@ std::string build_event_json(
   }
   if (!state.audio_last_error.empty()) {
     json += ",\"audio_last_error\":\"" + json_escape(state.audio_last_error) + "\"";
+  }
+  if (!state.audio_outbound_last_error.empty()) {
+    json += ",\"audio_outbound_last_error\":\"" +
+            json_escape(state.audio_outbound_last_error) + "\"";
   }
   if (!state.selected_local_candidate.empty()) {
     json += ",\"libjuice_selected_local_candidate\":\"" +
@@ -1626,8 +1828,59 @@ int embedded_drain_audio(
   return 1;
 }
 
-const agentd_voice_media_engine_provider_v4 kEmbeddedProvider = {
-  AGENTD_VOICE_MEDIA_ENGINE_PROVIDER_ABI_V4,
+int embedded_submit_audio(
+  void* instance,
+  const int16_t* pcm_buf,
+  size_t pcm_samples,
+  int sample_rate_hz,
+  int channels,
+  int,
+  const char*,
+  char* event_json_buf,
+  size_t event_json_buf_size,
+  char* err_buf,
+  size_t err_buf_size
+) {
+  auto* engine = static_cast<EmbeddedTransportState*>(instance);
+  if (!engine) {
+    write_error("missing instance", err_buf, err_buf_size);
+    return 0;
+  }
+  if (event_json_buf && event_json_buf_size > 0) event_json_buf[0] = '\0';
+  if (!pcm_buf || pcm_samples == 0) return 1;
+
+  std::string err;
+  if (!transmit_outbound_pcmu_rtp(
+        engine, pcm_buf, pcm_samples, sample_rate_hz, channels, &err)) {
+    engine->audio_outbound_last_error =
+      err.empty() ? std::string("outbound RTP transmit failed") : err;
+    std::string payload = build_event_json(
+      *engine,
+      "audio_chunk_transmit_failed",
+      derived_media_engine_state(*engine),
+      0);
+    if (!copy_text(payload, event_json_buf, event_json_buf_size)) {
+      write_error("event buffer too small", err_buf, err_buf_size);
+      return 0;
+    }
+    return 1;
+  }
+
+  refresh_transport_snapshot(engine);
+  const std::string payload = build_event_json(
+    *engine,
+    "audio_chunk_transmitted",
+    derived_media_engine_state(*engine),
+    0);
+  if (!copy_text(payload, event_json_buf, event_json_buf_size)) {
+    write_error("event buffer too small", err_buf, err_buf_size);
+    return 0;
+  }
+  return 1;
+}
+
+const agentd_voice_media_engine_provider_v5 kEmbeddedProvider = {
+  AGENTD_VOICE_MEDIA_ENGINE_PROVIDER_ABI_V5,
   "builtin_native_plugin",
   1,
   kProviderName,
@@ -1642,10 +1895,11 @@ const agentd_voice_media_engine_provider_v4 kEmbeddedProvider = {
   &embedded_handle_local_shutdown,
   &embedded_poll_status,
   &embedded_drain_audio,
+  &embedded_submit_audio,
 };
 
 }  // namespace
 
-extern "C" const agentd_voice_media_engine_provider_v4* agentd_voice_media_engine_get_api_v4() {
+extern "C" const agentd_voice_media_engine_provider_v5* agentd_voice_media_engine_get_api_v5() {
   return &kEmbeddedProvider;
 }

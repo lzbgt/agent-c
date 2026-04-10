@@ -32,12 +32,15 @@ static void assert_known_test_provider(
     assert(capabilities["audio_stage"].asBool());
     assert(capabilities["audio_drain"].asBool());
     assert(capabilities["audio_owner_handoff"].asBool());
+    assert(capabilities["audio_submit"].asBool());
+    assert(capabilities["audio_outbound_pcmu"].asBool());
     assert(capabilities["audio_codec_pcmu"].asBool());
     assert(capabilities["audio_codec_pcma"].asBool());
     assert(capabilities.isMember("audio_codec_opus"));
     assert(capabilities["ice"].asBool());
     assert(capabilities["srtp"].asBool());
     assert(capabilities["rtp_ingest"].asBool());
+    assert(capabilities["rtp_transmit"].asBool());
     assert(capabilities["sctp"].asBool());
     return;
   }
@@ -233,7 +236,7 @@ static void test_native_plugin_builtin_contract_marks_native_media_path() {
   const Json::Value out = session_voice_builtin_start_contract_json(cfg, "voice-sid", plan);
   assert(out["mutating_broker_actions_deferred"].asBool() == false);
   assert(out["media_runtime_plan"]["media_engine_kind"].asString() == "builtin_native_plugin");
-  assert(out["media_runtime_plan"]["native_media_provider"]["abi_version"].asInt() == 4);
+  assert(out["media_runtime_plan"]["native_media_provider"]["abi_version"].asInt() == 5);
   assert(!out["media_runtime_plan"]["native_media_provider"]["name"].asString().empty());
   assert(out["media_runtime_plan"]["native_media_supported"].asBool() ==
          expected_native_supported_for_provider(
@@ -246,7 +249,7 @@ static void test_native_plugin_builtin_contract_marks_native_media_path() {
          expected_native_supported_for_provider(
            out["planned_runtime"]["native_media_provider"]["name"].asString()));
   assert(out["planned_runtime"]["native_media_active"].asBool() == false);
-  assert(out["planned_runtime"]["native_media_provider"]["abi_version"].asInt() == 4);
+  assert(out["planned_runtime"]["native_media_provider"]["abi_version"].asInt() == 5);
   assert(out["planned_runtime"]["native_media_provider"]["name"].asString() ==
          out["media_runtime_plan"]["native_media_provider"]["name"].asString());
   assert(out["planned_runtime"].isMember("last_error") == false);

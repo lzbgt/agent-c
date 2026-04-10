@@ -41,6 +41,8 @@ static void assert_known_test_provider(
     assert(capabilities["audio_stage"].asBool());
     assert(capabilities["audio_drain"].asBool());
     assert(capabilities["audio_owner_handoff"].asBool());
+    assert(capabilities["audio_submit"].asBool());
+    assert(capabilities["audio_outbound_pcmu"].asBool());
     assert(capabilities["audio_codec_pcmu"].asBool());
     assert(capabilities["audio_codec_pcma"].asBool());
     assert(capabilities.isMember("audio_codec_opus"));
@@ -51,6 +53,7 @@ static void assert_known_test_provider(
     assert(capabilities["srtp_contexts"].asBool());
     assert(capabilities["srtp"].asBool());
     assert(capabilities["rtp_ingest"].asBool());
+    assert(capabilities["rtp_transmit"].asBool());
     assert(capabilities["sctp"].asBool());
     assert(capabilities["real_media_engine"].asBool() == false);
     return;
@@ -95,7 +98,7 @@ static void test_runtime_kind_info_reports_reserved_and_stub_modes() {
   assert(native_info.native_media_supported ==
          expected_native_supported_for_provider(native_info.provider_name));
   assert(!native_info.native_media_active);
-  assert(native_info.provider_abi_version == 4);
+  assert(native_info.provider_abi_version == 5);
   assert(!native_info.provider_name.empty());
   assert(!native_info.provider_version.empty());
   assert_known_test_provider(native_info.provider_name, native_info.provider_capabilities);
@@ -194,7 +197,7 @@ static void test_builtin_media_engine_native_plugin_loads_sample_provider_metada
   assert(engine->info().native_media_supported ==
          expected_native_supported_for_provider(engine->info().provider_name));
   assert(!engine->info().native_media_active);
-  assert(engine->info().provider_abi_version == 4);
+  assert(engine->info().provider_abi_version == 5);
   assert(!engine->info().provider_name.empty());
   assert(!engine->info().provider_version.empty());
   assert_known_test_provider(engine->info().provider_name, engine->info().provider_capabilities);
@@ -209,7 +212,7 @@ static void test_builtin_media_engine_native_plugin_loads_sample_provider_metada
          expected_native_supported_for_provider(engine->info().provider_name));
   assert(!runtime.native_media_active);
   assert(runtime.media_engine_state == "signaling_ready");
-  assert(runtime.native_media_provider["abi_version"].asInt() == 4);
+  assert(runtime.native_media_provider["abi_version"].asInt() == 5);
   Json::Value polled(Json::nullValue);
   assert(engine->poll_status(&polled, &err));
   assert(err.empty());
@@ -293,7 +296,7 @@ static void test_builtin_native_probe_json_reports_provider_details() {
   assert(probe["configured"].asBool());
   assert(probe["loadable"].asBool());
   assert(probe["media_engine_kind"].asString() == "builtin_native_plugin");
-  assert(probe["provider"]["abi_version"].asInt() == 4);
+  assert(probe["provider"]["abi_version"].asInt() == 5);
   assert(!probe["provider"]["name"].asString().empty());
   assert(probe["native_media_supported"].asBool() ==
          expected_native_supported_for_provider(probe["provider"]["name"].asString()));
@@ -309,6 +312,15 @@ static void test_media_engine_event_tracks_audio_drain_fields() {
   payload["media_engine_state"] = "media_active";
   payload["native_media_supported"] = true;
   payload["native_media_active"] = true;
+  payload["rtp_packets_sent"] = Json::Int64(1);
+  payload["rtp_payload_bytes_sent"] = Json::Int64(160);
+  payload["rtp_last_sent_payload_type"] = Json::Int64(0);
+  payload["rtp_last_sent_sequence"] = Json::Int64(12);
+  payload["rtp_last_sent_timestamp"] = Json::Int64(320);
+  payload["rtp_last_sent_ssrc"] = Json::Int64(0xA6E17D01);
+  payload["audio_outbound_frames_sent"] = Json::Int64(1);
+  payload["audio_pcm_samples_submitted_total"] = Json::Int64(160);
+  payload["audio_last_outbound_samples"] = Json::Int64(160);
   payload["audio_drain_events_total"] = Json::Int64(3);
   payload["audio_pcm_samples_drained_total"] = Json::Int64(2880);
   payload["audio_pcm_samples_owned"] = Json::Int64(1440);
@@ -336,10 +348,20 @@ static void test_media_engine_event_tracks_audio_drain_fields() {
   payload["audio_render_last_error"] = "";
   payload["audio_playback_device_name"] = "Built-in Output";
   payload["audio_playback_last_error"] = "";
+  payload["audio_outbound_last_error"] = "";
   note_voice_peer_media_engine_event(&runtime, payload);
   assert(runtime.media_engine_state == "media_active");
   assert(runtime.native_media_supported);
   assert(runtime.native_media_active);
+  assert(runtime.rtp_packets_sent == 1);
+  assert(runtime.rtp_payload_bytes_sent == 160);
+  assert(runtime.rtp_last_sent_payload_type == 0);
+  assert(runtime.rtp_last_sent_sequence == 12);
+  assert(runtime.rtp_last_sent_timestamp == 320);
+  assert(runtime.rtp_last_sent_ssrc == 0xA6E17D01);
+  assert(runtime.audio_outbound_frames_sent == 1);
+  assert(runtime.audio_pcm_samples_submitted_total == 160);
+  assert(runtime.audio_last_outbound_samples == 160);
   assert(runtime.audio_drain_events_total == 3);
   assert(runtime.audio_pcm_samples_drained_total == 2880);
   assert(runtime.audio_pcm_samples_owned == 1440);
@@ -367,6 +389,7 @@ static void test_media_engine_event_tracks_audio_drain_fields() {
   assert(runtime.audio_render_last_error.empty());
   assert(runtime.audio_playback_device_name == "Built-in Output");
   assert(runtime.audio_playback_last_error.empty());
+  assert(runtime.audio_outbound_last_error.empty());
 }
 
 }  // namespace

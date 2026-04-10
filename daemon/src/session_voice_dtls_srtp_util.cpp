@@ -4,6 +4,8 @@
 
 #include <array>
 #include <cstring>
+#include <limits>
+#include <utility>
 
 namespace agentd {
 namespace {
@@ -469,6 +471,57 @@ bool unprotect_inbound_srtp_packet(
     static_cast<size_t>(mutable_len),
     out_info,
     out_err);
+}
+
+bool protect_outbound_rtp_packet(
+  srtp_t outbound_session,
+  const unsigned char* packet,
+  size_t packet_size,
+  std::vector<unsigned char>* out_protected_packet,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (out_protected_packet) out_protected_packet->clear();
+  if (!outbound_session) {
+    if (out_err) *out_err = "missing outbound SRTP session";
+    return false;
+  }
+  if (!packet || packet_size == 0) {
+    if (out_err) *out_err = "missing outbound RTP packet";
+    return false;
+  }
+  if (!is_probable_rtp_or_rtcp_packet(packet, packet_size) ||
+      is_probable_rtcp_packet(packet, packet_size)) {
+    if (out_err) *out_err = "outbound packet is not RTP";
+    return false;
+  }
+  if (!out_protected_packet) {
+    if (out_err) *out_err = "missing protected RTP output";
+    return false;
+  }
+  if (packet_size > static_cast<size_t>(std::numeric_limits<int>::max() - SRTP_MAX_TRAILER_LEN)) {
+    if (out_err) *out_err = "outbound RTP packet too large";
+    return false;
+  }
+
+  std::vector<unsigned char> mutable_packet(packet, packet + packet_size);
+  mutable_packet.resize(packet_size + SRTP_MAX_TRAILER_LEN);
+  int mutable_len = static_cast<int>(packet_size);
+  const srtp_err_status_t status =
+    srtp_protect(outbound_session, mutable_packet.data(), &mutable_len);
+  if (status != srtp_err_status_ok) {
+    if (out_err) {
+      *out_err = "outbound SRTP protect failed: " + srtp_err_status_text(status);
+    }
+    return false;
+  }
+  if (mutable_len <= 0) {
+    if (out_err) *out_err = "outbound SRTP protect returned an empty packet";
+    return false;
+  }
+  mutable_packet.resize(static_cast<size_t>(mutable_len));
+  *out_protected_packet = std::move(mutable_packet);
+  return true;
 }
 
 void destroy_dtls_srtp_session_pair(DtlsSrtpSessionPair* pair) {

@@ -49,6 +49,7 @@ struct BuiltinVoicePeerService {
   int64_t owned_audio_pcm_samples_played_total = 0;
   int owned_audio_last_sample_rate_hz = 0;
   int owned_audio_last_channels = 0;
+  std::string owned_audio_last_codec_name;
   std::string rendered_audio_wav_path;
   bool local_playback_enabled = false;
   std::string playback_device_name;
@@ -257,6 +258,9 @@ bool drain_builtin_voice_peer_media_engine_audio(
         if (chunk.channels > 0) {
           service->owned_audio_last_channels = chunk.channels;
         }
+        if (!trim_copy(chunk.codec_name).empty()) {
+          service->owned_audio_last_codec_name = trim_copy(chunk.codec_name);
+        }
       }
       if (playback_format_changed && service->playback_sink) {
         service->playback_sink->close();
@@ -308,6 +312,9 @@ bool process_builtin_voice_peer_owned_audio(
     int64_t playback_queued = 0;
     bool playback_enabled = false;
     bool playback_stream_open = false;
+    int sample_rate_hz = 0;
+    int channels = 0;
+    std::string codec_name;
     std::string playback_device_name;
     std::string playback_last_error;
     {
@@ -341,6 +348,9 @@ bool process_builtin_voice_peer_owned_audio(
         playback_queued = static_cast<int64_t>(service->playback_audio_pcm.size());
       }
       playback_stream_open = service->playback_sink && service->playback_sink->is_open();
+      sample_rate_hz = service->owned_audio_last_sample_rate_hz;
+      channels = service->owned_audio_last_channels;
+      codec_name = service->owned_audio_last_codec_name;
       playback_device_name = service->playback_device_name;
       playback_last_error = service->playback_last_error;
       process_events_total = service->owned_audio_process_events_total;
@@ -372,6 +382,30 @@ bool process_builtin_voice_peer_owned_audio(
     if (!playback_last_error.empty()) payload["audio_playback_last_error"] = playback_last_error;
     append_builtin_voice_peer_event_and_snapshot(
       service->stdout_log_path, service->session_id, payload, service->runtime, runtime_mu);
+
+    if (service->media_engine && sample_rate_hz > 0 && channels > 0) {
+      VoicePeerBuiltinAudioChunk submit_chunk;
+      submit_chunk.pcm_samples = samples;
+      submit_chunk.sample_rate_hz = sample_rate_hz;
+      submit_chunk.channels = channels;
+      submit_chunk.frame_samples_per_channel =
+        channels > 0 ? static_cast<int>(samples.size() / static_cast<size_t>(channels)) : 0;
+      submit_chunk.codec_name = codec_name.empty() ? "PCM16" : codec_name;
+      Json::Value submit_event(Json::nullValue);
+      std::string submit_err;
+      if (!service->media_engine->submit_audio(submit_chunk, &submit_event, &submit_err)) {
+        if (out_err) {
+          *out_err = trim_copy(submit_err).empty()
+            ? "builtin media engine submit_audio failed"
+            : submit_err;
+        }
+        return false;
+      }
+      if (submit_event.isObject()) {
+        append_builtin_voice_peer_event_and_snapshot(
+          service->stdout_log_path, service->session_id, submit_event, service->runtime, runtime_mu);
+      }
+    }
   }
 
   return true;

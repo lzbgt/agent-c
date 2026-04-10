@@ -132,6 +132,12 @@ class VoicePeerBuiltinMediaEngine {
     Json::Value* out_event,
     std::string* out_err
   ) = 0;
+
+  virtual bool submit_audio(
+    const VoicePeerBuiltinAudioChunk& chunk,
+    Json::Value* out_event,
+    std::string* out_err
+  ) = 0;
 };
 
 std::unique_ptr<VoicePeerBuiltinMediaEngine> make_builtin_voice_peer_media_engine(
