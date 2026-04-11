@@ -218,6 +218,13 @@ int agent_edge_consensus_identity_membership_matches(
   int identity_node_is_member
 );
 
+int agent_edge_consensus_cluster_id_matches(
+  const char* local_cluster_id,
+  size_t local_cluster_id_len,
+  const char* peer_cluster_id,
+  size_t peer_cluster_id_len
+);
+
 int agent_edge_consensus_trust_epochs_match(
   uint64_t local_trust_roots_epoch,
   uint64_t local_revocations_epoch,

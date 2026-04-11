@@ -475,7 +475,11 @@ bool EdgeConsensusReplica::handle_frame(
     if (out_error) *out_error = verr;
     return false;
   }
-  if (frame.from.cluster_id != self_.cluster_id) {
+  if (!agent_edge_consensus_cluster_id_matches(
+        self_.cluster_id.data(),
+        self_.cluster_id.size(),
+        frame.from.cluster_id.data(),
+        frame.from.cluster_id.size())) {
     if (out_error) *out_error = "cluster_id mismatch";
     return false;
   }
@@ -564,7 +568,11 @@ bool EdgeConsensusNodeLoop::adopt_membership_policy(
     if (out_reason) *out_reason = "membership schema invalid";
     return false;
   }
-  if (update.cluster_id != cfg_.self.cluster_id) {
+  if (!agent_edge_consensus_cluster_id_matches(
+        cfg_.self.cluster_id.data(),
+        cfg_.self.cluster_id.size(),
+        update.cluster_id.data(),
+        update.cluster_id.size())) {
     if (out_reason) *out_reason = "cluster_id mismatch";
     return true;
   }

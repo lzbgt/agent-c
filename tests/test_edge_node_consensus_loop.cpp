@@ -370,6 +370,14 @@ static void test_adopt_membership_policy_advances_epoch_and_resets_loop() {
   assert(reason == "membership_epoch not newer");
   assert(loop.config().self.membership_epoch == 9);
 
+  EdgeConsensusMembershipPolicyUpdate wrong_cluster = stale;
+  wrong_cluster.cluster_id = "other-cluster";
+  wrong_cluster.membership_epoch = 10;
+  assert(loop.adopt_membership_policy(wrong_cluster, &adopted, &reason));
+  assert(!adopted);
+  assert(reason == "cluster_id mismatch");
+  assert(loop.config().self.membership_epoch == 9);
+
   EdgeConsensusMembershipPolicyUpdate update;
   update.cluster_id = "lab-consensus-loop";
   update.membership_epoch = 10;

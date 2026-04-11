@@ -257,6 +257,23 @@ static void test_membership_epoch_and_nonmember_rejection() {
   assert(reply_c.size() == 1);
 }
 
+static void test_cluster_mismatch_rejection() {
+  EdgeConsensusReplica a(make_identity("node-a", 7, 3, 5), 3);
+  EdgeConsensusReplica b(make_identity("node-b", 7, 3, 5), 3);
+  set_membership_all(&a, 1, {"node-a", "node-b", "node-c"});
+  set_membership_all(&b, 1, {"node-a", "node-b", "node-c"});
+
+  EdgeConsensusFrame req =
+    a.start_election("sha256:4545454545454545454545454545454545454545454545454545454545454545");
+  req.from.cluster_id = "other-cluster";
+
+  std::vector<EdgeConsensusFrame> reply;
+  std::string err;
+  assert(!b.handle_frame(req, &reply, &err));
+  assert(err == "cluster_id mismatch");
+  assert(reply.empty());
+}
+
 static void test_leader_commit_requires_valid_witness_quorum() {
   EdgeConsensusReplica a(make_identity("node-a", 7, 3, 5), 3);
   EdgeConsensusReplica b(make_identity("node-b", 7, 3, 5), 3);
@@ -354,6 +371,7 @@ int main() {
   test_partition_and_quorum_recovery();
   test_trust_epoch_mismatch_requires_recovery();
   test_membership_epoch_and_nonmember_rejection();
+  test_cluster_mismatch_rejection();
   test_leader_commit_requires_valid_witness_quorum();
   test_frame_role_identity_rejection();
   return 0;

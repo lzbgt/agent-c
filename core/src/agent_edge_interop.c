@@ -353,6 +353,18 @@ int agent_edge_consensus_identity_membership_matches(
   return local_membership_epoch == identity_membership_epoch && identity_node_is_member ? 1 : 0;
 }
 
+int agent_edge_consensus_cluster_id_matches(
+  const char* local_cluster_id,
+  size_t local_cluster_id_len,
+  const char* peer_cluster_id,
+  size_t peer_cluster_id_len
+) {
+  if (!agent_umbmp_id_is_safe(local_cluster_id, local_cluster_id_len)) return 0;
+  if (!agent_umbmp_id_is_safe(peer_cluster_id, peer_cluster_id_len)) return 0;
+  return local_cluster_id_len == peer_cluster_id_len &&
+         memcmp(local_cluster_id, peer_cluster_id, peer_cluster_id_len) == 0 ? 1 : 0;
+}
+
 int agent_edge_consensus_trust_epochs_match(
   uint64_t local_trust_roots_epoch,
   uint64_t local_revocations_epoch,

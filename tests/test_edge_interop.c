@@ -195,6 +195,21 @@ static void test_consensus_constants_and_quorum(void) {
   assert(agent_edge_consensus_identity_membership_matches(7, 7, 1) == 1);
   assert(agent_edge_consensus_identity_membership_matches(7, 8, 1) == 0);
   assert(agent_edge_consensus_identity_membership_matches(7, 7, 0) == 0);
+  assert(agent_edge_consensus_cluster_id_matches(
+           "cluster-a",
+           strlen("cluster-a"),
+           "cluster-a",
+           strlen("cluster-a")) == 1);
+  assert(agent_edge_consensus_cluster_id_matches(
+           "cluster-a",
+           strlen("cluster-a"),
+           "cluster-b",
+           strlen("cluster-b")) == 0);
+  assert(agent_edge_consensus_cluster_id_matches(
+           "bad/cluster",
+           strlen("bad/cluster"),
+           "bad/cluster",
+           strlen("bad/cluster")) == 0);
   assert(agent_edge_consensus_trust_epochs_match(1, 2, 3, 1, 2, 3) == 1);
   assert(agent_edge_consensus_trust_epochs_match(1, 2, 3, 4, 2, 3) == 0);
   assert(agent_edge_consensus_trust_epochs_match(1, 2, 3, 1, 4, 3) == 0);
