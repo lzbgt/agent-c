@@ -32,6 +32,10 @@ static bool consensus_member_node_id_is_valid(const std::string& node_id) {
   return agent_edge_consensus_member_node_id_is_valid(node_id.data(), node_id.size()) == 1;
 }
 
+static bool consensus_node_id_matches(const std::string& a, const std::string& b) {
+  return agent_edge_consensus_node_id_matches(a.data(), a.size(), b.data(), b.size()) == 1;
+}
+
 static bool consensus_sha256_token_is_valid(const std::string& token) {
   return agent_umbmp_sha256_token_is_safe(token.data(), token.size()) == 1;
 }
@@ -184,7 +188,7 @@ static std::vector<std::string> dedupe_loop_targets(
   std::set<std::string> seen;
   for (const auto& raw : raw_ids) {
     const std::string node_id = trim_copy(raw);
-    if (!consensus_member_node_id_is_valid(node_id) || node_id == self_node_id) continue;
+    if (!consensus_member_node_id_is_valid(node_id) || consensus_node_id_matches(node_id, self_node_id)) continue;
     if (!seen.insert(node_id).second) continue;
     out.push_back(node_id);
   }
@@ -394,7 +398,7 @@ bool EdgeConsensusReplica::leader_commit_witnesses_valid(const EdgeConsensusFram
           trust_epochs_match(witness.trust_epochs) ? 1 : 0,
           inserted ? 0 : 1)) continue;
     valid_witness_count++;
-    if (witness.node_id == frame.leader_node_id) leader_is_witness = true;
+    if (consensus_node_id_matches(witness.node_id, frame.leader_node_id)) leader_is_witness = true;
   }
   return agent_edge_consensus_leader_commit_witnesses_can_accept(
            cluster_size_, valid_witness_count, leader_is_witness ? 1 : 0) != 0;
@@ -508,7 +512,7 @@ bool EdgeConsensusReplica::handle_frame(
           current_term_,
           frame.term,
           node_is_member(frame.candidate_node_id) ? 1 : 0,
-          frame.candidate_node_id == frame.from.node_id ? 1 : 0,
+          consensus_node_id_matches(frame.candidate_node_id, frame.from.node_id) ? 1 : 0,
           trust_epochs_match(frame.from.trust_epochs) ? 1 : 0,
           voted_for_node_id_.data(),
           voted_for_node_id_.size(),
@@ -528,8 +532,8 @@ bool EdgeConsensusReplica::handle_frame(
           current_term_,
           frame.term,
           node_is_member(frame.candidate_node_id) ? 1 : 0,
-          frame.candidate_node_id == self_.node_id ? 1 : 0,
-          frame.from.node_id == frame.candidate_node_id ? 1 : 0,
+          consensus_node_id_matches(frame.candidate_node_id, self_.node_id) ? 1 : 0,
+          consensus_node_id_matches(frame.from.node_id, frame.candidate_node_id) ? 1 : 0,
           agent_edge_consensus_decision_sha256_matches(
             campaign_decision_sha256_.data(),
             campaign_decision_sha256_.size(),
@@ -555,7 +559,7 @@ bool EdgeConsensusReplica::handle_frame(
         current_term_,
         frame.term,
         node_is_member(frame.leader_node_id) ? 1 : 0,
-        frame.from.node_id == frame.leader_node_id ? 1 : 0,
+        consensus_node_id_matches(frame.from.node_id, frame.leader_node_id) ? 1 : 0,
         trust_epochs_match(frame.from.trust_epochs) ? 1 : 0)) return true;
   if (!leader_commit_witnesses_valid(frame)) return true;
   mark_frame_seen();
@@ -602,7 +606,10 @@ bool EdgeConsensusNodeLoop::adopt_membership_policy(
     if (out_reason) *out_reason = "member_node_ids empty";
     return false;
   }
-  const bool self_node_is_member = std::find(members.begin(), members.end(), cfg_.self.node_id) != members.end();
+  const bool self_node_is_member =
+    std::any_of(members.begin(), members.end(), [&](const std::string& node_id) {
+      return consensus_node_id_matches(node_id, cfg_.self.node_id);
+    });
   if (!agent_edge_consensus_membership_policy_can_adopt(
         cfg_.self.membership_epoch,
         update.membership_epoch,
@@ -783,7 +790,7 @@ std::vector<std::string> EdgeConsensusNodeLoop::target_node_ids_for_frame(const 
     frame.kind.data(),
     frame.kind.size(),
     consensus_member_node_id_is_valid(frame.candidate_node_id) ? 1 : 0,
-    frame.candidate_node_id == cfg_.self.node_id ? 1 : 0)) {
+    consensus_node_id_matches(frame.candidate_node_id, cfg_.self.node_id) ? 1 : 0)) {
     case AGENT_EDGE_CONSENSUS_FRAME_ROUTE_CANDIDATE:
       return {frame.candidate_node_id};
     case AGENT_EDGE_CONSENSUS_FRAME_ROUTE_PEERS:

@@ -198,6 +198,10 @@ The shipped autonomous host-loop proof adds:
   existing quorum check, so firmware-native ports share the same duplicate-witness rejection boundary as agentd
 - portable `agent_core` node-id matching now backs the daemon replica's leader-self check, so ports share validated
   nonempty node-token equality instead of raw string comparison
+- the daemon consensus loop/replica now uses that same portable node-id matcher for remaining candidate/leader role
+  checks, route self-filtering, duplicate witness leader detection, and live-membership self-inclusion gates
+- consensus runtime config/store member-list de-duplication and default peer derivation now also reuse portable node-id
+  matching, keeping runtime persistence/recovery member-set shaping aligned with the node loop
 
 ## Still open
 

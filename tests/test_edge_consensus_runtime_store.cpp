@@ -70,6 +70,8 @@ static void test_persist_and_load_roundtrip() {
   EdgeConsensusRuntime st = make_runtime("builtin");
   st.running = false;
   st.exit_code = 0;
+  st.peer_node_ids = {"node-b", "node-b", "bad/node"};
+  st.member_node_ids = {"node-a", "node-b", "node-a", "bad/node"};
 
   std::string err;
   assert(persist_edge_consensus_runtime_record(&db, st, &err));
@@ -83,6 +85,11 @@ static void test_persist_and_load_roundtrip() {
   assert(loaded->status_source == "persisted");
   assert(loaded->runtime_kind == "builtin");
   assert(loaded->cluster_id == "cluster-a");
+  assert(loaded->peer_node_ids.size() == 1);
+  assert(loaded->peer_node_ids[0] == "node-b");
+  assert(loaded->member_node_ids.size() == 2);
+  assert(loaded->member_node_ids[0] == "node-a");
+  assert(loaded->member_node_ids[1] == "node-b");
 #endif
 }
 

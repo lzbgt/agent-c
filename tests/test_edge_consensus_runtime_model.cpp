@@ -85,6 +85,35 @@ static void test_build_config_defaults_policy_and_trust_epochs() {
   assert(st.running);
 }
 
+static void test_build_config_dedupes_explicit_node_sets() {
+  const DaemonConfig cfg = make_cfg();
+  Json::Value body(Json::objectValue);
+  body["node_id"] = "node-a";
+  body["cluster_id"] = "cluster-a";
+  body["manifest_sha256"] =
+    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  body["peer_node_ids"].append("node-a");
+  body["peer_node_ids"].append("node-b");
+  body["peer_node_ids"].append("node-b");
+  body["member_node_ids"].append("node-b");
+  body["member_node_ids"].append("node-a");
+  body["member_node_ids"].append("node-b");
+
+  EdgeConsensusRuntimeConfig run_cfg;
+  EdgeConsensusRuntime st;
+  std::string err;
+  const bool ok = edge_consensus_runtime_build_config(cfg, body, &run_cfg, &st, &err);
+  assert(ok);
+  assert(err.empty());
+  assert(run_cfg.peer_node_ids.size() == 1);
+  assert(run_cfg.peer_node_ids[0] == "node-b");
+  assert(run_cfg.member_node_ids.size() == 2);
+  assert(run_cfg.member_node_ids[0] == "node-b");
+  assert(run_cfg.member_node_ids[1] == "node-a");
+  assert(st.peer_node_ids == run_cfg.peer_node_ids);
+  assert(st.member_node_ids == run_cfg.member_node_ids);
+}
+
 static void test_build_config_uses_portable_policy_timing_bounds() {
   const DaemonConfig cfg = make_cfg();
   Json::Value body(Json::objectValue);
@@ -200,6 +229,7 @@ static void test_response_json_surfaces_cluster_and_trust_drift() {
 
 int main() {
   test_build_config_defaults_policy_and_trust_epochs();
+  test_build_config_dedupes_explicit_node_sets();
   test_build_config_uses_portable_policy_timing_bounds();
   test_same_effective_config_ignores_builtin_daemon_url_drift_only();
   test_response_json_surfaces_cluster_and_trust_drift();

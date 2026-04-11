@@ -32,6 +32,10 @@ static bool consensus_member_node_id_is_valid_store(const std::string& node_id) 
   return agent_edge_consensus_member_node_id_is_valid(node_id.data(), node_id.size()) == 1;
 }
 
+static bool consensus_node_id_matches_store(const std::string& a, const std::string& b) {
+  return agent_edge_consensus_node_id_matches(a.data(), a.size(), b.data(), b.size()) == 1;
+}
+
 static bool consensus_sha256_token_is_valid_store(const std::string& token) {
   return agent_umbmp_sha256_token_is_safe(token.data(), token.size()) == 1;
 }
@@ -42,7 +46,10 @@ static std::vector<std::string> dedupe_consensus_member_node_ids(const std::vect
   for (const auto& raw : in) {
     const std::string s = trim_copy(raw);
     if (!consensus_member_node_id_is_valid_store(s)) continue;
-    if (std::find(out.begin(), out.end(), s) == out.end()) out.push_back(s);
+    const bool already_seen = std::any_of(out.begin(), out.end(), [&](const std::string& node_id) {
+      return consensus_node_id_matches_store(node_id, s);
+    });
+    if (!already_seen) out.push_back(s);
   }
   return out;
 }
