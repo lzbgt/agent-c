@@ -90,9 +90,14 @@ class EdgeConsensusReplica {
   void set_trust_epochs(const EdgeConsensusEpochs& epochs);
   void set_membership(uint64_t membership_epoch, const std::vector<std::string>& member_node_ids);
   EdgeConsensusFrame start_election(const std::string& decision_sha256);
-  EdgeConsensusFrame current_leader_commit_frame() const;
+  EdgeConsensusFrame current_leader_commit_frame();
   void expire_leader_lease();
-  bool handle_frame(const EdgeConsensusFrame& frame, std::vector<EdgeConsensusFrame>* out_frames, std::string* out_error);
+  bool handle_frame(
+    const EdgeConsensusFrame& frame,
+    std::vector<EdgeConsensusFrame>* out_frames,
+    std::string* out_error,
+    bool* out_accepted = nullptr
+  );
   Json::Value status_to_json() const;
 
  private:
@@ -102,7 +107,7 @@ class EdgeConsensusReplica {
   bool has_quorum() const;
   bool leader_commit_witnesses_valid(const EdgeConsensusFrame& frame) const;
   EdgeConsensusFrame make_vote_grant_frame(const std::string& candidate_node_id, const std::string& decision_sha256) const;
-  EdgeConsensusFrame make_leader_commit_frame() const;
+  EdgeConsensusFrame make_leader_commit_frame(const std::string& frame_id) const;
   void reset_consensus_state();
   void maybe_reset_for_new_term(uint64_t term);
   std::string next_frame_id(const char* kind);

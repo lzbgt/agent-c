@@ -210,6 +210,10 @@ The shipped autonomous host-loop proof adds:
   preserves old runtime evidence only when the runtime node was a member of the matching policy epoch
 - runtime effective-config comparison now uses portable consensus cluster/node/digest matchers and normalized member sets,
   keeping restart/reconcile drift checks aligned with firmware-native identity semantics
+- node-loop leader activity and last-known decision updates now require semantic frame acceptance, so firmware-native
+  ports do not refresh lease/recovery state from rejected but parseable leader commits
+- leader heartbeat commits now use fresh frame ids instead of replaying the original commit id, preserving duplicate-frame
+  suppression while still letting accepted heartbeats refresh follower lease state
 
 ## Still open
 

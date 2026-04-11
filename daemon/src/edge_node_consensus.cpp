@@ -423,13 +423,9 @@ EdgeConsensusFrame EdgeConsensusReplica::make_vote_grant_frame(
   return out;
 }
 
-EdgeConsensusFrame EdgeConsensusReplica::make_leader_commit_frame() const {
+EdgeConsensusFrame EdgeConsensusReplica::make_leader_commit_frame(const std::string& frame_id) const {
   EdgeConsensusFrame out;
-  out.frame_id = consensus_frame_id(
-    self_.node_id,
-    AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT,
-    current_term_,
-    leader_node_id_);
+  out.frame_id = frame_id;
   out.kind = AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT;
   out.term = current_term_;
   out.decision_sha256 = committed_decision_sha256_;
@@ -439,8 +435,8 @@ EdgeConsensusFrame EdgeConsensusReplica::make_leader_commit_frame() const {
   return out;
 }
 
-EdgeConsensusFrame EdgeConsensusReplica::current_leader_commit_frame() const {
-  return make_leader_commit_frame();
+EdgeConsensusFrame EdgeConsensusReplica::current_leader_commit_frame() {
+  return make_leader_commit_frame(next_frame_id(AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT));
 }
 
 void EdgeConsensusReplica::expire_leader_lease() {
@@ -480,10 +476,12 @@ void EdgeConsensusNodeLoop::remember_decision(const std::string& decision_sha256
 bool EdgeConsensusReplica::handle_frame(
   const EdgeConsensusFrame& frame,
   std::vector<EdgeConsensusFrame>* out_frames,
-  std::string* out_error
+  std::string* out_error,
+  bool* out_accepted
 ) {
   if (out_error) out_error->clear();
   if (out_frames) out_frames->clear();
+  if (out_accepted) *out_accepted = false;
   std::string verr;
   if (!frame_is_valid(frame, &verr)) {
     if (out_error) *out_error = verr;
@@ -519,6 +517,7 @@ bool EdgeConsensusReplica::handle_frame(
           frame.candidate_node_id.data(),
           frame.candidate_node_id.size())) return true;
     mark_frame_seen();
+    if (out_accepted) *out_accepted = true;
     maybe_reset_for_new_term(frame.term);
     voted_for_node_id_ = frame.candidate_node_id;
     if (out_frames) out_frames->push_back(make_vote_grant_frame(frame.candidate_node_id, frame.decision_sha256));
@@ -542,6 +541,7 @@ bool EdgeConsensusReplica::handle_frame(
           frame.granted ? 1 : 0,
           trust_epochs_match(frame.from.trust_epochs) ? 1 : 0)) return true;
     mark_frame_seen();
+    if (out_accepted) *out_accepted = true;
     grant_witnesses_by_node_id_[frame.from.node_id] = frame.from;
     if (!agent_edge_consensus_candidate_can_commit(
           leader_node_id_.empty() ? 0 : 1,
@@ -551,7 +551,12 @@ bool EdgeConsensusReplica::handle_frame(
     committed_vote_witnesses_.clear();
     committed_vote_witnesses_.push_back(self_);
     for (const auto& kv : grant_witnesses_by_node_id_) committed_vote_witnesses_.push_back(kv.second);
-    if (out_frames) out_frames->push_back(make_leader_commit_frame());
+    if (out_frames) out_frames->push_back(make_leader_commit_frame(
+      consensus_frame_id(
+        self_.node_id,
+        AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT,
+        current_term_,
+        leader_node_id_)));
     return true;
   }
 
@@ -563,6 +568,7 @@ bool EdgeConsensusReplica::handle_frame(
         trust_epochs_match(frame.from.trust_epochs) ? 1 : 0)) return true;
   if (!leader_commit_witnesses_valid(frame)) return true;
   mark_frame_seen();
+  if (out_accepted) *out_accepted = true;
   maybe_reset_for_new_term(frame.term);
   leader_node_id_ = frame.leader_node_id;
   voted_for_node_id_ = frame.leader_node_id;
@@ -762,10 +768,13 @@ bool EdgeConsensusNodeLoop::handle_frame(
   std::string* out_error,
   int64_t now_utc_ms
 ) {
-  const bool ok = replica_.handle_frame(frame, out_frames, out_error);
+  bool accepted = false;
+  const bool ok = replica_.handle_frame(frame, out_frames, out_error, &accepted);
   if (!ok) return false;
-  remember_decision(frame.decision_sha256);
-  observe_leader_activity(frame, now_utc_ms);
+  if (accepted) {
+    remember_decision(frame.decision_sha256);
+    observe_leader_activity(frame, now_utc_ms);
+  }
   if (out_frames) {
     for (const auto& generated : *out_frames) {
       if (agent_edge_consensus_leader_activity_can_observe(

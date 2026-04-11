@@ -314,6 +314,7 @@ static void test_leader_heartbeat_and_follower_lease_expiry() {
   assert(heartbeat.size() == 1);
   assert(heartbeat[0].kind == "leader_commit");
   assert(heartbeat[0].leader_node_id == "node-a");
+  assert(heartbeat[0].frame_id != first_commit.frame_id);
 
   ok = loop_b.handle_frame(heartbeat[0], &follower_generated, &err, 340);
   assert(ok);
@@ -343,6 +344,57 @@ static void test_leader_heartbeat_and_follower_lease_expiry() {
   assert(status["leader_lease_expired_count"].asUInt64() == 1);
   assert(status["last_leader_lease_expired_utc_ms"].asInt64() == 1040);
   assert(status["lease_expiry_recampaign_ready_utc_ms"].asInt64() == 1290);
+}
+
+static void test_rejected_leader_commit_does_not_refresh_follower_lease() {
+  const std::string decision = "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+  auto loop_a = make_loop("node-a", {"node-b", "node-c"}, decision, 0, 300, 600, 2, 200, 700);
+  auto loop_b = make_loop("node-b", {"node-a", "node-c"}, "", 0, 300, 600, 2, 200, 700);
+  EdgeConsensusReplica replica_b(make_identity("node-b"), 3);
+  EdgeConsensusReplica replica_c(make_identity("node-c"), 3);
+  set_membership_all(&replica_b, {"node-a", "node-b", "node-c"});
+  set_membership_all(&replica_c, {"node-a", "node-b", "node-c"});
+
+  const std::vector<EdgeConsensusFrame> request = loop_a.tick(100);
+  assert(request.size() == 1);
+
+  std::vector<EdgeConsensusFrame> reply_b;
+  std::vector<EdgeConsensusFrame> reply_c;
+  deliver(replica_b, request[0], &reply_b);
+  deliver(replica_c, request[0], &reply_c);
+
+  std::vector<EdgeConsensusFrame> generated;
+  std::string err;
+  bool ok = loop_a.handle_frame(reply_b[0], &generated, &err, 120);
+  assert(ok);
+  assert(err.empty());
+  assert(generated.size() == 1);
+  const EdgeConsensusFrame accepted_commit = generated[0];
+
+  std::vector<EdgeConsensusFrame> follower_generated;
+  ok = loop_b.handle_frame(accepted_commit, &follower_generated, &err, 140);
+  assert(ok);
+  assert(err.empty());
+  assert(loop_b.leader_node_id() == "node-a");
+  assert(loop_b.status_to_json()["last_leader_contact_utc_ms"].asInt64() == 140);
+
+  EdgeConsensusFrame rejected_commit = accepted_commit;
+  rejected_commit.frame_id += ":bad_trust";
+  rejected_commit.vote_witnesses[0].trust_epochs.trust_roots_epoch += 1;
+  ok = loop_b.handle_frame(rejected_commit, &follower_generated, &err, 600);
+  assert(ok);
+  assert(err.empty());
+  assert(loop_b.leader_node_id() == "node-a");
+  assert(loop_b.status_to_json()["last_leader_contact_utc_ms"].asInt64() == 140);
+
+  std::vector<EdgeConsensusFrame> retry = loop_b.tick(839);
+  assert(retry.empty());
+  retry = loop_b.tick(840);
+  assert(retry.empty());
+  retry = loop_b.tick(841);
+  assert(retry.size() == 1);
+  assert(retry[0].kind == "vote_request");
+  assert(loop_b.leader_node_id().empty());
 }
 
 static void test_adopt_membership_policy_advances_epoch_and_resets_loop() {
@@ -466,6 +518,7 @@ int main() {
   test_quorum_commit_emits_leader_commit();
   test_status_surfaces_loop_config();
   test_leader_heartbeat_and_follower_lease_expiry();
+  test_rejected_leader_commit_does_not_refresh_follower_lease();
   test_adopt_membership_policy_advances_epoch_and_resets_loop();
   test_membership_policy_json_validation_errors();
   return 0;

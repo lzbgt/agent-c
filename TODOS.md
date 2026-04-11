@@ -776,6 +776,8 @@ streaming and plugins are stable.
   - 2026-04-11: reused portable node-id equality inside the same-term vote-request regrant predicate, so future firmware-native replicas do not fork a raw byte-equality path when checking whether a node can revote for the same candidate.
   - 2026-04-11: stale builtin consensus runtime recovery now requires the runtime node to belong to the matching current, previous, or lineage member set before preserving old evidence after daemon restart.
   - 2026-04-11: runtime effective-config comparison now uses portable cluster/node/digest identity matchers plus normalized member sets, keeping restart/reconcile drift decisions aligned with firmware-native consensus identity semantics.
+  - 2026-04-11: consensus node-loop leader activity and last-known decision updates now require semantic frame acceptance, so rejected but parseable commits cannot extend follower lease state before firmware-native adoption.
+  - 2026-04-11: consensus leader heartbeats now use fresh `leader_commit` frame ids instead of replaying the original commit id, preserving duplicate suppression while accepted heartbeats still refresh follower lease state.
   - 2026-03-20: extracted the voice peer broker-session/launch/startup/cleanup orchestration into a shared launch-flow module with direct unit proof, refactored the bundled/external child backend onto it, and extended `builtin_start_contract` with the same staged `startup_sequence` so future native work targets a real shared seam instead of child-only logic.
 
 ## Deferred (after macOS stability)
