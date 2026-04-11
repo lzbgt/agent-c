@@ -875,6 +875,7 @@ streaming and plugins are stable.
     - `daemon/src/workflow_engine_common.*`
     - `daemon/src/workflow_engine_pick.cpp`
     (keeps `daemon/src/workflow_engine.cpp` under 2000 LOC even as scheduling evolves).
+  - 2026-04-11: workflow AVM evidence run/artifact helpers moved into `daemon/src/workflow_evidence.*`, bringing `workflow_engine.cpp` back under the 2000-line threshold while preserving evidence artifact persistence semantics.
 - Workflow endpoints maintainability refactor:
   - Split endpoint implementations into smaller translation units:
     - `daemon/src/workflow_query_endpoints.cpp` (GET `/api/v1/workflow`, GET `/api/v1/workflows`)
