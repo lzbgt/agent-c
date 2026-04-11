@@ -308,6 +308,9 @@ The older P0/P1 section was pruned on 2026-04-12 so `Next` / `Remaining` notes n
 - Tool servers:
   - Remaining P1 note: reference tool server for ESP32 serial/MQTT bridges that speaks the strict stdio protocol and advertises UM-ACDS tool schemas.
 
+- MCP:
+  - Not an open product-extension roadmap item. Runtime extensibility remains centered on built-in tools, local plugins, and strict JSON-lines tool servers; any future MCP work should be a concrete edge adapter only, not a parallel plugin system.
+
 ## Maintainability Signals
 
 Line-count scan excluding `build/`, `ui/node_modules/`, `external/`, `ref/`, `refs/`, `docs/research/`, and generated OpenAPI types no longer finds a non-generated file over 2000 lines.

@@ -324,10 +324,17 @@ rendering beyond the current daemon-backed resolve flow.
 
 ## Interaction with MCP
 
-MCP support is optional.
+MCP is not a product extension target for this repo.
 
-If the repo later needs MCP interoperability, treat it as an **adapter layer**
-around tools/resources, not as the definition of the runtime skill model.
+The supported runtime extension path remains:
+
+- built-in tools
+- local plugins
+- strict JSON-lines tool servers
+
+If the repo later needs MCP interoperability for a concrete integration, treat it
+as an **adapter layer** around tools/resources, not as the definition of the
+runtime skill model and not as a second plugin system.
 
 Runtime skills should remain valid whether the underlying tool came from:
 
