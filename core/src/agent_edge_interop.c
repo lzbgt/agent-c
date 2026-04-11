@@ -211,6 +211,55 @@ int agent_edge_consensus_frame_kind_is_valid(const char* kind, size_t kind_len) 
     consensus_string_eq(kind, kind_len, AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT);
 }
 
+agent_status_t agent_edge_consensus_frame_id_format(
+  const char* node_id,
+  size_t node_id_len,
+  const char* kind,
+  size_t kind_len,
+  uint64_t number,
+  const char* suffix,
+  size_t suffix_len,
+  char* out,
+  size_t out_cap,
+  size_t* out_len
+) {
+  if (out_len) *out_len = 0;
+  if (!out || out_cap == 0) return AGENT_ERR_INVALID_ARGUMENT;
+  out[0] = '\0';
+  if (!agent_edge_consensus_member_node_id_is_valid(node_id, node_id_len)) return AGENT_ERR_INVALID_ARGUMENT;
+  if (!agent_edge_consensus_frame_kind_is_valid(kind, kind_len)) return AGENT_ERR_INVALID_ARGUMENT;
+  if (suffix_len > 0 && !agent_edge_consensus_member_node_id_is_valid(suffix, suffix_len)) {
+    return AGENT_ERR_INVALID_ARGUMENT;
+  }
+
+  char number_buf[32];
+  const int number_n = snprintf(number_buf, sizeof(number_buf), "%" PRIu64, number);
+  if (number_n <= 0 || (size_t)number_n >= sizeof(number_buf)) return AGENT_ERR_INTERNAL;
+  const size_t number_len = (size_t)number_n;
+  const size_t cap_len = out_cap - 1;
+  const size_t need = node_id_len + 1 + kind_len + 1 + number_len + (suffix_len > 0 ? 1 + suffix_len : 0);
+  if (need > cap_len || need > AGENT_UM_BMP_MAX_ID_LEN) return AGENT_ERR_BOUNDS;
+
+  size_t pos = 0;
+  memcpy(out + pos, node_id, node_id_len);
+  pos += node_id_len;
+  out[pos++] = ':';
+  memcpy(out + pos, kind, kind_len);
+  pos += kind_len;
+  out[pos++] = ':';
+  memcpy(out + pos, number_buf, number_len);
+  pos += number_len;
+  if (suffix_len > 0) {
+    out[pos++] = ':';
+    memcpy(out + pos, suffix, suffix_len);
+    pos += suffix_len;
+  }
+  out[pos] = '\0';
+  if (!agent_umbmp_id_is_safe(out, pos)) return AGENT_ERR_INTERNAL;
+  if (out_len) *out_len = pos;
+  return AGENT_OK;
+}
+
 int agent_edge_consensus_identity_membership_matches(
   uint64_t local_membership_epoch,
   uint64_t identity_membership_epoch,
@@ -287,6 +336,21 @@ int agent_edge_consensus_leader_commit_witnesses_can_accept(
   int leader_is_witness
 ) {
   return leader_is_witness && agent_edge_consensus_has_quorum(cluster_size, valid_witness_count) ? 1 : 0;
+}
+
+int agent_edge_consensus_incoming_term_advances(
+  uint64_t current_term,
+  uint64_t incoming_term
+) {
+  return incoming_term > current_term ? 1 : 0;
+}
+
+int agent_edge_consensus_seen_frame_should_drop(
+  int frame_id_seen,
+  uint64_t seen_term,
+  uint64_t frame_term
+) {
+  return frame_id_seen && seen_term == frame_term ? 1 : 0;
 }
 
 int agent_edge_consensus_member_node_id_is_valid(const char* node_id, size_t node_id_len) {

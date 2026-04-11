@@ -125,6 +125,73 @@ static void test_consensus_constants_and_quorum(void) {
   assert(agent_edge_consensus_frame_kind_is_valid("leader_commit", strlen("leader_commit")) == 1);
   assert(agent_edge_consensus_frame_kind_is_valid("leader_commitx", strlen("leader_commitx")) == 0);
   assert(agent_edge_consensus_frame_kind_is_valid(NULL, 0) == 0);
+  {
+    char frame_id[AGENT_UM_BMP_MAX_ID_LEN + 1];
+    size_t frame_id_len = 0;
+    assert(agent_edge_consensus_frame_id_format(
+             "node-a", strlen("node-a"),
+             AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST,
+             strlen(AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST),
+             42,
+             NULL,
+             0,
+             frame_id,
+             sizeof(frame_id),
+             &frame_id_len) == AGENT_OK);
+    assert(strcmp(frame_id, "node-a:vote_request:42") == 0);
+    assert(frame_id_len == strlen(frame_id));
+    assert(agent_edge_consensus_frame_id_format(
+             "node-a", strlen("node-a"),
+             AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT,
+             strlen(AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT),
+             7,
+             "node-b",
+             strlen("node-b"),
+             frame_id,
+             sizeof(frame_id),
+             &frame_id_len) == AGENT_OK);
+    assert(strcmp(frame_id, "node-a:vote_grant:7:node-b") == 0);
+    assert(agent_edge_consensus_frame_id_format(
+             "bad/node", strlen("bad/node"),
+             AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST,
+             strlen(AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST),
+             1,
+             NULL,
+             0,
+             frame_id,
+             sizeof(frame_id),
+             &frame_id_len) == AGENT_ERR_INVALID_ARGUMENT);
+    assert(agent_edge_consensus_frame_id_format(
+             "node-a", strlen("node-a"),
+             "bad_kind",
+             strlen("bad_kind"),
+             1,
+             NULL,
+             0,
+             frame_id,
+             sizeof(frame_id),
+             &frame_id_len) == AGENT_ERR_INVALID_ARGUMENT);
+    assert(agent_edge_consensus_frame_id_format(
+             "node-a", strlen("node-a"),
+             AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT,
+             strlen(AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT),
+             1,
+             "bad/node",
+             strlen("bad/node"),
+             frame_id,
+             sizeof(frame_id),
+             &frame_id_len) == AGENT_ERR_INVALID_ARGUMENT);
+    assert(agent_edge_consensus_frame_id_format(
+             "node-a", strlen("node-a"),
+             AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT,
+             strlen(AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT),
+             1,
+             "node-b",
+             strlen("node-b"),
+             frame_id,
+             8,
+             &frame_id_len) == AGENT_ERR_BOUNDS);
+  }
   assert(agent_edge_consensus_identity_membership_matches(7, 7, 1) == 1);
   assert(agent_edge_consensus_identity_membership_matches(7, 8, 1) == 0);
   assert(agent_edge_consensus_identity_membership_matches(7, 7, 0) == 0);
@@ -165,6 +232,12 @@ static void test_consensus_constants_and_quorum(void) {
   assert(agent_edge_consensus_leader_commit_witnesses_can_accept(3, 1, 1) == 0);
   assert(agent_edge_consensus_leader_commit_witnesses_can_accept(3, 2, 0) == 0);
   assert(agent_edge_consensus_leader_commit_witnesses_can_accept(1, 1, 1) == 1);
+  assert(agent_edge_consensus_incoming_term_advances(3, 4) == 1);
+  assert(agent_edge_consensus_incoming_term_advances(3, 3) == 0);
+  assert(agent_edge_consensus_incoming_term_advances(3, 2) == 0);
+  assert(agent_edge_consensus_seen_frame_should_drop(1, 3, 3) == 1);
+  assert(agent_edge_consensus_seen_frame_should_drop(1, 3, 4) == 0);
+  assert(agent_edge_consensus_seen_frame_should_drop(0, 3, 3) == 0);
   assert(agent_edge_consensus_member_node_id_is_valid("node-a", strlen("node-a")) == 1);
   assert(agent_edge_consensus_member_node_id_is_valid("cluster:node_1", strlen("cluster:node_1")) == 1);
   assert(agent_edge_consensus_member_node_id_is_valid("bad/node", strlen("bad/node")) == 0);

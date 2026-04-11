@@ -197,6 +197,30 @@ static bool parse_optional_i64_field(
   return true;
 }
 
+static std::string consensus_frame_id(
+  const std::string& node_id,
+  const char* kind,
+  uint64_t number,
+  const std::string& suffix = std::string()
+) {
+  char out[AGENT_UM_BMP_MAX_ID_LEN + 1];
+  size_t out_len = 0;
+  const std::string kind_s = kind ? std::string(kind) : std::string();
+  const agent_status_t st = agent_edge_consensus_frame_id_format(
+    node_id.data(),
+    node_id.size(),
+    kind_s.data(),
+    kind_s.size(),
+    number,
+    suffix.empty() ? nullptr : suffix.data(),
+    suffix.size(),
+    out,
+    sizeof(out),
+    &out_len);
+  if (st != AGENT_OK) return {};
+  return std::string(out, out_len);
+}
+
 }  // namespace
 
 EdgeConsensusReplica::EdgeConsensusReplica(const EdgeConsensusIdentity& self, size_t cluster_size)
@@ -265,11 +289,11 @@ void EdgeConsensusReplica::reset_consensus_state() {
 
 std::string EdgeConsensusReplica::next_frame_id(const char* kind) {
   ++frame_seq_;
-  return self_.node_id + ":" + std::string(kind ? kind : "frame") + ":" + std::to_string(frame_seq_);
+  return consensus_frame_id(self_.node_id, kind, frame_seq_);
 }
 
 void EdgeConsensusReplica::maybe_reset_for_new_term(uint64_t term) {
-  if (term <= current_term_) return;
+  if (!agent_edge_consensus_incoming_term_advances(current_term_, term)) return;
   current_term_ = term;
   voted_for_node_id_.clear();
   leader_node_id_.clear();
@@ -325,8 +349,11 @@ EdgeConsensusFrame EdgeConsensusReplica::make_vote_grant_frame(
   const std::string& decision_sha256
 ) const {
   EdgeConsensusFrame out;
-  out.frame_id = self_.node_id + ":" AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT ":" +
-    std::to_string(current_term_) + ":" + candidate_node_id;
+  out.frame_id = consensus_frame_id(
+    self_.node_id,
+    AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT,
+    current_term_,
+    candidate_node_id);
   out.kind = AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT;
   out.term = current_term_;
   out.decision_sha256 = decision_sha256;
@@ -338,8 +365,11 @@ EdgeConsensusFrame EdgeConsensusReplica::make_vote_grant_frame(
 
 EdgeConsensusFrame EdgeConsensusReplica::make_leader_commit_frame() const {
   EdgeConsensusFrame out;
-  out.frame_id = self_.node_id + ":" AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT ":" +
-    std::to_string(current_term_) + ":" + leader_node_id_;
+  out.frame_id = consensus_frame_id(
+    self_.node_id,
+    AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT,
+    current_term_,
+    leader_node_id_);
   out.kind = AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT;
   out.term = current_term_;
   out.decision_sha256 = committed_decision_sha256_;
@@ -405,7 +435,10 @@ bool EdgeConsensusReplica::handle_frame(
   }
   if (!membership_matches(frame.from)) return true;
   auto seen_it = seen_frame_term_by_id_.find(frame.frame_id);
-  if (seen_it != seen_frame_term_by_id_.end() && seen_it->second == frame.term) return true;
+  if (agent_edge_consensus_seen_frame_should_drop(
+        seen_it != seen_frame_term_by_id_.end() ? 1 : 0,
+        seen_it != seen_frame_term_by_id_.end() ? seen_it->second : 0,
+        frame.term)) return true;
   auto mark_frame_seen = [&]() {
     seen_frame_term_by_id_[frame.frame_id] = frame.term;
   };

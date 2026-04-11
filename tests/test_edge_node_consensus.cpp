@@ -80,10 +80,12 @@ static void test_duplicate_vote_grants_do_not_count_twice() {
 
   const EdgeConsensusFrame req = a.start_election(
     "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  assert(req.frame_id == "node-a:vote_request:1");
 
   std::vector<EdgeConsensusFrame> b_reply;
   deliver(b, req, &b_reply);
   assert(b_reply.size() == 1);
+  assert(b_reply[0].frame_id == "node-b:vote_grant:1:node-a");
   std::vector<EdgeConsensusFrame> a_emit;
   deliver(a, b_reply[0], &a_emit);
   assert(a.leader_node_id().empty());
@@ -100,6 +102,7 @@ static void test_duplicate_vote_grants_do_not_count_twice() {
   assert(a.leader_node_id() == "node-a");
   assert(a_emit.size() == 1);
   assert(a_emit[0].kind == "leader_commit");
+  assert(a_emit[0].frame_id == "node-a:leader_commit:1:node-a");
   assert(a_emit[0].vote_witnesses.size() == 3);
 }
 

@@ -141,6 +141,19 @@ int agent_edge_consensus_has_quorum(size_t cluster_size, size_t vote_count);
 
 int agent_edge_consensus_frame_kind_is_valid(const char* kind, size_t kind_len);
 
+agent_status_t agent_edge_consensus_frame_id_format(
+  const char* node_id,
+  size_t node_id_len,
+  const char* kind,
+  size_t kind_len,
+  uint64_t number,
+  const char* suffix,
+  size_t suffix_len,
+  char* out,
+  size_t out_cap,
+  size_t* out_len
+);
+
 int agent_edge_consensus_identity_membership_matches(
   uint64_t local_membership_epoch,
   uint64_t identity_membership_epoch,
@@ -191,6 +204,17 @@ int agent_edge_consensus_leader_commit_witnesses_can_accept(
   size_t cluster_size,
   size_t valid_witness_count,
   int leader_is_witness
+);
+
+int agent_edge_consensus_incoming_term_advances(
+  uint64_t current_term,
+  uint64_t incoming_term
+);
+
+int agent_edge_consensus_seen_frame_should_drop(
+  int frame_id_seen,
+  uint64_t seen_term,
+  uint64_t frame_term
 );
 
 // Consensus membership validation helpers shared by firmware and agentd.
