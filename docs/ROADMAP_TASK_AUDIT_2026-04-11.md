@@ -262,6 +262,18 @@ Follow-up provider-backed streaming token budget slice:
   - `tools/verify_repo_guards.sh > build/workflow_stream_fallback_repo_guards_20260412.log 2>&1` passed.
   - `ctest --test-dir build -N > build/workflow_stream_fallback_ctest_inventory_20260412.log 2>&1` passed; inventory is now 320 tests.
 
+Follow-up agent collaboration routing/memory slice:
+- Added broker deployment routing metadata to `agentd_call.broker_proxy` and `agentd_parallel.targets[].broker_proxy`; `deployment_id` now injects `X-Agentd-Deployment` and is persisted as `agentd.broker_deployment_id`.
+- Added stable `agentd.target_identity` result metadata and changed `agentd_parallel` quorum-hash default node identity from `/agentd/base_url` to `/agentd/target_identity`, so direct URL targets and broker agent/deployment targets share one correctness surface.
+- Added `agentd_parallel.routing_policy.require_distinct_targets` to reject duplicate derived target identities at submit time.
+- Added `agentd_parallel.memory_scope` to inject per-target or shared remote workflow `memory_scope_id` / `memory_scope_mode`, plus target identity inputs, before the derived remote workflow is submitted.
+- Added `agentd_workflow_agentd_parallel_broker_routing_memory_scope_smoke` to exercise duplicate broker-target rejection, broker deployment header routing, target metadata persistence, and per-target remote memory-scope injection.
+- Verification:
+  - `cmake --build build -j "$(sysctl -n hw.ncpu)" > build/agentd_parallel_target_identity_build_20260412.log 2>&1` passed.
+  - `ctest --test-dir build -R 'agentd_workflow_agentd_parallel_(macro|quorum_hashes|quorum_hashes_default_pointers|distinct_nodes|broker_routing_memory_scope)_smoke' --output-on-failure > build/agentd_parallel_target_identity_ctest_20260412.log 2>&1` passed, 5/5.
+  - `tools/verify_repo_guards.sh > build/agentd_parallel_target_identity_repo_guards_20260412.log 2>&1` passed.
+  - `ctest --test-dir build -N > build/agentd_parallel_target_identity_ctest_inventory_20260412.log 2>&1` passed; inventory is now 321 tests.
+
 ## Directly Open Roadmap Items
 
 `TODOS.md` now has two open roadmap workstreams with concrete unchecked subitems, plus one newly closed roadmap workstream:
@@ -299,7 +311,8 @@ The older P0/P1 section was pruned on 2026-04-12 so `Next` / `Remaining` notes n
 
 - Agent collaboration:
   - `strict_all_ok` and node-identity-aware quorum proof are already shipped in later collaboration slices.
-  - Current remaining: broker-routed target discovery/routing policy and identity-scoped memory.
+  - 2026-04-12 follow-up: broker-routed deployment routing policy and identity-scoped remote memory injection are now covered by a live `agentd_parallel` CTest smoke.
+  - Current remaining: broker-routed target discovery from broker registry/list APIs.
 
 - Memory:
   - Structured current-view key-prefix queries are already shipped through the memory query API and deterministic workflow `memory_query`.
@@ -329,4 +342,4 @@ Highest leverage sequence:
 
 1. Fix or unblock OpenRouter credentials, run the OpenRouter streaming pin workflow, and commit `ref/openrouter/streaming_pins.json` if the result is stable.
 2. Execute the documented builtin-vs-bundled graduation gate on any additional target release platforms before changing production defaults outside the checked macOS M2 host.
-3. Re-scan the pruned P0/P1 backlog after the provider-backed streaming token budget slice; remaining unblocked local work is lower priority than credential-gated OpenRouter pins and cross-platform native-plugin graduation.
+3. Re-scan the pruned P0/P1 backlog after the agent collaboration routing/memory slice; remaining unblocked local work is lower priority than credential-gated OpenRouter pins and cross-platform native-plugin graduation.

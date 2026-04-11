@@ -360,14 +360,14 @@ Broker proxy compatibility:
   - The task will then call `POST .../proxy/api/v1/workflow/submit` and poll `GET .../proxy/api/v1/workflow?...`.
 - In broker deployments, auth is usually `Authorization: Bearer <OIDC_JWT>`:
   - use `agentd_call.bearer_env` to reference an env var name containing the OIDC token (secret value is not persisted).
-  - optionally, you can avoid hardcoding the proxy path by using `agentd_call.broker_proxy` (server computes/persists `base_url`):
+  - optionally, you can avoid hardcoding the proxy path by using `agentd_call.broker_proxy` (server computes/persists `base_url`, target identity metadata, and optional deployment routing):
 
 ```json
 {
   "task_id": "REMOTE",
   "kind": "agentd_call",
   "agentd_call": {
-    "broker_proxy": { "broker_base_url": "https://broker.example", "agent_id": "1" },
+    "broker_proxy": { "broker_base_url": "https://broker.example", "agent_id": "1", "deployment_id": "dep-a" },
     "bearer_env": "OIDC_TOKEN",
     "workflow": { "tasks": [ { "task_id": "W", "kind": "delay", "delay_ms": 10 } ] }
   }
@@ -412,6 +412,11 @@ Example (remote agent runs a tiny deterministic delay workflow):
 
 Result shape (high level):
 - `ok` is true when the *remote workflow* reaches status `"done"`.
+- `agentd.base_url` and `agentd.op` identify the canonical remote request path.
+- `agentd.target_identity` is the stable join identity (`url:<base_url>` for direct targets, or
+  `broker:<broker_base_url>:<agent_id>[:<deployment_id>]` for broker-proxy targets).
+- `agentd.target_id`, `agentd.broker_agent_id`, and `agentd.broker_deployment_id` are present when the submit-time spec or
+  `agentd_parallel` macro supplies that metadata.
 - `agentd.workflow_id` is the remote workflow_id (reused on retry to avoid duplicate submit).
 - `agentd.final` is the remote `GET /api/v1/workflow` JSON response (best-effort bounded), enabling references like:
   - `${task.REMOTE.json:/agentd/final/workflow/status}`
@@ -466,10 +471,12 @@ Notes:
 - `agentd_parallel.agentd_call.base_url` must be omitted (each target provides a base_url).
 - The server overwrites `aggregate.task_ids` to match the derived tasks.
 - Default join strategy is `mode:"first_ok"` if `aggregate.mode` is omitted.
-- For `aggregate.mode:"quorum_hashes"`, the server defaults `aggregate.node_pointer="/agentd/base_url"` when omitted, so
-  `require_distinct_nodes:true` counts distinct remote agent targets correctly.
+- For `aggregate.mode:"quorum_hashes"`, the server defaults `aggregate.node_pointer="/agentd/target_identity"` when omitted, so
+  `require_distinct_nodes:true` counts direct URL targets and broker agent/deployment targets correctly.
 - For `aggregate.mode:"quorum_hashes"`, the server also defaults `aggregate.pointers=["/agentd/result_sha256"]` when omitted.
-- `agentd_parallel.targets[]` entries may also use `broker_proxy:{broker_base_url,agent_id}` (same as `agentd_call.broker_proxy`); the server computes `base_url` as `.../v1/agents/<agent_id>/proxy`.
+- `agentd_parallel.targets[]` entries may also use `broker_proxy:{broker_base_url,agent_id,deployment_id?}` (same as `agentd_call.broker_proxy`); the server computes `base_url` as `.../v1/agents/<agent_id>/proxy`, sets `X-Agentd-Deployment` when `deployment_id` is present, and emits `agentd.target_identity`.
+- `agentd_parallel.routing_policy.require_distinct_targets:true` rejects duplicate derived target identities before the workflow is accepted.
+- `agentd_parallel.memory_scope` injects `memory_scope_id` / `memory_scope_mode` into each remote workflow; by default the scope is per target (`<scope_id>:<target_id>`) and the remote inputs include `agentd_parallel_target_id` plus `agentd_parallel_target_identity`.
 - Example file: `docs/examples/workflows/agentd_parallel_demo.json`.
 - Generator helper: `tools/gen_agentd_parallel_demo.py` (reads `out/devstack_state.json` when present).
 - Shell wrapper: `tools/gen_agentd_parallel_demo.sh`.

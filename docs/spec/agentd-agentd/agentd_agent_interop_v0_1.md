@@ -30,7 +30,7 @@ Broker compatibility:
 - The “remote agent” can be addressed either directly (agentd HTTP base URL), or indirectly via the broker/connector proxy:
   - `base_url = https://<broker>/v1/agents/<agent_id>/proxy`
   - The caller still uses the same agentd endpoints under the proxy prefix.
-- Convenience: callers may also specify `broker_proxy:{broker_base_url,agent_id}` instead of `base_url` (server computes/persists the proxy prefix).
+- Convenience: callers may also specify `broker_proxy:{broker_base_url,agent_id,deployment_id?}` instead of `base_url`; the server computes/persists the proxy prefix and, when `deployment_id` is present, adds `X-Agentd-Deployment`.
 - Authentication to the broker typically uses an OIDC bearer token; use `agentd_call.bearer_env` so the secret value is not persisted.
 
 ## 2) Execution model: `workflow_submit_and_wait`
@@ -108,6 +108,10 @@ Notes:
 
 The task returns:
 - `ok`: whether the *remote workflow* finished successfully (`status:"done"`)
+- `agentd.base_url` / `agentd.op`: canonical remote request metadata
+- `agentd.target_identity`: stable target identity for joins (`url:<base_url>` or
+  `broker:<broker_base_url>:<agent_id>[:<deployment_id>]`)
+- `agentd.target_id`, `agentd.broker_agent_id`, `agentd.broker_deployment_id`: optional target metadata when supplied by the submitter or macro
 - `agentd.workflow_id`: remote workflow id
 - `agentd.final`: best-effort parsed JSON of the final poll response (`GET /api/v1/workflow?...`)
 

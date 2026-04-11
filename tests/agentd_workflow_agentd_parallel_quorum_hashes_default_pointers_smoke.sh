@@ -159,7 +159,7 @@ ptrs = j.get("pointers") or []
 if ptrs != ["/agentd/result_sha256"]:
   print("unexpected pointers default", ptrs, file=sys.stderr)
   raise SystemExit(1)
-if j.get("node_pointer") != "/agentd/base_url":
+if j.get("node_pointer") != "/agentd/target_identity":
   print("unexpected node_pointer default", j.get("node_pointer"), file=sys.stderr)
   raise SystemExit(1)
 
@@ -176,4 +176,3 @@ if not (isinstance(chosen, str) and chosen.startswith("sha256:") and len(chosen)
 PY
 
 echo "${NAME} OK"
-

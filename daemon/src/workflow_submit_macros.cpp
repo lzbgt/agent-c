@@ -41,6 +41,103 @@ static std::string join_base_path(std::string base, const std::string& path) {
   return base + "/" + path;
 }
 
+static bool memory_scope_id_is_safe(const std::string& s) {
+  if (s.empty() || s.size() > 160) return false;
+  for (char c : s) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') ||
+      c == '-' || c == '_' || c == '.' || c == ':';
+    if (!ok) return false;
+  }
+  return true;
+}
+
+static std::string normalize_memory_scope_mode(const std::string& raw) {
+  const std::string v = lower_copy(trim_copy(raw));
+  if (v.empty()) return "";
+  if (v == "read_only" || v == "readonly" || v == "ro") return "read_only";
+  if (v == "read_write" || v == "readwrite" || v == "read-write" || v == "rw") return "read_write";
+  return "";
+}
+
+static bool set_header_checked(
+  Json::Value* headers,
+  const std::string& key,
+  const std::string& value,
+  std::string* out_error
+) {
+  if (!headers || key.empty()) return false;
+  if (!headers->isObject()) *headers = Json::Value(Json::objectValue);
+  const std::string want = lower_copy(key);
+  for (const auto& k : headers->getMemberNames()) {
+    if (lower_copy(k) != want) continue;
+    if (!(*headers)[k].isString() || trim_copy((*headers)[k].asString()) != value) {
+      if (out_error) *out_error = "conflicting " + key + " header";
+      return false;
+    }
+    return true;
+  }
+  (*headers)[key] = value;
+  return true;
+}
+
+static bool apply_agentd_parallel_memory_scope(
+  Json::Value* call,
+  const std::string& memory_scope_id,
+  const std::string& memory_scope_mode,
+  const std::string& target_id,
+  const std::string& target_identity,
+  std::string* out_error
+) {
+  if (!call || !call->isObject()) return false;
+  Json::Value wf = call->isMember("workflow") && (*call)["workflow"].isObject()
+    ? (*call)["workflow"]
+    : Json::Value(Json::nullValue);
+  if (!wf.isObject()) {
+    if (out_error) *out_error = "agentd_parallel.agentd_call.workflow must be an object";
+    return false;
+  }
+
+  Json::Value defaults = wf.isMember("defaults") && wf["defaults"].isObject()
+    ? wf["defaults"]
+    : Json::Value(Json::objectValue);
+  const auto require_same_string = [&](const char* key, const std::string& value) -> bool {
+    if (!defaults.isMember(key) || defaults[key].isNull()) return true;
+    if (!defaults[key].isString() || trim_copy(defaults[key].asString()) != value) {
+      if (out_error) *out_error = std::string("agentd_parallel.memory_scope conflicts with agentd_call.workflow.defaults.") + key;
+      return false;
+    }
+    return true;
+  };
+  if (!require_same_string("memory_scope_id", memory_scope_id)) return false;
+  if (!require_same_string("memory_scope_mode", memory_scope_mode)) return false;
+  defaults["memory_scope_id"] = memory_scope_id;
+  defaults["memory_scope_mode"] = memory_scope_mode;
+  wf["defaults"] = defaults;
+
+  Json::Value inputs = wf.isMember("inputs") && wf["inputs"].isObject()
+    ? wf["inputs"]
+    : Json::Value(Json::objectValue);
+  const auto require_same_input_string = [&](const char* key, const std::string& value) -> bool {
+    if (!inputs.isMember(key) || inputs[key].isNull()) return true;
+    if (!inputs[key].isString() || trim_copy(inputs[key].asString()) != value) {
+      if (out_error) *out_error = std::string("agentd_parallel.memory_scope conflicts with agentd_call.workflow.inputs.") + key;
+      return false;
+    }
+    return true;
+  };
+  if (!require_same_input_string("agentd_parallel_target_id", target_id)) return false;
+  if (!require_same_input_string("agentd_parallel_target_identity", target_identity)) return false;
+  inputs["agentd_parallel_target_id"] = target_id;
+  inputs["agentd_parallel_target_identity"] = target_identity;
+  wf["inputs"] = inputs;
+
+  (*call)["workflow"] = wf;
+  return true;
+}
+
 }  // namespace
 
 bool expand_workflow_submit_macros(
@@ -156,6 +253,112 @@ bool expand_workflow_submit_macros(
         return false;
       }
 
+      bool require_distinct_targets = false;
+      const Json::Value routing_policy =
+        ap.isMember("routing_policy") ? ap["routing_policy"] : Json::Value(Json::nullValue);
+      if (!routing_policy.isNull()) {
+        if (!routing_policy.isObject()) {
+          if (resp) {
+            resp->status = 400;
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "agentd_parallel.routing_policy must be an object";
+            o["task_id"] = task_id;
+            resp->body = json_stringify_compact(o);
+          }
+          return false;
+        }
+        if (routing_policy.isMember("require_distinct_targets")) {
+          if (!routing_policy["require_distinct_targets"].isBool()) {
+            if (resp) {
+              resp->status = 400;
+              Json::Value o(Json::objectValue);
+              o["ok"] = false;
+              o["error"] = "agentd_parallel.routing_policy.require_distinct_targets must be a bool";
+              o["task_id"] = task_id;
+              resp->body = json_stringify_compact(o);
+            }
+            return false;
+          }
+          require_distinct_targets = routing_policy["require_distinct_targets"].asBool();
+        }
+      }
+
+      bool has_memory_scope = false;
+      bool memory_scope_per_target = true;
+      std::string memory_scope_base_id;
+      std::string memory_scope_mode = "read_write";
+      const Json::Value memory_scope =
+        ap.isMember("memory_scope") ? ap["memory_scope"] : Json::Value(Json::nullValue);
+      if (!memory_scope.isNull()) {
+        if (!memory_scope.isObject()) {
+          if (resp) {
+            resp->status = 400;
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "agentd_parallel.memory_scope must be an object";
+            o["task_id"] = task_id;
+            resp->body = json_stringify_compact(o);
+          }
+          return false;
+        }
+        memory_scope_base_id =
+          memory_scope.isMember("scope_id") && memory_scope["scope_id"].isString()
+          ? trim_copy(memory_scope["scope_id"].asString())
+          : "";
+        if (!memory_scope_id_is_safe(memory_scope_base_id)) {
+          if (resp) {
+            resp->status = 400;
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "agentd_parallel.memory_scope.scope_id must be id-safe";
+            o["task_id"] = task_id;
+            resp->body = json_stringify_compact(o);
+          }
+          return false;
+        }
+        if (memory_scope.isMember("mode")) {
+          if (!memory_scope["mode"].isString()) {
+            if (resp) {
+              resp->status = 400;
+              Json::Value o(Json::objectValue);
+              o["ok"] = false;
+              o["error"] = "agentd_parallel.memory_scope.mode must be a string";
+              o["task_id"] = task_id;
+              resp->body = json_stringify_compact(o);
+            }
+            return false;
+          }
+          memory_scope_mode = normalize_memory_scope_mode(memory_scope["mode"].asString());
+          if (memory_scope_mode.empty()) {
+            if (resp) {
+              resp->status = 400;
+              Json::Value o(Json::objectValue);
+              o["ok"] = false;
+              o["error"] = "agentd_parallel.memory_scope.mode must be read_only or read_write";
+              o["task_id"] = task_id;
+              resp->body = json_stringify_compact(o);
+            }
+            return false;
+          }
+        }
+        if (memory_scope.isMember("per_target")) {
+          if (!memory_scope["per_target"].isBool()) {
+            if (resp) {
+              resp->status = 400;
+              Json::Value o(Json::objectValue);
+              o["ok"] = false;
+              o["error"] = "agentd_parallel.memory_scope.per_target must be a bool";
+              o["task_id"] = task_id;
+              resp->body = json_stringify_compact(o);
+            }
+            return false;
+          }
+          memory_scope_per_target = memory_scope["per_target"].asBool();
+        }
+        has_memory_scope = true;
+      }
+
       // Macro task fields to preserve/propagate.
       std::vector<std::string> dep_ids;
       if (t.isMember("depends_on") && t["depends_on"].isArray()) {
@@ -170,17 +373,22 @@ bool expand_workflow_submit_macros(
 
       Json::Value attempt_task_ids(Json::arrayValue);
       std::unordered_set<std::string> seen_target_ids;
+      std::unordered_set<std::string> seen_target_identities;
       for (Json::ArrayIndex ti = 0; ti < targets.size(); ti++) {
         const Json::Value& tgt = targets[ti];
 
         std::string base_url;
         std::string target_id;
+        std::string target_identity;
+        std::string broker_agent_id;
+        std::string broker_deployment_id;
         bool allow_error = true;
         Json::Value target_expect(Json::nullValue);
         Json::Value target_max_attempts(Json::nullValue);
 
         if (tgt.isString()) {
           base_url = trim_copy(tgt.asString());
+          target_identity = "url:" + base_url;
           target_id = "t" + std::to_string((int)ti);
         } else if (tgt.isObject()) {
           if (tgt.isMember("base_url") && tgt["base_url"].isString()) base_url = trim_copy(tgt["base_url"].asString());
@@ -204,6 +412,8 @@ bool expand_workflow_submit_macros(
               bp.isMember("broker_base_url") && bp["broker_base_url"].isString() ? trim_copy(bp["broker_base_url"].asString()) : "";
             const std::string agent_id =
               bp.isMember("agent_id") && bp["agent_id"].isString() ? trim_copy(bp["agent_id"].asString()) : "";
+            const std::string deployment_id =
+              bp.isMember("deployment_id") && bp["deployment_id"].isString() ? trim_copy(bp["deployment_id"].asString()) : "";
             if (broker_base_url.empty() || agent_id.empty()) {
               if (resp) {
                 resp->status = 400;
@@ -229,10 +439,28 @@ bool expand_workflow_submit_macros(
               }
               return false;
             }
+            if (!deployment_id.empty() && !id_is_safe(deployment_id)) {
+              if (resp) {
+                resp->status = 400;
+                Json::Value o(Json::objectValue);
+                o["ok"] = false;
+                o["error"] = "agentd_parallel.targets[].broker_proxy.deployment_id must be id-safe";
+                o["task_id"] = task_id;
+                o["index"] = (Json::Int64)ti;
+                o["deployment_id"] = deployment_id;
+                resp->body = json_stringify_compact(o);
+              }
+              return false;
+            }
             base_url = join_base_path(broker_base_url, "/v1/agents/" + agent_id + "/proxy");
+            broker_agent_id = agent_id;
+            broker_deployment_id = deployment_id;
+            target_identity = "broker:" + broker_base_url + ":" + agent_id;
+            if (!deployment_id.empty()) target_identity += ":" + deployment_id;
             if (target_id.empty()) target_id = agent_id;
           }
           if (target_id.empty()) target_id = "t" + std::to_string((int)ti);
+          if (target_identity.empty()) target_identity = "url:" + base_url;
           if (tgt.isMember("allow_error") && tgt["allow_error"].isBool()) allow_error = tgt["allow_error"].asBool();
           if (tgt.isMember("expect") && tgt["expect"].isObject()) target_expect = tgt["expect"];
           if (tgt.isMember("max_attempts") && tgt["max_attempts"].isInt()) target_max_attempts = tgt["max_attempts"];
@@ -265,6 +493,7 @@ bool expand_workflow_submit_macros(
           }
           return false;
         }
+        if (target_identity.empty()) target_identity = "url:" + base_url;
         if (!seen_target_ids.insert(target_id).second) {
           if (resp) {
             resp->status = 400;
@@ -273,6 +502,19 @@ bool expand_workflow_submit_macros(
             o["error"] = "duplicate agentd_parallel target id";
             o["task_id"] = task_id;
             o["id"] = target_id;
+            resp->body = json_stringify_compact(o);
+          }
+          return false;
+        }
+        if (require_distinct_targets && !seen_target_identities.insert(target_identity).second) {
+          if (resp) {
+            resp->status = 400;
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "duplicate agentd_parallel routing target identity";
+            o["task_id"] = task_id;
+            o["id"] = target_id;
+            o["target_identity"] = target_identity;
             resp->body = json_stringify_compact(o);
           }
           return false;
@@ -317,6 +559,59 @@ bool expand_workflow_submit_macros(
 
         Json::Value call2 = call;
         call2["base_url"] = base_url;
+        call2["target_id"] = target_id;
+        call2["target_identity"] = target_identity;
+        if (!broker_agent_id.empty()) call2["broker_agent_id"] = broker_agent_id;
+        if (!broker_deployment_id.empty()) {
+          call2["broker_deployment_id"] = broker_deployment_id;
+          Json::Value headers = call2.isMember("headers") && call2["headers"].isObject()
+            ? call2["headers"]
+            : Json::Value(Json::objectValue);
+          std::string herr;
+          if (!set_header_checked(&headers, "X-Agentd-Deployment", broker_deployment_id, &herr)) {
+            if (resp) {
+              resp->status = 400;
+              Json::Value o(Json::objectValue);
+              o["ok"] = false;
+              o["error"] = herr.empty() ? "invalid broker deployment routing header" : herr;
+              o["task_id"] = task_id;
+              o["index"] = (Json::Int64)ti;
+              resp->body = json_stringify_compact(o);
+            }
+            return false;
+          }
+          call2["headers"] = headers;
+        }
+        if (has_memory_scope) {
+          std::string scope_id = memory_scope_base_id;
+          if (memory_scope_per_target) scope_id += ":" + target_id;
+          if (!memory_scope_id_is_safe(scope_id)) {
+            if (resp) {
+              resp->status = 400;
+              Json::Value o(Json::objectValue);
+              o["ok"] = false;
+              o["error"] = "agentd_parallel.memory_scope produced unsafe or too-long per-target scope_id";
+              o["task_id"] = task_id;
+              o["id"] = target_id;
+              o["memory_scope_id"] = scope_id;
+              resp->body = json_stringify_compact(o);
+            }
+            return false;
+          }
+          std::string merr;
+          if (!apply_agentd_parallel_memory_scope(&call2, scope_id, memory_scope_mode, target_id, target_identity, &merr)) {
+            if (resp) {
+              resp->status = 400;
+              Json::Value o(Json::objectValue);
+              o["ok"] = false;
+              o["error"] = merr.empty() ? "failed to apply agentd_parallel.memory_scope" : merr;
+              o["task_id"] = task_id;
+              o["id"] = target_id;
+              resp->body = json_stringify_compact(o);
+            }
+            return false;
+          }
+        }
         at["agentd_call"] = call2;
 
         out.append(at);
@@ -388,9 +683,9 @@ bool expand_workflow_submit_macros(
         return false;
       }
 
-      // Ergonomic default for agentd_parallel quorum: node identity is the remote agent base_url.
+      // Ergonomic default for agentd_parallel quorum: node identity is the remote target identity.
       // Aggregate's default node_pointer (/edge/node_id) is correct for edge_invoke, but agentd_call results
-      // identify the target under /agentd/base_url.
+      // identify the target under /agentd/target_identity (broker agent/deployment when available, otherwise URL).
       if (agg_mode == "quorum_hashes") {
         const bool has_ptrs =
           agg.isMember("pointers") && agg["pointers"].isArray() && !agg["pointers"].empty();
@@ -402,7 +697,7 @@ bool expand_workflow_submit_macros(
 
         const bool has_node_pointer =
           agg.isMember("node_pointer") && agg["node_pointer"].isString() && !trim_copy(agg["node_pointer"].asString()).empty();
-        if (!has_node_pointer) agg["node_pointer"] = "/agentd/base_url";
+        if (!has_node_pointer) agg["node_pointer"] = "/agentd/target_identity";
       }
 
       join["aggregate"] = agg;

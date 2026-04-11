@@ -653,7 +653,7 @@ WorkflowAgentdCallSpec:
     Broker compatibility:
     - `base_url` may also be a broker proxy prefix like `https://<broker>/v1/agents/<agent_id>/proxy` (see `docs/BROKER.md`).
       In that case, agentd endpoints are reached under the proxy prefix (e.g. `.../proxy/api/v1/workflow/submit`).
-    - Alternatively, omit `base_url` and set `broker_proxy:{broker_base_url,agent_id}` to have the server compute/persist the proxy prefix.
+    - Alternatively, omit `base_url` and set `broker_proxy:{broker_base_url,agent_id,deployment_id?}` to have the server compute/persist the proxy prefix, stable target identity, and optional deployment routing metadata.
     - Broker endpoints typically require `Authorization: Bearer <OIDC_JWT>`; use `bearer_env` so secrets are not persisted.
 
     Security:
@@ -667,6 +667,18 @@ WorkflowAgentdCallSpec:
       description: Required base URL (must start with http:// or https://) unless `broker_proxy` is provided.
     broker_proxy:
       $ref: "#/components/schemas/WorkflowAgentdBrokerProxySpec"
+    target_id:
+      type: string
+      description: Optional id-safe logical target id persisted into `agentd.target_id` in the task result.
+    target_identity:
+      type: string
+      description: Optional stable target identity persisted into `agentd.target_identity`; defaults to `url:<base_url>` or broker identity when `broker_proxy` is used.
+    broker_agent_id:
+      type: string
+      description: Optional broker agent id metadata persisted into `agentd.broker_agent_id`.
+    broker_deployment_id:
+      type: string
+      description: Optional broker deployment id metadata persisted into `agentd.broker_deployment_id`; also sets `X-Agentd-Deployment` unless an identical header is already present.
     op:
       type: string
       enum: [workflow_submit_and_wait]
@@ -711,6 +723,8 @@ WorkflowAgentdBrokerProxySpec:
 
     If set (and `base_url` is omitted), the server computes and persists:
     - `base_url = <broker_base_url>/v1/agents/<agent_id>/proxy`
+    - `target_identity = broker:<broker_base_url>:<agent_id>[:<deployment_id>]`
+    - if `deployment_id` is present, `X-Agentd-Deployment` is added unless an identical header already exists.
   properties:
     broker_base_url:
       type: string
@@ -718,6 +732,9 @@ WorkflowAgentdBrokerProxySpec:
     agent_id:
       type: string
       description: Target agent id (id-safe; used in the proxy path).
+    deployment_id:
+      type: string
+      description: Optional id-safe broker deployment id used to route through `X-Agentd-Deployment`.
 
 
 WorkflowTaskAgentdParallelSpec:
@@ -767,9 +784,9 @@ WorkflowAgentdParallelSpec:
 
     Notes:
     - The server overwrites `aggregate.task_ids` to match the derived tasks.
-    - `agentd_call.base_url` must be omitted; each target provides a base_url.
-    - For `aggregate.mode=quorum_hashes`, when `aggregate.node_pointer` is omitted the server defaults it to `/agentd/base_url`
-      so `require_distinct_nodes=true` counts distinct remote agent targets correctly.
+    - `agentd_call.base_url` must be omitted; each target provides a base_url or broker proxy.
+    - For `aggregate.mode=quorum_hashes`, when `aggregate.node_pointer` is omitted the server defaults it to `/agentd/target_identity`
+      so `require_distinct_nodes=true` counts distinct direct URLs and broker agent/deployment targets correctly.
     - For `aggregate.mode=quorum_hashes`, when `aggregate.pointers` is omitted the server defaults it to [`/agentd/result_sha256`].
   properties:
     targets:
@@ -789,6 +806,40 @@ WorkflowAgentdParallelSpec:
       additionalProperties: true
     aggregate:
       $ref: "#/components/schemas/WorkflowAggregateSpec"
+    routing_policy:
+      $ref: "#/components/schemas/WorkflowAgentdParallelRoutingPolicySpec"
+    memory_scope:
+      $ref: "#/components/schemas/WorkflowAgentdParallelMemoryScopeSpec"
+
+
+WorkflowAgentdParallelRoutingPolicySpec:
+  type: object
+  description: Optional submit-time routing policy for derived agentd targets.
+  properties:
+    require_distinct_targets:
+      type: boolean
+      description: If true, reject duplicate target identities before submitting derived tasks.
+
+
+WorkflowAgentdParallelMemoryScopeSpec:
+  type: object
+  required: [scope_id]
+  description: |
+    Optional remote memory scope injection for every derived `agentd_call` workflow.
+
+    The server writes `workflow.defaults.memory_scope_id` and `workflow.defaults.memory_scope_mode` into each remote workflow.
+    It also provides `workflow.inputs.agentd_parallel_target_id` and `workflow.inputs.agentd_parallel_target_identity`.
+  properties:
+    scope_id:
+      type: string
+      description: Id-safe base memory scope id. When `per_target` is true, the target id is appended as `<scope_id>:<target_id>`.
+    mode:
+      type: string
+      enum: [read_only, read_write]
+      description: Remote memory scope mode. Defaults to `read_write`; aliases such as `ro`/`rw` are accepted by the server.
+    per_target:
+      type: boolean
+      description: If true, append `:<target_id>` to `scope_id` for isolated per-target memory. Defaults true.
 
 
 WorkflowAgentdParallelTargetSpec:
@@ -798,7 +849,7 @@ WorkflowAgentdParallelTargetSpec:
 
     Either:
     - set `base_url`, or
-    - set `broker_proxy` (server computes `base_url` as `.../v1/agents/<agent_id>/proxy`).
+    - set `broker_proxy` (server computes `base_url` as `.../v1/agents/<agent_id>/proxy` and broker target identity metadata).
   properties:
     id:
       type: string

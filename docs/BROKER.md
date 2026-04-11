@@ -474,11 +474,12 @@ The broker proxy can be used as a “virtual base URL” for agentd-to-agentd co
 
 - In durable workflows, set `agentd_call.base_url` to:
   - `https://<broker>/v1/agents/<agent_id>/proxy`
-- Or set `agentd_call.broker_proxy:{broker_base_url,agent_id}` and omit `base_url` (server computes/persists the proxy prefix).
+- Or set `agentd_call.broker_proxy:{broker_base_url,agent_id,deployment_id?}` and omit `base_url` (server computes/persists the proxy prefix and, when present, routes with `X-Agentd-Deployment`).
 - The caller still uses normal agentd endpoints under the proxy prefix:
   - `POST .../proxy/api/v1/workflow/submit`
   - `GET  .../proxy/api/v1/workflow?workflow_id=...`
 - Broker auth is typically an OIDC bearer token; in workflows, use `agentd_call.bearer_env` so the token value is not persisted.
+- For fan-out workflows, `agentd_parallel.targets[].broker_proxy.deployment_id` participates in `agentd.target_identity`, so quorum distinct-node checks can distinguish multiple deployments of the same broker agent.
 
 #### Operational control (OTA, maintenance)
 

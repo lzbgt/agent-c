@@ -243,6 +243,34 @@ Json::Value workflow_agentd_call_to_json(
     return err_out("agentd_call.op must be workflow_submit_and_wait");
   }
 
+  const std::string target_id =
+    agentd_call.isMember("target_id") && agentd_call["target_id"].isString()
+    ? trim_copy(agentd_call["target_id"].asString())
+    : "";
+  const std::string target_identity =
+    agentd_call.isMember("target_identity") && agentd_call["target_identity"].isString()
+    ? trim_copy(agentd_call["target_identity"].asString())
+    : std::string("url:") + base_url;
+  const std::string broker_agent_id =
+    agentd_call.isMember("broker_agent_id") && agentd_call["broker_agent_id"].isString()
+    ? trim_copy(agentd_call["broker_agent_id"].asString())
+    : "";
+  const std::string broker_deployment_id =
+    agentd_call.isMember("broker_deployment_id") && agentd_call["broker_deployment_id"].isString()
+    ? trim_copy(agentd_call["broker_deployment_id"].asString())
+    : "";
+
+  auto attach_target_metadata = [&]() -> Json::Value {
+    Json::Value meta(Json::objectValue);
+    meta["base_url"] = base_url;
+    meta["op"] = op;
+    if (!target_id.empty()) meta["target_id"] = target_id;
+    if (!target_identity.empty()) meta["target_identity"] = target_identity;
+    if (!broker_agent_id.empty()) meta["broker_agent_id"] = broker_agent_id;
+    if (!broker_deployment_id.empty()) meta["broker_deployment_id"] = broker_deployment_id;
+    return meta;
+  };
+
   int64_t timeout_ms = 30000;
   if (agentd_call.isMember("timeout_ms") &&
       (agentd_call["timeout_ms"].isInt64() || agentd_call["timeout_ms"].isUInt64() || agentd_call["timeout_ms"].isInt() || agentd_call["timeout_ms"].isUInt())) {
@@ -335,8 +363,8 @@ Json::Value workflow_agentd_call_to_json(
           out["kind"] = "agentd_call";
           // Ensure base_url/op are present/canonical for debugging.
           if (!out.isMember("agentd") || !out["agentd"].isObject()) out["agentd"] = Json::Value(Json::objectValue);
-          out["agentd"]["base_url"] = base_url;
-          out["agentd"]["op"] = op;
+          const Json::Value meta = attach_target_metadata();
+          for (const auto& k : meta.getMemberNames()) out["agentd"][k] = meta[k];
           // Avoid budget double-charging on replay-only attempts.
           out["tool_calls_total"] = (Json::Int64)0;
           out["steps_executed"] = (Json::Int64)0;
@@ -360,9 +388,7 @@ Json::Value workflow_agentd_call_to_json(
   out["kind"] = "agentd_call";
   out["ok"] = false;
   out["assistant_text"] = "";
-  out["agentd"] = Json::Value(Json::objectValue);
-  out["agentd"]["base_url"] = base_url;
-  out["agentd"]["op"] = op;
+  out["agentd"] = attach_target_metadata();
 
   const std::string submit_url = join_base_path(base_url, "/api/v1/workflow/submit");
   HttpClientPinnedResolve pin;

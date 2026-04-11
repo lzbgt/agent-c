@@ -68,7 +68,7 @@ agentd_smoke_wait_health "${LOCAL_URL}"
 # - b targets a different base_url (REMOTE_URL_B)
 #
 # With require_distinct_nodes=true and quorum=3, the join must fail (only 2 distinct nodes can vote).
-# The important part: this must count distinct nodes via agentd_call's /agentd/base_url without requiring the user
+# The important part: this must count distinct nodes via agentd_call's /agentd/target_identity without requiring the user
 # to manually set aggregate.node_pointer.
 
 submit_resp="$(curl -fsS --noproxy "*" --max-time 20 \
@@ -190,4 +190,3 @@ if "unknown_node_task_ids" in j:
 PY
 
 echo "${NAME} OK"
-

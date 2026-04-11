@@ -846,8 +846,8 @@ streaming and plugins are stable.
   - Spec: `docs/spec/agentd-agentd/agentd_agent_interop_v0_1.md`
   - Broker/connector compatibility: `agentd_call.base_url` may also be a **broker proxy prefix**
     (e.g. `https://<broker>/v1/agents/<agent_id>/proxy`) so durable workflows can collaborate with agents behind NAT.
-  - Shipped (ergonomics + interop): `agentd_call.broker_proxy:{broker_base_url,agent_id}` as an alternative to `base_url`
-    (server computes/persists the proxy prefix) so MCU/edge systems can target agents by identity without hardcoding URL paths.
+  - Shipped (ergonomics + interop): `agentd_call.broker_proxy:{broker_base_url,agent_id,deployment_id?}` as an alternative to `base_url`
+    (server computes/persists the proxy prefix, broker agent/deployment metadata, and optional deployment routing header) so MCU/edge systems can target agents by identity without hardcoding URL paths.
     - Also supported by submit-time macro `kind:"agentd_parallel"` for each `targets[]` entry.
   - Optional hardening: restrict outbound targets with `--workflow-http-allow-host <host[:port]>` (repeatable),
     or env `AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS=host[:port],...`.
@@ -860,8 +860,10 @@ streaming and plugins are stable.
       - `agentd.result_sha256_schema=agentd_call_result_stable_v1` (ephemeral fields pruned before hashing)
     - `agentd.final_sha256`: hash of the full terminal remote workflow JSON (audit/debug; includes workflow_id/timestamps)
     (algorithm `agent_json_c14n_v1`).
-  - Distinct-target quorum: `kind:"agentd_parallel"` defaults `aggregate.node_pointer="/agentd/base_url"` for `mode:"quorum_hashes"`
-    so `require_distinct_nodes:true` counts distinct remote agent targets correctly.
+  - Distinct-target quorum: `kind:"agentd_parallel"` defaults `aggregate.node_pointer="/agentd/target_identity"` for `mode:"quorum_hashes"`
+    so `require_distinct_nodes:true` counts broker agent/deployment targets correctly while still falling back to `url:<base_url>` for direct targets.
+  - Broker-aware fan-out hardening: `agentd_parallel.routing_policy.require_distinct_targets` rejects duplicate derived target identities before submit,
+    and `agentd_parallel.memory_scope` can inject per-target or shared `memory_scope_id` / `memory_scope_mode` into each remote workflow.
   - Quorum ergonomics: for `kind:"agentd_parallel"` + `mode:"quorum_hashes"`, the server defaults `aggregate.pointers=["/agentd/result_sha256"]`
     so users don’t accidentally inherit the generic aggregate defaults (`/avm/result_hash`, `/avm/trace_hash`).
 - Embedded bring-up helper: `agent_core` now includes UM‑BMP/UM‑EAIS interop helpers (`agent/edge_interop.h`)
@@ -1590,17 +1592,19 @@ Status:
 - Shipped (high leverage): submit-time collaboration fan-out macro `kind:"agentd_parallel"` (expands into parallel `agentd_call` tasks + a deterministic `aggregate` join).
   - Why this compounds: it turns `agentd_call` into a first-class **redundancy/correctness** primitive (first_ok, quorum, collect, best_of_n),
     and makes multi-agent patterns scheduler-visible (fairness/budgets apply to each branch).
-  - Shipped: identity-based broker proxy addressing (`agentd_call.broker_proxy` and `agentd_parallel.targets[].broker_proxy`).
-  - Remaining after macro: broker-routed target discovery/routing policy + identity-scoped memory (see below).
+  - Shipped: identity-based broker proxy addressing (`agentd_call.broker_proxy` and `agentd_parallel.targets[].broker_proxy`), optional deployment routing,
+    explicit distinct-target routing policy, and identity-scoped remote memory injection.
+  - Remaining after macro: broker-routed target discovery (see below).
 
 Deliverables:
 - Allow workflow tasks to target:
   - local agentd
   - broker-routed agents
-- Add explicit routing policy and identity-scoped memory.
+- Add broker-routed target discovery.
 
 Proof:
-- Integration test exercises broker fan-out with workflow DAG dependencies.
+- `ctest` includes `agentd_workflow_agentd_parallel_broker_routing_memory_scope_smoke`, which exercises broker fan-out
+  deployment routing, duplicate-target rejection, target metadata persistence, and identity-scoped remote memory.
 - voice builtin start contract now exposes shared planned runtime artifact layout
 - voice builtin start contract now also exposes a runtime-schema-shaped planned runtime preview
 - valid builtin `501` starts now also surface that planned runtime preview through the normal top-level `peer` snapshot path

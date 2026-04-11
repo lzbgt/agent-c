@@ -38,6 +38,27 @@ static std::string join_base_path(std::string base, const std::string& path) {
   return base + "/" + path;
 }
 
+static bool set_header_checked(
+  Json::Value* headers,
+  const std::string& key,
+  const std::string& value,
+  std::string* out_error
+) {
+  if (!headers || key.empty()) return false;
+  if (!headers->isObject()) *headers = Json::Value(Json::objectValue);
+  const std::string want = lower_copy(key);
+  for (const auto& k : headers->getMemberNames()) {
+    if (lower_copy(k) != want) continue;
+    if (!(*headers)[k].isString() || trim_copy((*headers)[k].asString()) != value) {
+      if (out_error) *out_error = "conflicting " + key + " header";
+      return false;
+    }
+    return true;
+  }
+  (*headers)[key] = value;
+  return true;
+}
+
 static bool env_name_is_safe(const std::string& s) {
   if (s.empty() || s.size() > 128) return false;
   const auto is_alpha = [](char c) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); };
@@ -218,6 +239,14 @@ bool workflow_submit_build_agentd_call_task_request(
   const auto& ac = task_spec["agentd_call"];
   std::string base_url =
     ac.isMember("base_url") && ac["base_url"].isString() ? trim_copy(ac["base_url"].asString()) : "";
+  std::string broker_agent_id =
+    ac.isMember("broker_agent_id") && ac["broker_agent_id"].isString() ? trim_copy(ac["broker_agent_id"].asString()) : "";
+  std::string broker_deployment_id =
+    ac.isMember("broker_deployment_id") && ac["broker_deployment_id"].isString() ? trim_copy(ac["broker_deployment_id"].asString()) : "";
+  std::string target_id =
+    ac.isMember("target_id") && ac["target_id"].isString() ? trim_copy(ac["target_id"].asString()) : "";
+  std::string target_identity =
+    ac.isMember("target_identity") && ac["target_identity"].isString() ? trim_copy(ac["target_identity"].asString()) : "";
   if (base_url.empty()) {
     // Optional convenience: compute base_url from broker proxy fields.
     const Json::Value bp = ac.isMember("broker_proxy") ? ac["broker_proxy"] : Json::Value(Json::nullValue);
@@ -230,6 +259,8 @@ bool workflow_submit_build_agentd_call_task_request(
         bp.isMember("broker_base_url") && bp["broker_base_url"].isString() ? trim_copy(bp["broker_base_url"].asString()) : "";
       const std::string agent_id =
         bp.isMember("agent_id") && bp["agent_id"].isString() ? trim_copy(bp["agent_id"].asString()) : "";
+      const std::string deployment_id =
+        bp.isMember("deployment_id") && bp["deployment_id"].isString() ? trim_copy(bp["deployment_id"].asString()) : "";
       if (broker_base_url.empty()) {
         if (out_error) *out_error = "agentd_call.broker_proxy.broker_base_url must be a non-empty string";
         return false;
@@ -246,7 +277,15 @@ bool workflow_submit_build_agentd_call_task_request(
         if (out_error) *out_error = "agentd_call.broker_proxy.agent_id must be id-safe";
         return false;
       }
+      if (!deployment_id.empty() && !id_is_safe(deployment_id)) {
+        if (out_error) *out_error = "agentd_call.broker_proxy.deployment_id must be id-safe";
+        return false;
+      }
       base_url = join_base_path(broker_base_url, "/v1/agents/" + agent_id + "/proxy");
+      broker_agent_id = agent_id;
+      broker_deployment_id = deployment_id;
+      target_identity = "broker:" + broker_base_url + ":" + agent_id;
+      if (!deployment_id.empty()) target_identity += ":" + deployment_id;
     }
   }
   if (base_url.empty()) {
@@ -259,6 +298,23 @@ bool workflow_submit_build_agentd_call_task_request(
   }
   if (base_url.size() > 4096) {
     if (out_error) *out_error = "agentd_call.base_url is too long";
+    return false;
+  }
+  if (target_identity.empty()) target_identity = "url:" + base_url;
+  if (!target_id.empty() && !id_is_safe(target_id)) {
+    if (out_error) *out_error = "agentd_call.target_id must be id-safe";
+    return false;
+  }
+  if (!broker_agent_id.empty() && !id_is_safe(broker_agent_id)) {
+    if (out_error) *out_error = "agentd_call.broker_agent_id must be id-safe";
+    return false;
+  }
+  if (!broker_deployment_id.empty() && !id_is_safe(broker_deployment_id)) {
+    if (out_error) *out_error = "agentd_call.broker_deployment_id must be id-safe";
+    return false;
+  }
+  if (target_identity.size() > 4096) {
+    if (out_error) *out_error = "agentd_call.target_identity is too long";
     return false;
   }
 
@@ -311,12 +367,21 @@ bool workflow_submit_build_agentd_call_task_request(
       }
     }
   }
+  if (!broker_deployment_id.empty()) {
+    if (!set_header_checked(&headers2, "X-Agentd-Deployment", broker_deployment_id, out_error)) {
+      return false;
+    }
+  }
 
   Json::Value ac2(Json::objectValue);
   ac2["base_url"] = base_url;
   ac2["op"] = op;
   ac2["workflow"] = ac["workflow"];
   if (!headers2.empty()) ac2["headers"] = headers2;
+  if (!target_id.empty()) ac2["target_id"] = target_id;
+  if (!target_identity.empty()) ac2["target_identity"] = target_identity;
+  if (!broker_agent_id.empty()) ac2["broker_agent_id"] = broker_agent_id;
+  if (!broker_deployment_id.empty()) ac2["broker_deployment_id"] = broker_deployment_id;
 
   if (ac.isMember("bearer_env")) {
     if (!ac["bearer_env"].isString() && !ac["bearer_env"].isNull()) {
