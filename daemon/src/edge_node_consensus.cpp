@@ -78,6 +78,20 @@ static const char* consensus_frame_validation_error(agent_edge_consensus_frame_v
   return "frame invalid";
 }
 
+static const char* consensus_membership_policy_header_validation_error(
+  agent_edge_consensus_membership_policy_header_validation_t validation
+) {
+  switch (validation) {
+    case AGENT_EDGE_CONSENSUS_MEMBERSHIP_POLICY_HEADER_OK:
+      return "";
+    case AGENT_EDGE_CONSENSUS_MEMBERSHIP_POLICY_SCHEMA_INVALID:
+      return "membership schema invalid";
+    case AGENT_EDGE_CONSENSUS_MEMBERSHIP_POLICY_CLUSTER_ID_INVALID:
+      return "cluster_id invalid";
+  }
+  return "membership policy invalid";
+}
+
 static bool parse_optional_sha256(
   const Json::Value& root,
   const char* key,
@@ -949,12 +963,14 @@ bool edge_consensus_membership_policy_update_from_json(
       !parse_nonempty_string(root, "cluster_id", &out->cluster_id, out_error)) {
     return false;
   }
-  if (out->schema != AGENT_EDGE_CONSENSUS_MEMBERSHIP_SCHEMA_V1) {
-    if (out_error) *out_error = "membership schema invalid";
-    return false;
-  }
-  if (!edge_id_is_safe(out->cluster_id)) {
-    if (out_error) *out_error = "cluster_id invalid";
+  const agent_edge_consensus_membership_policy_header_validation_t header_validation =
+    agent_edge_consensus_membership_policy_header_validate(
+      out->schema.data(),
+      out->schema.size(),
+      out->cluster_id.data(),
+      out->cluster_id.size());
+  if (header_validation != AGENT_EDGE_CONSENSUS_MEMBERSHIP_POLICY_HEADER_OK) {
+    if (out_error) *out_error = consensus_membership_policy_header_validation_error(header_validation);
     return false;
   }
   if (!json_get_u64_nonneg(root, "membership_epoch", &out->membership_epoch)) {
@@ -979,7 +995,7 @@ bool edge_consensus_membership_policy_update_from_json(
     members.push_back(member);
   }
   out->member_node_ids = dedupe_member_vector_without_forcing_self(members);
-  if (out->member_node_ids.empty()) {
+  if (!agent_edge_consensus_membership_member_set_is_nonempty(out->member_node_ids.size())) {
     if (out_error) *out_error = "member_node_ids empty";
     return false;
   }

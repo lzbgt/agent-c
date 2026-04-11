@@ -298,6 +298,22 @@ int agent_edge_consensus_membership_policy_can_adopt(
   int self_node_is_member
 );
 
+typedef enum agent_edge_consensus_membership_policy_header_validation_t {
+  AGENT_EDGE_CONSENSUS_MEMBERSHIP_POLICY_HEADER_OK = 0,
+  AGENT_EDGE_CONSENSUS_MEMBERSHIP_POLICY_SCHEMA_INVALID = 1,
+  AGENT_EDGE_CONSENSUS_MEMBERSHIP_POLICY_CLUSTER_ID_INVALID = 2
+} agent_edge_consensus_membership_policy_header_validation_t;
+
+agent_edge_consensus_membership_policy_header_validation_t
+agent_edge_consensus_membership_policy_header_validate(
+  const char* schema,
+  size_t schema_len,
+  const char* cluster_id,
+  size_t cluster_id_len
+);
+
+int agent_edge_consensus_membership_member_set_is_nonempty(size_t member_count);
+
 int agent_edge_consensus_membership_lineage_is_valid(
   uint64_t previous_epoch,
   uint64_t current_epoch

@@ -476,6 +476,26 @@ int agent_edge_consensus_membership_policy_can_adopt(
     agent_edge_consensus_membership_epoch_can_advance(current_epoch, next_epoch) ? 1 : 0;
 }
 
+agent_edge_consensus_membership_policy_header_validation_t
+agent_edge_consensus_membership_policy_header_validate(
+  const char* schema,
+  size_t schema_len,
+  const char* cluster_id,
+  size_t cluster_id_len
+) {
+  if (!consensus_string_eq(schema, schema_len, AGENT_EDGE_CONSENSUS_MEMBERSHIP_SCHEMA_V1)) {
+    return AGENT_EDGE_CONSENSUS_MEMBERSHIP_POLICY_SCHEMA_INVALID;
+  }
+  if (!agent_umbmp_id_is_safe(cluster_id, cluster_id_len)) {
+    return AGENT_EDGE_CONSENSUS_MEMBERSHIP_POLICY_CLUSTER_ID_INVALID;
+  }
+  return AGENT_EDGE_CONSENSUS_MEMBERSHIP_POLICY_HEADER_OK;
+}
+
+int agent_edge_consensus_membership_member_set_is_nonempty(size_t member_count) {
+  return member_count > 0 ? 1 : 0;
+}
+
 int agent_edge_consensus_membership_lineage_is_valid(
   uint64_t previous_epoch,
   uint64_t current_epoch

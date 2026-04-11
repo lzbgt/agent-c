@@ -424,6 +424,30 @@ static void test_adopt_membership_policy_advances_epoch_and_resets_loop() {
   assert(targets[1] == "node-d");
 }
 
+static void test_membership_policy_json_validation_errors() {
+  Json::Value root(Json::objectValue);
+  root["schema"] = "bad_schema";
+  root["cluster_id"] = "lab-consensus-loop";
+  root["membership_epoch"] = Json::UInt64(10);
+  root["member_node_ids"] = Json::arrayValue;
+  root["member_node_ids"].append("node-a");
+
+  EdgeConsensusMembershipPolicyUpdate update;
+  std::string err;
+  assert(!agentd::edge_consensus_membership_policy_update_from_json(root, &update, &err));
+  assert(err == "membership schema invalid");
+
+  root["schema"] = AGENT_EDGE_CONSENSUS_MEMBERSHIP_SCHEMA_V1;
+  root["cluster_id"] = "bad/cluster";
+  assert(!agentd::edge_consensus_membership_policy_update_from_json(root, &update, &err));
+  assert(err == "cluster_id invalid");
+
+  root["cluster_id"] = "lab-consensus-loop";
+  root["member_node_ids"].clear();
+  assert(!agentd::edge_consensus_membership_policy_update_from_json(root, &update, &err));
+  assert(err == "member_node_ids empty");
+}
+
 }  // namespace
 
 int main() {
@@ -435,5 +459,6 @@ int main() {
   test_status_surfaces_loop_config();
   test_leader_heartbeat_and_follower_lease_expiry();
   test_adopt_membership_policy_advances_epoch_and_resets_loop();
+  test_membership_policy_json_validation_errors();
   return 0;
 }

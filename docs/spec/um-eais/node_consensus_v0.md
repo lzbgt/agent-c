@@ -154,6 +154,9 @@ The shipped autonomous host-loop proof adds:
 - portable `agent_core` identity and consensus-frame shape validation is now reused by the daemon parser/replica, so
   firmware-native ports can share the same schema, kind, frame id, term, digest, candidate, leader, and identity checks
   without carrying parallel host-only validation logic
+- portable `agent_core` membership-policy header validation and member-set nonempty checks are now reused by the daemon
+  membership parser, leaving JSON type handling host-side while sharing schema/cluster/member-set shape rules with
+  firmware-native ports
 - semantically rejected consensus frames do not poison the duplicate-frame cache, so an invalid early delivery cannot
   suppress a later valid retransmission with the same frame id and term
 - portable `agent_core` node-loop timing gates are now reused by the daemon loop for leader heartbeats, leader-lease

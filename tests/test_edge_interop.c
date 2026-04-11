@@ -417,6 +417,23 @@ static void test_consensus_constants_and_quorum(void) {
   assert(agent_edge_consensus_membership_policy_can_adopt(7, 8, 1) == 1);
   assert(agent_edge_consensus_membership_policy_can_adopt(7, 7, 1) == 0);
   assert(agent_edge_consensus_membership_policy_can_adopt(7, 8, 0) == 0);
+  assert(agent_edge_consensus_membership_policy_header_validate(
+           AGENT_EDGE_CONSENSUS_MEMBERSHIP_SCHEMA_V1,
+           strlen(AGENT_EDGE_CONSENSUS_MEMBERSHIP_SCHEMA_V1),
+           "cluster-a",
+           strlen("cluster-a")) == AGENT_EDGE_CONSENSUS_MEMBERSHIP_POLICY_HEADER_OK);
+  assert(agent_edge_consensus_membership_policy_header_validate(
+           "bad_schema",
+           strlen("bad_schema"),
+           "cluster-a",
+           strlen("cluster-a")) == AGENT_EDGE_CONSENSUS_MEMBERSHIP_POLICY_SCHEMA_INVALID);
+  assert(agent_edge_consensus_membership_policy_header_validate(
+           AGENT_EDGE_CONSENSUS_MEMBERSHIP_SCHEMA_V1,
+           strlen(AGENT_EDGE_CONSENSUS_MEMBERSHIP_SCHEMA_V1),
+           "bad/cluster",
+           strlen("bad/cluster")) == AGENT_EDGE_CONSENSUS_MEMBERSHIP_POLICY_CLUSTER_ID_INVALID);
+  assert(agent_edge_consensus_membership_member_set_is_nonempty(1) == 1);
+  assert(agent_edge_consensus_membership_member_set_is_nonempty(0) == 0);
   assert(agent_edge_consensus_membership_lineage_is_valid(0, 0) == 1);
   assert(agent_edge_consensus_membership_lineage_is_valid(0, 19) == 1);
   assert(agent_edge_consensus_membership_lineage_is_valid(18, 19) == 1);
