@@ -361,8 +361,8 @@ The older P0/P1 section was pruned on 2026-04-12 so `Next` / `Remaining` notes n
   - Current remaining: no unblocked local UM-EAIS/AVM payload-convention gap; deeper validation depends on real firmware or bridge integrations.
 
 - Tool servers:
-  - 2026-04-12 follow-up: `tools/tool_server_esp32_bridge.py` now provides the reference strict-stdio tool server for ESP32 serial/MQTT bridges. It reads UM-ACDS manifests, exposes device `parameters_schema` entries as agentd tools, and converts tool executions to UM-BMP `TASK_ASSIGN` envelopes through dry-run proof plus optional serial/MQTT transports.
-  - Verification: `tool_server_esp32_bridge_smoke` proves UM-ACDS manifest exposure, schema validation, ping handling, and deterministic dry-run `TASK_ASSIGN` generation.
+  - 2026-04-12 follow-up: `tools/tool_server_esp32_bridge.py` now provides the reference strict-stdio tool server for ESP32 serial/MQTT bridges. It reads UM-ACDS manifests, exposes device `parameters_schema` entries as provider-safe `esp32_...` agentd tools, and converts tool executions to UM-BMP `TASK_ASSIGN` envelopes through dry-run proof plus optional serial/MQTT transports while preserving original dotted UM-ACDS tool names for the device protocol.
+  - Verification: `tool_server_esp32_bridge_smoke` proves UM-ACDS manifest exposure, schema validation, ping handling, and deterministic dry-run `TASK_ASSIGN` generation; `agentd_tool_server_esp32_bridge_smoke` proves `/api/v1/tools` provider-safe name exposure plus a `/api/v1/run` tool-call round trip.
   - Current remaining: no unblocked local tool-server bridge gap; live serial/MQTT validation depends on target hardware/broker credentials.
 
 - MCP:

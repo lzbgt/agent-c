@@ -180,8 +180,9 @@ Additionally, implement **tool-level** safety:
 - Use `tools/tool_server_esp32_bridge.py` as the host-side reference bridge when
   you want `agentd` to call ESP32 tools over serial or MQTT without embedding a
   transport-specific plugin in the daemon. The bridge advertises UM-ACDS tool
-  schemas through agentd's strict stdio tool-server protocol and forwards calls
-  as UM-BMP `TASK_ASSIGN` envelopes.
+  schemas through agentd's strict stdio tool-server protocol using provider-safe
+  `esp32_...` tool names, then forwards calls as UM-BMP `TASK_ASSIGN` envelopes
+  with the original dotted UM-ACDS tool names preserved for the device side.
 
 Exit criteria:
 - `agent_core` compiles under ESP-IDF toolchain
