@@ -127,6 +127,8 @@ The shipped autonomous host-loop proof adds:
 - portable `agent_core` member-node-id validation and strictly-monotonic membership-epoch advancement checks, reused by
   daemon runtime parsing, membership bundle normalization/rotation/send, and the reusable node loop so firmware-native
   ports and agentd accept member identities and cluster-policy epochs consistently
+- portable `agent_core` SHA-256 token and trust-epoch-match checks reused by daemon runtime parsing/persistence and the
+  reusable node loop, keeping digest and trust recovery acceptance aligned with future firmware-native ports
 
 ## Still open
 

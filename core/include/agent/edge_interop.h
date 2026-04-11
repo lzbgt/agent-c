@@ -147,6 +147,15 @@ int agent_edge_consensus_identity_membership_matches(
   int identity_node_is_member
 );
 
+int agent_edge_consensus_trust_epochs_match(
+  uint64_t local_trust_roots_epoch,
+  uint64_t local_revocations_epoch,
+  uint64_t local_cert_roots_epoch,
+  uint64_t peer_trust_roots_epoch,
+  uint64_t peer_revocations_epoch,
+  uint64_t peer_cert_roots_epoch
+);
+
 // Consensus membership validation helpers shared by firmware and agentd.
 int agent_edge_consensus_member_node_id_is_valid(const char* node_id, size_t node_id_len);
 

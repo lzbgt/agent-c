@@ -219,6 +219,19 @@ int agent_edge_consensus_identity_membership_matches(
   return local_membership_epoch == identity_membership_epoch && identity_node_is_member ? 1 : 0;
 }
 
+int agent_edge_consensus_trust_epochs_match(
+  uint64_t local_trust_roots_epoch,
+  uint64_t local_revocations_epoch,
+  uint64_t local_cert_roots_epoch,
+  uint64_t peer_trust_roots_epoch,
+  uint64_t peer_revocations_epoch,
+  uint64_t peer_cert_roots_epoch
+) {
+  return local_trust_roots_epoch == peer_trust_roots_epoch &&
+         local_revocations_epoch == peer_revocations_epoch &&
+         local_cert_roots_epoch == peer_cert_roots_epoch ? 1 : 0;
+}
+
 int agent_edge_consensus_member_node_id_is_valid(const char* node_id, size_t node_id_len) {
   return agent_umbmp_id_is_safe(node_id, node_id_len);
 }

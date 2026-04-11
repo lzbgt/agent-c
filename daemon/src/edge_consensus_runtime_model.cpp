@@ -29,6 +29,10 @@ static bool consensus_member_node_id_is_valid_model(const std::string& node_id) 
   return agent_edge_consensus_member_node_id_is_valid(node_id.data(), node_id.size()) == 1;
 }
 
+static bool consensus_sha256_token_is_valid_model(const std::string& token) {
+  return agent_umbmp_sha256_token_is_safe(token.data(), token.size()) == 1;
+}
+
 static uint64_t json_to_u64_model(const Json::Value& v, uint64_t fallback) {
   if (v.isUInt64()) return v.asUInt64();
   if (v.isInt64() && v.asInt64() >= 0) return (uint64_t)v.asInt64();
@@ -45,7 +49,7 @@ static int64_t json_to_i64_model(const Json::Value& v, int64_t fallback) {
   return fallback;
 }
 
-static std::vector<std::string> dedupe_safe_edge_ids_model(const std::vector<std::string>& in) {
+static std::vector<std::string> dedupe_consensus_member_node_ids_model(const std::vector<std::string>& in) {
   std::vector<std::string> out;
   out.reserve(in.size());
   for (const auto& raw : in) {
@@ -163,9 +167,9 @@ Json::Value edge_consensus_runtime_cluster_policy_drift_json(
 
   const EdgeConsensusClusterPolicy& pol = pol_it->second;
   std::vector<std::string> policy_member_node_ids =
-    dedupe_safe_edge_ids_model(pol.member_node_ids);
+    dedupe_consensus_member_node_ids_model(pol.member_node_ids);
   std::vector<std::string> runtime_member_node_ids =
-    dedupe_safe_edge_ids_model(st.member_node_ids);
+    dedupe_consensus_member_node_ids_model(st.member_node_ids);
   std::sort(policy_member_node_ids.begin(), policy_member_node_ids.end());
   std::sort(runtime_member_node_ids.begin(), runtime_member_node_ids.end());
 
@@ -348,11 +352,11 @@ bool edge_consensus_runtime_build_config(
     pol_it == cfg.edge_consensus_clusters.end() ? nullptr : &pol_it->second;
 
   if (!consensus_member_node_id_is_valid_model(node_id) || !edge_id_is_safe(cluster_id) ||
-      !edge_sha256_token_is_safe(manifest_sha256)) {
+      !consensus_sha256_token_is_valid_model(manifest_sha256)) {
     if (out_err) *out_err = "invalid node runtime identity";
     return false;
   }
-  if (!decision_sha256.empty() && !edge_sha256_token_is_safe(decision_sha256)) {
+  if (!decision_sha256.empty() && !consensus_sha256_token_is_valid_model(decision_sha256)) {
     if (out_err) *out_err = "invalid decision_sha256";
     return false;
   }
@@ -414,18 +418,18 @@ bool edge_consensus_runtime_build_config(
     }
   }
   if (member_node_ids.empty() && cluster_policy) {
-    member_node_ids = dedupe_safe_edge_ids_model(cluster_policy->member_node_ids);
+    member_node_ids = dedupe_consensus_member_node_ids_model(cluster_policy->member_node_ids);
   }
   if (std::find(member_node_ids.begin(), member_node_ids.end(), node_id) == member_node_ids.end()) {
     member_node_ids.push_back(node_id);
   }
-  member_node_ids = dedupe_safe_edge_ids_model(member_node_ids);
+  member_node_ids = dedupe_consensus_member_node_ids_model(member_node_ids);
   if (peer_node_ids.empty() && !member_node_ids.empty()) {
     for (const auto& member : member_node_ids) {
       if (member != node_id) peer_node_ids.push_back(member);
     }
   }
-  peer_node_ids = dedupe_safe_edge_ids_model(peer_node_ids);
+  peer_node_ids = dedupe_consensus_member_node_ids_model(peer_node_ids);
   if (member_node_ids.empty()) member_node_ids = peer_node_ids;
 
   uint64_t cluster_size = body.isMember("cluster_size") ? json_to_u64_model(body["cluster_size"], 0) : 0;

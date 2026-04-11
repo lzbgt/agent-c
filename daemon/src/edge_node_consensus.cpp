@@ -27,6 +27,14 @@ static bool parse_nonempty_string(
   return true;
 }
 
+static bool consensus_member_node_id_is_valid(const std::string& node_id) {
+  return agent_edge_consensus_member_node_id_is_valid(node_id.data(), node_id.size()) == 1;
+}
+
+static bool consensus_sha256_token_is_valid(const std::string& token) {
+  return agent_umbmp_sha256_token_is_safe(token.data(), token.size()) == 1;
+}
+
 static bool parse_optional_sha256(
   const Json::Value& root,
   const char* key,
@@ -41,16 +49,12 @@ static bool parse_optional_sha256(
   }
   const std::string v = trim_copy(root[key].asString());
   if (v.empty()) return true;
-  if (!edge_sha256_token_is_safe(v)) {
+  if (!consensus_sha256_token_is_valid(v)) {
     if (out_error) *out_error = std::string(key) + " must be a sha256 token";
     return false;
   }
   if (out) *out = v;
   return true;
-}
-
-static bool consensus_member_node_id_is_valid(const std::string& node_id) {
-  return agent_edge_consensus_member_node_id_is_valid(node_id.data(), node_id.size()) == 1;
 }
 
 static bool parse_identity_like(const EdgeConsensusIdentity& id, std::string* out_error) {
@@ -63,7 +67,7 @@ static bool parse_identity_like(const EdgeConsensusIdentity& id, std::string* ou
     if (out_error) *out_error = "node_id invalid";
     return false;
   }
-  if (!id.manifest_sha256.empty() && !edge_sha256_token_is_safe(id.manifest_sha256)) {
+  if (!id.manifest_sha256.empty() && !consensus_sha256_token_is_valid(id.manifest_sha256)) {
     if (out_error) *out_error = "manifest_sha256 invalid";
     return false;
   }
@@ -102,7 +106,7 @@ static bool frame_is_valid(const EdgeConsensusFrame& frame, std::string* out_err
     if (out_error) *out_error = "term must be >= 1";
     return false;
   }
-  if (!frame.decision_sha256.empty() && !edge_sha256_token_is_safe(frame.decision_sha256)) {
+  if (!frame.decision_sha256.empty() && !consensus_sha256_token_is_valid(frame.decision_sha256)) {
     if (out_error) *out_error = "decision_sha256 invalid";
     return false;
   }
@@ -236,9 +240,13 @@ void EdgeConsensusReplica::maybe_reset_for_new_term(uint64_t term) {
 }
 
 bool EdgeConsensusReplica::trust_epochs_match(const EdgeConsensusEpochs& other) const {
-  return self_.trust_epochs.trust_roots_epoch == other.trust_roots_epoch &&
-         self_.trust_epochs.revocations_epoch == other.revocations_epoch &&
-         self_.trust_epochs.cert_roots_epoch == other.cert_roots_epoch;
+  return agent_edge_consensus_trust_epochs_match(
+           self_.trust_epochs.trust_roots_epoch,
+           self_.trust_epochs.revocations_epoch,
+           self_.trust_epochs.cert_roots_epoch,
+           other.trust_roots_epoch,
+           other.revocations_epoch,
+           other.cert_roots_epoch) != 0;
 }
 
 bool EdgeConsensusReplica::node_is_member(const std::string& node_id) const {
