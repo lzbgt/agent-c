@@ -2,6 +2,9 @@
 
 Status: defined on 2026-04-11.
 
+Latest local gate execution: passed on 2026-04-11 for the macOS M2 workspace at
+`/Users/zongbaolu/work/agent`; see the "Gate Execution Log" section.
+
 This document defines when `runtime_kind=builtin` with
 `audio_webrtc.builtin_mode=native_plugin` can graduate from explicit opt-in to a
 preferred managed WebRTC backend. It does not change the runtime default by
@@ -136,3 +139,26 @@ must keep a documented way to set:
 
 and verify that new no-request `voice_webrtc_peer` starts return
 `peer.runtime_kind=bundled` / `peer.media_engine_kind=browser_peer`.
+
+## Gate Execution Log
+
+2026-04-11 macOS M2 workspace:
+
+- Release artifact checked: `build/libagentd_voice_builtin_media_engine_embedded_transport.so`.
+- `python3 tools/check_voice_native_media_stack.py --pretty > build/native_plugin_graduation_stack_20260411.json 2> build/native_plugin_graduation_stack_20260411.err`
+  - Result: `ok=true`; stderr empty.
+- `python3 tools/inspect_voice_media_provider.py build/libagentd_voice_builtin_media_engine_embedded_transport.so --pretty > build/native_plugin_graduation_provider_20260411.json 2> build/native_plugin_graduation_provider_20260411.err`
+  - Result: `ok=true`; ABI v5; provider `agentd_builtin_embedded_transport_provider` version `0.13.0`; required callbacks present; `native_media_supported=true`; RTP ingest/transmit capabilities present; stderr empty.
+- `cmake --build build -j "$(sysctl -n hw.ncpu)" > build/native_plugin_graduation_build_20260411.log 2>&1`
+  - Result: `build_rc=0`.
+- `ctest --test-dir build -R 'session_voice_(builtin_packet_accounting|builtin_embedded_status|builtin_embedded_transport_provider|builtin_audio_payload|builtin_sdp_answer|sdp_candidate|audio_decode|audio_encode)_tests' --output-on-failure > build/native_plugin_graduation_unit_ctest_20260411.log 2>&1`
+  - Result: `ctest_rc=0`; eight targeted native-plugin unit/provider tests passed.
+- `ctest --test-dir build -R 'session_voice_builtin_dtls_transport_tests|session_voice_rtcp_report_tests' --output-on-failure > build/native_plugin_graduation_transport_ctest_20260411.log 2>&1`
+  - Result: `ctest_rc=0`; DTLS/SRTP transport and RTCP report tests passed.
+- `ctest --test-dir build -R 'agentd_session_voice_webrtc_peer_builtin_native_plugin_smoke|agentd_session_voice_webrtc_peer_builtin_default_native_plugin_smoke|agentd_session_voice_webrtc_peer_runtime_smoke|agentd_audio_webrtc_peer_smoke' --output-on-failure > build/native_plugin_graduation_smoke_ctest_20260411.log 2>&1`
+  - Result: `ctest_rc=0`; four runtime/browser smokes passed with no skips.
+
+Decision after this local pass: the macOS M2 artifact satisfies the documented
+gate for lab-default use on this host. The global production default is not
+changed by this evidence alone; run the same non-skipped gate on each additional
+target release platform before promoting builtin under auto/default policy.

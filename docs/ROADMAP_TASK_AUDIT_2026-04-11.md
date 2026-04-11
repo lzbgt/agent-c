@@ -52,6 +52,20 @@ Follow-up packet-accounting slice verification:
 - `ctest --test-dir build -R 'session_voice_(builtin_packet_accounting|builtin_embedded_status|builtin_embedded_transport_provider|builtin_audio_payload)_tests' --output-on-failure > build/packet_accounting_ctest_20260411.log 2>&1`
   - Result: `ctest_rc=0`; four targeted session-voice tests passed, including packet accounting, embedded status formatting, payload negotiation, and embedded provider load/status coverage.
 
+Follow-up native-plugin graduation gate verification:
+- `python3 tools/check_voice_native_media_stack.py --pretty > build/native_plugin_graduation_stack_20260411.json 2> build/native_plugin_graduation_stack_20260411.err`
+  - Result: `ok=true`; stderr empty.
+- `python3 tools/inspect_voice_media_provider.py build/libagentd_voice_builtin_media_engine_embedded_transport.so --pretty > build/native_plugin_graduation_provider_20260411.json 2> build/native_plugin_graduation_provider_20260411.err`
+  - Result: `ok=true`; ABI v5; provider `agentd_builtin_embedded_transport_provider` version `0.13.0`; required callbacks present; `native_media_supported=true`.
+- `cmake --build build -j "$(sysctl -n hw.ncpu)" > build/native_plugin_graduation_build_20260411.log 2>&1`
+  - Result: `build_rc=0`.
+- `ctest --test-dir build -R 'session_voice_(builtin_packet_accounting|builtin_embedded_status|builtin_embedded_transport_provider|builtin_audio_payload|builtin_sdp_answer|sdp_candidate|audio_decode|audio_encode)_tests' --output-on-failure > build/native_plugin_graduation_unit_ctest_20260411.log 2>&1`
+  - Result: `ctest_rc=0`; eight targeted native-plugin unit/provider tests passed.
+- `ctest --test-dir build -R 'session_voice_builtin_dtls_transport_tests|session_voice_rtcp_report_tests' --output-on-failure > build/native_plugin_graduation_transport_ctest_20260411.log 2>&1`
+  - Result: `ctest_rc=0`; DTLS/SRTP transport and RTCP report tests passed.
+- `ctest --test-dir build -R 'agentd_session_voice_webrtc_peer_builtin_native_plugin_smoke|agentd_session_voice_webrtc_peer_builtin_default_native_plugin_smoke|agentd_session_voice_webrtc_peer_runtime_smoke|agentd_audio_webrtc_peer_smoke' --output-on-failure > build/native_plugin_graduation_smoke_ctest_20260411.log 2>&1`
+  - Result: `ctest_rc=0`; four runtime/browser smokes passed with no skips.
+
 ## Directly Open Roadmap Items
 
 `TODOS.md` now has three open roadmap workstreams, with concrete unchecked subitems under each:
@@ -69,7 +83,8 @@ Follow-up packet-accounting slice verification:
    - 2026-04-11 follow-up: embedded progress/status JSON construction is now extracted into `session_voice_builtin_embedded_status.*` with unit coverage; the provider file is down to 1725 lines while preserving the same `native_plugin` ABI.
    - 2026-04-11 follow-up: RTP/RTCP packet accounting and RTCP sender/receiver-report cadence decisions are now extracted into `session_voice_builtin_packet_accounting.*` with unit coverage; the provider file is down to 1620 lines while preserving embedded provider load/status coverage.
    - 2026-04-11 follow-up: production graduation criteria are now documented in `docs/VOICE_NATIVE_PLUGIN_GRADUATION.md`, including operator default levels, dependency probes, verification gates, fail-closed behavior, and bundled rollback rules.
-   - Concrete remaining subitem: execute the graduation gate on a target release host before changing production defaults from bundled to builtin.
+   - 2026-04-11 follow-up: the documented native-plugin graduation gate passed on this macOS M2 workspace with native stack/provider probes, full build, native-plugin unit/provider tests, DTLS/SRTP + RTCP tests, and four non-skipped runtime/browser smokes. This makes builtin lab-default-eligible on this host; it does not by itself change global production defaults.
+   - Concrete remaining subitem: execute the same non-skipped gate on any additional target release platforms before promoting builtin under auto/default policy outside this macOS M2 host.
 
 3. `TODOS.md:700` - Node consensus firmware-native adoption on top of portable `agent_core` consensus rules and managed runtime.
    - The roadmap now distinguishes shipped host-side relay/runtime and portable consensus rules from the remaining adoption proof.
@@ -108,7 +123,7 @@ The scan did not identify a production implementation file over the 2000-line th
 Highest leverage sequence:
 
 1. Fix or unblock OpenRouter credentials, run the OpenRouter streaming pin workflow, and commit `ref/openrouter/streaming_pins.json` if the result is stable.
-2. Execute the documented builtin-vs-bundled graduation gate on a target release host before changing production defaults.
+2. Execute the documented builtin-vs-bundled graduation gate on any additional target release platforms before changing production defaults outside the checked macOS M2 host.
 3. Make node consensus firmware-native adoption concrete with a minimal embedded-style loop/fixture plus lossy-transport replay proof and a short contract doc.
 4. Refactor `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` into smaller helper scripts or fixtures to reduce maintenance risk around the active media lane.
 5. Prune stale P0/P1 "Next" notes into current, testable checklist items so the roadmap reflects shipped work instead of duplicating older goals.
