@@ -61,7 +61,7 @@ static void test_frame_envelope_uses_single_target_field_when_possible() {
   const EdgeConsensusRuntimeConfig cfg = make_cfg();
   const Json::Value env = build_edge_consensus_http_frame_envelope(
     cfg, make_frame(), {"node-a", "node-b", "node-b"}, "node-a:consensus-node:2", 22222);
-  assert(env["type"].asString() == "CONSENSUS_FRAME");
+  assert(env["type"].asString() == AGENT_UM_BMP_TYPE_CONSENSUS_FRAME);
   assert(env["body"]["target_node_id"].asString() == "node-b");
   assert(!env["body"].isMember("target_node_ids"));
   assert(env["body"]["frame"]["frame_id"].asString() == "frame-1");

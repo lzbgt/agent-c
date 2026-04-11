@@ -534,7 +534,7 @@ void handle_edge_message_endpoint(
     return;
   }
 
-  if (type == "CONSENSUS_FRAME") {
+  if (type == AGENT_UM_BMP_TYPE_CONSENSUS_FRAME) {
     if (!body.isObject()) {
       resp->status = 400;
       resp->body = json_error_body("invalid CONSENSUS_FRAME body");
@@ -591,7 +591,7 @@ void handle_edge_message_endpoint(
       Json::Value relay_env(Json::objectValue);
       relay_env["msg_id"] = edge_make_uuidish_msg_id();
       relay_env["ts_utc_ms"] = (Json::Int64)now;
-      relay_env["type"] = "CONSENSUS_FRAME";
+      relay_env["type"] = AGENT_UM_BMP_TYPE_CONSENSUS_FRAME;
       relay_env["from"] = "platform";
       relay_env["to"] = edge_node_to_prefix(target_node_id);
       Json::Value relay_body(Json::objectValue);

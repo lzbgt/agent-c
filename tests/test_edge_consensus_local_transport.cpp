@@ -125,7 +125,7 @@ static void test_send_frame_dedupes_targets_and_updates_health() {
   assert(msgs_c.size() == 1);
   Json::Value env_b(Json::nullValue);
   assert(agentd::json_parse_any(msgs_b[0].envelope_json, &env_b, &perr));
-  assert(env_b["type"].asString() == "CONSENSUS_FRAME");
+  assert(env_b["type"].asString() == AGENT_UM_BMP_TYPE_CONSENSUS_FRAME);
   assert(env_b["body"]["relay_from"].asString() == "node-a");
   assert(env_b["body"]["frame"]["frame_id"].asString() == "frame-1");
 #endif

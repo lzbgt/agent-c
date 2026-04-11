@@ -95,7 +95,7 @@ bool run_edge_consensus_runtime_core(
         if (!row.isObject() || !row.isMember("msg") || !row["msg"].isObject()) continue;
         const Json::Value env = row["msg"];
         const std::string type = env.isMember("type") && env["type"].isString() ? trim_copy(env["type"].asString()) : "";
-        if (type != "CONSENSUS_FRAME") continue;
+        if (type != AGENT_UM_BMP_TYPE_CONSENSUS_FRAME) continue;
         const Json::Value body = env.isMember("body") && env["body"].isObject() ? env["body"] : Json::Value(Json::objectValue);
         if (!body.isMember("frame") || !body["frame"].isObject()) continue;
         EdgeConsensusFrame frame;

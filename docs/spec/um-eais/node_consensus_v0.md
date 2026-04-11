@@ -119,6 +119,8 @@ The shipped autonomous host-loop proof adds:
 - portable `agent_core` consensus frame-kind and membership-epoch acceptance helpers, reused by the daemon replica so
   firmware-native ports and agentd use the same `vote_request` / `vote_grant` / `leader_commit` validation and
   "same epoch plus listed member" rule
+- daemon relay/runtime/membership-bundle paths consume those portable message and schema constants rather than
+  re-declaring the wire strings locally
 
 ## Still open
 

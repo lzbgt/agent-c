@@ -9,6 +9,8 @@
 #include "runtime_config.h"
 #include "string_util.h"
 
+#include "agent/edge_interop.h"
+
 #include <algorithm>
 #include <vector>
 
@@ -340,7 +342,7 @@ void handle_edge_consensus_membership_send_endpoint(
   if (!enqueue_edge_platform_bundle(
         db,
         target_node_id,
-        "PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE",
+        AGENT_UM_BMP_TYPE_PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE,
         "membership",
         bundle,
         &cfg.edge_confidentiality_keys,

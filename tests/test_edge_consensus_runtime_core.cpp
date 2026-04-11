@@ -58,7 +58,7 @@ static Json::Value make_outbox_with_frame(const EdgeConsensusFrame& frame, int64
   outbox["cursor_next"] = (Json::Int64)cursor_next;
   Json::Value message(Json::objectValue);
   Json::Value env(Json::objectValue);
-  env["type"] = "CONSENSUS_FRAME";
+  env["type"] = AGENT_UM_BMP_TYPE_CONSENSUS_FRAME;
   Json::Value body(Json::objectValue);
   body["frame"] = edge_consensus_frame_to_json(frame);
   env["body"] = body;

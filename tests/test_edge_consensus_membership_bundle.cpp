@@ -1,6 +1,8 @@
 #include "daemon_config.h"
 #include "edge_consensus_membership_bundle.h"
 
+#include "agent/edge_interop.h"
+
 #include <cassert>
 #include <string>
 #include <vector>
@@ -40,7 +42,7 @@ static void test_membership_bundle_fields() {
   std::string err;
   assert(agentd::build_edge_consensus_membership_bundle(cfg, "cluster-a", &bundle, &err));
   assert(err.empty());
-  assert(bundle["schema"].asString() == "edge_consensus_membership_v1");
+  assert(bundle["schema"].asString() == AGENT_EDGE_CONSENSUS_MEMBERSHIP_SCHEMA_V1);
   assert(bundle["cluster_id"].asString() == "cluster-a");
   assert(bundle["membership_epoch"].asInt64() == 7);
   assert(bundle["updated_utc_ms"].asInt64() == 123456);
@@ -67,7 +69,7 @@ static void test_membership_bundle_hmac_attestation() {
   assert(agentd::build_edge_consensus_membership_bundle(cfg, "cluster-a", &bundle, &err));
   assert(err.empty());
   const Json::Value att = bundle["attest"];
-  assert(att["schema"].asString() == "edge_consensus_membership_attest_v1");
+  assert(att["schema"].asString() == AGENT_EDGE_CONSENSUS_MEMBERSHIP_ATTEST_SCHEMA_V1);
   assert(att["alg"].asString() == "hmac-sha256");
   assert(att["kid"].asString() == "kid-a");
   assert(att["cluster_id"].asString() == "cluster-a");

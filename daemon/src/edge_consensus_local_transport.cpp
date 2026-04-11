@@ -129,7 +129,7 @@ bool send_edge_consensus_local_frame(
     Json::Value relay_env(Json::objectValue);
     relay_env["msg_id"] = edge_make_uuidish_msg_id();
     relay_env["ts_utc_ms"] = (Json::Int64)now;
-    relay_env["type"] = "CONSENSUS_FRAME";
+    relay_env["type"] = AGENT_UM_BMP_TYPE_CONSENSUS_FRAME;
     relay_env["from"] = "platform";
     relay_env["to"] = edge_node_to_prefix(target_node_id);
     Json::Value relay_body(Json::objectValue);

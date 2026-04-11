@@ -135,7 +135,7 @@ Json::Value build_edge_consensus_http_frame_envelope(
   Json::Value env(Json::objectValue);
   env["msg_id"] = msg_id;
   env["ts_utc_ms"] = (Json::Int64)ts_utc_ms;
-  env["type"] = "CONSENSUS_FRAME";
+  env["type"] = AGENT_UM_BMP_TYPE_CONSENSUS_FRAME;
   env["from"] = "node:" + cfg.node_id;
   env["to"] = "platform";
 
