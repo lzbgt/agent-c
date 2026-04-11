@@ -264,7 +264,8 @@ The older P0/P1 section was pruned on 2026-04-12 so `Next` / `Remaining` notes n
 - Budgets / scheduling:
   - Host-tool memory budget charging and workflow budget-pressure stats are already shipped.
   - 2026-04-12 follow-up: `budget_pressure_v1` DRR charging now combines telemetry/request estimates with bounded pressure bumps from workflow limits and retry-safe usage totals.
-  - Current remaining: provider-backed streaming token budget enforcement when usage is missing/retried, edge-poll cost refinements, and resilient mixed-workload fairness proof.
+  - 2026-04-12 follow-up: the deterministic mixed-workload proof now covers host tasks, LLM-like tasks, streaming-like tasks, and edge poll loops in `workflow_fairq_cost_tests`.
+  - Current remaining: provider-backed streaming token budget enforcement when usage is missing/retried, plus edge-poll cost refinements if larger trace replays show tail-latency gaps.
 
 - Agent collaboration:
   - `strict_all_ok` and node-identity-aware quorum proof are already shipped in later collaboration slices.
@@ -295,4 +296,4 @@ Highest leverage sequence:
 
 1. Fix or unblock OpenRouter credentials, run the OpenRouter streaming pin workflow, and commit `ref/openrouter/streaming_pins.json` if the result is stable.
 2. Execute the documented builtin-vs-bundled graduation gate on any additional target release platforms before changing production defaults outside the checked macOS M2 host.
-3. Implement the next unblocked local item from the pruned P0/P1 backlog: a deterministic mixed-workload fairness proof for `budget_pressure_v1` covering host tasks, LLM-like tasks, streaming-like tasks, and edge poll loops.
+3. Implement the next unblocked local item from the pruned P0/P1 backlog: provider-backed streaming token budget enforcement when provider usage is absent, rejected by compatibility fallback, or retried.

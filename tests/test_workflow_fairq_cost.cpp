@@ -1,8 +1,10 @@
 #include "workflow_fairq_cost.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 int main() {
   using agentd::workflow_fairq_estimate_task_cost_simple_v1;
@@ -153,6 +155,82 @@ int main() {
     p.total_tokens_used = 900;
     const int64_t c = workflow_fairq_estimate_budget_pressure_cost_bump_v1(p, 12);
     assert(c == 12);
+  }
+  {
+    // Deterministic mixed-workload DRR proof: host, LLM-like, streaming-like, and edge-poll
+    // queues all use the same production cost helpers. The pressured streaming queue goes into
+    // debt after its first admission, letting the cheaper host/LLM/edge queues finish before the
+    // second pressured streaming task.
+    auto budget_pressure_cost = [](const std::string& req, const std::string& telemetry,
+                                   const WorkflowFairqBudgetPressure& pressure) -> int64_t {
+      int64_t cost = workflow_fairq_estimate_task_cost_telemetry_v1(telemetry, 32);
+      if (cost <= 0) cost = workflow_fairq_estimate_task_cost_simple_v1(req, 32);
+      cost += workflow_fairq_estimate_budget_pressure_cost_bump_v1(pressure, 16);
+      return std::max<int64_t>(1, std::min<int64_t>(32, cost));
+    };
+
+    WorkflowFairqBudgetPressure no_pressure;
+    WorkflowFairqBudgetPressure token_pressure;
+    token_pressure.max_total_tokens = 1000;
+    token_pressure.total_tokens_used = 900;
+
+    const int64_t host_cost = budget_pressure_cost(R"({"kind":"memory_put"})", "", no_pressure);
+    const int64_t llm_cost = budget_pressure_cost(R"({"prompt":"hi","model":"stub"})", "", no_pressure);
+    const int64_t streaming_cost =
+      budget_pressure_cost(R"({"prompt":"hi","model":"stub","stream_assistant":true})", "", token_pressure);
+    const int64_t edge_poll_cost = budget_pressure_cost(
+      R"({"kind":"edge_invoke","edge":{"node_id":"n1","tool":"sensor.read","args":{}}})",
+      R"({"retryable":true,"retry_in_ms":50})",
+      no_pressure
+    );
+
+    assert(host_cost == 1);
+    assert(llm_cost == 2);
+    assert(streaming_cost == 9);
+    assert(edge_poll_cost == 3);
+
+    struct Flow {
+      const char* name = "";
+      int64_t cost = 1;
+      int remaining = 0;
+    };
+    std::vector<Flow> flows = {
+      {"host", host_cost, 3},
+      {"llm", llm_cost, 2},
+      {"stream", streaming_cost, 2},
+      {"edge", edge_poll_cost, 2},
+    };
+    std::vector<int64_t> deficit(flows.size(), 0);
+    std::vector<std::string> sequence;
+    size_t cursor = 0;
+    for (int tick = 0; tick < 64; tick++, cursor++) {
+      bool any = false;
+      for (size_t i = 0; i < flows.size(); i++) {
+        if (flows[i].remaining > 0) {
+          deficit[i] += 1;
+          any = true;
+        }
+      }
+      if (!any) break;
+
+      int picked = -1;
+      for (size_t si = 0; si < flows.size(); si++) {
+        const size_t idx = (cursor + si) % flows.size();
+        if (flows[idx].remaining > 0 && deficit[idx] >= 1) {
+          picked = (int)idx;
+          break;
+        }
+      }
+      if (picked < 0) continue;
+      deficit[(size_t)picked] -= flows[(size_t)picked].cost;
+      flows[(size_t)picked].remaining -= 1;
+      sequence.emplace_back(flows[(size_t)picked].name);
+    }
+
+    const std::vector<std::string> expected = {
+      "host", "llm", "stream", "edge", "host", "llm", "edge", "host", "stream"
+    };
+    assert(sequence == expected);
   }
   return 0;
 #endif

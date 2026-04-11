@@ -1216,7 +1216,7 @@ Details (stable order for diff readability; numbering below is not priority):
    - Shipped (MCU ergonomics): UM‑BMP envelope CBOR encode helper in `agent_core` (wire send path):
      - Core API: `agent/umbmp_auth.h` `agent_umbmp_envelope_cbor_v0_4(...)` can emit deterministic CBOR wire envelopes with optional `auth.sig` (base64 text).
      - Proof: `ctest` includes `agent_core_tests` (encodes a full envelope with `auth.sig` and decodes it back via the CBOR reader).
-3) **Scheduling policy v2.4+** — DRR, durable deficits, deterministic cost estimates, telemetry-driven charging (`telemetry_v1`), and budget-pressure-aware charging (`budget_pressure_v1`) are shipped; remaining work is resilient fairness proof under larger mixed workloads.
+3) **Scheduling policy v2.4+** — DRR, durable deficits, deterministic cost estimates, telemetry-driven charging (`telemetry_v1`), budget-pressure-aware charging (`budget_pressure_v1`), and deterministic mixed-workload fairness proof are shipped.
 4) **Memory v2.3** — query-plan primitives (bounded windows + key-prefix filters) and automatic consolidation triggers as time advances,
    so long-running systems keep context tight and correct.
    - Shipped (v2.3 partial): search-based memory context injection for runs (`memory_context_mode="search"`) with ranked snippets,
@@ -1286,7 +1286,7 @@ Maintainability note (always-on):
 	   - Shipped (v0.7 partial): DRR can charge near-exhausted workflows more heavily through the `budget_pressure_v1` cost model:
 	     - New daemon knob: `--workflow-drr-cost-model budget_pressure_v1` (env `AGENTD_WORKFLOW_DRR_COST_MODEL=budget_pressure_v1`)
 	     - Scheduler reads persisted workflow limits plus retry-safe usage totals and adds bounded cost bumps when configured budgets approach exhaustion.
-	     - Proof: `ctest` includes `workflow_fairq_cost_tests` and `agentd_workflow_drr_budget_pressure_smoke`.
+	     - Proof: `ctest` includes `workflow_fairq_cost_tests` (including a deterministic host/LLM/streaming/edge mixed-workload DRR proof) and `agentd_workflow_drr_budget_pressure_smoke`.
 	   - Current remaining:
 	     - enforce provider-backed token budgets for streaming paths when usage is absent, rejected by provider compatibility fallback, or retried
 
@@ -1325,9 +1325,7 @@ Maintainability note (always-on):
    - Shipped (v2.4.1): budget-pressure-aware DRR charging option (budget_pressure_v1):
      - New daemon knob: `--workflow-drr-cost-model budget_pressure_v1` (env `AGENTD_WORKFLOW_DRR_COST_MODEL=budget_pressure_v1`)
      - Scheduler prefers telemetry when available, falls back to request-based estimates, then adds bounded pressure bumps from workflow limits and retry-safe usage totals.
-     - Proof: `ctest` includes `workflow_fairq_cost_tests` and `agentd_workflow_drr_budget_pressure_smoke`.
-   - Current remaining:
-     - add a mixed-workload fairness stress proof covering deterministic host tasks, LLM-like tasks, streaming-like tasks, and edge poll loops
+     - Proof: `ctest` includes `workflow_fairq_cost_tests` (including a deterministic host/LLM/streaming/edge mixed-workload DRR proof) and `agentd_workflow_drr_budget_pressure_smoke`.
 
 3) **Interop spec hardening for MCU/edge handoff** (ecosystem leverage)
    - Shipped: `DURABLE_WORKFLOW_SUBMIT` / `DURABLE_WORKFLOW_CANCEL` over `POST /api/v1/edge/message` (durable orchestration handoff).
