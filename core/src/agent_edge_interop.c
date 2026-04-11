@@ -381,3 +381,57 @@ int64_t agent_edge_consensus_campaign_retry_delay_ms(
   if (cap > 0 && delay > cap) delay = cap;
   return delay < 0 ? 0 : delay;
 }
+
+int agent_edge_consensus_leader_heartbeat_due(
+  int64_t leader_heartbeat_ms,
+  int64_t now_utc_ms,
+  int64_t last_leader_heartbeat_sent_utc_ms,
+  int leader_is_self,
+  int has_committed_decision
+) {
+  if (leader_heartbeat_ms <= 0 || now_utc_ms <= 0) return 0;
+  if (!leader_is_self || !has_committed_decision) return 0;
+  if (last_leader_heartbeat_sent_utc_ms <= 0) return 1;
+  return now_utc_ms - last_leader_heartbeat_sent_utc_ms >= leader_heartbeat_ms ? 1 : 0;
+}
+
+int agent_edge_consensus_leader_lease_expired(
+  int64_t leader_lease_ms,
+  int64_t now_utc_ms,
+  int64_t last_leader_contact_utc_ms,
+  int has_leader,
+  int leader_is_self
+) {
+  if (leader_lease_ms <= 0 || now_utc_ms <= 0) return 0;
+  if (!has_leader || leader_is_self) return 0;
+  if (last_leader_contact_utc_ms <= 0) return 0;
+  return now_utc_ms - last_leader_contact_utc_ms >= leader_lease_ms ? 1 : 0;
+}
+
+int agent_edge_consensus_lease_expiry_recampaign_delay_active(
+  int64_t lease_expiry_recampaign_delay_ms,
+  int64_t now_utc_ms,
+  int64_t last_leader_lease_expired_utc_ms
+) {
+  if (lease_expiry_recampaign_delay_ms <= 0 || now_utc_ms <= 0) return 0;
+  if (last_leader_lease_expired_utc_ms <= 0) return 0;
+  return now_utc_ms - last_leader_lease_expired_utc_ms < lease_expiry_recampaign_delay_ms ? 1 : 0;
+}
+
+int agent_edge_consensus_campaign_start_due(
+  int64_t now_utc_ms,
+  int64_t started_utc_ms,
+  int64_t campaign_delay_ms,
+  int election_started,
+  int64_t last_campaign_started_utc_ms,
+  int64_t retry_delay_ms
+) {
+  if (now_utc_ms <= 0) return 0;
+  if (!election_started) {
+    if (started_utc_ms <= 0) return campaign_delay_ms <= 0 ? 1 : 0;
+    return now_utc_ms - started_utc_ms >= campaign_delay_ms ? 1 : 0;
+  }
+  if (retry_delay_ms <= 0) return 0;
+  if (last_campaign_started_utc_ms <= 0) return 1;
+  return now_utc_ms - last_campaign_started_utc_ms >= retry_delay_ms ? 1 : 0;
+}

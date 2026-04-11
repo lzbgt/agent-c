@@ -226,6 +226,35 @@ static void test_consensus_policy_timing_normalize(void) {
   assert(agent_edge_consensus_campaign_retry_delay_ms(1000, 999999999, 99, 4) == 512000);
 }
 
+static void test_consensus_loop_timing_gates(void) {
+  assert(agent_edge_consensus_leader_heartbeat_due(1000, 5000, 0, 1, 1) == 1);
+  assert(agent_edge_consensus_leader_heartbeat_due(1000, 5000, 4200, 1, 1) == 0);
+  assert(agent_edge_consensus_leader_heartbeat_due(1000, 5200, 4200, 1, 1) == 1);
+  assert(agent_edge_consensus_leader_heartbeat_due(1000, 5200, 4200, 0, 1) == 0);
+  assert(agent_edge_consensus_leader_heartbeat_due(1000, 5200, 4200, 1, 0) == 0);
+  assert(agent_edge_consensus_leader_heartbeat_due(0, 5200, 4200, 1, 1) == 0);
+
+  assert(agent_edge_consensus_leader_lease_expired(3000, 9000, 6000, 1, 0) == 1);
+  assert(agent_edge_consensus_leader_lease_expired(3000, 8999, 6000, 1, 0) == 0);
+  assert(agent_edge_consensus_leader_lease_expired(3000, 9000, 6000, 0, 0) == 0);
+  assert(agent_edge_consensus_leader_lease_expired(3000, 9000, 6000, 1, 1) == 0);
+  assert(agent_edge_consensus_leader_lease_expired(3000, 9000, 0, 1, 0) == 0);
+
+  assert(agent_edge_consensus_lease_expiry_recampaign_delay_active(2000, 7000, 6000) == 1);
+  assert(agent_edge_consensus_lease_expiry_recampaign_delay_active(2000, 8000, 6000) == 0);
+  assert(agent_edge_consensus_lease_expiry_recampaign_delay_active(2000, 7000, 0) == 0);
+  assert(agent_edge_consensus_lease_expiry_recampaign_delay_active(0, 7000, 6000) == 0);
+
+  assert(agent_edge_consensus_campaign_start_due(1000, 1000, 500, 0, 0, 0) == 0);
+  assert(agent_edge_consensus_campaign_start_due(1500, 1000, 500, 0, 0, 0) == 1);
+  assert(agent_edge_consensus_campaign_start_due(1500, 0, 500, 0, 0, 0) == 0);
+  assert(agent_edge_consensus_campaign_start_due(1500, 0, 0, 0, 0, 0) == 1);
+  assert(agent_edge_consensus_campaign_start_due(5000, 1000, 500, 1, 4500, 1000) == 0);
+  assert(agent_edge_consensus_campaign_start_due(5500, 1000, 500, 1, 4500, 1000) == 1);
+  assert(agent_edge_consensus_campaign_start_due(5500, 1000, 500, 1, 0, 1000) == 1);
+  assert(agent_edge_consensus_campaign_start_due(5500, 1000, 500, 1, 4500, 0) == 0);
+}
+
 void test_edge_interop_module(void) {
   test_id_is_safe_basic();
   test_trace_id_is_safe_allows_at();
@@ -235,4 +264,5 @@ void test_edge_interop_module(void) {
   test_result_attest_signing_input_v0_1();
   test_consensus_constants_and_quorum();
   test_consensus_policy_timing_normalize();
+  test_consensus_loop_timing_gates();
 }

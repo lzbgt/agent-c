@@ -236,6 +236,37 @@ int64_t agent_edge_consensus_campaign_retry_delay_ms(
   uint64_t campaign_attempts
 );
 
+int agent_edge_consensus_leader_heartbeat_due(
+  int64_t leader_heartbeat_ms,
+  int64_t now_utc_ms,
+  int64_t last_leader_heartbeat_sent_utc_ms,
+  int leader_is_self,
+  int has_committed_decision
+);
+
+int agent_edge_consensus_leader_lease_expired(
+  int64_t leader_lease_ms,
+  int64_t now_utc_ms,
+  int64_t last_leader_contact_utc_ms,
+  int has_leader,
+  int leader_is_self
+);
+
+int agent_edge_consensus_lease_expiry_recampaign_delay_active(
+  int64_t lease_expiry_recampaign_delay_ms,
+  int64_t now_utc_ms,
+  int64_t last_leader_lease_expired_utc_ms
+);
+
+int agent_edge_consensus_campaign_start_due(
+  int64_t now_utc_ms,
+  int64_t started_utc_ms,
+  int64_t campaign_delay_ms,
+  int election_started,
+  int64_t last_campaign_started_utc_ms,
+  int64_t retry_delay_ms
+);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

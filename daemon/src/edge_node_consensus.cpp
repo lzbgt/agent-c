@@ -384,16 +384,19 @@ int64_t EdgeConsensusNodeLoop::current_campaign_delay_ms() const {
 }
 
 bool EdgeConsensusNodeLoop::leader_lease_expired(int64_t now_utc_ms) const {
-  if (cfg_.leader_lease_ms <= 0 || now_utc_ms <= 0) return false;
-  if (replica_.leader_node_id().empty() || replica_.leader_is_self()) return false;
-  if (last_leader_contact_utc_ms_ <= 0) return false;
-  return now_utc_ms - last_leader_contact_utc_ms_ >= cfg_.leader_lease_ms;
+  return agent_edge_consensus_leader_lease_expired(
+           cfg_.leader_lease_ms,
+           now_utc_ms,
+           last_leader_contact_utc_ms_,
+           replica_.leader_node_id().empty() ? 0 : 1,
+           replica_.leader_is_self() ? 1 : 0) != 0;
 }
 
 bool EdgeConsensusNodeLoop::lease_expiry_recampaign_delay_active(int64_t now_utc_ms) const {
-  if (cfg_.lease_expiry_recampaign_delay_ms <= 0 || now_utc_ms <= 0) return false;
-  if (last_leader_lease_expired_utc_ms_ <= 0) return false;
-  return now_utc_ms - last_leader_lease_expired_utc_ms_ < cfg_.lease_expiry_recampaign_delay_ms;
+  return agent_edge_consensus_lease_expiry_recampaign_delay_active(
+           cfg_.lease_expiry_recampaign_delay_ms,
+           now_utc_ms,
+           last_leader_lease_expired_utc_ms_) != 0;
 }
 
 void EdgeConsensusNodeLoop::observe_leader_activity(const EdgeConsensusFrame& frame, int64_t now_utc_ms) {
@@ -409,8 +412,12 @@ std::vector<EdgeConsensusFrame> EdgeConsensusNodeLoop::tick(int64_t now_utc_ms) 
   remember_decision(replica_.committed_decision_sha256());
 
   if (!trim_copy(replica_.committed_decision_sha256()).empty() && replica_.leader_is_self()) {
-    if (cfg_.leader_heartbeat_ms > 0 &&
-        (last_leader_heartbeat_sent_utc_ms_ <= 0 || now_utc_ms - last_leader_heartbeat_sent_utc_ms_ >= cfg_.leader_heartbeat_ms)) {
+    if (agent_edge_consensus_leader_heartbeat_due(
+          cfg_.leader_heartbeat_ms,
+          now_utc_ms,
+          last_leader_heartbeat_sent_utc_ms_,
+          replica_.leader_is_self() ? 1 : 0,
+          trim_copy(replica_.committed_decision_sha256()).empty() ? 0 : 1)) {
       out.push_back(replica_.current_leader_commit_frame());
       last_leader_heartbeat_sent_utc_ms_ = now_utc_ms;
       last_leader_contact_utc_ms_ = now_utc_ms;
@@ -435,15 +442,14 @@ std::vector<EdgeConsensusFrame> EdgeConsensusNodeLoop::tick(int64_t now_utc_ms) 
   if (campaign_decision.empty()) return out;
   if (!trim_copy(replica_.committed_decision_sha256()).empty()) return out;
 
-  if (!election_started_) {
-    if (now_utc_ms - started_utc_ms_ < cfg_.campaign_delay_ms) return out;
-  } else {
-    const int64_t retry_delay_ms = current_campaign_delay_ms();
-    if (retry_delay_ms <= 0) return out;
-    if (last_campaign_started_utc_ms_ > 0 && now_utc_ms - last_campaign_started_utc_ms_ < retry_delay_ms) {
-      return out;
-    }
-  }
+  const int64_t retry_delay_ms = election_started_ ? current_campaign_delay_ms() : 0;
+  if (!agent_edge_consensus_campaign_start_due(
+        now_utc_ms,
+        started_utc_ms_,
+        cfg_.campaign_delay_ms,
+        election_started_ ? 1 : 0,
+        last_campaign_started_utc_ms_,
+        retry_delay_ms)) return out;
   out.push_back(replica_.start_election(campaign_decision));
   election_started_ = true;
   last_campaign_started_utc_ms_ = now_utc_ms;
