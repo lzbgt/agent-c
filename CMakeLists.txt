@@ -1649,6 +1649,15 @@ if(AGENT_BUILD_HOST)
         ${AGENTD_BUILTIN_VOICE_MEDIA_PLUGIN_PATH}
     )
     set_tests_properties(agentd_session_voice_webrtc_peer_builtin_native_plugin_smoke PROPERTIES SKIP_RETURN_CODE 77)
+    if(AGENTD_ENABLE_BUILTIN_EMBEDDED_TRANSPORT_PROVIDER)
+      add_test(
+        NAME agentd_session_voice_webrtc_peer_builtin_default_native_plugin_smoke
+        COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_session_voice_webrtc_peer_builtin_default_native_plugin_smoke.sh
+          $<TARGET_FILE:agentd>
+          ${AGENTD_BUILTIN_VOICE_MEDIA_PLUGIN_PATH}
+      )
+      set_tests_properties(agentd_session_voice_webrtc_peer_builtin_default_native_plugin_smoke PROPERTIES SKIP_RETURN_CODE 77)
+    endif()
 
     if(AGENT_ENABLE_SQLITE3)
       add_test(NAME agentd_db_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_smoke.sh $<TARGET_FILE:agentd>)

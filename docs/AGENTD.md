@@ -485,6 +485,11 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   The current shipped providers now use pollable ABI v5, so agentd can drain provider-owned async status, hand bounded
   PCM into agentd-owned memory, and submit processed PCM back to providers for outbound media without waiting for a new
   broker signaling ingress callback.
+  The generic default-backend path is covered too: `tests/agentd_session_voice_webrtc_peer_builtin_default_native_plugin_smoke.sh`
+  configures `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND=builtin` together with the embedded native provider, starts
+  `voice_webrtc_peer` without a request-level `runtime_kind`, and proves the defaulted runtime selects
+  `peer.runtime_kind=builtin` / `peer.media_engine_kind=builtin_native_plugin` before completing a minimal
+  offer/answer/bye lifecycle.
 - The repo now ships two daemon-owned provider modules for that seam:
   - `./build/libagentd_voice_builtin_media_engine_sample.{so,dylib,dll}` as the minimal answer-exchange sample
   - `./build/libagentd_voice_builtin_media_engine_embedded_transport.{so,dylib,dll}` when `libjuice + libsrtp2 + usrsctp`
