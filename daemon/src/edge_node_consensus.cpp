@@ -137,21 +137,9 @@ static std::vector<std::string> dedupe_loop_targets(
 }
 
 static int64_t clamp_retry_backoff_factor(int64_t v) {
-  return std::max<int64_t>(1, std::min<int64_t>(v, 8));
-}
-
-static int64_t clamp_leader_heartbeat_ms(int64_t v) {
-  return std::max<int64_t>(0, std::min<int64_t>(v, 120000));
-}
-
-static int64_t clamp_leader_lease_ms(int64_t heartbeat_ms, int64_t lease_ms) {
-  const int64_t clamped_heartbeat = clamp_leader_heartbeat_ms(heartbeat_ms);
-  const int64_t clamped_lease = std::max<int64_t>(0, std::min<int64_t>(lease_ms, 300000));
-  return std::max<int64_t>(clamped_heartbeat, clamped_lease);
-}
-
-static int64_t clamp_lease_expiry_recampaign_delay_ms(int64_t v) {
-  return std::max<int64_t>(0, std::min<int64_t>(v, 300000));
+  return std::max<int64_t>(
+    AGENT_EDGE_CONSENSUS_POLICY_BACKOFF_FACTOR_MIN,
+    std::min<int64_t>(v, AGENT_EDGE_CONSENSUS_POLICY_BACKOFF_FACTOR_MAX));
 }
 
 static int64_t compute_campaign_retry_delay_ms(
@@ -193,15 +181,26 @@ EdgeConsensusNodeLoop::EdgeConsensusNodeLoop(const EdgeConsensusNodeLoopConfig& 
   cfg_.member_node_ids.assign(member_ids.begin(), member_ids.end());
   if (cfg_.cluster_size == 0) cfg_.cluster_size = cfg_.member_node_ids.size();
   if (cfg_.cluster_size < 1) cfg_.cluster_size = 1;
-  if (cfg_.campaign_delay_ms < 0) cfg_.campaign_delay_ms = 0;
-  if (cfg_.campaign_retry_ms < 0) cfg_.campaign_retry_ms = 0;
-  if (cfg_.campaign_retry_max_ms <= 0) cfg_.campaign_retry_max_ms = cfg_.campaign_retry_ms;
-  cfg_.campaign_retry_max_ms = std::max<int64_t>(cfg_.campaign_retry_ms, cfg_.campaign_retry_max_ms);
-  cfg_.campaign_retry_backoff_factor = clamp_retry_backoff_factor(cfg_.campaign_retry_backoff_factor);
-  cfg_.leader_heartbeat_ms = clamp_leader_heartbeat_ms(cfg_.leader_heartbeat_ms);
-  cfg_.leader_lease_ms = clamp_leader_lease_ms(cfg_.leader_heartbeat_ms, cfg_.leader_lease_ms);
-  cfg_.lease_expiry_recampaign_delay_ms =
-    clamp_lease_expiry_recampaign_delay_ms(cfg_.lease_expiry_recampaign_delay_ms);
+  agent_edge_consensus_policy_timing_t timing;
+  timing.campaign_delay_ms = cfg_.campaign_delay_ms;
+  timing.campaign_retry_ms = cfg_.campaign_retry_ms;
+  timing.campaign_retry_max_ms = cfg_.campaign_retry_max_ms <= 0
+    ? cfg_.campaign_retry_ms
+    : cfg_.campaign_retry_max_ms;
+  timing.campaign_retry_backoff_factor = cfg_.campaign_retry_backoff_factor;
+  timing.leader_heartbeat_ms = cfg_.leader_heartbeat_ms;
+  timing.leader_lease_ms = cfg_.leader_lease_ms;
+  timing.lease_expiry_recampaign_delay_ms = cfg_.lease_expiry_recampaign_delay_ms;
+  timing.stale_runtime_recovery_grace_ms = 0;
+  if (agent_edge_consensus_policy_timing_normalize(&timing) == AGENT_OK) {
+    cfg_.campaign_delay_ms = timing.campaign_delay_ms;
+    cfg_.campaign_retry_ms = timing.campaign_retry_ms;
+    cfg_.campaign_retry_max_ms = timing.campaign_retry_max_ms;
+    cfg_.campaign_retry_backoff_factor = timing.campaign_retry_backoff_factor;
+    cfg_.leader_heartbeat_ms = timing.leader_heartbeat_ms;
+    cfg_.leader_lease_ms = timing.leader_lease_ms;
+    cfg_.lease_expiry_recampaign_delay_ms = timing.lease_expiry_recampaign_delay_ms;
+  }
   remember_decision(cfg_.decision_sha256);
   replica_.set_membership(cfg_.self.membership_epoch, cfg_.member_node_ids);
 }

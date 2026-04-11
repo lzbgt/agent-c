@@ -240,7 +240,10 @@ int64_t edge_consensus_runtime_effective_stale_recovery_grace_ms(
   const int64_t grace_ms = pol_it == cfg.edge_consensus_clusters.end()
     ? st.stale_runtime_recovery_grace_ms
     : pol_it->second.stale_runtime_recovery_grace_ms;
-  return std::max<int64_t>(0, std::min<int64_t>(grace_ms, 86400000));
+  EdgeConsensusClusterPolicy pol;
+  pol.stale_runtime_recovery_grace_ms = grace_ms;
+  edge_consensus_normalize_policy_timing(&pol);
+  return pol.stale_runtime_recovery_grace_ms;
 }
 
 bool edge_consensus_runtime_stale_record_within_recovery_grace(
