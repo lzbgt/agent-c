@@ -152,6 +152,9 @@ The shipped autonomous host-loop proof adds:
 - portable `agent_core` candidate-commit and leader-activity observation gates are now reused by the daemon loop, so
   firmware-native ports share the same "no existing leader plus quorum" commit boundary and the same timestamped
   leader-commit activity boundary
+- portable `agent_core` decision-digest equality and self-plus-grant vote-count helpers are reused by the daemon
+  replica, and `agent_core_tests` now proves a core-only quorum election path without constructing the host C++
+  `EdgeConsensusReplica`
 - portable `agent_core` frame-id formatting, incoming-term advancement, and duplicate-frame drop predicates are now
   reused by the daemon replica, so firmware-native ports can share the same deterministic frame identity and replay
   state gates while keeping mutable seen-frame storage host-local

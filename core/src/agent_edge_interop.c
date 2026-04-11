@@ -1,6 +1,7 @@
 #include "agent/edge_interop.h"
 
 #include <inttypes.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -392,6 +393,18 @@ int agent_edge_consensus_trust_epochs_match(
          local_cert_roots_epoch == peer_cert_roots_epoch ? 1 : 0;
 }
 
+int agent_edge_consensus_decision_sha256_matches(
+  const char* local_decision_sha256,
+  size_t local_decision_sha256_len,
+  const char* peer_decision_sha256,
+  size_t peer_decision_sha256_len
+) {
+  if (!agent_umbmp_sha256_token_is_safe(local_decision_sha256, local_decision_sha256_len)) return 0;
+  if (!agent_umbmp_sha256_token_is_safe(peer_decision_sha256, peer_decision_sha256_len)) return 0;
+  return local_decision_sha256_len == peer_decision_sha256_len &&
+         memcmp(local_decision_sha256, peer_decision_sha256, peer_decision_sha256_len) == 0 ? 1 : 0;
+}
+
 int agent_edge_consensus_vote_request_can_grant(
   uint64_t current_term,
   uint64_t request_term,
@@ -447,6 +460,11 @@ int agent_edge_consensus_leader_commit_witnesses_can_accept(
   int leader_is_witness
 ) {
   return leader_is_witness && agent_edge_consensus_has_quorum(cluster_size, valid_witness_count) ? 1 : 0;
+}
+
+size_t agent_edge_consensus_vote_count_with_self(size_t grant_witness_count) {
+  if (grant_witness_count == SIZE_MAX) return SIZE_MAX;
+  return grant_witness_count + 1;
 }
 
 int agent_edge_consensus_candidate_can_commit(

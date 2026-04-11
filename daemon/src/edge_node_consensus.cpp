@@ -379,7 +379,7 @@ bool EdgeConsensusReplica::membership_matches(const EdgeConsensusIdentity& other
 }
 
 bool EdgeConsensusReplica::has_quorum() const {
-  const size_t votes = 1 + grant_witnesses_by_node_id_.size();
+  const size_t votes = agent_edge_consensus_vote_count_with_self(grant_witnesses_by_node_id_.size());
   return agent_edge_consensus_has_quorum(cluster_size_, votes) != 0;
 }
 
@@ -528,7 +528,11 @@ bool EdgeConsensusReplica::handle_frame(
           node_is_member(frame.candidate_node_id) ? 1 : 0,
           frame.candidate_node_id == self_.node_id ? 1 : 0,
           frame.from.node_id == frame.candidate_node_id ? 1 : 0,
-          !campaign_decision_sha256_.empty() && frame.decision_sha256 == campaign_decision_sha256_ ? 1 : 0,
+          agent_edge_consensus_decision_sha256_matches(
+            campaign_decision_sha256_.data(),
+            campaign_decision_sha256_.size(),
+            frame.decision_sha256.data(),
+            frame.decision_sha256.size()),
           frame.granted ? 1 : 0,
           trust_epochs_match(frame.from.trust_epochs) ? 1 : 0)) return true;
     mark_frame_seen();

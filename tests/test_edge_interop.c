@@ -221,6 +221,21 @@ static void test_consensus_constants_and_quorum(void) {
   assert(agent_edge_consensus_trust_epochs_match(1, 2, 3, 4, 2, 3) == 0);
   assert(agent_edge_consensus_trust_epochs_match(1, 2, 3, 1, 4, 3) == 0);
   assert(agent_edge_consensus_trust_epochs_match(1, 2, 3, 1, 2, 4) == 0);
+  assert(agent_edge_consensus_decision_sha256_matches(
+           "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+           strlen("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+           "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+           strlen("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")) == 1);
+  assert(agent_edge_consensus_decision_sha256_matches(
+           "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+           strlen("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+           "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+           strlen("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")) == 0);
+  assert(agent_edge_consensus_decision_sha256_matches(
+           "",
+           0,
+           "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+           strlen("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")) == 0);
   assert(agent_edge_consensus_vote_request_can_grant(
            3, 4, 1, 1, 1, "node-b", strlen("node-b"), "node-a", strlen("node-a")) == 1);
   assert(agent_edge_consensus_vote_request_can_grant(
@@ -254,6 +269,8 @@ static void test_consensus_constants_and_quorum(void) {
   assert(agent_edge_consensus_leader_commit_witnesses_can_accept(3, 1, 1) == 0);
   assert(agent_edge_consensus_leader_commit_witnesses_can_accept(3, 2, 0) == 0);
   assert(agent_edge_consensus_leader_commit_witnesses_can_accept(1, 1, 1) == 1);
+  assert(agent_edge_consensus_vote_count_with_self(0) == 1);
+  assert(agent_edge_consensus_vote_count_with_self(2) == 3);
   assert(agent_edge_consensus_candidate_can_commit(0, 1) == 1);
   assert(agent_edge_consensus_candidate_can_commit(1, 1) == 0);
   assert(agent_edge_consensus_candidate_can_commit(0, 0) == 0);
@@ -524,6 +541,73 @@ static void test_consensus_policy_timing_normalize(void) {
   assert(agent_edge_consensus_campaign_retry_delay_ms(1000, 999999999, 99, 4) == 512000);
 }
 
+static void test_consensus_core_only_election_flow(void) {
+  const char* decision = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const char* candidate = "node-a";
+  const size_t candidate_len = strlen(candidate);
+  const size_t decision_len = strlen(decision);
+  const size_t cluster_size = agent_edge_consensus_cluster_size_from_member_count(5);
+
+  char request_id[AGENT_UM_BMP_MAX_ID_LEN + 1];
+  size_t request_id_len = 0;
+  assert(agent_edge_consensus_frame_id_format(
+           candidate,
+           candidate_len,
+           AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST,
+           strlen(AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST),
+           1,
+           NULL,
+           0,
+           request_id,
+           sizeof(request_id),
+           &request_id_len) == AGENT_OK);
+  assert(strcmp(request_id, "node-a:vote_request:1") == 0);
+
+  assert(agent_edge_consensus_vote_request_can_grant(
+           0,
+           1,
+           1,
+           1,
+           1,
+           "",
+           0,
+           candidate,
+           candidate_len) == 1);
+  assert(agent_edge_consensus_decision_sha256_matches(decision, decision_len, decision, decision_len) == 1);
+
+  size_t grant_witness_count = 0;
+  grant_witness_count++;
+  assert(agent_edge_consensus_has_quorum(
+           cluster_size,
+           agent_edge_consensus_vote_count_with_self(grant_witness_count)) == 0);
+  assert(agent_edge_consensus_candidate_can_commit(
+           0,
+           agent_edge_consensus_has_quorum(
+             cluster_size,
+             agent_edge_consensus_vote_count_with_self(grant_witness_count))) == 0);
+
+  grant_witness_count++;
+  assert(agent_edge_consensus_has_quorum(
+           cluster_size,
+           agent_edge_consensus_vote_count_with_self(grant_witness_count)) == 1);
+  assert(agent_edge_consensus_candidate_can_commit(
+           0,
+           agent_edge_consensus_has_quorum(
+             cluster_size,
+             agent_edge_consensus_vote_count_with_self(grant_witness_count))) == 1);
+
+  assert(agent_edge_consensus_leader_commit_witnesses_can_accept(
+           cluster_size,
+           agent_edge_consensus_vote_count_with_self(grant_witness_count),
+           1) == 1);
+  assert(agent_edge_consensus_leader_activity_can_observe(
+           AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT,
+           strlen(AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT),
+           candidate,
+           candidate_len,
+           12345) == 1);
+}
+
 static void test_consensus_loop_timing_gates(void) {
   assert(agent_edge_consensus_leader_heartbeat_due(1000, 5000, 0, 1, 1) == 1);
   assert(agent_edge_consensus_leader_heartbeat_due(1000, 5000, 4200, 1, 1) == 0);
@@ -587,5 +671,6 @@ void test_edge_interop_module(void) {
   test_result_attest_signing_input_v0_1();
   test_consensus_constants_and_quorum();
   test_consensus_policy_timing_normalize();
+  test_consensus_core_only_election_flow();
   test_consensus_loop_timing_gates();
 }

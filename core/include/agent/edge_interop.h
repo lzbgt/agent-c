@@ -240,6 +240,13 @@ int agent_edge_consensus_trust_epochs_match(
   uint64_t peer_cert_roots_epoch
 );
 
+int agent_edge_consensus_decision_sha256_matches(
+  const char* local_decision_sha256,
+  size_t local_decision_sha256_len,
+  const char* peer_decision_sha256,
+  size_t peer_decision_sha256_len
+);
+
 int agent_edge_consensus_vote_request_can_grant(
   uint64_t current_term,
   uint64_t request_term,
@@ -276,6 +283,8 @@ int agent_edge_consensus_leader_commit_witnesses_can_accept(
   size_t valid_witness_count,
   int leader_is_witness
 );
+
+size_t agent_edge_consensus_vote_count_with_self(size_t grant_witness_count);
 
 int agent_edge_consensus_candidate_can_commit(
   int has_leader,
