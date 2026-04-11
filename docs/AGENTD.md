@@ -532,7 +532,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   stats plus agentd RTP receive/send, decode, outbound audio, and RTCP counters; that same browser smoke now also offers
   an extra audio m-line and datachannel and asserts the answer rejects those unsupported sections while full-duplex media
   continues on the single provider-owned audio stream, then sends a browser empty-candidate end marker and requires
-  agentd to count it through the shared candidate-ingress path.
+  agentd to count it through the shared candidate-ingress path. The browser smoke now also forwards real trickled
+  Chromium ICE candidates instead of only relying on the gathered offer SDP, so the live path covers candidate events
+  from an actual browser peer.
   The repo also has direct in-tree DTLS/SRTP proof for the same OpenSSL/libsrtp configuration:
   `session_voice_builtin_dtls_transport_tests` completes a DTLS 1.2 client/server handshake over datagram-memory BIOs,
   negotiates `SRTP_AES128_CM_SHA1_80`, exports DTLS-SRTP keying material, derives real inbound / outbound libsrtp

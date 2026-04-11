@@ -427,6 +427,7 @@ async function run() {
       peer.onicecandidate = async (event) => {
         if (!event.candidate) return;
         state.sentCandidateCount += 1;
+        await window.__agentdBuiltinBrowserSendSignal("candidate", candidatePayload(event.candidate));
       };
       peer.ontrack = (event) => {
         state.remoteTrackCount += 1;

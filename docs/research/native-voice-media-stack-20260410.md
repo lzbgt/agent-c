@@ -133,7 +133,9 @@ Reference artifacts downloaded into the repo for exact vendor details:
     smoke now also offers an extra audio m-line and datachannel and asserts
     they are rejected while full-duplex media continues on the single supported
     audio stream, then sends a browser empty-candidate end marker and requires
-    agentd to count it through the shared candidate-ingress path
+    agentd to count it through the shared candidate-ingress path. It also
+    forwards real trickled Chromium ICE candidates instead of only relying on
+    the gathered offer SDP
 - The repo now also has a direct in-tree DTLS/SRTP proof slice independent of
   that synthetic libjuice role quirk:
   - `session_voice_builtin_dtls_transport_tests` completes a DTLS 1.2
@@ -247,9 +249,9 @@ It is **not** yet at a full embedded WebRTC/SRTP runtime. The remaining gap is
 no longer dependency discovery, basic RTP ownership, negotiated Opus transmit,
 one-shot Sender/Receiver Report transmit, compound RTCP packet emission, active
 answer direction, basic browser full-duplex proof, unsupported non-audio section
-rejection, multi-audio m-line rejection, or browser-backed proof for those
-rejected sections and empty-candidate ingestion; it is broader browser, codec,
-and candidate-edge hardening.
+rejection, multi-audio m-line rejection, or browser-backed proof for rejected
+sections plus real/empty candidate ingestion; it is broader browser, codec, and
+candidate-edge hardening.
 
 ## Recommended Next Technical Decision
 
