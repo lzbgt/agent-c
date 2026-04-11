@@ -38,6 +38,10 @@ void test_relay_candidate_detection_requires_candidate_typ_relay() {
   assert(agentd::sdp_candidate_is_relay_candidate(
     "a=candidate:4 1 tcp 1518280447 203.0.113.3 9 TYP RELAY tcptype active"));
   assert(!agentd::sdp_candidate_is_relay_candidate(
+    "candidate:relay 1 UDP 1677729535 203.0.113.2 60000 typ srflx raddr 10.0.0.2 rport 50000"));
+  assert(!agentd::sdp_candidate_is_relay_candidate(
+    "a=candidate:6 1 udp 1677729535 203.0.113.4 60001 typ prflx raddr 10.0.0.3 rport 50001"));
+  assert(!agentd::sdp_candidate_is_relay_candidate(
     "a=candidate:5 1 udp 2113937151 127.0.0.1 49999 typ host"));
   assert(!agentd::sdp_candidate_is_relay_candidate("a=end-of-candidates"));
   assert(!agentd::sdp_candidate_is_relay_candidate("a=end-of-candidates:relay"));
@@ -48,10 +52,14 @@ void test_relay_candidate_lines_are_stripped_from_sdp() {
     "v=0\r\n"
     "a=candidate:1 1 UDP 2113937151 127.0.0.1 49999 typ host\r\n"
     "a=candidate:2 1 UDP 1677729535 203.0.113.2 60000 typ relay raddr 10.0.0.2 rport 50000\r\n"
+    "a=candidate:relay 1 UDP 1677729535 203.0.113.3 60001 typ srflx raddr 10.0.0.3 rport 50001\r\n"
+    "a=candidate:6 1 UDP 1677729535 203.0.113.4 60002 typ prflx raddr 10.0.0.4 rport 50002\r\n"
     "a=end-of-candidates\r\n";
   const std::string stripped = agentd::strip_sdp_relay_candidate_lines(sdp);
   assert(stripped.find("typ relay") == std::string::npos);
   assert(stripped.find("typ host") != std::string::npos);
+  assert(stripped.find("typ srflx") != std::string::npos);
+  assert(stripped.find("typ prflx") != std::string::npos);
   assert(stripped.find("a=end-of-candidates") != std::string::npos);
 }
 

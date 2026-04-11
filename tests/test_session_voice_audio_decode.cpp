@@ -51,6 +51,23 @@ std::string make_answer_with_rejected_extra_audio_sdp() {
     "a=inactive\r\n";
 }
 
+std::string make_answer_with_codec_compatibility_edges_sdp() {
+  return
+    "v=0\r\n"
+    "o=- 0 0 IN IP4 127.0.0.1\r\n"
+    "s=-\r\n"
+    "t=0 0\r\n"
+    "a=group:BUNDLE 0\r\n"
+    "m=audio 9 UDP/TLS/RTP/SAVPF 112 0 8\r\n"
+    "c=IN IP4 0.0.0.0\r\n"
+    "a=mid:0\r\n"
+    "a=rtcp-mux\r\n"
+    "a=rtpmap:112 OpUs/48000/1\r\n"
+    "a=rtpmap:0 PCMU/8000\r\n"
+    "a=rtpmap:8 PCMA/8000\r\n"
+    "a=sendrecv\r\n";
+}
+
 void test_decoder_parses_audio_payload_specs_from_sdp() {
   agentd::InboundRtpAudioDecoder decoder;
   std::string err;
@@ -98,6 +115,44 @@ void test_first_active_audio_payload_parser_returns_empty_when_all_audio_is_reje
       "a=rtpmap:111 opus/48000/2\r\n"
       "a=inactive\r\n");
   assert(specs.empty());
+}
+
+void test_first_active_audio_payload_parser_normalizes_codec_case_and_order() {
+  const std::vector<agentd::RtpAudioPayloadSpec> specs =
+    agentd::parse_first_active_audio_payload_specs_from_sdp(
+      make_answer_with_codec_compatibility_edges_sdp());
+  assert(specs.size() == 3);
+  assert(specs[0].payload_type == 112);
+  assert(specs[0].codec_name == "OPUS");
+  assert(specs[0].sample_rate_hz == 48000);
+  assert(specs[0].channels == 1);
+  assert(specs[1].payload_type == 0);
+  assert(specs[1].codec_name == "PCMU");
+  assert(specs[1].sample_rate_hz == 8000);
+  assert(specs[1].channels == 1);
+  assert(specs[2].payload_type == 8);
+  assert(specs[2].codec_name == "PCMA");
+  assert(specs[2].sample_rate_hz == 8000);
+  assert(specs[2].channels == 1);
+}
+
+void test_first_active_audio_payload_parser_does_not_guess_unmapped_dynamic_codec() {
+  const std::vector<agentd::RtpAudioPayloadSpec> specs =
+    agentd::parse_first_active_audio_payload_specs_from_sdp(
+      "v=0\r\n"
+      "o=- 0 0 IN IP4 127.0.0.1\r\n"
+      "s=-\r\n"
+      "t=0 0\r\n"
+      "m=audio 9 UDP/TLS/RTP/SAVPF 111 0\r\n"
+      "a=rtpmap:0 PCMU/8000\r\n"
+      "a=sendrecv\r\n");
+  assert(specs.size() == 2);
+  assert(specs[0].payload_type == 111);
+  assert(specs[0].codec_name.empty());
+  assert(specs[0].sample_rate_hz == 0);
+  assert(specs[1].payload_type == 0);
+  assert(specs[1].codec_name == "PCMU");
+  assert(specs[1].sample_rate_hz == 8000);
 }
 
 void test_decoder_decodes_pcmu_payload_to_pcm() {
@@ -182,6 +237,8 @@ int main() {
   test_decoder_parses_audio_payload_specs_from_sdp();
   test_first_active_audio_payload_parser_ignores_rejected_sections();
   test_first_active_audio_payload_parser_returns_empty_when_all_audio_is_rejected();
+  test_first_active_audio_payload_parser_normalizes_codec_case_and_order();
+  test_first_active_audio_payload_parser_does_not_guess_unmapped_dynamic_codec();
   test_decoder_decodes_pcmu_payload_to_pcm();
   test_decoder_decodes_pcma_payload_to_pcm();
 #if defined(AGENTD_HAVE_OPUS)

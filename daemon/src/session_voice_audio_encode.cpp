@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 
 #if defined(AGENTD_HAVE_OPUS)
 #include <opus.h>
@@ -132,6 +133,13 @@ std::vector<int16_t> resample_interleaved_pcm16_20ms(
   return out;
 }
 
+std::string upper_copy(std::string value) {
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+    return static_cast<char>(std::toupper(ch));
+  });
+  return value;
+}
+
 const RtpAudioPayloadSpec* find_payload_by_codec(
   const std::vector<RtpAudioPayloadSpec>& payload_specs,
   const std::string& codec_name,
@@ -140,7 +148,7 @@ const RtpAudioPayloadSpec* find_payload_by_codec(
   int max_channels
 ) {
   for (const auto& spec : payload_specs) {
-    if (spec.codec_name != codec_name) continue;
+    if (upper_copy(spec.codec_name) != codec_name) continue;
     if (spec.sample_rate_hz != sample_rate_hz) continue;
     if (spec.channels < min_channels || spec.channels > max_channels) continue;
     return &spec;
@@ -211,14 +219,16 @@ bool OutboundRtpAudioEncoder::select_payload(
     return false;
   }
 
+  RtpAudioPayloadSpec normalized_selected = *selected;
+  normalized_selected.codec_name = upper_copy(normalized_selected.codec_name);
 #if defined(AGENTD_HAVE_OPUS)
-  if (selected_payload_.codec_name != selected->codec_name ||
-      selected_payload_.sample_rate_hz != selected->sample_rate_hz ||
-      selected_payload_.channels != selected->channels) {
+  if (selected_payload_.codec_name != normalized_selected.codec_name ||
+      selected_payload_.sample_rate_hz != normalized_selected.sample_rate_hz ||
+      selected_payload_.channels != normalized_selected.channels) {
     reset_opus_encoder();
   }
 #endif
-  selected_payload_ = *selected;
+  selected_payload_ = normalized_selected;
   return true;
 }
 

@@ -58,6 +58,44 @@ void test_encoder_falls_back_to_pcma() {
   assert(selected->payload_type == 8);
 }
 
+void test_encoder_normalizes_codec_name_case() {
+  agentd::OutboundRtpAudioEncoder encoder;
+  std::string err;
+  const std::vector<agentd::RtpAudioPayloadSpec> specs = {
+    agentd::RtpAudioPayloadSpec{0, "pcmu", 8000, 1},
+    agentd::RtpAudioPayloadSpec{8, "pcma", 8000, 1},
+    agentd::RtpAudioPayloadSpec{111, "opus", 48000, 2},
+  };
+  assert(encoder.select_payload(specs, &err));
+  assert(err.empty());
+  const agentd::RtpAudioPayloadSpec* selected = encoder.selected_payload();
+  assert(selected);
+#if defined(AGENTD_HAVE_OPUS)
+  assert(selected->codec_name == "OPUS");
+  assert(selected->payload_type == 111);
+#else
+  assert(selected->codec_name == "PCMU");
+  assert(selected->payload_type == 0);
+#endif
+}
+
+void test_encoder_skips_unsupported_opus_variants_before_g711() {
+  agentd::OutboundRtpAudioEncoder encoder;
+  std::string err;
+  const std::vector<agentd::RtpAudioPayloadSpec> specs = {
+    agentd::RtpAudioPayloadSpec{111, "OPUS", 48000, 6},
+    agentd::RtpAudioPayloadSpec{112, "OPUS", 16000, 1},
+    agentd::RtpAudioPayloadSpec{0, "PCMU", 8000, 1},
+    agentd::RtpAudioPayloadSpec{8, "PCMA", 8000, 1},
+  };
+  assert(encoder.select_payload(specs, &err));
+  assert(err.empty());
+  const agentd::RtpAudioPayloadSpec* selected = encoder.selected_payload();
+  assert(selected);
+  assert(selected->codec_name == "PCMU");
+  assert(selected->payload_type == 0);
+}
+
 void test_encoder_rejects_unsupported_payloads() {
   agentd::OutboundRtpAudioEncoder encoder;
   std::string err;
@@ -122,6 +160,8 @@ void test_encoder_encodes_opus_20ms() {
 int main() {
   test_encoder_prefers_opus_when_available_else_pcmu();
   test_encoder_falls_back_to_pcma();
+  test_encoder_normalizes_codec_name_case();
+  test_encoder_skips_unsupported_opus_variants_before_g711();
   test_encoder_rejects_unsupported_payloads();
   test_encoder_encodes_pcmu_20ms();
   test_encoder_encodes_pcma_20ms();

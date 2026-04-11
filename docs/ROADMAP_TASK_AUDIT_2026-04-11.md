@@ -4,7 +4,7 @@ Scope: local repository at `/Users/zongbaolu/work/agent` on macOS M2.
 
 Repository state checked:
 - Branch: `master`
-- HEAD: `dd00d2ce docs: clarify p2p-only media signaling`
+- Baseline HEAD before the follow-up compatibility slice: `aa5456b5 docs: narrow active roadmap tasks`
 - Existing untracked paths before this audit included `.codex-autopilot/`, `.config/`, `Professional_Resume_Lu_Zongbao_Chinese.md`, `external/`, `image.png`, and `refs/`.
 
 Verification performed:
@@ -15,6 +15,16 @@ Verification performed:
   - Inventory: 312 tests
 - `tools/verify_repo_guards.sh > build/task_audit_repo_guards_20260411.log 2>&1`
   - Result: `repo_guards_rc=0`
+
+Follow-up compatibility slice verification:
+- `cmake --build build -j "$(sysctl -n hw.ncpu)" > build/audio_compat_build_20260411.log 2>&1`
+  - Result: `build_rc=0`
+- `ctest --test-dir build -R 'session_voice_(builtin_sdp_answer|sdp_candidate|signal_session|audio_decode|audio_encode)_tests' --output-on-failure > build/audio_compat_ctest_20260411.log 2>&1`
+  - Result: `ctest_rc=0`; five targeted session-voice tests passed.
+- `tools/verify_repo_guards.sh > build/audio_compat_repo_guards_20260411.log 2>&1`
+  - Result: `repo_guards_rc=0`
+- `git diff --check`
+  - Result: clean.
 
 ## Directly Open Roadmap Items
 
@@ -28,7 +38,8 @@ Verification performed:
 
 2. `TODOS.md:547` - Audio streaming hardening after the shipped agentd-native WebRTC full-duplex native-plugin proof.
    - The roadmap now treats native media as shipped beyond signaling/control glue and narrows the remaining work to production hardening.
-   - Concrete remaining subitems: broader browser/codec/candidate compatibility coverage, continued extraction of cohesive media/transport helpers from the embedded provider, and production graduation criteria for `runtime_kind=builtin` + `audio_webrtc.builtin_mode=native_plugin` versus the bundled browser peer path.
+   - 2026-04-11 follow-up: the compatibility-coverage subitem is now covered with deterministic fixtures for unsupported Opus channel/rate variants, unmapped dynamic RTP payloads, codec-name case normalization, and ICE relay-versus-srflx/prflx candidate handling. The outbound RTP encoder now normalizes selected codec names before storing them.
+   - Concrete remaining subitems: continued extraction of cohesive media/transport helpers from the embedded provider and production graduation criteria for `runtime_kind=builtin` + `audio_webrtc.builtin_mode=native_plugin` versus the bundled browser peer path.
 
 3. `TODOS.md:700` - Node consensus firmware-native adoption on top of portable `agent_core` consensus rules and managed runtime.
    - The roadmap now distinguishes shipped host-side relay/runtime and portable consensus rules from the remaining adoption proof.
@@ -67,7 +78,7 @@ The scan did not identify a production implementation file over the 2000-line th
 Highest leverage sequence:
 
 1. Fix or unblock OpenRouter credentials, run the OpenRouter streaming pin workflow, and commit `ref/openrouter/streaming_pins.json` if the result is stable.
-2. Execute the narrowed audio hardening work: compatibility coverage first, then provider-surface extraction, then builtin-vs-bundled graduation criteria.
+2. Continue the narrowed audio hardening work with provider-surface extraction next, then builtin-vs-bundled graduation criteria.
 3. Make node consensus firmware-native adoption concrete with a minimal embedded-style loop/fixture plus lossy-transport replay proof and a short contract doc.
 4. Refactor `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` into smaller helper scripts or fixtures to reduce maintenance risk around the active media lane.
 5. Prune stale P0/P1 "Next" notes into current, testable checklist items so the roadmap reflects shipped work instead of duplicating older goals.

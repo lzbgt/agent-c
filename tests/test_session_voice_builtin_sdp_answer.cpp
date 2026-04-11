@@ -161,6 +161,47 @@ std::string unsupported_audio_offer() {
     "a=rtpmap:13 CN/8000\r\n";
 }
 
+std::string offer_with_codec_compatibility_edges() {
+  return
+    "v=0\r\n"
+    "o=- 1 2 IN IP4 127.0.0.1\r\n"
+    "s=-\r\n"
+    "t=0 0\r\n"
+    "a=group:BUNDLE 0\r\n"
+    "m=audio 9 UDP/TLS/RTP/SAVPF 112 111 0 8 102 13\r\n"
+    "c=IN IP4 0.0.0.0\r\n"
+    "a=mid:0\r\n"
+    "a=sendrecv\r\n"
+    "a=rtcp-mux\r\n"
+    "a=rtpmap:112 OpUs/48000/1\r\n"
+    "a=rtpmap:111 opus/48000/6\r\n"
+    "a=rtpmap:0 PCMU/8000\r\n"
+    "a=rtpmap:8 PCMA/8000\r\n"
+    "a=rtpmap:102 opus/16000/1\r\n"
+    "a=rtpmap:13 CN/8000\r\n"
+    "a=fmtp:112 minptime=10;useinbandfec=1\r\n"
+    "a=fmtp:111 minptime=10;useinbandfec=1\r\n"
+    "a=fmtp:102 maxplaybackrate=16000\r\n"
+    "a=rtcp-fb:112 transport-cc\r\n"
+    "a=rtcp-fb:111 transport-cc\r\n"
+    "a=rtcp-fb:102 transport-cc\r\n";
+}
+
+std::string offer_with_unmapped_dynamic_payload() {
+  return
+    "v=0\r\n"
+    "o=- 1 2 IN IP4 127.0.0.1\r\n"
+    "s=-\r\n"
+    "t=0 0\r\n"
+    "a=group:BUNDLE 0\r\n"
+    "m=audio 9 UDP/TLS/RTP/SAVPF 111 0\r\n"
+    "c=IN IP4 0.0.0.0\r\n"
+    "a=mid:0\r\n"
+    "a=sendrecv\r\n"
+    "a=rtcp-mux\r\n"
+    "a=rtpmap:0 PCMU/8000\r\n";
+}
+
 std::string expected_answer_audio_mline() {
 #if defined(AGENTD_HAVE_OPUS)
   return "m=audio 9 UDP/TLS/RTP/SAVPF 111 0 8\r\n";
@@ -241,6 +282,57 @@ void test_active_answer_prunes_unsupported_audio_payloads() {
   assert(answer.find(expected_answer_audio_mline()) != std::string::npos);
   assert(answer.find(" 101\r\n") == std::string::npos);
   assert(answer.find("a=rtpmap:101 telephone-event/8000\r\n") == std::string::npos);
+}
+
+void test_active_answer_prunes_unsupported_codec_edges() {
+  const std::string answer = agentd::build_builtin_active_answer_sdp({
+    offer_with_codec_compatibility_edges(),
+    local_description(),
+    true,
+    "passive",
+    "AA:BB:CC",
+    2799795457u,
+    "agentd-builtin-native",
+    "agentd_builtin_stream",
+    "agentd_builtin_audio",
+  });
+
+#if defined(AGENTD_HAVE_OPUS)
+  assert(answer.find("m=audio 9 UDP/TLS/RTP/SAVPF 112 0 8\r\n") != std::string::npos);
+  assert(answer.find("a=rtpmap:112 OpUs/48000/1\r\n") != std::string::npos);
+  assert(answer.find("a=fmtp:112 minptime=10;useinbandfec=1\r\n") != std::string::npos);
+  assert(answer.find("a=rtcp-fb:112 transport-cc\r\n") != std::string::npos);
+#else
+  assert(answer.find("m=audio 9 UDP/TLS/RTP/SAVPF 0 8\r\n") != std::string::npos);
+  assert(answer.find("a=rtpmap:112 OpUs/48000/1\r\n") == std::string::npos);
+  assert(answer.find("a=fmtp:112 minptime=10;useinbandfec=1\r\n") == std::string::npos);
+  assert(answer.find("a=rtcp-fb:112 transport-cc\r\n") == std::string::npos);
+#endif
+  assert(answer.find("a=rtpmap:111 opus/48000/6\r\n") == std::string::npos);
+  assert(answer.find("a=rtpmap:102 opus/16000/1\r\n") == std::string::npos);
+  assert(answer.find("a=rtpmap:13 CN/8000\r\n") == std::string::npos);
+  assert(answer.find("a=fmtp:111 minptime=10;useinbandfec=1\r\n") == std::string::npos);
+  assert(answer.find("a=fmtp:102 maxplaybackrate=16000\r\n") == std::string::npos);
+  assert(answer.find("a=rtcp-fb:111 transport-cc\r\n") == std::string::npos);
+  assert(answer.find("a=rtcp-fb:102 transport-cc\r\n") == std::string::npos);
+}
+
+void test_active_answer_rejects_unmapped_dynamic_payloads() {
+  const std::string answer = agentd::build_builtin_active_answer_sdp({
+    offer_with_unmapped_dynamic_payload(),
+    local_description(),
+    true,
+    "passive",
+    "AA:BB:CC",
+    2799795457u,
+    "agentd-builtin-native",
+    "agentd_builtin_stream",
+    "agentd_builtin_audio",
+  });
+
+  assert(answer.find("m=audio 9 UDP/TLS/RTP/SAVPF 0\r\n") != std::string::npos);
+  assert(answer.find(" 111") == std::string::npos);
+  assert(answer.find("a=rtpmap:0 PCMU/8000\r\n") != std::string::npos);
 }
 
 void test_active_answer_preserves_supported_media_attrs_and_strips_remote_track_attrs() {
@@ -488,6 +580,8 @@ void test_sdp_marker_helpers_trim_inputs() {
 int main() {
   test_active_answer_mirrors_browser_offer_media_contract();
   test_active_answer_prunes_unsupported_audio_payloads();
+  test_active_answer_prunes_unsupported_codec_edges();
+  test_active_answer_rejects_unmapped_dynamic_payloads();
   test_active_answer_preserves_supported_media_attrs_and_strips_remote_track_attrs();
   test_active_answer_rejects_audio_mline_without_supported_payloads();
   test_active_answer_normalizes_bare_local_candidate_lines();
