@@ -449,6 +449,13 @@ int agent_edge_consensus_leader_commit_witnesses_can_accept(
   return leader_is_witness && agent_edge_consensus_has_quorum(cluster_size, valid_witness_count) ? 1 : 0;
 }
 
+int agent_edge_consensus_candidate_can_commit(
+  int has_leader,
+  int has_quorum
+) {
+  return !has_leader && has_quorum ? 1 : 0;
+}
+
 int agent_edge_consensus_incoming_term_advances(
   uint64_t current_term,
   uint64_t incoming_term
@@ -634,6 +641,18 @@ int agent_edge_consensus_leader_heartbeat_due(
   if (!leader_is_self || !has_committed_decision) return 0;
   if (last_leader_heartbeat_sent_utc_ms <= 0) return 1;
   return now_utc_ms - last_leader_heartbeat_sent_utc_ms >= leader_heartbeat_ms ? 1 : 0;
+}
+
+int agent_edge_consensus_leader_activity_can_observe(
+  const char* kind,
+  size_t kind_len,
+  const char* leader_node_id,
+  size_t leader_node_id_len,
+  int64_t now_utc_ms
+) {
+  if (now_utc_ms <= 0) return 0;
+  if (!consensus_string_eq(kind, kind_len, AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT)) return 0;
+  return agent_edge_consensus_member_node_id_is_valid(leader_node_id, leader_node_id_len);
 }
 
 int agent_edge_consensus_leader_lease_expired(

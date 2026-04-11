@@ -277,6 +277,11 @@ int agent_edge_consensus_leader_commit_witnesses_can_accept(
   int leader_is_witness
 );
 
+int agent_edge_consensus_candidate_can_commit(
+  int has_leader,
+  int has_quorum
+);
+
 int agent_edge_consensus_incoming_term_advances(
   uint64_t current_term,
   uint64_t incoming_term
@@ -380,6 +385,14 @@ int agent_edge_consensus_leader_heartbeat_due(
   int64_t last_leader_heartbeat_sent_utc_ms,
   int leader_is_self,
   int has_committed_decision
+);
+
+int agent_edge_consensus_leader_activity_can_observe(
+  const char* kind,
+  size_t kind_len,
+  const char* leader_node_id,
+  size_t leader_node_id_len,
+  int64_t now_utc_ms
 );
 
 int agent_edge_consensus_leader_lease_expired(

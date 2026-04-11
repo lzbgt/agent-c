@@ -149,6 +149,9 @@ The shipped autonomous host-loop proof adds:
   requests from the candidate, vote grants from a distinct voter, and leader commits from the claimed leader
 - leader-commit acceptance now also requires a portable quorum-witness check: the carried vote witnesses must include
   the leader and enough member/trust-valid unique witnesses for quorum before a follower adopts the commit
+- portable `agent_core` candidate-commit and leader-activity observation gates are now reused by the daemon loop, so
+  firmware-native ports share the same "no existing leader plus quorum" commit boundary and the same timestamped
+  leader-commit activity boundary
 - portable `agent_core` frame-id formatting, incoming-term advancement, and duplicate-frame drop predicates are now
   reused by the daemon replica, so firmware-native ports can share the same deterministic frame identity and replay
   state gates while keeping mutable seen-frame storage host-local

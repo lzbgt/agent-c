@@ -254,6 +254,9 @@ static void test_consensus_constants_and_quorum(void) {
   assert(agent_edge_consensus_leader_commit_witnesses_can_accept(3, 1, 1) == 0);
   assert(agent_edge_consensus_leader_commit_witnesses_can_accept(3, 2, 0) == 0);
   assert(agent_edge_consensus_leader_commit_witnesses_can_accept(1, 1, 1) == 1);
+  assert(agent_edge_consensus_candidate_can_commit(0, 1) == 1);
+  assert(agent_edge_consensus_candidate_can_commit(1, 1) == 0);
+  assert(agent_edge_consensus_candidate_can_commit(0, 0) == 0);
   assert(agent_edge_consensus_incoming_term_advances(3, 4) == 1);
   assert(agent_edge_consensus_incoming_term_advances(3, 3) == 0);
   assert(agent_edge_consensus_incoming_term_advances(3, 2) == 0);
@@ -528,6 +531,31 @@ static void test_consensus_loop_timing_gates(void) {
   assert(agent_edge_consensus_leader_heartbeat_due(1000, 5200, 4200, 0, 1) == 0);
   assert(agent_edge_consensus_leader_heartbeat_due(1000, 5200, 4200, 1, 0) == 0);
   assert(agent_edge_consensus_leader_heartbeat_due(0, 5200, 4200, 1, 1) == 0);
+
+  assert(agent_edge_consensus_leader_activity_can_observe(
+           AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT,
+           strlen(AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT),
+           "node-a",
+           strlen("node-a"),
+           5200) == 1);
+  assert(agent_edge_consensus_leader_activity_can_observe(
+           AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT,
+           strlen(AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT),
+           "node-a",
+           strlen("node-a"),
+           5200) == 0);
+  assert(agent_edge_consensus_leader_activity_can_observe(
+           AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT,
+           strlen(AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT),
+           "node-a",
+           strlen("node-a"),
+           0) == 0);
+  assert(agent_edge_consensus_leader_activity_can_observe(
+           AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT,
+           strlen(AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT),
+           "bad/node",
+           strlen("bad/node"),
+           5200) == 0);
 
   assert(agent_edge_consensus_leader_lease_expired(3000, 9000, 6000, 1, 0) == 1);
   assert(agent_edge_consensus_leader_lease_expired(3000, 8999, 6000, 1, 0) == 0);

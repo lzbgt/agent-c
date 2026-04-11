@@ -533,7 +533,9 @@ bool EdgeConsensusReplica::handle_frame(
           trust_epochs_match(frame.from.trust_epochs) ? 1 : 0)) return true;
     mark_frame_seen();
     grant_witnesses_by_node_id_[frame.from.node_id] = frame.from;
-    if (!leader_node_id_.empty() || !has_quorum()) return true;
+    if (!agent_edge_consensus_candidate_can_commit(
+          leader_node_id_.empty() ? 0 : 1,
+          has_quorum() ? 1 : 0)) return true;
     leader_node_id_ = self_.node_id;
     committed_decision_sha256_ = campaign_decision_sha256_;
     committed_vote_witnesses_.clear();
@@ -662,8 +664,12 @@ bool EdgeConsensusNodeLoop::lease_expiry_recampaign_delay_active(int64_t now_utc
 }
 
 void EdgeConsensusNodeLoop::observe_leader_activity(const EdgeConsensusFrame& frame, int64_t now_utc_ms) {
-  if (frame.kind != AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT || now_utc_ms <= 0) return;
-  if (frame.leader_node_id.empty()) return;
+  if (!agent_edge_consensus_leader_activity_can_observe(
+        frame.kind.data(),
+        frame.kind.size(),
+        frame.leader_node_id.data(),
+        frame.leader_node_id.size(),
+        now_utc_ms)) return;
   last_leader_contact_utc_ms_ = now_utc_ms;
   remember_decision(frame.decision_sha256);
 }
@@ -731,9 +737,16 @@ bool EdgeConsensusNodeLoop::handle_frame(
   observe_leader_activity(frame, now_utc_ms);
   if (out_frames) {
     for (const auto& generated : *out_frames) {
-      if (generated.kind == AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT) {
+      if (agent_edge_consensus_leader_activity_can_observe(
+            generated.kind.data(),
+            generated.kind.size(),
+            generated.leader_node_id.data(),
+            generated.leader_node_id.size(),
+            now_utc_ms)) {
         last_leader_contact_utc_ms_ = now_utc_ms;
         last_leader_heartbeat_sent_utc_ms_ = now_utc_ms;
+      }
+      if (generated.kind == AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT) {
         remember_decision(generated.decision_sha256);
       }
     }
