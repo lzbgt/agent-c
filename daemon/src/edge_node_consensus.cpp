@@ -86,7 +86,7 @@ static bool frame_is_valid(const EdgeConsensusFrame& frame, std::string* out_err
     if (out_error) *out_error = "schema invalid";
     return false;
   }
-  if (frame.kind != "vote_request" && frame.kind != "vote_grant" && frame.kind != "leader_commit") {
+  if (!agent_edge_consensus_frame_kind_is_valid(frame.kind.data(), frame.kind.size())) {
     if (out_error) *out_error = "kind invalid";
     return false;
   }
@@ -103,13 +103,15 @@ static bool frame_is_valid(const EdgeConsensusFrame& frame, std::string* out_err
     return false;
   }
   if (!parse_identity_like(frame.from, out_error)) return false;
-  if (frame.kind == "vote_request" || frame.kind == "vote_grant") {
+  if (frame.kind == AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST ||
+      frame.kind == AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT) {
     if (!edge_id_is_safe(frame.candidate_node_id)) {
       if (out_error) *out_error = "candidate_node_id invalid";
       return false;
     }
   }
-  if (frame.kind == "leader_commit" && !edge_id_is_safe(frame.leader_node_id)) {
+  if (frame.kind == AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT &&
+      !edge_id_is_safe(frame.leader_node_id)) {
     if (out_error) *out_error = "leader_node_id invalid";
     return false;
   }
@@ -241,12 +243,15 @@ bool EdgeConsensusReplica::node_is_member(const std::string& node_id) const {
 }
 
 bool EdgeConsensusReplica::membership_matches(const EdgeConsensusIdentity& other) const {
-  return self_.membership_epoch == other.membership_epoch && node_is_member(other.node_id);
+  return agent_edge_consensus_identity_membership_matches(
+           self_.membership_epoch,
+           other.membership_epoch,
+           node_is_member(other.node_id) ? 1 : 0) != 0;
 }
 
 bool EdgeConsensusReplica::has_quorum() const {
   const size_t votes = 1 + grant_witnesses_by_node_id_.size();
-  return votes >= agent_edge_consensus_quorum_for_cluster_size(cluster_size_);
+  return agent_edge_consensus_has_quorum(cluster_size_, votes) != 0;
 }
 
 EdgeConsensusFrame EdgeConsensusReplica::make_vote_grant_frame(
@@ -254,8 +259,9 @@ EdgeConsensusFrame EdgeConsensusReplica::make_vote_grant_frame(
   const std::string& decision_sha256
 ) const {
   EdgeConsensusFrame out;
-  out.frame_id = self_.node_id + ":vote_grant:" + std::to_string(current_term_) + ":" + candidate_node_id;
-  out.kind = "vote_grant";
+  out.frame_id = self_.node_id + ":" AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT ":" +
+    std::to_string(current_term_) + ":" + candidate_node_id;
+  out.kind = AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT;
   out.term = current_term_;
   out.decision_sha256 = decision_sha256;
   out.candidate_node_id = candidate_node_id;
@@ -266,8 +272,9 @@ EdgeConsensusFrame EdgeConsensusReplica::make_vote_grant_frame(
 
 EdgeConsensusFrame EdgeConsensusReplica::make_leader_commit_frame() const {
   EdgeConsensusFrame out;
-  out.frame_id = self_.node_id + ":leader_commit:" + std::to_string(current_term_) + ":" + leader_node_id_;
-  out.kind = "leader_commit";
+  out.frame_id = self_.node_id + ":" AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT ":" +
+    std::to_string(current_term_) + ":" + leader_node_id_;
+  out.kind = AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT;
   out.term = current_term_;
   out.decision_sha256 = committed_decision_sha256_;
   out.leader_node_id = leader_node_id_;
@@ -300,8 +307,8 @@ EdgeConsensusFrame EdgeConsensusReplica::start_election(const std::string& decis
   voted_for_node_id_ = self_.node_id;
 
   EdgeConsensusFrame out;
-  out.frame_id = next_frame_id("vote_request");
-  out.kind = "vote_request";
+  out.frame_id = next_frame_id(AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST);
+  out.kind = AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST;
   out.term = current_term_;
   out.decision_sha256 = decision_sha256;
   out.candidate_node_id = self_.node_id;
@@ -335,7 +342,7 @@ bool EdgeConsensusReplica::handle_frame(
   if (seen_it != seen_frame_term_by_id_.end() && seen_it->second == frame.term) return true;
   seen_frame_term_by_id_[frame.frame_id] = frame.term;
 
-  if (frame.kind == "vote_request") {
+  if (frame.kind == AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST) {
     if (!node_is_member(frame.candidate_node_id)) return true;
     if (frame.term < current_term_) return true;
     maybe_reset_for_new_term(frame.term);
@@ -346,7 +353,7 @@ bool EdgeConsensusReplica::handle_frame(
     return true;
   }
 
-  if (frame.kind == "vote_grant") {
+  if (frame.kind == AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT) {
     if (!node_is_member(frame.candidate_node_id)) return true;
     if (frame.term < current_term_) return true;
     maybe_reset_for_new_term(frame.term);
@@ -395,7 +402,7 @@ bool EdgeConsensusNodeLoop::lease_expiry_recampaign_delay_active(int64_t now_utc
 }
 
 void EdgeConsensusNodeLoop::observe_leader_activity(const EdgeConsensusFrame& frame, int64_t now_utc_ms) {
-  if (frame.kind != "leader_commit" || now_utc_ms <= 0) return;
+  if (frame.kind != AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT || now_utc_ms <= 0) return;
   if (frame.leader_node_id.empty()) return;
   last_leader_contact_utc_ms_ = now_utc_ms;
   remember_decision(frame.decision_sha256);
@@ -461,7 +468,7 @@ bool EdgeConsensusNodeLoop::handle_frame(
   observe_leader_activity(frame, now_utc_ms);
   if (out_frames) {
     for (const auto& generated : *out_frames) {
-      if (generated.kind == "leader_commit") {
+      if (generated.kind == AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT) {
         last_leader_contact_utc_ms_ = now_utc_ms;
         last_leader_heartbeat_sent_utc_ms_ = now_utc_ms;
         remember_decision(generated.decision_sha256);
@@ -472,13 +479,16 @@ bool EdgeConsensusNodeLoop::handle_frame(
 }
 
 std::vector<std::string> EdgeConsensusNodeLoop::target_node_ids_for_frame(const EdgeConsensusFrame& frame) const {
-  if (frame.kind == "vote_grant") {
+  if (frame.kind == AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT) {
     if (edge_id_is_safe(frame.candidate_node_id) && frame.candidate_node_id != cfg_.self.node_id) {
       return {frame.candidate_node_id};
     }
     return {};
   }
-  if (frame.kind == "vote_request" || frame.kind == "leader_commit") return cfg_.peer_node_ids;
+  if (frame.kind == AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST ||
+      frame.kind == AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT) {
+    return cfg_.peer_node_ids;
+  }
   return {};
 }
 
@@ -582,7 +592,7 @@ Json::Value edge_consensus_frame_to_json(const EdgeConsensusFrame& frame) {
   if (!frame.decision_sha256.empty()) out["decision_sha256"] = frame.decision_sha256;
   if (!frame.candidate_node_id.empty()) out["candidate_node_id"] = frame.candidate_node_id;
   if (!frame.leader_node_id.empty()) out["leader_node_id"] = frame.leader_node_id;
-  if (frame.kind == "vote_grant") out["granted"] = frame.granted;
+  if (frame.kind == AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT) out["granted"] = frame.granted;
   out["from"] = edge_consensus_identity_to_json(frame.from);
   if (!frame.vote_witnesses.empty()) {
     Json::Value arr(Json::arrayValue);

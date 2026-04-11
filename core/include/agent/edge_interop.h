@@ -69,6 +69,11 @@ agent_status_t agent_umbmp_sanitize_id_token(
 #define AGENT_EDGE_CONSENSUS_MEMBERSHIP_SCHEMA_V1 "edge_consensus_membership_v1"
 #define AGENT_EDGE_CONSENSUS_MEMBERSHIP_ATTEST_SCHEMA_V1 "edge_consensus_membership_attest_v1"
 
+// Consensus frame kinds.
+#define AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST "vote_request"
+#define AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT "vote_grant"
+#define AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT "leader_commit"
+
 // Task lifecycle messages.
 #define AGENT_UM_BMP_TYPE_TASK_ASSIGN "TASK_ASSIGN"
 #define AGENT_UM_BMP_TYPE_TASK_ACK "TASK_ACK"
@@ -131,6 +136,16 @@ agent_status_t agent_um_eais_result_attest_signing_input_v0_1(
 // The platform clamps cluster size to at least 1; the portable helper mirrors
 // that behavior so firmware and agentd do not duplicate quorum math.
 size_t agent_edge_consensus_quorum_for_cluster_size(size_t cluster_size);
+
+int agent_edge_consensus_has_quorum(size_t cluster_size, size_t vote_count);
+
+int agent_edge_consensus_frame_kind_is_valid(const char* kind, size_t kind_len);
+
+int agent_edge_consensus_identity_membership_matches(
+  uint64_t local_membership_epoch,
+  uint64_t identity_membership_epoch,
+  int identity_node_is_member
+);
 
 #ifdef __cplusplus
 }  // extern "C"

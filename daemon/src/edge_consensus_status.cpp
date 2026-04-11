@@ -101,7 +101,7 @@ bool upsert_edge_node_consensus_health(
   if (!frame.decision_sha256.empty()) consensus["decision_sha256"] = frame.decision_sha256;
   if (!frame.candidate_node_id.empty()) consensus["candidate_node_id"] = frame.candidate_node_id;
   if (!frame.leader_node_id.empty()) consensus["leader_node_id"] = frame.leader_node_id;
-  if (frame.kind == "vote_grant") consensus["granted"] = frame.granted;
+  if (frame.kind == AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT) consensus["granted"] = frame.granted;
   consensus["from"] = edge_consensus_identity_to_json(frame.from);
   if (!target_node_ids.empty()) {
     Json::Value arr(Json::arrayValue);

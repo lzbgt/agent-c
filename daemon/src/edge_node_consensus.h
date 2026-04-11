@@ -1,5 +1,7 @@
 #pragma once
 
+#include "agent/edge_interop.h"
+
 #include <json/json.h>
 
 #include <cstddef>
@@ -26,7 +28,7 @@ struct EdgeConsensusIdentity {
 };
 
 struct EdgeConsensusFrame {
-  std::string schema = "edge_node_consensus_frame_v1";
+  std::string schema = AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1;
   std::string frame_id;
   std::string kind;
   uint64_t term = 0;

@@ -193,3 +193,28 @@ size_t agent_edge_consensus_quorum_for_cluster_size(size_t cluster_size) {
   if (cluster_size < 1) cluster_size = 1;
   return (cluster_size / 2) + 1;
 }
+
+int agent_edge_consensus_has_quorum(size_t cluster_size, size_t vote_count) {
+  return vote_count >= agent_edge_consensus_quorum_for_cluster_size(cluster_size) ? 1 : 0;
+}
+
+static int consensus_string_eq(const char* s, size_t s_len, const char* lit) {
+  if (!s || !lit) return 0;
+  const size_t lit_len = strlen(lit);
+  return s_len == lit_len && memcmp(s, lit, lit_len) == 0;
+}
+
+int agent_edge_consensus_frame_kind_is_valid(const char* kind, size_t kind_len) {
+  return
+    consensus_string_eq(kind, kind_len, AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST) ||
+    consensus_string_eq(kind, kind_len, AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT) ||
+    consensus_string_eq(kind, kind_len, AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT);
+}
+
+int agent_edge_consensus_identity_membership_matches(
+  uint64_t local_membership_epoch,
+  uint64_t identity_membership_epoch,
+  int identity_node_is_member
+) {
+  return local_membership_epoch == identity_membership_epoch && identity_node_is_member ? 1 : 0;
+}

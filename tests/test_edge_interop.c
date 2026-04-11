@@ -104,6 +104,9 @@ static void test_consensus_constants_and_quorum(void) {
   assert(strcmp(
            AGENT_EDGE_CONSENSUS_MEMBERSHIP_ATTEST_SCHEMA_V1,
            "edge_consensus_membership_attest_v1") == 0);
+  assert(strcmp(AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST, "vote_request") == 0);
+  assert(strcmp(AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT, "vote_grant") == 0);
+  assert(strcmp(AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT, "leader_commit") == 0);
 
   assert(agent_edge_consensus_quorum_for_cluster_size(0) == 1);
   assert(agent_edge_consensus_quorum_for_cluster_size(1) == 1);
@@ -111,6 +114,19 @@ static void test_consensus_constants_and_quorum(void) {
   assert(agent_edge_consensus_quorum_for_cluster_size(3) == 2);
   assert(agent_edge_consensus_quorum_for_cluster_size(4) == 3);
   assert(agent_edge_consensus_quorum_for_cluster_size(5) == 3);
+
+  assert(agent_edge_consensus_has_quorum(3, 1) == 0);
+  assert(agent_edge_consensus_has_quorum(3, 2) == 1);
+  assert(agent_edge_consensus_has_quorum(4, 2) == 0);
+  assert(agent_edge_consensus_has_quorum(4, 3) == 1);
+  assert(agent_edge_consensus_frame_kind_is_valid("vote_request", strlen("vote_request")) == 1);
+  assert(agent_edge_consensus_frame_kind_is_valid("vote_grant", strlen("vote_grant")) == 1);
+  assert(agent_edge_consensus_frame_kind_is_valid("leader_commit", strlen("leader_commit")) == 1);
+  assert(agent_edge_consensus_frame_kind_is_valid("leader_commitx", strlen("leader_commitx")) == 0);
+  assert(agent_edge_consensus_frame_kind_is_valid(NULL, 0) == 0);
+  assert(agent_edge_consensus_identity_membership_matches(7, 7, 1) == 1);
+  assert(agent_edge_consensus_identity_membership_matches(7, 8, 1) == 0);
+  assert(agent_edge_consensus_identity_membership_matches(7, 7, 0) == 0);
 }
 
 void test_edge_interop_module(void) {
