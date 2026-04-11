@@ -119,6 +119,9 @@ The repo now also ships a host-side node bring-up loop:
   `CONSENSUS_FRAME` messages through the deterministic consensus core, and posts generated
   vote/commit frames back through `POST /api/v1/edge/message`
 - `tests/agentd_edge_consensus_autonomous_smoke.sh` proves multi-node autonomous election/commit over that path
+- Firmware adoption does not depend on the host C++ replica: `docs/EDGE_CONSENSUS_FIRMWARE_ADOPTION.md`
+  defines the portable `agent_core` helper boundary, node-owned mutable state, platform-owned delivery state,
+  membership recovery rules, and lossy replay proof.
 
 Envelope authenticity (optional, UM‑BMP auth v0.4):
 - Envelopes MAY include an `auth` object:

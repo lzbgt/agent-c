@@ -66,9 +66,15 @@ Follow-up native-plugin graduation gate verification:
 - `ctest --test-dir build -R 'agentd_session_voice_webrtc_peer_builtin_native_plugin_smoke|agentd_session_voice_webrtc_peer_builtin_default_native_plugin_smoke|agentd_session_voice_webrtc_peer_runtime_smoke|agentd_audio_webrtc_peer_smoke' --output-on-failure > build/native_plugin_graduation_smoke_ctest_20260411.log 2>&1`
   - Result: `ctest_rc=0`; four runtime/browser smokes passed with no skips.
 
+Follow-up firmware-consensus adoption verification:
+- `cmake --build build -j "$(sysctl -n hw.ncpu)" > build/firmware_consensus_build_20260411.log 2>&1`
+  - Result: `build_rc=0`.
+- `ctest --test-dir build -R 'agent_core_edge_consensus_firmware_loop_tests|agent_core_tests|edge_node_consensus_loop_tests|edge_consensus_runtime_loop_adapter_tests|edge_node_consensus_tests' --output-on-failure > build/firmware_consensus_ctest_20260411.log 2>&1`
+  - Result: `ctest_rc=0`; five portable-core and host-loop consensus tests passed, including the new firmware-style fixture.
+
 ## Directly Open Roadmap Items
 
-`TODOS.md` now has three open roadmap workstreams, with concrete unchecked subitems under each:
+`TODOS.md` now has two open roadmap workstreams with concrete unchecked subitems, plus one newly closed roadmap workstream:
 
 1. `TODOS.md:516` - Streaming stability umbrella.
    - Concrete remaining subitems:
@@ -87,8 +93,8 @@ Follow-up native-plugin graduation gate verification:
    - Concrete remaining subitem: execute the same non-skipped gate on any additional target release platforms before promoting builtin under auto/default policy outside this macOS M2 host.
 
 3. `TODOS.md:700` - Node consensus firmware-native adoption on top of portable `agent_core` consensus rules and managed runtime.
-   - The roadmap now distinguishes shipped host-side relay/runtime and portable consensus rules from the remaining adoption proof.
-   - Concrete remaining subitems: a firmware-style reference loop or fixture using portable `agent_core` helpers without depending on the host C++ replica, a lossy-transport replay fixture for consensus frames and membership bundles, and documentation of the firmware adoption contract.
+   - Status: closed on 2026-04-11 by `agent_core_edge_consensus_firmware_loop_tests` and `docs/EDGE_CONSENSUS_FIRMWARE_ADOPTION.md`.
+   - The fixture links only `agent_core`, includes only `agent/edge_interop.h` for production consensus rules, and avoids the host C++ replica implementation while proving duplicate/drop/reorder behavior for consensus frames and membership bundles.
 
 ## Secondary Backlog Signals
 
@@ -124,6 +130,5 @@ Highest leverage sequence:
 
 1. Fix or unblock OpenRouter credentials, run the OpenRouter streaming pin workflow, and commit `ref/openrouter/streaming_pins.json` if the result is stable.
 2. Execute the documented builtin-vs-bundled graduation gate on any additional target release platforms before changing production defaults outside the checked macOS M2 host.
-3. Make node consensus firmware-native adoption concrete with a minimal embedded-style loop/fixture plus lossy-transport replay proof and a short contract doc.
-4. Refactor `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` into smaller helper scripts or fixtures to reduce maintenance risk around the active media lane.
-5. Prune stale P0/P1 "Next" notes into current, testable checklist items so the roadmap reflects shipped work instead of duplicating older goals.
+3. Refactor `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` into smaller helper scripts or fixtures to reduce maintenance risk around the active media lane.
+4. Prune stale P0/P1 "Next" notes into current, testable checklist items so the roadmap reflects shipped work instead of duplicating older goals.

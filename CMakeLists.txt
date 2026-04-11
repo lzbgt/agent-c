@@ -638,6 +638,18 @@ add_executable(agent_core_tests
 target_link_libraries(agent_core_tests PRIVATE agent_core)
 add_test(NAME agent_core_tests COMMAND agent_core_tests)
 
+add_executable(agent_core_edge_consensus_firmware_loop_tests
+  tests/test_agent_core_edge_consensus_firmware_loop.cpp
+)
+target_compile_options(agent_core_edge_consensus_firmware_loop_tests PRIVATE
+  $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+)
+target_link_libraries(agent_core_edge_consensus_firmware_loop_tests PRIVATE agent_core)
+add_test(
+  NAME agent_core_edge_consensus_firmware_loop_tests
+  COMMAND agent_core_edge_consensus_firmware_loop_tests
+)
+
 if(AGENT_BUILD_HOST)
   add_executable(umbmp_auth_vectors_tool
     tools/umbmp_auth_vectors_tool.cpp

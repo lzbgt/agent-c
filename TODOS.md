@@ -707,11 +707,13 @@ streaming and plugins are stable.
   - 2026-03-15: added explicit `host_effects.{fs,proc,net}` request policy with fail-closed operator gates (`AGENTD_AVM_ALLOW_{FS,PROC,NET}`), runner env propagation, and direct/workflow smoke coverage.
   - 2026-03-15: workflow `avm_capsule` tasks now persist session-scoped AVM governance bundles plus durable output-log artifacts, keyed by program/job hash and verified through `GET /api/v1/session/artifacts` in `agentd_workflow_avm_capsule_smoke`.
   - 2026-03-15: workflow `avm_capsule` evidence runs now emit `run_attestation_bundle_v1` with stable `node_id`, persist `attestation_bundle.json`, and `quorum_hashes` automatically defaults `node_pointer` to `/avm/attest/node_id` for AVM hash joins while surfacing `attestations_by_task_id`.
-- [ ] Node consensus: finish firmware-native adoption on top of the portable `agent_core` consensus rules and managed runtime.
-  - Current acceptance target (2026-04-11): host-side relay/runtime and most deterministic consensus rules have moved into reusable surfaces. The remaining work is a firmware-style adoption proof and transport/recovery contract, not another host-only managed-runtime refactor.
-  - [ ] Add a firmware-style reference loop or fixture that consumes portable `agent_core` consensus helpers without depending on the host C++ replica implementation.
-  - [ ] Add a lossy-transport replay fixture for consensus frames and membership bundles that covers duplicate/drop/reorder behavior through portable-core boundaries.
-  - [ ] Document the firmware adoption contract: required portable APIs, node-owned mutable state, host-owned delivery state, and membership/recovery policy expectations.
+- [x] Node consensus: finish firmware-native adoption on top of the portable `agent_core` consensus rules and managed runtime.
+  - 2026-04-11: added `agent_core_edge_consensus_firmware_loop_tests`, a firmware-style loop fixture that links only `agent_core`, includes only `agent/edge_interop.h` for production consensus rules, and avoids the host C++ replica implementation.
+  - 2026-04-11: the same fixture covers lossy transport replay across the portable-core boundary: duplicate `CONSENSUS_FRAME`s, dropped/delayed vote requests, duplicate/delayed leader commits, and duplicate/reordered membership bundles.
+  - 2026-04-11: documented the firmware adoption contract in `docs/EDGE_CONSENSUS_FIRMWARE_ADOPTION.md`, including required portable APIs, node-owned mutable state, platform-owned delivery state, and membership/recovery policy expectations.
+  - [x] Add a firmware-style reference loop or fixture that consumes portable `agent_core` consensus helpers without depending on the host C++ replica implementation.
+  - [x] Add a lossy-transport replay fixture for consensus frames and membership bundles that covers duplicate/drop/reorder behavior through portable-core boundaries.
+  - [x] Document the firmware adoption contract: required portable APIs, node-owned mutable state, host-owned delivery state, and membership/recovery policy expectations.
   - [x] Centralized platform-owned coordination is already the implemented design stance for UM-EAIS and broker team orchestration.
   - [x] Deterministic quorum/join surfaces are already shipped for workflows and broker team runs.
   - [x] Define a peer protocol for node-native elections/conflict resolution without relying on the platform coordinator.
