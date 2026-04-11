@@ -142,6 +142,12 @@ voice_peer_request_status() {
     "${DAEMON_URL}/api/v1/session/voice_webrtc_peer"
 }
 
+config_get() {
+  curl -fsS --noproxy "*" --max-time 10 \
+    -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+    "${DAEMON_URL}/api/v1/config"
+}
+
 config_update() {
   local payload="$1"
   curl -fsS --noproxy "*" --max-time 10 \
@@ -355,9 +361,7 @@ restart_agentd_with_builtin_voice_default() {
 
 wait_daemon_ready
 
-config_env_defaults="$(curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  "${DAEMON_URL}/api/v1/config")"
+config_env_defaults="$(config_get)"
 
 python3 - <<PY
 import json, sys
@@ -377,9 +381,7 @@ PY
 
 restart_agentd_with_builtin_voice_default
 
-config_env_builtin_default="$(curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  "${DAEMON_URL}/api/v1/config")"
+config_env_builtin_default="$(config_get)"
 
 python3 - <<PY
 import json, sys
@@ -1800,9 +1802,7 @@ PY
 
 restart_agentd_without_voice_defaults
 
-config_persisted_defaults="$(curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  "${DAEMON_URL}/api/v1/config")"
+config_persisted_defaults="$(config_get)"
 
 python3 - <<PY
 import json, sys
@@ -2059,10 +2059,7 @@ if current.get("runtime_kind") != "bundled" or current.get("default_runtime_kind
   raise SystemExit(1)
 PY
 
-external_unavailable_conflict_update_resp="$(curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "$(python3 - <<PY
+external_unavailable_conflict_update_resp="$(config_update "$(python3 - <<PY
 import json
 print(json.dumps({
   "audio_webrtc": {
@@ -2129,10 +2126,7 @@ if "not configured" not in str(current.get("runtime_unavailable_reason") or ""):
   raise SystemExit(1)
 PY
 
-external_node_bin_conflict_update_resp="$(curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "$(python3 - <<PY
+external_node_bin_conflict_update_resp="$(config_update "$(python3 - <<PY
 import json
 print(json.dumps({
   "audio_webrtc": {
@@ -2144,8 +2138,7 @@ print(json.dumps({
   }
 }))
 PY
-)" \
-  "${DAEMON_URL}/api/v1/config/update")"
+)")"
 
 python3 - <<PY
 import json, sys
@@ -2293,10 +2286,7 @@ PY
 
 wait_broker_session_deleted "${EXTERNAL_BROKER_SESSION_ID}"
 
-invalid_broker_defaults_resp="$(curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "$(python3 - <<PY
+invalid_broker_defaults_resp="$(config_update "$(python3 - <<PY
 import json
 print(json.dumps({
   "audio_webrtc": {
@@ -2698,10 +2688,7 @@ delete_session_quiet "${NOOP_STOP_SESSION_ID}"
 
 delete_session_quiet "${EXTERNAL_SESSION_ID}"
 
-unavailable_default_config_resp="$(curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "$(python3 - <<PY
+unavailable_default_config_resp="$(config_update "$(python3 - <<PY
 import json
 print(json.dumps({
   "audio_webrtc": {
@@ -2742,9 +2729,7 @@ PY
 
 restart_agentd_without_voice_defaults
 
-unavailable_default_config_get="$(curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  "${DAEMON_URL}/api/v1/config")"
+unavailable_default_config_get="$(config_get)"
 
 python3 - <<PY
 import json, sys
@@ -2830,10 +2815,7 @@ PY
 
 delete_session_quiet "${UNAVAILABLE_DEFAULT_SESSION_ID}"
 
-builtin_default_config_resp="$(curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "$(python3 - <<PY
+builtin_default_config_resp="$(config_update "$(python3 - <<PY
 import json
 print(json.dumps({
   "audio_webrtc": {
@@ -2843,8 +2825,7 @@ print(json.dumps({
   }
 }))
 PY
-)" \
-  "${DAEMON_URL}/api/v1/config/update")"
+)")"
 
 python3 - <<PY
 import json, sys
@@ -2872,9 +2853,7 @@ PY
 
 restart_agentd_without_voice_defaults
 
-builtin_default_config_get="$(curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  "${DAEMON_URL}/api/v1/config")"
+builtin_default_config_get="$(config_get)"
 
 python3 - <<PY
 import json, sys
@@ -2948,10 +2927,7 @@ PY
 
 delete_session_quiet "${BUILTIN_DEFAULT_SESSION_ID}"
 
-restored_external_default_config_resp="$(curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "$(python3 - <<PY
+restored_external_default_config_resp="$(config_update "$(python3 - <<PY
 import json
 print(json.dumps({
   "audio_webrtc": {
@@ -2961,8 +2937,7 @@ print(json.dumps({
   }
 }))
 PY
-)" \
-  "${DAEMON_URL}/api/v1/config/update")"
+)")"
 
 python3 - <<PY
 import json, sys
@@ -3000,9 +2975,7 @@ PY
 
 restart_agentd_without_voice_defaults
 
-invalid_default_self_healed="$(curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  "${DAEMON_URL}/api/v1/config")"
+invalid_default_self_healed="$(config_get)"
 
 python3 - <<PY
 import json, sqlite3, sys
@@ -3462,9 +3435,7 @@ PY
 
 restart_agentd_without_voice_defaults
 
-invalid_node_bin_config_json="$(curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  "${DAEMON_URL}/api/v1/config")"
+invalid_node_bin_config_json="$(config_get)"
 
 python3 - <<PY
 import json, sys
