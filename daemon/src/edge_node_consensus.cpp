@@ -238,6 +238,21 @@ bool EdgeConsensusReplica::has_quorum() const {
   return agent_edge_consensus_has_quorum(cluster_size_, votes) != 0;
 }
 
+bool EdgeConsensusReplica::leader_commit_witnesses_valid(const EdgeConsensusFrame& frame) const {
+  size_t valid_witness_count = 0;
+  bool leader_is_witness = false;
+  std::set<std::string> seen_node_ids;
+  for (const auto& witness : frame.vote_witnesses) {
+    if (!membership_matches(witness)) continue;
+    if (!trust_epochs_match(witness.trust_epochs)) continue;
+    if (!seen_node_ids.insert(witness.node_id).second) continue;
+    valid_witness_count++;
+    if (witness.node_id == frame.leader_node_id) leader_is_witness = true;
+  }
+  return agent_edge_consensus_leader_commit_witnesses_can_accept(
+           cluster_size_, valid_witness_count, leader_is_witness ? 1 : 0) != 0;
+}
+
 EdgeConsensusFrame EdgeConsensusReplica::make_vote_grant_frame(
   const std::string& candidate_node_id,
   const std::string& decision_sha256
@@ -369,6 +384,7 @@ bool EdgeConsensusReplica::handle_frame(
         frame.term,
         node_is_member(frame.leader_node_id) ? 1 : 0,
         trust_epochs_match(frame.from.trust_epochs) ? 1 : 0)) return true;
+  if (!leader_commit_witnesses_valid(frame)) return true;
   maybe_reset_for_new_term(frame.term);
   leader_node_id_ = frame.leader_node_id;
   voted_for_node_id_ = frame.leader_node_id;

@@ -232,6 +232,51 @@ static void test_membership_epoch_and_nonmember_rejection() {
   assert(reply_c.size() == 1);
 }
 
+static void test_leader_commit_requires_valid_witness_quorum() {
+  EdgeConsensusReplica a(make_identity("node-a", 7, 3, 5), 3);
+  EdgeConsensusReplica b(make_identity("node-b", 7, 3, 5), 3);
+  EdgeConsensusReplica c(make_identity("node-c", 7, 3, 5), 3);
+  for (EdgeConsensusReplica* replica : {&a, &b, &c}) {
+    set_membership_all(replica, 1, {"node-a", "node-b", "node-c"});
+  }
+
+  const EdgeConsensusFrame req =
+    a.start_election("sha256:5656565656565656565656565656565656565656565656565656565656565656");
+  std::vector<EdgeConsensusFrame> reply_b;
+  deliver(b, req, &reply_b);
+  assert(reply_b.size() == 1);
+  std::vector<EdgeConsensusFrame> a_emit;
+  deliver(a, reply_b[0], &a_emit);
+  assert(a_emit.size() == 1);
+  const EdgeConsensusFrame commit = a_emit[0];
+  assert(commit.kind == "leader_commit");
+  assert(commit.vote_witnesses.size() == 2);
+
+  EdgeConsensusFrame no_witness_commit = commit;
+  no_witness_commit.frame_id += ":no_witness";
+  no_witness_commit.vote_witnesses.clear();
+  deliver(c, no_witness_commit);
+  assert(c.leader_node_id().empty());
+
+  EdgeConsensusFrame no_leader_witness_commit = commit;
+  no_leader_witness_commit.frame_id += ":no_leader";
+  no_leader_witness_commit.vote_witnesses.clear();
+  no_leader_witness_commit.vote_witnesses.push_back(make_identity("node-b", 7, 3, 5));
+  no_leader_witness_commit.vote_witnesses.push_back(make_identity("node-c", 7, 3, 5));
+  deliver(c, no_leader_witness_commit);
+  assert(c.leader_node_id().empty());
+
+  EdgeConsensusFrame bad_trust_witness_commit = commit;
+  bad_trust_witness_commit.frame_id += ":bad_trust";
+  bad_trust_witness_commit.vote_witnesses[1].trust_epochs.trust_roots_epoch = 99;
+  deliver(c, bad_trust_witness_commit);
+  assert(c.leader_node_id().empty());
+
+  deliver(c, commit);
+  assert(c.leader_node_id() == "node-a");
+  assert(c.committed_decision_sha256() == commit.decision_sha256);
+}
+
 }  // namespace
 
 int main() {
@@ -240,5 +285,6 @@ int main() {
   test_partition_and_quorum_recovery();
   test_trust_epoch_mismatch_requires_recovery();
   test_membership_epoch_and_nonmember_rejection();
+  test_leader_commit_requires_valid_witness_quorum();
   return 0;
 }

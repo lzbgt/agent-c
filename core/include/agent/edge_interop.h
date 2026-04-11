@@ -184,6 +184,12 @@ int agent_edge_consensus_leader_commit_can_accept(
   int trust_epochs_match
 );
 
+int agent_edge_consensus_leader_commit_witnesses_can_accept(
+  size_t cluster_size,
+  size_t valid_witness_count,
+  int leader_is_witness
+);
+
 // Consensus membership validation helpers shared by firmware and agentd.
 #define AGENT_EDGE_CONSENSUS_MEMBERSHIP_LINEAGE_MAX 8
 

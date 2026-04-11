@@ -277,6 +277,14 @@ int agent_edge_consensus_leader_commit_can_accept(
   return commit_term >= current_term && leader_node_is_member && trust_epochs_match ? 1 : 0;
 }
 
+int agent_edge_consensus_leader_commit_witnesses_can_accept(
+  size_t cluster_size,
+  size_t valid_witness_count,
+  int leader_is_witness
+) {
+  return leader_is_witness && agent_edge_consensus_has_quorum(cluster_size, valid_witness_count) ? 1 : 0;
+}
+
 int agent_edge_consensus_member_node_id_is_valid(const char* node_id, size_t node_id_len) {
   return agent_umbmp_id_is_safe(node_id, node_id_len);
 }

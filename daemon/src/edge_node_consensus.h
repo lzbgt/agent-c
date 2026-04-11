@@ -80,6 +80,7 @@ class EdgeConsensusReplica {
   bool membership_matches(const EdgeConsensusIdentity& other) const;
   bool node_is_member(const std::string& node_id) const;
   bool has_quorum() const;
+  bool leader_commit_witnesses_valid(const EdgeConsensusFrame& frame) const;
   EdgeConsensusFrame make_vote_grant_frame(const std::string& candidate_node_id, const std::string& decision_sha256) const;
   EdgeConsensusFrame make_leader_commit_frame() const;
   void maybe_reset_for_new_term(uint64_t term);
