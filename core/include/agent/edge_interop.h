@@ -160,6 +160,7 @@ int agent_edge_consensus_vote_request_can_grant(
   uint64_t current_term,
   uint64_t request_term,
   int candidate_node_is_member,
+  int candidate_is_sender,
   int trust_epochs_match,
   const char* voted_for_node_id,
   size_t voted_for_node_id_len,
@@ -172,6 +173,7 @@ int agent_edge_consensus_vote_grant_can_count(
   uint64_t grant_term,
   int candidate_node_is_member,
   int candidate_is_self,
+  int grant_sender_is_candidate,
   int campaign_decision_matches,
   int granted,
   int trust_epochs_match
@@ -181,6 +183,7 @@ int agent_edge_consensus_leader_commit_can_accept(
   uint64_t current_term,
   uint64_t commit_term,
   int leader_node_is_member,
+  int leader_is_sender,
   int trust_epochs_match
 );
 

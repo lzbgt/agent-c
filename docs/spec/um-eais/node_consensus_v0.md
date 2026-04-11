@@ -142,7 +142,8 @@ The shipped autonomous host-loop proof adds:
   copying C++ host logic
 - portable `agent_core` vote-request, vote-grant, and leader-commit acceptance predicates are now reused by the daemon
   replica, so firmware-native ports share the same term, membership, trust-epoch, and voted-for gating decisions as
-  agentd while keeping frame mutation host-local
+  agentd while keeping frame mutation host-local; those predicates now also enforce role identity, requiring vote
+  requests from the candidate, vote grants from a distinct voter, and leader commits from the claimed leader
 - leader-commit acceptance now also requires a portable quorum-witness check: the carried vote witnesses must include
   the leader and enough member/trust-valid unique witnesses for quorum before a follower adopts the commit
 - portable `agent_core` node-loop timing gates are now reused by the daemon loop for leader heartbeats, leader-lease

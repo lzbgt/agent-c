@@ -236,13 +236,14 @@ int agent_edge_consensus_vote_request_can_grant(
   uint64_t current_term,
   uint64_t request_term,
   int candidate_node_is_member,
+  int candidate_is_sender,
   int trust_epochs_match,
   const char* voted_for_node_id,
   size_t voted_for_node_id_len,
   const char* candidate_node_id,
   size_t candidate_node_id_len
 ) {
-  if (!candidate_node_is_member || !trust_epochs_match) return 0;
+  if (!candidate_node_is_member || !candidate_is_sender || !trust_epochs_match) return 0;
   if (request_term < current_term) return 0;
   if (request_term > current_term) return 1;
   if (voted_for_node_id_len == 0) return 1;
@@ -256,6 +257,7 @@ int agent_edge_consensus_vote_grant_can_count(
   uint64_t grant_term,
   int candidate_node_is_member,
   int candidate_is_self,
+  int grant_sender_is_candidate,
   int campaign_decision_matches,
   int granted,
   int trust_epochs_match
@@ -263,6 +265,7 @@ int agent_edge_consensus_vote_grant_can_count(
   return grant_term >= current_term &&
          candidate_node_is_member &&
          candidate_is_self &&
+         !grant_sender_is_candidate &&
          campaign_decision_matches &&
          granted &&
          trust_epochs_match ? 1 : 0;
@@ -272,9 +275,10 @@ int agent_edge_consensus_leader_commit_can_accept(
   uint64_t current_term,
   uint64_t commit_term,
   int leader_node_is_member,
+  int leader_is_sender,
   int trust_epochs_match
 ) {
-  return commit_term >= current_term && leader_node_is_member && trust_epochs_match ? 1 : 0;
+  return commit_term >= current_term && leader_node_is_member && leader_is_sender && trust_epochs_match ? 1 : 0;
 }
 
 int agent_edge_consensus_leader_commit_witnesses_can_accept(

@@ -277,6 +277,50 @@ static void test_leader_commit_requires_valid_witness_quorum() {
   assert(c.committed_decision_sha256() == commit.decision_sha256);
 }
 
+static void test_frame_role_identity_rejection() {
+  EdgeConsensusReplica a(make_identity("node-a", 7, 3, 5), 3);
+  EdgeConsensusReplica b(make_identity("node-b", 7, 3, 5), 3);
+  EdgeConsensusReplica c(make_identity("node-c", 7, 3, 5), 3);
+  for (EdgeConsensusReplica* replica : {&a, &b, &c}) {
+    set_membership_all(replica, 1, {"node-a", "node-b", "node-c"});
+  }
+
+  EdgeConsensusFrame forged_req =
+    a.start_election("sha256:7878787878787878787878787878787878787878787878787878787878787878");
+  forged_req.frame_id += ":forged_sender";
+  forged_req.from = make_identity("node-b", 7, 3, 5);
+  std::vector<EdgeConsensusFrame> forged_req_reply;
+  deliver(c, forged_req, &forged_req_reply);
+  assert(forged_req_reply.empty());
+
+  const EdgeConsensusFrame req =
+    a.start_election("sha256:9090909090909090909090909090909090909090909090909090909090909090");
+  std::vector<EdgeConsensusFrame> reply_b;
+  deliver(b, req, &reply_b);
+  assert(reply_b.size() == 1);
+
+  EdgeConsensusFrame forged_self_grant = reply_b[0];
+  forged_self_grant.frame_id += ":self_grant";
+  forged_self_grant.from = make_identity("node-a", 7, 3, 5);
+  std::vector<EdgeConsensusFrame> a_emit;
+  deliver(a, forged_self_grant, &a_emit);
+  assert(a.leader_node_id().empty());
+  assert(a_emit.empty());
+
+  deliver(a, reply_b[0], &a_emit);
+  assert(a_emit.size() == 1);
+  const EdgeConsensusFrame commit = a_emit[0];
+
+  EdgeConsensusFrame forged_commit_sender = commit;
+  forged_commit_sender.frame_id += ":forged_sender";
+  forged_commit_sender.from = make_identity("node-b", 7, 3, 5);
+  deliver(c, forged_commit_sender);
+  assert(c.leader_node_id().empty());
+
+  deliver(c, commit);
+  assert(c.leader_node_id() == "node-a");
+}
+
 }  // namespace
 
 int main() {
@@ -286,5 +330,6 @@ int main() {
   test_trust_epoch_mismatch_requires_recovery();
   test_membership_epoch_and_nonmember_rejection();
   test_leader_commit_requires_valid_witness_quorum();
+  test_frame_role_identity_rejection();
   return 0;
 }

@@ -346,6 +346,7 @@ bool EdgeConsensusReplica::handle_frame(
           current_term_,
           frame.term,
           node_is_member(frame.candidate_node_id) ? 1 : 0,
+          frame.candidate_node_id == frame.from.node_id ? 1 : 0,
           trust_epochs_match(frame.from.trust_epochs) ? 1 : 0,
           voted_for_node_id_.data(),
           voted_for_node_id_.size(),
@@ -365,6 +366,7 @@ bool EdgeConsensusReplica::handle_frame(
           frame.term,
           node_is_member(frame.candidate_node_id) ? 1 : 0,
           frame.candidate_node_id == self_.node_id ? 1 : 0,
+          frame.from.node_id == frame.candidate_node_id ? 1 : 0,
           !campaign_decision_sha256_.empty() && frame.decision_sha256 == campaign_decision_sha256_ ? 1 : 0,
           frame.granted ? 1 : 0,
           trust_epochs_match(frame.from.trust_epochs) ? 1 : 0)) return true;
@@ -383,6 +385,7 @@ bool EdgeConsensusReplica::handle_frame(
         current_term_,
         frame.term,
         node_is_member(frame.leader_node_id) ? 1 : 0,
+        frame.from.node_id == frame.leader_node_id ? 1 : 0,
         trust_epochs_match(frame.from.trust_epochs) ? 1 : 0)) return true;
   if (!leader_commit_witnesses_valid(frame)) return true;
   maybe_reset_for_new_term(frame.term);
