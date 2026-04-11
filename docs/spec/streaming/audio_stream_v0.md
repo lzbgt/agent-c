@@ -158,7 +158,7 @@ A v0 smoke test should:
   a full WebRTC session.
 - `ui/e2e/broker_audio_panel.spec.ts` covers the browser-side WebRTC control flow against a deterministic mocked peer.
 - `tests/agentd_audio_webrtc_peer_smoke.sh` plus `tools/agentd_audio_webrtc_peer.js` cover a real browser-to-agentd-side
-  RTP path over broker signaling, including offer/answer exchange, ICE candidates, inbound audio stats, and `bye`
+  direct RTP path negotiated over broker signaling, including offer/answer exchange, ICE candidates, inbound audio stats, and `bye`
   teardown against a live headless Chromium peer.
 - `tests/agentd_audio_signal_loopback_smoke.sh` now also proves agentd-side graceful `bye` after the stub `answer`,
   and confirms the broker reports the session closed rather than leaving teardown implicit.

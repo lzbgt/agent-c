@@ -248,7 +248,7 @@ These are the most leveraged next steps grounded in current architecture:
      attestation bundles, verification tooling, and host-smoke coverage are shipped.
 
 4) **Voice workflow spec**
-   - Audio streaming protocol and loopback/relay foundations are shipped.
+   - Audio streaming protocol and loopback/signaling-relay foundations are shipped.
    - Completed 2026-03-15: browser-side WebRTC workflow controls, a host-side agentd media peer RTP proof, and an agentd-managed media-peer runtime surface are shipped.
    - Completed 2026-03-15: that media-peer runtime surface now exposes an explicit backend contract (`bundled` by
      default when the repo helper is present, `external` as override, `builtin` reserved), so the future native media
