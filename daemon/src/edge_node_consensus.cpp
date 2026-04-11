@@ -512,7 +512,7 @@ bool EdgeConsensusReplica::handle_frame(
   }
 
   if (frame.kind == AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT) {
-    if (frame.term < current_term_) return true;
+    if (agent_edge_consensus_incoming_term_is_stale(current_term_, frame.term)) return true;
     maybe_reset_for_new_term(frame.term);
     if (!agent_edge_consensus_vote_grant_can_count(
           current_term_,

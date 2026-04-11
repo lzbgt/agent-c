@@ -250,6 +250,9 @@ static void test_consensus_constants_and_quorum(void) {
   assert(agent_edge_consensus_incoming_term_advances(3, 4) == 1);
   assert(agent_edge_consensus_incoming_term_advances(3, 3) == 0);
   assert(agent_edge_consensus_incoming_term_advances(3, 2) == 0);
+  assert(agent_edge_consensus_incoming_term_is_stale(3, 2) == 1);
+  assert(agent_edge_consensus_incoming_term_is_stale(3, 3) == 0);
+  assert(agent_edge_consensus_incoming_term_is_stale(3, 4) == 0);
   assert(agent_edge_consensus_seen_frame_should_drop(1, 3, 3) == 1);
   assert(agent_edge_consensus_seen_frame_should_drop(1, 3, 4) == 0);
   assert(agent_edge_consensus_seen_frame_should_drop(0, 3, 3) == 0);

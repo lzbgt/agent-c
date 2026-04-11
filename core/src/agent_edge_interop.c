@@ -442,6 +442,13 @@ int agent_edge_consensus_incoming_term_advances(
   return incoming_term > current_term ? 1 : 0;
 }
 
+int agent_edge_consensus_incoming_term_is_stale(
+  uint64_t current_term,
+  uint64_t incoming_term
+) {
+  return incoming_term < current_term ? 1 : 0;
+}
+
 int agent_edge_consensus_seen_frame_should_drop(
   int frame_id_seen,
   uint64_t seen_term,
