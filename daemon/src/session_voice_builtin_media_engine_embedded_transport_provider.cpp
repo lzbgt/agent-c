@@ -1,5 +1,6 @@
 #include "session_voice_audio_decode.h"
 #include "session_voice_audio_encode.h"
+#include "session_voice_builtin_audio_payload.h"
 #include "session_voice_builtin_media_engine_plugin.h"
 #include "session_voice_builtin_progress_key.h"
 #include "session_voice_builtin_sdp_answer.h"
@@ -415,41 +416,25 @@ bool decode_inbound_audio_frame(
 
 void clear_outbound_audio_payload_selection(EmbeddedTransportState* engine) {
   if (!engine) return;
-  engine->outbound_audio_encoder.reset();
+  agentd::clear_builtin_outbound_audio_payload_selection(
+    &engine->outbound_audio_encoder,
+    nullptr);
   engine->audio_outbound_payload_type = -1;
   engine->audio_outbound_sample_rate_hz = 0;
   engine->audio_outbound_channels = 0;
   engine->audio_outbound_codec_name.clear();
 }
 
-bool select_outbound_audio_payload(
+void apply_outbound_audio_payload_selection(
   EmbeddedTransportState* engine,
-  const std::vector<agentd::RtpAudioPayloadSpec>& payload_specs
+  const agentd::BuiltinOutboundAudioPayloadSelection& selection
 ) {
-  if (!engine) return false;
-  clear_outbound_audio_payload_selection(engine);
-
-  std::string select_err;
-  if (!engine->outbound_audio_encoder.select_payload(payload_specs, &select_err)) {
-    engine->audio_outbound_last_error = select_err.empty()
-      ? std::string("remote SDP did not negotiate a supported outbound audio payload")
-      : select_err;
-    return false;
-  }
-  const agentd::RtpAudioPayloadSpec* selected =
-    engine->outbound_audio_encoder.selected_payload();
-  if (!selected) {
-    engine->audio_outbound_last_error =
-      "remote SDP did not negotiate a supported outbound audio payload";
-    return false;
-  }
-
-  engine->audio_outbound_payload_type = selected->payload_type;
-  engine->audio_outbound_sample_rate_hz = selected->sample_rate_hz;
-  engine->audio_outbound_channels = selected->channels;
-  engine->audio_outbound_codec_name = selected->codec_name;
-  engine->audio_outbound_last_error.clear();
-  return true;
+  if (!engine) return;
+  engine->audio_outbound_payload_type = selection.payload_type;
+  engine->audio_outbound_sample_rate_hz = selection.sample_rate_hz;
+  engine->audio_outbound_channels = selection.channels;
+  engine->audio_outbound_codec_name = selection.codec_name;
+  engine->audio_outbound_last_error = selection.error;
 }
 
 bool select_outbound_audio_payload_from_answer_sdp(
@@ -458,12 +443,15 @@ bool select_outbound_audio_payload_from_answer_sdp(
   bool allow_ice_only_fallback
 ) {
   if (!engine) return false;
-  std::vector<agentd::RtpAudioPayloadSpec> payload_specs =
-    agentd::parse_first_active_audio_payload_specs_from_sdp(answer_sdp);
-  if (payload_specs.empty() && allow_ice_only_fallback) {
-    payload_specs = engine->audio_decoder.payload_specs();
-  }
-  return select_outbound_audio_payload(engine, payload_specs);
+  agentd::BuiltinOutboundAudioPayloadSelection selection;
+  const bool selected = agentd::select_builtin_outbound_audio_payload_from_answer_sdp(
+    &engine->outbound_audio_encoder,
+    answer_sdp,
+    engine->audio_decoder.payload_specs(),
+    allow_ice_only_fallback,
+    &selection);
+  apply_outbound_audio_payload_selection(engine, selection);
+  return selected;
 }
 
 void write_u16_be(unsigned char* out, uint16_t value) {
