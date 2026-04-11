@@ -327,11 +327,14 @@ A v0 smoke test should:
   audio answers now also prune unsupported audio payloads instead of mirroring the full offer: Opus is advertised only
   when this build has `libopus`, PCMU/PCMA G.711 remain supported, telephone-event-style non-audio payloads are dropped,
   unsupported audio m-lines are rejected as inactive/port-zero, and extra audio m-lines are rejected so the answer
-  advertises only the single provider-owned audio stream. The remaining gap is no longer basic outbound RTP,
+  advertises only the single provider-owned audio stream. Browser answer coverage now also proves supported RTCP feedback
+  and RTP header-extension attributes survive for accepted payloads while unsupported payload-bound feedback plus remote
+  offer `msid`/SSRC track identity are stripped before agentd adds its provider-owned stream identity. The remaining gap
+  is no longer basic outbound RTP,
   Opus ownership, one-shot Sender/Receiver Report transmit, per-frame Sender Report spam, compound packet emission,
   answer direction, basic browser full-duplex proof, unsupported non-audio section rejection, or multi-audio m-line
-  rejection, or browser-backed proof for rejected sections plus real/empty candidate ingestion and G.711 negotiation; it
-  is broader browser, codec, and candidate-edge hardening.
+  rejection, browser-backed proof for rejected sections plus real/empty candidate ingestion and G.711 negotiation, or
+  accepted-payload feedback/extmap filtering proof; it is broader browser, codec, and candidate-edge hardening.
 - That runtime contract now also exposes the media-engine seam directly: planned/live builtin paths report
   `media_engine_kind=builtin_reserved|builtin_signaling_stub|builtin_native_plugin`, bundled/external runtimes report
   `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` now distinguish the

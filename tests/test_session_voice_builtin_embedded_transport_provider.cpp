@@ -379,6 +379,43 @@ std::string make_pcma_only_browser_offer_sdp() {
     "a=end-of-candidates\r\n";
 }
 
+std::string make_browser_offer_with_feedback_extmaps_and_remote_track_attrs_sdp() {
+  return
+    "v=0\r\n"
+    "o=- 4962323985234234 2 IN IP4 127.0.0.1\r\n"
+    "s=-\r\n"
+    "t=0 0\r\n"
+    "a=group:BUNDLE 0\r\n"
+    "a=msid-semantic: WMS\r\n"
+    "m=audio 9 UDP/TLS/RTP/SAVPF 111 0 8 101\r\n"
+    "c=IN IP4 0.0.0.0\r\n"
+    "a=mid:0\r\n"
+    "a=sendrecv\r\n"
+    "a=rtcp-mux\r\n"
+    "a=rtcp-rsize\r\n"
+    "a=rtcp-mux-only\r\n"
+    "a=rtpmap:111 opus/48000/2\r\n"
+    "a=rtpmap:0 PCMU/8000\r\n"
+    "a=rtpmap:8 PCMA/8000\r\n"
+    "a=rtpmap:101 telephone-event/8000\r\n"
+    "a=fmtp:111 minptime=10;useinbandfec=1\r\n"
+    "a=rtcp-fb:111 transport-cc\r\n"
+    "a=rtcp-fb:0 nack\r\n"
+    "a=rtcp-fb:101 nack\r\n"
+    "a=rtcp-fb:* nack\r\n"
+    "a=extmap-allow-mixed\r\n"
+    "a=extmap:3 urn:ietf:params:rtp-hdrext:sdes:mid\r\n"
+    "a=msid:remote_stream remote_track\r\n"
+    "a=ssrc:1234 cname:remote-cname\r\n"
+    "a=ssrc:1234 msid:remote_stream remote_track\r\n"
+    "a=ice-ufrag:remoteUfrag\r\n"
+    "a=ice-pwd:remotePassword123\r\n"
+    "a=fingerprint:sha-256 11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00\r\n"
+    "a=setup:actpass\r\n"
+    "a=candidate:1 1 UDP 2113667327 192.168.0.11 40000 typ host\r\n"
+    "a=end-of-candidates\r\n";
+}
+
 std::string make_pcmu_only_active_audio_with_extra_opus_offer_sdp() {
   return
     "v=0\r\n"
@@ -565,6 +602,54 @@ static void test_embedded_transport_provider_mirrors_browser_offer_shape_with_dt
     assert(answer_event["audio_outbound_codec_name"].asString() == "PCMU");
     assert(answer_event["audio_outbound_sample_rate_hz"].asInt64() == 8000);
     assert(answer_event["audio_outbound_channels"].asInt64() == 1);
+  }
+}
+
+static void test_embedded_transport_provider_preserves_supported_feedback_and_strips_remote_tracks() {
+  DaemonConfig cfg;
+  cfg.audio_webrtc_builtin_mode = "native_plugin";
+  cfg.audio_webrtc_builtin_native_library_path =
+    AGENTD_TEST_VOICE_MEDIA_ENGINE_EMBEDDED_PLUGIN_PATH;
+
+  std::string err;
+  auto engine = make_builtin_voice_peer_media_engine(cfg, &err);
+  assert(engine);
+  assert(err.empty());
+
+  VoicePeerRuntime runtime;
+  Json::Value init_event(Json::nullValue);
+  assert(engine->initialize(&runtime, &init_event, &err));
+  assert(err.empty());
+  note_voice_peer_media_engine_event(&runtime, init_event);
+
+  VoiceBrokerSignalRemoteDescriptionReady ready;
+  ready.description.type = "offer";
+  ready.description.sdp = make_browser_offer_with_feedback_extmaps_and_remote_track_attrs_sdp();
+  ready.initial_remote_candidates.resize(1);
+
+  VoiceBrokerSignalDescription answer;
+  Json::Value answer_event(Json::nullValue);
+  assert(engine->handle_remote_description(ready, &answer, &answer_event, &err));
+  assert(err.empty());
+  note_voice_peer_media_engine_event(&runtime, answer_event);
+  assert(answer.type == "answer");
+  assert(answer.sdp.find("a=rtcp-fb:0 nack\r\n") != std::string::npos);
+  assert(answer.sdp.find("a=rtcp-fb:* nack\r\n") != std::string::npos);
+  assert(answer.sdp.find("a=rtcp-fb:101 nack\r\n") == std::string::npos);
+  assert(answer.sdp.find("a=rtpmap:101 telephone-event/8000\r\n") == std::string::npos);
+  assert(answer.sdp.find("a=extmap-allow-mixed\r\n") != std::string::npos);
+  assert(answer.sdp.find("a=extmap:3 urn:ietf:params:rtp-hdrext:sdes:mid\r\n") != std::string::npos);
+  assert(answer.sdp.find("a=msid:remote_stream remote_track\r\n") == std::string::npos);
+  assert(answer.sdp.find("a=ssrc:1234 ") == std::string::npos);
+  assert(answer.sdp.find("a=msid:agentd_builtin_stream agentd_builtin_audio\r\n") != std::string::npos);
+  if (engine->info().provider_capabilities["audio_outbound_opus"].asBool()) {
+    assert(answer.sdp.find("a=rtcp-fb:111 transport-cc\r\n") != std::string::npos);
+    assert(answer_event["audio_outbound_payload_type"].asInt64() == 111);
+    assert(answer_event["audio_outbound_codec_name"].asString() == "OPUS");
+  } else {
+    assert(answer.sdp.find("a=rtcp-fb:111 transport-cc\r\n") == std::string::npos);
+    assert(answer_event["audio_outbound_payload_type"].asInt64() == 0);
+    assert(answer_event["audio_outbound_codec_name"].asString() == "PCMU");
   }
 }
 
@@ -860,6 +945,7 @@ static void test_embedded_transport_provider_reaches_local_ice_connectivity() {
 int main() {
   test_embedded_transport_provider_loads_and_answers_remote_offer();
   test_embedded_transport_provider_mirrors_browser_offer_shape_with_dtls_identity();
+  test_embedded_transport_provider_preserves_supported_feedback_and_strips_remote_tracks();
   test_embedded_transport_provider_selects_pcma_when_pcmu_is_unavailable();
   test_embedded_transport_provider_selects_codec_from_accepted_audio_mline();
   test_embedded_transport_provider_reaches_local_ice_connectivity();

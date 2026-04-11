@@ -114,6 +114,27 @@ std::string offer_with_telephone_event() {
   return offer;
 }
 
+std::string offer_with_feedback_extmaps_and_remote_track_attrs() {
+  std::string offer = browser_offer();
+  const std::string needle = "m=audio 9 UDP/TLS/RTP/SAVPF 111 0 8\r\n";
+  const size_t pos = offer.find(needle);
+  assert(pos != std::string::npos);
+  offer.replace(pos, needle.size(), "m=audio 9 UDP/TLS/RTP/SAVPF 111 0 8 101\r\n");
+  offer +=
+    "a=rtpmap:101 telephone-event/8000\r\n"
+    "a=rtcp-fb:111 transport-cc\r\n"
+    "a=rtcp-fb:0 nack\r\n"
+    "a=rtcp-fb:101 nack\r\n"
+    "a=rtcp-fb:* nack\r\n"
+    "a=rtcp-mux-only\r\n"
+    "a=extmap-allow-mixed\r\n"
+    "a=extmap:3 urn:ietf:params:rtp-hdrext:sdes:mid\r\n"
+    "a=msid:remote_stream remote_track\r\n"
+    "a=ssrc:1234 cname:remote-cname\r\n"
+    "a=ssrc:1234 msid:remote_stream remote_track\r\n";
+  return offer;
+}
+
 std::string unsupported_audio_offer() {
   return
     "v=0\r\n"
@@ -208,6 +229,38 @@ void test_active_answer_prunes_unsupported_audio_payloads() {
   assert(answer.find(expected_answer_audio_mline()) != std::string::npos);
   assert(answer.find(" 101\r\n") == std::string::npos);
   assert(answer.find("a=rtpmap:101 telephone-event/8000\r\n") == std::string::npos);
+}
+
+void test_active_answer_preserves_supported_media_attrs_and_strips_remote_track_attrs() {
+  const std::string answer = agentd::build_builtin_active_answer_sdp({
+    offer_with_feedback_extmaps_and_remote_track_attrs(),
+    local_description(),
+    true,
+    "passive",
+    "AA:BB:CC",
+    2799795457u,
+    "agentd-builtin-native",
+    "agentd_builtin_stream",
+    "agentd_builtin_audio",
+  });
+
+  assert(answer.find(expected_answer_audio_mline()) != std::string::npos);
+#if defined(AGENTD_HAVE_OPUS)
+  assert(answer.find("a=rtcp-fb:111 transport-cc\r\n") != std::string::npos);
+#else
+  assert(answer.find("a=rtcp-fb:111 transport-cc\r\n") == std::string::npos);
+#endif
+  assert(answer.find("a=rtcp-fb:0 nack\r\n") != std::string::npos);
+  assert(answer.find("a=rtcp-fb:* nack\r\n") != std::string::npos);
+  assert(answer.find("a=rtcp-fb:101 nack\r\n") == std::string::npos);
+  assert(answer.find("a=rtpmap:101 telephone-event/8000\r\n") == std::string::npos);
+  assert(answer.find("a=rtcp-mux-only\r\n") != std::string::npos);
+  assert(answer.find("a=extmap-allow-mixed\r\n") != std::string::npos);
+  assert(answer.find("a=extmap:3 urn:ietf:params:rtp-hdrext:sdes:mid\r\n") != std::string::npos);
+  assert(answer.find("a=msid:remote_stream remote_track\r\n") == std::string::npos);
+  assert(answer.find("a=ssrc:1234 ") == std::string::npos);
+  assert(answer.find("a=msid:agentd_builtin_stream agentd_builtin_audio\r\n") != std::string::npos);
+  assert(count_occurrences(answer, "a=ssrc:2799795457 ") == 2);
 }
 
 void test_active_answer_rejects_audio_mline_without_supported_payloads() {
@@ -406,6 +459,7 @@ void test_sdp_marker_helpers_trim_inputs() {
 int main() {
   test_active_answer_mirrors_browser_offer_media_contract();
   test_active_answer_prunes_unsupported_audio_payloads();
+  test_active_answer_preserves_supported_media_attrs_and_strips_remote_track_attrs();
   test_active_answer_rejects_audio_mline_without_supported_payloads();
   test_active_answer_normalizes_bare_local_candidate_lines();
   test_active_answer_keeps_audio_ssrc_on_audio_mline_only();

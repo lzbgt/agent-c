@@ -252,8 +252,11 @@ no longer dependency discovery, basic RTP ownership, negotiated Opus transmit,
 one-shot Sender/Receiver Report transmit, compound RTCP packet emission, active
 answer direction, basic browser full-duplex proof, unsupported non-audio section
 rejection, multi-audio m-line rejection, or browser-backed proof for rejected
-sections plus real/empty candidate ingestion; it is broader browser, codec, and
-candidate-edge hardening.
+sections plus real/empty candidate ingestion. Direct answer-helper and provider
+coverage now also proves accepted-payload RTCP feedback/header-extension
+attributes survive while unsupported feedback and remote offer `msid`/SSRC track
+identity are stripped before agentd adds its provider-owned stream identity. The
+remaining gap is broader browser, codec, and candidate-edge hardening.
 
 ## Recommended Next Technical Decision
 
@@ -286,4 +289,6 @@ Report as part of a compound RTCP packet on a bounded cadence. It now also
 emits bounded compound SRTCP Receiver Report packets after inbound RTP media
 arrives. The next concrete step after this negotiated transmit path is broader
 browser/codec/candidate hardening and provider-size reduction rather than more
-DTLS/SRTP/control-plane work.
+DTLS/SRTP/control-plane work; accepted-payload RTCP feedback/extmap filtering and
+remote offer track-identity stripping are now covered by focused helper and
+provider tests.
