@@ -183,6 +183,12 @@ The shipped autonomous host-loop proof adds:
 - managed runtimes now consume delivered `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE` outbox messages in the reusable node
   loop, adopt strictly-newer self-including membership policy without restart, reset stale election/leader state at the
   epoch boundary, and then converge consensus under the adopted member set and timing policy
+- portable `agent_core` consensus outbox message classification is now reused by the managed runtime core, so embedded
+  firmware and agentd select between relayed `CONSENSUS_FRAME`, delivered `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE`, and
+  ignored unrelated UM-BMP messages through the same exact message-type boundary
+- portable `agent_core` committed-decision presence detection is now reused by the daemon runtime core and node loop, so
+  firmware-native ports share the same whitespace-insensitive state gate for commit exit, leader heartbeat, and campaign
+  scheduling decisions
 
 ## Still open
 

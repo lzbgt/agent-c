@@ -3,6 +3,8 @@
 #include "edge_consensus_runtime_loop_adapter.h"
 #include "string_util.h"
 
+#include <agent/edge_interop.h>
+
 #include <chrono>
 #include <thread>
 
@@ -96,7 +98,9 @@ bool run_edge_consensus_runtime_core(
         const Json::Value env = row["msg"];
         const std::string type = env.isMember("type") && env["type"].isString() ? trim_copy(env["type"].asString()) : "";
         const Json::Value body = env.isMember("body") && env["body"].isObject() ? env["body"] : Json::Value(Json::objectValue);
-        if (type == AGENT_UM_BMP_TYPE_PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE) {
+        const agent_edge_consensus_message_type_t message_type =
+          agent_edge_consensus_message_type_classify(type.data(), type.size());
+        if (message_type == AGENT_EDGE_CONSENSUS_MESSAGE_MEMBERSHIP_BUNDLE) {
           const Json::Value membership = body.isMember("membership") && body["membership"].isObject()
             ? body["membership"]
             : Json::Value(Json::nullValue);
@@ -121,7 +125,7 @@ bool run_edge_consensus_runtime_core(
           processed_message = true;
           continue;
         }
-        if (type != AGENT_UM_BMP_TYPE_CONSENSUS_FRAME) continue;
+        if (message_type != AGENT_EDGE_CONSENSUS_MESSAGE_FRAME) continue;
         if (!body.isMember("frame") || !body["frame"].isObject()) continue;
         EdgeConsensusFrame frame;
         std::string ferr;
@@ -150,7 +154,10 @@ bool run_edge_consensus_runtime_core(
       }
     }
 
-    if (!trim_copy(loop.committed_decision_sha256()).empty()) {
+    const std::string committed_decision_sha256 = loop.committed_decision_sha256();
+    if (agent_edge_consensus_decision_sha256_is_set(
+          committed_decision_sha256.data(),
+          committed_decision_sha256.size())) {
       Json::Value result = edge_consensus_runtime_loop_result_json(cfg, loop, true, "");
       status_update(hooks, loop);
       *out_result = result;

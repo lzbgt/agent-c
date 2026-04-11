@@ -64,6 +64,17 @@ agent_status_t agent_umbmp_sanitize_id_token(
 #define AGENT_UM_BMP_TYPE_CONSENSUS_FRAME "CONSENSUS_FRAME"
 #define AGENT_UM_BMP_TYPE_PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE "PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE"
 
+typedef enum agent_edge_consensus_message_type_t {
+  AGENT_EDGE_CONSENSUS_MESSAGE_OTHER = 0,
+  AGENT_EDGE_CONSENSUS_MESSAGE_FRAME = 1,
+  AGENT_EDGE_CONSENSUS_MESSAGE_MEMBERSHIP_BUNDLE = 2
+} agent_edge_consensus_message_type_t;
+
+agent_edge_consensus_message_type_t agent_edge_consensus_message_type_classify(
+  const char* type,
+  size_t type_len
+);
+
 // Consensus schemas shared by embedded nodes and agentd.
 #define AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1 "edge_node_consensus_frame_v1"
 #define AGENT_EDGE_CONSENSUS_MEMBERSHIP_SCHEMA_V1 "edge_consensus_membership_v1"
@@ -245,6 +256,11 @@ int agent_edge_consensus_decision_sha256_matches(
   size_t local_decision_sha256_len,
   const char* peer_decision_sha256,
   size_t peer_decision_sha256_len
+);
+
+int agent_edge_consensus_decision_sha256_is_set(
+  const char* decision_sha256,
+  size_t decision_sha256_len
 );
 
 int agent_edge_consensus_vote_request_can_grant(

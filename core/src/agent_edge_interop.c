@@ -219,6 +219,19 @@ static int consensus_string_eq(const char* s, size_t s_len, const char* lit) {
   return s_len == lit_len && memcmp(s, lit, lit_len) == 0;
 }
 
+agent_edge_consensus_message_type_t agent_edge_consensus_message_type_classify(
+  const char* type,
+  size_t type_len
+) {
+  if (consensus_string_eq(type, type_len, AGENT_UM_BMP_TYPE_CONSENSUS_FRAME)) {
+    return AGENT_EDGE_CONSENSUS_MESSAGE_FRAME;
+  }
+  if (consensus_string_eq(type, type_len, AGENT_UM_BMP_TYPE_PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE)) {
+    return AGENT_EDGE_CONSENSUS_MESSAGE_MEMBERSHIP_BUNDLE;
+  }
+  return AGENT_EDGE_CONSENSUS_MESSAGE_OTHER;
+}
+
 int agent_edge_consensus_frame_kind_is_valid(const char* kind, size_t kind_len) {
   return
     consensus_string_eq(kind, kind_len, AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST) ||
@@ -403,6 +416,21 @@ int agent_edge_consensus_decision_sha256_matches(
   if (!agent_umbmp_sha256_token_is_safe(peer_decision_sha256, peer_decision_sha256_len)) return 0;
   return local_decision_sha256_len == peer_decision_sha256_len &&
          memcmp(local_decision_sha256, peer_decision_sha256, peer_decision_sha256_len) == 0 ? 1 : 0;
+}
+
+static int consensus_space_char(char c) {
+  return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v';
+}
+
+int agent_edge_consensus_decision_sha256_is_set(
+  const char* decision_sha256,
+  size_t decision_sha256_len
+) {
+  if (!decision_sha256) return 0;
+  for (size_t i = 0; i < decision_sha256_len; i++) {
+    if (!consensus_space_char(decision_sha256[i])) return 1;
+  }
+  return 0;
 }
 
 int agent_edge_consensus_vote_request_can_grant(

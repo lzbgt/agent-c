@@ -104,6 +104,19 @@ static void test_consensus_constants_and_quorum(void) {
   assert(strcmp(
            AGENT_EDGE_CONSENSUS_MEMBERSHIP_ATTEST_SCHEMA_V1,
            "edge_consensus_membership_attest_v1") == 0);
+  assert(agent_edge_consensus_message_type_classify(
+           AGENT_UM_BMP_TYPE_CONSENSUS_FRAME,
+           strlen(AGENT_UM_BMP_TYPE_CONSENSUS_FRAME)) == AGENT_EDGE_CONSENSUS_MESSAGE_FRAME);
+  assert(agent_edge_consensus_message_type_classify(
+           AGENT_UM_BMP_TYPE_PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE,
+           strlen(AGENT_UM_BMP_TYPE_PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE)) ==
+         AGENT_EDGE_CONSENSUS_MESSAGE_MEMBERSHIP_BUNDLE);
+  assert(agent_edge_consensus_message_type_classify(
+           "CONSENSUS_FRAME ",
+           strlen("CONSENSUS_FRAME ")) == AGENT_EDGE_CONSENSUS_MESSAGE_OTHER);
+  assert(agent_edge_consensus_message_type_classify("NODE_HELLO", strlen("NODE_HELLO")) ==
+         AGENT_EDGE_CONSENSUS_MESSAGE_OTHER);
+  assert(agent_edge_consensus_message_type_classify(NULL, 0) == AGENT_EDGE_CONSENSUS_MESSAGE_OTHER);
   assert(AGENT_EDGE_CONSENSUS_MEMBERSHIP_LINEAGE_MAX == 8);
   assert(strcmp(AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST, "vote_request") == 0);
   assert(strcmp(AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT, "vote_grant") == 0);
@@ -236,6 +249,12 @@ static void test_consensus_constants_and_quorum(void) {
            0,
            "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
            strlen("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")) == 0);
+  assert(agent_edge_consensus_decision_sha256_is_set(
+           "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+           strlen("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")) == 1);
+  assert(agent_edge_consensus_decision_sha256_is_set("  \t\n", strlen("  \t\n")) == 0);
+  assert(agent_edge_consensus_decision_sha256_is_set("", 0) == 0);
+  assert(agent_edge_consensus_decision_sha256_is_set(NULL, 0) == 0);
   assert(agent_edge_consensus_vote_request_can_grant(
            3, 4, 1, 1, 1, "node-b", strlen("node-b"), "node-a", strlen("node-a")) == 1);
   assert(agent_edge_consensus_vote_request_can_grant(
