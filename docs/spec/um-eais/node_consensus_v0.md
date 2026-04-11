@@ -202,6 +202,8 @@ The shipped autonomous host-loop proof adds:
   checks, route self-filtering, duplicate witness leader detection, and live-membership self-inclusion gates
 - consensus runtime config/store member-list de-duplication and default peer derivation now also reuse portable node-id
   matching, keeping runtime persistence/recovery member-set shaping aligned with the node loop
+- membership bundle normalization, membership rotation merge handling, and runtime-config membership lineage parsing also
+  reuse portable node-id matching, keeping durable policy surfaces aligned before firmware-native policy adoption
 
 ## Still open
 

@@ -1,17 +1,22 @@
 #include "daemon_config.h"
 #include "edge_consensus_membership_bundle.h"
+#include "runtime_config.h"
 
 #include "agent/edge_interop.h"
 
 #include <cassert>
+#include <cstdio>
+#include <filesystem>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 namespace {
 
 static void test_member_normalization_dedupes_safe_ids() {
   const std::vector<std::string> normalized =
-    agentd::edge_consensus_normalize_member_node_ids({" node-a ", "node-b", "node-a", "", "bad/node", "node-c"});
+    agentd::edge_consensus_normalize_member_node_ids(
+      {" node-a ", "node-b", "node-a", "", "bad/node", "node-c", "node-b "});
   assert(normalized.size() == 3);
   assert(normalized[0] == "node-a");
   assert(normalized[1] == "node-b");
@@ -38,6 +43,21 @@ static agentd::DaemonConfig make_config() {
   pol.stale_runtime_recovery_grace_ms = 70;
   cfg.edge_consensus_clusters["cluster-a"] = pol;
   return cfg;
+}
+
+static std::filesystem::path make_temp_db_path(const char* label) {
+  return std::filesystem::temp_directory_path() /
+         (std::string(label) + "_" + std::to_string((long long)getpid()) + ".sqlite");
+}
+
+static void open_test_db(const std::filesystem::path& path, agentd::AgentDb* out_db) {
+  assert(out_db);
+  std::error_code ec;
+  std::filesystem::remove(path, ec);
+  std::string err;
+  const bool ok = out_db->open(path.string(), &err);
+  assert(ok);
+  (void)err;
 }
 
 static void test_membership_bundle_fields() {
@@ -99,6 +119,48 @@ static void test_membership_bundle_rejects_missing_policy() {
   assert(err == "consensus_membership_unavailable");
 }
 
+static void test_runtime_config_load_dedupes_member_lineage_with_portable_matcher() {
+#if !defined(AGENT_HAVE_SQLITE3)
+  return;
+#else
+  const std::filesystem::path db_path = make_temp_db_path("edge_consensus_runtime_config_members");
+  agentd::AgentDb db;
+  open_test_db(db_path, &db);
+
+  agentd::DaemonConfig saved;
+  agentd::EdgeConsensusClusterPolicy pol;
+  pol.membership_epoch = 7;
+  pol.previous_membership_epoch = 6;
+  pol.member_node_ids = {" node-a ", "node-a", "bad/node", "node-b"};
+  pol.previous_member_node_ids = {"node-a", "node-a ", "node-c"};
+  pol.membership_lineage.push_back({6, {" node-a ", "node-a", "node-c", "bad/node"}});
+  saved.edge_consensus_clusters["cluster-a"] = pol;
+
+  std::string err;
+  assert(agentd::save_runtime_config_best_effort(db, saved, &err));
+  assert(err.empty());
+
+  agentd::DaemonConfig loaded;
+  assert(agentd::load_runtime_config_best_effort(db, &loaded, &err));
+  assert(err.empty());
+  const auto it = loaded.edge_consensus_clusters.find("cluster-a");
+  assert(it != loaded.edge_consensus_clusters.end());
+  assert(it->second.member_node_ids.size() == 2);
+  assert(it->second.member_node_ids[0] == "node-a");
+  assert(it->second.member_node_ids[1] == "node-b");
+  assert(it->second.previous_member_node_ids.size() == 2);
+  assert(it->second.previous_member_node_ids[0] == "node-a");
+  assert(it->second.previous_member_node_ids[1] == "node-c");
+  assert(it->second.membership_lineage.size() == 1);
+  assert(it->second.membership_lineage[0].member_node_ids.size() == 2);
+  assert(it->second.membership_lineage[0].member_node_ids[0] == "node-a");
+  assert(it->second.membership_lineage[0].member_node_ids[1] == "node-c");
+
+  std::error_code ec;
+  std::filesystem::remove(db_path, ec);
+#endif
+}
+
 }  // namespace
 
 int main() {
@@ -106,5 +168,6 @@ int main() {
   test_membership_bundle_fields();
   test_membership_bundle_hmac_attestation();
   test_membership_bundle_rejects_missing_policy();
+  test_runtime_config_load_dedupes_member_lineage_with_portable_matcher();
   return 0;
 }

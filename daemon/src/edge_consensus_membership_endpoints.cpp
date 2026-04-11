@@ -19,10 +19,16 @@
 namespace agentd {
 namespace {
 
-static bool string_vec_contains(const std::vector<std::string>& haystack, const std::string& needle) {
+static bool consensus_member_node_id_matches(const std::string& a, const std::string& b) {
+  const std::string left = trim_copy(a);
+  const std::string right = trim_copy(b);
+  return agent_edge_consensus_node_id_matches(left.data(), left.size(), right.data(), right.size()) == 1;
+}
+
+static bool member_node_id_vec_contains(const std::vector<std::string>& haystack, const std::string& needle) {
   if (needle.empty()) return false;
   for (const auto& item : haystack) {
-    if (item == needle) return true;
+    if (consensus_member_node_id_matches(item, needle)) return true;
   }
   return false;
 }
@@ -253,7 +259,7 @@ void handle_edge_consensus_membership_rotate_endpoint(
   EdgeConsensusClusterPolicy next_pol;
   if (cur_it != cur.edge_consensus_clusters.end() && mode == "merge") next_pol = cur_it->second;
   for (const auto& member : incoming_members) {
-    if (!string_vec_contains(next_pol.member_node_ids, member)) next_pol.member_node_ids.push_back(member);
+    if (!member_node_id_vec_contains(next_pol.member_node_ids, member)) next_pol.member_node_ids.push_back(member);
   }
   next_pol.member_node_ids = edge_consensus_normalize_member_node_ids(next_pol.member_node_ids);
   if (next_pol.member_node_ids.empty()) {
