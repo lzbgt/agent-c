@@ -70,6 +70,28 @@ static void test_frame_json_roundtrip() {
   assert(parsed.from.trust_epochs.trust_roots_epoch == 7);
 }
 
+static void test_frame_json_validation_errors() {
+  EdgeConsensusFrame frame;
+  frame.frame_id = "node-a:vote_request:1";
+  frame.kind = "vote_request";
+  frame.term = 1;
+  frame.decision_sha256 = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+  frame.candidate_node_id = "node-a";
+  frame.from = make_identity("node-a", 7, 3, 5);
+
+  Json::Value json = agentd::edge_consensus_frame_to_json(frame);
+  EdgeConsensusFrame parsed;
+  std::string err;
+  json["candidate_node_id"] = "bad/node";
+  assert(!agentd::edge_consensus_frame_from_json(json, &parsed, &err));
+  assert(err == "candidate_node_id invalid");
+
+  json = agentd::edge_consensus_frame_to_json(frame);
+  json["from"]["node_id"] = "bad/node";
+  assert(!agentd::edge_consensus_frame_from_json(json, &parsed, &err));
+  assert(err == "node_id invalid");
+}
+
 static void test_duplicate_vote_grants_do_not_count_twice() {
   EdgeConsensusReplica a(make_identity("node-a", 7, 3, 5), 5);
   EdgeConsensusReplica b(make_identity("node-b", 7, 3, 5), 5);
@@ -327,6 +349,7 @@ static void test_frame_role_identity_rejection() {
 
 int main() {
   test_frame_json_roundtrip();
+  test_frame_json_validation_errors();
   test_duplicate_vote_grants_do_not_count_twice();
   test_partition_and_quorum_recovery();
   test_trust_epoch_mismatch_requires_recovery();

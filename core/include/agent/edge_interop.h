@@ -147,6 +147,27 @@ typedef enum agent_edge_consensus_frame_route_t {
   AGENT_EDGE_CONSENSUS_FRAME_ROUTE_PEERS = 2
 } agent_edge_consensus_frame_route_t;
 
+typedef enum agent_edge_consensus_identity_validation_t {
+  AGENT_EDGE_CONSENSUS_IDENTITY_OK = 0,
+  AGENT_EDGE_CONSENSUS_IDENTITY_CLUSTER_ID_INVALID = 1,
+  AGENT_EDGE_CONSENSUS_IDENTITY_NODE_ID_INVALID = 2,
+  AGENT_EDGE_CONSENSUS_IDENTITY_MANIFEST_SHA256_INVALID = 3
+} agent_edge_consensus_identity_validation_t;
+
+typedef enum agent_edge_consensus_frame_validation_t {
+  AGENT_EDGE_CONSENSUS_FRAME_OK = 0,
+  AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_INVALID = 1,
+  AGENT_EDGE_CONSENSUS_FRAME_KIND_INVALID = 2,
+  AGENT_EDGE_CONSENSUS_FRAME_ID_INVALID = 3,
+  AGENT_EDGE_CONSENSUS_FRAME_TERM_INVALID = 4,
+  AGENT_EDGE_CONSENSUS_FRAME_DECISION_SHA256_INVALID = 5,
+  AGENT_EDGE_CONSENSUS_FRAME_FROM_CLUSTER_ID_INVALID = 6,
+  AGENT_EDGE_CONSENSUS_FRAME_FROM_NODE_ID_INVALID = 7,
+  AGENT_EDGE_CONSENSUS_FRAME_FROM_MANIFEST_SHA256_INVALID = 8,
+  AGENT_EDGE_CONSENSUS_FRAME_CANDIDATE_NODE_ID_INVALID = 9,
+  AGENT_EDGE_CONSENSUS_FRAME_LEADER_NODE_ID_INVALID = 10
+} agent_edge_consensus_frame_validation_t;
+
 agent_status_t agent_edge_consensus_frame_id_format(
   const char* node_id,
   size_t node_id_len,
@@ -158,6 +179,37 @@ agent_status_t agent_edge_consensus_frame_id_format(
   char* out,
   size_t out_cap,
   size_t* out_len
+);
+
+agent_edge_consensus_identity_validation_t agent_edge_consensus_identity_validate(
+  const char* cluster_id,
+  size_t cluster_id_len,
+  const char* node_id,
+  size_t node_id_len,
+  const char* manifest_sha256,
+  size_t manifest_sha256_len
+);
+
+agent_edge_consensus_frame_validation_t agent_edge_consensus_frame_validate(
+  const char* schema,
+  size_t schema_len,
+  const char* kind,
+  size_t kind_len,
+  const char* frame_id,
+  size_t frame_id_len,
+  uint64_t term,
+  const char* decision_sha256,
+  size_t decision_sha256_len,
+  const char* from_cluster_id,
+  size_t from_cluster_id_len,
+  const char* from_node_id,
+  size_t from_node_id_len,
+  const char* from_manifest_sha256,
+  size_t from_manifest_sha256_len,
+  const char* candidate_node_id,
+  size_t candidate_node_id_len,
+  const char* leader_node_id,
+  size_t leader_node_id_len
 );
 
 int agent_edge_consensus_identity_membership_matches(

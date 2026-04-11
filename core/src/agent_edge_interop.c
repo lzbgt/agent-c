@@ -260,6 +260,91 @@ agent_status_t agent_edge_consensus_frame_id_format(
   return AGENT_OK;
 }
 
+agent_edge_consensus_identity_validation_t agent_edge_consensus_identity_validate(
+  const char* cluster_id,
+  size_t cluster_id_len,
+  const char* node_id,
+  size_t node_id_len,
+  const char* manifest_sha256,
+  size_t manifest_sha256_len
+) {
+  if (!agent_umbmp_id_is_safe(cluster_id, cluster_id_len)) {
+    return AGENT_EDGE_CONSENSUS_IDENTITY_CLUSTER_ID_INVALID;
+  }
+  if (!agent_edge_consensus_member_node_id_is_valid(node_id, node_id_len)) {
+    return AGENT_EDGE_CONSENSUS_IDENTITY_NODE_ID_INVALID;
+  }
+  if (manifest_sha256_len > 0 && !agent_umbmp_sha256_token_is_safe(manifest_sha256, manifest_sha256_len)) {
+    return AGENT_EDGE_CONSENSUS_IDENTITY_MANIFEST_SHA256_INVALID;
+  }
+  return AGENT_EDGE_CONSENSUS_IDENTITY_OK;
+}
+
+agent_edge_consensus_frame_validation_t agent_edge_consensus_frame_validate(
+  const char* schema,
+  size_t schema_len,
+  const char* kind,
+  size_t kind_len,
+  const char* frame_id,
+  size_t frame_id_len,
+  uint64_t term,
+  const char* decision_sha256,
+  size_t decision_sha256_len,
+  const char* from_cluster_id,
+  size_t from_cluster_id_len,
+  const char* from_node_id,
+  size_t from_node_id_len,
+  const char* from_manifest_sha256,
+  size_t from_manifest_sha256_len,
+  const char* candidate_node_id,
+  size_t candidate_node_id_len,
+  const char* leader_node_id,
+  size_t leader_node_id_len
+) {
+  if (!consensus_string_eq(schema, schema_len, AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1)) {
+    return AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_INVALID;
+  }
+  if (!agent_edge_consensus_frame_kind_is_valid(kind, kind_len)) {
+    return AGENT_EDGE_CONSENSUS_FRAME_KIND_INVALID;
+  }
+  if (!agent_umbmp_id_is_safe(frame_id, frame_id_len)) {
+    return AGENT_EDGE_CONSENSUS_FRAME_ID_INVALID;
+  }
+  if (term < 1) {
+    return AGENT_EDGE_CONSENSUS_FRAME_TERM_INVALID;
+  }
+  if (decision_sha256_len > 0 && !agent_umbmp_sha256_token_is_safe(decision_sha256, decision_sha256_len)) {
+    return AGENT_EDGE_CONSENSUS_FRAME_DECISION_SHA256_INVALID;
+  }
+  const agent_edge_consensus_identity_validation_t from_validation = agent_edge_consensus_identity_validate(
+    from_cluster_id,
+    from_cluster_id_len,
+    from_node_id,
+    from_node_id_len,
+    from_manifest_sha256,
+    from_manifest_sha256_len);
+  if (from_validation == AGENT_EDGE_CONSENSUS_IDENTITY_CLUSTER_ID_INVALID) {
+    return AGENT_EDGE_CONSENSUS_FRAME_FROM_CLUSTER_ID_INVALID;
+  }
+  if (from_validation == AGENT_EDGE_CONSENSUS_IDENTITY_NODE_ID_INVALID) {
+    return AGENT_EDGE_CONSENSUS_FRAME_FROM_NODE_ID_INVALID;
+  }
+  if (from_validation == AGENT_EDGE_CONSENSUS_IDENTITY_MANIFEST_SHA256_INVALID) {
+    return AGENT_EDGE_CONSENSUS_FRAME_FROM_MANIFEST_SHA256_INVALID;
+  }
+  if (consensus_string_eq(kind, kind_len, AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST) ||
+      consensus_string_eq(kind, kind_len, AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT)) {
+    if (!agent_edge_consensus_member_node_id_is_valid(candidate_node_id, candidate_node_id_len)) {
+      return AGENT_EDGE_CONSENSUS_FRAME_CANDIDATE_NODE_ID_INVALID;
+    }
+  }
+  if (consensus_string_eq(kind, kind_len, AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT) &&
+      !agent_edge_consensus_member_node_id_is_valid(leader_node_id, leader_node_id_len)) {
+    return AGENT_EDGE_CONSENSUS_FRAME_LEADER_NODE_ID_INVALID;
+  }
+  return AGENT_EDGE_CONSENSUS_FRAME_OK;
+}
+
 int agent_edge_consensus_identity_membership_matches(
   uint64_t local_membership_epoch,
   uint64_t identity_membership_epoch,

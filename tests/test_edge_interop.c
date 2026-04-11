@@ -265,6 +265,148 @@ static void test_consensus_constants_and_quorum(void) {
            0) == AGENT_EDGE_CONSENSUS_FRAME_ROUTE_DROP);
   assert(agent_edge_consensus_frame_route("unknown", strlen("unknown"), 1, 0) ==
          AGENT_EDGE_CONSENSUS_FRAME_ROUTE_DROP);
+  assert(agent_edge_consensus_identity_validate(
+           "cluster-a", strlen("cluster-a"),
+           "node-a", strlen("node-a"),
+           "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+           strlen("sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")) ==
+         AGENT_EDGE_CONSENSUS_IDENTITY_OK);
+  assert(agent_edge_consensus_identity_validate(
+           "bad/cluster", strlen("bad/cluster"),
+           "node-a", strlen("node-a"),
+           NULL,
+           0) == AGENT_EDGE_CONSENSUS_IDENTITY_CLUSTER_ID_INVALID);
+  assert(agent_edge_consensus_identity_validate(
+           "cluster-a", strlen("cluster-a"),
+           "bad/node", strlen("bad/node"),
+           NULL,
+           0) == AGENT_EDGE_CONSENSUS_IDENTITY_NODE_ID_INVALID);
+  assert(agent_edge_consensus_identity_validate(
+           "cluster-a", strlen("cluster-a"),
+           "node-a", strlen("node-a"),
+           "sha256:bad", strlen("sha256:bad")) == AGENT_EDGE_CONSENSUS_IDENTITY_MANIFEST_SHA256_INVALID);
+  assert(agent_edge_consensus_frame_validate(
+           AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1, strlen(AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1),
+           AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST, strlen(AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST),
+           "node-a:vote_request:1", strlen("node-a:vote_request:1"),
+           1,
+           "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+           strlen("sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
+           "cluster-a", strlen("cluster-a"),
+           "node-a", strlen("node-a"),
+           NULL, 0,
+           "node-a", strlen("node-a"),
+           NULL, 0) == AGENT_EDGE_CONSENSUS_FRAME_OK);
+  assert(agent_edge_consensus_frame_validate(
+           "bad_schema", strlen("bad_schema"),
+           AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST, strlen(AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST),
+           "node-a:vote_request:1", strlen("node-a:vote_request:1"),
+           1,
+           NULL, 0,
+           "cluster-a", strlen("cluster-a"),
+           "node-a", strlen("node-a"),
+           NULL, 0,
+           "node-a", strlen("node-a"),
+           NULL, 0) == AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_INVALID);
+  assert(agent_edge_consensus_frame_validate(
+           AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1, strlen(AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1),
+           "bad_kind", strlen("bad_kind"),
+           "node-a:bad:1", strlen("node-a:bad:1"),
+           1,
+           NULL, 0,
+           "cluster-a", strlen("cluster-a"),
+           "node-a", strlen("node-a"),
+           NULL, 0,
+           "node-a", strlen("node-a"),
+           NULL, 0) == AGENT_EDGE_CONSENSUS_FRAME_KIND_INVALID);
+  assert(agent_edge_consensus_frame_validate(
+           AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1, strlen(AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1),
+           AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST, strlen(AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST),
+           "bad/frame", strlen("bad/frame"),
+           1,
+           NULL, 0,
+           "cluster-a", strlen("cluster-a"),
+           "node-a", strlen("node-a"),
+           NULL, 0,
+           "node-a", strlen("node-a"),
+           NULL, 0) == AGENT_EDGE_CONSENSUS_FRAME_ID_INVALID);
+  assert(agent_edge_consensus_frame_validate(
+           AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1, strlen(AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1),
+           AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST, strlen(AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST),
+           "node-a:vote_request:0", strlen("node-a:vote_request:0"),
+           0,
+           NULL, 0,
+           "cluster-a", strlen("cluster-a"),
+           "node-a", strlen("node-a"),
+           NULL, 0,
+           "node-a", strlen("node-a"),
+           NULL, 0) == AGENT_EDGE_CONSENSUS_FRAME_TERM_INVALID);
+  assert(agent_edge_consensus_frame_validate(
+           AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1, strlen(AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1),
+           AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST, strlen(AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST),
+           "node-a:vote_request:1", strlen("node-a:vote_request:1"),
+           1,
+           "sha256:bad", strlen("sha256:bad"),
+           "cluster-a", strlen("cluster-a"),
+           "node-a", strlen("node-a"),
+           NULL, 0,
+           "node-a", strlen("node-a"),
+           NULL, 0) == AGENT_EDGE_CONSENSUS_FRAME_DECISION_SHA256_INVALID);
+  assert(agent_edge_consensus_frame_validate(
+           AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1, strlen(AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1),
+           AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST, strlen(AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST),
+           "node-a:vote_request:1", strlen("node-a:vote_request:1"),
+           1,
+           NULL, 0,
+           "bad/cluster", strlen("bad/cluster"),
+           "node-a", strlen("node-a"),
+           NULL, 0,
+           "node-a", strlen("node-a"),
+           NULL, 0) == AGENT_EDGE_CONSENSUS_FRAME_FROM_CLUSTER_ID_INVALID);
+  assert(agent_edge_consensus_frame_validate(
+           AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1, strlen(AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1),
+           AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST, strlen(AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST),
+           "node-a:vote_request:1", strlen("node-a:vote_request:1"),
+           1,
+           NULL, 0,
+           "cluster-a", strlen("cluster-a"),
+           "bad/node", strlen("bad/node"),
+           NULL, 0,
+           "node-a", strlen("node-a"),
+           NULL, 0) == AGENT_EDGE_CONSENSUS_FRAME_FROM_NODE_ID_INVALID);
+  assert(agent_edge_consensus_frame_validate(
+           AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1, strlen(AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1),
+           AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST, strlen(AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST),
+           "node-a:vote_request:1", strlen("node-a:vote_request:1"),
+           1,
+           NULL, 0,
+           "cluster-a", strlen("cluster-a"),
+           "node-a", strlen("node-a"),
+           "sha256:bad", strlen("sha256:bad"),
+           "node-a", strlen("node-a"),
+           NULL, 0) == AGENT_EDGE_CONSENSUS_FRAME_FROM_MANIFEST_SHA256_INVALID);
+  assert(agent_edge_consensus_frame_validate(
+           AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1, strlen(AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1),
+           AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST, strlen(AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST),
+           "node-a:vote_request:1", strlen("node-a:vote_request:1"),
+           1,
+           NULL, 0,
+           "cluster-a", strlen("cluster-a"),
+           "node-a", strlen("node-a"),
+           NULL, 0,
+           "bad/node", strlen("bad/node"),
+           NULL, 0) == AGENT_EDGE_CONSENSUS_FRAME_CANDIDATE_NODE_ID_INVALID);
+  assert(agent_edge_consensus_frame_validate(
+           AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1, strlen(AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1),
+           AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT, strlen(AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT),
+           "node-a:leader_commit:1:node-a", strlen("node-a:leader_commit:1:node-a"),
+           1,
+           NULL, 0,
+           "cluster-a", strlen("cluster-a"),
+           "node-a", strlen("node-a"),
+           NULL, 0,
+           NULL, 0,
+           "bad/node", strlen("bad/node")) == AGENT_EDGE_CONSENSUS_FRAME_LEADER_NODE_ID_INVALID);
   assert(agent_edge_consensus_member_node_id_is_valid("node-a", strlen("node-a")) == 1);
   assert(agent_edge_consensus_member_node_id_is_valid("cluster:node_1", strlen("cluster:node_1")) == 1);
   assert(agent_edge_consensus_member_node_id_is_valid("bad/node", strlen("bad/node")) == 0);

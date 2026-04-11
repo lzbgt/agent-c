@@ -36,6 +36,48 @@ static bool consensus_sha256_token_is_valid(const std::string& token) {
   return agent_umbmp_sha256_token_is_safe(token.data(), token.size()) == 1;
 }
 
+static const char* consensus_identity_validation_error(agent_edge_consensus_identity_validation_t validation) {
+  switch (validation) {
+    case AGENT_EDGE_CONSENSUS_IDENTITY_OK:
+      return "";
+    case AGENT_EDGE_CONSENSUS_IDENTITY_CLUSTER_ID_INVALID:
+      return "cluster_id invalid";
+    case AGENT_EDGE_CONSENSUS_IDENTITY_NODE_ID_INVALID:
+      return "node_id invalid";
+    case AGENT_EDGE_CONSENSUS_IDENTITY_MANIFEST_SHA256_INVALID:
+      return "manifest_sha256 invalid";
+  }
+  return "identity invalid";
+}
+
+static const char* consensus_frame_validation_error(agent_edge_consensus_frame_validation_t validation) {
+  switch (validation) {
+    case AGENT_EDGE_CONSENSUS_FRAME_OK:
+      return "";
+    case AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_INVALID:
+      return "schema invalid";
+    case AGENT_EDGE_CONSENSUS_FRAME_KIND_INVALID:
+      return "kind invalid";
+    case AGENT_EDGE_CONSENSUS_FRAME_ID_INVALID:
+      return "frame_id invalid";
+    case AGENT_EDGE_CONSENSUS_FRAME_TERM_INVALID:
+      return "term must be >= 1";
+    case AGENT_EDGE_CONSENSUS_FRAME_DECISION_SHA256_INVALID:
+      return "decision_sha256 invalid";
+    case AGENT_EDGE_CONSENSUS_FRAME_FROM_CLUSTER_ID_INVALID:
+      return "cluster_id invalid";
+    case AGENT_EDGE_CONSENSUS_FRAME_FROM_NODE_ID_INVALID:
+      return "node_id invalid";
+    case AGENT_EDGE_CONSENSUS_FRAME_FROM_MANIFEST_SHA256_INVALID:
+      return "manifest_sha256 invalid";
+    case AGENT_EDGE_CONSENSUS_FRAME_CANDIDATE_NODE_ID_INVALID:
+      return "candidate_node_id invalid";
+    case AGENT_EDGE_CONSENSUS_FRAME_LEADER_NODE_ID_INVALID:
+      return "leader_node_id invalid";
+  }
+  return "frame invalid";
+}
+
 static bool parse_optional_sha256(
   const Json::Value& root,
   const char* key,
@@ -60,16 +102,15 @@ static bool parse_optional_sha256(
 
 static bool parse_identity_like(const EdgeConsensusIdentity& id, std::string* out_error) {
   if (out_error) out_error->clear();
-  if (!edge_id_is_safe(id.cluster_id)) {
-    if (out_error) *out_error = "cluster_id invalid";
-    return false;
-  }
-  if (!consensus_member_node_id_is_valid(id.node_id)) {
-    if (out_error) *out_error = "node_id invalid";
-    return false;
-  }
-  if (!id.manifest_sha256.empty() && !consensus_sha256_token_is_valid(id.manifest_sha256)) {
-    if (out_error) *out_error = "manifest_sha256 invalid";
+  const agent_edge_consensus_identity_validation_t validation = agent_edge_consensus_identity_validate(
+    id.cluster_id.data(),
+    id.cluster_id.size(),
+    id.node_id.data(),
+    id.node_id.size(),
+    id.manifest_sha256.data(),
+    id.manifest_sha256.size());
+  if (validation != AGENT_EDGE_CONSENSUS_IDENTITY_OK) {
+    if (out_error) *out_error = consensus_identity_validation_error(validation);
     return false;
   }
   return true;
@@ -91,37 +132,28 @@ static std::set<std::string> dedupe_member_ids(
 
 static bool frame_is_valid(const EdgeConsensusFrame& frame, std::string* out_error) {
   if (out_error) out_error->clear();
-  if (frame.schema != AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1) {
-    if (out_error) *out_error = "schema invalid";
-    return false;
-  }
-  if (!agent_edge_consensus_frame_kind_is_valid(frame.kind.data(), frame.kind.size())) {
-    if (out_error) *out_error = "kind invalid";
-    return false;
-  }
-  if (!edge_id_is_safe(frame.frame_id)) {
-    if (out_error) *out_error = "frame_id invalid";
-    return false;
-  }
-  if (frame.term < 1) {
-    if (out_error) *out_error = "term must be >= 1";
-    return false;
-  }
-  if (!frame.decision_sha256.empty() && !consensus_sha256_token_is_valid(frame.decision_sha256)) {
-    if (out_error) *out_error = "decision_sha256 invalid";
-    return false;
-  }
-  if (!parse_identity_like(frame.from, out_error)) return false;
-  if (frame.kind == AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST ||
-      frame.kind == AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT) {
-    if (!consensus_member_node_id_is_valid(frame.candidate_node_id)) {
-      if (out_error) *out_error = "candidate_node_id invalid";
-      return false;
-    }
-  }
-  if (frame.kind == AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT &&
-      !consensus_member_node_id_is_valid(frame.leader_node_id)) {
-    if (out_error) *out_error = "leader_node_id invalid";
+  const agent_edge_consensus_frame_validation_t validation = agent_edge_consensus_frame_validate(
+    frame.schema.data(),
+    frame.schema.size(),
+    frame.kind.data(),
+    frame.kind.size(),
+    frame.frame_id.data(),
+    frame.frame_id.size(),
+    frame.term,
+    frame.decision_sha256.data(),
+    frame.decision_sha256.size(),
+    frame.from.cluster_id.data(),
+    frame.from.cluster_id.size(),
+    frame.from.node_id.data(),
+    frame.from.node_id.size(),
+    frame.from.manifest_sha256.data(),
+    frame.from.manifest_sha256.size(),
+    frame.candidate_node_id.data(),
+    frame.candidate_node_id.size(),
+    frame.leader_node_id.data(),
+    frame.leader_node_id.size());
+  if (validation != AGENT_EDGE_CONSENSUS_FRAME_OK) {
+    if (out_error) *out_error = consensus_frame_validation_error(validation);
     return false;
   }
   for (const auto& witness : frame.vote_witnesses) {
