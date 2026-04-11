@@ -11,6 +11,7 @@ namespace agentd {
 enum class VoiceBrokerSignalIngressKind {
   ignored_self,
   ignored_unknown,
+  ignored_relay_candidate,
   remote_description,
   remote_candidate_queued,
   remote_candidate_ready,

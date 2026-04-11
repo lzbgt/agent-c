@@ -56,6 +56,27 @@ static void test_description_payload_parse_and_build() {
   assert(built["sender_tag"].asString() == "agentd-runtime");
 }
 
+static void test_description_payload_strips_relay_candidates() {
+  Json::Value payload(Json::objectValue);
+  payload["type"] = "offer";
+  payload["sdp"] =
+    "v=0\r\n"
+    "a=candidate:1 1 UDP 2113937151 127.0.0.1 49999 typ host\r\n"
+    "a=candidate:2 1 UDP 1677729535 203.0.113.2 60000 typ relay raddr 10.0.0.2 rport 50000\r\n";
+
+  VoiceBrokerSignalDescription desc;
+  std::string err;
+  assert(parse_voice_broker_signal_description_payload(payload, &desc, &err));
+  assert(err.empty());
+  assert(desc.sdp.find("typ relay") == std::string::npos);
+  assert(desc.sdp.find("typ host") != std::string::npos);
+
+  desc.sdp += "a=candidate:3 1 UDP 1677729535 203.0.113.3 60001 typ relay\r\n";
+  const Json::Value built = make_voice_broker_description_payload(desc);
+  assert(built["sdp"].asString().find("typ relay") == std::string::npos);
+  assert(built["sdp"].asString().find("typ host") != std::string::npos);
+}
+
 static void test_candidate_payload_parse() {
   Json::Value payload(Json::objectValue);
   payload["candidate"] = "candidate:1 1 UDP 2122260223 127.0.0.1 55555 typ host";
@@ -149,6 +170,7 @@ static void test_invalid_payloads_rejected() {
 int main() {
   test_event_json_roundtrip_extracts_sender_tag();
   test_description_payload_parse_and_build();
+  test_description_payload_strips_relay_candidates();
   test_candidate_payload_parse();
   test_empty_candidate_payload_is_end_marker();
   test_malformed_end_marker_candidate_payload_is_preserved();

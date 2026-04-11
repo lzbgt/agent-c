@@ -124,6 +124,9 @@ schemas:
   AudioSignalRequest:
     type: object
     required: [type]
+    description: |
+      Signaling-only payload. Implementations must keep camera/video/audio media peer-to-peer and should not forward or
+      apply ICE `typ relay` candidates for this lane.
     properties:
       type:
         type: string

@@ -97,6 +97,34 @@ static void test_candidate_ready_after_remote_description() {
   assert(ingress.candidate.candidate == "cand-2");
 }
 
+static void test_relay_candidates_are_ignored_before_queue_or_ready() {
+  VoiceBrokerSignalSessionState state("agentd-runtime");
+  std::string err;
+
+  Json::Value relay_payload(Json::objectValue);
+  relay_payload["candidate"] =
+    "candidate:relay 1 UDP 1677729535 203.0.113.2 60000 typ relay raddr 10.0.0.2 rport 50000";
+  relay_payload["sdpMid"] = "audio";
+  relay_payload["sdpMLineIndex"] = 0;
+  relay_payload["sender_tag"] = "webui-peer";
+
+  VoiceBrokerSignalIngress ingress;
+  assert(state.ingest_event(make_event("candidate", relay_payload), &ingress, &err));
+  assert(err.empty());
+  assert(ingress.kind == VoiceBrokerSignalIngressKind::ignored_relay_candidate);
+  assert(state.received_candidate_count() == 0);
+  assert(state.pending_remote_candidate_count() == 0);
+
+  std::vector<agentd::VoiceBrokerSignalCandidate> drained;
+  assert(state.mark_remote_description_applied(&drained, &err));
+  assert(err.empty());
+  assert(drained.empty());
+  assert(state.ingest_event(make_event("candidate", relay_payload), &ingress, &err));
+  assert(err.empty());
+  assert(ingress.kind == VoiceBrokerSignalIngressKind::ignored_relay_candidate);
+  assert(state.received_candidate_count() == 0);
+}
+
 static void test_empty_candidate_payload_becomes_ready_end_marker() {
   VoiceBrokerSignalSessionState state("agentd-runtime");
   std::string err;
@@ -173,6 +201,7 @@ int main() {
   test_self_sender_events_are_ignored();
   test_offer_then_candidate_queue_then_drain();
   test_candidate_ready_after_remote_description();
+  test_relay_candidates_are_ignored_before_queue_or_ready();
   test_empty_candidate_payload_becomes_ready_end_marker();
   test_remote_bye_captures_close_reason();
   test_unknown_types_are_ignored();

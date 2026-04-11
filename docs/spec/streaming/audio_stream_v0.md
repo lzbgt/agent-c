@@ -6,7 +6,8 @@ Status: implemented rolling foundation (broker signaling relay + session status 
 ## Goals
 
 - Establish a **bidirectional, low-latency audio path** between WebUI and agentd.
-- Keep media transport **end-to-end** (broker relays signaling only; no media proxy in v0).
+- Keep camera/video/audio media transport **peer-to-peer only** (broker relays signaling only; no media proxy or TURN-style
+  media relay in v0).
 - Reuse existing broker auth + deployment routing for multi-agentd setups.
 - Make the signaling protocol explicit, versioned, and testable.
 
@@ -26,6 +27,9 @@ WebUI (browser)  <---signaling--->  Broker  <---signaling--->  agentd
 - WebUI and agentd establish a direct WebRTC connection.
 - Broker provides authenticated signaling relay + session metadata only.
 - Audio codecs: Opus over WebRTC (default browser support).
+- ICE `relay` candidates are not valid for this lane. Browser and agentd peers drop trickled relay candidates and strip
+  relay candidate lines from SDP before applying or forwarding descriptions, so camera/video/audio media cannot
+  downgrade from the direct SRTP path into a broker/server media relay.
 
 ## Signaling surface
 
@@ -331,7 +335,10 @@ A v0 smoke test should:
   and RTP header-extension attributes survive for accepted payloads while unsupported payload-bound feedback plus remote
   offer `msid`/SSRC track identity are stripped before agentd adds its provider-owned stream identity. Shared candidate
   handling now also treats only exact trimmed end-of-candidates markers as gathering-done, so malformed marker prefixes
-  are preserved instead of silently terminating remote candidate ingestion. The remaining gap is no longer basic outbound RTP,
+  are preserved instead of silently terminating remote candidate ingestion. The lane is now also explicitly P2P-only:
+  shared SDP/candidate helpers classify `typ relay` ICE candidates, strip relay candidate lines from SDP descriptions,
+  and prevent broker-relayed trickle signaling from handing relay candidates to browser or agentd media peers. The
+  remaining gap is no longer basic outbound RTP,
   Opus ownership, one-shot Sender/Receiver Report transmit, per-frame Sender Report spam, compound packet emission,
   answer direction, basic browser full-duplex proof, unsupported non-audio section rejection, or multi-audio m-line
   rejection, browser-backed proof for rejected sections plus real/empty candidate ingestion and G.711 negotiation, or

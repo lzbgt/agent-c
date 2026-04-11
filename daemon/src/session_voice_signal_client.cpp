@@ -212,7 +212,8 @@ bool stream_voice_broker_signal_session(
         return false;
       }
       if (ingress.kind == VoiceBrokerSignalIngressKind::ignored_self ||
-          ingress.kind == VoiceBrokerSignalIngressKind::ignored_unknown) {
+          ingress.kind == VoiceBrokerSignalIngressKind::ignored_unknown ||
+          ingress.kind == VoiceBrokerSignalIngressKind::ignored_relay_candidate) {
         return true;
       }
       return on_ingress ? on_ingress(ingress) : true;

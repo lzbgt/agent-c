@@ -34,19 +34,37 @@ function normalizeSdpForBrowser(sdp: string): string {
   return sdp.endsWith("\n") ? sdp : `${sdp}\r\n`;
 }
 
+function isRelayIceCandidate(value: unknown): boolean {
+  return typeof value === "string" && /(?:^|\s)typ\s+relay(?:\s|$)/i.test(value);
+}
+
+function stripRelayIceCandidatesFromSdp(sdp: string): string {
+  if (!sdp) return sdp;
+  const hadTrailingNewline = /\r?\n$/.test(sdp);
+  const lines = sdp.split(/\r?\n/);
+  if (hadTrailingNewline) lines.pop();
+  const kept = lines.filter((line) => {
+    const trimmed = line.trim();
+    const isCandidate = trimmed.startsWith("a=candidate:") || trimmed.startsWith("candidate:");
+    return !isCandidate || !isRelayIceCandidate(trimmed);
+  });
+  return `${kept.join("\r\n")}${hadTrailingNewline ? "\r\n" : ""}`;
+}
+
 function parseSessionDescription(type: "offer" | "answer", payload: unknown): RTCSessionDescriptionInit | null {
   const record = asRecord(payload);
   if (!record) return null;
   const sdp = typeof record.sdp === "string" ? record.sdp : "";
   if (!sdp) return null;
   const descType = typeof record.type === "string" && record.type ? record.type : type;
-  return { type: descType as RTCSdpType, sdp: normalizeSdpForBrowser(sdp) };
+  return { type: descType as RTCSdpType, sdp: normalizeSdpForBrowser(stripRelayIceCandidatesFromSdp(sdp)) };
 }
 
 function parseIceCandidate(payload: unknown): RTCIceCandidateInit | null {
   const record = asRecord(payload);
   if (!record) return null;
   if (typeof record.candidate !== "string" || !record.candidate) return null;
+  if (isRelayIceCandidate(record.candidate)) return null;
   const out: RTCIceCandidateInit = { candidate: record.candidate };
   if (typeof record.sdpMid === "string") out.sdpMid = record.sdpMid;
   if (typeof record.sdpMLineIndex === "number") out.sdpMLineIndex = record.sdpMLineIndex;
@@ -235,7 +253,9 @@ export default function useBrokerAudioWebRtcState(args: UseBrokerAudioWebRtcStat
 
     try {
       const rtcWindow = window as WebRtcWindow;
-      const peer = typeof rtcWindow.__agentuiRtcFactory === "function" ? rtcWindow.__agentuiRtcFactory() : new RTCPeerConnection();
+      const peer = typeof rtcWindow.__agentuiRtcFactory === "function"
+        ? rtcWindow.__agentuiRtcFactory()
+        : new RTCPeerConnection({ iceServers: [] });
       peerRef.current = peer;
       setConnectState("connecting");
       setConnectionState(peer.connectionState || "new");
@@ -263,6 +283,7 @@ export default function useBrokerAudioWebRtcState(args: UseBrokerAudioWebRtcStat
           sdpMLineIndex: candidate.sdpMLineIndex ?? undefined,
           usernameFragment: candidate.usernameFragment ?? undefined,
         };
+        if (isRelayIceCandidate((payload as { candidate?: unknown }).candidate)) return;
         setSentCandidateCount((prev) => prev + 1);
         void args.sendSignalDirect("candidate", payload as unknown as Record<string, unknown>).catch((err) => setWebrtcError(String(err)));
       };
@@ -298,7 +319,7 @@ export default function useBrokerAudioWebRtcState(args: UseBrokerAudioWebRtcStat
       setSignalingState(peer.signalingState || "have-local-offer");
       await args.sendSignalDirect("offer", {
         type: offer.type,
-        sdp: offer.sdp || "",
+        sdp: stripRelayIceCandidatesFromSdp(offer.sdp || ""),
       });
 
       for (const ev of args.signalEvents) {

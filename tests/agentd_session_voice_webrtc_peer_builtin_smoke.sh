@@ -414,7 +414,7 @@ async function run() {
       oscillator.start();
       if (typeof audioCtx.resume === "function") await audioCtx.resume();
 
-      peer = new RTCPeerConnection();
+      peer = new RTCPeerConnection({ iceServers: [] });
       const audioTrack = dest.stream.getAudioTracks()[0];
       const activeAudioTransceiver = peer.addTransceiver(audioTrack, {
         direction: "sendrecv",

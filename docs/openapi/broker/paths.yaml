@@ -1015,6 +1015,9 @@
   post:
     tags: [audio]
     summary: Create an audio signaling session
+    description: |
+      Creates a signaling-only WebRTC session. Broker relays offer/answer/candidate/control messages only; camera,
+      video, and audio media must stay peer-to-peer between clients and must not be proxied or relayed through broker.
     requestBody:
       required: true
       content:
@@ -1065,6 +1068,9 @@
   post:
     tags: [audio]
     summary: Send a signaling message to a session
+    description: |
+      Relays a signaling payload between participants. This endpoint is not a media transport; peers are expected to
+      strip or reject TURN/ICE `typ relay` candidates so camera/video/audio SRTP stays peer-to-peer.
     parameters:
       - in: path
         name: session_id
@@ -1088,6 +1094,8 @@
   get:
     tags: [audio]
     summary: Stream signaling messages via SSE
+    description: |
+      Streams signaling messages only. Media bytes are never carried on this SSE stream.
     parameters:
       - in: path
         name: session_id

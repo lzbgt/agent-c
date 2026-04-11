@@ -209,6 +209,21 @@ async function main() {
         let dest = null;
         let peer = null;
         let pendingRemoteCandidates = [];
+        function isRelayIceCandidate(value) {
+          return typeof value === "string" && /(?:^|\\s)typ\\s+relay(?:\\s|$)/i.test(value);
+        }
+        function stripRelayIceCandidatesFromSdp(sdp) {
+          if (!sdp) return sdp;
+          const hadTrailingNewline = /\\r?\\n$/.test(sdp);
+          const lines = String(sdp).split(/\\r?\\n/);
+          if (hadTrailingNewline) lines.pop();
+          const kept = lines.filter((line) => {
+            const trimmed = line.trim();
+            const isCandidate = trimmed.startsWith("a=candidate:") || trimmed.startsWith("candidate:");
+            return !isCandidate || !isRelayIceCandidate(trimmed);
+          });
+          return kept.join("\\r\\n") + (hadTrailingNewline ? "\\r\\n" : "");
+        }
         function candidatePayload(candidate) {
           if (!candidate) return null;
           if (typeof candidate.toJSON === "function") return candidate.toJSON();
@@ -232,15 +247,17 @@ async function main() {
           gain.connect(dest);
           osc.start();
           if (typeof ctx.resume === "function") await ctx.resume();
-          peer = new RTCPeerConnection();
+          peer = new RTCPeerConnection({ iceServers: [] });
           for (const track of dest.stream.getTracks()) peer.addTrack(track, dest.stream);
           peer.onconnectionstatechange = () => { state.connectionState = peer.connectionState || "new"; };
           peer.onsignalingstatechange = () => { state.signalingState = peer.signalingState || "stable"; };
           peer.oniceconnectionstatechange = () => { state.iceConnectionState = peer.iceConnectionState || "new"; };
           peer.onicecandidate = async (event) => {
             if (!event.candidate) return;
+            const payload = candidatePayload(event.candidate);
+            if (!payload || isRelayIceCandidate(payload.candidate)) return;
             state.sentCandidateCount += 1;
-            await window.__agentdAudioSendSignal("candidate", candidatePayload(event.candidate));
+            await window.__agentdAudioSendSignal("candidate", payload);
           };
           peer.ontrack = () => {
             state.remoteTrackCount += 1;
@@ -254,18 +271,22 @@ async function main() {
             const payload = ev.payload || {};
             if (!payload.sdp) return;
             state.remoteOfferSeen = true;
-            await pc.setRemoteDescription({ type: payload.type || "offer", sdp: payload.sdp });
+            await pc.setRemoteDescription({ type: payload.type || "offer", sdp: stripRelayIceCandidatesFromSdp(payload.sdp) });
             for (const candidate of pendingRemoteCandidates) await pc.addIceCandidate(candidate);
             pendingRemoteCandidates = [];
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
-            await window.__agentdAudioSendSignal("answer", { type: answer.type, sdp: answer.sdp });
+            await window.__agentdAudioSendSignal("answer", {
+              type: answer.type,
+              sdp: stripRelayIceCandidatesFromSdp(answer.sdp || ""),
+            });
             state.answerSent = true;
             return;
           }
           if (ev.type === "candidate") {
             const payload = ev.payload || {};
             if (!payload.candidate) return;
+            if (isRelayIceCandidate(payload.candidate)) return;
             if (!pc.remoteDescription) {
               pendingRemoteCandidates.push(payload);
             } else {

@@ -296,7 +296,7 @@ async function run() {
     }
     async function ensurePeer() {
       if (peer) return peer;
-      peer = new RTCPeerConnection();
+      peer = new RTCPeerConnection({ iceServers: [] });
       peer.addTransceiver("audio", { direction: "recvonly" });
       remoteAudio = document.createElement("audio");
       remoteAudio.autoplay = true;

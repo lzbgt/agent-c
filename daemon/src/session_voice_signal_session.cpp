@@ -1,5 +1,6 @@
 #include "session_voice_signal_session.h"
 
+#include "session_voice_sdp_candidate.h"
 #include "string_util.h"
 
 namespace agentd {
@@ -32,6 +33,11 @@ bool VoiceBrokerSignalSessionState::ingest_event(
 
   if (ev.type == "candidate") {
     if (!parse_voice_broker_signal_candidate_payload(ev.payload, &ingress.candidate, out_error)) return false;
+    if (sdp_candidate_is_relay_candidate(ingress.candidate.candidate)) {
+      ingress.kind = VoiceBrokerSignalIngressKind::ignored_relay_candidate;
+      if (out_ingress) *out_ingress = std::move(ingress);
+      return true;
+    }
     received_candidate_count_ += 1;
     if (remote_description_applied_) {
       ingress.kind = VoiceBrokerSignalIngressKind::remote_candidate_ready;

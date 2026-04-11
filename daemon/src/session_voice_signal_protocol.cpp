@@ -61,7 +61,7 @@ bool parse_voice_broker_signal_description_payload(
 
   VoiceBrokerSignalDescription desc;
   if (payload.isMember("type") && payload["type"].isString()) desc.type = trim_copy(payload["type"].asString());
-  desc.sdp = trim_copy(payload["sdp"].asString());
+  desc.sdp = strip_sdp_relay_candidate_lines(trim_copy(payload["sdp"].asString()));
   desc.sender_tag = payload_sender_tag(payload);
   *out_desc = std::move(desc);
   return true;
@@ -133,7 +133,7 @@ bool parse_voice_broker_signal_bye_payload(
 Json::Value make_voice_broker_description_payload(const VoiceBrokerSignalDescription& desc) {
   Json::Value payload(Json::objectValue);
   if (!trim_copy(desc.type).empty()) payload["type"] = trim_copy(desc.type);
-  payload["sdp"] = desc.sdp;
+  payload["sdp"] = strip_sdp_relay_candidate_lines(desc.sdp);
   if (!trim_copy(desc.sender_tag).empty()) payload["sender_tag"] = trim_copy(desc.sender_tag);
   return payload;
 }

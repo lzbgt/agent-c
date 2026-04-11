@@ -1590,7 +1590,8 @@ int embedded_handle_remote_description(
   engine->remote_description_applied = false;
   engine->last_remote_description_error.clear();
 
-  const std::string remote_sdp = description_sdp ? std::string(description_sdp) : std::string();
+  const std::string remote_sdp =
+    agentd::strip_sdp_relay_candidate_lines(description_sdp ? std::string(description_sdp) : std::string());
   const bool remote_sdp_has_media = agentd::sdp_contains_media_section(remote_sdp);
   bool audio_decoder_configured = false;
   std::string audio_err;
@@ -1688,6 +1689,8 @@ int embedded_handle_remote_candidate(
       write_error("libjuice remote gathering-done rejected", err_buf, err_buf_size);
       return 0;
     }
+  } else if (agentd::sdp_candidate_is_relay_candidate(candidate_sdp)) {
+    // Media is intentionally P2P-only; relay candidates are ignored before libjuice.
   } else {
     int rc = juice_add_remote_candidate(engine->agent, candidate_sdp.c_str());
     const std::string normalized_candidate = agentd::normalize_sdp_candidate_line(candidate_sdp);

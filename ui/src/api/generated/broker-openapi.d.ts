@@ -1587,7 +1587,11 @@ export interface paths {
             };
         };
         put?: never;
-        /** Create an audio signaling session */
+        /**
+         * Create an audio signaling session
+         * @description Creates a signaling-only WebRTC session. Broker relays offer/answer/candidate/control messages only; camera,
+         *     video, and audio media must stay peer-to-peer between clients and must not be proxied or relayed through broker.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -1687,7 +1691,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Send a signaling message to a session */
+        /**
+         * Send a signaling message to a session
+         * @description Relays a signaling payload between participants. This endpoint is not a media transport; peers are expected to
+         *     strip or reject TURN/ICE `typ relay` candidates so camera/video/audio SRTP stays peer-to-peer.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -1727,7 +1735,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Stream signaling messages via SSE */
+        /**
+         * Stream signaling messages via SSE
+         * @description Streams signaling messages only. Media bytes are never carried on this SSE stream.
+         */
         get: {
             parameters: {
                 query?: never;
@@ -4119,6 +4130,10 @@ export interface components {
             deleted: boolean;
             session_id: string;
         };
+        /**
+         * @description Signaling-only payload. Implementations must keep camera/video/audio media peer-to-peer and should not forward or
+         *     apply ICE `typ relay` candidates for this lane.
+         */
         AudioSignalRequest: {
             /** @description offer|answer|candidate|bye|control */
             type: string;

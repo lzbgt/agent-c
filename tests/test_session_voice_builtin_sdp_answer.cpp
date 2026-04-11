@@ -49,6 +49,18 @@ std::string local_description_with_bare_candidate() {
     "candidate:2 1 TCP 1518280447 127.0.0.1 55556 typ host tcptype active\r\n";
 }
 
+std::string local_description_with_relay_candidate() {
+  return
+    "v=0\r\n"
+    "o=- 0 0 IN IP4 127.0.0.1\r\n"
+    "s=-\r\n"
+    "t=0 0\r\n"
+    "a=ice-ufrag:localUfrag\r\n"
+    "a=ice-pwd:localPassword\r\n"
+    "a=candidate:relay 1 UDP 1677729535 203.0.113.2 60000 typ relay raddr 10.0.0.2 rport 50000\r\n"
+    "a=candidate:host 1 UDP 2122260223 127.0.0.1 55555 typ host\r\n";
+}
+
 std::string offer_with_direction(const char* direction) {
   std::string offer = browser_offer();
   const std::string needle = "a=sendrecv\r\n";
@@ -303,6 +315,23 @@ void test_active_answer_normalizes_bare_local_candidate_lines() {
   assert(answer.find("a=candidate:2 1 TCP") == std::string::npos);
 }
 
+void test_active_answer_strips_local_relay_candidates() {
+  const std::string answer = agentd::build_builtin_active_answer_sdp({
+    browser_offer(),
+    local_description_with_relay_candidate(),
+    true,
+    "passive",
+    "AA:BB:CC",
+    2799795457u,
+    "agentd-builtin-native",
+    "agentd_builtin_stream",
+    "agentd_builtin_audio",
+  });
+
+  assert(answer.find("typ relay") == std::string::npos);
+  assert(answer.find("a=candidate:host 1 udp") != std::string::npos);
+}
+
 void test_active_answer_keeps_audio_ssrc_on_audio_mline_only() {
   const std::string answer = agentd::build_builtin_active_answer_sdp({
     offer_with_audio_and_data_mline(),
@@ -462,6 +491,7 @@ int main() {
   test_active_answer_preserves_supported_media_attrs_and_strips_remote_track_attrs();
   test_active_answer_rejects_audio_mline_without_supported_payloads();
   test_active_answer_normalizes_bare_local_candidate_lines();
+  test_active_answer_strips_local_relay_candidates();
   test_active_answer_keeps_audio_ssrc_on_audio_mline_only();
   test_active_answer_omits_bundle_when_only_unsupported_media_exists();
   test_active_answer_rejects_extra_audio_mlines();

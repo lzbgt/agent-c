@@ -10,6 +10,8 @@ test("broker audio panel manages signaling session lifecycle", async ({ page }) 
 
   await seedBrokerState(page, { agentId });
   await page.addInitScript(() => {
+    (window as any).__agentuiAddedCandidates = [];
+
     class FakeStream {
       id = "remote-stream-1";
 
@@ -35,19 +37,20 @@ test("broker audio panel manages signaling session lifecycle", async ({ page }) 
       }
 
       async createOffer() {
-        return { type: "offer", sdp: "fake-offer-sdp" };
+        return {
+          type: "offer",
+          sdp:
+            "v=0\r\n" +
+            "a=candidate:relay 1 udp 1677729535 203.0.113.2 60000 typ relay raddr 10.0.0.2 rport 50000\r\n" +
+            "a=candidate:host 1 udp 2113937151 127.0.0.1 49999 typ host\r\n",
+        };
       }
 
       async setLocalDescription(desc: any) {
         this.localDescription = desc;
         this.signalingState = "have-local-offer";
         this.onsignalingstatechange?.();
-        setTimeout(() => {
-          const payload = {
-            candidate: "candidate:1 1 udp 2113937151 127.0.0.1 49999 typ host",
-            sdpMid: "0",
-            sdpMLineIndex: 0,
-          };
+        const emitCandidate = (payload: any) => {
           const ev: any = new Event("icecandidate");
           ev.candidate = {
             ...payload,
@@ -56,6 +59,18 @@ test("broker audio panel manages signaling session lifecycle", async ({ page }) 
             },
           };
           this.onicecandidate?.(ev);
+        };
+        setTimeout(() => {
+          emitCandidate({
+            candidate: "candidate:relay 1 udp 1677729535 203.0.113.2 60000 typ relay raddr 10.0.0.2 rport 50000",
+            sdpMid: "0",
+            sdpMLineIndex: 0,
+          });
+          emitCandidate({
+            candidate: "candidate:1 1 udp 2113937151 127.0.0.1 49999 typ host",
+            sdpMid: "0",
+            sdpMLineIndex: 0,
+          });
         }, 0);
       }
 
@@ -75,7 +90,8 @@ test("broker audio panel manages signaling session lifecycle", async ({ page }) 
         }, 0);
       }
 
-      async addIceCandidate() {
+      async addIceCandidate(candidate: any) {
+        (window as any).__agentuiAddedCandidates.push(candidate?.candidate || "");
         return undefined;
       }
 
@@ -247,6 +263,7 @@ test("broker audio panel manages signaling session lifecycle", async ({ page }) 
         body:
           ":ok\n\n" +
           `event: signal\ndata: ${JSON.stringify({ type: "answer", from: "agentd", ts_unix_ms: now + 2, payload: { type: "answer", sdp: "fake-answer-sdp" } })}\n\n` +
+          `event: signal\ndata: ${JSON.stringify({ type: "candidate", from: "agentd", ts_unix_ms: now + 3, payload: { candidate: "candidate:relay 1 udp 1677729535 203.0.113.2 60000 typ relay raddr 10.0.0.2 rport 50000", sdpMid: "0", sdpMLineIndex: 0 } })}\n\n` +
           `event: signal\ndata: ${JSON.stringify({ type: "candidate", from: "agentd", ts_unix_ms: now + 3, payload: { candidate: "candidate:2 1 udp 2113937151 127.0.0.1 50000 typ host", sdpMid: "0", sdpMLineIndex: 0 } })}\n\n`,
       });
       return;
@@ -282,6 +299,14 @@ test("broker audio panel manages signaling session lifecycle", async ({ page }) 
   await expect(page.getByTestId("broker-audio-webrtc-status")).toContainText("state: connected");
   await expect(page.getByTestId("broker-audio-webrtc-status")).toContainText("remote tracks: 1");
   await expect(page.getByTestId("broker-audio-webrtc-status")).toContainText("last remote signal: candidate");
+  await expect.poll(() => signalBodies.find((row) => row?.type === "offer")?.payload?.sdp || "").not.toContain("typ relay");
+  await expect.poll(() => signalBodies.find((row) => row?.type === "offer")?.payload?.sdp || "").toContain("typ host");
+  await expect
+    .poll(() => signalBodies.filter((row) => row?.type === "candidate").map((row) => row?.payload?.candidate || ""))
+    .toEqual(["candidate:1 1 udp 2113937151 127.0.0.1 49999 typ host"]);
+  await expect.poll(() => page.evaluate(() => (window as any).__agentuiAddedCandidates)).toEqual([
+    "candidate:2 1 udp 2113937151 127.0.0.1 50000 typ host",
+  ]);
 
   await page.getByTestId("broker-audio-signal-type").selectOption("control");
   await page.getByTestId("broker-audio-signal-payload").fill('{"state":"ready"}');

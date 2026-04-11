@@ -93,7 +93,8 @@ std::vector<std::string> local_ice_lines_from_description(const std::string& sdp
       out.push_back(line);
       has_ice_credentials = true;
     } else if (starts_with(line, "a=candidate:") || starts_with(line, "candidate:")) {
-      out.push_back(normalize_sdp_candidate_line(line));
+      const std::string normalized = normalize_sdp_candidate_line(line);
+      if (!sdp_candidate_is_relay_candidate(normalized)) out.push_back(normalized);
     }
   }
   if (has_ice_credentials) {
