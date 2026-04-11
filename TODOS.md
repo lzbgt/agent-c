@@ -1435,7 +1435,7 @@ Maintainability note (always-on):
    - Shipped: deterministic join strategies for parallel fan-out now include `first_ok`, `best_of_n`, `quorum_ok`.
    - Shipped: per-attempt wiring defaults via `delegate.attempt_defaults` (enables per-attempt budget knobs without repetition).
    - Shipped: `strict_all_ok` defaults and node-identity-aware quorum proof are covered by later collaboration slices.
-   - Remaining: broker-routed target discovery/routing policy and identity-scoped memory for collaboration tasks.
+   - Remaining: broker-routed target discovery from broker registry/list APIs. Routing policy and identity-scoped memory are covered by later agentd_parallel slices.
 
 5) **Memory ↔ workflow time correlation (next after memory_put)** (time-advancing correctness)
    - Shipped: deterministic workflow `kind:"memory_put"` and deterministic workflow `kind:"memory_consolidate"`.
