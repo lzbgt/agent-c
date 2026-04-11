@@ -47,6 +47,8 @@ For OpenAI-compatible Chat Completions streaming, this repo attempts to preserve
   filled as `max_completion_tokens`; existing `max_completion_tokens` or legacy `max_tokens` values are clamped downward.
 - If a stream succeeds without provider usage, the daemon records an estimated `llm_usage` event as a conservative fallback
   so retry-safe workflow counters still advance. This is not billing-grade token accounting; it is a budget guardrail.
+- If authoritative provider usage appears later for the same tool-loop `step`/`epoch`, direct-run `attempt`, or legacy
+  run-level bucket, aggregation ignores the matching estimated fallback event so budgets do not double-charge.
 
 ## Interfaces
 

@@ -252,10 +252,13 @@ Follow-up provider-backed streaming token budget slice:
 - Added request-builder support for the caps across the high-level OpenAI client, text-only provider, multimodal raw provider, streaming tool provider, and direct `tools:"none"` streaming path.
 - The direct `tools:"none"` streaming path now requests `stream_options.include_usage=true` and retries once without `stream_options` on compatible "unknown/unrecognized field" errors, matching the tool-provider path.
 - Successful streams without provider usage now add an estimated `llm_usage` event so retry-safe workflow budget counters still advance; this is a guardrail, not billing-grade token accounting.
+- Usage aggregation now reconciles fallback estimates against later authoritative provider usage for the same tool-loop step/epoch, direct-run attempt, or legacy run-level bucket, avoiding double-charge if a provider exposes delayed/out-of-band usage.
 - Added `agentd_workflow_budget_tokens_stream_fallback_smoke` to force `stream_options` rejection, a transient 429 retry, missing provider usage, and `max_completion_tokens` enforcement on the fallback/retry request.
 - Verification:
   - `cmake --build build -j "$(sysctl -n hw.ncpu)" > build/workflow_stream_fallback_build_retry_20260412.log 2>&1` passed.
   - `ctest --test-dir build -R 'workflow_run_budget_clamp_tests|agentd_workflow_budget_tokens_stream_fallback_smoke|agentd_workflow_budget_tokens_stream_smoke|agentd_workflow_budget_tokens_smoke|agentd_workflow_budget_retry_charges_smoke|openai_tool_provider_stream_tests|openai_provider_tests' --output-on-failure > build/workflow_stream_fallback_ctest_retry_20260412.log 2>&1` passed, 7/7.
+  - `cmake --build build -j "$(sysctl -n hw.ncpu)" > build/llm_usage_reconcile_build_20260412.log 2>&1` passed.
+  - `ctest --test-dir build -R 'workflow_run_budget_clamp_tests|agentd_workflow_budget_tokens_stream(_fallback)?_smoke|agentd_workflow_budget_tokens_smoke|agentd_workflow_budget_retry_charges_smoke|openai_tool_provider_stream_tests' --output-on-failure > build/llm_usage_reconcile_ctest_20260412.log 2>&1` passed, 6/6.
   - `tools/verify_repo_guards.sh > build/workflow_stream_fallback_repo_guards_20260412.log 2>&1` passed.
   - `ctest --test-dir build -N > build/workflow_stream_fallback_ctest_inventory_20260412.log 2>&1` passed; inventory is now 320 tests.
 
@@ -291,7 +294,7 @@ The older P0/P1 section was pruned on 2026-04-12 so `Next` / `Remaining` notes n
   - Host-tool memory budget charging and workflow budget-pressure stats are already shipped.
   - 2026-04-12 follow-up: `budget_pressure_v1` DRR charging now combines telemetry/request estimates with bounded pressure bumps from workflow limits and retry-safe usage totals.
   - 2026-04-12 follow-up: the deterministic mixed-workload proof now covers host tasks, LLM-like tasks, streaming-like tasks, and edge poll loops in `workflow_fairq_cost_tests` and the live `agentd_workflow_drr_budget_pressure_mixed_fairness_smoke`.
-  - 2026-04-12 follow-up: provider-backed streaming token budget enforcement now covers missing provider usage, `stream_options` compatibility fallback, and transient provider retry in `agentd_workflow_budget_tokens_stream_fallback_smoke`.
+  - 2026-04-12 follow-up: provider-backed streaming token budget enforcement now covers missing provider usage, `stream_options` compatibility fallback, transient provider retry, and delayed/out-of-band authoritative usage reconciliation.
   - Current remaining: edge-poll cost refinements only if larger trace replays show tail-latency gaps.
 
 - Agent collaboration:

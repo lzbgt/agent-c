@@ -21,6 +21,8 @@ bool llm_try_extract_usage_tokens_from_openai_response_body(const std::string& r
 // Sums token usage across `llm_usage` events in the canonical run `events` array.
 // Accepts both the current nested event data shape (`data.usage.*`) and the
 // run-event schema shape (`data.*`) for compatibility.
+// Estimated fallback usage is ignored when authoritative provider usage exists
+// for the same tool-loop step/epoch, direct-run attempt, or legacy run-level bucket.
 // Token usage is best-effort and may be 0 when the provider does not surface usage.
 void llm_sum_usage_from_events(const Json::Value& events_out, int64_t* out_prompt, int64_t* out_completion, int64_t* out_total);
 

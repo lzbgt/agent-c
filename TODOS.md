@@ -1275,6 +1275,7 @@ Maintainability note (always-on):
 	     - Compatibility fallback: if a provider rejects `stream_options`, the client retries once without it; direct `tools:"none"` streaming now uses the same fallback.
 	     - Provider cap fallback: workflow `max_total_tokens` clamps each LLM run request to the remaining budget through `max_completion_tokens`, or clamps legacy `max_tokens` when that field was already present.
 	     - Missing usage fallback: successful streams without provider usage now emit estimated `llm_usage` so retry-safe workflow counters still advance.
+	     - Reconciliation: if authoritative provider usage later appears for the same tool-loop step/epoch, direct-run attempt, or legacy run-level bucket, the matching estimated fallback is ignored during aggregation to avoid double-charging.
 	     - Proof: `ctest` includes `agentd_workflow_budget_tokens_stream_smoke` and `agentd_workflow_budget_tokens_stream_fallback_smoke`.
 	   - Shipped (v0.5 partial): deterministic host-tool tasks now charge and obey workflow budgets:
 	     - `kind:"memory_put"` and `kind:"memory_consolidate"` count as `tool_calls_total=1` and `steps_executed=1` per attempt.
@@ -1290,7 +1291,7 @@ Maintainability note (always-on):
 	     - Scheduler reads persisted workflow limits plus retry-safe usage totals and adds bounded cost bumps when configured budgets approach exhaustion.
 	     - Proof: `ctest` includes the unit-level deterministic host/LLM/streaming/edge DRR proof in `workflow_fairq_cost_tests`, plus the live `agentd_workflow_drr_budget_pressure_smoke` and `agentd_workflow_drr_budget_pressure_mixed_fairness_smoke`.
 	   - Current remaining:
-	     - reconcile estimated fallback token charges against provider-reported usage if a provider exposes delayed or out-of-band usage
+	     - none locally unblocked for budget correctness; run larger production trace replays before adding more budget-pressure refinements
 
 2) **Scheduling policy v2 (beyond caps)** (predictable progress under load)
    - Shipped (v2.0): oversampled scan + session-aware round-robin scan order (prevents `LIMIT` starvation under typical load).

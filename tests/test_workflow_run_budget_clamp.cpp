@@ -1,7 +1,38 @@
+#include "llm_usage.h"
 #include "workflow_run_budget_clamp.h"
 
 #include <cassert>
 #include <string>
+
+namespace {
+
+Json::Value usage_event(
+  int64_t step,
+  int64_t epoch,
+  int64_t attempt,
+  int64_t prompt,
+  int64_t completion,
+  int64_t total,
+  bool estimated
+) {
+  Json::Value data(Json::objectValue);
+  if (step >= 0) data["step"] = (Json::Int64)step;
+  if (epoch >= 0) data["epoch"] = (Json::Int64)epoch;
+  if (attempt >= 0) data["attempt"] = (Json::Int64)attempt;
+  data["prompt_tokens"] = (Json::Int64)prompt;
+  data["completion_tokens"] = (Json::Int64)completion;
+  data["total_tokens"] = (Json::Int64)total;
+  if (estimated) {
+    data["estimated"] = true;
+    data["source"] = "stream_fallback_missing_provider_usage";
+  }
+  Json::Value ev(Json::objectValue);
+  ev["type"] = "llm_usage";
+  ev["data"] = data;
+  return ev;
+}
+
+}  // namespace
 
 int main() {
   using agentd::workflow_engine_internal::WorkflowRunBudgetClampInput;
@@ -102,6 +133,36 @@ int main() {
     std::string exceeded;
     assert(!workflow_apply_run_budget_clamps(&req, in, &exceeded));
     assert(exceeded == "max_tool_calls_total");
+  }
+  {
+    Json::Value events(Json::arrayValue);
+    events.append(usage_event(1, 0, -1, 10, 5, 15, true));
+    events.append(usage_event(1, 0, -1, 4, 3, 7, false));
+    int64_t prompt = 0, completion = 0, total = 0;
+    agentd::llm_sum_usage_from_events(events, &prompt, &completion, &total);
+    assert(prompt == 4);
+    assert(completion == 3);
+    assert(total == 7);
+  }
+  {
+    Json::Value events(Json::arrayValue);
+    events.append(usage_event(1, 0, -1, 10, 5, 15, true));
+    events.append(usage_event(2, 0, -1, 4, 3, 7, false));
+    int64_t prompt = 0, completion = 0, total = 0;
+    agentd::llm_sum_usage_from_events(events, &prompt, &completion, &total);
+    assert(prompt == 14);
+    assert(completion == 8);
+    assert(total == 22);
+  }
+  {
+    Json::Value events(Json::arrayValue);
+    events.append(usage_event(-1, -1, 0, 8, 2, 10, true));
+    events.append(usage_event(-1, -1, 0, 3, 1, 4, false));
+    int64_t prompt = 0, completion = 0, total = 0;
+    agentd::llm_sum_usage_from_events(events, &prompt, &completion, &total);
+    assert(prompt == 3);
+    assert(completion == 1);
+    assert(total == 4);
   }
 
   return 0;
