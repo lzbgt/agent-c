@@ -189,6 +189,9 @@ The shipped autonomous host-loop proof adds:
 - portable `agent_core` committed-decision presence detection is now reused by the daemon runtime core and node loop, so
   firmware-native ports share the same whitespace-insensitive state gate for commit exit, leader heartbeat, and campaign
   scheduling decisions
+- portable `agent_core` campaign-decision source selection and campaign-start gating are now reused by the daemon loop, so
+  firmware-native ports share the same configured-decision vs last-known-decision fallback and the same
+  decision/commit/timing boundary before starting a new election
 
 ## Still open
 

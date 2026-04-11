@@ -255,6 +255,20 @@ static void test_consensus_constants_and_quorum(void) {
   assert(agent_edge_consensus_decision_sha256_is_set("  \t\n", strlen("  \t\n")) == 0);
   assert(agent_edge_consensus_decision_sha256_is_set("", 0) == 0);
   assert(agent_edge_consensus_decision_sha256_is_set(NULL, 0) == 0);
+  assert(agent_edge_consensus_campaign_decision_source(
+           "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+           strlen("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+           "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+           strlen("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")) ==
+         AGENT_EDGE_CONSENSUS_CAMPAIGN_DECISION_CONFIG);
+  assert(agent_edge_consensus_campaign_decision_source(
+           "  ",
+           strlen("  "),
+           "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+           strlen("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")) ==
+         AGENT_EDGE_CONSENSUS_CAMPAIGN_DECISION_LAST_KNOWN);
+  assert(agent_edge_consensus_campaign_decision_source("  ", strlen("  "), NULL, 0) ==
+         AGENT_EDGE_CONSENSUS_CAMPAIGN_DECISION_NONE);
   assert(agent_edge_consensus_vote_request_can_grant(
            3, 4, 1, 1, 1, "node-b", strlen("node-b"), "node-a", strlen("node-a")) == 1);
   assert(agent_edge_consensus_vote_request_can_grant(
@@ -686,6 +700,11 @@ static void test_consensus_loop_timing_gates(void) {
   assert(agent_edge_consensus_campaign_start_due(5500, 1000, 500, 1, 4500, 1000) == 1);
   assert(agent_edge_consensus_campaign_start_due(5500, 1000, 500, 1, 0, 1000) == 1);
   assert(agent_edge_consensus_campaign_start_due(5500, 1000, 500, 1, 4500, 0) == 0);
+
+  assert(agent_edge_consensus_campaign_can_start(1, 0, 1) == 1);
+  assert(agent_edge_consensus_campaign_can_start(0, 0, 1) == 0);
+  assert(agent_edge_consensus_campaign_can_start(1, 1, 1) == 0);
+  assert(agent_edge_consensus_campaign_can_start(1, 0, 0) == 0);
 }
 
 void test_edge_interop_module(void) {

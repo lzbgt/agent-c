@@ -263,6 +263,19 @@ int agent_edge_consensus_decision_sha256_is_set(
   size_t decision_sha256_len
 );
 
+typedef enum agent_edge_consensus_campaign_decision_source_t {
+  AGENT_EDGE_CONSENSUS_CAMPAIGN_DECISION_NONE = 0,
+  AGENT_EDGE_CONSENSUS_CAMPAIGN_DECISION_CONFIG = 1,
+  AGENT_EDGE_CONSENSUS_CAMPAIGN_DECISION_LAST_KNOWN = 2
+} agent_edge_consensus_campaign_decision_source_t;
+
+agent_edge_consensus_campaign_decision_source_t agent_edge_consensus_campaign_decision_source(
+  const char* configured_decision_sha256,
+  size_t configured_decision_sha256_len,
+  const char* last_known_decision_sha256,
+  size_t last_known_decision_sha256_len
+);
+
 int agent_edge_consensus_vote_request_can_grant(
   uint64_t current_term,
   uint64_t request_term,
@@ -448,6 +461,12 @@ int agent_edge_consensus_campaign_start_due(
   int election_started,
   int64_t last_campaign_started_utc_ms,
   int64_t retry_delay_ms
+);
+
+int agent_edge_consensus_campaign_can_start(
+  int has_campaign_decision,
+  int has_committed_decision,
+  int campaign_start_due
 );
 
 #ifdef __cplusplus

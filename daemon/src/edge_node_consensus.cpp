@@ -715,19 +715,31 @@ std::vector<EdgeConsensusFrame> EdgeConsensusNodeLoop::tick(int64_t now_utc_ms) 
 
   if (lease_expiry_recampaign_delay_active(now_utc_ms)) return out;
 
+  const agent_edge_consensus_campaign_decision_source_t campaign_decision_source =
+    agent_edge_consensus_campaign_decision_source(
+      cfg_.decision_sha256.data(),
+      cfg_.decision_sha256.size(),
+      last_known_decision_sha256_.data(),
+      last_known_decision_sha256_.size());
   const std::string campaign_decision =
-    trim_copy(cfg_.decision_sha256).empty() ? trim_copy(last_known_decision_sha256_) : trim_copy(cfg_.decision_sha256);
-  if (campaign_decision.empty()) return out;
-  if (has_committed_decision) return out;
+    campaign_decision_source == AGENT_EDGE_CONSENSUS_CAMPAIGN_DECISION_CONFIG
+      ? trim_copy(cfg_.decision_sha256)
+      : (campaign_decision_source == AGENT_EDGE_CONSENSUS_CAMPAIGN_DECISION_LAST_KNOWN
+           ? trim_copy(last_known_decision_sha256_)
+           : "");
 
   const int64_t retry_delay_ms = election_started_ ? current_campaign_delay_ms() : 0;
-  if (!agent_edge_consensus_campaign_start_due(
-        now_utc_ms,
-        started_utc_ms_,
-        cfg_.campaign_delay_ms,
-        election_started_ ? 1 : 0,
-        last_campaign_started_utc_ms_,
-        retry_delay_ms)) return out;
+  const int start_due = agent_edge_consensus_campaign_start_due(
+    now_utc_ms,
+    started_utc_ms_,
+    cfg_.campaign_delay_ms,
+    election_started_ ? 1 : 0,
+    last_campaign_started_utc_ms_,
+    retry_delay_ms);
+  if (!agent_edge_consensus_campaign_can_start(
+        campaign_decision_source != AGENT_EDGE_CONSENSUS_CAMPAIGN_DECISION_NONE ? 1 : 0,
+        has_committed_decision,
+        start_due)) return out;
   out.push_back(replica_.start_election(campaign_decision));
   election_started_ = true;
   last_campaign_started_utc_ms_ = now_utc_ms;

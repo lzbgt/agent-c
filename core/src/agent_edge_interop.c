@@ -433,6 +433,25 @@ int agent_edge_consensus_decision_sha256_is_set(
   return 0;
 }
 
+agent_edge_consensus_campaign_decision_source_t agent_edge_consensus_campaign_decision_source(
+  const char* configured_decision_sha256,
+  size_t configured_decision_sha256_len,
+  const char* last_known_decision_sha256,
+  size_t last_known_decision_sha256_len
+) {
+  if (agent_edge_consensus_decision_sha256_is_set(
+        configured_decision_sha256,
+        configured_decision_sha256_len)) {
+    return AGENT_EDGE_CONSENSUS_CAMPAIGN_DECISION_CONFIG;
+  }
+  if (agent_edge_consensus_decision_sha256_is_set(
+        last_known_decision_sha256,
+        last_known_decision_sha256_len)) {
+    return AGENT_EDGE_CONSENSUS_CAMPAIGN_DECISION_LAST_KNOWN;
+  }
+  return AGENT_EDGE_CONSENSUS_CAMPAIGN_DECISION_NONE;
+}
+
 int agent_edge_consensus_vote_request_can_grant(
   uint64_t current_term,
   uint64_t request_term,
@@ -753,4 +772,12 @@ int agent_edge_consensus_campaign_start_due(
   if (retry_delay_ms <= 0) return 0;
   if (last_campaign_started_utc_ms <= 0) return 1;
   return now_utc_ms - last_campaign_started_utc_ms >= retry_delay_ms ? 1 : 0;
+}
+
+int agent_edge_consensus_campaign_can_start(
+  int has_campaign_decision,
+  int has_committed_decision,
+  int campaign_start_due
+) {
+  return has_campaign_decision && !has_committed_decision && campaign_start_due ? 1 : 0;
 }
