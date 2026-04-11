@@ -22,8 +22,10 @@ static agentd::DaemonConfig make_config() {
   agentd::DaemonConfig cfg;
   agentd::EdgeConsensusClusterPolicy pol;
   pol.membership_epoch = 7;
+  pol.previous_membership_epoch = 6;
   pol.updated_utc_ms = 123456;
   pol.member_node_ids = {"node-a", "node-b"};
+  pol.previous_member_node_ids = {"node-a", "node-c"};
   pol.campaign_delay_ms = 10;
   pol.campaign_retry_ms = 20;
   pol.campaign_retry_max_ms = 30;
@@ -45,6 +47,7 @@ static void test_membership_bundle_fields() {
   assert(bundle["schema"].asString() == AGENT_EDGE_CONSENSUS_MEMBERSHIP_SCHEMA_V1);
   assert(bundle["cluster_id"].asString() == "cluster-a");
   assert(bundle["membership_epoch"].asInt64() == 7);
+  assert(bundle["previous_membership_epoch"].asInt64() == 6);
   assert(bundle["updated_utc_ms"].asInt64() == 123456);
   assert(bundle["campaign_delay_ms"].asInt64() == 10);
   assert(bundle["campaign_retry_ms"].asInt64() == 20);
@@ -57,6 +60,9 @@ static void test_membership_bundle_fields() {
   assert(bundle["member_node_ids"].size() == 2);
   assert(bundle["member_node_ids"][0].asString() == "node-a");
   assert(bundle["member_node_ids"][1].asString() == "node-b");
+  assert(bundle["previous_member_node_ids"].size() == 2);
+  assert(bundle["previous_member_node_ids"][0].asString() == "node-a");
+  assert(bundle["previous_member_node_ids"][1].asString() == "node-c");
   assert(!bundle.isMember("attest"));
 }
 
@@ -74,6 +80,7 @@ static void test_membership_bundle_hmac_attestation() {
   assert(att["kid"].asString() == "kid-a");
   assert(att["cluster_id"].asString() == "cluster-a");
   assert(att["membership_epoch"].asInt64() == 7);
+  assert(att["previous_membership_epoch"].asInt64() == 6);
   assert(!att["sig"].asString().empty());
 }
 

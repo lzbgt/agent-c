@@ -1248,9 +1248,9 @@ export interface paths {
          *
          *     Notes:
          *     - `cluster_id` is required.
-         *     - The bundle carries `membership_epoch`, `member_node_ids`, `campaign_delay_ms`, `campaign_retry_ms`,
-         *       `campaign_retry_max_ms`, `campaign_retry_backoff_factor`, leader freshness policy, lease-expiry recovery delay,
-         *       and stale runtime recovery grace.
+         *     - The bundle carries `membership_epoch`, `member_node_ids`, immediate previous membership lineage,
+         *       `campaign_delay_ms`, `campaign_retry_ms`, `campaign_retry_max_ms`, `campaign_retry_backoff_factor`,
+         *       leader freshness policy, lease-expiry recovery delay, and stale runtime recovery grace.
          *     - When run-attestation signing keys are configured, the bundle includes an `attest` block.
          */
         get: {
@@ -4388,7 +4388,8 @@ export interface paths {
          *     `membership_epoch` plus `member_node_ids` for explicit member-set compatibility.
          *     When those fields are omitted and a durable `/api/v1/edge/consensus/membership`
          *     policy exists for the cluster, the runtime defaults from that stored bundle, including
-         *     `stale_runtime_recovery_grace_ms` for preserving recent stale builtin records as terminal recovered snapshots.
+         *     immediate previous membership lineage and `stale_runtime_recovery_grace_ms` for preserving recent stale
+         *     builtin records as terminal recovered snapshots.
          *     If callers omit `trust_roots_epoch`, `revocations_epoch`, or
          *     `cert_roots_epoch`, the runtime now defaults those from the daemon's current
          *     `edge_auth_*_epoch` policy instead of falling back to zero.
@@ -7433,6 +7434,8 @@ export interface components {
             cluster_id: string;
             /** Format: int64 */
             membership_epoch: number;
+            /** Format: int64 */
+            previous_membership_epoch: number;
             /** @enum {string} */
             signing_schema: "edge_consensus_membership_v1";
             /** @enum {string} */
@@ -7450,6 +7453,11 @@ export interface components {
             cluster_id: string;
             /** Format: int64 */
             membership_epoch: number;
+            /**
+             * Format: int64
+             * @description Immediate prior membership epoch for partition/restart recovery; zero for the first policy epoch.
+             */
+            previous_membership_epoch: number;
             /** Format: int64 */
             updated_utc_ms: number;
             /** Format: int64 */
@@ -7472,6 +7480,8 @@ export interface components {
              */
             stale_runtime_recovery_grace_ms: number;
             member_node_ids: string[];
+            /** @description Immediate prior member set for partition/restart recovery; empty for the first policy epoch. */
+            previous_member_node_ids: string[];
             attest?: components["schemas"]["EdgeConsensusMembershipAttest"];
         };
         EdgeConsensusMembershipResponse: {
@@ -7521,6 +7531,8 @@ export interface components {
             /** Format: int64 */
             membership_epoch: number;
             /** Format: int64 */
+            previous_membership_epoch: number;
+            /** Format: int64 */
             updated_utc_ms: number;
             /** Format: int64 */
             campaign_delay_ms: number;
@@ -7540,6 +7552,8 @@ export interface components {
             stale_runtime_recovery_grace_ms: number;
             /** Format: int64 */
             member_count: number;
+            /** Format: int64 */
+            previous_member_count: number;
             membership: components["schemas"]["EdgeConsensusMembershipBundle"];
         };
         EdgeConsensusMembershipSendRequest: {
@@ -8702,6 +8716,11 @@ export interface components {
             cluster_id: string;
             /** Format: int64 */
             membership_epoch: number;
+            /**
+             * Format: int64
+             * @description Immediate prior membership epoch for partition/restart recovery; zero for the first policy epoch.
+             */
+            previous_membership_epoch: number;
             /** Format: int64 */
             updated_utc_ms: number;
             /** Format: int64 */
@@ -8724,6 +8743,8 @@ export interface components {
              */
             stale_runtime_recovery_grace_ms: number;
             member_node_ids: string[];
+            /** @description Immediate prior member set for partition/restart recovery; empty for the first policy epoch. */
+            previous_member_node_ids: string[];
         };
         EdgeTrustEpochs: {
             /** Format: int64 */

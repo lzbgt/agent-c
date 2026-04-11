@@ -182,6 +182,10 @@ void handle_edge_consensus_membership_rotate_endpoint(
   int64_t new_epoch = 0;
   const auto cur_it = cur.edge_consensus_clusters.find(cluster_id);
   const int64_t cur_epoch = cur_it == cur.edge_consensus_clusters.end() ? 0 : cur_it->second.membership_epoch;
+  const std::vector<std::string> previous_members =
+    cur_it == cur.edge_consensus_clusters.end()
+      ? std::vector<std::string>{}
+      : edge_consensus_normalize_member_node_ids(cur_it->second.member_node_ids);
   new_epoch = cur_epoch + 1;
   if (args.isMember("membership_epoch")) {
     if (!args["membership_epoch"].isInt64() && !args["membership_epoch"].isUInt64()) {
@@ -222,6 +226,8 @@ void handle_edge_consensus_membership_rotate_endpoint(
     return;
   }
   next_pol.membership_epoch = new_epoch;
+  next_pol.previous_membership_epoch = std::max<int64_t>(0, cur_epoch);
+  next_pol.previous_member_node_ids = previous_members;
   next_pol.updated_utc_ms = edge_unix_ms_now();
   if (!parse_json_integer_field(args, "campaign_delay_ms", &next_pol.campaign_delay_ms, resp)) return;
   if (!parse_json_integer_field(args, "campaign_retry_ms", &next_pol.campaign_retry_ms, resp)) return;
@@ -262,6 +268,7 @@ void handle_edge_consensus_membership_rotate_endpoint(
   o["ok"] = true;
   o["cluster_id"] = cluster_id;
   o["membership_epoch"] = (Json::Int64)next_pol.membership_epoch;
+  o["previous_membership_epoch"] = (Json::Int64)next_pol.previous_membership_epoch;
   o["updated_utc_ms"] = (Json::Int64)next_pol.updated_utc_ms;
   o["campaign_delay_ms"] = (Json::Int64)next_pol.campaign_delay_ms;
   o["campaign_retry_ms"] = (Json::Int64)next_pol.campaign_retry_ms;
@@ -272,6 +279,7 @@ void handle_edge_consensus_membership_rotate_endpoint(
   o["lease_expiry_recampaign_delay_ms"] = (Json::Int64)next_pol.lease_expiry_recampaign_delay_ms;
   o["stale_runtime_recovery_grace_ms"] = (Json::Int64)next_pol.stale_runtime_recovery_grace_ms;
   o["member_count"] = (Json::UInt64)next_pol.member_node_ids.size();
+  o["previous_member_count"] = (Json::UInt64)next_pol.previous_member_node_ids.size();
   o["membership"] = bundle;
   resp->body = json_stringify(o);
 }

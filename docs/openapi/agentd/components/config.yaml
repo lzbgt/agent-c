@@ -1009,12 +1009,13 @@ EdgeAuthRevocationsUpdateResponse:
 
 EdgeConsensusMembershipAttest:
   type: object
-  required: [schema, ts_utc_ms, cluster_id, membership_epoch, signing_schema, alg, kid, sig]
+  required: [schema, ts_utc_ms, cluster_id, membership_epoch, previous_membership_epoch, signing_schema, alg, kid, sig]
   properties:
     schema: { type: string, enum: [edge_consensus_membership_attest_v1] }
     ts_utc_ms: { type: integer, format: int64 }
     cluster_id: { type: string }
     membership_epoch: { type: integer, format: int64 }
+    previous_membership_epoch: { type: integer, format: int64 }
     signing_schema: { type: string, enum: [edge_consensus_membership_v1] }
     alg: { type: string, enum: [hmac-sha256, ed25519] }
     kid: { type: string }
@@ -1026,12 +1027,16 @@ EdgeConsensusMembershipAttest:
 
 EdgeConsensusMembershipBundle:
   type: object
-  required: [schema, created_utc_ms, cluster_id, membership_epoch, updated_utc_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, leader_heartbeat_ms, leader_lease_ms, lease_expiry_recampaign_delay_ms, stale_runtime_recovery_grace_ms, member_node_ids]
+  required: [schema, created_utc_ms, cluster_id, membership_epoch, previous_membership_epoch, updated_utc_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, leader_heartbeat_ms, leader_lease_ms, lease_expiry_recampaign_delay_ms, stale_runtime_recovery_grace_ms, member_node_ids, previous_member_node_ids]
   properties:
     schema: { type: string, enum: [edge_consensus_membership_v1] }
     created_utc_ms: { type: integer, format: int64 }
     cluster_id: { type: string }
     membership_epoch: { type: integer, format: int64 }
+    previous_membership_epoch:
+      type: integer
+      format: int64
+      description: Immediate prior membership epoch for partition/restart recovery; zero for the first policy epoch.
     updated_utc_ms: { type: integer, format: int64 }
     campaign_delay_ms: { type: integer, format: int64 }
     campaign_retry_ms: { type: integer, format: int64 }
@@ -1046,6 +1051,10 @@ EdgeConsensusMembershipBundle:
       description: Bounded grace window for preserving stale persisted builtin runtime state as a terminal recovered snapshot after daemon restart; zero keeps immediate cleanup.
     member_node_ids:
       type: array
+      items: { type: string }
+    previous_member_node_ids:
+      type: array
+      description: Immediate prior member set for partition/restart recovery; empty for the first policy epoch.
       items: { type: string }
     attest:
       $ref: "#/components/schemas/EdgeConsensusMembershipAttest"
@@ -1100,11 +1109,12 @@ EdgeConsensusMembershipRotateRequest:
 
 EdgeConsensusMembershipRotateResponse:
   type: object
-  required: [ok, cluster_id, membership_epoch, updated_utc_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, leader_heartbeat_ms, leader_lease_ms, lease_expiry_recampaign_delay_ms, stale_runtime_recovery_grace_ms, member_count, membership]
+  required: [ok, cluster_id, membership_epoch, previous_membership_epoch, updated_utc_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, leader_heartbeat_ms, leader_lease_ms, lease_expiry_recampaign_delay_ms, stale_runtime_recovery_grace_ms, member_count, previous_member_count, membership]
   properties:
     ok: { type: boolean }
     cluster_id: { type: string }
     membership_epoch: { type: integer, format: int64 }
+    previous_membership_epoch: { type: integer, format: int64 }
     updated_utc_ms: { type: integer, format: int64 }
     campaign_delay_ms: { type: integer, format: int64 }
     campaign_retry_ms: { type: integer, format: int64 }
@@ -1115,6 +1125,7 @@ EdgeConsensusMembershipRotateResponse:
     lease_expiry_recampaign_delay_ms: { type: integer, format: int64 }
     stale_runtime_recovery_grace_ms: { type: integer, format: int64 }
     member_count: { type: integer, format: int64 }
+    previous_member_count: { type: integer, format: int64 }
     membership:
       $ref: "#/components/schemas/EdgeConsensusMembershipBundle"
 

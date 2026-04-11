@@ -17,6 +17,11 @@ mkdir -p "${LOG_DIR}"
 PORT_DAEMON="$(agentd_smoke_pick_port)"
 HOST="127.0.0.1"
 DAEMON_TOKEN="agentd-edge-consensus-membership-token"
+TEST_DB="${LOG_DIR}/agentd_edge_consensus_membership_bundle_smoke_${PORT_DAEMON}.sqlite"
+TEST_STATE="${LOG_DIR}/agentd_edge_consensus_membership_bundle_smoke_${PORT_DAEMON}.state"
+
+rm -f "${TEST_DB}"
+rm -rf "${TEST_STATE}"
 
 cleanup() {
   agentd_smoke_stop
@@ -28,6 +33,8 @@ export AGENTD_RUN_ATTEST_HMAC_KID="edge-consensus-membership-k0"
 export AGENTD_RUN_ATTEST_HMAC_KEY="edge-consensus-membership-secret"
 
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_edge_consensus_membership_bundle_smoke" \
+  --db-path "${TEST_DB}" \
+  --state-dir "${TEST_STATE}" \
   --tools none
 DAEMON_URL="http://${HOST}:${PORT_DAEMON}"
 agentd_smoke_wait_health "${DAEMON_URL}" "${DAEMON_TOKEN}"
@@ -185,6 +192,19 @@ CONFIG_JSON="$(curl_json POST "/api/v1/config/update" "$(cat <<JSON
 JSON
 )")"
 
+ROTATE_SEED_JSON="$(curl_json POST "/api/v1/edge/consensus/membership/rotate" "$(cat <<JSON
+{"cluster_id":"${CLUSTER_ID}","mode":"replace","membership_epoch":18,"member_node_ids":["${NODE_A}","${NODE_B}"],"campaign_delay_ms":90,"campaign_retry_ms":250,"campaign_retry_max_ms":750,"campaign_retry_backoff_factor":2,"leader_heartbeat_ms":220,"leader_lease_ms":1000,"lease_expiry_recampaign_delay_ms":350}
+JSON
+)")"
+
+agentd_smoke_stop
+agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_edge_consensus_membership_bundle_smoke" \
+  --db-path "${TEST_DB}" \
+  --state-dir "${TEST_STATE}" \
+  --tools none
+agentd_smoke_wait_health "${DAEMON_URL}" "${DAEMON_TOKEN}"
+register_target_node "${TARGET_NODE}" "${TARGET_CAPS_SHA}"
+
 ROTATE_JSON="$(curl_json POST "/api/v1/edge/consensus/membership/rotate" "$(cat <<JSON
 {"cluster_id":"${CLUSTER_ID}","mode":"replace","membership_epoch":19,"member_node_ids":["${NODE_A}","${NODE_B}","${NODE_C}"],"campaign_delay_ms":120,"campaign_retry_ms":300,"campaign_retry_max_ms":900,"campaign_retry_backoff_factor":2,"leader_heartbeat_ms":240,"leader_lease_ms":1100,"lease_expiry_recampaign_delay_ms":410}
 JSON
@@ -226,8 +246,10 @@ import json, sys
 
 cluster_id = "${CLUSTER_ID}"
 members = sorted(["${NODE_A}", "${NODE_B}", "${NODE_C}"])
+previous_members = sorted(["${NODE_A}", "${NODE_B}"])
 decision_sha = "${DECISION_SHA}"
 
+rotate_seed = json.loads(r'''${ROTATE_SEED_JSON}''')
 rotate = json.loads(r'''${ROTATE_JSON}''')
 get_obj = json.loads(r'''${GET_JSON}''')
 send_obj = json.loads(r'''${SEND_JSON}''')
@@ -246,7 +268,7 @@ if not config_obj.get("ok"):
     print("config", config_obj, file=sys.stderr)
     raise SystemExit(1)
 
-for label, obj in (("rotate", rotate), ("get", get_obj), ("send", send_obj), ("start_a", start_a), ("start_b", start_b), ("start_c", start_c)):
+for label, obj in (("rotate_seed", rotate_seed), ("rotate", rotate), ("get", get_obj), ("send", send_obj), ("start_a", start_a), ("start_b", start_b), ("start_c", start_c)):
     if not obj.get("ok"):
         print(label, obj, file=sys.stderr)
         raise SystemExit(1)
@@ -263,6 +285,9 @@ if bundle.get("cluster_id") != cluster_id or bundle.get("membership_epoch") != 1
     raise SystemExit(1)
 if sorted(bundle.get("member_node_ids") or []) != members:
     print("wrong membership members", bundle, file=sys.stderr)
+    raise SystemExit(1)
+if bundle.get("previous_membership_epoch") != 18 or sorted(bundle.get("previous_member_node_ids") or []) != previous_members:
+    print("wrong membership lineage", bundle, file=sys.stderr)
     raise SystemExit(1)
 if bundle.get("campaign_delay_ms") != 120:
     print("wrong campaign delay", bundle, file=sys.stderr)
@@ -283,6 +308,12 @@ att = bundle.get("attest") or {}
 if att.get("schema") != "edge_consensus_membership_attest_v1" or att.get("kid") != "edge-consensus-membership-k0":
     print("missing membership attest", bundle, file=sys.stderr)
     raise SystemExit(1)
+if att.get("previous_membership_epoch") != 18:
+    print("wrong membership attest lineage", bundle, file=sys.stderr)
+    raise SystemExit(1)
+if rotate.get("previous_membership_epoch") != 18 or rotate.get("previous_member_count") != 2:
+    print("rotate lineage missing", rotate, file=sys.stderr)
+    raise SystemExit(1)
 
 msgs = outbox.get("messages") or []
 membership_msgs = [m for m in msgs if (m.get("msg") or {}).get("type") == "PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE"]
@@ -293,6 +324,9 @@ payload = (membership_msgs[-1].get("msg") or {}).get("body") or {}
 delivered = payload.get("membership") or {}
 if delivered.get("cluster_id") != cluster_id or delivered.get("membership_epoch") != 19:
     print("wrong delivered membership bundle", delivered, file=sys.stderr)
+    raise SystemExit(1)
+if delivered.get("previous_membership_epoch") != 18 or sorted(delivered.get("previous_member_node_ids") or []) != previous_members:
+    print("wrong delivered membership lineage", delivered, file=sys.stderr)
     raise SystemExit(1)
 if delivered.get("campaign_retry_ms") != 300 or delivered.get("campaign_retry_max_ms") != 900:
     print("wrong delivered retry bounds", delivered, file=sys.stderr)
@@ -397,6 +431,9 @@ if status_policy.get("cluster_id") != cluster_id:
     raise SystemExit(1)
 if sorted(status_policy.get("member_node_ids") or []) != members:
     print("runtime status cluster policy mismatch", status_policy, file=sys.stderr)
+    raise SystemExit(1)
+if status_policy.get("previous_membership_epoch") != 18 or sorted(status_policy.get("previous_member_node_ids") or []) != previous_members:
+    print("runtime status cluster policy lineage mismatch", status_policy, file=sys.stderr)
     raise SystemExit(1)
 if status_policy.get("campaign_retry_ms") != 300 or status_policy.get("campaign_retry_max_ms") != 900:
     print("runtime status missing retry bounds in cluster policy", status_policy, file=sys.stderr)

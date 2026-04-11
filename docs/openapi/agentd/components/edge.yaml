@@ -92,11 +92,15 @@ EdgeNodeConsensusStatus:
 
 EdgeConsensusClusterPolicy:
   type: object
-  required: [schema, cluster_id, membership_epoch, updated_utc_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, leader_heartbeat_ms, leader_lease_ms, lease_expiry_recampaign_delay_ms, stale_runtime_recovery_grace_ms, member_node_ids]
+  required: [schema, cluster_id, membership_epoch, previous_membership_epoch, updated_utc_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, leader_heartbeat_ms, leader_lease_ms, lease_expiry_recampaign_delay_ms, stale_runtime_recovery_grace_ms, member_node_ids, previous_member_node_ids]
   properties:
     schema: { type: string, enum: [edge_consensus_cluster_policy_v1] }
     cluster_id: { type: string }
     membership_epoch: { type: integer, format: int64 }
+    previous_membership_epoch:
+      type: integer
+      format: int64
+      description: Immediate prior membership epoch for partition/restart recovery; zero for the first policy epoch.
     updated_utc_ms: { type: integer, format: int64 }
     campaign_delay_ms: { type: integer, format: int64 }
     campaign_retry_ms: { type: integer, format: int64 }
@@ -111,6 +115,10 @@ EdgeConsensusClusterPolicy:
       description: Bounded grace window for preserving a stale persisted builtin runtime as a terminal recovered snapshot after daemon restart; zero keeps immediate stale cleanup.
     member_node_ids:
       type: array
+      items: { type: string }
+    previous_member_node_ids:
+      type: array
+      description: Immediate prior member set for partition/restart recovery; empty for the first policy epoch.
       items: { type: string }
 
 EdgeTrustEpochs:

@@ -26,7 +26,9 @@ static DaemonConfig make_cfg() {
 
   EdgeConsensusClusterPolicy pol;
   pol.membership_epoch = 7;
+  pol.previous_membership_epoch = 6;
   pol.member_node_ids = {"node-b", "node-a", "node-a"};
+  pol.previous_member_node_ids = {"node-b", "node-c"};
   pol.campaign_retry_ms = 1500;
   pol.campaign_retry_max_ms = 2500;
   pol.campaign_retry_backoff_factor = 2;
@@ -160,6 +162,10 @@ static void test_response_json_surfaces_cluster_and_trust_drift() {
            .asInt64() == 333);
   assert(out["cluster_policy_drift"]["current_policy"]["stale_runtime_recovery_grace_ms"]
            .asInt64() == 4444);
+  assert(out["cluster_policy_drift"]["current_policy"]["previous_membership_epoch"].asInt64() == 6);
+  assert(out["cluster_policy_drift"]["current_policy"]["previous_member_node_ids"].size() == 2);
+  assert(out["cluster_policy_drift"]["current_policy"]["previous_member_node_ids"][0].asString() == "node-b");
+  assert(out["cluster_policy_drift"]["current_policy"]["previous_member_node_ids"][1].asString() == "node-c");
 
   const Json::Value changed = out["cluster_policy_drift"]["changed_fields"];
   assert(changed.isArray());

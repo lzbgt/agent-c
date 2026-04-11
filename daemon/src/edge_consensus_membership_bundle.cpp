@@ -155,6 +155,7 @@ bool build_edge_consensus_membership_bundle(
   bundle["created_utc_ms"] = (Json::Int64)edge_unix_ms_now();
   bundle["cluster_id"] = cluster_id;
   bundle["membership_epoch"] = (Json::Int64)pol.membership_epoch;
+  bundle["previous_membership_epoch"] = (Json::Int64)pol.previous_membership_epoch;
   bundle["updated_utc_ms"] = (Json::Int64)pol.updated_utc_ms;
   bundle["campaign_delay_ms"] = (Json::Int64)pol.campaign_delay_ms;
   bundle["campaign_retry_ms"] = (Json::Int64)pol.campaign_retry_ms;
@@ -168,6 +169,11 @@ bool build_edge_consensus_membership_bundle(
     Json::Value arr(Json::arrayValue);
     for (const auto& member : pol.member_node_ids) arr.append(member);
     bundle["member_node_ids"] = arr;
+  }
+  {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& member : pol.previous_member_node_ids) arr.append(member);
+    bundle["previous_member_node_ids"] = arr;
   }
 
   const bool hmac_kid_set = !cfg.run_attest_hmac_kid.empty();
@@ -203,6 +209,7 @@ bool build_edge_consensus_membership_bundle(
   att["ts_utc_ms"] = (Json::Int64)edge_unix_ms_now();
   att["cluster_id"] = cluster_id;
   att["membership_epoch"] = (Json::Int64)pol.membership_epoch;
+  att["previous_membership_epoch"] = (Json::Int64)pol.previous_membership_epoch;
   att["signing_schema"] = AGENT_EDGE_CONSENSUS_MEMBERSHIP_SCHEMA_V1;
 
   if (hmac_kid_set) {

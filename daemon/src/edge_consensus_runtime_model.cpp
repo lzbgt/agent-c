@@ -80,6 +80,7 @@ Json::Value edge_consensus_cluster_policy_to_json(
   out["schema"] = "edge_consensus_cluster_policy_v1";
   out["cluster_id"] = cluster_id;
   out["membership_epoch"] = (Json::Int64)pol.membership_epoch;
+  out["previous_membership_epoch"] = (Json::Int64)pol.previous_membership_epoch;
   out["updated_utc_ms"] = (Json::Int64)pol.updated_utc_ms;
   out["campaign_delay_ms"] = (Json::Int64)pol.campaign_delay_ms;
   out["campaign_retry_ms"] = (Json::Int64)pol.campaign_retry_ms;
@@ -92,6 +93,9 @@ Json::Value edge_consensus_cluster_policy_to_json(
   Json::Value members(Json::arrayValue);
   for (const auto& member : pol.member_node_ids) members.append(member);
   out["member_node_ids"] = members;
+  Json::Value previous_members(Json::arrayValue);
+  for (const auto& member : pol.previous_member_node_ids) previous_members.append(member);
+  out["previous_member_node_ids"] = previous_members;
   return out;
 }
 

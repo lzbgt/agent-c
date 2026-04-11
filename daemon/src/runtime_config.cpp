@@ -5,6 +5,8 @@
 #include "string_util.h"
 #include "policy_hooks.h"
 
+#include "agent/edge_interop.h"
+
 #include <json/json.h>
 
 #include <map>
@@ -52,6 +54,11 @@ static bool is_safe_edge_id_token(const std::string& s_in) {
     if (!ok) return false;
   }
   return true;
+}
+
+static bool is_safe_consensus_member_node_id(const std::string& s_in) {
+  const std::string s = trim_copy(s_in);
+  return agent_edge_consensus_member_node_id_is_valid(s.data(), s.size()) == 1;
 }
 
 static bool is_valid_voice_runtime_kind(const std::string& s_in) {
@@ -581,6 +588,12 @@ bool load_runtime_config_best_effort(
               ? row["membership_epoch"].asInt64()
               : (int64_t)row["membership_epoch"].asUInt64();
           }
+          if (row.isMember("previous_membership_epoch") &&
+              (row["previous_membership_epoch"].isInt64() || row["previous_membership_epoch"].isUInt64())) {
+            pol.previous_membership_epoch = row["previous_membership_epoch"].isInt64()
+              ? row["previous_membership_epoch"].asInt64()
+              : (int64_t)row["previous_membership_epoch"].asUInt64();
+          }
           if (row.isMember("updated_utc_ms") &&
               (row["updated_utc_ms"].isInt64() || row["updated_utc_ms"].isUInt64())) {
             pol.updated_utc_ms = row["updated_utc_ms"].isInt64()
@@ -641,10 +654,18 @@ bool load_runtime_config_best_effort(
             for (const auto& item : row["member_node_ids"]) {
               if (!item.isString()) continue;
               std::string s = trim_copy(item.asString());
-              if (!s.empty() && is_safe_edge_id_token(s)) pol.member_node_ids.push_back(s);
+              if (is_safe_consensus_member_node_id(s)) pol.member_node_ids.push_back(s);
+            }
+          }
+          if (row.isMember("previous_member_node_ids") && row["previous_member_node_ids"].isArray()) {
+            for (const auto& item : row["previous_member_node_ids"]) {
+              if (!item.isString()) continue;
+              std::string s = trim_copy(item.asString());
+              if (is_safe_consensus_member_node_id(s)) pol.previous_member_node_ids.push_back(s);
             }
           }
           if (pol.membership_epoch < 0) pol.membership_epoch = 0;
+          if (pol.previous_membership_epoch < 0) pol.previous_membership_epoch = 0;
           if (pol.updated_utc_ms < 0) pol.updated_utc_ms = 0;
           edge_consensus_normalize_policy_timing(&pol);
           if (!pol.member_node_ids.empty()) cfg_io->edge_consensus_clusters[cluster_id] = std::move(pol);
@@ -952,6 +973,7 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
       if (it.first.empty() || it.second.member_node_ids.empty()) continue;
       Json::Value row(Json::objectValue);
       row["membership_epoch"] = (Json::Int64)it.second.membership_epoch;
+      row["previous_membership_epoch"] = (Json::Int64)it.second.previous_membership_epoch;
       row["updated_utc_ms"] = (Json::Int64)it.second.updated_utc_ms;
       row["campaign_delay_ms"] = (Json::Int64)it.second.campaign_delay_ms;
       row["campaign_retry_ms"] = (Json::Int64)it.second.campaign_retry_ms;
@@ -964,6 +986,11 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
       Json::Value members(Json::arrayValue);
       for (const auto& member : it.second.member_node_ids) if (!member.empty()) members.append(member);
       row["member_node_ids"] = members;
+      Json::Value previous_members(Json::arrayValue);
+      for (const auto& member : it.second.previous_member_node_ids) {
+        if (!member.empty()) previous_members.append(member);
+      }
+      row["previous_member_node_ids"] = previous_members;
       clusters[it.first] = row;
     }
     if (!clusters.empty()) v["edge_consensus_clusters"] = clusters;
