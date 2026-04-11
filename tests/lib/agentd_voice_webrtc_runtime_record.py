@@ -5,6 +5,7 @@ import argparse
 import json
 import pathlib
 import sqlite3
+import sys
 
 
 def write_meta(db_path, session_id, value):
@@ -92,6 +93,55 @@ def delete_session(args):
         conn.commit()
 
 
+def maybe_bool(value):
+    if value is None:
+        return None
+    return value == "true"
+
+
+def require_equal(actual, expected, label, detail):
+    if actual != expected:
+        print(f"expected {label} {detail}, got {actual!r}", file=sys.stderr)
+        raise SystemExit(1)
+
+
+def assert_cleared(args):
+    raw = args.response_json if args.response_json is not None else sys.stdin.read()
+    obj = json.loads(raw)
+    cleanup = obj.get(args.cleanup_key) or {}
+    label = args.label
+
+    require_equal(obj.get("ok"), True, label, "ok=true")
+    expect_session_exists = maybe_bool(args.expect_session_exists)
+    if expect_session_exists is not None:
+        require_equal(obj.get("session_exists"), expect_session_exists, label, f"session_exists={expect_session_exists}")
+    expect_running = maybe_bool(args.expect_running)
+    if expect_running is not None:
+        require_equal(obj.get("running"), expect_running, label, f"running={expect_running}")
+    expect_stopped = maybe_bool(args.expect_stopped)
+    if expect_stopped is not None:
+        require_equal(obj.get("stopped"), expect_stopped, label, f"stopped={expect_stopped}")
+    if args.expect_reason is not None:
+        require_equal(obj.get("reason"), args.expect_reason, label, f"reason={args.expect_reason!r}")
+    require_equal(obj.get("peer"), None, label, "peer=null")
+    require_equal(cleanup.get("persisted_record_cleared"), True, label, "persisted_record_cleared=true")
+    require_equal(cleanup.get("runtime_artifacts_deleted"), True, label, "runtime_artifacts_deleted=true")
+
+    runtime_dir = pathlib.Path(args.runtime_dir)
+    if runtime_dir.exists():
+        print(f"expected {label} artifacts removed: {runtime_dir}", file=sys.stderr)
+        raise SystemExit(1)
+
+    with sqlite3.connect(args.db_path) as conn:
+        row = conn.execute(
+            "SELECT value FROM meta WHERE key = ?",
+            (f"session.voice_webrtc_peer.{args.session_id}",),
+        ).fetchone()
+    if row is None or row[0] != "":
+        print(f"expected {label} meta row cleared to empty string: {row!r}", file=sys.stderr)
+        raise SystemExit(1)
+
+
 def main():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -124,6 +174,19 @@ def main():
     delete.add_argument("--db-path", required=True)
     delete.add_argument("--session-id", required=True)
     delete.set_defaults(func=delete_session)
+
+    cleared = sub.add_parser("assert-cleared")
+    cleared.add_argument("--db-path", required=True)
+    cleared.add_argument("--session-id", required=True)
+    cleared.add_argument("--runtime-dir", required=True)
+    cleared.add_argument("--cleanup-key", required=True)
+    cleared.add_argument("--label", required=True)
+    cleared.add_argument("--response-json")
+    cleared.add_argument("--expect-session-exists", choices=("true", "false"))
+    cleared.add_argument("--expect-running", choices=("true", "false"))
+    cleared.add_argument("--expect-stopped", choices=("true", "false"))
+    cleared.add_argument("--expect-reason")
+    cleared.set_defaults(func=assert_cleared)
 
     args = parser.parse_args()
     args.func(args)
