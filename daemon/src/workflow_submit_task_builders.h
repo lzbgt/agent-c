@@ -27,5 +27,13 @@ bool workflow_submit_build_agentd_call_task_request(
   std::string* out_error
 );
 
-}  // namespace agentd
+bool workflow_submit_build_memory_consolidate_task_request(
+  const Json::Value& task_spec,
+  const std::string& task_id,
+  int task_priority,
+  const std::string& trace_id,
+  Json::Value* out_task_req,
+  std::string* out_error
+);
 
+}  // namespace agentd

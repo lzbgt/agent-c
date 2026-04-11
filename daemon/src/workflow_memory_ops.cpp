@@ -276,10 +276,15 @@ Json::Value workflow_memory_consolidate_to_json(
 
   MemoryConsolidateOptions opt;
   opt.daily_days = cfg.memory_consolidate_daily_days;
+  opt.session_days = opt.daily_days;
   opt.keep_checkpoints = cfg.memory_consolidate_keep_checkpoints;
 
   if (mc.isMember("daily_days") && mc["daily_days"].isInt()) {
     opt.daily_days = std::max(0, mc["daily_days"].asInt());
+    opt.session_days = opt.daily_days;
+  }
+  if (mc.isMember("session_days") && mc["session_days"].isInt()) {
+    opt.session_days = std::max(0, mc["session_days"].asInt());
   }
   if (mc.isMember("keep_checkpoints") && mc["keep_checkpoints"].isInt()) {
     opt.keep_checkpoints = std::max(1, mc["keep_checkpoints"].asInt());
@@ -287,8 +292,26 @@ Json::Value workflow_memory_consolidate_to_json(
   if (mc.isMember("max_entries") && mc["max_entries"].isInt()) {
     opt.max_entries = std::max(1, mc["max_entries"].asInt());
   }
+  if (mc.isMember("max_file_bytes") && mc["max_file_bytes"].isInt()) {
+    opt.max_file_bytes = std::max(1024, mc["max_file_bytes"].asInt());
+  }
+  if (mc.isMember("max_session_files") && mc["max_session_files"].isInt()) {
+    opt.max_session_files = std::max(0, mc["max_session_files"].asInt());
+  }
   if (mc.isMember("dry_run") && mc["dry_run"].isBool()) {
     opt.dry_run = mc["dry_run"].asBool();
+  }
+  if (mc.isMember("include_core") && mc["include_core"].isBool()) {
+    opt.include_core = mc["include_core"].asBool();
+  }
+  if (mc.isMember("include_daily") && mc["include_daily"].isBool()) {
+    opt.include_daily = mc["include_daily"].asBool();
+  }
+  if (mc.isMember("include_session") && mc["include_session"].isBool()) {
+    opt.include_session = mc["include_session"].asBool();
+  }
+  if (mc.isMember("include_structured") && mc["include_structured"].isBool()) {
+    opt.include_structured = mc["include_structured"].asBool();
   }
 
   Json::Value report;
@@ -322,4 +345,3 @@ Json::Value workflow_memory_consolidate_to_json(
 
 }  // namespace workflow_engine_internal
 }  // namespace agentd
-

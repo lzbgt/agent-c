@@ -195,9 +195,9 @@ Bounds (to keep files small):
 - `sources[]` capped (oldest dropped)
 - `versions[]` capped (oldest dropped)
 
-### Deterministic promotion via `@mem` markers (rolling consolidation v2.1)
+### Deterministic promotion via `@mem` markers (rolling consolidation v2.1+)
 
-To enable **deterministic** rolling consolidation (no LLM required), you can write explicit markers into daily memory.
+To enable **deterministic** rolling consolidation (no LLM required), you can write explicit markers into bounded memory layers.
 The daemon can then promote them into `STRUCTURED.md`:
 
 Marker syntax (one per line, optional bullet prefix):
@@ -220,11 +220,30 @@ On demand, call:
 
 - `POST /api/v1/memory/consolidate` (auth required when daemon auth is enabled)
 
+The on-demand endpoint scans core (`memory/MEMORY.md`), recent daily logs (`memory/YYYY-MM-DD.md`), bounded session notes
+(`memory/sessions/**/*.md`), and human-readable structured-memory text by default. The structured-memory machine JSON block
+between `AGENT_MEMORY_V1_BEGIN` / `AGENT_MEMORY_V1_END` is skipped so existing records are not recursively re-promoted; notes
+outside that block can still carry explicit markers. Structured-file markers use the stable source label
+`structured:STRUCTURED.md`, rather than line numbers, so repeated consolidation remains idempotent after `memory_put`
+re-renders the file.
+
+Useful request knobs:
+
+- `include_core`, `include_daily`, `include_session`, `include_structured` (all default true)
+- `daily_days` (default from daemon config)
+- `session_days` (default follows `daily_days`)
+- `max_session_files` (default 64; newest files by modification time)
+- `max_file_bytes` (default 1 MiB per scanned file; clamped to at least 1024)
+- `max_entries`, `dry_run`, and `keep_checkpoints`
+
 To run periodically, start `agentd` with:
 
 - `--memory-consolidate-interval-ms <n>` (0 disables; default)
 - `--memory-consolidate-daily-days <n>` (default: 14)
 - `--memory-consolidate-keep-checkpoints <n>` (default: 100)
+
+Scheduled consolidation uses `--memory-consolidate-daily-days` as both the daily and session scan window, with the default
+64-session-file cap.
 
 Structured updates produce a time-stamped checkpoint JSON snapshot under `memory/checkpoints/` by default:
 

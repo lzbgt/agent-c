@@ -13,14 +13,20 @@ namespace agentd {
 
 struct MemoryConsolidateOptions {
   int daily_days = 14;
+  int session_days = 14;
   int keep_checkpoints = 100;
   int max_entries = 256;
   int max_file_bytes = 1024 * 1024;
+  int max_session_files = 64;
   bool dry_run = false;
+  bool include_core = true;
+  bool include_daily = true;
+  bool include_session = true;
+  bool include_structured = true;
 };
 
 // Deterministic consolidation:
-// - scans recent daily memory files for explicit "@mem" markers
+// - scans bounded core/daily/session/structured memory files for explicit "@mem" markers
 // - promotes them into structured memory (memory/STRUCTURED.md) via memory_put(entries)
 //
 // Returns true on success and sets out_report.
@@ -57,4 +63,3 @@ class MemoryConsolidatorEngine {
 };
 
 }  // namespace agentd
-

@@ -113,10 +113,15 @@ void handle_memory_consolidate_endpoint(
 
   MemoryConsolidateOptions opt;
   opt.daily_days = cfg.memory_consolidate_daily_days;
+  opt.session_days = opt.daily_days;
   opt.keep_checkpoints = cfg.memory_consolidate_keep_checkpoints;
 
   if (args.isMember("daily_days") && args["daily_days"].isInt()) {
     opt.daily_days = std::max(0, args["daily_days"].asInt());
+    opt.session_days = opt.daily_days;
+  }
+  if (args.isMember("session_days") && args["session_days"].isInt()) {
+    opt.session_days = std::max(0, args["session_days"].asInt());
   }
   if (args.isMember("keep_checkpoints") && args["keep_checkpoints"].isInt()) {
     opt.keep_checkpoints = std::max(1, args["keep_checkpoints"].asInt());
@@ -124,8 +129,26 @@ void handle_memory_consolidate_endpoint(
   if (args.isMember("max_entries") && args["max_entries"].isInt()) {
     opt.max_entries = std::max(1, args["max_entries"].asInt());
   }
+  if (args.isMember("max_file_bytes") && args["max_file_bytes"].isInt()) {
+    opt.max_file_bytes = std::max(1024, args["max_file_bytes"].asInt());
+  }
+  if (args.isMember("max_session_files") && args["max_session_files"].isInt()) {
+    opt.max_session_files = std::max(0, args["max_session_files"].asInt());
+  }
   if (args.isMember("dry_run") && args["dry_run"].isBool()) {
     opt.dry_run = args["dry_run"].asBool();
+  }
+  if (args.isMember("include_core") && args["include_core"].isBool()) {
+    opt.include_core = args["include_core"].asBool();
+  }
+  if (args.isMember("include_daily") && args["include_daily"].isBool()) {
+    opt.include_daily = args["include_daily"].asBool();
+  }
+  if (args.isMember("include_session") && args["include_session"].isBool()) {
+    opt.include_session = args["include_session"].asBool();
+  }
+  if (args.isMember("include_structured") && args["include_structured"].isBool()) {
+    opt.include_structured = args["include_structured"].asBool();
   }
 
   Json::Value report;

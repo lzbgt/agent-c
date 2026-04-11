@@ -1026,10 +1026,10 @@ streaming and plugins are stable.
   with query-plan knobs for time windows + ordering (rolling consolidation and “recent facts” retrieval without substring scan).
   (more correct + explainable than substring search when keys are stable).
   - Proof: `ctest` includes `agentd_workflow_memory_structured_query_smoke`.
-- Memory v2.1 (rolling consolidation, deterministic): `agentd` can promote explicit `@mem ...` markers from daily memory into structured memory via `POST /api/v1/memory/consolidate`, and can run it periodically with `--memory-consolidate-interval-ms`.
+- Memory v2.1 (rolling consolidation, deterministic): `agentd` can promote explicit `@mem ...` markers from bounded core/daily/session/structured-text memory layers into structured memory via `POST /api/v1/memory/consolidate`, and can run it periodically with `--memory-consolidate-interval-ms`.
   - Proof: `ctest` includes `agentd_memory_consolidate_smoke` (idempotent; no checkpoint churn on second run).
 - Durable workflows can now trigger deterministic rolling consolidation as a task:
-  - Task kind: `kind: "memory_consolidate"` (scans `memory/YYYY-MM-DD.md` markers into `memory/STRUCTURED.md`)
+  - Task kind: `kind: "memory_consolidate"` (scans core/daily/session/structured-text markers into `memory/STRUCTURED.md`)
   - Proof: `ctest` includes `agentd_workflow_memory_consolidate_smoke`.
 - Memory v2.2 (versioned facts + evidence): structured memory entries now keep bounded `sources[]` (evidence), explicit `observed_utc` / `valid_from` / `supersedes[]` metadata, and `versions[]` (superseded history) under schema `agent_memory_v2`.
   - Proof: `ctest` includes `host_toolset_tests` assertions that validate schema upgrade, explicit metadata, multi-source evidence, and history retention.
@@ -1469,7 +1469,7 @@ Maintainability note (always-on):
    - Shipped: durable correlation relationship graph:
      - `GET /api/v1/memory/correlate?...` and deterministic workflow `kind:"memory_correlate"` now return `relationship_graph` linking memory items to `trace_id`, workflow/task/job IDs, and source excerpts.
      - Proof: `ctest` includes `memory_correlation_graph_tests`, `agentd_memory_correlate_smoke`, and `agentd_workflow_memory_correlate_smoke`.
-   - Current remaining: extend memory into all-layer time/size consolidation across core/daily/session/structured layers; explicit versioned fact metadata and multi-source evidence are now shipped for structured memory.
+   - Current remaining: no unblocked local memory correctness gap; explicit versioned fact metadata, multi-source evidence, durable relationship graphs, and all-layer consolidation are now shipped. Broader validation depends on real fleet data/retention policy tuning.
 
 ### 1) AVM capsule execution v0 (shipped core; remaining interop extensions)
 
@@ -1549,12 +1549,12 @@ Deliverables:
   - `memory_search` prefers SQLite FTS5-ranked retrieval when available (`use_index=true`), scoped to the same file set as legacy scanning (`daily_days`, core/session/structured).
   - Automatic fallback: bounded substring scan when SQLite/FTS5 is unavailable at runtime.
 - Rolling consolidation + correlation (shipped v2.1, deterministic core):
-  - explicit `@mem` marker promotion (daily → structured) + `POST /api/v1/memory/consolidate`
+  - explicit `@mem` marker promotion (bounded core/daily/session/structured-text layers → structured memory) + `POST /api/v1/memory/consolidate`
   - optional periodic scheduler (`--memory-consolidate-interval-ms`) with a conservative default (disabled)
-- Rolling consolidation + correlation (next):
-  - time/size based consolidation across **all** layers (core/daily/session/structured), not just daily markers
+- Rolling consolidation + correlation (shipped v2.4):
+  - time/size-bounded consolidation across core/daily/session/structured-text layers; structured machine JSON blocks are skipped to avoid recursive promotion and structured-file marker sources remain stable across re-renders
   - versioned facts with `supersedes`, `observed_utc`/`valid_from`, and multi-source evidence arrays are shipped for structured memory
-  - durable correlation graph is shipped for `memory_correlate`; next memory work is all-layer consolidation across core/daily/session/structured layers
+  - durable correlation graph is shipped for `memory_correlate`
 
 Proof:
 - `ctest` covers memory tools end-to-end (`test_host_toolset`), ensuring `memory_write`→`memory_search`→`memory_get` works.

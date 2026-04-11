@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <cctype>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -68,6 +69,37 @@ struct MarkerEntry {
   std::string status;
   std::string source;
 };
+
+struct ConsolidateScanFile {
+  std::string layer;
+  std::string rel_path;
+  std::string source_prefix;
+  std::filesystem::path path;
+  int64_t sort_key = 0;
+  bool skip_structured_machine_block = false;
+};
+
+static int64_t file_mtime_ms(const std::filesystem::path& p) {
+  std::error_code ec;
+  const auto ft = std::filesystem::last_write_time(p, ec);
+  if (ec) return 0;
+  const auto sys_time = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+    ft - decltype(ft)::clock::now() + std::chrono::system_clock::now()
+  );
+  return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(sys_time.time_since_epoch()).count();
+}
+
+static std::string path_rel_to(const std::filesystem::path& root, const std::filesystem::path& abs) {
+  std::error_code ec;
+  std::filesystem::path rel = std::filesystem::relative(abs, root, ec);
+  if (ec) rel = abs.lexically_relative(root);
+  return rel.generic_string();
+}
+
+static bool is_markdown_file(const std::filesystem::path& p) {
+  const std::string ext = to_lower_ascii(p.extension().string());
+  return ext == ".md" || ext == ".markdown";
+}
 
 static bool parse_mem_marker_line(const std::string& line_in, std::string* out_kind, std::string* out_status, std::string* out_key, std::string* out_value) {
   if (out_kind) out_kind->clear();
@@ -162,37 +194,138 @@ bool memory_consolidate_once(
   report["dry_run"] = opt.dry_run;
 
   const int days = std::max(0, opt.daily_days);
-  Json::Value scanned(Json::arrayValue);
+  const int session_days = std::max(0, opt.session_days);
+  const int max_session_files = std::max(0, opt.max_session_files);
+  const int max_file_bytes = std::max(1024, opt.max_file_bytes);
+  report["include_core"] = opt.include_core;
+  report["include_daily"] = opt.include_daily;
+  report["include_session"] = opt.include_session;
+  report["include_structured"] = opt.include_structured;
+  report["daily_days"] = days;
+  report["session_days"] = session_days;
+  report["max_session_files"] = max_session_files;
+  report["max_file_bytes"] = max_file_bytes;
 
-  std::vector<std::filesystem::path> files;
-  files.reserve((size_t)days);
-  // Scan oldest -> newest so "last write wins" maps to newest.
-  for (int i = days - 1; i >= 0; i--) {
-    const std::string ymd = local_date_ymd_days_ago(i);
-    const std::filesystem::path p = mem_root / (ymd + ".md");
+  Json::Value daily_scanned(Json::arrayValue);
+  Json::Value files_scanned(Json::arrayValue);
+  std::vector<ConsolidateScanFile> files;
+
+  auto add_scan_file = [&](std::string layer,
+                           std::filesystem::path p,
+                           std::string rel,
+                           int64_t sort_key,
+                           bool skip_structured_machine_block) {
     std::error_code ec;
-    if (std::filesystem::exists(p, ec) && std::filesystem::is_regular_file(p, ec)) {
-      files.push_back(p);
+    if (!std::filesystem::exists(p, ec) || !std::filesystem::is_regular_file(p, ec)) return;
+    ConsolidateScanFile sf;
+    sf.layer = std::move(layer);
+    sf.path = std::move(p);
+    sf.rel_path = std::move(rel);
+    sf.source_prefix = sf.layer + ":" + sf.rel_path;
+    sf.sort_key = sort_key;
+    sf.skip_structured_machine_block = skip_structured_machine_block;
+    files.push_back(std::move(sf));
+  };
+
+  if (opt.include_core) {
+    add_scan_file("core", mem_root / "MEMORY.md", "MEMORY.md", 0, false);
+  }
+  if (opt.include_structured) {
+    add_scan_file("structured", mem_root / "STRUCTURED.md", "STRUCTURED.md", 10, true);
+  }
+  if (opt.include_daily) {
+    // Scan oldest -> newest so "last write wins" maps to newest.
+    for (int i = days - 1; i >= 0; i--) {
+      const std::string ymd = local_date_ymd_days_ago(i);
+      const std::filesystem::path p = mem_root / (ymd + ".md");
+      std::error_code ec;
+      if (std::filesystem::exists(p, ec) && std::filesystem::is_regular_file(p, ec)) {
+        add_scan_file("daily", p, p.filename().string(), 1000000 + (days - i), false);
+        daily_scanned.append(p.filename().string());
+      }
     }
   }
-  for (const auto& p : files) scanned.append(p.filename().string());
-  report["daily_files_scanned"] = scanned;
+  if (opt.include_session && max_session_files > 0) {
+    const std::filesystem::path session_root = mem_root / "sessions";
+    std::error_code ec;
+    std::vector<ConsolidateScanFile> session_files;
+    const int64_t cutoff_ms = session_days > 0
+      ? unix_ms_now() - (int64_t)session_days * 24LL * 60 * 60 * 1000
+      : 0;
+    if (std::filesystem::exists(session_root, ec) && std::filesystem::is_directory(session_root, ec)) {
+      for (auto it = std::filesystem::recursive_directory_iterator(session_root, ec);
+           !ec && it != std::filesystem::recursive_directory_iterator();
+           ++it) {
+        const auto& de = *it;
+        if (de.is_symlink(ec)) continue;
+        if (!de.is_regular_file(ec)) continue;
+        if (!is_markdown_file(de.path())) continue;
+        const int64_t mt = file_mtime_ms(de.path());
+        if (cutoff_ms > 0 && mt > 0 && mt < cutoff_ms) continue;
+        ConsolidateScanFile sf;
+        sf.layer = "session";
+        sf.path = de.path();
+        sf.rel_path = path_rel_to(mem_root, de.path());
+        sf.source_prefix = sf.layer + ":" + sf.rel_path;
+        sf.sort_key = mt;
+        sf.skip_structured_machine_block = false;
+        session_files.push_back(std::move(sf));
+      }
+    }
+    std::sort(session_files.begin(), session_files.end(), [](const ConsolidateScanFile& a, const ConsolidateScanFile& b) {
+      if (a.sort_key != b.sort_key) return a.sort_key < b.sort_key;
+      return a.rel_path < b.rel_path;
+    });
+    if ((int)session_files.size() > max_session_files) {
+      session_files.erase(session_files.begin(), session_files.end() - max_session_files);
+    }
+    for (auto& sf : session_files) {
+      sf.sort_key += 2000000;
+      files.push_back(std::move(sf));
+    }
+  }
+
+  std::sort(files.begin(), files.end(), [](const ConsolidateScanFile& a, const ConsolidateScanFile& b) {
+    if (a.sort_key != b.sort_key) return a.sort_key < b.sort_key;
+    if (a.layer != b.layer) return a.layer < b.layer;
+    return a.rel_path < b.rel_path;
+  });
+  for (const auto& sf : files) {
+    Json::Value f(Json::objectValue);
+    f["layer"] = sf.layer;
+    f["path"] = sf.rel_path;
+    files_scanned.append(f);
+  }
+  report["daily_files_scanned"] = daily_scanned;
+  report["files_scanned"] = files_scanned;
 
   std::vector<std::string> keys_in_order;
   std::unordered_map<std::string, size_t> key_to_index;
   std::vector<MarkerEntry> entries;
   int marker_lines = 0;
 
-  for (const auto& p : files) {
+  for (const auto& sf : files) {
     std::string content;
-    if (!read_file_bounded(p, opt.max_file_bytes, &content)) continue;
+    if (!read_file_bounded(sf.path, max_file_bytes, &content)) continue;
 
     std::istringstream iss(content);
     std::string line;
     int line_no = 0;
+    bool in_structured_machine_block = false;
     while (std::getline(iss, line)) {
       line_no++;
       if (!line.empty() && line.back() == '\r') line.pop_back();
+      if (sf.skip_structured_machine_block) {
+        if (line.find("<!-- AGENT_MEMORY_V1_BEGIN -->") != std::string::npos) {
+          in_structured_machine_block = true;
+          continue;
+        }
+        if (line.find("<!-- AGENT_MEMORY_V1_END -->") != std::string::npos) {
+          in_structured_machine_block = false;
+          continue;
+        }
+        if (in_structured_machine_block) continue;
+      }
       std::string kind, status, key, value;
       if (!parse_mem_marker_line(line, &kind, &status, &key, &value)) continue;
       marker_lines++;
@@ -202,7 +335,9 @@ bool memory_consolidate_once(
       e.kind = kind;
       e.status = status;
       e.value = value;
-      e.source = std::string("daily:") + p.filename().string() + "#L" + std::to_string(line_no);
+      e.source = sf.layer == "structured"
+        ? sf.source_prefix
+        : sf.source_prefix + "#L" + std::to_string(line_no);
 
       auto it = key_to_index.find(e.key);
       if (it == key_to_index.end()) {
@@ -363,6 +498,7 @@ void MemoryConsolidatorEngine::worker_main() {
 
     MemoryConsolidateOptions opt;
     opt.daily_days = cfg.memory_consolidate_daily_days;
+    opt.session_days = opt.daily_days;
     opt.keep_checkpoints = cfg.memory_consolidate_keep_checkpoints;
     opt.dry_run = false;
 

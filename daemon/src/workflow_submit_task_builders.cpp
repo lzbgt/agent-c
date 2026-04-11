@@ -4,6 +4,7 @@
 
 #include <json/json.h>
 
+#include <algorithm>
 #include <cctype>
 #include <string>
 #include <unordered_set>
@@ -436,6 +437,70 @@ bool workflow_submit_build_agentd_call_task_request(
 
   (*out_task_req)["kind"] = "agentd_call";
   (*out_task_req)["agentd_call"] = ac2;
+  (*out_task_req)["priority"] = task_priority;
+  (*out_task_req)["trace_id"] = trace_id + ":" + task_id;
+  return true;
+}
+
+bool workflow_submit_build_memory_consolidate_task_request(
+  const Json::Value& task_spec,
+  const std::string& task_id,
+  int task_priority,
+  const std::string& trace_id,
+  Json::Value* out_task_req,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (!out_task_req) return false;
+  *out_task_req = Json::Value(Json::objectValue);
+
+  if (task_spec.isMember("memory_consolidate") &&
+      !task_spec["memory_consolidate"].isObject() &&
+      !task_spec["memory_consolidate"].isNull()) {
+    if (out_error) *out_error = "memory_consolidate must be an object";
+    return false;
+  }
+
+  const Json::Value mc =
+    task_spec.isMember("memory_consolidate") && task_spec["memory_consolidate"].isObject()
+      ? task_spec["memory_consolidate"]
+      : Json::Value(Json::objectValue);
+  Json::Value mc2(Json::objectValue);
+
+  auto copy_int = [&](const char* field, int min_value) -> bool {
+    if (!mc.isMember(field)) return true;
+    if (!mc[field].isInt()) {
+      if (out_error) *out_error = std::string("memory_consolidate.") + field + " must be an int";
+      return false;
+    }
+    mc2[field] = std::max(min_value, mc[field].asInt());
+    return true;
+  };
+  if (!copy_int("daily_days", 0)) return false;
+  if (!copy_int("session_days", 0)) return false;
+  if (!copy_int("keep_checkpoints", 1)) return false;
+  if (!copy_int("max_entries", 1)) return false;
+  if (!copy_int("max_file_bytes", 1024)) return false;
+  if (!copy_int("max_session_files", 0)) return false;
+
+  if (mc.isMember("dry_run")) {
+    if (!mc["dry_run"].isBool()) {
+      if (out_error) *out_error = "memory_consolidate.dry_run must be a bool";
+      return false;
+    }
+    mc2["dry_run"] = mc["dry_run"];
+  }
+  for (const char* field : {"include_core", "include_daily", "include_session", "include_structured"}) {
+    if (!mc.isMember(field)) continue;
+    if (!mc[field].isBool()) {
+      if (out_error) *out_error = std::string("memory_consolidate.") + field + " must be a bool";
+      return false;
+    }
+    mc2[field] = mc[field];
+  }
+
+  (*out_task_req)["kind"] = "memory_consolidate";
+  (*out_task_req)["memory_consolidate"] = mc2;
   (*out_task_req)["priority"] = task_priority;
   (*out_task_req)["trace_id"] = trace_id + ":" + task_id;
   return true;

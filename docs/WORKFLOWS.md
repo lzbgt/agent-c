@@ -534,6 +534,37 @@ Semantics:
 - This task does not call an LLM/provider, so it is suitable for deterministic “write facts only when upstream checks passed”
   workflows (pair it with `depends_on` + `expect` on the upstream tasks).
 
+### Deterministic memory consolidation task (`kind:"memory_consolidate"`) (v1.7)
+
+Workflows can trigger the same explicit-marker promotion as `POST /api/v1/memory/consolidate`:
+
+```json
+{
+  "task_id": "C",
+  "kind": "memory_consolidate",
+  "memory_consolidate": {
+    "daily_days": 1,
+    "session_days": 1,
+    "max_session_files": 16,
+    "max_file_bytes": 1048576,
+    "max_entries": 64,
+    "include_core": true,
+    "include_daily": true,
+    "include_session": true,
+    "include_structured": true
+  }
+}
+```
+
+Semantics:
+- Requires the daemon to run with `--tools host --host-policy full` (this task writes structured memory through `memory_put`).
+- By default it scans core memory, recent daily logs, bounded session notes, and human-readable structured-memory text for
+  explicit `@mem` markers, then promotes them into `memory/STRUCTURED.md`.
+- It skips the structured-memory machine JSON block so existing records are not recursively parsed as markers. Structured-file
+  markers use the stable source label `structured:STRUCTURED.md`, so repeated runs remain idempotent after `memory_put` re-renders the file.
+- `session_days` defaults to `daily_days`; `max_session_files` bounds the newest session files by modification time.
+- The task does not call an LLM/provider and surfaces the consolidation `report` for deterministic `expect` checks.
+
 ### Deterministic memory search task (`kind:"memory_search"`) (v1.7)
 
 For deterministic, **read-only** memory retrieval (substring/FTS search), workflows can run:

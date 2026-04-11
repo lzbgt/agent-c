@@ -1596,7 +1596,9 @@
     summary: Promote @mem markers into structured memory
     description: |
       Deterministic rolling consolidation:
-      - scans recent daily memory files for explicit `@mem` markers
+      - scans bounded core, daily, session, and structured-text memory files for explicit `@mem` markers
+      - skips the structured-memory machine JSON block to avoid recursively promoting existing records
+      - uses stable `structured:STRUCTURED.md` sources for structured-file markers
       - upserts them into `memory/STRUCTURED.md`
       - writes a checkpoint snapshot (best-effort) when changes occur
       - rebuilds the correlation index (best-effort) when `dry_run=false`
@@ -1608,8 +1610,15 @@
             type: object
             properties:
               daily_days: { type: integer, format: int32 }
+              session_days: { type: integer, format: int32 }
               keep_checkpoints: { type: integer, format: int32 }
               max_entries: { type: integer, format: int32 }
+              max_file_bytes: { type: integer, format: int32 }
+              max_session_files: { type: integer, format: int32 }
+              include_core: { type: boolean }
+              include_daily: { type: boolean }
+              include_session: { type: boolean }
+              include_structured: { type: boolean }
               dry_run: { type: boolean }
     responses:
       "200":

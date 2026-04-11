@@ -340,7 +340,8 @@ The older P0/P1 section was pruned on 2026-04-12 so `Next` / `Remaining` notes n
   - 2026-04-12 follow-up: `host_toolset_tests` now covers deterministic FTS5-ranked `memory_search` order for index mode and structured conflict-resolution current-view queries with current evidence plus retained superseded versions/evidence.
   - 2026-04-12 follow-up: memory correlation now returns `relationship_graph` (`agentd.memory.relationship_graph.v1`) from both `/api/v1/memory/correlate` and deterministic workflow `kind:"memory_correlate"`, linking memory items to trace/workflow/task/job IDs and bounded source excerpts.
   - 2026-04-12 follow-up: structured memory writes now preserve explicit `observed_utc`, `valid_from`, `supersedes[]`, and `sources[]` metadata through host-tool and workflow `memory_put` paths, with history retained in `versions[]`; structured queries can filter/order by `observed_utc` and `valid_from`.
-  - Current remaining: all-layer time/size consolidation across core/daily/session/structured layers.
+  - 2026-04-12 follow-up: rolling consolidation now scans bounded core/daily/session/structured-text layers, skips the structured machine JSON block, uses stable structured-file sources across re-renders, and exposes the same knobs through `/api/v1/memory/consolidate` plus deterministic workflow `kind:"memory_consolidate"`.
+  - Current remaining: no unblocked local memory correctness gap; broader validation depends on real fleet data/retention policy tuning.
 
 - Workflow / correctness:
   - 2026-04-12 follow-up: workflow `expect` now covers JSON pointer checks, regex, numeric bounds, schema subset checks, and tool-call constraints through shared deterministic validators.
@@ -368,4 +369,4 @@ Highest leverage sequence:
 
 1. Fix or unblock OpenRouter credentials, run the OpenRouter streaming pin workflow, and commit `ref/openrouter/streaming_pins.json` if the result is stable.
 2. Execute the documented builtin-vs-bundled graduation gate on any additional target release platforms before changing production defaults outside the checked macOS M2 host.
-3. If those credential/host-gated items remain blocked, the next unblocked local memory slice is all-layer time/size consolidation across core/daily/session/structured layers.
+3. If those credential/host-gated items remain blocked, choose the next concrete local item from the lower-priority UI timeline/filter or richer workflow aggregation notes; the memory correctness slices identified in this audit are now closed locally.

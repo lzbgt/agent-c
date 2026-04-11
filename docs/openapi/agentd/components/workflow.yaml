@@ -1073,13 +1073,18 @@ WorkflowMemoryConsolidateSpec:
   description: |
     Deterministic memory consolidation options.
 
-    Scans recent daily memory files for explicit `@mem` markers, then promotes them into structured memory
-    (`memory/STRUCTURED.md`) via host tool `memory_put(entries=[...])`.
+    Scans bounded core, daily, session, and structured-text memory files for explicit `@mem` markers, then promotes them into
+    structured memory (`memory/STRUCTURED.md`) via host tool `memory_put(entries=[...])`. The structured-memory machine JSON
+    block is skipped, and structured-file markers use the stable source label `structured:STRUCTURED.md`.
   properties:
     daily_days:
       type: integer
       format: int32
       description: Number of daily memory files (days) to scan (default from daemon config; clamped >=0).
+    session_days:
+      type: integer
+      format: int32
+      description: Session-file modification-time window in days (default follows `daily_days`; clamped >=0).
     keep_checkpoints:
       type: integer
       format: int32
@@ -1088,6 +1093,26 @@ WorkflowMemoryConsolidateSpec:
       type: integer
       format: int32
       description: Maximum distinct keys to promote (default 256; clamped >=1).
+    max_file_bytes:
+      type: integer
+      format: int32
+      description: Maximum bytes read from each scanned file (default 1048576; clamped >=1024).
+    max_session_files:
+      type: integer
+      format: int32
+      description: Maximum newest session markdown files to scan (default 64; clamped >=0).
+    include_core:
+      type: boolean
+      description: Include `memory/MEMORY.md` marker scans (default true).
+    include_daily:
+      type: boolean
+      description: Include recent `memory/YYYY-MM-DD.md` marker scans (default true).
+    include_session:
+      type: boolean
+      description: Include bounded `memory/sessions/**/*.md` marker scans (default true).
+    include_structured:
+      type: boolean
+      description: Include human-readable `memory/STRUCTURED.md` text outside the machine JSON block (default true).
     dry_run:
       type: boolean
       description: When true, scan and report but do not write structured memory (default false).
