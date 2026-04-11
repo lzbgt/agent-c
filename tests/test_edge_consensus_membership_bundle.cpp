@@ -7,6 +7,7 @@
 #include <cassert>
 #include <cstdio>
 #include <filesystem>
+#include <set>
 #include <string>
 #include <unistd.h>
 #include <vector>
@@ -21,6 +22,36 @@ static void test_member_normalization_dedupes_safe_ids() {
   assert(normalized[0] == "node-a");
   assert(normalized[1] == "node-b");
   assert(normalized[2] == "node-c");
+}
+
+static void test_member_helpers_shape_peers_and_sets() {
+  assert(agentd::edge_consensus_member_node_id_is_valid(" node-a "));
+  assert(!agentd::edge_consensus_member_node_id_is_valid("bad/node"));
+  assert(agentd::edge_consensus_member_node_id_matches(" node-a ", "node-a"));
+  assert(!agentd::edge_consensus_member_node_id_matches("node-a", "node-b"));
+
+  std::vector<std::string> members;
+  agentd::edge_consensus_append_member_node_id_if_unique(&members, " node-a ");
+  agentd::edge_consensus_append_member_node_id_if_unique(&members, "node-a");
+  agentd::edge_consensus_append_member_node_id_if_unique(&members, "bad/node");
+  agentd::edge_consensus_append_member_node_id_if_unique(&members, "node-b");
+  assert(members.size() == 2);
+  assert(members[0] == "node-a");
+  assert(members[1] == "node-b");
+  assert(agentd::edge_consensus_member_node_ids_contains(members, " node-b "));
+  assert(!agentd::edge_consensus_member_node_ids_contains(members, "bad/node"));
+
+  const std::vector<std::string> peers =
+    agentd::edge_consensus_normalize_peer_node_ids({"node-a", "node-b", " node-b ", "node-c"}, " node-a ");
+  assert(peers.size() == 2);
+  assert(peers[0] == "node-b");
+  assert(peers[1] == "node-c");
+
+  const std::set<std::string> member_set =
+    agentd::edge_consensus_normalize_member_node_id_set({"node-b", "node-b", "bad/node"}, " node-a ", true);
+  assert(member_set.size() == 2);
+  assert(member_set.count("node-a") == 1);
+  assert(member_set.count("node-b") == 1);
 }
 
 static agentd::DaemonConfig make_config() {
@@ -165,6 +196,7 @@ static void test_runtime_config_load_dedupes_member_lineage_with_portable_matche
 
 int main() {
   test_member_normalization_dedupes_safe_ids();
+  test_member_helpers_shape_peers_and_sets();
   test_membership_bundle_fields();
   test_membership_bundle_hmac_attestation();
   test_membership_bundle_rejects_missing_policy();

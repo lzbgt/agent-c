@@ -1,5 +1,6 @@
 #include "edge_consensus_runtime_model.h"
 
+#include "edge_consensus_member_ids.h"
 #include "edge_consensus_runtime_policy.h"
 #include "edge_util.h"
 #include "string_util.h"
@@ -23,16 +24,6 @@ static bool is_safe_printable_field_model(const std::string& s, size_t max_len) 
     if (c < 0x20) return false;
   }
   return true;
-}
-
-static bool consensus_member_node_id_is_valid_model(const std::string& node_id) {
-  return agent_edge_consensus_member_node_id_is_valid(node_id.data(), node_id.size()) == 1;
-}
-
-static bool consensus_node_id_matches_model(const std::string& a, const std::string& b) {
-  const std::string left = trim_copy(a);
-  const std::string right = trim_copy(b);
-  return agent_edge_consensus_node_id_matches(left.data(), left.size(), right.data(), right.size()) == 1;
 }
 
 static bool consensus_cluster_id_matches_model(const std::string& a, const std::string& b) {
@@ -68,36 +59,10 @@ static int64_t json_to_i64_model(const Json::Value& v, int64_t fallback) {
   return fallback;
 }
 
-static std::vector<std::string> dedupe_consensus_member_node_ids_model(const std::vector<std::string>& in) {
-  std::vector<std::string> out;
-  out.reserve(in.size());
-  for (const auto& raw : in) {
-    const std::string s = trim_copy(raw);
-    if (!consensus_member_node_id_is_valid_model(s)) continue;
-    const bool already_seen = std::any_of(out.begin(), out.end(), [&](const std::string& node_id) {
-      return consensus_node_id_matches_model(node_id, s);
-    });
-    if (!already_seen) out.push_back(s);
-  }
-  return out;
-}
-
 static std::vector<std::string> sorted_consensus_member_node_ids_model(const std::vector<std::string>& in) {
-  std::vector<std::string> out = dedupe_consensus_member_node_ids_model(in);
+  std::vector<std::string> out = edge_consensus_normalize_member_node_ids(in);
   std::sort(out.begin(), out.end());
   return out;
-}
-
-static bool consensus_member_node_id_vec_contains_model(
-  const std::vector<std::string>& member_node_ids,
-  const std::string& node_id
-) {
-  const std::string node = trim_copy(node_id);
-  if (!consensus_member_node_id_is_valid_model(node)) return false;
-  for (const auto& member : member_node_ids) {
-    if (consensus_node_id_matches_model(member, node)) return true;
-  }
-  return false;
 }
 
 static uint64_t safe_config_epoch_u64_model(int64_t v) {
@@ -225,9 +190,9 @@ Json::Value edge_consensus_runtime_cluster_policy_drift_json(
 
   const EdgeConsensusClusterPolicy& pol = pol_it->second;
   std::vector<std::string> policy_member_node_ids =
-    dedupe_consensus_member_node_ids_model(pol.member_node_ids);
+    edge_consensus_normalize_member_node_ids(pol.member_node_ids);
   std::vector<std::string> runtime_member_node_ids =
-    dedupe_consensus_member_node_ids_model(st.member_node_ids);
+    edge_consensus_normalize_member_node_ids(st.member_node_ids);
   std::sort(policy_member_node_ids.begin(), policy_member_node_ids.end());
   std::sort(runtime_member_node_ids.begin(), runtime_member_node_ids.end());
 
@@ -364,7 +329,7 @@ bool edge_consensus_runtime_membership_epoch_recoverable(
     return true;
   }
   if (st.membership_epoch == current_epoch) {
-    const bool node_is_member = consensus_member_node_id_vec_contains_model(pol.member_node_ids, st.node_id);
+    const bool node_is_member = edge_consensus_member_node_ids_contains(pol.member_node_ids, st.node_id);
     const bool recoverable = agent_edge_consensus_membership_epoch_member_set_can_recover(
       st.membership_epoch,
       current_epoch,
@@ -378,7 +343,7 @@ bool edge_consensus_runtime_membership_epoch_recoverable(
   }
   if (pol.previous_membership_epoch > 0 && st.membership_epoch == (uint64_t)pol.previous_membership_epoch) {
     const bool node_is_member =
-      consensus_member_node_id_vec_contains_model(pol.previous_member_node_ids, st.node_id);
+      edge_consensus_member_node_ids_contains(pol.previous_member_node_ids, st.node_id);
     const bool recoverable = agent_edge_consensus_membership_epoch_member_set_can_recover(
       st.membership_epoch,
       previous_epoch,
@@ -396,7 +361,7 @@ bool edge_consensus_runtime_membership_epoch_recoverable(
     if (st.membership_epoch != (uint64_t)entry.membership_epoch) continue;
     matched_lineage_epoch = true;
     const uint64_t lineage_epoch = (uint64_t)entry.membership_epoch;
-    const bool node_is_member = consensus_member_node_id_vec_contains_model(entry.member_node_ids, st.node_id);
+    const bool node_is_member = edge_consensus_member_node_ids_contains(entry.member_node_ids, st.node_id);
     const bool recoverable = agent_edge_consensus_membership_epoch_member_set_can_recover(
       st.membership_epoch,
       lineage_epoch,
@@ -434,7 +399,7 @@ bool edge_consensus_runtime_same_effective_config(
     trim_copy(a.runtime_kind) == "builtin" && trim_copy(b.runtime_kind) == "builtin";
   return
     trim_copy(a.runtime_kind) == trim_copy(b.runtime_kind) &&
-    consensus_node_id_matches_model(a.node_id, b.node_id) &&
+    edge_consensus_member_node_id_matches(a.node_id, b.node_id) &&
     consensus_cluster_id_matches_model(a.cluster_id, b.cluster_id) &&
     consensus_optional_sha256_token_matches_model(a.manifest_sha256, b.manifest_sha256) &&
     consensus_optional_sha256_token_matches_model(a.decision_sha256, b.decision_sha256) &&
@@ -507,7 +472,7 @@ bool edge_consensus_runtime_build_config(
   const EdgeConsensusClusterPolicy* cluster_policy =
     pol_it == cfg.edge_consensus_clusters.end() ? nullptr : &pol_it->second;
 
-  if (!consensus_member_node_id_is_valid_model(node_id) || !edge_id_is_safe(cluster_id) ||
+  if (!edge_consensus_member_node_id_is_valid(node_id) || !edge_id_is_safe(cluster_id) ||
       !consensus_sha256_token_is_valid_model(manifest_sha256)) {
     if (out_err) *out_err = "invalid node runtime identity";
     return false;
@@ -543,17 +508,12 @@ bool edge_consensus_runtime_build_config(
         return false;
       }
       const std::string peer = trim_copy(body["peer_node_ids"][i].asString());
-      if (!consensus_member_node_id_is_valid_model(peer)) {
+      if (!edge_consensus_member_node_id_is_valid(peer)) {
         if (out_err) *out_err = "invalid peer_node_id";
         return false;
       }
-      if (consensus_node_id_matches_model(peer, node_id)) continue;
-      const bool already_seen = std::any_of(peer_node_ids.begin(), peer_node_ids.end(), [&](const std::string& id) {
-        return consensus_node_id_matches_model(id, peer);
-      });
-      if (!already_seen) {
-        peer_node_ids.push_back(peer);
-      }
+      if (edge_consensus_member_node_id_matches(peer, node_id)) continue;
+      edge_consensus_append_member_node_id_if_unique(&peer_node_ids, peer);
     }
   }
   if (body.isMember("member_node_ids")) {
@@ -567,34 +527,27 @@ bool edge_consensus_runtime_build_config(
         return false;
       }
       const std::string member = trim_copy(body["member_node_ids"][i].asString());
-      if (!consensus_member_node_id_is_valid_model(member)) {
+      if (!edge_consensus_member_node_id_is_valid(member)) {
         if (out_err) *out_err = "invalid member_node_id";
         return false;
       }
-      const bool already_seen = std::any_of(member_node_ids.begin(), member_node_ids.end(), [&](const std::string& id) {
-        return consensus_node_id_matches_model(id, member);
-      });
-      if (!already_seen) {
-        member_node_ids.push_back(member);
-      }
+      edge_consensus_append_member_node_id_if_unique(&member_node_ids, member);
     }
   }
   if (member_node_ids.empty() && cluster_policy) {
-    member_node_ids = dedupe_consensus_member_node_ids_model(cluster_policy->member_node_ids);
+    member_node_ids = edge_consensus_normalize_member_node_ids(cluster_policy->member_node_ids);
   }
-  const bool self_is_member = std::any_of(member_node_ids.begin(), member_node_ids.end(), [&](const std::string& id) {
-    return consensus_node_id_matches_model(id, node_id);
-  });
+  const bool self_is_member = edge_consensus_member_node_ids_contains(member_node_ids, node_id);
   if (!self_is_member) {
     member_node_ids.push_back(node_id);
   }
-  member_node_ids = dedupe_consensus_member_node_ids_model(member_node_ids);
+  member_node_ids = edge_consensus_normalize_member_node_ids(member_node_ids);
   if (peer_node_ids.empty() && !member_node_ids.empty()) {
     for (const auto& member : member_node_ids) {
-      if (!consensus_node_id_matches_model(member, node_id)) peer_node_ids.push_back(member);
+      if (!edge_consensus_member_node_id_matches(member, node_id)) peer_node_ids.push_back(member);
     }
   }
-  peer_node_ids = dedupe_consensus_member_node_ids_model(peer_node_ids);
+  peer_node_ids = edge_consensus_normalize_member_node_ids(peer_node_ids);
   if (member_node_ids.empty()) member_node_ids = peer_node_ids;
 
   uint64_t cluster_size = body.isMember("cluster_size") ? json_to_u64_model(body["cluster_size"], 0) : 0;

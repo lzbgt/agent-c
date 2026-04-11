@@ -1,5 +1,7 @@
 #pragma once
 
+#include "edge_consensus_member_ids.h"
+
 #include <json/json.h>
 
 #include <string>
@@ -8,8 +10,6 @@
 namespace agentd {
 
 struct DaemonConfig;
-
-std::vector<std::string> edge_consensus_normalize_member_node_ids(const std::vector<std::string>& in);
 
 bool build_edge_consensus_membership_bundle(
   const DaemonConfig& cfg,

@@ -16,24 +16,6 @@
 namespace agentd {
 namespace {
 
-static bool consensus_member_node_id_matches(const std::string& a, const std::string& b) {
-  const std::string left = trim_copy(a);
-  const std::string right = trim_copy(b);
-  return agent_edge_consensus_node_id_matches(left.data(), left.size(), right.data(), right.size()) == 1;
-}
-
-static bool member_node_id_vec_contains(const std::vector<std::string>& haystack, const std::string& needle) {
-  if (needle.empty()) return false;
-  for (const auto& item : haystack) {
-    if (consensus_member_node_id_matches(item, needle)) return true;
-  }
-  return false;
-}
-
-static bool consensus_member_node_id_is_valid(const std::string& node_id) {
-  return agent_edge_consensus_member_node_id_is_valid(node_id.data(), node_id.size()) == 1;
-}
-
 static bool canonical_json_bytes(const Json::Value& v, std::string* out, std::string* out_err) {
   if (out_err) out_err->clear();
   if (!out) return false;
@@ -125,17 +107,6 @@ static bool parse_seed_bytes(const std::string& text, std::vector<uint8_t>* out,
 }
 
 }  // namespace
-
-std::vector<std::string> edge_consensus_normalize_member_node_ids(const std::vector<std::string>& in) {
-  std::vector<std::string> out;
-  out.reserve(in.size());
-  for (const auto& raw : in) {
-    const std::string s = trim_copy(raw);
-    if (!consensus_member_node_id_is_valid(s)) continue;
-    if (!member_node_id_vec_contains(out, s)) out.push_back(s);
-  }
-  return out;
-}
 
 bool build_edge_consensus_membership_bundle(
   const DaemonConfig& cfg,

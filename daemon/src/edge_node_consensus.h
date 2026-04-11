@@ -1,5 +1,7 @@
 #pragma once
 
+#include "edge_consensus_member_ids.h"
+
 #include "agent/edge_interop.h"
 
 #include <json/json.h>
@@ -80,11 +82,7 @@ class EdgeConsensusReplica {
   uint64_t membership_epoch() const { return self_.membership_epoch; }
   const std::set<std::string>& member_node_ids() const { return member_node_ids_; }
   bool leader_is_self() const {
-    return agent_edge_consensus_node_id_matches(
-             leader_node_id_.data(),
-             leader_node_id_.size(),
-             self_.node_id.data(),
-             self_.node_id.size()) != 0;
+    return edge_consensus_member_node_id_matches(leader_node_id_, self_.node_id);
   }
 
   void set_trust_epochs(const EdgeConsensusEpochs& epochs);

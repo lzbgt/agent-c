@@ -288,6 +288,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/edge_confidentiality.cpp
     daemon/src/edge_platform_bundle.cpp
     daemon/src/edge_interop_endpoints.cpp
+    daemon/src/edge_consensus_member_ids.cpp
     daemon/src/edge_consensus_membership_bundle.cpp
     daemon/src/edge_consensus_membership_endpoints.cpp
     daemon/src/edge_manifest_bundle.cpp

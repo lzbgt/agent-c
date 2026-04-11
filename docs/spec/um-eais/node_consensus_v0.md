@@ -214,6 +214,9 @@ The shipped autonomous host-loop proof adds:
   ports do not refresh lease/recovery state from rejected but parseable leader commits
 - leader heartbeat commits now use fresh frame ids instead of replaying the original commit id, preserving duplicate-frame
   suppression while still letting accepted heartbeats refresh follower lease state
+- daemon-side consensus member-id normalization is now centralized behind one helper that wraps portable `agent_core`
+  node-id predicates, keeping runtime config/load-store shaping, membership bundle/endpoints, stale recovery, and the
+  node loop aligned before firmware-native policy adoption
 
 ## Still open
 

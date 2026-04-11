@@ -1,5 +1,6 @@
 #include "runtime_config.h"
 
+#include "edge_consensus_member_ids.h"
 #include "edge_consensus_runtime_policy.h"
 #include "json_util.h"
 #include "string_util.h"
@@ -56,32 +57,6 @@ static bool is_safe_edge_id_token(const std::string& s_in) {
     if (!ok) return false;
   }
   return true;
-}
-
-static bool is_safe_consensus_member_node_id(const std::string& s_in) {
-  const std::string s = trim_copy(s_in);
-  return agent_edge_consensus_member_node_id_is_valid(s.data(), s.size()) == 1;
-}
-
-static bool consensus_member_node_id_matches(const std::string& a, const std::string& b) {
-  const std::string left = trim_copy(a);
-  const std::string right = trim_copy(b);
-  return agent_edge_consensus_node_id_matches(left.data(), left.size(), right.data(), right.size()) == 1;
-}
-
-static bool consensus_member_node_id_vec_contains(const std::vector<std::string>& haystack, const std::string& needle) {
-  if (needle.empty()) return false;
-  for (const auto& item : haystack) {
-    if (consensus_member_node_id_matches(item, needle)) return true;
-  }
-  return false;
-}
-
-static void append_consensus_member_node_id_if_unique(std::vector<std::string>* out, const std::string& raw) {
-  if (!out) return;
-  const std::string s = trim_copy(raw);
-  if (!is_safe_consensus_member_node_id(s)) return;
-  if (!consensus_member_node_id_vec_contains(*out, s)) out->push_back(s);
 }
 
 static bool is_valid_voice_runtime_kind(const std::string& s_in) {
@@ -676,13 +651,13 @@ bool load_runtime_config_best_effort(
           if (row.isMember("member_node_ids") && row["member_node_ids"].isArray()) {
             for (const auto& item : row["member_node_ids"]) {
               if (!item.isString()) continue;
-              append_consensus_member_node_id_if_unique(&pol.member_node_ids, item.asString());
+              edge_consensus_append_member_node_id_if_unique(&pol.member_node_ids, item.asString());
             }
           }
           if (row.isMember("previous_member_node_ids") && row["previous_member_node_ids"].isArray()) {
             for (const auto& item : row["previous_member_node_ids"]) {
               if (!item.isString()) continue;
-              append_consensus_member_node_id_if_unique(&pol.previous_member_node_ids, item.asString());
+              edge_consensus_append_member_node_id_if_unique(&pol.previous_member_node_ids, item.asString());
             }
           }
           if (row.isMember("membership_lineage") && row["membership_lineage"].isArray()) {
@@ -704,7 +679,7 @@ bool load_runtime_config_best_effort(
               if (item.isMember("member_node_ids") && item["member_node_ids"].isArray()) {
                 for (const auto& member_item : item["member_node_ids"]) {
                   if (!member_item.isString()) continue;
-                  append_consensus_member_node_id_if_unique(&entry.member_node_ids, member_item.asString());
+                  edge_consensus_append_member_node_id_if_unique(&entry.member_node_ids, member_item.asString());
                 }
               }
               if (entry.member_node_ids.empty()) continue;

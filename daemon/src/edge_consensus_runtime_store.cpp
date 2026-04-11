@@ -1,5 +1,6 @@
 #include "edge_consensus_runtime_store.h"
 
+#include "edge_consensus_member_ids.h"
 #include "edge_util.h"
 #include "json_util.h"
 #include "string_util.h"
@@ -28,30 +29,8 @@ static uint64_t json_to_u64(const Json::Value& v, uint64_t fallback) {
   return fallback;
 }
 
-static bool consensus_member_node_id_is_valid_store(const std::string& node_id) {
-  return agent_edge_consensus_member_node_id_is_valid(node_id.data(), node_id.size()) == 1;
-}
-
-static bool consensus_node_id_matches_store(const std::string& a, const std::string& b) {
-  return agent_edge_consensus_node_id_matches(a.data(), a.size(), b.data(), b.size()) == 1;
-}
-
 static bool consensus_sha256_token_is_valid_store(const std::string& token) {
   return agent_umbmp_sha256_token_is_safe(token.data(), token.size()) == 1;
-}
-
-static std::vector<std::string> dedupe_consensus_member_node_ids(const std::vector<std::string>& in) {
-  std::vector<std::string> out;
-  out.reserve(in.size());
-  for (const auto& raw : in) {
-    const std::string s = trim_copy(raw);
-    if (!consensus_member_node_id_is_valid_store(s)) continue;
-    const bool already_seen = std::any_of(out.begin(), out.end(), [&](const std::string& node_id) {
-      return consensus_node_id_matches_store(node_id, s);
-    });
-    if (!already_seen) out.push_back(s);
-  }
-  return out;
 }
 
 static std::string edge_consensus_runtime_meta_key(const std::string& node_id) {
@@ -129,7 +108,7 @@ bool edge_consensus_runtime_from_json(
   if (v.isMember("decision_sha256") && v["decision_sha256"].isString()) {
     st.decision_sha256 = trim_copy(v["decision_sha256"].asString());
   }
-  if (!consensus_member_node_id_is_valid_store(st.node_id) || !edge_id_is_safe(st.cluster_id) ||
+  if (!edge_consensus_member_node_id_is_valid(st.node_id) || !edge_id_is_safe(st.cluster_id) ||
       !consensus_sha256_token_is_valid_store(st.manifest_sha256)) {
     if (out_err) *out_err = "invalid persisted runtime identity";
     return false;
@@ -151,7 +130,7 @@ bool edge_consensus_runtime_from_json(
       }
       st.peer_node_ids.push_back(trim_copy(v["peer_node_ids"][i].asString()));
     }
-    st.peer_node_ids = dedupe_consensus_member_node_ids(st.peer_node_ids);
+    st.peer_node_ids = edge_consensus_normalize_member_node_ids(st.peer_node_ids);
   }
 
   if (v.isMember("member_node_ids")) {
@@ -166,7 +145,7 @@ bool edge_consensus_runtime_from_json(
       }
       st.member_node_ids.push_back(trim_copy(v["member_node_ids"][i].asString()));
     }
-    st.member_node_ids = dedupe_consensus_member_node_ids(st.member_node_ids);
+    st.member_node_ids = edge_consensus_normalize_member_node_ids(st.member_node_ids);
   }
 
   if (v.isMember("daemon_url") && v["daemon_url"].isString()) {

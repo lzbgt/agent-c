@@ -19,24 +19,6 @@
 namespace agentd {
 namespace {
 
-static bool consensus_member_node_id_matches(const std::string& a, const std::string& b) {
-  const std::string left = trim_copy(a);
-  const std::string right = trim_copy(b);
-  return agent_edge_consensus_node_id_matches(left.data(), left.size(), right.data(), right.size()) == 1;
-}
-
-static bool member_node_id_vec_contains(const std::vector<std::string>& haystack, const std::string& needle) {
-  if (needle.empty()) return false;
-  for (const auto& item : haystack) {
-    if (consensus_member_node_id_matches(item, needle)) return true;
-  }
-  return false;
-}
-
-static bool consensus_member_node_id_is_valid(const std::string& node_id) {
-  return agent_edge_consensus_member_node_id_is_valid(node_id.data(), node_id.size()) == 1;
-}
-
 static bool lineage_contains_epoch(
   const std::vector<EdgeConsensusMembershipLineageEntry>& lineage,
   int64_t membership_epoch
@@ -259,7 +241,7 @@ void handle_edge_consensus_membership_rotate_endpoint(
   EdgeConsensusClusterPolicy next_pol;
   if (cur_it != cur.edge_consensus_clusters.end() && mode == "merge") next_pol = cur_it->second;
   for (const auto& member : incoming_members) {
-    if (!member_node_id_vec_contains(next_pol.member_node_ids, member)) next_pol.member_node_ids.push_back(member);
+    edge_consensus_append_member_node_id_if_unique(&next_pol.member_node_ids, member);
   }
   next_pol.member_node_ids = edge_consensus_normalize_member_node_ids(next_pol.member_node_ids);
   if (next_pol.member_node_ids.empty()) {
@@ -370,7 +352,7 @@ void handle_edge_consensus_membership_send_endpoint(
     resp->body = json_error_body("invalid cluster_id");
     return;
   }
-  if (!consensus_member_node_id_is_valid(target_node_id)) {
+  if (!edge_consensus_member_node_id_is_valid(target_node_id)) {
     resp->status = 400;
     resp->body = json_error_body("invalid target_node_id");
     return;
