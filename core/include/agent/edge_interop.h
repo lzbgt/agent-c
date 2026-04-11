@@ -418,6 +418,13 @@ int agent_edge_consensus_lease_expiry_recampaign_delay_active(
   int64_t last_leader_lease_expired_utc_ms
 );
 
+int64_t agent_edge_consensus_campaign_last_started_after_lease_expiry(
+  int64_t now_utc_ms,
+  int64_t retry_delay_ms,
+  int election_started,
+  int64_t last_campaign_started_utc_ms
+);
+
 int agent_edge_consensus_campaign_start_due(
   int64_t now_utc_ms,
   int64_t started_utc_ms,

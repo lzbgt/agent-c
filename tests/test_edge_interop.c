@@ -652,6 +652,13 @@ static void test_consensus_loop_timing_gates(void) {
   assert(agent_edge_consensus_lease_expiry_recampaign_delay_active(2000, 7000, 0) == 0);
   assert(agent_edge_consensus_lease_expiry_recampaign_delay_active(0, 7000, 6000) == 0);
 
+  assert(agent_edge_consensus_campaign_last_started_after_lease_expiry(9000, 1200, 1, 7000) == 7800);
+  assert(agent_edge_consensus_campaign_last_started_after_lease_expiry(9000, 0, 1, 7000) == 9000);
+  assert(agent_edge_consensus_campaign_last_started_after_lease_expiry(9000, -7, 1, 7000) == 9000);
+  assert(agent_edge_consensus_campaign_last_started_after_lease_expiry(9000, 1200, 0, 7000) == 7000);
+  assert(agent_edge_consensus_campaign_last_started_after_lease_expiry(9000, 1200, 1, 0) == 0);
+  assert(agent_edge_consensus_campaign_last_started_after_lease_expiry(0, 1200, 1, 7000) == 7000);
+
   assert(agent_edge_consensus_campaign_start_due(1000, 1000, 500, 0, 0, 0) == 0);
   assert(agent_edge_consensus_campaign_start_due(1500, 1000, 500, 0, 0, 0) == 1);
   assert(agent_edge_consensus_campaign_start_due(1500, 0, 500, 0, 0, 0) == 0);

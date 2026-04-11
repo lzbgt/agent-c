@@ -702,9 +702,11 @@ std::vector<EdgeConsensusFrame> EdgeConsensusNodeLoop::tick(int64_t now_utc_ms) 
     last_leader_contact_utc_ms_ = 0;
     last_leader_lease_expired_utc_ms_ = now_utc_ms;
     leader_lease_expired_count_ += 1;
-    if (election_started_ && last_campaign_started_utc_ms_ > 0) {
-      last_campaign_started_utc_ms_ = now_utc_ms - current_campaign_delay_ms();
-    }
+    last_campaign_started_utc_ms_ = agent_edge_consensus_campaign_last_started_after_lease_expiry(
+      now_utc_ms,
+      current_campaign_delay_ms(),
+      election_started_ ? 1 : 0,
+      last_campaign_started_utc_ms_);
   }
 
   if (lease_expiry_recampaign_delay_active(now_utc_ms)) return out;

@@ -176,6 +176,8 @@ The shipped autonomous host-loop proof adds:
 - portable `agent_core` node-loop timing gates are now reused by the daemon loop for leader heartbeats, leader-lease
   expiry, post-expiry recampaign cooldown, and campaign start/retry scheduling, so firmware-native ports can reuse the
   same deterministic scheduler predicates without copying host-loop arithmetic
+- portable `agent_core` post-lease-expiry campaign retry biasing is now reused by the daemon loop, so firmware-native
+  ports preserve the same bounded retry schedule after a stale leader is expired
 - portable `agent_core` membership-policy adoption gating now requires a strictly newer epoch and keeps the running node
   in the adopted member set, so firmware-native ports can share the same live-bundle fail-closed boundary
 - managed runtimes now consume delivered `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE` outbox messages in the reusable node

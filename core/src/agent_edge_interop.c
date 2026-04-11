@@ -696,6 +696,19 @@ int agent_edge_consensus_lease_expiry_recampaign_delay_active(
   return now_utc_ms - last_leader_lease_expired_utc_ms < lease_expiry_recampaign_delay_ms ? 1 : 0;
 }
 
+int64_t agent_edge_consensus_campaign_last_started_after_lease_expiry(
+  int64_t now_utc_ms,
+  int64_t retry_delay_ms,
+  int election_started,
+  int64_t last_campaign_started_utc_ms
+) {
+  if (!election_started) return last_campaign_started_utc_ms;
+  if (last_campaign_started_utc_ms <= 0) return last_campaign_started_utc_ms;
+  if (now_utc_ms <= 0) return last_campaign_started_utc_ms;
+  if (retry_delay_ms < 0) retry_delay_ms = 0;
+  return now_utc_ms - retry_delay_ms;
+}
+
 int agent_edge_consensus_campaign_start_due(
   int64_t now_utc_ms,
   int64_t started_utc_ms,
