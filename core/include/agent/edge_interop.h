@@ -131,10 +131,16 @@ agent_status_t agent_um_eais_result_attest_signing_input_v0_1(
   size_t* out_len
 );
 
-// Majority quorum helper for embedded consensus replicas.
+// Majority quorum and cluster-size helpers for embedded consensus replicas.
 //
 // The platform clamps cluster size to at least 1; the portable helper mirrors
 // that behavior so firmware and agentd do not duplicate quorum math.
+size_t agent_edge_consensus_cluster_size_normalize(size_t cluster_size);
+
+size_t agent_edge_consensus_cluster_size_from_peer_count(size_t peer_count);
+
+size_t agent_edge_consensus_cluster_size_from_member_count(size_t member_count);
+
 size_t agent_edge_consensus_quorum_for_cluster_size(size_t cluster_size);
 
 int agent_edge_consensus_has_quorum(size_t cluster_size, size_t vote_count);

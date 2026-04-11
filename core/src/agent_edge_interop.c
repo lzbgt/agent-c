@@ -189,8 +189,22 @@ agent_status_t agent_um_eais_result_attest_signing_input_v0_1(
   return AGENT_OK;
 }
 
-size_t agent_edge_consensus_quorum_for_cluster_size(size_t cluster_size) {
+size_t agent_edge_consensus_cluster_size_normalize(size_t cluster_size) {
   if (cluster_size < 1) cluster_size = 1;
+  return cluster_size;
+}
+
+size_t agent_edge_consensus_cluster_size_from_peer_count(size_t peer_count) {
+  if (peer_count == (size_t)-1) return (size_t)-1;
+  return agent_edge_consensus_cluster_size_normalize(peer_count + 1);
+}
+
+size_t agent_edge_consensus_cluster_size_from_member_count(size_t member_count) {
+  return agent_edge_consensus_cluster_size_normalize(member_count);
+}
+
+size_t agent_edge_consensus_quorum_for_cluster_size(size_t cluster_size) {
+  cluster_size = agent_edge_consensus_cluster_size_normalize(cluster_size);
   return (cluster_size / 2) + 1;
 }
 

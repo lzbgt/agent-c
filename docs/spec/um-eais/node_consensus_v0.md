@@ -116,6 +116,9 @@ The shipped autonomous host-loop proof adds:
 - portable `agent_core` consensus constants and quorum math (`CONSENSUS_FRAME`,
   `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE`, `edge_node_consensus_frame_v1`,
   `edge_consensus_membership_v1`) so embedded firmware and agentd share the same wire names and majority threshold
+- portable `agent_core` cluster-size normalization and peer/member-derived cluster-size helpers, reused by the daemon
+  replica and live membership adoption path so firmware-native ports share the same minimum-one cluster-size boundary
+  before applying quorum math
 - portable `agent_core` consensus frame-kind and membership-epoch acceptance helpers, reused by the daemon replica so
   firmware-native ports and agentd use the same `vote_request` / `vote_grant` / `leader_commit` validation and
   "same epoch plus listed member" rule

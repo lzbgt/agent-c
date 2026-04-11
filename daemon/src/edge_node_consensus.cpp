@@ -270,12 +270,17 @@ static std::string consensus_frame_id(
 }  // namespace
 
 EdgeConsensusReplica::EdgeConsensusReplica(const EdgeConsensusIdentity& self, size_t cluster_size)
-    : self_(self), cluster_size_(cluster_size < 1 ? 1 : cluster_size) {
+    : self_(self), cluster_size_(agent_edge_consensus_cluster_size_normalize(cluster_size)) {
   member_node_ids_.insert(self_.node_id);
 }
 
 EdgeConsensusNodeLoop::EdgeConsensusNodeLoop(const EdgeConsensusNodeLoopConfig& cfg)
-    : cfg_(cfg), replica_(cfg.self, cfg.cluster_size == 0 ? cfg.peer_node_ids.size() + 1 : cfg.cluster_size) {
+    : cfg_(cfg),
+      replica_(
+        cfg.self,
+        cfg.cluster_size == 0
+          ? agent_edge_consensus_cluster_size_from_peer_count(cfg.peer_node_ids.size())
+          : agent_edge_consensus_cluster_size_normalize(cfg.cluster_size)) {
   cfg_.peer_node_ids = dedupe_loop_targets(cfg.peer_node_ids, cfg.self.node_id);
   if (cfg_.member_node_ids.empty()) {
     cfg_.member_node_ids = cfg_.peer_node_ids;
@@ -283,8 +288,11 @@ EdgeConsensusNodeLoop::EdgeConsensusNodeLoop(const EdgeConsensusNodeLoopConfig& 
   }
   const std::set<std::string> member_ids = dedupe_member_ids(cfg_.member_node_ids, cfg_.self.node_id);
   cfg_.member_node_ids.assign(member_ids.begin(), member_ids.end());
-  if (cfg_.cluster_size == 0) cfg_.cluster_size = cfg_.member_node_ids.size();
-  if (cfg_.cluster_size < 1) cfg_.cluster_size = 1;
+  if (cfg_.cluster_size == 0) {
+    cfg_.cluster_size = agent_edge_consensus_cluster_size_from_member_count(cfg_.member_node_ids.size());
+  } else {
+    cfg_.cluster_size = agent_edge_consensus_cluster_size_normalize(cfg_.cluster_size);
+  }
   agent_edge_consensus_policy_timing_t timing;
   timing.campaign_delay_ms = cfg_.campaign_delay_ms;
   timing.campaign_retry_ms = cfg_.campaign_retry_ms;
@@ -318,7 +326,7 @@ void EdgeConsensusReplica::set_membership(uint64_t membership_epoch, const std::
   const bool changed = self_.membership_epoch != membership_epoch || member_node_ids_ != next_member_node_ids;
   self_.membership_epoch = membership_epoch;
   member_node_ids_ = next_member_node_ids;
-  cluster_size_ = std::max<size_t>(1, member_node_ids_.empty() ? 1 : member_node_ids_.size());
+  cluster_size_ = agent_edge_consensus_cluster_size_from_member_count(member_node_ids_.size());
   if (changed) reset_consensus_state();
 }
 
@@ -614,7 +622,7 @@ bool EdgeConsensusNodeLoop::adopt_membership_policy(
   cfg_.self.membership_epoch = update.membership_epoch;
   cfg_.member_node_ids = members;
   cfg_.peer_node_ids = dedupe_loop_targets(members, cfg_.self.node_id);
-  cfg_.cluster_size = std::max<size_t>(1, members.size());
+  cfg_.cluster_size = agent_edge_consensus_cluster_size_from_member_count(members.size());
   cfg_.campaign_delay_ms = timing.campaign_delay_ms;
   cfg_.campaign_retry_ms = timing.campaign_retry_ms;
   cfg_.campaign_retry_max_ms = timing.campaign_retry_max_ms;

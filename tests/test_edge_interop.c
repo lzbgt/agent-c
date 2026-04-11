@@ -109,6 +109,13 @@ static void test_consensus_constants_and_quorum(void) {
   assert(strcmp(AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT, "vote_grant") == 0);
   assert(strcmp(AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT, "leader_commit") == 0);
 
+  assert(agent_edge_consensus_cluster_size_normalize(0) == 1);
+  assert(agent_edge_consensus_cluster_size_normalize(3) == 3);
+  assert(agent_edge_consensus_cluster_size_from_peer_count(0) == 1);
+  assert(agent_edge_consensus_cluster_size_from_peer_count(2) == 3);
+  assert(agent_edge_consensus_cluster_size_from_member_count(0) == 1);
+  assert(agent_edge_consensus_cluster_size_from_member_count(4) == 4);
+
   assert(agent_edge_consensus_quorum_for_cluster_size(0) == 1);
   assert(agent_edge_consensus_quorum_for_cluster_size(1) == 1);
   assert(agent_edge_consensus_quorum_for_cluster_size(2) == 2);
