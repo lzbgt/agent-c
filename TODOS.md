@@ -1011,7 +1011,8 @@ streaming and plugins are stable.
   - Dependencies treat `(status=error + allow_error=true)` as satisfied; aggregation tasks can also depend on any terminal dependency to compute joins over errors.
   - Proof: `ctest` includes `agentd_workflow_aggregate_first_ok_smoke` (uses an `allow_error` failing branch + `mode:"first_ok"` join).
 - Workflow engine supports expanded deterministic expectations (`expect`) for correctness:
-  - `json_pointer_exists`, `json_pointer_regex`, `json_pointer_number_between` (in addition to `ok`, `assistant_text_contains`, `json_pointer_equals`).
+  - `json_pointer_exists`, `json_pointer_regex`, `json_pointer_number_between`, `json_pointer_schema` (in addition to `ok`, `assistant_text_contains`, `json_pointer_equals`).
+  - `json_pointer_schema` uses a shared best-effort JSON Schema subset validator (`type`, `enum`, `required`, `properties`, `additionalProperties:false`, `items`) for deterministic task-result contract checks without pulling in full JSON Schema semantics.
   - Proof: `ctest` includes `agentd_workflow_expect_extended_smoke` (includes a passing task and an allow_error failing task).
 - Workflow engine supports task-controlled rescheduling for polling/async patterns:
   - Tasks may return `retryable=true` and `retry_in_ms` to control the requeue delay (instead of fixed polling/backoff).
@@ -1062,6 +1063,9 @@ streaming and plugins are stable.
   - Proof: `ctest` includes `agentd_workflow_inflight_cap_smoke`.
 - Workflow correctness: tool-call constraints in `expect` (enforce “must call / must not call” deterministically).
   - Proof: `ctest` includes `agentd_workflow_expect_tool_calls_smoke` (uses ext_echo tool plugin).
+- Workflow correctness: schema subset constraints in `expect` are deterministic for result contracts.
+  - Shape: `json_pointer_schema` with the shared best-effort schema subset (`type`, `enum`, `required`, `properties`, `additionalProperties:false`, `items`).
+  - Proof: `ctest` includes `agentd_workflow_expect_extended_smoke`.
 - Workflow scheduler stats endpoint (queue pressure metrics):
   - `GET /api/v1/workflow/stats`
   - Proof: `ctest` includes `agentd_workflow_stats_smoke`.
@@ -1464,7 +1468,7 @@ Maintainability note (always-on):
    - Shipped: structured memory “current view” queries are available through `GET /api/v1/memory/query?...&key_prefix=...` and deterministic workflow `kind:"memory_query"`.
    - Current remaining: extend correlation from point queries into a durable relationship graph linking memory items to `trace_id`, workflow/job IDs, and source excerpts.
 
-### 1) AVM capsule execution v0 (next: integrate + attest)
+### 1) AVM capsule execution v0 (shipped core; remaining interop extensions)
 
 Goal:
 - Make correctness and replayability a first-class primitive: “code as data capsule” runnable under explicit budgets,
@@ -1477,12 +1481,12 @@ Deliverables:
   - (shipped) durable workflows can dispatch a capsule run as a task kind (no LLM required)
   - (shipped) deterministic aggregation/join nodes (`kind:"aggregate"`) can compare `RESULT_HASH` / `TRACE_HASH` across runs/nodes (k-of-n correctness)
   - (shipped) aggregation strategies include `first_ok`, `quorum_ok`, `strict_all_ok`, `collect`, and `best_of_n`.
-  - Current remaining: attach node identity to AVM attestation votes and preserve that identity through multi-node correctness proofs.
+  - (shipped) AVM evidence runs emit `run_attestation_bundle_v1` with stable `node_id`, persist `attestation_bundle.json`, and default aggregate node identity to `/avm/attest/node_id` while preserving `attestations_by_task_id`.
 - Edge interop integration:
-  - extend UM‑EAIS payload conventions so a node can execute a capsule and report back hashes as “task done” attestation.
+  - Current remaining: extend UM‑EAIS payload conventions so a node can execute a capsule and report back hashes as “task done” attestation.
 
 Proof:
-- Deterministic smoke test with a stub AVM binary + (optional) integration smoke when `../oren-lang` is present.
+- `ctest` includes `agentd_workflow_avm_capsule_smoke`; an optional integration smoke runs when `../oren-lang` is present.
 
 ### 2) Budgets + scheduling policy (fairness, concurrency, backpressure)
 
@@ -1558,15 +1562,14 @@ Proof:
 
 Deliverables:
 - Expand `expect`:
-  - JSON pointer assertions (already v1)
-  - regex, numeric bounds, schema checks
-  - tool-call constraints (e.g., forbid certain tools, require a tool call)
+  - (shipped) JSON pointer assertions, regex checks, numeric bounds, schema subset checks, and tool-call constraints.
 - “Replay mode”:
   - re-run a workflow from persisted inputs using a stub provider
   - deterministic outputs validated by expectations
 
 Proof:
-- `ctest` includes replay tests that produce identical results under stub providers.
+- `ctest` includes `agentd_workflow_expect_extended_smoke` and `agentd_workflow_expect_tool_calls_smoke` for deterministic expectation validators.
+- Remaining proof target: workflow-level replay tests that re-run persisted workflow inputs under a stub provider and validate identical outputs by expectations.
 
 ## P1 (big wins after P0)
 

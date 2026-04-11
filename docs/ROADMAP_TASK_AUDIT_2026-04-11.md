@@ -289,6 +289,11 @@ Follow-up memory ranking/conflict proof slice:
   - `tools/verify_repo_guards.sh > build/memory_rank_conflict_tests_repo_guards_20260412.log 2>&1` passed.
   - `ctest --test-dir build -N > build/memory_rank_conflict_tests_ctest_inventory_20260412.log 2>&1` passed; inventory is still 321 tests.
 
+Follow-up workflow expectation schema slice:
+- Extracted the edge/tool-parameter JSON Schema subset validator into `json_schema_subset.*` and reused it for workflow `expect.json_pointer_schema`.
+- Extended `agentd_workflow_expect_extended_smoke` so one task passes root and pointer-level schema checks while an `allow_error` branch proves deterministic schema mismatch handling.
+- Reconciled the stale AVM audit note: `agentd_workflow_aggregate_quorum_smoke` already proves AVM `quorum_hashes` defaults `node_pointer` to `/avm/attest/node_id` and preserves `attestations_by_task_id`.
+
 ## Directly Open Roadmap Items
 
 `TODOS.md` now has two open roadmap workstreams with concrete unchecked subitems, plus one newly closed roadmap workstream:
@@ -336,7 +341,8 @@ The older P0/P1 section was pruned on 2026-04-12 so `Next` / `Remaining` notes n
   - Current remaining: all-layer time/size consolidation, versioned facts with explicit `supersedes` / `observed_utc` / `valid_from` metadata, and a durable correlation graph linked to trace/workflow/job IDs and source excerpts.
 
 - Workflow / correctness:
-  - Remaining notes mention workflow timeline UI filters, richer aggregation strategies, expectation validators beyond JSON pointer, and replay-mode workflow validation under stub providers.
+  - 2026-04-12 follow-up: workflow `expect` now covers JSON pointer checks, regex, numeric bounds, schema subset checks, and tool-call constraints through shared deterministic validators.
+  - Remaining notes mention workflow timeline UI filters, richer aggregation strategies, and replay-mode workflow validation under stub providers.
 
 - Tool servers:
   - Remaining P1 note: reference tool server for ESP32 serial/MQTT bridges that speaks the strict stdio protocol and advertises UM-ACDS tool schemas.

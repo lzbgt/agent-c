@@ -207,6 +207,12 @@ Supported checks (v1):
   - object `{ pointer: "/some/path", min?: <number>, max?: <number> }`, or
   - array of such objects
   - values may be JSON numbers or numeric strings
+- `json_pointer_schema`:
+  - object `{ pointer: "/some/path", schema: <json-schema-subset> }`, or
+  - array of such objects
+  - the root pointer is the empty string `""`
+  - supported schema subset: `type`, `enum`, `required`, `properties`, `additionalProperties:false`, and `items`
+  - unsupported schema keywords are ignored, so use this for deterministic contract checks rather than full JSON Schema validation
 - Tool-call constraints (v1.1):
   - `tool_called: "tool_name"` (or array of names)
     - requires that at least one `tool_call` event exists for each named tool

@@ -1,5 +1,6 @@
 #include "workflow_engine_common.h"
 
+#include "json_schema_subset.h"
 #include "json_util.h"
 #include "string_util.h"
 
@@ -383,6 +384,43 @@ bool apply_expectations(const std::string& expect_json, const Json::Value& run_o
     }
   }
 
+  if (exp.isMember("json_pointer_schema")) {
+    Json::Value arr = exp["json_pointer_schema"];
+    if (arr.isObject()) {
+      Json::Value one(Json::arrayValue);
+      one.append(arr);
+      arr = one;
+    }
+    if (arr.isArray()) {
+      for (Json::ArrayIndex i = 0; i < arr.size(); i++) {
+        const auto& item = arr[i];
+        if (!item.isObject()) continue;
+        if (!item.isMember("pointer") || !item["pointer"].isString()) {
+          if (out_err) *out_err = "expectation failed: json_pointer_schema missing pointer";
+          return false;
+        }
+        const std::string ptr = item["pointer"].asString();
+        if (!item.isMember("schema") || !item["schema"].isObject()) {
+          if (out_err) *out_err = "expectation failed: json_pointer_schema missing schema";
+          return false;
+        }
+        const Json::Value* got = nullptr;
+        if (!json_pointer_get(run_out, ptr, &got) || !got) {
+          if (out_err) *out_err = "expectation failed: json pointer missing for schema";
+          return false;
+        }
+        std::string schema_err;
+        if (!json_schema_subset_validate_best_effort(item["schema"], *got, ptr.empty() ? "$" : ptr, &schema_err)) {
+          if (out_err) {
+            *out_err = "expectation failed: schema mismatch";
+            if (!schema_err.empty()) out_err->append(": ").append(schema_err);
+          }
+          return false;
+        }
+      }
+    }
+  }
+
   auto normalize_string_or_array = [](const Json::Value& v) -> std::vector<std::string> {
     std::vector<std::string> out;
     if (v.isString()) {
@@ -495,4 +533,3 @@ int64_t retry_backoff_ms(int attempt) {
 
 }  // namespace workflow_engine_internal
 }  // namespace agentd
-

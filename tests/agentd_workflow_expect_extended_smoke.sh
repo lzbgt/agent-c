@@ -95,10 +95,24 @@ tasks = [
    "expect": {
      "json_pointer_exists": ["/effective_timeout_ms", "/effective_tools"],
      "json_pointer_regex": [{"pointer":"/assistant_text","regex":"^Alpha$"}],
-     "json_pointer_number_between": [{"pointer":"/effective_timeout_ms","min":1000,"max":60000}]
+     "json_pointer_number_between": [{"pointer":"/effective_timeout_ms","min":1000,"max":60000}],
+     "json_pointer_schema": [
+       {
+         "pointer": "",
+         "schema": {
+           "type": "object",
+           "required": ["assistant_text", "effective_timeout_ms"],
+           "properties": {
+             "assistant_text": {"type": "string"},
+             "effective_timeout_ms": {"type": "integer"}
+           }
+         }
+       },
+       {"pointer": "/assistant_text", "schema": {"type": "string", "enum": ["Alpha"]}}
+     ]
    }},
   {"task_id":"B","request":req_b, "max_attempts": 1, "allow_error": True,
-   "expect": {"json_pointer_regex": [{"pointer":"/assistant_text","regex":"^NOPE$"}]} }
+   "expect": {"json_pointer_schema": [{"pointer":"/assistant_text","schema":{"type":"integer"}}]} }
 ]
 print(json.dumps({"tasks": tasks, "allow_inline_api_keys": True}))
 PY
@@ -153,10 +167,12 @@ if a.get("status") != "done":
 if b.get("status") != "error":
   print("expected B error due to failing expectation", b, file=sys.stderr)
   raise SystemExit(1)
+if "schema mismatch" not in str(b.get("error") or ""):
+  print("expected B schema mismatch error", b, file=sys.stderr)
+  raise SystemExit(1)
 if b.get("allow_error") is not True:
   print("expected B allow_error true", b, file=sys.stderr)
   raise SystemExit(1)
 PY
 
 echo "agentd_workflow_expect_extended_smoke OK"
-
