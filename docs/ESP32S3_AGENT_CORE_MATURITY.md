@@ -177,6 +177,11 @@ Additionally, implement **tool-level** safety:
 - Build a “hello tool” example that runs without Wi‑Fi (fake provider that returns a fixed tool call).
 - Add a **host-side simulator** that runs `agent_core` with the same tool registry + executor, but logs everything for rapid iteration.
   - In this repo: the `esp32sim` harness (`tools/esp32sim.cpp`) builds on desktop and writes a JSONL log for inspection.
+- Use `tools/tool_server_esp32_bridge.py` as the host-side reference bridge when
+  you want `agentd` to call ESP32 tools over serial or MQTT without embedding a
+  transport-specific plugin in the daemon. The bridge advertises UM-ACDS tool
+  schemas through agentd's strict stdio tool-server protocol and forwards calls
+  as UM-BMP `TASK_ASSIGN` envelopes.
 
 Exit criteria:
 - `agent_core` compiles under ESP-IDF toolchain

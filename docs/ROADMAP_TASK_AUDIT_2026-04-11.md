@@ -361,7 +361,9 @@ The older P0/P1 section was pruned on 2026-04-12 so `Next` / `Remaining` notes n
   - Current remaining: no unblocked local UM-EAIS/AVM payload-convention gap; deeper validation depends on real firmware or bridge integrations.
 
 - Tool servers:
-  - Remaining P1 note: reference tool server for ESP32 serial/MQTT bridges that speaks the strict stdio protocol and advertises UM-ACDS tool schemas.
+  - 2026-04-12 follow-up: `tools/tool_server_esp32_bridge.py` now provides the reference strict-stdio tool server for ESP32 serial/MQTT bridges. It reads UM-ACDS manifests, exposes device `parameters_schema` entries as agentd tools, and converts tool executions to UM-BMP `TASK_ASSIGN` envelopes through dry-run proof plus optional serial/MQTT transports.
+  - Verification: `tool_server_esp32_bridge_smoke` proves UM-ACDS manifest exposure, schema validation, ping handling, and deterministic dry-run `TASK_ASSIGN` generation.
+  - Current remaining: no unblocked local tool-server bridge gap; live serial/MQTT validation depends on target hardware/broker credentials.
 
 - MCP:
   - Not an open product-extension roadmap item. Runtime extensibility remains centered on built-in tools, local plugins, and strict JSON-lines tool servers; any future MCP work should be a concrete edge adapter only, not a parallel plugin system.
@@ -381,4 +383,4 @@ Highest leverage sequence:
 
 1. Fix or unblock OpenRouter credentials, run the OpenRouter streaming pin workflow, and commit `ref/openrouter/streaming_pins.json` if the result is stable.
 2. Execute the documented builtin-vs-bundled graduation gate on any additional target release platforms before changing production defaults outside the checked macOS M2 host.
-3. If those credential/host-gated items remain blocked, choose the next concrete local item from the lower-priority richer workflow aggregation notes or the ESP32 serial/MQTT reference tool-server note; the memory correctness, workflow timeline/filter, and UM-EAIS compute-attestation slices identified in this audit are now closed locally.
+3. If those credential/host-gated items remain blocked, re-scan `TODOS.md` against shipped proofs before starting another local slice. The memory correctness, workflow timeline/filter, UM-EAIS compute-attestation, and ESP32 serial/MQTT reference tool-server slices identified in this audit are now closed locally.

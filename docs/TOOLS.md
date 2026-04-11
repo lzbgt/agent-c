@@ -84,6 +84,23 @@ Tool call shape:
 }
 ```
 
+ESP32 serial/MQTT bridge reference:
+
+```bash
+./build/agentd --tools basic \
+  --tool-server-cmd "python3 -u ./tools/tool_server_esp32_bridge.py --manifest ./node_caps.json --transport dry-run"
+```
+
+The bridge reads a UM-ACDS manifest (`spec_version:"um-acds/0.1"`) and exposes
+each `tools[].parameters_schema` entry as an agentd tool. Tool executions are
+converted into UM-BMP `TASK_ASSIGN` envelopes for the target node. `--transport
+dry-run` returns the generated envelope for verification; `--transport serial`
+writes/reads newline-delimited envelopes through `pyserial`; `--transport mqtt`
+uses `paho-mqtt` with request/response topics (default
+`agentd/edge/{node_id}/in` and `agentd/edge/{node_id}/out`). The serial/MQTT
+transports fail closed when their optional Python dependency or transport
+configuration is missing.
+
 Notes:
 - tool-server flags are per-server and apply to the most recently declared
   --tool-server-cmd
@@ -145,6 +162,8 @@ ctest includes:
 - `agentd_tool_server_ping_smoke` for idle ping health checks
 - `agentd_tool_server_restart_smoke` for both restart-with-backoff after child
   death and same-port daemon restart after an orphaned tool-server child
+- `tool_server_esp32_bridge_smoke` for UM-ACDS manifest exposure and UM-BMP
+  `TASK_ASSIGN` envelope generation through the dry-run bridge transport
 
 ## Tool plugins (in-process ABI)
 

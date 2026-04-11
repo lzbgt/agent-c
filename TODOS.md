@@ -1600,7 +1600,8 @@ Status:
 
 Remaining:
 - Remote device bridges:
-  - reference tool server for ESP32 serial/MQTT bridges that speaks the same protocol and advertises UM‑ACDS tool schemas
+  - [x] reference tool server for ESP32 serial/MQTT bridges that speaks the same protocol and advertises UM‑ACDS tool schemas
+    - 2026-04-12: added `tools/tool_server_esp32_bridge.py`, which reads UM-ACDS manifests, exposes device `parameters_schema` entries as agentd tools, and forwards executions as UM-BMP `TASK_ASSIGN` envelopes through dry-run proof plus optional serial/MQTT transports.
 
 ### 7) Multi-agent workflows (broker-aware)
 
