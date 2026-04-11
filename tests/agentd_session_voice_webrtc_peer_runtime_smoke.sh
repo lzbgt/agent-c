@@ -4,6 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=tests/lib/agentd_smoke_lib.sh
 source "${SCRIPT_DIR}/lib/agentd_smoke_lib.sh"
+# shellcheck source=tests/lib/agentd_voice_webrtc_broker_client.sh
+source "${SCRIPT_DIR}/lib/agentd_voice_webrtc_broker_client.sh"
 
 AGENTD_BIN="${1:-}"
 if [[ -z "${AGENTD_BIN}" ]]; then
@@ -521,9 +523,7 @@ wait_broker_session_deleted() {
   local session_id="$1"
   local code=""
   for _ in $(seq 1 100); do
-    code="$(curl -sS --noproxy "*" --max-time 10 -o /dev/null -w '%{http_code}' \
-      "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${session_id}" \
-      -H "Authorization: Bearer audio-webui-token")"
+    code="$(broker_session_status_code "${session_id}")"
     if [[ "${code}" == "404" ]]; then
       return 0
     fi
@@ -680,9 +680,7 @@ PY
 
 run_receiver_peer "${BROKER_SESSION_ID}"
 
-SESSION_JSON="$(curl -fsS --noproxy "*" --max-time 10 \
-  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${BROKER_SESSION_ID}" \
-  -H "Authorization: Bearer audio-webui-token")"
+SESSION_JSON="$(broker_session_get "${BROKER_SESSION_ID}")"
 
 python3 - <<PY
 import json, sys
@@ -696,11 +694,7 @@ if (sess.get("signal_count") or 0) < 4:
   raise SystemExit(1)
 PY
 
-curl -fsS --noproxy "*" --max-time 10 \
-  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${BROKER_SESSION_ID}/signal" \
-  -H "Authorization: Bearer audio-webui-token" \
-  -H "Content-Type: application/json" \
-  -d '{"type":"bye","payload":{"reason":"webui_done","sender_tag":"webui_playwright_peer"}}' >/dev/null
+broker_session_signal "${BROKER_SESSION_ID}" '{"type":"bye","payload":{"reason":"webui_done","sender_tag":"webui_playwright_peer"}}'
 
 stopped_json=""
 wait_voice_peer_ready "${SESSION_DB_ID}" 0 stopped_json
@@ -877,11 +871,7 @@ PY
 BUILTIN_BORROWED_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_borrowed_$(date +%s)_$RANDOM"
 create_session "${BUILTIN_BORROWED_SESSION_ID}"
 
-builtin_borrowed_broker_create_resp="$(curl -fsS --noproxy "*" --max-time 10 \
-  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions" \
-  -H "Authorization: Bearer audio-webui-token" \
-  -H 'Content-Type: application/json' \
-  -d '{"agent_id":"a-1","mode":"webrtc"}')"
+builtin_borrowed_broker_create_resp="$(broker_session_create '{"agent_id":"a-1","mode":"webrtc"}')"
 
 BUILTIN_BORROWED_BROKER_SESSION_ID="$(python3 - <<PY
 import json, sys
@@ -957,9 +947,7 @@ if peer.get("broker_session_id") != r'''${BUILTIN_BORROWED_BROKER_SESSION_ID}'''
   raise SystemExit(1)
 PY
 
-builtin_borrowed_delete_status="$(curl -sS --noproxy "*" --max-time 10 -o /dev/null -w '%{http_code}' -X DELETE \
-  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${BUILTIN_BORROWED_BROKER_SESSION_ID}" \
-  -H "Authorization: Bearer audio-webui-token")"
+builtin_borrowed_delete_status="$(broker_session_delete_status "${BUILTIN_BORROWED_BROKER_SESSION_ID}")"
 if [[ "${builtin_borrowed_delete_status}" != "200" && "${builtin_borrowed_delete_status}" != "404" ]]; then
   echo "expected builtin borrowed broker session delete to return 200 or 404, got ${builtin_borrowed_delete_status}" >&2
   exit 1
@@ -1250,9 +1238,7 @@ wait_voice_peer_ready "${SESSION_DB_ID}" 1 status_json
 
 kill -9 "${VOICE_PEER_PID2}"
 
-session_exists_status="$(curl -sS --noproxy "*" --max-time 10 -o /dev/null -w '%{http_code}' \
-  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${BROKER_SESSION_ID2}" \
-  -H "Authorization: Bearer audio-webui-token")"
+session_exists_status="$(broker_session_status_code "${BROKER_SESSION_ID2}")"
 if [[ "${session_exists_status}" != "200" ]]; then
   echo "expected broker audio session to still exist after peer SIGKILL, got ${session_exists_status}" >&2
   exit 1
@@ -2378,17 +2364,13 @@ if peer.get("managed_broker_session") is not True or peer.get("running"):
   raise SystemExit(1)
 PY
 
-managed_bad_stop_broker_status="$(curl -sS --noproxy "*" --max-time 10 -o /dev/null -w '%{http_code}' \
-  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${MANAGED_BAD_STOP_BROKER_SESSION_ID}" \
-  -H "Authorization: Bearer audio-webui-token")"
+managed_bad_stop_broker_status="$(broker_session_status_code "${MANAGED_BAD_STOP_BROKER_SESSION_ID}")"
 if [[ "${managed_bad_stop_broker_status}" != "200" && "${managed_bad_stop_broker_status}" != "404" ]]; then
   echo "expected managed bad-stop broker session inspect to return 200 or 404, got ${managed_bad_stop_broker_status}" >&2
   exit 1
 fi
 
-managed_bad_stop_delete_status="$(curl -sS --noproxy "*" --max-time 10 -o /dev/null -w '%{http_code}' -X DELETE \
-  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${MANAGED_BAD_STOP_BROKER_SESSION_ID}" \
-  -H "Authorization: Bearer audio-webui-token")"
+managed_bad_stop_delete_status="$(broker_session_delete_status "${MANAGED_BAD_STOP_BROKER_SESSION_ID}")"
 if [[ "${managed_bad_stop_delete_status}" != "200" && "${managed_bad_stop_delete_status}" != "404" ]]; then
   echo "expected managed bad-stop broker session delete to return 200 or 404, got ${managed_bad_stop_delete_status}" >&2
   exit 1
@@ -2468,17 +2450,13 @@ if peer.get("managed_broker_session") is not True:
   raise SystemExit(1)
 PY
 
-managed_bad_delete_broker_status="$(curl -sS --noproxy "*" --max-time 10 -o /dev/null -w '%{http_code}' \
-  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${MANAGED_BAD_DELETE_BROKER_SESSION_ID}" \
-  -H "Authorization: Bearer audio-webui-token")"
+managed_bad_delete_broker_status="$(broker_session_status_code "${MANAGED_BAD_DELETE_BROKER_SESSION_ID}")"
 if [[ "${managed_bad_delete_broker_status}" != "200" && "${managed_bad_delete_broker_status}" != "404" ]]; then
   echo "expected managed bad-delete broker session inspect to return 200 or 404, got ${managed_bad_delete_broker_status}" >&2
   exit 1
 fi
 
-managed_bad_delete_delete_status="$(curl -sS --noproxy "*" --max-time 10 -o /dev/null -w '%{http_code}' -X DELETE \
-  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${MANAGED_BAD_DELETE_BROKER_SESSION_ID}" \
-  -H "Authorization: Bearer audio-webui-token")"
+managed_bad_delete_delete_status="$(broker_session_delete_status "${MANAGED_BAD_DELETE_BROKER_SESSION_ID}")"
 if [[ "${managed_bad_delete_delete_status}" != "200" && "${managed_bad_delete_delete_status}" != "404" ]]; then
   echo "expected managed bad-delete broker session delete to return 200 or 404, got ${managed_bad_delete_delete_status}" >&2
   exit 1
@@ -2487,11 +2465,7 @@ fi
 BORROWED_STOP_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_borrowed_stop_$(date +%s)_$RANDOM"
 create_session "${BORROWED_STOP_SESSION_ID}"
 
-borrowed_stop_broker_create_resp="$(curl -fsS --noproxy "*" --max-time 10 \
-  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions" \
-  -H "Authorization: Bearer audio-webui-token" \
-  -H 'Content-Type: application/json' \
-  -d '{"agent_id":"a-1","mode":"webrtc"}')"
+borrowed_stop_broker_create_resp="$(broker_session_create '{"agent_id":"a-1","mode":"webrtc"}')"
 
 BORROWED_STOP_BROKER_SESSION_ID="$(python3 - <<PY
 import json, sys
@@ -2555,9 +2529,7 @@ if peer.get("managed_broker_session") is not False:
   raise SystemExit(1)
 PY
 
-borrowed_stop_delete_status="$(curl -sS --noproxy "*" --max-time 10 -o /dev/null -w '%{http_code}' -X DELETE \
-  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${BORROWED_STOP_BROKER_SESSION_ID}" \
-  -H "Authorization: Bearer audio-webui-token")"
+borrowed_stop_delete_status="$(broker_session_delete_status "${BORROWED_STOP_BROKER_SESSION_ID}")"
 if [[ "${borrowed_stop_delete_status}" != "200" && "${borrowed_stop_delete_status}" != "404" ]]; then
   echo "expected borrowed stop broker session delete to return 200 or 404, got ${borrowed_stop_delete_status}" >&2
   exit 1
@@ -2566,11 +2538,7 @@ fi
 BORROWED_DELETE_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_borrowed_delete_$(date +%s)_$RANDOM"
 create_session "${BORROWED_DELETE_SESSION_ID}"
 
-borrowed_delete_broker_create_resp="$(curl -fsS --noproxy "*" --max-time 10 \
-  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions" \
-  -H "Authorization: Bearer audio-webui-token" \
-  -H 'Content-Type: application/json' \
-  -d '{"agent_id":"a-1","mode":"webrtc"}')"
+borrowed_delete_broker_create_resp="$(broker_session_create '{"agent_id":"a-1","mode":"webrtc"}')"
 
 BORROWED_DELETE_BROKER_SESSION_ID="$(python3 - <<PY
 import json, sys
@@ -2635,9 +2603,7 @@ if peer.get("managed_broker_session") is not False:
   raise SystemExit(1)
 PY
 
-borrowed_delete_broker_delete_status="$(curl -sS --noproxy "*" --max-time 10 -o /dev/null -w '%{http_code}' -X DELETE \
-  "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions/${BORROWED_DELETE_BROKER_SESSION_ID}" \
-  -H "Authorization: Bearer audio-webui-token")"
+borrowed_delete_broker_delete_status="$(broker_session_delete_status "${BORROWED_DELETE_BROKER_SESSION_ID}")"
 if [[ "${borrowed_delete_broker_delete_status}" != "200" && "${borrowed_delete_broker_delete_status}" != "404" ]]; then
   echo "expected borrowed delete broker session delete to return 200 or 404, got ${borrowed_delete_broker_delete_status}" >&2
   exit 1
