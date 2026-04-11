@@ -151,6 +151,18 @@ Follow-up WebRTC runtime smoke broker-client helper slice:
 - `tools/verify_repo_guards.sh > build/webrtc_runtime_broker_client_repo_guards_20260411.log 2>&1`
   - Result: `repo_guards_rc=0`.
 
+Follow-up WebRTC runtime smoke daemon-client helper slice:
+- Moved daemon session/config/voice peer request helpers into `tests/lib/agentd_voice_webrtc_daemon_client.sh` and rewired the runtime smoke to source it.
+- Removed generated smoke-test SQLite/WAL/SHM files and broker binaries from `build/` before the focused smoke rerun.
+- `bash -n tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh && bash -n tests/lib/agentd_voice_webrtc_broker_client.sh && bash -n tests/lib/agentd_voice_webrtc_daemon_client.sh && python3 -m py_compile tests/lib/agentd_voice_webrtc_runtime_record.py && node --check tests/lib/agentd_voice_webrtc_peer_receiver.js`
+  - Result: `syntax_rc=0`.
+- `cmake --build build -j "$(sysctl -n hw.ncpu)" > build/webrtc_runtime_daemon_client_build_20260411.log 2>&1`
+  - Result: `build_rc=0`.
+- `ctest --test-dir build -R 'agentd_session_voice_webrtc_peer_runtime_smoke' --output-on-failure > build/webrtc_runtime_daemon_client_ctest_20260411.log 2>&1`
+  - Result: `ctest_rc=0`; the affected runtime smoke passed in 48.01 seconds after the daemon-client helper extraction.
+- `tools/verify_repo_guards.sh > build/webrtc_runtime_daemon_client_repo_guards_20260411.log 2>&1`
+  - Result: `repo_guards_rc=0`.
+
 ## Directly Open Roadmap Items
 
 `TODOS.md` now has two open roadmap workstreams with concrete unchecked subitems, plus one newly closed roadmap workstream:
@@ -199,8 +211,8 @@ The older P0/P1 section still contains "Next" and "Remaining" notes that may be 
 
 Line-count scan excluding `build/`, `ui/node_modules/`, `external/`, `ref/`, `refs/`, `docs/research/`, and generated OpenAPI types found one non-generated file over 2000 lines:
 
-- `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` - 3574 lines after the receiver-peer extraction plus runtime-record fixture/assertion, session-create helper, daemon API/config helper, and broker-client helper extractions. Extracted helpers:
-  `tests/lib/agentd_voice_webrtc_peer_receiver.js` at 219 lines, `tests/lib/agentd_voice_webrtc_runtime_record.py` at 196 lines, and `tests/lib/agentd_voice_webrtc_broker_client.sh` at 43 lines.
+- `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` - 3511 lines after the receiver-peer extraction plus runtime-record fixture/assertion, daemon client, and broker-client helper extractions. Extracted helpers:
+  `tests/lib/agentd_voice_webrtc_peer_receiver.js` at 219 lines, `tests/lib/agentd_voice_webrtc_runtime_record.py` at 196 lines, `tests/lib/agentd_voice_webrtc_daemon_client.sh` at 68 lines, and `tests/lib/agentd_voice_webrtc_broker_client.sh` at 43 lines.
 
 The scan did not identify a production implementation file over the 2000-line threshold after excluding generated OpenAPI typings.
 
