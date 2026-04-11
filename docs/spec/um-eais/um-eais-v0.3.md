@@ -5,6 +5,9 @@ Status: draft (spec)
 
 This document is a **delta** on top of UM‑EAIS v0.2 (`docs/spec/um-eais/um-eais-v0.2.md`).
 
+Golden transcript fixture:
+- `docs/spec/um-eais/fixtures/umbmp_task_loop_v0.3_compute_attest.jsonl`
+
 Goal (v0.3): make `result_sha256` a **portable** and **deterministic** correctness surface across:
 
 - MCU nodes (embedded `agent_core`)
@@ -117,9 +120,45 @@ Best-effort robustness:
   - `_platform_result_sha256_alg`
   - `_platform_result_c14n_error`
 
+### 2.3 Deterministic compute evidence
+
+For task completions produced by deterministic compute engines, nodes may attach a conventional compute evidence block under:
+
+`body.result.attest.compute`
+
+The v0.3 portable convention is:
+
+```json
+{
+  "schema": "um_eais_compute_attest_v1",
+  "engine": "avm",
+  "capsule": {
+    "program_hash_sha256": "sha256:<hex64>",
+    "job_hash_sha256": "sha256:<hex64>"
+  },
+  "hashes": {
+    "result_hash": "sha256:<hex64>",
+    "trace_hash": "sha256:<hex64>",
+    "state_hash": "sha256:<hex64>"
+  }
+}
+```
+
+Rules:
+- `schema` identifies this stable payload convention.
+- `engine` is the deterministic compute engine. For Oren AVM capsule execution, use `engine:"avm"`.
+- `capsule.program_hash_sha256` and `capsule.job_hash_sha256` are optional but recommended when the node can obtain them from the capsule runner.
+- `hashes.result_hash`, `hashes.trace_hash`, and `hashes.state_hash` carry engine-level deterministic execution hashes. For portable quorum joins, use `sha256:<hex64>` tokens.
+- Platform workflow results surface the whole blob at `edge_attest.compute`, so durable workflow aggregates can join on pointers such as `/edge_attest/compute/hashes/result_hash` and `/edge_attest/compute/hashes/trace_hash`.
+
+Security note:
+- v0.3 keeps `compute` as attestation metadata and therefore excludes it from `result_sha256` to preserve the stable `result_without_attest` hash rule.
+- If a deployment needs signature-bound compute evidence before a later compute-specific signing string is standardized, it should require authenticated envelopes (`auth`) and node-bound attestation policy (`edge_attest_required` / `edge_attest_require_sig`) for the result hash, or mirror a minimal compute summary in `body.result.data` so the existing `result_sha256` signature covers that summary.
+
 ---
 
 ## 3) Compatibility
 
 - v0.1/v0.2 nodes can still interoperate (they can omit `attest`).
 - v0.3 nodes can compute `result_sha256` portably and match the platform.
+- v0.3 deterministic-compute nodes can attach `result.attest.compute` without breaking v0.1/v0.2 consumers, because the schema remains additional-properties tolerant and the platform preserves the attestation blob best-effort.

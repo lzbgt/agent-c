@@ -346,7 +346,19 @@ The older P0/P1 section was pruned on 2026-04-12 so `Next` / `Remaining` notes n
 - Workflow / correctness:
   - 2026-04-12 follow-up: workflow `expect` now covers JSON pointer checks, regex, numeric bounds, schema subset checks, and tool-call constraints through shared deterministic validators.
   - 2026-04-12 follow-up: workflow-level replay proof now resubmits the persisted workflow spec under a deterministic stub provider and compares stable task outputs in `agentd_workflow_replay_spec_smoke`.
-  - Remaining notes mention workflow timeline UI filters and richer aggregation strategies.
+  - 2026-04-12 follow-up: durable workflow event listing now supports exact `task_id` and `event_type` filters, and the WebUI workflow panel includes a workflow timeline view backed by those server-side filters.
+  - Verification: `npm run build`, `cmake --build`, `agentd_workflow_stream_smoke`, `docs_sanity_tests`, `openapi_sanity_tests`, and repo guards passed for the timeline/filter slice.
+  - Current remaining: no concrete unblocked local workflow correctness gap after the timeline/filter and deterministic edge-compute quorum slices.
+
+- Edge interop / AVM:
+  - 2026-04-12 follow-up: UM-EAIS now defines deterministic compute attestation payloads under `TASK_DONE.body.result.attest.compute`
+    (`schema:"um_eais_compute_attest_v1"`, `engine:"avm"`, optional capsule program/job hashes, and execution hashes under
+    `hashes.result_hash` / `hashes.trace_hash` / `hashes.state_hash`).
+  - 2026-04-12 follow-up: `agentd_workflow_edge_compute_attest_quorum_smoke` proves two edge nodes can report the same AVM-style
+    compute hashes and a durable workflow aggregate can quorum-join them through `/edge_attest/compute/hashes/result_hash` and
+    `/edge_attest/compute/hashes/trace_hash` while requiring distinct edge node identities.
+  - Verification: `agent_core_tests`, `agentd_workflow_edge_compute_attest_quorum_smoke`, `docs_sanity_tests`, `openapi_sanity_tests`, and repo guards passed for the compute-attestation slice.
+  - Current remaining: no unblocked local UM-EAIS/AVM payload-convention gap; deeper validation depends on real firmware or bridge integrations.
 
 - Tool servers:
   - Remaining P1 note: reference tool server for ESP32 serial/MQTT bridges that speaks the strict stdio protocol and advertises UM-ACDS tool schemas.
@@ -369,4 +381,4 @@ Highest leverage sequence:
 
 1. Fix or unblock OpenRouter credentials, run the OpenRouter streaming pin workflow, and commit `ref/openrouter/streaming_pins.json` if the result is stable.
 2. Execute the documented builtin-vs-bundled graduation gate on any additional target release platforms before changing production defaults outside the checked macOS M2 host.
-3. If those credential/host-gated items remain blocked, choose the next concrete local item from the lower-priority UI timeline/filter or richer workflow aggregation notes; the memory correctness slices identified in this audit are now closed locally.
+3. If those credential/host-gated items remain blocked, choose the next concrete local item from the lower-priority richer workflow aggregation notes or the ESP32 serial/MQTT reference tool-server note; the memory correctness, workflow timeline/filter, and UM-EAIS compute-attestation slices identified in this audit are now closed locally.

@@ -965,7 +965,11 @@ streaming and plugins are stable.
   - Also supports `mode:"agent"` (dispatches `TASK_ASSIGN mode:"agent"` with a prompt/payload for embedded `agent_core`)
   - Use-case: mix deterministic compute + LLM reasoning + real-world actuation in one durable DAG.
   - Correctness surface: workflow results now include `edge_result_sha256` (platform-computed sha256 of platform-canonicalized edge result JSON bytes; `agent_json_c14n_v1` best-effort) and `edge_attest` (best-effort node attest blob).
+  - Deterministic compute attestation: edge nodes can attach `edge_attest.compute` using `schema:"um_eais_compute_attest_v1"` and
+    AVM-style `hashes.result_hash` / `hashes.trace_hash` / `hashes.state_hash`, then workflow aggregates can quorum-join those
+    hashes via JSON pointers.
   - Proof: `ctest` includes `agentd_workflow_edge_invoke_smoke`, `agentd_workflow_edge_invoke_template_args_smoke`, `agentd_workflow_edge_agent_smoke`, and `agentd_workflow_edge_agent_ref_payload_smoke`.
+  - Proof: `ctest` includes `agentd_workflow_edge_compute_attest_quorum_smoke`.
 - Capability routing hardening (distinct-node fan-out helper):
   - `edge.match_any.exclude_node_ids` is now supported by both workflow `kind:"edge_invoke"` and `POST /api/v1/edge/task/assign`.
   - Use-case: parallel fan-out to *distinct* nodes without hardcoding node_id (avoid accidental same-node selection).
@@ -1431,8 +1435,12 @@ Maintainability note (always-on):
      - Platform implementation: edge `TASK_DONE` results are canonicalized before hashing/storing; evidence is emitted via
        `_platform_result_sha256_alg` and `_platform_result_c14n_error`.
      - Spec: `docs/spec/um-eais/um-eais-v0.3.md` + v0.3 schemas.
-   - Next (v0.3+): extend payload conventions for deterministic compute attestations:
-     - allow nodes to attach deterministic compute hashes (e.g. AVM `result_hash` / `trace_hash`) under `result.attest.*` for quorum joins.
+   - Shipped (v0.3+): deterministic compute attestation payload conventions:
+     - nodes can attach AVM-style deterministic compute hashes under `result.attest.compute` with `schema:"um_eais_compute_attest_v1"`,
+       `engine:"avm"`, optional capsule `program_hash_sha256` / `job_hash_sha256`, and `hashes.result_hash` /
+       `hashes.trace_hash` / `hashes.state_hash` for quorum joins.
+     - Proof: `ctest` includes `agentd_workflow_edge_compute_attest_quorum_smoke`, which joins two edge-node completions on
+       `/edge_attest/compute/hashes/result_hash` and `/edge_attest/compute/hashes/trace_hash`.
 
 4) **Agent collaboration v2 (budgeted parallel fan-out + join macros)** (power-unleashed)
    - Status: submit-time parallel macro shipped as `kind:"delegate_parallel"` (v1.6.1).
@@ -1486,7 +1494,8 @@ Deliverables:
   - (shipped) aggregation strategies include `first_ok`, `quorum_ok`, `strict_all_ok`, `collect`, and `best_of_n`.
   - (shipped) AVM evidence runs emit `run_attestation_bundle_v1` with stable `node_id`, persist `attestation_bundle.json`, and default aggregate node identity to `/avm/attest/node_id` while preserving `attestations_by_task_id`.
 - Edge interop integration:
-  - Current remaining: extend UM‑EAIS payload conventions so a node can execute a capsule and report back hashes as “task done” attestation.
+  - (shipped) UM‑EAIS payload conventions now let a node report capsule-style deterministic compute hashes as `TASK_DONE`
+    attestation under `result.attest.compute`, and durable workflow aggregates can quorum-join those hashes from `edge_attest.compute`.
 
 Proof:
 - `ctest` includes `agentd_workflow_avm_capsule_smoke`; an optional integration smoke runs when `../oren-lang` is present.
@@ -1531,9 +1540,10 @@ Status:
 - Shipped v1.5: durable workflow event log + SSE stream + smoke test.
 - Shipped: WebUI workflow DAG viewer (read-only) for listing + inspecting tasks.
 - Shipped: WebUI workflow composer (JSON templates + submit).
+- Shipped: durable workflow event `task_id` / `event_type` filters plus WebUI workflow timeline panel.
 
 Next:
-- UI view for workflow timeline (reuse trace UI patterns), plus filters (by task_id, by event type).
+- [x] UI view for workflow timeline (reuse trace UI patterns), plus filters (by task_id, by event type).
 - [x] Drag-and-drop workflow composer (graph editor) with JSON import/export + submit.
 
 ### 5) Memory v2: semantic retrieval + rolling consolidation

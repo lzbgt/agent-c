@@ -118,6 +118,8 @@ static void test_consensus_constants_and_quorum(void) {
          AGENT_EDGE_CONSENSUS_MESSAGE_OTHER);
   assert(agent_edge_consensus_message_type_classify(NULL, 0) == AGENT_EDGE_CONSENSUS_MESSAGE_OTHER);
   assert(AGENT_EDGE_CONSENSUS_MEMBERSHIP_LINEAGE_MAX == 8);
+  assert(strcmp(AGENT_UM_EAIS_COMPUTE_ATTEST_SCHEMA_V1, "um_eais_compute_attest_v1") == 0);
+  assert(strcmp(AGENT_UM_EAIS_COMPUTE_ENGINE_AVM, "avm") == 0);
   assert(strcmp(AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST, "vote_request") == 0);
   assert(strcmp(AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT, "vote_grant") == 0);
   assert(strcmp(AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT, "leader_commit") == 0);

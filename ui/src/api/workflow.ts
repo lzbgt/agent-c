@@ -6,6 +6,8 @@ import {
   type WorkflowDetailResp,
   WorkflowListRespSchema,
   type WorkflowListResp,
+  WorkflowEventsRespSchema,
+  type WorkflowEventsResp,
   WorkflowCancelRespSchema,
   type WorkflowCancelResp,
   WorkflowSubmitRespSchema,
@@ -54,6 +56,31 @@ export async function apiGetWorkflow(
   const r = await fetch(`${base}/api/v1/workflow${q ? `?${q}` : ""}`, daemonFetchInit(auth));
   const j = await r.json();
   return WorkflowDetailRespSchema.parse(j);
+}
+
+export type WorkflowEventsParams = {
+  workflowId: string;
+  afterEventId?: number;
+  limit?: number;
+  taskId?: string;
+  eventType?: string;
+};
+
+export async function apiListWorkflowEvents(
+  base: string,
+  params: WorkflowEventsParams,
+  auth?: ApiAuth,
+): Promise<WorkflowEventsResp> {
+  const qs = new URLSearchParams();
+  addQueryParam(qs, "workflow_id", params.workflowId);
+  addQueryParam(qs, "after_event_id", params.afterEventId);
+  addQueryParam(qs, "limit", params.limit);
+  addQueryParam(qs, "task_id", params.taskId);
+  addQueryParam(qs, "event_type", params.eventType);
+  const q = qs.toString();
+  const r = await fetch(`${base}/api/v1/workflow/events${q ? `?${q}` : ""}`, daemonFetchInit(auth));
+  const j = await r.json();
+  return WorkflowEventsRespSchema.parse(j);
 }
 
 export async function apiSubmitWorkflow(

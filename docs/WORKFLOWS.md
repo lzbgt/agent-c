@@ -850,6 +850,13 @@ Optional (best-effort) session-level snapshot for multi-tenant fairness tuning:
 `GET /api/v1/workflow/events?workflow_id=...&after_event_id=0&limit=256`
 
 This returns the persisted workflow event log (DB-backed), which is also the source for the SSE stream.
+Optional exact-match filters:
+- `task_id`
+- `event_type`
+
+Example:
+
+`GET /api/v1/workflow/events?workflow_id=wf_123&task_id=TASK_A&event_type=task_status&limit=128`
 
 ### Workflow streaming (SSE)
 

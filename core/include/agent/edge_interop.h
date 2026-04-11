@@ -105,6 +105,11 @@ agent_edge_consensus_message_type_t agent_edge_consensus_message_type_classify(
 #define AGENT_UM_BMP_TYPE_DURABLE_WORKFLOW_CANCEL "DURABLE_WORKFLOW_CANCEL"
 #define AGENT_UM_BMP_TYPE_DURABLE_WORKFLOW_ACK "DURABLE_WORKFLOW_ACK"
 
+// Conventional schema/engine labels for deterministic compute evidence carried in:
+//   TASK_DONE.body.result.attest.compute
+#define AGENT_UM_EAIS_COMPUTE_ATTEST_SCHEMA_V1 "um_eais_compute_attest_v1"
+#define AGENT_UM_EAIS_COMPUTE_ENGINE_AVM "avm"
+
 // Conventional prefixes used by the platform when defaulting ids from msg_id.
 #define AGENT_UM_BMP_WORKFLOW_ID_PREFIX "wf:"
 #define AGENT_UM_BMP_IDEMPOTENCY_PREFIX "edge_msg:"

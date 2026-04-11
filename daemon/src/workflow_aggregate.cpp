@@ -172,6 +172,8 @@ static Json::Value workflow_aggregate_quorum_hashes_to_json(
       const Json::Value* att = nullptr;
       if (json_pointer_get(root, "/avm/attest", &att) && att && att->isObject()) {
         attestation_by_task[tid] = *att;
+      } else if (json_pointer_get(root, "/edge_attest", &att) && att && att->isObject()) {
+        attestation_by_task[tid] = *att;
       }
       const Json::Value* got = nullptr;
       if (json_pointer_get(root, node_ptr, &got) && got && got->isString() && !got->asString().empty()) {

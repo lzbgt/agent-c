@@ -77,6 +77,31 @@ export const WorkflowDetailRespSchema = z
   })
   .passthrough();
 
+export const WorkflowEventSchema = z
+  .object({
+    event_id: z.number(),
+    ts_unix_ms: z.number().optional(),
+    type: z.string(),
+    schema: z.string().optional(),
+    task_id: z.string().optional(),
+    data: WorkflowJsonValueSchema.optional(),
+  })
+  .passthrough();
+
+export const WorkflowEventsRespSchema = z
+  .object({
+    ok: z.boolean().optional(),
+    workflow_id: z.string().optional(),
+    after_event_id: z.number().optional(),
+    task_id: z.string().optional(),
+    event_type: z.string().optional(),
+    cursor_next: z.number().optional(),
+    events: z.array(WorkflowEventSchema).optional(),
+    error: z.string().optional(),
+    detail: z.string().optional(),
+  })
+  .passthrough();
+
 export const WorkflowSubmitRespSchema = z
   .object({
     ok: z.boolean().optional(),
@@ -100,5 +125,7 @@ export const WorkflowCancelRespSchema = z
 
 export type WorkflowListResp = z.infer<typeof WorkflowListRespSchema>;
 export type WorkflowDetailResp = z.infer<typeof WorkflowDetailRespSchema>;
+export type WorkflowEvent = z.infer<typeof WorkflowEventSchema>;
+export type WorkflowEventsResp = z.infer<typeof WorkflowEventsRespSchema>;
 export type WorkflowSubmitResp = z.infer<typeof WorkflowSubmitRespSchema>;
 export type WorkflowCancelResp = z.infer<typeof WorkflowCancelRespSchema>;

@@ -1804,6 +1804,16 @@
         name: limit
         required: false
         schema: { type: integer, format: int32 }
+      - in: query
+        name: task_id
+        required: false
+        schema: { type: string }
+        description: Exact task id filter. Empty values are ignored.
+      - in: query
+        name: event_type
+        required: false
+        schema: { type: string }
+        description: Exact workflow event type filter, for example `task_status` or `workflow_done`.
     responses:
       "200":
         description: Checkpoints list
@@ -2466,6 +2476,8 @@
                 ok: { type: boolean }
                 workflow_id: { type: string }
                 after_event_id: { type: integer, format: int64 }
+                task_id: { type: string }
+                event_type: { type: string }
                 cursor_next: { type: integer, format: int64 }
                 events:
                   type: array

@@ -655,6 +655,8 @@ class AgentDb {
   bool list_workflow_events(
     const std::string& workflow_id,
     int64_t after_event_id,
+    const std::string& task_id_filter,
+    const std::string& event_type_filter,
     size_t max_rows,
     std::vector<WorkflowEventRow>* out_rows_asc,
     std::string* out_error

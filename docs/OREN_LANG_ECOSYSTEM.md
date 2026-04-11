@@ -160,6 +160,8 @@ If you want to maximize leverage *now* with minimal time:
    - carry node identity / attestation material through quorum joins for multi-node correctness
      2026-03-15: shipped workflow AVM attestation bundles with stable `node_id`, persisted
      `attestation_bundle.json`, and automatic aggregate `node_pointer=/avm/attest/node_id` defaults
+     2026-04-12: shipped UM-EAIS `TASK_DONE.body.result.attest.compute` conventions so edge nodes
+     can report AVM-style `result_hash` / `trace_hash` / `state_hash` evidence for quorum joins
    - extend durable evidence from the now-shipped governance bundle/output-log artifacts to full
      snapshot-level record/replay persistence when AVM exposes it cleanly
 
@@ -184,3 +186,4 @@ Current proof:
 - `tests/agentd_avm_job_scan_smoke.sh`
 - `tests/agentd_workflow_avm_capsule_smoke.sh`
 - `tests/agentd_workflow_aggregate_quorum_smoke.sh`
+- `tests/agentd_workflow_edge_compute_attest_quorum_smoke.sh`

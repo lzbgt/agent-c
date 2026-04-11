@@ -138,3 +138,69 @@ if ! grep -q "\"type\":\"task_status\"" "${OUT_FILE}"; then
   exit 1
 fi
 
+workflow_id_q="$(python3 - <<PY
+import urllib.parse
+print(urllib.parse.quote('''${workflow_id}'''))
+PY
+)"
+events_all="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/workflow/events?workflow_id=${workflow_id_q}&after_event_id=0&limit=256")"
+events_task_b="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/workflow/events?workflow_id=${workflow_id_q}&after_event_id=0&limit=256&task_id=B")"
+events_task_status="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/workflow/events?workflow_id=${workflow_id_q}&after_event_id=0&limit=256&event_type=task_status")"
+events_task_a_status="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/workflow/events?workflow_id=${workflow_id_q}&after_event_id=0&limit=256&task_id=A&event_type=task_status")"
+
+python3 - <<PY
+import json, sys
+all_obj = json.loads(r'''${events_all}''')
+task_b_obj = json.loads(r'''${events_task_b}''')
+task_status_obj = json.loads(r'''${events_task_status}''')
+task_a_status_obj = json.loads(r'''${events_task_a_status}''')
+
+for label, obj in [
+  ("all", all_obj),
+  ("task_b", task_b_obj),
+  ("task_status", task_status_obj),
+  ("task_a_status", task_a_status_obj),
+]:
+  if not obj.get("ok"):
+    print(f"{label} events query failed: {obj}", file=sys.stderr)
+    raise SystemExit(1)
+
+all_events = all_obj.get("events") or []
+if not all_events:
+  print("expected unfiltered workflow events", file=sys.stderr)
+  raise SystemExit(1)
+if not any(e.get("task_id") == "A" for e in all_events if isinstance(e, dict)):
+  print("expected task A events in unfiltered response", all_events, file=sys.stderr)
+  raise SystemExit(1)
+if not any(e.get("task_id") == "B" for e in all_events if isinstance(e, dict)):
+  print("expected task B events in unfiltered response", all_events, file=sys.stderr)
+  raise SystemExit(1)
+
+task_b_events = task_b_obj.get("events") or []
+if not task_b_events or any(e.get("task_id") != "B" for e in task_b_events if isinstance(e, dict)):
+  print("task_id filter leaked non-B events", task_b_obj, file=sys.stderr)
+  raise SystemExit(1)
+if task_b_obj.get("task_id") != "B":
+  print("task_id filter was not echoed", task_b_obj, file=sys.stderr)
+  raise SystemExit(1)
+
+task_status_events = task_status_obj.get("events") or []
+if not task_status_events or any(e.get("type") != "task_status" for e in task_status_events if isinstance(e, dict)):
+  print("event_type filter leaked non-task_status events", task_status_obj, file=sys.stderr)
+  raise SystemExit(1)
+if task_status_obj.get("event_type") != "task_status":
+  print("event_type filter was not echoed", task_status_obj, file=sys.stderr)
+  raise SystemExit(1)
+
+task_a_status_events = task_a_status_obj.get("events") or []
+if not task_a_status_events:
+  print("expected combined task_id/event_type events", task_a_status_obj, file=sys.stderr)
+  raise SystemExit(1)
+if any(e.get("task_id") != "A" or e.get("type") != "task_status" for e in task_a_status_events if isinstance(e, dict)):
+  print("combined filters leaked mismatched events", task_a_status_obj, file=sys.stderr)
+  raise SystemExit(1)
+PY

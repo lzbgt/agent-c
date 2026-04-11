@@ -205,6 +205,13 @@ Attestation note (v0.2/v0.3; enforceable via policy):
   `attest` from the `edge_tasks.result_sha256` hash surface to avoid self-referential hashing.
 - Best-effort: if `attest` includes `{kid,alg,sig,ts_utc_ms,result_sha256}`, the platform verifies the signature when possible and
   emits evidence under task events (visible via `GET /api/v1/trace?trace_id=...`).
+- Deterministic compute nodes may also include `body.result.attest.compute`:
+  - `schema:"um_eais_compute_attest_v1"`
+  - `engine:"avm"` for Oren AVM capsule execution
+  - optional capsule keys such as `program_hash_sha256` and `job_hash_sha256`
+  - `hashes.result_hash`, `hashes.trace_hash`, and `hashes.state_hash` as portable `sha256:<hex64>` tokens
+  Workflow `edge_invoke` results preserve this at `edge_attest.compute`, so `aggregate.mode:"quorum_hashes"` can join on
+  pointers such as `/edge_attest/compute/hashes/result_hash`.
 - When `edge_attest_required=true`, invoke-mode `TASK_DONE` must include `result.attest` with a valid `result_sha256` (matching
   the platform-computed hash). When `edge_attest_require_sig=true`, the attestation signature must also verify using the configured keys.
 

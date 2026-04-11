@@ -112,7 +112,7 @@ void handle_workflow_stream_endpoint(
   for (;;) {
     std::vector<AgentDb::WorkflowEventRow> rows;
     std::string err;
-    if (!db_or_null->list_workflow_events(*wid, cursor, /*max_rows=*/256, &rows, &err)) {
+    if (!db_or_null->list_workflow_events(*wid, cursor, /*task_id_filter=*/"", /*event_type_filter=*/"", /*max_rows=*/256, &rows, &err)) {
       (void)sse_send(client_fd, "error", json_error_body("failed to list workflow events"));
       return;
     }

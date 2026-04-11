@@ -5,6 +5,7 @@ import {
   apiCreateWorkflowSchedule,
   apiDeleteWorkflowSchedule,
   apiGetWorkflow,
+  apiListWorkflowEvents,
   apiListWorkflowScheduleRuns,
   apiListWorkflowSchedules,
   apiListWorkflows,
@@ -59,6 +60,10 @@ export default function useWorkflowPanelState(args: UseWorkflowPanelStateArgs) {
   const [listAutoRefresh, setListAutoRefresh] = useLocalStorageState("agentui.workflowListAutoRefresh", false);
   const [includeResults, setIncludeResults] = useLocalStorageState("agentui.workflowIncludeResults", false);
   const [includeSpec, setIncludeSpec] = useLocalStorageState("agentui.workflowIncludeSpec", false);
+  const [timelineTaskIdFilter, setTimelineTaskIdFilter] = useLocalStorageState("agentui.workflowTimelineTaskId", "");
+  const [timelineEventTypeFilter, setTimelineEventTypeFilter] = useLocalStorageState("agentui.workflowTimelineEventType", "");
+  const [timelineLimit, setTimelineLimit] = useLocalStorageState("agentui.workflowTimelineLimit", "256");
+  const [timelineAutoRefresh, setTimelineAutoRefresh] = useLocalStorageState("agentui.workflowTimelineAutoRefresh", false);
   const [detail, setDetail] = React.useState<WorkflowDetailResp | null>(null);
   const [detailError, setDetailError] = React.useState<string | null>(null);
   const [cancelBusyId, setCancelBusyId] = React.useState<string | null>(null);
@@ -118,6 +123,13 @@ export default function useWorkflowPanelState(args: UseWorkflowPanelStateArgs) {
   const normalizedScheduleRunsStatus = SCHEDULE_RUN_STATUS_OPTIONS.includes(String(scheduleRunsStatus))
     ? String(scheduleRunsStatus)
     : "all";
+  const timelineLimitValue = (() => {
+    const n = Number(timelineLimit);
+    if (!Number.isFinite(n)) return 256;
+    return Math.min(Math.max(Math.trunc(n), 1), 1000);
+  })();
+  const summary = extractWorkflowSummary(detail);
+  const timelineWorkflowId = String(summary?.workflow_id || workflowId || "").trim();
 
   const listQuery = useQuery({
     queryKey: ["workflows", args.baseUrl, args.authKey, normalizedListStatus, limitValue, listFilterDebounced],
@@ -176,6 +188,33 @@ export default function useWorkflowPanelState(args: UseWorkflowPanelStateArgs) {
     refetchInterval: scheduleAutoRefresh ? 5_000 : false,
   });
 
+  const timelineQuery = useQuery({
+    queryKey: [
+      "workflow-events",
+      args.baseUrl,
+      args.authKey,
+      timelineWorkflowId,
+      String(timelineTaskIdFilter || "").trim(),
+      String(timelineEventTypeFilter || "").trim(),
+      timelineLimitValue,
+    ],
+    queryFn: () =>
+      apiListWorkflowEvents(
+        args.baseUrl,
+        {
+          workflowId: timelineWorkflowId,
+          afterEventId: 0,
+          limit: timelineLimitValue,
+          taskId: String(timelineTaskIdFilter || "").trim() || undefined,
+          eventType: String(timelineEventTypeFilter || "").trim() || undefined,
+        },
+        args.auth,
+      ),
+    enabled: args.open && !!args.baseUrl && timelineWorkflowId.length > 0,
+    staleTime: 3_000,
+    refetchInterval: timelineAutoRefresh ? 5_000 : false,
+  });
+
   React.useEffect(() => {
     const next = String(listFilter || "").trim();
     const handle = window.setTimeout(() => {
@@ -225,7 +264,6 @@ export default function useWorkflowPanelState(args: UseWorkflowPanelStateArgs) {
   }, [listFilter, listQuery.data]);
 
   const tasks = extractTasks(detail);
-  const summary = extractWorkflowSummary(detail);
   const taskCounts = countByStatus(tasks);
   const graph = buildLevels(tasks);
   const workflowLimits = extractWorkflowLimits(detail);
@@ -546,6 +584,16 @@ export default function useWorkflowPanelState(args: UseWorkflowPanelStateArgs) {
     setIncludeResults,
     includeSpec,
     setIncludeSpec,
+    timelineTaskIdFilter,
+    setTimelineTaskIdFilter,
+    timelineEventTypeFilter,
+    setTimelineEventTypeFilter,
+    timelineLimit,
+    setTimelineLimit,
+    timelineLimitValue,
+    timelineAutoRefresh,
+    setTimelineAutoRefresh,
+    timelineWorkflowId,
     detail,
     detailError,
     cancelBusyId,
@@ -594,6 +642,7 @@ export default function useWorkflowPanelState(args: UseWorkflowPanelStateArgs) {
     listQuery,
     scheduleListQuery,
     scheduleRunsQuery,
+    timelineQuery,
     workflowLookup,
     filteredWorkflows,
     tasks,

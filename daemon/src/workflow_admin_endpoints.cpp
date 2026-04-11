@@ -128,6 +128,12 @@ void handle_workflow_events_endpoint(
     resp->body = json_error_body("missing workflow_id");
     return;
   }
+  const std::string workflow_id = trim_copy(*wid);
+  if (workflow_id.empty()) {
+    resp->status = 400;
+    resp->body = json_error_body("missing workflow_id");
+    return;
+  }
 
   int64_t after = 0;
   const auto a = query_get(req.query, "after_event_id");
@@ -142,9 +148,14 @@ void handle_workflow_events_endpoint(
   }
   limit = std::min<size_t>(limit, 1000);
 
+  const auto task_id_q = query_get(req.query, "task_id");
+  const std::string task_id_filter = task_id_q ? trim_copy(*task_id_q) : "";
+  const auto event_type_q = query_get(req.query, "event_type");
+  const std::string event_type_filter = event_type_q ? trim_copy(*event_type_q) : "";
+
   std::vector<AgentDb::WorkflowEventRow> rows;
   std::string err;
-  if (!db_or_null->list_workflow_events(*wid, after, limit, &rows, &err)) {
+  if (!db_or_null->list_workflow_events(workflow_id, after, task_id_filter, event_type_filter, limit, &rows, &err)) {
     resp->status = 500;
     Json::Value o(Json::objectValue);
     o["ok"] = false;
@@ -156,8 +167,10 @@ void handle_workflow_events_endpoint(
 
   Json::Value out(Json::objectValue);
   out["ok"] = true;
-  out["workflow_id"] = *wid;
+  out["workflow_id"] = workflow_id;
   out["after_event_id"] = (Json::Int64)after;
+  if (!task_id_filter.empty()) out["task_id"] = task_id_filter;
+  if (!event_type_filter.empty()) out["event_type"] = event_type_filter;
   Json::Value arr(Json::arrayValue);
   int64_t last = after;
   for (const auto& r : rows) {

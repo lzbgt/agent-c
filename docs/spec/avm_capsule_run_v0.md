@@ -212,3 +212,8 @@ curl -fsS -H "Content-Type: application/json" -d '{
 - `tests/agentd_workflow_aggregate_quorum_smoke.sh`
   - verifies deterministic quorum checks across `/avm/result_hash` and `/avm/trace_hash`
   - verifies aggregate node evidence defaults to `/avm/attest/node_id` and surfaces `attestations_by_task_id`
+- `tests/agentd_workflow_edge_compute_attest_quorum_smoke.sh`
+  - verifies UM-EAIS edge nodes can report AVM-style deterministic compute hashes under
+    `TASK_DONE.body.result.attest.compute`
+  - verifies durable workflow aggregates can join on `/edge_attest/compute/hashes/result_hash`
+    and `/edge_attest/compute/hashes/trace_hash` across distinct edge nodes

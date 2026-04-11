@@ -5,6 +5,7 @@ import WorkflowComposer from "./WorkflowComposer";
 import WorkflowDetailSection from "./workflow/WorkflowDetailSection";
 import WorkflowListSection from "./workflow/WorkflowListSection";
 import WorkflowSchedulesSection from "./workflow/WorkflowSchedulesSection";
+import WorkflowTimelineSection from "./workflow/WorkflowTimelineSection";
 import useWorkflowPanelState from "./workflow/useWorkflowPanelState";
 
 export type WorkflowPanelProps = {
@@ -198,6 +199,20 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
           onCancelWorkflow={workflowState.cancelWorkflow}
           onCopyText={workflowState.copyText}
           onTraceIdClick={props.onTraceIdClick}
+        />
+
+        <WorkflowTimelineSection
+          workflowId={workflowState.timelineWorkflowId}
+          taskIdFilter={workflowState.timelineTaskIdFilter}
+          setTaskIdFilter={workflowState.setTimelineTaskIdFilter}
+          eventTypeFilter={workflowState.timelineEventTypeFilter}
+          setEventTypeFilter={workflowState.setTimelineEventTypeFilter}
+          limit={workflowState.timelineLimit}
+          setLimit={workflowState.setTimelineLimit}
+          autoRefresh={workflowState.timelineAutoRefresh}
+          setAutoRefresh={workflowState.setTimelineAutoRefresh}
+          eventsQuery={workflowState.timelineQuery}
+          onCopyText={workflowState.copyText}
         />
 
         <WorkflowComposer

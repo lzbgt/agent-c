@@ -1630,6 +1630,8 @@ bool AgentDb::insert_workflow_event(const WorkflowEventRow& row, int64_t* out_ev
 bool AgentDb::list_workflow_events(
   const std::string& workflow_id,
   int64_t after_event_id,
+  const std::string& task_id_filter,
+  const std::string& event_type_filter,
   size_t max_rows,
   std::vector<WorkflowEventRow>* out_rows_asc,
   std::string* out_error
@@ -1639,6 +1641,8 @@ bool AgentDb::list_workflow_events(
 #if !defined(AGENT_HAVE_SQLITE3)
   (void)workflow_id;
   (void)after_event_id;
+  (void)task_id_filter;
+  (void)event_type_filter;
   (void)max_rows;
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
@@ -1660,7 +1664,10 @@ bool AgentDb::list_workflow_events(
   const char* sql = R"SQL(
 SELECT event_id, workflow_id, task_id, ts_unix_ms, type, data_json
 FROM workflow_events
-WHERE workflow_id=? AND event_id>?
+WHERE workflow_id=?
+  AND event_id>?
+  AND (? IS NULL OR task_id=?)
+  AND (? IS NULL OR type=?)
 ORDER BY event_id ASC
 LIMIT ?;
 )SQL";
@@ -1673,7 +1680,11 @@ LIMIT ?;
   bool ok = true;
   ok = ok && agent_db_bind_text(st, 1, workflow_id);
   ok = ok && agent_db_bind_i64(st, 2, after_event_id < 0 ? 0 : after_event_id);
-  ok = ok && agent_db_bind_i64(st, 3, (int64_t)lim);
+  ok = ok && agent_db_bind_text_or_null(st, 3, task_id_filter);
+  ok = ok && agent_db_bind_text_or_null(st, 4, task_id_filter);
+  ok = ok && agent_db_bind_text_or_null(st, 5, event_type_filter);
+  ok = ok && agent_db_bind_text_or_null(st, 6, event_type_filter);
+  ok = ok && agent_db_bind_i64(st, 7, (int64_t)lim);
   if (!ok) {
     if (out_error) *out_error = agent_db_sqlite_err(db_);
     sqlite3_finalize(st);

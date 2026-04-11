@@ -162,6 +162,32 @@
                           "type": "string",
                           "description": "Recommended: agent_json_c14n_v1 (canonical JSON hashing; v0.3)."
                         },
+                        "compute": {
+                          "type": "object",
+                          "additionalProperties": true,
+                          "description": "Optional deterministic compute evidence. For AVM capsule execution use schema=um_eais_compute_attest_v1, engine=avm, and hashes.result_hash / hashes.trace_hash / hashes.state_hash.",
+                          "properties": {
+                            "schema": { "const": "um_eais_compute_attest_v1" },
+                            "engine": { "type": "string" },
+                            "capsule": {
+                              "type": "object",
+                              "additionalProperties": true,
+                              "properties": {
+                                "program_hash_sha256": { "$ref": "#/$defs/sha256_token" },
+                                "job_hash_sha256": { "$ref": "#/$defs/sha256_token" }
+                              }
+                            },
+                            "hashes": {
+                              "type": "object",
+                              "additionalProperties": true,
+                              "properties": {
+                                "result_hash": { "$ref": "#/$defs/sha256_token" },
+                                "trace_hash": { "$ref": "#/$defs/sha256_token" },
+                                "state_hash": { "$ref": "#/$defs/sha256_token" }
+                              }
+                            }
+                          }
+                        },
                         "kid": { "type": "string" },
                         "alg": { "type": "string" },
                         "sig": { "type": "string" },
@@ -227,4 +253,3 @@
     }
   }
 }
-
