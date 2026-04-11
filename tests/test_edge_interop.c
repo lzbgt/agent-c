@@ -172,6 +172,9 @@ static void test_consensus_constants_and_quorum(void) {
   assert(agent_edge_consensus_membership_epoch_can_advance(7, 8) == 1);
   assert(agent_edge_consensus_membership_epoch_can_advance(7, 7) == 0);
   assert(agent_edge_consensus_membership_epoch_can_advance(8, 7) == 0);
+  assert(agent_edge_consensus_membership_policy_can_adopt(7, 8, 1) == 1);
+  assert(agent_edge_consensus_membership_policy_can_adopt(7, 7, 1) == 0);
+  assert(agent_edge_consensus_membership_policy_can_adopt(7, 8, 0) == 0);
   assert(agent_edge_consensus_membership_lineage_is_valid(0, 0) == 1);
   assert(agent_edge_consensus_membership_lineage_is_valid(0, 19) == 1);
   assert(agent_edge_consensus_membership_lineage_is_valid(18, 19) == 1);

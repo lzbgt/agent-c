@@ -300,6 +300,15 @@ int agent_edge_consensus_membership_epoch_can_advance(
   return next_epoch > current_epoch ? 1 : 0;
 }
 
+int agent_edge_consensus_membership_policy_can_adopt(
+  uint64_t current_epoch,
+  uint64_t next_epoch,
+  int self_node_is_member
+) {
+  return self_node_is_member &&
+    agent_edge_consensus_membership_epoch_can_advance(current_epoch, next_epoch) ? 1 : 0;
+}
+
 int agent_edge_consensus_membership_lineage_is_valid(
   uint64_t previous_epoch,
   uint64_t current_epoch
