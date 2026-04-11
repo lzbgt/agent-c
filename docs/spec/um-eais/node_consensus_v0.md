@@ -151,10 +151,15 @@ The shipped autonomous host-loop proof adds:
 - portable `agent_core` node-loop timing gates are now reused by the daemon loop for leader heartbeats, leader-lease
   expiry, post-expiry recampaign cooldown, and campaign start/retry scheduling, so firmware-native ports can reuse the
   same deterministic scheduler predicates without copying host-loop arithmetic
+- portable `agent_core` membership-policy adoption gating now requires a strictly newer epoch and keeps the running node
+  in the adopted member set, so firmware-native ports can share the same live-bundle fail-closed boundary
+- managed runtimes now consume delivered `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE` outbox messages in the reusable node
+  loop, adopt strictly-newer self-including membership policy without restart, reset stale election/leader state at the
+  epoch boundary, and then converge consensus under the adopted member set and timing policy
 
 ## Still open
 
 This document does **not** claim production-complete embedded consensus is complete. Remaining work:
 - replace the current builtin daemon-hosted runtime with embedded / firmware-native adoption
-- extend the shipped durable membership bundle into richer long-lived recovery policy beyond stale-runtime preservation and
-  lineage-gated stale-runtime recovery for multi-hour or partition-heavy deployments
+- extend the shipped durable/live-adopted membership bundle into richer long-lived recovery policy beyond stale-runtime
+  preservation and lineage-gated stale-runtime recovery for multi-hour or partition-heavy deployments

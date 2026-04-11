@@ -95,8 +95,33 @@ bool run_edge_consensus_runtime_core(
         if (!row.isObject() || !row.isMember("msg") || !row["msg"].isObject()) continue;
         const Json::Value env = row["msg"];
         const std::string type = env.isMember("type") && env["type"].isString() ? trim_copy(env["type"].asString()) : "";
-        if (type != AGENT_UM_BMP_TYPE_CONSENSUS_FRAME) continue;
         const Json::Value body = env.isMember("body") && env["body"].isObject() ? env["body"] : Json::Value(Json::objectValue);
+        if (type == AGENT_UM_BMP_TYPE_PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE) {
+          const Json::Value membership = body.isMember("membership") && body["membership"].isObject()
+            ? body["membership"]
+            : Json::Value(Json::nullValue);
+          EdgeConsensusMembershipPolicyUpdate update;
+          std::string merr;
+          if (!edge_consensus_membership_policy_update_from_json(membership, &update, &merr)) {
+            if (out_error) *out_error = "invalid consensus membership bundle: " + merr;
+            return false;
+          }
+          bool adopted = false;
+          std::string reason;
+          if (!loop.adopt_membership_policy(update, &adopted, &reason)) {
+            if (out_error) *out_error = "failed to adopt consensus membership bundle: " + reason;
+            return false;
+          }
+          log_line(
+            hooks,
+            std::string(adopted ? "adopted" : "ignored") + " membership_bundle epoch=" +
+              std::to_string((unsigned long long)update.membership_epoch) +
+              (reason.empty() ? "" : " reason=" + reason));
+          if (adopted) status_update(hooks, loop);
+          processed_message = true;
+          continue;
+        }
+        if (type != AGENT_UM_BMP_TYPE_CONSENSUS_FRAME) continue;
         if (!body.isMember("frame") || !body["frame"].isObject()) continue;
         EdgeConsensusFrame frame;
         std::string ferr;

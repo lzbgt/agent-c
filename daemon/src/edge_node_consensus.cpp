@@ -7,6 +7,7 @@
 #include "agent/edge_interop.h"
 
 #include <algorithm>
+#include <limits>
 #include <set>
 
 namespace agentd {
@@ -144,6 +145,58 @@ static std::vector<std::string> dedupe_loop_targets(
   return out;
 }
 
+static std::vector<std::string> dedupe_member_vector_without_forcing_self(
+  const std::vector<std::string>& raw_ids
+) {
+  std::vector<std::string> out;
+  std::set<std::string> seen;
+  for (const auto& raw : raw_ids) {
+    const std::string node_id = trim_copy(raw);
+    if (!consensus_member_node_id_is_valid(node_id)) continue;
+    if (!seen.insert(node_id).second) continue;
+    out.push_back(node_id);
+  }
+  std::sort(out.begin(), out.end());
+  return out;
+}
+
+static bool json_value_to_i64_strict(const Json::Value& v, int64_t* out) {
+  if (!out) return false;
+  if (v.isInt64()) {
+    *out = v.asInt64();
+    return true;
+  }
+  if (v.isUInt64()) {
+    const Json::UInt64 x = v.asUInt64();
+    if (x > (Json::UInt64)std::numeric_limits<int64_t>::max()) return false;
+    *out = (int64_t)x;
+    return true;
+  }
+  if (v.isInt()) {
+    *out = (int64_t)v.asInt();
+    return true;
+  }
+  if (v.isUInt()) {
+    *out = (int64_t)v.asUInt();
+    return true;
+  }
+  return false;
+}
+
+static bool parse_optional_i64_field(
+  const Json::Value& root,
+  const char* key,
+  int64_t* out,
+  std::string* out_error
+) {
+  if (!root.isMember(key) || root[key].isNull()) return true;
+  if (!json_value_to_i64_strict(root[key], out)) {
+    if (out_error) *out_error = std::string(key) + " must be int64";
+    return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 EdgeConsensusReplica::EdgeConsensusReplica(const EdgeConsensusIdentity& self, size_t cluster_size)
@@ -191,9 +244,23 @@ void EdgeConsensusReplica::set_trust_epochs(const EdgeConsensusEpochs& epochs) {
 }
 
 void EdgeConsensusReplica::set_membership(uint64_t membership_epoch, const std::vector<std::string>& member_node_ids) {
+  const std::set<std::string> next_member_node_ids = dedupe_member_ids(member_node_ids, self_.node_id);
+  const bool changed = self_.membership_epoch != membership_epoch || member_node_ids_ != next_member_node_ids;
   self_.membership_epoch = membership_epoch;
-  member_node_ids_ = dedupe_member_ids(member_node_ids, self_.node_id);
+  member_node_ids_ = next_member_node_ids;
   cluster_size_ = std::max<size_t>(1, member_node_ids_.empty() ? 1 : member_node_ids_.size());
+  if (changed) reset_consensus_state();
+}
+
+void EdgeConsensusReplica::reset_consensus_state() {
+  current_term_ = 0;
+  voted_for_node_id_.clear();
+  leader_node_id_.clear();
+  campaign_decision_sha256_.clear();
+  committed_decision_sha256_.clear();
+  committed_vote_witnesses_.clear();
+  grant_witnesses_by_node_id_.clear();
+  seen_frame_term_by_id_.clear();
 }
 
 std::string EdgeConsensusReplica::next_frame_id(const char* kind) {
@@ -405,6 +472,82 @@ bool EdgeConsensusReplica::handle_frame(
 int64_t EdgeConsensusNodeLoop::current_campaign_delay_ms() const {
   return agent_edge_consensus_campaign_retry_delay_ms(
     cfg_.campaign_retry_ms, cfg_.campaign_retry_max_ms, cfg_.campaign_retry_backoff_factor, campaign_attempts_);
+}
+
+bool EdgeConsensusNodeLoop::adopt_membership_policy(
+  const EdgeConsensusMembershipPolicyUpdate& update,
+  bool* out_adopted,
+  std::string* out_reason
+) {
+  if (out_adopted) *out_adopted = false;
+  if (out_reason) out_reason->clear();
+  if (update.schema != AGENT_EDGE_CONSENSUS_MEMBERSHIP_SCHEMA_V1) {
+    if (out_reason) *out_reason = "membership schema invalid";
+    return false;
+  }
+  if (update.cluster_id != cfg_.self.cluster_id) {
+    if (out_reason) *out_reason = "cluster_id mismatch";
+    return true;
+  }
+  if (!agent_edge_consensus_membership_epoch_can_advance(cfg_.self.membership_epoch, update.membership_epoch)) {
+    if (out_reason) *out_reason = "membership_epoch not newer";
+    return true;
+  }
+
+  std::vector<std::string> members = dedupe_member_vector_without_forcing_self(update.member_node_ids);
+  if (members.empty()) {
+    if (out_reason) *out_reason = "member_node_ids empty";
+    return false;
+  }
+  const bool self_node_is_member = std::find(members.begin(), members.end(), cfg_.self.node_id) != members.end();
+  if (!agent_edge_consensus_membership_policy_can_adopt(
+        cfg_.self.membership_epoch,
+        update.membership_epoch,
+        self_node_is_member ? 1 : 0)) {
+    if (out_reason) *out_reason = "self node missing from membership";
+    return true;
+  }
+
+  agent_edge_consensus_policy_timing_t timing;
+  timing.campaign_delay_ms = update.campaign_delay_ms;
+  timing.campaign_retry_ms = update.campaign_retry_ms;
+  timing.campaign_retry_max_ms = update.campaign_retry_max_ms <= 0
+    ? update.campaign_retry_ms
+    : update.campaign_retry_max_ms;
+  timing.campaign_retry_backoff_factor = update.campaign_retry_backoff_factor;
+  timing.leader_heartbeat_ms = update.leader_heartbeat_ms;
+  timing.leader_lease_ms = update.leader_lease_ms;
+  timing.lease_expiry_recampaign_delay_ms = update.lease_expiry_recampaign_delay_ms;
+  timing.stale_runtime_recovery_grace_ms = 0;
+  if (agent_edge_consensus_policy_timing_normalize(&timing) != AGENT_OK) {
+    if (out_reason) *out_reason = "membership timing invalid";
+    return false;
+  }
+
+  cfg_.self.membership_epoch = update.membership_epoch;
+  cfg_.member_node_ids = members;
+  cfg_.peer_node_ids = dedupe_loop_targets(members, cfg_.self.node_id);
+  cfg_.cluster_size = std::max<size_t>(1, members.size());
+  cfg_.campaign_delay_ms = timing.campaign_delay_ms;
+  cfg_.campaign_retry_ms = timing.campaign_retry_ms;
+  cfg_.campaign_retry_max_ms = timing.campaign_retry_max_ms;
+  cfg_.campaign_retry_backoff_factor = timing.campaign_retry_backoff_factor;
+  cfg_.leader_heartbeat_ms = timing.leader_heartbeat_ms;
+  cfg_.leader_lease_ms = timing.leader_lease_ms;
+  cfg_.lease_expiry_recampaign_delay_ms = timing.lease_expiry_recampaign_delay_ms;
+
+  replica_.set_membership(cfg_.self.membership_epoch, cfg_.member_node_ids);
+  started_utc_ms_ = 0;
+  last_campaign_started_utc_ms_ = 0;
+  last_leader_contact_utc_ms_ = 0;
+  last_leader_heartbeat_sent_utc_ms_ = 0;
+  last_leader_lease_expired_utc_ms_ = 0;
+  election_started_ = false;
+  campaign_attempts_ = 0;
+  leader_lease_expired_count_ = 0;
+  if (out_adopted) *out_adopted = true;
+  if (out_reason) *out_reason = "adopted";
+  return true;
 }
 
 bool EdgeConsensusNodeLoop::leader_lease_expired(int64_t now_utc_ms) const {
@@ -721,6 +864,91 @@ bool edge_consensus_frame_from_json(const Json::Value& root, EdgeConsensusFrame*
     }
   }
   return frame_is_valid(*out, out_error);
+}
+
+bool edge_consensus_membership_policy_update_from_json(
+  const Json::Value& root,
+  EdgeConsensusMembershipPolicyUpdate* out,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (!out) return false;
+  *out = EdgeConsensusMembershipPolicyUpdate{};
+  if (!root.isObject()) {
+    if (out_error) *out_error = "membership bundle must be an object";
+    return false;
+  }
+  if (!parse_nonempty_string(root, "schema", &out->schema, out_error) ||
+      !parse_nonempty_string(root, "cluster_id", &out->cluster_id, out_error)) {
+    return false;
+  }
+  if (out->schema != AGENT_EDGE_CONSENSUS_MEMBERSHIP_SCHEMA_V1) {
+    if (out_error) *out_error = "membership schema invalid";
+    return false;
+  }
+  if (!edge_id_is_safe(out->cluster_id)) {
+    if (out_error) *out_error = "cluster_id invalid";
+    return false;
+  }
+  if (!json_get_u64_nonneg(root, "membership_epoch", &out->membership_epoch)) {
+    if (out_error) *out_error = "membership_epoch must be uint64";
+    return false;
+  }
+  if (!root.isMember("member_node_ids") || !root["member_node_ids"].isArray()) {
+    if (out_error) *out_error = "member_node_ids must be an array";
+    return false;
+  }
+  std::vector<std::string> members;
+  for (Json::ArrayIndex i = 0; i < root["member_node_ids"].size(); i++) {
+    if (!root["member_node_ids"][i].isString()) {
+      if (out_error) *out_error = "member_node_ids must contain strings";
+      return false;
+    }
+    const std::string member = trim_copy(root["member_node_ids"][i].asString());
+    if (!consensus_member_node_id_is_valid(member)) {
+      if (out_error) *out_error = "member_node_id invalid";
+      return false;
+    }
+    members.push_back(member);
+  }
+  out->member_node_ids = dedupe_member_vector_without_forcing_self(members);
+  if (out->member_node_ids.empty()) {
+    if (out_error) *out_error = "member_node_ids empty";
+    return false;
+  }
+
+  if (!parse_optional_i64_field(root, "campaign_delay_ms", &out->campaign_delay_ms, out_error) ||
+      !parse_optional_i64_field(root, "campaign_retry_ms", &out->campaign_retry_ms, out_error) ||
+      !parse_optional_i64_field(root, "campaign_retry_max_ms", &out->campaign_retry_max_ms, out_error) ||
+      !parse_optional_i64_field(root, "campaign_retry_backoff_factor", &out->campaign_retry_backoff_factor, out_error) ||
+      !parse_optional_i64_field(root, "leader_heartbeat_ms", &out->leader_heartbeat_ms, out_error) ||
+      !parse_optional_i64_field(root, "leader_lease_ms", &out->leader_lease_ms, out_error) ||
+      !parse_optional_i64_field(root, "lease_expiry_recampaign_delay_ms", &out->lease_expiry_recampaign_delay_ms, out_error)) {
+    return false;
+  }
+  agent_edge_consensus_policy_timing_t timing;
+  timing.campaign_delay_ms = out->campaign_delay_ms;
+  timing.campaign_retry_ms = out->campaign_retry_ms;
+  timing.campaign_retry_max_ms = out->campaign_retry_max_ms <= 0
+    ? out->campaign_retry_ms
+    : out->campaign_retry_max_ms;
+  timing.campaign_retry_backoff_factor = out->campaign_retry_backoff_factor;
+  timing.leader_heartbeat_ms = out->leader_heartbeat_ms;
+  timing.leader_lease_ms = out->leader_lease_ms;
+  timing.lease_expiry_recampaign_delay_ms = out->lease_expiry_recampaign_delay_ms;
+  timing.stale_runtime_recovery_grace_ms = 0;
+  if (agent_edge_consensus_policy_timing_normalize(&timing) != AGENT_OK) {
+    if (out_error) *out_error = "membership timing invalid";
+    return false;
+  }
+  out->campaign_delay_ms = timing.campaign_delay_ms;
+  out->campaign_retry_ms = timing.campaign_retry_ms;
+  out->campaign_retry_max_ms = timing.campaign_retry_max_ms;
+  out->campaign_retry_backoff_factor = timing.campaign_retry_backoff_factor;
+  out->leader_heartbeat_ms = timing.leader_heartbeat_ms;
+  out->leader_lease_ms = timing.leader_lease_ms;
+  out->lease_expiry_recampaign_delay_ms = timing.lease_expiry_recampaign_delay_ms;
+  return true;
 }
 
 }  // namespace agentd

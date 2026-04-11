@@ -55,6 +55,20 @@ struct EdgeConsensusNodeLoopConfig {
   std::string decision_sha256;
 };
 
+struct EdgeConsensusMembershipPolicyUpdate {
+  std::string schema = AGENT_EDGE_CONSENSUS_MEMBERSHIP_SCHEMA_V1;
+  std::string cluster_id;
+  uint64_t membership_epoch = 0;
+  std::vector<std::string> member_node_ids;
+  int64_t campaign_delay_ms = 0;
+  int64_t campaign_retry_ms = 0;
+  int64_t campaign_retry_max_ms = 0;
+  int64_t campaign_retry_backoff_factor = 1;
+  int64_t leader_heartbeat_ms = 1000;
+  int64_t leader_lease_ms = 5000;
+  int64_t lease_expiry_recampaign_delay_ms = 0;
+};
+
 class EdgeConsensusReplica {
  public:
   EdgeConsensusReplica(const EdgeConsensusIdentity& self, size_t cluster_size);
@@ -83,6 +97,7 @@ class EdgeConsensusReplica {
   bool leader_commit_witnesses_valid(const EdgeConsensusFrame& frame) const;
   EdgeConsensusFrame make_vote_grant_frame(const std::string& candidate_node_id, const std::string& decision_sha256) const;
   EdgeConsensusFrame make_leader_commit_frame() const;
+  void reset_consensus_state();
   void maybe_reset_for_new_term(uint64_t term);
   std::string next_frame_id(const char* kind);
 
@@ -105,13 +120,18 @@ class EdgeConsensusNodeLoop {
   explicit EdgeConsensusNodeLoop(const EdgeConsensusNodeLoopConfig& cfg);
 
   const EdgeConsensusNodeLoopConfig& config() const { return cfg_; }
- const EdgeConsensusReplica& replica() const { return replica_; }
+  const EdgeConsensusReplica& replica() const { return replica_; }
   bool election_started() const { return election_started_; }
   uint64_t campaign_attempts() const { return campaign_attempts_; }
   const std::string& leader_node_id() const { return replica_.leader_node_id(); }
   const std::string& committed_decision_sha256() const { return replica_.committed_decision_sha256(); }
   int64_t current_campaign_delay_ms() const;
 
+  bool adopt_membership_policy(
+    const EdgeConsensusMembershipPolicyUpdate& update,
+    bool* out_adopted,
+    std::string* out_reason
+  );
   std::vector<EdgeConsensusFrame> tick(int64_t now_utc_ms);
   bool handle_frame(
     const EdgeConsensusFrame& frame,
@@ -148,5 +168,10 @@ Json::Value edge_consensus_frame_to_json(const EdgeConsensusFrame& frame);
 bool edge_consensus_epochs_from_json(const Json::Value& root, EdgeConsensusEpochs* out, std::string* out_error);
 bool edge_consensus_identity_from_json(const Json::Value& root, EdgeConsensusIdentity* out, std::string* out_error);
 bool edge_consensus_frame_from_json(const Json::Value& root, EdgeConsensusFrame* out, std::string* out_error);
+bool edge_consensus_membership_policy_update_from_json(
+  const Json::Value& root,
+  EdgeConsensusMembershipPolicyUpdate* out,
+  std::string* out_error
+);
 
 }  // namespace agentd

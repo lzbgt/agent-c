@@ -9,6 +9,7 @@ namespace {
 using agentd::EdgeConsensusEpochs;
 using agentd::EdgeConsensusFrame;
 using agentd::EdgeConsensusIdentity;
+using agentd::EdgeConsensusMembershipPolicyUpdate;
 using agentd::EdgeConsensusNodeLoop;
 using agentd::EdgeConsensusNodeLoopConfig;
 using agentd::EdgeConsensusReplica;
@@ -344,6 +345,85 @@ static void test_leader_heartbeat_and_follower_lease_expiry() {
   assert(status["lease_expiry_recampaign_ready_utc_ms"].asInt64() == 1290);
 }
 
+static void test_adopt_membership_policy_advances_epoch_and_resets_loop() {
+  auto loop = make_loop(
+    "node-a",
+    {"node-b", "node-c"},
+    "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    0,
+    200
+  );
+  const std::vector<EdgeConsensusFrame> first_campaign = loop.tick(100);
+  assert(first_campaign.size() == 1);
+  assert(loop.election_started());
+  assert(loop.campaign_attempts() == 1);
+  assert(loop.replica().current_term() == 1);
+
+  EdgeConsensusMembershipPolicyUpdate stale;
+  stale.cluster_id = "lab-consensus-loop";
+  stale.membership_epoch = 9;
+  stale.member_node_ids = {"node-a", "node-b", "node-d"};
+  bool adopted = true;
+  std::string reason;
+  assert(loop.adopt_membership_policy(stale, &adopted, &reason));
+  assert(!adopted);
+  assert(reason == "membership_epoch not newer");
+  assert(loop.config().self.membership_epoch == 9);
+
+  EdgeConsensusMembershipPolicyUpdate update;
+  update.cluster_id = "lab-consensus-loop";
+  update.membership_epoch = 10;
+  update.member_node_ids = {"node-d", "node-a", "node-b", "node-d"};
+  update.campaign_delay_ms = 0;
+  update.campaign_retry_ms = 125;
+  update.campaign_retry_max_ms = 500;
+  update.campaign_retry_backoff_factor = 2;
+  update.leader_heartbeat_ms = 300;
+  update.leader_lease_ms = 1200;
+  update.lease_expiry_recampaign_delay_ms = 450;
+  assert(loop.adopt_membership_policy(update, &adopted, &reason));
+  assert(adopted);
+  assert(reason == "adopted");
+  assert(!loop.election_started());
+  assert(loop.campaign_attempts() == 0);
+  assert(loop.replica().current_term() == 0);
+  assert(loop.replica().leader_node_id().empty());
+  assert(loop.replica().committed_decision_sha256().empty());
+
+  const Json::Value status = loop.status_to_json();
+  assert(status["self"]["membership_epoch"].asUInt64() == 10);
+  assert(status["member_node_ids"].size() == 3);
+  assert(status["member_node_ids"][0].asString() == "node-a");
+  assert(status["member_node_ids"][1].asString() == "node-b");
+  assert(status["member_node_ids"][2].asString() == "node-d");
+  assert(status["peer_node_ids"].size() == 2);
+  assert(status["peer_node_ids"][0].asString() == "node-b");
+  assert(status["peer_node_ids"][1].asString() == "node-d");
+  assert(status["cluster_size"].asUInt64() == 3);
+  assert(status["campaign_retry_ms"].asInt64() == 125);
+  assert(status["campaign_retry_max_ms"].asInt64() == 500);
+  assert(status["campaign_retry_backoff_factor"].asInt64() == 2);
+  assert(status["leader_heartbeat_ms"].asInt64() == 300);
+  assert(status["leader_lease_ms"].asInt64() == 1200);
+  assert(status["lease_expiry_recampaign_delay_ms"].asInt64() == 450);
+
+  EdgeConsensusMembershipPolicyUpdate removed_self = update;
+  removed_self.membership_epoch = 11;
+  removed_self.member_node_ids = {"node-b", "node-d"};
+  assert(loop.adopt_membership_policy(removed_self, &adopted, &reason));
+  assert(!adopted);
+  assert(reason == "self node missing from membership");
+  assert(loop.config().self.membership_epoch == 10);
+
+  const std::vector<EdgeConsensusFrame> next_campaign = loop.tick(200);
+  assert(next_campaign.size() == 1);
+  assert(next_campaign[0].from.membership_epoch == 10);
+  const std::vector<std::string> targets = loop.target_node_ids_for_frame(next_campaign[0]);
+  assert(targets.size() == 2);
+  assert(targets[0] == "node-b");
+  assert(targets[1] == "node-d");
+}
+
 }  // namespace
 
 int main() {
@@ -354,5 +434,6 @@ int main() {
   test_quorum_commit_emits_leader_commit();
   test_status_surfaces_loop_config();
   test_leader_heartbeat_and_follower_lease_expiry();
+  test_adopt_membership_policy_advances_epoch_and_resets_loop();
   return 0;
 }
