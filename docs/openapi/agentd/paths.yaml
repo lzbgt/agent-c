@@ -1961,6 +1961,8 @@
     description: |
       Selects the newest structured checkpoint in the requested time window and returns
       structured keys whose `sources[]` mention `trace:<trace_id>`.
+      Responses include `relationship_graph` (`agentd.memory.relationship_graph.v1`) linking
+      memory items to trace/workflow/task/job IDs and bounded source excerpts.
       When a correlation index exists, the response also includes `daily_entries`, `recap_entries`,
       and `index` metadata.
     parameters:

@@ -603,6 +603,28 @@ Semantics:
 - The full host tool response is surfaced under the task result as `memory_structured_query_response` for deterministic `expect` assertions
   and JSON templating (`${task.Q.json:/memory_structured_query_response/data/results/0/record/value}` etc.).
 
+### Deterministic memory correlation task (`kind:"memory_correlate"`) (v1.7)
+
+For deterministic trace-to-memory correlation, workflows can scan bounded structured checkpoints without invoking an LLM:
+
+```json
+{
+  "task_id": "C",
+  "kind": "memory_correlate",
+  "depends_on": ["M"],
+  "memory_correlate": {
+    "trace_id": "wf_trace_123",
+    "max_entries": 50,
+    "timeline": false
+  }
+}
+```
+
+Semantics:
+- If `trace_id` is omitted, the workflow `trace_id` is used.
+- Returned `entries[]` contain structured memory keys whose `record.sources[]` mention `trace:<trace_id>`.
+- The task result includes `relationship_graph` (`agentd.memory.relationship_graph.v1`) with memory, trace, workflow, task, job, and source-excerpt nodes for deterministic correlation checks. Memory rows are linked to the queried trace with `correlates_trace`.
+
 ### Agent collaboration / fallback delegation (`kind:"delegate"`) (v1.6)
 
 Sometimes “power” comes from **redundancy** and **explicit fallback**: run the same intent through multiple candidate

@@ -338,11 +338,13 @@ The older P0/P1 section was pruned on 2026-04-12 so `Next` / `Remaining` notes n
 - Memory:
   - Structured current-view key-prefix queries are already shipped through the memory query API and deterministic workflow `memory_query`.
   - 2026-04-12 follow-up: `host_toolset_tests` now covers deterministic FTS5-ranked `memory_search` order for index mode and structured conflict-resolution current-view queries with current evidence plus retained superseded versions/evidence.
-  - Current remaining: all-layer time/size consolidation, versioned facts with explicit `supersedes` / `observed_utc` / `valid_from` metadata, and a durable correlation graph linked to trace/workflow/job IDs and source excerpts.
+  - 2026-04-12 follow-up: memory correlation now returns `relationship_graph` (`agentd.memory.relationship_graph.v1`) from both `/api/v1/memory/correlate` and deterministic workflow `kind:"memory_correlate"`, linking memory items to trace/workflow/task/job IDs and bounded source excerpts.
+  - Current remaining: all-layer time/size consolidation and versioned facts with explicit `supersedes` / `observed_utc` / `valid_from` metadata plus multi-source evidence arrays.
 
 - Workflow / correctness:
   - 2026-04-12 follow-up: workflow `expect` now covers JSON pointer checks, regex, numeric bounds, schema subset checks, and tool-call constraints through shared deterministic validators.
-  - Remaining notes mention workflow timeline UI filters, richer aggregation strategies, and replay-mode workflow validation under stub providers.
+  - 2026-04-12 follow-up: workflow-level replay proof now resubmits the persisted workflow spec under a deterministic stub provider and compares stable task outputs in `agentd_workflow_replay_spec_smoke`.
+  - Remaining notes mention workflow timeline UI filters and richer aggregation strategies.
 
 - Tool servers:
   - Remaining P1 note: reference tool server for ESP32 serial/MQTT bridges that speaks the strict stdio protocol and advertises UM-ACDS tool schemas.

@@ -325,6 +325,7 @@ In addition to the tool surface, `agentd` exposes correlation helpers:
 - `GET /api/v1/memory/checkpoints?structured_path=STRUCTURED.md` — optional filter by structured file path
 - `GET /api/v1/memory/correlate?trace_id=...` — find structured keys whose evidence sources mention `trace:<trace_id>`
   - optional filters: `structured_path=...` and `key_prefix=...`
+  - response includes `relationship_graph` (`agentd.memory.relationship_graph.v1`) linking memory keys to the queried trace via `correlates_trace`, plus workflow/task/job IDs and bounded source-excerpt nodes from evidence text
   - when the correlation index exists, the response also includes:
     - `daily_entries`: @obs daily lines linked to the trace_id
     - `recap_entries`: recap files that cite the correlated structured/daily evidence
@@ -353,5 +354,5 @@ and evidence hashes without leaving the UI.
 
 Durable workflows can query memory without invoking an LLM:
 
-- `kind:"memory_correlate"` — bounded correlation by `trace_id` evidence against structured checkpoints
+- `kind:"memory_correlate"` — bounded correlation by `trace_id` evidence against structured checkpoints; results include the same `relationship_graph` shape as `/api/v1/memory/correlate`
 - `kind:"memory_query"` — bounded query of the structured **current view** by `key_prefix` (reads newest checkpoint)

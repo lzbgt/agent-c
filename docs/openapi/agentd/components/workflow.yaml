@@ -477,7 +477,9 @@ WorkflowMemoryCorrelateSpec:
     Deterministic memory correlation configuration for `kind:memory_correlate`.
 
     The engine scans rolling structured checkpoints under `memory/checkpoints/structured_*.json` and returns
-    entries whose `record.sources[]` contains a substring `trace:<trace_id>`.
+    entries whose `record.sources[]` contains a substring `trace:<trace_id>`. Results include
+    `relationship_graph` (`agentd.memory.relationship_graph.v1`) linking memory items to
+    trace/workflow/task/job IDs and bounded source excerpts.
   properties:
     trace_id:
       type: string

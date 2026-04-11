@@ -1466,7 +1466,10 @@ Maintainability note (always-on):
      - `GET /api/v1/trace?trace_id=...` now joins durable `workflow_events` and `edge_workflow_events` (best-effort) into the same trace surface.
      - Proof: `ctest` includes `agentd_trace_workflow_events_smoke`.
    - Shipped: structured memory “current view” queries are available through `GET /api/v1/memory/query?...&key_prefix=...` and deterministic workflow `kind:"memory_query"`.
-   - Current remaining: extend correlation from point queries into a durable relationship graph linking memory items to `trace_id`, workflow/job IDs, and source excerpts.
+   - Shipped: durable correlation relationship graph:
+     - `GET /api/v1/memory/correlate?...` and deterministic workflow `kind:"memory_correlate"` now return `relationship_graph` linking memory items to `trace_id`, workflow/task/job IDs, and source excerpts.
+     - Proof: `ctest` includes `memory_correlation_graph_tests`, `agentd_memory_correlate_smoke`, and `agentd_workflow_memory_correlate_smoke`.
+   - Current remaining: extend memory into all-layer time/size consolidation and versioned facts with explicit `supersedes` / `observed_utc` / `valid_from` metadata plus multi-source evidence arrays.
 
 ### 1) AVM capsule execution v0 (shipped core; remaining interop extensions)
 
@@ -1551,7 +1554,7 @@ Deliverables:
 - Rolling consolidation + correlation (next):
   - time/size based consolidation across **all** layers (core/daily/session/structured), not just daily markers
   - versioned facts: `supersedes`, `observed_utc`/`valid_from`, and multi-source evidence arrays
-  - correlation graph: link memory items to `trace_id`/workflow/job ids and source excerpts
+  - durable correlation graph is shipped for `memory_correlate`; next memory work is all-layer consolidation plus versioned facts with `supersedes` / `observed_utc` / `valid_from` and multi-source evidence arrays
 
 Proof:
 - `ctest` covers memory tools end-to-end (`test_host_toolset`), ensuring `memory_write`→`memory_search`→`memory_get` works.
@@ -1564,12 +1567,11 @@ Deliverables:
 - Expand `expect`:
   - (shipped) JSON pointer assertions, regex checks, numeric bounds, schema subset checks, and tool-call constraints.
 - “Replay mode”:
-  - re-run a workflow from persisted inputs using a stub provider
-  - deterministic outputs validated by expectations
+  - (shipped) re-run a workflow from persisted submit inputs using a stub provider and validate deterministic outputs by expectations
 
 Proof:
 - `ctest` includes `agentd_workflow_expect_extended_smoke` and `agentd_workflow_expect_tool_calls_smoke` for deterministic expectation validators.
-- Remaining proof target: workflow-level replay tests that re-run persisted workflow inputs under a stub provider and validate identical outputs by expectations.
+- `ctest` includes `agentd_workflow_replay_spec_smoke` for replaying the persisted workflow spec under a deterministic stub provider and comparing stable task outputs.
 
 ## P1 (big wins after P0)
 

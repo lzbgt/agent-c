@@ -344,6 +344,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/memory_retention.cpp
     daemon/src/memory_checkpoints.cpp
     daemon/src/memory_correlation_index.cpp
+    daemon/src/memory_correlation_graph.cpp
     daemon/src/memory_salience.cpp
     daemon/src/memory_recaps.cpp
     daemon/src/memory_endpoints.cpp
@@ -1420,6 +1421,7 @@ if(AGENT_BUILD_HOST)
 			    add_test(NAME agentd_workflow_inputs_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_inputs_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_workflow_infer_deps_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_infer_deps_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_workflow_get_spec_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_get_spec_smoke.sh $<TARGET_FILE:agentd>)
+			    add_test(NAME agentd_workflow_replay_spec_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_replay_spec_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_workflow_deadline_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_deadline_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_workflow_idempotency_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_idempotency_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_workflow_schedule_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_schedule_smoke.sh $<TARGET_FILE:agentd>)
@@ -1971,6 +1973,13 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
     target_link_libraries(json_schema_subset_tests PRIVATE agentd_lib)
     target_compile_definitions(json_schema_subset_tests PRIVATE AGENT_HAVE_JSONCPP=1)
     add_test(NAME json_schema_subset_tests COMMAND json_schema_subset_tests)
+
+    add_executable(memory_correlation_graph_tests
+      tests/test_memory_correlation_graph.cpp
+    )
+    target_link_libraries(memory_correlation_graph_tests PRIVATE agentd_lib)
+    target_compile_definitions(memory_correlation_graph_tests PRIVATE AGENT_HAVE_JSONCPP=1)
+    add_test(NAME memory_correlation_graph_tests COMMAND memory_correlation_graph_tests)
 
     add_executable(cbor_decode_tests
       tests/test_cbor_decode.cpp

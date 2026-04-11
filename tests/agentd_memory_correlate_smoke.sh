@@ -179,6 +179,31 @@ keys = {e.get("key") for e in entries if isinstance(e, dict)}
 if "wf.test.corr" not in keys:
   print("expected wf.test.corr in entries", entries, file=sys.stderr)
   raise SystemExit(1)
+graph = obj.get("relationship_graph") or {}
+if graph.get("schema") != "agentd.memory.relationship_graph.v1":
+  print("expected relationship graph schema", graph, file=sys.stderr)
+  raise SystemExit(1)
+nodes = graph.get("nodes") or []
+edges = graph.get("edges") or []
+def has_node(node_id, kind):
+  return any(isinstance(n, dict) and n.get("id") == node_id and n.get("kind") == kind for n in nodes)
+def has_edge(src, dst, kind):
+  return any(isinstance(e, dict) and e.get("from") == src and e.get("to") == dst and e.get("kind") == kind for e in edges)
+mem_id = "memory:wf.test.corr"
+trace_id = "trace:${TRACE_ID}"
+workflow_id = "workflow:${workflow_id}"
+if not has_node(mem_id, "memory_item") or not has_node(trace_id, "trace") or not has_node(workflow_id, "workflow"):
+  print("expected memory/trace/workflow nodes", graph, file=sys.stderr)
+  raise SystemExit(1)
+if not has_edge(mem_id, trace_id, "correlates_trace") or not has_edge(mem_id, workflow_id, "from_workflow"):
+  print("expected graph correlation/workflow edges", graph, file=sys.stderr)
+  raise SystemExit(1)
+if not has_edge(mem_id, "task:M", "from_task"):
+  print("expected graph task edge", graph, file=sys.stderr)
+  raise SystemExit(1)
+if not any(isinstance(n, dict) and n.get("kind") == "source_excerpt" for n in nodes):
+  print("expected source excerpt nodes", graph, file=sys.stderr)
+  raise SystemExit(1)
 print("ok")
 PY
 

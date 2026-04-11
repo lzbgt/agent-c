@@ -5,6 +5,7 @@
 #include "json_util.h"
 #include "memory_checkpoints.h"
 #include "memory_correlation_index.h"
+#include "memory_correlation_graph.h"
 #include "memory_consolidator.h"
 #include "memory_recaps.h"
 #include "memory_retention.h"
@@ -502,6 +503,10 @@ void handle_memory_correlate_endpoint(
           Json::Value row(Json::objectValue);
           row["key"] = key;
           if (e.isMember("record")) row["record"] = e["record"];
+          if (e.isMember("structured_path")) row["structured_path"] = e["structured_path"];
+          if (e.isMember("checkpoint_path")) row["checkpoint_path"] = e["checkpoint_path"];
+          if (e.isMember("checkpoint_ts_utc")) row["checkpoint_ts_utc"] = e["checkpoint_ts_utc"];
+          if (e.isMember("checkpoint_ts_utc_ms")) row["checkpoint_ts_utc_ms"] = e["checkpoint_ts_utc_ms"];
           structured_entries.append(row);
           structured_added++;
         } else if (kind == "daily") {
@@ -569,6 +574,7 @@ void handle_memory_correlate_endpoint(
     out["timeline"] = timeline_arr;
   }
 
+  out["relationship_graph"] = memory_correlation_relationship_graph_from_response(tid, out);
   resp->body = json_stringify(out);
 }
 

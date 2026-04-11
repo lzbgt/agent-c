@@ -2,6 +2,7 @@
 
 #include "json_util.h"
 #include "memory_checkpoints.h"
+#include "memory_correlation_graph.h"
 #include "string_util.h"
 
 #include <algorithm>
@@ -152,6 +153,7 @@ Json::Value workflow_memory_correlate_to_json(
     }
     out["checkpoint"] = ckinfo;
     out["entries"] = entries;
+    out["relationship_graph"] = memory_correlation_relationship_graph_from_response(trace_id, out);
     out["assistant_text"] = "memory_correlate entries=" + std::to_string((unsigned)entries.size());
     return out;
   }
@@ -167,6 +169,7 @@ Json::Value workflow_memory_correlate_to_json(
     if ((int)timeline_arr.size() >= 50) break;
   }
   out["timeline"] = timeline_arr;
+  out["relationship_graph"] = memory_correlation_relationship_graph_from_response(trace_id, out);
   out["assistant_text"] = "memory_correlate timeline=" + std::to_string((unsigned)timeline_arr.size());
   return out;
 }
