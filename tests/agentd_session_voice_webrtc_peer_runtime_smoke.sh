@@ -488,48 +488,13 @@ wait_broker_session_deleted() {
 inject_stale_persisted_voice_runtime() {
   local session_id="$1"
   local runtime_kind="${2:-bundled}"
-  local runtime_dir="${STATE_DIR}/voice_webrtc_peers/${session_id}"
-  mkdir -p "${runtime_dir}"
-  printf '%s\n' '{"stale":"artifact"}' > "${runtime_dir}/stdout.jsonl"
-  python3 - <<PY
-import json
-import sqlite3
-
-db_path = r'''${SESSION_DB_PATH}'''
-sid = r'''${session_id}'''
-runtime_dir = r'''${runtime_dir}'''
-record = {
-    "schema": "session_voice_webrtc_peer_runtime_v1",
-    "runtime_kind": r'''${runtime_kind}''',
-    "status_source": "memory",
-    "session_id": sid,
-    "broker_session_id": "stale-broker-session",
-    "broker_url": "${VOICE_BROKER_URL}",
-    "managed_broker_session": False,
-    "sender_tag": "agentd_runtime_peer",
-    "tool_path": "${PEER_TOOL}",
-    "node_bin": "node",
-    "ready_file_path": runtime_dir + "/ready.json",
-    "stdout_log_path": runtime_dir + "/stdout.jsonl",
-    "stderr_log_path": runtime_dir + "/stderr.log",
-    "started_unix_ms": 1700000000000,
-    "deadline_ms": 15000,
-    "poll_interval_ms": 100,
-    "tone_hz": 440,
-    "ready": True,
-    "running": True,
-    "pid": 999999,
-}
-conn = sqlite3.connect(db_path)
-try:
-    conn.execute(
-        "INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)",
-        (f"session.voice_webrtc_peer.{sid}", json.dumps(record)),
-    )
-    conn.commit()
-finally:
-    conn.close()
-PY
+  python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_record.py" write-stale \
+    --db-path "${SESSION_DB_PATH}" \
+    --state-dir "${STATE_DIR}" \
+    --session-id "${session_id}" \
+    --runtime-kind "${runtime_kind}" \
+    --broker-url "${VOICE_BROKER_URL}" \
+    --peer-tool "${PEER_TOOL}"
 }
 
 run_receiver_peer() {
@@ -1810,17 +1775,9 @@ PY
 
 wait_voice_peer_ready "${STALE_SESSION_ID}" 1 status_json
 
-python3 - <<PY
-import sqlite3
-db_path = r'''${SESSION_DB_PATH}'''
-sid = r'''${STALE_SESSION_ID}'''
-conn = sqlite3.connect(db_path)
-try:
-    conn.execute("DELETE FROM sessions WHERE session_id = ?", (sid,))
-    conn.commit()
-finally:
-    conn.close()
-PY
+python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_record.py" delete-session \
+  --db-path "${SESSION_DB_PATH}" \
+  --session-id "${STALE_SESSION_ID}"
 
 STALE_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${STALE_SESSION_ID}")"
 status_after_stale_delete="$(curl -fsS --noproxy "*" --max-time 10 \
@@ -3346,24 +3303,13 @@ curl -fsS --noproxy "*" --max-time 10 \
   -d "{\"session_id\":\"${CORRUPT_RUNTIME_SESSION_ID}\"}" \
   "${DAEMON_URL}/api/v1/session/new" >/dev/null
 
-CORRUPT_RUNTIME_DIR="${LOG_DIR}/agentd_session_voice_webrtc_peer_runtime_smoke_${PORT_DAEMON}.state/voice_webrtc_peers/${CORRUPT_RUNTIME_SESSION_ID}"
-mkdir -p "${CORRUPT_RUNTIME_DIR}"
-printf '%s\n' '{"stale":"artifact"}' > "${CORRUPT_RUNTIME_DIR}/stdout.jsonl"
-
-python3 - <<PY
-import sqlite3
-db_path = r'''${SESSION_DB_PATH}'''
-sid = r'''${CORRUPT_RUNTIME_SESSION_ID}'''
-conn = sqlite3.connect(db_path)
-try:
-    conn.execute(
-        "INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)",
-        (f"session.voice_webrtc_peer.{sid}", "{ definitely-not-json")
-    )
-    conn.commit()
-finally:
-    conn.close()
-PY
+CORRUPT_RUNTIME_DIR="${STATE_DIR}/voice_webrtc_peers/${CORRUPT_RUNTIME_SESSION_ID}"
+python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_record.py" write-corrupt \
+  --db-path "${SESSION_DB_PATH}" \
+  --session-id "${CORRUPT_RUNTIME_SESSION_ID}" \
+  --value "{ definitely-not-json" \
+  --runtime-dir "${CORRUPT_RUNTIME_DIR}" \
+  --artifact-json '{"stale":"artifact"}'
 
 CORRUPT_RUNTIME_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${CORRUPT_RUNTIME_SESSION_ID}")"
 corrupt_runtime_status="$(curl -fsS --noproxy "*" --max-time 10 \
@@ -3402,20 +3348,10 @@ finally:
   conn.close()
 PY
 
-python3 - <<PY
-import sqlite3
-db_path = r'''${SESSION_DB_PATH}'''
-sid = r'''${CORRUPT_RUNTIME_SESSION_ID}'''
-conn = sqlite3.connect(db_path)
-try:
-    conn.execute(
-        "INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)",
-        (f"session.voice_webrtc_peer.{sid}", "{ definitely-not-json-again")
-    )
-    conn.commit()
-finally:
-    conn.close()
-PY
+python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_record.py" write-corrupt \
+  --db-path "${SESSION_DB_PATH}" \
+  --session-id "${CORRUPT_RUNTIME_SESSION_ID}" \
+  --value "{ definitely-not-json-again"
 
 corrupt_runtime_start_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
@@ -3476,47 +3412,12 @@ curl -fsS --noproxy "*" --max-time 10 \
   -d "{\"session_id\":\"${PLANNED_RUNTIME_SESSION_ID}\"}" \
   "${DAEMON_URL}/api/v1/session/new" >/dev/null
 
-PLANNED_RUNTIME_DIR="${LOG_DIR}/agentd_session_voice_webrtc_peer_runtime_smoke_${PORT_DAEMON}.state/voice_webrtc_peers/${PLANNED_RUNTIME_SESSION_ID}"
-mkdir -p "${PLANNED_RUNTIME_DIR}"
-printf '%s\n' '{"planned":"artifact"}' > "${PLANNED_RUNTIME_DIR}/stdout.jsonl"
-
-python3 - <<PY
-import json, sqlite3
-db_path = r'''${SESSION_DB_PATH}'''
-sid = r'''${PLANNED_RUNTIME_SESSION_ID}'''
-runtime_dir = r'''${PLANNED_RUNTIME_DIR}'''
-record = {
-    "schema": "session_voice_webrtc_peer_runtime_v1",
-    "runtime_kind": "builtin",
-    "status_source": "planned",
-    "session_id": sid,
-    "broker_url": "${VOICE_BROKER_URL}",
-    "managed_broker_session": True,
-    "broker_agent_id": "a-1",
-    "broker_deployment_id": "lab-planned-runtime-self-heal",
-    "sender_tag": "agentd_runtime_peer",
-    "tool_path": "@builtin",
-    "node_bin": "@builtin",
-    "ready_file_path": runtime_dir + "/ready.json",
-    "stdout_log_path": runtime_dir + "/stdout.jsonl",
-    "stderr_log_path": runtime_dir + "/stderr.log",
-    "started_unix_ms": 0,
-    "deadline_ms": 15000,
-    "poll_interval_ms": 100,
-    "tone_hz": 440,
-    "ready": False,
-    "running": False
-}
-conn = sqlite3.connect(db_path)
-try:
-    conn.execute(
-        "INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)",
-        (f"session.voice_webrtc_peer.{sid}", json.dumps(record))
-    )
-    conn.commit()
-finally:
-    conn.close()
-PY
+PLANNED_RUNTIME_DIR="${STATE_DIR}/voice_webrtc_peers/${PLANNED_RUNTIME_SESSION_ID}"
+python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_record.py" write-planned \
+  --db-path "${SESSION_DB_PATH}" \
+  --runtime-dir "${PLANNED_RUNTIME_DIR}" \
+  --session-id "${PLANNED_RUNTIME_SESSION_ID}" \
+  --broker-url "${VOICE_BROKER_URL}"
 
 PLANNED_RUNTIME_SESSION_ID_Q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${PLANNED_RUNTIME_SESSION_ID}")"
 planned_runtime_status="$(curl -fsS --noproxy "*" --max-time 10 \

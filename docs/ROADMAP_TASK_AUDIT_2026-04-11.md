@@ -81,6 +81,16 @@ Follow-up WebRTC runtime smoke maintainability slice:
 - `ctest --test-dir build -R 'agentd_session_voice_webrtc_peer_runtime_smoke' --output-on-failure > build/webrtc_receiver_extract_ctest_20260411.log 2>&1`
   - Result: `ctest_rc=0`; the affected runtime smoke passed after the extraction.
 
+Follow-up WebRTC runtime smoke fixture-record slice:
+- Extracted stale/corrupt/planned runtime record seeding from `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` into `tests/lib/agentd_voice_webrtc_runtime_record.py`.
+- Removed 172 generated smoke-test SQLite/WAL/SHM files and broker binaries from `build/` after CTest could not write `LastTestsDisabled.log` with the volume at 125 MiB free.
+- `bash -n tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh && python3 -m py_compile tests/lib/agentd_voice_webrtc_runtime_record.py && node --check tests/lib/agentd_voice_webrtc_peer_receiver.js`
+  - Result: `syntax_rc=0`.
+- `cmake --build build -j "$(sysctl -n hw.ncpu)" > build/webrtc_runtime_record_helper_build_20260411.log 2>&1`
+  - Result: `build_rc=0`.
+- `ctest --test-dir build -R 'agentd_session_voice_webrtc_peer_runtime_smoke' --output-on-failure > build/webrtc_runtime_record_helper_ctest_20260411.log 2>&1`
+  - Result: `ctest_rc=0`; the affected runtime smoke passed after pruning generated build artifacts and rerunning.
+
 ## Directly Open Roadmap Items
 
 `TODOS.md` now has two open roadmap workstreams with concrete unchecked subitems, plus one newly closed roadmap workstream:
@@ -129,7 +139,8 @@ The older P0/P1 section still contains "Next" and "Remaining" notes that may be 
 
 Line-count scan excluding `build/`, `ui/node_modules/`, `external/`, `ref/`, `refs/`, `docs/research/`, and generated OpenAPI types found one non-generated file over 2000 lines:
 
-- `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` - 4209 lines after the first receiver-peer extraction; the extracted helper is `tests/lib/agentd_voice_webrtc_peer_receiver.js` at 219 lines.
+- `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` - 4110 lines after the first receiver-peer extraction and the runtime-record fixture extraction. Extracted helpers:
+  `tests/lib/agentd_voice_webrtc_peer_receiver.js` at 219 lines and `tests/lib/agentd_voice_webrtc_runtime_record.py` at 133 lines.
 
 The scan did not identify a production implementation file over the 2000-line threshold after excluding generated OpenAPI typings.
 
