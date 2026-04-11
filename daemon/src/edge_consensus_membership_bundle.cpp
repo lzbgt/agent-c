@@ -24,6 +24,10 @@ static bool string_vec_contains(const std::vector<std::string>& haystack, const 
   return false;
 }
 
+static bool consensus_member_node_id_is_valid(const std::string& node_id) {
+  return agent_edge_consensus_member_node_id_is_valid(node_id.data(), node_id.size()) == 1;
+}
+
 static bool canonical_json_bytes(const Json::Value& v, std::string* out, std::string* out_err) {
   if (out_err) out_err->clear();
   if (!out) return false;
@@ -121,7 +125,7 @@ std::vector<std::string> edge_consensus_normalize_member_node_ids(const std::vec
   out.reserve(in.size());
   for (const auto& raw : in) {
     const std::string s = trim_copy(raw);
-    if (s.empty() || !edge_id_is_safe(s)) continue;
+    if (!consensus_member_node_id_is_valid(s)) continue;
     if (!string_vec_contains(out, s)) out.push_back(s);
   }
   return out;

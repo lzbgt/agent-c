@@ -4,6 +4,8 @@
 #include "edge_util.h"
 #include "string_util.h"
 
+#include "agent/edge_interop.h"
+
 #include <algorithm>
 #include <chrono>
 
@@ -21,6 +23,10 @@ static bool is_safe_printable_field_model(const std::string& s, size_t max_len) 
     if (c < 0x20) return false;
   }
   return true;
+}
+
+static bool consensus_member_node_id_is_valid_model(const std::string& node_id) {
+  return agent_edge_consensus_member_node_id_is_valid(node_id.data(), node_id.size()) == 1;
 }
 
 static uint64_t json_to_u64_model(const Json::Value& v, uint64_t fallback) {
@@ -44,7 +50,7 @@ static std::vector<std::string> dedupe_safe_edge_ids_model(const std::vector<std
   out.reserve(in.size());
   for (const auto& raw : in) {
     const std::string s = trim_copy(raw);
-    if (!edge_id_is_safe(s)) continue;
+    if (!consensus_member_node_id_is_valid_model(s)) continue;
     if (std::find(out.begin(), out.end(), s) == out.end()) out.push_back(s);
   }
   return out;
@@ -341,7 +347,7 @@ bool edge_consensus_runtime_build_config(
   const EdgeConsensusClusterPolicy* cluster_policy =
     pol_it == cfg.edge_consensus_clusters.end() ? nullptr : &pol_it->second;
 
-  if (!edge_id_is_safe(node_id) || !edge_id_is_safe(cluster_id) ||
+  if (!consensus_member_node_id_is_valid_model(node_id) || !edge_id_is_safe(cluster_id) ||
       !edge_sha256_token_is_safe(manifest_sha256)) {
     if (out_err) *out_err = "invalid node runtime identity";
     return false;
@@ -377,7 +383,7 @@ bool edge_consensus_runtime_build_config(
         return false;
       }
       const std::string peer = trim_copy(body["peer_node_ids"][i].asString());
-      if (!edge_id_is_safe(peer)) {
+      if (!consensus_member_node_id_is_valid_model(peer)) {
         if (out_err) *out_err = "invalid peer_node_id";
         return false;
       }
@@ -398,7 +404,7 @@ bool edge_consensus_runtime_build_config(
         return false;
       }
       const std::string member = trim_copy(body["member_node_ids"][i].asString());
-      if (!edge_id_is_safe(member)) {
+      if (!consensus_member_node_id_is_valid_model(member)) {
         if (out_err) *out_err = "invalid member_node_id";
         return false;
       }

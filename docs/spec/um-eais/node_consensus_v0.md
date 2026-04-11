@@ -124,6 +124,9 @@ The shipped autonomous host-loop proof adds:
 - portable `agent_core` durable policy timing normalization, reused by the daemon node loop, runtime start, config load, and
   membership rotation so embedded firmware and agentd clamp campaign, lease, recovery, and stale-runtime grace policy
   consistently
+- portable `agent_core` member-node-id validation and strictly-monotonic membership-epoch advancement checks, reused by
+  daemon runtime parsing, membership bundle normalization/rotation/send, and the reusable node loop so firmware-native
+  ports and agentd accept member identities and cluster-policy epochs consistently
 
 ## Still open
 

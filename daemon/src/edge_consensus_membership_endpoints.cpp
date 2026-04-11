@@ -26,6 +26,10 @@ static bool string_vec_contains(const std::vector<std::string>& haystack, const 
   return false;
 }
 
+static bool consensus_member_node_id_is_valid(const std::string& node_id) {
+  return agent_edge_consensus_member_node_id_is_valid(node_id.data(), node_id.size()) == 1;
+}
+
 static bool parse_json_integer_field(
   const Json::Value& args,
   const char* field,
@@ -190,7 +194,10 @@ void handle_edge_consensus_membership_rotate_endpoint(
     }
     new_epoch = args["membership_epoch"].isInt64() ? args["membership_epoch"].asInt64() : (int64_t)args["membership_epoch"].asUInt64();
   }
-  if (new_epoch <= cur_epoch) {
+  if (new_epoch < 0 ||
+      !agent_edge_consensus_membership_epoch_can_advance(
+        (uint64_t)std::max<int64_t>(0, cur_epoch),
+        (uint64_t)new_epoch)) {
     Json::Value o(Json::objectValue);
     o["ok"] = false;
     o["error"] = "membership_epoch must be strictly greater than current epoch";
@@ -306,7 +313,7 @@ void handle_edge_consensus_membership_send_endpoint(
     resp->body = json_error_body("invalid cluster_id");
     return;
   }
-  if (!edge_id_is_safe(target_node_id)) {
+  if (!consensus_member_node_id_is_valid(target_node_id)) {
     resp->status = 400;
     resp->body = json_error_body("invalid target_node_id");
     return;

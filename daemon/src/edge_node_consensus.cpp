@@ -49,13 +49,17 @@ static bool parse_optional_sha256(
   return true;
 }
 
+static bool consensus_member_node_id_is_valid(const std::string& node_id) {
+  return agent_edge_consensus_member_node_id_is_valid(node_id.data(), node_id.size()) == 1;
+}
+
 static bool parse_identity_like(const EdgeConsensusIdentity& id, std::string* out_error) {
   if (out_error) out_error->clear();
   if (!edge_id_is_safe(id.cluster_id)) {
     if (out_error) *out_error = "cluster_id invalid";
     return false;
   }
-  if (!edge_id_is_safe(id.node_id)) {
+  if (!consensus_member_node_id_is_valid(id.node_id)) {
     if (out_error) *out_error = "node_id invalid";
     return false;
   }
@@ -71,10 +75,10 @@ static std::set<std::string> dedupe_member_ids(
   const std::string& self_node_id
 ) {
   std::set<std::string> out;
-  if (edge_id_is_safe(self_node_id)) out.insert(self_node_id);
+  if (consensus_member_node_id_is_valid(self_node_id)) out.insert(self_node_id);
   for (const auto& raw : raw_ids) {
     const std::string node_id = trim_copy(raw);
-    if (!edge_id_is_safe(node_id)) continue;
+    if (!consensus_member_node_id_is_valid(node_id)) continue;
     out.insert(node_id);
   }
   return out;
@@ -105,13 +109,13 @@ static bool frame_is_valid(const EdgeConsensusFrame& frame, std::string* out_err
   if (!parse_identity_like(frame.from, out_error)) return false;
   if (frame.kind == AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST ||
       frame.kind == AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT) {
-    if (!edge_id_is_safe(frame.candidate_node_id)) {
+    if (!consensus_member_node_id_is_valid(frame.candidate_node_id)) {
       if (out_error) *out_error = "candidate_node_id invalid";
       return false;
     }
   }
   if (frame.kind == AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT &&
-      !edge_id_is_safe(frame.leader_node_id)) {
+      !consensus_member_node_id_is_valid(frame.leader_node_id)) {
     if (out_error) *out_error = "leader_node_id invalid";
     return false;
   }
@@ -129,7 +133,7 @@ static std::vector<std::string> dedupe_loop_targets(
   std::set<std::string> seen;
   for (const auto& raw : raw_ids) {
     const std::string node_id = trim_copy(raw);
-    if (!edge_id_is_safe(node_id) || node_id == self_node_id) continue;
+    if (!consensus_member_node_id_is_valid(node_id) || node_id == self_node_id) continue;
     if (!seen.insert(node_id).second) continue;
     out.push_back(node_id);
   }
@@ -238,7 +242,7 @@ bool EdgeConsensusReplica::trust_epochs_match(const EdgeConsensusEpochs& other) 
 }
 
 bool EdgeConsensusReplica::node_is_member(const std::string& node_id) const {
-  return edge_id_is_safe(node_id) && member_node_ids_.find(node_id) != member_node_ids_.end();
+  return consensus_member_node_id_is_valid(node_id) && member_node_ids_.find(node_id) != member_node_ids_.end();
 }
 
 bool EdgeConsensusReplica::membership_matches(const EdgeConsensusIdentity& other) const {
@@ -479,7 +483,7 @@ bool EdgeConsensusNodeLoop::handle_frame(
 
 std::vector<std::string> EdgeConsensusNodeLoop::target_node_ids_for_frame(const EdgeConsensusFrame& frame) const {
   if (frame.kind == AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT) {
-    if (edge_id_is_safe(frame.candidate_node_id) && frame.candidate_node_id != cfg_.self.node_id) {
+    if (consensus_member_node_id_is_valid(frame.candidate_node_id) && frame.candidate_node_id != cfg_.self.node_id) {
       return {frame.candidate_node_id};
     }
     return {};

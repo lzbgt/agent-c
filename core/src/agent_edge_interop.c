@@ -219,6 +219,17 @@ int agent_edge_consensus_identity_membership_matches(
   return local_membership_epoch == identity_membership_epoch && identity_node_is_member ? 1 : 0;
 }
 
+int agent_edge_consensus_member_node_id_is_valid(const char* node_id, size_t node_id_len) {
+  return agent_umbmp_id_is_safe(node_id, node_id_len);
+}
+
+int agent_edge_consensus_membership_epoch_can_advance(
+  uint64_t current_epoch,
+  uint64_t next_epoch
+) {
+  return next_epoch > current_epoch ? 1 : 0;
+}
+
 static int64_t consensus_clamp_i64(int64_t value, int64_t lo, int64_t hi) {
   if (value < lo) return lo;
   if (value > hi) return hi;
