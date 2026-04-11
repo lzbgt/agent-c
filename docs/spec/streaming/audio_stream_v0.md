@@ -183,7 +183,9 @@ A v0 smoke test should:
   provider selection path: with `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND=builtin`,
   `AGENTD_AUDIO_WEBRTC_BUILTIN_MODE=native_plugin`, and the embedded provider library configured, a start request that
   omits `runtime_kind` resolves to `peer.runtime_kind=builtin` / `peer.media_engine_kind=builtin_native_plugin` and
-  completes a minimal offer/answer/bye lifecycle through the managed broker session.
+  completes a minimal offer/answer/bye lifecycle through the managed broker session. It also persists those defaults
+  through `/api/v1/config/update`, restarts agentd without the audio env defaults, and proves the config-backed default
+  launch path selects the same embedded provider.
 - `runtime_kind` on `POST /api/v1/session/voice_webrtc_peer` is now a start-only backend selector; stop requests ignore
   it and target the actual managed runtime state for the session.
 - The managed runtime contract now explicitly reports:

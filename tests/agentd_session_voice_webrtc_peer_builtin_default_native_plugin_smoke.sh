@@ -38,6 +38,9 @@ ROOT="$(agentd_smoke_project_root)"
 LOG_DIR="${ROOT}/build"
 mkdir -p "${LOG_DIR}"
 LOG_FILE="${LOG_DIR}/agentd_session_voice_webrtc_peer_builtin_default_native_plugin_smoke.log"
+RUN_TAG="$(date +%s)_$RANDOM"
+DAEMON_DB_PATH="${LOG_DIR}/agentd_session_voice_webrtc_peer_builtin_default_native_plugin_smoke_${RUN_TAG}.sqlite"
+DAEMON_STATE_DIR="${LOG_DIR}/agentd_session_voice_webrtc_peer_builtin_default_native_plugin_smoke_${RUN_TAG}.state"
 
 PG_DSN_OVERRIDE="${AGENTD_TEST_PG_DSN:-}"
 USE_DOCKER="1"
@@ -158,7 +161,9 @@ export AGENTD_AUDIO_WEBRTC_BUILTIN_NATIVE_LIBRARY="${BUILTIN_NATIVE_LIBRARY}"
 export AGENTD_AUDIO_WEBRTC_BROKER_URL="http://127.0.0.1:${BROKER_PORT}"
 export AGENTD_AUDIO_WEBRTC_BROKER_TOKEN="audio-agentd-token"
 agentd_smoke_start "${AGENTD_BIN}" "127.0.0.1" "${DAEMON_PORT}" \
-  "agentd_session_voice_webrtc_peer_builtin_default_native_plugin_smoke" >>"${LOG_FILE}" 2>&1
+  "agentd_session_voice_webrtc_peer_builtin_default_native_plugin_smoke" \
+  --db-path "${DAEMON_DB_PATH}" \
+  --state-dir "${DAEMON_STATE_DIR}" >>"${LOG_FILE}" 2>&1
 unset AGENTD_AUTH_TOKEN
 unset AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND
 unset AGENTD_AUDIO_WEBRTC_BUILTIN_MODE
@@ -449,6 +454,183 @@ assert peer.get("media_engine_state") == "stopped", obj
 assert peer.get("media_remote_offers_seen") == 1, obj
 assert peer.get("media_answers_sent") == 1, obj
 assert peer.get("media_remote_byes_seen") == 1, obj
+req = urllib.request.Request(
+    f"http://127.0.0.1:{port}/v1/audio/sessions/{broker_session_id}",
+    headers={"Authorization": "Bearer audio-agentd-token"},
+)
+try:
+    urllib.request.urlopen(req, timeout=10)
+    raise SystemExit("expected deleted broker session")
+except urllib.error.HTTPError as exc:
+    if exc.code != 404:
+        raise
+PY
+
+CONFIG_UPDATE_JSON="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "audio_webrtc": {
+    "broker_url": "http://127.0.0.1:${BROKER_PORT}",
+    "broker_token": "audio-agentd-token",
+    "builtin_mode": "native_plugin",
+    "builtin_native_library_path": "${BUILTIN_NATIVE_LIBRARY}",
+    "default_runtime_kind": "builtin"
+  }
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/config/update")"
+
+python3 - "${CONFIG_UPDATE_JSON}" <<'PY'
+import json
+import sys
+
+obj = json.loads(sys.argv[1])
+audio = obj.get("audio_webrtc") or {}
+assert obj.get("ok") is True, obj
+assert audio.get("default_runtime_kind") == "builtin", obj
+assert audio.get("default_runtime_kind_source") == "config", obj
+assert audio.get("default_runtime_kind_available") is True, obj
+assert audio.get("builtin_mode") == "native_plugin", obj
+assert audio.get("builtin_available") is True, obj
+assert audio.get("builtin_native_library_path_configured") is True, obj
+assert audio.get("broker_url_default_configured") is True, obj
+assert audio.get("broker_token_default_configured") is True, obj
+probe = audio.get("builtin_native_probe") or {}
+provider = probe.get("provider") or {}
+assert probe.get("loadable") is True, obj
+assert provider.get("abi_version") == 5, obj
+assert provider.get("name") == "agentd_builtin_embedded_transport_provider", obj
+PY
+
+agentd_smoke_stop
+DAEMON_PORT="$(agentd_smoke_pick_port)"
+export AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}"
+agentd_smoke_start "${AGENTD_BIN}" "127.0.0.1" "${DAEMON_PORT}" \
+  "agentd_session_voice_webrtc_peer_builtin_default_native_plugin_smoke" \
+  --db-path "${DAEMON_DB_PATH}" \
+  --state-dir "${DAEMON_STATE_DIR}" >>"${LOG_FILE}" 2>&1
+unset AGENTD_AUTH_TOKEN
+
+DAEMON_URL="http://127.0.0.1:${DAEMON_PORT}"
+for _ in $(seq 1 100); do
+  if curl -fsS --noproxy "*" --max-time 10 \
+    -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+    "${DAEMON_URL}/api/v1/health" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.1
+done
+
+PERSISTED_CONFIG_JSON="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  "${DAEMON_URL}/api/v1/config")"
+
+python3 - "${PERSISTED_CONFIG_JSON}" <<'PY'
+import json
+import sys
+
+obj = json.loads(sys.argv[1])
+audio = (obj.get("daemon") or {}).get("audio_webrtc") or {}
+assert audio.get("default_runtime_kind") == "builtin", obj
+assert audio.get("default_runtime_kind_source") == "config", obj
+assert audio.get("default_runtime_kind_available") is True, obj
+assert audio.get("builtin_mode") == "native_plugin", obj
+assert audio.get("builtin_available") is True, obj
+assert audio.get("builtin_native_library_path_configured") is True, obj
+assert audio.get("broker_url_default_configured") is True, obj
+assert audio.get("broker_token_default_configured") is True, obj
+probe = audio.get("builtin_native_probe") or {}
+provider = probe.get("provider") or {}
+assert probe.get("loadable") is True, obj
+assert provider.get("name") == "agentd_builtin_embedded_transport_provider", obj
+assert provider.get("abi_version") == 5, obj
+PY
+
+CONFIG_SESSION_ID="agentd_voice_builtin_default_np_config_${RUN_TAG}"
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "{\"session_id\":\"${CONFIG_SESSION_ID}\"}" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+CONFIG_START_JSON="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${CONFIG_SESSION_ID}",
+  "action": "start",
+  "broker_agent_id": "a-1",
+  "broker_deployment_id": "builtin-config-default-native-plugin",
+  "sender_tag": "agentd_runtime_peer",
+  "deadline_ms": 15000,
+  "poll_interval_ms": 100,
+  "tone_hz": 905
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+CONFIG_BROKER_SESSION_ID="$(python3 - "${CONFIG_START_JSON}" <<'PY'
+import json
+import sys
+
+obj = json.loads(sys.argv[1])
+assert obj.get("ok") is True, obj
+assert obj.get("default_runtime_kind") == "builtin", obj
+assert obj.get("default_runtime_kind_source") == "config", obj
+assert obj.get("default_runtime_kind_available") is True, obj
+assert obj.get("builtin_available") is True, obj
+assert obj.get("builtin_mode") == "native_plugin", obj
+peer = obj.get("peer") or {}
+assert peer.get("runtime_kind") == "builtin", obj
+assert peer.get("media_engine_kind") == "builtin_native_plugin", obj
+assert peer.get("media_engine_state") == "signaling_ready", obj
+assert peer.get("native_media_supported") is True, obj
+assert peer.get("native_media_active") is False, obj
+assert peer.get("running") is True and peer.get("ready") is True, obj
+assert peer.get("managed_broker_session") is True, obj
+provider = peer.get("native_media_provider") or {}
+assert provider.get("abi_version") == 5, obj
+assert provider.get("name") == "agentd_builtin_embedded_transport_provider", obj
+sid = peer.get("broker_session_id")
+assert sid, obj
+print(sid)
+PY
+)"
+
+CONFIG_STOP_JSON="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "{\"session_id\":\"${CONFIG_SESSION_ID}\",\"action\":\"stop\",\"broker_token\":\"audio-agentd-token\"}" \
+  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+
+python3 - "${CONFIG_STOP_JSON}" "${BROKER_PORT}" "${CONFIG_BROKER_SESSION_ID}" <<'PY'
+import json
+import sys
+import urllib.error
+import urllib.request
+
+obj = json.loads(sys.argv[1])
+port = sys.argv[2]
+broker_session_id = sys.argv[3]
+assert obj.get("ok") is True, obj
+assert obj.get("default_runtime_kind") == "builtin", obj
+assert obj.get("default_runtime_kind_source") == "config", obj
+assert obj.get("default_runtime_kind_available") is True, obj
+assert obj.get("broker_session_delete_attempted") is True, obj
+assert obj.get("broker_session_deleted") is True, obj
+peer = obj.get("peer") or {}
+assert peer.get("runtime_kind") == "builtin", obj
+assert peer.get("media_engine_kind") == "builtin_native_plugin", obj
+assert peer.get("running") is False, obj
+assert peer.get("media_engine_state") in {"stopped", "stopping"}, obj
+assert peer.get("media_remote_offers_seen", 0) == 0, obj
 req = urllib.request.Request(
     f"http://127.0.0.1:{port}/v1/audio/sessions/{broker_session_id}",
     headers={"Authorization": "Bearer audio-agentd-token"},

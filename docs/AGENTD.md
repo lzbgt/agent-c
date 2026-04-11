@@ -489,7 +489,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   configures `AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND=builtin` together with the embedded native provider, starts
   `voice_webrtc_peer` without a request-level `runtime_kind`, and proves the defaulted runtime selects
   `peer.runtime_kind=builtin` / `peer.media_engine_kind=builtin_native_plugin` before completing a minimal
-  offer/answer/bye lifecycle.
+  offer/answer/bye lifecycle. The same smoke then persists those builtin defaults through `/api/v1/config/update`,
+  restarts agentd without the audio env defaults, and proves the config-backed default path launches the same embedded
+  provider.
 - The repo now ships two daemon-owned provider modules for that seam:
   - `./build/libagentd_voice_builtin_media_engine_sample.{so,dylib,dll}` as the minimal answer-exchange sample
   - `./build/libagentd_voice_builtin_media_engine_embedded_transport.{so,dylib,dll}` when `libjuice + libsrtp2 + usrsctp`
