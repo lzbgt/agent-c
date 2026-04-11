@@ -60,6 +60,15 @@ agent_status_t agent_umbmp_sanitize_id_token(
 #define AGENT_UM_BMP_TYPE_NODE_CAPS_RSP "NODE_CAPS_RSP"
 #define AGENT_UM_BMP_TYPE_PLATFORM_CAPS_REQ "PLATFORM_CAPS_REQ"
 
+// Node-native consensus messages and signed platform policy bundles.
+#define AGENT_UM_BMP_TYPE_CONSENSUS_FRAME "CONSENSUS_FRAME"
+#define AGENT_UM_BMP_TYPE_PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE "PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE"
+
+// Consensus schemas shared by embedded nodes and agentd.
+#define AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1 "edge_node_consensus_frame_v1"
+#define AGENT_EDGE_CONSENSUS_MEMBERSHIP_SCHEMA_V1 "edge_consensus_membership_v1"
+#define AGENT_EDGE_CONSENSUS_MEMBERSHIP_ATTEST_SCHEMA_V1 "edge_consensus_membership_attest_v1"
+
 // Task lifecycle messages.
 #define AGENT_UM_BMP_TYPE_TASK_ASSIGN "TASK_ASSIGN"
 #define AGENT_UM_BMP_TYPE_TASK_ACK "TASK_ACK"
@@ -116,6 +125,12 @@ agent_status_t agent_um_eais_result_attest_signing_input_v0_1(
   size_t out_cap,
   size_t* out_len
 );
+
+// Majority quorum helper for embedded consensus replicas.
+//
+// The platform clamps cluster size to at least 1; the portable helper mirrors
+// that behavior so firmware and agentd do not duplicate quorum math.
+size_t agent_edge_consensus_quorum_for_cluster_size(size_t cluster_size);
 
 #ifdef __cplusplus
 }  // extern "C"

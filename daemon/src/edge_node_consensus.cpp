@@ -4,6 +4,8 @@
 #include "json_util.h"
 #include "string_util.h"
 
+#include "agent/edge_interop.h"
+
 #include <algorithm>
 #include <set>
 
@@ -80,7 +82,7 @@ static std::set<std::string> dedupe_member_ids(
 
 static bool frame_is_valid(const EdgeConsensusFrame& frame, std::string* out_error) {
   if (out_error) out_error->clear();
-  if (frame.schema != "edge_node_consensus_frame_v1") {
+  if (frame.schema != AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1) {
     if (out_error) *out_error = "schema invalid";
     return false;
   }
@@ -244,7 +246,7 @@ bool EdgeConsensusReplica::membership_matches(const EdgeConsensusIdentity& other
 
 bool EdgeConsensusReplica::has_quorum() const {
   const size_t votes = 1 + grant_witnesses_by_node_id_.size();
-  return votes >= ((cluster_size_ / 2) + 1);
+  return votes >= agent_edge_consensus_quorum_for_cluster_size(cluster_size_);
 }
 
 EdgeConsensusFrame EdgeConsensusReplica::make_vote_grant_frame(
@@ -549,7 +551,7 @@ Json::Value EdgeConsensusReplica::status_to_json() const {
   Json::Value committed(Json::arrayValue);
   for (const auto& witness : committed_vote_witnesses_) committed.append(edge_consensus_identity_to_json(witness));
   if (!committed.empty()) out["committed_vote_witnesses"] = committed;
-  out["quorum"] = Json::UInt64((cluster_size_ / 2) + 1);
+  out["quorum"] = Json::UInt64(agent_edge_consensus_quorum_for_cluster_size(cluster_size_));
   return out;
 }
 

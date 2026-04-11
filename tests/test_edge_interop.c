@@ -94,6 +94,25 @@ static void test_result_attest_signing_input_v0_1(void) {
            &out_len) == AGENT_ERR_INVALID_ARGUMENT);
 }
 
+static void test_consensus_constants_and_quorum(void) {
+  assert(strcmp(AGENT_UM_BMP_TYPE_CONSENSUS_FRAME, "CONSENSUS_FRAME") == 0);
+  assert(strcmp(
+           AGENT_UM_BMP_TYPE_PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE,
+           "PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE") == 0);
+  assert(strcmp(AGENT_EDGE_CONSENSUS_FRAME_SCHEMA_V1, "edge_node_consensus_frame_v1") == 0);
+  assert(strcmp(AGENT_EDGE_CONSENSUS_MEMBERSHIP_SCHEMA_V1, "edge_consensus_membership_v1") == 0);
+  assert(strcmp(
+           AGENT_EDGE_CONSENSUS_MEMBERSHIP_ATTEST_SCHEMA_V1,
+           "edge_consensus_membership_attest_v1") == 0);
+
+  assert(agent_edge_consensus_quorum_for_cluster_size(0) == 1);
+  assert(agent_edge_consensus_quorum_for_cluster_size(1) == 1);
+  assert(agent_edge_consensus_quorum_for_cluster_size(2) == 2);
+  assert(agent_edge_consensus_quorum_for_cluster_size(3) == 2);
+  assert(agent_edge_consensus_quorum_for_cluster_size(4) == 3);
+  assert(agent_edge_consensus_quorum_for_cluster_size(5) == 3);
+}
+
 void test_edge_interop_module(void) {
   test_id_is_safe_basic();
   test_trace_id_is_safe_allows_at();
@@ -101,4 +120,5 @@ void test_edge_interop_module(void) {
   test_sanitize_trims_and_defaults();
   test_sanitize_respects_max_len();
   test_result_attest_signing_input_v0_1();
+  test_consensus_constants_and_quorum();
 }

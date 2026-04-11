@@ -113,6 +113,9 @@ The shipped autonomous host-loop proof adds:
   `runtime_kind=external` fallback/debug backend
 - shared HTTP poll/process/post loop code (`run_edge_consensus_http_runtime`) reused by both the builtin runtime and the
   standalone helper so transport behavior is no longer stranded in the helper binary
+- portable `agent_core` consensus constants and quorum math (`CONSENSUS_FRAME`,
+  `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE`, `edge_node_consensus_frame_v1`,
+  `edge_consensus_membership_v1`) so embedded firmware and agentd share the same wire names and majority threshold
 
 ## Still open
 

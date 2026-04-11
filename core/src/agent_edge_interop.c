@@ -188,3 +188,8 @@ agent_status_t agent_um_eais_result_attest_signing_input_v0_1(
   if (out_len) *out_len = pos;
   return AGENT_OK;
 }
+
+size_t agent_edge_consensus_quorum_for_cluster_size(size_t cluster_size) {
+  if (cluster_size < 1) cluster_size = 1;
+  return (cluster_size / 2) + 1;
+}

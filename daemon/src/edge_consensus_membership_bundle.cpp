@@ -6,6 +6,7 @@
 #include "string_util.h"
 
 #include "agent/ed25519.h"
+#include "agent/edge_interop.h"
 #include "agent/hmac_sha256.h"
 #include "agent/json_c14n.h"
 
@@ -146,7 +147,7 @@ bool build_edge_consensus_membership_bundle(
 
   const EdgeConsensusClusterPolicy& pol = it->second;
   Json::Value bundle(Json::objectValue);
-  bundle["schema"] = "edge_consensus_membership_v1";
+  bundle["schema"] = AGENT_EDGE_CONSENSUS_MEMBERSHIP_SCHEMA_V1;
   bundle["created_utc_ms"] = (Json::Int64)edge_unix_ms_now();
   bundle["cluster_id"] = cluster_id;
   bundle["membership_epoch"] = (Json::Int64)pol.membership_epoch;
@@ -194,11 +195,11 @@ bool build_edge_consensus_membership_bundle(
     return false;
   }
   Json::Value att(Json::objectValue);
-  att["schema"] = "edge_consensus_membership_attest_v1";
+  att["schema"] = AGENT_EDGE_CONSENSUS_MEMBERSHIP_ATTEST_SCHEMA_V1;
   att["ts_utc_ms"] = (Json::Int64)edge_unix_ms_now();
   att["cluster_id"] = cluster_id;
   att["membership_epoch"] = (Json::Int64)pol.membership_epoch;
-  att["signing_schema"] = "edge_consensus_membership_v1";
+  att["signing_schema"] = AGENT_EDGE_CONSENSUS_MEMBERSHIP_SCHEMA_V1;
 
   if (hmac_kid_set) {
     std::array<uint8_t, 32> mac{};
