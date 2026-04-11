@@ -1286,7 +1286,7 @@ Maintainability note (always-on):
 	   - Shipped (v0.7 partial): DRR can charge near-exhausted workflows more heavily through the `budget_pressure_v1` cost model:
 	     - New daemon knob: `--workflow-drr-cost-model budget_pressure_v1` (env `AGENTD_WORKFLOW_DRR_COST_MODEL=budget_pressure_v1`)
 	     - Scheduler reads persisted workflow limits plus retry-safe usage totals and adds bounded cost bumps when configured budgets approach exhaustion.
-	     - Proof: `ctest` includes `workflow_fairq_cost_tests` (including a deterministic host/LLM/streaming/edge mixed-workload DRR proof) and `agentd_workflow_drr_budget_pressure_smoke`.
+	     - Proof: `ctest` includes the unit-level deterministic host/LLM/streaming/edge DRR proof in `workflow_fairq_cost_tests`, plus the live `agentd_workflow_drr_budget_pressure_smoke` and `agentd_workflow_drr_budget_pressure_mixed_fairness_smoke`.
 	   - Current remaining:
 	     - enforce provider-backed token budgets for streaming paths when usage is absent, rejected by provider compatibility fallback, or retried
 
@@ -1325,7 +1325,7 @@ Maintainability note (always-on):
    - Shipped (v2.4.1): budget-pressure-aware DRR charging option (budget_pressure_v1):
      - New daemon knob: `--workflow-drr-cost-model budget_pressure_v1` (env `AGENTD_WORKFLOW_DRR_COST_MODEL=budget_pressure_v1`)
      - Scheduler prefers telemetry when available, falls back to request-based estimates, then adds bounded pressure bumps from workflow limits and retry-safe usage totals.
-     - Proof: `ctest` includes `workflow_fairq_cost_tests` (including a deterministic host/LLM/streaming/edge mixed-workload DRR proof) and `agentd_workflow_drr_budget_pressure_smoke`.
+     - Proof: `ctest` includes the unit-level deterministic host/LLM/streaming/edge DRR proof in `workflow_fairq_cost_tests`, plus the live `agentd_workflow_drr_budget_pressure_smoke` and `agentd_workflow_drr_budget_pressure_mixed_fairness_smoke`.
 
 3) **Interop spec hardening for MCU/edge handoff** (ecosystem leverage)
    - Shipped: `DURABLE_WORKFLOW_SUBMIT` / `DURABLE_WORKFLOW_CANCEL` over `POST /api/v1/edge/message` (durable orchestration handoff).

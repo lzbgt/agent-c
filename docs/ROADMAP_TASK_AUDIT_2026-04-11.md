@@ -233,6 +233,19 @@ Follow-up roadmap pruning and DRR budget-pressure slice:
 - `ctest --test-dir build -N > build/drr_budget_pressure_final_ctest_inventory_20260412.log 2>&1`
   - Result: `ctest_inventory_rc=0`; the test inventory now contains 317 tests.
 
+Follow-up DRR budget-pressure mixed-fairness smoke:
+- Added a live `budget_pressure_v1` CTest smoke that submits two DRR sessions against a local OpenAI-compatible stub and proves interleaving across deterministic host work, LLM-like work, streaming-like work, and an edge sensor poll loop after the pressure workflow has consumed most of its token budget.
+- `bash -n tests/agentd_workflow_drr_budget_pressure_mixed_fairness_smoke.sh && git diff --check`
+  - Result: `syntax_and_diff_rc=0`.
+- `cmake --build build -j "$(sysctl -n hw.ncpu)" > build/workflow_mixed_fairness_smoke_build_20260412.log 2>&1`
+  - Result: `build_rc=0`.
+- `ctest --test-dir build -R 'workflow_fairq_cost_tests|agentd_workflow_drr_cost_telemetry_smoke|agentd_workflow_drr_budget_pressure_smoke|agentd_workflow_drr_budget_pressure_mixed_fairness_smoke|agentd_workflow_stats_budget_pressure_smoke|agentd_workflow_budget_host_tool_memory_put_smoke' --output-on-failure > build/workflow_mixed_fairness_smoke_ctest_final_20260412.log 2>&1`
+  - Result: `ctest_rc=0`; six targeted fair-queue / budget-pressure tests passed.
+- `tools/verify_repo_guards.sh > build/workflow_mixed_fairness_smoke_repo_guards_20260412.log 2>&1`
+  - Result: `repo_guards_rc=0`.
+- `ctest --test-dir build -N > build/workflow_mixed_fairness_smoke_ctest_inventory_20260412.log 2>&1`
+  - Result: `ctest_inventory_rc=0`; the test inventory now contains 318 tests.
+
 ## Directly Open Roadmap Items
 
 `TODOS.md` now has two open roadmap workstreams with concrete unchecked subitems, plus one newly closed roadmap workstream:
@@ -264,7 +277,7 @@ The older P0/P1 section was pruned on 2026-04-12 so `Next` / `Remaining` notes n
 - Budgets / scheduling:
   - Host-tool memory budget charging and workflow budget-pressure stats are already shipped.
   - 2026-04-12 follow-up: `budget_pressure_v1` DRR charging now combines telemetry/request estimates with bounded pressure bumps from workflow limits and retry-safe usage totals.
-  - 2026-04-12 follow-up: the deterministic mixed-workload proof now covers host tasks, LLM-like tasks, streaming-like tasks, and edge poll loops in `workflow_fairq_cost_tests`.
+  - 2026-04-12 follow-up: the deterministic mixed-workload proof now covers host tasks, LLM-like tasks, streaming-like tasks, and edge poll loops in `workflow_fairq_cost_tests` and the live `agentd_workflow_drr_budget_pressure_mixed_fairness_smoke`.
   - Current remaining: provider-backed streaming token budget enforcement when usage is missing/retried, plus edge-poll cost refinements if larger trace replays show tail-latency gaps.
 
 - Agent collaboration:
