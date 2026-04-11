@@ -1965,6 +1965,13 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
     target_compile_definitions(workflow_run_budget_clamp_tests PRIVATE AGENT_HAVE_JSONCPP=1)
     add_test(NAME workflow_run_budget_clamp_tests COMMAND workflow_run_budget_clamp_tests)
 
+    add_executable(json_schema_subset_tests
+      tests/test_json_schema_subset.cpp
+    )
+    target_link_libraries(json_schema_subset_tests PRIVATE agentd_lib)
+    target_compile_definitions(json_schema_subset_tests PRIVATE AGENT_HAVE_JSONCPP=1)
+    add_test(NAME json_schema_subset_tests COMMAND json_schema_subset_tests)
+
     add_executable(cbor_decode_tests
       tests/test_cbor_decode.cpp
     )
