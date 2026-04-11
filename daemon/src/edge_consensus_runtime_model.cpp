@@ -1,5 +1,6 @@
 #include "edge_consensus_runtime_model.h"
 
+#include "edge_consensus_runtime_policy.h"
 #include "edge_util.h"
 #include "string_util.h"
 
@@ -431,45 +432,40 @@ bool edge_consensus_runtime_build_config(
     : 128;
   outbox_limit = std::max<uint64_t>(1, std::min<uint64_t>(outbox_limit, 2048));
 
-  int64_t campaign_delay_ms = body.isMember("campaign_delay_ms")
+  EdgeConsensusClusterPolicy timing_pol;
+  timing_pol.campaign_delay_ms = body.isMember("campaign_delay_ms")
     ? json_to_i64_model(body["campaign_delay_ms"], 0)
     : (cluster_policy ? cluster_policy->campaign_delay_ms : 0);
-  campaign_delay_ms = std::max<int64_t>(0, std::min<int64_t>(campaign_delay_ms, 120000));
-  int64_t campaign_retry_ms = body.isMember("campaign_retry_ms")
+  timing_pol.campaign_retry_ms = body.isMember("campaign_retry_ms")
     ? json_to_i64_model(body["campaign_retry_ms"], decision_sha256.empty() ? 0 : 1500)
     : (cluster_policy ? cluster_policy->campaign_retry_ms : (decision_sha256.empty() ? 0 : 1500));
-  campaign_retry_ms = std::max<int64_t>(0, std::min<int64_t>(campaign_retry_ms, 120000));
-  int64_t campaign_retry_max_ms = body.isMember("campaign_retry_max_ms")
-    ? json_to_i64_model(body["campaign_retry_max_ms"], campaign_retry_ms)
-    : (cluster_policy ? cluster_policy->campaign_retry_max_ms : campaign_retry_ms);
-  campaign_retry_max_ms =
-    std::max<int64_t>(campaign_retry_ms, std::min<int64_t>(campaign_retry_max_ms, 300000));
-  int64_t campaign_retry_backoff_factor = body.isMember("campaign_retry_backoff_factor")
+  timing_pol.campaign_retry_max_ms = body.isMember("campaign_retry_max_ms")
+    ? json_to_i64_model(body["campaign_retry_max_ms"], timing_pol.campaign_retry_ms)
+    : (cluster_policy ? cluster_policy->campaign_retry_max_ms : timing_pol.campaign_retry_ms);
+  timing_pol.campaign_retry_backoff_factor = body.isMember("campaign_retry_backoff_factor")
     ? json_to_i64_model(body["campaign_retry_backoff_factor"], 1)
     : (cluster_policy ? cluster_policy->campaign_retry_backoff_factor : 1);
-  campaign_retry_backoff_factor =
-    std::max<int64_t>(1, std::min<int64_t>(campaign_retry_backoff_factor, 8));
-  int64_t leader_heartbeat_ms = body.isMember("leader_heartbeat_ms")
+  timing_pol.leader_heartbeat_ms = body.isMember("leader_heartbeat_ms")
     ? json_to_i64_model(body["leader_heartbeat_ms"], 1000)
     : (cluster_policy ? cluster_policy->leader_heartbeat_ms : 1000);
-  leader_heartbeat_ms = std::max<int64_t>(0, std::min<int64_t>(leader_heartbeat_ms, 120000));
-  int64_t leader_lease_ms = body.isMember("leader_lease_ms")
+  timing_pol.leader_lease_ms = body.isMember("leader_lease_ms")
     ? json_to_i64_model(body["leader_lease_ms"], 5000)
     : (cluster_policy ? cluster_policy->leader_lease_ms : 5000);
-  leader_lease_ms =
-    std::max<int64_t>(leader_heartbeat_ms, std::min<int64_t>(leader_lease_ms, 300000));
-  int64_t lease_expiry_recampaign_delay_ms =
-    body.isMember("lease_expiry_recampaign_delay_ms")
-      ? json_to_i64_model(body["lease_expiry_recampaign_delay_ms"], 0)
-      : (cluster_policy ? cluster_policy->lease_expiry_recampaign_delay_ms : 0);
-  lease_expiry_recampaign_delay_ms =
-    std::max<int64_t>(0, std::min<int64_t>(lease_expiry_recampaign_delay_ms, 300000));
-  int64_t stale_runtime_recovery_grace_ms =
-    body.isMember("stale_runtime_recovery_grace_ms")
-      ? json_to_i64_model(body["stale_runtime_recovery_grace_ms"], 0)
-      : (cluster_policy ? cluster_policy->stale_runtime_recovery_grace_ms : 0);
-  stale_runtime_recovery_grace_ms =
-    std::max<int64_t>(0, std::min<int64_t>(stale_runtime_recovery_grace_ms, 86400000));
+  timing_pol.lease_expiry_recampaign_delay_ms = body.isMember("lease_expiry_recampaign_delay_ms")
+    ? json_to_i64_model(body["lease_expiry_recampaign_delay_ms"], 0)
+    : (cluster_policy ? cluster_policy->lease_expiry_recampaign_delay_ms : 0);
+  timing_pol.stale_runtime_recovery_grace_ms = body.isMember("stale_runtime_recovery_grace_ms")
+    ? json_to_i64_model(body["stale_runtime_recovery_grace_ms"], 0)
+    : (cluster_policy ? cluster_policy->stale_runtime_recovery_grace_ms : 0);
+  edge_consensus_normalize_policy_timing(&timing_pol);
+  const int64_t campaign_delay_ms = timing_pol.campaign_delay_ms;
+  const int64_t campaign_retry_ms = timing_pol.campaign_retry_ms;
+  const int64_t campaign_retry_max_ms = timing_pol.campaign_retry_max_ms;
+  const int64_t campaign_retry_backoff_factor = timing_pol.campaign_retry_backoff_factor;
+  const int64_t leader_heartbeat_ms = timing_pol.leader_heartbeat_ms;
+  const int64_t leader_lease_ms = timing_pol.leader_lease_ms;
+  const int64_t lease_expiry_recampaign_delay_ms = timing_pol.lease_expiry_recampaign_delay_ms;
+  const int64_t stale_runtime_recovery_grace_ms = timing_pol.stale_runtime_recovery_grace_ms;
   int64_t poll_interval_ms = body.isMember("poll_interval_ms")
     ? json_to_i64_model(body["poll_interval_ms"], 100)
     : 100;

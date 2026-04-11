@@ -7496,13 +7496,19 @@ export interface components {
             campaign_delay_ms?: number;
             /** Format: int64 */
             campaign_retry_ms?: number;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Clamped to at least `campaign_retry_ms`.
+             */
             campaign_retry_max_ms?: number;
             /** Format: int64 */
             campaign_retry_backoff_factor?: number;
             /** Format: int64 */
             leader_heartbeat_ms?: number;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Clamped to at least `leader_heartbeat_ms`.
+             */
             leader_lease_ms?: number;
             /** Format: int64 */
             lease_expiry_recampaign_delay_ms?: number;
@@ -8862,13 +8868,19 @@ export interface components {
             campaign_delay_ms?: number;
             /** Format: int64 */
             campaign_retry_ms?: number;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Clamped to at least `campaign_retry_ms`.
+             */
             campaign_retry_max_ms?: number;
             /** Format: int64 */
             campaign_retry_backoff_factor?: number;
             /** Format: int64 */
             leader_heartbeat_ms?: number;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Clamped to at least `leader_heartbeat_ms`.
+             */
             leader_lease_ms?: number;
             /** Format: int64 */
             lease_expiry_recampaign_delay_ms?: number;

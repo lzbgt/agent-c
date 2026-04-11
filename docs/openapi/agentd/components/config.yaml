@@ -1078,14 +1078,24 @@ EdgeConsensusMembershipRotateRequest:
     member_node_ids:
       type: array
       items: { type: string }
-    campaign_delay_ms: { type: integer, format: int64 }
-    campaign_retry_ms: { type: integer, format: int64 }
-    campaign_retry_max_ms: { type: integer, format: int64 }
-    campaign_retry_backoff_factor: { type: integer, format: int64 }
-    leader_heartbeat_ms: { type: integer, format: int64 }
-    leader_lease_ms: { type: integer, format: int64 }
-    lease_expiry_recampaign_delay_ms: { type: integer, format: int64 }
-    stale_runtime_recovery_grace_ms: { type: integer, format: int64 }
+    campaign_delay_ms: { type: integer, format: int64, minimum: 0, maximum: 120000 }
+    campaign_retry_ms: { type: integer, format: int64, minimum: 0, maximum: 120000 }
+    campaign_retry_max_ms:
+      type: integer
+      format: int64
+      minimum: 0
+      maximum: 300000
+      description: Clamped to at least `campaign_retry_ms`.
+    campaign_retry_backoff_factor: { type: integer, format: int64, minimum: 1, maximum: 8 }
+    leader_heartbeat_ms: { type: integer, format: int64, minimum: 0, maximum: 120000 }
+    leader_lease_ms:
+      type: integer
+      format: int64
+      minimum: 0
+      maximum: 300000
+      description: Clamped to at least `leader_heartbeat_ms`.
+    lease_expiry_recampaign_delay_ms: { type: integer, format: int64, minimum: 0, maximum: 300000 }
+    stale_runtime_recovery_grace_ms: { type: integer, format: int64, minimum: 0, maximum: 86400000 }
 
 
 EdgeConsensusMembershipRotateResponse:

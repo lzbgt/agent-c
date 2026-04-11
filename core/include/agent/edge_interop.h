@@ -147,6 +147,28 @@ int agent_edge_consensus_identity_membership_matches(
   int identity_node_is_member
 );
 
+// Durable consensus policy timing bounds shared by embedded firmware and agentd.
+#define AGENT_EDGE_CONSENSUS_POLICY_RETRY_MAX_MS 120000
+#define AGENT_EDGE_CONSENSUS_POLICY_LEASE_MAX_MS 300000
+#define AGENT_EDGE_CONSENSUS_POLICY_STALE_RUNTIME_RECOVERY_GRACE_MAX_MS 86400000
+#define AGENT_EDGE_CONSENSUS_POLICY_BACKOFF_FACTOR_MIN 1
+#define AGENT_EDGE_CONSENSUS_POLICY_BACKOFF_FACTOR_MAX 8
+
+typedef struct agent_edge_consensus_policy_timing_t {
+  int64_t campaign_delay_ms;
+  int64_t campaign_retry_ms;
+  int64_t campaign_retry_max_ms;
+  int64_t campaign_retry_backoff_factor;
+  int64_t leader_heartbeat_ms;
+  int64_t leader_lease_ms;
+  int64_t lease_expiry_recampaign_delay_ms;
+  int64_t stale_runtime_recovery_grace_ms;
+} agent_edge_consensus_policy_timing_t;
+
+agent_status_t agent_edge_consensus_policy_timing_normalize(
+  agent_edge_consensus_policy_timing_t* timing
+);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

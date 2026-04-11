@@ -2,6 +2,7 @@
 
 #include "daemon_auth.h"
 #include "edge_consensus_membership_bundle.h"
+#include "edge_consensus_runtime_policy.h"
 #include "edge_platform_bundle.h"
 #include "edge_util.h"
 #include "http_util.h"
@@ -223,16 +224,7 @@ void handle_edge_consensus_membership_rotate_endpoint(
   if (!parse_json_integer_field(args, "leader_lease_ms", &next_pol.leader_lease_ms, resp)) return;
   if (!parse_json_integer_field(args, "lease_expiry_recampaign_delay_ms", &next_pol.lease_expiry_recampaign_delay_ms, resp)) return;
   if (!parse_json_integer_field(args, "stale_runtime_recovery_grace_ms", &next_pol.stale_runtime_recovery_grace_ms, resp)) return;
-  next_pol.campaign_delay_ms = std::max<int64_t>(0, std::min<int64_t>(next_pol.campaign_delay_ms, 120000));
-  next_pol.campaign_retry_ms = std::max<int64_t>(0, std::min<int64_t>(next_pol.campaign_retry_ms, 120000));
-  next_pol.campaign_retry_max_ms = std::max<int64_t>(next_pol.campaign_retry_ms, std::min<int64_t>(next_pol.campaign_retry_max_ms, 300000));
-  next_pol.campaign_retry_backoff_factor = std::max<int64_t>(1, std::min<int64_t>(next_pol.campaign_retry_backoff_factor, 8));
-  next_pol.leader_heartbeat_ms = std::max<int64_t>(0, std::min<int64_t>(next_pol.leader_heartbeat_ms, 120000));
-  next_pol.leader_lease_ms = std::max<int64_t>(next_pol.leader_heartbeat_ms, std::min<int64_t>(next_pol.leader_lease_ms, 300000));
-  next_pol.lease_expiry_recampaign_delay_ms =
-    std::max<int64_t>(0, std::min<int64_t>(next_pol.lease_expiry_recampaign_delay_ms, 300000));
-  next_pol.stale_runtime_recovery_grace_ms =
-    std::max<int64_t>(0, std::min<int64_t>(next_pol.stale_runtime_recovery_grace_ms, 86400000));
+  edge_consensus_normalize_policy_timing(&next_pol);
 
   DaemonConfig next = cur;
   next.edge_consensus_clusters[cluster_id] = next_pol;

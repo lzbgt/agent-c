@@ -3,6 +3,8 @@
 #include "edge_consensus_runtime_model.h"
 #include "string_util.h"
 
+#include "agent/edge_interop.h"
+
 #include <filesystem>
 
 #if !defined(_WIN32)
@@ -58,6 +60,28 @@ std::string default_edge_consensus_runtime_kind_source(const DaemonConfig& cfg) 
 std::string default_edge_consensus_runtime_kind(const DaemonConfig& cfg) {
   const std::string configured = configured_default_edge_consensus_runtime_kind(cfg);
   return configured.empty() ? "builtin" : configured;
+}
+
+void edge_consensus_normalize_policy_timing(EdgeConsensusClusterPolicy* pol) {
+  if (!pol) return;
+  agent_edge_consensus_policy_timing_t timing;
+  timing.campaign_delay_ms = pol->campaign_delay_ms;
+  timing.campaign_retry_ms = pol->campaign_retry_ms;
+  timing.campaign_retry_max_ms = pol->campaign_retry_max_ms;
+  timing.campaign_retry_backoff_factor = pol->campaign_retry_backoff_factor;
+  timing.leader_heartbeat_ms = pol->leader_heartbeat_ms;
+  timing.leader_lease_ms = pol->leader_lease_ms;
+  timing.lease_expiry_recampaign_delay_ms = pol->lease_expiry_recampaign_delay_ms;
+  timing.stale_runtime_recovery_grace_ms = pol->stale_runtime_recovery_grace_ms;
+  if (agent_edge_consensus_policy_timing_normalize(&timing) != AGENT_OK) return;
+  pol->campaign_delay_ms = timing.campaign_delay_ms;
+  pol->campaign_retry_ms = timing.campaign_retry_ms;
+  pol->campaign_retry_max_ms = timing.campaign_retry_max_ms;
+  pol->campaign_retry_backoff_factor = timing.campaign_retry_backoff_factor;
+  pol->leader_heartbeat_ms = timing.leader_heartbeat_ms;
+  pol->leader_lease_ms = timing.leader_lease_ms;
+  pol->lease_expiry_recampaign_delay_ms = timing.lease_expiry_recampaign_delay_ms;
+  pol->stale_runtime_recovery_grace_ms = timing.stale_runtime_recovery_grace_ms;
 }
 
 Json::Value edge_consensus_runtime_backend_metadata_json(const DaemonConfig& cfg) {

@@ -1,5 +1,7 @@
 #include "edge_consensus_runtime_policy.h"
 
+#include "agent/edge_interop.h"
+
 #include <cassert>
 #include <filesystem>
 #include <fstream>
@@ -12,6 +14,7 @@ using agentd::DaemonConfig;
 using agentd::default_edge_consensus_runtime_kind;
 using agentd::default_edge_consensus_runtime_kind_source;
 using agentd::edge_consensus_external_runtime_unavailable_reason;
+using agentd::edge_consensus_normalize_policy_timing;
 using agentd::edge_consensus_runtime_backend_metadata_json;
 
 static void test_default_runtime_kind_auto_builtin() {
@@ -79,11 +82,34 @@ static void test_external_availability_with_real_tool_path() {
   std::filesystem::remove(tool_path, ec);
 }
 
+static void test_policy_timing_uses_portable_bounds() {
+  agentd::EdgeConsensusClusterPolicy pol;
+  pol.campaign_delay_ms = -1;
+  pol.campaign_retry_ms = 999999;
+  pol.campaign_retry_max_ms = 10;
+  pol.campaign_retry_backoff_factor = 99;
+  pol.leader_heartbeat_ms = 999999;
+  pol.leader_lease_ms = 1;
+  pol.lease_expiry_recampaign_delay_ms = 999999;
+  pol.stale_runtime_recovery_grace_ms = 999999999;
+  edge_consensus_normalize_policy_timing(&pol);
+  assert(pol.campaign_delay_ms == 0);
+  assert(pol.campaign_retry_ms == AGENT_EDGE_CONSENSUS_POLICY_RETRY_MAX_MS);
+  assert(pol.campaign_retry_max_ms == AGENT_EDGE_CONSENSUS_POLICY_RETRY_MAX_MS);
+  assert(pol.campaign_retry_backoff_factor == AGENT_EDGE_CONSENSUS_POLICY_BACKOFF_FACTOR_MAX);
+  assert(pol.leader_heartbeat_ms == AGENT_EDGE_CONSENSUS_POLICY_RETRY_MAX_MS);
+  assert(pol.leader_lease_ms == AGENT_EDGE_CONSENSUS_POLICY_RETRY_MAX_MS);
+  assert(pol.lease_expiry_recampaign_delay_ms == AGENT_EDGE_CONSENSUS_POLICY_LEASE_MAX_MS);
+  assert(pol.stale_runtime_recovery_grace_ms == AGENT_EDGE_CONSENSUS_POLICY_STALE_RUNTIME_RECOVERY_GRACE_MAX_MS);
+  edge_consensus_normalize_policy_timing(nullptr);
+}
+
 }  // namespace
 
 int main() {
   test_default_runtime_kind_auto_builtin();
   test_external_default_reports_missing_tool();
   test_external_availability_with_real_tool_path();
+  test_policy_timing_uses_portable_bounds();
   return 0;
 }

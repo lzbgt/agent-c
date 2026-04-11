@@ -1,5 +1,6 @@
 #include "runtime_config.h"
 
+#include "edge_consensus_runtime_policy.h"
 #include "json_util.h"
 #include "string_util.h"
 #include "policy_hooks.h"
@@ -645,16 +646,7 @@ bool load_runtime_config_best_effort(
           }
           if (pol.membership_epoch < 0) pol.membership_epoch = 0;
           if (pol.updated_utc_ms < 0) pol.updated_utc_ms = 0;
-          if (pol.campaign_delay_ms < 0) pol.campaign_delay_ms = 0;
-          if (pol.campaign_retry_ms < 0) pol.campaign_retry_ms = 0;
-          if (pol.campaign_retry_max_ms < pol.campaign_retry_ms) pol.campaign_retry_max_ms = pol.campaign_retry_ms;
-          pol.campaign_retry_backoff_factor = std::max<int64_t>(1, std::min<int64_t>(pol.campaign_retry_backoff_factor, 8));
-          if (pol.leader_heartbeat_ms < 0) pol.leader_heartbeat_ms = 0;
-          if (pol.leader_lease_ms < pol.leader_heartbeat_ms) pol.leader_lease_ms = pol.leader_heartbeat_ms;
-          pol.lease_expiry_recampaign_delay_ms =
-            std::max<int64_t>(0, std::min<int64_t>(pol.lease_expiry_recampaign_delay_ms, 300000));
-          pol.stale_runtime_recovery_grace_ms =
-            std::max<int64_t>(0, std::min<int64_t>(pol.stale_runtime_recovery_grace_ms, 86400000));
+          edge_consensus_normalize_policy_timing(&pol);
           if (!pol.member_node_ids.empty()) cfg_io->edge_consensus_clusters[cluster_id] = std::move(pol);
         }
       }

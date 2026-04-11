@@ -873,6 +873,11 @@ Edge trust-root rotation:
   `edge_consensus_membership_v1` bundle for one cluster, and `POST /api/v1/edge/consensus/membership/rotate`
   persists the monotonic membership epoch, member set, default retry timing, leader heartbeat/lease policy, and
   lease-expiry re-campaign cooldown for that cluster.
+- Consensus timing policy for runtime starts, config load, and membership rotation is normalized through the same
+  portable `agent_core` helper used by embedded bring-up:
+  campaign delay/retry and leader heartbeat clamp to `0..120000` ms, retry max and leader lease clamp to `0..300000`
+  ms while staying at least retry/heartbeat respectively, retry backoff clamps to `1..8`, lease-expiry cooldown clamps
+  to `0..300000` ms, and stale-runtime recovery grace clamps to `0..86400000` ms.
 - `POST /api/v1/edge/consensus/membership/send` enqueues that same bundle to a recipient node outbox as
   `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE`, so non-HTTP nodes can poll membership policy through the shipped UM-BMP lane.
 - When a managed consensus runtime start omits `membership_epoch`, `member_node_ids`, `campaign_delay_ms`,

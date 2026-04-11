@@ -1,5 +1,7 @@
 #include "edge_consensus_runtime_model.h"
 
+#include "agent/edge_interop.h"
+
 #include <cassert>
 #include <string>
 
@@ -79,6 +81,37 @@ static void test_build_config_defaults_policy_and_trust_epochs() {
   assert(st.running);
 }
 
+static void test_build_config_uses_portable_policy_timing_bounds() {
+  const DaemonConfig cfg = make_cfg();
+  Json::Value body(Json::objectValue);
+  body["node_id"] = "node-a";
+  body["cluster_id"] = "cluster-a";
+  body["manifest_sha256"] =
+    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  body["campaign_delay_ms"] = -7;
+  body["campaign_retry_ms"] = 999999;
+  body["campaign_retry_max_ms"] = 1;
+  body["campaign_retry_backoff_factor"] = 99;
+  body["leader_heartbeat_ms"] = 999999;
+  body["leader_lease_ms"] = 1;
+  body["lease_expiry_recampaign_delay_ms"] = 999999;
+  body["stale_runtime_recovery_grace_ms"] = 999999999;
+
+  EdgeConsensusRuntimeConfig run_cfg;
+  EdgeConsensusRuntime st;
+  std::string err;
+  assert(edge_consensus_runtime_build_config(cfg, body, &run_cfg, &st, &err));
+  assert(run_cfg.campaign_delay_ms == 0);
+  assert(run_cfg.campaign_retry_ms == AGENT_EDGE_CONSENSUS_POLICY_RETRY_MAX_MS);
+  assert(run_cfg.campaign_retry_max_ms == AGENT_EDGE_CONSENSUS_POLICY_RETRY_MAX_MS);
+  assert(run_cfg.campaign_retry_backoff_factor == AGENT_EDGE_CONSENSUS_POLICY_BACKOFF_FACTOR_MAX);
+  assert(run_cfg.leader_heartbeat_ms == AGENT_EDGE_CONSENSUS_POLICY_RETRY_MAX_MS);
+  assert(run_cfg.leader_lease_ms == AGENT_EDGE_CONSENSUS_POLICY_RETRY_MAX_MS);
+  assert(run_cfg.lease_expiry_recampaign_delay_ms == AGENT_EDGE_CONSENSUS_POLICY_LEASE_MAX_MS);
+  assert(run_cfg.stale_runtime_recovery_grace_ms ==
+         AGENT_EDGE_CONSENSUS_POLICY_STALE_RUNTIME_RECOVERY_GRACE_MAX_MS);
+}
+
 static void test_same_effective_config_ignores_builtin_daemon_url_drift_only() {
   EdgeConsensusRuntime builtin_a;
   builtin_a.runtime_kind = "builtin";
@@ -156,6 +189,7 @@ static void test_response_json_surfaces_cluster_and_trust_drift() {
 
 int main() {
   test_build_config_defaults_policy_and_trust_epochs();
+  test_build_config_uses_portable_policy_timing_bounds();
   test_same_effective_config_ignores_builtin_daemon_url_drift_only();
   test_response_json_surfaces_cluster_and_trust_drift();
   return 0;

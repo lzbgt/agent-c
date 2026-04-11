@@ -129,6 +129,46 @@ static void test_consensus_constants_and_quorum(void) {
   assert(agent_edge_consensus_identity_membership_matches(7, 7, 0) == 0);
 }
 
+static void test_consensus_policy_timing_normalize(void) {
+  agent_edge_consensus_policy_timing_t timing;
+  timing.campaign_delay_ms = -5;
+  timing.campaign_retry_ms = 130000;
+  timing.campaign_retry_max_ms = 1;
+  timing.campaign_retry_backoff_factor = 99;
+  timing.leader_heartbeat_ms = 130000;
+  timing.leader_lease_ms = 100;
+  timing.lease_expiry_recampaign_delay_ms = 500000;
+  timing.stale_runtime_recovery_grace_ms = 90000000;
+  assert(agent_edge_consensus_policy_timing_normalize(&timing) == AGENT_OK);
+  assert(timing.campaign_delay_ms == 0);
+  assert(timing.campaign_retry_ms == AGENT_EDGE_CONSENSUS_POLICY_RETRY_MAX_MS);
+  assert(timing.campaign_retry_max_ms == timing.campaign_retry_ms);
+  assert(timing.campaign_retry_backoff_factor == AGENT_EDGE_CONSENSUS_POLICY_BACKOFF_FACTOR_MAX);
+  assert(timing.leader_heartbeat_ms == AGENT_EDGE_CONSENSUS_POLICY_RETRY_MAX_MS);
+  assert(timing.leader_lease_ms == timing.leader_heartbeat_ms);
+  assert(timing.lease_expiry_recampaign_delay_ms == AGENT_EDGE_CONSENSUS_POLICY_LEASE_MAX_MS);
+  assert(timing.stale_runtime_recovery_grace_ms == AGENT_EDGE_CONSENSUS_POLICY_STALE_RUNTIME_RECOVERY_GRACE_MAX_MS);
+
+  timing.campaign_delay_ms = 42;
+  timing.campaign_retry_ms = 1000;
+  timing.campaign_retry_max_ms = 600000;
+  timing.campaign_retry_backoff_factor = 0;
+  timing.leader_heartbeat_ms = 0;
+  timing.leader_lease_ms = -1;
+  timing.lease_expiry_recampaign_delay_ms = -7;
+  timing.stale_runtime_recovery_grace_ms = -8;
+  assert(agent_edge_consensus_policy_timing_normalize(&timing) == AGENT_OK);
+  assert(timing.campaign_delay_ms == 42);
+  assert(timing.campaign_retry_ms == 1000);
+  assert(timing.campaign_retry_max_ms == AGENT_EDGE_CONSENSUS_POLICY_LEASE_MAX_MS);
+  assert(timing.campaign_retry_backoff_factor == AGENT_EDGE_CONSENSUS_POLICY_BACKOFF_FACTOR_MIN);
+  assert(timing.leader_heartbeat_ms == 0);
+  assert(timing.leader_lease_ms == 0);
+  assert(timing.lease_expiry_recampaign_delay_ms == 0);
+  assert(timing.stale_runtime_recovery_grace_ms == 0);
+  assert(agent_edge_consensus_policy_timing_normalize(NULL) == AGENT_ERR_INVALID_ARGUMENT);
+}
+
 void test_edge_interop_module(void) {
   test_id_is_safe_basic();
   test_trace_id_is_safe_allows_at();
@@ -137,4 +177,5 @@ void test_edge_interop_module(void) {
   test_sanitize_respects_max_len();
   test_result_attest_signing_input_v0_1();
   test_consensus_constants_and_quorum();
+  test_consensus_policy_timing_normalize();
 }

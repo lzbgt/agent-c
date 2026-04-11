@@ -218,3 +218,47 @@ int agent_edge_consensus_identity_membership_matches(
 ) {
   return local_membership_epoch == identity_membership_epoch && identity_node_is_member ? 1 : 0;
 }
+
+static int64_t consensus_clamp_i64(int64_t value, int64_t lo, int64_t hi) {
+  if (value < lo) return lo;
+  if (value > hi) return hi;
+  return value;
+}
+
+agent_status_t agent_edge_consensus_policy_timing_normalize(
+  agent_edge_consensus_policy_timing_t* timing
+) {
+  if (!timing) return AGENT_ERR_INVALID_ARGUMENT;
+  timing->campaign_delay_ms = consensus_clamp_i64(
+    timing->campaign_delay_ms, 0, AGENT_EDGE_CONSENSUS_POLICY_RETRY_MAX_MS);
+  timing->campaign_retry_ms = consensus_clamp_i64(
+    timing->campaign_retry_ms, 0, AGENT_EDGE_CONSENSUS_POLICY_RETRY_MAX_MS);
+
+  const int64_t retry_max_upper = AGENT_EDGE_CONSENSUS_POLICY_LEASE_MAX_MS;
+  if (timing->campaign_retry_max_ms > retry_max_upper) timing->campaign_retry_max_ms = retry_max_upper;
+  if (timing->campaign_retry_max_ms < timing->campaign_retry_ms) {
+    timing->campaign_retry_max_ms = timing->campaign_retry_ms;
+  }
+
+  timing->campaign_retry_backoff_factor = consensus_clamp_i64(
+    timing->campaign_retry_backoff_factor,
+    AGENT_EDGE_CONSENSUS_POLICY_BACKOFF_FACTOR_MIN,
+    AGENT_EDGE_CONSENSUS_POLICY_BACKOFF_FACTOR_MAX);
+  timing->leader_heartbeat_ms = consensus_clamp_i64(
+    timing->leader_heartbeat_ms, 0, AGENT_EDGE_CONSENSUS_POLICY_RETRY_MAX_MS);
+
+  if (timing->leader_lease_ms > AGENT_EDGE_CONSENSUS_POLICY_LEASE_MAX_MS) {
+    timing->leader_lease_ms = AGENT_EDGE_CONSENSUS_POLICY_LEASE_MAX_MS;
+  }
+  if (timing->leader_lease_ms < timing->leader_heartbeat_ms) {
+    timing->leader_lease_ms = timing->leader_heartbeat_ms;
+  }
+
+  timing->lease_expiry_recampaign_delay_ms = consensus_clamp_i64(
+    timing->lease_expiry_recampaign_delay_ms, 0, AGENT_EDGE_CONSENSUS_POLICY_LEASE_MAX_MS);
+  timing->stale_runtime_recovery_grace_ms = consensus_clamp_i64(
+    timing->stale_runtime_recovery_grace_ms,
+    0,
+    AGENT_EDGE_CONSENSUS_POLICY_STALE_RUNTIME_RECOVERY_GRACE_MAX_MS);
+  return AGENT_OK;
+}

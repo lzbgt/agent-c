@@ -121,6 +121,8 @@ The shipped autonomous host-loop proof adds:
   "same epoch plus listed member" rule
 - daemon relay/runtime/membership-bundle paths consume those portable message and schema constants rather than
   re-declaring the wire strings locally
+- portable `agent_core` durable policy timing normalization, reused by daemon runtime start, config load, and membership
+  rotation so embedded firmware and agentd clamp campaign, lease, recovery, and stale-runtime grace policy consistently
 
 ## Still open
 
