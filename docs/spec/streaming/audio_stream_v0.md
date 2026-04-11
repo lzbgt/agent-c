@@ -304,7 +304,10 @@ A v0 smoke test should:
   `docs/research/vendor-rfc3550-rtp-20260411.txt`, and the report-block tracking/packet builder now has a shared
   `session_voice_rtcp_report` helper with direct unit coverage. The native-plugin smoke now uses headless Chromium when
   Playwright is available and proves active browser full-duplex media against the embedded provider, including browser
-  outbound/inbound RTP stats and agentd RTP receive/send, decode, outbound audio, and RTCP counters. Browser SDP answer
+  outbound/inbound RTP stats and agentd RTP receive/send, decode, outbound audio, and RTCP counters. It now also makes
+  that browser offer include an extra audio m-line plus a datachannel and asserts the answer rejects those unsupported
+  sections while media stays active on the single provider-owned audio stream, then sends a browser empty-candidate end
+  marker and requires agentd to count it through the shared candidate-ingress path. Browser SDP answer
   hardening now also normalizes bare local `candidate:` lines into `a=candidate:` answer lines, keeps provider-owned
   audio `msid`/SSRC signaling scoped to audio m-lines when offers contain non-audio sections, and rejects unsupported
   non-audio browser m-lines such as datachannels as inactive/port-zero while filtering them out of the active BUNDLE
@@ -317,7 +320,8 @@ A v0 smoke test should:
   advertises only the single provider-owned audio stream. The remaining gap is no longer basic outbound RTP,
   Opus ownership, one-shot Sender/Receiver Report transmit, per-frame Sender Report spam, compound packet emission,
   answer direction, basic browser full-duplex proof, unsupported non-audio section rejection, or multi-audio m-line
-  rejection; it is broader browser, codec, and candidate-edge hardening.
+  rejection, or browser-backed proof for those rejected sections and empty-candidate ingestion; it is broader browser,
+  codec, and candidate-edge hardening.
 - That runtime contract now also exposes the media-engine seam directly: planned/live builtin paths report
   `media_engine_kind=builtin_reserved|builtin_signaling_stub|builtin_native_plugin`, bundled/external runtimes report
   `media_engine_kind=browser_peer`, and `native_media_supported` / `native_media_active` now distinguish the

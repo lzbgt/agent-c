@@ -129,7 +129,11 @@ Reference artifacts downloaded into the repo for exact vendor details:
   - the native-plugin smoke now uses headless Chromium when Playwright is
     available and proves active browser full-duplex media against the embedded
     provider, including browser outbound/inbound RTP stats and agentd RTP
-    receive/send, decode, outbound audio, and RTCP counters
+    receive/send, decode, outbound audio, and RTCP counters; that same browser
+    smoke now also offers an extra audio m-line and datachannel and asserts
+    they are rejected while full-duplex media continues on the single supported
+    audio stream, then sends a browser empty-candidate end marker and requires
+    agentd to count it through the shared candidate-ingress path
 - The repo now also has a direct in-tree DTLS/SRTP proof slice independent of
   that synthetic libjuice role quirk:
   - `session_voice_builtin_dtls_transport_tests` completes a DTLS 1.2
@@ -243,8 +247,9 @@ It is **not** yet at a full embedded WebRTC/SRTP runtime. The remaining gap is
 no longer dependency discovery, basic RTP ownership, negotiated Opus transmit,
 one-shot Sender/Receiver Report transmit, compound RTCP packet emission, active
 answer direction, basic browser full-duplex proof, unsupported non-audio section
-rejection, or multi-audio m-line rejection; it is broader browser, codec, and
-candidate-edge hardening.
+rejection, multi-audio m-line rejection, or browser-backed proof for those
+rejected sections and empty-candidate ingestion; it is broader browser, codec,
+and candidate-edge hardening.
 
 ## Recommended Next Technical Decision
 

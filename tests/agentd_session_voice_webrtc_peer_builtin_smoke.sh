@@ -359,6 +359,11 @@ async function run() {
       outboundBytesSent: 0,
       inboundPacketsReceived: 0,
       inboundBytesReceived: 0,
+      localOfferSdp: "",
+      answerSdp: "",
+      dataChannelCreated: false,
+      extraAudioTransceiverCreated: false,
+      emptyCandidateSent: false,
       error: "",
     };
     let peer = null;
@@ -409,6 +414,10 @@ async function run() {
 
       peer = new RTCPeerConnection();
       for (const track of dest.stream.getAudioTracks()) peer.addTrack(track, dest.stream);
+      peer.addTransceiver("audio", { direction: "recvonly" });
+      state.extraAudioTransceiverCreated = true;
+      peer.createDataChannel("agentd-native-voice-edge-validation");
+      state.dataChannelCreated = true;
       remoteAudio = document.createElement("audio");
       remoteAudio.autoplay = true;
       document.body.appendChild(remoteAudio);
@@ -433,10 +442,17 @@ async function run() {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       await waitForIceGatheringComplete(pc);
+      state.localOfferSdp = pc.localDescription.sdp || "";
       await window.__agentdBuiltinBrowserSendSignal("offer", {
         type: pc.localDescription.type,
         sdp: pc.localDescription.sdp,
       });
+      await window.__agentdBuiltinBrowserSendSignal("candidate", {
+        candidate: "",
+        sdpMid: "0",
+        sdpMLineIndex: 0,
+      });
+      state.emptyCandidateSent = true;
     }
 
     async function handleSignal(ev) {
@@ -447,6 +463,7 @@ async function run() {
         if (!payload.sdp) return;
         state.answerSeen = true;
         const answerSdp = String(payload.sdp).endsWith("\\n") ? String(payload.sdp) : String(payload.sdp) + "\\r\\n";
+        state.answerSdp = answerSdp;
         try {
           await pc.setRemoteDescription({ type: payload.type || "answer", sdp: answerSdp });
         } catch (err) {
@@ -573,7 +590,8 @@ async function run() {
       (finalPeer.rtp_packets_sent || 0) > 0 &&
       (finalPeer.audio_frames_decoded || 0) > 0 &&
       (finalPeer.audio_outbound_frames_sent || 0) > 0 &&
-      (finalPeer.rtcp_packets_sent || 0) > 0
+      (finalPeer.rtcp_packets_sent || 0) > 0 &&
+      (finalPeer.media_remote_candidates_seen || 0) > 0
     ) {
       break;
     }
@@ -592,12 +610,29 @@ async function run() {
     (finalPeer.rtp_packets_sent || 0) <= 0 ||
     (finalPeer.audio_frames_decoded || 0) <= 0 ||
     (finalPeer.audio_outbound_frames_sent || 0) <= 0 ||
-    (finalPeer.rtcp_packets_sent || 0) <= 0
+    (finalPeer.rtcp_packets_sent || 0) <= 0 ||
+    (finalPeer.media_remote_candidates_seen || 0) <= 0
   ) {
     throw new Error(`native browser full-duplex media did not converge: ${JSON.stringify({
       browser: finalState,
       peer: finalPeer,
     })}`);
+  }
+  if (!finalState.dataChannelCreated || !finalState.extraAudioTransceiverCreated || !finalState.emptyCandidateSent) {
+    throw new Error(`native browser edge offer was not constructed: ${JSON.stringify(finalState)}`);
+  }
+  if (
+    !/m=application 0 [^\r\n]*webrtc-datachannel/.test(finalState.answerSdp || "") ||
+    !/m=audio 0 /.test(finalState.answerSdp || "") ||
+    !/m=audio 9 /.test(finalState.answerSdp || "")
+  ) {
+    throw new Error(`native browser edge offer answer did not reject unsupported sections: ${finalState.answerSdp || ""}`);
+  }
+  const bundleLine = String(finalState.answerSdp || "")
+    .split(/\r?\n/)
+    .find((line) => line.startsWith("a=group:BUNDLE"));
+  if (!bundleLine || bundleLine.trim().split(/\s+/).length !== 2) {
+    throw new Error(`native browser edge answer did not keep BUNDLE scoped to one active mid: ${finalState.answerSdp || ""}`);
   }
 
   await sendSignal("bye", { reason: "browser_full_duplex_done" });
