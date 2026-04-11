@@ -103,6 +103,20 @@ static Json::Value make_outbox_with_membership_bundle(
   return outbox;
 }
 
+static Json::Value make_outbox_with_unrelated_message(int64_t cursor_next = 1) {
+  Json::Value outbox(Json::objectValue);
+  outbox["cursor_next"] = (Json::Int64)cursor_next;
+  Json::Value message(Json::objectValue);
+  Json::Value env(Json::objectValue);
+  env["type"] = AGENT_UM_BMP_TYPE_NODE_HELLO;
+  Json::Value body(Json::objectValue);
+  body["frame"] = "not a consensus frame";
+  env["body"] = body;
+  message["msg"] = env;
+  outbox["messages"].append(message);
+  return outbox;
+}
+
 static void set_membership_all(
   EdgeConsensusReplica* replica,
   uint64_t membership_epoch,
@@ -293,6 +307,60 @@ static void test_runtime_core_commits_from_relayed_vote_grants() {
   assert(statuses.size() >= 3);
 }
 
+static void test_runtime_core_ignores_unrelated_outbox_messages() {
+  const EdgeConsensusRuntimeConfig cfg = make_config();
+  const std::vector<EdgeConsensusFrame> grants = make_vote_grants_for_node_a(cfg);
+  int send_calls = 0;
+  int poll_calls = 0;
+
+  EdgeConsensusRuntimeTransportOps transport;
+  transport.post_hello = [](uint64_t* io_seq, std::string*) {
+    assert(io_seq);
+    ++(*io_seq);
+    return true;
+  };
+  transport.send_consensus_frame = [&send_calls](
+    const EdgeConsensusFrame& frame,
+    const std::vector<std::string>& targets,
+    uint64_t* io_seq,
+    std::string*
+  ) {
+    assert(io_seq);
+    ++(*io_seq);
+    send_calls++;
+    if (frame.kind == "vote_request") {
+      assert(targets.size() == 2);
+    } else if (frame.kind == "leader_commit") {
+      assert(targets.size() == 2);
+    } else {
+      assert(false && "unexpected frame kind");
+    }
+    return true;
+  };
+  transport.poll_outbox = [&poll_calls, &grants](int64_t, Json::Value* out, std::string*) {
+    poll_calls++;
+    if (!out) return true;
+    if (poll_calls == 1) {
+      *out = make_outbox_with_unrelated_message(1);
+    } else if (poll_calls == 2) {
+      *out = make_outbox_with_frame(grants[0], 2);
+    } else {
+      *out = Json::Value(Json::objectValue);
+    }
+    return true;
+  };
+
+  Json::Value result(Json::nullValue);
+  std::string error;
+  const bool ok = run_edge_consensus_runtime_core(cfg, EdgeConsensusRuntimeHooks(), transport, &result, &error);
+  assert(ok);
+  assert(error.empty());
+  assert(result["ok"].asBool());
+  assert(result["leader_node_id"].asString() == "node-a");
+  assert(send_calls == 2);
+  assert(poll_calls == 2);
+}
+
 static void test_runtime_core_adopts_membership_bundle_before_vote_grants() {
   EdgeConsensusRuntimeConfig cfg = make_config();
   cfg.campaign_delay_ms = 100000;
@@ -398,6 +466,7 @@ int main() {
   test_runtime_core_returns_structured_stop_result();
   test_runtime_core_returns_deadline_result_without_commit();
   test_runtime_core_commits_from_relayed_vote_grants();
+  test_runtime_core_ignores_unrelated_outbox_messages();
   test_runtime_core_adopts_membership_bundle_before_vote_grants();
   return 0;
 }
