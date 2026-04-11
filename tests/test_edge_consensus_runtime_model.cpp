@@ -153,12 +153,32 @@ static void test_same_effective_config_ignores_builtin_daemon_url_drift_only() {
   builtin_a.cluster_id = "cluster-a";
   builtin_a.manifest_sha256 =
     "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  builtin_a.decision_sha256 =
+    "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  builtin_a.peer_node_ids = {"node-b", "node-c"};
+  builtin_a.member_node_ids = {"node-a", "node-b", "node-c"};
   builtin_a.daemon_url = "@local";
 
   EdgeConsensusRuntime builtin_b = builtin_a;
+  builtin_b.node_id = " node-a ";
+  builtin_b.cluster_id = " cluster-a ";
+  builtin_b.manifest_sha256 =
+    " sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ";
+  builtin_b.decision_sha256 =
+    " sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ";
+  builtin_b.peer_node_ids = {"node-c", "node-b", "node-b"};
+  builtin_b.member_node_ids = {"node-c", "node-a", "node-b", "bad/node"};
   builtin_b.daemon_url = "http://127.0.0.1:8123";
 
   assert(edge_consensus_runtime_same_effective_config(builtin_a, builtin_b));
+
+  EdgeConsensusRuntime cluster_drift = builtin_a;
+  cluster_drift.cluster_id = "cluster-b";
+  assert(!edge_consensus_runtime_same_effective_config(builtin_a, cluster_drift));
+
+  EdgeConsensusRuntime member_drift = builtin_a;
+  member_drift.member_node_ids = {"node-a", "node-b"};
+  assert(!edge_consensus_runtime_same_effective_config(builtin_a, member_drift));
 
   EdgeConsensusRuntime external_a = builtin_a;
   external_a.runtime_kind = "external";

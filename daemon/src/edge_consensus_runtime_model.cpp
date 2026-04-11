@@ -30,11 +30,26 @@ static bool consensus_member_node_id_is_valid_model(const std::string& node_id) 
 }
 
 static bool consensus_node_id_matches_model(const std::string& a, const std::string& b) {
-  return agent_edge_consensus_node_id_matches(a.data(), a.size(), b.data(), b.size()) == 1;
+  const std::string left = trim_copy(a);
+  const std::string right = trim_copy(b);
+  return agent_edge_consensus_node_id_matches(left.data(), left.size(), right.data(), right.size()) == 1;
+}
+
+static bool consensus_cluster_id_matches_model(const std::string& a, const std::string& b) {
+  const std::string left = trim_copy(a);
+  const std::string right = trim_copy(b);
+  return agent_edge_consensus_cluster_id_matches(left.data(), left.size(), right.data(), right.size()) == 1;
 }
 
 static bool consensus_sha256_token_is_valid_model(const std::string& token) {
   return agent_umbmp_sha256_token_is_safe(token.data(), token.size()) == 1;
+}
+
+static bool consensus_optional_sha256_token_matches_model(const std::string& a, const std::string& b) {
+  const std::string left = trim_copy(a);
+  const std::string right = trim_copy(b);
+  if (left.empty() && right.empty()) return true;
+  return agent_edge_consensus_decision_sha256_matches(left.data(), left.size(), right.data(), right.size()) == 1;
 }
 
 static uint64_t json_to_u64_model(const Json::Value& v, uint64_t fallback) {
@@ -64,6 +79,12 @@ static std::vector<std::string> dedupe_consensus_member_node_ids_model(const std
     });
     if (!already_seen) out.push_back(s);
   }
+  return out;
+}
+
+static std::vector<std::string> sorted_consensus_member_node_ids_model(const std::vector<std::string>& in) {
+  std::vector<std::string> out = dedupe_consensus_member_node_ids_model(in);
+  std::sort(out.begin(), out.end());
   return out;
 }
 
@@ -413,12 +434,12 @@ bool edge_consensus_runtime_same_effective_config(
     trim_copy(a.runtime_kind) == "builtin" && trim_copy(b.runtime_kind) == "builtin";
   return
     trim_copy(a.runtime_kind) == trim_copy(b.runtime_kind) &&
-    trim_copy(a.node_id) == trim_copy(b.node_id) &&
-    trim_copy(a.cluster_id) == trim_copy(b.cluster_id) &&
-    trim_copy(a.manifest_sha256) == trim_copy(b.manifest_sha256) &&
-    trim_copy(a.decision_sha256) == trim_copy(b.decision_sha256) &&
-    a.peer_node_ids == b.peer_node_ids &&
-    a.member_node_ids == b.member_node_ids &&
+    consensus_node_id_matches_model(a.node_id, b.node_id) &&
+    consensus_cluster_id_matches_model(a.cluster_id, b.cluster_id) &&
+    consensus_optional_sha256_token_matches_model(a.manifest_sha256, b.manifest_sha256) &&
+    consensus_optional_sha256_token_matches_model(a.decision_sha256, b.decision_sha256) &&
+    sorted_consensus_member_node_ids_model(a.peer_node_ids) == sorted_consensus_member_node_ids_model(b.peer_node_ids) &&
+    sorted_consensus_member_node_ids_model(a.member_node_ids) == sorted_consensus_member_node_ids_model(b.member_node_ids) &&
     (builtin || trim_copy(a.daemon_url) == trim_copy(b.daemon_url)) &&
     trim_copy(a.tool_path) == trim_copy(b.tool_path) &&
     trim_copy(a.model) == trim_copy(b.model) &&

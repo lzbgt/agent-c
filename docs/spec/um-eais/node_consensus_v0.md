@@ -208,6 +208,8 @@ The shipped autonomous host-loop proof adds:
   not fork a raw equality path when deciding whether a node can revote for the same candidate
 - stale builtin runtime recovery is now member-set-aware across current, previous, and lineage epochs, so a daemon restart
   preserves old runtime evidence only when the runtime node was a member of the matching policy epoch
+- runtime effective-config comparison now uses portable consensus cluster/node/digest matchers and normalized member sets,
+  keeping restart/reconcile drift checks aligned with firmware-native identity semantics
 
 ## Still open
 
