@@ -1216,13 +1216,13 @@ Details (stable order for diff readability; numbering below is not priority):
    - Shipped (MCU ergonomics): UM‑BMP envelope CBOR encode helper in `agent_core` (wire send path):
      - Core API: `agent/umbmp_auth.h` `agent_umbmp_envelope_cbor_v0_4(...)` can emit deterministic CBOR wire envelopes with optional `auth.sig` (base64 text).
      - Proof: `ctest` includes `agent_core_tests` (encodes a full envelope with `auth.sig` and decodes it back via the CBOR reader).
-3) **Scheduling policy v2.4+** — DRR is shipped; telemetry-driven cost is now shipped (`telemetry_v1`), next is budget-pressure-aware charging and resilient fairness under mixed workloads.
+3) **Scheduling policy v2.4+** — DRR, durable deficits, deterministic cost estimates, and telemetry-driven charging (`telemetry_v1`) are shipped; remaining work is budget-pressure-aware charging and resilient fairness proof under mixed workloads.
 4) **Memory v2.3** — query-plan primitives (bounded windows + key-prefix filters) and automatic consolidation triggers as time advances,
    so long-running systems keep context tight and correct.
    - Shipped (v2.3 partial): search-based memory context injection for runs (`memory_context_mode="search"`) with ranked snippets,
      citations, and bounded caps (claude-mem style progressive disclosure).
    - Shipped (v2.3 partial): `memory_search` clamps results/snippet/context to avoid unbounded memory growth under hostile inputs.
-5) **Budgets v0.7** — complete streaming usage accounting and host-tool charging; surface budget pressure so schedulers can act cheaply.
+5) **Budgets v0.7** — streaming usage accounting, host-tool memory task charging, and workflow budget-pressure stats are shipped; remaining work is provider-backed streaming token budget enforcement when usage is missing/retried, plus feeding budget pressure into scheduler cost decisions.
 
 Maintainability note (always-on):
 - Keep endpoint implementations SOLID and <2000 LOC per file; split large translation units (e.g. workflow endpoints) so new collaboration primitives remain cheap to add.
@@ -1274,7 +1274,6 @@ Maintainability note (always-on):
 	       when the final chunk includes usage.
 	     - Compatibility fallback: if a provider rejects `stream_options`, the client retries once without it (streaming still works, but usage may be missing).
 	     - Proof: `ctest` includes `agentd_workflow_budget_tokens_stream_smoke`.
-	   - Next: host-tool budgets, enforce token budgets for streaming paths, and surface budget pressure in `/api/v1/workflow/stats`.
 	   - Shipped (v0.5 partial): deterministic host-tool tasks now charge and obey workflow budgets:
 	     - `kind:"memory_put"` and `kind:"memory_consolidate"` count as `tool_calls_total=1` and `steps_executed=1` per attempt.
 	     - Budget enforcement: if remaining workflow budgets are 0, these tasks cancel the workflow with `workflow budget exceeded: ...`.
@@ -1284,6 +1283,9 @@ Maintainability note (always-on):
 	       across queued|running workflows that define `workflow_limits`.
 	     - Optional `include_budget_workflows=1` includes a small sampled workflow list with `remaining` budgets.
 	     - Proof: `ctest` includes `agentd_workflow_stats_budget_pressure_smoke`.
+	   - Current remaining:
+	     - enforce provider-backed token budgets for streaming paths when usage is absent, rejected by provider compatibility fallback, or retried
+	     - feed best-effort budget pressure into scheduler cost decisions so fair-queue charging reflects near-exhausted workflows
 
 2) **Scheduling policy v2 (beyond caps)** (predictable progress under load)
    - Shipped (v2.0): oversampled scan + session-aware round-robin scan order (prevents `LIMIT` starvation under typical load).
@@ -1295,7 +1297,6 @@ Maintainability note (always-on):
      - Daemon config/flags: `--workflow-fair-queue-policy wrr` (default), weight clamps.
      - Workflow submit knob (requires `allow_sessions=true`): `session_weight` (>=1).
    - Proof: `ctest` includes `agentd_workflow_wrr_session_weight_smoke` (ensures session B is not starved behind session A; session A still dominates early prefix when weight=2).
-   - Next (v2.3): graduate from WRR to deficit round-robin (DRR) with cost-aware quanta (e.g. budget pressure, token cost) and durable per-session tokens.
    - Shipped (v2.3 partial): deficit round-robin (DRR) policy option (cost=1 per admitted task):
      - Daemon flag: `--workflow-fair-queue-policy drr` (also `AGENTD_WORKFLOW_FAIR_QUEUE_POLICY=drr`)
      - Weight source remains `session_weight` from workflow submit spec (clamped).
@@ -1318,8 +1319,9 @@ Maintainability note (always-on):
        - uses `retryable` + `retry_in_ms` as a poll-loop hint
      - Rationale: first attempt can be “heavier” (enqueue/submit), but steady-state polls are cheap; telemetry_v1 makes that distinction.
      - Proof: `ctest` includes `workflow_fairq_cost_tests` (covers telemetry_v1 estimator).
-   - Next (v2.3+): tighten the cost model:
-     - incorporate budget pressure, token usage counters, and edge polling characteristics into the estimator.
+   - Current remaining:
+     - incorporate budget pressure, token usage counters, and edge polling characteristics into the estimator
+     - add a mixed-workload fairness stress proof covering deterministic host tasks, LLM-like tasks, streaming-like tasks, and edge poll loops
 
 3) **Interop spec hardening for MCU/edge handoff** (ecosystem leverage)
    - Shipped: `DURABLE_WORKFLOW_SUBMIT` / `DURABLE_WORKFLOW_CANCEL` over `POST /api/v1/edge/message` (durable orchestration handoff).
@@ -1423,7 +1425,8 @@ Maintainability note (always-on):
    - Status: submit-time parallel macro shipped as `kind:"delegate_parallel"` (v1.6.1).
    - Shipped: deterministic join strategies for parallel fan-out now include `first_ok`, `best_of_n`, `quorum_ok`.
    - Shipped: per-attempt wiring defaults via `delegate.attempt_defaults` (enables per-attempt budget knobs without repetition).
-   - Remaining: enforceable per-attempt budgets + richer joins (`strict_all_ok`, node-identity-aware quorum votes).
+   - Shipped: `strict_all_ok` defaults and node-identity-aware quorum proof are covered by later collaboration slices.
+   - Remaining: broker-routed target discovery/routing policy and identity-scoped memory for collaboration tasks.
 
 5) **Memory ↔ workflow time correlation (next after memory_put)** (time-advancing correctness)
    - Shipped: deterministic workflow `kind:"memory_put"` and deterministic workflow `kind:"memory_consolidate"`.
@@ -1448,8 +1451,8 @@ Maintainability note (always-on):
    - Shipped: cross-layer event correlation by `trace_id`:
      - `GET /api/v1/trace?trace_id=...` now joins durable `workflow_events` and `edge_workflow_events` (best-effort) into the same trace surface.
      - Proof: `ctest` includes `agentd_trace_workflow_events_smoke`.
-   - Next: extend correlation beyond trace lookup:
-     - add an API to query structured memory “current view” by key-prefix/time window (avoid downloading/parsing whole checkpoints).
+   - Shipped: structured memory “current view” queries are available through `GET /api/v1/memory/query?...&key_prefix=...` and deterministic workflow `kind:"memory_query"`.
+   - Current remaining: extend correlation from point queries into a durable relationship graph linking memory items to `trace_id`, workflow/job IDs, and source excerpts.
 
 ### 1) AVM capsule execution v0 (next: integrate + attest)
 
@@ -1463,7 +1466,8 @@ Deliverables:
 - Workflow + join:
   - (shipped) durable workflows can dispatch a capsule run as a task kind (no LLM required)
   - (shipped) deterministic aggregation/join nodes (`kind:"aggregate"`) can compare `RESULT_HASH` / `TRACE_HASH` across runs/nodes (k-of-n correctness)
-  - (next) extend aggregation strategies (`first_ok`, `quorum_ok`, `strict_all_ok`, `collect`, `best_of_n`) and attach node identity to votes for multi-node correctness.
+  - (shipped) aggregation strategies include `first_ok`, `quorum_ok`, `strict_all_ok`, `collect`, and `best_of_n`.
+  - Current remaining: attach node identity to AVM attestation votes and preserve that identity through multi-node correctness proofs.
 - Edge interop integration:
   - extend UM‑EAIS payload conventions so a node can execute a capsule and report back hashes as “task done” attestation.
 

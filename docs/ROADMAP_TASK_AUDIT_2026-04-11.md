@@ -245,17 +245,19 @@ Follow-up WebRTC runtime smoke JSON assertion helper slice:
 
 ## Secondary Backlog Signals
 
-The older P0/P1 section still contains "Next" and "Remaining" notes that may be partially stale but should be triaged:
+The older P0/P1 section was pruned on 2026-04-12 so `Next` / `Remaining` notes no longer restate work already marked shipped in the same roadmap:
 
 - Budgets / scheduling:
-  - Budget-pressure-aware DRR charging and resilient mixed-workload fairness remain listed after shipped `telemetry_v1`.
-  - Stress proof for bounded completion/fairness under deterministic stub load remains useful.
+  - Host-tool memory budget charging and workflow budget-pressure stats are already shipped.
+  - Current remaining: provider-backed streaming token budget enforcement when usage is missing/retried, budget-pressure-aware DRR charging, edge-poll cost refinements, and resilient mixed-workload fairness proof.
 
 - Agent collaboration:
-  - Remaining notes mention enforceable per-attempt budgets, richer joins such as `strict_all_ok`, node-identity-aware quorum votes, broker-routed target discovery/routing policy, and identity-scoped memory.
+  - `strict_all_ok` and node-identity-aware quorum proof are already shipped in later collaboration slices.
+  - Current remaining: broker-routed target discovery/routing policy and identity-scoped memory.
 
 - Memory:
-  - Remaining notes mention all-layer time/size consolidation, versioned facts with `supersedes` / evidence arrays, a correlation graph linked to trace/workflow/job IDs, deterministic ranking tests, and structured conflict-resolution tests.
+  - Structured current-view key-prefix queries are already shipped through the memory query API and deterministic workflow `memory_query`.
+  - Current remaining: all-layer time/size consolidation, versioned facts with `supersedes` / evidence arrays, a durable correlation graph linked to trace/workflow/job IDs and source excerpts, deterministic ranking tests, and structured conflict-resolution tests.
 
 - Workflow / correctness:
   - Remaining notes mention workflow timeline UI filters, richer aggregation strategies, expectation validators beyond JSON pointer, and replay-mode workflow validation under stub providers.
@@ -278,4 +280,4 @@ Highest leverage sequence:
 
 1. Fix or unblock OpenRouter credentials, run the OpenRouter streaming pin workflow, and commit `ref/openrouter/streaming_pins.json` if the result is stable.
 2. Execute the documented builtin-vs-bundled graduation gate on any additional target release platforms before changing production defaults outside the checked macOS M2 host.
-3. Prune stale P0/P1 "Next" notes into current, testable checklist items so the roadmap reflects shipped work instead of duplicating older goals.
+3. Implement the next unblocked local item from the pruned P0/P1 backlog: budget-pressure-aware DRR charging with a deterministic mixed-workload fairness proof.
