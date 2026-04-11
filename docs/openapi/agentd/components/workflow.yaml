@@ -449,9 +449,21 @@ WorkflowMemoryStructuredQuerySpec:
     updated_until_utc:
       type: string
       description: Optional upper bound on record updated_utc (ISO UTC like 2026-02-05T23:59:59Z).
+    observed_since_utc:
+      type: string
+      description: Optional lower bound on record observed_utc (ISO UTC like 2026-02-05T00:00:00Z).
+    observed_until_utc:
+      type: string
+      description: Optional upper bound on record observed_utc (ISO UTC like 2026-02-05T23:59:59Z).
+    valid_from_since_utc:
+      type: string
+      description: Optional lower bound on record valid_from (ISO UTC like 2026-02-05T00:00:00Z).
+    valid_from_until_utc:
+      type: string
+      description: Optional upper bound on record valid_from (ISO UTC like 2026-02-05T23:59:59Z).
     order_by:
       type: string
-      description: "Sort order: key_asc (default) or updated_desc."
+      description: "Sort order: key_asc (default), updated_desc, observed_desc, or valid_from_desc."
     kinds:
       type: array
       description: Optional kinds filter (e.g. `["fact"]`, `["preference"]`, `["task"]`).
@@ -1031,6 +1043,29 @@ WorkflowMemoryPutSpec:
           source:
             type: string
             description: Evidence string. If omitted, the server injects workflow correlation (workflow/task/trace).
+          sources:
+            oneOf:
+              - type: string
+              - type: array
+                items:
+                  type: string
+            description: Additional evidence string(s) to merge into the bounded `sources[]` set.
+          observed_utc:
+            type: string
+            description: Optional observation timestamp (`YYYY-MM-DDTHH:MM:SSZ`); defaults to write time.
+          valid_from:
+            type: string
+            description: Optional validity start timestamp (`YYYY-MM-DDTHH:MM:SSZ`) stored on the current record and retained in superseded versions.
+          valid_from_utc:
+            type: string
+            description: Compatibility alias for `valid_from`; stored canonically as `valid_from`.
+          supersedes:
+            oneOf:
+              - type: string
+              - type: array
+                items:
+                  type: string
+            description: Optional explicit superseded fact/version references to merge into `supersedes[]`.
 
 
 WorkflowMemoryConsolidateSpec:

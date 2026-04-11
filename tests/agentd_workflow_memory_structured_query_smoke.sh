@@ -45,9 +45,27 @@ tasks = [
     "memory_put": {
       "path": "STRUCTURED.md",
       "entries": [
-        {"key": "wf.test.q1", "kind": "fact", "value": "Autonomy comes from durable scheduling + memory."},
-        {"key": "wf.test.q2", "kind": "preference", "value": "Prefer deterministic joins over ad-hoc heuristics."},
-        {"key": "wf.test.q3", "kind": "fact", "value": "Newest fact for ordering test."}
+        {
+          "key": "wf.test.q1",
+          "kind": "fact",
+          "value": "Autonomy comes from durable scheduling + memory.",
+          "observed_utc": "2026-04-02T00:00:00Z",
+          "valid_from": "2026-04-01T00:00:00Z"
+        },
+        {
+          "key": "wf.test.q2",
+          "kind": "preference",
+          "value": "Prefer deterministic joins over ad-hoc heuristics.",
+          "observed_utc": "2026-04-02T00:00:01Z",
+          "valid_from": "2026-04-01T00:00:01Z"
+        },
+        {
+          "key": "wf.test.q3",
+          "kind": "fact",
+          "value": "Newest fact for ordering test.",
+          "observed_utc": "2026-04-04T00:00:00Z",
+          "valid_from": "2026-04-03T00:00:00Z"
+        }
       ],
       "checkpoint": False
     },
@@ -99,9 +117,11 @@ tasks = [
       "key_prefix": "wf.test.",
       "kinds": ["fact"],
       "status": "active",
+      "observed_since_utc": "2026-04-02T00:00:00Z",
+      "valid_from_since_utc": "2026-04-01T00:00:00Z",
       "include_sources": False,
       "include_versions": False,
-      "order_by": "updated_desc",
+      "order_by": "valid_from_desc",
       "limit": 2
     },
     "expect": {
@@ -192,6 +212,10 @@ if u.get("kind") != "memory_structured_query" or u.get("ok") is not True:
   raise SystemExit(1)
 resp = u.get("memory_structured_query_response") or {}
 data = resp.get("data") or {}
+query = data.get("query") or {}
+if query.get("observed_since_utc") != "2026-04-02T00:00:00Z" or query.get("valid_from_since_utc") != "2026-04-01T00:00:00Z" or query.get("order_by") != "valid_from_desc":
+  print("expected observed/valid query bounds and sort to survive submit sanitizer", query, file=sys.stderr)
+  raise SystemExit(1)
 results = data.get("results") or []
 if len(results) < 2:
   print("expected at least 2 results for U", u, file=sys.stderr)
@@ -199,6 +223,16 @@ if len(results) < 2:
 keys = [r.get("key","") for r in results]
 if "wf.test.q1" not in keys or "wf.test.q3" not in keys:
   print("expected wf.test.q1 and wf.test.q3 keys in U", keys, file=sys.stderr)
+  raise SystemExit(1)
+if keys[:2] != ["wf.test.q3", "wf.test.q1"]:
+  print("expected valid_from_desc ordering in U", keys, file=sys.stderr)
+  raise SystemExit(1)
+records = {r.get("key",""): (r.get("record") or {}) for r in results}
+if records.get("wf.test.q3", {}).get("valid_from") != "2026-04-03T00:00:00Z":
+  print("expected q3 valid_from to survive workflow sanitizer", records.get("wf.test.q3"), file=sys.stderr)
+  raise SystemExit(1)
+if records.get("wf.test.q3", {}).get("observed_utc") != "2026-04-04T00:00:00Z":
+  print("expected q3 observed_utc to survive workflow sanitizer", records.get("wf.test.q3"), file=sys.stderr)
   raise SystemExit(1)
 PY
 

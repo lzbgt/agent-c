@@ -38,6 +38,17 @@ static int64_t unix_ms_now() {
     .count();
 }
 
+static bool is_iso_utc_string(const std::string& s) {
+  if (s.empty()) return true;
+  if (s.size() != 20) return false;
+  if (s[4] != '-' || s[7] != '-' || s[10] != 'T' || s[13] != ':' || s[16] != ':' || s[19] != 'Z') return false;
+  for (size_t i = 0; i < s.size(); i++) {
+    if (i == 4 || i == 7 || i == 10 || i == 13 || i == 16 || i == 19) continue;
+    if (s[i] < '0' || s[i] > '9') return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 void workflow_submit_handle(
@@ -776,6 +787,92 @@ void workflow_submit_handle(
         if (e.isMember("source") && e["source"].isString() && !trim_copy(e["source"].asString()).empty()) {
           o["source"] = trim_copy(e["source"].asString());
         }
+        if (e.isMember("sources")) {
+          if (!e["sources"].isArray() && !e["sources"].isString() && !e["sources"].isNull()) {
+            resp->status = 400;
+            Json::Value err(Json::objectValue);
+            err["ok"] = false;
+            err["error"] = "memory_put.entries[].sources must be a string or array of strings";
+            err["task_id"] = task_id;
+            resp->body = json_stringify_compact(err);
+            return;
+          }
+          if (e["sources"].isString()) {
+            const std::string s = trim_copy(e["sources"].asString());
+            if (!s.empty()) o["sources"] = s;
+          } else if (e["sources"].isArray()) {
+            Json::Value sources(Json::arrayValue);
+            for (Json::ArrayIndex si = 0; si < e["sources"].size(); si++) {
+              if (!e["sources"][si].isString()) {
+                resp->status = 400;
+                Json::Value err(Json::objectValue);
+                err["ok"] = false;
+                err["error"] = "memory_put.entries[].sources must contain only strings";
+                err["task_id"] = task_id;
+                resp->body = json_stringify_compact(err);
+                return;
+              }
+              const std::string s = trim_copy(e["sources"][si].asString());
+              if (!s.empty()) sources.append(s);
+            }
+            if (!sources.empty()) o["sources"] = sources;
+          }
+        }
+        if (e.isMember("supersedes")) {
+          Json::Value supersedes(Json::arrayValue);
+          if (e["supersedes"].isString()) {
+            const std::string s = trim_copy(e["supersedes"].asString());
+            if (!s.empty()) supersedes.append(s);
+          } else if (e["supersedes"].isArray()) {
+            for (Json::ArrayIndex si = 0; si < e["supersedes"].size(); si++) {
+              if (!e["supersedes"][si].isString()) {
+                resp->status = 400;
+                Json::Value err(Json::objectValue);
+                err["ok"] = false;
+                err["error"] = "memory_put.entries[].supersedes must contain only strings";
+                err["task_id"] = task_id;
+                resp->body = json_stringify_compact(err);
+                return;
+              }
+              const std::string s = trim_copy(e["supersedes"][si].asString());
+              if (!s.empty()) supersedes.append(s);
+            }
+          } else if (!e["supersedes"].isNull()) {
+            resp->status = 400;
+            Json::Value err(Json::objectValue);
+            err["ok"] = false;
+            err["error"] = "memory_put.entries[].supersedes must be a string or array of strings";
+            err["task_id"] = task_id;
+            resp->body = json_stringify_compact(err);
+            return;
+          }
+          if (!supersedes.empty()) o["supersedes"] = supersedes;
+        }
+        for (const char* field : {"observed_utc", "valid_from", "valid_from_utc"}) {
+          if (!e.isMember(field)) continue;
+          if (!e[field].isString() && !e[field].isNull()) {
+            resp->status = 400;
+            Json::Value err(Json::objectValue);
+            err["ok"] = false;
+            err["error"] = std::string("memory_put.entries[].") + field + " must be an ISO UTC string";
+            err["task_id"] = task_id;
+            resp->body = json_stringify_compact(err);
+            return;
+          }
+          if (e[field].isString()) {
+            const std::string v = trim_copy(e[field].asString());
+            if (!is_iso_utc_string(v)) {
+              resp->status = 400;
+              Json::Value err(Json::objectValue);
+              err["ok"] = false;
+              err["error"] = std::string("memory_put.entries[].") + field + " must be ISO UTC like 2026-02-05T00:00:00Z";
+              err["task_id"] = task_id;
+              resp->body = json_stringify_compact(err);
+              return;
+            }
+            if (!v.empty()) o[std::string(field) == "valid_from_utc" ? "valid_from" : field] = v;
+          }
+        }
         entries2.append(o);
         valid++;
       }
@@ -1107,6 +1204,31 @@ void workflow_submit_handle(
 	          msq2["updated_until_utc"] = trim_copy(msq["updated_until_utc"].asString());
 	        }
 	      }
+	      for (const char* field : {"observed_since_utc", "observed_until_utc", "valid_from_since_utc", "valid_from_until_utc"}) {
+	        if (!msq.isMember(field)) continue;
+	        if (!msq[field].isString() && !msq[field].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = std::string("memory_structured_query.") + field + " must be a string";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (msq[field].isString() && !trim_copy(msq[field].asString()).empty()) {
+	          const std::string v = trim_copy(msq[field].asString());
+	          if (!is_iso_utc_string(v)) {
+	            resp->status = 400;
+	            Json::Value o(Json::objectValue);
+	            o["ok"] = false;
+	            o["error"] = std::string("memory_structured_query.") + field + " must be ISO UTC like 2026-02-05T00:00:00Z";
+	            o["task_id"] = task_id;
+	            resp->body = json_stringify_compact(o);
+	            return;
+	          }
+	          msq2[field] = v;
+	        }
+	      }
 
 	      if (msq.isMember("order_by")) {
 	        if (!msq["order_by"].isString() && !msq["order_by"].isNull()) {
@@ -1119,7 +1241,17 @@ void workflow_submit_handle(
 	          return;
 	        }
 	        if (msq["order_by"].isString() && !trim_copy(msq["order_by"].asString()).empty()) {
-	          msq2["order_by"] = trim_copy(msq["order_by"].asString());
+	          const std::string order_by = lower_copy(trim_copy(msq["order_by"].asString()));
+	          if (order_by != "key_asc" && order_by != "updated_desc" && order_by != "observed_desc" && order_by != "valid_from_desc") {
+	            resp->status = 400;
+	            Json::Value o(Json::objectValue);
+	            o["ok"] = false;
+	            o["error"] = "memory_structured_query.order_by must be key_asc, updated_desc, observed_desc, or valid_from_desc";
+	            o["task_id"] = task_id;
+	            resp->body = json_stringify_compact(o);
+	            return;
+	          }
+	          msq2["order_by"] = order_by;
 	        }
 	      }
 

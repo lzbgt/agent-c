@@ -508,7 +508,15 @@ structured memory upsert task:
   "memory_put": {
     "path": "STRUCTURED.md",
     "entries": [
-      { "key": "wf.last_alpha", "kind": "fact", "value": "${task.A.assistant_text}" }
+      {
+        "key": "wf.last_alpha",
+        "kind": "fact",
+        "value": "${task.A.assistant_text}",
+        "sources": ["workflow:manual-review"],
+        "observed_utc": "2026-04-02T03:04:05Z",
+        "valid_from": "2026-04-01T00:00:00Z",
+        "supersedes": ["legacy:wf.last_alpha"]
+      }
     ],
     "checkpoint": true,
     "keep_checkpoints": 100
@@ -521,6 +529,8 @@ Semantics:
 - Only **structured** updates are allowed (it does not accept legacy `text` overwrites).
 - The engine injects correlation evidence into `entries[].source` when missing, so structured memory records keep a bounded
   `sources[]` trail like: `workflow:<workflow_id> task:<task_id> trace:<trace_id> [session:<session_id>]`.
+- Entries may also carry `sources[]`, `observed_utc`, `valid_from` (or compatibility alias `valid_from_utc`), and `supersedes` metadata. `sources[]` is merged and
+  deduped; `valid_from` participates in supersede decisions; `supersedes` is retained on the current record and in history.
 - This task does not call an LLM/provider, so it is suitable for deterministic “write facts only when upstream checks passed”
   workflows (pair it with `depends_on` + `expect` on the upstream tasks).
 
@@ -599,7 +609,9 @@ Semantics:
 - Optional query-plan knobs:
   - `source_contains`: filter by evidence trail (e.g. `trace:<trace_id>...` injected by `memory_put` tasks)
   - `updated_since_utc` / `updated_until_utc`: bound by record `updated_utc` (ISO UTC strings)
-  - `order_by:"updated_desc"`: fetch most recently updated records first
+  - `observed_since_utc` / `observed_until_utc`: bound by record `observed_utc` (ISO UTC strings)
+  - `valid_from_since_utc` / `valid_from_until_utc`: bound by record `valid_from` (ISO UTC strings)
+  - `order_by`: `key_asc` (default), `updated_desc`, `observed_desc`, or `valid_from_desc`
 - The full host tool response is surfaced under the task result as `memory_structured_query_response` for deterministic `expect` assertions
   and JSON templating (`${task.Q.json:/memory_structured_query_response/data/results/0/record/value}` etc.).
 

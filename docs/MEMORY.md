@@ -175,19 +175,20 @@ The delimiter names are historical; the **payload schema** evolves. Current sche
 
 Each record keeps both:
 
-- **current** value (`kind`, `value`, `status`, `updated_utc`, `observed_utc`, `sources[]`)
+- **current** value (`kind`, `value`, `status`, `updated_utc`, `observed_utc`, optional `valid_from`, optional `supersedes[]`, `sources[]`)
 - **history** (`versions[]`) for superseded facts
 
 Deterministic semantics:
 
 - Same `kind/value/status` + same `source` → no-op (idempotent).
-- Same `kind/value/status` + new `source` → evidence-only update:
+- Same `kind/value/status/valid_from` + new `source` or `sources[]` → evidence-only update:
   - appends to `sources[]` (deduped)
-  - refreshes `observed_utc`
+  - refreshes `observed_utc` (or uses explicit `entries[].observed_utc`)
   - does **not** change `updated_utc` and does **not** add a new version.
-- Different `kind/value/status` → supersede:
+- Different `kind/value/status/valid_from` → supersede:
   - previous current is pushed into `versions[]` (newest-first) with `superseded_utc`
-  - current becomes the new value and its `sources[]` starts from the incoming source.
+  - current becomes the new value and its `sources[]` starts from the incoming `source`/`sources[]`
+  - current `supersedes[]` includes the previous version reference (`<key>@<updated_utc>`) plus any explicit `entries[].supersedes`.
 
 Bounds (to keep files small):
 

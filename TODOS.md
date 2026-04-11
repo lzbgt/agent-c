@@ -1031,8 +1031,8 @@ streaming and plugins are stable.
 - Durable workflows can now trigger deterministic rolling consolidation as a task:
   - Task kind: `kind: "memory_consolidate"` (scans `memory/YYYY-MM-DD.md` markers into `memory/STRUCTURED.md`)
   - Proof: `ctest` includes `agentd_workflow_memory_consolidate_smoke`.
-- Memory v2.2 (versioned facts + evidence): structured memory entries now keep bounded `sources[]` (evidence) and `versions[]` (superseded history) under schema `agent_memory_v2`.
-  - Proof: `ctest` includes `host_toolset_tests` assertions that validate schema upgrade + history retention.
+- Memory v2.2 (versioned facts + evidence): structured memory entries now keep bounded `sources[]` (evidence), explicit `observed_utc` / `valid_from` / `supersedes[]` metadata, and `versions[]` (superseded history) under schema `agent_memory_v2`.
+  - Proof: `ctest` includes `host_toolset_tests` assertions that validate schema upgrade, explicit metadata, multi-source evidence, and history retention.
 - Durable workflows now support deterministic memory updates (correctness-gated + correlated):
   - Task kind: `kind: "memory_put"` (structured upsert via host tool `memory_put(entries=[...])`)
   - Engine injects workflow correlation evidence into `entries[].source` when missing (`workflow:<id> task:<id> trace:<id> ...`).
@@ -1469,7 +1469,7 @@ Maintainability note (always-on):
    - Shipped: durable correlation relationship graph:
      - `GET /api/v1/memory/correlate?...` and deterministic workflow `kind:"memory_correlate"` now return `relationship_graph` linking memory items to `trace_id`, workflow/task/job IDs, and source excerpts.
      - Proof: `ctest` includes `memory_correlation_graph_tests`, `agentd_memory_correlate_smoke`, and `agentd_workflow_memory_correlate_smoke`.
-   - Current remaining: extend memory into all-layer time/size consolidation and versioned facts with explicit `supersedes` / `observed_utc` / `valid_from` metadata plus multi-source evidence arrays.
+   - Current remaining: extend memory into all-layer time/size consolidation across core/daily/session/structured layers; explicit versioned fact metadata and multi-source evidence are now shipped for structured memory.
 
 ### 1) AVM capsule execution v0 (shipped core; remaining interop extensions)
 
@@ -1553,8 +1553,8 @@ Deliverables:
   - optional periodic scheduler (`--memory-consolidate-interval-ms`) with a conservative default (disabled)
 - Rolling consolidation + correlation (next):
   - time/size based consolidation across **all** layers (core/daily/session/structured), not just daily markers
-  - versioned facts: `supersedes`, `observed_utc`/`valid_from`, and multi-source evidence arrays
-  - durable correlation graph is shipped for `memory_correlate`; next memory work is all-layer consolidation plus versioned facts with `supersedes` / `observed_utc` / `valid_from` and multi-source evidence arrays
+  - versioned facts with `supersedes`, `observed_utc`/`valid_from`, and multi-source evidence arrays are shipped for structured memory
+  - durable correlation graph is shipped for `memory_correlate`; next memory work is all-layer consolidation across core/daily/session/structured layers
 
 Proof:
 - `ctest` covers memory tools end-to-end (`test_host_toolset`), ensuring `memory_write`→`memory_search`→`memory_get` works.

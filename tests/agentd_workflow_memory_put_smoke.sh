@@ -53,7 +53,15 @@ tasks = [
     "memory_put": {
       "path": "STRUCTURED.md",
       "entries": [
-        {"key": "wf.test.alpha", "kind": "fact", "value": "${task.A.assistant_text}"}
+        {
+          "key": "wf.test.alpha",
+          "kind": "fact",
+          "value": "${task.A.assistant_text}",
+          "sources": ["workflow-smoke:manual-source"],
+          "observed_utc": "2026-04-02T03:04:05Z",
+          "valid_from": "2026-04-01T00:00:00Z",
+          "supersedes": ["legacy:wf.test.alpha"]
+        }
       ],
       "checkpoint": True,
       "keep_checkpoints": 5,
@@ -149,9 +157,22 @@ rec = items.get("wf.test.alpha") or {}
 if rec.get("value") != "alpha":
   print("expected wf.test.alpha value alpha, got", rec.get("value"), file=sys.stderr)
   raise SystemExit(1)
+if rec.get("observed_utc") != "2026-04-02T03:04:05Z":
+  print("expected explicit observed_utc", rec, file=sys.stderr)
+  raise SystemExit(1)
+if rec.get("valid_from") != "2026-04-01T00:00:00Z":
+  print("expected explicit valid_from", rec, file=sys.stderr)
+  raise SystemExit(1)
+supersedes = rec.get("supersedes") or []
+if "legacy:wf.test.alpha" not in supersedes:
+  print("expected explicit supersedes evidence", supersedes, file=sys.stderr)
+  raise SystemExit(1)
 sources = rec.get("sources") or []
 if not isinstance(sources, list) or not sources:
   print("expected non-empty sources", sources, file=sys.stderr)
+  raise SystemExit(1)
+if "workflow-smoke:manual-source" not in sources:
+  print("expected manual source array to survive submit sanitizer", sources, file=sys.stderr)
   raise SystemExit(1)
 needle = f" task:M trace:{trace_id}:M"
 ok = any(isinstance(s, str) and ("workflow:" in s) and needle in s for s in sources)

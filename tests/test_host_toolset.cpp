@@ -1250,6 +1250,11 @@ static void test_memory_tools() {
     e0["kind"] = "fact";
     e0["value"] = "Scene is server-owned and refresh-proof";
     e0["source"] = "test:s0";
+    e0["sources"] = Json::Value(Json::arrayValue);
+    e0["sources"].append("test:s0b");
+    e0["observed_utc"] = "2026-04-01T00:00:00Z";
+    e0["valid_from"] = "2026-03-01T00:00:00Z";
+    e0["supersedes"] = "legacy:ui.rendering";
     Json::Value e1(Json::objectValue);
     e1["key"] = "feature.a";
     e1["kind"] = "fact";
@@ -1282,6 +1287,12 @@ static void test_memory_tools() {
     e0["kind"] = "fact";
     e0["value"] = "Scene rendering must survive refresh + restart";
     e0["source"] = "test:s1";
+    e0["sources"] = Json::Value(Json::arrayValue);
+    e0["sources"].append("test:s1b");
+    e0["observed_utc"] = "2026-04-02T00:00:00Z";
+    e0["valid_from"] = "2026-03-02T00:00:00Z";
+    e0["supersedes"] = Json::Value(Json::arrayValue);
+    e0["supersedes"].append("manual:ui.rendering.v1");
     Json::Value entries(Json::arrayValue);
     entries.append(e0);
     Json::Value args(Json::objectValue);
@@ -1328,9 +1339,19 @@ static void test_memory_tools() {
     const auto& u = items["ui.rendering"];
     assert(u.isObject());
     assert(u["value"].asString().find("survive refresh + restart") != std::string::npos);
+    assert(u["observed_utc"].asString() == "2026-04-02T00:00:00Z");
+    assert(u["valid_from"].asString() == "2026-03-02T00:00:00Z");
+    assert(json_array_contains_string(u["sources"], "test:s1"));
+    assert(json_array_contains_string(u["sources"], "test:s1b"));
+    assert(u["supersedes"].isArray());
+    assert(json_array_contains_string(u["supersedes"], "manual:ui.rendering.v1"));
     assert(u["versions"].isArray());
     assert(u["versions"].size() >= 1);
     assert(u["versions"][0]["value"].asString().find("server-owned and refresh-proof") != std::string::npos);
+    assert(u["versions"][0]["observed_utc"].asString() == "2026-04-01T00:00:00Z");
+    assert(u["versions"][0]["valid_from"].asString() == "2026-03-01T00:00:00Z");
+    assert(json_array_contains_string(u["versions"][0]["supersedes"], "legacy:ui.rendering"));
+    assert(json_array_contains_string(u["versions"][0]["sources"], "test:s0b"));
     assert(u["sources"].isArray());
     assert(u["sources"].size() >= 1);
     agent_string_free(&out);
@@ -1379,12 +1400,44 @@ static void test_memory_tools() {
     assert(rows[0]["key"].asString() == "ui.rendering");
     const Json::Value& rec = rows[0]["record"];
     assert(rec["value"].asString() == "Scene rendering must survive refresh + restart");
+    assert(rec["valid_from"].asString() == "2026-03-02T00:00:00Z");
+    assert(rec["supersedes"].isArray());
+    assert(json_array_contains_string(rec["supersedes"], "manual:ui.rendering.v1"));
     assert(json_array_contains_string(rec["sources"], "test:s1"));
+    assert(json_array_contains_string(rec["sources"], "test:s1b"));
     assert(json_array_contains_string(rec["sources"], "test:s2"));
     assert(rec["versions"].isArray());
     assert(rec["versions"].size() >= 1);
     assert(rec["versions"][0]["value"].asString().find("server-owned and refresh-proof") != std::string::npos);
     assert(json_array_contains_string(rec["versions"][0]["sources"], "test:s0"));
+    assert(json_array_contains_string(rec["versions"][0]["sources"], "test:s0b"));
+    agent_string_free(&out);
+  }
+
+  // Structured query should filter and order by explicit observation/validity metadata.
+  {
+    Json::Value args(Json::objectValue);
+    args["path"] = "STRUCTURED.md";
+    args["key_prefix"] = "ui.";
+    args["observed_since_utc"] = "2026-04-02T00:00:00Z";
+    args["valid_from_since_utc"] = "2026-03-02T00:00:00Z";
+    args["include_sources"] = true;
+    args["include_versions"] = true;
+    args["order_by"] = "valid_from_desc";
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "memory_structured_query", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    assert(resp["data"]["matched"].asInt() == 1);
+    const Json::Value& rows = resp["data"]["results"];
+    assert(rows.isArray());
+    assert(rows.size() == 1);
+    assert(rows[0]["key"].asString() == "ui.rendering");
+    const Json::Value& rec = rows[0]["record"];
+    assert(rec["observed_utc"].isString());
+    assert(rec["observed_utc"].asString() >= "2026-04-02T00:00:00Z");
+    assert(rec["valid_from"].asString() == "2026-03-02T00:00:00Z");
     agent_string_free(&out);
   }
 

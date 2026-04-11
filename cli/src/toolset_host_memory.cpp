@@ -226,6 +226,18 @@ static std::string iso_utc_now() {
   return std::string(buf);
 }
 
+static bool is_iso_utc_string(const std::string& s) {
+  // Expected: YYYY-MM-DDTHH:MM:SSZ
+  if (s.empty()) return true;
+  if (s.size() != 20) return false;
+  if (s[4] != '-' || s[7] != '-' || s[10] != 'T' || s[13] != ':' || s[16] != ':' || s[19] != 'Z') return false;
+  for (size_t i = 0; i < s.size(); i++) {
+    if (i == 4 || i == 7 || i == 10 || i == 13 || i == 16 || i == 19) continue;
+    if (s[i] < '0' || s[i] > '9') return false;
+  }
+  return true;
+}
+
 static std::string local_date_ymd() {
   const auto now = std::chrono::system_clock::now();
   std::time_t t = std::chrono::system_clock::to_time_t(now);
@@ -345,6 +357,73 @@ static void json_array_append_unique_string_ci(Json::Value* arr, const std::stri
   while (max_items > 0 && (int)arr->size() > max_items) {
     arr->removeIndex(0, nullptr);
   }
+}
+
+static void json_array_append_unique_strings_ci(Json::Value* arr, const Json::Value& values, int max_items) {
+  if (!arr || !values.isArray()) return;
+  for (Json::ArrayIndex i = 0; i < values.size(); i++) {
+    if (!values[i].isString()) continue;
+    json_array_append_unique_string_ci(arr, values[i].asString(), max_items);
+  }
+}
+
+static bool collect_string_field_or_array(
+  const Json::Value& obj,
+  const char* field,
+  Json::Value* out_values,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (!out_values || !field || !obj.isObject() || !obj.isMember(field) || obj[field].isNull()) return true;
+  const Json::Value& v = obj[field];
+  if (v.isString()) {
+    const std::string s = trim_ascii(v.asString());
+    if (!s.empty()) out_values->append(s);
+    return true;
+  }
+  if (v.isArray()) {
+    for (Json::ArrayIndex i = 0; i < v.size(); i++) {
+      if (!v[i].isString()) {
+        if (out_err) *out_err = std::string(field) + " must contain only strings";
+        return false;
+      }
+      const std::string s = trim_ascii(v[i].asString());
+      if (!s.empty()) out_values->append(s);
+    }
+    return true;
+  }
+  if (out_err) *out_err = std::string(field) + " must be a string or array of strings";
+  return false;
+}
+
+static bool read_optional_iso_utc_field(
+  const Json::Value& obj,
+  const char* field,
+  std::string* out_value,
+  std::string* out_err
+) {
+  if (out_value) out_value->clear();
+  if (out_err) out_err->clear();
+  if (!field || !obj.isObject() || !obj.isMember(field) || obj[field].isNull()) return true;
+  if (!obj[field].isString()) {
+    if (out_err) *out_err = std::string(field) + " must be an ISO UTC string";
+    return false;
+  }
+  const std::string v = trim_ascii(obj[field].asString());
+  if (!is_iso_utc_string(v)) {
+    if (out_err) *out_err = std::string(field) + " must be ISO UTC like 2026-02-05T00:00:00Z";
+    return false;
+  }
+  if (out_value) *out_value = v;
+  return true;
+}
+
+static std::string structured_record_supersedes_ref(const std::string& key, const Json::Value& rec) {
+  const std::string updated =
+    rec.isObject() && rec.isMember("updated_utc") && rec["updated_utc"].isString()
+      ? trim_ascii(rec["updated_utc"].asString())
+      : "";
+  return key + "@" + (updated.empty() ? "previous" : updated);
 }
 
 static std::string markdown_escape_inline(const std::string& s) {
@@ -476,6 +555,13 @@ static bool parse_structured_memory_doc(const std::string& file_text, Json::Valu
     Json::Value& it = items[key];
     if (!it.isObject()) continue;
     if (!it.isMember("versions") || !it["versions"].isArray()) it["versions"] = Json::Value(Json::arrayValue);
+    if (it.isMember("supersedes") && !it["supersedes"].isArray()) {
+      Json::Value arr(Json::arrayValue);
+      if (it["supersedes"].isString() && !trim_ascii(it["supersedes"].asString()).empty()) {
+        arr.append(trim_ascii(it["supersedes"].asString()));
+      }
+      it["supersedes"] = arr;
+    }
     if (!it.isMember("sources") || !it["sources"].isArray()) {
       it["sources"] = Json::Value(Json::arrayValue);
       if (it.isMember("source") && it["source"].isString() && !trim_ascii(it["source"].asString()).empty()) {
@@ -486,6 +572,10 @@ static bool parse_structured_memory_doc(const std::string& file_text, Json::Valu
       if (it.isMember("updated_utc") && it["updated_utc"].isString()) it["observed_utc"] = it["updated_utc"];
       else it["observed_utc"] = iso_utc_now();
     }
+    if (!it.isMember("valid_from") && it.isMember("valid_from_utc") && it["valid_from_utc"].isString()) {
+      it["valid_from"] = it["valid_from_utc"];
+    }
+    if (it.isMember("valid_from_utc")) it.removeMember("valid_from_utc");
   }
 
   *out_doc = doc;
@@ -887,12 +977,36 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
       }
       const std::string status = e.isMember("status") && e["status"].isString() ? trim_ascii(e["status"].asString()) : "active";
       const std::string source = e.isMember("source") && e["source"].isString() ? trim_ascii(e["source"].asString()) : "";
+      Json::Value entry_sources(Json::arrayValue);
+      if (!source.empty()) json_array_append_unique_string_ci(&entry_sources, source, 20);
+      std::string field_err;
+      if (!collect_string_field_or_array(e, "sources", &entry_sources, &field_err)) {
+        return write_envelope(out_result, false, field_err, Json::Value(Json::objectValue));
+      }
+      Json::Value entry_supersedes(Json::arrayValue);
+      if (!collect_string_field_or_array(e, "supersedes", &entry_supersedes, &field_err)) {
+        return write_envelope(out_result, false, field_err, Json::Value(Json::objectValue));
+      }
+      std::string observed_utc;
+      if (!read_optional_iso_utc_field(e, "observed_utc", &observed_utc, &field_err)) {
+        return write_envelope(out_result, false, field_err, Json::Value(Json::objectValue));
+      }
+      std::string valid_from;
+      if (!read_optional_iso_utc_field(e, "valid_from", &valid_from, &field_err)) {
+        return write_envelope(out_result, false, field_err, Json::Value(Json::objectValue));
+      }
+      if (valid_from.empty()) {
+        if (!read_optional_iso_utc_field(e, "valid_from_utc", &valid_from, &field_err)) {
+          return write_envelope(out_result, false, field_err, Json::Value(Json::objectValue));
+        }
+      }
       if (key.empty() || value.empty()) continue;
       structured_entries_valid++;
 
       const std::string norm_kind = trim_ascii(kind).empty() ? "fact" : kind;
       const std::string norm_status = trim_ascii(status).empty() ? "active" : status;
       const std::string now_utc = iso_utc_now();
+      const std::string incoming_observed_utc = observed_utc.empty() ? now_utc : observed_utc;
 
       if (!items.isMember(key) || !items[key].isObject()) {
         Json::Value rec(Json::objectValue);
@@ -900,10 +1014,15 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
         rec["value"] = value;
         rec["status"] = norm_status;
         rec["updated_utc"] = now_utc;
-        rec["observed_utc"] = now_utc;
+        rec["observed_utc"] = incoming_observed_utc;
+        if (!valid_from.empty()) rec["valid_from"] = valid_from;
         rec["versions"] = Json::Value(Json::arrayValue);
         rec["sources"] = Json::Value(Json::arrayValue);
-        if (!source.empty()) json_array_append_unique_string_ci(&rec["sources"], source, 20);
+        json_array_append_unique_strings_ci(&rec["sources"], entry_sources, 20);
+        if (!entry_supersedes.empty()) {
+          rec["supersedes"] = Json::Value(Json::arrayValue);
+          json_array_append_unique_strings_ci(&rec["supersedes"], entry_supersedes, 20);
+        }
         items[key] = rec;
         structured_entries_changed++;
         continue;
@@ -912,6 +1031,13 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
       Json::Value& cur = items[key];
       if (!cur.isMember("versions") || !cur["versions"].isArray()) cur["versions"] = Json::Value(Json::arrayValue);
       if (!cur.isMember("sources") || !cur["sources"].isArray()) cur["sources"] = Json::Value(Json::arrayValue);
+      if (cur.isMember("supersedes") && !cur["supersedes"].isArray()) {
+        Json::Value arr(Json::arrayValue);
+        if (cur["supersedes"].isString() && !trim_ascii(cur["supersedes"].asString()).empty()) {
+          arr.append(trim_ascii(cur["supersedes"].asString()));
+        }
+        cur["supersedes"] = arr;
+      }
       if (!cur.isMember("observed_utc") || !cur["observed_utc"].isString()) {
         cur["observed_utc"] = cur.isMember("updated_utc") && cur["updated_utc"].isString() ? cur["updated_utc"] : now_utc;
       }
@@ -919,15 +1045,42 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
       const std::string cur_kind = cur.isMember("kind") && cur["kind"].isString() ? cur["kind"].asString() : "fact";
       const std::string cur_value = cur.isMember("value") && cur["value"].isString() ? cur["value"].asString() : "";
       const std::string cur_status = cur.isMember("status") && cur["status"].isString() ? cur["status"].asString() : "active";
+      const std::string cur_valid_from = cur.isMember("valid_from") && cur["valid_from"].isString() ? cur["valid_from"].asString() : "";
+      const std::string next_valid_from = valid_from.empty() ? cur_valid_from : valid_from;
 
-      const bool same_core = eq_ci_ascii(cur_kind, norm_kind) && cur_value == value && eq_ci_ascii(cur_status, norm_status);
-      const bool need_add_source = !source.empty() && !json_array_contains_string_ci(cur["sources"], source);
+      const bool same_core =
+        eq_ci_ascii(cur_kind, norm_kind) && cur_value == value && eq_ci_ascii(cur_status, norm_status) && cur_valid_from == next_valid_from;
+      bool need_add_source = false;
+      for (Json::ArrayIndex si = 0; si < entry_sources.size(); si++) {
+        if (!entry_sources[si].isString()) continue;
+        if (!json_array_contains_string_ci(cur["sources"], entry_sources[si].asString())) {
+          need_add_source = true;
+          break;
+        }
+      }
+      bool need_add_supersedes = false;
+      for (Json::ArrayIndex si = 0; si < entry_supersedes.size(); si++) {
+        if (!entry_supersedes[si].isString()) continue;
+        const Json::Value cur_sup = cur.isMember("supersedes") ? cur["supersedes"] : Json::Value(Json::arrayValue);
+        if (!json_array_contains_string_ci(cur_sup, entry_supersedes[si].asString())) {
+          need_add_supersedes = true;
+          break;
+        }
+      }
+      const bool need_update_observed =
+        !observed_utc.empty() && (!cur.isMember("observed_utc") || !cur["observed_utc"].isString() || cur["observed_utc"].asString() != observed_utc);
 
       if (same_core) {
-        if (!need_add_source) continue;
-        json_array_append_unique_string_ci(&cur["sources"], source, 20);
-        cur["observed_utc"] = now_utc;
-        structured_entries_evidence_added++;
+        if (!need_add_source && !need_add_supersedes && !need_update_observed) continue;
+        if (need_add_source) {
+          json_array_append_unique_strings_ci(&cur["sources"], entry_sources, 20);
+          structured_entries_evidence_added++;
+        }
+        if (need_add_supersedes) {
+          if (!cur.isMember("supersedes") || !cur["supersedes"].isArray()) cur["supersedes"] = Json::Value(Json::arrayValue);
+          json_array_append_unique_strings_ci(&cur["supersedes"], entry_supersedes, 20);
+        }
+        cur["observed_utc"] = incoming_observed_utc;
         structured_entries_changed++;
         continue;
       }
@@ -939,6 +1092,8 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
       prev["status"] = cur_status;
       if (cur.isMember("updated_utc")) prev["updated_utc"] = cur["updated_utc"];
       if (cur.isMember("observed_utc")) prev["observed_utc"] = cur["observed_utc"];
+      if (cur.isMember("valid_from")) prev["valid_from"] = cur["valid_from"];
+      if (cur.isMember("supersedes")) prev["supersedes"] = cur["supersedes"];
       if (cur.isMember("sources") && cur["sources"].isArray()) prev["sources"] = cur["sources"];
       prev["superseded_utc"] = now_utc;
 
@@ -950,9 +1105,15 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
       cur["value"] = value;
       cur["status"] = norm_status;
       cur["updated_utc"] = now_utc;
-      cur["observed_utc"] = now_utc;
+      cur["observed_utc"] = incoming_observed_utc;
+      if (!valid_from.empty()) cur["valid_from"] = valid_from;
+      else if (cur.isMember("valid_from")) cur.removeMember("valid_from");
       cur["sources"] = Json::Value(Json::arrayValue);
-      if (!source.empty()) json_array_append_unique_string_ci(&cur["sources"], source, 20);
+      json_array_append_unique_strings_ci(&cur["sources"], entry_sources, 20);
+      cur["supersedes"] = Json::Value(Json::arrayValue);
+      json_array_append_unique_string_ci(&cur["supersedes"], structured_record_supersedes_ref(key, prev), 20);
+      json_array_append_unique_strings_ci(&cur["supersedes"], entry_supersedes, 20);
+      if (cur["supersedes"].empty()) cur.removeMember("supersedes");
       structured_entries_superseded++;
       structured_entries_changed++;
     }
@@ -1540,6 +1701,14 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
     args.isMember("updated_since_utc") && args["updated_since_utc"].isString() ? trim_ascii(args["updated_since_utc"].asString()) : "";
   const std::string updated_until_utc =
     args.isMember("updated_until_utc") && args["updated_until_utc"].isString() ? trim_ascii(args["updated_until_utc"].asString()) : "";
+  const std::string observed_since_utc =
+    args.isMember("observed_since_utc") && args["observed_since_utc"].isString() ? trim_ascii(args["observed_since_utc"].asString()) : "";
+  const std::string observed_until_utc =
+    args.isMember("observed_until_utc") && args["observed_until_utc"].isString() ? trim_ascii(args["observed_until_utc"].asString()) : "";
+  const std::string valid_from_since_utc =
+    args.isMember("valid_from_since_utc") && args["valid_from_since_utc"].isString() ? trim_ascii(args["valid_from_since_utc"].asString()) : "";
+  const std::string valid_from_until_utc =
+    args.isMember("valid_from_until_utc") && args["valid_from_until_utc"].isString() ? trim_ascii(args["valid_from_until_utc"].asString()) : "";
   const std::string order_by =
     args.isMember("order_by") && args["order_by"].isString() ? to_lower_ascii(trim_ascii(args["order_by"].asString())) : "key_asc";
 
@@ -1583,28 +1752,35 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
     return write_envelope(out_result, false, "source_contains too long (max 300 chars)", Json::Value(Json::objectValue));
   }
 
-  auto is_iso_utc = [&](const std::string& s) -> bool {
-    // Expected: YYYY-MM-DDTHH:MM:SSZ
-    if (s.empty()) return true;
-    if (s.size() != 20) return false;
-    if (s[4] != '-' || s[7] != '-' || s[10] != 'T' || s[13] != ':' || s[16] != ':' || s[19] != 'Z') return false;
-    for (size_t i = 0; i < s.size(); i++) {
-      if (i == 4 || i == 7 || i == 10 || i == 13 || i == 16 || i == 19) continue;
-      if (s[i] < '0' || s[i] > '9') return false;
-    }
-    return true;
-  };
-  if (!is_iso_utc(updated_since_utc)) {
+  if (!is_iso_utc_string(updated_since_utc)) {
     return write_envelope(out_result, false, "updated_since_utc must be ISO UTC like 2026-02-05T00:00:00Z", Json::Value(Json::objectValue));
   }
-  if (!is_iso_utc(updated_until_utc)) {
+  if (!is_iso_utc_string(updated_until_utc)) {
     return write_envelope(out_result, false, "updated_until_utc must be ISO UTC like 2026-02-05T00:00:00Z", Json::Value(Json::objectValue));
   }
   if (!updated_since_utc.empty() && !updated_until_utc.empty() && updated_until_utc < updated_since_utc) {
     return write_envelope(out_result, false, "updated_until_utc must be >= updated_since_utc", Json::Value(Json::objectValue));
   }
-  if (order_by != "key_asc" && order_by != "updated_desc") {
-    return write_envelope(out_result, false, "order_by must be key_asc or updated_desc", Json::Value(Json::objectValue));
+  if (!is_iso_utc_string(observed_since_utc)) {
+    return write_envelope(out_result, false, "observed_since_utc must be ISO UTC like 2026-02-05T00:00:00Z", Json::Value(Json::objectValue));
+  }
+  if (!is_iso_utc_string(observed_until_utc)) {
+    return write_envelope(out_result, false, "observed_until_utc must be ISO UTC like 2026-02-05T00:00:00Z", Json::Value(Json::objectValue));
+  }
+  if (!observed_since_utc.empty() && !observed_until_utc.empty() && observed_until_utc < observed_since_utc) {
+    return write_envelope(out_result, false, "observed_until_utc must be >= observed_since_utc", Json::Value(Json::objectValue));
+  }
+  if (!is_iso_utc_string(valid_from_since_utc)) {
+    return write_envelope(out_result, false, "valid_from_since_utc must be ISO UTC like 2026-02-05T00:00:00Z", Json::Value(Json::objectValue));
+  }
+  if (!is_iso_utc_string(valid_from_until_utc)) {
+    return write_envelope(out_result, false, "valid_from_until_utc must be ISO UTC like 2026-02-05T00:00:00Z", Json::Value(Json::objectValue));
+  }
+  if (!valid_from_since_utc.empty() && !valid_from_until_utc.empty() && valid_from_until_utc < valid_from_since_utc) {
+    return write_envelope(out_result, false, "valid_from_until_utc must be >= valid_from_since_utc", Json::Value(Json::objectValue));
+  }
+  if (order_by != "key_asc" && order_by != "updated_desc" && order_by != "observed_desc" && order_by != "valid_from_desc") {
+    return write_envelope(out_result, false, "order_by must be key_asc, updated_desc, observed_desc, or valid_from_desc", Json::Value(Json::objectValue));
   }
 
   const std::filesystem::path mem_root = memory_root_from_ctx(ctx);
@@ -1685,6 +1861,8 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
     std::string key;
     Json::Value rec;
     std::string updated_utc;
+    std::string observed_utc;
+    std::string valid_from;
   };
   std::vector<Match> matches;
   matches.reserve(128);
@@ -1705,11 +1883,19 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
     const std::string upd = rec.isMember("updated_utc") && rec["updated_utc"].isString() ? rec["updated_utc"].asString() : "";
     if (!updated_since_utc.empty() && (upd.empty() || upd < updated_since_utc)) continue;
     if (!updated_until_utc.empty() && (upd.empty() || upd > updated_until_utc)) continue;
+    const std::string obs = rec.isMember("observed_utc") && rec["observed_utc"].isString() ? rec["observed_utc"].asString() : "";
+    if (!observed_since_utc.empty() && (obs.empty() || obs < observed_since_utc)) continue;
+    if (!observed_until_utc.empty() && (obs.empty() || obs > observed_until_utc)) continue;
+    const std::string vf = rec.isMember("valid_from") && rec["valid_from"].isString() ? rec["valid_from"].asString() : "";
+    if (!valid_from_since_utc.empty() && (vf.empty() || vf < valid_from_since_utc)) continue;
+    if (!valid_from_until_utc.empty() && (vf.empty() || vf > valid_from_until_utc)) continue;
 
     Match m;
     m.key = k;
     m.rec = rec;
     m.updated_utc = upd;
+    m.observed_utc = obs;
+    m.valid_from = vf;
     matches.push_back(std::move(m));
 
     if (!key_n.empty() && key_norm(k) == key_n) break;
@@ -1718,6 +1904,16 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
   if (order_by == "updated_desc") {
     std::sort(matches.begin(), matches.end(), [](const Match& a, const Match& b) {
       if (a.updated_utc != b.updated_utc) return a.updated_utc > b.updated_utc;
+      return a.key < b.key;
+    });
+  } else if (order_by == "observed_desc") {
+    std::sort(matches.begin(), matches.end(), [](const Match& a, const Match& b) {
+      if (a.observed_utc != b.observed_utc) return a.observed_utc > b.observed_utc;
+      return a.key < b.key;
+    });
+  } else if (order_by == "valid_from_desc") {
+    std::sort(matches.begin(), matches.end(), [](const Match& a, const Match& b) {
+      if (a.valid_from != b.valid_from) return a.valid_from > b.valid_from;
       return a.key < b.key;
     });
   } else {
@@ -1757,6 +1953,10 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
   q["source_case_insensitive"] = source_case_insensitive;
   if (!updated_since_utc.empty()) q["updated_since_utc"] = updated_since_utc;
   if (!updated_until_utc.empty()) q["updated_until_utc"] = updated_until_utc;
+  if (!observed_since_utc.empty()) q["observed_since_utc"] = observed_since_utc;
+  if (!observed_until_utc.empty()) q["observed_until_utc"] = observed_until_utc;
+  if (!valid_from_since_utc.empty()) q["valid_from_since_utc"] = valid_from_since_utc;
+  if (!valid_from_until_utc.empty()) q["valid_from_until_utc"] = valid_from_until_utc;
   q["order_by"] = order_by.empty() ? "key_asc" : order_by;
   q["status"] = status_filter;
   q["include_sources"] = include_sources;
