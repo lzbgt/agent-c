@@ -636,8 +636,9 @@
       Notes:
       - `cluster_id` is required.
       - The bundle carries `membership_epoch`, `member_node_ids`, immediate previous membership lineage,
-        `campaign_delay_ms`, `campaign_retry_ms`, `campaign_retry_max_ms`, `campaign_retry_backoff_factor`,
-        leader freshness policy, lease-expiry recovery delay, and stale runtime recovery grace.
+        bounded newest-first membership history, `campaign_delay_ms`, `campaign_retry_ms`,
+        `campaign_retry_max_ms`, `campaign_retry_backoff_factor`, leader freshness policy,
+        lease-expiry recovery delay, and stale runtime recovery grace.
       - When run-attestation signing keys are configured, the bundle includes an `attest` block.
     parameters:
       - in: query
@@ -2638,8 +2639,8 @@
       `membership_epoch` plus `member_node_ids` for explicit member-set compatibility.
       When those fields are omitted and a durable `/api/v1/edge/consensus/membership`
       policy exists for the cluster, the runtime defaults from that stored bundle, including
-      immediate previous membership lineage and `stale_runtime_recovery_grace_ms` for preserving recent stale
-      builtin records as terminal recovered snapshots.
+      immediate previous membership lineage, bounded membership history, and
+      `stale_runtime_recovery_grace_ms` for preserving recent stale builtin records as terminal recovered snapshots.
       If callers omit `trust_roots_epoch`, `revocations_epoch`, or
       `cert_roots_epoch`, the runtime now defaults those from the daemon's current
       `edge_auth_*_epoch` policy instead of falling back to zero.

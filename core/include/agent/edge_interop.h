@@ -157,6 +157,8 @@ int agent_edge_consensus_trust_epochs_match(
 );
 
 // Consensus membership validation helpers shared by firmware and agentd.
+#define AGENT_EDGE_CONSENSUS_MEMBERSHIP_LINEAGE_MAX 8
+
 int agent_edge_consensus_member_node_id_is_valid(const char* node_id, size_t node_id_len);
 
 int agent_edge_consensus_membership_epoch_can_advance(

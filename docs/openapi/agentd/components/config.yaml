@@ -1025,9 +1025,22 @@ EdgeConsensusMembershipAttest:
     sig: { type: string }
 
 
+EdgeConsensusMembershipLineageEntry:
+  type: object
+  required: [membership_epoch, member_node_ids]
+  properties:
+    membership_epoch:
+      type: integer
+      format: int64
+      description: Prior membership epoch represented by this bounded recovery lineage entry.
+    member_node_ids:
+      type: array
+      items: { type: string }
+
+
 EdgeConsensusMembershipBundle:
   type: object
-  required: [schema, created_utc_ms, cluster_id, membership_epoch, previous_membership_epoch, updated_utc_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, leader_heartbeat_ms, leader_lease_ms, lease_expiry_recampaign_delay_ms, stale_runtime_recovery_grace_ms, member_node_ids, previous_member_node_ids]
+  required: [schema, created_utc_ms, cluster_id, membership_epoch, previous_membership_epoch, updated_utc_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, leader_heartbeat_ms, leader_lease_ms, lease_expiry_recampaign_delay_ms, stale_runtime_recovery_grace_ms, member_node_ids, previous_member_node_ids, membership_lineage]
   properties:
     schema: { type: string, enum: [edge_consensus_membership_v1] }
     created_utc_ms: { type: integer, format: int64 }
@@ -1056,6 +1069,12 @@ EdgeConsensusMembershipBundle:
       type: array
       description: Immediate prior member set for partition/restart recovery; empty for the first policy epoch.
       items: { type: string }
+    membership_lineage:
+      type: array
+      description: Bounded newest-first prior membership history for long partition/restart recovery.
+      maxItems: 8
+      items:
+        $ref: "#/components/schemas/EdgeConsensusMembershipLineageEntry"
     attest:
       $ref: "#/components/schemas/EdgeConsensusMembershipAttest"
 

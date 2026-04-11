@@ -175,6 +175,22 @@ bool build_edge_consensus_membership_bundle(
     for (const auto& member : pol.previous_member_node_ids) arr.append(member);
     bundle["previous_member_node_ids"] = arr;
   }
+  {
+    Json::Value lineage(Json::arrayValue);
+    size_t lineage_count = 0;
+    for (const auto& entry : pol.membership_lineage) {
+      if (entry.membership_epoch <= 0 || entry.member_node_ids.empty()) continue;
+      Json::Value item(Json::objectValue);
+      item["membership_epoch"] = (Json::Int64)entry.membership_epoch;
+      Json::Value members(Json::arrayValue);
+      for (const auto& member : entry.member_node_ids) members.append(member);
+      item["member_node_ids"] = members;
+      lineage.append(item);
+      lineage_count++;
+      if (lineage_count >= AGENT_EDGE_CONSENSUS_MEMBERSHIP_LINEAGE_MAX) break;
+    }
+    bundle["membership_lineage"] = lineage;
+  }
 
   const bool hmac_kid_set = !cfg.run_attest_hmac_kid.empty();
   const bool hmac_key_set = !cfg.run_attest_hmac_key.empty();

@@ -129,8 +129,9 @@ The shipped autonomous host-loop proof adds:
   ports and agentd accept member identities and cluster-policy epochs consistently
 - portable `agent_core` SHA-256 token and trust-epoch-match checks reused by daemon runtime parsing/persistence and the
   reusable node loop, keeping digest and trust recovery acceptance aligned with future firmware-native ports
-- durable membership bundles now carry immediate previous membership epoch/member-set lineage, so partitioned or
-  restarting nodes can verify the policy transition they just missed instead of only seeing the current epoch
+- durable membership bundles now carry immediate previous membership epoch/member-set lineage plus a bounded newest-first
+  `membership_lineage` history, so partitioned or restarting nodes can verify the policy transitions they missed instead
+  of only seeing the current epoch
 - portable `agent_core` membership-lineage validation is now reused by daemon runtime-config load, so firmware-native
   ports and agentd agree that previous policy lineage is either zero/unknown or strictly older than the current epoch
 

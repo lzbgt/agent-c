@@ -125,6 +125,8 @@ schemas:
     $ref: ./components/config.yaml#/EdgeAuthRevocationsUpdateResponse
   EdgeConsensusMembershipAttest:
     $ref: ./components/config.yaml#/EdgeConsensusMembershipAttest
+  EdgeConsensusMembershipLineageEntry:
+    $ref: ./components/config.yaml#/EdgeConsensusMembershipLineageEntry
   EdgeConsensusMembershipBundle:
     $ref: ./components/config.yaml#/EdgeConsensusMembershipBundle
   EdgeConsensusMembershipResponse:
@@ -219,6 +221,8 @@ schemas:
     $ref: ./components/edge.yaml#/EdgeNodeConsensusStatus
   EdgeConsensusClusterPolicy:
     $ref: ./components/edge.yaml#/EdgeConsensusClusterPolicy
+  EdgeConsensusClusterPolicyLineageEntry:
+    $ref: ./components/edge.yaml#/EdgeConsensusClusterPolicyLineageEntry
   EdgeTrustEpochs:
     $ref: ./components/edge.yaml#/EdgeTrustEpochs
   EdgeNodeConsensusRuntime:

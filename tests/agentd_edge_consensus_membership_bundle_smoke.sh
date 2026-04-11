@@ -192,6 +192,11 @@ CONFIG_JSON="$(curl_json POST "/api/v1/config/update" "$(cat <<JSON
 JSON
 )")"
 
+ROTATE_SEED_17_JSON="$(curl_json POST "/api/v1/edge/consensus/membership/rotate" "$(cat <<JSON
+{"cluster_id":"${CLUSTER_ID}","mode":"replace","membership_epoch":17,"member_node_ids":["${NODE_A}"],"campaign_delay_ms":80,"campaign_retry_ms":200,"campaign_retry_max_ms":600,"campaign_retry_backoff_factor":2,"leader_heartbeat_ms":210,"leader_lease_ms":900,"lease_expiry_recampaign_delay_ms":300}
+JSON
+)")"
+
 ROTATE_SEED_JSON="$(curl_json POST "/api/v1/edge/consensus/membership/rotate" "$(cat <<JSON
 {"cluster_id":"${CLUSTER_ID}","mode":"replace","membership_epoch":18,"member_node_ids":["${NODE_A}","${NODE_B}"],"campaign_delay_ms":90,"campaign_retry_ms":250,"campaign_retry_max_ms":750,"campaign_retry_backoff_factor":2,"leader_heartbeat_ms":220,"leader_lease_ms":1000,"lease_expiry_recampaign_delay_ms":350}
 JSON
@@ -247,8 +252,10 @@ import json, sys
 cluster_id = "${CLUSTER_ID}"
 members = sorted(["${NODE_A}", "${NODE_B}", "${NODE_C}"])
 previous_members = sorted(["${NODE_A}", "${NODE_B}"])
+older_members = sorted(["${NODE_A}"])
 decision_sha = "${DECISION_SHA}"
 
+rotate_seed_17 = json.loads(r'''${ROTATE_SEED_17_JSON}''')
 rotate_seed = json.loads(r'''${ROTATE_SEED_JSON}''')
 rotate = json.loads(r'''${ROTATE_JSON}''')
 get_obj = json.loads(r'''${GET_JSON}''')
@@ -268,7 +275,7 @@ if not config_obj.get("ok"):
     print("config", config_obj, file=sys.stderr)
     raise SystemExit(1)
 
-for label, obj in (("rotate_seed", rotate_seed), ("rotate", rotate), ("get", get_obj), ("send", send_obj), ("start_a", start_a), ("start_b", start_b), ("start_c", start_c)):
+for label, obj in (("rotate_seed_17", rotate_seed_17), ("rotate_seed", rotate_seed), ("rotate", rotate), ("get", get_obj), ("send", send_obj), ("start_a", start_a), ("start_b", start_b), ("start_c", start_c)):
     if not obj.get("ok"):
         print(label, obj, file=sys.stderr)
         raise SystemExit(1)
@@ -288,6 +295,13 @@ if sorted(bundle.get("member_node_ids") or []) != members:
     raise SystemExit(1)
 if bundle.get("previous_membership_epoch") != 18 or sorted(bundle.get("previous_member_node_ids") or []) != previous_members:
     print("wrong membership lineage", bundle, file=sys.stderr)
+    raise SystemExit(1)
+lineage = bundle.get("membership_lineage") or []
+if len(lineage) < 2 or lineage[0].get("membership_epoch") != 18 or sorted(lineage[0].get("member_node_ids") or []) != previous_members:
+    print("wrong immediate membership lineage history", bundle, file=sys.stderr)
+    raise SystemExit(1)
+if lineage[1].get("membership_epoch") != 17 or sorted(lineage[1].get("member_node_ids") or []) != older_members:
+    print("wrong older membership lineage history", bundle, file=sys.stderr)
     raise SystemExit(1)
 if bundle.get("campaign_delay_ms") != 120:
     print("wrong campaign delay", bundle, file=sys.stderr)
@@ -327,6 +341,10 @@ if delivered.get("cluster_id") != cluster_id or delivered.get("membership_epoch"
     raise SystemExit(1)
 if delivered.get("previous_membership_epoch") != 18 or sorted(delivered.get("previous_member_node_ids") or []) != previous_members:
     print("wrong delivered membership lineage", delivered, file=sys.stderr)
+    raise SystemExit(1)
+delivered_lineage = delivered.get("membership_lineage") or []
+if len(delivered_lineage) < 2 or delivered_lineage[0].get("membership_epoch") != 18 or delivered_lineage[1].get("membership_epoch") != 17:
+    print("wrong delivered membership lineage history", delivered, file=sys.stderr)
     raise SystemExit(1)
 if delivered.get("campaign_retry_ms") != 300 or delivered.get("campaign_retry_max_ms") != 900:
     print("wrong delivered retry bounds", delivered, file=sys.stderr)
@@ -434,6 +452,10 @@ if sorted(status_policy.get("member_node_ids") or []) != members:
     raise SystemExit(1)
 if status_policy.get("previous_membership_epoch") != 18 or sorted(status_policy.get("previous_member_node_ids") or []) != previous_members:
     print("runtime status cluster policy lineage mismatch", status_policy, file=sys.stderr)
+    raise SystemExit(1)
+status_lineage = status_policy.get("membership_lineage") or []
+if len(status_lineage) < 2 or status_lineage[0].get("membership_epoch") != 18 or status_lineage[1].get("membership_epoch") != 17:
+    print("runtime status cluster policy lineage history mismatch", status_policy, file=sys.stderr)
     raise SystemExit(1)
 if status_policy.get("campaign_retry_ms") != 300 or status_policy.get("campaign_retry_max_ms") != 900:
     print("runtime status missing retry bounds in cluster policy", status_policy, file=sys.stderr)

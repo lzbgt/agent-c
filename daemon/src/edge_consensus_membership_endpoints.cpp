@@ -13,6 +13,7 @@
 #include "agent/edge_interop.h"
 
 #include <algorithm>
+#include <utility>
 #include <vector>
 
 namespace agentd {
@@ -28,6 +29,44 @@ static bool string_vec_contains(const std::vector<std::string>& haystack, const 
 
 static bool consensus_member_node_id_is_valid(const std::string& node_id) {
   return agent_edge_consensus_member_node_id_is_valid(node_id.data(), node_id.size()) == 1;
+}
+
+static bool lineage_contains_epoch(
+  const std::vector<EdgeConsensusMembershipLineageEntry>& lineage,
+  int64_t membership_epoch
+) {
+  for (const auto& entry : lineage) {
+    if (entry.membership_epoch == membership_epoch) return true;
+  }
+  return false;
+}
+
+static std::vector<EdgeConsensusMembershipLineageEntry> build_membership_lineage(
+  const EdgeConsensusClusterPolicy* current_policy,
+  int64_t current_epoch,
+  const std::vector<std::string>& current_members
+) {
+  std::vector<EdgeConsensusMembershipLineageEntry> lineage;
+  if (current_epoch > 0 && !current_members.empty()) {
+    EdgeConsensusMembershipLineageEntry entry;
+    entry.membership_epoch = current_epoch;
+    entry.member_node_ids = current_members;
+    lineage.push_back(std::move(entry));
+  }
+  if (current_policy) {
+    for (const auto& prior : current_policy->membership_lineage) {
+      if (prior.membership_epoch <= 0 || prior.member_node_ids.empty()) continue;
+      if (prior.membership_epoch >= current_epoch) continue;
+      if (lineage_contains_epoch(lineage, prior.membership_epoch)) continue;
+      EdgeConsensusMembershipLineageEntry entry;
+      entry.membership_epoch = prior.membership_epoch;
+      entry.member_node_ids = edge_consensus_normalize_member_node_ids(prior.member_node_ids);
+      if (entry.member_node_ids.empty()) continue;
+      lineage.push_back(std::move(entry));
+      if (lineage.size() >= AGENT_EDGE_CONSENSUS_MEMBERSHIP_LINEAGE_MAX) break;
+    }
+  }
+  return lineage;
 }
 
 static bool parse_json_integer_field(
@@ -228,6 +267,10 @@ void handle_edge_consensus_membership_rotate_endpoint(
   next_pol.membership_epoch = new_epoch;
   next_pol.previous_membership_epoch = std::max<int64_t>(0, cur_epoch);
   next_pol.previous_member_node_ids = previous_members;
+  next_pol.membership_lineage = build_membership_lineage(
+    cur_it == cur.edge_consensus_clusters.end() ? nullptr : &cur_it->second,
+    cur_epoch,
+    previous_members);
   next_pol.updated_utc_ms = edge_unix_ms_now();
   if (!parse_json_integer_field(args, "campaign_delay_ms", &next_pol.campaign_delay_ms, resp)) return;
   if (!parse_json_integer_field(args, "campaign_retry_ms", &next_pol.campaign_retry_ms, resp)) return;

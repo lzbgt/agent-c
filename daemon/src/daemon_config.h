@@ -9,12 +9,18 @@
 
 namespace agentd {
 
+struct EdgeConsensusMembershipLineageEntry {
+  int64_t membership_epoch = 0;
+  std::vector<std::string> member_node_ids;
+};
+
 struct EdgeConsensusClusterPolicy {
   int64_t membership_epoch = 0;
   int64_t previous_membership_epoch = 0;
   int64_t updated_utc_ms = 0;
   std::vector<std::string> member_node_ids;
   std::vector<std::string> previous_member_node_ids;
+  std::vector<EdgeConsensusMembershipLineageEntry> membership_lineage;
   int64_t campaign_delay_ms = 0;
   int64_t campaign_retry_ms = 1500;
   int64_t campaign_retry_max_ms = 1500;

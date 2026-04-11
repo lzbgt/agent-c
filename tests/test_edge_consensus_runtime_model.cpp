@@ -29,6 +29,8 @@ static DaemonConfig make_cfg() {
   pol.previous_membership_epoch = 6;
   pol.member_node_ids = {"node-b", "node-a", "node-a"};
   pol.previous_member_node_ids = {"node-b", "node-c"};
+  pol.membership_lineage.push_back({6, {"node-b", "node-c"}});
+  pol.membership_lineage.push_back({5, {"node-b"}});
   pol.campaign_retry_ms = 1500;
   pol.campaign_retry_max_ms = 2500;
   pol.campaign_retry_backoff_factor = 2;
@@ -166,6 +168,9 @@ static void test_response_json_surfaces_cluster_and_trust_drift() {
   assert(out["cluster_policy_drift"]["current_policy"]["previous_member_node_ids"].size() == 2);
   assert(out["cluster_policy_drift"]["current_policy"]["previous_member_node_ids"][0].asString() == "node-b");
   assert(out["cluster_policy_drift"]["current_policy"]["previous_member_node_ids"][1].asString() == "node-c");
+  assert(out["cluster_policy_drift"]["current_policy"]["membership_lineage"].size() == 2);
+  assert(out["cluster_policy_drift"]["current_policy"]["membership_lineage"][0]["membership_epoch"].asInt64() == 6);
+  assert(out["cluster_policy_drift"]["current_policy"]["membership_lineage"][1]["membership_epoch"].asInt64() == 5);
 
   const Json::Value changed = out["cluster_policy_drift"]["changed_fields"];
   assert(changed.isArray());

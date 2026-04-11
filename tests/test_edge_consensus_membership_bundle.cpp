@@ -26,6 +26,8 @@ static agentd::DaemonConfig make_config() {
   pol.updated_utc_ms = 123456;
   pol.member_node_ids = {"node-a", "node-b"};
   pol.previous_member_node_ids = {"node-a", "node-c"};
+  pol.membership_lineage.push_back({6, {"node-a", "node-c"}});
+  pol.membership_lineage.push_back({5, {"node-a"}});
   pol.campaign_delay_ms = 10;
   pol.campaign_retry_ms = 20;
   pol.campaign_retry_max_ms = 30;
@@ -63,6 +65,11 @@ static void test_membership_bundle_fields() {
   assert(bundle["previous_member_node_ids"].size() == 2);
   assert(bundle["previous_member_node_ids"][0].asString() == "node-a");
   assert(bundle["previous_member_node_ids"][1].asString() == "node-c");
+  assert(bundle["membership_lineage"].size() == 2);
+  assert(bundle["membership_lineage"][0]["membership_epoch"].asInt64() == 6);
+  assert(bundle["membership_lineage"][0]["member_node_ids"].size() == 2);
+  assert(bundle["membership_lineage"][1]["membership_epoch"].asInt64() == 5);
+  assert(bundle["membership_lineage"][1]["member_node_ids"].size() == 1);
   assert(!bundle.isMember("attest"));
 }
 

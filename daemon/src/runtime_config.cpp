@@ -9,8 +9,10 @@
 
 #include <json/json.h>
 
+#include <algorithm>
 #include <map>
 #include <sstream>
+#include <utility>
 
 namespace agentd {
 namespace {
@@ -664,6 +666,38 @@ bool load_runtime_config_best_effort(
               if (is_safe_consensus_member_node_id(s)) pol.previous_member_node_ids.push_back(s);
             }
           }
+          if (row.isMember("membership_lineage") && row["membership_lineage"].isArray()) {
+            for (const auto& item : row["membership_lineage"]) {
+              if (!item.isObject()) continue;
+              EdgeConsensusMembershipLineageEntry entry;
+              if (item.isMember("membership_epoch") &&
+                  (item["membership_epoch"].isInt64() || item["membership_epoch"].isUInt64())) {
+                entry.membership_epoch = item["membership_epoch"].isInt64()
+                  ? item["membership_epoch"].asInt64()
+                  : (int64_t)item["membership_epoch"].asUInt64();
+              }
+              if (entry.membership_epoch <= 0 ||
+                  agent_edge_consensus_membership_lineage_is_valid(
+                    (uint64_t)entry.membership_epoch,
+                    (uint64_t)std::max<int64_t>(0, pol.membership_epoch)) != 1) {
+                continue;
+              }
+              if (item.isMember("member_node_ids") && item["member_node_ids"].isArray()) {
+                for (const auto& member_item : item["member_node_ids"]) {
+                  if (!member_item.isString()) continue;
+                  const std::string s = trim_copy(member_item.asString());
+                  if (is_safe_consensus_member_node_id(s) &&
+                      std::find(entry.member_node_ids.begin(), entry.member_node_ids.end(), s) ==
+                        entry.member_node_ids.end()) {
+                    entry.member_node_ids.push_back(s);
+                  }
+                }
+              }
+              if (entry.member_node_ids.empty()) continue;
+              pol.membership_lineage.push_back(std::move(entry));
+              if (pol.membership_lineage.size() >= AGENT_EDGE_CONSENSUS_MEMBERSHIP_LINEAGE_MAX) break;
+            }
+          }
           if (pol.membership_epoch < 0) pol.membership_epoch = 0;
           if (pol.previous_membership_epoch < 0) pol.previous_membership_epoch = 0;
           if (agent_edge_consensus_membership_lineage_is_valid(
@@ -671,6 +705,14 @@ bool load_runtime_config_best_effort(
                 (uint64_t)pol.membership_epoch) != 1) {
             pol.previous_membership_epoch = 0;
             pol.previous_member_node_ids.clear();
+          }
+          if (pol.membership_lineage.empty() &&
+              pol.previous_membership_epoch > 0 &&
+              !pol.previous_member_node_ids.empty()) {
+            EdgeConsensusMembershipLineageEntry entry;
+            entry.membership_epoch = pol.previous_membership_epoch;
+            entry.member_node_ids = pol.previous_member_node_ids;
+            pol.membership_lineage.push_back(std::move(entry));
           }
           if (pol.updated_utc_ms < 0) pol.updated_utc_ms = 0;
           edge_consensus_normalize_policy_timing(&pol);
@@ -997,6 +1039,20 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
         if (!member.empty()) previous_members.append(member);
       }
       row["previous_member_node_ids"] = previous_members;
+      Json::Value lineage(Json::arrayValue);
+      size_t lineage_count = 0;
+      for (const auto& entry : it.second.membership_lineage) {
+        if (entry.membership_epoch <= 0 || entry.member_node_ids.empty()) continue;
+        Json::Value item(Json::objectValue);
+        item["membership_epoch"] = (Json::Int64)entry.membership_epoch;
+        Json::Value lineage_members(Json::arrayValue);
+        for (const auto& member : entry.member_node_ids) if (!member.empty()) lineage_members.append(member);
+        item["member_node_ids"] = lineage_members;
+        lineage.append(item);
+        lineage_count++;
+        if (lineage_count >= AGENT_EDGE_CONSENSUS_MEMBERSHIP_LINEAGE_MAX) break;
+      }
+      row["membership_lineage"] = lineage;
       clusters[it.first] = row;
     }
     if (!clusters.empty()) v["edge_consensus_clusters"] = clusters;

@@ -1249,8 +1249,9 @@ export interface paths {
          *     Notes:
          *     - `cluster_id` is required.
          *     - The bundle carries `membership_epoch`, `member_node_ids`, immediate previous membership lineage,
-         *       `campaign_delay_ms`, `campaign_retry_ms`, `campaign_retry_max_ms`, `campaign_retry_backoff_factor`,
-         *       leader freshness policy, lease-expiry recovery delay, and stale runtime recovery grace.
+         *       bounded newest-first membership history, `campaign_delay_ms`, `campaign_retry_ms`,
+         *       `campaign_retry_max_ms`, `campaign_retry_backoff_factor`, leader freshness policy,
+         *       lease-expiry recovery delay, and stale runtime recovery grace.
          *     - When run-attestation signing keys are configured, the bundle includes an `attest` block.
          */
         get: {
@@ -4388,8 +4389,8 @@ export interface paths {
          *     `membership_epoch` plus `member_node_ids` for explicit member-set compatibility.
          *     When those fields are omitted and a durable `/api/v1/edge/consensus/membership`
          *     policy exists for the cluster, the runtime defaults from that stored bundle, including
-         *     immediate previous membership lineage and `stale_runtime_recovery_grace_ms` for preserving recent stale
-         *     builtin records as terminal recovered snapshots.
+         *     immediate previous membership lineage, bounded membership history, and
+         *     `stale_runtime_recovery_grace_ms` for preserving recent stale builtin records as terminal recovered snapshots.
          *     If callers omit `trust_roots_epoch`, `revocations_epoch`, or
          *     `cert_roots_epoch`, the runtime now defaults those from the daemon's current
          *     `edge_auth_*_epoch` policy instead of falling back to zero.
@@ -7445,6 +7446,14 @@ export interface components {
             pubkey?: string;
             sig: string;
         };
+        EdgeConsensusMembershipLineageEntry: {
+            /**
+             * Format: int64
+             * @description Prior membership epoch represented by this bounded recovery lineage entry.
+             */
+            membership_epoch: number;
+            member_node_ids: string[];
+        };
         EdgeConsensusMembershipBundle: {
             /** @enum {string} */
             schema: "edge_consensus_membership_v1";
@@ -7482,6 +7491,8 @@ export interface components {
             member_node_ids: string[];
             /** @description Immediate prior member set for partition/restart recovery; empty for the first policy epoch. */
             previous_member_node_ids: string[];
+            /** @description Bounded newest-first prior membership history for long partition/restart recovery. */
+            membership_lineage: components["schemas"]["EdgeConsensusMembershipLineageEntry"][];
             attest?: components["schemas"]["EdgeConsensusMembershipAttest"];
         };
         EdgeConsensusMembershipResponse: {
@@ -8745,6 +8756,16 @@ export interface components {
             member_node_ids: string[];
             /** @description Immediate prior member set for partition/restart recovery; empty for the first policy epoch. */
             previous_member_node_ids: string[];
+            /** @description Bounded newest-first prior membership history for long partition/restart recovery. */
+            membership_lineage: components["schemas"]["EdgeConsensusClusterPolicyLineageEntry"][];
+        };
+        EdgeConsensusClusterPolicyLineageEntry: {
+            /**
+             * Format: int64
+             * @description Prior membership epoch represented by this bounded recovery lineage entry.
+             */
+            membership_epoch: number;
+            member_node_ids: string[];
         };
         EdgeTrustEpochs: {
             /** Format: int64 */

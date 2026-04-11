@@ -104,6 +104,7 @@ static void test_consensus_constants_and_quorum(void) {
   assert(strcmp(
            AGENT_EDGE_CONSENSUS_MEMBERSHIP_ATTEST_SCHEMA_V1,
            "edge_consensus_membership_attest_v1") == 0);
+  assert(AGENT_EDGE_CONSENSUS_MEMBERSHIP_LINEAGE_MAX == 8);
   assert(strcmp(AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST, "vote_request") == 0);
   assert(strcmp(AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT, "vote_grant") == 0);
   assert(strcmp(AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT, "leader_commit") == 0);

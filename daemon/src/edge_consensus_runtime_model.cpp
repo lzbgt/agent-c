@@ -96,6 +96,20 @@ Json::Value edge_consensus_cluster_policy_to_json(
   Json::Value previous_members(Json::arrayValue);
   for (const auto& member : pol.previous_member_node_ids) previous_members.append(member);
   out["previous_member_node_ids"] = previous_members;
+  Json::Value lineage(Json::arrayValue);
+  size_t lineage_count = 0;
+  for (const auto& entry : pol.membership_lineage) {
+    if (entry.membership_epoch <= 0 || entry.member_node_ids.empty()) continue;
+    Json::Value item(Json::objectValue);
+    item["membership_epoch"] = (Json::Int64)entry.membership_epoch;
+    Json::Value members_at_epoch(Json::arrayValue);
+    for (const auto& member : entry.member_node_ids) members_at_epoch.append(member);
+    item["member_node_ids"] = members_at_epoch;
+    lineage.append(item);
+    lineage_count++;
+    if (lineage_count >= AGENT_EDGE_CONSENSUS_MEMBERSHIP_LINEAGE_MAX) break;
+  }
+  out["membership_lineage"] = lineage;
   return out;
 }
 
