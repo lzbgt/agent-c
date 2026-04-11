@@ -206,6 +206,8 @@ The shipped autonomous host-loop proof adds:
   reuse portable node-id matching, keeping durable policy surfaces aligned before firmware-native policy adoption
 - same-term vote-request regrant checks now also reuse portable node-id matching, so future firmware-native replicas do
   not fork a raw equality path when deciding whether a node can revote for the same candidate
+- stale builtin runtime recovery is now member-set-aware across current, previous, and lineage epochs, so a daemon restart
+  preserves old runtime evidence only when the runtime node was a member of the matching policy epoch
 
 ## Still open
 

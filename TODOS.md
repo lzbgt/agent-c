@@ -774,6 +774,7 @@ streaming and plugins are stable.
   - 2026-04-11: reused portable node-id equality in consensus runtime config/store member-list de-duplication and default peer derivation, keeping durable runtime member-set shaping aligned with the node loop before firmware-native adoption.
   - 2026-04-11: reused portable node-id equality in membership bundle normalization, membership rotation merge handling, and runtime-config membership lineage parsing, keeping durable policy member-set shaping aligned before firmware-native policy adoption.
   - 2026-04-11: reused portable node-id equality inside the same-term vote-request regrant predicate, so future firmware-native replicas do not fork a raw byte-equality path when checking whether a node can revote for the same candidate.
+  - 2026-04-11: stale builtin consensus runtime recovery now requires the runtime node to belong to the matching current, previous, or lineage member set before preserving old evidence after daemon restart.
   - 2026-03-20: extracted the voice peer broker-session/launch/startup/cleanup orchestration into a shared launch-flow module with direct unit proof, refactored the bundled/external child backend onto it, and extended `builtin_start_contract` with the same staged `startup_sequence` so future native work targets a real shared seam instead of child-only logic.
 
 ## Deferred (after macOS stability)

@@ -534,6 +534,11 @@ static void test_consensus_constants_and_quorum(void) {
   assert(agent_edge_consensus_membership_epoch_is_recoverable(17, 19, 18, lineage, 2) == 1);
   assert(agent_edge_consensus_membership_epoch_is_recoverable(16, 19, 18, lineage, 2) == 0);
   assert(agent_edge_consensus_membership_epoch_is_recoverable(16, 0, 0, NULL, 0) == 1);
+  assert(agent_edge_consensus_membership_epoch_member_set_can_recover(0, 19, 0) == 1);
+  assert(agent_edge_consensus_membership_epoch_member_set_can_recover(19, 0, 0) == 1);
+  assert(agent_edge_consensus_membership_epoch_member_set_can_recover(19, 19, 1) == 1);
+  assert(agent_edge_consensus_membership_epoch_member_set_can_recover(19, 19, 0) == 0);
+  assert(agent_edge_consensus_membership_epoch_member_set_can_recover(18, 19, 1) == 0);
 }
 
 static void test_consensus_policy_timing_normalize(void) {

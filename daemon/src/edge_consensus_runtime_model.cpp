@@ -67,6 +67,18 @@ static std::vector<std::string> dedupe_consensus_member_node_ids_model(const std
   return out;
 }
 
+static bool consensus_member_node_id_vec_contains_model(
+  const std::vector<std::string>& member_node_ids,
+  const std::string& node_id
+) {
+  const std::string node = trim_copy(node_id);
+  if (!consensus_member_node_id_is_valid_model(node)) return false;
+  for (const auto& member : member_node_ids) {
+    if (consensus_node_id_matches_model(member, node)) return true;
+  }
+  return false;
+}
+
 static uint64_t safe_config_epoch_u64_model(int64_t v) {
   return v <= 0 ? 0 : (uint64_t)v;
 }
@@ -302,6 +314,7 @@ bool edge_consensus_runtime_membership_epoch_recoverable(
 ) {
   Json::Value policy(Json::objectValue);
   policy["runtime_membership_epoch"] = Json::UInt64(st.membership_epoch);
+  policy["runtime_node_id"] = st.node_id;
   policy["recoverable"] = true;
 
   const auto pol_it = cfg.edge_consensus_clusters.find(st.cluster_id);
@@ -314,22 +327,10 @@ bool edge_consensus_runtime_membership_epoch_recoverable(
   const EdgeConsensusClusterPolicy& pol = pol_it->second;
   const uint64_t current_epoch = safe_config_epoch_u64_model(pol.membership_epoch);
   const uint64_t previous_epoch = safe_config_epoch_u64_model(pol.previous_membership_epoch);
-  std::vector<uint64_t> lineage_epochs;
-  lineage_epochs.reserve(pol.membership_lineage.size());
-  for (const auto& entry : pol.membership_lineage) {
-    lineage_epochs.push_back(safe_config_epoch_u64_model(entry.membership_epoch));
-  }
-  const bool recoverable = agent_edge_consensus_membership_epoch_is_recoverable(
-    st.membership_epoch,
-    current_epoch,
-    previous_epoch,
-    lineage_epochs.empty() ? nullptr : lineage_epochs.data(),
-    lineage_epochs.size()) != 0;
   policy["policy_found"] = true;
   policy["current_membership_epoch"] = Json::UInt64(current_epoch);
   policy["previous_membership_epoch"] = Json::UInt64(previous_epoch);
   policy["lineage_depth"] = Json::UInt64(pol.membership_lineage.size());
-  policy["recoverable"] = recoverable;
 
   if (st.membership_epoch == 0) {
     policy["reason"] = "runtime_epoch_unknown";
@@ -342,28 +343,64 @@ bool edge_consensus_runtime_membership_epoch_recoverable(
     return true;
   }
   if (st.membership_epoch == current_epoch) {
-    policy["reason"] = "current_membership_epoch";
+    const bool node_is_member = consensus_member_node_id_vec_contains_model(pol.member_node_ids, st.node_id);
+    const bool recoverable = agent_edge_consensus_membership_epoch_member_set_can_recover(
+      st.membership_epoch,
+      current_epoch,
+      node_is_member ? 1 : 0) != 0;
     policy["matches_current_epoch"] = true;
+    policy["runtime_node_in_matching_member_set"] = node_is_member;
+    policy["recoverable"] = recoverable;
+    policy["reason"] = recoverable ? "current_membership_epoch" : "current_membership_epoch_node_not_member";
     if (out_policy) *out_policy = policy;
-    return true;
+    return recoverable;
   }
   if (pol.previous_membership_epoch > 0 && st.membership_epoch == (uint64_t)pol.previous_membership_epoch) {
-    policy["reason"] = "previous_membership_epoch";
+    const bool node_is_member =
+      consensus_member_node_id_vec_contains_model(pol.previous_member_node_ids, st.node_id);
+    const bool recoverable = agent_edge_consensus_membership_epoch_member_set_can_recover(
+      st.membership_epoch,
+      previous_epoch,
+      node_is_member ? 1 : 0) != 0;
     policy["matches_previous_epoch"] = true;
+    policy["runtime_node_in_matching_member_set"] = node_is_member;
+    policy["recoverable"] = recoverable;
+    policy["reason"] = recoverable ? "previous_membership_epoch" : "previous_membership_epoch_node_not_member";
     if (out_policy) *out_policy = policy;
-    return true;
+    return recoverable;
   }
+  bool matched_lineage_epoch = false;
   for (const auto& entry : pol.membership_lineage) {
     if (entry.membership_epoch <= 0) continue;
     if (st.membership_epoch != (uint64_t)entry.membership_epoch) continue;
+    matched_lineage_epoch = true;
+    const uint64_t lineage_epoch = (uint64_t)entry.membership_epoch;
+    const bool node_is_member = consensus_member_node_id_vec_contains_model(entry.member_node_ids, st.node_id);
+    const bool recoverable = agent_edge_consensus_membership_epoch_member_set_can_recover(
+      st.membership_epoch,
+      lineage_epoch,
+      node_is_member ? 1 : 0) != 0;
+    if (!recoverable) continue;
     policy["reason"] = "membership_lineage";
+    policy["recoverable"] = true;
     policy["matches_lineage_epoch"] = true;
-    policy["lineage_membership_epoch"] = Json::UInt64((uint64_t)entry.membership_epoch);
+    policy["runtime_node_in_matching_member_set"] = true;
+    policy["lineage_membership_epoch"] = Json::UInt64(lineage_epoch);
     if (out_policy) *out_policy = policy;
     return true;
   }
+  if (matched_lineage_epoch) {
+    policy["reason"] = "membership_lineage_node_not_member";
+    policy["recoverable"] = false;
+    policy["matches_lineage_epoch"] = true;
+    policy["runtime_node_in_matching_member_set"] = false;
+    policy["lineage_membership_epoch"] = Json::UInt64(st.membership_epoch);
+    if (out_policy) *out_policy = policy;
+    return false;
+  }
 
   policy["reason"] = "not_in_current_policy_or_lineage";
+  policy["recoverable"] = false;
   if (out_policy) *out_policy = policy;
   return false;
 }

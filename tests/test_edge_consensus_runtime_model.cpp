@@ -12,6 +12,7 @@ using agentd::EdgeConsensusClusterPolicy;
 using agentd::EdgeConsensusRuntimeConfig;
 using agentd::EdgeConsensusRuntime;
 using agentd::edge_consensus_runtime_build_config;
+using agentd::edge_consensus_runtime_membership_epoch_recoverable;
 using agentd::edge_consensus_runtime_response_json;
 using agentd::edge_consensus_runtime_same_effective_config;
 
@@ -225,6 +226,51 @@ static void test_response_json_surfaces_cluster_and_trust_drift() {
   assert(out["trust_epoch_drift"]["current_trust_epochs"]["cert_roots_epoch"].asUInt64() == 13);
 }
 
+static void test_membership_epoch_recovery_requires_matching_member_set() {
+  const DaemonConfig cfg = make_cfg();
+  EdgeConsensusRuntime st;
+  st.runtime_kind = "builtin";
+  st.node_id = "node-b";
+  st.cluster_id = "cluster-a";
+  st.manifest_sha256 =
+    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+  Json::Value policy(Json::objectValue);
+  st.membership_epoch = 5;
+  assert(edge_consensus_runtime_membership_epoch_recoverable(cfg, st, &policy));
+  assert(policy["reason"].asString() == "membership_lineage");
+  assert(policy["runtime_node_in_matching_member_set"].asBool());
+
+  st.node_id = "node-a";
+  policy = Json::Value(Json::objectValue);
+  assert(!edge_consensus_runtime_membership_epoch_recoverable(cfg, st, &policy));
+  assert(policy["reason"].asString() == "membership_lineage_node_not_member");
+  assert(policy["matches_lineage_epoch"].asBool());
+  assert(!policy["runtime_node_in_matching_member_set"].asBool());
+
+  st.node_id = "node-c";
+  st.membership_epoch = 6;
+  policy = Json::Value(Json::objectValue);
+  assert(edge_consensus_runtime_membership_epoch_recoverable(cfg, st, &policy));
+  assert(policy["reason"].asString() == "previous_membership_epoch");
+  assert(policy["runtime_node_in_matching_member_set"].asBool());
+
+  st.node_id = "node-a";
+  policy = Json::Value(Json::objectValue);
+  assert(!edge_consensus_runtime_membership_epoch_recoverable(cfg, st, &policy));
+  assert(policy["reason"].asString() == "previous_membership_epoch_node_not_member");
+
+  st.membership_epoch = 7;
+  policy = Json::Value(Json::objectValue);
+  assert(edge_consensus_runtime_membership_epoch_recoverable(cfg, st, &policy));
+  assert(policy["reason"].asString() == "current_membership_epoch");
+
+  st.node_id = "node-c";
+  policy = Json::Value(Json::objectValue);
+  assert(!edge_consensus_runtime_membership_epoch_recoverable(cfg, st, &policy));
+  assert(policy["reason"].asString() == "current_membership_epoch_node_not_member");
+}
+
 }  // namespace
 
 int main() {
@@ -233,5 +279,6 @@ int main() {
   test_build_config_uses_portable_policy_timing_bounds();
   test_same_effective_config_ignores_builtin_daemon_url_drift_only();
   test_response_json_surfaces_cluster_and_trust_drift();
+  test_membership_epoch_recovery_requires_matching_member_set();
   return 0;
 }

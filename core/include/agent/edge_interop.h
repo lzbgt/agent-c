@@ -401,6 +401,12 @@ int agent_edge_consensus_membership_epoch_is_recoverable(
   size_t lineage_len
 );
 
+int agent_edge_consensus_membership_epoch_member_set_can_recover(
+  uint64_t runtime_epoch,
+  uint64_t policy_epoch,
+  int runtime_node_is_member
+);
+
 // Durable consensus policy timing bounds shared by embedded firmware and agentd.
 #define AGENT_EDGE_CONSENSUS_POLICY_RETRY_MAX_MS 120000
 #define AGENT_EDGE_CONSENSUS_POLICY_LEASE_MAX_MS 300000

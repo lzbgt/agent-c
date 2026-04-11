@@ -650,6 +650,15 @@ int agent_edge_consensus_membership_epoch_is_recoverable(
   return 0;
 }
 
+int agent_edge_consensus_membership_epoch_member_set_can_recover(
+  uint64_t runtime_epoch,
+  uint64_t policy_epoch,
+  int runtime_node_is_member
+) {
+  if (runtime_epoch == 0 || policy_epoch == 0) return 1;
+  return runtime_epoch == policy_epoch && runtime_node_is_member ? 1 : 0;
+}
+
 static int64_t consensus_clamp_i64(int64_t value, int64_t lo, int64_t hi) {
   if (value < lo) return lo;
   if (value > hi) return hi;
