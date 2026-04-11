@@ -232,6 +232,51 @@ int agent_edge_consensus_trust_epochs_match(
          local_cert_roots_epoch == peer_cert_roots_epoch ? 1 : 0;
 }
 
+int agent_edge_consensus_vote_request_can_grant(
+  uint64_t current_term,
+  uint64_t request_term,
+  int candidate_node_is_member,
+  int trust_epochs_match,
+  const char* voted_for_node_id,
+  size_t voted_for_node_id_len,
+  const char* candidate_node_id,
+  size_t candidate_node_id_len
+) {
+  if (!candidate_node_is_member || !trust_epochs_match) return 0;
+  if (request_term < current_term) return 0;
+  if (request_term > current_term) return 1;
+  if (voted_for_node_id_len == 0) return 1;
+  if (!voted_for_node_id || !candidate_node_id) return 0;
+  return voted_for_node_id_len == candidate_node_id_len &&
+         memcmp(voted_for_node_id, candidate_node_id, candidate_node_id_len) == 0 ? 1 : 0;
+}
+
+int agent_edge_consensus_vote_grant_can_count(
+  uint64_t current_term,
+  uint64_t grant_term,
+  int candidate_node_is_member,
+  int candidate_is_self,
+  int campaign_decision_matches,
+  int granted,
+  int trust_epochs_match
+) {
+  return grant_term >= current_term &&
+         candidate_node_is_member &&
+         candidate_is_self &&
+         campaign_decision_matches &&
+         granted &&
+         trust_epochs_match ? 1 : 0;
+}
+
+int agent_edge_consensus_leader_commit_can_accept(
+  uint64_t current_term,
+  uint64_t commit_term,
+  int leader_node_is_member,
+  int trust_epochs_match
+) {
+  return commit_term >= current_term && leader_node_is_member && trust_epochs_match ? 1 : 0;
+}
+
 int agent_edge_consensus_member_node_id_is_valid(const char* node_id, size_t node_id_len) {
   return agent_umbmp_id_is_safe(node_id, node_id_len);
 }

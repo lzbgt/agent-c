@@ -132,6 +132,31 @@ static void test_consensus_constants_and_quorum(void) {
   assert(agent_edge_consensus_trust_epochs_match(1, 2, 3, 4, 2, 3) == 0);
   assert(agent_edge_consensus_trust_epochs_match(1, 2, 3, 1, 4, 3) == 0);
   assert(agent_edge_consensus_trust_epochs_match(1, 2, 3, 1, 2, 4) == 0);
+  assert(agent_edge_consensus_vote_request_can_grant(
+           3, 4, 1, 1, "node-b", strlen("node-b"), "node-a", strlen("node-a")) == 1);
+  assert(agent_edge_consensus_vote_request_can_grant(
+           3, 3, 1, 1, "", 0, "node-a", strlen("node-a")) == 1);
+  assert(agent_edge_consensus_vote_request_can_grant(
+           3, 3, 1, 1, "node-a", strlen("node-a"), "node-a", strlen("node-a")) == 1);
+  assert(agent_edge_consensus_vote_request_can_grant(
+           3, 3, 1, 1, "node-b", strlen("node-b"), "node-a", strlen("node-a")) == 0);
+  assert(agent_edge_consensus_vote_request_can_grant(
+           3, 2, 1, 1, "", 0, "node-a", strlen("node-a")) == 0);
+  assert(agent_edge_consensus_vote_request_can_grant(
+           3, 4, 0, 1, "", 0, "node-a", strlen("node-a")) == 0);
+  assert(agent_edge_consensus_vote_request_can_grant(
+           3, 4, 1, 0, "", 0, "node-a", strlen("node-a")) == 0);
+  assert(agent_edge_consensus_vote_grant_can_count(3, 3, 1, 1, 1, 1, 1) == 1);
+  assert(agent_edge_consensus_vote_grant_can_count(3, 2, 1, 1, 1, 1, 1) == 0);
+  assert(agent_edge_consensus_vote_grant_can_count(3, 3, 1, 0, 1, 1, 1) == 0);
+  assert(agent_edge_consensus_vote_grant_can_count(3, 3, 1, 1, 0, 1, 1) == 0);
+  assert(agent_edge_consensus_vote_grant_can_count(3, 3, 1, 1, 1, 0, 1) == 0);
+  assert(agent_edge_consensus_vote_grant_can_count(3, 3, 1, 1, 1, 1, 0) == 0);
+  assert(agent_edge_consensus_leader_commit_can_accept(3, 3, 1, 1) == 1);
+  assert(agent_edge_consensus_leader_commit_can_accept(3, 4, 1, 1) == 1);
+  assert(agent_edge_consensus_leader_commit_can_accept(3, 2, 1, 1) == 0);
+  assert(agent_edge_consensus_leader_commit_can_accept(3, 3, 0, 1) == 0);
+  assert(agent_edge_consensus_leader_commit_can_accept(3, 3, 1, 0) == 0);
   assert(agent_edge_consensus_member_node_id_is_valid("node-a", strlen("node-a")) == 1);
   assert(agent_edge_consensus_member_node_id_is_valid("cluster:node_1", strlen("cluster:node_1")) == 1);
   assert(agent_edge_consensus_member_node_id_is_valid("bad/node", strlen("bad/node")) == 0);

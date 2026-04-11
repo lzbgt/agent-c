@@ -747,6 +747,7 @@ streaming and plugins are stable.
   - 2026-04-11: moved the membership-lineage validity rule into portable `agent_core` and reused it during daemon runtime-config load, so future firmware-native policy loading shares the same "zero/unknown or strictly older than current epoch" recovery hint acceptance rule.
   - 2026-04-11: stale builtin consensus runtime recovery now also gates recent recovered snapshots by current membership epoch or bounded membership lineage, preserving compatible old-policy evidence after daemon restart while clearing stale runtime records from unrelated policy histories.
   - 2026-04-11: moved consensus retry-delay/backoff calculation and bounded-lineage recovery acceptance into portable `agent_core`, then reused those helpers from the daemon node loop and stale-runtime recovery path so firmware-native ports do not need to fork those host-side decisions.
+  - 2026-04-11: moved vote-request grant, vote-grant count, and leader-commit acceptance predicates into portable `agent_core`, then reused them from the daemon replica so firmware-native ports share the same term, membership, trust-epoch, and voted-for gating rules as agentd.
   - 2026-03-20: extracted the voice peer broker-session/launch/startup/cleanup orchestration into a shared launch-flow module with direct unit proof, refactored the bundled/external child backend onto it, and extended `builtin_start_contract` with the same staged `startup_sequence` so future native work targets a real shared seam instead of child-only logic.
 
 ## Deferred (after macOS stability)

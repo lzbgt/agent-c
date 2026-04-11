@@ -156,6 +156,34 @@ int agent_edge_consensus_trust_epochs_match(
   uint64_t peer_cert_roots_epoch
 );
 
+int agent_edge_consensus_vote_request_can_grant(
+  uint64_t current_term,
+  uint64_t request_term,
+  int candidate_node_is_member,
+  int trust_epochs_match,
+  const char* voted_for_node_id,
+  size_t voted_for_node_id_len,
+  const char* candidate_node_id,
+  size_t candidate_node_id_len
+);
+
+int agent_edge_consensus_vote_grant_can_count(
+  uint64_t current_term,
+  uint64_t grant_term,
+  int candidate_node_is_member,
+  int candidate_is_self,
+  int campaign_decision_matches,
+  int granted,
+  int trust_epochs_match
+);
+
+int agent_edge_consensus_leader_commit_can_accept(
+  uint64_t current_term,
+  uint64_t commit_term,
+  int leader_node_is_member,
+  int trust_epochs_match
+);
+
 // Consensus membership validation helpers shared by firmware and agentd.
 #define AGENT_EDGE_CONSENSUS_MEMBERSHIP_LINEAGE_MAX 8
 

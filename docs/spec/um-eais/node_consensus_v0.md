@@ -140,6 +140,9 @@ The shipped autonomous host-loop proof adds:
 - portable `agent_core` retry-delay and lineage-recovery helpers are now reused by the daemon node loop and stale runtime
   recovery path, so firmware-native ports can make the same retry/backoff and old-policy recovery decisions without
   copying C++ host logic
+- portable `agent_core` vote-request, vote-grant, and leader-commit acceptance predicates are now reused by the daemon
+  replica, so firmware-native ports share the same term, membership, trust-epoch, and voted-for gating decisions as
+  agentd while keeping frame mutation host-local
 
 ## Still open
 
