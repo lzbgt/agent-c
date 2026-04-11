@@ -255,8 +255,11 @@ rejection, multi-audio m-line rejection, or browser-backed proof for rejected
 sections plus real/empty candidate ingestion. Direct answer-helper and provider
 coverage now also proves accepted-payload RTCP feedback/header-extension
 attributes survive while unsupported feedback and remote offer `msid`/SSRC track
-identity are stripped before agentd adds its provider-owned stream identity. The
-remaining gap is broader browser, codec, and candidate-edge hardening.
+identity are stripped before agentd adds its provider-owned stream identity.
+Candidate handling now also requires exact trimmed end-of-candidates markers, so
+malformed marker prefixes are preserved as candidate payloads instead of being
+silently converted into gathering-done. The remaining gap is broader browser,
+codec, and candidate-edge hardening.
 
 ## Recommended Next Technical Decision
 
@@ -291,4 +294,5 @@ arrives. The next concrete step after this negotiated transmit path is broader
 browser/codec/candidate hardening and provider-size reduction rather than more
 DTLS/SRTP/control-plane work; accepted-payload RTCP feedback/extmap filtering and
 remote offer track-identity stripping are now covered by focused helper and
-provider tests.
+provider tests, and malformed end-marker prefixes are covered by the shared
+candidate/signal parser tests.

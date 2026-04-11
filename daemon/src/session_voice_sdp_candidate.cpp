@@ -35,7 +35,7 @@ bool sdp_candidate_is_end_marker(const std::string& value) {
 std::string normalize_sdp_candidate_line(const std::string& value) {
   const std::string trimmed = trim_copy_local(value);
   if (trimmed.empty()) return "";
-  if (starts_with(trimmed, "a=end-of-candidates")) return "a=end-of-candidates";
+  if (trimmed == "a=end-of-candidates") return "a=end-of-candidates";
   if (trimmed == "end-of-candidates") return "a=end-of-candidates";
   if (!starts_with(trimmed, "a=candidate:") && !starts_with(trimmed, "candidate:")) {
     return trimmed;

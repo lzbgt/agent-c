@@ -97,6 +97,19 @@ static void test_empty_candidate_payload_is_end_marker() {
   assert(candidate.sender_tag == "webui-peer");
 }
 
+static void test_malformed_end_marker_candidate_payload_is_preserved() {
+  Json::Value payload(Json::objectValue);
+  payload["candidate"] = "a=end-of-candidates:malformed";
+  payload["sender_tag"] = "webui-peer";
+
+  VoiceBrokerSignalCandidate candidate;
+  std::string err;
+  assert(parse_voice_broker_signal_candidate_payload(payload, &candidate, &err));
+  assert(err.empty());
+  assert(candidate.candidate == "a=end-of-candidates:malformed");
+  assert(candidate.sender_tag == "webui-peer");
+}
+
 static void test_bye_payload_parse_and_build() {
   Json::Value payload(Json::objectValue);
   payload["reason"] = "done";
@@ -138,6 +151,7 @@ int main() {
   test_description_payload_parse_and_build();
   test_candidate_payload_parse();
   test_empty_candidate_payload_is_end_marker();
+  test_malformed_end_marker_candidate_payload_is_preserved();
   test_bye_payload_parse_and_build();
   test_invalid_payloads_rejected();
   return 0;

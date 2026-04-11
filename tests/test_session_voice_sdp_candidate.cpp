@@ -26,11 +26,18 @@ void test_end_of_candidates_markers_are_canonicalized() {
   assert(!agentd::sdp_candidate_is_end_marker("candidate:1 1 UDP 1 127.0.0.1 9 typ host"));
 }
 
+void test_malformed_end_marker_prefix_is_not_canonicalized() {
+  assert(!agentd::sdp_candidate_is_end_marker("a=end-of-candidates:malformed"));
+  assert(agentd::normalize_sdp_candidate_line("a=end-of-candidates:malformed") ==
+         "a=end-of-candidates:malformed");
+}
+
 }  // namespace
 
 int main() {
   test_candidate_normalization_preserves_sdp_attribute_shape();
   test_candidate_normalization_keeps_already_attributed_candidate();
   test_end_of_candidates_markers_are_canonicalized();
+  test_malformed_end_marker_prefix_is_not_canonicalized();
   return 0;
 }

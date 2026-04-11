@@ -329,8 +329,9 @@ A v0 smoke test should:
   unsupported audio m-lines are rejected as inactive/port-zero, and extra audio m-lines are rejected so the answer
   advertises only the single provider-owned audio stream. Browser answer coverage now also proves supported RTCP feedback
   and RTP header-extension attributes survive for accepted payloads while unsupported payload-bound feedback plus remote
-  offer `msid`/SSRC track identity are stripped before agentd adds its provider-owned stream identity. The remaining gap
-  is no longer basic outbound RTP,
+  offer `msid`/SSRC track identity are stripped before agentd adds its provider-owned stream identity. Shared candidate
+  handling now also treats only exact trimmed end-of-candidates markers as gathering-done, so malformed marker prefixes
+  are preserved instead of silently terminating remote candidate ingestion. The remaining gap is no longer basic outbound RTP,
   Opus ownership, one-shot Sender/Receiver Report transmit, per-frame Sender Report spam, compound packet emission,
   answer direction, basic browser full-duplex proof, unsupported non-audio section rejection, or multi-audio m-line
   rejection, browser-backed proof for rejected sections plus real/empty candidate ingestion and G.711 negotiation, or
