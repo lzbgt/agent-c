@@ -271,6 +271,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/client_profiles.cpp
     daemon/src/client_prefs_endpoints.cpp
     daemon/src/config_endpoint.cpp
+    daemon/src/edge_auth_bundle_endpoints.cpp
     daemon/src/caps_endpoint.cpp
     daemon/src/avm_endpoints.cpp
     daemon/src/approval_queue.cpp
