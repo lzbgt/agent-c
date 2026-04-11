@@ -342,7 +342,7 @@ void EdgeConsensusReplica::reset_consensus_state() {
 }
 
 std::string EdgeConsensusReplica::next_frame_id(const char* kind) {
-  ++frame_seq_;
+  frame_seq_ = agent_edge_consensus_next_frame_sequence(frame_seq_);
   return consensus_frame_id(self_.node_id, kind, frame_seq_);
 }
 
@@ -453,7 +453,7 @@ EdgeConsensusFrame EdgeConsensusReplica::start_election(const std::string& decis
   leader_node_id_.clear();
   grant_witnesses_by_node_id_.clear();
   committed_vote_witnesses_.clear();
-  current_term_ += 1;
+  current_term_ = agent_edge_consensus_next_term(current_term_);
   voted_for_node_id_ = self_.node_id;
 
   EdgeConsensusFrame out;

@@ -469,6 +469,10 @@ int agent_edge_consensus_campaign_can_start(
   int campaign_start_due
 );
 
+uint64_t agent_edge_consensus_next_term(uint64_t current_term);
+
+uint64_t agent_edge_consensus_next_frame_sequence(uint64_t current_frame_sequence);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

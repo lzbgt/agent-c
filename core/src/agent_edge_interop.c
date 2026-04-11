@@ -781,3 +781,11 @@ int agent_edge_consensus_campaign_can_start(
 ) {
   return has_campaign_decision && !has_committed_decision && campaign_start_due ? 1 : 0;
 }
+
+uint64_t agent_edge_consensus_next_term(uint64_t current_term) {
+  return current_term == UINT64_MAX ? UINT64_MAX : current_term + 1;
+}
+
+uint64_t agent_edge_consensus_next_frame_sequence(uint64_t current_frame_sequence) {
+  return current_frame_sequence == UINT64_MAX ? UINT64_MAX : current_frame_sequence + 1;
+}

@@ -705,6 +705,13 @@ static void test_consensus_loop_timing_gates(void) {
   assert(agent_edge_consensus_campaign_can_start(0, 0, 1) == 0);
   assert(agent_edge_consensus_campaign_can_start(1, 1, 1) == 0);
   assert(agent_edge_consensus_campaign_can_start(1, 0, 0) == 0);
+
+  assert(agent_edge_consensus_next_term(0) == 1);
+  assert(agent_edge_consensus_next_term(41) == 42);
+  assert(agent_edge_consensus_next_term(UINT64_MAX) == UINT64_MAX);
+  assert(agent_edge_consensus_next_frame_sequence(0) == 1);
+  assert(agent_edge_consensus_next_frame_sequence(41) == 42);
+  assert(agent_edge_consensus_next_frame_sequence(UINT64_MAX) == UINT64_MAX);
 }
 
 void test_edge_interop_module(void) {

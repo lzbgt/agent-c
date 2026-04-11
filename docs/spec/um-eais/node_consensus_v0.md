@@ -192,6 +192,8 @@ The shipped autonomous host-loop proof adds:
 - portable `agent_core` campaign-decision source selection and campaign-start gating are now reused by the daemon loop, so
   firmware-native ports share the same configured-decision vs last-known-decision fallback and the same
   decision/commit/timing boundary before starting a new election
+- portable `agent_core` term and frame-sequence advancement helpers are now reused by the daemon replica, giving
+  firmware-native ports the same monotonic counter transition and saturation behavior for election terms and frame IDs
 
 ## Still open
 
