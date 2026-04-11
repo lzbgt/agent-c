@@ -480,8 +480,11 @@ int agent_edge_consensus_vote_request_can_grant(
   if (request_term > current_term) return 1;
   if (voted_for_node_id_len == 0) return 1;
   if (!voted_for_node_id || !candidate_node_id) return 0;
-  return voted_for_node_id_len == candidate_node_id_len &&
-         memcmp(voted_for_node_id, candidate_node_id, candidate_node_id_len) == 0 ? 1 : 0;
+  return agent_edge_consensus_node_id_matches(
+    voted_for_node_id,
+    voted_for_node_id_len,
+    candidate_node_id,
+    candidate_node_id_len);
 }
 
 int agent_edge_consensus_vote_grant_can_count(

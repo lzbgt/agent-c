@@ -204,6 +204,8 @@ The shipped autonomous host-loop proof adds:
   matching, keeping runtime persistence/recovery member-set shaping aligned with the node loop
 - membership bundle normalization, membership rotation merge handling, and runtime-config membership lineage parsing also
   reuse portable node-id matching, keeping durable policy surfaces aligned before firmware-native policy adoption
+- same-term vote-request regrant checks now also reuse portable node-id matching, so future firmware-native replicas do
+  not fork a raw equality path when deciding whether a node can revote for the same candidate
 
 ## Still open
 

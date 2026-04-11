@@ -280,6 +280,8 @@ static void test_consensus_constants_and_quorum(void) {
   assert(agent_edge_consensus_vote_request_can_grant(
            3, 3, 1, 1, 1, "node-a", strlen("node-a"), "node-a", strlen("node-a")) == 1);
   assert(agent_edge_consensus_vote_request_can_grant(
+           3, 3, 1, 1, 1, "bad/node", strlen("bad/node"), "bad/node", strlen("bad/node")) == 0);
+  assert(agent_edge_consensus_vote_request_can_grant(
            3, 3, 1, 1, 1, "node-b", strlen("node-b"), "node-a", strlen("node-a")) == 0);
   assert(agent_edge_consensus_vote_request_can_grant(
            3, 2, 1, 1, 1, "", 0, "node-a", strlen("node-a")) == 0);
