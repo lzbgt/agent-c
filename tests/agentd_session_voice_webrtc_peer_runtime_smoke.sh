@@ -96,6 +96,15 @@ url_quote() {
   python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$1"
 }
 
+create_session() {
+  local session_id="$1"
+  curl -fsS --noproxy "*" --max-time 10 \
+    -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+    -H 'Content-Type: application/json' \
+    -d "{\"session_id\":\"${session_id}\"}" \
+    "${DAEMON_URL}/api/v1/session/new" >/dev/null
+}
+
 cleanup() {
   if [[ -n "${BROKER_PID}" ]]; then
     kill -TERM "${BROKER_PID}" >/dev/null 2>&1 || true
@@ -349,11 +358,7 @@ if "disabled" not in str(audio.get("default_runtime_kind_unavailable_reason") or
 PY
 
 ENV_BUILTIN_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_env_builtin_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${ENV_BUILTIN_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${ENV_BUILTIN_SESSION_ID}"
 
 set +e
 env_builtin_start_resp="$(curl -sS --noproxy "*" --max-time 10 \
@@ -411,11 +416,7 @@ curl -fsS --noproxy "*" --max-time 10 -X DELETE \
 restart_agentd
 
 SESSION_DB_ID="agentd_session_voice_webrtc_peer_runtime_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${SESSION_DB_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${SESSION_DB_ID}"
 
 wait_voice_peer_ready() {
   local session_id="$1"
@@ -839,11 +840,7 @@ if "disabled" not in str(peer.get("last_error") or ""):
 PY
 
 BUILTIN_BORROWED_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_borrowed_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${BUILTIN_BORROWED_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${BUILTIN_BORROWED_SESSION_ID}"
 
 builtin_borrowed_broker_create_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions" \
@@ -934,11 +931,7 @@ if [[ "${builtin_borrowed_delete_status}" != "200" && "${builtin_borrowed_delete
 fi
 
 BUILTIN_MISSING_BROKER_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_missing_broker_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${BUILTIN_MISSING_BROKER_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${BUILTIN_MISSING_BROKER_SESSION_ID}"
 
 builtin_missing_broker_session_resp_body="${LOG_DIR}/voice_webrtc_peer_builtin_missing_broker_session_body.json"
 builtin_missing_broker_session_status="$(curl -sS --noproxy "*" --max-time 10 -o "${builtin_missing_broker_session_resp_body}" -w '%{http_code}' \
@@ -985,11 +978,7 @@ if obj.get("running") is not False or obj.get("peer") is not None:
 PY
 
 BUILTIN_CONFLICT_BROKER_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_conflict_broker_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${BUILTIN_CONFLICT_BROKER_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${BUILTIN_CONFLICT_BROKER_SESSION_ID}"
 
 builtin_conflict_broker_session_resp_body="${LOG_DIR}/voice_webrtc_peer_builtin_conflict_broker_session_body.json"
 builtin_conflict_broker_session_status="$(curl -sS --noproxy "*" --max-time 10 -o "${builtin_conflict_broker_session_resp_body}" -w '%{http_code}' \
@@ -1074,11 +1063,7 @@ PY
 
 missing_broker_session_resp_body="${LOG_DIR}/voice_webrtc_peer_missing_broker_session_body.json"
 MISSING_BROKER_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_missing_broker_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${MISSING_BROKER_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${MISSING_BROKER_SESSION_ID}"
 
 missing_broker_session_status="$(curl -sS --noproxy "*" --max-time 10 -o "${missing_broker_session_resp_body}" -w '%{http_code}' \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
@@ -1130,11 +1115,7 @@ curl -fsS --noproxy "*" --max-time 10 -X DELETE \
   "${DAEMON_URL}/api/v1/session?session_id=$(url_quote "${MISSING_BROKER_SESSION_ID}")" >/dev/null
 
 CONFLICT_BROKER_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_conflict_broker_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${CONFLICT_BROKER_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${CONFLICT_BROKER_SESSION_ID}"
 
 conflict_broker_session_resp_body="${LOG_DIR}/voice_webrtc_peer_conflict_broker_session_body.json"
 conflict_broker_session_status="$(curl -sS --noproxy "*" --max-time 10 -o "${conflict_broker_session_resp_body}" -w '%{http_code}' \
@@ -1320,11 +1301,7 @@ PY
 wait_broker_session_deleted "${BROKER_SESSION_ID2}"
 
 RECOVERED_STOP_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_recovered_stop_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${RECOVERED_STOP_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${RECOVERED_STOP_SESSION_ID}"
 
 recovered_stop_start_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
@@ -1430,11 +1407,7 @@ PY
 wait_broker_session_deleted "${RECOVERED_STOP_BROKER_SESSION_ID}"
 
 RECOVERED_DELETE_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_recovered_delete_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${RECOVERED_DELETE_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${RECOVERED_DELETE_SESSION_ID}"
 
 recovered_delete_start_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
@@ -1716,11 +1689,7 @@ PY
 wait_broker_session_deleted "${BROKER_SESSION_ID3}"
 
 STALE_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_stale_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${STALE_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${STALE_SESSION_ID}"
 
 start_resp4="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
@@ -1885,11 +1854,7 @@ if audio.get("node_bin") != "node":
 PY
 
 CONFIG_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_cfg_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${CONFIG_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${CONFIG_SESSION_ID}"
 
 config_start_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
@@ -1973,11 +1938,7 @@ curl -fsS --noproxy "*" --max-time 10 -X DELETE \
   "${DAEMON_URL}/api/v1/session?session_id=${CONFIG_SESSION_ID_Q}" >/dev/null
 
 EXTERNAL_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_external_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${EXTERNAL_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${EXTERNAL_SESSION_ID}"
 
 external_config_start_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
@@ -2430,11 +2391,7 @@ if not obj.get("ok"):
 PY
 
 MANAGED_BAD_STOP_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_managed_bad_stop_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${MANAGED_BAD_STOP_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${MANAGED_BAD_STOP_SESSION_ID}"
 
 managed_bad_stop_start_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
@@ -2528,11 +2485,7 @@ if [[ "${managed_bad_stop_delete_status}" != "200" && "${managed_bad_stop_delete
 fi
 
 MANAGED_BAD_DELETE_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_managed_bad_delete_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${MANAGED_BAD_DELETE_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${MANAGED_BAD_DELETE_SESSION_ID}"
 
 managed_bad_delete_start_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
@@ -2629,11 +2582,7 @@ if [[ "${managed_bad_delete_delete_status}" != "200" && "${managed_bad_delete_de
 fi
 
 BORROWED_STOP_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_borrowed_stop_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${BORROWED_STOP_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${BORROWED_STOP_SESSION_ID}"
 
 borrowed_stop_broker_create_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions" \
@@ -2720,11 +2669,7 @@ if [[ "${borrowed_stop_delete_status}" != "200" && "${borrowed_stop_delete_statu
 fi
 
 BORROWED_DELETE_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_borrowed_delete_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${BORROWED_DELETE_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${BORROWED_DELETE_SESSION_ID}"
 
 borrowed_delete_broker_create_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   "http://127.0.0.1:${BROKER_PORT}/v1/audio/sessions" \
@@ -2837,11 +2782,7 @@ if not obj.get("ok"):
 PY
 
 NOOP_STOP_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_noop_stop_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${NOOP_STOP_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${NOOP_STOP_SESSION_ID}"
 
 noop_stop_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
@@ -2945,11 +2886,7 @@ if audio.get("default_runtime_kind_available") is not False:
 PY
 
 UNAVAILABLE_DEFAULT_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_default_unavailable_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${UNAVAILABLE_DEFAULT_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${UNAVAILABLE_DEFAULT_SESSION_ID}"
 
 set +e
 unavailable_default_start_resp="$(curl -sS --noproxy "*" --max-time 10 \
@@ -3076,11 +3013,7 @@ if "disabled" not in str(audio.get("default_runtime_kind_unavailable_reason") or
 PY
 
 BUILTIN_DEFAULT_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_default_builtin_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${BUILTIN_DEFAULT_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${BUILTIN_DEFAULT_SESSION_ID}"
 
 set +e
 builtin_default_start_resp="$(curl -sS --noproxy "*" --max-time 10 \
@@ -3222,11 +3155,7 @@ finally:
 PY
 
 SELF_HEAL_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_self_heal_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${SELF_HEAL_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${SELF_HEAL_SESSION_ID}"
 
 self_heal_start_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${DAEMON_TOKEN}" \
@@ -3301,11 +3230,7 @@ curl -fsS --noproxy "*" --max-time 10 -X DELETE \
   "${DAEMON_URL}/api/v1/session?session_id=${SELF_HEAL_SESSION_ID_Q}" >/dev/null
 
 CORRUPT_RUNTIME_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_corrupt_record_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${CORRUPT_RUNTIME_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${CORRUPT_RUNTIME_SESSION_ID}"
 
 CORRUPT_RUNTIME_DIR="${STATE_DIR}/voice_webrtc_peers/${CORRUPT_RUNTIME_SESSION_ID}"
 python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_record.py" write-corrupt \
@@ -3387,11 +3312,7 @@ PY
 wait_voice_peer_ready "${CORRUPT_RUNTIME_SESSION_ID}" 1 status_json bundled bundled auto 1
 
 PLANNED_RUNTIME_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_planned_record_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${PLANNED_RUNTIME_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${PLANNED_RUNTIME_SESSION_ID}"
 
 PLANNED_RUNTIME_DIR="${STATE_DIR}/voice_webrtc_peers/${PLANNED_RUNTIME_SESSION_ID}"
 python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_record.py" write-planned \
@@ -3438,11 +3359,7 @@ curl -fsS --noproxy "*" --max-time 10 -X DELETE \
   "${DAEMON_URL}/api/v1/session?session_id=${CORRUPT_RUNTIME_SESSION_ID_Q}" >/dev/null
 
 STALE_STATUS_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_stale_status_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${STALE_STATUS_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${STALE_STATUS_SESSION_ID}"
 inject_stale_persisted_voice_runtime "${STALE_STATUS_SESSION_ID}"
 STALE_STATUS_RUNTIME_DIR="${STATE_DIR}/voice_webrtc_peers/${STALE_STATUS_SESSION_ID}"
 STALE_STATUS_SESSION_ID_Q="$(url_quote "${STALE_STATUS_SESSION_ID}")"
@@ -3464,11 +3381,7 @@ curl -fsS --noproxy "*" --max-time 10 -X DELETE \
   "${DAEMON_URL}/api/v1/session?session_id=${STALE_STATUS_SESSION_ID_Q}" >/dev/null
 
 STALE_STOP_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_stale_stop_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${STALE_STOP_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${STALE_STOP_SESSION_ID}"
 inject_stale_persisted_voice_runtime "${STALE_STOP_SESSION_ID}"
 STALE_STOP_RUNTIME_DIR="${STATE_DIR}/voice_webrtc_peers/${STALE_STOP_SESSION_ID}"
 STALE_STOP_SESSION_ID_Q="$(url_quote "${STALE_STOP_SESSION_ID}")"
@@ -3493,11 +3406,7 @@ curl -fsS --noproxy "*" --max-time 10 -X DELETE \
   "${DAEMON_URL}/api/v1/session?session_id=${STALE_STOP_SESSION_ID_Q}" >/dev/null
 
 STALE_START_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_stale_start_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${STALE_START_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${STALE_START_SESSION_ID}"
 inject_stale_persisted_voice_runtime "${STALE_START_SESSION_ID}"
 STALE_START_RUNTIME_DIR="${STATE_DIR}/voice_webrtc_peers/${STALE_START_SESSION_ID}"
 
@@ -3584,11 +3493,7 @@ curl -fsS --noproxy "*" --max-time 10 -X DELETE \
   "${DAEMON_URL}/api/v1/session?session_id=${STALE_START_SESSION_ID_Q}" >/dev/null
 
 BUILTIN_STALE_STATUS_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_stale_status_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${BUILTIN_STALE_STATUS_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${BUILTIN_STALE_STATUS_SESSION_ID}"
 inject_stale_persisted_voice_runtime "${BUILTIN_STALE_STATUS_SESSION_ID}" builtin
 BUILTIN_STALE_STATUS_RUNTIME_DIR="${STATE_DIR}/voice_webrtc_peers/${BUILTIN_STALE_STATUS_SESSION_ID}"
 BUILTIN_STALE_STATUS_SESSION_ID_Q="$(url_quote "${BUILTIN_STALE_STATUS_SESSION_ID}")"
@@ -3610,11 +3515,7 @@ curl -fsS --noproxy "*" --max-time 10 -X DELETE \
   "${DAEMON_URL}/api/v1/session?session_id=${BUILTIN_STALE_STATUS_SESSION_ID_Q}" >/dev/null
 
 BUILTIN_STALE_STOP_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_stale_stop_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${BUILTIN_STALE_STOP_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${BUILTIN_STALE_STOP_SESSION_ID}"
 inject_stale_persisted_voice_runtime "${BUILTIN_STALE_STOP_SESSION_ID}" builtin
 BUILTIN_STALE_STOP_RUNTIME_DIR="${STATE_DIR}/voice_webrtc_peers/${BUILTIN_STALE_STOP_SESSION_ID}"
 BUILTIN_STALE_STOP_SESSION_ID_Q="$(url_quote "${BUILTIN_STALE_STOP_SESSION_ID}")"
@@ -3639,11 +3540,7 @@ curl -fsS --noproxy "*" --max-time 10 -X DELETE \
   "${DAEMON_URL}/api/v1/session?session_id=${BUILTIN_STALE_STOP_SESSION_ID_Q}" >/dev/null
 
 BUILTIN_STALE_START_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_stale_start_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${BUILTIN_STALE_START_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${BUILTIN_STALE_START_SESSION_ID}"
 inject_stale_persisted_voice_runtime "${BUILTIN_STALE_START_SESSION_ID}" builtin
 BUILTIN_STALE_START_RUNTIME_DIR="${STATE_DIR}/voice_webrtc_peers/${BUILTIN_STALE_START_SESSION_ID}"
 
@@ -3793,11 +3690,7 @@ if "not found" not in str(audio.get("default_runtime_kind_unavailable_reason", "
 PY
 
 INVALID_NODE_BIN_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_invalid_node_bin_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${INVALID_NODE_BIN_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${INVALID_NODE_BIN_SESSION_ID}"
 
 invalid_node_bin_start_body="${LOG_DIR}/voice_webrtc_peer_invalid_node_bin_start_body.json"
 invalid_node_bin_start_status="$(curl -sS --noproxy "*" --max-time 10 -o "${invalid_node_bin_start_body}" -w '%{http_code}' \
@@ -3897,11 +3790,7 @@ PY
 restart_agentd_without_voice_defaults
 
 FAIL_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_fail_$(date +%s)_$RANDOM"
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${FAIL_SESSION_ID}\"}" \
-  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+create_session "${FAIL_SESSION_ID}"
 
 fail_start_body="${LOG_DIR}/voice_webrtc_peer_fail_start_body.json"
 fail_start_status="$(curl -sS --noproxy "*" --max-time 10 -o "${fail_start_body}" -w '%{http_code}' \
