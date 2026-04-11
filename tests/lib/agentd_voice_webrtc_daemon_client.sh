@@ -45,11 +45,21 @@ voice_peer_request() {
 voice_peer_request_status() {
   local body_path="$1"
   local payload="$2"
+  : >"${body_path}"
   curl -sS --noproxy "*" --max-time 10 -o "${body_path}" -w '%{http_code}' \
     -H "Authorization: Bearer ${DAEMON_TOKEN}" \
     -H 'Content-Type: application/json' \
     -d "${payload}" \
     "${DAEMON_URL}/api/v1/session/voice_webrtc_peer"
+}
+
+session_status_code() {
+  local session_id="$1"
+  local body_path="$2"
+  : >"${body_path}"
+  curl -sS --noproxy "*" --max-time 10 -o "${body_path}" -w '%{http_code}' \
+    -H "Authorization: Bearer ${DAEMON_TOKEN}" \
+    "${DAEMON_URL}/api/v1/session?session_id=$(url_quote "${session_id}")"
 }
 
 config_get() {

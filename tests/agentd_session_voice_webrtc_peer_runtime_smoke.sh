@@ -10,6 +10,8 @@ source "${SCRIPT_DIR}/lib/agentd_voice_webrtc_daemon_client.sh"
 source "${SCRIPT_DIR}/lib/agentd_voice_webrtc_daemon_lifecycle.sh"
 # shellcheck source=tests/lib/agentd_voice_webrtc_broker_client.sh
 source "${SCRIPT_DIR}/lib/agentd_voice_webrtc_broker_client.sh"
+# shellcheck source=tests/lib/agentd_voice_webrtc_broker_fixture.sh
+source "${SCRIPT_DIR}/lib/agentd_voice_webrtc_broker_fixture.sh"
 # shellcheck source=tests/lib/agentd_voice_webrtc_runtime_helpers.sh
 source "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_helpers.sh"
 
@@ -53,153 +55,18 @@ then
   exit 77
 fi
 
-PG_LIB="${ROOT}/tests/lib/pg_test_lib.sh"
-if [[ -f "${PG_LIB}" ]]; then
-  # shellcheck disable=SC1090
-  source "${PG_LIB}"
-fi
-
 LOG_DIR="${ROOT}/build"
 mkdir -p "${LOG_DIR}"
-LOG_FILE="${LOG_DIR}/agentd_session_voice_webrtc_peer_runtime_smoke.log"
 
-PG_DSN_OVERRIDE="${AGENTD_TEST_PG_DSN:-}"
-USE_DOCKER="1"
-USE_LOCAL_PG="0"
-if [[ -n "${PG_DSN_OVERRIDE}" ]]; then
-  USE_DOCKER="0"
-elif ! command -v docker >/dev/null 2>&1; then
-  USE_DOCKER="0"
-elif ! timeout 2 docker info >/dev/null 2>&1; then
-  USE_DOCKER="0"
-fi
-
-if [[ "${USE_DOCKER}" == "0" && -z "${PG_DSN_OVERRIDE}" ]]; then
-  if pg_test_has_local_pg; then
-    USE_LOCAL_PG="1"
-  else
-    reason="$(pg_test_unavailable_reason)"
-    echo "SKIP: docker not ready and local Postgres not available (${reason}); set AGENTD_TEST_PG_DSN to run" >&2
-    exit 77
-  fi
-fi
-
-POSTGRES_NAME="agentd_session_voice_webrtc_peer_runtime_smoke"
-BROKER_PORT=""
-PORT_DAEMON=""
-PG_PORT=""
-BROKER_PID=""
-
-pick_port() {
-  python3 - <<'PY'
-import socket
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.bind(("127.0.0.1", 0))
-print(s.getsockname()[1])
-s.close()
-PY
-}
-
-cleanup() {
-  if [[ -n "${BROKER_PID}" ]]; then
-    kill -TERM "${BROKER_PID}" >/dev/null 2>&1 || true
-    wait "${BROKER_PID}" >/dev/null 2>&1 || true
-  fi
-  if [[ "${USE_DOCKER}" == "1" ]]; then
-    docker rm -f "${POSTGRES_NAME}" >/dev/null 2>&1 || true
-  fi
-  if [[ "${USE_LOCAL_PG}" == "1" ]]; then
-    pg_test_stop_local || true
-  fi
-}
-trap cleanup EXIT
-
-if [[ "${USE_DOCKER}" == "1" ]]; then
-  PG_PORT="$(pick_port)"
-fi
-BROKER_PORT="$(pick_port)"
-PORT_DAEMON="$(pick_port)"
-SESSION_DB_PATH="${LOG_DIR}/agentd_session_voice_webrtc_peer_runtime_smoke_${PORT_DAEMON}.sqlite"
-STATE_DIR="${LOG_DIR}/agentd_session_voice_webrtc_peer_runtime_smoke_${PORT_DAEMON}.state"
-
-if [[ "${USE_DOCKER}" == "1" ]]; then
-  if docker ps -a --format '{{.Names}}' | grep -q "^${POSTGRES_NAME}$"; then
-    docker rm -f "${POSTGRES_NAME}" >/dev/null 2>&1 || true
-  fi
-  docker run -d --rm --name "${POSTGRES_NAME}" -e POSTGRES_PASSWORD=postgres -p "${PG_PORT}:5432" postgres:16 >/dev/null
-  for _ in $(seq 1 30); do
-    if docker exec "${POSTGRES_NAME}" pg_isready -U postgres >/dev/null 2>&1; then
-      break
-    fi
-    sleep 1
-  done
-  if ! docker exec "${POSTGRES_NAME}" pg_isready -U postgres >/dev/null 2>&1; then
-    echo "Postgres did not become ready" >&2
-    exit 1
-  fi
-fi
-
-if [[ "${USE_LOCAL_PG}" == "1" ]]; then
-  if ! pg_test_start_local; then
-    echo "SKIP: local Postgres init failed" >&2
-    exit 77
-  fi
-fi
-
-CLIENT_AUTH_JSON="${LOG_DIR}/broker_audio_runtime_client_auth.json"
-cat >"${CLIENT_AUTH_JSON}" <<JSON
-{
-  "clients": [
-    {
-      "client_id": "audio-agentd",
-      "token": "audio-agentd-token",
-      "admin": true
-    },
-    {
-      "client_id": "audio-webui",
-      "token": "audio-webui-token",
-      "admin": true
-    }
-  ]
-}
-JSON
-
-BROKER_BIN="${LOG_DIR}/agentd-broker-audio-runtime"
-(
-  cd "${ROOT}/broker"
-  go build -trimpath -o "${BROKER_BIN}" ./cmd/agentd-broker
-) >>"${LOG_FILE}" 2>&1
-
-DSN="${PG_DSN_OVERRIDE}"
-if [[ -z "${DSN}" ]]; then
-  if [[ "${USE_LOCAL_PG}" == "1" ]]; then
-    DSN="${PG_TEST_DSN}"
-  else
-    DSN="postgres://postgres:postgres@127.0.0.1:${PG_PORT}/postgres?sslmode=disable"
-  fi
-fi
-
-"${BROKER_BIN}" \
-  --listen "127.0.0.1:${BROKER_PORT}" \
-  --db-dsn "${DSN}" \
-  --client-auth-file "${CLIENT_AUTH_JSON}" >>"${LOG_FILE}" 2>&1 &
-BROKER_PID=$!
-
-for _ in $(seq 1 60); do
-  if curl -fsS "http://127.0.0.1:${BROKER_PORT}/healthz" >/dev/null 2>&1; then
-    break
-  fi
-  sleep 0.2
-done
-if ! curl -fsS "http://127.0.0.1:${BROKER_PORT}/healthz" >/dev/null 2>&1; then
-  echo "Broker did not become ready; see ${LOG_FILE}" >&2
-  exit 1
-fi
+voice_webrtc_init_broker_fixture
+RUN_LOG_DIR="${LOG_DIR}/agentd_session_voice_webrtc_peer_runtime_smoke_${PORT_DAEMON}"
+mkdir -p "${RUN_LOG_DIR}"
+LOG_FILE="${RUN_LOG_DIR}/agentd_session_voice_webrtc_peer_runtime_smoke.log"
+trap voice_webrtc_cleanup_broker_fixture EXIT
+voice_webrtc_start_broker_fixture
 
 HOST="127.0.0.1"
 DAEMON_TOKEN="agentd-audio-runtime-token"
-VOICE_BROKER_URL="http://127.0.0.1:${BROKER_PORT}"
-VOICE_BROKER_TOKEN="audio-agentd-token"
 
 start_agentd_with_voice_defaults
 DAEMON_URL="http://${HOST}:${PORT_DAEMON}"
@@ -253,11 +120,8 @@ PY
 ENV_BUILTIN_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_env_builtin_$(date +%s)_$RANDOM"
 create_session "${ENV_BUILTIN_SESSION_ID}"
 
-set +e
-env_builtin_start_resp="$(curl -sS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "$(python3 - <<PY
+env_builtin_start_body="${RUN_LOG_DIR}/voice_webrtc_peer_env_builtin_default_body.json"
+env_builtin_start_code="$(voice_peer_request_status "${env_builtin_start_body}" "$(python3 - <<PY
 import json
 print(json.dumps({
   "session_id": "${ENV_BUILTIN_SESSION_ID}",
@@ -267,26 +131,16 @@ print(json.dumps({
   "sender_tag": "agentd_runtime_peer"
 }))
 PY
-)" \
-  -w $'\n%{http_code}' \
-  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
-env_builtin_start_curl_rc=$?
-set -e
-if [[ ${env_builtin_start_curl_rc} -ne 0 ]]; then
-  echo "voice_webrtc_peer env-builtin-default start request failed to complete" >&2
-  exit 1
-fi
-
-env_builtin_start_code="$(printf '%s' "${env_builtin_start_resp}" | tail -n 1)"
-env_builtin_start_body="$(printf '%s' "${env_builtin_start_resp}" | sed '$d')"
+)")"
 if [[ "${env_builtin_start_code}" != "501" ]]; then
   echo "expected env builtin default start to return http 501, got ${env_builtin_start_code}" >&2
+  cat "${env_builtin_start_body}" >&2
   exit 1
 fi
 
 python3 - <<PY
 import json, sys
-obj = json.loads(r'''${env_builtin_start_body}''')
+obj = json.load(open(r'''${env_builtin_start_body}''', 'r', encoding='utf-8'))
 if obj.get("ok") is not False:
   print("expected env builtin default start to fail", obj, file=sys.stderr)
   raise SystemExit(1)
@@ -409,12 +263,8 @@ if peer.get("status_source") != "persisted":
   raise SystemExit(1)
 PY
 
-persisted_conflict_body="${LOG_DIR}/voice_webrtc_peer_persisted_conflict_body.json"
-persisted_conflict_status="$(curl -sS --noproxy "*" --max-time 10 -o "${persisted_conflict_body}" -w '%{http_code}' \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${SESSION_DB_ID}\",\"action\":\"start\",\"runtime_kind\":\"builtin\"}" \
-  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+persisted_conflict_body="${RUN_LOG_DIR}/voice_webrtc_peer_persisted_conflict_body.json"
+persisted_conflict_status="$(voice_peer_request_status "${persisted_conflict_body}" "{\"session_id\":\"${SESSION_DB_ID}\",\"action\":\"start\",\"runtime_kind\":\"builtin\"}")"
 if [[ "${persisted_conflict_status}" != "409" ]]; then
   echo "expected persisted running builtin conflict to return 409, got ${persisted_conflict_status}" >&2
   cat "${persisted_conflict_body}" >&2
@@ -471,156 +321,17 @@ PY
 
 wait_broker_session_deleted "${BROKER_SESSION_ID}"
 
-builtin_resp_headers="${LOG_DIR}/voice_webrtc_peer_builtin_headers.txt"
-builtin_resp_body="${LOG_DIR}/voice_webrtc_peer_builtin_body.json"
-builtin_status="$(curl -sS --noproxy "*" --max-time 10 -o "${builtin_resp_body}" -D "${builtin_resp_headers}" -w '%{http_code}' \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${SESSION_DB_ID}\",\"action\":\"start\",\"runtime_kind\":\"builtin\",\"broker_agent_id\":\"a-1\",\"broker_deployment_id\":\"lab-builtin-contract\"}" \
-  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+builtin_resp_body="${RUN_LOG_DIR}/voice_webrtc_peer_builtin_body.json"
+builtin_status="$(voice_peer_request_status "${builtin_resp_body}" "{\"session_id\":\"${SESSION_DB_ID}\",\"action\":\"start\",\"runtime_kind\":\"builtin\",\"broker_agent_id\":\"a-1\",\"broker_deployment_id\":\"lab-builtin-contract\"}")"
 if [[ "${builtin_status}" != "501" ]]; then
   echo "expected builtin runtime request to return 501, got ${builtin_status}" >&2
   cat "${builtin_resp_body}" >&2
   exit 1
 fi
-python3 - <<PY
-import json, sys
-obj = json.load(open(r'''${builtin_resp_body}''', 'r', encoding='utf-8'))
-if obj.get("builtin_available") is not False or obj.get("bundled_available") is not True:
-  print("unexpected builtin contract response", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("external_available") is not False or obj.get("default_runtime_kind") != "bundled":
-  print("unexpected builtin contract response", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("default_runtime_kind_source") != "env" or obj.get("default_runtime_kind_available") is not True:
-  print("unexpected builtin contract response", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("broker_url_default_configured") is not True or obj.get("broker_token_default_configured") is not True:
-  print("expected broker defaults in builtin contract response", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "disabled" not in str(obj.get("builtin_unavailable_reason", "")):
-  print("expected builtin disabled unavailable reason", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "disabled" not in str(obj.get("error", "")):
-  print("expected builtin disabled error", obj, file=sys.stderr)
-  raise SystemExit(1)
-contract = obj.get("builtin_start_contract") or {}
-if contract.get("runtime_kind") != "builtin" or contract.get("signaling_surface") != "voice_webrtc_peer":
-  print("expected builtin start contract metadata", obj, file=sys.stderr)
-  raise SystemExit(1)
-if contract.get("mutating_broker_actions_deferred") is not True:
-  print("expected builtin contract to defer mutating broker actions", obj, file=sys.stderr)
-  raise SystemExit(1)
-sequence = contract.get("startup_sequence") or []
-if [step.get("stage") for step in sequence] != [
-    "auto_create_broker_session",
-    "launch_runtime",
-    "startup_confirmation",
-    "startup_failure_cleanup",
-]:
-  print("expected builtin startup sequence", obj, file=sys.stderr)
-  raise SystemExit(1)
-if not sequence[0].get("deferred", False) or not sequence[1].get("deferred", False):
-  print("expected builtin startup sequence to remain deferred", obj, file=sys.stderr)
-  raise SystemExit(1)
-broker_session = contract.get("broker_session") or {}
-if broker_session.get("mode") != "auto_create" or broker_session.get("agent_id") != "a-1":
-  print("expected builtin auto-create broker contract", obj, file=sys.stderr)
-  raise SystemExit(1)
-if broker_session.get("deployment_id") != "lab-builtin-contract":
-  print("expected builtin deployment contract", obj, file=sys.stderr)
-  raise SystemExit(1)
-if broker_session.get("session_id") is not None:
-  print("expected builtin auto-create broker contract to omit session_id", obj, file=sys.stderr)
-  raise SystemExit(1)
-artifacts = contract.get("runtime_artifacts") or {}
-runtime_dir = artifacts.get("runtime_dir") or ""
-if not runtime_dir.endswith("/voice_webrtc_peers/" + obj.get("session_id", "")):
-  print("expected builtin runtime_dir contract", obj, file=sys.stderr)
-  raise SystemExit(1)
-if artifacts.get("ready_file_path") != runtime_dir + "/ready.json":
-  print("expected builtin ready_file_path contract", obj, file=sys.stderr)
-  raise SystemExit(1)
-if artifacts.get("stdout_log_path") != runtime_dir + "/stdout.jsonl":
-  print("expected builtin stdout_log_path contract", obj, file=sys.stderr)
-  raise SystemExit(1)
-if artifacts.get("stderr_log_path") != runtime_dir + "/stderr.log":
-  print("expected builtin stderr_log_path contract", obj, file=sys.stderr)
-  raise SystemExit(1)
-if artifacts.get("stdout_format") != "jsonl" or artifacts.get("stderr_format") != "text":
-  print("expected builtin runtime artifact format contract", obj, file=sys.stderr)
-  raise SystemExit(1)
-media_plan = contract.get("media_runtime_plan") or {}
-if media_plan.get("schema") != "voice_webrtc_peer_media_runtime_plan_v1":
-  print("expected builtin media runtime plan schema", obj, file=sys.stderr)
-  raise SystemExit(1)
-if media_plan.get("signaling_surface") != "voice_webrtc_peer":
-  print("expected builtin media runtime signaling surface", obj, file=sys.stderr)
-  raise SystemExit(1)
-if media_plan.get("runtime_kind") != "builtin" or media_plan.get("session_id") != obj.get("session_id"):
-  print("expected builtin media runtime plan identity", obj, file=sys.stderr)
-  raise SystemExit(1)
-if media_plan.get("broker_session_id") is not None:
-  print("expected builtin auto-create media runtime plan to omit broker_session_id", obj, file=sys.stderr)
-  raise SystemExit(1)
-if media_plan.get("managed_broker_session") is not True:
-  print("expected builtin media runtime plan managed broker session", obj, file=sys.stderr)
-  raise SystemExit(1)
-if media_plan.get("broker_agent_id") != "a-1" or media_plan.get("broker_deployment_id") != "lab-builtin-contract":
-  print("expected builtin media runtime plan broker ownership metadata", obj, file=sys.stderr)
-  raise SystemExit(1)
-if media_plan.get("ready_signal") != "ready_file" or media_plan.get("ready_file_path") != artifacts.get("ready_file_path"):
-  print("expected builtin media runtime plan ready contract", obj, file=sys.stderr)
-  raise SystemExit(1)
-if media_plan.get("deadline_ms") != contract.get("deadline_ms") or media_plan.get("poll_interval_ms") != contract.get("poll_interval_ms") or media_plan.get("tone_hz") != contract.get("tone_hz"):
-  print("expected builtin media runtime timing contract", obj, file=sys.stderr)
-  raise SystemExit(1)
-planned_runtime = contract.get("planned_runtime") or {}
-if planned_runtime.get("schema") != "session_voice_webrtc_peer_runtime_v1":
-  print("expected builtin planned runtime schema", obj, file=sys.stderr)
-  raise SystemExit(1)
-if planned_runtime.get("status_source") != "planned":
-  print("expected builtin planned runtime status_source=planned", obj, file=sys.stderr)
-  raise SystemExit(1)
-if planned_runtime.get("runtime_kind") != "builtin" or planned_runtime.get("session_id") != obj.get("session_id"):
-  print("expected builtin planned runtime identity", obj, file=sys.stderr)
-  raise SystemExit(1)
-if planned_runtime.get("tool_path") != "@builtin" or planned_runtime.get("node_bin") != "@builtin":
-  print("expected builtin planned runtime builtin execution sentinels", obj, file=sys.stderr)
-  raise SystemExit(1)
-if planned_runtime.get("managed_broker_session") is not True:
-  print("expected builtin planned runtime managed broker session", obj, file=sys.stderr)
-  raise SystemExit(1)
-if planned_runtime.get("running") is not False or planned_runtime.get("ready") is not False:
-  print("expected builtin planned runtime to stay inactive", obj, file=sys.stderr)
-  raise SystemExit(1)
-if planned_runtime.get("stdout_log_path") != artifacts.get("stdout_log_path"):
-  print("expected builtin planned runtime stdout_log_path to match artifacts", obj, file=sys.stderr)
-  raise SystemExit(1)
-if planned_runtime.get("broker_agent_id") != "a-1" or planned_runtime.get("broker_deployment_id") != "lab-builtin-contract":
-  print("expected builtin planned runtime broker ownership metadata", obj, file=sys.stderr)
-  raise SystemExit(1)
-peer = obj.get("peer") or {}
-if peer.get("schema") != "session_voice_webrtc_peer_runtime_v1":
-  print("expected builtin top-level peer preview schema", obj, file=sys.stderr)
-  raise SystemExit(1)
-for key in ("runtime_kind", "session_id", "broker_url", "stdout_log_path", "stderr_log_path", "ready_file_path"):
-  if peer.get(key) != planned_runtime.get(key):
-    print(f"expected builtin top-level peer preview to match planned_runtime for {key}", obj, file=sys.stderr)
-    raise SystemExit(1)
-if peer.get("status_source") != "planned":
-  print("expected builtin top-level peer preview status_source=planned", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("tool_path") != "@builtin" or peer.get("node_bin") != "@builtin":
-  print("expected builtin top-level peer preview builtin execution sentinels", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("managed_broker_session") is not True or peer.get("running") is not False or peer.get("ready") is not False:
-  print("expected builtin top-level peer preview state", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "disabled" not in str(peer.get("last_error") or ""):
-  print("expected builtin top-level peer preview disabled error", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_assertions.py" assert-builtin-auto-create-contract \
+  --body-path "${builtin_resp_body}" \
+  --broker-agent-id "a-1" \
+  --broker-deployment-id "lab-builtin-contract"
 
 BUILTIN_BORROWED_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_borrowed_$(date +%s)_$RANDOM"
 create_session "${BUILTIN_BORROWED_SESSION_ID}"
@@ -638,11 +349,8 @@ print(sid)
 PY
 )"
 
-builtin_borrowed_resp_body="${LOG_DIR}/voice_webrtc_peer_builtin_borrowed_body.json"
-builtin_borrowed_status="$(curl -sS --noproxy "*" --max-time 10 -o "${builtin_borrowed_resp_body}" -w '%{http_code}' \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "$(python3 - <<PY
+builtin_borrowed_resp_body="${RUN_LOG_DIR}/voice_webrtc_peer_builtin_borrowed_body.json"
+builtin_borrowed_status="$(voice_peer_request_status "${builtin_borrowed_resp_body}" "$(python3 - <<PY
 import json
 print(json.dumps({
   "session_id": "${BUILTIN_BORROWED_SESSION_ID}",
@@ -657,49 +365,15 @@ print(json.dumps({
   "tone_hz": 551
 }))
 PY
-)" \
-  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+)")"
 if [[ "${builtin_borrowed_status}" != "501" ]]; then
   echo "expected builtin borrowed start to return 501, got ${builtin_borrowed_status}" >&2
   cat "${builtin_borrowed_resp_body}" >&2
   exit 1
 fi
-python3 - <<PY
-import json, sys
-obj = json.load(open(r'''${builtin_borrowed_resp_body}''', 'r', encoding='utf-8'))
-if obj.get("ok") is not False:
-  print("expected builtin borrowed start to fail not-implemented", obj, file=sys.stderr)
-  raise SystemExit(1)
-contract = obj.get("builtin_start_contract") or {}
-broker_session = contract.get("broker_session") or {}
-if broker_session.get("mode") != "borrowed":
-  print("expected builtin borrowed broker contract", obj, file=sys.stderr)
-  raise SystemExit(1)
-if broker_session.get("session_id") != r'''${BUILTIN_BORROWED_BROKER_SESSION_ID}''' or broker_session.get("preflighted") is not True:
-  print("expected builtin borrowed broker session id/preflight", obj, file=sys.stderr)
-  raise SystemExit(1)
-if broker_session.get("session_mode") != "webrtc":
-  print("expected builtin borrowed broker session mode", obj, file=sys.stderr)
-  raise SystemExit(1)
-if broker_session.get("agent_id") is not None or broker_session.get("deployment_id") is not None:
-  print("expected builtin borrowed broker contract to omit auto-create ownership fields", obj, file=sys.stderr)
-  raise SystemExit(1)
-media_plan = contract.get("media_runtime_plan") or {}
-if media_plan.get("broker_session_id") != r'''${BUILTIN_BORROWED_BROKER_SESSION_ID}''' or media_plan.get("managed_broker_session") is not False:
-  print("expected builtin borrowed media runtime plan", obj, file=sys.stderr)
-  raise SystemExit(1)
-if media_plan.get("broker_agent_id") is not None or media_plan.get("broker_deployment_id") is not None:
-  print("expected builtin borrowed media runtime plan to omit ownership fields", obj, file=sys.stderr)
-  raise SystemExit(1)
-planned_runtime = contract.get("planned_runtime") or {}
-peer = obj.get("peer") or {}
-if planned_runtime.get("broker_session_id") != r'''${BUILTIN_BORROWED_BROKER_SESSION_ID}''' or planned_runtime.get("managed_broker_session") is not False:
-  print("expected builtin borrowed planned runtime", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("broker_session_id") != r'''${BUILTIN_BORROWED_BROKER_SESSION_ID}''' or peer.get("managed_broker_session") is not False:
-  print("expected builtin borrowed top-level peer preview", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_assertions.py" assert-builtin-borrowed-contract \
+  --body-path "${builtin_borrowed_resp_body}" \
+  --broker-session-id "${BUILTIN_BORROWED_BROKER_SESSION_ID}"
 
 builtin_borrowed_delete_status="$(broker_session_delete_status "${BUILTIN_BORROWED_BROKER_SESSION_ID}")"
 if [[ "${builtin_borrowed_delete_status}" != "200" && "${builtin_borrowed_delete_status}" != "404" ]]; then
@@ -710,11 +384,8 @@ fi
 BUILTIN_MISSING_BROKER_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_missing_broker_$(date +%s)_$RANDOM"
 create_session "${BUILTIN_MISSING_BROKER_SESSION_ID}"
 
-builtin_missing_broker_session_resp_body="${LOG_DIR}/voice_webrtc_peer_builtin_missing_broker_session_body.json"
-builtin_missing_broker_session_status="$(curl -sS --noproxy "*" --max-time 10 -o "${builtin_missing_broker_session_resp_body}" -w '%{http_code}' \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "$(python3 - <<PY
+builtin_missing_broker_session_resp_body="${RUN_LOG_DIR}/voice_webrtc_peer_builtin_missing_broker_session_body.json"
+builtin_missing_broker_session_status="$(voice_peer_request_status "${builtin_missing_broker_session_resp_body}" "$(python3 - <<PY
 import json
 print(json.dumps({
   "session_id": "${BUILTIN_MISSING_BROKER_SESSION_ID}",
@@ -724,42 +395,28 @@ print(json.dumps({
   "sender_tag": "agentd_runtime_peer"
 }))
 PY
-)" \
-  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+)")"
 if [[ "${builtin_missing_broker_session_status}" != "400" ]]; then
   echo "expected builtin missing broker_session_id start to return 400, got ${builtin_missing_broker_session_status}" >&2
   cat "${builtin_missing_broker_session_resp_body}" >&2
   exit 1
 fi
-python3 - <<PY
-import json, sys
-obj = json.load(open(r'''${builtin_missing_broker_session_resp_body}''', 'r', encoding='utf-8'))
-if obj.get("ok") is not False:
-  print("expected builtin missing broker_session_id start to fail", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "broker_session_id not found" not in str(obj.get("error", "")):
-  print("expected builtin missing broker_session_id error", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_assertions.py" assert-error-response \
+  --body-path "${builtin_missing_broker_session_resp_body}" \
+  --label "builtin missing broker_session_id start" \
+  --error-contains "broker_session_id not found"
 
 builtin_missing_broker_session_status_json="$(voice_peer_status "${BUILTIN_MISSING_BROKER_SESSION_ID}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${builtin_missing_broker_session_status_json}''')
-if obj.get("running") is not False or obj.get("peer") is not None:
-  print("expected no runtime after builtin missing broker_session_id preflight failure", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_assertions.py" assert-no-runtime \
+  --label "builtin missing broker_session_id preflight failure" \
+  --response-json "${builtin_missing_broker_session_status_json}"
 
 BUILTIN_CONFLICT_BROKER_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_builtin_conflict_broker_$(date +%s)_$RANDOM"
 create_session "${BUILTIN_CONFLICT_BROKER_SESSION_ID}"
 
-builtin_conflict_broker_session_resp_body="${LOG_DIR}/voice_webrtc_peer_builtin_conflict_broker_session_body.json"
-builtin_conflict_broker_session_status="$(curl -sS --noproxy "*" --max-time 10 -o "${builtin_conflict_broker_session_resp_body}" -w '%{http_code}' \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "$(python3 - <<PY
+builtin_conflict_broker_session_resp_body="${RUN_LOG_DIR}/voice_webrtc_peer_builtin_conflict_broker_session_body.json"
+builtin_conflict_broker_session_status="$(voice_peer_request_status "${builtin_conflict_broker_session_resp_body}" "$(python3 - <<PY
 import json
 print(json.dumps({
   "session_id": "${BUILTIN_CONFLICT_BROKER_SESSION_ID}",
@@ -771,41 +428,25 @@ print(json.dumps({
   "sender_tag": "agentd_runtime_peer"
 }))
 PY
-)" \
-  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+)")"
 if [[ "${builtin_conflict_broker_session_status}" != "400" ]]; then
   echo "expected conflicting builtin broker session start to return 400, got ${builtin_conflict_broker_session_status}" >&2
   cat "${builtin_conflict_broker_session_resp_body}" >&2
   exit 1
 fi
-python3 - <<PY
-import json, sys
-obj = json.load(open(r'''${builtin_conflict_broker_session_resp_body}''', 'r', encoding='utf-8'))
-if obj.get("ok") is not False:
-  print("expected conflicting builtin broker session start to fail", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "must be omitted" not in str(obj.get("error", "")):
-  print("expected conflicting builtin broker session validation error", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_assertions.py" assert-error-response \
+  --body-path "${builtin_conflict_broker_session_resp_body}" \
+  --label "conflicting builtin broker session start" \
+  --error-contains "must be omitted"
 
 builtin_conflict_broker_session_status_json="$(voice_peer_status "${BUILTIN_CONFLICT_BROKER_SESSION_ID}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${builtin_conflict_broker_session_status_json}''')
-if obj.get("running") is not False or obj.get("peer") is not None:
-  print("expected no runtime after conflicting builtin broker session validation failure", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_assertions.py" assert-no-runtime \
+  --label "conflicting builtin broker session validation failure" \
+  --response-json "${builtin_conflict_broker_session_status_json}"
 
-external_resp_headers="${LOG_DIR}/voice_webrtc_peer_external_headers.txt"
-external_resp_body="${LOG_DIR}/voice_webrtc_peer_external_body.json"
-external_status="$(curl -sS --noproxy "*" --max-time 10 -o "${external_resp_body}" -D "${external_resp_headers}" -w '%{http_code}' \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${SESSION_DB_ID}\",\"action\":\"start\",\"runtime_kind\":\"external\",\"broker_session_id\":\"external-test-session\"}" \
-  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+external_resp_body="${RUN_LOG_DIR}/voice_webrtc_peer_external_body.json"
+external_status="$(voice_peer_request_status "${external_resp_body}" "{\"session_id\":\"${SESSION_DB_ID}\",\"action\":\"start\",\"runtime_kind\":\"external\",\"broker_session_id\":\"external-test-session\"}")"
 if [[ "${external_status}" != "500" ]]; then
   echo "expected explicit external runtime request to return 500 without configured tool, got ${external_status}" >&2
   cat "${external_resp_body}" >&2
@@ -834,14 +475,11 @@ if "not configured" not in str(obj.get("error", "")):
   raise SystemExit(1)
 PY
 
-missing_broker_session_resp_body="${LOG_DIR}/voice_webrtc_peer_missing_broker_session_body.json"
+missing_broker_session_resp_body="${RUN_LOG_DIR}/voice_webrtc_peer_missing_broker_session_body.json"
 MISSING_BROKER_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_missing_broker_$(date +%s)_$RANDOM"
 create_session "${MISSING_BROKER_SESSION_ID}"
 
-missing_broker_session_status="$(curl -sS --noproxy "*" --max-time 10 -o "${missing_broker_session_resp_body}" -w '%{http_code}' \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "$(python3 - <<PY
+missing_broker_session_status="$(voice_peer_request_status "${missing_broker_session_resp_body}" "$(python3 - <<PY
 import json
 print(json.dumps({
   "session_id": "${MISSING_BROKER_SESSION_ID}",
@@ -853,44 +491,30 @@ print(json.dumps({
   "tone_hz": 517
 }))
 PY
-)" \
-  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+)")"
 if [[ "${missing_broker_session_status}" != "400" ]]; then
   echo "expected missing broker_session_id start to return 400, got ${missing_broker_session_status}" >&2
   cat "${missing_broker_session_resp_body}" >&2
   exit 1
 fi
-python3 - <<PY
-import json, sys
-obj = json.load(open(r'''${missing_broker_session_resp_body}''', 'r', encoding='utf-8'))
-if obj.get("ok") is not False:
-  print("expected missing broker_session_id start to fail", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "broker_session_id not found" not in str(obj.get("error", "")):
-  print("expected missing broker_session_id error", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_assertions.py" assert-error-response \
+  --body-path "${missing_broker_session_resp_body}" \
+  --label "missing broker_session_id start" \
+  --error-contains "broker_session_id not found"
 
 missing_broker_session_status_json="$(voice_peer_status "${MISSING_BROKER_SESSION_ID}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${missing_broker_session_status_json}''')
-if obj.get("running") is not False or obj.get("peer") is not None:
-  print("expected no runtime after missing broker_session_id preflight failure", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_assertions.py" assert-no-runtime \
+  --label "missing broker_session_id preflight failure" \
+  --response-json "${missing_broker_session_status_json}"
 
 delete_session_quiet "${MISSING_BROKER_SESSION_ID}"
 
 CONFLICT_BROKER_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_conflict_broker_$(date +%s)_$RANDOM"
 create_session "${CONFLICT_BROKER_SESSION_ID}"
 
-conflict_broker_session_resp_body="${LOG_DIR}/voice_webrtc_peer_conflict_broker_session_body.json"
-conflict_broker_session_status="$(curl -sS --noproxy "*" --max-time 10 -o "${conflict_broker_session_resp_body}" -w '%{http_code}' \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "$(python3 - <<PY
+conflict_broker_session_resp_body="${RUN_LOG_DIR}/voice_webrtc_peer_conflict_broker_session_body.json"
+conflict_broker_session_status="$(voice_peer_request_status "${conflict_broker_session_resp_body}" "$(python3 - <<PY
 import json
 print(json.dumps({
   "session_id": "${CONFLICT_BROKER_SESSION_ID}",
@@ -904,33 +528,22 @@ print(json.dumps({
   "tone_hz": 518
 }))
 PY
-)" \
-  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+)")"
 if [[ "${conflict_broker_session_status}" != "400" ]]; then
   echo "expected conflicting broker session start to return 400, got ${conflict_broker_session_status}" >&2
   cat "${conflict_broker_session_resp_body}" >&2
   exit 1
 fi
-python3 - <<PY
-import json, sys
-obj = json.load(open(r'''${conflict_broker_session_resp_body}''', 'r', encoding='utf-8'))
-if obj.get("ok") is not False:
-  print("expected conflicting broker session start to fail", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "must be omitted" not in str(obj.get("error", "")):
-  print("expected conflicting broker session validation error", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_assertions.py" assert-error-response \
+  --body-path "${conflict_broker_session_resp_body}" \
+  --label "conflicting broker session start" \
+  --error-contains "must be omitted"
 
 conflict_broker_session_status_json="$(voice_peer_status "${CONFLICT_BROKER_SESSION_ID}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${conflict_broker_session_status_json}''')
-if obj.get("running") is not False or obj.get("peer") is not None:
-  print("expected no runtime after conflicting broker session validation failure", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_assertions.py" assert-no-runtime \
+  --label "conflicting broker session validation failure" \
+  --response-json "${conflict_broker_session_status_json}"
 
 delete_session_quiet "${CONFLICT_BROKER_SESSION_ID}"
 
@@ -1343,7 +956,6 @@ PY
 
 wait_voice_peer_ready "${SESSION_DB_ID}" 1 status_json
 
-SESSION_DB_ID_Q="$(url_quote "${SESSION_DB_ID}")"
 delete_resp="$(delete_session "${SESSION_DB_ID}")"
 
 python3 - <<PY
@@ -1367,11 +979,8 @@ if cleanup.get("persisted_record_cleared") is not True:
   raise SystemExit(1)
 PY
 
-session_after_delete_body="${LOG_DIR}/voice_runtime_session_after_delete.json"
-session_after_delete_status="$(curl -sS --noproxy "*" --max-time 10 \
-  -o "${session_after_delete_body}" -w '%{http_code}' \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  "${DAEMON_URL}/api/v1/session?session_id=${SESSION_DB_ID_Q}")"
+session_after_delete_body="${RUN_LOG_DIR}/voice_runtime_session_after_delete.json"
+session_after_delete_status="$(session_status_code "${SESSION_DB_ID}" "${session_after_delete_body}")"
 if [[ "${session_after_delete_status}" != "404" ]]; then
   echo "expected deleted session to return 404, got ${session_after_delete_status}" >&2
   cat "${session_after_delete_body}" >&2
@@ -1767,12 +1376,8 @@ if current.get("runtime_available") is not True:
   raise SystemExit(1)
 PY
 
-external_default_conflict_body="${LOG_DIR}/voice_webrtc_peer_external_default_conflict_body.json"
-external_default_conflict_status="$(curl -sS --noproxy "*" --max-time 10 -o "${external_default_conflict_body}" -w '%{http_code}' \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${EXTERNAL_SESSION_ID}\",\"action\":\"start\"}" \
-  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+external_default_conflict_body="${RUN_LOG_DIR}/voice_webrtc_peer_external_default_conflict_body.json"
+external_default_conflict_status="$(voice_peer_request_status "${external_default_conflict_body}" "{\"session_id\":\"${EXTERNAL_SESSION_ID}\",\"action\":\"start\"}")"
 if [[ "${external_default_conflict_status}" != "409" ]]; then
   echo "expected effective default-runtime conflict to return 409, got ${external_default_conflict_status}" >&2
   cat "${external_default_conflict_body}" >&2
@@ -1831,12 +1436,8 @@ if audio.get("external_available") is not False or audio.get("default_runtime_ki
   raise SystemExit(1)
 PY
 
-external_unavailable_conflict_body="${LOG_DIR}/voice_webrtc_peer_external_unavailable_conflict_body.json"
-external_unavailable_conflict_status="$(curl -sS --noproxy "*" --max-time 10 -o "${external_unavailable_conflict_body}" -w '%{http_code}' \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${EXTERNAL_SESSION_ID}\",\"action\":\"start\"}" \
-  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
+external_unavailable_conflict_body="${RUN_LOG_DIR}/voice_webrtc_peer_external_unavailable_conflict_body.json"
+external_unavailable_conflict_status="$(voice_peer_request_status "${external_unavailable_conflict_body}" "{\"session_id\":\"${EXTERNAL_SESSION_ID}\",\"action\":\"start\"}")"
 if [[ "${external_unavailable_conflict_status}" != "409" ]]; then
   echo "expected unavailable-backend running conflict to return 409, got ${external_unavailable_conflict_status}" >&2
   cat "${external_unavailable_conflict_body}" >&2
@@ -1898,7 +1499,7 @@ if audio.get("external_available") is not False or audio.get("default_runtime_ki
   raise SystemExit(1)
 PY
 
-external_node_bin_conflict_body="${LOG_DIR}/voice_webrtc_peer_external_node_bin_conflict_body.json"
+external_node_bin_conflict_body="${RUN_LOG_DIR}/voice_webrtc_peer_external_node_bin_conflict_body.json"
 external_node_bin_conflict_status="$(voice_peer_request_status "${external_node_bin_conflict_body}" "$(python3 - <<PY
 import json
 print(json.dumps({
@@ -1985,7 +1586,7 @@ if "backend_policy_drift" in obj:
   raise SystemExit(1)
 PY
 
-external_conflict_body="${LOG_DIR}/voice_webrtc_peer_external_conflict_body.json"
+external_conflict_body="${RUN_LOG_DIR}/voice_webrtc_peer_external_conflict_body.json"
 external_conflict_status="$(voice_peer_request_status "${external_conflict_body}" "{\"session_id\":\"${EXTERNAL_SESSION_ID}\",\"action\":\"start\",\"runtime_kind\":\"external\",\"tone_hz\":1234}")"
 if [[ "${external_conflict_status}" != "409" ]]; then
   echo "expected external running conflict to return 409, got ${external_conflict_status}" >&2
@@ -2476,11 +2077,8 @@ PY
 UNAVAILABLE_DEFAULT_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_default_unavailable_$(date +%s)_$RANDOM"
 create_session "${UNAVAILABLE_DEFAULT_SESSION_ID}"
 
-set +e
-unavailable_default_start_resp="$(curl -sS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "$(python3 - <<PY
+unavailable_default_start_body="${RUN_LOG_DIR}/voice_webrtc_peer_unavailable_default_start_body.json"
+unavailable_default_start_code="$(voice_peer_request_status "${unavailable_default_start_body}" "$(python3 - <<PY
 import json
 print(json.dumps({
   "session_id": "${UNAVAILABLE_DEFAULT_SESSION_ID}",
@@ -2493,26 +2091,16 @@ print(json.dumps({
   "tone_hz": 903
 }))
 PY
-)" \
-  -w $'\n%{http_code}' \
-  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
-unavailable_default_start_curl_rc=$?
-set -e
-if [[ ${unavailable_default_start_curl_rc} -ne 0 ]]; then
-  echo "voice_webrtc_peer unavailable-default start request failed to complete" >&2
-  exit 1
-fi
-
-unavailable_default_start_code="$(printf '%s' "${unavailable_default_start_resp}" | tail -n 1)"
-unavailable_default_start_body="$(printf '%s' "${unavailable_default_start_resp}" | sed '$d')"
+)")"
 if [[ "${unavailable_default_start_code}" != "500" ]]; then
   echo "expected unavailable external default start to return http 500, got ${unavailable_default_start_code}" >&2
+  cat "${unavailable_default_start_body}" >&2
   exit 1
 fi
 
 python3 - <<PY
 import json, sys
-obj = json.loads(r'''${unavailable_default_start_body}''')
+obj = json.load(open(r'''${unavailable_default_start_body}''', 'r', encoding='utf-8'))
 if obj.get("ok") is not False:
   print("expected unavailable external default start to fail", obj, file=sys.stderr)
   raise SystemExit(1)
@@ -2594,11 +2182,8 @@ PY
 BUILTIN_DEFAULT_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_default_builtin_$(date +%s)_$RANDOM"
 create_session "${BUILTIN_DEFAULT_SESSION_ID}"
 
-set +e
-builtin_default_start_resp="$(curl -sS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${DAEMON_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "$(python3 - <<PY
+builtin_default_start_body="${RUN_LOG_DIR}/voice_webrtc_peer_builtin_default_start_body.json"
+builtin_default_start_code="$(voice_peer_request_status "${builtin_default_start_body}" "$(python3 - <<PY
 import json
 print(json.dumps({
   "session_id": "${BUILTIN_DEFAULT_SESSION_ID}",
@@ -2611,26 +2196,16 @@ print(json.dumps({
   "tone_hz": 904
 }))
 PY
-)" \
-  -w $'\n%{http_code}' \
-  "${DAEMON_URL}/api/v1/session/voice_webrtc_peer")"
-builtin_default_start_curl_rc=$?
-set -e
-if [[ ${builtin_default_start_curl_rc} -ne 0 ]]; then
-  echo "voice_webrtc_peer config-builtin-default start request failed to complete" >&2
-  exit 1
-fi
-
-builtin_default_start_code="$(printf '%s' "${builtin_default_start_resp}" | tail -n 1)"
-builtin_default_start_body="$(printf '%s' "${builtin_default_start_resp}" | sed '$d')"
+)")"
 if [[ "${builtin_default_start_code}" != "501" ]]; then
   echo "expected config builtin default start to return http 501, got ${builtin_default_start_code}" >&2
+  cat "${builtin_default_start_body}" >&2
   exit 1
 fi
 
 python3 - <<PY
 import json, sys
-obj = json.loads(r'''${builtin_default_start_body}''')
+obj = json.load(open(r'''${builtin_default_start_body}''', 'r', encoding='utf-8'))
 if obj.get("ok") is not False:
   print("expected config builtin default start to fail", obj, file=sys.stderr)
   raise SystemExit(1)
@@ -3179,7 +2754,7 @@ PY
 INVALID_NODE_BIN_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_invalid_node_bin_$(date +%s)_$RANDOM"
 create_session "${INVALID_NODE_BIN_SESSION_ID}"
 
-invalid_node_bin_start_body="${LOG_DIR}/voice_webrtc_peer_invalid_node_bin_start_body.json"
+invalid_node_bin_start_body="${RUN_LOG_DIR}/voice_webrtc_peer_invalid_node_bin_start_body.json"
 invalid_node_bin_start_status="$(voice_peer_request_status "${invalid_node_bin_start_body}" "$(python3 - <<PY
 import json
 print(json.dumps({
@@ -3266,7 +2841,7 @@ restart_agentd_without_voice_defaults
 FAIL_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_fail_$(date +%s)_$RANDOM"
 create_session "${FAIL_SESSION_ID}"
 
-fail_start_body="${LOG_DIR}/voice_webrtc_peer_fail_start_body.json"
+fail_start_body="${RUN_LOG_DIR}/voice_webrtc_peer_fail_start_body.json"
 fail_start_status="$(voice_peer_request_status "${fail_start_body}" "$(python3 - <<PY
 import json
 print(json.dumps({
