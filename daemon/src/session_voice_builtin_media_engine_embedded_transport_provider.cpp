@@ -3,6 +3,7 @@
 #include "session_voice_builtin_audio_payload.h"
 #include "session_voice_builtin_embedded_status.h"
 #include "session_voice_builtin_media_engine_plugin.h"
+#include "session_voice_builtin_packet_accounting.h"
 #include "session_voice_builtin_progress_key.h"
 #include "session_voice_builtin_sdp_answer.h"
 #include "session_voice_dtls_srtp_util.h"
@@ -129,40 +130,7 @@ struct EmbeddedTransportState {
   bool srtp_contexts_ready = false;
   bool srtp_inbound_ready = false;
   bool srtp_outbound_ready = false;
-  uint64_t rtp_packets_received = 0;
-  uint64_t rtp_payload_bytes_received = 0;
-  uint64_t rtp_packets_sent = 0;
-  uint64_t rtp_payload_bytes_sent = 0;
-  uint64_t rtcp_packets_received = 0;
-  uint64_t rtcp_packets_sent = 0;
-  uint64_t rtcp_payload_bytes_received = 0;
-  uint64_t rtcp_payload_bytes_sent = 0;
-  uint64_t rtcp_sender_reports_sent = 0;
-  uint64_t rtcp_receiver_reports_sent = 0;
-  uint64_t rtcp_receiver_report_blocks_sent = 0;
-  int64_t rtp_last_payload_type = -1;
-  int64_t rtp_last_sequence = -1;
-  uint64_t rtp_last_timestamp = 0;
-  uint64_t rtp_last_ssrc = 0;
-  int64_t rtp_last_sent_payload_type = -1;
-  int64_t rtp_last_sent_sequence = -1;
-  uint64_t rtp_last_sent_timestamp = 0;
-  uint64_t rtp_last_sent_ssrc = 0;
-  int64_t rtcp_last_packet_type = -1;
-  uint64_t rtcp_last_ssrc = 0;
-  int64_t rtcp_last_sent_packet_type = -1;
-  uint64_t rtcp_last_sent_ssrc = 0;
-  uint64_t rtcp_last_reported_rtp_ssrc = 0;
-  int64_t rtcp_last_report_fraction_lost = 0;
-  int64_t rtcp_last_report_cumulative_lost = 0;
-  uint64_t rtcp_last_report_highest_sequence = 0;
-  uint64_t rtcp_last_report_jitter = 0;
-  uint64_t rtcp_last_report_lsr = 0;
-  uint64_t rtcp_last_report_dlsr = 0;
-  bool rtcp_sender_report_sent = false;
-  std::chrono::steady_clock::time_point rtcp_last_sender_report_at;
-  uint64_t rtp_packets_sent_at_last_sender_report = 0;
-  agentd::RtcpReceiverReportTracker inbound_rtcp_report;
+  agentd::BuiltinRtpRtcpPacketAccounting packet_accounting;
   uint64_t audio_frames_decoded = 0;
   uint64_t audio_pcm_samples_decoded = 0;
   uint64_t audio_pcm_samples_buffered = 0;
@@ -179,7 +147,6 @@ struct EmbeddedTransportState {
   std::string audio_last_codec_name;
   std::string audio_last_error;
   std::string audio_outbound_last_error;
-  std::string rtcp_last_error;
   uint16_t outbound_rtp_sequence = 1;
   uint32_t outbound_rtp_timestamp = 0;
   uint32_t outbound_rtp_ssrc = kOutboundRtpSsrc;
@@ -445,26 +412,15 @@ void write_u32_be(unsigned char* out, uint32_t value) {
   out[3] = static_cast<unsigned char>(value & 0xFF);
 }
 
-void note_inbound_rtp_packet_for_receiver_report(
-  EmbeddedTransportState* engine,
+uint32_t inbound_rtp_clock_rate_hz(
+  const EmbeddedTransportState& engine,
   const agentd::ParsedRtpPacketInfo& rtp_info
 ) {
-  if (!engine) return;
   const agentd::RtpAudioPayloadSpec* spec =
-    engine->audio_decoder.resolve_payload_spec(rtp_info.payload_type);
-  const uint32_t clock_rate_hz =
-    spec && spec->sample_rate_hz > 0
-      ? static_cast<uint32_t>(spec->sample_rate_hz)
-      : static_cast<uint32_t>(std::max<int64_t>(engine->audio_last_sample_rate_hz, 8000));
-
-  agentd::note_rtcp_receiver_report_rtp_packet(
-    &engine->inbound_rtcp_report,
-    agentd::RtcpReceiverReportRtpPacket{
-      rtp_info.ssrc,
-      rtp_info.sequence,
-      rtp_info.timestamp,
-      clock_rate_hz,
-    });
+    engine.audio_decoder.resolve_payload_spec(rtp_info.payload_type);
+  return spec && spec->sample_rate_hz > 0
+    ? static_cast<uint32_t>(spec->sample_rate_hz)
+    : static_cast<uint32_t>(std::max<int64_t>(engine.audio_last_sample_rate_hz, 8000));
 }
 
 bool transmit_outbound_rtcp_sender_report(
@@ -482,8 +438,8 @@ bool transmit_outbound_rtcp_sender_report(
     agentd::build_rtcp_sender_report_compound(agentd::RtcpSenderReportInput{
       engine->outbound_rtp_ssrc,
       rtp_timestamp,
-      engine->rtp_packets_sent,
-      engine->rtp_payload_bytes_sent,
+      engine->packet_accounting.rtp_packets_sent,
+      engine->packet_accounting.rtp_payload_bytes_sent,
     }, kRtcpCname);
   std::vector<unsigned char> protected_packet;
   std::string protect_err;
@@ -505,45 +461,31 @@ bool transmit_outbound_rtcp_sender_report(
     return false;
   }
 
-  engine->rtcp_packets_sent += 1;
-  engine->rtcp_payload_bytes_sent += plain.size();
-  engine->rtcp_sender_reports_sent += 1;
-  engine->rtcp_last_sent_packet_type = agentd::kRtcpPacketTypeSenderReport;
-  engine->rtcp_last_sent_ssrc = engine->outbound_rtp_ssrc;
-  engine->rtcp_last_error.clear();
-  engine->rtcp_sender_report_sent = true;
-  engine->rtcp_last_sender_report_at = std::chrono::steady_clock::now();
-  engine->rtp_packets_sent_at_last_sender_report = engine->rtp_packets_sent;
+  agentd::note_builtin_outbound_rtcp_sender_report(
+    &engine->packet_accounting,
+    engine->outbound_rtp_ssrc,
+    plain.size());
   return true;
 }
 
 bool sender_report_due(const EmbeddedTransportState& engine) {
-  if (!engine.agent || !engine.outbound_srtp || !engine.srtp_outbound_ready) {
-    return false;
-  }
-  if (engine.rtcp_sender_reports_sent == 0) return true;
-  if (!engine.rtcp_sender_report_sent) return true;
-  if (engine.rtp_packets_sent >=
-      engine.rtp_packets_sent_at_last_sender_report + kSenderReportRtpPacketCadence) {
-    return true;
-  }
-  return std::chrono::steady_clock::now() - engine.rtcp_last_sender_report_at >=
-         std::chrono::seconds(5);
+  const bool transport_ready =
+    engine.agent && engine.outbound_srtp && engine.srtp_outbound_ready;
+  return agentd::builtin_rtcp_sender_report_due(
+    engine.packet_accounting,
+    transport_ready,
+    kSenderReportRtpPacketCadence,
+    std::chrono::seconds(5));
 }
 
 bool receiver_report_due(const EmbeddedTransportState& engine) {
-  if (!agentd::rtcp_receiver_report_has_source(engine.inbound_rtcp_report) || !engine.agent ||
-      !engine.outbound_srtp || !engine.srtp_outbound_ready) {
-    return false;
-  }
-  if (engine.rtcp_receiver_reports_sent == 0) return true;
-  if (engine.inbound_rtcp_report.packets_since_last_report >=
-      kReceiverReportRtpPacketCadence) {
-    return true;
-  }
-  if (!engine.inbound_rtcp_report.receiver_report_sent) return true;
-  return std::chrono::steady_clock::now() - engine.inbound_rtcp_report.last_receiver_report_at >=
-         std::chrono::seconds(5);
+  const bool transport_ready =
+    engine.agent && engine.outbound_srtp && engine.srtp_outbound_ready;
+  return agentd::builtin_rtcp_receiver_report_due(
+    engine.packet_accounting,
+    transport_ready,
+    kReceiverReportRtpPacketCadence,
+    std::chrono::seconds(5));
 }
 
 bool transmit_outbound_rtcp_receiver_report(
@@ -555,13 +497,15 @@ bool transmit_outbound_rtcp_receiver_report(
     if (out_err) *out_err = "outbound SRTCP transport not ready";
     return false;
   }
-  if (!agentd::rtcp_receiver_report_has_source(engine->inbound_rtcp_report)) {
+  if (!agentd::rtcp_receiver_report_has_source(
+        engine->packet_accounting.inbound_rtcp_report)) {
     if (out_err) *out_err = "inbound RTP source not ready for receiver report";
     return false;
   }
 
   const agentd::RtcpReceiverReportBlock report_block =
-    agentd::snapshot_rtcp_receiver_report_block(engine->inbound_rtcp_report);
+    agentd::snapshot_rtcp_receiver_report_block(
+      engine->packet_accounting.inbound_rtcp_report);
   const std::vector<unsigned char> plain =
     agentd::build_rtcp_receiver_report_compound(
       engine->outbound_rtp_ssrc,
@@ -590,21 +534,11 @@ bool transmit_outbound_rtcp_receiver_report(
     return false;
   }
 
-  engine->rtcp_packets_sent += 1;
-  engine->rtcp_payload_bytes_sent += plain.size();
-  engine->rtcp_receiver_reports_sent += 1;
-  engine->rtcp_receiver_report_blocks_sent += 1;
-  engine->rtcp_last_sent_packet_type = agentd::kRtcpPacketTypeReceiverReport;
-  engine->rtcp_last_sent_ssrc = engine->outbound_rtp_ssrc;
-  engine->rtcp_last_reported_rtp_ssrc = report_block.reported_rtp_ssrc;
-  engine->rtcp_last_report_fraction_lost = report_block.fraction_lost;
-  engine->rtcp_last_report_cumulative_lost = report_block.cumulative_lost;
-  engine->rtcp_last_report_highest_sequence = report_block.extended_highest_sequence;
-  engine->rtcp_last_report_jitter = report_block.jitter;
-  engine->rtcp_last_report_lsr = report_block.lsr;
-  engine->rtcp_last_report_dlsr = report_block.dlsr;
-  engine->rtcp_last_error.clear();
-  agentd::mark_rtcp_receiver_report_sent(&engine->inbound_rtcp_report);
+  agentd::note_builtin_outbound_rtcp_receiver_report(
+    &engine->packet_accounting,
+    engine->outbound_rtp_ssrc,
+    report_block,
+    plain.size());
   return true;
 }
 
@@ -612,7 +546,7 @@ void maybe_transmit_outbound_rtcp_receiver_report(EmbeddedTransportState* engine
   if (!engine || !receiver_report_due(*engine)) return;
   std::string rtcp_err;
   if (!transmit_outbound_rtcp_receiver_report(engine, &rtcp_err)) {
-    engine->rtcp_last_error =
+    engine->packet_accounting.rtcp_last_error =
       rtcp_err.empty() ? std::string("outbound RTCP receiver report transmit failed") : rtcp_err;
   }
 }
@@ -686,12 +620,13 @@ bool transmit_outbound_audio_rtp(
     return false;
   }
 
-  engine->rtp_packets_sent += 1;
-  engine->rtp_payload_bytes_sent += encoded.payload.size();
-  engine->rtp_last_sent_payload_type = engine->audio_outbound_payload_type;
-  engine->rtp_last_sent_sequence = sequence;
-  engine->rtp_last_sent_timestamp = timestamp;
-  engine->rtp_last_sent_ssrc = engine->outbound_rtp_ssrc;
+  agentd::note_builtin_outbound_rtp_packet(
+    &engine->packet_accounting,
+    engine->audio_outbound_payload_type,
+    sequence,
+    timestamp,
+    engine->outbound_rtp_ssrc,
+    encoded.payload.size());
   engine->audio_outbound_frames_sent += 1;
   engine->audio_pcm_samples_submitted_total += pcm_samples;
   engine->audio_last_outbound_samples = timestamp_increment;
@@ -699,7 +634,7 @@ bool transmit_outbound_audio_rtp(
   if (sender_report_due(*engine)) {
     std::string rtcp_err;
     if (!transmit_outbound_rtcp_sender_report(engine, timestamp, &rtcp_err)) {
-      engine->rtcp_last_error =
+      engine->packet_accounting.rtcp_last_error =
         rtcp_err.empty() ? std::string("outbound RTCP sender report transmit failed") : rtcp_err;
     }
   }
@@ -750,26 +685,16 @@ bool ingest_inbound_srtp_packet(
   engine->srtp_last_error.clear();
 
   if (was_rtcp) {
-    engine->rtcp_packets_received += 1;
-    engine->rtcp_payload_bytes_received += rtcp_info.packet_size;
-    engine->rtcp_last_packet_type = rtcp_info.packet_type;
-    engine->rtcp_last_ssrc = rtcp_info.ssrc;
-    if (rtcp_info.has_sender_info && rtcp_info.sender_report_lsr != 0) {
-      agentd::note_rtcp_receiver_report_sender_report(
-        &engine->inbound_rtcp_report,
-        rtcp_info.sender_report_lsr);
-    }
-    engine->rtcp_last_error.clear();
+    agentd::note_builtin_inbound_rtcp_packet(
+      &engine->packet_accounting,
+      rtcp_info);
     return true;
   }
 
-  note_inbound_rtp_packet_for_receiver_report(engine, rtp_info);
-  engine->rtp_packets_received += 1;
-  engine->rtp_payload_bytes_received += rtp_info.payload_size;
-  engine->rtp_last_payload_type = rtp_info.payload_type;
-  engine->rtp_last_sequence = rtp_info.sequence;
-  engine->rtp_last_timestamp = rtp_info.timestamp;
-  engine->rtp_last_ssrc = rtp_info.ssrc;
+  agentd::note_builtin_inbound_rtp_packet(
+    &engine->packet_accounting,
+    rtp_info,
+    inbound_rtp_clock_rate_hz(*engine, rtp_info));
   if (rtp_info.payload_size > 0) {
     (void)decode_inbound_audio_frame(
       engine,
@@ -992,36 +917,7 @@ agentd::BuiltinVoiceAsyncProgressKey capture_async_progress_key(
   key.srtp_contexts_ready = state.srtp_contexts_ready;
   key.srtp_inbound_ready = state.srtp_inbound_ready;
   key.srtp_outbound_ready = state.srtp_outbound_ready;
-  key.rtp_packets_received = state.rtp_packets_received;
-  key.rtp_payload_bytes_received = state.rtp_payload_bytes_received;
-  key.rtp_packets_sent = state.rtp_packets_sent;
-  key.rtp_payload_bytes_sent = state.rtp_payload_bytes_sent;
-  key.rtcp_packets_received = state.rtcp_packets_received;
-  key.rtcp_packets_sent = state.rtcp_packets_sent;
-  key.rtcp_payload_bytes_received = state.rtcp_payload_bytes_received;
-  key.rtcp_payload_bytes_sent = state.rtcp_payload_bytes_sent;
-  key.rtcp_sender_reports_sent = state.rtcp_sender_reports_sent;
-  key.rtcp_receiver_reports_sent = state.rtcp_receiver_reports_sent;
-  key.rtcp_receiver_report_blocks_sent = state.rtcp_receiver_report_blocks_sent;
-  key.rtp_last_payload_type = state.rtp_last_payload_type;
-  key.rtp_last_sequence = state.rtp_last_sequence;
-  key.rtp_last_timestamp = state.rtp_last_timestamp;
-  key.rtp_last_ssrc = state.rtp_last_ssrc;
-  key.rtp_last_sent_payload_type = state.rtp_last_sent_payload_type;
-  key.rtp_last_sent_sequence = state.rtp_last_sent_sequence;
-  key.rtp_last_sent_timestamp = state.rtp_last_sent_timestamp;
-  key.rtp_last_sent_ssrc = state.rtp_last_sent_ssrc;
-  key.rtcp_last_packet_type = state.rtcp_last_packet_type;
-  key.rtcp_last_ssrc = state.rtcp_last_ssrc;
-  key.rtcp_last_sent_packet_type = state.rtcp_last_sent_packet_type;
-  key.rtcp_last_sent_ssrc = state.rtcp_last_sent_ssrc;
-  key.rtcp_last_reported_rtp_ssrc = state.rtcp_last_reported_rtp_ssrc;
-  key.rtcp_last_report_fraction_lost = state.rtcp_last_report_fraction_lost;
-  key.rtcp_last_report_cumulative_lost = state.rtcp_last_report_cumulative_lost;
-  key.rtcp_last_report_highest_sequence = state.rtcp_last_report_highest_sequence;
-  key.rtcp_last_report_jitter = state.rtcp_last_report_jitter;
-  key.rtcp_last_report_lsr = state.rtcp_last_report_lsr;
-  key.rtcp_last_report_dlsr = state.rtcp_last_report_dlsr;
+  agentd::copy_builtin_packet_accounting_to_progress(state.packet_accounting, &key);
   key.audio_frames_decoded = state.audio_frames_decoded;
   key.audio_pcm_samples_decoded = state.audio_pcm_samples_decoded;
   key.audio_pcm_samples_buffered = state.audio_pcm_samples_buffered;
@@ -1038,7 +934,6 @@ agentd::BuiltinVoiceAsyncProgressKey capture_async_progress_key(
   key.audio_last_codec_name = state.audio_last_codec_name;
   key.audio_last_error = state.audio_last_error;
   key.audio_outbound_last_error = state.audio_outbound_last_error;
-  key.rtcp_last_error = state.rtcp_last_error;
   return key;
 }
 

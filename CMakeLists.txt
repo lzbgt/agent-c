@@ -524,6 +524,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
       daemon/src/session_voice_audio_encode.cpp
       daemon/src/session_voice_builtin_audio_payload.cpp
       daemon/src/session_voice_builtin_embedded_status.cpp
+      daemon/src/session_voice_builtin_packet_accounting.cpp
       daemon/src/session_voice_builtin_sdp_answer.cpp
       daemon/src/session_voice_sdp_candidate.cpp
       daemon/src/session_voice_dtls_identity.cpp
@@ -1126,6 +1127,30 @@ if(AGENT_BUILD_HOST)
   add_test(
     NAME session_voice_builtin_embedded_status_tests
     COMMAND session_voice_builtin_embedded_status_tests
+  )
+
+  add_executable(session_voice_builtin_packet_accounting_tests
+    tests/test_session_voice_builtin_packet_accounting.cpp
+    daemon/src/session_voice_builtin_packet_accounting.cpp
+    daemon/src/session_voice_rtcp_report.cpp
+  )
+  target_compile_options(session_voice_builtin_packet_accounting_tests PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_include_directories(session_voice_builtin_packet_accounting_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
+    ${LIBSRTP2_INCLUDE_DIRS}
+  )
+  target_link_directories(session_voice_builtin_packet_accounting_tests PRIVATE
+    ${LIBSRTP2_LIBRARY_DIRS}
+  )
+  target_link_libraries(session_voice_builtin_packet_accounting_tests PRIVATE
+    OpenSSL::SSL
+    OpenSSL::Crypto
+  )
+  add_test(
+    NAME session_voice_builtin_packet_accounting_tests
+    COMMAND session_voice_builtin_packet_accounting_tests
   )
 
   add_executable(session_voice_audio_process_tests
