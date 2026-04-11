@@ -768,6 +768,8 @@ streaming and plugins are stable.
   - 2026-04-11: moved committed-decision presence detection into portable `agent_core` and reused it from daemon runtime-core commit exit plus node-loop heartbeat/campaign scheduling, keeping the whitespace-insensitive commit-state gate aligned for firmware-native ports.
   - 2026-04-11: moved campaign-decision source selection and campaign-start gating into portable `agent_core`, so firmware-native ports and the daemon loop share the configured-decision vs last-known-decision fallback plus the final decision/commit/timing gate before election start.
   - 2026-04-11: moved election-term and frame-sequence advancement into portable `agent_core` and reused it from the daemon replica, so firmware-native ports share the same monotonic counter transition and saturation boundary for election terms and generated frame IDs.
+  - 2026-04-11: moved leader-commit witness filtering into portable `agent_core` and reused it from the daemon replica, so member/trust-valid/unique witness counting and duplicate-witness rejection are shared before quorum acceptance.
+  - 2026-04-11: moved node-id equality into portable `agent_core` and reused it for the daemon replica's leader-self gate, so future firmware-native ports share validated nonempty node-token matching.
   - 2026-03-20: extracted the voice peer broker-session/launch/startup/cleanup orchestration into a shared launch-flow module with direct unit proof, refactored the bundled/external child backend onto it, and extended `builtin_start_contract` with the same staged `startup_sequence` so future native work targets a real shared seam instead of child-only logic.
 
 ## Deferred (after macOS stability)

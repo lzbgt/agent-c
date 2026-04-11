@@ -79,7 +79,13 @@ class EdgeConsensusReplica {
   const std::string& committed_decision_sha256() const { return committed_decision_sha256_; }
   uint64_t membership_epoch() const { return self_.membership_epoch; }
   const std::set<std::string>& member_node_ids() const { return member_node_ids_; }
-  bool leader_is_self() const { return !leader_node_id_.empty() && leader_node_id_ == self_.node_id; }
+  bool leader_is_self() const {
+    return agent_edge_consensus_node_id_matches(
+             leader_node_id_.data(),
+             leader_node_id_.size(),
+             self_.node_id.data(),
+             self_.node_id.size()) != 0;
+  }
 
   void set_trust_epochs(const EdgeConsensusEpochs& epochs);
   void set_membership(uint64_t membership_epoch, const std::vector<std::string>& member_node_ids);

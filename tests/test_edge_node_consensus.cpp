@@ -313,6 +313,14 @@ static void test_leader_commit_requires_valid_witness_quorum() {
   deliver(c, bad_trust_witness_commit);
   assert(c.leader_node_id().empty());
 
+  EdgeConsensusFrame duplicate_witness_commit = commit;
+  duplicate_witness_commit.frame_id += ":duplicate_witness";
+  duplicate_witness_commit.vote_witnesses.clear();
+  duplicate_witness_commit.vote_witnesses.push_back(make_identity("node-a", 7, 3, 5));
+  duplicate_witness_commit.vote_witnesses.push_back(make_identity("node-a", 7, 3, 5));
+  deliver(c, duplicate_witness_commit);
+  assert(c.leader_node_id().empty());
+
   deliver(c, commit);
   assert(c.leader_node_id() == "node-a");
   assert(c.committed_decision_sha256() == commit.decision_sha256);

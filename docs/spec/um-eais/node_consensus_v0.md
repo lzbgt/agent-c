@@ -194,6 +194,10 @@ The shipped autonomous host-loop proof adds:
   decision/commit/timing boundary before starting a new election
 - portable `agent_core` term and frame-sequence advancement helpers are now reused by the daemon replica, giving
   firmware-native ports the same monotonic counter transition and saturation behavior for election terms and frame IDs
+- portable `agent_core` leader-commit witness filtering now gates member/trust-valid/unique witness counting before the
+  existing quorum check, so firmware-native ports share the same duplicate-witness rejection boundary as agentd
+- portable `agent_core` node-id matching now backs the daemon replica's leader-self check, so ports share validated
+  nonempty node-token equality instead of raw string comparison
 
 ## Still open
 

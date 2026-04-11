@@ -230,6 +230,10 @@ static void test_consensus_constants_and_quorum(void) {
            strlen("bad/cluster"),
            "bad/cluster",
            strlen("bad/cluster")) == 0);
+  assert(agent_edge_consensus_node_id_matches("node-a", strlen("node-a"), "node-a", strlen("node-a")) == 1);
+  assert(agent_edge_consensus_node_id_matches("node-a", strlen("node-a"), "node-b", strlen("node-b")) == 0);
+  assert(agent_edge_consensus_node_id_matches("bad/node", strlen("bad/node"), "bad/node", strlen("bad/node")) == 0);
+  assert(agent_edge_consensus_node_id_matches("", 0, "", 0) == 0);
   assert(agent_edge_consensus_trust_epochs_match(1, 2, 3, 1, 2, 3) == 1);
   assert(agent_edge_consensus_trust_epochs_match(1, 2, 3, 4, 2, 3) == 0);
   assert(agent_edge_consensus_trust_epochs_match(1, 2, 3, 1, 4, 3) == 0);
@@ -298,6 +302,10 @@ static void test_consensus_constants_and_quorum(void) {
   assert(agent_edge_consensus_leader_commit_can_accept(3, 3, 0, 1, 1) == 0);
   assert(agent_edge_consensus_leader_commit_can_accept(3, 3, 1, 0, 1) == 0);
   assert(agent_edge_consensus_leader_commit_can_accept(3, 3, 1, 1, 0) == 0);
+  assert(agent_edge_consensus_leader_commit_witness_can_count(1, 1, 0) == 1);
+  assert(agent_edge_consensus_leader_commit_witness_can_count(0, 1, 0) == 0);
+  assert(agent_edge_consensus_leader_commit_witness_can_count(1, 0, 0) == 0);
+  assert(agent_edge_consensus_leader_commit_witness_can_count(1, 1, 1) == 0);
   assert(agent_edge_consensus_leader_commit_witnesses_can_accept(3, 2, 1) == 1);
   assert(agent_edge_consensus_leader_commit_witnesses_can_accept(3, 1, 1) == 0);
   assert(agent_edge_consensus_leader_commit_witnesses_can_accept(3, 2, 0) == 0);

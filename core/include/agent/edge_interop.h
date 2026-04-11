@@ -242,6 +242,13 @@ int agent_edge_consensus_cluster_id_matches(
   size_t peer_cluster_id_len
 );
 
+int agent_edge_consensus_node_id_matches(
+  const char* local_node_id,
+  size_t local_node_id_len,
+  const char* peer_node_id,
+  size_t peer_node_id_len
+);
+
 int agent_edge_consensus_trust_epochs_match(
   uint64_t local_trust_roots_epoch,
   uint64_t local_revocations_epoch,
@@ -305,6 +312,12 @@ int agent_edge_consensus_leader_commit_can_accept(
   int leader_node_is_member,
   int leader_is_sender,
   int trust_epochs_match
+);
+
+int agent_edge_consensus_leader_commit_witness_can_count(
+  int witness_membership_matches,
+  int witness_trust_epochs_match,
+  int witness_already_seen
 );
 
 int agent_edge_consensus_leader_commit_witnesses_can_accept(

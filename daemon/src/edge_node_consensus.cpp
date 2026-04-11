@@ -388,9 +388,11 @@ bool EdgeConsensusReplica::leader_commit_witnesses_valid(const EdgeConsensusFram
   bool leader_is_witness = false;
   std::set<std::string> seen_node_ids;
   for (const auto& witness : frame.vote_witnesses) {
-    if (!membership_matches(witness)) continue;
-    if (!trust_epochs_match(witness.trust_epochs)) continue;
-    if (!seen_node_ids.insert(witness.node_id).second) continue;
+    const bool inserted = seen_node_ids.insert(witness.node_id).second;
+    if (!agent_edge_consensus_leader_commit_witness_can_count(
+          membership_matches(witness) ? 1 : 0,
+          trust_epochs_match(witness.trust_epochs) ? 1 : 0,
+          inserted ? 0 : 1)) continue;
     valid_witness_count++;
     if (witness.node_id == frame.leader_node_id) leader_is_witness = true;
   }
