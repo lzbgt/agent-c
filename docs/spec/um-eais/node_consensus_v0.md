@@ -134,10 +134,13 @@ The shipped autonomous host-loop proof adds:
   of only seeing the current epoch
 - portable `agent_core` membership-lineage validation is now reused by daemon runtime-config load, so firmware-native
   ports and agentd agree that previous policy lineage is either zero/unknown or strictly older than the current epoch
+- stale builtin runtime recovery now gates recent recovered snapshots by current policy membership epoch or bounded lineage,
+  so daemon restarts preserve compatible old-policy evidence but clear stale runtime records from unrelated membership
+  histories
 
 ## Still open
 
 This document does **not** claim production-complete embedded consensus is complete. Remaining work:
 - replace the current builtin daemon-hosted runtime with embedded / firmware-native adoption
-- extend the shipped durable membership bundle into richer long-lived recovery policy beyond stale-runtime preservation
-  for multi-hour or partition-heavy deployments
+- extend the shipped durable membership bundle into richer long-lived recovery policy beyond stale-runtime preservation and
+  lineage-gated stale-runtime recovery for multi-hour or partition-heavy deployments

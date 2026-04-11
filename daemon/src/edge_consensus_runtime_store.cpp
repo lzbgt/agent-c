@@ -365,12 +365,17 @@ bool recover_or_clear_edge_consensus_stale_builtin_record(
   int64_t stale_age_ms = 0;
   const int64_t recovery_grace_ms =
     edge_consensus_runtime_effective_stale_recovery_grace_ms(cfg, *st);
+  Json::Value membership_policy(Json::objectValue);
+  const bool membership_recoverable =
+    edge_consensus_runtime_membership_epoch_recoverable(cfg, *st, &membership_policy);
   const bool recover_stale =
+    membership_recoverable &&
     edge_consensus_runtime_stale_record_within_recovery_grace(cfg, *st, now_ms, &stale_age_ms);
 
   Json::Value cleanup(Json::objectValue);
   cleanup["stale_runtime_recovery_grace_ms"] = (Json::Int64)recovery_grace_ms;
   cleanup["stale_runtime_age_ms"] = (Json::Int64)stale_age_ms;
+  cleanup["membership_recovery_policy"] = membership_policy;
   bool artifacts_deleted = false;
   std::string aerr;
   if (remove_edge_consensus_runtime_artifacts(cfg, node_id, &artifacts_deleted, &aerr)) {
@@ -389,6 +394,7 @@ bool recover_or_clear_edge_consensus_stale_builtin_record(
     if (out_cleanup) *out_cleanup = cleanup;
     return true;
   }
+  cleanup["persisted_record_recovered"] = false;
   cleanup["persisted_record_cleared"] = clear_edge_consensus_runtime_record(db, node_id, nullptr);
   if (out_cleanup) *out_cleanup = cleanup;
   return true;

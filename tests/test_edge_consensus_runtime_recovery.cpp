@@ -159,6 +159,7 @@ static void test_reconcile_persisted_builtin_running_recovers_recent_state() {
   EdgeConsensusRuntime st = make_runtime("node-builtin", "builtin");
   st.running = true;
   st.started_unix_ms = now_unix_ms();
+  st.membership_epoch = 5;
   st.stale_runtime_recovery_grace_ms = 60000;
   st.stderr_log_path = (runtime_dir / "stderr.log").string();
 
@@ -168,7 +169,11 @@ static void test_reconcile_persisted_builtin_running_recovers_recent_state() {
   DaemonConfig cfg;
   cfg.state_dir = state_dir.string();
   EdgeConsensusClusterPolicy pol;
+  pol.membership_epoch = 7;
+  pol.previous_membership_epoch = 6;
   pol.member_node_ids = {"node-builtin", "node-peer"};
+  pol.membership_lineage.push_back({6, {"node-builtin", "node-peer"}});
+  pol.membership_lineage.push_back({5, {"node-builtin"}});
   pol.stale_runtime_recovery_grace_ms = 60000;
   cfg.edge_consensus_clusters["cluster-a"] = pol;
   auto ptr = std::make_shared<EdgeConsensusRuntime>(st);
@@ -183,6 +188,8 @@ static void test_reconcile_persisted_builtin_running_recovers_recent_state() {
   assert(result.cleanup["persisted_record_recovered"].asBool());
   assert(!result.cleanup["persisted_record_cleared"].asBool());
   assert(result.cleanup["runtime_artifacts_deleted"].asBool());
+  assert(result.cleanup["membership_recovery_policy"]["recoverable"].asBool());
+  assert(result.cleanup["membership_recovery_policy"]["reason"].asString() == "membership_lineage");
   assert(!std::filesystem::exists(runtime_dir));
 #endif
 }

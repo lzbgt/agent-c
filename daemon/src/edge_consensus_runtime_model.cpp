@@ -288,6 +288,67 @@ bool edge_consensus_runtime_stale_record_within_recovery_grace(
   return age_ms <= grace_ms;
 }
 
+bool edge_consensus_runtime_membership_epoch_recoverable(
+  const DaemonConfig& cfg,
+  const EdgeConsensusRuntime& st,
+  Json::Value* out_policy
+) {
+  Json::Value policy(Json::objectValue);
+  policy["runtime_membership_epoch"] = Json::UInt64(st.membership_epoch);
+  policy["recoverable"] = true;
+
+  const auto pol_it = cfg.edge_consensus_clusters.find(st.cluster_id);
+  if (pol_it == cfg.edge_consensus_clusters.end()) {
+    policy["reason"] = "no_cluster_policy";
+    if (out_policy) *out_policy = policy;
+    return true;
+  }
+
+  const EdgeConsensusClusterPolicy& pol = pol_it->second;
+  const uint64_t current_epoch = safe_config_epoch_u64_model(pol.membership_epoch);
+  policy["policy_found"] = true;
+  policy["current_membership_epoch"] = Json::UInt64(current_epoch);
+  policy["previous_membership_epoch"] = Json::UInt64(safe_config_epoch_u64_model(pol.previous_membership_epoch));
+  policy["lineage_depth"] = Json::UInt64(pol.membership_lineage.size());
+
+  if (st.membership_epoch == 0) {
+    policy["reason"] = "runtime_epoch_unknown";
+    if (out_policy) *out_policy = policy;
+    return true;
+  }
+  if (current_epoch == 0) {
+    policy["reason"] = "policy_epoch_unknown";
+    if (out_policy) *out_policy = policy;
+    return true;
+  }
+  if (st.membership_epoch == current_epoch) {
+    policy["reason"] = "current_membership_epoch";
+    policy["matches_current_epoch"] = true;
+    if (out_policy) *out_policy = policy;
+    return true;
+  }
+  if (pol.previous_membership_epoch > 0 && st.membership_epoch == (uint64_t)pol.previous_membership_epoch) {
+    policy["reason"] = "previous_membership_epoch";
+    policy["matches_previous_epoch"] = true;
+    if (out_policy) *out_policy = policy;
+    return true;
+  }
+  for (const auto& entry : pol.membership_lineage) {
+    if (entry.membership_epoch <= 0) continue;
+    if (st.membership_epoch != (uint64_t)entry.membership_epoch) continue;
+    policy["reason"] = "membership_lineage";
+    policy["matches_lineage_epoch"] = true;
+    policy["lineage_membership_epoch"] = Json::UInt64((uint64_t)entry.membership_epoch);
+    if (out_policy) *out_policy = policy;
+    return true;
+  }
+
+  policy["recoverable"] = false;
+  policy["reason"] = "not_in_current_policy_or_lineage";
+  if (out_policy) *out_policy = policy;
+  return false;
+}
+
 bool edge_consensus_runtime_same_effective_config(
   const EdgeConsensusRuntime& a,
   const EdgeConsensusRuntime& b

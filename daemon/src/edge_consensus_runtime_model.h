@@ -107,6 +107,12 @@ bool edge_consensus_runtime_stale_record_within_recovery_grace(
   int64_t* out_age_ms
 );
 
+bool edge_consensus_runtime_membership_epoch_recoverable(
+  const DaemonConfig& cfg,
+  const EdgeConsensusRuntime& st,
+  Json::Value* out_policy
+);
+
 bool edge_consensus_runtime_same_effective_config(
   const EdgeConsensusRuntime& a,
   const EdgeConsensusRuntime& b

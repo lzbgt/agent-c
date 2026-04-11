@@ -181,6 +181,7 @@ static void test_recover_preserves_recent_stale_builtin_with_grace_policy() {
   EdgeConsensusRuntime st = make_runtime("builtin");
   st.running = true;
   st.started_unix_ms = now_unix_ms();
+  st.membership_epoch = 5;
   st.stale_runtime_recovery_grace_ms = 60000;
   st.stderr_log_path = (runtime_dir / "stderr.log").string();
 
@@ -190,7 +191,11 @@ static void test_recover_preserves_recent_stale_builtin_with_grace_policy() {
   DaemonConfig cfg;
   cfg.state_dir = state_dir.string();
   EdgeConsensusClusterPolicy pol;
+  pol.membership_epoch = 7;
+  pol.previous_membership_epoch = 6;
   pol.member_node_ids = {"node-a", "node-b"};
+  pol.membership_lineage.push_back({6, {"node-a", "node-b"}});
+  pol.membership_lineage.push_back({5, {"node-a"}});
   pol.stale_runtime_recovery_grace_ms = 60000;
   cfg.edge_consensus_clusters["cluster-a"] = pol;
 
@@ -207,11 +212,72 @@ static void test_recover_preserves_recent_stale_builtin_with_grace_policy() {
   assert(!updates["cleanup_on_stale_record"]["persisted_record_cleared"].asBool());
   assert(updates["cleanup_on_stale_record"]["runtime_artifacts_deleted"].asBool());
   assert(updates["cleanup_on_stale_record"]["stale_runtime_recovery_grace_ms"].asInt64() == 60000);
+  assert(updates["cleanup_on_stale_record"]["membership_recovery_policy"]["recoverable"].asBool());
+  assert(updates["cleanup_on_stale_record"]["membership_recovery_policy"]["reason"].asString() == "membership_lineage");
   assert(!std::filesystem::exists(runtime_dir));
 
   std::string raw;
   assert(db.meta_get("edge.consensus_runtime.node-a", &raw, &err));
   assert(!raw.empty());
+#endif
+}
+
+static void test_recover_clears_recent_stale_builtin_with_incompatible_membership() {
+#if !defined(AGENT_HAVE_SQLITE3)
+  return;
+#else
+  const std::filesystem::path db_path = make_temp_db_path("edge_consensus_runtime_store_stale_builtin_epoch_mismatch");
+  AgentDb db;
+  open_test_db(db_path, &db);
+
+  const std::filesystem::path state_dir =
+    std::filesystem::temp_directory_path() /
+    ("edge_consensus_runtime_store_state_epoch_mismatch_" + std::to_string((long long)getpid()));
+  std::error_code ec;
+  std::filesystem::remove_all(state_dir, ec);
+  const std::filesystem::path runtime_dir = state_dir / "edge_consensus_runtimes" / "node-a";
+  std::filesystem::create_directories(runtime_dir, ec);
+  assert(!ec);
+  {
+    FILE* f = std::fopen((runtime_dir / "stderr.log").string().c_str(), "w");
+    assert(f);
+    std::fputs("recent stale builtin wrong epoch\n", f);
+    std::fclose(f);
+  }
+
+  EdgeConsensusRuntime st = make_runtime("builtin");
+  st.running = true;
+  st.started_unix_ms = now_unix_ms();
+  st.membership_epoch = 4;
+  st.stale_runtime_recovery_grace_ms = 60000;
+  st.stderr_log_path = (runtime_dir / "stderr.log").string();
+
+  std::string err;
+  assert(db.meta_set("edge.consensus_runtime.node-a", json_stringify(edge_consensus_runtime_to_json(st)), &err));
+
+  DaemonConfig cfg;
+  cfg.state_dir = state_dir.string();
+  EdgeConsensusClusterPolicy pol;
+  pol.membership_epoch = 7;
+  pol.previous_membership_epoch = 6;
+  pol.member_node_ids = {"node-a", "node-b"};
+  pol.membership_lineage.push_back({6, {"node-a", "node-b"}});
+  pol.membership_lineage.push_back({5, {"node-a"}});
+  pol.stale_runtime_recovery_grace_ms = 60000;
+  cfg.edge_consensus_clusters["cluster-a"] = pol;
+
+  std::shared_ptr<EdgeConsensusRuntime> recovered;
+  Json::Value updates(Json::objectValue);
+  err.clear();
+  assert(recover_edge_consensus_runtime_record(cfg, &db, "node-a", &recovered, &updates, &err));
+  assert(!recovered);
+  assert(err.empty());
+  assert(updates["cleanup_on_stale_record"]["persisted_record_cleared"].asBool());
+  assert(!updates["cleanup_on_stale_record"]["persisted_record_recovered"].asBool());
+  assert(updates["cleanup_on_stale_record"]["membership_recovery_policy"]["recoverable"].asBool() == false);
+  assert(updates["cleanup_on_stale_record"]["membership_recovery_policy"]["reason"].asString() ==
+         "not_in_current_policy_or_lineage");
+  assert(!std::filesystem::exists(runtime_dir));
 #endif
 }
 
@@ -251,6 +317,7 @@ int main() {
   test_load_self_heals_corrupt_record();
   test_recover_cleans_stale_builtin_running_record();
   test_recover_preserves_recent_stale_builtin_with_grace_policy();
+  test_recover_clears_recent_stale_builtin_with_incompatible_membership();
   test_recover_preserves_running_external_record();
   return 0;
 }
