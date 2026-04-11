@@ -208,8 +208,8 @@ async function run() {
   }
 
   streamAbort.abort();
-  await browser.close();
   await streamPromise.catch(() => {});
+  await browser.close();
   process.stdout.write(JSON.stringify({ ok: true, state: finalState }) + "\n");
 }
 
