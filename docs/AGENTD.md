@@ -492,6 +492,9 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   offer/answer/bye lifecycle. The same smoke then persists those builtin defaults through `/api/v1/config/update`,
   restarts agentd without the audio env defaults, and proves the config-backed default path launches the same embedded
   provider.
+  Production graduation remains gated by `docs/VOICE_NATIVE_PLUGIN_GRADUATION.md`; until those gates are met for a
+  release artifact, the bundled browser peer remains the production-safe default and `native_plugin` remains explicit
+  operator policy.
 - The repo now ships two daemon-owned provider modules for that seam:
   - `./build/libagentd_voice_builtin_media_engine_sample.{so,dylib,dll}` as the minimal answer-exchange sample
   - `./build/libagentd_voice_builtin_media_engine_embedded_transport.{so,dylib,dll}` when `libjuice + libsrtp2 + usrsctp`

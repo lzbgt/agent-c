@@ -68,7 +68,8 @@ Follow-up packet-accounting slice verification:
    - 2026-04-11 follow-up: outbound audio payload negotiation is now extracted from the embedded provider into `session_voice_builtin_audio_payload.*` with unit coverage; the provider still loads through the same `native_plugin` ABI.
    - 2026-04-11 follow-up: embedded progress/status JSON construction is now extracted into `session_voice_builtin_embedded_status.*` with unit coverage; the provider file is down to 1725 lines while preserving the same `native_plugin` ABI.
    - 2026-04-11 follow-up: RTP/RTCP packet accounting and RTCP sender/receiver-report cadence decisions are now extracted into `session_voice_builtin_packet_accounting.*` with unit coverage; the provider file is down to 1620 lines while preserving embedded provider load/status coverage.
-   - Concrete remaining subitem: production graduation criteria for `runtime_kind=builtin` + `audio_webrtc.builtin_mode=native_plugin` versus the bundled browser peer path.
+   - 2026-04-11 follow-up: production graduation criteria are now documented in `docs/VOICE_NATIVE_PLUGIN_GRADUATION.md`, including operator default levels, dependency probes, verification gates, fail-closed behavior, and bundled rollback rules.
+   - Concrete remaining subitem: execute the graduation gate on a target release host before changing production defaults from bundled to builtin.
 
 3. `TODOS.md:700` - Node consensus firmware-native adoption on top of portable `agent_core` consensus rules and managed runtime.
    - The roadmap now distinguishes shipped host-side relay/runtime and portable consensus rules from the remaining adoption proof.
@@ -107,7 +108,7 @@ The scan did not identify a production implementation file over the 2000-line th
 Highest leverage sequence:
 
 1. Fix or unblock OpenRouter credentials, run the OpenRouter streaming pin workflow, and commit `ref/openrouter/streaming_pins.json` if the result is stable.
-2. Finish the narrowed audio hardening work by defining builtin-vs-bundled graduation criteria.
+2. Execute the documented builtin-vs-bundled graduation gate on a target release host before changing production defaults.
 3. Make node consensus firmware-native adoption concrete with a minimal embedded-style loop/fixture plus lossy-transport replay proof and a short contract doc.
 4. Refactor `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` into smaller helper scripts or fixtures to reduce maintenance risk around the active media lane.
 5. Prune stale P0/P1 "Next" notes into current, testable checklist items so the roadmap reflects shipped work instead of duplicating older goals.
