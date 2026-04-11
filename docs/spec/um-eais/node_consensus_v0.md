@@ -103,6 +103,8 @@ The shipped autonomous host-loop proof adds:
   current decision and followers can deterministically expire stale leaders before re-campaigning
 - durable post-expiry recovery policy (`lease_expiry_recampaign_delay_ms`) so followers can wait out a bounded
   cooldown after leader-lease expiry instead of always re-campaigning immediately during transient partitions
+- stale managed-runtime recovery policy (`stale_runtime_recovery_grace_ms`) so a daemon restart can preserve a recent
+  stale builtin runtime as a terminal recovered snapshot instead of immediately deleting all runtime evidence
 - explicit membership surfaces (`membership_epoch` + `member_node_ids`) on the shared core, host helper, and managed runtime
 - signed/durable cluster policy bundles via `edge_consensus_membership_v1`, including outbox delivery as
   `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE`
@@ -116,4 +118,5 @@ The shipped autonomous host-loop proof adds:
 
 This document does **not** claim production-complete embedded consensus is complete. Remaining work:
 - replace the current builtin daemon-hosted runtime with embedded / firmware-native adoption
-- extend the shipped durable membership bundle into richer long-lived recovery policy for multi-hour or partition-heavy deployments
+- extend the shipped durable membership bundle into richer long-lived recovery policy beyond stale-runtime preservation
+  for multi-hour or partition-heavy deployments

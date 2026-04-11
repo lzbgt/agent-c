@@ -4,6 +4,7 @@
 #include "json_util.h"
 
 #include <cassert>
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <string>
@@ -13,6 +14,7 @@ namespace {
 
 using agentd::AgentDb;
 using agentd::DaemonConfig;
+using agentd::EdgeConsensusClusterPolicy;
 using agentd::EdgeConsensusRuntime;
 using agentd::clear_edge_consensus_runtime_record;
 using agentd::edge_consensus_runtime_to_json;
@@ -20,6 +22,11 @@ using agentd::json_stringify;
 using agentd::load_edge_consensus_runtime_record;
 using agentd::persist_edge_consensus_runtime_record;
 using agentd::recover_edge_consensus_runtime_record;
+
+static int64_t now_unix_ms() {
+  using namespace std::chrono;
+  return (int64_t)duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+}
 
 static std::filesystem::path make_temp_db_path(const char* label) {
   return std::filesystem::temp_directory_path() /
@@ -148,6 +155,66 @@ static void test_recover_cleans_stale_builtin_running_record() {
 #endif
 }
 
+static void test_recover_preserves_recent_stale_builtin_with_grace_policy() {
+#if !defined(AGENT_HAVE_SQLITE3)
+  return;
+#else
+  const std::filesystem::path db_path = make_temp_db_path("edge_consensus_runtime_store_stale_builtin_grace");
+  AgentDb db;
+  open_test_db(db_path, &db);
+
+  const std::filesystem::path state_dir =
+    std::filesystem::temp_directory_path() /
+    ("edge_consensus_runtime_store_state_grace_" + std::to_string((long long)getpid()));
+  std::error_code ec;
+  std::filesystem::remove_all(state_dir, ec);
+  const std::filesystem::path runtime_dir = state_dir / "edge_consensus_runtimes" / "node-a";
+  std::filesystem::create_directories(runtime_dir, ec);
+  assert(!ec);
+  {
+    FILE* f = std::fopen((runtime_dir / "stderr.log").string().c_str(), "w");
+    assert(f);
+    std::fputs("recent stale builtin\n", f);
+    std::fclose(f);
+  }
+
+  EdgeConsensusRuntime st = make_runtime("builtin");
+  st.running = true;
+  st.started_unix_ms = now_unix_ms();
+  st.stale_runtime_recovery_grace_ms = 60000;
+  st.stderr_log_path = (runtime_dir / "stderr.log").string();
+
+  std::string err;
+  assert(db.meta_set("edge.consensus_runtime.node-a", json_stringify(edge_consensus_runtime_to_json(st)), &err));
+
+  DaemonConfig cfg;
+  cfg.state_dir = state_dir.string();
+  EdgeConsensusClusterPolicy pol;
+  pol.member_node_ids = {"node-a", "node-b"};
+  pol.stale_runtime_recovery_grace_ms = 60000;
+  cfg.edge_consensus_clusters["cluster-a"] = pol;
+
+  std::shared_ptr<EdgeConsensusRuntime> recovered;
+  Json::Value updates(Json::objectValue);
+  err.clear();
+  assert(recover_edge_consensus_runtime_record(cfg, &db, "node-a", &recovered, &updates, &err));
+  assert(recovered);
+  assert(!recovered->running);
+  assert(recovered->status_source == "persisted_recovered");
+  assert(recovered->last_error == "stale_builtin_runtime_recovered_after_restart");
+  assert(recovered->ended_unix_ms >= st.started_unix_ms);
+  assert(updates["cleanup_on_stale_record"]["persisted_record_recovered"].asBool());
+  assert(!updates["cleanup_on_stale_record"]["persisted_record_cleared"].asBool());
+  assert(updates["cleanup_on_stale_record"]["runtime_artifacts_deleted"].asBool());
+  assert(updates["cleanup_on_stale_record"]["stale_runtime_recovery_grace_ms"].asInt64() == 60000);
+  assert(!std::filesystem::exists(runtime_dir));
+
+  std::string raw;
+  assert(db.meta_get("edge.consensus_runtime.node-a", &raw, &err));
+  assert(!raw.empty());
+#endif
+}
+
 static void test_recover_preserves_running_external_record() {
 #if !defined(AGENT_HAVE_SQLITE3)
   return;
@@ -183,6 +250,7 @@ int main() {
   test_persist_and_load_roundtrip();
   test_load_self_heals_corrupt_record();
   test_recover_cleans_stale_builtin_running_record();
+  test_recover_preserves_recent_stale_builtin_with_grace_policy();
   test_recover_preserves_running_external_record();
   return 0;
 }

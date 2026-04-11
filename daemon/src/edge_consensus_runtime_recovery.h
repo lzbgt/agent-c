@@ -14,6 +14,7 @@ namespace agentd {
 enum class EdgeConsensusPersistedRunningDisposition {
   not_running,
   active_external,
+  stale_recovered,
   stale_cleared,
 };
 

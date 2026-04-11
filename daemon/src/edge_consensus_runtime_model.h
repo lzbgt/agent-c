@@ -42,6 +42,7 @@ struct EdgeConsensusRuntime {
   int64_t leader_heartbeat_ms = 1000;
   int64_t leader_lease_ms = 5000;
   int64_t lease_expiry_recampaign_delay_ms = 0;
+  int64_t stale_runtime_recovery_grace_ms = 0;
   int64_t poll_interval_ms = 100;
   int64_t deadline_ms = 10000;
   uint64_t cluster_size = 0;
@@ -92,6 +93,18 @@ Json::Value edge_consensus_runtime_trust_epoch_drift_json(
 Json::Value edge_consensus_runtime_response_json(
   const DaemonConfig& cfg,
   const EdgeConsensusRuntime& st
+);
+
+int64_t edge_consensus_runtime_effective_stale_recovery_grace_ms(
+  const DaemonConfig& cfg,
+  const EdgeConsensusRuntime& st
+);
+
+bool edge_consensus_runtime_stale_record_within_recovery_grace(
+  const DaemonConfig& cfg,
+  const EdgeConsensusRuntime& st,
+  int64_t now_unix_ms,
+  int64_t* out_age_ms
 );
 
 bool edge_consensus_runtime_same_effective_config(

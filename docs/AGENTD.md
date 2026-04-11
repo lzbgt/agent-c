@@ -810,7 +810,9 @@ Notes:
   records the stop signal instead of collapsing to a signal-less stopped state after restart recovery.
 - Persisted consensus runtime records now self-heal on read: corrupt records and stale builtin `running=true` records
   from a dead daemon process are cleared along with dead local runtime artifacts instead of being reported forever as
-  live or unusable managed state.
+  live or unusable managed state. Clusters can also set `stale_runtime_recovery_grace_ms` to preserve a recent stale
+  builtin record as a terminal `status_source=persisted_recovered` snapshot instead of deleting all runtime evidence
+  immediately; `0` keeps the fail-closed clear behavior.
 - The WebUI exposes Settings buttons to “Save defaults to daemon” and “Save API key to daemon”.
 
 Edge trust-root rotation:
@@ -874,9 +876,9 @@ Edge trust-root rotation:
 - `POST /api/v1/edge/consensus/membership/send` enqueues that same bundle to a recipient node outbox as
   `PLATFORM_CONSENSUS_MEMBERSHIP_BUNDLE`, so non-HTTP nodes can poll membership policy through the shipped UM-BMP lane.
 - When a managed consensus runtime start omits `membership_epoch`, `member_node_ids`, `campaign_delay_ms`,
-  `campaign_retry_ms`, `campaign_retry_max_ms`, `campaign_retry_backoff_factor`, `leader_heartbeat_ms`, or
-  `leader_lease_ms`, or `lease_expiry_recampaign_delay_ms`, agentd now defaults those fields from the stored cluster
-  membership bundle.
+  `campaign_retry_ms`, `campaign_retry_max_ms`, `campaign_retry_backoff_factor`, `leader_heartbeat_ms`,
+  `leader_lease_ms`, `lease_expiry_recampaign_delay_ms`, or `stale_runtime_recovery_grace_ms`, agentd now defaults
+  those fields from the stored cluster membership bundle.
 - Operator bring-up can still set `AGENTD_EDGE_CONSENSUS_NODE_TOOL=/abs/path/to/agentd_edge_consensus_node` to force
   `runtime_kind=external`, but the normal managed path no longer depends on that helper being configured.
 - The builtin managed consensus backend now also runs over daemon-local transport instead of calling back through

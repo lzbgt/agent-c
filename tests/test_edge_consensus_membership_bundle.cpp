@@ -29,6 +29,7 @@ static agentd::DaemonConfig make_config() {
   pol.leader_heartbeat_ms = 40;
   pol.leader_lease_ms = 50;
   pol.lease_expiry_recampaign_delay_ms = 60;
+  pol.stale_runtime_recovery_grace_ms = 70;
   cfg.edge_consensus_clusters["cluster-a"] = pol;
   return cfg;
 }
@@ -50,6 +51,7 @@ static void test_membership_bundle_fields() {
   assert(bundle["leader_heartbeat_ms"].asInt64() == 40);
   assert(bundle["leader_lease_ms"].asInt64() == 50);
   assert(bundle["lease_expiry_recampaign_delay_ms"].asInt64() == 60);
+  assert(bundle["stale_runtime_recovery_grace_ms"].asInt64() == 70);
   assert(bundle["member_node_ids"].size() == 2);
   assert(bundle["member_node_ids"][0].asString() == "node-a");
   assert(bundle["member_node_ids"][1].asString() == "node-b");

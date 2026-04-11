@@ -220,6 +220,7 @@ void handle_edge_consensus_membership_rotate_endpoint(
   if (!parse_json_integer_field(args, "leader_heartbeat_ms", &next_pol.leader_heartbeat_ms, resp)) return;
   if (!parse_json_integer_field(args, "leader_lease_ms", &next_pol.leader_lease_ms, resp)) return;
   if (!parse_json_integer_field(args, "lease_expiry_recampaign_delay_ms", &next_pol.lease_expiry_recampaign_delay_ms, resp)) return;
+  if (!parse_json_integer_field(args, "stale_runtime_recovery_grace_ms", &next_pol.stale_runtime_recovery_grace_ms, resp)) return;
   next_pol.campaign_delay_ms = std::max<int64_t>(0, std::min<int64_t>(next_pol.campaign_delay_ms, 120000));
   next_pol.campaign_retry_ms = std::max<int64_t>(0, std::min<int64_t>(next_pol.campaign_retry_ms, 120000));
   next_pol.campaign_retry_max_ms = std::max<int64_t>(next_pol.campaign_retry_ms, std::min<int64_t>(next_pol.campaign_retry_max_ms, 300000));
@@ -228,6 +229,8 @@ void handle_edge_consensus_membership_rotate_endpoint(
   next_pol.leader_lease_ms = std::max<int64_t>(next_pol.leader_heartbeat_ms, std::min<int64_t>(next_pol.leader_lease_ms, 300000));
   next_pol.lease_expiry_recampaign_delay_ms =
     std::max<int64_t>(0, std::min<int64_t>(next_pol.lease_expiry_recampaign_delay_ms, 300000));
+  next_pol.stale_runtime_recovery_grace_ms =
+    std::max<int64_t>(0, std::min<int64_t>(next_pol.stale_runtime_recovery_grace_ms, 86400000));
 
   DaemonConfig next = cur;
   next.edge_consensus_clusters[cluster_id] = next_pol;
@@ -266,6 +269,7 @@ void handle_edge_consensus_membership_rotate_endpoint(
   o["leader_heartbeat_ms"] = (Json::Int64)next_pol.leader_heartbeat_ms;
   o["leader_lease_ms"] = (Json::Int64)next_pol.leader_lease_ms;
   o["lease_expiry_recampaign_delay_ms"] = (Json::Int64)next_pol.lease_expiry_recampaign_delay_ms;
+  o["stale_runtime_recovery_grace_ms"] = (Json::Int64)next_pol.stale_runtime_recovery_grace_ms;
   o["member_count"] = (Json::UInt64)next_pol.member_node_ids.size();
   o["membership"] = bundle;
   resp->body = json_stringify(o);

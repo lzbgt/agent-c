@@ -203,6 +203,11 @@ bool edge_consensus_runtime_from_json(
        v["lease_expiry_recampaign_delay_ms"].isUInt64())) {
     st.lease_expiry_recampaign_delay_ms = v["lease_expiry_recampaign_delay_ms"].asInt64();
   }
+  if (v.isMember("stale_runtime_recovery_grace_ms") &&
+      (v["stale_runtime_recovery_grace_ms"].isInt64() ||
+       v["stale_runtime_recovery_grace_ms"].isUInt64())) {
+    st.stale_runtime_recovery_grace_ms = v["stale_runtime_recovery_grace_ms"].asInt64();
+  }
   if (v.isMember("poll_interval_ms") &&
       (v["poll_interval_ms"].isInt64() || v["poll_interval_ms"].isUInt64())) {
     st.poll_interval_ms = v["poll_interval_ms"].asInt64();
@@ -327,7 +332,7 @@ bool load_edge_consensus_runtime_record(
     return true;
   }
 
-  st->status_source = "persisted";
+  if (st->status_source != "persisted_recovered") st->status_source = "persisted";
   if (out_state) *out_state = std::move(st);
   return true;
 }
@@ -366,8 +371,15 @@ bool recover_edge_consensus_runtime_record(
 
   if (st && st->status_source == "persisted" && st->running &&
       trim_copy(st->runtime_kind) != "external") {
+    const int64_t now_ms = now_unix_ms();
+    int64_t stale_age_ms = 0;
+    const int64_t recovery_grace_ms =
+      edge_consensus_runtime_effective_stale_recovery_grace_ms(cfg, *st);
+    const bool recover_stale =
+      edge_consensus_runtime_stale_record_within_recovery_grace(cfg, *st, now_ms, &stale_age_ms);
     Json::Value cleanup(Json::objectValue);
-    cleanup["persisted_record_cleared"] = clear_edge_consensus_runtime_record(db, node_id, nullptr);
+    cleanup["stale_runtime_recovery_grace_ms"] = (Json::Int64)recovery_grace_ms;
+    cleanup["stale_runtime_age_ms"] = (Json::Int64)stale_age_ms;
     bool artifacts_deleted = false;
     std::string aerr;
     if (remove_edge_consensus_runtime_artifacts(cfg, node_id, &artifacts_deleted, &aerr)) {
@@ -375,6 +387,18 @@ bool recover_edge_consensus_runtime_record(
     } else if (!aerr.empty()) {
       cleanup["runtime_artifacts_delete_error"] = aerr;
     }
+    if (recover_stale) {
+      st->running = false;
+      st->ended_unix_ms = now_ms;
+      st->status_source = "persisted_recovered";
+      st->last_error = "stale_builtin_runtime_recovered_after_restart";
+      cleanup["persisted_record_recovered"] = persist_edge_consensus_runtime_record(db, *st, nullptr);
+      cleanup["persisted_record_cleared"] = false;
+      if (out_updates) (*out_updates)["cleanup_on_stale_record"] = cleanup;
+      if (out_state) *out_state = st;
+      return true;
+    }
+    cleanup["persisted_record_cleared"] = clear_edge_consensus_runtime_record(db, node_id, nullptr);
     if (out_updates) (*out_updates)["cleanup_on_stale_record"] = cleanup;
     st.reset();
   }

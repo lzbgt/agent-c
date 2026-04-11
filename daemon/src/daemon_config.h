@@ -20,6 +20,7 @@ struct EdgeConsensusClusterPolicy {
   int64_t leader_heartbeat_ms = 1000;
   int64_t leader_lease_ms = 5000;
   int64_t lease_expiry_recampaign_delay_ms = 0;
+  int64_t stale_runtime_recovery_grace_ms = 0;
 };
 
 struct CorsRouteConfig {

@@ -77,6 +77,7 @@ Json::Value edge_consensus_cluster_policy_to_json(
   out["leader_heartbeat_ms"] = (Json::Int64)pol.leader_heartbeat_ms;
   out["leader_lease_ms"] = (Json::Int64)pol.leader_lease_ms;
   out["lease_expiry_recampaign_delay_ms"] = (Json::Int64)pol.lease_expiry_recampaign_delay_ms;
+  out["stale_runtime_recovery_grace_ms"] = (Json::Int64)pol.stale_runtime_recovery_grace_ms;
   Json::Value members(Json::arrayValue);
   for (const auto& member : pol.member_node_ids) members.append(member);
   out["member_node_ids"] = members;
@@ -124,6 +125,7 @@ Json::Value edge_consensus_runtime_to_json(const EdgeConsensusRuntime& st) {
   out["leader_heartbeat_ms"] = (Json::Int64)st.leader_heartbeat_ms;
   out["leader_lease_ms"] = (Json::Int64)st.leader_lease_ms;
   out["lease_expiry_recampaign_delay_ms"] = (Json::Int64)st.lease_expiry_recampaign_delay_ms;
+  out["stale_runtime_recovery_grace_ms"] = (Json::Int64)st.stale_runtime_recovery_grace_ms;
   out["poll_interval_ms"] = (Json::Int64)st.poll_interval_ms;
   out["deadline_ms"] = (Json::Int64)st.deadline_ms;
   out["cluster_size"] = Json::UInt64(st.cluster_size);
@@ -178,6 +180,9 @@ Json::Value edge_consensus_runtime_cluster_policy_drift_json(
   if (pol.lease_expiry_recampaign_delay_ms != st.lease_expiry_recampaign_delay_ms) {
     append_changed("lease_expiry_recampaign_delay_ms");
   }
+  if (pol.stale_runtime_recovery_grace_ms != st.stale_runtime_recovery_grace_ms) {
+    append_changed("stale_runtime_recovery_grace_ms");
+  }
 
   if (changed_fields.empty()) return Json::Value(Json::nullValue);
 
@@ -226,6 +231,31 @@ Json::Value edge_consensus_runtime_response_json(
   return out;
 }
 
+int64_t edge_consensus_runtime_effective_stale_recovery_grace_ms(
+  const DaemonConfig& cfg,
+  const EdgeConsensusRuntime& st
+) {
+  const auto pol_it = cfg.edge_consensus_clusters.find(st.cluster_id);
+  const int64_t grace_ms = pol_it == cfg.edge_consensus_clusters.end()
+    ? st.stale_runtime_recovery_grace_ms
+    : pol_it->second.stale_runtime_recovery_grace_ms;
+  return std::max<int64_t>(0, std::min<int64_t>(grace_ms, 86400000));
+}
+
+bool edge_consensus_runtime_stale_record_within_recovery_grace(
+  const DaemonConfig& cfg,
+  const EdgeConsensusRuntime& st,
+  int64_t now_unix_ms,
+  int64_t* out_age_ms
+) {
+  if (out_age_ms) *out_age_ms = 0;
+  const int64_t grace_ms = edge_consensus_runtime_effective_stale_recovery_grace_ms(cfg, st);
+  if (grace_ms <= 0 || st.started_unix_ms <= 0 || now_unix_ms <= 0) return false;
+  const int64_t age_ms = std::max<int64_t>(0, now_unix_ms - st.started_unix_ms);
+  if (out_age_ms) *out_age_ms = age_ms;
+  return age_ms <= grace_ms;
+}
+
 bool edge_consensus_runtime_same_effective_config(
   const EdgeConsensusRuntime& a,
   const EdgeConsensusRuntime& b
@@ -251,6 +281,7 @@ bool edge_consensus_runtime_same_effective_config(
     a.leader_heartbeat_ms == b.leader_heartbeat_ms &&
     a.leader_lease_ms == b.leader_lease_ms &&
     a.lease_expiry_recampaign_delay_ms == b.lease_expiry_recampaign_delay_ms &&
+    a.stale_runtime_recovery_grace_ms == b.stale_runtime_recovery_grace_ms &&
     a.poll_interval_ms == b.poll_interval_ms &&
     a.deadline_ms == b.deadline_ms &&
     a.cluster_size == b.cluster_size &&
@@ -433,6 +464,12 @@ bool edge_consensus_runtime_build_config(
       : (cluster_policy ? cluster_policy->lease_expiry_recampaign_delay_ms : 0);
   lease_expiry_recampaign_delay_ms =
     std::max<int64_t>(0, std::min<int64_t>(lease_expiry_recampaign_delay_ms, 300000));
+  int64_t stale_runtime_recovery_grace_ms =
+    body.isMember("stale_runtime_recovery_grace_ms")
+      ? json_to_i64_model(body["stale_runtime_recovery_grace_ms"], 0)
+      : (cluster_policy ? cluster_policy->stale_runtime_recovery_grace_ms : 0);
+  stale_runtime_recovery_grace_ms =
+    std::max<int64_t>(0, std::min<int64_t>(stale_runtime_recovery_grace_ms, 86400000));
   int64_t poll_interval_ms = body.isMember("poll_interval_ms")
     ? json_to_i64_model(body["poll_interval_ms"], 100)
     : 100;
@@ -482,6 +519,7 @@ bool edge_consensus_runtime_build_config(
   out_cfg->leader_heartbeat_ms = leader_heartbeat_ms;
   out_cfg->leader_lease_ms = leader_lease_ms;
   out_cfg->lease_expiry_recampaign_delay_ms = lease_expiry_recampaign_delay_ms;
+  out_cfg->stale_runtime_recovery_grace_ms = stale_runtime_recovery_grace_ms;
   out_cfg->poll_interval_ms = poll_interval_ms;
   out_cfg->deadline_ms = deadline_ms;
   out_cfg->trust_roots_epoch = trust_roots_epoch;
@@ -507,6 +545,7 @@ bool edge_consensus_runtime_build_config(
   out_state->leader_heartbeat_ms = leader_heartbeat_ms;
   out_state->leader_lease_ms = leader_lease_ms;
   out_state->lease_expiry_recampaign_delay_ms = lease_expiry_recampaign_delay_ms;
+  out_state->stale_runtime_recovery_grace_ms = stale_runtime_recovery_grace_ms;
   out_state->poll_interval_ms = poll_interval_ms;
   out_state->deadline_ms = deadline_ms;
   out_state->cluster_size = cluster_size;

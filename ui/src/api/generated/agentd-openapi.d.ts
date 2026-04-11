@@ -1249,7 +1249,8 @@ export interface paths {
          *     Notes:
          *     - `cluster_id` is required.
          *     - The bundle carries `membership_epoch`, `member_node_ids`, `campaign_delay_ms`, `campaign_retry_ms`,
-         *       `campaign_retry_max_ms`, and `campaign_retry_backoff_factor`.
+         *       `campaign_retry_max_ms`, `campaign_retry_backoff_factor`, leader freshness policy, lease-expiry recovery delay,
+         *       and stale runtime recovery grace.
          *     - When run-attestation signing keys are configured, the bundle includes an `attest` block.
          */
         get: {
@@ -4386,7 +4387,8 @@ export interface paths {
          *     re-campaign after expiring a stale leader, and
          *     `membership_epoch` plus `member_node_ids` for explicit member-set compatibility.
          *     When those fields are omitted and a durable `/api/v1/edge/consensus/membership`
-         *     policy exists for the cluster, the runtime defaults from that stored bundle.
+         *     policy exists for the cluster, the runtime defaults from that stored bundle, including
+         *     `stale_runtime_recovery_grace_ms` for preserving recent stale builtin records as terminal recovered snapshots.
          *     If callers omit `trust_roots_epoch`, `revocations_epoch`, or
          *     `cert_roots_epoch`, the runtime now defaults those from the daemon's current
          *     `edge_auth_*_epoch` policy instead of falling back to zero.
@@ -7464,6 +7466,11 @@ export interface components {
             leader_lease_ms: number;
             /** Format: int64 */
             lease_expiry_recampaign_delay_ms: number;
+            /**
+             * Format: int64
+             * @description Bounded grace window for preserving stale persisted builtin runtime state as a terminal recovered snapshot after daemon restart; zero keeps immediate cleanup.
+             */
+            stale_runtime_recovery_grace_ms: number;
             member_node_ids: string[];
             attest?: components["schemas"]["EdgeConsensusMembershipAttest"];
         };
@@ -7499,6 +7506,8 @@ export interface components {
             leader_lease_ms?: number;
             /** Format: int64 */
             lease_expiry_recampaign_delay_ms?: number;
+            /** Format: int64 */
+            stale_runtime_recovery_grace_ms?: number;
         };
         EdgeConsensusMembershipRotateResponse: {
             ok: boolean;
@@ -7521,6 +7530,8 @@ export interface components {
             leader_lease_ms: number;
             /** Format: int64 */
             lease_expiry_recampaign_delay_ms: number;
+            /** Format: int64 */
+            stale_runtime_recovery_grace_ms: number;
             /** Format: int64 */
             member_count: number;
             membership: components["schemas"]["EdgeConsensusMembershipBundle"];
@@ -8701,6 +8712,11 @@ export interface components {
             leader_lease_ms: number;
             /** Format: int64 */
             lease_expiry_recampaign_delay_ms: number;
+            /**
+             * Format: int64
+             * @description Bounded grace window for preserving a stale persisted builtin runtime as a terminal recovered snapshot after daemon restart; zero keeps immediate stale cleanup.
+             */
+            stale_runtime_recovery_grace_ms: number;
             member_node_ids: string[];
         };
         EdgeTrustEpochs: {
@@ -8717,7 +8733,7 @@ export interface components {
             /** @enum {string} */
             runtime_kind: "builtin" | "external";
             /** @enum {string} */
-            status_source: "memory" | "persisted";
+            status_source: "memory" | "persisted" | "persisted_recovered";
             node_id: string;
             cluster_id: string;
             manifest_sha256: string;
@@ -8748,6 +8764,8 @@ export interface components {
             leader_lease_ms: number;
             /** Format: int64 */
             lease_expiry_recampaign_delay_ms: number;
+            /** Format: int64 */
+            stale_runtime_recovery_grace_ms: number;
             /** Format: int64 */
             poll_interval_ms: number;
             /** Format: int64 */
@@ -8854,6 +8872,11 @@ export interface components {
             leader_lease_ms?: number;
             /** Format: int64 */
             lease_expiry_recampaign_delay_ms?: number;
+            /**
+             * Format: int64
+             * @description Optional override; defaults from the stored cluster policy. Zero preserves immediate stale builtin cleanup.
+             */
+            stale_runtime_recovery_grace_ms?: number;
             /** Format: int64 */
             poll_interval_ms?: number;
             /** Format: int64 */

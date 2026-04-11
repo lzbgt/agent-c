@@ -31,6 +31,7 @@ static DaemonConfig make_cfg() {
   pol.leader_heartbeat_ms = 1000;
   pol.leader_lease_ms = 5000;
   pol.lease_expiry_recampaign_delay_ms = 333;
+  pol.stale_runtime_recovery_grace_ms = 4444;
   cfg.edge_consensus_clusters["cluster-a"] = pol;
   return cfg;
 }
@@ -63,6 +64,7 @@ static void test_build_config_defaults_policy_and_trust_epochs() {
   assert(run_cfg.cert_roots_epoch == 13);
   assert(run_cfg.membership_epoch == 7);
   assert(run_cfg.lease_expiry_recampaign_delay_ms == 333);
+  assert(run_cfg.stale_runtime_recovery_grace_ms == 4444);
 
   assert(st.daemon_url == run_cfg.daemon_url);
   assert(st.member_node_ids == run_cfg.member_node_ids);
@@ -73,6 +75,7 @@ static void test_build_config_defaults_policy_and_trust_epochs() {
   assert(st.cert_roots_epoch == run_cfg.cert_roots_epoch);
   assert(st.membership_epoch == run_cfg.membership_epoch);
   assert(st.lease_expiry_recampaign_delay_ms == run_cfg.lease_expiry_recampaign_delay_ms);
+  assert(st.stale_runtime_recovery_grace_ms == run_cfg.stale_runtime_recovery_grace_ms);
   assert(st.running);
 }
 
@@ -114,6 +117,7 @@ static void test_response_json_surfaces_cluster_and_trust_drift() {
   st.cert_roots_epoch = 23;
   st.membership_epoch = 9;
   st.lease_expiry_recampaign_delay_ms = 444;
+  st.stale_runtime_recovery_grace_ms = 5555;
 
   const Json::Value out = edge_consensus_runtime_response_json(cfg, st);
   assert(out.isObject());
@@ -121,21 +125,26 @@ static void test_response_json_surfaces_cluster_and_trust_drift() {
   assert(out["cluster_policy_drift"]["cluster_id"].asString() == "cluster-a");
   assert(out["cluster_policy_drift"]["current_policy"]["lease_expiry_recampaign_delay_ms"]
            .asInt64() == 333);
+  assert(out["cluster_policy_drift"]["current_policy"]["stale_runtime_recovery_grace_ms"]
+           .asInt64() == 4444);
 
   const Json::Value changed = out["cluster_policy_drift"]["changed_fields"];
   assert(changed.isArray());
   bool saw_membership_epoch = false;
   bool saw_member_node_ids = false;
   bool saw_lease_delay = false;
+  bool saw_stale_recovery_grace = false;
   for (Json::ArrayIndex i = 0; i < changed.size(); i++) {
     const std::string field = changed[i].asString();
     if (field == "membership_epoch") saw_membership_epoch = true;
     if (field == "member_node_ids") saw_member_node_ids = true;
     if (field == "lease_expiry_recampaign_delay_ms") saw_lease_delay = true;
+    if (field == "stale_runtime_recovery_grace_ms") saw_stale_recovery_grace = true;
   }
   assert(saw_membership_epoch);
   assert(saw_member_node_ids);
   assert(saw_lease_delay);
+  assert(saw_stale_recovery_grace);
 
   assert(out.isMember("trust_epoch_drift"));
   assert(out["trust_epoch_drift"]["current_trust_epochs"]["trust_roots_epoch"].asUInt64() == 11);

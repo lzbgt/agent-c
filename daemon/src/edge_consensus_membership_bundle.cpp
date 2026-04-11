@@ -158,6 +158,7 @@ bool build_edge_consensus_membership_bundle(
   bundle["leader_heartbeat_ms"] = (Json::Int64)pol.leader_heartbeat_ms;
   bundle["leader_lease_ms"] = (Json::Int64)pol.leader_lease_ms;
   bundle["lease_expiry_recampaign_delay_ms"] = (Json::Int64)pol.lease_expiry_recampaign_delay_ms;
+  bundle["stale_runtime_recovery_grace_ms"] = (Json::Int64)pol.stale_runtime_recovery_grace_ms;
   {
     Json::Value arr(Json::arrayValue);
     for (const auto& member : pol.member_node_ids) arr.append(member);

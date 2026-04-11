@@ -91,6 +91,9 @@ bool edge_consensus_runtime_reconcile_snapshot(
     inout->updates["cleanup_on_stale_record"] = reconcile.cleanup;
     inout->runtime.reset();
   }
+  if (reconcile.disposition == EdgeConsensusPersistedRunningDisposition::stale_recovered) {
+    inout->updates["cleanup_on_stale_record"] = reconcile.cleanup;
+  }
   return true;
 }
 

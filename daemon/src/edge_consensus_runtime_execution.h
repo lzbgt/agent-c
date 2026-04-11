@@ -31,6 +31,7 @@ struct EdgeConsensusRuntimeConfig {
   int64_t leader_heartbeat_ms = 1000;
   int64_t leader_lease_ms = 5000;
   int64_t lease_expiry_recampaign_delay_ms = 0;
+  int64_t stale_runtime_recovery_grace_ms = 0;
   int64_t poll_interval_ms = 100;
   int64_t deadline_ms = 10000;
   uint64_t trust_roots_epoch = 0;

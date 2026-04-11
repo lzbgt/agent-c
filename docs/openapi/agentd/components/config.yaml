@@ -1026,7 +1026,7 @@ EdgeConsensusMembershipAttest:
 
 EdgeConsensusMembershipBundle:
   type: object
-  required: [schema, created_utc_ms, cluster_id, membership_epoch, updated_utc_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, leader_heartbeat_ms, leader_lease_ms, lease_expiry_recampaign_delay_ms, member_node_ids]
+  required: [schema, created_utc_ms, cluster_id, membership_epoch, updated_utc_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, leader_heartbeat_ms, leader_lease_ms, lease_expiry_recampaign_delay_ms, stale_runtime_recovery_grace_ms, member_node_ids]
   properties:
     schema: { type: string, enum: [edge_consensus_membership_v1] }
     created_utc_ms: { type: integer, format: int64 }
@@ -1040,6 +1040,10 @@ EdgeConsensusMembershipBundle:
     leader_heartbeat_ms: { type: integer, format: int64 }
     leader_lease_ms: { type: integer, format: int64 }
     lease_expiry_recampaign_delay_ms: { type: integer, format: int64 }
+    stale_runtime_recovery_grace_ms:
+      type: integer
+      format: int64
+      description: Bounded grace window for preserving stale persisted builtin runtime state as a terminal recovered snapshot after daemon restart; zero keeps immediate cleanup.
     member_node_ids:
       type: array
       items: { type: string }
@@ -1081,11 +1085,12 @@ EdgeConsensusMembershipRotateRequest:
     leader_heartbeat_ms: { type: integer, format: int64 }
     leader_lease_ms: { type: integer, format: int64 }
     lease_expiry_recampaign_delay_ms: { type: integer, format: int64 }
+    stale_runtime_recovery_grace_ms: { type: integer, format: int64 }
 
 
 EdgeConsensusMembershipRotateResponse:
   type: object
-  required: [ok, cluster_id, membership_epoch, updated_utc_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, leader_heartbeat_ms, leader_lease_ms, lease_expiry_recampaign_delay_ms, member_count, membership]
+  required: [ok, cluster_id, membership_epoch, updated_utc_ms, campaign_delay_ms, campaign_retry_ms, campaign_retry_max_ms, campaign_retry_backoff_factor, leader_heartbeat_ms, leader_lease_ms, lease_expiry_recampaign_delay_ms, stale_runtime_recovery_grace_ms, member_count, membership]
   properties:
     ok: { type: boolean }
     cluster_id: { type: string }
@@ -1098,6 +1103,7 @@ EdgeConsensusMembershipRotateResponse:
     leader_heartbeat_ms: { type: integer, format: int64 }
     leader_lease_ms: { type: integer, format: int64 }
     lease_expiry_recampaign_delay_ms: { type: integer, format: int64 }
+    stale_runtime_recovery_grace_ms: { type: integer, format: int64 }
     member_count: { type: integer, format: int64 }
     membership:
       $ref: "#/components/schemas/EdgeConsensusMembershipBundle"
