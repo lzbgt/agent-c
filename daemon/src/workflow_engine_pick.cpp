@@ -436,6 +436,28 @@ bool WorkflowEngine::pick_and_claim_one(
 	      new_def = it->second;
 	      (void)new_def;
 	    };
+	    auto budget_pressure_bump = [&](const AgentDb::WorkflowRow& wf) -> int64_t {
+	      const WorkflowLimits lim = workflow_limits_best_effort(wf);
+	      if (lim.max_tool_calls_total <= 0 && lim.max_steps_total <= 0 &&
+	          lim.max_elapsed_ms_total <= 0 && lim.max_total_tokens <= 0) {
+	        return 0;
+	      }
+	      AgentDb::WorkflowUsageTotals totals;
+	      std::string uerr;
+	      if (!db_->get_workflow_usage_totals(wf.workflow_id, &totals, &uerr)) {
+	        return 0;
+	      }
+	      WorkflowFairqBudgetPressure pressure;
+	      pressure.max_tool_calls_total = lim.max_tool_calls_total;
+	      pressure.tool_calls_total_used = totals.tool_calls_total_used;
+	      pressure.max_steps_total = lim.max_steps_total;
+	      pressure.steps_total_used = totals.steps_total_used;
+	      pressure.max_elapsed_ms_total = lim.max_elapsed_ms_total;
+	      pressure.elapsed_ms_total_used = totals.elapsed_ms_total_used;
+	      pressure.max_total_tokens = lim.max_total_tokens;
+	      pressure.total_tokens_used = totals.total_tokens_used;
+	      return workflow_fairq_estimate_budget_pressure_cost_bump_v1(pressure, /*max_bump=*/16);
+	    };
 
 	    for (size_t ssi = 0; ssi < attempt_sessions.size(); ssi++) {
 	      const std::string& sk = attempt_sessions[ssi];
@@ -458,6 +480,12 @@ bool WorkflowEngine::pick_and_claim_one(
 	              workflow_fairq_estimate_task_cost_telemetry_v1(out_task->result_json, /*max_cost=*/32);
 	            if (obs > 0) cost = obs;
 	            else cost = workflow_fairq_estimate_task_cost_simple_v1(out_task->request_json, /*max_cost=*/32);
+	          } else if (drr_cost_model == "budget_pressure_v1") {
+	            const int64_t obs =
+	              workflow_fairq_estimate_task_cost_telemetry_v1(out_task->result_json, /*max_cost=*/32);
+	            if (obs > 0) cost = obs;
+	            else cost = workflow_fairq_estimate_task_cost_simple_v1(out_task->request_json, /*max_cost=*/32);
+	            cost = std::min<int64_t>(32, cost + budget_pressure_bump(wfs[idx]));
 	          }
 	          charge_deficit(sk, std::max<int64_t>(1, cost));
 	          // Persist the updated deficit (best-effort). Failures should not block scheduling.

@@ -6,6 +6,7 @@
 #include <json/json.h>
 
 #include <algorithm>
+#include <cstdint>
 
 namespace agentd {
 
@@ -204,6 +205,47 @@ int64_t workflow_fairq_estimate_task_cost_telemetry_v1(
   }
 
   return clamp_i64(cost, 1, max_cost);
+}
+
+static int64_t budget_pressure_dimension_bump(int64_t maxv, int64_t used) {
+  if (maxv <= 0) return 0;
+  used = std::max<int64_t>(0, used);
+  if (used >= maxv) return 8;
+  const int64_t remaining = std::max<int64_t>(0, maxv - used);
+  const int64_t remaining_bp =
+    (remaining > (INT64_MAX / 10000LL)) ? 10000LL : ((remaining * 10000LL) / maxv);
+  if (remaining_bp <= 1000) return 6;
+  if (remaining_bp <= 2000) return 4;
+  if (remaining_bp <= 5000) return 1;
+  return 0;
+}
+
+int64_t workflow_fairq_estimate_budget_pressure_cost_bump_v1(
+  const WorkflowFairqBudgetPressure& pressure,
+  int64_t max_bump
+) {
+  max_bump = clamp_i64(max_bump, 0, 1024);
+  if (max_bump <= 0) return 0;
+
+  int64_t bump = 0;
+  bump += budget_pressure_dimension_bump(
+    pressure.max_tool_calls_total,
+    pressure.tool_calls_total_used
+  );
+  bump += budget_pressure_dimension_bump(
+    pressure.max_steps_total,
+    pressure.steps_total_used
+  );
+  bump += budget_pressure_dimension_bump(
+    pressure.max_elapsed_ms_total,
+    pressure.elapsed_ms_total_used
+  );
+  bump += budget_pressure_dimension_bump(
+    pressure.max_total_tokens,
+    pressure.total_tokens_used
+  );
+
+  return clamp_i64(bump, 0, max_bump);
 }
 
 }  // namespace agentd

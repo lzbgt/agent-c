@@ -73,6 +73,16 @@ WorkflowEngine::WorkflowEngine(
   if (opt_.fair_queue_max_session_weight > 1024) opt_.fair_queue_max_session_weight = 1024;
   if (opt_.fair_queue_max_schedule_len < 16) opt_.fair_queue_max_schedule_len = 16;
   if (opt_.fair_queue_max_schedule_len > 65536) opt_.fair_queue_max_schedule_len = 65536;
+  {
+    std::string m = opt_.drr_cost_model;
+    for (char& c : m) {
+      if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+    }
+    if (m != "unit" && m != "simple_v1" && m != "telemetry_v1" && m != "budget_pressure_v1") {
+      m = "unit";
+    }
+    opt_.drr_cost_model = m;
+  }
 }
 
 WorkflowEngine::~WorkflowEngine() {

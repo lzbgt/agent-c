@@ -219,6 +219,20 @@ Follow-up WebRTC runtime smoke JSON assertion helper slice:
 - `ctest --test-dir build -N > build/webrtc_runtime_json_helpers_ctest_inventory_20260411.log 2>&1`
   - Result: `ctest_inventory_rc=0`; the test inventory still contains 316 tests.
 
+Follow-up roadmap pruning and DRR budget-pressure slice:
+- Pruned stale P0/P1 `Next` / `Remaining` notes that duplicated later shipped roadmap items, and narrowed the next unblocked scheduler work to `budget_pressure_v1` follow-up proof.
+- Added `--workflow-drr-cost-model budget_pressure_v1`, which combines telemetry/request DRR estimates with bounded pressure bumps from workflow limits and retry-safe usage totals.
+- `bash -n tests/agentd_workflow_drr_cost_telemetry_smoke.sh && bash -n tests/agentd_workflow_drr_budget_pressure_smoke.sh && git diff --check`
+  - Result: `syntax_and_diff_rc=0`.
+- `cmake --build build -j "$(sysctl -n hw.ncpu)" > build/drr_budget_pressure_final_build_20260412.log 2>&1`
+  - Result: `build_rc=0`.
+- `ctest --test-dir build -R 'workflow_fairq_cost_tests|agentd_workflow_drr_(cost_telemetry|budget_pressure)_smoke|agentd_workflow_stats_budget_pressure_smoke' --output-on-failure > build/drr_budget_pressure_final_ctest_20260412.log 2>&1`
+  - Result: `ctest_rc=0`; four targeted fair-queue / budget-pressure tests passed.
+- `tools/verify_repo_guards.sh > build/drr_budget_pressure_final_repo_guards_20260412.log 2>&1`
+  - Result: `repo_guards_rc=0`.
+- `ctest --test-dir build -N > build/drr_budget_pressure_final_ctest_inventory_20260412.log 2>&1`
+  - Result: `ctest_inventory_rc=0`; the test inventory now contains 317 tests.
+
 ## Directly Open Roadmap Items
 
 `TODOS.md` now has two open roadmap workstreams with concrete unchecked subitems, plus one newly closed roadmap workstream:
@@ -249,7 +263,8 @@ The older P0/P1 section was pruned on 2026-04-12 so `Next` / `Remaining` notes n
 
 - Budgets / scheduling:
   - Host-tool memory budget charging and workflow budget-pressure stats are already shipped.
-  - Current remaining: provider-backed streaming token budget enforcement when usage is missing/retried, budget-pressure-aware DRR charging, edge-poll cost refinements, and resilient mixed-workload fairness proof.
+  - 2026-04-12 follow-up: `budget_pressure_v1` DRR charging now combines telemetry/request estimates with bounded pressure bumps from workflow limits and retry-safe usage totals.
+  - Current remaining: provider-backed streaming token budget enforcement when usage is missing/retried, edge-poll cost refinements, and resilient mixed-workload fairness proof.
 
 - Agent collaboration:
   - `strict_all_ok` and node-identity-aware quorum proof are already shipped in later collaboration slices.
@@ -280,4 +295,4 @@ Highest leverage sequence:
 
 1. Fix or unblock OpenRouter credentials, run the OpenRouter streaming pin workflow, and commit `ref/openrouter/streaming_pins.json` if the result is stable.
 2. Execute the documented builtin-vs-bundled graduation gate on any additional target release platforms before changing production defaults outside the checked macOS M2 host.
-3. Implement the next unblocked local item from the pruned P0/P1 backlog: budget-pressure-aware DRR charging with a deterministic mixed-workload fairness proof.
+3. Implement the next unblocked local item from the pruned P0/P1 backlog: a deterministic mixed-workload fairness proof for `budget_pressure_v1` covering host tasks, LLM-like tasks, streaming-like tasks, and edge poll loops.

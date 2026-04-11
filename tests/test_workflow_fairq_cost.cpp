@@ -7,6 +7,8 @@
 int main() {
   using agentd::workflow_fairq_estimate_task_cost_simple_v1;
   using agentd::workflow_fairq_estimate_task_cost_telemetry_v1;
+  using agentd::workflow_fairq_estimate_budget_pressure_cost_bump_v1;
+  using agentd::WorkflowFairqBudgetPressure;
 
 #if !defined(AGENT_HAVE_JSONCPP)
   return 77;
@@ -95,6 +97,62 @@ int main() {
     const std::string last = R"({"retryable":true,"retry_in_ms":1,"elapsed_ms":999999,"total_tokens":999999})";
     const int64_t c = workflow_fairq_estimate_task_cost_telemetry_v1(last, 3);
     assert(c == 3);
+  }
+  {
+    // Budget pressure: no configured workflow limits means no bump.
+    WorkflowFairqBudgetPressure p;
+    assert(workflow_fairq_estimate_budget_pressure_cost_bump_v1(p, 16) == 0);
+  }
+  {
+    // Low-pressure budgets do not affect DRR charging.
+    WorkflowFairqBudgetPressure p;
+    p.max_total_tokens = 1000;
+    p.total_tokens_used = 100;
+    assert(workflow_fairq_estimate_budget_pressure_cost_bump_v1(p, 16) == 0);
+  }
+  {
+    // Near-exhausted budgets add deterministic bounded bumps.
+    WorkflowFairqBudgetPressure p;
+    p.max_total_tokens = 1000;
+    p.total_tokens_used = 900;
+    const int64_t c = workflow_fairq_estimate_budget_pressure_cost_bump_v1(p, 16);
+    assert(c == 6);
+  }
+  {
+    // Exhausted or over-spent dimensions get the maximum per-dimension bump.
+    WorkflowFairqBudgetPressure p;
+    p.max_total_tokens = 1000;
+    p.total_tokens_used = 5000;
+    const int64_t c = workflow_fairq_estimate_budget_pressure_cost_bump_v1(p, 16);
+    assert(c == 8);
+  }
+  {
+    // Negative usage is normalized to 0 before pressure math.
+    WorkflowFairqBudgetPressure p;
+    p.max_total_tokens = 1000;
+    p.total_tokens_used = -100;
+    const int64_t c = workflow_fairq_estimate_budget_pressure_cost_bump_v1(p, 16);
+    assert(c == 0);
+  }
+  {
+    // Callers can disable pressure bumps through max_bump.
+    WorkflowFairqBudgetPressure p;
+    p.max_total_tokens = 1000;
+    p.total_tokens_used = 999;
+    const int64_t c = workflow_fairq_estimate_budget_pressure_cost_bump_v1(p, 0);
+    assert(c == 0);
+  }
+  {
+    // Multiple pressured dimensions compound, but the result is clamped.
+    WorkflowFairqBudgetPressure p;
+    p.max_tool_calls_total = 10;
+    p.tool_calls_total_used = 10;
+    p.max_steps_total = 100;
+    p.steps_total_used = 90;
+    p.max_total_tokens = 1000;
+    p.total_tokens_used = 900;
+    const int64_t c = workflow_fairq_estimate_budget_pressure_cost_bump_v1(p, 12);
+    assert(c == 12);
   }
   return 0;
 #endif

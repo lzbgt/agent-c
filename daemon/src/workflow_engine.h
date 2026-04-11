@@ -51,6 +51,7 @@ class WorkflowEngine {
     // - unit: each admitted task costs 1 (v2.3 baseline)
     // - simple_v1: best-effort estimated cost by task kind/request
     // - telemetry_v1: best-effort cost derived from last-attempt telemetry stored in workflow_tasks.result_json
+    // - budget_pressure_v1: telemetry/simple estimate plus workflow-limit pressure from retry-safe usage totals
     std::string drr_cost_model = "unit";
   };
 

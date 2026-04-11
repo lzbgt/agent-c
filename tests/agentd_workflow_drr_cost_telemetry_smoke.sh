@@ -18,6 +18,8 @@ PORT_DAEMON="$(agentd_smoke_pick_port)"
 PORT_STUB="$(agentd_smoke_pick_port)"
 HOST="127.0.0.1"
 STUB_BASE="http://${HOST}:${PORT_STUB}/v1"
+DRR_COST_MODEL="${WORKFLOW_DRR_COST_MODEL:-telemetry_v1}"
+SMOKE_NAME="${WORKFLOW_DRR_SMOKE_NAME:-agentd_workflow_drr_cost_telemetry_smoke}"
 
 cleanup() {
   agentd_smoke_stop
@@ -29,7 +31,7 @@ cleanup() {
 trap cleanup EXIT
 
 # OpenAI-compatible stub: echo last user prompt as assistant content.
-python3 -u - <<PY > "${LOG_DIR}/agentd_workflow_drr_cost_telemetry_smoke.stub.stdout.log" 2> "${LOG_DIR}/agentd_workflow_drr_cost_telemetry_smoke.stub.stderr.log" &
+python3 -u - <<PY > "${LOG_DIR}/${SMOKE_NAME}.stub.stdout.log" 2> "${LOG_DIR}/${SMOKE_NAME}.stub.stderr.log" &
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -79,11 +81,11 @@ ThreadingHTTPServer(("127.0.0.1", ${PORT_STUB}), H).serve_forever()
 PY
 STUB_PID=$!
 
-# Start agentd with DRR + telemetry-driven cost charging enabled.
-agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_workflow_drr_cost_telemetry_smoke" \
+# Start agentd with DRR + the requested cost charging model enabled.
+agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "${SMOKE_NAME}" \
   --tools none \
   --workflow-fair-queue-policy drr \
-  --workflow-drr-cost-model telemetry_v1
+  --workflow-drr-cost-model "${DRR_COST_MODEL}"
 
 agentd_smoke_wait_health "${DAEMON_URL}"
 
@@ -91,7 +93,7 @@ NODE_ID="node_sensor_1"
 
 submit_resp="$(curl -fsS --noproxy "*" --max-time 20 \
   -H "Content-Type: application/json" \
-  -d "$(STUB_BASE="${STUB_BASE}" NODE_ID="${NODE_ID}" python3 - <<'PY'
+  -d "$(STUB_BASE="${STUB_BASE}" NODE_ID="${NODE_ID}" DRR_COST_MODEL="${DRR_COST_MODEL}" python3 - <<'PY'
 import json, os
 
 stub_base = os.environ["STUB_BASE"]
@@ -128,7 +130,12 @@ tasks = [
   }
 ]
 
-print(json.dumps({"tasks": tasks, "defaults": defaults, "allow_inline_api_keys": True}))
+req = {"tasks": tasks, "defaults": defaults, "allow_inline_api_keys": True}
+if os.environ.get("DRR_COST_MODEL") == "budget_pressure_v1":
+  # Exercise the budget-pressure model's workflow-limit read path without making the smoke
+  # fragile: the limits are intentionally generous, while the unit test covers exact bump math.
+  req["workflow_limits"] = {"max_steps_total": 100, "max_elapsed_ms_total": 60000, "max_total_tokens": 100000}
+print(json.dumps(req))
 PY
 )" \
   "${DAEMON_URL}/api/v1/workflow/submit")"
@@ -220,5 +227,4 @@ if "dirt_detected" not in txt or "${NODE_ID}" not in txt:
   raise SystemExit(1)
 PY
 
-echo "agentd_workflow_drr_cost_telemetry_smoke OK"
-
+echo "${SMOKE_NAME} OK"

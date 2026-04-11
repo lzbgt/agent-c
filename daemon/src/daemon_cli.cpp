@@ -1457,7 +1457,7 @@ int parse_daemon_cli(int argc, char** argv, DaemonConfig* cfg, DaemonCliOverride
         << "  --workflow-max-inflight-per-workflow <n>  Workflow fairness cap (default: 2)\n"
         << "  --workflow-max-inflight-per-session <n>   Optional multi-tenant cap; 0 disables (default: 0)\n"
         << "  --workflow-fair-queue-policy <scan_rr|wrr|drr>  Scheduler policy (default: wrr)\n"
-        << "  --workflow-drr-cost-model <unit|simple_v1|telemetry_v1>  DRR cost model (default: unit)\n"
+        << "  --workflow-drr-cost-model <unit|simple_v1|telemetry_v1|budget_pressure_v1>  DRR cost model (default: unit)\n"
         << "  --workflow-fair-queue-max-session-weight <n>  Clamp per-session weight (default: 16)\n"
         << "  --workflow-fair-queue-max-schedule-len <n>    Bound expanded WRR schedule length (default: 1024)\n"
         << "  --workflow-admit-max-inflight-tasks-per-session <n>  Admission control cap (queued|running tasks per session); 0 disables (default: 0)\n"
