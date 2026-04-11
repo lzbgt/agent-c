@@ -534,7 +534,8 @@ filters it, sorts by total price ($/1M prompt+completion), and returns a recomme
   continues on the single provider-owned audio stream, then sends a browser empty-candidate end marker and requires
   agentd to count it through the shared candidate-ingress path. The browser smoke now also forwards real trickled
   Chromium ICE candidates instead of only relying on the gathered offer SDP, so the live path covers candidate events
-  from an actual browser peer.
+  from an actual browser peer. When Chromium exposes G.711 sender capabilities, the smoke also constrains the active
+  audio transceiver to PCMU/PCMA and requires agentd runtime telemetry to report that negotiated outbound codec.
   The repo also has direct in-tree DTLS/SRTP proof for the same OpenSSL/libsrtp configuration:
   `session_voice_builtin_dtls_transport_tests` completes a DTLS 1.2 client/server handshake over datagram-memory BIOs,
   negotiates `SRTP_AES128_CM_SHA1_80`, exports DTLS-SRTP keying material, derives real inbound / outbound libsrtp

@@ -364,6 +364,8 @@ async function run() {
       dataChannelCreated: false,
       extraAudioTransceiverCreated: false,
       emptyCandidateSent: false,
+      codecPreferenceApplied: false,
+      preferredCodecName: "",
       error: "",
     };
     let peer = null;
@@ -413,7 +415,28 @@ async function run() {
       if (typeof audioCtx.resume === "function") await audioCtx.resume();
 
       peer = new RTCPeerConnection();
-      for (const track of dest.stream.getAudioTracks()) peer.addTrack(track, dest.stream);
+      const audioTrack = dest.stream.getAudioTracks()[0];
+      const activeAudioTransceiver = peer.addTransceiver(audioTrack, {
+        direction: "sendrecv",
+        streams: [dest.stream],
+      });
+      const audioCaps = typeof RTCRtpSender !== "undefined" && RTCRtpSender.getCapabilities
+        ? RTCRtpSender.getCapabilities("audio")
+        : null;
+      const g711Codecs = (audioCaps && Array.isArray(audioCaps.codecs) ? audioCaps.codecs : [])
+        .filter((codec) => {
+          const mimeType = String(codec.mimeType || "").toLowerCase();
+          return (mimeType === "audio/pcmu" || mimeType === "audio/pcma") &&
+            Number(codec.clockRate || 0) === 8000;
+        });
+      const preferredG711 = g711Codecs.find((codec) => String(codec.mimeType || "").toLowerCase() === "audio/pcmu") ||
+        g711Codecs.find((codec) => String(codec.mimeType || "").toLowerCase() === "audio/pcma") ||
+        null;
+      if (preferredG711 && typeof activeAudioTransceiver.setCodecPreferences === "function") {
+        activeAudioTransceiver.setCodecPreferences([preferredG711]);
+        state.codecPreferenceApplied = true;
+        state.preferredCodecName = String(preferredG711.mimeType || "").split("/").pop().toUpperCase();
+      }
       peer.addTransceiver("audio", { direction: "recvonly" });
       state.extraAudioTransceiverCreated = true;
       peer.createDataChannel("agentd-native-voice-edge-validation");
@@ -621,6 +644,15 @@ async function run() {
   }
   if (!finalState.dataChannelCreated || !finalState.extraAudioTransceiverCreated || !finalState.emptyCandidateSent) {
     throw new Error(`native browser edge offer was not constructed: ${JSON.stringify(finalState)}`);
+  }
+  if (
+    finalState.codecPreferenceApplied &&
+    String(finalPeer.audio_outbound_codec_name || "").toUpperCase() !== finalState.preferredCodecName
+  ) {
+    throw new Error(`native browser codec preference was not honored: ${JSON.stringify({
+      browser: finalState,
+      peer: finalPeer,
+    })}`);
   }
   if (
     !/m=application 0 [^\r\n]*webrtc-datachannel/.test(finalState.answerSdp || "") ||

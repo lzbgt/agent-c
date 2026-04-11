@@ -135,7 +135,9 @@ Reference artifacts downloaded into the repo for exact vendor details:
     audio stream, then sends a browser empty-candidate end marker and requires
     agentd to count it through the shared candidate-ingress path. It also
     forwards real trickled Chromium ICE candidates instead of only relying on
-    the gathered offer SDP
+    the gathered offer SDP, and when Chromium exposes G.711 sender capabilities
+    it constrains the active audio transceiver to PCMU/PCMA and requires agentd
+    runtime telemetry to report that negotiated outbound codec
 - The repo now also has a direct in-tree DTLS/SRTP proof slice independent of
   that synthetic libjuice role quirk:
   - `session_voice_builtin_dtls_transport_tests` completes a DTLS 1.2

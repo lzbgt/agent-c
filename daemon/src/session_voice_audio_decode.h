@@ -23,6 +23,9 @@ struct DecodedAudioFrame {
   std::vector<int16_t> pcm_samples;
 };
 
+std::vector<RtpAudioPayloadSpec> parse_first_active_audio_payload_specs_from_sdp(
+  const std::string& sdp);
+
 class InboundRtpAudioDecoder {
  public:
   InboundRtpAudioDecoder();

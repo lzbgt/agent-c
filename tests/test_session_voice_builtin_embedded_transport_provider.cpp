@@ -379,6 +379,36 @@ std::string make_pcma_only_browser_offer_sdp() {
     "a=end-of-candidates\r\n";
 }
 
+std::string make_pcmu_only_active_audio_with_extra_opus_offer_sdp() {
+  return
+    "v=0\r\n"
+    "o=- 4962323985234234 2 IN IP4 127.0.0.1\r\n"
+    "s=-\r\n"
+    "t=0 0\r\n"
+    "a=group:BUNDLE 0 1\r\n"
+    "a=msid-semantic: WMS\r\n"
+    "m=audio 9 UDP/TLS/RTP/SAVPF 0\r\n"
+    "c=IN IP4 0.0.0.0\r\n"
+    "a=mid:0\r\n"
+    "a=sendrecv\r\n"
+    "a=rtcp-mux\r\n"
+    "a=rtpmap:0 PCMU/8000\r\n"
+    "a=ice-ufrag:remoteUfrag\r\n"
+    "a=ice-pwd:remotePassword123\r\n"
+    "a=fingerprint:sha-256 11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00\r\n"
+    "a=setup:actpass\r\n"
+    "a=candidate:1 1 UDP 2113667327 192.168.0.11 40000 typ host\r\n"
+    "m=audio 9 UDP/TLS/RTP/SAVPF 111 0 8\r\n"
+    "c=IN IP4 0.0.0.0\r\n"
+    "a=mid:1\r\n"
+    "a=recvonly\r\n"
+    "a=rtcp-mux\r\n"
+    "a=rtpmap:111 opus/48000/2\r\n"
+    "a=rtpmap:0 PCMU/8000\r\n"
+    "a=rtpmap:8 PCMA/8000\r\n"
+    "a=end-of-candidates\r\n";
+}
+
 static void test_embedded_transport_provider_loads_and_answers_remote_offer() {
   DaemonConfig cfg;
   cfg.audio_webrtc_builtin_mode = "native_plugin";
@@ -573,6 +603,45 @@ static void test_embedded_transport_provider_selects_pcma_when_pcmu_is_unavailab
   assert(answer_event["audio_outbound_channels"].asInt64() == 1);
   assert(runtime.audio_outbound_payload_type == 8);
   assert(runtime.audio_outbound_codec_name == "PCMA");
+}
+
+static void test_embedded_transport_provider_selects_codec_from_accepted_audio_mline() {
+  DaemonConfig cfg;
+  cfg.audio_webrtc_builtin_mode = "native_plugin";
+  cfg.audio_webrtc_builtin_native_library_path =
+    AGENTD_TEST_VOICE_MEDIA_ENGINE_EMBEDDED_PLUGIN_PATH;
+
+  std::string err;
+  auto engine = make_builtin_voice_peer_media_engine(cfg, &err);
+  assert(engine);
+  assert(err.empty());
+
+  VoicePeerRuntime runtime;
+  Json::Value init_event(Json::nullValue);
+  assert(engine->initialize(&runtime, &init_event, &err));
+  assert(err.empty());
+  note_voice_peer_media_engine_event(&runtime, init_event);
+
+  VoiceBrokerSignalRemoteDescriptionReady ready;
+  ready.description.type = "offer";
+  ready.description.sdp = make_pcmu_only_active_audio_with_extra_opus_offer_sdp();
+  ready.initial_remote_candidates.resize(1);
+
+  VoiceBrokerSignalDescription answer;
+  Json::Value answer_event(Json::nullValue);
+  assert(engine->handle_remote_description(ready, &answer, &answer_event, &err));
+  assert(err.empty());
+  note_voice_peer_media_engine_event(&runtime, answer_event);
+  assert(answer.type == "answer");
+  assert(answer.sdp.find("a=group:BUNDLE 0") != std::string::npos);
+  assert(answer.sdp.find("m=audio 9 UDP/TLS/RTP/SAVPF 0") != std::string::npos);
+  assert(answer.sdp.find("m=audio 0 UDP/TLS/RTP/SAVPF 111 0 8") != std::string::npos);
+  assert(answer_event["audio_outbound_payload_type"].asInt64() == 0);
+  assert(answer_event["audio_outbound_codec_name"].asString() == "PCMU");
+  assert(answer_event["audio_outbound_sample_rate_hz"].asInt64() == 8000);
+  assert(answer_event["audio_outbound_channels"].asInt64() == 1);
+  assert(runtime.audio_outbound_payload_type == 0);
+  assert(runtime.audio_outbound_codec_name == "PCMU");
 }
 
 static void test_embedded_transport_provider_reaches_local_ice_connectivity() {
@@ -792,6 +861,7 @@ int main() {
   test_embedded_transport_provider_loads_and_answers_remote_offer();
   test_embedded_transport_provider_mirrors_browser_offer_shape_with_dtls_identity();
   test_embedded_transport_provider_selects_pcma_when_pcmu_is_unavailable();
+  test_embedded_transport_provider_selects_codec_from_accepted_audio_mline();
   test_embedded_transport_provider_reaches_local_ice_connectivity();
   return 0;
 }

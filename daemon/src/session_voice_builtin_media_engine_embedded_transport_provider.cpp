@@ -422,13 +422,15 @@ void clear_outbound_audio_payload_selection(EmbeddedTransportState* engine) {
   engine->audio_outbound_codec_name.clear();
 }
 
-bool select_outbound_audio_payload_from_remote_sdp(EmbeddedTransportState* engine) {
+bool select_outbound_audio_payload(
+  EmbeddedTransportState* engine,
+  const std::vector<agentd::RtpAudioPayloadSpec>& payload_specs
+) {
   if (!engine) return false;
   clear_outbound_audio_payload_selection(engine);
 
   std::string select_err;
-  if (!engine->outbound_audio_encoder.select_payload(
-        engine->audio_decoder.payload_specs(), &select_err)) {
+  if (!engine->outbound_audio_encoder.select_payload(payload_specs, &select_err)) {
     engine->audio_outbound_last_error = select_err.empty()
       ? std::string("remote SDP did not negotiate a supported outbound audio payload")
       : select_err;
@@ -448,6 +450,20 @@ bool select_outbound_audio_payload_from_remote_sdp(EmbeddedTransportState* engin
   engine->audio_outbound_codec_name = selected->codec_name;
   engine->audio_outbound_last_error.clear();
   return true;
+}
+
+bool select_outbound_audio_payload_from_answer_sdp(
+  EmbeddedTransportState* engine,
+  const std::string& answer_sdp,
+  bool allow_ice_only_fallback
+) {
+  if (!engine) return false;
+  std::vector<agentd::RtpAudioPayloadSpec> payload_specs =
+    agentd::parse_first_active_audio_payload_specs_from_sdp(answer_sdp);
+  if (payload_specs.empty() && allow_ice_only_fallback) {
+    payload_specs = engine->audio_decoder.payload_specs();
+  }
+  return select_outbound_audio_payload(engine, payload_specs);
 }
 
 void write_u16_be(unsigned char* out, uint16_t value) {
@@ -1575,14 +1591,16 @@ int embedded_handle_remote_description(
   engine->last_remote_description_error.clear();
 
   const std::string remote_sdp = description_sdp ? std::string(description_sdp) : std::string();
+  const bool remote_sdp_has_media = agentd::sdp_contains_media_section(remote_sdp);
+  bool audio_decoder_configured = false;
   std::string audio_err;
   if (!remote_sdp.empty()) {
     if (!engine->audio_decoder.configure_from_remote_sdp(remote_sdp, &audio_err)) {
       engine->audio_last_error = audio_err;
       clear_outbound_audio_payload_selection(engine);
     } else {
+      audio_decoder_configured = true;
       engine->audio_last_error.clear();
-      (void)select_outbound_audio_payload_from_remote_sdp(engine);
     }
   } else {
     engine->audio_last_error = "remote SDP was empty";
@@ -1610,7 +1628,7 @@ int embedded_handle_remote_description(
     return 0;
   }
   refresh_transport_snapshot(engine);
-  engine->last_answer_sdp_shape = agentd::sdp_contains_media_section(remote_sdp)
+  engine->last_answer_sdp_shape = remote_sdp_has_media
     ? "browser_offer_mirrored_active"
     : "ice_only";
   sync_async_progress_baseline(engine);
@@ -1625,6 +1643,12 @@ int embedded_handle_remote_description(
     "agentd_builtin_stream",
     "agentd_builtin_audio",
   });
+  if (audio_decoder_configured) {
+    (void)select_outbound_audio_payload_from_answer_sdp(
+      engine,
+      answer_sdp,
+      !remote_sdp_has_media);
+  }
 
   if (!copy_text("answer", answer_type_buf, answer_type_buf_size) ||
       !copy_text(answer_sdp, answer_sdp_buf, answer_sdp_buf_size)) {

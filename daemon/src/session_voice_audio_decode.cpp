@@ -77,6 +77,12 @@ bool parse_int(const std::string& value, int* out) {
   }
 }
 
+bool mline_has_nonzero_port(const std::vector<std::string>& tokens) {
+  if (tokens.size() < 2) return false;
+  int port = 0;
+  return parse_int(tokens[1], &port) && port != 0;
+}
+
 bool static_audio_payload_spec(uint8_t payload_type, RtpAudioPayloadSpec* out_spec) {
   if (!out_spec) return false;
   if (payload_type == 0) {
@@ -111,16 +117,32 @@ void upsert_payload_spec(
   specs->push_back(candidate);
 }
 
-std::vector<RtpAudioPayloadSpec> parse_audio_payload_specs_from_sdp(const std::string& remote_sdp) {
+enum class AudioPayloadSdpParseMode {
+  all_audio_sections,
+  first_active_audio_section,
+};
+
+std::vector<RtpAudioPayloadSpec> parse_audio_payload_specs_from_sdp(
+  const std::string& remote_sdp,
+  AudioPayloadSdpParseMode mode,
+  bool add_static_fallback
+) {
   std::vector<RtpAudioPayloadSpec> specs;
   bool in_audio_section = false;
+  bool selected_first_active_section = false;
   for (const auto& raw_line : split_sdp_lines(remote_sdp)) {
     const std::string line = trim_copy(raw_line);
     if (starts_with(line, "m=")) {
       const auto tokens = split_space_tokens(line.substr(2));
       const bool is_audio = !tokens.empty() && upper_copy(tokens.front()) == "AUDIO";
-      if (in_audio_section && !is_audio) break;
-      in_audio_section = is_audio;
+      if (mode == AudioPayloadSdpParseMode::first_active_audio_section) {
+        if (selected_first_active_section) break;
+        in_audio_section = is_audio && mline_has_nonzero_port(tokens);
+        selected_first_active_section = in_audio_section;
+      } else {
+        if (in_audio_section && !is_audio) break;
+        in_audio_section = is_audio;
+      }
       if (!in_audio_section) continue;
       for (size_t i = 3; i < tokens.size(); ++i) {
         int payload_type = -1;
@@ -172,7 +194,7 @@ std::vector<RtpAudioPayloadSpec> parse_audio_payload_specs_from_sdp(const std::s
     upsert_payload_spec(&specs, spec);
   }
 
-  if (specs.empty()) {
+  if (add_static_fallback && specs.empty()) {
     RtpAudioPayloadSpec spec;
     (void)static_audio_payload_spec(0, &spec);
     upsert_payload_spec(&specs, spec);
@@ -242,6 +264,15 @@ bool decode_g711_frame(
 
 }  // namespace
 
+std::vector<RtpAudioPayloadSpec> parse_first_active_audio_payload_specs_from_sdp(
+  const std::string& sdp
+) {
+  return parse_audio_payload_specs_from_sdp(
+    sdp,
+    AudioPayloadSdpParseMode::first_active_audio_section,
+    false);
+}
+
 #if defined(AGENTD_HAVE_OPUS)
 struct InboundRtpAudioDecoder::OpusDecoderWrapper {
   OpusDecoder* decoder = nullptr;
@@ -275,7 +306,10 @@ bool InboundRtpAudioDecoder::configure_from_remote_sdp(
   std::string* out_err
 ) {
   if (out_err) out_err->clear();
-  payload_specs_ = parse_audio_payload_specs_from_sdp(remote_sdp);
+  payload_specs_ = parse_audio_payload_specs_from_sdp(
+    remote_sdp,
+    AudioPayloadSdpParseMode::all_audio_sections,
+    true);
 #if defined(AGENTD_HAVE_OPUS)
   if (opus_decoder_) {
     if (opus_decoder_->decoder) {
