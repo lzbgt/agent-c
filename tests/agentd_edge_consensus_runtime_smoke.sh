@@ -235,6 +235,9 @@ STOP_SHA="sha256:555555555555555555555555555555555555555555555555555555555555555
 STALE_NODE="node_runtime_cons_stale"
 STALE_CLUSTER="lab-consensus-managed-stale"
 STALE_SHA="sha256:5858585858585858585858585858585858585858585858585858585858585858"
+GRACE_NODE="node_runtime_cons_stale_grace"
+GRACE_CLUSTER="lab-consensus-managed-stale-grace"
+GRACE_SHA="sha256:5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c"
 BUILTIN_LOCAL_NODE="node_runtime_cons_builtin_local"
 BUILTIN_LOCAL_CLUSTER="lab-consensus-managed-builtin-local"
 BUILTIN_LOCAL_SHA="sha256:5959595959595959595959595959595959595959595959595959595959595959"
@@ -409,6 +412,27 @@ DAEMON_URL="http://${HOST}:${PORT_DAEMON}"
 agentd_smoke_wait_health "${DAEMON_URL}" "${DAEMON_TOKEN}"
 
 STALE_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${STALE_NODE}")"
+
+GRACE_ROTATE_JSON="$(curl_json POST "/api/v1/edge/consensus/membership/rotate" "$(cat <<JSON
+{"cluster_id":"${GRACE_CLUSTER}","mode":"replace","membership_epoch":31,"member_node_ids":["${GRACE_NODE}"],"stale_runtime_recovery_grace_ms":600000}
+JSON
+)")"
+GRACE_START_JSON="$(curl_json POST "/api/v1/edge/node/consensus_runtime" "$(cat <<JSON
+{"action":"start","node_id":"${GRACE_NODE}","cluster_id":"${GRACE_CLUSTER}","manifest_sha256":"${GRACE_SHA}","deadline_ms":30000,"poll_interval_ms":100}
+JSON
+)")"
+GRACE_RUNNING_JSON="$(wait_runtime_running "${GRACE_NODE}")"
+
+agentd_smoke_stop
+AGENTD_AUTH_TOKEN="${DAEMON_TOKEN}" \
+agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_edge_consensus_runtime_smoke_stale_grace_restart" \
+  --db-path "${TEST_DB}" \
+  --state-dir "${TEST_STATE}" \
+  --tools none
+DAEMON_URL="http://${HOST}:${PORT_DAEMON}"
+agentd_smoke_wait_health "${DAEMON_URL}" "${DAEMON_TOKEN}"
+
+GRACE_STATUS_JSON="$(curl_json GET "/api/v1/edge/node/consensus_runtime?node_id=${GRACE_NODE}")"
 
 DRIFT_ROTATE_V1_JSON="$(curl_json POST "/api/v1/edge/consensus/membership/rotate" "$(cat <<JSON
 {"cluster_id":"${DRIFT_CLUSTER}","mode":"replace","membership_epoch":21,"member_node_ids":["${DRIFT_MEMBER_A}","${DRIFT_MEMBER_B}","${DRIFT_MEMBER_C}"],"campaign_delay_ms":75,"campaign_retry_ms":400,"campaign_retry_max_ms":900,"campaign_retry_backoff_factor":2,"leader_heartbeat_ms":240,"leader_lease_ms":1200,"lease_expiry_recampaign_delay_ms":410}
@@ -636,6 +660,10 @@ stop_restart_nodes = json.loads(r'''${STOP_RESTART_NODES_JSON}''')
 start_stale = json.loads(r'''${START_STALE_JSON}''')
 running_stale = json.loads(r'''${RUNNING_STALE_JSON}''')
 stale_status = json.loads(r'''${STALE_STATUS_JSON}''')
+grace_rotate = json.loads(r'''${GRACE_ROTATE_JSON}''')
+grace_start = json.loads(r'''${GRACE_START_JSON}''')
+grace_running = json.loads(r'''${GRACE_RUNNING_JSON}''')
+grace_status = json.loads(r'''${GRACE_STATUS_JSON}''')
 drift_rotate_v1 = json.loads(r'''${DRIFT_ROTATE_V1_JSON}''')
 drift_start = json.loads(r'''${DRIFT_START_JSON}''')
 drift_running = json.loads(r'''${DRIFT_RUNNING_JSON}''')
@@ -737,6 +765,31 @@ if stale_status.get("runtime") is not None:
   raise SystemExit(1)
 if cleanup_stale.get("persisted_record_cleared") is not True:
   print("stale runtime restart did not clear stale persisted record", stale_status, file=sys.stderr)
+  raise SystemExit(1)
+
+for label, obj in (("grace_rotate", grace_rotate), ("grace_start", grace_start)):
+  if not obj.get("ok"):
+    print(label, obj, file=sys.stderr)
+    raise SystemExit(1)
+if grace_start.get("startup_confirmed") is not True or (grace_start.get("runtime") or {}).get("stale_runtime_recovery_grace_ms") != 600000:
+  print("grace runtime start missing durable stale recovery policy", grace_start, file=sys.stderr)
+  raise SystemExit(1)
+if not (grace_running.get("runtime") or {}).get("running"):
+  print("grace runtime never entered running state", grace_running, file=sys.stderr)
+  raise SystemExit(1)
+grace_rt = grace_status.get("runtime") or {}
+grace_cleanup = grace_status.get("cleanup_on_stale_record") or {}
+if grace_rt.get("status_source") != "persisted_recovered" or grace_rt.get("running"):
+  print("grace stale runtime restart did not preserve terminal recovered snapshot", grace_status, file=sys.stderr)
+  raise SystemExit(1)
+if grace_rt.get("last_error") != "stale_builtin_runtime_recovered_after_restart":
+  print("grace stale runtime restart missing recovery reason", grace_status, file=sys.stderr)
+  raise SystemExit(1)
+if grace_cleanup.get("persisted_record_recovered") is not True or grace_cleanup.get("persisted_record_cleared") is not False:
+  print("grace stale runtime cleanup metadata wrong", grace_status, file=sys.stderr)
+  raise SystemExit(1)
+if grace_cleanup.get("stale_runtime_recovery_grace_ms") != 600000:
+  print("grace stale runtime cleanup missing grace policy", grace_status, file=sys.stderr)
   raise SystemExit(1)
 
 for label, obj in (("drift_rotate_v1", drift_rotate_v1), ("drift_rotate_v2", drift_rotate_v2), ("drift_start", drift_start), ("drift_stop", drift_stop), ("drift_restart", drift_restart), ("drift_restart_stop", drift_restart_stop)):
@@ -1079,6 +1132,14 @@ try:
   row = conn.execute("SELECT value FROM meta WHERE key = ?", ("edge.consensus_runtime.${STALE_NODE}",)).fetchone()
   if row is None or (row[0] or "").strip():
     print("stale persisted runtime key not cleared", row, file=sys.stderr)
+    raise SystemExit(1)
+  row = conn.execute("SELECT value FROM meta WHERE key = ?", ("edge.consensus_runtime.${GRACE_NODE}",)).fetchone()
+  if row is None or not (row[0] or "").strip():
+    print("grace stale persisted runtime key not preserved", row, file=sys.stderr)
+    raise SystemExit(1)
+  grace_stored = json.loads(row[0])
+  if grace_stored.get("status_source") != "persisted_recovered" or grace_stored.get("running"):
+    print("grace stale persisted runtime key wrong", grace_stored, file=sys.stderr)
     raise SystemExit(1)
 finally:
   conn.close()
