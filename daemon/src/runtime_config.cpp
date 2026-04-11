@@ -666,6 +666,12 @@ bool load_runtime_config_best_effort(
           }
           if (pol.membership_epoch < 0) pol.membership_epoch = 0;
           if (pol.previous_membership_epoch < 0) pol.previous_membership_epoch = 0;
+          if (agent_edge_consensus_membership_lineage_is_valid(
+                (uint64_t)pol.previous_membership_epoch,
+                (uint64_t)pol.membership_epoch) != 1) {
+            pol.previous_membership_epoch = 0;
+            pol.previous_member_node_ids.clear();
+          }
           if (pol.updated_utc_ms < 0) pol.updated_utc_ms = 0;
           edge_consensus_normalize_policy_timing(&pol);
           if (!pol.member_node_ids.empty()) cfg_io->edge_consensus_clusters[cluster_id] = std::move(pol);

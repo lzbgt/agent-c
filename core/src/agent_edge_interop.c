@@ -243,6 +243,14 @@ int agent_edge_consensus_membership_epoch_can_advance(
   return next_epoch > current_epoch ? 1 : 0;
 }
 
+int agent_edge_consensus_membership_lineage_is_valid(
+  uint64_t previous_epoch,
+  uint64_t current_epoch
+) {
+  if (previous_epoch == 0) return 1;
+  return current_epoch > 0 && previous_epoch < current_epoch ? 1 : 0;
+}
+
 static int64_t consensus_clamp_i64(int64_t value, int64_t lo, int64_t hi) {
   if (value < lo) return lo;
   if (value > hi) return hi;

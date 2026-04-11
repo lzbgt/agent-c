@@ -131,6 +131,8 @@ The shipped autonomous host-loop proof adds:
   reusable node loop, keeping digest and trust recovery acceptance aligned with future firmware-native ports
 - durable membership bundles now carry immediate previous membership epoch/member-set lineage, so partitioned or
   restarting nodes can verify the policy transition they just missed instead of only seeing the current epoch
+- portable `agent_core` membership-lineage validation is now reused by daemon runtime-config load, so firmware-native
+  ports and agentd agree that previous policy lineage is either zero/unknown or strictly older than the current epoch
 
 ## Still open
 

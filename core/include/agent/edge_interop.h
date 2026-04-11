@@ -164,6 +164,11 @@ int agent_edge_consensus_membership_epoch_can_advance(
   uint64_t next_epoch
 );
 
+int agent_edge_consensus_membership_lineage_is_valid(
+  uint64_t previous_epoch,
+  uint64_t current_epoch
+);
+
 // Durable consensus policy timing bounds shared by embedded firmware and agentd.
 #define AGENT_EDGE_CONSENSUS_POLICY_RETRY_MAX_MS 120000
 #define AGENT_EDGE_CONSENSUS_POLICY_LEASE_MAX_MS 300000
