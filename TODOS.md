@@ -544,7 +544,11 @@ streaming and plugins are stable.
   - [x] Plugin host tool-result cap (4 MiB) enforced before JSON parsing.
   - [x] Plugin host oversized payload smoke coverage (ext_big).
   - 2026-03-15: closed stale roadmap item after verifying in-process plugin loading, out-of-process isolation, embedded/MCU compile-time plugin ABI docs, and Windows loader coverage (`daemon/src/tool_plugins.cpp`, `tests/agentd_tool_plugin*_smoke.sh`, `tests/test_tool_plugin_host_limits.cpp`, `docs/PLATFORM_SUPPORT.md`, `tools/verify_windows_build.ps1`).
-- [ ] Audio streaming: replace the shipped managed browser-to-agentd live media runtime with an embedded long-lived agentd-native media service.
+- [ ] Audio streaming: harden the shipped agentd-native WebRTC media backend after full-duplex native-plugin proof.
+  - Current acceptance target (2026-04-11): native media is no longer only signaling/control glue. The remaining work is production hardening for the builtin native-plugin lane: broader browser/codec/candidate compatibility, provider-surface reduction, and explicit graduation criteria against the still-supported bundled browser peer.
+  - [ ] Add broader browser/codec/candidate compatibility coverage beyond the current Chromium full-duplex PCMU/PCMA/Opus smoke path, with explicit unsupported-edge fixtures.
+  - [ ] Continue reducing the embedded transport provider surface by extracting cohesive media/transport helpers while preserving the direct native-plugin and browser full-duplex smokes.
+  - [ ] Define production graduation criteria for `runtime_kind=builtin` + `audio_webrtc.builtin_mode=native_plugin` versus the bundled browser peer path, including operator defaults, dependency checks, and fail-closed fallback behavior.
   - [x] Broker signaling relay endpoints are implemented: `POST /v1/audio/sessions`, `GET/DELETE /v1/audio/sessions/{id}`, `POST /v1/audio/sessions/{id}/signal`, `GET /v1/audio/sessions/{id}/signal/stream`, plus list/status views for live sessions.
   - [x] Broker audio signaling loopback/durable relay coverage exists via `broker_audio_signal_loopback_smoke` and `broker_audio_signal_docker_smoke`.
   - [x] Agentd loopback audio tool + smoke coverage exist via `agentd_audio_signal_loopback` and `agentd_audio_signal_loopback_smoke`.
@@ -693,7 +697,11 @@ streaming and plugins are stable.
   - 2026-03-15: added explicit `host_effects.{fs,proc,net}` request policy with fail-closed operator gates (`AGENTD_AVM_ALLOW_{FS,PROC,NET}`), runner env propagation, and direct/workflow smoke coverage.
   - 2026-03-15: workflow `avm_capsule` tasks now persist session-scoped AVM governance bundles plus durable output-log artifacts, keyed by program/job hash and verified through `GET /api/v1/session/artifacts` in `agentd_workflow_avm_capsule_smoke`.
   - 2026-03-15: workflow `avm_capsule` evidence runs now emit `run_attestation_bundle_v1` with stable `node_id`, persist `attestation_bundle.json`, and `quorum_hashes` automatically defaults `node_pointer` to `/avm/attest/node_id` for AVM hash joins while surfacing `attestations_by_task_id`.
-- [ ] Node consensus: replace the current host-managed helper with embedded / firmware-native adoption and add dynamic membership / recovery policy above the shipped frame + relay + managed-runtime layer.
+- [ ] Node consensus: finish firmware-native adoption on top of the portable `agent_core` consensus rules and managed runtime.
+  - Current acceptance target (2026-04-11): host-side relay/runtime and most deterministic consensus rules have moved into reusable surfaces. The remaining work is a firmware-style adoption proof and transport/recovery contract, not another host-only managed-runtime refactor.
+  - [ ] Add a firmware-style reference loop or fixture that consumes portable `agent_core` consensus helpers without depending on the host C++ replica implementation.
+  - [ ] Add a lossy-transport replay fixture for consensus frames and membership bundles that covers duplicate/drop/reorder behavior through portable-core boundaries.
+  - [ ] Document the firmware adoption contract: required portable APIs, node-owned mutable state, host-owned delivery state, and membership/recovery policy expectations.
   - [x] Centralized platform-owned coordination is already the implemented design stance for UM-EAIS and broker team orchestration.
   - [x] Deterministic quorum/join surfaces are already shipped for workflows and broker team runs.
   - [x] Define a peer protocol for node-native elections/conflict resolution without relying on the platform coordinator.
