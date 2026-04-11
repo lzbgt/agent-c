@@ -36,6 +36,16 @@ Follow-up provider-surface slice verification:
 - `git diff --check`
   - Result: clean.
 
+Follow-up embedded-status slice verification:
+- `cmake --build build -j "$(sysctl -n hw.ncpu)" > build/embedded_status_helper_build_20260411.log 2>&1`
+  - Result: `build_rc=0`
+- `ctest --test-dir build -R 'session_voice_(builtin_embedded_status|builtin_embedded_transport_provider|builtin_audio_payload)_tests' --output-on-failure > build/embedded_status_helper_ctest_20260411.log 2>&1`
+  - Result: `ctest_rc=0`; three targeted session-voice tests passed, including embedded status formatting and embedded transport provider coverage.
+- `tools/verify_repo_guards.sh > build/embedded_status_helper_repo_guards_20260411.log 2>&1`
+  - Result: `repo_guards_rc=0`
+- `git diff --check`
+  - Result: clean.
+
 ## Directly Open Roadmap Items
 
 `TODOS.md` now has three open roadmap workstreams, with concrete unchecked subitems under each:
@@ -50,7 +60,8 @@ Follow-up provider-surface slice verification:
    - The roadmap now treats native media as shipped beyond signaling/control glue and narrows the remaining work to production hardening.
    - 2026-04-11 follow-up: the compatibility-coverage subitem is now covered with deterministic fixtures for unsupported Opus channel/rate variants, unmapped dynamic RTP payloads, codec-name case normalization, and ICE relay-versus-srflx/prflx candidate handling. The outbound RTP encoder now normalizes selected codec names before storing them.
    - 2026-04-11 follow-up: outbound audio payload negotiation is now extracted from the embedded provider into `session_voice_builtin_audio_payload.*` with unit coverage; the provider still loads through the same `native_plugin` ABI.
-   - Concrete remaining subitems: the next provider-surface extraction slice, now likely progress-event/status JSON or RTP/RTCP packet accounting, and production graduation criteria for `runtime_kind=builtin` + `audio_webrtc.builtin_mode=native_plugin` versus the bundled browser peer path.
+   - 2026-04-11 follow-up: embedded progress/status JSON construction is now extracted into `session_voice_builtin_embedded_status.*` with unit coverage; the provider file is down to 1725 lines while preserving the same `native_plugin` ABI.
+   - Concrete remaining subitems: the next provider-surface extraction slice, now focused on RTP/RTCP packet accounting helpers, and production graduation criteria for `runtime_kind=builtin` + `audio_webrtc.builtin_mode=native_plugin` versus the bundled browser peer path.
 
 3. `TODOS.md:700` - Node consensus firmware-native adoption on top of portable `agent_core` consensus rules and managed runtime.
    - The roadmap now distinguishes shipped host-side relay/runtime and portable consensus rules from the remaining adoption proof.
@@ -89,7 +100,7 @@ The scan did not identify a production implementation file over the 2000-line th
 Highest leverage sequence:
 
 1. Fix or unblock OpenRouter credentials, run the OpenRouter streaming pin workflow, and commit `ref/openrouter/streaming_pins.json` if the result is stable.
-2. Continue the narrowed audio hardening work with the next provider-surface extraction slice, then builtin-vs-bundled graduation criteria.
+2. Continue the narrowed audio hardening work with the RTP/RTCP packet-accounting extraction slice, then builtin-vs-bundled graduation criteria.
 3. Make node consensus firmware-native adoption concrete with a minimal embedded-style loop/fixture plus lossy-transport replay proof and a short contract doc.
 4. Refactor `tests/agentd_session_voice_webrtc_peer_runtime_smoke.sh` into smaller helper scripts or fixtures to reduce maintenance risk around the active media lane.
 5. Prune stale P0/P1 "Next" notes into current, testable checklist items so the roadmap reflects shipped work instead of duplicating older goals.

@@ -1,6 +1,7 @@
 #include "session_voice_audio_decode.h"
 #include "session_voice_audio_encode.h"
 #include "session_voice_builtin_audio_payload.h"
+#include "session_voice_builtin_embedded_status.h"
 #include "session_voice_builtin_media_engine_plugin.h"
 #include "session_voice_builtin_progress_key.h"
 #include "session_voice_builtin_sdp_answer.h"
@@ -20,7 +21,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <cstring>
 #include <chrono>
 #include <deque>
@@ -199,6 +199,13 @@ std::string build_event_json(
   uint64_t initial_remote_candidate_count
 );
 
+agentd::BuiltinEmbeddedMediaStatusSnapshot capture_status_snapshot(
+  const EmbeddedTransportState& state,
+  const std::string& event_name,
+  const std::string& media_engine_state,
+  uint64_t initial_remote_candidate_count
+);
+
 std::mutex g_transport_runtime_mu;
 size_t g_transport_runtime_refs = 0;
 bool g_srtp_initialized = false;
@@ -216,34 +223,6 @@ bool copy_text(const std::string& value, char* out, size_t out_size) {
 void write_error(const std::string& value, char* out, size_t out_size) {
   if (!out || out_size == 0) return;
   (void)copy_text(value.empty() ? std::string("unknown") : value, out, out_size);
-}
-
-std::string json_escape(const std::string& value) {
-  std::string out;
-  out.reserve(value.size() + 8);
-  for (const char ch : value) {
-    switch (ch) {
-      case '\\':
-        out += "\\\\";
-        break;
-      case '"':
-        out += "\\\"";
-        break;
-      case '\n':
-        out += "\\n";
-        break;
-      case '\r':
-        out += "\\r";
-        break;
-      case '\t':
-        out += "\\t";
-        break;
-      default:
-        out.push_back(ch);
-        break;
-    }
-  }
-  return out;
 }
 
 std::string juice_state_text(juice_state_t state) {
@@ -1064,16 +1043,7 @@ agentd::BuiltinVoiceAsyncProgressKey capture_async_progress_key(
 }
 
 std::string derived_media_engine_state(const EmbeddedTransportState& state) {
-  if (state.dtls_handshake_state == "failed") return "failed";
-  if (state.rtp_packets_received > 0 || state.rtp_packets_sent > 0 ||
-      state.rtcp_packets_received > 0 || state.rtcp_packets_sent > 0) {
-    return "media_active";
-  }
-  if (state.srtp_contexts_ready) return "media_transport_ready";
-  if (state.dtls_handshake_ready) return "dtls_connected";
-  if (state.transport_connectivity_ready) return "transport_connected";
-  if (state.remote_description_applied) return "signaling_active";
-  return "signaling_ready";
+  return agentd::derive_builtin_embedded_media_engine_state(capture_async_progress_key(state));
 }
 
 bool is_embedded_progress_event_json(const std::string& payload) {
@@ -1286,194 +1256,38 @@ std::string build_event_json(
   const std::string& media_engine_state,
   uint64_t initial_remote_candidate_count
 ) {
+  return agentd::build_builtin_embedded_media_event_json(capture_status_snapshot(
+    state,
+    event_name,
+    media_engine_state,
+    initial_remote_candidate_count));
+}
+
+agentd::BuiltinEmbeddedMediaStatusSnapshot capture_status_snapshot(
+  const EmbeddedTransportState& state,
+  const std::string& event_name,
+  const std::string& media_engine_state,
+  uint64_t initial_remote_candidate_count
+) {
   const char* srtp_version = srtp_get_version_string();
-  std::string json =
-    std::string("{\"ok\":true,\"event\":\"") + json_escape(event_name) +
-    "\",\"media_engine_state\":\"" + json_escape(media_engine_state) +
-    "\",\"media_engine_kind\":\"builtin_native_plugin\""
-    ",\"native_media_supported\":true"
-    ",\"native_media_active\":" +
-    std::string((state.rtp_packets_received > 0 || state.rtp_packets_sent > 0 ||
-                 state.rtcp_packets_received > 0 || state.rtcp_packets_sent > 0) ? "true" : "false") +
-    ",\"provider\":\"" + std::string(kProviderName) + "\""
-    ",\"transport_family\":\"embedded_transport_primitives\""
-    ",\"dtls_identity_ready\":" + std::string(state.dtls_identity_ready ? "true" : "false") +
-    ",\"dtls_handshake_ready\":" + std::string(state.dtls_handshake_ready ? "true" : "false") +
-    ",\"dtls_exporter_ready\":" + std::string(state.dtls_exporter_ready ? "true" : "false") +
-    ",\"srtp_contexts_ready\":" + std::string(state.srtp_contexts_ready ? "true" : "false") +
-    ",\"srtp_inbound_ready\":" + std::string(state.srtp_inbound_ready ? "true" : "false") +
-    ",\"srtp_outbound_ready\":" + std::string(state.srtp_outbound_ready ? "true" : "false") +
-    ",\"dtls_setup_role\":\"" + json_escape(state.dtls_setup_role) + "\""
-    ",\"dtls_handshake_state\":\"" + json_escape(state.dtls_handshake_state) + "\""
-    ",\"sdp_answer_shape\":\"" + json_escape(state.last_answer_sdp_shape) + "\""
-    ",\"libjuice_state\":\"" + json_escape(state.libjuice_state) + "\""
-    ",\"libjuice_local_description_bytes\":" + std::to_string(state.local_description.size()) +
-    ",\"dtls_packets_sent\":" + std::to_string(state.dtls_packets_sent) +
-    ",\"dtls_packets_received\":" + std::to_string(state.dtls_packets_received) +
-    ",\"rtp_packets_received\":" + std::to_string(state.rtp_packets_received) +
-    ",\"rtp_payload_bytes_received\":" + std::to_string(state.rtp_payload_bytes_received) +
-    ",\"rtp_packets_sent\":" + std::to_string(state.rtp_packets_sent) +
-    ",\"rtp_payload_bytes_sent\":" + std::to_string(state.rtp_payload_bytes_sent) +
-    ",\"rtcp_packets_received\":" + std::to_string(state.rtcp_packets_received) +
-    ",\"rtcp_packets_sent\":" + std::to_string(state.rtcp_packets_sent) +
-    ",\"rtcp_payload_bytes_received\":" + std::to_string(state.rtcp_payload_bytes_received) +
-    ",\"rtcp_payload_bytes_sent\":" + std::to_string(state.rtcp_payload_bytes_sent) +
-    ",\"rtcp_sender_reports_sent\":" + std::to_string(state.rtcp_sender_reports_sent) +
-    ",\"rtcp_receiver_reports_sent\":" + std::to_string(state.rtcp_receiver_reports_sent) +
-    ",\"rtcp_receiver_report_blocks_sent\":" +
-    std::to_string(state.rtcp_receiver_report_blocks_sent) +
-    ",\"audio_frames_decoded\":" + std::to_string(state.audio_frames_decoded) +
-    ",\"audio_pcm_samples_decoded\":" + std::to_string(state.audio_pcm_samples_decoded) +
-    ",\"audio_pcm_samples_buffered\":" + std::to_string(state.audio_pcm_samples_buffered) +
-    ",\"audio_outbound_frames_sent\":" + std::to_string(state.audio_outbound_frames_sent) +
-    ",\"audio_pcm_samples_submitted_total\":" +
-    std::to_string(state.audio_pcm_samples_submitted_total) +
-    ",\"audio_last_outbound_samples\":" + std::to_string(state.audio_last_outbound_samples) +
-    ",\"local_candidates_observed\":" + std::to_string(state.local_candidates_observed) +
-    ",\"remote_candidates_seen\":" + std::to_string(state.remote_candidates_seen) +
-    ",\"offers_seen\":" + std::to_string(state.offers_seen) +
-    ",\"initial_remote_candidate_count\":" + std::to_string(initial_remote_candidate_count) +
-    ",\"gather_started\":" + std::string(state.gather_started ? "true" : "false") +
-    ",\"remote_description_applied\":" +
-    std::string(state.remote_description_applied ? "true" : "false") +
-    ",\"gathering_done\":" + std::string(state.gathering_done ? "true" : "false") +
-    ",\"transport_connectivity_ready\":" +
-    std::string(state.transport_connectivity_ready ? "true" : "false") +
-    ",\"srtp_version\":\"" + json_escape(srtp_version ? std::string(srtp_version) : std::string("unknown")) + "\""
-    ",\"usrsctp_initialized\":true";
-  if (!state.dtls_fingerprint_sha256.empty()) {
-    json += ",\"dtls_fingerprint_sha256\":\"" + json_escape(state.dtls_fingerprint_sha256) + "\"";
-  }
-  if (!state.dtls_certificate_subject.empty()) {
-    json += ",\"dtls_certificate_subject\":\"" + json_escape(state.dtls_certificate_subject) + "\"";
-  }
-  if (!state.dtls_selected_srtp_profile.empty()) {
-    json += ",\"dtls_selected_srtp_profile\":\"" + json_escape(state.dtls_selected_srtp_profile) + "\"";
-  }
-  if (!state.dtls_last_error.empty()) {
-    json += ",\"dtls_last_error\":\"" + json_escape(state.dtls_last_error) + "\"";
-  }
-  if (!state.srtp_last_error.empty()) {
-    json += ",\"srtp_last_error\":\"" + json_escape(state.srtp_last_error) + "\"";
-  }
-  if (state.rtp_last_payload_type >= 0) {
-    json += ",\"rtp_last_payload_type\":" + std::to_string(state.rtp_last_payload_type);
-  }
-  if (state.rtp_last_sequence >= 0) {
-    json += ",\"rtp_last_sequence\":" + std::to_string(state.rtp_last_sequence);
-  }
-  if (state.rtp_last_timestamp > 0) {
-    json += ",\"rtp_last_timestamp\":" + std::to_string(state.rtp_last_timestamp);
-  }
-  if (state.rtp_last_ssrc > 0) {
-    json += ",\"rtp_last_ssrc\":" + std::to_string(state.rtp_last_ssrc);
-  }
-  if (state.rtp_last_sent_payload_type >= 0) {
-    json += ",\"rtp_last_sent_payload_type\":" +
-            std::to_string(state.rtp_last_sent_payload_type);
-  }
-  if (state.rtp_last_sent_sequence >= 0) {
-    json += ",\"rtp_last_sent_sequence\":" +
-            std::to_string(state.rtp_last_sent_sequence);
-  }
-  if (state.rtp_last_sent_timestamp > 0 || state.rtp_packets_sent > 0) {
-    json += ",\"rtp_last_sent_timestamp\":" +
-            std::to_string(state.rtp_last_sent_timestamp);
-  }
-  if (state.rtp_last_sent_ssrc > 0) {
-    json += ",\"rtp_last_sent_ssrc\":" + std::to_string(state.rtp_last_sent_ssrc);
-  }
-  if (state.rtcp_last_packet_type >= 0) {
-    json += ",\"rtcp_last_packet_type\":" + std::to_string(state.rtcp_last_packet_type);
-  }
-  if (state.rtcp_last_ssrc > 0) {
-    json += ",\"rtcp_last_ssrc\":" + std::to_string(state.rtcp_last_ssrc);
-  }
-  if (state.rtcp_last_sent_packet_type >= 0) {
-    json += ",\"rtcp_last_sent_packet_type\":" +
-            std::to_string(state.rtcp_last_sent_packet_type);
-  }
-  if (state.rtcp_last_sent_ssrc > 0) {
-    json += ",\"rtcp_last_sent_ssrc\":" + std::to_string(state.rtcp_last_sent_ssrc);
-  }
-  if (state.rtcp_last_reported_rtp_ssrc > 0) {
-    json += ",\"rtcp_last_reported_rtp_ssrc\":" +
-            std::to_string(state.rtcp_last_reported_rtp_ssrc);
-    json += ",\"rtcp_last_report_fraction_lost\":" +
-            std::to_string(state.rtcp_last_report_fraction_lost);
-    json += ",\"rtcp_last_report_cumulative_lost\":" +
-            std::to_string(state.rtcp_last_report_cumulative_lost);
-    json += ",\"rtcp_last_report_highest_sequence\":" +
-            std::to_string(state.rtcp_last_report_highest_sequence);
-    json += ",\"rtcp_last_report_jitter\":" +
-            std::to_string(state.rtcp_last_report_jitter);
-    json += ",\"rtcp_last_report_lsr\":" +
-            std::to_string(state.rtcp_last_report_lsr);
-    json += ",\"rtcp_last_report_dlsr\":" +
-            std::to_string(state.rtcp_last_report_dlsr);
-  }
-  if (state.audio_outbound_payload_type >= 0) {
-    json += ",\"audio_outbound_payload_type\":" +
-            std::to_string(state.audio_outbound_payload_type);
-  }
-  if (!state.audio_outbound_codec_name.empty()) {
-    json += ",\"audio_outbound_codec_name\":\"" +
-            json_escape(state.audio_outbound_codec_name) + "\"";
-  }
-  if (state.audio_outbound_sample_rate_hz > 0) {
-    json += ",\"audio_outbound_sample_rate_hz\":" +
-            std::to_string(state.audio_outbound_sample_rate_hz);
-  }
-  if (state.audio_outbound_channels > 0) {
-    json += ",\"audio_outbound_channels\":" +
-            std::to_string(state.audio_outbound_channels);
-  }
-  if (state.audio_last_sample_rate_hz > 0) {
-    json += ",\"audio_last_sample_rate_hz\":" +
-            std::to_string(state.audio_last_sample_rate_hz);
-  }
-  if (state.audio_last_channels > 0) {
-    json += ",\"audio_last_channels\":" + std::to_string(state.audio_last_channels);
-  }
-  if (state.audio_last_frame_samples_per_channel > 0) {
-    json += ",\"audio_last_frame_samples_per_channel\":" +
-            std::to_string(state.audio_last_frame_samples_per_channel);
-  }
-  if (!state.audio_last_codec_name.empty()) {
-    json += ",\"audio_last_codec_name\":\"" +
-            json_escape(state.audio_last_codec_name) + "\"";
-  }
-  if (!state.audio_last_error.empty()) {
-    json += ",\"audio_last_error\":\"" + json_escape(state.audio_last_error) + "\"";
-  }
-  if (!state.audio_outbound_last_error.empty()) {
-    json += ",\"audio_outbound_last_error\":\"" +
-            json_escape(state.audio_outbound_last_error) + "\"";
-  }
-  if (!state.rtcp_last_error.empty()) {
-    json += ",\"rtcp_last_error\":\"" + json_escape(state.rtcp_last_error) + "\"";
-  }
-  if (!state.selected_local_candidate.empty()) {
-    json += ",\"libjuice_selected_local_candidate\":\"" +
-            json_escape(state.selected_local_candidate) + "\"";
-  }
-  if (!state.selected_remote_candidate.empty()) {
-    json += ",\"libjuice_selected_remote_candidate\":\"" +
-            json_escape(state.selected_remote_candidate) + "\"";
-  }
-  if (!state.selected_local_address.empty()) {
-    json += ",\"libjuice_selected_local_address\":\"" +
-            json_escape(state.selected_local_address) + "\"";
-  }
-  if (!state.selected_remote_address.empty()) {
-    json += ",\"libjuice_selected_remote_address\":\"" +
-            json_escape(state.selected_remote_address) + "\"";
-  }
-  if (!state.last_remote_description_error.empty()) {
-    json += ",\"remote_description_error\":\"" + json_escape(state.last_remote_description_error) + "\"";
-  }
-  json += "}";
-  return json;
+  agentd::BuiltinEmbeddedMediaStatusSnapshot snapshot;
+  snapshot.progress = capture_async_progress_key(state);
+  snapshot.event_name = event_name;
+  snapshot.media_engine_state = media_engine_state;
+  snapshot.provider_name = kProviderName;
+  snapshot.transport_family = "embedded_transport_primitives";
+  snapshot.srtp_version = srtp_version ? srtp_version : "unknown";
+  snapshot.dtls_setup_role = state.dtls_setup_role;
+  snapshot.dtls_fingerprint_sha256 = state.dtls_fingerprint_sha256;
+  snapshot.dtls_certificate_subject = state.dtls_certificate_subject;
+  snapshot.dtls_last_error = state.dtls_last_error;
+  snapshot.sdp_answer_shape = state.last_answer_sdp_shape;
+  snapshot.local_description_bytes = state.local_description.size();
+  snapshot.dtls_packets_sent = state.dtls_packets_sent;
+  snapshot.dtls_packets_received = state.dtls_packets_received;
+  snapshot.initial_remote_candidate_count = initial_remote_candidate_count;
+  snapshot.usrsctp_initialized = g_usrsctp_initialized;
+  return snapshot;
 }
 
 int embedded_create(void** out_instance, char* err_buf, size_t err_buf_size) {
@@ -1718,7 +1532,7 @@ void embedded_handle_remote_bye(
   std::string payload = build_event_json(*engine, "remote_bye", "stopped", 0);
   payload.pop_back();
   if (reason && reason[0]) {
-    payload += ",\"reason\":\"" + json_escape(reason) + "\"";
+    payload += ",\"reason\":\"" + agentd::escape_builtin_embedded_media_json_string(reason) + "\"";
   }
   payload += "}";
   (void)copy_text(payload, event_json_buf, event_json_buf_size);
