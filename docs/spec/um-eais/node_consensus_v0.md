@@ -149,6 +149,8 @@ The shipped autonomous host-loop proof adds:
 - portable `agent_core` frame-id formatting, incoming-term advancement, and duplicate-frame drop predicates are now
   reused by the daemon replica, so firmware-native ports can share the same deterministic frame identity and replay
   state gates while keeping mutable seen-frame storage host-local
+- portable `agent_core` frame-routing classification is now reused by the daemon loop: vote grants unicast to the
+  candidate when valid and not self, while vote requests and leader commits broadcast to peers
 - semantically rejected consensus frames do not poison the duplicate-frame cache, so an invalid early delivery cannot
   suppress a later valid retransmission with the same frame id and term
 - portable `agent_core` node-loop timing gates are now reused by the daemon loop for leader heartbeats, leader-lease

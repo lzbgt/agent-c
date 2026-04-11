@@ -680,15 +680,17 @@ bool EdgeConsensusNodeLoop::handle_frame(
 }
 
 std::vector<std::string> EdgeConsensusNodeLoop::target_node_ids_for_frame(const EdgeConsensusFrame& frame) const {
-  if (frame.kind == AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT) {
-    if (consensus_member_node_id_is_valid(frame.candidate_node_id) && frame.candidate_node_id != cfg_.self.node_id) {
+  switch (agent_edge_consensus_frame_route(
+    frame.kind.data(),
+    frame.kind.size(),
+    consensus_member_node_id_is_valid(frame.candidate_node_id) ? 1 : 0,
+    frame.candidate_node_id == cfg_.self.node_id ? 1 : 0)) {
+    case AGENT_EDGE_CONSENSUS_FRAME_ROUTE_CANDIDATE:
       return {frame.candidate_node_id};
-    }
-    return {};
-  }
-  if (frame.kind == AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST ||
-      frame.kind == AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT) {
-    return cfg_.peer_node_ids;
+    case AGENT_EDGE_CONSENSUS_FRAME_ROUTE_PEERS:
+      return cfg_.peer_node_ids;
+    case AGENT_EDGE_CONSENSUS_FRAME_ROUTE_DROP:
+      break;
   }
   return {};
 }

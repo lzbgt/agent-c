@@ -353,6 +353,24 @@ int agent_edge_consensus_seen_frame_should_drop(
   return frame_id_seen && seen_term == frame_term ? 1 : 0;
 }
 
+agent_edge_consensus_frame_route_t agent_edge_consensus_frame_route(
+  const char* kind,
+  size_t kind_len,
+  int candidate_node_id_is_valid,
+  int candidate_is_self
+) {
+  if (consensus_string_eq(kind, kind_len, AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT)) {
+    return candidate_node_id_is_valid && !candidate_is_self
+      ? AGENT_EDGE_CONSENSUS_FRAME_ROUTE_CANDIDATE
+      : AGENT_EDGE_CONSENSUS_FRAME_ROUTE_DROP;
+  }
+  if (consensus_string_eq(kind, kind_len, AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST) ||
+      consensus_string_eq(kind, kind_len, AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT)) {
+    return AGENT_EDGE_CONSENSUS_FRAME_ROUTE_PEERS;
+  }
+  return AGENT_EDGE_CONSENSUS_FRAME_ROUTE_DROP;
+}
+
 int agent_edge_consensus_member_node_id_is_valid(const char* node_id, size_t node_id_len) {
   return agent_umbmp_id_is_safe(node_id, node_id_len);
 }

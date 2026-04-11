@@ -141,6 +141,12 @@ int agent_edge_consensus_has_quorum(size_t cluster_size, size_t vote_count);
 
 int agent_edge_consensus_frame_kind_is_valid(const char* kind, size_t kind_len);
 
+typedef enum agent_edge_consensus_frame_route_t {
+  AGENT_EDGE_CONSENSUS_FRAME_ROUTE_DROP = 0,
+  AGENT_EDGE_CONSENSUS_FRAME_ROUTE_CANDIDATE = 1,
+  AGENT_EDGE_CONSENSUS_FRAME_ROUTE_PEERS = 2
+} agent_edge_consensus_frame_route_t;
+
 agent_status_t agent_edge_consensus_frame_id_format(
   const char* node_id,
   size_t node_id_len,
@@ -215,6 +221,13 @@ int agent_edge_consensus_seen_frame_should_drop(
   int frame_id_seen,
   uint64_t seen_term,
   uint64_t frame_term
+);
+
+agent_edge_consensus_frame_route_t agent_edge_consensus_frame_route(
+  const char* kind,
+  size_t kind_len,
+  int candidate_node_id_is_valid,
+  int candidate_is_self
 );
 
 // Consensus membership validation helpers shared by firmware and agentd.

@@ -238,6 +238,33 @@ static void test_consensus_constants_and_quorum(void) {
   assert(agent_edge_consensus_seen_frame_should_drop(1, 3, 3) == 1);
   assert(agent_edge_consensus_seen_frame_should_drop(1, 3, 4) == 0);
   assert(agent_edge_consensus_seen_frame_should_drop(0, 3, 3) == 0);
+  assert(agent_edge_consensus_frame_route(
+           AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST,
+           strlen(AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST),
+           0,
+           0) == AGENT_EDGE_CONSENSUS_FRAME_ROUTE_PEERS);
+  assert(agent_edge_consensus_frame_route(
+           AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT,
+           strlen(AGENT_EDGE_CONSENSUS_KIND_LEADER_COMMIT),
+           0,
+           0) == AGENT_EDGE_CONSENSUS_FRAME_ROUTE_PEERS);
+  assert(agent_edge_consensus_frame_route(
+           AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT,
+           strlen(AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT),
+           1,
+           0) == AGENT_EDGE_CONSENSUS_FRAME_ROUTE_CANDIDATE);
+  assert(agent_edge_consensus_frame_route(
+           AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT,
+           strlen(AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT),
+           1,
+           1) == AGENT_EDGE_CONSENSUS_FRAME_ROUTE_DROP);
+  assert(agent_edge_consensus_frame_route(
+           AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT,
+           strlen(AGENT_EDGE_CONSENSUS_KIND_VOTE_GRANT),
+           0,
+           0) == AGENT_EDGE_CONSENSUS_FRAME_ROUTE_DROP);
+  assert(agent_edge_consensus_frame_route("unknown", strlen("unknown"), 1, 0) ==
+         AGENT_EDGE_CONSENSUS_FRAME_ROUTE_DROP);
   assert(agent_edge_consensus_member_node_id_is_valid("node-a", strlen("node-a")) == 1);
   assert(agent_edge_consensus_member_node_id_is_valid("cluster:node_1", strlen("cluster:node_1")) == 1);
   assert(agent_edge_consensus_member_node_id_is_valid("bad/node", strlen("bad/node")) == 0);
