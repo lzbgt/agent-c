@@ -339,7 +339,9 @@ bool EdgeConsensusReplica::handle_frame(
   if (!membership_matches(frame.from)) return true;
   auto seen_it = seen_frame_term_by_id_.find(frame.frame_id);
   if (seen_it != seen_frame_term_by_id_.end() && seen_it->second == frame.term) return true;
-  seen_frame_term_by_id_[frame.frame_id] = frame.term;
+  auto mark_frame_seen = [&]() {
+    seen_frame_term_by_id_[frame.frame_id] = frame.term;
+  };
 
   if (frame.kind == AGENT_EDGE_CONSENSUS_KIND_VOTE_REQUEST) {
     if (!agent_edge_consensus_vote_request_can_grant(
@@ -352,6 +354,7 @@ bool EdgeConsensusReplica::handle_frame(
           voted_for_node_id_.size(),
           frame.candidate_node_id.data(),
           frame.candidate_node_id.size())) return true;
+    mark_frame_seen();
     maybe_reset_for_new_term(frame.term);
     voted_for_node_id_ = frame.candidate_node_id;
     if (out_frames) out_frames->push_back(make_vote_grant_frame(frame.candidate_node_id, frame.decision_sha256));
@@ -370,6 +373,7 @@ bool EdgeConsensusReplica::handle_frame(
           !campaign_decision_sha256_.empty() && frame.decision_sha256 == campaign_decision_sha256_ ? 1 : 0,
           frame.granted ? 1 : 0,
           trust_epochs_match(frame.from.trust_epochs) ? 1 : 0)) return true;
+    mark_frame_seen();
     grant_witnesses_by_node_id_[frame.from.node_id] = frame.from;
     if (!leader_node_id_.empty() || !has_quorum()) return true;
     leader_node_id_ = self_.node_id;
@@ -388,6 +392,7 @@ bool EdgeConsensusReplica::handle_frame(
         frame.from.node_id == frame.leader_node_id ? 1 : 0,
         trust_epochs_match(frame.from.trust_epochs) ? 1 : 0)) return true;
   if (!leader_commit_witnesses_valid(frame)) return true;
+  mark_frame_seen();
   maybe_reset_for_new_term(frame.term);
   leader_node_id_ = frame.leader_node_id;
   voted_for_node_id_ = frame.leader_node_id;

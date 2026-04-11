@@ -253,7 +253,6 @@ static void test_leader_commit_requires_valid_witness_quorum() {
   assert(commit.vote_witnesses.size() == 2);
 
   EdgeConsensusFrame no_witness_commit = commit;
-  no_witness_commit.frame_id += ":no_witness";
   no_witness_commit.vote_witnesses.clear();
   deliver(c, no_witness_commit);
   assert(c.leader_node_id().empty());
