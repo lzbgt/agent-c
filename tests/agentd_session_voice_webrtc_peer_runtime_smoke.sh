@@ -336,11 +336,11 @@ if audio.get("default_runtime_kind_available") is not False:
 if audio.get("builtin_available") is not False or audio.get("bundled_available") is not True:
   print("unexpected builtin/bundled availability for env builtin default", obj, file=sys.stderr)
   raise SystemExit(1)
-if "not implemented" not in str(audio.get("builtin_unavailable_reason") or ""):
-  print("expected builtin unavailable reason for env builtin default", obj, file=sys.stderr)
+if "disabled" not in str(audio.get("builtin_unavailable_reason") or ""):
+  print("expected builtin disabled unavailable reason for env builtin default", obj, file=sys.stderr)
   raise SystemExit(1)
-if "not implemented" not in str(audio.get("default_runtime_kind_unavailable_reason") or ""):
-  print("expected builtin default unavailable reason for env builtin default", obj, file=sys.stderr)
+if "disabled" not in str(audio.get("default_runtime_kind_unavailable_reason") or ""):
+  print("expected builtin disabled default unavailable reason for env builtin default", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 
@@ -394,8 +394,8 @@ if obj.get("default_runtime_kind") != "builtin" or obj.get("default_runtime_kind
 if obj.get("default_runtime_kind_available") is not False:
   print("expected unavailable builtin env default on start failure", obj, file=sys.stderr)
   raise SystemExit(1)
-if "not implemented" not in str(obj.get("error") or ""):
-  print("expected builtin not implemented error for env default start", obj, file=sys.stderr)
+if "disabled" not in str(obj.get("error") or ""):
+  print("expected builtin disabled error for env default start", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 
@@ -948,11 +948,11 @@ if obj.get("default_runtime_kind_source") != "env" or obj.get("default_runtime_k
 if obj.get("broker_url_default_configured") is not True or obj.get("broker_token_default_configured") is not True:
   print("expected broker defaults in builtin contract response", obj, file=sys.stderr)
   raise SystemExit(1)
-if "not implemented" not in str(obj.get("builtin_unavailable_reason", "")):
-  print("expected builtin unavailable reason", obj, file=sys.stderr)
+if "disabled" not in str(obj.get("builtin_unavailable_reason", "")):
+  print("expected builtin disabled unavailable reason", obj, file=sys.stderr)
   raise SystemExit(1)
-if "not implemented" not in str(obj.get("error", "")):
-  print("expected builtin not implemented error", obj, file=sys.stderr)
+if "disabled" not in str(obj.get("error", "")):
+  print("expected builtin disabled error", obj, file=sys.stderr)
   raise SystemExit(1)
 contract = obj.get("builtin_start_contract") or {}
 if contract.get("runtime_kind") != "builtin" or contract.get("signaling_surface") != "voice_webrtc_peer":
@@ -1067,8 +1067,8 @@ if peer.get("tool_path") != "@builtin" or peer.get("node_bin") != "@builtin":
 if peer.get("managed_broker_session") is not True or peer.get("running") is not False or peer.get("ready") is not False:
   print("expected builtin top-level peer preview state", obj, file=sys.stderr)
   raise SystemExit(1)
-if "not implemented" not in str(peer.get("last_error") or ""):
-  print("expected builtin top-level peer preview error", obj, file=sys.stderr)
+if "disabled" not in str(peer.get("last_error") or ""):
+  print("expected builtin top-level peer preview disabled error", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 
@@ -3287,11 +3287,11 @@ if audio.get("default_runtime_kind_available") is not False:
 if audio.get("builtin_available") is not False or audio.get("bundled_available") is not True or audio.get("external_available") is not True:
   print("unexpected backend availability for config-backed builtin default", obj, file=sys.stderr)
   raise SystemExit(1)
-if "not implemented" not in str(audio.get("builtin_unavailable_reason") or ""):
-  print("expected builtin unavailable reason for config-backed builtin default", obj, file=sys.stderr)
+if "disabled" not in str(audio.get("builtin_unavailable_reason") or ""):
+  print("expected builtin disabled unavailable reason for config-backed builtin default", obj, file=sys.stderr)
   raise SystemExit(1)
-if "not implemented" not in str(audio.get("default_runtime_kind_unavailable_reason") or ""):
-  print("expected builtin default unavailable reason for config-backed builtin default", obj, file=sys.stderr)
+if "disabled" not in str(audio.get("default_runtime_kind_unavailable_reason") or ""):
+  print("expected builtin disabled default unavailable reason for config-backed builtin default", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 
@@ -3312,8 +3312,8 @@ if audio.get("default_runtime_kind") != "builtin" or audio.get("default_runtime_
 if audio.get("default_runtime_kind_available") is not False:
   print("expected persisted builtin default to remain unavailable after restart", obj, file=sys.stderr)
   raise SystemExit(1)
-if "not implemented" not in str(audio.get("default_runtime_kind_unavailable_reason") or ""):
-  print("expected builtin default unavailable reason after restart", obj, file=sys.stderr)
+if "disabled" not in str(audio.get("default_runtime_kind_unavailable_reason") or ""):
+  print("expected builtin disabled default unavailable reason after restart", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 
@@ -3370,8 +3370,8 @@ if obj.get("default_runtime_kind") != "builtin" or obj.get("default_runtime_kind
 if obj.get("default_runtime_kind_available") is not False:
   print("expected unavailable builtin config default on start failure", obj, file=sys.stderr)
   raise SystemExit(1)
-if "not implemented" not in str(obj.get("error") or ""):
-  print("expected builtin not implemented error for config default start", obj, file=sys.stderr)
+if "disabled" not in str(obj.get("error") or ""):
+  print("expected builtin disabled error for config default start", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 
