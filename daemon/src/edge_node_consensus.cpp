@@ -144,33 +144,6 @@ static std::vector<std::string> dedupe_loop_targets(
   return out;
 }
 
-static int64_t clamp_retry_backoff_factor(int64_t v) {
-  return std::max<int64_t>(
-    AGENT_EDGE_CONSENSUS_POLICY_BACKOFF_FACTOR_MIN,
-    std::min<int64_t>(v, AGENT_EDGE_CONSENSUS_POLICY_BACKOFF_FACTOR_MAX));
-}
-
-static int64_t compute_campaign_retry_delay_ms(
-  int64_t campaign_retry_ms,
-  int64_t campaign_retry_max_ms,
-  int64_t campaign_retry_backoff_factor,
-  uint64_t campaign_attempts
-) {
-  if (campaign_retry_ms <= 0 || campaign_attempts < 1) return 0;
-  const int64_t factor = clamp_retry_backoff_factor(campaign_retry_backoff_factor);
-  int64_t delay = campaign_retry_ms;
-  for (uint64_t i = 1; i < campaign_attempts; i++) {
-    if (delay > INT64_MAX / factor) {
-      delay = INT64_MAX;
-      break;
-    }
-    delay *= factor;
-  }
-  const int64_t cap = campaign_retry_max_ms > 0 ? campaign_retry_max_ms : campaign_retry_ms;
-  if (cap > 0) delay = std::min<int64_t>(delay, cap);
-  return std::max<int64_t>(0, delay);
-}
-
 }  // namespace
 
 EdgeConsensusReplica::EdgeConsensusReplica(const EdgeConsensusIdentity& self, size_t cluster_size)
@@ -395,7 +368,7 @@ bool EdgeConsensusReplica::handle_frame(
 }
 
 int64_t EdgeConsensusNodeLoop::current_campaign_delay_ms() const {
-  return compute_campaign_retry_delay_ms(
+  return agent_edge_consensus_campaign_retry_delay_ms(
     cfg_.campaign_retry_ms, cfg_.campaign_retry_max_ms, cfg_.campaign_retry_backoff_factor, campaign_attempts_);
 }
 

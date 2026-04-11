@@ -251,6 +251,24 @@ int agent_edge_consensus_membership_lineage_is_valid(
   return current_epoch > 0 && previous_epoch < current_epoch ? 1 : 0;
 }
 
+int agent_edge_consensus_membership_epoch_is_recoverable(
+  uint64_t runtime_epoch,
+  uint64_t current_epoch,
+  uint64_t previous_epoch,
+  const uint64_t* lineage_epochs,
+  size_t lineage_len
+) {
+  if (runtime_epoch == 0 || current_epoch == 0) return 1;
+  if (runtime_epoch == current_epoch) return 1;
+  if (previous_epoch != 0 && runtime_epoch == previous_epoch) return 1;
+  if (lineage_epochs) {
+    for (size_t i = 0; i < lineage_len; i++) {
+      if (lineage_epochs[i] != 0 && runtime_epoch == lineage_epochs[i]) return 1;
+    }
+  }
+  return 0;
+}
+
 static int64_t consensus_clamp_i64(int64_t value, int64_t lo, int64_t hi) {
   if (value < lo) return lo;
   if (value > hi) return hi;
@@ -293,4 +311,28 @@ agent_status_t agent_edge_consensus_policy_timing_normalize(
     0,
     AGENT_EDGE_CONSENSUS_POLICY_STALE_RUNTIME_RECOVERY_GRACE_MAX_MS);
   return AGENT_OK;
+}
+
+int64_t agent_edge_consensus_campaign_retry_delay_ms(
+  int64_t campaign_retry_ms,
+  int64_t campaign_retry_max_ms,
+  int64_t campaign_retry_backoff_factor,
+  uint64_t campaign_attempts
+) {
+  if (campaign_retry_ms <= 0 || campaign_attempts < 1) return 0;
+  const int64_t factor = consensus_clamp_i64(
+    campaign_retry_backoff_factor,
+    AGENT_EDGE_CONSENSUS_POLICY_BACKOFF_FACTOR_MIN,
+    AGENT_EDGE_CONSENSUS_POLICY_BACKOFF_FACTOR_MAX);
+  int64_t delay = campaign_retry_ms;
+  for (uint64_t i = 1; i < campaign_attempts; i++) {
+    if (delay > INT64_MAX / factor) {
+      delay = INT64_MAX;
+      break;
+    }
+    delay *= factor;
+  }
+  const int64_t cap = campaign_retry_max_ms > 0 ? campaign_retry_max_ms : campaign_retry_ms;
+  if (cap > 0 && delay > cap) delay = cap;
+  return delay < 0 ? 0 : delay;
 }

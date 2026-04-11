@@ -137,6 +137,9 @@ The shipped autonomous host-loop proof adds:
 - stale builtin runtime recovery now gates recent recovered snapshots by current policy membership epoch or bounded lineage,
   so daemon restarts preserve compatible old-policy evidence but clear stale runtime records from unrelated membership
   histories
+- portable `agent_core` retry-delay and lineage-recovery helpers are now reused by the daemon node loop and stale runtime
+  recovery path, so firmware-native ports can make the same retry/backoff and old-policy recovery decisions without
+  copying C++ host logic
 
 ## Still open
 

@@ -144,6 +144,13 @@ static void test_consensus_constants_and_quorum(void) {
   assert(agent_edge_consensus_membership_lineage_is_valid(18, 19) == 1);
   assert(agent_edge_consensus_membership_lineage_is_valid(19, 19) == 0);
   assert(agent_edge_consensus_membership_lineage_is_valid(20, 19) == 0);
+  const uint64_t lineage[] = {18, 17};
+  assert(agent_edge_consensus_membership_epoch_is_recoverable(0, 19, 18, lineage, 2) == 1);
+  assert(agent_edge_consensus_membership_epoch_is_recoverable(19, 19, 18, lineage, 2) == 1);
+  assert(agent_edge_consensus_membership_epoch_is_recoverable(18, 19, 18, lineage, 2) == 1);
+  assert(agent_edge_consensus_membership_epoch_is_recoverable(17, 19, 18, lineage, 2) == 1);
+  assert(agent_edge_consensus_membership_epoch_is_recoverable(16, 19, 18, lineage, 2) == 0);
+  assert(agent_edge_consensus_membership_epoch_is_recoverable(16, 0, 0, NULL, 0) == 1);
 }
 
 static void test_consensus_policy_timing_normalize(void) {
@@ -184,6 +191,14 @@ static void test_consensus_policy_timing_normalize(void) {
   assert(timing.lease_expiry_recampaign_delay_ms == 0);
   assert(timing.stale_runtime_recovery_grace_ms == 0);
   assert(agent_edge_consensus_policy_timing_normalize(NULL) == AGENT_ERR_INVALID_ARGUMENT);
+
+  assert(agent_edge_consensus_campaign_retry_delay_ms(1000, 8000, 2, 0) == 0);
+  assert(agent_edge_consensus_campaign_retry_delay_ms(1000, 8000, 2, 1) == 1000);
+  assert(agent_edge_consensus_campaign_retry_delay_ms(1000, 8000, 2, 2) == 2000);
+  assert(agent_edge_consensus_campaign_retry_delay_ms(1000, 8000, 2, 4) == 8000);
+  assert(agent_edge_consensus_campaign_retry_delay_ms(1000, 8000, 2, 5) == 8000);
+  assert(agent_edge_consensus_campaign_retry_delay_ms(1000, 0, 2, 3) == 1000);
+  assert(agent_edge_consensus_campaign_retry_delay_ms(1000, 999999999, 99, 4) == 512000);
 }
 
 void test_edge_interop_module(void) {

@@ -171,6 +171,14 @@ int agent_edge_consensus_membership_lineage_is_valid(
   uint64_t current_epoch
 );
 
+int agent_edge_consensus_membership_epoch_is_recoverable(
+  uint64_t runtime_epoch,
+  uint64_t current_epoch,
+  uint64_t previous_epoch,
+  const uint64_t* lineage_epochs,
+  size_t lineage_len
+);
+
 // Durable consensus policy timing bounds shared by embedded firmware and agentd.
 #define AGENT_EDGE_CONSENSUS_POLICY_RETRY_MAX_MS 120000
 #define AGENT_EDGE_CONSENSUS_POLICY_LEASE_MAX_MS 300000
@@ -191,6 +199,13 @@ typedef struct agent_edge_consensus_policy_timing_t {
 
 agent_status_t agent_edge_consensus_policy_timing_normalize(
   agent_edge_consensus_policy_timing_t* timing
+);
+
+int64_t agent_edge_consensus_campaign_retry_delay_ms(
+  int64_t campaign_retry_ms,
+  int64_t campaign_retry_max_ms,
+  int64_t campaign_retry_backoff_factor,
+  uint64_t campaign_attempts
 );
 
 #ifdef __cplusplus
