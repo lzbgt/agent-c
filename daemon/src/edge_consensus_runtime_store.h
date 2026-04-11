@@ -44,6 +44,17 @@ bool load_edge_consensus_runtime_record(
   std::string* out_err
 );
 
+bool recover_or_clear_edge_consensus_stale_builtin_record(
+  const DaemonConfig& cfg,
+  AgentDb* db,
+  const std::string& node_id,
+  const std::shared_ptr<EdgeConsensusRuntime>& st,
+  int64_t now_unix_ms,
+  bool* out_recovered,
+  Json::Value* out_cleanup,
+  std::string* out_err
+);
+
 bool recover_edge_consensus_runtime_record(
   const DaemonConfig& cfg,
   AgentDb* db,
