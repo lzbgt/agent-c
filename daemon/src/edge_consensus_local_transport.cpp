@@ -1,6 +1,7 @@
 #include "edge_consensus_local_transport.h"
 
 #include "agent_db.h"
+#include "edge_consensus_status.h"
 #include "edge_node_consensus.h"
 #include "edge_util.h"
 #include "json_util.h"
@@ -20,72 +21,6 @@ static int64_t now_utc_ms_local() {
 
 static std::string make_msg_id_local(const std::string& node_id, uint64_t seq) {
   return node_id + ":consensus-node:" + std::to_string(seq);
-}
-
-static bool upsert_consensus_health_local(
-  AgentDb* db,
-  const std::string& node_id,
-  const EdgeConsensusFrame& frame,
-  const std::vector<std::string>& target_node_ids,
-  const std::string& original_msg_id,
-  int64_t now_utc_ms,
-  std::string* out_error
-) {
-  if (out_error) out_error->clear();
-  if (!db || !db->is_open()) {
-    if (out_error) *out_error = "db not available";
-    return false;
-  }
-  AgentDb::EdgeNodeRow row;
-  std::string err;
-  if (!db->get_edge_node(node_id, &row, &err)) row.node_id = node_id;
-  Json::Value health(Json::objectValue);
-  if (!row.health_json.empty()) {
-    std::string perr;
-    if (!json_parse_any(row.health_json, &health, &perr) || !health.isObject()) {
-      health = Json::Value(Json::objectValue);
-    }
-  }
-  Json::Value consensus(Json::objectValue);
-  if (health.isMember("consensus") && health["consensus"].isObject()) consensus = health["consensus"];
-  consensus["schema"] = "edge_node_consensus_status_v1";
-  consensus["updated_utc_ms"] = (Json::Int64)now_utc_ms;
-  if (!original_msg_id.empty()) consensus["last_msg_id"] = original_msg_id;
-  consensus["last_frame_id"] = frame.frame_id;
-  consensus["last_frame_kind"] = frame.kind;
-  consensus["current_term"] = Json::UInt64(frame.term);
-  if (!frame.decision_sha256.empty()) consensus["decision_sha256"] = frame.decision_sha256;
-  if (!frame.candidate_node_id.empty()) consensus["candidate_node_id"] = frame.candidate_node_id;
-  if (!frame.leader_node_id.empty()) consensus["leader_node_id"] = frame.leader_node_id;
-  if (frame.kind == "vote_grant") consensus["granted"] = frame.granted;
-  consensus["from"] = edge_consensus_identity_to_json(frame.from);
-  if (!target_node_ids.empty()) {
-    Json::Value arr(Json::arrayValue);
-    for (const auto& nid : target_node_ids) arr.append(nid);
-    consensus["target_node_ids"] = arr;
-    consensus["forwarded_count"] = (Json::UInt64)target_node_ids.size();
-  } else {
-    consensus["forwarded_count"] = (Json::UInt64)0;
-    consensus.removeMember("target_node_ids");
-  }
-  if (!frame.vote_witnesses.empty()) {
-    Json::Value arr(Json::arrayValue);
-    for (const auto& witness : frame.vote_witnesses) {
-      Json::Value w(Json::objectValue);
-      w["node_id"] = witness.node_id;
-      if (!witness.manifest_sha256.empty()) w["manifest_sha256"] = witness.manifest_sha256;
-      w["trust_epochs"] = edge_consensus_epochs_to_json(witness.trust_epochs);
-      arr.append(w);
-    }
-    consensus["vote_witnesses"] = arr;
-    consensus["vote_witness_count"] = (Json::UInt64)frame.vote_witnesses.size();
-  } else {
-    consensus["vote_witness_count"] = (Json::UInt64)0;
-    consensus.removeMember("vote_witnesses");
-  }
-  health["consensus"] = consensus;
-  row.health_json = edge_json_stringify_compact(health);
-  return db->upsert_edge_node(row, out_error);
 }
 
 }  // namespace
@@ -184,7 +119,7 @@ bool send_edge_consensus_local_frame(
   const int64_t now = now_utc_ms_local();
   const std::string original_msg_id = make_msg_id_local(cfg.node_id, ++(*io_seq));
   std::string err;
-  if (!upsert_consensus_health_local(db, cfg.node_id, frame, target_node_ids, original_msg_id, now, &err)) {
+  if (!upsert_edge_node_consensus_health(db, cfg.node_id, frame, target_node_ids, original_msg_id, now, &err)) {
     if (out_error) *out_error = err.empty() ? "failed to persist consensus status" : err;
     return false;
   }
