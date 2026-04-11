@@ -475,6 +475,11 @@ Notes:
   `require_distinct_nodes:true` counts direct URL targets and broker agent/deployment targets correctly.
 - For `aggregate.mode:"quorum_hashes"`, the server also defaults `aggregate.pointers=["/agentd/result_sha256"]` when omitted.
 - `agentd_parallel.targets[]` entries may also use `broker_proxy:{broker_base_url,agent_id,deployment_id?}` (same as `agentd_call.broker_proxy`); the server computes `base_url` as `.../v1/agents/<agent_id>/proxy`, sets `X-Agentd-Deployment` when `deployment_id` is present, and emits `agentd.target_identity`.
+- `agentd_parallel.targets_from_broker_registry` snapshots targets from `GET <broker_base_url>/v1/agents` at submit time. It is gated by `--workflow-enable-http-tasks` plus the normal workflow outbound allowlist/DNS-pin policy, supports `bearer_env`, and expands connected/enabled broker agents into ordinary `broker_proxy` targets before scheduling.
+  - `deployment_policy:"prefer_deployments"` (default) creates one target per connected deployment when `agents[].deployments` is present, otherwise falls back to an agent-level broker proxy.
+  - `deployment_policy:"all_connected"` creates only connected deployment targets.
+  - `deployment_policy:"agent"` creates one agent-level broker proxy per matching agent.
+  - `agent_ids`, `connected_only`, `enabled_only`, `max_targets`, `timeout_ms`, `max_bytes`, and `id_prefix` narrow or bound discovery. The discovered target list is snapshotted into concrete derived tasks; later broker registry changes do not mutate an accepted workflow.
 - `agentd_parallel.routing_policy.require_distinct_targets:true` rejects duplicate derived target identities before the workflow is accepted.
 - `agentd_parallel.memory_scope` injects `memory_scope_id` / `memory_scope_mode` into each remote workflow; by default the scope is per target (`<scope_id>:<target_id>`) and the remote inputs include `agentd_parallel_target_id` plus `agentd_parallel_target_identity`.
 - Example file: `docs/examples/workflows/agentd_parallel_demo.json`.

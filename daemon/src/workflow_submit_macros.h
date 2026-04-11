@@ -9,6 +9,8 @@
 
 namespace agentd {
 
+struct DaemonConfig;
+
 // Internal helper used by workflow submit endpoint.
 // Expands macro tasks like kind:"edge_parallel" and kind:"delegate_parallel" into
 // a deterministic set of concrete tasks.
@@ -16,6 +18,7 @@ namespace agentd {
 // NOTE: Keep this internal to daemon/src (do not expose in daemon/include) to avoid
 // committing to a public API while semantics are still evolving.
 bool expand_workflow_submit_macros(
+  const DaemonConfig& cfg,
   Json::Value* io_tasks_arr,
   const Json::Value& workflow_defaults,
   AgentDb* db_or_null,
@@ -27,4 +30,3 @@ bool expand_workflow_submit_macros(
 );
 
 }  // namespace agentd
-

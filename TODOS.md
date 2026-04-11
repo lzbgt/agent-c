@@ -1435,7 +1435,8 @@ Maintainability note (always-on):
    - Shipped: deterministic join strategies for parallel fan-out now include `first_ok`, `best_of_n`, `quorum_ok`.
    - Shipped: per-attempt wiring defaults via `delegate.attempt_defaults` (enables per-attempt budget knobs without repetition).
    - Shipped: `strict_all_ok` defaults and node-identity-aware quorum proof are covered by later collaboration slices.
-   - Remaining: broker-routed target discovery from broker registry/list APIs. Routing policy and identity-scoped memory are covered by later agentd_parallel slices.
+   - Shipped: broker-routed target discovery from broker registry/list APIs via `agentd_parallel.targets_from_broker_registry`.
+   - Remaining: no unblocked local collaboration macro gap; next validation depends on real broker fleets/credentials.
 
 5) **Memory ↔ workflow time correlation (next after memory_put)** (time-advancing correctness)
    - Shipped: deterministic workflow `kind:"memory_put"` and deterministic workflow `kind:"memory_consolidate"`.
@@ -1550,7 +1551,8 @@ Deliverables:
 
 Proof:
 - `ctest` covers memory tools end-to-end (`test_host_toolset`), ensuring `memory_write`→`memory_search`→`memory_get` works.
-- Next: add a deterministic ranking test (index mode) + deterministic conflict-resolution tests for structured mode.
+- 2026-04-12: `host_toolset_tests` now covers deterministic FTS5-ranked `memory_search` order for index mode and structured
+  conflict-resolution current-view queries with current evidence plus retained superseded versions/evidence.
 
 ### 6) Correctness v2: validators + replayability
 
@@ -1594,17 +1596,17 @@ Status:
     and makes multi-agent patterns scheduler-visible (fairness/budgets apply to each branch).
   - Shipped: identity-based broker proxy addressing (`agentd_call.broker_proxy` and `agentd_parallel.targets[].broker_proxy`), optional deployment routing,
     explicit distinct-target routing policy, and identity-scoped remote memory injection.
-  - Remaining after macro: broker-routed target discovery (see below).
+  - Shipped: broker-routed target discovery from `GET /v1/agents` via `agentd_parallel.targets_from_broker_registry`.
 
 Deliverables:
 - Allow workflow tasks to target:
   - local agentd
   - broker-routed agents
-- Add broker-routed target discovery.
+- Broker-routed target discovery shipped via `agentd_parallel.targets_from_broker_registry`; it snapshots `GET /v1/agents` at submit time and expands connected/enabled broker agents or deployments into concrete `agentd_call` tasks.
 
 Proof:
 - `ctest` includes `agentd_workflow_agentd_parallel_broker_routing_memory_scope_smoke`, which exercises broker fan-out
-  deployment routing, duplicate-target rejection, target metadata persistence, and identity-scoped remote memory.
+  deployment routing, duplicate-target rejection, broker registry discovery, target metadata persistence, and identity-scoped remote memory.
 - voice builtin start contract now exposes shared planned runtime artifact layout
 - voice builtin start contract now also exposes a runtime-schema-shaped planned runtime preview
 - valid builtin `501` starts now also surface that planned runtime preview through the normal top-level `peer` snapshot path

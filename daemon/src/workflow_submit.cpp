@@ -137,7 +137,7 @@ void workflow_submit_handle(
   // This ensures:
   // - admission control applies to the expanded task count
   // - derived tasks participate in fairness caps/budgets and deterministic joins
-  if (!expand_workflow_submit_macros(&tasks, defaults, db_or_null, allow_sessions, allow_inline_api_keys, session_id, trace_id, resp)) {
+  if (!expand_workflow_submit_macros(cfg, &tasks, defaults, db_or_null, allow_sessions, allow_inline_api_keys, session_id, trace_id, resp)) {
     return;
   }
   args["tasks"] = tasks;

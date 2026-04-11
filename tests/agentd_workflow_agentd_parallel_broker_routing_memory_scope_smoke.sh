@@ -110,6 +110,7 @@ agentd_smoke_wait_health "${REMOTE_URL}"
 
 export REMOTE_URL
 python3 -u - <<PY > "${LOG_DIR}/${NAME}.proxy.stdout.log" 2> "${LOG_DIR}/${NAME}.proxy.stderr.log" &
+import json
 import os
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -147,6 +148,43 @@ class H(BaseHTTPRequestHandler):
       self.send_header("Content-Type", "application/json")
       self.end_headers()
       self.wfile.write(b'{"ok":false,"error":"unauthorized"}')
+      return
+    if self.command == "GET" and self.path == "/v1/agents":
+      body = json.dumps({
+        "ok": True,
+        "agents": [
+          {
+            "agent_id": "agent-a",
+            "owner_sub": "user-a",
+            "enabled": True,
+            "connected": True,
+            "labels": {"role": "planner"},
+            "deployments": [
+              {"deployment_id": DEPLOYMENT_ID, "connected": True, "remote_addr": "127.0.0.1"},
+              {"deployment_id": "dep-stale", "connected": False, "remote_addr": "127.0.0.1"}
+            ]
+          },
+          {
+            "agent_id": "agent-disabled",
+            "owner_sub": "user-a",
+            "enabled": False,
+            "connected": True,
+            "deployments": [{"deployment_id": "dep-disabled", "connected": True}]
+          },
+          {
+            "agent_id": "agent-offline",
+            "owner_sub": "user-a",
+            "enabled": True,
+            "connected": False,
+            "deployments": [{"deployment_id": "dep-offline", "connected": True}]
+          }
+        ]
+      }).encode()
+      self.send_response(200)
+      self.send_header("Content-Type", "application/json")
+      self.send_header("Content-Length", str(len(body)))
+      self.end_headers()
+      self.wfile.write(body)
       return
     if self.headers.get("X-Agentd-Deployment", "") != DEPLOYMENT_ID:
       self.send_response(428)
@@ -243,15 +281,16 @@ tasks = [{
   "task_id": "P",
   "kind": "agentd_parallel",
   "agentd_parallel": {
-    "targets": [{
-      "id": "planner",
-      "broker_proxy": {
-        "broker_base_url": "${BROKER_BASE}",
-        "agent_id": "agent-a",
-        "deployment_id": "${DEPLOYMENT_ID}"
-      },
-      "allow_error": True
-    }],
+    "targets_from_broker_registry": {
+      "broker_base_url": "${BROKER_BASE}",
+      "bearer_env": "BROKER_OIDC_TOKEN",
+      "deployment_policy": "all_connected",
+      "connected_only": True,
+      "enabled_only": True,
+      "agent_ids": ["agent-a"],
+      "max_targets": 4,
+      "timeout_ms": 5000
+    },
     "routing_policy": {"require_distinct_targets": True},
     "memory_scope": {"scope_id": "collab.scope", "mode": "read_only", "per_target": True},
     "agentd_call": {
@@ -328,12 +367,13 @@ if workflow.get("status") != "done":
   raise SystemExit(1)
 by = (obj.get("result") or {}).get("results_by_task") or {}
 p = by.get("P") or {}
-attempt = by.get("P:planner") or {}
+target_id = "agent-a:${DEPLOYMENT_ID}"
+attempt = by.get("P:" + target_id) or {}
 agentd = attempt.get("agentd") or {}
-if p.get("ok") is not True or (p.get("assistant_text") or "") != "collab.scope:planner":
+if p.get("ok") is not True or (p.get("assistant_text") or "") != "collab.scope:" + target_id:
   print("unexpected aggregate result", p, file=sys.stderr)
   raise SystemExit(1)
-if agentd.get("target_id") != "planner":
+if agentd.get("target_id") != target_id:
   print("missing target_id", agentd, file=sys.stderr)
   raise SystemExit(1)
 if agentd.get("broker_agent_id") != "agent-a" or agentd.get("broker_deployment_id") != "${DEPLOYMENT_ID}":
@@ -345,7 +385,7 @@ if not identity.startswith("broker:${BROKER_BASE}:agent-a:${DEPLOYMENT_ID}"):
   raise SystemExit(1)
 remote_result = ((agentd.get("final") or {}).get("result") or {}).get("results_by_task") or {}
 w = remote_result.get("W") or {}
-if w.get("memory_scope_id") != "collab.scope:planner":
+if w.get("memory_scope_id") != "collab.scope:" + target_id:
   print("missing remote memory_scope_id", w, file=sys.stderr)
   raise SystemExit(1)
 if w.get("memory_scope_mode") != "read_only":

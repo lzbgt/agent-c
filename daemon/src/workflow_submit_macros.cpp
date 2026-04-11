@@ -1,12 +1,18 @@
 #include "workflow_submit_macros.h"
 
+#include "daemon_config.h"
 #include "edge_util.h"
+#include "http_allowlist.h"
+#include "http_client.h"
 #include "http_util.h"
+#include "json_util.h"
 #include "string_util.h"
 
 #include <json/json.h>
 
 #include <algorithm>
+#include <cstdlib>
+#include <map>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -83,6 +89,350 @@ static bool set_header_checked(
   return true;
 }
 
+static void set_macro_error(
+  HttpResponse* resp,
+  int status,
+  const std::string& task_id,
+  const std::string& error,
+  const Json::Value* details = nullptr
+) {
+  if (!resp) return;
+  resp->status = status;
+  Json::Value o(Json::objectValue);
+  o["ok"] = false;
+  o["error"] = error;
+  if (!task_id.empty()) o["task_id"] = task_id;
+  if (details) o["details"] = *details;
+  resp->body = json_stringify_compact(o);
+}
+
+static bool url_has_http_scheme(const std::string& url) {
+  return url.rfind("http://", 0) == 0 || url.rfind("https://", 0) == 0;
+}
+
+static bool env_name_is_safe(const std::string& s) {
+  if (s.empty() || s.size() > 128) return false;
+  const auto is_alpha = [](char c) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); };
+  const auto is_num = [](char c) { return (c >= '0' && c <= '9'); };
+  if (!(is_alpha(s[0]) || s[0] == '_')) return false;
+  for (char c : s) {
+    if (!(is_alpha(c) || is_num(c) || c == '_')) return false;
+  }
+  return true;
+}
+
+static bool id_prefix_is_safe(const std::string& s) {
+  if (s.empty() || s.size() > 64) return false;
+  for (char c : s) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') ||
+      c == '-' || c == '_' || c == '.' || c == ':';
+    if (!ok) return false;
+  }
+  return true;
+}
+
+static bool append_agentd_parallel_broker_registry_target(
+  Json::Value* targets,
+  const std::string& task_id,
+  const std::string& broker_base_url,
+  const std::string& id_prefix,
+  const std::string& agent_id,
+  const std::string& deployment_id,
+  int64_t max_targets,
+  HttpResponse* resp
+) {
+  if (!targets || !targets->isArray()) return false;
+  if ((int64_t)targets->size() >= max_targets) return true;
+  if (!id_is_safe(agent_id)) {
+    Json::Value d(Json::objectValue);
+    d["agent_id"] = agent_id;
+    set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry agent_id must be id-safe", &d);
+    return false;
+  }
+  if (!deployment_id.empty() && !id_is_safe(deployment_id)) {
+    Json::Value d(Json::objectValue);
+    d["agent_id"] = agent_id;
+    d["deployment_id"] = deployment_id;
+    set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry deployment_id must be id-safe", &d);
+    return false;
+  }
+
+  std::string target_id = id_prefix + agent_id;
+  if (!deployment_id.empty()) target_id += ":" + deployment_id;
+  if (!id_is_safe(target_id)) {
+    Json::Value d(Json::objectValue);
+    d["target_id"] = target_id;
+    set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry produced invalid target id", &d);
+    return false;
+  }
+
+  Json::Value bp(Json::objectValue);
+  bp["broker_base_url"] = broker_base_url;
+  bp["agent_id"] = agent_id;
+  if (!deployment_id.empty()) bp["deployment_id"] = deployment_id;
+
+  Json::Value tgt(Json::objectValue);
+  tgt["id"] = target_id;
+  tgt["broker_proxy"] = bp;
+  targets->append(tgt);
+  return true;
+}
+
+static bool append_agentd_parallel_targets_from_broker_registry(
+  const DaemonConfig& cfg,
+  const Json::Value& spec,
+  const std::string& task_id,
+  Json::Value* targets,
+  HttpResponse* resp
+) {
+  if (!spec.isObject()) {
+    set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry must be an object");
+    return false;
+  }
+  if (!cfg.workflow_enable_http_tasks) {
+    set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry requires --workflow-enable-http-tasks");
+    return false;
+  }
+  if (!targets || !targets->isArray()) {
+    set_macro_error(resp, 400, task_id, "invalid agentd_parallel targets accumulator");
+    return false;
+  }
+
+  const std::string broker_base_url =
+    spec.isMember("broker_base_url") && spec["broker_base_url"].isString()
+    ? trim_copy(spec["broker_base_url"].asString())
+    : "";
+  if (broker_base_url.empty()) {
+    set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry.broker_base_url is required");
+    return false;
+  }
+  if (!url_has_http_scheme(broker_base_url)) {
+    set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry.broker_base_url must start with http:// or https://");
+    return false;
+  }
+  if (broker_base_url.size() > 4096) {
+    set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry.broker_base_url is too long");
+    return false;
+  }
+
+  std::string id_prefix =
+    spec.isMember("id_prefix") && spec["id_prefix"].isString() ? trim_copy(spec["id_prefix"].asString()) : "";
+  if (!id_prefix.empty() && !id_prefix_is_safe(id_prefix)) {
+    set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry.id_prefix must be id-safe");
+    return false;
+  }
+
+  bool connected_only = true;
+  if (spec.isMember("connected_only")) {
+    if (!spec["connected_only"].isBool()) {
+      set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry.connected_only must be a bool");
+      return false;
+    }
+    connected_only = spec["connected_only"].asBool();
+  }
+  bool enabled_only = true;
+  if (spec.isMember("enabled_only")) {
+    if (!spec["enabled_only"].isBool()) {
+      set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry.enabled_only must be a bool");
+      return false;
+    }
+    enabled_only = spec["enabled_only"].asBool();
+  }
+
+  std::string deployment_policy =
+    spec.isMember("deployment_policy") && spec["deployment_policy"].isString()
+    ? lower_copy(trim_copy(spec["deployment_policy"].asString()))
+    : "prefer_deployments";
+  if (deployment_policy == "deployments") deployment_policy = "prefer_deployments";
+  if (deployment_policy == "all") deployment_policy = "all_connected";
+  if (deployment_policy == "none") deployment_policy = "agent";
+  if (deployment_policy != "prefer_deployments" && deployment_policy != "all_connected" && deployment_policy != "agent") {
+    set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry.deployment_policy must be prefer_deployments, all_connected, or agent");
+    return false;
+  }
+
+  int64_t max_targets = 16;
+  if (spec.isMember("max_targets")) {
+    if (!(spec["max_targets"].isInt64() || spec["max_targets"].isUInt64() || spec["max_targets"].isInt() || spec["max_targets"].isUInt())) {
+      set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry.max_targets must be an integer");
+      return false;
+    }
+    max_targets = spec["max_targets"].asInt64();
+  }
+  if (max_targets < 1 || max_targets > 32) {
+    set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry.max_targets must be between 1 and 32");
+    return false;
+  }
+
+  int64_t timeout_ms = 10000;
+  if (spec.isMember("timeout_ms")) {
+    if (!(spec["timeout_ms"].isInt64() || spec["timeout_ms"].isUInt64() || spec["timeout_ms"].isInt() || spec["timeout_ms"].isUInt())) {
+      set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry.timeout_ms must be an integer");
+      return false;
+    }
+    timeout_ms = spec["timeout_ms"].asInt64();
+  }
+  if (timeout_ms < 1) timeout_ms = 1;
+  if (timeout_ms > 60000) timeout_ms = 60000;
+
+  size_t max_bytes = 1024 * 1024;
+  if (spec.isMember("max_bytes")) {
+    if (!(spec["max_bytes"].isInt64() || spec["max_bytes"].isUInt64() || spec["max_bytes"].isInt() || spec["max_bytes"].isUInt())) {
+      set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry.max_bytes must be an integer");
+      return false;
+    }
+    const int64_t v = spec["max_bytes"].asInt64();
+    if (v > 0) max_bytes = (size_t)v;
+  }
+  if (max_bytes < 1024) max_bytes = 1024;
+  if (max_bytes > 16 * 1024 * 1024) max_bytes = 16 * 1024 * 1024;
+
+  std::unordered_set<std::string> include_agent_ids;
+  if (spec.isMember("agent_ids")) {
+    if (!spec["agent_ids"].isArray()) {
+      set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry.agent_ids must be an array");
+      return false;
+    }
+    for (Json::ArrayIndex i = 0; i < spec["agent_ids"].size(); i++) {
+      if (!spec["agent_ids"][i].isString()) {
+        set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry.agent_ids entries must be strings");
+        return false;
+      }
+      const std::string agent_id = trim_copy(spec["agent_ids"][i].asString());
+      if (!id_is_safe(agent_id)) {
+        Json::Value d(Json::objectValue);
+        d["agent_id"] = agent_id;
+        set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry.agent_ids entries must be id-safe", &d);
+        return false;
+      }
+      include_agent_ids.insert(agent_id);
+    }
+  }
+
+  std::map<std::string, std::string> headers;
+  headers["Accept"] = "application/json";
+  if (spec.isMember("bearer_env") && spec["bearer_env"].isString()) {
+    const std::string env = trim_copy(spec["bearer_env"].asString());
+    if (!env.empty()) {
+      if (!env_name_is_safe(env)) {
+        set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry.bearer_env must be a safe env var name");
+        return false;
+      }
+      const char* v = std::getenv(env.c_str());
+      if (!v || !v[0]) {
+        Json::Value d(Json::objectValue);
+        d["bearer_env"] = env;
+        set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry.bearer_env env var is missing/empty", &d);
+        return false;
+      }
+      headers["Authorization"] = std::string("Bearer ") + v;
+    }
+  } else if (spec.isMember("bearer_env") && !spec["bearer_env"].isNull()) {
+    set_macro_error(resp, 400, task_id, "agentd_parallel.targets_from_broker_registry.bearer_env must be a string");
+    return false;
+  }
+
+  const std::string agents_url = join_base_path(broker_base_url, "/v1/agents");
+  WorkflowHttpUrlCheck check;
+  {
+    std::string why;
+    if (!workflow_http_url_check(cfg, agents_url, &check, &why)) {
+      Json::Value d(Json::objectValue);
+      d["url"] = agents_url;
+      d["reason"] = why;
+      set_macro_error(resp, 400, task_id, "agentd_parallel broker registry URL is not allowed by workflow_http outbound policy", &d);
+      return false;
+    }
+    if (cfg.workflow_http_dns_pin && !check.host_is_ip && check.resolved_addrs.empty()) {
+      Json::Value d(Json::objectValue);
+      d["url"] = agents_url;
+      set_macro_error(resp, 400, task_id, "agentd_parallel broker registry DNS pin is enabled but DNS resolution produced no addresses", &d);
+      return false;
+    }
+  }
+
+  HttpClientPinnedResolve pin;
+  const HttpClientPinnedResolve* pinp = nullptr;
+  if (cfg.workflow_http_dns_pin && !check.host_is_ip) {
+    pin.host = check.host;
+    pin.port = check.port;
+    for (const auto& ip : check.resolved_addrs) {
+      if (!ip.empty() && ip.find(':') == std::string::npos) pin.addrs.push_back(ip);
+    }
+    if (pin.addrs.empty()) pin.addrs = check.resolved_addrs;
+    pinp = &pin;
+  }
+
+  const HttpClientResult r = http_request(agents_url, "GET", headers, "", timeout_ms, max_bytes, cfg.proxy_url, pinp);
+  if (!r.ok || r.http_status < 200 || r.http_status >= 300) {
+    Json::Value d(Json::objectValue);
+    d["url"] = agents_url;
+    d["http_status"] = (Json::Int64)r.http_status;
+    if (!r.error.empty()) d["http_error"] = r.error;
+    if (!r.response_body.empty()) d["response_text"] = r.response_body.substr(0, 4096);
+    set_macro_error(resp, 502, task_id, "agentd_parallel broker registry request failed", &d);
+    return false;
+  }
+
+  Json::Value root;
+  std::string perr;
+  if (!json_parse_any(r.response_body, &root, &perr) || !root.isObject() || !root.isMember("agents") || !root["agents"].isArray()) {
+    Json::Value d(Json::objectValue);
+    d["parse_error"] = perr;
+    d["response_text"] = r.response_body.substr(0, 4096);
+    set_macro_error(resp, 502, task_id, "agentd_parallel broker registry response must be an object with agents array", &d);
+    return false;
+  }
+
+  const int64_t before = (int64_t)targets->size();
+  const Json::Value agents = root["agents"];
+  for (Json::ArrayIndex i = 0; i < agents.size(); i++) {
+    if ((int64_t)targets->size() - before >= max_targets) break;
+    const Json::Value& agent = agents[i];
+    if (!agent.isObject()) continue;
+    const std::string agent_id =
+      agent.isMember("agent_id") && agent["agent_id"].isString() ? trim_copy(agent["agent_id"].asString()) : "";
+    if (agent_id.empty()) continue;
+    if (!include_agent_ids.empty() && !include_agent_ids.count(agent_id)) continue;
+    if (enabled_only && (!agent.isMember("enabled") || !agent["enabled"].isBool() || !agent["enabled"].asBool())) continue;
+    if (connected_only && (!agent.isMember("connected") || !agent["connected"].isBool() || !agent["connected"].asBool())) continue;
+
+    bool appended_deployment = false;
+    if (deployment_policy != "agent" && agent.isMember("deployments") && agent["deployments"].isArray()) {
+      const Json::Value deployments = agent["deployments"];
+      for (Json::ArrayIndex di = 0; di < deployments.size(); di++) {
+        if ((int64_t)targets->size() - before >= max_targets) break;
+        const Json::Value& dep = deployments[di];
+        if (!dep.isObject()) continue;
+        const std::string deployment_id =
+          dep.isMember("deployment_id") && dep["deployment_id"].isString() ? trim_copy(dep["deployment_id"].asString()) : "";
+        if (deployment_id.empty()) continue;
+        if (connected_only && dep.isMember("connected") && dep["connected"].isBool() && !dep["connected"].asBool()) continue;
+        if (!append_agentd_parallel_broker_registry_target(
+              targets, task_id, broker_base_url, id_prefix, agent_id, deployment_id, before + max_targets, resp)) {
+          return false;
+        }
+        appended_deployment = true;
+      }
+    }
+    if (deployment_policy == "agent" || (deployment_policy == "prefer_deployments" && !appended_deployment)) {
+      if (!append_agentd_parallel_broker_registry_target(
+            targets, task_id, broker_base_url, id_prefix, agent_id, "", before + max_targets, resp)) {
+        return false;
+      }
+    }
+  }
+
+  if ((int64_t)targets->size() == before) {
+    set_macro_error(resp, 409, task_id, "agentd_parallel broker registry produced no matching targets");
+    return false;
+  }
+  return true;
+}
+
 static bool apply_agentd_parallel_memory_scope(
   Json::Value* call,
   const std::string& memory_scope_id,
@@ -141,6 +491,7 @@ static bool apply_agentd_parallel_memory_scope(
 }  // namespace
 
 bool expand_workflow_submit_macros(
+  const DaemonConfig& cfg,
   Json::Value* io_tasks_arr,
   const Json::Value& workflow_defaults,
   AgentDb* db_or_null,
@@ -201,13 +552,33 @@ bool expand_workflow_submit_macros(
         return false;
       }
 
-      const Json::Value targets = ap.isMember("targets") ? ap["targets"] : Json::Value(Json::nullValue);
+      Json::Value targets(Json::arrayValue);
+      if (ap.isMember("targets") && !ap["targets"].isNull()) {
+        if (!ap["targets"].isArray()) {
+          if (resp) {
+            resp->status = 400;
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "agentd_parallel.agentd_parallel.targets must be an array";
+            o["task_id"] = task_id;
+            resp->body = json_stringify_compact(o);
+          }
+          return false;
+        }
+        for (Json::ArrayIndex j = 0; j < ap["targets"].size(); j++) targets.append(ap["targets"][j]);
+      }
+      if (ap.isMember("targets_from_broker_registry") && !ap["targets_from_broker_registry"].isNull()) {
+        if (!append_agentd_parallel_targets_from_broker_registry(
+              cfg, ap["targets_from_broker_registry"], task_id, &targets, resp)) {
+          return false;
+        }
+      }
       if (!targets.isArray() || targets.empty()) {
         if (resp) {
           resp->status = 400;
           Json::Value o(Json::objectValue);
           o["ok"] = false;
-          o["error"] = "agentd_parallel.agentd_parallel.targets must be a non-empty array";
+          o["error"] = "agentd_parallel.agentd_parallel.targets must be a non-empty array or targets_from_broker_registry must discover targets";
           o["task_id"] = task_id;
           resp->body = json_stringify_compact(o);
         }

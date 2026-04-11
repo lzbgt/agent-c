@@ -40,6 +40,14 @@ static std::string extract_between(const std::string& s, const char* begin, cons
   return s.substr(body_a, body_b - body_a);
 }
 
+static bool json_array_contains_string(const Json::Value& arr, const std::string& want) {
+  if (!arr.isArray()) return false;
+  for (Json::ArrayIndex i = 0; i < arr.size(); i++) {
+    if (arr[i].isString() && arr[i].asString() == want) return true;
+  }
+  return false;
+}
+
 static bool registry_contains(agent_tool_registry_t* reg, const std::string& name) {
   const size_t n = agent_tool_registry_count(reg);
   for (size_t i = 0; i < n; i++) {
@@ -1045,6 +1053,7 @@ static void test_memory_tools() {
   assert(registry_contains(reg, "memory_search"));
   assert(registry_contains(reg, "memory_timeline"));
   assert(registry_contains(reg, "memory_get"));
+  assert(registry_contains(reg, "memory_structured_query"));
 
   // Write to core memory.
   {
@@ -1089,6 +1098,58 @@ static void test_memory_tools() {
 #endif
     agent_string_free(&out);
   }
+
+#if defined(AGENT_HAVE_SQLITE3)
+  // FTS5 index mode should produce deterministic ranked order across the same scoped candidates.
+  {
+    Json::Value weak(Json::objectValue);
+    weak["layer"] = "core";
+    weak["title"] = "ranking-weak";
+    weak["text"] = "- rankproof weak baseline mentions rankproof once with extra unrelated filler.\n";
+    const std::string weak_req = json_stringify(weak);
+    agent_string_t out_weak{};
+    assert(exec.execute(exec.ctx, "memory_write", weak_req.c_str(), &out_weak) == AGENT_OK);
+    const Json::Value weak_resp = json_parse(std::string(out_weak.data, out_weak.len));
+    assert(weak_resp["ok"].asBool());
+    agent_string_free(&out_weak);
+
+    Json::Value strong(Json::objectValue);
+    strong["layer"] = "session";
+    strong["title"] = "ranking-strong";
+    strong["text"] =
+      "- rankproof rankproof rankproof rankproof rankproof rankproof rankproof rankproof "
+      "rankproof rankproof rankproof rankproof.\n";
+    const std::string strong_req = json_stringify(strong);
+    agent_string_t out_strong{};
+    assert(exec.execute(exec.ctx, "memory_write", strong_req.c_str(), &out_strong) == AGENT_OK);
+    const Json::Value strong_resp = json_parse(std::string(out_strong.data, out_strong.len));
+    assert(strong_resp["ok"].asBool());
+    assert(strong_resp["data"]["path"].asString() == "sessions/s1.md");
+    agent_string_free(&out_strong);
+
+    Json::Value args(Json::objectValue);
+    args["query"] = "rankproof";
+    args["max_results"] = 5;
+    args["daily_days"] = 0;
+    args["use_index"] = true;
+    args["order"] = "ranked";
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "memory_search", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    assert(resp["data"]["order"].asString() == "ranked");
+    if (resp["data"]["mode"].asString() == "fts5") {
+      const auto& results = resp["data"]["results"];
+      assert(results.isArray());
+      assert(results.size() >= 2);
+      assert(results[0]["path"].asString() == "sessions/s1.md");
+      assert(results[0]["score"].asDouble() >= results[1]["score"].asDouble());
+      assert(results[0]["snippet"].asString().find("rankproof rankproof") != std::string::npos);
+    }
+    agent_string_free(&out);
+  }
+#endif
 
   // Record an observation and retrieve context via memory_timeline.
   {
@@ -1295,6 +1356,63 @@ static void test_memory_tools() {
     assert(resp["data"]["entries_changed"].asInt() >= 1);
     assert(resp["data"]["entries_superseded"].asInt() == 0);
     assert(resp["data"]["entries_evidence_added"].asInt() >= 1);
+    agent_string_free(&out);
+  }
+
+  // Structured query should expose the resolved current value with deterministic history/evidence.
+  {
+    Json::Value args(Json::objectValue);
+    args["path"] = "STRUCTURED.md";
+    args["key"] = "ui.rendering";
+    args["include_sources"] = true;
+    args["include_versions"] = true;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "memory_structured_query", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    assert(resp["data"]["tool"].asString() == "memory_structured_query");
+    assert(resp["data"]["matched"].asInt() == 1);
+    const Json::Value& rows = resp["data"]["results"];
+    assert(rows.isArray());
+    assert(rows.size() == 1);
+    assert(rows[0]["key"].asString() == "ui.rendering");
+    const Json::Value& rec = rows[0]["record"];
+    assert(rec["value"].asString() == "Scene rendering must survive refresh + restart");
+    assert(json_array_contains_string(rec["sources"], "test:s1"));
+    assert(json_array_contains_string(rec["sources"], "test:s2"));
+    assert(rec["versions"].isArray());
+    assert(rec["versions"].size() >= 1);
+    assert(rec["versions"][0]["value"].asString().find("server-owned and refresh-proof") != std::string::npos);
+    assert(json_array_contains_string(rec["versions"][0]["sources"], "test:s0"));
+    agent_string_free(&out);
+  }
+
+  // Source filtering should match current-value evidence arrays, not only a legacy source field.
+  {
+    Json::Value args(Json::objectValue);
+    args["path"] = "STRUCTURED.md";
+    args["source_contains"] = "test:s2";
+    args["source_case_insensitive"] = true;
+    args["include_sources"] = true;
+    args["include_versions"] = false;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "memory_structured_query", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    assert(resp["data"]["matched"].asInt() >= 1);
+    const Json::Value& rows = resp["data"]["results"];
+    bool found = false;
+    for (Json::ArrayIndex i = 0; i < rows.size(); i++) {
+      if (rows[i]["key"].asString() != "ui.rendering") continue;
+      const Json::Value& rec = rows[i]["record"];
+      assert(rec["value"].asString() == "Scene rendering must survive refresh + restart");
+      assert(!rec.isMember("versions"));
+      assert(json_array_contains_string(rec["sources"], "test:s2"));
+      found = true;
+    }
+    assert(found);
     agent_string_free(&out);
   }
 

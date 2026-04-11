@@ -34,7 +34,7 @@ WorkflowTaskSpec:
     - If `kind == memory_query`, `memory_query` is required and `request.prompt` is not used.
     - If `kind == http_json`, `http_json` is required and `request.prompt` is not used.
     - If `kind == agentd_call`, `agentd_call` is required and `request.prompt` is not used.
-    - If `kind == agentd_parallel`, `agentd_parallel.targets` and `agentd_parallel.agentd_call` are required and `request.prompt` is not used (expanded into multiple tasks).
+    - If `kind == agentd_parallel`, `agentd_parallel.agentd_call` plus either `agentd_parallel.targets` or `agentd_parallel.targets_from_broker_registry` are required and `request.prompt` is not used (expanded into multiple tasks).
     - If `kind == memory_consolidate`, `memory_consolidate` is optional and `request.prompt` is not used.
     - If `kind == delay`, `delay_ms` is optional (default 0) and `request.prompt` is not used.
     - If `kind == edge_invoke`, `edge.tool`/`edge.args` are required and `request.prompt` is not used.
@@ -774,7 +774,7 @@ WorkflowTaskAgentdParallelSpec:
 
 WorkflowAgentdParallelSpec:
   type: object
-  required: [targets, agentd_call]
+  required: [agentd_call]
   description: |
     Agent collaboration fan-out configuration for `kind:agentd_parallel`.
 
@@ -785,18 +785,21 @@ WorkflowAgentdParallelSpec:
     Notes:
     - The server overwrites `aggregate.task_ids` to match the derived tasks.
     - `agentd_call.base_url` must be omitted; each target provides a base_url or broker proxy.
+    - Targets may be provided directly with `targets`, discovered at submit time with `targets_from_broker_registry`, or both.
     - For `aggregate.mode=quorum_hashes`, when `aggregate.node_pointer` is omitted the server defaults it to `/agentd/target_identity`
       so `require_distinct_nodes=true` counts distinct direct URLs and broker agent/deployment targets correctly.
     - For `aggregate.mode=quorum_hashes`, when `aggregate.pointers` is omitted the server defaults it to [`/agentd/result_sha256`].
   properties:
     targets:
       type: array
-      description: Collaboration target list (1..32). Each entry is either a base_url string or an object.
+      description: Collaboration target list (1..32 after combining direct and discovered targets). Each entry is either a base_url string or an object.
       items:
         oneOf:
           - type: string
             description: Target base_url (id defaults to `t0`, `t1`, ...).
           - $ref: "#/components/schemas/WorkflowAgentdParallelTargetSpec"
+    targets_from_broker_registry:
+      $ref: "#/components/schemas/WorkflowAgentdParallelBrokerRegistrySpec"
     agentd_call:
       type: object
       description: |
@@ -840,6 +843,53 @@ WorkflowAgentdParallelMemoryScopeSpec:
     per_target:
       type: boolean
       description: If true, append `:<target_id>` to `scope_id` for isolated per-target memory. Defaults true.
+
+
+WorkflowAgentdParallelBrokerRegistrySpec:
+  type: object
+  required: [broker_base_url]
+  description: |
+    Submit-time broker target discovery for `agentd_parallel`.
+
+    The daemon fetches `GET <broker_base_url>/v1/agents` under the same workflow HTTP outbound policy as `agentd_call` and expands matching agents/deployments into ordinary `broker_proxy` targets before the workflow is scheduled.
+  properties:
+    broker_base_url:
+      type: string
+      description: Broker base URL (must start with http:// or https://).
+    bearer_env:
+      type: string
+      description: Optional env var name containing the broker bearer token. The token value is not persisted.
+    deployment_policy:
+      type: string
+      enum: [prefer_deployments, all_connected, agent]
+      description: Prefer connected deployments with agent fallback, require connected deployments only, or use agent-level proxy targets. Defaults to `prefer_deployments`.
+    connected_only:
+      type: boolean
+      description: If true, require `agents[].connected=true` and skip explicitly disconnected deployments. Defaults true.
+    enabled_only:
+      type: boolean
+      description: If true, require `agents[].enabled=true`. Defaults true.
+    agent_ids:
+      type: array
+      items: { type: string }
+      description: Optional id-safe broker agent id allowlist.
+    max_targets:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 32
+      description: Maximum discovered targets to append. Defaults to 16.
+    timeout_ms:
+      type: integer
+      format: int64
+      description: Broker registry fetch timeout, clamped by the server to 1..60000 ms. Defaults to 10000.
+    max_bytes:
+      type: integer
+      format: int64
+      description: Broker registry response cap, clamped by the server to 1 KiB..16 MiB. Defaults to 1 MiB.
+    id_prefix:
+      type: string
+      description: Optional id-safe prefix for discovered target ids.
 
 
 WorkflowAgentdParallelTargetSpec:

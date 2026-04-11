@@ -480,6 +480,7 @@ The broker proxy can be used as a “virtual base URL” for agentd-to-agentd co
   - `GET  .../proxy/api/v1/workflow?workflow_id=...`
 - Broker auth is typically an OIDC bearer token; in workflows, use `agentd_call.bearer_env` so the token value is not persisted.
 - For fan-out workflows, `agentd_parallel.targets[].broker_proxy.deployment_id` participates in `agentd.target_identity`, so quorum distinct-node checks can distinguish multiple deployments of the same broker agent.
+- Fan-out workflows can also set `agentd_parallel.targets_from_broker_registry` to snapshot `GET <broker_base_url>/v1/agents` at submit time and expand connected/enabled agents or deployments into ordinary broker-proxy targets. This discovery path is gated by the daemon workflow HTTP policy (`--workflow-enable-http-tasks`, allow/deny lists, and DNS pinning) and stores only broker target metadata plus the bearer env var name, not the bearer token value.
 
 #### Operational control (OTA, maintenance)
 

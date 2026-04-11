@@ -268,11 +268,26 @@ Follow-up agent collaboration routing/memory slice:
 - Added `agentd_parallel.routing_policy.require_distinct_targets` to reject duplicate derived target identities at submit time.
 - Added `agentd_parallel.memory_scope` to inject per-target or shared remote workflow `memory_scope_id` / `memory_scope_mode`, plus target identity inputs, before the derived remote workflow is submitted.
 - Added `agentd_workflow_agentd_parallel_broker_routing_memory_scope_smoke` to exercise duplicate broker-target rejection, broker deployment header routing, target metadata persistence, and per-target remote memory-scope injection.
+- Added `agentd_parallel.targets_from_broker_registry` to snapshot `GET /v1/agents` at submit time under the workflow HTTP outbound policy and expand connected/enabled broker agents or deployments into concrete broker-proxy targets.
 - Verification:
   - `cmake --build build -j "$(sysctl -n hw.ncpu)" > build/agentd_parallel_target_identity_build_20260412.log 2>&1` passed.
   - `ctest --test-dir build -R 'agentd_workflow_agentd_parallel_(macro|quorum_hashes|quorum_hashes_default_pointers|distinct_nodes|broker_routing_memory_scope)_smoke' --output-on-failure > build/agentd_parallel_target_identity_ctest_20260412.log 2>&1` passed, 5/5.
   - `tools/verify_repo_guards.sh > build/agentd_parallel_target_identity_repo_guards_20260412.log 2>&1` passed.
   - `ctest --test-dir build -N > build/agentd_parallel_target_identity_ctest_inventory_20260412.log 2>&1` passed; inventory is now 321 tests.
+  - `cmake --build build -j "$(sysctl -n hw.ncpu)" > build/agentd_parallel_broker_registry_build_20260412.log 2>&1` passed.
+  - `ctest --test-dir build -R 'agentd_workflow_agentd_parallel_(broker_routing_memory_scope|quorum_hashes_default_pointers|distinct_nodes|macro|quorum_hashes)_smoke|agentd_workflow_agentd_call_broker_proxy_smoke' --output-on-failure > build/agentd_parallel_broker_registry_ctest_20260412.log 2>&1` passed, 6/6.
+  - `tools/verify_repo_guards.sh > build/agentd_parallel_broker_registry_repo_guards_20260412.log 2>&1` passed.
+  - `ctest --test-dir build -N > build/agentd_parallel_broker_registry_ctest_inventory_20260412.log 2>&1` passed; inventory is still 321 tests.
+
+Follow-up memory ranking/conflict proof slice:
+- Added deterministic host-tool coverage for FTS5-ranked `memory_search` order across core/session candidates.
+- Added structured memory current-view query coverage for latest-value conflict resolution, current evidence, and retained superseded version evidence.
+- Verification:
+  - `cmake --build build -j "$(sysctl -n hw.ncpu)" > build/memory_rank_conflict_tests_build_20260412.log 2>&1` passed.
+  - `ctest --test-dir build -R 'host_toolset_tests|agentd_workflow_memory_(put|search|query|structured_query)_smoke|agentd_workflow_agentd_parallel_(macro|quorum_hashes|quorum_hashes_default_pointers|distinct_nodes|broker_routing_memory_scope)_smoke' --output-on-failure > build/memory_rank_conflict_tests_ctest_20260412.log 2>&1` passed, 10/10.
+  - `ctest --test-dir build -R 'openapi_sanity_tests|docs_sanity_tests' --output-on-failure > build/broker_registry_openapi_docs_ctest_20260412.log 2>&1` passed, 2/2.
+  - `tools/verify_repo_guards.sh > build/memory_rank_conflict_tests_repo_guards_20260412.log 2>&1` passed.
+  - `ctest --test-dir build -N > build/memory_rank_conflict_tests_ctest_inventory_20260412.log 2>&1` passed; inventory is still 321 tests.
 
 ## Directly Open Roadmap Items
 
@@ -312,11 +327,13 @@ The older P0/P1 section was pruned on 2026-04-12 so `Next` / `Remaining` notes n
 - Agent collaboration:
   - `strict_all_ok` and node-identity-aware quorum proof are already shipped in later collaboration slices.
   - 2026-04-12 follow-up: broker-routed deployment routing policy and identity-scoped remote memory injection are now covered by a live `agentd_parallel` CTest smoke.
-  - Current remaining: broker-routed target discovery from broker registry/list APIs.
+  - 2026-04-12 follow-up: broker-routed target discovery from broker registry/list APIs is now covered by `agentd_parallel.targets_from_broker_registry`, which snapshots `GET /v1/agents` at submit time under the workflow HTTP outbound policy and expands matching connected/enabled agents or deployments into concrete broker-proxy targets.
+  - Current remaining: no unblocked local collaboration macro gap; real-fleet broker validation depends on target broker credentials/environments.
 
 - Memory:
   - Structured current-view key-prefix queries are already shipped through the memory query API and deterministic workflow `memory_query`.
-  - Current remaining: all-layer time/size consolidation, versioned facts with `supersedes` / evidence arrays, a durable correlation graph linked to trace/workflow/job IDs and source excerpts, deterministic ranking tests, and structured conflict-resolution tests.
+  - 2026-04-12 follow-up: `host_toolset_tests` now covers deterministic FTS5-ranked `memory_search` order for index mode and structured conflict-resolution current-view queries with current evidence plus retained superseded versions/evidence.
+  - Current remaining: all-layer time/size consolidation, versioned facts with explicit `supersedes` / `observed_utc` / `valid_from` metadata, and a durable correlation graph linked to trace/workflow/job IDs and source excerpts.
 
 - Workflow / correctness:
   - Remaining notes mention workflow timeline UI filters, richer aggregation strategies, expectation validators beyond JSON pointer, and replay-mode workflow validation under stub providers.
