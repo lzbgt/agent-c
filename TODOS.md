@@ -779,6 +779,7 @@ streaming and plugins are stable.
   - 2026-04-11: consensus node-loop leader activity and last-known decision updates now require semantic frame acceptance, so rejected but parseable commits cannot extend follower lease state before firmware-native adoption.
   - 2026-04-11: consensus leader heartbeats now use fresh `leader_commit` frame ids instead of replaying the original commit id, preserving duplicate suppression while accepted heartbeats still refresh follower lease state.
   - 2026-04-11: daemon-side consensus member-id normalization now lives in one shared helper over the portable `agent_core` node-id predicates, so runtime config/load-store shaping, membership bundle/endpoints, stale recovery, and the node loop no longer carry parallel member-set normalization paths.
+  - 2026-04-11: daemon-side consensus cluster-id and sha256 token matching now also use a shared host helper over portable `agent_core` identity predicates, replacing local runtime model/store and node-loop wrappers before firmware-native adoption.
   - 2026-03-20: extracted the voice peer broker-session/launch/startup/cleanup orchestration into a shared launch-flow module with direct unit proof, refactored the bundled/external child backend onto it, and extended `builtin_start_contract` with the same staged `startup_sequence` so future native work targets a real shared seam instead of child-only logic.
 
 ## Deferred (after macOS stability)

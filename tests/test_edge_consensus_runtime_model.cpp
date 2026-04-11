@@ -1,5 +1,6 @@
 #include "edge_consensus_runtime_model.h"
 
+#include "edge_consensus_identity_tokens.h"
 #include "agent/edge_interop.h"
 
 #include <cassert>
@@ -15,6 +16,21 @@ using agentd::edge_consensus_runtime_build_config;
 using agentd::edge_consensus_runtime_membership_epoch_recoverable;
 using agentd::edge_consensus_runtime_response_json;
 using agentd::edge_consensus_runtime_same_effective_config;
+
+static void test_identity_token_helpers_trim_and_match() {
+  assert(agentd::edge_consensus_cluster_id_matches(" cluster-a ", "cluster-a"));
+  assert(!agentd::edge_consensus_cluster_id_matches("cluster-a", "cluster-b"));
+  assert(agentd::edge_consensus_sha256_token_is_valid(
+    " sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "));
+  assert(!agentd::edge_consensus_sha256_token_is_valid("sha256:bad"));
+  assert(agentd::edge_consensus_sha256_token_matches(
+    "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    " sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb "));
+  assert(agentd::edge_consensus_optional_sha256_token_matches("", " "));
+  assert(!agentd::edge_consensus_optional_sha256_token_matches(
+    "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"));
+}
 
 static DaemonConfig make_cfg() {
   DaemonConfig cfg;
@@ -294,6 +310,7 @@ static void test_membership_epoch_recovery_requires_matching_member_set() {
 }  // namespace
 
 int main() {
+  test_identity_token_helpers_trim_and_match();
   test_build_config_defaults_policy_and_trust_epochs();
   test_build_config_dedupes_explicit_node_sets();
   test_build_config_uses_portable_policy_timing_bounds();

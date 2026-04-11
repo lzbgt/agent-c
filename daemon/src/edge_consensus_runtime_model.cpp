@@ -1,5 +1,6 @@
 #include "edge_consensus_runtime_model.h"
 
+#include "edge_consensus_identity_tokens.h"
 #include "edge_consensus_member_ids.h"
 #include "edge_consensus_runtime_policy.h"
 #include "edge_util.h"
@@ -24,23 +25,6 @@ static bool is_safe_printable_field_model(const std::string& s, size_t max_len) 
     if (c < 0x20) return false;
   }
   return true;
-}
-
-static bool consensus_cluster_id_matches_model(const std::string& a, const std::string& b) {
-  const std::string left = trim_copy(a);
-  const std::string right = trim_copy(b);
-  return agent_edge_consensus_cluster_id_matches(left.data(), left.size(), right.data(), right.size()) == 1;
-}
-
-static bool consensus_sha256_token_is_valid_model(const std::string& token) {
-  return agent_umbmp_sha256_token_is_safe(token.data(), token.size()) == 1;
-}
-
-static bool consensus_optional_sha256_token_matches_model(const std::string& a, const std::string& b) {
-  const std::string left = trim_copy(a);
-  const std::string right = trim_copy(b);
-  if (left.empty() && right.empty()) return true;
-  return agent_edge_consensus_decision_sha256_matches(left.data(), left.size(), right.data(), right.size()) == 1;
 }
 
 static uint64_t json_to_u64_model(const Json::Value& v, uint64_t fallback) {
@@ -400,9 +384,9 @@ bool edge_consensus_runtime_same_effective_config(
   return
     trim_copy(a.runtime_kind) == trim_copy(b.runtime_kind) &&
     edge_consensus_member_node_id_matches(a.node_id, b.node_id) &&
-    consensus_cluster_id_matches_model(a.cluster_id, b.cluster_id) &&
-    consensus_optional_sha256_token_matches_model(a.manifest_sha256, b.manifest_sha256) &&
-    consensus_optional_sha256_token_matches_model(a.decision_sha256, b.decision_sha256) &&
+    edge_consensus_cluster_id_matches(a.cluster_id, b.cluster_id) &&
+    edge_consensus_optional_sha256_token_matches(a.manifest_sha256, b.manifest_sha256) &&
+    edge_consensus_optional_sha256_token_matches(a.decision_sha256, b.decision_sha256) &&
     sorted_consensus_member_node_ids_model(a.peer_node_ids) == sorted_consensus_member_node_ids_model(b.peer_node_ids) &&
     sorted_consensus_member_node_ids_model(a.member_node_ids) == sorted_consensus_member_node_ids_model(b.member_node_ids) &&
     (builtin || trim_copy(a.daemon_url) == trim_copy(b.daemon_url)) &&
@@ -473,11 +457,11 @@ bool edge_consensus_runtime_build_config(
     pol_it == cfg.edge_consensus_clusters.end() ? nullptr : &pol_it->second;
 
   if (!edge_consensus_member_node_id_is_valid(node_id) || !edge_id_is_safe(cluster_id) ||
-      !consensus_sha256_token_is_valid_model(manifest_sha256)) {
+      !edge_consensus_sha256_token_is_valid(manifest_sha256)) {
     if (out_err) *out_err = "invalid node runtime identity";
     return false;
   }
-  if (!decision_sha256.empty() && !consensus_sha256_token_is_valid_model(decision_sha256)) {
+  if (!decision_sha256.empty() && !edge_consensus_sha256_token_is_valid(decision_sha256)) {
     if (out_err) *out_err = "invalid decision_sha256";
     return false;
   }

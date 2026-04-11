@@ -1,5 +1,6 @@
 #include "edge_node_consensus.h"
 
+#include "edge_consensus_identity_tokens.h"
 #include "edge_consensus_member_ids.h"
 #include "edge_util.h"
 #include "json_util.h"
@@ -27,10 +28,6 @@ static bool parse_nonempty_string(
   }
   if (out) *out = trim_copy(root[key].asString());
   return true;
-}
-
-static bool consensus_sha256_token_is_valid(const std::string& token) {
-  return agent_umbmp_sha256_token_is_safe(token.data(), token.size()) == 1;
 }
 
 static const char* consensus_identity_validation_error(agent_edge_consensus_identity_validation_t validation) {
@@ -103,7 +100,7 @@ static bool parse_optional_sha256(
   }
   const std::string v = trim_copy(root[key].asString());
   if (v.empty()) return true;
-  if (!consensus_sha256_token_is_valid(v)) {
+  if (!edge_consensus_sha256_token_is_valid(v)) {
     if (out_error) *out_error = std::string(key) + " must be a sha256 token";
     return false;
   }
@@ -446,11 +443,7 @@ bool EdgeConsensusReplica::handle_frame(
     if (out_error) *out_error = verr;
     return false;
   }
-  if (!agent_edge_consensus_cluster_id_matches(
-        self_.cluster_id.data(),
-        self_.cluster_id.size(),
-        frame.from.cluster_id.data(),
-        frame.from.cluster_id.size())) {
+  if (!edge_consensus_cluster_id_matches(self_.cluster_id, frame.from.cluster_id)) {
     if (out_error) *out_error = "cluster_id mismatch";
     return false;
   }
@@ -492,11 +485,7 @@ bool EdgeConsensusReplica::handle_frame(
           node_is_member(frame.candidate_node_id) ? 1 : 0,
           edge_consensus_member_node_id_matches(frame.candidate_node_id, self_.node_id) ? 1 : 0,
           edge_consensus_member_node_id_matches(frame.from.node_id, frame.candidate_node_id) ? 1 : 0,
-          agent_edge_consensus_decision_sha256_matches(
-            campaign_decision_sha256_.data(),
-            campaign_decision_sha256_.size(),
-            frame.decision_sha256.data(),
-            frame.decision_sha256.size()),
+          edge_consensus_sha256_token_matches(campaign_decision_sha256_, frame.decision_sha256),
           frame.granted ? 1 : 0,
           trust_epochs_match(frame.from.trust_epochs) ? 1 : 0)) return true;
     mark_frame_seen();
@@ -553,11 +542,7 @@ bool EdgeConsensusNodeLoop::adopt_membership_policy(
     if (out_reason) *out_reason = "membership schema invalid";
     return false;
   }
-  if (!agent_edge_consensus_cluster_id_matches(
-        cfg_.self.cluster_id.data(),
-        cfg_.self.cluster_id.size(),
-        update.cluster_id.data(),
-        update.cluster_id.size())) {
+  if (!edge_consensus_cluster_id_matches(cfg_.self.cluster_id, update.cluster_id)) {
     if (out_reason) *out_reason = "cluster_id mismatch";
     return true;
   }

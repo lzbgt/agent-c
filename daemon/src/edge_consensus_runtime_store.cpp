@@ -1,5 +1,6 @@
 #include "edge_consensus_runtime_store.h"
 
+#include "edge_consensus_identity_tokens.h"
 #include "edge_consensus_member_ids.h"
 #include "edge_util.h"
 #include "json_util.h"
@@ -27,10 +28,6 @@ static uint64_t json_to_u64(const Json::Value& v, uint64_t fallback) {
   if (v.isUInt()) return (uint64_t)v.asUInt();
   if (v.isInt() && v.asInt() >= 0) return (uint64_t)v.asInt();
   return fallback;
-}
-
-static bool consensus_sha256_token_is_valid_store(const std::string& token) {
-  return agent_umbmp_sha256_token_is_safe(token.data(), token.size()) == 1;
 }
 
 static std::string edge_consensus_runtime_meta_key(const std::string& node_id) {
@@ -109,11 +106,11 @@ bool edge_consensus_runtime_from_json(
     st.decision_sha256 = trim_copy(v["decision_sha256"].asString());
   }
   if (!edge_consensus_member_node_id_is_valid(st.node_id) || !edge_id_is_safe(st.cluster_id) ||
-      !consensus_sha256_token_is_valid_store(st.manifest_sha256)) {
+      !edge_consensus_sha256_token_is_valid(st.manifest_sha256)) {
     if (out_err) *out_err = "invalid persisted runtime identity";
     return false;
   }
-  if (!st.decision_sha256.empty() && !consensus_sha256_token_is_valid_store(st.decision_sha256)) {
+  if (!st.decision_sha256.empty() && !edge_consensus_sha256_token_is_valid(st.decision_sha256)) {
     if (out_err) *out_err = "invalid persisted decision_sha256";
     return false;
   }

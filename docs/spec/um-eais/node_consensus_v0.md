@@ -217,6 +217,9 @@ The shipped autonomous host-loop proof adds:
 - daemon-side consensus member-id normalization is now centralized behind one helper that wraps portable `agent_core`
   node-id predicates, keeping runtime config/load-store shaping, membership bundle/endpoints, stale recovery, and the
   node loop aligned before firmware-native policy adoption
+- daemon-side consensus cluster-id and sha256 token matching are now centralized behind the same kind of host helper,
+  keeping runtime effective-config checks, persistence validation, and node-loop frame/adoption gates on the portable
+  `agent_core` identity semantics instead of local wrappers
 
 ## Still open
 
