@@ -246,6 +246,19 @@ Follow-up DRR budget-pressure mixed-fairness smoke:
 - `ctest --test-dir build -N > build/workflow_mixed_fairness_smoke_ctest_inventory_20260412.log 2>&1`
   - Result: `ctest_inventory_rc=0`; the test inventory now contains 318 tests.
 
+Follow-up provider-backed streaming token budget slice:
+- Added `workflow_run_budget_clamp.*` so workflow remaining budgets are applied consistently to direct run tasks and delegate attempts.
+- Workflow `max_total_tokens` now clamps provider requests with `max_completion_tokens` when no per-run cap exists, clamps existing `max_completion_tokens` downward, and preserves/clamps legacy `max_tokens` when that was the caller's existing field.
+- Added request-builder support for the caps across the high-level OpenAI client, text-only provider, multimodal raw provider, streaming tool provider, and direct `tools:"none"` streaming path.
+- The direct `tools:"none"` streaming path now requests `stream_options.include_usage=true` and retries once without `stream_options` on compatible "unknown/unrecognized field" errors, matching the tool-provider path.
+- Successful streams without provider usage now add an estimated `llm_usage` event so retry-safe workflow budget counters still advance; this is a guardrail, not billing-grade token accounting.
+- Added `agentd_workflow_budget_tokens_stream_fallback_smoke` to force `stream_options` rejection, a transient 429 retry, missing provider usage, and `max_completion_tokens` enforcement on the fallback/retry request.
+- Verification:
+  - `cmake --build build -j "$(sysctl -n hw.ncpu)" > build/workflow_stream_fallback_build_retry_20260412.log 2>&1` passed.
+  - `ctest --test-dir build -R 'workflow_run_budget_clamp_tests|agentd_workflow_budget_tokens_stream_fallback_smoke|agentd_workflow_budget_tokens_stream_smoke|agentd_workflow_budget_tokens_smoke|agentd_workflow_budget_retry_charges_smoke|openai_tool_provider_stream_tests|openai_provider_tests' --output-on-failure > build/workflow_stream_fallback_ctest_retry_20260412.log 2>&1` passed, 7/7.
+  - `tools/verify_repo_guards.sh > build/workflow_stream_fallback_repo_guards_20260412.log 2>&1` passed.
+  - `ctest --test-dir build -N > build/workflow_stream_fallback_ctest_inventory_20260412.log 2>&1` passed; inventory is now 320 tests.
+
 ## Directly Open Roadmap Items
 
 `TODOS.md` now has two open roadmap workstreams with concrete unchecked subitems, plus one newly closed roadmap workstream:
@@ -278,7 +291,8 @@ The older P0/P1 section was pruned on 2026-04-12 so `Next` / `Remaining` notes n
   - Host-tool memory budget charging and workflow budget-pressure stats are already shipped.
   - 2026-04-12 follow-up: `budget_pressure_v1` DRR charging now combines telemetry/request estimates with bounded pressure bumps from workflow limits and retry-safe usage totals.
   - 2026-04-12 follow-up: the deterministic mixed-workload proof now covers host tasks, LLM-like tasks, streaming-like tasks, and edge poll loops in `workflow_fairq_cost_tests` and the live `agentd_workflow_drr_budget_pressure_mixed_fairness_smoke`.
-  - Current remaining: provider-backed streaming token budget enforcement when usage is missing/retried, plus edge-poll cost refinements if larger trace replays show tail-latency gaps.
+  - 2026-04-12 follow-up: provider-backed streaming token budget enforcement now covers missing provider usage, `stream_options` compatibility fallback, and transient provider retry in `agentd_workflow_budget_tokens_stream_fallback_smoke`.
+  - Current remaining: edge-poll cost refinements only if larger trace replays show tail-latency gaps.
 
 - Agent collaboration:
   - `strict_all_ok` and node-identity-aware quorum proof are already shipped in later collaboration slices.
@@ -309,4 +323,4 @@ Highest leverage sequence:
 
 1. Fix or unblock OpenRouter credentials, run the OpenRouter streaming pin workflow, and commit `ref/openrouter/streaming_pins.json` if the result is stable.
 2. Execute the documented builtin-vs-bundled graduation gate on any additional target release platforms before changing production defaults outside the checked macOS M2 host.
-3. Implement the next unblocked local item from the pruned P0/P1 backlog: provider-backed streaming token budget enforcement when provider usage is absent, rejected by compatibility fallback, or retried.
+3. Re-scan the pruned P0/P1 backlog after the provider-backed streaming token budget slice; remaining unblocked local work is lower priority than credential-gated OpenRouter pins and cross-platform native-plugin graduation.

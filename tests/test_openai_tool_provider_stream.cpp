@@ -37,12 +37,13 @@ static void expect_streq(const std::string& a, const std::string& b, const char*
 struct CapturedEvents {
   int deltas = 0;
   std::string delta_concat;
+  int retries = 0;
+  std::string retry_reason;
 };
 
 static void on_event_capture(void* vctx, const char* type, const char* data_json) {
   auto* cap = static_cast<CapturedEvents*>(vctx);
   if (!cap || !type) return;
-  if (std::string(type) != "assistant_delta") return;
   if (!data_json || !data_json[0]) return;
 
   Json::CharReaderBuilder rb;
@@ -50,6 +51,13 @@ static void on_event_capture(void* vctx, const char* type, const char* data_json
   std::istringstream iss(data_json);
   Json::Value v;
   if (!Json::parseFromStream(rb, iss, &v, &errs) || !v.isObject()) return;
+  const std::string event_type(type);
+  if (event_type == "retry") {
+    cap->retries++;
+    if (v.isMember("reason") && v["reason"].isString()) cap->retry_reason = v["reason"].asString();
+    return;
+  }
+  if (event_type != "assistant_delta") return;
   const auto& d = v["delta"];
   if (!d.isString()) return;
   cap->deltas++;
@@ -99,6 +107,54 @@ static OpenAIStreamResult fake_stream_assistant_text(
   r.response_body = "stub_stream";
   r.saw_done = true;
   return r;
+}
+
+static OpenAIStreamResult fake_stream_assistant_text_requires_cap(
+  const OpenAIClientConfig& /*cfg*/,
+  const std::string& request_body_json,
+  OpenAIStreamChunkCallback on_chunk,
+  void* on_chunk_ctx,
+  size_t /*max_capture_bytes*/
+) {
+  Json::CharReaderBuilder rb;
+  std::string errs;
+  std::istringstream iss(request_body_json);
+  Json::Value req;
+  expect_true(Json::parseFromStream(rb, iss, &req, &errs), "parse capped stream request");
+  expect_true(req.isObject(), "capped stream request is object");
+  expect_true(req.isMember("max_completion_tokens"), "capped stream request has max_completion_tokens");
+  expect_eq((size_t)req["max_completion_tokens"].asUInt64(), 7u, "max_completion_tokens forwarded");
+  return fake_stream_assistant_text(OpenAIClientConfig{}, request_body_json, on_chunk, on_chunk_ctx, 0);
+}
+
+static int g_stream_options_fallback_calls = 0;
+
+static OpenAIStreamResult fake_stream_rejects_stream_options_once(
+  const OpenAIClientConfig& /*cfg*/,
+  const std::string& request_body_json,
+  OpenAIStreamChunkCallback on_chunk,
+  void* on_chunk_ctx,
+  size_t /*max_capture_bytes*/
+) {
+  g_stream_options_fallback_calls++;
+
+  Json::CharReaderBuilder rb;
+  std::string errs;
+  std::istringstream iss(request_body_json);
+  Json::Value req;
+  expect_true(Json::parseFromStream(rb, iss, &req, &errs), "parse stream_options fallback request");
+  expect_true(req.isObject(), "stream_options fallback request is object");
+
+  if (req.isMember("stream_options")) {
+    OpenAIStreamResult r;
+    r.http_status = 400;
+    r.response_body = R"({"error":{"message":"unknown field: stream_options.include_usage"}})";
+    r.error_message = "unknown field: stream_options.include_usage";
+    r.saw_done = false;
+    return r;
+  }
+
+  return fake_stream_assistant_text(OpenAIClientConfig{}, request_body_json, on_chunk, on_chunk_ctx, 0);
 }
 
 static OpenAIStreamResult fake_stream_legacy_function_call(
@@ -247,6 +303,54 @@ int main() {
     expect_true(cap.deltas >= 1, "at least one assistant_delta event emitted");
     expect_streq(cap.delta_concat, "Hello world", "assistant_delta concatenation matches");
 
+    agent_tool_provider_response_free(&resp);
+    agent_tool_registry_destroy(tools);
+  }
+
+  {
+    // Configured provider caps are forwarded into streaming tool-provider requests.
+    agent_tool_registry_t* tools = make_minimal_registry();
+
+    OpenAIToolProviderCtx ctx;
+    ctx.cfg.base_url = "http://stub";
+    ctx.cfg.api_key = "dummy";
+    ctx.cfg.model = "stub";
+    ctx.cfg.max_completion_tokens = 7;
+    ctx.stream_assistant = true;
+    ctx.chat_stream_fn = fake_stream_assistant_text_requires_cap;
+
+    agent_tool_provider_t p = openai_make_tool_provider(&ctx);
+    agent_tool_provider_request_t req = make_req(tools);
+    agent_tool_provider_response_t resp{};
+    const agent_status_t st = p.generate(p.ctx, &req, &resp);
+    expect_true(st == AGENT_OK, "stream assistant capped status");
+    agent_tool_provider_response_free(&resp);
+    agent_tool_registry_destroy(tools);
+  }
+
+  {
+    // stream_options compatibility fallback is visible to run/event consumers.
+    agent_tool_registry_t* tools = make_minimal_registry();
+
+    CapturedEvents cap;
+    OpenAIToolProviderCtx ctx;
+    ctx.cfg.base_url = "http://stub";
+    ctx.cfg.api_key = "dummy";
+    ctx.cfg.model = "stub";
+    ctx.stream_assistant = true;
+    ctx.chat_stream_fn = fake_stream_rejects_stream_options_once;
+    ctx.on_event = on_event_capture;
+    ctx.on_event_ctx = &cap;
+    g_stream_options_fallback_calls = 0;
+
+    agent_tool_provider_t p = openai_make_tool_provider(&ctx);
+    agent_tool_provider_request_t req = make_req(tools);
+    agent_tool_provider_response_t resp{};
+    const agent_status_t st = p.generate(p.ctx, &req, &resp);
+    expect_true(st == AGENT_OK, "stream assistant stream_options fallback status");
+    expect_eq((size_t)g_stream_options_fallback_calls, 2u, "stream_options fallback called twice");
+    expect_true(cap.retries >= 1, "stream_options retry event emitted");
+    expect_streq(cap.retry_reason, "stream_options_rejected", "stream_options retry reason");
     agent_tool_provider_response_free(&resp);
     agent_tool_registry_destroy(tools);
   }

@@ -39,9 +39,14 @@ For OpenAI-compatible Chat Completions streaming, this repo attempts to preserve
 
 - When streaming is enabled, the tool provider requests `stream_options.include_usage=true`.
 - If a provider rejects `stream_options` (commonly as an HTTP 400 "unknown/unrecognized field"), the client retries once
-  without `stream_options` to preserve streaming functionality (but token usage will not be available).
+  without `stream_options` to preserve streaming functionality. The daemon's direct `tools:"none"` streaming path uses
+  the same compatibility retry policy.
 - When a streamed chunk includes a top-level `usage` object, the tool provider emits a `llm_usage` event, allowing the daemon
   to aggregate tokens across tool-loop steps and charge durable workflow budgets.
+- Durable workflow token budgets also push the remaining token budget into provider requests. Missing per-run caps are
+  filled as `max_completion_tokens`; existing `max_completion_tokens` or legacy `max_tokens` values are clamped downward.
+- If a stream succeeds without provider usage, the daemon records an estimated `llm_usage` event as a conservative fallback
+  so retry-safe workflow counters still advance. This is not billing-grade token accounting; it is a budget guardrail.
 
 ## Interfaces
 
@@ -88,6 +93,7 @@ Decoder variants and how they are covered in tests:
 | `delta.tool_calls` fragmented args | Covered | `tests/test_openai_stream_decoder.cpp`, `tests/agent_local_stream_tool_loop_smoke.sh` |
 | Legacy `delta.function_call` | Covered | `tests/test_openai_stream_decoder.cpp`, `tests/test_openai_tool_provider_stream.cpp` |
 | `stream_options.include_usage` usage chunks | Covered | `tests/agentd_workflow_budget_tokens_stream_smoke.sh` |
+| `stream_options` compatibility fallback with missing usage and provider cap | Covered | `tests/agentd_workflow_budget_tokens_stream_fallback_smoke.sh` |
 | Provider retry during stream (429) | Covered | `tests/agentd_stream_provider_retry_smoke.sh` |
 
 ## Compatibility matrix (providers)

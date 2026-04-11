@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <cstdint>
 
 // Optional callback for surfacing provider retries to UIs/logs.
 // `data_json` is a JSON object string for the event's `data` field.
@@ -34,6 +35,10 @@ struct OpenAIClientConfig {
   // Multiplicative jitter in [0, 1]. 0 disables jitter.
   double retry_jitter = 0.2;
   bool respect_retry_after = true;
+  // Optional Chat Completions output token caps. Prefer max_completion_tokens for
+  // current OpenAI-compatible APIs; max_tokens is legacy/provider-compat only.
+  int64_t max_completion_tokens = 0;
+  int64_t max_tokens = 0;
 
   // Optional hook invoked immediately before a retry sleep.
   OpenAIRetryEventCallback on_retry = nullptr;

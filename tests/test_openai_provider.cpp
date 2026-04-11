@@ -71,6 +71,7 @@ int main() {
   {
     OpenAIProviderCtx ctx;
     ctx.cfg.model = "base";
+    ctx.cfg.max_completion_tokens = 7;
     ctx.chat_fn = fake_capture_model_ok;
 
     agent_generate_request_t req{};
@@ -86,6 +87,7 @@ int main() {
     expect_true(ctx.last_http_status == 200, "last_http_status captured");
     expect_true(!ctx.last_request_body.empty(), "request JSON captured");
     expect_true(ctx.last_request_body.find("override") != std::string::npos, "request JSON includes model");
+    expect_true(ctx.last_request_body.find("\"max_completion_tokens\":7") != std::string::npos, "request JSON includes max_completion_tokens");
     agent_string_free(&resp.assistant_text);
   }
 

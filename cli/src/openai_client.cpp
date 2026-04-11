@@ -913,6 +913,11 @@ OpenAIChatResult openai_chat_completions(
   Json::Value root(Json::objectValue);
   root["model"] = cfg.model;
   root["stream"] = false;
+  if (cfg.max_completion_tokens > 0) {
+    root["max_completion_tokens"] = (Json::Int64)cfg.max_completion_tokens;
+  } else if (cfg.max_tokens > 0) {
+    root["max_tokens"] = (Json::Int64)cfg.max_tokens;
+  }
   Json::Value messages(Json::arrayValue);
   append_message_views_json(messages, messages_view, message_count);
   root["messages"] = messages;

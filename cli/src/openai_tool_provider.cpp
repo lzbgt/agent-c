@@ -415,6 +415,11 @@ static agent_status_t openai_tool_provider_generate(
     // Use non-streaming calls for correctness.
   }
   root["stream"] = use_stream_assistant;
+  if (ctx->cfg.max_completion_tokens > 0) {
+    root["max_completion_tokens"] = (Json::Int64)ctx->cfg.max_completion_tokens;
+  } else if (ctx->cfg.max_tokens > 0) {
+    root["max_tokens"] = (Json::Int64)ctx->cfg.max_tokens;
+  }
   const bool want_stream_usage = use_stream_assistant;
   if (want_stream_usage) {
     // Best-effort token accounting for streaming calls:
@@ -509,6 +514,16 @@ static agent_status_t openai_tool_provider_generate(
         const std::string m = lower_copy(msg);
         if (m.find("stream_options") != std::string::npos || m.find("include_usage") != std::string::npos ||
             m.find("unknown field") != std::string::npos || m.find("unrecognized field") != std::string::npos) {
+          Json::Value d(Json::objectValue);
+          d["step"] = (Json::UInt64)req->step;
+          d["epoch"] = (Json::UInt64)req->epoch;
+          d["http_status"] = (Json::Int64)sr.http_status;
+          d["stream"] = true;
+          d["scope"] = "provider";
+          d["reason"] = "stream_options_rejected";
+          d["will_retry"] = true;
+          provider_emit_event(ctx, "retry", d);
+
           Json::Value root2 = root;
           root2.removeMember("stream_options");
           const std::string req2 = json_stringify(root2);
@@ -600,6 +615,9 @@ static agent_status_t openai_tool_provider_generate(
       usage["prompt_tokens"] = (Json::Int64)acc.core.prompt_tokens;
       usage["completion_tokens"] = (Json::Int64)acc.core.completion_tokens;
       usage["total_tokens"] = (Json::Int64)acc.core.total_tokens;
+      d["prompt_tokens"] = usage["prompt_tokens"];
+      d["completion_tokens"] = usage["completion_tokens"];
+      d["total_tokens"] = usage["total_tokens"];
       d["usage"] = usage;
       provider_emit_event(ctx, "llm_usage", d);
     }
@@ -649,6 +667,9 @@ static agent_status_t openai_tool_provider_generate(
       Json::Value d(Json::objectValue);
       d["step"] = (Json::UInt64)req->step;
       d["epoch"] = (Json::UInt64)req->epoch;
+      if (usage.isMember("prompt_tokens")) d["prompt_tokens"] = usage["prompt_tokens"];
+      if (usage.isMember("completion_tokens")) d["completion_tokens"] = usage["completion_tokens"];
+      if (usage.isMember("total_tokens")) d["total_tokens"] = usage["total_tokens"];
       d["usage"] = usage;
       provider_emit_event(ctx, "llm_usage", d);
     }

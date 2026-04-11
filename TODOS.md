@@ -1222,7 +1222,7 @@ Details (stable order for diff readability; numbering below is not priority):
    - Shipped (v2.3 partial): search-based memory context injection for runs (`memory_context_mode="search"`) with ranked snippets,
      citations, and bounded caps (claude-mem style progressive disclosure).
    - Shipped (v2.3 partial): `memory_search` clamps results/snippet/context to avoid unbounded memory growth under hostile inputs.
-5) **Budgets v0.7** — streaming usage accounting, host-tool memory task charging, workflow budget-pressure stats, and scheduler budget-pressure charging are shipped; remaining work is provider-backed streaming token budget enforcement when usage is missing/retried.
+5) **Budgets v0.8** — streaming usage accounting, host-tool memory task charging, workflow budget-pressure stats, scheduler budget-pressure charging, and provider-backed streaming token-budget fallback enforcement are shipped.
 
 Maintainability note (always-on):
 - Keep endpoint implementations SOLID and <2000 LOC per file; split large translation units (e.g. workflow endpoints) so new collaboration primitives remain cheap to add.
@@ -1267,13 +1267,15 @@ Maintainability note (always-on):
 	       - `GET /api/v1/workflow?...` surfaces `workflow_limits`, `workflow_usage`, and `workflow_remaining` (best-effort).
 	       - Proof: `ctest` includes `agentd_workflow_budget_tokens_smoke`.
 	     - Limitations:
-	       - only enforced when providers return `usage` in responses
-	       - streaming tool-loop calls require provider support for `stream_options.include_usage`; otherwise usage may be missing
+	       - provider-reported usage remains the most accurate signal, but missing streaming usage now gets a conservative local fallback charge
+	       - workflow token budgets now also clamp provider requests with a remaining-budget completion cap
 	   - Shipped (v0.6 partial): streaming token usage accounting (best-effort; OpenAI-compatible Chat Completions):
 	     - When `stream_assistant:true` is used, the tool provider requests `stream_options.include_usage=true` and emits `llm_usage` events
 	       when the final chunk includes usage.
-	     - Compatibility fallback: if a provider rejects `stream_options`, the client retries once without it (streaming still works, but usage may be missing).
-	     - Proof: `ctest` includes `agentd_workflow_budget_tokens_stream_smoke`.
+	     - Compatibility fallback: if a provider rejects `stream_options`, the client retries once without it; direct `tools:"none"` streaming now uses the same fallback.
+	     - Provider cap fallback: workflow `max_total_tokens` clamps each LLM run request to the remaining budget through `max_completion_tokens`, or clamps legacy `max_tokens` when that field was already present.
+	     - Missing usage fallback: successful streams without provider usage now emit estimated `llm_usage` so retry-safe workflow counters still advance.
+	     - Proof: `ctest` includes `agentd_workflow_budget_tokens_stream_smoke` and `agentd_workflow_budget_tokens_stream_fallback_smoke`.
 	   - Shipped (v0.5 partial): deterministic host-tool tasks now charge and obey workflow budgets:
 	     - `kind:"memory_put"` and `kind:"memory_consolidate"` count as `tool_calls_total=1` and `steps_executed=1` per attempt.
 	     - Budget enforcement: if remaining workflow budgets are 0, these tasks cancel the workflow with `workflow budget exceeded: ...`.
@@ -1288,7 +1290,7 @@ Maintainability note (always-on):
 	     - Scheduler reads persisted workflow limits plus retry-safe usage totals and adds bounded cost bumps when configured budgets approach exhaustion.
 	     - Proof: `ctest` includes the unit-level deterministic host/LLM/streaming/edge DRR proof in `workflow_fairq_cost_tests`, plus the live `agentd_workflow_drr_budget_pressure_smoke` and `agentd_workflow_drr_budget_pressure_mixed_fairness_smoke`.
 	   - Current remaining:
-	     - enforce provider-backed token budgets for streaming paths when usage is absent, rejected by provider compatibility fallback, or retried
+	     - reconcile estimated fallback token charges against provider-reported usage if a provider exposes delayed or out-of-band usage
 
 2) **Scheduling policy v2 (beyond caps)** (predictable progress under load)
    - Shipped (v2.0): oversampled scan + session-aware round-robin scan order (prevents `LIMIT` starvation under typical load).

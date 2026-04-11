@@ -432,6 +432,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/workflow_submit_macros.cpp
     daemon/src/workflow_submit_task_builders.cpp
     daemon/src/workflow_fairq_cost.cpp
+    daemon/src/workflow_run_budget_clamp.cpp
   )
 
   if(AGENTD_ENABLE_HTTP)
@@ -1508,6 +1509,12 @@ if(AGENT_BUILD_HOST)
 					        $<TARGET_FILE:agentd_tool_plugin_echo>
 					    )
 					    add_test(
+					      NAME agentd_workflow_budget_tokens_stream_fallback_smoke
+					      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_budget_tokens_stream_fallback_smoke.sh
+					        $<TARGET_FILE:agentd>
+					        $<TARGET_FILE:agentd_tool_plugin_echo>
+					    )
+					    add_test(
 					      NAME agentd_workflow_budget_retry_charges_smoke
 					      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_budget_retry_charges_smoke.sh
 					        $<TARGET_FILE:agentd>
@@ -1948,6 +1955,13 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
     target_link_libraries(workflow_fairq_cost_tests PRIVATE agentd_lib)
     target_compile_definitions(workflow_fairq_cost_tests PRIVATE AGENT_HAVE_JSONCPP=1)
     add_test(NAME workflow_fairq_cost_tests COMMAND workflow_fairq_cost_tests)
+
+    add_executable(workflow_run_budget_clamp_tests
+      tests/test_workflow_run_budget_clamp.cpp
+    )
+    target_link_libraries(workflow_run_budget_clamp_tests PRIVATE agentd_lib)
+    target_compile_definitions(workflow_run_budget_clamp_tests PRIVATE AGENT_HAVE_JSONCPP=1)
+    add_test(NAME workflow_run_budget_clamp_tests COMMAND workflow_run_budget_clamp_tests)
 
     add_executable(cbor_decode_tests
       tests/test_cbor_decode.cpp

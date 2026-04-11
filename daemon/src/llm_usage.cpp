@@ -70,7 +70,7 @@ void llm_sum_usage_from_events(const Json::Value& events_out, int64_t* out_promp
     if (ev["type"].asString() != "llm_usage") continue;
     const auto& data = ev.isMember("data") && ev["data"].isObject() ? ev["data"] : Json::Value(Json::nullValue);
     if (!data.isObject()) continue;
-    const auto& usage = data.isMember("usage") && data["usage"].isObject() ? data["usage"] : Json::Value(Json::nullValue);
+    const auto& usage = data.isMember("usage") && data["usage"].isObject() ? data["usage"] : data;
     if (!usage.isObject()) continue;
 
     auto get_i64 = [&](const char* k, int64_t* out_v) -> bool {
@@ -102,4 +102,3 @@ void llm_sum_usage_from_events(const Json::Value& events_out, int64_t* out_promp
 }
 
 }  // namespace agentd
-

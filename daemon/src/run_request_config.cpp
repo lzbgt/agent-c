@@ -34,6 +34,15 @@ OpenAIClientConfig build_run_config_from_args(
     const long t = (long)args["stream_idle_timeout_ms"].asInt64();
     if (t >= 0) run_cfg.stream_idle_timeout_ms = t;
   }
+  auto set_token_cap = [](const Json::Value& args2, const char* key, int64_t* out) {
+    if (!key || !out || !args2.isMember(key)) return;
+    const Json::Value& v = args2[key];
+    if (!(v.isInt64() || v.isUInt64() || v.isInt() || v.isUInt())) return;
+    const int64_t n = v.asInt64();
+    if (n > 0) *out = std::min<int64_t>(n, 1000000000000LL);
+  };
+  set_token_cap(args, "max_completion_tokens", &run_cfg.max_completion_tokens);
+  set_token_cap(args, "max_tokens", &run_cfg.max_tokens);
   if (args.isMember("max_retries") && args["max_retries"].isInt()) {
     const int r = args["max_retries"].asInt();
     run_cfg.max_retries = std::max(0, std::min(r, 8));

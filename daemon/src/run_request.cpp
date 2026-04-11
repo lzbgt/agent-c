@@ -53,6 +53,7 @@
 #include <chrono>
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -136,6 +137,142 @@ static bool is_safe_team_id(const std::string& s) {
     if (!ok) return false;
   }
   return true;
+}
+
+static int64_t estimate_budget_tokens_from_bytes(size_t bytes) {
+  if (bytes == 0) return 0;
+  const size_t tokens = (bytes + 3u) / 4u;
+  const auto max_i64 = (uint64_t)std::numeric_limits<int64_t>::max();
+  if ((uint64_t)tokens > max_i64) return std::numeric_limits<int64_t>::max();
+  return std::max<int64_t>(1, (int64_t)tokens);
+}
+
+static size_t saturating_add_size(size_t a, size_t b) {
+  if (a > std::numeric_limits<size_t>::max() - b) return std::numeric_limits<size_t>::max();
+  return a + b;
+}
+
+static int64_t saturating_add_i64_local(int64_t a, int64_t b) {
+  if (b <= 0) return a;
+  if (a > std::numeric_limits<int64_t>::max() - b) return std::numeric_limits<int64_t>::max();
+  return a + b;
+}
+
+static void maybe_append_stream_usage_fallback(
+  Json::Value* events_out,
+  const std::string& trace_id,
+  bool ok,
+  bool effective_stream_assistant,
+  const std::string& assistant_text
+) {
+  if (!ok || !effective_stream_assistant || !events_out || !events_out->isArray()) return;
+
+  int64_t existing_prompt = 0;
+  int64_t existing_completion = 0;
+  int64_t existing_total = 0;
+  llm_sum_usage_from_events(*events_out, &existing_prompt, &existing_completion, &existing_total);
+  if (existing_prompt > 0 || existing_completion > 0 || existing_total > 0) return;
+
+  bool saw_successful_stream_response = false;
+  size_t prompt_chars = 0;
+  size_t request_json_chars = 0;
+  size_t assistant_delta_chars = 0;
+  size_t assistant_message_chars = 0;
+  size_t tool_call_chars = 0;
+  Json::Value anchor(Json::objectValue);
+
+  auto add_string_field_size = [](const Json::Value& obj, const char* key, size_t* out) {
+    if (!out || !obj.isObject() || !key) return;
+    if (obj.isMember(key) && obj[key].isString()) {
+      const size_t n = obj[key].asString().size();
+      *out = saturating_add_size(*out, n);
+    }
+  };
+
+  for (Json::ArrayIndex i = 0; i < events_out->size(); i++) {
+    const Json::Value& ev = (*events_out)[i];
+    if (!ev.isObject()) continue;
+    if (!ev.isMember("type") || !ev["type"].isString()) continue;
+    const std::string type = ev["type"].asString();
+    const Json::Value& data = ev.isMember("data") && ev["data"].isObject() ? ev["data"] : Json::Value(Json::nullValue);
+    if (!data.isObject()) continue;
+
+    if (type == "llm_response") {
+      const bool is_stream = data.isMember("stream") && data["stream"].isBool() && data["stream"].asBool();
+      int64_t http_status = 0;
+      bool have_status = false;
+      if (data.isMember("http_status") &&
+          (data["http_status"].isInt64() || data["http_status"].isUInt64() ||
+           data["http_status"].isInt() || data["http_status"].isUInt())) {
+        http_status = data["http_status"].asInt64();
+        have_status = true;
+      }
+      if (is_stream && (!have_status || (http_status >= 200 && http_status < 300))) {
+        saw_successful_stream_response = true;
+        anchor = data;
+      }
+      continue;
+    }
+
+    if (type == "user_message") {
+      add_string_field_size(data, "user_content", &prompt_chars);
+      add_string_field_size(data, "user_mm_json", &prompt_chars);
+    } else if (type == "tool_result") {
+      add_string_field_size(data, "content", &prompt_chars);
+      add_string_field_size(data, "summary_json", &prompt_chars);
+    } else if (type == "llm_request") {
+      add_string_field_size(data, "request_json", &request_json_chars);
+    } else if (type == "assistant_delta") {
+      add_string_field_size(data, "delta", &assistant_delta_chars);
+    } else if (type == "assistant_message") {
+      add_string_field_size(data, "assistant_content", &assistant_message_chars);
+    } else if (type == "tool_call") {
+      add_string_field_size(data, "tool_name", &tool_call_chars);
+      add_string_field_size(data, "arguments_json", &tool_call_chars);
+    }
+  }
+
+  if (!saw_successful_stream_response) return;
+  if (assistant_delta_chars == 0 && assistant_message_chars == 0 && !assistant_text.empty()) {
+    assistant_message_chars = assistant_text.size();
+  }
+
+  const size_t effective_prompt_chars = std::max(prompt_chars, request_json_chars);
+  const size_t effective_completion_chars =
+    saturating_add_size((assistant_delta_chars > 0 ? assistant_delta_chars : assistant_message_chars), tool_call_chars);
+  int64_t prompt_tokens = estimate_budget_tokens_from_bytes(effective_prompt_chars);
+  int64_t completion_tokens = estimate_budget_tokens_from_bytes(effective_completion_chars);
+  int64_t total_tokens = saturating_add_i64_local(prompt_tokens, completion_tokens);
+  if (total_tokens <= 0) {
+    total_tokens = 1;
+    completion_tokens = 1;
+  }
+
+  Json::Value usage(Json::objectValue);
+  usage["prompt_tokens"] = (Json::Int64)prompt_tokens;
+  usage["completion_tokens"] = (Json::Int64)completion_tokens;
+  usage["total_tokens"] = (Json::Int64)total_tokens;
+
+  Json::Value data(Json::objectValue);
+  if (anchor.isObject()) {
+    if (anchor.isMember("step")) data["step"] = anchor["step"];
+    if (anchor.isMember("epoch")) data["epoch"] = anchor["epoch"];
+    if (anchor.isMember("attempt")) data["attempt"] = anchor["attempt"];
+  }
+  data["prompt_tokens"] = usage["prompt_tokens"];
+  data["completion_tokens"] = usage["completion_tokens"];
+  data["total_tokens"] = usage["total_tokens"];
+  data["usage"] = usage;
+  data["estimated"] = true;
+  data["source"] = "stream_fallback_missing_provider_usage";
+  data["reason"] = "provider_stream_usage_absent";
+
+  Json::Value ev(Json::objectValue);
+  ev["type"] = "llm_usage";
+  ev["schema"] = "run_event_payload_llm_usage_v1";
+  if (!trace_id.empty()) ev["trace_id"] = trace_id;
+  ev["data"] = data;
+  events_out->append(ev);
 }
 
 static std::string normalize_memory_scope_mode(const std::string& raw) {
@@ -1050,10 +1187,19 @@ static Json::Value run_request_to_json_impl(
 
         // Build the provider request JSON from the compacted session messages.
         std::string request_json;
+        std::string request_json_without_stream_options;
         {
           Json::Value root(Json::objectValue);
           root["model"] = run_cfg.model;
           root["stream"] = true;
+          if (run_cfg.max_completion_tokens > 0) {
+            root["max_completion_tokens"] = (Json::Int64)run_cfg.max_completion_tokens;
+          } else if (run_cfg.max_tokens > 0) {
+            root["max_tokens"] = (Json::Int64)run_cfg.max_tokens;
+          }
+          Json::Value so(Json::objectValue);
+          so["include_usage"] = true;
+          root["stream_options"] = so;
           Json::Value messages(Json::arrayValue);
           const size_t n = agent_session_message_count(session);
           for (size_t i = 0; i < n; i++) {
@@ -1081,6 +1227,9 @@ static Json::Value run_request_to_json_impl(
           Json::StreamWriterBuilder wb;
           wb["indentation"] = "";
           request_json = Json::writeString(wb, root);
+          Json::Value root_without = root;
+          root_without.removeMember("stream_options");
+          request_json_without_stream_options = Json::writeString(wb, root_without);
         }
         {
           Json::Value d(Json::objectValue);
@@ -1134,11 +1283,46 @@ static Json::Value run_request_to_json_impl(
         };
 
         OpenAIStreamResult sr = openai_chat_completions_raw_stream(run_cfg, request_json, on_chunk, &sctx, max_capture_bytes);
+        if ((sr.http_status < 200 || sr.http_status >= 300) && !request_json_without_stream_options.empty()) {
+          bool decoded_any = sctx.core.saw_delta != 0;
+          for (size_t i = 0; !decoded_any && i < sctx.core.dec.tool_call_count; i++) {
+            const auto& c = sctx.core.dec.tool_calls[i];
+            if (c.name.data && c.name.len) decoded_any = true;
+          }
+          if (!decoded_any) {
+            const std::string msg =
+              (!sr.error_message.empty() ? sr.error_message : openai_format_http_error(sr.http_status, sr.response_body));
+            const std::string m = lower_copy(msg);
+            if (m.find("stream_options") != std::string::npos || m.find("include_usage") != std::string::npos ||
+                m.find("unknown field") != std::string::npos || m.find("unrecognized field") != std::string::npos) {
+              Json::Value d(Json::objectValue);
+              d["attempt"] = attempt;
+              d["http_status"] = (Json::Int64)sr.http_status;
+              d["scope"] = "provider";
+              d["reason"] = "stream_options_rejected";
+              push_ev("retry", d);
+
+              openai_stream_core_reset(&sctx.core);
+              sctx.chunks = 0;
+              sr = openai_chat_completions_raw_stream(
+                run_cfg,
+                request_json_without_stream_options,
+                on_chunk,
+                &sctx,
+                max_capture_bytes
+              );
+            }
+          }
+        }
         http_status = sr.http_status;
         http_body = sr.response_body;
         if (trace_stream) {
           *trace_stream << "=== REQUEST (stream=true attempt=" << attempt << ") ===\n";
           *trace_stream << request_json << "\n";
+          if (!request_json_without_stream_options.empty()) {
+            *trace_stream << "=== REQUEST RETRY WITHOUT stream_options (if provider rejected it) ===\n";
+            *trace_stream << request_json_without_stream_options << "\n";
+          }
           *trace_stream << "=== RESPONSE (stream capture) ===\n";
           *trace_stream << (sr.response_body.empty() ? "" : (sr.response_body + "\n"));
         }
@@ -1162,6 +1346,9 @@ static Json::Value run_request_to_json_impl(
           usage["total_tokens"] = (Json::Int64)sctx.core.total_tokens;
           Json::Value d(Json::objectValue);
           d["attempt"] = attempt;
+          d["prompt_tokens"] = usage["prompt_tokens"];
+          d["completion_tokens"] = usage["completion_tokens"];
+          d["total_tokens"] = usage["total_tokens"];
           d["usage"] = usage;
           push_ev("llm_usage", d);
         }
@@ -1301,6 +1488,9 @@ static Json::Value run_request_to_json_impl(
           if (llm_try_extract_usage_tokens_from_openai_response_body(pctx.last_body, &usage) && usage.isObject()) {
             Json::Value d(Json::objectValue);
             d["attempt"] = attempt;
+            if (usage.isMember("prompt_tokens")) d["prompt_tokens"] = usage["prompt_tokens"];
+            if (usage.isMember("completion_tokens")) d["completion_tokens"] = usage["completion_tokens"];
+            if (usage.isMember("total_tokens")) d["total_tokens"] = usage["total_tokens"];
             d["usage"] = usage;
             push_ev("llm_usage", d);
           }
@@ -1463,6 +1653,8 @@ static Json::Value run_request_to_json_impl(
   out["effective_retry_max_ms"] = (Json::Int64)run_cfg.retry_max_ms;
   out["effective_retry_jitter"] = run_cfg.retry_jitter;
   out["effective_respect_retry_after"] = run_cfg.respect_retry_after;
+  out["effective_max_completion_tokens"] = (Json::Int64)std::max<int64_t>(0, run_cfg.max_completion_tokens);
+  out["effective_max_tokens"] = (Json::Int64)std::max<int64_t>(0, run_cfg.max_tokens);
   out["effective_stream_assistant"] = effective_stream_assistant;
   out["effective_require_client_acks"] = require_client_acks;
   out["effective_tools"] = tools;
@@ -1492,6 +1684,7 @@ static Json::Value run_request_to_json_impl(
     // We aggregate from structured `llm_usage` events, which are emitted by:
     // - tool-loop providers (`openai_tool_provider`), when response JSON has a `usage` object
     // - tools=none run path, after parsing the raw response body
+    maybe_append_stream_usage_fallback(&events_out, trace_id, ok, effective_stream_assistant, assistant_text);
     int64_t prompt_tokens = 0;
     int64_t completion_tokens = 0;
     int64_t total_tokens = 0;

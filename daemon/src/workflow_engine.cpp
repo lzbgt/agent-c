@@ -19,6 +19,7 @@
 #include "workflow_evidence.h"
 #include "workflow_templates.h"
 #include "workflow_memory_ops.h"
+#include "workflow_run_budget_clamp.h"
 
 #include <algorithm>
 #include <chrono>
@@ -648,31 +649,13 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 	            clamp_key("max_tool_calls_per_tool");
 	          }
 
-	          if (wf_limits.max_tool_calls_total > 0) {
-	            // Clamp per-attempt tool-call budget to remaining workflow budget.
-	            int64_t req_limit = 0;
-	            if (areq2.isMember("max_tool_calls_total") && (areq2["max_tool_calls_total"].isInt64() || areq2["max_tool_calls_total"].isUInt64() || areq2["max_tool_calls_total"].isInt() || areq2["max_tool_calls_total"].isUInt())) {
-	              req_limit = std::max<int64_t>(0, areq2["max_tool_calls_total"].asInt64());
-	            }
-	            const int64_t eff = (req_limit > 0) ? std::min<int64_t>(req_limit, remaining_local) : remaining_local;
-	            areq2["max_tool_calls_total"] = (Json::Int64)std::max<int64_t>(0, eff);
-	          }
-	          if (wf_limits.max_steps_total > 0) {
-	            int64_t req_limit = 0;
-	            if (areq2.isMember("max_steps") && (areq2["max_steps"].isInt64() || areq2["max_steps"].isUInt64() || areq2["max_steps"].isInt() || areq2["max_steps"].isUInt())) {
-	              req_limit = std::max<int64_t>(0, areq2["max_steps"].asInt64());
-	            }
-	            const int64_t eff = (req_limit > 0) ? std::min<int64_t>(req_limit, remaining_steps_local) : remaining_steps_local;
-	            areq2["max_steps"] = (Json::Int64)std::max<int64_t>(0, eff);
-	          }
-	          if (wf_limits.max_elapsed_ms_total > 0) {
-	            int64_t req_limit = 0;
-	            if (areq2.isMember("timeout_ms") && (areq2["timeout_ms"].isInt64() || areq2["timeout_ms"].isUInt64() || areq2["timeout_ms"].isInt() || areq2["timeout_ms"].isUInt())) {
-	              req_limit = std::max<int64_t>(0, areq2["timeout_ms"].asInt64());
-	            }
-	            const int64_t eff = (req_limit > 0) ? std::min<int64_t>(req_limit, remaining_elapsed_ms_local) : remaining_elapsed_ms_local;
-	            areq2["timeout_ms"] = (Json::Int64)std::max<int64_t>(0, eff);
-	          }
+	          WorkflowRunBudgetClampInput attempt_clamp;
+	          attempt_clamp.limits = wf_limits;
+	          attempt_clamp.tool_calls_remaining = remaining_local;
+	          attempt_clamp.steps_remaining = remaining_steps_local;
+	          attempt_clamp.elapsed_ms_remaining = remaining_elapsed_ms_local;
+	          attempt_clamp.total_tokens_remaining = remaining_tokens_local;
+	          (void)workflow_apply_run_budget_clamps(&areq2, attempt_clamp, nullptr);
 	          const std::string attempt_body = json_stringify_compact(areq2);
 	          Json::Value r = run_request_to_json_internal_cancellable(
 	            cfg,
@@ -1549,57 +1532,18 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
       }
     }
   } else {
-    if (wf_limits.max_tool_calls_total > 0) {
-      if (wf_tool_calls_remaining <= 0) {
-        workflow_budget_exceeded_cancel("max_tool_calls_total");
-        return;
-      }
-      if (rr.isObject()) {
-        int64_t req_limit = 0;
-        if (rr.isMember("max_tool_calls_total") && (rr["max_tool_calls_total"].isInt64() || rr["max_tool_calls_total"].isUInt64() || rr["max_tool_calls_total"].isInt() || rr["max_tool_calls_total"].isUInt())) {
-          req_limit = std::max<int64_t>(0, rr["max_tool_calls_total"].asInt64());
-        }
-        const int64_t eff = (req_limit > 0) ? std::min<int64_t>(req_limit, wf_tool_calls_remaining) : wf_tool_calls_remaining;
-        rr["max_tool_calls_total"] = (Json::Int64)std::max<int64_t>(0, eff);
-        request_body = json_stringify_compact(rr);
-      }
+    WorkflowRunBudgetClampInput run_clamp;
+    run_clamp.limits = wf_limits;
+    run_clamp.tool_calls_remaining = wf_tool_calls_remaining;
+    run_clamp.steps_remaining = wf_steps_remaining;
+    run_clamp.elapsed_ms_remaining = wf_elapsed_ms_remaining;
+    run_clamp.total_tokens_remaining = wf_total_tokens_remaining;
+    std::string exceeded;
+    if (!workflow_apply_run_budget_clamps(&rr, run_clamp, &exceeded)) {
+      workflow_budget_exceeded_cancel(exceeded.c_str());
+      return;
     }
-    if (wf_limits.max_steps_total > 0) {
-      if (wf_steps_remaining <= 0) {
-        workflow_budget_exceeded_cancel("max_steps_total");
-        return;
-      }
-      if (rr.isObject()) {
-        int64_t req_limit = 0;
-        if (rr.isMember("max_steps") && (rr["max_steps"].isInt64() || rr["max_steps"].isUInt64() || rr["max_steps"].isInt() || rr["max_steps"].isUInt())) {
-          req_limit = std::max<int64_t>(0, rr["max_steps"].asInt64());
-        }
-        const int64_t eff = (req_limit > 0) ? std::min<int64_t>(req_limit, wf_steps_remaining) : wf_steps_remaining;
-        rr["max_steps"] = (Json::Int64)std::max<int64_t>(0, eff);
-        request_body = json_stringify_compact(rr);
-      }
-    }
-    if (wf_limits.max_elapsed_ms_total > 0) {
-      if (wf_elapsed_ms_remaining <= 0) {
-        workflow_budget_exceeded_cancel("max_elapsed_ms_total");
-        return;
-      }
-      if (rr.isObject()) {
-        int64_t req_limit = 0;
-        if (rr.isMember("timeout_ms") && (rr["timeout_ms"].isInt64() || rr["timeout_ms"].isUInt64() || rr["timeout_ms"].isInt() || rr["timeout_ms"].isUInt())) {
-          req_limit = std::max<int64_t>(0, rr["timeout_ms"].asInt64());
-        }
-        const int64_t eff = (req_limit > 0) ? std::min<int64_t>(req_limit, wf_elapsed_ms_remaining) : wf_elapsed_ms_remaining;
-        rr["timeout_ms"] = (Json::Int64)std::max<int64_t>(0, eff);
-        request_body = json_stringify_compact(rr);
-      }
-    }
-    if (wf_limits.max_total_tokens > 0) {
-      if (wf_total_tokens_remaining <= 0) {
-        workflow_budget_exceeded_cancel("max_total_tokens");
-        return;
-      }
-    }
+    if (rr.isObject()) request_body = json_stringify_compact(rr);
     out = run_request_to_json_internal_cancellable(
       cfg,
       ocfg,
