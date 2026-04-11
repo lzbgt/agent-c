@@ -22,6 +22,9 @@ def load_json(path):
 
 
 def response_json(args):
+    body_path = getattr(args, "body_path", None)
+    if body_path is not None:
+        return load_json(body_path)
     raw = args.response_json if args.response_json is not None else sys.stdin.read()
     return json.loads(raw)
 
@@ -30,6 +33,216 @@ def bool_arg(value):
     if value is None:
         return None
     return value == "true"
+
+
+def value_at_path(obj, path):
+    current = obj
+    for key in path.split("."):
+        if not isinstance(current, dict) or key not in current:
+            return None
+        current = current[key]
+    return current
+
+
+def print_field(args):
+    obj = response_json(args)
+    value = value_at_path(obj, args.path)
+    if args.require_ok:
+        expect(obj.get("ok") is True, f"expected {args.label} ok=true", obj)
+    if args.nonempty:
+        expect(isinstance(value, str) and value.strip(), f"missing {args.label} {args.path}", obj)
+        print(value.strip())
+        return
+    if args.positive_int:
+        expect(isinstance(value, int) and value > 0, f"missing positive {args.label} {args.path}", obj)
+        print(value)
+        return
+    expect(value is not None, f"missing {args.label} {args.path}", obj)
+    if isinstance(value, (dict, list)):
+        print(json.dumps(value))
+    else:
+        print(value)
+
+
+def split_path_value(value):
+    if "=" not in value:
+        raise SystemExit(f"expected PATH=VALUE argument, got {value!r}")
+    path, expected = value.split("=", 1)
+    if not path:
+        raise SystemExit(f"expected non-empty PATH in {value!r}")
+    return path, expected
+
+
+def parse_expected(value):
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    if value == "null":
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return value
+
+
+def assert_fields(args):
+    obj = response_json(args)
+    if args.require_ok:
+        expect(obj.get("ok") is True, f"expected {args.label} ok=true", obj)
+    for path in args.true:
+        expect(value_at_path(obj, path) is True, f"expected {args.label} {path}=true", obj)
+    for path in args.false:
+        expect(value_at_path(obj, path) is False, f"expected {args.label} {path}=false", obj)
+    for path in args.none:
+        expect(value_at_path(obj, path) is None, f"expected {args.label} {path}=null", obj)
+    for path in args.nonempty:
+        value = value_at_path(obj, path)
+        expect(isinstance(value, str) and value.strip(), f"expected {args.label} {path} to be non-empty", obj)
+    for item in args.equals:
+        path, expected = split_path_value(item)
+        parsed = parse_expected(expected)
+        expect(value_at_path(obj, path) == parsed, f"expected {args.label} {path}={parsed!r}", obj)
+    for item in args.equals_string:
+        path, expected = split_path_value(item)
+        expect(value_at_path(obj, path) == expected, f"expected {args.label} {path}={expected!r}", obj)
+    for item in args.minimum:
+        path, expected = split_path_value(item)
+        value = value_at_path(obj, path)
+        expect(
+            isinstance(value, (int, float)) and value >= float(expected),
+            f"expected {args.label} {path}>={expected}",
+            obj,
+        )
+    for item in args.contains:
+        path, expected = split_path_value(item)
+        expect(
+            expected in str(value_at_path(obj, path) or ""),
+            f"expected {args.label} {path} to contain {expected!r}",
+            obj,
+        )
+
+
+def assert_started(args):
+    obj = response_json(args)
+    peer = obj.get("peer") or {}
+    expect(obj.get("ok") is True and obj.get("started") is True, f"{args.label} start failed", obj)
+    if args.runtime_kind is not None:
+        expect(peer.get("runtime_kind") == args.runtime_kind, f"expected {args.label} runtime_kind={args.runtime_kind}", obj)
+    expected_managed = bool_arg(args.managed)
+    if expected_managed is not None:
+        expect(
+            peer.get("managed_broker_session") is expected_managed,
+            f"expected {args.label} managed_broker_session={expected_managed}",
+            obj,
+        )
+    if args.broker_agent_id is not None:
+        expect(
+            peer.get("broker_agent_id") == args.broker_agent_id,
+            f"expected {args.label} broker_agent_id={args.broker_agent_id}",
+            obj,
+        )
+    if args.broker_deployment_id is not None:
+        expect(
+            peer.get("broker_deployment_id") == args.broker_deployment_id,
+            f"expected {args.label} broker_deployment_id={args.broker_deployment_id}",
+            obj,
+        )
+    expected_running = bool_arg(args.peer_running)
+    if expected_running is not None:
+        expect(peer.get("running") is expected_running, f"expected {args.label} peer running={expected_running}", obj)
+    expected_broker_defaults = bool_arg(args.broker_defaults)
+    if expected_broker_defaults is not None:
+        expect(
+            obj.get("broker_url_default_configured") is expected_broker_defaults
+            and obj.get("broker_token_default_configured") is expected_broker_defaults,
+            f"expected {args.label} broker defaults={expected_broker_defaults}",
+            obj,
+        )
+    expected_builtin_available = bool_arg(args.builtin_available)
+    if expected_builtin_available is not None:
+        expect(
+            obj.get("builtin_available") is expected_builtin_available,
+            f"expected {args.label} builtin_available={expected_builtin_available}",
+            obj,
+        )
+    expected_bundled_available = bool_arg(args.bundled_available)
+    if expected_bundled_available is not None:
+        expect(
+            obj.get("bundled_available") is expected_bundled_available,
+            f"expected {args.label} bundled_available={expected_bundled_available}",
+            obj,
+        )
+    expected_external_available = bool_arg(args.external_available)
+    if expected_external_available is not None:
+        expect(
+            obj.get("external_available") is expected_external_available,
+            f"expected {args.label} external_available={expected_external_available}",
+            obj,
+        )
+    if args.default_runtime_kind is not None:
+        expect(
+            obj.get("default_runtime_kind") == args.default_runtime_kind,
+            f"expected {args.label} default_runtime_kind={args.default_runtime_kind}",
+            obj,
+        )
+    if args.default_runtime_kind_source is not None:
+        expect(
+            obj.get("default_runtime_kind_source") == args.default_runtime_kind_source,
+            f"expected {args.label} default_runtime_kind_source={args.default_runtime_kind_source}",
+            obj,
+        )
+    expected_default_available = bool_arg(args.default_runtime_kind_available)
+    if expected_default_available is not None:
+        expect(
+            obj.get("default_runtime_kind_available") is expected_default_available,
+            f"expected {args.label} default_runtime_kind_available={expected_default_available}",
+            obj,
+        )
+
+
+def assert_stopped(args):
+    obj = response_json(args)
+    peer = obj.get("peer") or {}
+    expect(obj.get("ok") is True, f"{args.label} stop failed", obj)
+    if args.peer_absent:
+        expect(obj.get("peer") is None, f"expected {args.label} peer=null", obj)
+    expected_stopped = bool_arg(args.stopped)
+    if expected_stopped is not None:
+        expect(obj.get("stopped") is expected_stopped, f"expected {args.label} stopped={expected_stopped}", obj)
+    if args.reason is not None:
+        expect(obj.get("reason") == args.reason, f"expected {args.label} reason={args.reason}", obj)
+    expected_deleted = bool_arg(args.broker_session_deleted)
+    if expected_deleted is not None:
+        expect(
+            obj.get("broker_session_deleted") is expected_deleted,
+            f"expected {args.label} broker_session_deleted={expected_deleted}",
+            obj,
+        )
+    if args.broker_session_deleted_absent:
+        expect("broker_session_deleted" not in obj, f"expected {args.label} to omit broker_session_deleted", obj)
+    for needle in args.broker_session_delete_error_contains:
+        expect(
+            needle in str(obj.get("broker_session_delete_error", "")),
+            f"expected {args.label} broker_session_delete_error to contain {needle!r}",
+            obj,
+        )
+    if args.runtime_kind is not None:
+        expect(peer.get("runtime_kind") == args.runtime_kind, f"expected {args.label} runtime_kind={args.runtime_kind}", obj)
+    expected_managed = bool_arg(args.managed)
+    if expected_managed is not None:
+        expect(
+            peer.get("managed_broker_session") is expected_managed,
+            f"expected {args.label} managed_broker_session={expected_managed}",
+            obj,
+        )
+    expected_running = bool_arg(args.peer_running)
+    if expected_running is not None:
+        expect(peer.get("running") is expected_running, f"expected {args.label} peer running={expected_running}", obj)
+    if args.status_source is not None:
+        expect(peer.get("status_source") == args.status_source, f"expected {args.label} status_source={args.status_source}", obj)
+    if args.exit_signal is not None:
+        expect(peer.get("exit_signal") == args.exit_signal, f"expected {args.label} exit_signal={args.exit_signal}", obj)
 
 
 def expect_builtin_runtime_preview(obj, planned_runtime):
@@ -347,6 +560,66 @@ def main():
     no_runtime.add_argument("--response-json")
     no_runtime.add_argument("--expect-session-exists", choices=("true", "false"))
     no_runtime.set_defaults(func=assert_no_runtime)
+
+    field = sub.add_parser("print-field")
+    field.add_argument("--path", required=True)
+    field.add_argument("--label", required=True)
+    field.add_argument("--body-path")
+    field.add_argument("--response-json")
+    field.add_argument("--require-ok", action="store_true")
+    field.add_argument("--nonempty", action="store_true")
+    field.add_argument("--positive-int", action="store_true")
+    field.set_defaults(func=print_field)
+
+    fields = sub.add_parser("assert-fields")
+    fields.add_argument("--label", required=True)
+    fields.add_argument("--body-path")
+    fields.add_argument("--response-json")
+    fields.add_argument("--require-ok", action="store_true")
+    fields.add_argument("--true", action="append", default=[])
+    fields.add_argument("--false", action="append", default=[])
+    fields.add_argument("--none", action="append", default=[])
+    fields.add_argument("--nonempty", action="append", default=[])
+    fields.add_argument("--equals", action="append", default=[])
+    fields.add_argument("--equals-string", action="append", default=[])
+    fields.add_argument("--min", dest="minimum", action="append", default=[])
+    fields.add_argument("--contains", action="append", default=[])
+    fields.set_defaults(func=assert_fields)
+
+    started = sub.add_parser("assert-started")
+    started.add_argument("--label", required=True)
+    started.add_argument("--body-path")
+    started.add_argument("--response-json")
+    started.add_argument("--runtime-kind")
+    started.add_argument("--managed", choices=("true", "false"))
+    started.add_argument("--broker-agent-id")
+    started.add_argument("--broker-deployment-id")
+    started.add_argument("--peer-running", choices=("true", "false"))
+    started.add_argument("--broker-defaults", choices=("true", "false"))
+    started.add_argument("--builtin-available", choices=("true", "false"))
+    started.add_argument("--bundled-available", choices=("true", "false"))
+    started.add_argument("--external-available", choices=("true", "false"))
+    started.add_argument("--default-runtime-kind")
+    started.add_argument("--default-runtime-kind-source")
+    started.add_argument("--default-runtime-kind-available", choices=("true", "false"))
+    started.set_defaults(func=assert_started)
+
+    stopped = sub.add_parser("assert-stopped")
+    stopped.add_argument("--label", required=True)
+    stopped.add_argument("--body-path")
+    stopped.add_argument("--response-json")
+    stopped.add_argument("--stopped", choices=("true", "false"))
+    stopped.add_argument("--reason")
+    stopped.add_argument("--broker-session-deleted", choices=("true", "false"))
+    stopped.add_argument("--broker-session-deleted-absent", action="store_true")
+    stopped.add_argument("--broker-session-delete-error-contains", action="append", default=[])
+    stopped.add_argument("--runtime-kind")
+    stopped.add_argument("--managed", choices=("true", "false"))
+    stopped.add_argument("--peer-running", choices=("true", "false"))
+    stopped.add_argument("--peer-absent", action="store_true")
+    stopped.add_argument("--status-source")
+    stopped.add_argument("--exit-signal", type=int)
+    stopped.set_defaults(func=assert_stopped)
 
     args = parser.parse_args()
     args.func(args)

@@ -90,3 +90,79 @@ run_receiver_peer() {
     "audio-webui-token" \
     "webui_playwright_peer" >>"${LOG_FILE}" 2>&1
 }
+
+voice_webrtc_json_field() {
+  local response_json="$1"
+  local path="$2"
+  local label="$3"
+  shift 3
+  python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_assertions.py" print-field \
+    --response-json "${response_json}" \
+    --path "${path}" \
+    --label "${label}" \
+    "$@"
+}
+
+voice_webrtc_peer_field() {
+  local response_json="$1"
+  local field="$2"
+  local label="$3"
+  shift 3
+  voice_webrtc_json_field "${response_json}" "peer.${field}" "${label}" "$@"
+}
+
+voice_webrtc_assert_fields() {
+  local response_json="$1"
+  local label="$2"
+  shift 2
+  python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_assertions.py" assert-fields \
+    --response-json "${response_json}" \
+    --label "${label}" \
+    "$@"
+}
+
+voice_webrtc_assert_body_fields() {
+  local body_path="$1"
+  local label="$2"
+  shift 2
+  python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_assertions.py" assert-fields \
+    --body-path "${body_path}" \
+    --label "${label}" \
+    "$@"
+}
+
+voice_webrtc_assert_started() {
+  local response_json="$1"
+  local label="$2"
+  shift 2
+  python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_assertions.py" assert-started \
+    --response-json "${response_json}" \
+    --label "${label}" \
+    "$@"
+}
+
+voice_webrtc_assert_stopped() {
+  local response_json="$1"
+  local label="$2"
+  shift 2
+  python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_assertions.py" assert-stopped \
+    --response-json "${response_json}" \
+    --label "${label}" \
+    "$@"
+}
+
+voice_webrtc_assert_runtime_cleared() {
+  local response_json="$1"
+  local session_id="$2"
+  local runtime_dir="$3"
+  local cleanup_key="$4"
+  local label="$5"
+  shift 5
+  printf '%s' "${response_json}" | python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_record.py" assert-cleared \
+    --db-path "${SESSION_DB_PATH}" \
+    --session-id "${session_id}" \
+    --runtime-dir "${runtime_dir}" \
+    --cleanup-key "${cleanup_key}" \
+    --label "${label}" \
+    "$@"
+}

@@ -75,47 +75,24 @@ wait_daemon_ready
 
 config_env_defaults="$(config_get)"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${config_env_defaults}''')
-daemon = obj.get("daemon") or {}
-audio = daemon.get("audio_webrtc") or {}
-if audio.get("broker_url_default_configured") is not True:
-  print("expected broker_url_default_configured from daemon env", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("broker_token_default_configured") is not True:
-  print("expected broker_token_default_configured from daemon env", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("default_runtime_kind") != "bundled" or audio.get("default_runtime_kind_source") != "env":
-  print("expected env default_runtime_kind before runtime config override", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${config_env_defaults}" "env defaults config" \
+  --true daemon.audio_webrtc.broker_url_default_configured \
+  --true daemon.audio_webrtc.broker_token_default_configured \
+  --equals daemon.audio_webrtc.default_runtime_kind=bundled \
+  --equals daemon.audio_webrtc.default_runtime_kind_source=env
 
 restart_agentd_with_builtin_voice_default
 
 config_env_builtin_default="$(config_get)"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${config_env_builtin_default}''')
-daemon = obj.get("daemon") or {}
-audio = daemon.get("audio_webrtc") or {}
-if audio.get("default_runtime_kind") != "builtin" or audio.get("default_runtime_kind_source") != "env":
-  print("expected env builtin default_runtime_kind", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("default_runtime_kind_available") is not False:
-  print("expected builtin env default to be unavailable", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("builtin_available") is not False or audio.get("bundled_available") is not True:
-  print("unexpected builtin/bundled availability for env builtin default", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "disabled" not in str(audio.get("builtin_unavailable_reason") or ""):
-  print("expected builtin disabled unavailable reason for env builtin default", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "disabled" not in str(audio.get("default_runtime_kind_unavailable_reason") or ""):
-  print("expected builtin disabled default unavailable reason for env builtin default", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${config_env_builtin_default}" "env builtin default config" \
+  --equals daemon.audio_webrtc.default_runtime_kind=builtin \
+  --equals daemon.audio_webrtc.default_runtime_kind_source=env \
+  --false daemon.audio_webrtc.default_runtime_kind_available \
+  --false daemon.audio_webrtc.builtin_available \
+  --true daemon.audio_webrtc.bundled_available \
+  --contains daemon.audio_webrtc.builtin_unavailable_reason=disabled \
+  --contains daemon.audio_webrtc.default_runtime_kind_unavailable_reason=disabled
 
 ENV_BUILTIN_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_env_builtin_$(date +%s)_$RANDOM"
 create_session "${ENV_BUILTIN_SESSION_ID}"
@@ -138,22 +115,12 @@ if [[ "${env_builtin_start_code}" != "501" ]]; then
   exit 1
 fi
 
-python3 - <<PY
-import json, sys
-obj = json.load(open(r'''${env_builtin_start_body}''', 'r', encoding='utf-8'))
-if obj.get("ok") is not False:
-  print("expected env builtin default start to fail", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("default_runtime_kind") != "builtin" or obj.get("default_runtime_kind_source") != "env":
-  print("expected builtin env default on start failure", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("default_runtime_kind_available") is not False:
-  print("expected unavailable builtin env default on start failure", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "disabled" not in str(obj.get("error") or ""):
-  print("expected builtin disabled error for env default start", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_body_fields "${env_builtin_start_body}" "env builtin default start response" \
+  --false ok \
+  --equals default_runtime_kind=builtin \
+  --equals default_runtime_kind_source=env \
+  --false default_runtime_kind_available \
+  --contains error=disabled
 
 delete_session_quiet "${ENV_BUILTIN_SESSION_ID}"
 
@@ -177,50 +144,21 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${start_resp}''')
-if not obj.get("ok") or not obj.get("started"):
-  print("voice_webrtc_peer start failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("builtin_available") is not False or obj.get("bundled_available") is not True:
-  print("unexpected runtime defaults", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("external_available") is not False or obj.get("default_runtime_kind") != "bundled":
-  print("unexpected runtime defaults", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("default_runtime_kind_source") != "env" or obj.get("default_runtime_kind_available") is not True:
-  print("unexpected runtime defaults", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("broker_url_default_configured") is not True or obj.get("broker_token_default_configured") is not True:
-  print("expected daemon broker defaults", obj, file=sys.stderr)
-  raise SystemExit(1)
-peer = obj.get("peer") or {}
-if peer.get("runtime_kind") != "bundled":
-  print("unexpected peer runtime_kind", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("managed_broker_session") is not True:
-  print("expected managed broker session", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("broker_agent_id") != "a-1" or peer.get("broker_deployment_id") != "lab":
-  print("unexpected broker ownership fields", obj, file=sys.stderr)
-  raise SystemExit(1)
-if not peer.get("running"):
-  print("voice peer did not report running", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_started "${start_resp}" "initial bundled start response" \
+  --runtime-kind bundled \
+  --managed true \
+  --broker-agent-id a-1 \
+  --broker-deployment-id lab \
+  --peer-running true \
+  --broker-defaults true \
+  --builtin-available false \
+  --bundled-available true \
+  --external-available false \
+  --default-runtime-kind bundled \
+  --default-runtime-kind-source env \
+  --default-runtime-kind-available true
 
-BROKER_SESSION_ID="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${start_resp}''')
-peer = obj.get("peer") or {}
-sid = str(peer.get("broker_session_id") or "").strip()
-if not sid:
-  print("missing broker_session_id in start response", file=sys.stderr)
-  raise SystemExit(1)
-print(sid)
-PY
-)"
+BROKER_SESSION_ID="$(voice_webrtc_peer_field "${start_resp}" broker_session_id "start response" --require-ok --nonempty)"
 
 status_json=""
 wait_voice_peer_ready "${SESSION_DB_ID}" 1 status_json
@@ -228,40 +166,22 @@ wait_voice_peer_ready "${SESSION_DB_ID}" 1 status_json
 restart_agentd
 wait_voice_peer_ready "${SESSION_DB_ID}" 1 status_json
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${status_json}''')
-peer = obj.get("peer") or {}
-if peer.get("status_source") != "persisted":
-  print("expected persisted status source after restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-if not peer.get("stdout_log_path"):
-  print("expected stdout_log_path after restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("managed_broker_session") is not True:
-  print("expected managed_broker_session after restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("broker_agent_id") != "a-1" or peer.get("broker_deployment_id") != "lab":
-  print("unexpected persisted broker ownership fields", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("runtime_kind") != "bundled" or not peer.get("running") or not peer.get("ready"):
-  print("unexpected recovered runtime state after restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${status_json}" "recovered initial status" \
+  --equals peer.status_source=persisted \
+  --nonempty peer.stdout_log_path \
+  --true peer.managed_broker_session \
+  --equals peer.broker_agent_id=a-1 \
+  --equals peer.broker_deployment_id=lab \
+  --equals peer.runtime_kind=bundled \
+  --true peer.running \
+  --true peer.ready
 
 already_running_resp="$(voice_peer_request "{\"session_id\":\"${SESSION_DB_ID}\",\"action\":\"start\"}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${already_running_resp}''')
-peer = obj.get("peer") or {}
-if not obj.get("ok") or not obj.get("already_running"):
-  print("expected already_running response after restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("status_source") != "persisted":
-  print("expected persisted peer on duplicate start after restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${already_running_resp}" "already-running response after restart" \
+  --require-ok \
+  --true already_running \
+  --equals peer.status_source=persisted
 
 persisted_conflict_body="${RUN_LOG_DIR}/voice_webrtc_peer_persisted_conflict_body.json"
 persisted_conflict_status="$(voice_peer_request_status "${persisted_conflict_body}" "{\"session_id\":\"${SESSION_DB_ID}\",\"action\":\"start\",\"runtime_kind\":\"builtin\"}")"
@@ -270,33 +190,18 @@ if [[ "${persisted_conflict_status}" != "409" ]]; then
   cat "${persisted_conflict_body}" >&2
   exit 1
 fi
-python3 - <<PY
-import json, sys
-obj = json.load(open(r'''${persisted_conflict_body}''', 'r', encoding='utf-8'))
-peer = obj.get("peer") or {}
-if obj.get("error") != "voice peer already running with different config":
-  print("unexpected persisted running conflict response", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("status_source") != "persisted" or peer.get("runtime_kind") != "bundled":
-  print("unexpected persisted conflict peer snapshot", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_body_fields "${persisted_conflict_body}" "persisted running conflict response" \
+  --equals error="voice peer already running with different config" \
+  --equals peer.status_source=persisted \
+  --equals peer.runtime_kind=bundled
 
 run_receiver_peer "${BROKER_SESSION_ID}"
 
 SESSION_JSON="$(broker_session_get "${BROKER_SESSION_ID}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${SESSION_JSON}''')
-if not obj.get("ok"):
-  print("session get failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-sess = obj.get("session") or {}
-if (sess.get("signal_count") or 0) < 4:
-  print("signal_count too small", sess, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${SESSION_JSON}" "broker session after receiver" \
+  --require-ok \
+  --min session.signal_count=4
 
 broker_session_signal "${BROKER_SESSION_ID}" '{"type":"bye","payload":{"reason":"webui_done","sender_tag":"webui_playwright_peer"}}'
 
@@ -338,16 +243,7 @@ create_session "${BUILTIN_BORROWED_SESSION_ID}"
 
 builtin_borrowed_broker_create_resp="$(broker_session_create '{"agent_id":"a-1","mode":"webrtc"}')"
 
-BUILTIN_BORROWED_BROKER_SESSION_ID="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${builtin_borrowed_broker_create_resp}''')
-sid = str(obj.get("session_id") or "").strip()
-if not obj.get("ok") or not sid:
-  print("failed to create builtin borrowed broker session", obj, file=sys.stderr)
-  raise SystemExit(1)
-print(sid)
-PY
-)"
+BUILTIN_BORROWED_BROKER_SESSION_ID="$(voice_webrtc_json_field "${builtin_borrowed_broker_create_resp}" session_id "builtin borrowed broker create response" --require-ok --nonempty)"
 
 builtin_borrowed_resp_body="${RUN_LOG_DIR}/voice_webrtc_peer_builtin_borrowed_body.json"
 builtin_borrowed_status="$(voice_peer_request_status "${builtin_borrowed_resp_body}" "$(python3 - <<PY
@@ -452,28 +348,17 @@ if [[ "${external_status}" != "500" ]]; then
   cat "${external_resp_body}" >&2
   exit 1
 fi
-python3 - <<PY
-import json, sys
-obj = json.load(open(r'''${external_resp_body}''', 'r', encoding='utf-8'))
-if obj.get("builtin_available") is not False or obj.get("bundled_available") is not True:
-  print("unexpected external contract response", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("external_available") is not False or obj.get("default_runtime_kind") != "bundled":
-  print("unexpected external contract response", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("default_runtime_kind_source") != "env" or obj.get("default_runtime_kind_available") is not True:
-  print("unexpected external contract response", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("broker_url_default_configured") is not True or obj.get("broker_token_default_configured") is not True:
-  print("expected broker defaults in external contract response", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "not configured" not in str(obj.get("external_unavailable_reason", "")):
-  print("expected external unavailable reason", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "not configured" not in str(obj.get("error", "")):
-  print("expected external not configured error", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_body_fields "${external_resp_body}" "external unavailable contract response" \
+  --false builtin_available \
+  --true bundled_available \
+  --false external_available \
+  --equals default_runtime_kind=bundled \
+  --equals default_runtime_kind_source=env \
+  --true default_runtime_kind_available \
+  --true broker_url_default_configured \
+  --true broker_token_default_configured \
+  --contains external_unavailable_reason="not configured" \
+  --contains error="not configured"
 
 missing_broker_session_resp_body="${RUN_LOG_DIR}/voice_webrtc_peer_missing_broker_session_body.json"
 MISSING_BROKER_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_missing_broker_$(date +%s)_$RANDOM"
@@ -562,44 +447,14 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${start_resp2}''')
-if not obj.get("ok") or not obj.get("started"):
-  print("voice_webrtc_peer second start failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-peer = obj.get("peer") or {}
-if peer.get("runtime_kind") != "bundled":
-  print("unexpected second peer runtime_kind", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("managed_broker_session") is not True or peer.get("broker_deployment_id") != "lab-stop":
-  print("unexpected second managed broker session fields", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_started "${start_resp2}" "second start response" \
+  --runtime-kind bundled \
+  --managed true \
+  --broker-deployment-id lab-stop
 
-BROKER_SESSION_ID2="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${start_resp2}''')
-peer = obj.get("peer") or {}
-sid = str(peer.get("broker_session_id") or "").strip()
-if not sid:
-  print("missing second broker_session_id in start response", file=sys.stderr)
-  raise SystemExit(1)
-print(sid)
-PY
-)"
+BROKER_SESSION_ID2="$(voice_webrtc_peer_field "${start_resp2}" broker_session_id "second start response" --require-ok --nonempty)"
 
-VOICE_PEER_PID2="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${start_resp2}''')
-peer = obj.get("peer") or {}
-pid = peer.get("pid")
-if not isinstance(pid, int) or pid <= 0:
-  print("missing second pid in start response", file=sys.stderr)
-  raise SystemExit(1)
-print(pid)
-PY
-)"
+VOICE_PEER_PID2="$(voice_webrtc_peer_field "${start_resp2}" pid "second start response" --require-ok --positive-int)"
 
 wait_voice_peer_ready "${SESSION_DB_ID}" 1 status_json
 
@@ -614,57 +469,25 @@ fi
 restart_agentd
 wait_voice_peer_ready "${SESSION_DB_ID}" 0 stopped_json
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${stopped_json}''')
-peer = obj.get("peer") or {}
-if peer.get("status_source") != "persisted":
-  print("expected persisted stopped peer after forced-exit restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("running"):
-  print("peer unexpectedly running after forced-exit restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("exit_signal") != 9:
-  print("expected exit_signal 9 after SIGKILL", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${stopped_json}" "forced-exit restart status" \
+  --equals peer.status_source=persisted \
+  --false peer.running \
+  --equals peer.exit_signal=9
 
 stop_resp="$(voice_peer_request "{\"session_id\":\"${SESSION_DB_ID}\",\"action\":\"stop\"}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${stop_resp}''')
-if not obj.get("ok"):
-  print("voice_webrtc_peer stop failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-peer = obj.get("peer") or {}
-if peer.get("runtime_kind") != "bundled":
-  print("unexpected stopped peer runtime_kind", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("stopped") is not False or obj.get("reason") != "not_running":
-  print("expected stop to report not_running for already-exited peer", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("broker_session_deleted") is not True:
-  print("expected broker_session_deleted cleanup result", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_stopped "${stop_resp}" "forced-exit stop response" \
+  --runtime-kind bundled \
+  --stopped false \
+  --reason not_running \
+  --broker-session-deleted true
 
 wait_voice_peer_ready "${SESSION_DB_ID}" 0 stopped_json
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${stopped_json}''')
-peer = obj.get("peer") or {}
-if peer.get("running"):
-  print("peer still running after stop", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("status_source") != "persisted":
-  print("expected persisted stopped peer after cleanup", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("exit_signal") != 9:
-  print("expected exit_signal 9 to persist after cleanup", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${stopped_json}" "forced-exit cleanup status" \
+  --false peer.running \
+  --equals peer.status_source=persisted \
+  --equals peer.exit_signal=9
 
 wait_broker_session_deleted "${BROKER_SESSION_ID2}"
 
@@ -686,83 +509,39 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${recovered_stop_start_resp}''')
-if not obj.get("ok") or not obj.get("started"):
-  print("recovered-stop voice start failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-peer = obj.get("peer") or {}
-if peer.get("runtime_kind") != "bundled" or peer.get("managed_broker_session") is not True:
-  print("recovered-stop voice start missing bundled managed runtime", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_started "${recovered_stop_start_resp}" "recovered-stop start response" \
+  --runtime-kind bundled \
+  --managed true
 
-RECOVERED_STOP_BROKER_SESSION_ID="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${recovered_stop_start_resp}''')
-peer = obj.get("peer") or {}
-sid = str(peer.get("broker_session_id") or "").strip()
-if not sid:
-  print("missing recovered-stop broker_session_id in start response", file=sys.stderr)
-  raise SystemExit(1)
-print(sid)
-PY
-)"
+RECOVERED_STOP_BROKER_SESSION_ID="$(voice_webrtc_peer_field "${recovered_stop_start_resp}" broker_session_id "recovered-stop start response" --require-ok --nonempty)"
 
 wait_voice_peer_ready "${RECOVERED_STOP_SESSION_ID}" 1 status_json
 
 restart_agentd
 wait_voice_peer_ready "${RECOVERED_STOP_SESSION_ID}" 1 status_json
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${status_json}''')
-peer = obj.get("peer") or {}
-if peer.get("status_source") != "persisted" or peer.get("runtime_kind") != "bundled":
-  print("expected persisted bundled peer after recovered-stop restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-if not peer.get("running") or not peer.get("ready"):
-  print("expected recovered-stop peer to stay running after restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${status_json}" "recovered-stop restart status" \
+  --equals peer.status_source=persisted \
+  --equals peer.runtime_kind=bundled \
+  --true peer.running \
+  --true peer.ready
 
 recovered_stop_resp="$(voice_peer_request "{\"session_id\":\"${RECOVERED_STOP_SESSION_ID}\",\"action\":\"stop\"}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${recovered_stop_resp}''')
-if not obj.get("ok") or obj.get("stopped") is not True:
-  print("recovered-stop voice stop failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("broker_session_deleted") is not True:
-  print("expected broker_session_deleted after recovered-stop voice stop", obj, file=sys.stderr)
-  raise SystemExit(1)
-peer = obj.get("peer") or {}
-if peer.get("status_source") != "persisted" or peer.get("runtime_kind") != "bundled":
-  print("recovered-stop voice stop lost persisted bundled snapshot", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("running"):
-  print("recovered-stop voice stop still reported running peer", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("exit_signal") != 15:
-  print("recovered-stop voice stop missing synthesized SIGTERM result", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_stopped "${recovered_stop_resp}" "recovered-stop response" \
+  --runtime-kind bundled \
+  --stopped true \
+  --broker-session-deleted true \
+  --peer-running false \
+  --status-source persisted \
+  --exit-signal 15
 
 wait_voice_peer_ready "${RECOVERED_STOP_SESSION_ID}" 0 stopped_json
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${stopped_json}''')
-peer = obj.get("peer") or {}
-if peer.get("status_source") != "persisted" or peer.get("running"):
-  print("recovered-stop final status wrong", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("exit_signal") != 15:
-  print("recovered-stop final status did not persist SIGTERM result", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${stopped_json}" "recovered-stop final status" \
+  --equals peer.status_source=persisted \
+  --false peer.running \
+  --equals peer.exit_signal=15
 
 wait_broker_session_deleted "${RECOVERED_STOP_BROKER_SESSION_ID}"
 
@@ -784,91 +563,41 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${recovered_delete_start_resp}''')
-if not obj.get("ok") or not obj.get("started"):
-  print("recovered-delete voice start failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-peer = obj.get("peer") or {}
-if peer.get("runtime_kind") != "bundled" or peer.get("managed_broker_session") is not True:
-  print("recovered-delete voice start missing bundled managed runtime", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_started "${recovered_delete_start_resp}" "recovered-delete start response" \
+  --runtime-kind bundled \
+  --managed true
 
-RECOVERED_DELETE_BROKER_SESSION_ID="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${recovered_delete_start_resp}''')
-peer = obj.get("peer") or {}
-sid = str(peer.get("broker_session_id") or "").strip()
-if not sid:
-  print("missing recovered-delete broker_session_id in start response", file=sys.stderr)
-  raise SystemExit(1)
-print(sid)
-PY
-)"
+RECOVERED_DELETE_BROKER_SESSION_ID="$(voice_webrtc_peer_field "${recovered_delete_start_resp}" broker_session_id "recovered-delete start response" --require-ok --nonempty)"
 
-RECOVERED_DELETE_STDOUT_LOG="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${recovered_delete_start_resp}''')
-peer = obj.get("peer") or {}
-path = str(peer.get("stdout_log_path") or "").strip()
-if not path:
-  print("missing recovered-delete stdout_log_path in start response", file=sys.stderr)
-  raise SystemExit(1)
-print(path)
-PY
-)"
+RECOVERED_DELETE_STDOUT_LOG="$(voice_webrtc_peer_field "${recovered_delete_start_resp}" stdout_log_path "recovered-delete start response" --require-ok --nonempty)"
 
 wait_voice_peer_ready "${RECOVERED_DELETE_SESSION_ID}" 1 status_json
 
 restart_agentd
 wait_voice_peer_ready "${RECOVERED_DELETE_SESSION_ID}" 1 status_json
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${status_json}''')
-peer = obj.get("peer") or {}
-if peer.get("status_source") != "persisted" or peer.get("runtime_kind") != "bundled":
-  print("expected persisted bundled peer before recovered-delete session erase", obj, file=sys.stderr)
-  raise SystemExit(1)
-if not peer.get("running") or not peer.get("ready"):
-  print("expected recovered-delete peer to stay running after restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${status_json}" "recovered-delete restart status" \
+  --equals peer.status_source=persisted \
+  --equals peer.runtime_kind=bundled \
+  --true peer.running \
+  --true peer.ready
 
 recovered_delete_resp="$(delete_session "${RECOVERED_DELETE_SESSION_ID}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${recovered_delete_resp}''')
-if not obj.get("ok") or obj.get("deleted_from_db") is not True:
-  print("recovered-delete session delete failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-cleanup = obj.get("voice_runtime_cleanup") or {}
-if cleanup.get("runtime_present") is not True or cleanup.get("runtime_was_running") is not True:
-  print("recovered-delete cleanup missing running runtime", obj, file=sys.stderr)
-  raise SystemExit(1)
-if cleanup.get("stopped") is not True:
-  print("recovered-delete cleanup should report stopped=true", obj, file=sys.stderr)
-  raise SystemExit(1)
-if cleanup.get("broker_session_delete_attempted") is not True or cleanup.get("broker_session_deleted") is not True:
-  print("recovered-delete cleanup missing broker session deletion", obj, file=sys.stderr)
-  raise SystemExit(1)
-if cleanup.get("persisted_record_cleared") is not True or cleanup.get("runtime_artifacts_deleted") is not True:
-  print("recovered-delete cleanup missing persisted/artifact cleanup", obj, file=sys.stderr)
-  raise SystemExit(1)
-peer = cleanup.get("peer") or {}
-if peer.get("status_source") != "persisted" or peer.get("runtime_kind") != "bundled":
-  print("recovered-delete cleanup lost persisted bundled peer snapshot", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("running"):
-  print("recovered-delete cleanup still reported running peer", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("exit_signal") != 15:
-  print("recovered-delete cleanup missing synthesized SIGTERM result", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${recovered_delete_resp}" "recovered-delete session delete cleanup" \
+  --require-ok \
+  --true deleted_from_db \
+  --true voice_runtime_cleanup.runtime_present \
+  --true voice_runtime_cleanup.runtime_was_running \
+  --true voice_runtime_cleanup.stopped \
+  --true voice_runtime_cleanup.broker_session_delete_attempted \
+  --true voice_runtime_cleanup.broker_session_deleted \
+  --true voice_runtime_cleanup.persisted_record_cleared \
+  --true voice_runtime_cleanup.runtime_artifacts_deleted \
+  --equals voice_runtime_cleanup.peer.status_source=persisted \
+  --equals voice_runtime_cleanup.peer.runtime_kind=bundled \
+  --false voice_runtime_cleanup.peer.running \
+  --equals voice_runtime_cleanup.peer.exit_signal=15
 
 recovered_delete_status="$(voice_peer_status "${RECOVERED_DELETE_SESSION_ID}")"
 
@@ -915,69 +644,27 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${start_resp3}''')
-if not obj.get("ok") or not obj.get("started"):
-  print("voice_webrtc_peer third start failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-peer = obj.get("peer") or {}
-if peer.get("runtime_kind") != "bundled" or peer.get("managed_broker_session") is not True:
-  print("unexpected third peer runtime state", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("broker_deployment_id") != "lab-delete":
-  print("unexpected third broker deployment", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_started "${start_resp3}" "third start response" \
+  --runtime-kind bundled \
+  --managed true \
+  --broker-deployment-id lab-delete
 
-BROKER_SESSION_ID3="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${start_resp3}''')
-peer = obj.get("peer") or {}
-sid = str(peer.get("broker_session_id") or "").strip()
-if not sid:
-  print("missing third broker_session_id in start response", file=sys.stderr)
-  raise SystemExit(1)
-print(sid)
-PY
-)"
+BROKER_SESSION_ID3="$(voice_webrtc_peer_field "${start_resp3}" broker_session_id "third start response" --require-ok --nonempty)"
 
-VOICE_STDOUT_LOG3="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${start_resp3}''')
-peer = obj.get("peer") or {}
-path = str(peer.get("stdout_log_path") or "").strip()
-if not path:
-  print("missing third stdout_log_path in start response", file=sys.stderr)
-  raise SystemExit(1)
-print(path)
-PY
-)"
+VOICE_STDOUT_LOG3="$(voice_webrtc_peer_field "${start_resp3}" stdout_log_path "third start response" --require-ok --nonempty)"
 
 wait_voice_peer_ready "${SESSION_DB_ID}" 1 status_json
 
 delete_resp="$(delete_session "${SESSION_DB_ID}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${delete_resp}''')
-if not obj.get("ok") or obj.get("deleted_from_db") is not True:
-  print("session delete with voice runtime cleanup failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-cleanup = obj.get("voice_runtime_cleanup") or {}
-if cleanup.get("runtime_present") is not True:
-  print("expected voice runtime cleanup to find runtime", obj, file=sys.stderr)
-  raise SystemExit(1)
-if cleanup.get("runtime_was_running") is not True:
-  print("expected running runtime before session delete", obj, file=sys.stderr)
-  raise SystemExit(1)
-if cleanup.get("broker_session_delete_attempted") is not True or cleanup.get("broker_session_deleted") is not True:
-  print("expected broker session deletion during session delete", obj, file=sys.stderr)
-  raise SystemExit(1)
-if cleanup.get("persisted_record_cleared") is not True:
-  print("expected persisted runtime cleanup during session delete", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${delete_resp}" "session delete runtime cleanup" \
+  --require-ok \
+  --true deleted_from_db \
+  --true voice_runtime_cleanup.runtime_present \
+  --true voice_runtime_cleanup.runtime_was_running \
+  --true voice_runtime_cleanup.broker_session_delete_attempted \
+  --true voice_runtime_cleanup.broker_session_deleted \
+  --true voice_runtime_cleanup.persisted_record_cleared
 
 session_after_delete_body="${RUN_LOG_DIR}/voice_runtime_session_after_delete.json"
 session_after_delete_status="$(session_status_code "${SESSION_DB_ID}" "${session_after_delete_body}")"
@@ -1041,41 +728,13 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${start_resp4}''')
-if not obj.get("ok") or not obj.get("started"):
-  print("voice_webrtc_peer fourth start failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-peer = obj.get("peer") or {}
-if peer.get("runtime_kind") != "bundled" or peer.get("managed_broker_session") is not True:
-  print("unexpected fourth peer runtime state", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_started "${start_resp4}" "fourth start response" \
+  --runtime-kind bundled \
+  --managed true
 
-BROKER_SESSION_ID4="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${start_resp4}''')
-peer = obj.get("peer") or {}
-sid = str(peer.get("broker_session_id") or "").strip()
-if not sid:
-  print("missing fourth broker_session_id in start response", file=sys.stderr)
-  raise SystemExit(1)
-print(sid)
-PY
-)"
+BROKER_SESSION_ID4="$(voice_webrtc_peer_field "${start_resp4}" broker_session_id "fourth start response" --require-ok --nonempty)"
 
-VOICE_STDOUT_LOG4="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${start_resp4}''')
-peer = obj.get("peer") or {}
-path = str(peer.get("stdout_log_path") or "").strip()
-if not path:
-  print("missing fourth stdout_log_path in start response", file=sys.stderr)
-  raise SystemExit(1)
-print(path)
-PY
-)"
+VOICE_STDOUT_LOG4="$(voice_webrtc_peer_field "${start_resp4}" stdout_log_path "fourth start response" --require-ok --nonempty)"
 
 wait_voice_peer_ready "${STALE_SESSION_ID}" 1 status_json
 
@@ -1125,55 +784,26 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${config_update_resp}''')
-audio = obj.get("audio_webrtc") or {}
-if not obj.get("ok"):
-  print("config update for audio_webrtc failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("broker_url_default_configured") is not True:
-  print("expected updated broker_url_default_configured", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("broker_token_default_configured") is not True:
-  print("expected updated broker_token_default_configured", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("peer_tool_path_configured") is not True:
-  print("expected updated peer_tool_path_configured", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("default_runtime_kind") != "external" or audio.get("default_runtime_kind_source") != "config":
-  print("expected updated default_runtime_kind=external", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("node_bin") != "node":
-  print("expected updated node_bin=node", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${config_update_resp}" "audio WebRTC config update" \
+  --require-ok \
+  --true audio_webrtc.broker_url_default_configured \
+  --true audio_webrtc.broker_token_default_configured \
+  --true audio_webrtc.peer_tool_path_configured \
+  --equals audio_webrtc.default_runtime_kind=external \
+  --equals audio_webrtc.default_runtime_kind_source=config \
+  --equals audio_webrtc.node_bin=node
 
 restart_agentd_without_voice_defaults
 
 config_persisted_defaults="$(config_get)"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${config_persisted_defaults}''')
-daemon = obj.get("daemon") or {}
-audio = daemon.get("audio_webrtc") or {}
-if audio.get("broker_url_default_configured") is not True:
-  print("expected persisted broker_url_default_configured after restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("broker_token_default_configured") is not True:
-  print("expected persisted broker_token_default_configured after restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("peer_tool_path_configured") is not True:
-  print("expected persisted peer_tool_path_configured after restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("default_runtime_kind") != "external" or audio.get("default_runtime_kind_source") != "config":
-  print("expected persisted default_runtime_kind=external after restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("node_bin") != "node":
-  print("expected persisted node_bin=node after restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${config_persisted_defaults}" "persisted audio WebRTC config" \
+  --true daemon.audio_webrtc.broker_url_default_configured \
+  --true daemon.audio_webrtc.broker_token_default_configured \
+  --true daemon.audio_webrtc.peer_tool_path_configured \
+  --equals daemon.audio_webrtc.default_runtime_kind=external \
+  --equals daemon.audio_webrtc.default_runtime_kind_source=config \
+  --equals daemon.audio_webrtc.node_bin=node
 
 CONFIG_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_cfg_$(date +%s)_$RANDOM"
 create_session "${CONFIG_SESSION_ID}"
@@ -1193,56 +823,25 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${config_start_resp}''')
-peer = obj.get("peer") or {}
-if not obj.get("ok") or not obj.get("started"):
-  print("voice_webrtc_peer config-backed start failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("broker_url_default_configured") is not True or obj.get("broker_token_default_configured") is not True:
-  print("expected config-backed broker defaults", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("external_available") is not True or obj.get("default_runtime_kind") != "external":
-  print("expected config-backed external default runtime", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("default_runtime_kind_source") != "config" or obj.get("default_runtime_kind_available") is not True:
-  print("expected config-backed default runtime metadata", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("runtime_kind") != "external":
-  print("expected config-backed start to resolve external runtime", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("managed_broker_session") is not True or peer.get("broker_deployment_id") != "lab-config":
-  print("unexpected config-backed managed broker session fields", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_started "${config_start_resp}" "config-backed start response" \
+  --runtime-kind external \
+  --managed true \
+  --broker-deployment-id lab-config \
+  --broker-defaults true \
+  --external-available true \
+  --default-runtime-kind external \
+  --default-runtime-kind-source config \
+  --default-runtime-kind-available true
 
-CONFIG_BROKER_SESSION_ID="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${config_start_resp}''')
-peer = obj.get("peer") or {}
-sid = str(peer.get("broker_session_id") or "").strip()
-if not sid:
-  print("missing config-backed broker_session_id", file=sys.stderr)
-  raise SystemExit(1)
-print(sid)
-PY
-)"
+CONFIG_BROKER_SESSION_ID="$(voice_webrtc_peer_field "${config_start_resp}" broker_session_id "config-backed start response" --require-ok --nonempty)"
 
 wait_voice_peer_ready "${CONFIG_SESSION_ID}" 1 status_json external external config 1
 
 config_stop_resp="$(voice_peer_request "{\"session_id\":\"${CONFIG_SESSION_ID}\",\"action\":\"stop\"}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${config_stop_resp}''')
-if not obj.get("ok") or not obj.get("stopped"):
-  print("voice_webrtc_peer config-backed stop failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("broker_session_deleted") is not True:
-  print("expected broker_session_deleted on config-backed stop", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_stopped "${config_stop_resp}" "config-backed stop response" \
+  --stopped true \
+  --broker-session-deleted true
 
 wait_broker_session_deleted "${CONFIG_BROKER_SESSION_ID}"
 
@@ -1267,32 +866,12 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${external_config_start_resp}''')
-peer = obj.get("peer") or {}
-if not obj.get("ok") or not obj.get("started"):
-  print("voice_webrtc_peer external config-backed start failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("runtime_kind") != "external":
-  print("expected external runtime_kind", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("managed_broker_session") is not True or peer.get("broker_deployment_id") != "lab-external-config":
-  print("unexpected external managed broker session fields", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_started "${external_config_start_resp}" "external config-backed start response" \
+  --runtime-kind external \
+  --managed true \
+  --broker-deployment-id lab-external-config
 
-EXTERNAL_BROKER_SESSION_ID="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${external_config_start_resp}''')
-peer = obj.get("peer") or {}
-sid = str(peer.get("broker_session_id") or "").strip()
-if not sid:
-  print("missing external broker_session_id", file=sys.stderr)
-  raise SystemExit(1)
-print(sid)
-PY
-)"
+EXTERNAL_BROKER_SESSION_ID="$(voice_webrtc_peer_field "${external_config_start_resp}" broker_session_id "external config-backed start response" --require-ok --nonempty)"
 
 wait_voice_peer_ready "${EXTERNAL_SESSION_ID}" 1 status_json external external config 1
 
@@ -1338,43 +917,22 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${external_default_conflict_update_resp}''')
-audio = obj.get("audio_webrtc") or {}
-if not obj.get("ok"):
-  print("failed to switch audio_webrtc default runtime_kind for conflict proof", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("default_runtime_kind") != "bundled" or audio.get("default_runtime_kind_source") != "config":
-  print("expected bundled config-backed default for running-conflict proof", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("bundled_available") is not True or audio.get("external_available") is not True:
-  print("expected both bundled and external available for running-conflict proof", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${external_default_conflict_update_resp}" "external default conflict config" \
+  --require-ok \
+  --equals audio_webrtc.default_runtime_kind=bundled \
+  --equals audio_webrtc.default_runtime_kind_source=config \
+  --true audio_webrtc.bundled_available \
+  --true audio_webrtc.external_available
 
 external_default_conflict_status_resp="$(voice_peer_status "${EXTERNAL_SESSION_ID}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${external_default_conflict_status_resp}''')
-peer = obj.get("peer") or {}
-drift = obj.get("backend_policy_drift") or {}
-fields = set(drift.get("changed_fields") or [])
-current = drift.get("current_effective_start") or {}
-if peer.get("runtime_kind") != "external" or obj.get("running") is not True:
-  print("expected running external peer while proving default-runtime drift", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "default_runtime_kind" not in fields:
-  print("expected default_runtime_kind drift on status", obj, file=sys.stderr)
-  raise SystemExit(1)
-if current.get("runtime_kind") != "bundled" or current.get("default_runtime_kind_source") != "config":
-  print("unexpected effective start policy for default-runtime drift", obj, file=sys.stderr)
-  raise SystemExit(1)
-if current.get("runtime_available") is not True:
-  print("expected bundled effective start policy to remain available", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${external_default_conflict_status_resp}" "external default drift status" \
+  --equals peer.runtime_kind=external \
+  --true running \
+  --contains backend_policy_drift.changed_fields=default_runtime_kind \
+  --equals backend_policy_drift.current_effective_start.runtime_kind=bundled \
+  --equals backend_policy_drift.current_effective_start.default_runtime_kind_source=config \
+  --true backend_policy_drift.current_effective_start.runtime_available
 
 external_default_conflict_body="${RUN_LOG_DIR}/voice_webrtc_peer_external_default_conflict_body.json"
 external_default_conflict_status="$(voice_peer_request_status "${external_default_conflict_body}" "{\"session_id\":\"${EXTERNAL_SESSION_ID}\",\"action\":\"start\"}")"
@@ -1383,26 +941,13 @@ if [[ "${external_default_conflict_status}" != "409" ]]; then
   cat "${external_default_conflict_body}" >&2
   exit 1
 fi
-python3 - <<PY
-import json, sys
-obj = json.load(open(r'''${external_default_conflict_body}''', 'r', encoding='utf-8'))
-peer = obj.get("peer") or {}
-drift = obj.get("backend_policy_drift") or {}
-fields = set(drift.get("changed_fields") or [])
-current = drift.get("current_effective_start") or {}
-if obj.get("error") != "voice peer already running with different config":
-  print("unexpected effective default-runtime conflict response", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("runtime_kind") != "external" or peer.get("tone_hz") != 901:
-  print("unexpected peer snapshot for effective default-runtime conflict", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "default_runtime_kind" not in fields:
-  print("expected default_runtime_kind drift on conflict response", obj, file=sys.stderr)
-  raise SystemExit(1)
-if current.get("runtime_kind") != "bundled" or current.get("default_runtime_kind_source") != "config":
-  print("unexpected conflict effective start policy for default-runtime drift", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_body_fields "${external_default_conflict_body}" "external default conflict response" \
+  --equals error="voice peer already running with different config" \
+  --equals peer.runtime_kind=external \
+  --equals peer.tone_hz=901 \
+  --contains backend_policy_drift.changed_fields=default_runtime_kind \
+  --equals backend_policy_drift.current_effective_start.runtime_kind=bundled \
+  --equals backend_policy_drift.current_effective_start.default_runtime_kind_source=config
 
 external_unavailable_conflict_update_resp="$(config_update "$(python3 - <<PY
 import json
@@ -1418,23 +963,13 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${external_unavailable_conflict_update_resp}''')
-audio = obj.get("audio_webrtc") or {}
-if not obj.get("ok"):
-  print("failed to clear audio_webrtc peer_tool_path for unavailable-conflict proof", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("peer_tool_path_configured") is not False:
-  print("expected cleared peer_tool_path_configured for unavailable-conflict proof", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("default_runtime_kind") != "external" or audio.get("default_runtime_kind_source") != "config":
-  print("expected external config-backed default for unavailable-conflict proof", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("external_available") is not False or audio.get("default_runtime_kind_available") is not False:
-  print("expected unavailable external backend for unavailable-conflict proof", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${external_unavailable_conflict_update_resp}" "external unavailable conflict config" \
+  --require-ok \
+  --false audio_webrtc.peer_tool_path_configured \
+  --equals audio_webrtc.default_runtime_kind=external \
+  --equals audio_webrtc.default_runtime_kind_source=config \
+  --false audio_webrtc.external_available \
+  --false audio_webrtc.default_runtime_kind_available
 
 external_unavailable_conflict_body="${RUN_LOG_DIR}/voice_webrtc_peer_external_unavailable_conflict_body.json"
 external_unavailable_conflict_status="$(voice_peer_request_status "${external_unavailable_conflict_body}" "{\"session_id\":\"${EXTERNAL_SESSION_ID}\",\"action\":\"start\"}")"
@@ -1443,29 +978,14 @@ if [[ "${external_unavailable_conflict_status}" != "409" ]]; then
   cat "${external_unavailable_conflict_body}" >&2
   exit 1
 fi
-python3 - <<PY
-import json, sys
-obj = json.load(open(r'''${external_unavailable_conflict_body}''', 'r', encoding='utf-8'))
-peer = obj.get("peer") or {}
-drift = obj.get("backend_policy_drift") or {}
-fields = set(drift.get("changed_fields") or [])
-current = drift.get("current_effective_start") or {}
-if obj.get("error") != "voice peer already running with different config":
-  print("unexpected unavailable-backend running conflict response", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("runtime_kind") != "external" or peer.get("tool_path") != r'''${PEER_TOOL}''':
-  print("unexpected peer snapshot for unavailable-backend running conflict", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "peer_tool_path" not in fields:
-  print("expected peer_tool_path drift on unavailable external conflict", obj, file=sys.stderr)
-  raise SystemExit(1)
-if current.get("runtime_kind") != "external" or current.get("runtime_available") is not False:
-  print("unexpected effective start policy for unavailable external conflict", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "not configured" not in str(current.get("runtime_unavailable_reason") or ""):
-  print("expected missing peer_tool_path reason on unavailable external conflict", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_body_fields "${external_unavailable_conflict_body}" "external unavailable conflict response" \
+  --equals error="voice peer already running with different config" \
+  --equals peer.runtime_kind=external \
+  --equals "peer.tool_path=${PEER_TOOL}" \
+  --contains backend_policy_drift.changed_fields=peer_tool_path \
+  --equals backend_policy_drift.current_effective_start.runtime_kind=external \
+  --false backend_policy_drift.current_effective_start.runtime_available \
+  --contains backend_policy_drift.current_effective_start.runtime_unavailable_reason="not configured"
 
 external_node_bin_conflict_update_resp="$(config_update "$(python3 - <<PY
 import json
@@ -1481,23 +1001,13 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${external_node_bin_conflict_update_resp}''')
-audio = obj.get("audio_webrtc") or {}
-if not obj.get("ok"):
-  print("failed to change audio_webrtc node_bin for conflict proof", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("default_runtime_kind") != "external" or audio.get("default_runtime_kind_source") != "config":
-  print("expected restored external config-backed default before node_bin conflict", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("node_bin") != "definitely-not-a-real-node-binary":
-  print("expected persisted invalid node_bin for conflict proof", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("external_available") is not False or audio.get("default_runtime_kind_available") is not False:
-  print("expected unavailable external backend for invalid node_bin conflict proof", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${external_node_bin_conflict_update_resp}" "external node_bin conflict config" \
+  --require-ok \
+  --equals audio_webrtc.default_runtime_kind=external \
+  --equals audio_webrtc.default_runtime_kind_source=config \
+  --equals audio_webrtc.node_bin=definitely-not-a-real-node-binary \
+  --false audio_webrtc.external_available \
+  --false audio_webrtc.default_runtime_kind_available
 
 external_node_bin_conflict_body="${RUN_LOG_DIR}/voice_webrtc_peer_external_node_bin_conflict_body.json"
 external_node_bin_conflict_status="$(voice_peer_request_status "${external_node_bin_conflict_body}" "$(python3 - <<PY
@@ -1520,29 +1030,15 @@ if [[ "${external_node_bin_conflict_status}" != "409" ]]; then
   cat "${external_node_bin_conflict_body}" >&2
   exit 1
 fi
-python3 - <<PY
-import json, sys
-obj = json.load(open(r'''${external_node_bin_conflict_body}''', 'r', encoding='utf-8'))
-peer = obj.get("peer") or {}
-drift = obj.get("backend_policy_drift") or {}
-fields = set(drift.get("changed_fields") or [])
-current = drift.get("current_effective_start") or {}
-if obj.get("error") != "voice peer already running with different config":
-  print("unexpected effective node_bin conflict response", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("runtime_kind") != "external" or peer.get("node_bin") != "node":
-  print("unexpected peer snapshot for effective node_bin conflict", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "node_bin" not in fields:
-  print("expected node_bin drift on node_bin conflict", obj, file=sys.stderr)
-  raise SystemExit(1)
-if current.get("runtime_kind") != "external" or current.get("node_bin") != "definitely-not-a-real-node-binary":
-  print("unexpected effective start policy for node_bin conflict", obj, file=sys.stderr)
-  raise SystemExit(1)
-if current.get("runtime_available") is not False or "not found" not in str(current.get("runtime_unavailable_reason") or ""):
-  print("expected unavailable node_bin drift reason on conflict", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_body_fields "${external_node_bin_conflict_body}" "external node_bin conflict response" \
+  --equals error="voice peer already running with different config" \
+  --equals peer.runtime_kind=external \
+  --equals peer.node_bin=node \
+  --contains backend_policy_drift.changed_fields=node_bin \
+  --equals backend_policy_drift.current_effective_start.runtime_kind=external \
+  --equals backend_policy_drift.current_effective_start.node_bin=definitely-not-a-real-node-binary \
+  --false backend_policy_drift.current_effective_start.runtime_available \
+  --contains backend_policy_drift.current_effective_start.runtime_unavailable_reason="not found"
 
 external_restore_valid_config_resp="$(config_update "$(python3 - <<PY
 import json
@@ -1610,20 +1106,10 @@ PY
 
 external_config_stop_resp="$(voice_peer_request "{\"session_id\":\"${EXTERNAL_SESSION_ID}\",\"action\":\"stop\",\"runtime_kind\":\"builtin\"}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${external_config_stop_resp}''')
-peer = obj.get("peer") or {}
-if not obj.get("ok") or not obj.get("stopped"):
-  print("voice_webrtc_peer external config-backed stop failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("runtime_kind") != "external":
-  print("expected external runtime_kind during stop", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("broker_session_deleted") is not True:
-  print("expected broker_session_deleted on external config-backed stop", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_stopped "${external_config_stop_resp}" "external config-backed stop response" \
+  --runtime-kind external \
+  --stopped true \
+  --broker-session-deleted true
 
 wait_broker_session_deleted "${EXTERNAL_BROKER_SESSION_ID}"
 
@@ -1670,54 +1156,22 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${managed_bad_stop_start_resp}''')
-peer = obj.get("peer") or {}
-if not obj.get("ok") or not obj.get("started"):
-  print("managed bad-stop runtime start failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("managed_broker_session") is not True:
-  print("expected managed bad-stop runtime to own broker session", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("runtime_kind") != "external":
-  print("expected managed bad-stop runtime_kind=external", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_started "${managed_bad_stop_start_resp}" "managed bad-stop start response" \
+  --runtime-kind external \
+  --managed true
 
-MANAGED_BAD_STOP_BROKER_SESSION_ID="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${managed_bad_stop_start_resp}''')
-peer = obj.get("peer") or {}
-sid = str(peer.get("broker_session_id") or "").strip()
-if not sid:
-  print("missing managed bad-stop broker_session_id", file=sys.stderr)
-  raise SystemExit(1)
-print(sid)
-PY
-)"
+MANAGED_BAD_STOP_BROKER_SESSION_ID="$(voice_webrtc_peer_field "${managed_bad_stop_start_resp}" broker_session_id "managed bad-stop start response" --require-ok --nonempty)"
 
 wait_voice_peer_ready "${MANAGED_BAD_STOP_SESSION_ID}" 1 status_json external external config 1
 
 managed_bad_stop_resp="$(voice_peer_request "{\"session_id\":\"${MANAGED_BAD_STOP_SESSION_ID}\",\"action\":\"stop\"}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${managed_bad_stop_resp}''')
-peer = obj.get("peer") or {}
-if not obj.get("ok") or not obj.get("stopped"):
-  print("managed runtime stop should still succeed when broker deletion fails", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("broker_session_deleted") is not False:
-  print("expected managed bad-stop broker_session_deleted=false", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "invalid configured audio_webrtc_broker_token" not in str(obj.get("broker_session_delete_error", "")):
-  print("expected managed bad-stop broker_session_delete_error", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("managed_broker_session") is not True or peer.get("running"):
-  print("expected managed bad-stop peer to be stopped locally", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_stopped "${managed_bad_stop_resp}" "managed bad-stop response" \
+  --stopped true \
+  --broker-session-deleted false \
+  --broker-session-delete-error-contains "invalid configured audio_webrtc_broker_token" \
+  --managed true \
+  --peer-running false
 
 managed_bad_stop_broker_status="$(broker_session_status_code "${MANAGED_BAD_STOP_BROKER_SESSION_ID}")"
 if [[ "${managed_bad_stop_broker_status}" != "200" && "${managed_bad_stop_broker_status}" != "404" ]]; then
@@ -1752,58 +1206,25 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${managed_bad_delete_start_resp}''')
-peer = obj.get("peer") or {}
-if not obj.get("ok") or not obj.get("started"):
-  print("managed bad-delete runtime start failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("managed_broker_session") is not True:
-  print("expected managed bad-delete runtime to own broker session", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_started "${managed_bad_delete_start_resp}" "managed bad-delete start response" \
+  --runtime-kind external \
+  --managed true
 
-MANAGED_BAD_DELETE_BROKER_SESSION_ID="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${managed_bad_delete_start_resp}''')
-peer = obj.get("peer") or {}
-sid = str(peer.get("broker_session_id") or "").strip()
-if not sid:
-  print("missing managed bad-delete broker_session_id", file=sys.stderr)
-  raise SystemExit(1)
-print(sid)
-PY
-)"
+MANAGED_BAD_DELETE_BROKER_SESSION_ID="$(voice_webrtc_peer_field "${managed_bad_delete_start_resp}" broker_session_id "managed bad-delete start response" --require-ok --nonempty)"
 
 wait_voice_peer_ready "${MANAGED_BAD_DELETE_SESSION_ID}" 1 status_json external external config 1
 
 managed_bad_delete_resp="$(delete_session "${MANAGED_BAD_DELETE_SESSION_ID}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${managed_bad_delete_resp}''')
-cleanup = obj.get("voice_runtime_cleanup") or {}
-peer = cleanup.get("peer") or {}
-if not obj.get("ok") or obj.get("deleted_from_db") is not True:
-  print("managed delete should still succeed when broker deletion fails", obj, file=sys.stderr)
-  raise SystemExit(1)
-if cleanup.get("runtime_present") is not True or cleanup.get("stopped") is not True:
-  print("expected managed bad-delete runtime cleanup summary", obj, file=sys.stderr)
-  raise SystemExit(1)
-if cleanup.get("broker_session_delete_attempted") is not True:
-  print("expected managed bad-delete broker_session_delete_attempted=true", obj, file=sys.stderr)
-  raise SystemExit(1)
-if cleanup.get("broker_session_deleted") is not False:
-  print("expected managed bad-delete broker_session_deleted=false", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "invalid configured audio_webrtc_broker_token" not in str(cleanup.get("broker_session_delete_error", "")):
-  print("expected managed bad-delete broker_session_delete_error", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("managed_broker_session") is not True:
-  print("expected managed bad-delete cleanup peer managed_broker_session=true", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${managed_bad_delete_resp}" "managed bad-delete cleanup" \
+  --require-ok \
+  --true deleted_from_db \
+  --true voice_runtime_cleanup.runtime_present \
+  --true voice_runtime_cleanup.stopped \
+  --true voice_runtime_cleanup.broker_session_delete_attempted \
+  --false voice_runtime_cleanup.broker_session_deleted \
+  --contains voice_runtime_cleanup.broker_session_delete_error="invalid configured audio_webrtc_broker_token" \
+  --true voice_runtime_cleanup.peer.managed_broker_session
 
 managed_bad_delete_broker_status="$(broker_session_status_code "${MANAGED_BAD_DELETE_BROKER_SESSION_ID}")"
 if [[ "${managed_bad_delete_broker_status}" != "200" && "${managed_bad_delete_broker_status}" != "404" ]]; then
@@ -1822,16 +1243,7 @@ create_session "${BORROWED_STOP_SESSION_ID}"
 
 borrowed_stop_broker_create_resp="$(broker_session_create '{"agent_id":"a-1","mode":"webrtc"}')"
 
-BORROWED_STOP_BROKER_SESSION_ID="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${borrowed_stop_broker_create_resp}''')
-sid = str(obj.get("session_id") or "").strip()
-if not obj.get("ok") or not sid:
-  print("failed to create borrowed stop broker session", obj, file=sys.stderr)
-  raise SystemExit(1)
-print(sid)
-PY
-)"
+BORROWED_STOP_BROKER_SESSION_ID="$(voice_webrtc_json_field "${borrowed_stop_broker_create_resp}" session_id "borrowed stop broker create response" --require-ok --nonempty)"
 
 borrowed_stop_start_resp="$(voice_peer_request "$(python3 - <<PY
 import json
@@ -1850,39 +1262,18 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${borrowed_stop_start_resp}''')
-peer = obj.get("peer") or {}
-if not obj.get("ok") or not obj.get("started"):
-  print("borrowed stop runtime start failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("managed_broker_session") is not False:
-  print("expected borrowed stop runtime to keep broker ownership external", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("runtime_kind") != "external":
-  print("expected borrowed stop runtime_kind=external", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_started "${borrowed_stop_start_resp}" "borrowed stop start response" \
+  --runtime-kind external \
+  --managed false
 
 wait_voice_peer_ready "${BORROWED_STOP_SESSION_ID}" 1 status_json external external config 1
 
 borrowed_stop_resp="$(voice_peer_request "{\"session_id\":\"${BORROWED_STOP_SESSION_ID}\",\"action\":\"stop\"}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${borrowed_stop_resp}''')
-peer = obj.get("peer") or {}
-if not obj.get("ok") or not obj.get("stopped"):
-  print("borrowed runtime stop should ignore invalid configured broker token", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "broker_session_deleted" in obj:
-  print("borrowed runtime stop should not attempt broker deletion", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("managed_broker_session") is not False:
-  print("expected borrowed runtime stop to keep managed_broker_session=false", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_stopped "${borrowed_stop_resp}" "borrowed stop response" \
+  --stopped true \
+  --broker-session-deleted-absent \
+  --managed false
 
 borrowed_stop_delete_status="$(broker_session_delete_status "${BORROWED_STOP_BROKER_SESSION_ID}")"
 if [[ "${borrowed_stop_delete_status}" != "200" && "${borrowed_stop_delete_status}" != "404" ]]; then
@@ -1895,16 +1286,7 @@ create_session "${BORROWED_DELETE_SESSION_ID}"
 
 borrowed_delete_broker_create_resp="$(broker_session_create '{"agent_id":"a-1","mode":"webrtc"}')"
 
-BORROWED_DELETE_BROKER_SESSION_ID="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${borrowed_delete_broker_create_resp}''')
-sid = str(obj.get("session_id") or "").strip()
-if not obj.get("ok") or not sid:
-  print("failed to create borrowed delete broker session", obj, file=sys.stderr)
-  raise SystemExit(1)
-print(sid)
-PY
-)"
+BORROWED_DELETE_BROKER_SESSION_ID="$(voice_webrtc_json_field "${borrowed_delete_broker_create_resp}" session_id "borrowed delete broker create response" --require-ok --nonempty)"
 
 borrowed_delete_start_resp="$(voice_peer_request "$(python3 - <<PY
 import json
@@ -1923,40 +1305,20 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${borrowed_delete_start_resp}''')
-peer = obj.get("peer") or {}
-if not obj.get("ok") or not obj.get("started"):
-  print("borrowed delete runtime start failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("managed_broker_session") is not False:
-  print("expected borrowed delete runtime to keep broker ownership external", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_started "${borrowed_delete_start_resp}" "borrowed delete start response" \
+  --runtime-kind external \
+  --managed false
 
 wait_voice_peer_ready "${BORROWED_DELETE_SESSION_ID}" 1 status_json external external config 1
 
 borrowed_delete_resp="$(delete_session "${BORROWED_DELETE_SESSION_ID}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${borrowed_delete_resp}''')
-cleanup = obj.get("voice_runtime_cleanup") or {}
-peer = cleanup.get("peer") or {}
-if not obj.get("ok"):
-  print("borrowed delete cleanup should ignore invalid configured broker token", obj, file=sys.stderr)
-  raise SystemExit(1)
-if cleanup.get("runtime_present") is not True or cleanup.get("stopped") is not True:
-  print("expected borrowed delete runtime cleanup summary", obj, file=sys.stderr)
-  raise SystemExit(1)
-if cleanup.get("broker_session_delete_attempted") is not False:
-  print("borrowed delete cleanup should not attempt broker deletion", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("managed_broker_session") is not False:
-  print("expected borrowed delete cleanup peer managed_broker_session=false", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${borrowed_delete_resp}" "borrowed delete cleanup" \
+  --require-ok \
+  --true voice_runtime_cleanup.runtime_present \
+  --true voice_runtime_cleanup.stopped \
+  --false voice_runtime_cleanup.broker_session_delete_attempted \
+  --false voice_runtime_cleanup.peer.managed_broker_session
 
 borrowed_delete_broker_delete_status="$(broker_session_delete_status "${BORROWED_DELETE_BROKER_SESSION_ID}")"
 if [[ "${borrowed_delete_broker_delete_status}" != "200" && "${borrowed_delete_broker_delete_status}" != "404" ]]; then
@@ -1991,19 +1353,10 @@ create_session "${NOOP_STOP_SESSION_ID}"
 
 noop_stop_resp="$(voice_peer_request "{\"session_id\":\"${NOOP_STOP_SESSION_ID}\",\"action\":\"stop\",\"runtime_kind\":\"not-a-real-runtime-kind\"}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${noop_stop_resp}''')
-if not obj.get("ok"):
-  print("expected noop stop with ignored runtime_kind to succeed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("stopped") is not False or obj.get("reason") != "not_running":
-  print("expected noop stop result", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("peer") is not None:
-  print("expected noop stop peer=null", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_stopped "${noop_stop_resp}" "noop stop response" \
+  --stopped false \
+  --reason not_running \
+  --peer-absent
 
 delete_session_quiet "${NOOP_STOP_SESSION_ID}"
 
@@ -2021,58 +1374,29 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${unavailable_default_config_resp}''')
-audio = obj.get("audio_webrtc") or {}
-if not obj.get("ok"):
-  print("config update for unavailable external default failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("peer_tool_path_configured") is not False:
-  print("expected cleared peer_tool_path_configured", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("builtin_available") is not False or audio.get("bundled_available") is not True:
-  print("unexpected bundled/builtin availability after clearing external tool", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("external_available") is not False:
-  print("expected external_available=false after clearing external tool", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("default_runtime_kind") != "external" or audio.get("default_runtime_kind_source") != "config":
-  print("expected config-backed external default to remain selected", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("default_runtime_kind_available") is not False:
-  print("expected config-backed external default to be unavailable", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("node_bin") != "node":
-  print("expected node_bin=node after clearing external tool", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${unavailable_default_config_resp}" "unavailable external default config" \
+  --require-ok \
+  --false audio_webrtc.peer_tool_path_configured \
+  --false audio_webrtc.builtin_available \
+  --true audio_webrtc.bundled_available \
+  --false audio_webrtc.external_available \
+  --equals audio_webrtc.default_runtime_kind=external \
+  --equals audio_webrtc.default_runtime_kind_source=config \
+  --false audio_webrtc.default_runtime_kind_available \
+  --equals audio_webrtc.node_bin=node
 
 restart_agentd_without_voice_defaults
 
 unavailable_default_config_get="$(config_get)"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${unavailable_default_config_get}''')
-daemon = obj.get("daemon") or {}
-audio = daemon.get("audio_webrtc") or {}
-if audio.get("peer_tool_path_configured") is not False:
-  print("expected persisted cleared peer_tool_path_configured", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("builtin_available") is not False or audio.get("bundled_available") is not True:
-  print("unexpected bundled/builtin availability after restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("external_available") is not False:
-  print("expected persisted external_available=false after restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("default_runtime_kind") != "external" or audio.get("default_runtime_kind_source") != "config":
-  print("expected persisted external default after restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("default_runtime_kind_available") is not False:
-  print("expected persisted default_runtime_kind_available=false after restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${unavailable_default_config_get}" "persisted unavailable external default config" \
+  --false daemon.audio_webrtc.peer_tool_path_configured \
+  --false daemon.audio_webrtc.builtin_available \
+  --true daemon.audio_webrtc.bundled_available \
+  --false daemon.audio_webrtc.external_available \
+  --equals daemon.audio_webrtc.default_runtime_kind=external \
+  --equals daemon.audio_webrtc.default_runtime_kind_source=config \
+  --false daemon.audio_webrtc.default_runtime_kind_available
 
 UNAVAILABLE_DEFAULT_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_default_unavailable_$(date +%s)_$RANDOM"
 create_session "${UNAVAILABLE_DEFAULT_SESSION_ID}"
@@ -2098,28 +1422,15 @@ if [[ "${unavailable_default_start_code}" != "500" ]]; then
   exit 1
 fi
 
-python3 - <<PY
-import json, sys
-obj = json.load(open(r'''${unavailable_default_start_body}''', 'r', encoding='utf-8'))
-if obj.get("ok") is not False:
-  print("expected unavailable external default start to fail", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("builtin_available") is not False or obj.get("bundled_available") is not True:
-  print("unexpected bundled/builtin availability on unavailable default start", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("external_available") is not False:
-  print("expected external_available=false on unavailable default start", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("default_runtime_kind") != "external" or obj.get("default_runtime_kind_source") != "config":
-  print("expected config-backed external default on unavailable default start", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("default_runtime_kind_available") is not False:
-  print("expected unavailable default_runtime_kind_available=false on start failure", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "audio_webrtc_peer_tool_path not configured" not in str(obj.get("error") or ""):
-  print("expected missing peer tool path error on unavailable default start", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_body_fields "${unavailable_default_start_body}" "unavailable external default start response" \
+  --false ok \
+  --false builtin_available \
+  --true bundled_available \
+  --false external_available \
+  --equals default_runtime_kind=external \
+  --equals default_runtime_kind_source=config \
+  --false default_runtime_kind_available \
+  --contains error="audio_webrtc_peer_tool_path not configured"
 
 delete_session_quiet "${UNAVAILABLE_DEFAULT_SESSION_ID}"
 
@@ -2135,49 +1446,26 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${builtin_default_config_resp}''')
-audio = obj.get("audio_webrtc") or {}
-if not obj.get("ok"):
-  print("config update for builtin default failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("default_runtime_kind") != "builtin" or audio.get("default_runtime_kind_source") != "config":
-  print("expected config-backed builtin default", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("default_runtime_kind_available") is not False:
-  print("expected config-backed builtin default to be unavailable", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("builtin_available") is not False or audio.get("bundled_available") is not True or audio.get("external_available") is not True:
-  print("unexpected backend availability for config-backed builtin default", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "disabled" not in str(audio.get("builtin_unavailable_reason") or ""):
-  print("expected builtin disabled unavailable reason for config-backed builtin default", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "disabled" not in str(audio.get("default_runtime_kind_unavailable_reason") or ""):
-  print("expected builtin disabled default unavailable reason for config-backed builtin default", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${builtin_default_config_resp}" "builtin default config update" \
+  --require-ok \
+  --equals audio_webrtc.default_runtime_kind=builtin \
+  --equals audio_webrtc.default_runtime_kind_source=config \
+  --false audio_webrtc.default_runtime_kind_available \
+  --false audio_webrtc.builtin_available \
+  --true audio_webrtc.bundled_available \
+  --true audio_webrtc.external_available \
+  --contains audio_webrtc.builtin_unavailable_reason=disabled \
+  --contains audio_webrtc.default_runtime_kind_unavailable_reason=disabled
 
 restart_agentd_without_voice_defaults
 
 builtin_default_config_get="$(config_get)"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${builtin_default_config_get}''')
-daemon = obj.get("daemon") or {}
-audio = daemon.get("audio_webrtc") or {}
-if audio.get("default_runtime_kind") != "builtin" or audio.get("default_runtime_kind_source") != "config":
-  print("expected persisted builtin default after restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("default_runtime_kind_available") is not False:
-  print("expected persisted builtin default to remain unavailable after restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "disabled" not in str(audio.get("default_runtime_kind_unavailable_reason") or ""):
-  print("expected builtin disabled default unavailable reason after restart", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${builtin_default_config_get}" "persisted builtin default config" \
+  --equals daemon.audio_webrtc.default_runtime_kind=builtin \
+  --equals daemon.audio_webrtc.default_runtime_kind_source=config \
+  --false daemon.audio_webrtc.default_runtime_kind_available \
+  --contains daemon.audio_webrtc.default_runtime_kind_unavailable_reason=disabled
 
 BUILTIN_DEFAULT_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_default_builtin_$(date +%s)_$RANDOM"
 create_session "${BUILTIN_DEFAULT_SESSION_ID}"
@@ -2203,22 +1491,12 @@ if [[ "${builtin_default_start_code}" != "501" ]]; then
   exit 1
 fi
 
-python3 - <<PY
-import json, sys
-obj = json.load(open(r'''${builtin_default_start_body}''', 'r', encoding='utf-8'))
-if obj.get("ok") is not False:
-  print("expected config builtin default start to fail", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("default_runtime_kind") != "builtin" or obj.get("default_runtime_kind_source") != "config":
-  print("expected config-backed builtin default on start failure", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("default_runtime_kind_available") is not False:
-  print("expected unavailable builtin config default on start failure", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "disabled" not in str(obj.get("error") or ""):
-  print("expected builtin disabled error for config default start", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_body_fields "${builtin_default_start_body}" "builtin default start response" \
+  --false ok \
+  --equals default_runtime_kind=builtin \
+  --equals default_runtime_kind_source=config \
+  --false default_runtime_kind_available \
+  --contains error=disabled
 
 delete_session_quiet "${BUILTIN_DEFAULT_SESSION_ID}"
 
@@ -2234,20 +1512,11 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${restored_external_default_config_resp}''')
-audio = obj.get("audio_webrtc") or {}
-if not obj.get("ok"):
-  print("failed to restore external default config after unavailable-default test", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("peer_tool_path_configured") is not True:
-  print("expected restored peer_tool_path_configured", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("external_available") is not True or audio.get("default_runtime_kind_available") is not True:
-  print("expected restored external availability after unavailable-default test", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${restored_external_default_config_resp}" "restored external default config" \
+  --require-ok \
+  --true audio_webrtc.peer_tool_path_configured \
+  --true audio_webrtc.external_available \
+  --true audio_webrtc.default_runtime_kind_available
 
 python3 - <<PY
 import json, sqlite3
@@ -2317,47 +1586,20 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${self_heal_start_resp}''')
-peer = obj.get("peer") or {}
-if not obj.get("ok") or not obj.get("started"):
-  print("voice_webrtc_peer self-heal fallback start failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("default_runtime_kind") != "bundled" or obj.get("default_runtime_kind_source") != "auto":
-  print("expected auto/bundled default after self-heal fallback", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("runtime_kind") != "bundled":
-  print("expected bundled runtime after self-heal fallback", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_started "${self_heal_start_resp}" "self-heal fallback start response" \
+  --runtime-kind bundled \
+  --default-runtime-kind bundled \
+  --default-runtime-kind-source auto
 
-SELF_HEAL_BROKER_SESSION_ID="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${self_heal_start_resp}''')
-peer = obj.get("peer") or {}
-sid = str(peer.get("broker_session_id") or "").strip()
-if not sid:
-  print("missing self-heal broker_session_id", file=sys.stderr)
-  raise SystemExit(1)
-print(sid)
-PY
-)"
+SELF_HEAL_BROKER_SESSION_ID="$(voice_webrtc_peer_field "${self_heal_start_resp}" broker_session_id "self-heal start response" --require-ok --nonempty)"
 
 wait_voice_peer_ready "${SELF_HEAL_SESSION_ID}" 1 status_json bundled bundled auto 1
 
 self_heal_stop_resp="$(voice_peer_request "{\"session_id\":\"${SELF_HEAL_SESSION_ID}\",\"action\":\"stop\"}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${self_heal_stop_resp}''')
-if not obj.get("ok") or not obj.get("stopped"):
-  print("voice_webrtc_peer self-heal fallback stop failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("broker_session_deleted") is not True:
-  print("expected broker_session_deleted after self-heal fallback stop", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_stopped "${self_heal_stop_resp}" "self-heal fallback stop response" \
+  --stopped true \
+  --broker-session-deleted true
 
 wait_broker_session_deleted "${SELF_HEAL_BROKER_SESSION_ID}"
 
@@ -2376,14 +1618,8 @@ python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_record.py" write-corrupt 
 
 corrupt_runtime_status="$(voice_peer_status "${CORRUPT_RUNTIME_SESSION_ID}")"
 
-printf '%s' "${corrupt_runtime_status}" | python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_record.py" assert-cleared \
-  --db-path "${SESSION_DB_PATH}" \
-  --session-id "${CORRUPT_RUNTIME_SESSION_ID}" \
-  --runtime-dir "${CORRUPT_RUNTIME_DIR}" \
-  --cleanup-key cleanup_on_corrupt_record \
-  --label "corrupt runtime status" \
-  --expect-session-exists true \
-  --expect-running false
+voice_webrtc_assert_runtime_cleared "${corrupt_runtime_status}" "${CORRUPT_RUNTIME_SESSION_ID}" "${CORRUPT_RUNTIME_DIR}" cleanup_on_corrupt_record "corrupt runtime status" \
+  --expect-session-exists true --expect-running false
 
 python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_record.py" write-corrupt \
   --db-path "${SESSION_DB_PATH}" \
@@ -2408,33 +1644,13 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${corrupt_runtime_start_resp}''')
-peer = obj.get("peer") or {}
-cleanup = obj.get("cleanup_on_corrupt_record") or {}
-if not obj.get("ok") or not obj.get("started"):
-  print("expected start to recover after corrupt runtime self-heal", obj, file=sys.stderr)
-  raise SystemExit(1)
-if cleanup.get("persisted_record_cleared") is not True:
-  print("expected start response to report corrupt runtime self-heal", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("runtime_kind") != "bundled":
-  print("expected bundled runtime after corrupt runtime self-heal", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${corrupt_runtime_start_resp}" "corrupt runtime self-heal start response" \
+  --true ok \
+  --true started \
+  --true cleanup_on_corrupt_record.persisted_record_cleared \
+  --equals peer.runtime_kind=bundled
 
-CORRUPT_RUNTIME_BROKER_SESSION_ID="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${corrupt_runtime_start_resp}''')
-peer = obj.get("peer") or {}
-sid = str(peer.get("broker_session_id") or "").strip()
-if not sid:
-  print("missing corrupt runtime self-heal broker_session_id", file=sys.stderr)
-  raise SystemExit(1)
-print(sid)
-PY
-)"
+CORRUPT_RUNTIME_BROKER_SESSION_ID="$(voice_webrtc_peer_field "${corrupt_runtime_start_resp}" broker_session_id "corrupt runtime self-heal start response" --require-ok --nonempty)"
 
 wait_voice_peer_ready "${CORRUPT_RUNTIME_SESSION_ID}" 1 status_json bundled bundled auto 1
 
@@ -2450,27 +1666,14 @@ python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_record.py" write-planned 
 
 planned_runtime_status="$(voice_peer_status "${PLANNED_RUNTIME_SESSION_ID}")"
 
-printf '%s' "${planned_runtime_status}" | python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_record.py" assert-cleared \
-  --db-path "${SESSION_DB_PATH}" \
-  --session-id "${PLANNED_RUNTIME_SESSION_ID}" \
-  --runtime-dir "${PLANNED_RUNTIME_DIR}" \
-  --cleanup-key cleanup_on_corrupt_record \
-  --label "planned runtime status" \
-  --expect-session-exists true \
-  --expect-running false
+voice_webrtc_assert_runtime_cleared "${planned_runtime_status}" "${PLANNED_RUNTIME_SESSION_ID}" "${PLANNED_RUNTIME_DIR}" cleanup_on_corrupt_record "planned runtime status" \
+  --expect-session-exists true --expect-running false
 
 corrupt_runtime_stop_resp="$(voice_peer_request "{\"session_id\":\"${CORRUPT_RUNTIME_SESSION_ID}\",\"action\":\"stop\"}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${corrupt_runtime_stop_resp}''')
-if not obj.get("ok") or not obj.get("stopped"):
-  print("expected corrupt runtime self-heal stop to succeed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("broker_session_deleted") is not True:
-  print("expected corrupt runtime self-heal stop to delete broker session", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_stopped "${corrupt_runtime_stop_resp}" "corrupt runtime self-heal stop response" \
+  --stopped true \
+  --broker-session-deleted true
 
 wait_broker_session_deleted "${CORRUPT_RUNTIME_BROKER_SESSION_ID}"
 
@@ -2482,12 +1685,7 @@ inject_stale_persisted_voice_runtime "${STALE_STATUS_SESSION_ID}"
 STALE_STATUS_RUNTIME_DIR="${STATE_DIR}/voice_webrtc_peers/${STALE_STATUS_SESSION_ID}"
 stale_status_resp="$(voice_peer_status "${STALE_STATUS_SESSION_ID}")"
 
-printf '%s' "${stale_status_resp}" | python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_record.py" assert-cleared \
-  --db-path "${SESSION_DB_PATH}" \
-  --session-id "${STALE_STATUS_SESSION_ID}" \
-  --runtime-dir "${STALE_STATUS_RUNTIME_DIR}" \
-  --cleanup-key cleanup_on_stale_record \
-  --label "stale runtime status" \
+voice_webrtc_assert_runtime_cleared "${stale_status_resp}" "${STALE_STATUS_SESSION_ID}" "${STALE_STATUS_RUNTIME_DIR}" cleanup_on_stale_record "stale runtime status" \
   --expect-running false
 
 delete_session_quiet "${STALE_STATUS_SESSION_ID}"
@@ -2498,14 +1696,8 @@ inject_stale_persisted_voice_runtime "${STALE_STOP_SESSION_ID}"
 STALE_STOP_RUNTIME_DIR="${STATE_DIR}/voice_webrtc_peers/${STALE_STOP_SESSION_ID}"
 stale_stop_resp="$(voice_peer_request "{\"session_id\":\"${STALE_STOP_SESSION_ID}\",\"action\":\"stop\"}")"
 
-printf '%s' "${stale_stop_resp}" | python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_record.py" assert-cleared \
-  --db-path "${SESSION_DB_PATH}" \
-  --session-id "${STALE_STOP_SESSION_ID}" \
-  --runtime-dir "${STALE_STOP_RUNTIME_DIR}" \
-  --cleanup-key cleanup_on_stale_record \
-  --label "stale runtime stop" \
-  --expect-stopped false \
-  --expect-reason not_running
+voice_webrtc_assert_runtime_cleared "${stale_stop_resp}" "${STALE_STOP_SESSION_ID}" "${STALE_STOP_RUNTIME_DIR}" cleanup_on_stale_record "stale runtime stop" \
+  --expect-stopped false --expect-reason not_running
 
 delete_session_quiet "${STALE_STOP_SESSION_ID}"
 
@@ -2530,56 +1722,27 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, os, sys
-obj = json.loads(r'''${stale_start_resp}''')
-peer = obj.get("peer") or {}
-cleanup = obj.get("cleanup_on_stale_record") or {}
-if not obj.get("ok") or not obj.get("started"):
-  print("expected start to recover after stale runtime self-heal", obj, file=sys.stderr)
-  raise SystemExit(1)
-if cleanup.get("persisted_record_cleared") is not True:
-  print("expected start response to report stale runtime self-heal", obj, file=sys.stderr)
-  raise SystemExit(1)
-if cleanup.get("runtime_artifacts_deleted") is not True:
-  print("expected start response to delete stale runtime artifacts", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("runtime_kind") != "bundled" or not peer.get("running"):
-  print("expected bundled running runtime after stale runtime self-heal", obj, file=sys.stderr)
-  raise SystemExit(1)
-if os.path.exists(r'''${STALE_START_RUNTIME_DIR}/stdout.jsonl'''):
-  with open(r'''${STALE_START_RUNTIME_DIR}/stdout.jsonl''', 'r', encoding='utf-8') as f:
-    if '{"stale":"artifact"}' in f.read():
-      print("expected stale stdout artifact to be replaced on fresh start", file=sys.stderr)
-      raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${stale_start_resp}" "stale runtime self-heal start response" \
+  --true ok \
+  --true started \
+  --true cleanup_on_stale_record.persisted_record_cleared \
+  --true cleanup_on_stale_record.runtime_artifacts_deleted \
+  --equals peer.runtime_kind=bundled \
+  --true peer.running
+if [[ -f "${STALE_START_RUNTIME_DIR}/stdout.jsonl" ]] && grep -Fq '{"stale":"artifact"}' "${STALE_START_RUNTIME_DIR}/stdout.jsonl"; then
+  echo "expected stale stdout artifact to be replaced on fresh start" >&2
+  exit 1
+fi
 
-STALE_START_BROKER_SESSION_ID="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${stale_start_resp}''')
-peer = obj.get("peer") or {}
-sid = str(peer.get("broker_session_id") or "").strip()
-if not sid:
-  print("missing stale runtime self-heal broker_session_id", file=sys.stderr)
-  raise SystemExit(1)
-print(sid)
-PY
-)"
+STALE_START_BROKER_SESSION_ID="$(voice_webrtc_peer_field "${stale_start_resp}" broker_session_id "stale runtime self-heal start response" --require-ok --nonempty)"
 
 wait_voice_peer_ready "${STALE_START_SESSION_ID}" 1 status_json bundled bundled auto 1
 
 stale_start_stop_resp="$(voice_peer_request "{\"session_id\":\"${STALE_START_SESSION_ID}\",\"action\":\"stop\"}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${stale_start_stop_resp}''')
-if not obj.get("ok") or not obj.get("stopped"):
-  print("expected stale runtime self-heal stop to succeed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("broker_session_deleted") is not True:
-  print("expected stale runtime self-heal stop to delete broker session", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_stopped "${stale_start_stop_resp}" "stale runtime self-heal stop response" \
+  --stopped true \
+  --broker-session-deleted true
 
 wait_broker_session_deleted "${STALE_START_BROKER_SESSION_ID}"
 
@@ -2591,12 +1754,7 @@ inject_stale_persisted_voice_runtime "${BUILTIN_STALE_STATUS_SESSION_ID}" builti
 BUILTIN_STALE_STATUS_RUNTIME_DIR="${STATE_DIR}/voice_webrtc_peers/${BUILTIN_STALE_STATUS_SESSION_ID}"
 builtin_stale_status_resp="$(voice_peer_status "${BUILTIN_STALE_STATUS_SESSION_ID}")"
 
-printf '%s' "${builtin_stale_status_resp}" | python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_record.py" assert-cleared \
-  --db-path "${SESSION_DB_PATH}" \
-  --session-id "${BUILTIN_STALE_STATUS_SESSION_ID}" \
-  --runtime-dir "${BUILTIN_STALE_STATUS_RUNTIME_DIR}" \
-  --cleanup-key cleanup_on_stale_record \
-  --label "builtin stale runtime status" \
+voice_webrtc_assert_runtime_cleared "${builtin_stale_status_resp}" "${BUILTIN_STALE_STATUS_SESSION_ID}" "${BUILTIN_STALE_STATUS_RUNTIME_DIR}" cleanup_on_stale_record "builtin stale runtime status" \
   --expect-running false
 
 delete_session_quiet "${BUILTIN_STALE_STATUS_SESSION_ID}"
@@ -2607,14 +1765,8 @@ inject_stale_persisted_voice_runtime "${BUILTIN_STALE_STOP_SESSION_ID}" builtin
 BUILTIN_STALE_STOP_RUNTIME_DIR="${STATE_DIR}/voice_webrtc_peers/${BUILTIN_STALE_STOP_SESSION_ID}"
 builtin_stale_stop_resp="$(voice_peer_request "{\"session_id\":\"${BUILTIN_STALE_STOP_SESSION_ID}\",\"action\":\"stop\"}")"
 
-printf '%s' "${builtin_stale_stop_resp}" | python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_record.py" assert-cleared \
-  --db-path "${SESSION_DB_PATH}" \
-  --session-id "${BUILTIN_STALE_STOP_SESSION_ID}" \
-  --runtime-dir "${BUILTIN_STALE_STOP_RUNTIME_DIR}" \
-  --cleanup-key cleanup_on_stale_record \
-  --label "builtin stale runtime stop" \
-  --expect-stopped false \
-  --expect-reason not_running
+voice_webrtc_assert_runtime_cleared "${builtin_stale_stop_resp}" "${BUILTIN_STALE_STOP_SESSION_ID}" "${BUILTIN_STALE_STOP_RUNTIME_DIR}" cleanup_on_stale_record "builtin stale runtime stop" \
+  --expect-stopped false --expect-reason not_running
 
 delete_session_quiet "${BUILTIN_STALE_STOP_SESSION_ID}"
 
@@ -2639,56 +1791,27 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, os, sys
-obj = json.loads(r'''${builtin_stale_start_resp}''')
-peer = obj.get("peer") or {}
-cleanup = obj.get("cleanup_on_stale_record") or {}
-if not obj.get("ok") or not obj.get("started"):
-  print("expected start to recover after builtin stale runtime self-heal", obj, file=sys.stderr)
-  raise SystemExit(1)
-if cleanup.get("persisted_record_cleared") is not True:
-  print("expected start response to report builtin stale runtime self-heal", obj, file=sys.stderr)
-  raise SystemExit(1)
-if cleanup.get("runtime_artifacts_deleted") is not True:
-  print("expected start response to delete builtin stale runtime artifacts", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("runtime_kind") != "bundled" or not peer.get("running"):
-  print("expected bundled running runtime after builtin stale runtime self-heal", obj, file=sys.stderr)
-  raise SystemExit(1)
-if os.path.exists(r'''${BUILTIN_STALE_START_RUNTIME_DIR}/stdout.jsonl'''):
-  with open(r'''${BUILTIN_STALE_START_RUNTIME_DIR}/stdout.jsonl''', 'r', encoding='utf-8') as f:
-    if '{"stale":"artifact"}' in f.read():
-      print("expected builtin stale stdout artifact to be replaced on fresh start", file=sys.stderr)
-      raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${builtin_stale_start_resp}" "builtin stale runtime self-heal start response" \
+  --true ok \
+  --true started \
+  --true cleanup_on_stale_record.persisted_record_cleared \
+  --true cleanup_on_stale_record.runtime_artifacts_deleted \
+  --equals peer.runtime_kind=bundled \
+  --true peer.running
+if [[ -f "${BUILTIN_STALE_START_RUNTIME_DIR}/stdout.jsonl" ]] && grep -Fq '{"stale":"artifact"}' "${BUILTIN_STALE_START_RUNTIME_DIR}/stdout.jsonl"; then
+  echo "expected builtin stale stdout artifact to be replaced on fresh start" >&2
+  exit 1
+fi
 
-BUILTIN_STALE_START_BROKER_SESSION_ID="$(python3 - <<PY
-import json, sys
-obj = json.loads(r'''${builtin_stale_start_resp}''')
-peer = obj.get("peer") or {}
-sid = str(peer.get("broker_session_id") or "").strip()
-if not sid:
-  print("missing builtin stale runtime self-heal broker_session_id", file=sys.stderr)
-  raise SystemExit(1)
-print(sid)
-PY
-)"
+BUILTIN_STALE_START_BROKER_SESSION_ID="$(voice_webrtc_peer_field "${builtin_stale_start_resp}" broker_session_id "builtin stale runtime self-heal start response" --require-ok --nonempty)"
 
 wait_voice_peer_ready "${BUILTIN_STALE_START_SESSION_ID}" 1 status_json bundled bundled auto 1
 
 builtin_stale_start_stop_resp="$(voice_peer_request "{\"session_id\":\"${BUILTIN_STALE_START_SESSION_ID}\",\"action\":\"stop\"}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${builtin_stale_start_stop_resp}''')
-if not obj.get("ok") or not obj.get("stopped"):
-  print("expected builtin stale runtime self-heal stop to succeed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("broker_session_deleted") is not True:
-  print("expected builtin stale runtime self-heal stop to delete broker session", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_stopped "${builtin_stale_start_stop_resp}" "builtin stale runtime self-heal stop response" \
+  --stopped true \
+  --broker-session-deleted true
 
 wait_broker_session_deleted "${BUILTIN_STALE_START_BROKER_SESSION_ID}"
 
@@ -2704,52 +1827,26 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${config_invalid_node_bin_update_resp}''')
-audio = obj.get("audio_webrtc") or {}
-if not obj.get("ok"):
-  print("config update for invalid node_bin failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("node_bin") != "definitely-not-a-real-node-binary":
-  print("expected persisted invalid node_bin", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("bundled_available") is not False or audio.get("external_available") is not False:
-  print("expected bundled/external unavailable with missing node_bin", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("default_runtime_kind_available") is not False:
-  print("expected default_runtime_kind_available=false with missing node_bin", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "not found" not in str(audio.get("bundled_unavailable_reason", "")):
-  print("expected bundled unavailable reason for missing node_bin", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "not found" not in str(audio.get("external_unavailable_reason", "")):
-  print("expected external unavailable reason for missing node_bin", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${config_invalid_node_bin_update_resp}" "invalid node_bin config update" \
+  --require-ok \
+  --equals audio_webrtc.node_bin=definitely-not-a-real-node-binary \
+  --false audio_webrtc.bundled_available \
+  --false audio_webrtc.external_available \
+  --false audio_webrtc.default_runtime_kind_available \
+  --contains audio_webrtc.bundled_unavailable_reason="not found" \
+  --contains audio_webrtc.external_unavailable_reason="not found"
 
 restart_agentd_without_voice_defaults
 
 invalid_node_bin_config_json="$(config_get)"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${invalid_node_bin_config_json}''')
-daemon = obj.get("daemon") or {}
-audio = daemon.get("audio_webrtc") or {}
-if audio.get("default_runtime_kind") is not None or audio.get("default_runtime_kind_source") != "auto":
-  print("expected auto default runtime policy with invalid node_bin", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("bundled_available") is not False or audio.get("external_available") is not False:
-  print("expected bundled/external unavailable after restart with invalid node_bin", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("default_runtime_kind_available") is not False:
-  print("expected default runtime unavailable after restart with invalid node_bin", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "not found" not in str(audio.get("default_runtime_kind_unavailable_reason", "")):
-  print("expected default unavailable reason for missing node_bin", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${invalid_node_bin_config_json}" "persisted invalid node_bin config" \
+  --none daemon.audio_webrtc.default_runtime_kind \
+  --equals daemon.audio_webrtc.default_runtime_kind_source=auto \
+  --false daemon.audio_webrtc.bundled_available \
+  --false daemon.audio_webrtc.external_available \
+  --false daemon.audio_webrtc.default_runtime_kind_available \
+  --contains daemon.audio_webrtc.default_runtime_kind_unavailable_reason="not found"
 
 INVALID_NODE_BIN_SESSION_ID="agentd_session_voice_webrtc_peer_runtime_invalid_node_bin_$(date +%s)_$RANDOM"
 create_session "${INVALID_NODE_BIN_SESSION_ID}"
@@ -2776,38 +1873,19 @@ if [[ "${invalid_node_bin_start_status}" != "500" ]]; then
   exit 1
 fi
 
-python3 - <<PY
-import json, sys
-obj = json.load(open(r'''${invalid_node_bin_start_body}''', 'r', encoding='utf-8'))
-if obj.get("default_runtime_kind_available") is not False:
-  print("expected unavailable default runtime on invalid node_bin start", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "audio_webrtc_peer_node_bin not found" not in str(obj.get("error", "")):
-  print("expected direct invalid node_bin error", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("startup_cleanup") is not None:
-  print("expected no startup cleanup for preflight node_bin failure", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("peer") is not None:
-  print("expected no peer state for preflight node_bin failure", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "not found" not in str(obj.get("default_runtime_kind_unavailable_reason", "")):
-  print("expected default unavailable reason on invalid node_bin start", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_body_fields "${invalid_node_bin_start_body}" "invalid node_bin start response" \
+  --false default_runtime_kind_available \
+  --contains error="audio_webrtc_peer_node_bin not found" \
+  --none startup_cleanup \
+  --none peer \
+  --contains default_runtime_kind_unavailable_reason="not found"
 
 invalid_node_bin_status_json="$(voice_peer_status "${INVALID_NODE_BIN_SESSION_ID}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${invalid_node_bin_status_json}''')
-if obj.get("session_exists") is not True:
-  print("expected session row to remain after invalid node_bin preflight failure", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("running") is not False or obj.get("peer") is not None:
-  print("expected no runtime after invalid node_bin preflight failure", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_assertions.py" assert-no-runtime \
+  --label "invalid node_bin preflight failure" \
+  --response-json "${invalid_node_bin_status_json}" \
+  --expect-session-exists true
 
 delete_session_quiet "${INVALID_NODE_BIN_SESSION_ID}"
 
@@ -2821,20 +1899,11 @@ print(json.dumps({
 PY
 )")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${config_failfast_update_resp}''')
-audio = obj.get("audio_webrtc") or {}
-if not obj.get("ok"):
-  print("config update for fail-fast node_bin failed", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("node_bin") != "false":
-  print("expected persisted fail-fast node_bin", obj, file=sys.stderr)
-  raise SystemExit(1)
-if audio.get("bundled_available") is not True or audio.get("default_runtime_kind_available") is not True:
-  print("expected launchable backend availability for fail-fast runtime test", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_fields "${config_failfast_update_resp}" "fail-fast node_bin config" \
+  --require-ok \
+  --equals-string audio_webrtc.node_bin=false \
+  --true audio_webrtc.bundled_available \
+  --true audio_webrtc.default_runtime_kind_available
 
 restart_agentd_without_voice_defaults
 
@@ -2863,40 +1932,20 @@ if [[ "${fail_start_status}" != "500" ]]; then
   exit 1
 fi
 
-python3 - <<PY
-import json, sys
-obj = json.load(open(r'''${fail_start_body}''', 'r', encoding='utf-8'))
-cleanup = obj.get("startup_cleanup") or {}
-peer = obj.get("peer") or {}
-if obj.get("startup_confirmed") is not False:
-  print("expected startup_confirmed=false for fail-fast start", obj, file=sys.stderr)
-  raise SystemExit(1)
-if cleanup.get("runtime_present") is not True:
-  print("expected startup cleanup to observe runtime", obj, file=sys.stderr)
-  raise SystemExit(1)
-if cleanup.get("broker_session_delete_attempted") is not True or cleanup.get("broker_session_deleted") is not True:
-  print("expected startup cleanup to delete managed broker session", obj, file=sys.stderr)
-  raise SystemExit(1)
-if peer.get("exit_code") != 1:
-  print("expected fail-fast peer exit_code 1", obj, file=sys.stderr)
-  raise SystemExit(1)
-if "exited before ready" not in str(obj.get("error", "")):
-  print("expected fail-fast startup error", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+voice_webrtc_assert_body_fields "${fail_start_body}" "fail-fast startup response" \
+  --false startup_confirmed \
+  --true startup_cleanup.runtime_present \
+  --true startup_cleanup.broker_session_delete_attempted \
+  --true startup_cleanup.broker_session_deleted \
+  --equals peer.exit_code=1 \
+  --contains error="exited before ready"
 
 fail_status_json="$(voice_peer_status "${FAIL_SESSION_ID}")"
 
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${fail_status_json}''')
-if obj.get("session_exists") is not True:
-  print("expected session row to remain after fail-fast startup", obj, file=sys.stderr)
-  raise SystemExit(1)
-if obj.get("running") is not False or obj.get("peer") is not None:
-  print("expected no surviving runtime after fail-fast startup cleanup", obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
+python3 "${SCRIPT_DIR}/lib/agentd_voice_webrtc_runtime_assertions.py" assert-no-runtime \
+  --label "fail-fast startup cleanup" \
+  --response-json "${fail_status_json}" \
+  --expect-session-exists true
 
 delete_session_quiet "${FAIL_SESSION_ID}"
 
