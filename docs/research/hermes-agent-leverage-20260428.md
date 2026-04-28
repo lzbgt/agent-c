@@ -44,6 +44,7 @@ The main gap versus Hermes was not another scheduler or parallel task primitive.
 - Added smoke coverage proving a workflow can run, write an experience record, expose reward metadata, and leave a durable JSONL artifact.
 - Drafted `docs/spec/hermes_leverage_agentd_v0.md` to define the closed-loop learning, schedule, delegation, RL, and `codexw` broker compatibility direction.
 - Added `tools/run_agentd_codexw_compat.sh` as an operator bridge for the current sibling `codexw` broker/iOS deployment path.
+- Added `tools/agentd_codexw_local_api_facade.py` so the bridge uses codexw's documented external-local-API deployment mode instead of only colocating `agentd` beside a broker-connected `codexw` process.
 
 ## Design conclusion
 
@@ -53,4 +54,5 @@ Do not copy Hermes Python subsystem shapes directly into this C/C++/Go daemon-fi
 - schedules are durable workflow submitters
 - memory tools are explicit workflow tasks
 - broker compatibility is adapter-based, not a fake claim of full protocol parity
+- codexw cloud/app still needs first-class surfaces for `agentd` features that are richer than the current codexw session/shell model: workflow schedules, experience records, RL export, and delegate/parallel topology
 - RL readiness starts with deterministic records and replay bundles before model-training loops
