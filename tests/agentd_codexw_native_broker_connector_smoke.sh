@@ -86,4 +86,189 @@ if "workflow.submit" not in payload["runtime_capabilities"]["actions"]:
     raise SystemExit(1)
 PY
 
+python3 - <<PY
+import base64
+import hashlib
+import json
+import os
+import socket
+import struct
+import subprocess
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+SCRIPT = "${SCRIPT_DIR}/../tools/agentd_codexw_native_broker_connector.py"
+KEY_PATH = "${KEY_PATH}"
+CERT_PATH = "${CERT_PATH}"
+
+GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+
+def recv_exact(sock, size):
+    chunks = bytearray()
+    while len(chunks) < size:
+        chunk = sock.recv(size - len(chunks))
+        if not chunk:
+            raise EOFError("closed")
+        chunks.extend(chunk)
+    return bytes(chunks)
+
+
+def send_frame(sock, obj):
+    payload = json.dumps(obj, separators=(",", ":")).encode()
+    if len(payload) < 126:
+        header = struct.pack("!BB", 0x81, len(payload))
+    elif len(payload) <= 0xFFFF:
+        header = struct.pack("!BBH", 0x81, 126, len(payload))
+    else:
+        header = struct.pack("!BBQ", 0x81, 127, len(payload))
+    sock.sendall(header + payload)
+
+
+def read_frame(sock):
+    first, second = recv_exact(sock, 2)
+    opcode = first & 0x0F
+    masked = bool(second & 0x80)
+    length = second & 0x7F
+    if length == 126:
+        length = struct.unpack("!H", recv_exact(sock, 2))[0]
+    elif length == 127:
+        length = struct.unpack("!Q", recv_exact(sock, 8))[0]
+    mask = recv_exact(sock, 4) if masked else b""
+    payload = recv_exact(sock, length) if length else b""
+    if masked:
+        payload = bytes(byte ^ mask[idx % 4] for idx, byte in enumerate(payload))
+    if opcode == 8:
+        raise EOFError("close")
+    return json.loads(payload.decode())
+
+
+class AgentdHandler(BaseHTTPRequestHandler):
+    def log_message(self, fmt, *args):
+        return
+
+    def do_GET(self):
+        if self.path.startswith("/api/v1/health"):
+            self.send_json({"ok": True})
+        elif self.path.startswith("/api/v1/caps"):
+            self.send_json({"ok": True, "capabilities": ["workflow", "rl"]})
+        elif self.path.startswith("/api/v1/rl/experience_records"):
+            self.send_json({"ok": True, "records": [{"label": "smoke", "reward": 1.0}]})
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def send_json(self, payload):
+        body = json.dumps(payload).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+agentd = ThreadingHTTPServer(("127.0.0.1", 0), AgentdHandler)
+agentd_thread = threading.Thread(target=agentd.serve_forever, daemon=True)
+agentd_thread.start()
+agentd_url = f"http://127.0.0.1:{agentd.server_address[1]}"
+
+broker_sock = socket.socket()
+broker_sock.bind(("127.0.0.1", 0))
+broker_sock.listen(1)
+broker_url = f"http://127.0.0.1:{broker_sock.getsockname()[1]}"
+results = {}
+
+
+def broker_thread():
+    conn, _ = broker_sock.accept()
+    with conn:
+        raw = b""
+        while b"\r\n\r\n" not in raw:
+            raw += conn.recv(4096)
+        text = raw.decode("iso-8859-1")
+        headers = {}
+        for line in text.split("\r\n")[1:]:
+            if ":" in line:
+                name, value = line.split(":", 1)
+                headers[name.lower()] = value.strip()
+        assert headers.get("x-codexw-runtime-kind") == "agentd", headers
+        assert headers.get("x-codexw-runtime-instance-id") == "agentd-native-live-instance", headers
+        accept = base64.b64encode(hashlib.sha1((headers["sec-websocket-key"] + GUID).encode()).digest()).decode()
+        conn.sendall(
+            (
+                "HTTP/1.1 101 Switching Protocols\r\n"
+                "Upgrade: websocket\r\n"
+                "Connection: Upgrade\r\n"
+                f"Sec-WebSocket-Accept: {accept}\r\n"
+                "\r\n"
+            ).encode()
+        )
+        send_frame(conn, {"type": "broker.hello", "deployment_id": "agentd-native-smoke", "server_id": "broker-smoke"})
+        hello = read_frame(conn)
+        snapshot = read_frame(conn)
+        assert hello["type"] == "deployment.hello", hello
+        assert snapshot["type"] == "deployment.snapshot", snapshot
+        assert snapshot["runtime"]["runtime"]["instance_id"] == "agentd-native-live-instance", snapshot
+        send_frame(
+            conn,
+            {
+                "type": "deployment.command",
+                "request_id": "cmd-1",
+                "method": "POST",
+                "path": "/api/v1/runtime/actions",
+                "body": {"action": "experience.list", "input": {"limit": 1}},
+            },
+        )
+        command_result = read_frame(conn)
+        results["command_result"] = command_result
+        assert command_result["type"] == "deployment.command_result", command_result
+        assert command_result["request_id"] == "cmd-1", command_result
+        assert command_result["status"] == 200, command_result
+        assert command_result["body"]["action"] == "experience.list", command_result
+        assert command_result["body"]["result"]["records"][0]["label"] == "smoke", command_result
+
+
+thread = threading.Thread(target=broker_thread, daemon=True)
+thread.start()
+proc = subprocess.run(
+    [
+        SCRIPT,
+        "--broker-url",
+        broker_url,
+        "--deployment-id",
+        "agentd-native-smoke",
+        "--display-name",
+        "agentd native smoke",
+        "--runtime-instance-id",
+        "agentd-native-live-instance",
+        "--deployment-cert-path",
+        CERT_PATH,
+        "--deployment-key-path",
+        KEY_PATH,
+        "--agentd-base-url",
+        agentd_url,
+        "--timestamp",
+        "1700000000",
+        "--timeout",
+        "5",
+        "--connect",
+        "--once",
+    ],
+    text=True,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    timeout=10,
+)
+agentd.shutdown()
+broker_sock.close()
+thread.join(timeout=5)
+if proc.returncode != 0:
+    raise SystemExit(f"connector failed\\nSTDOUT:\\n{proc.stdout}\\nSTDERR:\\n{proc.stderr}")
+summary = json.loads(proc.stdout)
+if summary.get("mode") != "connect" or summary.get("commands") != 1:
+    raise SystemExit(f"bad connector summary: {summary}")
+if "command_result" not in results:
+    raise SystemExit("broker did not receive command result")
+PY
+
 echo "agentd_codexw_native_broker_connector_smoke OK"

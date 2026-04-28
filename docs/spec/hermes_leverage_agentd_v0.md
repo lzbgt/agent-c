@@ -227,10 +227,11 @@ Known bridge limits:
 - Shell control is represented but not yet backed by live `agentd` shell ownership.
 - The transcript is facade-local for now; a later slice should mirror `agentd` session/audit data into the codexw transcript page model.
 - Native `agentd` direct enrollment into the `codexw` broker now has a local
-  protocol kit, but not yet the long-running websocket loop. The remaining
-  native gap is opening/maintaining the deployment websocket, periodically
-  sending snapshots, sending heartbeats, and returning `deployment.command`
-  results.
+  connector with a websocket loop, runtime snapshots, and
+  `deployment.command` results. The remaining native gap is production
+  lifecycle hardening: persisted identity bootstrapping, reconnect backoff,
+  process supervision, and a packaging path that can replace the facade bridge
+  in `tools/run_agentd_codexw_compat.sh`.
 - Codexw cloud/app should grow first-class `agentd` capability models for workflow schedules, closed-loop experience records, RL export, and delegate/parallel status instead of treating them as opaque runtime metadata.
 
 ## Native codexw broker enrollment target
@@ -242,7 +243,7 @@ implements this full deployment protocol, but the target handshake is now
 concrete.
 
 `tools/agentd_codexw_native_broker_connector.py` implements the first native
-agentd broker-client foundation:
+agentd broker-client:
 
 - computes the same canonical `broker.runtime_capabilities.v1` SHA-256 that
   the broker stores as runtime identity metadata
@@ -250,6 +251,11 @@ agentd broker-client foundation:
   `GET /api/v1/deployment/connect`
 - emits native runtime identity headers for `runtime_kind:"agentd"`
 - builds the runtime payload expected inside a `deployment.snapshot` frame
+- opens the broker deployment websocket with a stdlib RFC 6455 client
+- sends `deployment.hello` and `deployment.snapshot` frames
+- handles broker ping frames and periodic snapshot refresh
+- dispatches `deployment.command` for `GET /api/v1/runtime`,
+  `GET /healthz`, and `POST /api/v1/runtime/actions`
 - can sign and submit a CSR body to
   `POST /api/v1/deployment/enroll-certificate` when supplied an enrollment
   token id, shared secret, and CSR PEM
@@ -266,6 +272,18 @@ tools/agentd_codexw_native_broker_connector.py \
   --deployment-key-path state/codexw/deployment.key.pem \
   --agentd-base-url http://127.0.0.1:18080 \
   --dry-run
+```
+
+Example websocket connect:
+
+```bash
+tools/agentd_codexw_native_broker_connector.py \
+  --broker-url https://broker.example \
+  --deployment-id agentd-m2 \
+  --deployment-cert-path state/codexw/deployment.cert.pem \
+  --deployment-key-path state/codexw/deployment.key.pem \
+  --agentd-base-url http://127.0.0.1:18080 \
+  --connect
 ```
 
 Native `agentd` should:
