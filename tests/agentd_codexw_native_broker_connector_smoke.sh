@@ -100,6 +100,7 @@ from pathlib import Path
 SCRIPT = "${SCRIPT_DIR}/../tools/agentd_codexw_native_broker_connector.py"
 TOKEN_ID = "agentd-bootstrap-token"
 SECRET = "agentd-bootstrap-secret"
+SESSION_TOKEN = "agentd-bootstrap-session"
 BOOT_DIR = Path("${TMP_DIR}") / "bootstrap"
 CA_KEY = Path("${TMP_DIR}") / "ca.key.pem"
 CA_CERT = Path("${TMP_DIR}") / "ca.cert.pem"
@@ -138,6 +139,19 @@ class EnrollHandler(BaseHTTPRequestHandler):
         return
 
     def do_POST(self):
+        if self.path == "/api/v1/auth/login":
+            length = int(self.headers.get("content-length") or "0")
+            body = json.loads(self.rfile.read(length))
+            assert body == {"username": "admin", "password": "secret-pass"}, body
+            self.send_payload({"ok": True, "token": SESSION_TOKEN, "user": {"username": "admin"}})
+            return
+        if self.path == "/api/v1/auth/deployment-enrollment-tokens":
+            assert self.headers.get("Authorization") == f"Bearer {SESSION_TOKEN}", dict(self.headers)
+            length = int(self.headers.get("content-length") or "0")
+            body = json.loads(self.rfile.read(length))
+            assert body["id"] == "agentd-bootstrap-smoke-agentd-native", body
+            self.send_payload({"ok": True, "token": {"id": TOKEN_ID, "shared_secret": SECRET}})
+            return
         assert self.path == "/api/v1/deployment/enroll-certificate", self.path
         length = int(self.headers.get("content-length") or "0")
         body = self.rfile.read(length)
@@ -181,8 +195,11 @@ class EnrollHandler(BaseHTTPRequestHandler):
                 "issuer_certificate_pem": CA_CERT.read_text(),
             },
         }
+        self.send_payload(response, status=201)
+
+    def send_payload(self, response, status=200):
         raw = json.dumps(response).encode()
-        self.send_response(201)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
@@ -206,10 +223,10 @@ proc = subprocess.run(
         str(BOOT_DIR),
         "--agentd-base-url",
         "http://127.0.0.1:18080",
-        "--enrollment-token-id",
-        TOKEN_ID,
-        "--enrollment-shared-secret",
-        SECRET,
+        "--broker-user",
+        "admin",
+        "--broker-password",
+        "secret-pass",
         "--bootstrap-identity",
         "--dry-run",
     ],

@@ -188,8 +188,8 @@ tools/run_agentd_codexw_compat.sh \
   --broker-mode native \
   --broker-url https://broker.example \
   --deployment-id agentd-m2 \
-  --native-enrollment-token-id '<one-time-token-id>' \
-  --native-enrollment-secret '<one-time-token-secret>'
+  -u admin \
+  -p '<broker password>'
 ```
 
 Native mode:
@@ -199,7 +199,8 @@ Native mode:
   material under `.codexw-agentd/native` unless `--native-identity-dir` is
   supplied
 - bootstraps the deployment key/CSR/certificate on first run when enrollment
-  token credentials are supplied
+  token credentials are supplied, or logs in with `-u/-p` and self-issues a
+  one-time enrollment token before certificate enrollment
 - reuses the persisted deployment identity on later runs without needing the
   one-time enrollment token again
 - starts `tools/agentd_codexw_native_broker_connector.py --connect --reconnect`
@@ -285,6 +286,9 @@ agentd broker-client:
 - can sign and submit a CSR body to
   `POST /api/v1/deployment/enroll-certificate` when supplied an enrollment
   token id, shared secret, and CSR PEM
+- can login to `POST /api/v1/auth/login` with broker `-u/-p`, issue a
+  user-owned token through `POST /api/v1/auth/deployment-enrollment-tokens`,
+  and use that token for first-boot certificate enrollment
 - can bootstrap a persistent identity directory with deployment key, CSR,
   broker-signed certificate, and raw enrollment response material
 - supports reconnect supervision with bounded exponential backoff

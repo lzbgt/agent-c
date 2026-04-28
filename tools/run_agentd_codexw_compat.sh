@@ -31,6 +31,7 @@ Options:
                                   One-time deployment enrollment token id for native first boot.
   --native-enrollment-secret <secret>
                                   One-time deployment enrollment token shared secret for native first boot.
+                                  If omitted, native mode can mint a token with -u/-p.
   --native-no-reconnect          Disable native connector reconnect supervision.
   --state-dir <path>             agentd state dir (default: .codexw-agentd/state).
   --db-path <path>               agentd SQLite DB path (default: .codexw-agentd/agentd.sqlite).
@@ -222,6 +223,12 @@ if [[ "${BROKER_MODE}" == "native" ]]; then
   )
   if [[ "${NATIVE_RECONNECT}" == "1" ]]; then
     native_args+=(--reconnect)
+  fi
+  if [[ -n "${USER_NAME}" ]]; then
+    native_args+=(--broker-user "${USER_NAME}")
+  fi
+  if [[ -n "${PASSWORD}" ]]; then
+    native_args+=(--broker-password "${PASSWORD}")
   fi
   if [[ -n "${NATIVE_ENROLLMENT_TOKEN_ID}" ]]; then
     native_args+=(--enrollment-token-id "${NATIVE_ENROLLMENT_TOKEN_ID}")

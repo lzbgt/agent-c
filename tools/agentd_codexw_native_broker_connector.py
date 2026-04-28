@@ -35,6 +35,8 @@ from agentd_codexw_contract import (
 
 CONNECT_PATH = "/api/v1/deployment/connect"
 ENROLL_CERTIFICATE_PATH = "/api/v1/deployment/enroll-certificate"
+LOGIN_PATH = "/api/v1/auth/login"
+SELF_ENROLLMENT_TOKEN_PATH = "/api/v1/auth/deployment-enrollment-tokens"
 DEFAULT_KEY_NAME = "deployment.key.pem"
 DEFAULT_CERT_NAME = "deployment.cert.pem"
 DEFAULT_CSR_NAME = "deployment.csr.pem"
@@ -238,6 +240,74 @@ def broker_ws_url(broker_url: str) -> str:
 def broker_http_url(broker_url: str, path: str) -> str:
     parsed = urllib.parse.urlparse(broker_url)
     return urllib.parse.urlunparse(parsed._replace(path=path, params="", query="", fragment=""))
+
+
+def broker_json_request(
+    args: argparse.Namespace,
+    *,
+    method: str,
+    path: str,
+    body: dict[str, Any] | None = None,
+    bearer_token: str = "",
+) -> dict[str, Any]:
+    data = None if body is None else json_dumps(body)
+    headers = {"Accept": "application/json"}
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+    if bearer_token:
+        headers["Authorization"] = f"Bearer {bearer_token}"
+    request = urllib.request.Request(
+        broker_http_url(args.broker_url, path),
+        data=data,
+        headers=headers,
+        method=method,
+    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(request, timeout=args.timeout) as response:
+        raw = response.read()
+    return json.loads(raw.decode("utf-8")) if raw else {}
+
+
+def login_broker_user(args: argparse.Namespace) -> str:
+    if not args.broker_user or not args.broker_password:
+        raise ValueError("--broker-user and --broker-password are required to issue an enrollment token")
+    response = broker_json_request(
+        args,
+        method="POST",
+        path=LOGIN_PATH,
+        body={"username": args.broker_user, "password": args.broker_password},
+    )
+    token = response.get("token")
+    if not isinstance(token, str) or not token.strip():
+        raise ValueError("broker login response missing token")
+    return token.strip()
+
+
+def issue_enrollment_token(args: argparse.Namespace) -> dict[str, str]:
+    session_token = login_broker_user(args)
+    token_id = args.enrollment_token_id.strip() if args.enrollment_token_id else f"{args.deployment_id}-agentd-native"
+    response = broker_json_request(
+        args,
+        method="POST",
+        path=SELF_ENROLLMENT_TOKEN_PATH,
+        bearer_token=session_token,
+        body={
+            "id": token_id,
+            "description": f"agentd native deployment enrollment for {args.deployment_id}",
+        },
+    )
+    token = response.get("token")
+    if not isinstance(token, dict):
+        raise ValueError("deployment enrollment token response missing token object")
+    token_id_value = token.get("id")
+    secret = token.get("shared_secret")
+    if not isinstance(token_id_value, str) or not token_id_value.strip():
+        raise ValueError("deployment enrollment token response missing token.id")
+    if not isinstance(secret, str) or not secret.strip():
+        raise ValueError("deployment enrollment token response missing token.shared_secret")
+    args.enrollment_token_id = token_id_value.strip()
+    args.enrollment_shared_secret = secret.strip()
+    return {"id": args.enrollment_token_id, "shared_secret": args.enrollment_shared_secret}
 
 
 def recv_exact(sock: socket.socket, size: int) -> bytes:
@@ -596,7 +666,12 @@ def build_dry_run_payload(args: argparse.Namespace) -> dict[str, Any]:
 
 def enroll_certificate(args: argparse.Namespace) -> dict[str, Any]:
     if not args.enrollment_token_id or not args.enrollment_shared_secret:
-        raise ValueError("--enrollment-token-id and --enrollment-shared-secret are required")
+        if args.broker_user and args.broker_password:
+            issue_enrollment_token(args)
+        else:
+            raise ValueError(
+                "--enrollment-token-id and --enrollment-shared-secret, or --broker-user and --broker-password, are required"
+            )
     csr_pem = Path(args.csr_path).read_text(encoding="utf-8")
     body = json_dumps(
         {
@@ -649,10 +724,13 @@ def bootstrap_identity(args: argparse.Namespace) -> dict[str, Any]:
         created_csr = True
     if not cert_path.exists():
         if not args.enrollment_token_id or not args.enrollment_shared_secret:
-            raise ValueError(
-                "deployment certificate is missing; provide --enrollment-token-id and "
-                "--enrollment-shared-secret with --bootstrap-identity"
-            )
+            if args.broker_user and args.broker_password:
+                issue_enrollment_token(args)
+            else:
+                raise ValueError(
+                    "deployment certificate is missing; provide --enrollment-token-id and "
+                    "--enrollment-shared-secret, or --broker-user and --broker-password, with --bootstrap-identity"
+                )
         response = enroll_certificate(args)
         persist_enrollment_response(args, response)
         enrolled = True
@@ -761,6 +839,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--deployment-key-path", default="")
     parser.add_argument("--agentd-base-url", required=True)
     parser.add_argument("--agentd-auth-token", default=os.environ.get("AGENTD_AUTH_TOKEN", ""))
+    parser.add_argument("--broker-user", default="")
+    parser.add_argument("--broker-password", default="")
     parser.add_argument("--timestamp", type=int, default=0, help="fixed Unix timestamp for deterministic tests")
     parser.add_argument("--timeout", type=float, default=15.0)
     parser.add_argument("--dry-run", action="store_true", help="print broker-ready identity/snapshot JSON")
