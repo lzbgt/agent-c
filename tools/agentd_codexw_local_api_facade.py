@@ -21,6 +21,44 @@ from typing import Any
 
 
 LOCAL_API_VERSION = "agentd-codexw-facade-v1"
+RUNTIME_ACTIONS = {
+    "workflow.submit": {
+        "transport": "local_api",
+        "method": "POST",
+        "path": "/api/v1/runtime/actions",
+        "input": "agentd_workflow_submit_request",
+    },
+    "workflow.read": {
+        "transport": "local_api",
+        "method": "POST",
+        "path": "/api/v1/runtime/actions",
+        "input": {"workflow_id": "string"},
+    },
+    "workflow.cancel": {
+        "transport": "local_api",
+        "method": "POST",
+        "path": "/api/v1/runtime/actions",
+        "input": {"workflow_id": "string"},
+    },
+    "schedule.list": {
+        "transport": "local_api",
+        "method": "POST",
+        "path": "/api/v1/runtime/actions",
+        "input": {"status": "optional string", "limit": "optional integer", "offset": "optional integer"},
+    },
+    "experience.list": {
+        "transport": "local_api",
+        "method": "POST",
+        "path": "/api/v1/runtime/actions",
+        "input": "agentd_experience_record_filter",
+    },
+    "experience.export": {
+        "transport": "local_api",
+        "method": "POST",
+        "path": "/api/v1/runtime/actions",
+        "input": "agentd_experience_record_filter",
+    },
+}
 
 
 class FacadeState:
@@ -119,6 +157,62 @@ def extract_prompt(body: dict[str, Any]) -> str:
     return ""
 
 
+def runtime_capabilities() -> dict[str, Any]:
+    return {
+        "schema": "broker.runtime_capabilities.v1",
+        "runtime_kind": "agentd",
+        "actions": RUNTIME_ACTIONS,
+        "surfaces": {
+            "workflow": True,
+            "schedule": True,
+            "experience": True,
+            "transcript": True,
+            "files": True,
+        },
+    }
+
+
+def legacy_capabilities() -> list[str]:
+    return [
+        "agentd.run",
+        "agentd.workflow",
+        "agentd.schedule",
+        "agentd.rl.experience_records",
+        "codexw.local_api.runtime",
+        "codexw.local_api.runtime_actions",
+        "codexw.local_api.turn_start",
+        "codexw.local_api.transcript",
+    ]
+
+
+def request_input(body: dict[str, Any]) -> dict[str, Any]:
+    for key in ("input", "params", "payload"):
+        value = body.get(key)
+        if isinstance(value, dict):
+            return value
+    return {}
+
+
+def require_string(obj: dict[str, Any], key: str) -> str:
+    value = obj.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{key} is required")
+    return value.strip()
+
+
+def query_from_input(input_obj: dict[str, Any], allowed: set[str]) -> str:
+    values: dict[str, str] = {}
+    for key in allowed:
+        value = input_obj.get(key)
+        if value is None:
+            continue
+        if isinstance(value, (str, int, float, bool)):
+            text = str(value).strip()
+            if text:
+                values[key] = text
+    return urllib.parse.urlencode(values)
+
+
 def make_session(state: FacadeState) -> dict[str, Any]:
     return {
         "id": state.session_id,
@@ -201,6 +295,8 @@ class FacadeHandler(BaseHTTPRequestHandler):
                 self.send_json(200, self.health())
             elif method == "GET" and path == "/api/v1/runtime":
                 self.send_json(200, self.runtime())
+            elif method == "POST" and path == "/api/v1/runtime/actions":
+                self.send_json(200, self.runtime_action(read_json_body(self)))
             elif method == "GET" and path in ("/api/v1/session", f"/api/v1/session/{self.state.session_id}"):
                 self.send_json(200, self.session_snapshot())
             elif method == "POST" and path in ("/api/v1/session/new", "/api/v1/session/attach"):
@@ -280,14 +376,8 @@ class FacadeHandler(BaseHTTPRequestHandler):
                 "agentd_base_url": self.state.args.agentd_base_url.rstrip("/"),
                 "agentd_health": agentd_health,
                 "agentd_capabilities": agentd_caps,
-                "capabilities": [
-                    "agentd.run",
-                    "agentd.workflow",
-                    "agentd.rl.experience_records",
-                    "codexw.local_api.runtime",
-                    "codexw.local_api.turn_start",
-                    "codexw.local_api.transcript",
-                ],
+                "capabilities": legacy_capabilities(),
+                "runtime_capabilities": runtime_capabilities(),
                 "live_session": {
                     "status": "available",
                     "transport": "broker_signaled_webrtc",
@@ -299,6 +389,49 @@ class FacadeHandler(BaseHTTPRequestHandler):
                 },
             },
         }
+
+    def runtime_action(self, body: dict[str, Any]) -> dict[str, Any]:
+        action = body.get("action")
+        if not isinstance(action, str) or not action.strip():
+            raise ValueError("runtime action is required")
+        action = action.strip()
+        if action not in RUNTIME_ACTIONS:
+            raise ValueError(f"unsupported runtime action: {action}")
+        input_obj = request_input(body)
+        result = self.forward_runtime_action(action, input_obj)
+        return {
+            "ok": True,
+            "local_api_version": LOCAL_API_VERSION,
+            "runtime_kind": "agentd",
+            "instance_id": self.state.instance_id,
+            "action": action,
+            "result": result,
+        }
+
+    def forward_runtime_action(self, action: str, input_obj: dict[str, Any]) -> Any:
+        if action == "workflow.submit":
+            return self.agentd.request("POST", "/api/v1/workflow/submit", input_obj)
+        if action == "workflow.read":
+            workflow_id = require_string(input_obj, "workflow_id")
+            return self.agentd.request("GET", "/api/v1/workflow?" + urllib.parse.urlencode({"workflow_id": workflow_id}))
+        if action == "workflow.cancel":
+            workflow_id = require_string(input_obj, "workflow_id")
+            return self.agentd.request("POST", "/api/v1/workflow/cancel", {"workflow_id": workflow_id})
+        if action == "schedule.list":
+            query = query_from_input(input_obj, {"status", "limit", "offset"})
+            path = "/api/v1/workflow_schedules" + (f"?{query}" if query else "")
+            return self.agentd.request("GET", path)
+        if action in ("experience.list", "experience.export"):
+            query = query_from_input(
+                input_obj,
+                {"offset", "limit", "label", "workflow_id", "task_id", "min_reward", "max_reward"},
+            )
+            path = "/api/v1/rl/experience_records" + (f"?{query}" if query else "")
+            result = self.agentd.request("GET", path)
+            if action == "experience.export" and isinstance(result, dict):
+                return {**result, "export_format": "json"}
+            return result
+        raise ValueError(f"unsupported runtime action: {action}")
 
     def session_snapshot(self) -> dict[str, Any]:
         return {
@@ -370,14 +503,12 @@ class FacadeHandler(BaseHTTPRequestHandler):
         }
 
     def capabilities(self) -> dict[str, Any]:
-        caps = [
-            "agentd.run",
-            "agentd.workflow",
-            "agentd.rl.experience_records",
-            "codexw.local_api.turn_start",
-            "codexw.local_api.transcript",
-        ]
-        return {"ok": True, "session_id": self.state.session_id, "capabilities": caps}
+        return {
+            "ok": True,
+            "session_id": self.state.session_id,
+            "capabilities": legacy_capabilities(),
+            "runtime_capabilities": runtime_capabilities(),
+        }
 
     def capability_report(self) -> dict[str, Any]:
         return {

@@ -84,6 +84,11 @@ transcript="$(curl -fsS --noproxy "*" \
 file_read="$(curl -fsS --noproxy "*" \
   -H "Authorization: Bearer ${FACADE_TOKEN}" \
   "${FACADE_URL}/api/v1/session/agentd/files/read?path=docs%2FWORKFLOWS.md&offset=0&limit=16")"
+experience_action="$(curl -fsS --noproxy "*" \
+  -H "Authorization: Bearer ${FACADE_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"experience.list","input":{"limit":5}}' \
+  "${FACADE_URL}/api/v1/runtime/actions")"
 
 python3 - <<PY
 import base64, json, sys
@@ -93,12 +98,17 @@ attach = json.loads(r'''${attach}''')
 turn = json.loads(r'''${turn}''')
 transcript = json.loads(r'''${transcript}''')
 file_read = json.loads(r'''${file_read}''')
+experience_action = json.loads(r'''${experience_action}''')
 
 if runtime.get("runtime", {}).get("kind") != "agentd":
     print("bad runtime", runtime, file=sys.stderr)
     raise SystemExit(1)
 if runtime.get("runtime", {}).get("connection_mode") != "service":
     print("bad connection mode", runtime, file=sys.stderr)
+    raise SystemExit(1)
+runtime_caps = runtime.get("runtime", {}).get("runtime_capabilities", {})
+if "workflow.submit" not in runtime_caps.get("actions", {}) or "experience.list" not in runtime_caps.get("actions", {}):
+    print("missing runtime actions", runtime, file=sys.stderr)
     raise SystemExit(1)
 if session.get("session_id") != "agentd" or session.get("session", {}).get("scope") != "process":
     print("bad session", session, file=sys.stderr)
@@ -124,6 +134,9 @@ if file_read.get("path") != "docs/WORKFLOWS.md":
     raise SystemExit(1)
 if not base64.b64decode(file_read.get("data_base64", "")).startswith(b"#"):
     print("bad file payload", file_read, file=sys.stderr)
+    raise SystemExit(1)
+if experience_action.get("action") != "experience.list" or not isinstance(experience_action.get("result"), dict):
+    print("bad experience action", experience_action, file=sys.stderr)
     raise SystemExit(1)
 PY
 

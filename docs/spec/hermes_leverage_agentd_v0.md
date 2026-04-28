@@ -185,6 +185,7 @@ Facade route contract:
 
 - `GET /healthz`
 - `GET /api/v1/runtime`
+- `POST /api/v1/runtime/actions`
 - `GET /api/v1/session`
 - `POST /api/v1/session/new`
 - `POST /api/v1/session/attach`
@@ -200,6 +201,19 @@ Facade route contract:
 - `GET /api/v1/session/{session_id}/files/read`
 
 In production mode the facade forwards mobile `turn/start` prompts to `agentd /api/v1/run`. In smoke/offline mode it can run with `--turn-mode echo` to verify the broker-facing contract without a model provider key.
+
+`/api/v1/runtime` advertises a `broker.runtime_capabilities.v1` manifest so the
+codexw broker and app can drive agentd-specific panels through capabilities
+instead of hardcoded runtime branches. The generic
+`POST /api/v1/runtime/actions` adapter supports:
+
+- `workflow.submit` -> `POST /api/v1/workflow/submit`
+- `workflow.read` -> `GET /api/v1/workflow?workflow_id=...`
+- `workflow.cancel` -> `POST /api/v1/workflow/cancel`
+- `schedule.list` -> `GET /api/v1/workflow_schedules`
+- `experience.list` -> `GET /api/v1/rl/experience_records`
+- `experience.export` -> `GET /api/v1/rl/experience_records` with an
+  explicit export-format marker in the facade result
 
 Known bridge limits:
 
