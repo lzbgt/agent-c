@@ -255,10 +255,12 @@ Known bridge limits:
 - The transcript is facade-local for now; a later slice should mirror `agentd` session/audit data into the codexw transcript page model.
 - Native `agentd` direct enrollment into the `codexw` broker now has a local
   connector with a websocket loop, runtime snapshots, and
-  `deployment.command` results. The remaining native gap is production
-  lifecycle hardening: persisted identity bootstrapping, reconnect backoff,
-  process supervision, and a packaging path that can replace the facade bridge
-  in `tools/run_agentd_codexw_compat.sh`.
+  `deployment.command` results. It also has persisted identity bootstrapping,
+  reconnect supervision, and a `tools/run_agentd_codexw_compat.sh
+  --broker-mode native` launcher path. The remaining native gap is exercising
+  the full approval/iOS runtime-action path against a real broker deployment
+  and deciding whether the production connector should stay as this Python
+  supervisor or move into the C++ daemon.
 - Codexw cloud/app should grow first-class `agentd` capability models for workflow schedules, closed-loop experience records, RL export, and delegate/parallel status instead of treating them as opaque runtime metadata.
 
 ## Native codexw broker enrollment target
