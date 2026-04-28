@@ -2311,6 +2311,58 @@
       "200":
         description: Cancellation requested
 
+/api/v1/rl/experience_records:
+  get:
+    tags: [rl, workflows]
+    summary: Export closed-loop workflow experience records
+    description: |
+      Reads bounded `agentd_experience_record_v1` JSONL records persisted by workflow tasks with
+      `kind: experience_record`. Pagination is by JSONL line offset; filters are applied after the offset.
+    parameters:
+      - in: query
+        name: offset
+        required: false
+        schema: { type: integer, format: int64, minimum: 0, default: 0 }
+        description: Zero-based JSONL line offset.
+      - in: query
+        name: limit
+        required: false
+        schema: { type: integer, format: int32, minimum: 1, maximum: 500, default: 50 }
+      - in: query
+        name: label
+        required: false
+        schema: { type: string }
+        description: Exact label filter.
+      - in: query
+        name: workflow_id
+        required: false
+        schema: { type: string }
+      - in: query
+        name: task_id
+        required: false
+        schema: { type: string }
+      - in: query
+        name: min_reward
+        required: false
+        schema: { type: number, format: double }
+      - in: query
+        name: max_reward
+        required: false
+        schema: { type: number, format: double }
+    responses:
+      "200":
+        description: Experience record page
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExperienceRecordsResponse"
+      "400":
+        description: Invalid numeric filter
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
 /api/v1/workflow_schedules:
   post:
     tags: [workflows]

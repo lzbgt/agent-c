@@ -35,6 +35,7 @@
 #include "openrouter_util.h"
 #include "policy_hooks.h"
 #include "provider_util.h"
+#include "rl_endpoints.h"
 #include "run_endpoints.h"
 #include "run_replay_endpoint.h"
 #include "runtime_skill_endpoints.h"
@@ -1342,6 +1343,10 @@ struct AgentdService::Impl {
     server.handle("POST", "/api/v1/workflow/cancel", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_workflow_cancel_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("GET", "/api/v1/rl/experience_records", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_rl_experience_records_endpoint(cur, cors_cfg, req, resp);
     });
     server.handle("POST", "/api/v1/workflow_schedules", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();

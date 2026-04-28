@@ -63,6 +63,7 @@ declares its own status (draft/rolling/implemented) in the document header.
 ## Integration leverage
 
 - `nanoclaw_leverage_v0.md`: NanoClaw pattern leverage map and integration steps (draft).
+- `hermes_leverage_agentd_v0.md`: Hermes-inspired closed-loop learning, scheduling, delegation, RL-ready data, and codexw broker compatibility plan (implementation slice started).
 
 ## Developer tooling
 

@@ -17,6 +17,7 @@
 #include "workflow_http_json.h"
 #include "workflow_agentd_call.h"
 #include "workflow_evidence.h"
+#include "workflow_experience.h"
 #include "workflow_templates.h"
 #include "workflow_memory_ops.h"
 #include "workflow_run_budget_clamp.h"
@@ -421,6 +422,8 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     std::string aerr;
     out = workflow_aggregate_to_json(agg, result_json_by_task, &aerr);
     if (!aerr.empty() && (!out.isMember("error") || !out["error"].isString())) out["error"] = aerr;
+  } else if (kind == "experience_record") {
+    out = workflow_experience_record_to_json(db_, cfg, wf, task, rr, result_json_by_task, now);
   } else if (kind == "memory_put") {
     if (wf_limits.max_tool_calls_total > 0 && wf_tool_calls_remaining <= 0) {
       workflow_budget_exceeded_cancel("max_tool_calls_total");

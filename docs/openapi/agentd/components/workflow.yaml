@@ -12,6 +12,7 @@ WorkflowTaskSpec:
     - Deterministic structured memory query tasks: `kind: memory_structured_query` with `memory_structured_query` (host tool; no LLM required)
     - Deterministic memory correlation tasks: `kind: memory_correlate` with `memory_correlate` (scans structured memory checkpoints; no LLM required)
     - Deterministic memory query tasks: `kind: memory_query` with `memory_query` (reads newest structured checkpoint; no LLM required)
+    - Deterministic closed-loop records: `kind: experience_record` with `experience_record` (writes bounded RL/eval JSONL)
     - Deterministic outbound HTTP JSON tasks: `kind: http_json` with `http_json` (gated by daemon flag; no LLM required)
     - Deterministic agent collaboration tasks: `kind: agentd_call` with `agentd_call` (gated by daemon flag; no LLM required)
     - Parallel agent collaboration macro: `kind: agentd_parallel` with `agentd_parallel` (submit-time expansion into parallel `agentd_call` tasks + an aggregate join; configurable)
@@ -32,6 +33,7 @@ WorkflowTaskSpec:
     - If `kind == memory_structured_query`, `memory_structured_query` is required and `request.prompt` is not used.
     - If `kind == memory_correlate`, `memory_correlate` is required and `request.prompt` is not used.
     - If `kind == memory_query`, `memory_query` is required and `request.prompt` is not used.
+    - If `kind == experience_record`, `experience_record` is optional and `request.prompt` is not used.
     - If `kind == http_json`, `http_json` is required and `request.prompt` is not used.
     - If `kind == agentd_call`, `agentd_call` is required and `request.prompt` is not used.
     - If `kind == agentd_parallel`, `agentd_parallel.agentd_call` plus either `agentd_parallel.targets` or `agentd_parallel.targets_from_broker_registry` are required and `request.prompt` is not used (expanded into multiple tasks).
@@ -53,6 +55,7 @@ WorkflowTaskSpec:
     - $ref: "#/components/schemas/WorkflowTaskMemoryStructuredQuerySpec"
     - $ref: "#/components/schemas/WorkflowTaskMemoryCorrelateSpec"
     - $ref: "#/components/schemas/WorkflowTaskMemoryQuerySpec"
+    - $ref: "#/components/schemas/WorkflowTaskExperienceRecordSpec"
     - $ref: "#/components/schemas/WorkflowTaskHttpJsonSpec"
     - $ref: "#/components/schemas/WorkflowTaskAgentdCallSpec"
     - $ref: "#/components/schemas/WorkflowTaskAgentdParallelSpec"
@@ -539,6 +542,63 @@ WorkflowMemoryQuerySpec:
       type: integer
       format: int32
       description: Max entries to return (default 50; clamped 1..1000).
+
+
+WorkflowTaskExperienceRecordSpec:
+  type: object
+  required: [task_id, kind]
+  properties:
+    task_id: { type: string }
+    allow_error:
+      type: boolean
+      description: If true, task failure does not fail the workflow (soft-fail).
+    inputs:
+      type: object
+      description: Optional per-task inputs (overrides workflow-level inputs).
+      additionalProperties: true
+    kind:
+      type: string
+      enum: [experience_record]
+      description: Deterministic closed-loop learning record (no LLM required).
+    depends_on:
+      type: array
+      items: { type: string }
+    experience_record:
+      $ref: "#/components/schemas/WorkflowExperienceRecordSpec"
+    priority:
+      type: integer
+      format: int32
+      description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+
+WorkflowExperienceRecordSpec:
+  type: object
+  description: |
+    Deterministic closed-loop learning record configuration for `kind:experience_record`.
+
+    The engine writes one bounded JSONL row under `state_dir/rl/experience_records.jsonl` for later eval,
+    reward modeling, or RL data export. Source task result payloads are bounded before persistence.
+  properties:
+    task_ids:
+      type: array
+      items: { type: string }
+      description: Source completed task IDs to include. Defaults to completed prior tasks.
+    label:
+      type: string
+      maxLength: 128
+      description: Optional label-safe namespace; letters, digits, `-`, `_`, `.`, `:`, and `/` are accepted.
+    reward:
+      type: number
+      format: double
+      minimum: -1
+      maximum: 1
+      description: Optional reward. If omitted, defaults to ok_source_count / source_task_count.
+    metadata:
+      type: object
+      additionalProperties: true
+    max_result_chars:
+      type: integer
+      format: int32
+      description: Per-source result bound, clamped to 1024..65536 (default 8192).
 
 
 WorkflowTaskHttpJsonSpec:
@@ -1922,6 +1982,68 @@ WorkflowGetResponse:
       type: object
       description: Parsed spec_json when available.
       additionalProperties: true
+
+
+ExperienceRecordsResponse:
+  type: object
+  required: [ok, schema, path, offset, limit, count, records]
+  properties:
+    ok: { type: boolean }
+    schema:
+      type: string
+      enum: [agentd_experience_record_v1]
+    path:
+      type: string
+      enum: [rl/experience_records.jsonl]
+    offset:
+      type: integer
+      format: int64
+      description: Zero-based JSONL line offset used for this page.
+    limit:
+      type: integer
+      format: int64
+      description: Maximum matching records returned; clamped to 1..500.
+    next_offset:
+      type: integer
+      format: int64
+      description: JSONL line offset to use for the next page.
+    eof:
+      type: boolean
+      description: True when the reader reached end-of-file before hitting the limit.
+    filters:
+      type: object
+      additionalProperties: true
+    count:
+      type: integer
+      format: int32
+    malformed_lines_skipped:
+      type: integer
+      format: int64
+    records:
+      type: array
+      items:
+        type: object
+        required: [schema, workflow_id, task_id, ts_unix_ms, reward, source_task_count, source_task_ok_count]
+        properties:
+          schema:
+            type: string
+            enum: [agentd_experience_record_v1]
+          workflow_id: { type: string }
+          task_id: { type: string }
+          session_id: { type: string }
+          trace_id: { $ref: "#/components/schemas/TraceID" }
+          ts_unix_ms: { type: integer, format: int64 }
+          label: { type: string }
+          reward: { type: number, format: double }
+          source_task_count: { type: integer, format: int32 }
+          source_task_ok_count: { type: integer, format: int32 }
+          source_results_by_task:
+            type: object
+            additionalProperties: true
+          metadata:
+            type: object
+            additionalProperties: true
+        additionalProperties: true
 
 
 WorkflowStatsResponse:

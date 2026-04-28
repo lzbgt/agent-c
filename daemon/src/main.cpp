@@ -50,6 +50,7 @@
 #include "config_store.h"
 #include "runtime_config.h"
 #include "provider_util.h"
+#include "rl_endpoints.h"
 #include "runtime_skill_endpoints.h"
 
 #include "agent_db.h"
@@ -1600,6 +1601,10 @@ int main(int argc, char** argv) {
   server.handle("POST", "/api/v1/workflow/cancel", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_workflow_cancel_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/rl/experience_records", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_rl_experience_records_endpoint(cur, cors_cfg, req, resp);
   });
   server.handle("POST", "/api/v1/workflow_schedules", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();

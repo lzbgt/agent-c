@@ -113,6 +113,46 @@ Notes:
 - Runs with no_session=true do not persist replay bundles.
 - Oversized payloads are omitted and replay_error is recorded.
 
+### Experience records (closed-loop / RL-ready v1)
+
+Workflows can persist a bounded, deterministic experience row for later learning, evaluation, or RL data export with:
+
+- `kind: "experience_record"`
+- `experience_record.task_ids` (optional array of completed source task IDs; defaults to completed prior tasks)
+- `experience_record.label` (optional label-safe string, max 128 chars; `/` is allowed for namespacing)
+- `experience_record.reward` (optional numeric reward, clamped to `[-1, 1]`; defaults to `ok_count / source_task_count`)
+- `experience_record.metadata` (optional object)
+- `experience_record.max_result_chars` (optional per-source result bound, clamped to `1024..65536`)
+
+Example:
+
+```json
+{
+  "task_id": "learn",
+  "kind": "experience_record",
+  "depends_on": ["solve"],
+  "experience_record": {
+    "label": "nightly/audit",
+    "task_ids": ["solve"],
+    "reward": 1.0,
+    "metadata": { "source": "schedule" }
+  }
+}
+```
+
+Semantics:
+
+- Writes one JSONL record to `<state_dir>/rl/experience_records.jsonl`.
+- Emits a workflow event with type `experience_record`.
+- Stores bounded source task result surfaces rather than unbounded transcripts.
+- Exposes the persisted JSONL through `GET /api/v1/rl/experience_records?limit=50&offset=0` with optional
+  filters `label`, `workflow_id`, `task_id`, `min_reward`, and `max_reward`.
+- Complements `memory_put` / `memory_consolidate`: experience rows are machine-learning/eval artifacts, while memory entries remain operator-readable durable knowledge.
+
+Schema name:
+
+- `agentd_experience_record_v1`
+
 ### Workflow submit idempotency (v1.3)
 
 Workflow submission supports an optional **idempotency key** to make client retries safe:

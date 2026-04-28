@@ -428,6 +428,7 @@ void workflow_submit_handle(
 	    const bool is_edge_wait_sensor = (kind == "edge_wait_sensor");
 	    const bool is_delay = (kind == "delay");
 	    const bool is_delegate = (kind == "delegate");
+	    const bool is_experience_record = (kind == "experience_record");
 	    const bool is_memory_put = (kind == "memory_put");
 	    const bool is_memory_search = (kind == "memory_search");
 	    const bool is_memory_timeline = (kind == "memory_timeline");
@@ -438,7 +439,7 @@ void workflow_submit_handle(
 	    const bool is_http_json = (kind == "http_json");
 	    const bool is_agentd_call = (kind == "agentd_call");
 	    const bool is_special =
-	      is_avm || is_aggregate || is_edge || is_edge_wait_sensor || is_delay || is_delegate || is_memory_put || is_memory_search ||
+	      is_avm || is_aggregate || is_edge || is_edge_wait_sensor || is_delay || is_delegate || is_experience_record || is_memory_put || is_memory_search ||
 	      is_memory_timeline || is_memory_structured_query || is_memory_correlate || is_memory_query || is_memory_consolidate || is_http_json || is_agentd_call;
 
     Json::Value run_req = t.isMember("request") && t["request"].isObject() ? t["request"] : t;
@@ -684,6 +685,21 @@ void workflow_submit_handle(
 	      }
 	      task_req["kind"] = "edge_wait_sensor";
 	      task_req["edge_wait_sensor"] = ws;
+	      task_req["priority"] = task_priority;
+	      task_req["trace_id"] = trace_id + ":" + task_id;
+	    } else if (is_experience_record) {
+	      if (t.isMember("experience_record") && !t["experience_record"].isObject() && !t["experience_record"].isNull()) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "experience_record task field must be an object";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      task_req["kind"] = "experience_record";
+	      task_req["experience_record"] =
+	        t.isMember("experience_record") && t["experience_record"].isObject() ? t["experience_record"] : Json::Value(Json::objectValue);
 	      task_req["priority"] = task_priority;
 	      task_req["trace_id"] = trace_id + ":" + task_id;
 	    } else if (is_delay) {

@@ -25,6 +25,7 @@
 #include "openrouter_models_endpoint.h"
 #include "openrouter_util.h"
 #include "provider_util.h"
+#include "rl_endpoints.h"
 #include "run_endpoints.h"
 #include "run_replay_endpoint.h"
 #include "runtime_skill_endpoints.h"
@@ -1089,6 +1090,11 @@ bool AgentdApi::init(std::string* out_error) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();
     handle_workflow_cancel_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route("GET", "/api/v1/rl/experience_records", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_rl_experience_records_endpoint(cur, self->cors_cfg, req, resp);
   });
   impl_->route("POST", "/api/v1/workflow_schedules", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);

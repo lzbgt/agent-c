@@ -368,6 +368,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/run_memory_context.cpp
     daemon/src/run_multimodal.cpp
     daemon/src/runtime_skill_endpoints.cpp
+    daemon/src/rl_endpoints.cpp
     daemon/src/trace_endpoints.cpp
     daemon/src/trace_id_util.cpp
     daemon/src/scene_store.cpp
@@ -417,6 +418,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/workflow_engine_common.cpp
     daemon/src/workflow_engine.cpp
     daemon/src/workflow_evidence.cpp
+    daemon/src/workflow_experience.cpp
     daemon/src/workflow_engine_pick.cpp
     daemon/src/workflow_schedule_engine.cpp
     daemon/src/workflow_endpoint_util.cpp
@@ -1465,6 +1467,7 @@ if(AGENT_BUILD_HOST)
 				    add_test(NAME agentd_workflow_aggregate_first_ok_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_aggregate_first_ok_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_workflow_aggregate_best_of_n_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_aggregate_best_of_n_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_workflow_aggregate_quorum_hashes_object_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_aggregate_quorum_hashes_object_smoke.sh $<TARGET_FILE:agentd>)
+				    add_test(NAME agentd_workflow_experience_record_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_experience_record_smoke.sh $<TARGET_FILE:agentd>)
 					    add_test(NAME agentd_workflow_edge_invoke_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_edge_invoke_smoke.sh $<TARGET_FILE:agentd>)
 					    add_test(NAME agentd_workflow_edge_parallel_macro_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_edge_parallel_macro_smoke.sh $<TARGET_FILE:agentd>)
 					    add_test(NAME agentd_workflow_edge_parallel_quorum_hashes_default_pointers_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_edge_parallel_quorum_hashes_default_pointers_smoke.sh $<TARGET_FILE:agentd>)

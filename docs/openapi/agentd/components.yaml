@@ -307,6 +307,8 @@ schemas:
     $ref: ./components/workflow.yaml#/WorkflowTaskMemoryCorrelateSpec
   WorkflowTaskMemoryQuerySpec:
     $ref: ./components/workflow.yaml#/WorkflowTaskMemoryQuerySpec
+  WorkflowTaskExperienceRecordSpec:
+    $ref: ./components/workflow.yaml#/WorkflowTaskExperienceRecordSpec
   WorkflowMemorySearchSpec:
     $ref: ./components/workflow.yaml#/WorkflowMemorySearchSpec
   WorkflowMemoryTimelineSpec:
@@ -317,6 +319,8 @@ schemas:
     $ref: ./components/workflow.yaml#/WorkflowMemoryCorrelateSpec
   WorkflowMemoryQuerySpec:
     $ref: ./components/workflow.yaml#/WorkflowMemoryQuerySpec
+  WorkflowExperienceRecordSpec:
+    $ref: ./components/workflow.yaml#/WorkflowExperienceRecordSpec
   WorkflowTaskHttpJsonSpec:
     $ref: ./components/workflow.yaml#/WorkflowTaskHttpJsonSpec
   WorkflowHttpJsonSpec:
@@ -399,3 +403,5 @@ schemas:
     $ref: ./components/workflow.yaml#/WorkflowGetResponse
   WorkflowStatsResponse:
     $ref: ./components/workflow.yaml#/WorkflowStatsResponse
+  ExperienceRecordsResponse:
+    $ref: ./components/workflow.yaml#/ExperienceRecordsResponse
