@@ -191,8 +191,6 @@ trap cleanup EXIT
   --auth-token "${AGENTD_AUTH_TOKEN}" \
   --tools host \
   --yolo \
-  --host-scope "${ROOT}" \
-  --tools-root "@host" \
   --state-dir "${STATE_DIR}" \
   --db-path "${DB_PATH}" \
   >"${AGENTD_LOG}" 2>&1 &

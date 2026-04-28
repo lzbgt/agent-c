@@ -257,10 +257,13 @@ Known bridge limits:
   connector with a websocket loop, runtime snapshots, and
   `deployment.command` results. It also has persisted identity bootstrapping,
   reconnect supervision, and a `tools/run_agentd_codexw_compat.sh
-  --broker-mode native` launcher path. The remaining native gap is exercising
-  the full approval/iOS runtime-action path against a real broker deployment
-  and deciding whether the production connector should stay as this Python
-  supervisor or move into the C++ daemon.
+  --broker-mode native` launcher path. The repo-local E2E smoke now exercises
+  this native launcher through a real sibling `codexw` broker process, including
+  login, user-owned enrollment token issuance, certificate enrollment, websocket
+  deployment connect, runtime inventory projection, capability discovery, and a
+  broker runtime action round trip. The remaining native choice is whether the
+  production connector should stay as this Python supervisor or move into the
+  C++ daemon after the protocol stabilizes.
 - Codexw cloud/app should grow first-class `agentd` capability models for workflow schedules, closed-loop experience records, RL export, and delegate/parallel status instead of treating them as opaque runtime metadata.
 
 ## Native codexw broker enrollment target
@@ -357,6 +360,10 @@ full capability manifests and runtime details.
 - `agentd_workflow_experience_record_smoke` passes.
 - `agentd_codexw_local_api_facade_smoke` passes.
 - `agentd_codexw_native_broker_connector_smoke` passes.
+- `agentd_codexw_native_broker_e2e_smoke` passes when the sibling
+  `~/work/codexw/broker` repo and Go toolchain are available. It starts a real
+  codexw broker fixture and verifies native `agentd` runtime action routing
+  through `/api/v2/runtime-instances/{instance_id}/actions`.
 - `tools/run_agentd_codexw_compat.sh` passes shell syntax validation.
 - `tools/run_agentd_codexw_compat.sh --broker-mode native` has a documented
   first-boot and steady-state identity path.
