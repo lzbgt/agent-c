@@ -222,6 +222,44 @@ Known bridge limits:
 - Native `agentd` direct enrollment into the `codexw` broker remains a later phase because it requires implementing the `codexw` deployment certificate, signed request, websocket frame, deployment snapshot, command dispatch, and approval model directly.
 - Codexw cloud/app should grow first-class `agentd` capability models for workflow schedules, closed-loop experience records, RL export, and delegate/parallel status instead of treating them as opaque runtime metadata.
 
+## Native codexw broker enrollment target
+
+The sibling `codexw` broker now accepts native non-codexw runtimes through the
+same broker-signed deployment certificate websocket path used by `codexw`
+deployments. Native `agentd` should keep the existing facade bridge until it
+implements this full deployment protocol, but the target handshake is now
+concrete.
+
+Native `agentd` should:
+
+1. Login to the broker as a user or receive a one-time deployment enrollment
+   token.
+2. Generate and persist a deployment private key locally.
+3. Submit a CSR to `POST /api/v1/deployment/enroll-certificate` using the
+   one-time enrollment token.
+4. Connect outbound to `GET /api/v1/deployment/connect` with the broker-signed
+   deployment certificate headers and the deployment-certificate request
+   signature used by `codexw`.
+5. Include these runtime identity headers during connect:
+   - `X-Codexw-Deployment-Mode: service`
+   - `X-Codexw-Runtime-Kind: agentd`
+   - `X-Codexw-Runtime-Instance-Id: <stable agentd runtime instance id>`
+   - `X-Codexw-Runtime-Capabilities-SHA256: <sha256 of canonical broker.runtime_capabilities.v1>`
+   - `X-Codexw-Runtime-Host-Id: <logical host id>`
+   - `X-Codexw-Runtime-Target-OS: <os>`
+   - `X-Codexw-Runtime-Target-Arch: <arch>`
+6. Send normal `deployment.snapshot` websocket frames whose runtime payload
+   matches the same `runtime_kind`, `instance_id`, host, OS, arch, and
+   capability manifest.
+7. Implement `deployment.command` dispatch for the local API paths already
+   exposed by the facade, especially `POST /api/v1/runtime/actions`.
+
+The broker treats the header identity as authenticated deployment metadata once
+the certificate is verified and the deployment is approved. It uses the metadata
+to populate pending/approved enrollment records and `/api/v2/runtime-instances`
+before the first snapshot arrives. Snapshot data remains the richer source for
+full capability manifests and runtime details.
+
 ## Acceptance for this slice
 
 - CMake builds with the new `experience_record` module.
