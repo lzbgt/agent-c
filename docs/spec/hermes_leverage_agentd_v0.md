@@ -202,6 +202,13 @@ Facade route contract:
 
 In production mode the facade forwards mobile `turn/start` prompts to `agentd /api/v1/run`. In smoke/offline mode it can run with `--turn-mode echo` to verify the broker-facing contract without a model provider key.
 
+`tools/agentd_codexw_contract.py` is the shared source for the agentd runtime
+contract used by both the facade bridge and the native broker connector work.
+It owns the `broker.runtime_capabilities.v1` action manifest, legacy capability
+strings, canonical JSON capability hashing, runtime identity headers, and the
+minimal `deployment.snapshot` frame shape. Keeping this in one module prevents
+facade-backed and native broker paths from drifting.
+
 `/api/v1/runtime` advertises a `broker.runtime_capabilities.v1` manifest so the
 codexw broker and app can drive agentd-specific panels through capabilities
 instead of hardcoded runtime branches. The generic
@@ -219,7 +226,11 @@ Known bridge limits:
 
 - Shell control is represented but not yet backed by live `agentd` shell ownership.
 - The transcript is facade-local for now; a later slice should mirror `agentd` session/audit data into the codexw transcript page model.
-- Native `agentd` direct enrollment into the `codexw` broker remains a later phase because it requires implementing the `codexw` deployment certificate, signed request, websocket frame, deployment snapshot, command dispatch, and approval model directly.
+- Native `agentd` direct enrollment into the `codexw` broker now has a local
+  protocol kit, but not yet the long-running websocket loop. The remaining
+  native gap is opening/maintaining the deployment websocket, periodically
+  sending snapshots, sending heartbeats, and returning `deployment.command`
+  results.
 - Codexw cloud/app should grow first-class `agentd` capability models for workflow schedules, closed-loop experience records, RL export, and delegate/parallel status instead of treating them as opaque runtime metadata.
 
 ## Native codexw broker enrollment target
@@ -229,6 +240,33 @@ same broker-signed deployment certificate websocket path used by `codexw`
 deployments. Native `agentd` should keep the existing facade bridge until it
 implements this full deployment protocol, but the target handshake is now
 concrete.
+
+`tools/agentd_codexw_native_broker_connector.py` implements the first native
+agentd broker-client foundation:
+
+- computes the same canonical `broker.runtime_capabilities.v1` SHA-256 that
+  the broker stores as runtime identity metadata
+- builds signed deployment-connect headers for
+  `GET /api/v1/deployment/connect`
+- emits native runtime identity headers for `runtime_kind:"agentd"`
+- builds the runtime payload expected inside a `deployment.snapshot` frame
+- can sign and submit a CSR body to
+  `POST /api/v1/deployment/enroll-certificate` when supplied an enrollment
+  token id, shared secret, and CSR PEM
+- provides `--dry-run` so tests and operators can inspect the exact broker
+  contract without needing a live broker or websocket dependency
+
+Example dry run:
+
+```bash
+tools/agentd_codexw_native_broker_connector.py \
+  --broker-url https://broker.example \
+  --deployment-id agentd-m2 \
+  --deployment-cert-path state/codexw/deployment.cert.pem \
+  --deployment-key-path state/codexw/deployment.key.pem \
+  --agentd-base-url http://127.0.0.1:18080 \
+  --dry-run
+```
 
 Native `agentd` should:
 
@@ -265,5 +303,6 @@ full capability manifests and runtime details.
 - CMake builds with the new `experience_record` module.
 - `agentd_workflow_experience_record_smoke` passes.
 - `agentd_codexw_local_api_facade_smoke` passes.
+- `agentd_codexw_native_broker_connector_smoke` passes.
 - `tools/run_agentd_codexw_compat.sh` passes shell syntax validation.
 - Research and design are stored as Markdown in the repo for reuse.

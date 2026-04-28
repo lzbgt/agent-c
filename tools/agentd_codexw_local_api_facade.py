@@ -19,46 +19,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-
-LOCAL_API_VERSION = "agentd-codexw-facade-v1"
-RUNTIME_ACTIONS = {
-    "workflow.submit": {
-        "transport": "local_api",
-        "method": "POST",
-        "path": "/api/v1/runtime/actions",
-        "input": "agentd_workflow_submit_request",
-    },
-    "workflow.read": {
-        "transport": "local_api",
-        "method": "POST",
-        "path": "/api/v1/runtime/actions",
-        "input": {"workflow_id": "string"},
-    },
-    "workflow.cancel": {
-        "transport": "local_api",
-        "method": "POST",
-        "path": "/api/v1/runtime/actions",
-        "input": {"workflow_id": "string"},
-    },
-    "schedule.list": {
-        "transport": "local_api",
-        "method": "POST",
-        "path": "/api/v1/runtime/actions",
-        "input": {"status": "optional string", "limit": "optional integer", "offset": "optional integer"},
-    },
-    "experience.list": {
-        "transport": "local_api",
-        "method": "POST",
-        "path": "/api/v1/runtime/actions",
-        "input": "agentd_experience_record_filter",
-    },
-    "experience.export": {
-        "transport": "local_api",
-        "method": "POST",
-        "path": "/api/v1/runtime/actions",
-        "input": "agentd_experience_record_filter",
-    },
-}
+from agentd_codexw_contract import (
+    LOCAL_API_VERSION,
+    RUNTIME_ACTIONS,
+    legacy_capabilities,
+    runtime_capabilities,
+)
 
 
 class FacadeState:
@@ -155,34 +121,6 @@ def extract_prompt(body: dict[str, Any]) -> str:
             if parts:
                 return "\n".join(parts)
     return ""
-
-
-def runtime_capabilities() -> dict[str, Any]:
-    return {
-        "schema": "broker.runtime_capabilities.v1",
-        "runtime_kind": "agentd",
-        "actions": RUNTIME_ACTIONS,
-        "surfaces": {
-            "workflow": True,
-            "schedule": True,
-            "experience": True,
-            "transcript": True,
-            "files": True,
-        },
-    }
-
-
-def legacy_capabilities() -> list[str]:
-    return [
-        "agentd.run",
-        "agentd.workflow",
-        "agentd.schedule",
-        "agentd.rl.experience_records",
-        "codexw.local_api.runtime",
-        "codexw.local_api.runtime_actions",
-        "codexw.local_api.turn_start",
-        "codexw.local_api.transcript",
-    ]
 
 
 def request_input(body: dict[str, Any]) -> dict[str, Any]:
