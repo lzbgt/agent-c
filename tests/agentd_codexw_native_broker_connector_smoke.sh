@@ -89,6 +89,152 @@ PY
 python3 - <<PY
 import base64
 import hashlib
+import hmac
+import json
+import subprocess
+import tempfile
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+SCRIPT = "${SCRIPT_DIR}/../tools/agentd_codexw_native_broker_connector.py"
+TOKEN_ID = "agentd-bootstrap-token"
+SECRET = "agentd-bootstrap-secret"
+BOOT_DIR = Path("${TMP_DIR}") / "bootstrap"
+CA_KEY = Path("${TMP_DIR}") / "ca.key.pem"
+CA_CERT = Path("${TMP_DIR}") / "ca.cert.pem"
+
+subprocess.run(["openssl", "ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out", str(CA_KEY)], check=True)
+subprocess.run(
+    [
+        "openssl",
+        "req",
+        "-new",
+        "-x509",
+        "-key",
+        str(CA_KEY),
+        "-out",
+        str(CA_CERT),
+        "-days",
+        "1",
+        "-subj",
+        "/CN=codexw-smoke-ca",
+    ],
+    check=True,
+)
+
+
+def body_digest(body):
+    return base64.b64encode(hashlib.sha256(body).digest()).decode()
+
+
+def expected_sig(method, path, timestamp, body):
+    message = "\n".join(["request", TOKEN_ID, method, path, timestamp, body_digest(body)])
+    return base64.b64encode(hmac.new(SECRET.encode(), message.encode(), hashlib.sha256).digest()).decode()
+
+
+class EnrollHandler(BaseHTTPRequestHandler):
+    def log_message(self, fmt, *args):
+        return
+
+    def do_POST(self):
+        assert self.path == "/api/v1/deployment/enroll-certificate", self.path
+        length = int(self.headers.get("content-length") or "0")
+        body = self.rfile.read(length)
+        timestamp = self.headers.get("X-Codexw-Auth-Timestamp")
+        assert self.headers.get("X-Codexw-Auth-Client-Id") == TOKEN_ID, dict(self.headers)
+        assert self.headers.get("X-Codexw-Auth-Signature") == expected_sig("POST", self.path, timestamp, body)
+        payload = json.loads(body)
+        assert payload["deployment_id"] == "agentd-bootstrap-smoke", payload
+        with tempfile.TemporaryDirectory() as td:
+            csr_path = Path(td) / "deployment.csr.pem"
+            cert_path = Path(td) / "deployment.cert.pem"
+            csr_path.write_text(payload["certificate_request_pem"])
+            subprocess.run(
+                [
+                    "openssl",
+                    "x509",
+                    "-req",
+                    "-in",
+                    str(csr_path),
+                    "-CA",
+                    str(CA_CERT),
+                    "-CAkey",
+                    str(CA_KEY),
+                    "-CAcreateserial",
+                    "-out",
+                    str(cert_path),
+                    "-days",
+                    "1",
+                    "-sha256",
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            certificate_pem = cert_path.read_text()
+        response = {
+            "ok": True,
+            "certificate": {
+                "deployment_id": payload["deployment_id"],
+                "certificate_pem": certificate_pem,
+                "issuer_certificate_pem": CA_CERT.read_text(),
+            },
+        }
+        raw = json.dumps(response).encode()
+        self.send_response(201)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+
+server = ThreadingHTTPServer(("127.0.0.1", 0), EnrollHandler)
+thread = threading.Thread(target=server.serve_forever, daemon=True)
+thread.start()
+broker_url = f"http://127.0.0.1:{server.server_address[1]}"
+proc = subprocess.run(
+    [
+        SCRIPT,
+        "--broker-url",
+        broker_url,
+        "--deployment-id",
+        "agentd-bootstrap-smoke",
+        "--runtime-instance-id",
+        "agentd-bootstrap-instance",
+        "--identity-dir",
+        str(BOOT_DIR),
+        "--agentd-base-url",
+        "http://127.0.0.1:18080",
+        "--enrollment-token-id",
+        TOKEN_ID,
+        "--enrollment-shared-secret",
+        SECRET,
+        "--bootstrap-identity",
+        "--dry-run",
+    ],
+    text=True,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    timeout=10,
+)
+server.shutdown()
+if proc.returncode != 0:
+    raise SystemExit(f"bootstrap failed\\nSTDOUT:\\n{proc.stdout}\\nSTDERR:\\n{proc.stderr}")
+payload = json.loads(proc.stdout)
+identity = payload["identity"]
+assert identity["created_key"] is True, identity
+assert identity["created_csr"] is True, identity
+assert identity["enrolled_certificate"] is True, identity
+for name in ("deployment.key.pem", "deployment.csr.pem", "deployment.cert.pem", "deployment.enrollment.json"):
+    if not (BOOT_DIR / name).exists():
+        raise SystemExit(f"missing bootstrap file {name}")
+assert payload["connect_headers"]["X-Codexw-Runtime-Kind"] == "agentd", payload["connect_headers"]
+PY
+
+python3 - <<PY
+import base64
+import hashlib
 import json
 import os
 import socket

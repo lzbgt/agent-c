@@ -174,12 +174,38 @@ Therefore v0 uses a facade-backed bridge launcher, not a false native claim:
 tools/run_agentd_codexw_compat.sh -u admin -p '<broker password>'
 ```
 
-The launcher:
+The default launcher mode:
 
 - starts local `agentd` on loopback with an auth token
 - starts `tools/agentd_codexw_local_api_facade.py` on loopback with a separate local API bearer token
 - starts `codexw deploy` in this repo workspace with `--deployment-local-api-base-url` and `--local-api-token`
 - keeps `AGENTD_BASE_URL`, `AGENTD_AUTH_TOKEN`, `CODEXW_LOCAL_API_BASE_URL`, and `CODEXW_LOCAL_API_TOKEN` exported for child process compatibility/debugging
+
+The same launcher also supports native broker mode:
+
+```bash
+tools/run_agentd_codexw_compat.sh \
+  --broker-mode native \
+  --broker-url https://broker.example \
+  --deployment-id agentd-m2 \
+  --native-enrollment-token-id '<one-time-token-id>' \
+  --native-enrollment-secret '<one-time-token-secret>'
+```
+
+Native mode:
+
+- starts local `agentd` on loopback with an auth token
+- stores deployment key, CSR, broker-signed certificate, and enrollment
+  material under `.codexw-agentd/native` unless `--native-identity-dir` is
+  supplied
+- bootstraps the deployment key/CSR/certificate on first run when enrollment
+  token credentials are supplied
+- reuses the persisted deployment identity on later runs without needing the
+  one-time enrollment token again
+- starts `tools/agentd_codexw_native_broker_connector.py --connect --reconnect`
+  instead of `codexw deploy`
+- sends the same runtime actions and capability manifest as the facade bridge,
+  but over codexw's native deployment websocket
 
 Facade route contract:
 
@@ -259,6 +285,9 @@ agentd broker-client:
 - can sign and submit a CSR body to
   `POST /api/v1/deployment/enroll-certificate` when supplied an enrollment
   token id, shared secret, and CSR PEM
+- can bootstrap a persistent identity directory with deployment key, CSR,
+  broker-signed certificate, and raw enrollment response material
+- supports reconnect supervision with bounded exponential backoff
 - provides `--dry-run` so tests and operators can inspect the exact broker
   contract without needing a live broker or websocket dependency
 
@@ -323,4 +352,6 @@ full capability manifests and runtime details.
 - `agentd_codexw_local_api_facade_smoke` passes.
 - `agentd_codexw_native_broker_connector_smoke` passes.
 - `tools/run_agentd_codexw_compat.sh` passes shell syntax validation.
+- `tools/run_agentd_codexw_compat.sh --broker-mode native` has a documented
+  first-boot and steady-state identity path.
 - Research and design are stored as Markdown in the repo for reuse.

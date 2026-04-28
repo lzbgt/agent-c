@@ -35,10 +35,72 @@ from agentd_codexw_contract import (
 
 CONNECT_PATH = "/api/v1/deployment/connect"
 ENROLL_CERTIFICATE_PATH = "/api/v1/deployment/enroll-certificate"
+DEFAULT_KEY_NAME = "deployment.key.pem"
+DEFAULT_CERT_NAME = "deployment.cert.pem"
+DEFAULT_CSR_NAME = "deployment.csr.pem"
+DEFAULT_ENROLLMENT_MATERIAL_NAME = "deployment.enrollment.json"
 
 
 def json_dumps(obj: Any) -> bytes:
     return json.dumps(obj, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def json_pretty(obj: Any) -> str:
+    return json.dumps(obj, indent=2, sort_keys=True)
+
+
+def resolve_identity_paths(args: argparse.Namespace) -> None:
+    identity_dir = Path(args.identity_dir).expanduser()
+    args.identity_dir = str(identity_dir)
+    if not args.deployment_key_path:
+        args.deployment_key_path = str(identity_dir / DEFAULT_KEY_NAME)
+    if not args.deployment_cert_path:
+        args.deployment_cert_path = str(identity_dir / DEFAULT_CERT_NAME)
+    if not args.csr_path:
+        args.csr_path = str(identity_dir / DEFAULT_CSR_NAME)
+    if not args.enrollment_material_path:
+        args.enrollment_material_path = str(identity_dir / DEFAULT_ENROLLMENT_MATERIAL_NAME)
+
+
+def run_openssl(command: list[str], *, input_bytes: bytes | None = None) -> bytes:
+    proc = subprocess.run(
+        ["openssl", *command],
+        input=input_bytes,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.decode("utf-8", errors="replace").strip())
+    return proc.stdout
+
+
+def generate_private_key(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    run_openssl(["ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out", str(path)])
+    path.chmod(0o600)
+
+
+def generate_csr(*, key_path: Path, csr_path: Path, deployment_id: str) -> None:
+    csr_path.parent.mkdir(parents=True, exist_ok=True)
+    run_openssl(
+        [
+            "req",
+            "-new",
+            "-key",
+            str(key_path),
+            "-out",
+            str(csr_path),
+            "-subj",
+            f"/CN={deployment_id}",
+        ]
+    )
+
+
+def write_text_private(path: Path, text: str, mode: int = 0o600) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    path.chmod(mode)
 
 
 def read_pem_der(path: Path, label: str) -> bytes:
@@ -58,16 +120,9 @@ def cert_fingerprint(path: Path) -> str:
 
 
 def openssl_sign_sha256(private_key_path: Path, message: bytes) -> str:
-    proc = subprocess.run(
-        ["openssl", "dgst", "-sha256", "-sign", str(private_key_path)],
-        input=message,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
+    return base64.b64encode(run_openssl(["dgst", "-sha256", "-sign", str(private_key_path)], input_bytes=message)).decode(
+        "ascii"
     )
-    if proc.returncode != 0:
-        raise RuntimeError(proc.stderr.decode("utf-8", errors="replace").strip())
-    return base64.b64encode(proc.stdout).decode("ascii")
 
 
 def deployment_connect_signature(
@@ -568,6 +623,129 @@ def enroll_certificate(args: argparse.Namespace) -> dict[str, Any]:
     return json.loads(raw.decode("utf-8")) if raw else {}
 
 
+def persist_enrollment_response(args: argparse.Namespace, response: dict[str, Any]) -> None:
+    certificate = response.get("certificate")
+    if not isinstance(certificate, dict):
+        raise ValueError("enrollment response missing certificate object")
+    certificate_pem = certificate.get("certificate_pem")
+    if not isinstance(certificate_pem, str) or "BEGIN CERTIFICATE" not in certificate_pem:
+        raise ValueError("enrollment response missing certificate.certificate_pem")
+    write_text_private(Path(args.deployment_cert_path), certificate_pem, mode=0o600)
+    write_text_private(Path(args.enrollment_material_path), json_pretty(response) + "\n", mode=0o600)
+
+
+def bootstrap_identity(args: argparse.Namespace) -> dict[str, Any]:
+    key_path = Path(args.deployment_key_path)
+    cert_path = Path(args.deployment_cert_path)
+    csr_path = Path(args.csr_path)
+    created_key = False
+    created_csr = False
+    enrolled = False
+    if not key_path.exists():
+        generate_private_key(key_path)
+        created_key = True
+    if not csr_path.exists() or args.force_csr:
+        generate_csr(key_path=key_path, csr_path=csr_path, deployment_id=args.deployment_id)
+        created_csr = True
+    if not cert_path.exists():
+        if not args.enrollment_token_id or not args.enrollment_shared_secret:
+            raise ValueError(
+                "deployment certificate is missing; provide --enrollment-token-id and "
+                "--enrollment-shared-secret with --bootstrap-identity"
+            )
+        response = enroll_certificate(args)
+        persist_enrollment_response(args, response)
+        enrolled = True
+    return {
+        "identity_dir": args.identity_dir,
+        "deployment_key_path": args.deployment_key_path,
+        "deployment_cert_path": args.deployment_cert_path,
+        "csr_path": args.csr_path,
+        "created_key": created_key,
+        "created_csr": created_csr,
+        "enrolled_certificate": enrolled,
+    }
+
+
+def prepare_identity(args: argparse.Namespace) -> dict[str, Any]:
+    if args.enroll_certificate and args.bootstrap_identity:
+        key_path = Path(args.deployment_key_path)
+        csr_path = Path(args.csr_path)
+        created_key = False
+        created_csr = False
+        if not key_path.exists():
+            generate_private_key(key_path)
+            created_key = True
+        if not csr_path.exists() or args.force_csr:
+            generate_csr(key_path=key_path, csr_path=csr_path, deployment_id=args.deployment_id)
+            created_csr = True
+        return {
+            "identity_dir": args.identity_dir,
+            "deployment_key_path": args.deployment_key_path,
+            "deployment_cert_path": args.deployment_cert_path,
+            "csr_path": args.csr_path,
+            "created_key": created_key,
+            "created_csr": created_csr,
+            "enrolled_certificate": False,
+        }
+    if args.bootstrap_identity:
+        return bootstrap_identity(args)
+    key_path = Path(args.deployment_key_path)
+    cert_path = Path(args.deployment_cert_path)
+    missing = [str(path) for path in (key_path, cert_path) if not path.exists()]
+    if missing and not args.enroll_certificate:
+        raise ValueError(
+            "missing deployment identity file(s): "
+            + ", ".join(missing)
+            + "; pass --bootstrap-identity or explicit existing paths"
+        )
+    return {
+        "identity_dir": args.identity_dir,
+        "deployment_key_path": args.deployment_key_path,
+        "deployment_cert_path": args.deployment_cert_path,
+        "csr_path": args.csr_path,
+        "created_key": False,
+        "created_csr": False,
+        "enrolled_certificate": False,
+    }
+
+
+def run_connect_supervised(args: argparse.Namespace) -> dict[str, Any]:
+    attempts = 0
+    delay = args.reconnect_initial_delay
+    deadline = time.monotonic() + args.max_runtime_seconds if args.max_runtime_seconds > 0 else None
+    last_error = ""
+    while True:
+        attempts += 1
+        try:
+            result = run_connect(args)
+            result["attempts"] = attempts
+            result["last_error"] = last_error
+            if args.once or not args.reconnect:
+                return result
+        except KeyboardInterrupt:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            last_error = str(exc)
+            if not args.reconnect:
+                raise
+        if deadline is not None and time.monotonic() >= deadline:
+            return {
+                "ok": False,
+                "mode": "connect",
+                "deployment_id": args.deployment_id,
+                "attempts": attempts,
+                "last_error": last_error,
+            }
+        sleep_for = max(0.1, min(delay, args.reconnect_max_delay))
+        if deadline is not None:
+            sleep_for = min(sleep_for, max(0.0, deadline - time.monotonic()))
+        if sleep_for <= 0:
+            continue
+        time.sleep(sleep_for)
+        delay = min(args.reconnect_max_delay, max(delay * 2, args.reconnect_initial_delay))
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--broker-url", required=True, help="codexw broker base URL, e.g. https://broker.example")
@@ -578,8 +756,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--runtime-target-os", default="")
     parser.add_argument("--runtime-target-arch", default="")
     parser.add_argument("--connection-mode", default="service", choices=["service", "user-session", "connect-only"])
-    parser.add_argument("--deployment-cert-path", required=True)
-    parser.add_argument("--deployment-key-path", required=True)
+    parser.add_argument("--identity-dir", default=".codexw-agentd/native")
+    parser.add_argument("--deployment-cert-path", default="")
+    parser.add_argument("--deployment-key-path", default="")
     parser.add_argument("--agentd-base-url", required=True)
     parser.add_argument("--agentd-auth-token", default=os.environ.get("AGENTD_AUTH_TOKEN", ""))
     parser.add_argument("--timestamp", type=int, default=0, help="fixed Unix timestamp for deterministic tests")
@@ -587,18 +766,23 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true", help="print broker-ready identity/snapshot JSON")
     parser.add_argument("--connect", action="store_true", help="open the native broker deployment websocket")
     parser.add_argument("--once", action="store_true", help="exit after the first command result or broker close")
+    parser.add_argument("--reconnect", action="store_true", help="reconnect after broker disconnects or transient errors")
+    parser.add_argument("--reconnect-initial-delay", type=float, default=1.0)
+    parser.add_argument("--reconnect-max-delay", type=float, default=30.0)
     parser.add_argument("--snapshot-interval", type=float, default=30.0)
     parser.add_argument("--max-runtime-seconds", type=float, default=0.0)
     parser.add_argument("--enroll-certificate", action="store_true", help="POST a CSR to the broker enrollment endpoint")
+    parser.add_argument("--bootstrap-identity", action="store_true", help="generate key/CSR and enroll a cert when missing")
     parser.add_argument("--csr-path", default="")
+    parser.add_argument("--force-csr", action="store_true")
+    parser.add_argument("--enrollment-material-path", default="")
     parser.add_argument("--certificate-days", type=int, default=365)
     parser.add_argument("--enrollment-token-id", default="")
     parser.add_argument("--enrollment-shared-secret", default="")
     args = parser.parse_args(argv)
+    resolve_identity_paths(args)
     if not args.runtime_instance_id:
         args.runtime_instance_id = default_runtime_instance_id()
-    if args.enroll_certificate and not args.csr_path:
-        parser.error("--csr-path is required with --enroll-certificate")
     modes = sum(1 for enabled in (args.dry_run, args.connect, args.enroll_certificate) if enabled)
     if modes != 1:
         parser.error("choose exactly one of --dry-run, --connect, or --enroll-certificate")
@@ -607,13 +791,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
+    identity = prepare_identity(args)
     if args.enroll_certificate:
-        print(json.dumps(enroll_certificate(args), indent=2, sort_keys=True))
+        response = enroll_certificate(args)
+        if args.bootstrap_identity:
+            persist_enrollment_response(args, response)
+            identity = {**identity, "enrolled_certificate": True}
+        print(json_pretty({"ok": True, "identity": identity, "enrollment": response}))
         return 0
     if args.connect:
-        print(json.dumps(run_connect(args), indent=2, sort_keys=True))
+        print(json_pretty({**run_connect_supervised(args), "identity": identity}))
         return 0
-    print(json.dumps(build_dry_run_payload(args), indent=2, sort_keys=True))
+    print(json_pretty({**build_dry_run_payload(args), "identity": identity}))
     return 0
 
 
