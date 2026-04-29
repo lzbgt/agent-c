@@ -32,7 +32,9 @@ Options:
   --native-enrollment-secret <secret>
                                   One-time deployment enrollment token shared secret for native first boot.
                                   If omitted, native mode can mint a token with -u/-p.
-  --native-no-reconnect          Disable native connector reconnect supervision.
+  --native-reconnect             Enable native connector reconnect supervision for foreground/manual runs.
+                                  Production services should let launchd/systemd restart this process.
+  --native-no-reconnect          Accepted for compatibility; native reconnect is disabled by default.
   --state-dir <path>             agentd state dir (default: .codexw-agentd/state).
   --db-path <path>               agentd SQLite DB path (default: .codexw-agentd/agentd.sqlite).
   --no-build                     Do not run cmake build when build/agentd is missing.
@@ -60,7 +62,7 @@ NATIVE_CONNECTOR_BIN="${ROOT}/tools/agentd_codexw_native_broker_connector.py"
 NATIVE_IDENTITY_DIR="${ROOT}/.codexw-agentd/native"
 NATIVE_ENROLLMENT_TOKEN_ID=""
 NATIVE_ENROLLMENT_SECRET=""
-NATIVE_RECONNECT=1
+NATIVE_RECONNECT=0
 STATE_DIR="${ROOT}/.codexw-agentd/state"
 DB_PATH="${ROOT}/.codexw-agentd/agentd.sqlite"
 BUILD_IF_MISSING=1
@@ -84,6 +86,7 @@ while [[ $# -gt 0 ]]; do
     --native-identity-dir) NATIVE_IDENTITY_DIR="${2:-}"; shift 2 ;;
     --native-enrollment-token-id) NATIVE_ENROLLMENT_TOKEN_ID="${2:-}"; shift 2 ;;
     --native-enrollment-secret|--native-enrollment-shared-secret) NATIVE_ENROLLMENT_SECRET="${2:-}"; shift 2 ;;
+    --native-reconnect) NATIVE_RECONNECT=1; shift ;;
     --native-no-reconnect) NATIVE_RECONNECT=0; shift ;;
     --state-dir) STATE_DIR="${2:-}"; shift 2 ;;
     --db-path) DB_PATH="${2:-}"; shift 2 ;;

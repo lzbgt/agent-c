@@ -16,11 +16,12 @@ agentd_log_dir="${AGENTD_LOG_DIR:-${HOME}/Library/Logs}"
 agentd_plist_path="${AGENTD_PLIST_PATH:-${HOME}/Library/LaunchAgents/${label}.plist}"
 agentd_tools="${AGENTD_TOOLS:-host}"
 agentd_yolo="${AGENTD_YOLO:-1}"
-agentd_host_scope="${AGENTD_HOST_SCOPE:-${HOME}}"
-agentd_tools_root="${AGENTD_TOOLS_ROOT:-@host}"
+agentd_host_scope="${AGENTD_HOST_SCOPE:-}"
+agentd_tools_root="${AGENTD_TOOLS_ROOT:-}"
 agentd_cors_origins="${AGENTD_CORS_ORIGINS:-}"
 agentd_extra_args="${AGENTD_EXTRA_ARGS:-}"
 agentd_dotenv_path="${AGENTD_DOTENV_PATH:-}"
+agentd_dry_run="${AGENTD_DRY_RUN:-0}"
 
 if [[ ! -x "${agentd_bin}" ]]; then
   echo "agentd binary not found or not executable: ${agentd_bin}" >&2
@@ -120,6 +121,12 @@ stderr_path="${agentd_log_dir}/agentd.err.log"
   echo '</dict>'
   echo '</plist>'
 } > "${agentd_plist_path}"
+
+if [[ "${agentd_dry_run}" == "1" || "${agentd_dry_run}" == "true" ]]; then
+  echo "Wrote launchd agent: ${agentd_plist_path}"
+  echo "Dry run enabled; not loading launchd service."
+  exit 0
+fi
 
 uid_num="$(id -u)"
 launch_target="gui/${uid_num}"

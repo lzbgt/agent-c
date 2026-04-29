@@ -1,0 +1,25 @@
+[Unit]
+Description=agentd daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agentd
+Group=agentd
+EnvironmentFile=-/etc/agentd/agentd.env
+WorkingDirectory=/var/lib/agentd
+ExecStart=/usr/local/bin/agentd \
+  --host ${AGENTD_HOST} \
+  --port ${AGENTD_PORT} \
+  --auth-token ${AGENTD_AUTH_TOKEN} \
+  --state-dir ${AGENTD_STATE_DIR} \
+  --db-path ${AGENTD_DB_PATH} \
+  --tools ${AGENTD_TOOLS}
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

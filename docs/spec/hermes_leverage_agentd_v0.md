@@ -203,7 +203,7 @@ Native mode:
   one-time enrollment token before certificate enrollment
 - reuses the persisted deployment identity on later runs without needing the
   one-time enrollment token again
-- starts `tools/agentd_codexw_native_broker_connector.py --connect --reconnect`
+- starts `tools/agentd_codexw_native_broker_connector.py --connect`
   instead of `codexw deploy`
 - sends the same runtime actions and capability manifest as the facade bridge,
   but over codexw's native deployment websocket
@@ -255,15 +255,16 @@ Known bridge limits:
 - The transcript is facade-local for now; a later slice should mirror `agentd` session/audit data into the codexw transcript page model.
 - Native `agentd` direct enrollment into the `codexw` broker now has a local
   connector with a websocket loop, runtime snapshots, and
-  `deployment.command` results. It also has persisted identity bootstrapping,
-  reconnect supervision, and a `tools/run_agentd_codexw_compat.sh
+  `deployment.command` results. It also has persisted identity bootstrapping
+  and a `tools/run_agentd_codexw_compat.sh
   --broker-mode native` launcher path. The repo-local E2E smoke now exercises
   this native launcher through a real sibling `codexw` broker process, including
   login, user-owned enrollment token issuance, certificate enrollment, websocket
   deployment connect, runtime inventory projection, capability discovery, and a
-  broker runtime action round trip. The remaining native choice is whether the
-  production connector should stay as this Python supervisor or move into the
-  C++ daemon after the protocol stabilizes.
+  broker runtime action round trip. Production deployment should run `agentd`
+  and the connector as separate foreground services under launchd, systemd,
+  Docker Compose, Kubernetes, or an equivalent process manager; connector
+  reconnect supervision is for manual foreground debugging only.
 - Codexw cloud/app should grow first-class `agentd` capability models for workflow schedules, closed-loop experience records, RL export, and delegate/parallel status instead of treating them as opaque runtime metadata.
 
 ## Native codexw broker enrollment target
@@ -296,7 +297,9 @@ agentd broker-client:
   and use that token for first-boot certificate enrollment
 - can bootstrap a persistent identity directory with deployment key, CSR,
   broker-signed certificate, and raw enrollment response material
-- supports reconnect supervision with bounded exponential backoff
+- supports optional reconnect supervision with bounded exponential backoff for
+  manual foreground debugging; production units should omit `--reconnect` and
+  let the platform process manager own restart/backoff
 - provides `--dry-run` so tests and operators can inspect the exact broker
   contract without needing a live broker or websocket dependency
 
@@ -354,6 +357,29 @@ to populate pending/approved enrollment records and `/api/v2/runtime-instances`
 before the first snapshot arrives. Snapshot data remains the richer source for
 full capability manifests and runtime details.
 
+## Service app deployment model
+
+The native codexw connector is a service app in the Unix sense: it is an
+ordinary foreground process with one protocol responsibility. It must not become
+a second daemon manager around `agentd`, and it should not be folded into the C++
+daemon just to own lifetime. The production composition is:
+
+1. `agentd` runs as its own OS-managed service.
+2. `tools/agentd_codexw_native_broker_connector.py --connect` runs as its own
+   OS-managed service.
+3. The platform manager owns restart/backoff, boot ordering, logs, and
+   observability.
+
+The repo now provides:
+
+- `packaging/systemd/agentd.service`
+- `packaging/systemd/agentd-codexw-connector.service`
+- `tools/install_agentd_launchd.sh`
+- `tools/install_agentd_codexw_connector_launchd.sh`
+
+Both connector service paths intentionally omit `--reconnect`; they rely on the
+platform restart policy instead.
+
 ## Acceptance for this slice
 
 - CMake builds with the new `experience_record` module.
@@ -364,6 +390,8 @@ full capability manifests and runtime details.
   `~/work/codexw/broker` repo and Go toolchain are available. It starts a real
   codexw broker fixture and verifies native `agentd` runtime action routing
   through `/api/v2/runtime-instances/{instance_id}/actions`.
+- `agentd_codexw_service_installers_smoke` passes and verifies launchd/systemd
+  service artifacts keep process lifetime in the platform manager.
 - `tools/run_agentd_codexw_compat.sh` passes shell syntax validation.
 - `tools/run_agentd_codexw_compat.sh --broker-mode native` has a documented
   first-boot and steady-state identity path.

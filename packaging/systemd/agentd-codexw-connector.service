@@ -1,0 +1,29 @@
+[Unit]
+Description=agentd native codexw broker connector
+After=network-online.target agentd.service
+Wants=network-online.target agentd.service
+
+[Service]
+Type=simple
+User=agentd
+Group=agentd
+EnvironmentFile=/etc/agentd/codexw-connector.env
+WorkingDirectory=/var/lib/agentd
+ExecStart=/usr/bin/env python3 /opt/agentd/tools/agentd_codexw_native_broker_connector.py \
+  --broker-url ${AGENTD_CODEXW_BROKER_URL} \
+  --deployment-id ${AGENTD_CODEXW_DEPLOYMENT_ID} \
+  --display-name ${AGENTD_CODEXW_DISPLAY_NAME} \
+  --identity-dir ${AGENTD_CODEXW_IDENTITY_DIR} \
+  --agentd-base-url ${AGENTD_BASE_URL} \
+  --agentd-auth-token ${AGENTD_AUTH_TOKEN} \
+  --broker-user ${AGENTD_CODEXW_BROKER_USER} \
+  --broker-password ${AGENTD_CODEXW_BROKER_PASSWORD} \
+  --bootstrap-identity \
+  --connect
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

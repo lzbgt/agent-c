@@ -31,27 +31,11 @@ Direct `agentd` exposure is supported, but you must harden it (see below).
 
 ### Example (systemd)
 ```
-[Unit]
-Description=agentd daemon
-After=network.target
-
-[Service]
-User=agentd
-Environment=AGENTD_AUTH_TOKEN=REPLACE_WITH_RANDOM_TOKEN
-Environment=AGENTD_DOTENV_PATH=/etc/agentd/agentd.env
-WorkingDirectory=/var/lib/agentd
-ExecStart=/usr/local/bin/agentd \
-  --host 127.0.0.1 \
-  --port 8123 \
-  --auth-token ${AGENTD_AUTH_TOKEN} \
-  --state-dir /var/lib/agentd \
-  --db-path /var/lib/agentd/agentd.db
-Restart=always
-RestartSec=3
-LimitNOFILE=65536
-
-[Install]
-WantedBy=multi-user.target
+sudo install -d -o agentd -g agentd /var/lib/agentd /etc/agentd
+sudo install -m 0644 packaging/systemd/agentd.service /etc/systemd/system/agentd.service
+sudo install -m 0600 packaging/systemd/agentd.env.example /etc/agentd/agentd.env
+sudo systemctl daemon-reload
+sudo systemctl enable --now agentd.service
 ```
 
 ### Example (macOS launchd)
@@ -115,7 +99,7 @@ Environment overrides:
 - `AGENTD_DOTENV_PATH` (optional override for provider key discovery)
 - `AGENTD_AUTH_TOKEN`, `AGENTD_AUTH_COOKIE`
 - `AGENTD_TOOLS`, `AGENTD_YOLO`
-- `AGENTD_HOST_SCOPE`, `AGENTD_TOOLS_ROOT`
+- `AGENTD_HOST_SCOPE`, `AGENTD_TOOLS_ROOT` (legacy optional args; unset by default)
 - `AGENTD_CORS_ORIGINS` (comma-separated)
 - `AGENTD_CORS_ALLOW_HEADERS`, `AGENTD_CORS_ALLOW_METHODS`
 - `AGENTD_CORS_ALLOW_CREDENTIALS`, `AGENTD_CORS_MAX_AGE_SECONDS`
@@ -176,6 +160,62 @@ WebUI + broker fanout:
 
 Local verification:
 - `tools/verify_ota_continuity.sh` runs a delay workflow, triggers an OTA update, restarts agentd, and confirms the workflow resumes.
+
+### Native codexw broker connector as a service
+
+The native codexw connector is intentionally a foreground protocol adapter, not
+a lifetime manager. In production, run `agentd` and the connector as separate
+OS-managed services:
+
+- `agentd.service` owns the local daemon API and durable state.
+- `agentd-codexw-connector.service` owns the outbound broker websocket and
+  exits on unrecoverable broker/local failures.
+- `systemd`, `launchd`, Docker Compose, Kubernetes, or another process manager
+  owns restart/backoff, boot startup, log collection, and health supervision.
+
+Do not enable connector `--reconnect` in service units. Keep reconnect for
+manual foreground debugging only; service managers already have better,
+observable restart policy.
+
+Systemd service templates are provided under `packaging/systemd/`:
+
+```
+sudo install -d -o agentd -g agentd /var/lib/agentd /etc/agentd
+sudo install -m 0644 packaging/systemd/agentd.service /etc/systemd/system/agentd.service
+sudo install -m 0644 packaging/systemd/agentd-codexw-connector.service /etc/systemd/system/agentd-codexw-connector.service
+sudo install -m 0600 packaging/systemd/agentd.env.example /etc/agentd/agentd.env
+sudo install -m 0600 packaging/systemd/codexw-connector.env.example /etc/agentd/codexw-connector.env
+sudo systemctl daemon-reload
+sudo systemctl enable --now agentd.service agentd-codexw-connector.service
+```
+
+The connector environment file contains first-boot broker credentials only so
+it can mint a deployment enrollment token and persist the broker-signed
+deployment certificate under `AGENTD_CODEXW_IDENTITY_DIR`. After the certificate
+exists, remove the bootstrap password from `/etc/agentd/codexw-connector.env`
+and restart the connector.
+
+macOS launchd helpers mirror the two-service layout:
+
+```
+AGENTD_AUTH_TOKEN="REPLACE_WITH_RANDOM_TOKEN" \
+  tools/install_agentd_launchd.sh
+
+AGENTD_BASE_URL="http://127.0.0.1:8123" \
+AGENTD_AUTH_TOKEN="REPLACE_WITH_RANDOM_TOKEN" \
+AGENTD_CODEXW_BROKER_URL="https://broker.example" \
+AGENTD_CODEXW_DEPLOYMENT_ID="agentd-mac" \
+AGENTD_CODEXW_BROKER_USER="admin" \
+AGENTD_CODEXW_BROKER_PASSWORD="REPLACE_WITH_FIRST_BOOT_PASSWORD" \
+  tools/install_agentd_codexw_connector_launchd.sh
+```
+
+Uninstall with:
+
+```
+tools/uninstall_agentd_codexw_connector_launchd.sh
+tools/uninstall_agentd_launchd.sh
+```
 
 ### Example (Windows service)
 
