@@ -165,6 +165,21 @@ was not called. Set `VERIFY_AGENTD_OTA_DISPATCH=1` only when you intentionally
 want the proof to dispatch to the fake endpoint as well. No daemon binary is
 replaced in either mode.
 
+To prove that the deployed codexw broker preserves durable connector readiness
+status from `/api/v1/runtime/status`, run:
+
+```bash
+tools/verify_codexw_live_agentd_connector_readiness.sh
+```
+
+That proof connects the native connector to a temporary loopback fake `agentd`
+API with a seeded self-test status JSON file, verifies the live broker exposes
+the runtime as `runtime_kind=agentd`, then reads
+`/api/v2/runtime-instances/{id}/status` and asserts the top-level `connector`
+object contains `state`, `checked_unix_ms`, `age_ms`, failed check count, and
+failed check names. It removes the temporary deployment unless
+`KEEP_DEPLOYMENT=1` is set.
+
 For durable service installs, use the launchd/systemd connector templates in
 `docs/DEPLOYMENT.md`. They run `agentd` and the native codexw connector as
 separate OS-managed services and keep broker passwords, enrollment secrets, and
