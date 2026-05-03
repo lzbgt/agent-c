@@ -48,6 +48,13 @@ RUNTIME_UPDATE_MODE_DISABLED = "disabled"
 RUNTIME_UPDATE_MODE_AGENTD_OTA = "agentd_ota"
 
 
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def json_dumps(obj: Any) -> bytes:
     return json.dumps(obj, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
@@ -768,6 +775,34 @@ def check_status(name: str, ok: bool, **details: Any) -> dict[str, Any]:
     return result
 
 
+def update_candidate_input_from_status(status: dict[str, Any]) -> dict[str, Any]:
+    update = status.get("update") if isinstance(status.get("update"), dict) else {}
+    candidate = update.get("candidate") if isinstance(update.get("candidate"), dict) else {}
+    candidate_input = candidate.get("input") if isinstance(candidate.get("input"), dict) else {}
+    if candidate_input:
+        return candidate_input
+    return candidate
+
+
+def compare_preflight_update_input(*, status: dict[str, Any], preflight: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
+    prepared = preflight.get("prepared_input") if isinstance(preflight.get("prepared_input"), dict) else {}
+    candidate_input = update_candidate_input_from_status(status)
+    keys = ("url", "sha256", "version", "channel", "target_os", "target_arch", "drain_timeout_ms")
+    mismatches: dict[str, Any] = {}
+    for key in keys:
+        expected = candidate_input.get(key)
+        if expected in (None, ""):
+            continue
+        actual = prepared.get(key)
+        if str(actual) != str(expected):
+            mismatches[key] = {"expected": expected, "actual": actual}
+    return not mismatches, {
+        "prepared_input": prepared,
+        "candidate_input": candidate_input,
+        "mismatches": mismatches,
+    }
+
+
 def run_self_test(args: argparse.Namespace) -> dict[str, Any]:
     checks: list[dict[str, Any]] = []
     cert_path = Path(args.deployment_cert_path)
@@ -823,7 +858,12 @@ def run_self_test(args: argparse.Namespace) -> dict[str, Any]:
         except Exception as exc:  # noqa: BLE001
             checks.append(check_status("agentd_ota_status", False, error=str(exc)))
 
-    should_check_broker = bool(args.require_broker_visible or args.broker_token or (args.broker_user and args.broker_password))
+    should_check_broker = bool(
+        args.require_broker_visible
+        or args.require_update_preflight
+        or args.broker_token
+        or (args.broker_user and args.broker_password)
+    )
     if should_check_broker:
         try:
             token = broker_bearer_token(args)
@@ -848,6 +888,58 @@ def run_self_test(args: argparse.Namespace) -> dict[str, Any]:
                     online=online,
                 )
             )
+            if args.require_update_preflight:
+                if not matched:
+                    checks.append(
+                        check_status(
+                            "broker_runtime_update_preflight",
+                            False,
+                            error="runtime instance was not found in broker inventory",
+                        )
+                    )
+                else:
+                    instance_id = str(matched.get("instance_id") or args.runtime_instance_id).strip()
+                    path_id = urllib.parse.quote(instance_id, safe="")
+                    status = broker_json_request(
+                        args,
+                        method="GET",
+                        path=f"/api/v2/runtime-instances/{path_id}/status",
+                        bearer_token=token,
+                    )
+                    preflight = broker_json_request(
+                        args,
+                        method="POST",
+                        path=f"/api/v2/runtime-instances/{path_id}/actions/preflight",
+                        bearer_token=token,
+                        body={
+                            "action": "runtime.update",
+                            "input": {
+                                "reason": "agentd codexw connector self-test preflight",
+                            },
+                        },
+                    )
+                    update = status.get("update") if isinstance(status.get("update"), dict) else {}
+                    input_ok, details = compare_preflight_update_input(status=status, preflight=preflight)
+                    ok = (
+                        bool(preflight.get("ok"))
+                        and bool(preflight.get("preview"))
+                        and not bool(preflight.get("mutates_runtime"))
+                        and bool(preflight.get("would_dispatch"))
+                        and bool(update.get("enabled"))
+                        and input_ok
+                    )
+                    checks.append(
+                        check_status(
+                            "broker_runtime_update_preflight",
+                            ok,
+                            runtime_instance_id=instance_id,
+                            update_enabled=bool(update.get("enabled")),
+                            preview=bool(preflight.get("preview")),
+                            mutates_runtime=bool(preflight.get("mutates_runtime")),
+                            would_dispatch=bool(preflight.get("would_dispatch")),
+                            **details,
+                        )
+                    )
         except Exception as exc:  # noqa: BLE001
             checks.append(check_status("broker_runtime_instance_visible", False, error=str(exc)))
     else:
@@ -1064,6 +1156,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true", help="print broker-ready identity/snapshot JSON")
     parser.add_argument("--self-test", action="store_true", help="run a read-only connector readiness check")
     parser.add_argument("--require-broker-visible", action="store_true", help="self-test fails unless the broker reports this runtime online")
+    parser.add_argument(
+        "--require-update-preflight",
+        action="store_true",
+        default=env_bool("AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT"),
+        help="self-test fails unless broker runtime.update preflight succeeds without mutating the runtime",
+    )
     parser.add_argument("--connect", action="store_true", help="open the native broker deployment websocket")
     parser.add_argument("--once", action="store_true", help="exit after the first command result or broker close")
     parser.add_argument("--reconnect", action="store_true", help="reconnect after broker disconnects or transient errors")

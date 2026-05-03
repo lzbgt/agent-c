@@ -217,6 +217,12 @@ this runtime instance online. Enable
 check every five minutes after the connector service is installed. After
 first-boot certificate enrollment, prefer a read-only broker token for the
 self-test and remove the bootstrap username/password from the env file.
+For hosts that intentionally enable `AGENTD_CODEXW_RUNTIME_UPDATE_MODE=agentd_ota`,
+set `AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT=1` as well. That keeps the periodic
+self-test read-only while requiring the broker to accept
+`/api/v2/runtime-instances/{id}/actions/preflight` for `runtime.update`, return
+`mutates_runtime:false`, and prepare an update payload that matches the current
+`/status` candidate.
 
 Broker-driven runtime updates are disabled by default. To expose
 `runtime.update` through the shared codexw broker, first enable the daemon OTA
@@ -238,6 +244,9 @@ iOS/macOS and WebUI before an operator runs `runtime.update`. Include a
 `url`, `sha256`, `version`, and `drain_timeout_ms` into
 `update.candidate.input`, and the broker uses that status-derived input when it
 forwards the confirmed update action.
+The durable connector self-test can continuously verify that same broker-side
+preparation without mutating the daemon by setting
+`AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT=1`.
 
 Before enabling that mode on a durable production connector, verify the shared
 broker update path with the non-mutating live proof:

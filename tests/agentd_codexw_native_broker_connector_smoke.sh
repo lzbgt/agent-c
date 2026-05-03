@@ -147,6 +147,7 @@ SCRIPT = "${SCRIPT_DIR}/../tools/agentd_codexw_native_broker_connector.py"
 KEY_PATH = "${KEY_PATH}"
 CERT_PATH = "${CERT_PATH}"
 SESSION_TOKEN = "broker-read-token"
+PREFLIGHT_REQUESTS = []
 
 
 class AgentdHandler(BaseHTTPRequestHandler):
@@ -194,26 +195,81 @@ class BrokerHandler(BaseHTTPRequestHandler):
         return
 
     def do_POST(self):
-        assert self.path == "/api/v1/auth/login", self.path
         length = int(self.headers.get("content-length") or "0")
         body = json.loads(self.rfile.read(length))
-        assert body == {"username": "admin", "password": "secret-pass"}, body
-        self.send_json({"ok": True, "token": SESSION_TOKEN})
-
-    def do_GET(self):
+        if self.path == "/api/v1/auth/login":
+            assert body == {"username": "admin", "password": "secret-pass"}, body
+            self.send_json({"ok": True, "token": SESSION_TOKEN})
+            return
         assert self.headers.get("Authorization") == f"Bearer {SESSION_TOKEN}", dict(self.headers)
-        assert self.path == "/api/v2/runtime-instances", self.path
+        assert self.path == "/api/v2/runtime-instances/agentd-native-self-test-instance/actions/preflight", self.path
+        assert body["action"] == "runtime.update", body
+        assert body["input"]["reason"] == "agentd codexw connector self-test preflight", body
+        PREFLIGHT_REQUESTS.append(body)
         self.send_json(
             {
                 "ok": True,
-                "runtime_instances": [
-                    {
-                        "instance_id": "agentd-native-self-test-instance",
-                        "runtime_kind": "agentd",
-                        "placement": {"deployment_id": "agentd-native-self-test"},
-                        "connection": {"state": "online"},
-                    }
-                ],
+                "preview": True,
+                "mutates_runtime": False,
+                "would_dispatch": True,
+                "runtime_instance_id": "agentd-native-self-test-instance",
+                "runtime_kind": "agentd",
+                "prepared_input": {
+                    "url": "file:///tmp/agentd-smoke",
+                    "sha256": "abc123",
+                    "version": "v-smoke",
+                    "drain_timeout_ms": 500,
+                    "reason": "agentd codexw connector self-test preflight",
+                },
+                "update": {
+                    "enabled": True,
+                    "candidate": {
+                        "input": {
+                            "url": "file:///tmp/agentd-smoke",
+                            "sha256": "abc123",
+                            "version": "v-smoke",
+                            "drain_timeout_ms": 500,
+                        }
+                    },
+                },
+            }
+        )
+
+    def do_GET(self):
+        assert self.headers.get("Authorization") == f"Bearer {SESSION_TOKEN}", dict(self.headers)
+        if self.path == "/api/v2/runtime-instances":
+            self.send_json(
+                {
+                    "ok": True,
+                    "runtime_instances": [
+                        {
+                            "instance_id": "agentd-native-self-test-instance",
+                            "runtime_kind": "agentd",
+                            "placement": {"deployment_id": "agentd-native-self-test"},
+                            "connection": {"state": "online"},
+                        }
+                    ],
+                }
+            )
+            return
+        assert self.path == "/api/v2/runtime-instances/agentd-native-self-test-instance/status", self.path
+        self.send_json(
+            {
+                "ok": True,
+                "runtime_instance_id": "agentd-native-self-test-instance",
+                "runtime_kind": "agentd",
+                "update": {
+                    "enabled": True,
+                    "state": "ready",
+                    "candidate": {
+                        "input": {
+                            "url": "file:///tmp/agentd-smoke",
+                            "sha256": "abc123",
+                            "version": "v-smoke",
+                            "drain_timeout_ms": 500,
+                        }
+                    },
+                },
             }
         )
 
@@ -253,6 +309,7 @@ proc = subprocess.run(
         "agentd_ota",
         "--self-test",
         "--require-broker-visible",
+        "--require-update-preflight",
     ],
     text=True,
     stdout=subprocess.PIPE,
@@ -274,9 +331,14 @@ for name in (
     "runtime_events_surface",
     "agentd_ota_status",
     "broker_runtime_instance_visible",
+    "broker_runtime_update_preflight",
 ):
     assert checks[name]["ok"] is True, payload
 assert checks["broker_runtime_instance_visible"]["online"] is True, payload
+assert checks["broker_runtime_update_preflight"]["mutates_runtime"] is False, payload
+assert checks["broker_runtime_update_preflight"]["would_dispatch"] is True, payload
+assert checks["broker_runtime_update_preflight"]["prepared_input"]["url"] == "file:///tmp/agentd-smoke", payload
+assert PREFLIGHT_REQUESTS, "self-test did not call broker runtime.update preflight"
 readonly_guard = subprocess.run(
     [
         SCRIPT,

@@ -83,6 +83,7 @@ grep -q -- "--connect" "${ROOT}/packaging/systemd/agentd-codexw-connector.servic
 grep -q -- "--self-test" "${ROOT}/packaging/systemd/agentd-codexw-connector-self-test.service"
 grep -q -- "--require-broker-visible" "${ROOT}/packaging/systemd/agentd-codexw-connector-self-test.service"
 grep -q "OnUnitActiveSec=5min" "${ROOT}/packaging/systemd/agentd-codexw-connector-self-test.timer"
+grep -q "AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT=0" "${ROOT}/packaging/systemd/codexw-connector.env.example"
 if grep -q -- "--agentd-auth-token\\|--broker-user\\|--broker-password\\|--enrollment-token-id\\|--enrollment-shared-secret" "${ROOT}/packaging/systemd/agentd-codexw-connector.service"; then
   echo "systemd connector unit must not pass secrets on argv" >&2
   exit 1

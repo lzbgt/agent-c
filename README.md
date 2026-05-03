@@ -172,7 +172,11 @@ local `AGENTD_AUTH_TOKEN` out of process arguments.
 The connector also supports a read-only `--self-test` mode for service
 readiness checks; with `--require-broker-visible` and broker read credentials,
 it proves the durable service is enrolled, connected, and visible through
-shared broker runtime-instance inventory.
+shared broker runtime-instance inventory. When
+`AGENTD_CODEXW_RUNTIME_UPDATE_MODE=agentd_ota` is enabled, set
+`AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT=1` to make that same self-test call the
+broker `/actions/preflight` route and verify the exact status-derived
+`runtime.update` payload without dispatching `POST /api/v1/ota/update`.
 
 Broker operator actions are opt-in. By default the connector still does not
 advertise `runtime.restart`, `runtime.update`, or `runtime.upgrade`. Set
