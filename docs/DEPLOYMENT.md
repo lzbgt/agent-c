@@ -223,6 +223,13 @@ self-test read-only while requiring the broker to accept
 `/api/v2/runtime-instances/{id}/actions/preflight` for `runtime.update`, return
 `mutates_runtime:false`, and prepare an update payload that matches the current
 `/status` candidate.
+The macOS installer writes a companion LaunchAgent at
+`${AGENTD_CODEXW_SELF_TEST_PLIST_PATH}` by default, using label
+`${AGENTD_CODEXW_LABEL}.self-test` and `StartInterval=300`. It runs the same
+`--self-test --require-broker-visible` command as the systemd timer and adds
+`--require-update-preflight` when `AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT=1`.
+Set `AGENTD_CODEXW_INSTALL_SELF_TEST=0` only when another scheduler owns this
+readiness check.
 
 Broker-driven runtime updates are disabled by default. To expose
 `runtime.update` through the shared codexw broker, first enable the daemon OTA

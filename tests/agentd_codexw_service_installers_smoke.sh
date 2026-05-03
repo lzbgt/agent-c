@@ -41,10 +41,15 @@ AGENTD_CODEXW_DEPLOYMENT_ID="agentd-service-smoke" \
 AGENTD_CODEXW_DISPLAY_NAME="agentd service smoke" \
 AGENTD_CODEXW_IDENTITY_DIR="${TMP_DIR}/codexw-native" \
 AGENTD_CODEXW_PLIST_PATH="${TMP_DIR}/com.agentd.codexw-connector.plist" \
+AGENTD_CODEXW_SELF_TEST_PLIST_PATH="${TMP_DIR}/com.agentd.codexw-connector.self-test.plist" \
 AGENTD_CODEXW_LOG_DIR="${TMP_DIR}/logs" \
 AGENTD_AUTH_TOKEN="agentd-service-smoke-token" \
 AGENTD_CODEXW_BROKER_USER="admin" \
 AGENTD_CODEXW_BROKER_PASSWORD="secret" \
+AGENTD_CODEXW_BROKER_TOKEN="read-token" \
+AGENTD_CODEXW_RUNTIME_UPDATE_MODE="agentd_ota" \
+AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT=1 \
+AGENTD_CODEXW_SELF_TEST_INTERVAL_SECONDS=123 \
 AGENTD_CODEXW_DRY_RUN=1 \
   "${ROOT}/tools/install_agentd_codexw_connector_launchd.sh" >/dev/null
 
@@ -60,21 +65,49 @@ if ! grep -q -- "--bootstrap-identity" "${TMP_DIR}/com.agentd.codexw-connector.p
   echo "connector launchd plist missing bootstrap identity" >&2
   exit 1
 fi
+if ! grep -q -- "--self-test" "${TMP_DIR}/com.agentd.codexw-connector.self-test.plist"; then
+  echo "connector launchd self-test plist missing --self-test" >&2
+  exit 1
+fi
+if ! grep -q -- "--require-broker-visible" "${TMP_DIR}/com.agentd.codexw-connector.self-test.plist"; then
+  echo "connector launchd self-test plist missing broker visibility check" >&2
+  exit 1
+fi
+if ! grep -q -- "--require-update-preflight" "${TMP_DIR}/com.agentd.codexw-connector.self-test.plist"; then
+  echo "connector launchd self-test plist missing update preflight check" >&2
+  exit 1
+fi
 python3 - <<PY
 import plistlib
 from pathlib import Path
 plist = plistlib.loads(Path("${TMP_DIR}/com.agentd.codexw-connector.plist").read_bytes())
+self_test = plistlib.loads(Path("${TMP_DIR}/com.agentd.codexw-connector.self-test.plist").read_bytes())
 args = plist.get("ProgramArguments") or []
+self_test_args = self_test.get("ProgramArguments") or []
 env = plist.get("EnvironmentVariables") or {}
-for secret in ("agentd-service-smoke-token", "admin", "secret"):
+for secret in ("agentd-service-smoke-token", "admin", "secret", "read-token"):
     if secret in args:
         raise SystemExit(f"connector secret leaked into launchd ProgramArguments: {secret}")
+    if secret in self_test_args:
+        raise SystemExit(f"connector self-test secret leaked into launchd ProgramArguments: {secret}")
 if env.get("AGENTD_AUTH_TOKEN") != "agentd-service-smoke-token":
     raise SystemExit("launchd plist missing AGENTD_AUTH_TOKEN environment")
 if env.get("AGENTD_CODEXW_BROKER_USER") != "admin":
     raise SystemExit("launchd plist missing broker user environment")
 if env.get("AGENTD_CODEXW_BROKER_PASSWORD") != "secret":
     raise SystemExit("launchd plist missing broker password environment")
+if env.get("AGENTD_CODEXW_BROKER_TOKEN") != "read-token":
+    raise SystemExit("launchd plist missing broker token environment")
+if env.get("AGENTD_CODEXW_RUNTIME_UPDATE_MODE") != "agentd_ota":
+    raise SystemExit("launchd plist missing runtime update mode environment")
+if env.get("AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT") != "1":
+    raise SystemExit("launchd plist missing update preflight environment")
+if self_test.get("KeepAlive"):
+    raise SystemExit("launchd self-test plist must not be KeepAlive")
+if self_test.get("StartInterval") != 123:
+    raise SystemExit("launchd self-test plist missing StartInterval")
+if "--connect" in self_test_args or "--bootstrap-identity" in self_test_args:
+    raise SystemExit("launchd self-test plist must be read-only")
 PY
 
 grep -q "Restart=always" "${ROOT}/packaging/systemd/agentd.service"

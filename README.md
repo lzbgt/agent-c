@@ -177,6 +177,10 @@ shared broker runtime-instance inventory. When
 `AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT=1` to make that same self-test call the
 broker `/actions/preflight` route and verify the exact status-derived
 `runtime.update` payload without dispatching `POST /api/v1/ota/update`.
+The macOS launchd installer now installs a companion
+`com.agentd.codexw-connector.self-test` LaunchAgent by default, matching the
+systemd timer behavior with the same broker-visible and optional update
+preflight checks.
 
 Broker operator actions are opt-in. By default the connector still does not
 advertise `runtime.restart`, `runtime.update`, or `runtime.upgrade`. Set
