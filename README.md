@@ -148,6 +148,21 @@ deployment after certificate enrollment, verifies `/api/v2/runtime-instances`,
 `build/`, and removes the temporary broker deployment unless
 `KEEP_DEPLOYMENT=1` is set.
 
+To prove the opt-in OTA update boundary without replacing a real daemon, run:
+
+```bash
+tools/verify_codexw_live_agentd_ota_candidate.sh
+```
+
+That proof connects the native connector to a temporary loopback fake
+`agentd`/OTA API, enrolls and approves a short-lived broker deployment, verifies
+the deployed broker exposes `runtime_kind=agentd`, `update.candidate`, and an
+enabled `runtime.update` descriptor, then dispatches a confirmed
+`runtime.update` with an idempotency key. The fake OTA endpoint records the
+forwarded request body, proving the broker prepared `{url, sha256, version,
+reason, drain_timeout_ms}` from current status instead of trusting a client-built
+artifact payload. No daemon binary is replaced.
+
 For durable service installs, use the launchd/systemd connector templates in
 `docs/DEPLOYMENT.md`. They run `agentd` and the native codexw connector as
 separate OS-managed services and keep broker passwords, enrollment secrets, and

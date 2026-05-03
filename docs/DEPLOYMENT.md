@@ -239,6 +239,23 @@ iOS/macOS and WebUI before an operator runs `runtime.update`. Include a
 `update.candidate.input`, and the broker uses that status-derived input when it
 forwards the confirmed update action.
 
+Before enabling that mode on a durable production connector, verify the shared
+broker update path with the non-mutating live proof:
+
+```
+tools/verify_codexw_live_agentd_ota_candidate.sh
+```
+
+The proof starts a temporary loopback fake `agentd`/OTA API, connects the native
+connector to the live codexw broker with runtime update mode set to
+`agentd_ota`, verifies
+`/api/v2/runtime-instances/{id}/status` exposes `update.candidate`, verifies
+the broker advertises an enabled `runtime.update` descriptor, dispatches one
+confirmed `runtime.update` with an idempotency key, and checks that the fake OTA
+endpoint received the broker-prepared `{url, sha256, version, reason,
+drain_timeout_ms}` body. It removes the temporary broker deployment by default
+and does not replace any daemon binary.
+
 The service units intentionally read `AGENTD_AUTH_TOKEN`,
 `AGENTD_CODEXW_BROKER_PASSWORD`, and one-time enrollment secrets from the
 environment file instead of passing them as command-line arguments. Keep that
