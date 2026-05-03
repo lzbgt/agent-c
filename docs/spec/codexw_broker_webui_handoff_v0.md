@@ -63,7 +63,10 @@ contract through connector-owned routes:
   workflows
 - serve `GET /api/v1/runtime/events` from client events and workflow events
 - serve `GET /api/v1/runtime/status` as the read-only update/OTA readiness
-  source for the broker's v2 runtime-instance status route
+  source for the broker's v2 runtime-instance status route. OTA-enabled status
+  should include `update.candidate` data derived from the daemon's OTA target
+  (`url`, `sha256`, `version`, `drain_timeout_ms`) so shared clients can show
+  the exact update payload before the broker dispatches `runtime.update`.
 - keep operator actions capability-gated. The default connector must not
   advertise `runtime.restart`, `runtime.update`, or `runtime.upgrade`.
   `runtime.update` may be advertised only when the native connector is launched

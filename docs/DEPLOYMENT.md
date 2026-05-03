@@ -232,7 +232,12 @@ this local OTA boundary. `runtime.restart` and compatibility `runtime.upgrade`
 remain unadvertised by `agentd`.
 The shared adapter also serves `GET /api/v1/runtime/status`; the codexw broker
 uses that read-only route to show OTA state, drain state, and queue pressure in
-iOS/macOS and WebUI before an operator runs `runtime.update`.
+iOS/macOS and WebUI before an operator runs `runtime.update`. Include a
+`candidate`, `update_candidate`, `release`, or `artifact` object in
+`/api/v1/ota/status` when a concrete OTA target is available; the bridge maps
+`url`, `sha256`, `version`, and `drain_timeout_ms` into
+`update.candidate.input`, and the broker uses that status-derived input when it
+forwards the confirmed update action.
 
 The service units intentionally read `AGENTD_AUTH_TOKEN`,
 `AGENTD_CODEXW_BROKER_PASSWORD`, and one-time enrollment secrets from the

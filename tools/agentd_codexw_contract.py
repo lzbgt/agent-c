@@ -222,6 +222,7 @@ def agentd_runtime_status(
         raw_status = request_agentd("GET", "/api/v1/ota/status", None)
         if not isinstance(raw_status, dict):
             raw_status = {"ok": True, "value": raw_status}
+        candidate = runtime_update_candidate_from_status(raw_status)
         update = {
             "source": "agentd.ota",
             "available": True,
@@ -232,6 +233,8 @@ def agentd_runtime_status(
             "drain_reason": str(raw_status.get("drain_reason") or ""),
             "raw": raw_status,
         }
+        if candidate:
+            update["candidate"] = candidate
         for key in (
             "drain_until_unix_ms",
             "jobs_running",
@@ -248,6 +251,63 @@ def agentd_runtime_status(
         "runtime_kind": RUNTIME_KIND,
         "update": update,
     }
+
+
+def runtime_update_candidate_from_status(raw_status: dict[str, Any]) -> dict[str, Any]:
+    source = first_dict_from_any(raw_status, ("candidate", "update_candidate", "release", "artifact"))
+    if not source:
+        source = raw_status
+    url = first_string_from_any(source, ("url", "artifact_url", "download_url"))
+    sha256 = first_string_from_any(source, ("sha256", "artifact_sha256", "target_sha256"))
+    version = first_string_from_any(source, ("version", "target_version", "name"))
+    channel = first_string_from_any(source, ("channel",))
+    target_os = first_string_from_any(source, ("target_os", "os"))
+    target_arch = first_string_from_any(source, ("target_arch", "arch"))
+    reason = first_string_from_any(source, ("reason",)) or "broker operator requested runtime.update"
+    drain_timeout_ms = source.get("drain_timeout_ms", raw_status.get("drain_timeout_ms"))
+    candidate: dict[str, Any] = {}
+    for key, value in (
+        ("url", url),
+        ("sha256", sha256),
+        ("version", version),
+        ("channel", channel),
+        ("target_os", target_os),
+        ("target_arch", target_arch),
+        ("reason", reason),
+    ):
+        if value:
+            candidate[key] = value
+    if isinstance(drain_timeout_ms, (int, float)) or (isinstance(drain_timeout_ms, str) and drain_timeout_ms.strip()):
+        try:
+            parsed_timeout = int(drain_timeout_ms)
+            if parsed_timeout >= 0:
+                candidate["drain_timeout_ms"] = parsed_timeout
+        except Exception:
+            pass
+    if not any(candidate.get(key) for key in ("url", "sha256", "version")):
+        return {}
+    candidate["input"] = {key: value for key, value in candidate.items() if key != "input"}
+    return candidate
+
+
+def first_dict_from_any(obj: Any, keys: tuple[str, ...]) -> dict[str, Any]:
+    if not isinstance(obj, dict):
+        return {}
+    for key in keys:
+        value = obj.get(key)
+        if isinstance(value, dict):
+            return value
+    return {}
+
+
+def first_string_from_any(obj: Any, keys: tuple[str, ...]) -> str:
+    if not isinstance(obj, dict):
+        return ""
+    for key in keys:
+        value = obj.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
 
 
 def base64_body_digest(body: bytes) -> str:

@@ -157,7 +157,17 @@ class AgentdHandler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/v1/health"):
             self.send_json({"ok": True})
         elif self.path.startswith("/api/v1/ota/status"):
-            self.send_json({"ok": True, "enabled": True, "state": "idle"})
+            self.send_json({
+                "ok": True,
+                "enabled": True,
+                "state": "idle",
+                "candidate": {
+                    "url": "file:///tmp/agentd-smoke",
+                    "sha256": "abc123",
+                    "version": "v-smoke",
+                    "drain_timeout_ms": 500,
+                },
+            })
         elif self.path.startswith("/api/v1/db/sessions"):
             self.send_json({"ok": True, "sessions": [{"session_id": "agentd-session"}]})
         elif self.path.startswith("/api/v1/db/client_events"):
@@ -532,7 +542,17 @@ class AgentdHandler(BaseHTTPRequestHandler):
         elif self.path.startswith("/api/v1/db/workflow_events"):
             self.send_json({"ok": True, "workflow_id": "wf-smoke", "events": [{"event_id": 2, "workflow_id": "wf-smoke", "ts_unix_ms": 1700000005000, "type": "workflow.started", "data": {"workflow_id": "wf-smoke"}}]})
         elif self.path.startswith("/api/v1/ota/status"):
-            self.send_json({"ok": True, "enabled": True, "state": "idle"})
+            self.send_json({
+                "ok": True,
+                "enabled": True,
+                "state": "idle",
+                "candidate": {
+                    "url": "file:///tmp/agentd-smoke",
+                    "sha256": "abc123",
+                    "version": "v-smoke",
+                    "drain_timeout_ms": 500,
+                },
+            })
         else:
             self.send_response(404)
             self.end_headers()
@@ -659,6 +679,7 @@ def broker_thread():
         assert status_result["status"] == 200, status_result
         assert status_result["body"]["runtime_kind"] == "agentd", status_result
         assert status_result["body"]["update"]["enabled"] is True, status_result
+        assert status_result["body"]["update"]["candidate"]["url"] == "file:///tmp/agentd-smoke", status_result
         send_frame(
             conn,
             {

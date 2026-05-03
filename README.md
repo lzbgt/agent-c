@@ -126,6 +126,10 @@ advertises `broker.runtime_capabilities.v1` with `surfaces.sessions` and
 - `GET /api/v1/runtime/status`: reports read-only update readiness. The
   default bridge reports update disabled; the native connector reports
   `agentd` OTA status when `AGENTD_CODEXW_RUNTIME_UPDATE_MODE=agentd_ota`.
+  If `/api/v1/ota/status` includes a `candidate`, `update_candidate`, `release`,
+  or `artifact` object with `url`, `sha256`, `version`, or
+  `drain_timeout_ms`, the bridge forwards it as `update.candidate` so the
+  shared broker can show and prepare the exact `runtime.update` input.
 
 The broker only uses these routes after capability negotiation. Older bridges
 that do not advertise the surfaces continue to appear in the shared inventory
