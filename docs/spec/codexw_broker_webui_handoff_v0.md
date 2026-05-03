@@ -34,6 +34,9 @@ Short version:
 - cross-deployment `codexw` collaboration and explicit work handoff are now a
   separate native architecture track
 - a stable artifact index/detail/content API does not exist yet
+- the shared codexw broker now has neutral runtime-instance activity routes;
+  agentd should feed those routes through its explicit connector adapter, not
+  by pretending to be a codexw deployment
 
 ## What this repo should assume
 
@@ -48,6 +51,19 @@ This repo should treat the following `codexw` surfaces as real:
 - service list / detail / attach / wait / run
 - capability list / detail
 - owner / observer / rival lease semantics
+- v2 runtime-instance inventory, action metadata/audit, and read-only
+  `/sessions` / `/events` activity surfaces
+
+For `agentd` interoperability, this repo should expose the shared activity
+contract through connector-owned routes:
+
+- advertise `broker.runtime_capabilities.v1` with `surfaces.sessions` and
+  `surfaces.events`
+- serve `GET /api/v1/runtime/sessions` from daemon sessions and durable
+  workflows
+- serve `GET /api/v1/runtime/events` from client events and workflow events
+- keep operator restart/update actions unadvertised until the daemon owns a
+  supervisor-safe idle/update boundary
 
 This repo should **not** assume:
 

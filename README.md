@@ -23,6 +23,10 @@ Key capabilities:
 - **Memory tooling** (recaps, correlation index, trace linking) and operator-grade panels.
 - **Policy/limits hooks** for tool budgets, approvals, and automation profiles.
 - **OTA updates** (agentd + broker + WebUI) with drain + continuity checks.
+- **Shared codexw broker bridge**: the native connector advertises runtime
+  actions plus session/event activity surfaces so codexw's broker, iOS app, and
+  WebUI can show `agentd` daemon sessions, workflows, client events, and
+  workflow events through `/api/v2/runtime-instances/...`.
 
 ## NanoClaw leverage (in progress)
 
@@ -106,6 +110,23 @@ Production shape:
 
 For a full production checklist (TLS, broker/connector, auth hardening, backups), see `docs/DEPLOYMENT.md`.
 For WebUI dev/build/runtime config, see `docs/WEBUI.md`.
+
+### codexw shared broker bridge
+
+`tools/agentd_codexw_native_broker_connector.py` registers `agentd` as a
+`runtime_kind=agentd` instance in the sibling `codexw` broker. The connector
+advertises `broker.runtime_capabilities.v1` with `surfaces.sessions` and
+`surfaces.events`, then serves these runtime-local adapter commands:
+
+- `GET /api/v1/runtime/sessions`: projects daemon sessions and workflows into
+  neutral runtime-instance session rows.
+- `GET /api/v1/runtime/events`: projects client events and workflow events into
+  neutral `broker.runtime_event.v1` rows, with `limit`, `after_id`,
+  `last_event_id`, `session_id`, and `event_prefix` filtering.
+
+The broker only uses these routes after capability negotiation. Older bridges
+that do not advertise the surfaces continue to appear in the shared inventory
+with empty common activity instead of fabricated codexw-specific state.
 
 Quick start (loopback only; no auth required):
 

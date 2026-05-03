@@ -22,6 +22,8 @@ from typing import Any
 from agentd_codexw_contract import (
     LOCAL_API_VERSION,
     RUNTIME_ACTIONS,
+    agentd_runtime_events,
+    agentd_runtime_sessions,
     legacy_capabilities,
     runtime_capabilities,
 )
@@ -233,6 +235,10 @@ class FacadeHandler(BaseHTTPRequestHandler):
                 self.send_json(200, self.health())
             elif method == "GET" and path == "/api/v1/runtime":
                 self.send_json(200, self.runtime())
+            elif method == "GET" and path == "/api/v1/runtime/sessions":
+                self.send_json(200, agentd_runtime_sessions(self.agentd.request))
+            elif method == "GET" and path == "/api/v1/runtime/events":
+                self.send_json(200, agentd_runtime_events(self.agentd.request, query))
             elif method == "POST" and path == "/api/v1/runtime/actions":
                 self.send_json(200, self.runtime_action(read_json_body(self)))
             elif method == "GET" and path in ("/api/v1/session", f"/api/v1/session/{self.state.session_id}"):

@@ -9,8 +9,9 @@ import json
 import platform
 import socket
 import time
+import urllib.parse
 import uuid
-from typing import Any
+from typing import Any, Callable
 
 
 LOCAL_API_VERSION = "agentd-codexw-facade-v1"
@@ -66,6 +67,8 @@ def runtime_capabilities() -> dict[str, Any]:
             "workflow": True,
             "schedule": True,
             "experience": True,
+            "sessions": True,
+            "events": True,
             "transcript": True,
             "files": True,
         },
@@ -80,6 +83,8 @@ def legacy_capabilities() -> list[str]:
         "agentd.rl.experience_records",
         "codexw.local_api.runtime",
         "codexw.local_api.runtime_actions",
+        "codexw.local_api.runtime_sessions",
+        "codexw.local_api.runtime_events",
         "codexw.local_api.turn_start",
         "codexw.local_api.transcript",
     ]
@@ -196,3 +201,255 @@ def deployment_snapshot_frame(
 
 def base64_body_digest(body: bytes) -> str:
     return base64.b64encode(hashlib.sha256(body).digest()).decode("ascii")
+
+
+def _query(params: dict[str, Any]) -> str:
+    filtered: dict[str, str] = {}
+    for key, value in params.items():
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            filtered[key] = text
+    return urllib.parse.urlencode(filtered)
+
+
+def _clamp_int(value: Any, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(str(value))
+    except Exception:
+        parsed = default
+    return max(minimum, min(maximum, parsed))
+
+
+def _unix_ms_to_iso(ms: Any) -> str:
+    try:
+        parsed = int(ms)
+    except Exception:
+        return ""
+    if parsed <= 0:
+        return ""
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(parsed / 1000.0))
+
+
+def _first_string(obj: dict[str, Any], keys: tuple[str, ...]) -> str:
+    for key in keys:
+        value = obj.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _workflow_objective(workflow: dict[str, Any]) -> str:
+    spec = workflow.get("spec")
+    if isinstance(spec, dict):
+        for key in ("title", "name", "objective", "description"):
+            value = spec.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return _first_string(workflow, ("workflow_id", "trace_id"))
+
+
+def _workflow_session(workflow: dict[str, Any]) -> dict[str, Any]:
+    workflow_id = _first_string(workflow, ("workflow_id",))
+    status = _first_string(workflow, ("status",)) or "unknown"
+    working = status in {"queued", "running", "waiting", "ready"}
+    updated_ms = workflow.get("updated_unix_ms") or workflow.get("created_unix_ms")
+    progress = status
+    if workflow.get("cancel_requested") is True:
+        progress = f"{status}, cancel requested"
+    return {
+        "session_id": workflow_id,
+        "thread_id": _first_string(workflow, ("trace_id",)),
+        "state": status,
+        "objective": _workflow_objective(workflow),
+        "working": working,
+        "active_turn_id": workflow_id if working else "",
+        "started_turn_count": 1 if working or status in {"done", "error", "cancelled"} else 0,
+        "completed_turn_count": 0 if working else (1 if status in {"done", "error", "cancelled"} else 0),
+        "transcript_length": 0,
+        "progress": {
+            "label": progress,
+        },
+        "source": "agentd.workflow",
+        "updated_at": _unix_ms_to_iso(updated_ms),
+    }
+
+
+def _daemon_session(row: dict[str, Any]) -> dict[str, Any]:
+    session_id = _first_string(row, ("session_id",))
+    return {
+        "session_id": session_id,
+        "state": "idle",
+        "objective": session_id,
+        "working": False,
+        "transcript_length": 0,
+        "progress": {
+            "label": "daemon session",
+        },
+        "source": "agentd.session",
+        "updated_at": _unix_ms_to_iso(row.get("updated_unix_ms") or row.get("created_unix_ms")),
+    }
+
+
+def agentd_runtime_sessions(agentd_request: Callable[[str, str, Any | None], Any], *, limit: int = 50) -> dict[str, Any]:
+    """Project agentd daemon sessions/workflows into codexw broker runtime sessions."""
+    limit = _clamp_int(limit, 50, 1, 200)
+    sessions: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    try:
+        response = agentd_request("GET", f"/api/v1/db/sessions?{_query({'limit': limit})}", None)
+        for row in response.get("sessions", []) if isinstance(response, dict) else []:
+            if not isinstance(row, dict):
+                continue
+            session = _daemon_session(row)
+            sid = session.get("session_id")
+            if isinstance(sid, str) and sid and sid not in seen:
+                sessions.append(session)
+                seen.add(sid)
+    except Exception:
+        pass
+
+    try:
+        response = agentd_request("GET", f"/api/v1/db/workflows?{_query({'limit': limit, 'include_spec': 1})}", None)
+        for row in response.get("workflows", []) if isinstance(response, dict) else []:
+            if not isinstance(row, dict):
+                continue
+            session = _workflow_session(row)
+            sid = session.get("session_id")
+            if isinstance(sid, str) and sid and sid not in seen:
+                sessions.append(session)
+                seen.add(sid)
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "runtime_kind": RUNTIME_KIND,
+        "sessions": sessions[:limit],
+    }
+
+
+def _event_seq(ts_unix_ms: Any, local_id: Any) -> int:
+    try:
+        ts = int(ts_unix_ms)
+    except Exception:
+        ts = int(time.time() * 1000)
+    try:
+        lid = int(local_id)
+    except Exception:
+        lid = 0
+    return max(1, ts * 1000 + (lid % 1000))
+
+
+def _decode_data_json(row: dict[str, Any]) -> dict[str, Any]:
+    data = row.get("data")
+    if isinstance(data, dict):
+        return data
+    data_json = row.get("data_json")
+    if isinstance(data_json, str) and data_json.strip():
+        try:
+            parsed = json.loads(data_json)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            return {"raw": data_json}
+    return {}
+
+
+def _client_event(session_id: str, row: dict[str, Any]) -> dict[str, Any]:
+    local_id = row.get("id") or 0
+    seq = _event_seq(row.get("ts_unix_ms"), local_id)
+    event_name = _first_string(row, ("type",)) or "client.event"
+    return {
+        "session_id": session_id,
+        "runtime_event_id": f"client:{session_id}:{local_id}",
+        "seq": seq,
+        "event": event_name,
+        "data": _decode_data_json(row),
+        "raw": row,
+    }
+
+
+def _workflow_event(row: dict[str, Any]) -> dict[str, Any]:
+    local_id = row.get("event_id") or 0
+    workflow_id = _first_string(row, ("workflow_id",))
+    seq = _event_seq(row.get("ts_unix_ms"), local_id)
+    return {
+        "session_id": workflow_id,
+        "runtime_event_id": f"workflow:{workflow_id}:{local_id}",
+        "seq": seq,
+        "event": _first_string(row, ("type",)) or "workflow.event",
+        "data": _decode_data_json(row),
+        "raw": row,
+    }
+
+
+def agentd_runtime_events(
+    agentd_request: Callable[[str, str, Any | None], Any],
+    query: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
+    """Return a bounded normalized replay over agentd client/workflow events."""
+    query = query or {}
+    limit = _clamp_int((query.get("limit") or ["8"])[0], 8, 1, 100)
+    after_id_raw = (query.get("after_id") or query.get("last_event_id") or [None])[0]
+    after_id = _clamp_int(after_id_raw, 0, 0, 2**63 - 1) if after_id_raw is not None else 0
+    session_id = str((query.get("session_id") or [""])[0]).strip()
+    event_prefix = str((query.get("event_prefix") or [""])[0]).strip()
+
+    events: list[dict[str, Any]] = []
+
+    def add_client_events(sid: str) -> None:
+        if not sid:
+            return
+        response = agentd_request("GET", f"/api/v1/db/client_events?{_query({'session_id': sid, 'limit': limit})}", None)
+        for row in response.get("client_events", []) if isinstance(response, dict) else []:
+            if isinstance(row, dict):
+                events.append(_client_event(sid, row))
+
+    def add_workflow_events(workflow_id: str) -> None:
+        if not workflow_id:
+            return
+        response = agentd_request("GET", f"/api/v1/db/workflow_events?{_query({'workflow_id': workflow_id, 'limit': limit})}", None)
+        for row in response.get("events", []) if isinstance(response, dict) else []:
+            if isinstance(row, dict):
+                events.append(_workflow_event(row))
+
+    if session_id:
+        add_client_events(session_id)
+        add_workflow_events(session_id)
+    else:
+        try:
+            response = agentd_request("GET", f"/api/v1/db/sessions?{_query({'limit': min(limit, 10)})}", None)
+            for row in response.get("sessions", []) if isinstance(response, dict) else []:
+                if isinstance(row, dict):
+                    add_client_events(_first_string(row, ("session_id",)))
+        except Exception:
+            pass
+        try:
+            response = agentd_request("GET", f"/api/v1/db/workflows?{_query({'limit': min(limit, 10)})}", None)
+            for row in response.get("workflows", []) if isinstance(response, dict) else []:
+                if isinstance(row, dict):
+                    add_workflow_events(_first_string(row, ("workflow_id",)))
+        except Exception:
+            pass
+
+    if event_prefix:
+        events = [ev for ev in events if str(ev.get("event", "")).startswith(event_prefix)]
+    if after_id > 0:
+        events = [ev for ev in events if int(ev.get("seq") or 0) > after_id]
+
+    events.sort(key=lambda ev: int(ev.get("seq") or 0))
+    events = events[-limit:]
+    latest = max((int(ev.get("seq") or 0) for ev in events), default=0)
+    return {
+        "ok": True,
+        "runtime_kind": RUNTIME_KIND,
+        "session_id": session_id,
+        "after_id": after_id if after_id > 0 else None,
+        "limit": limit,
+        "returned": len(events),
+        "latest_event_id": latest if latest > 0 else None,
+        "events": events,
+    }

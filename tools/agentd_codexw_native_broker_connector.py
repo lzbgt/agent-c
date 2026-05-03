@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import Any
 
 from agentd_codexw_contract import (
+    agentd_runtime_events,
+    agentd_runtime_sessions,
     base64_body_digest,
     canonical_json_bytes,
     default_runtime_instance_id,
@@ -524,14 +526,22 @@ def handle_command(args: argparse.Namespace, frame: dict[str, Any]) -> dict[str,
     method = str(frame.get("method") or "GET").upper()
     path = str(frame.get("path") or "")
     body = frame.get("body")
+    parsed = urllib.parse.urlparse(path)
+    route_path = parsed.path
+    query = urllib.parse.parse_qs(parsed.query)
+    request_agentd = lambda m, p, b=None: agentd_request(args, m, p, b)
     try:
-        if method == "GET" and path == "/api/v1/runtime":
+        if method == "GET" and route_path == "/api/v1/runtime":
             result = runtime_payload(args)
-        elif method == "POST" and path == "/api/v1/runtime/actions":
+        elif method == "GET" and route_path == "/api/v1/runtime/sessions":
+            result = agentd_runtime_sessions(request_agentd)
+        elif method == "GET" and route_path == "/api/v1/runtime/events":
+            result = agentd_runtime_events(request_agentd, query)
+        elif method == "POST" and route_path == "/api/v1/runtime/actions":
             if not isinstance(body, dict):
                 raise ValueError("runtime action command body must be an object")
             result = forward_runtime_action(args, body)
-        elif method == "GET" and path == "/healthz":
+        elif method == "GET" and route_path == "/healthz":
             result = {"ok": True, "service": "agentd-codexw-native-broker-connector"}
         else:
             return {
@@ -540,7 +550,7 @@ def handle_command(args: argparse.Namespace, frame: dict[str, Any]) -> dict[str,
                 "request_id": request_id,
                 "status": 404,
                 "error": f"unsupported native agentd command path: {method} {path}",
-                "body": {"ok": False, "error": {"code": "not_found", "message": path}},
+                "body": {"ok": False, "error": {"code": "not_found", "message": route_path}},
             }
         return {
             "type": "deployment.command_result",

@@ -84,6 +84,10 @@ if frame.get("type") != "deployment.snapshot" or frame.get("deployment_id") != "
 if "workflow.submit" not in payload["runtime_capabilities"]["actions"]:
     print("missing workflow action", payload["runtime_capabilities"], file=sys.stderr)
     raise SystemExit(1)
+for surface in ("sessions", "events"):
+    if payload["runtime_capabilities"].get("surfaces", {}).get(surface) is not True:
+        print("missing runtime surface", surface, payload["runtime_capabilities"], file=sys.stderr)
+        raise SystemExit(1)
 for forbidden in ("runtime.restart", "runtime.update", "runtime.upgrade"):
     if forbidden in payload["runtime_capabilities"]["actions"]:
         print("agentd connector must not advertise unsafe operator action", forbidden, payload["runtime_capabilities"], file=sys.stderr)
@@ -321,6 +325,14 @@ class AgentdHandler(BaseHTTPRequestHandler):
             self.send_json({"ok": True, "capabilities": ["workflow", "rl"]})
         elif self.path.startswith("/api/v1/rl/experience_records"):
             self.send_json({"ok": True, "records": [{"label": "smoke", "reward": 1.0}]})
+        elif self.path.startswith("/api/v1/db/sessions"):
+            self.send_json({"ok": True, "sessions": [{"session_id": "agentd-session", "created_unix_ms": 1700000000000, "updated_unix_ms": 1700000001000}]})
+        elif self.path.startswith("/api/v1/db/client_events"):
+            self.send_json({"ok": True, "session_id": "agentd-session", "client_events": [{"id": 1, "ts_unix_ms": 1700000002000, "type": "client.event", "data": {"note": "session smoke"}}]})
+        elif self.path.startswith("/api/v1/db/workflows"):
+            self.send_json({"ok": True, "workflows": [{"workflow_id": "wf-smoke", "session_id": "agentd-session", "trace_id": "trace-smoke", "status": "running", "created_unix_ms": 1700000003000, "updated_unix_ms": 1700000004000, "spec": {"title": "Smoke workflow"}}]})
+        elif self.path.startswith("/api/v1/db/workflow_events"):
+            self.send_json({"ok": True, "workflow_id": "wf-smoke", "events": [{"event_id": 2, "workflow_id": "wf-smoke", "ts_unix_ms": 1700000005000, "type": "workflow.started", "data": {"workflow_id": "wf-smoke"}}]})
         else:
             self.send_response(404)
             self.end_headers()
@@ -393,6 +405,36 @@ def broker_thread():
         assert command_result["status"] == 200, command_result
         assert command_result["body"]["action"] == "experience.list", command_result
         assert command_result["body"]["result"]["records"][0]["label"] == "smoke", command_result
+        send_frame(
+            conn,
+            {
+                "type": "deployment.command",
+                "request_id": "cmd-2",
+                "method": "GET",
+                "path": "/api/v1/runtime/sessions",
+            },
+        )
+        sessions_result = read_frame(conn)
+        results["sessions_result"] = sessions_result
+        assert sessions_result["status"] == 200, sessions_result
+        assert sessions_result["body"]["runtime_kind"] == "agentd", sessions_result
+        session_ids = [s["session_id"] for s in sessions_result["body"]["sessions"]]
+        assert "agentd-session" in session_ids and "wf-smoke" in session_ids, sessions_result
+        send_frame(
+            conn,
+            {
+                "type": "deployment.command",
+                "request_id": "cmd-3",
+                "method": "GET",
+                "path": "/api/v1/runtime/events?limit=8",
+            },
+        )
+        events_result = read_frame(conn)
+        results["events_result"] = events_result
+        assert events_result["status"] == 200, events_result
+        assert events_result["body"]["runtime_kind"] == "agentd", events_result
+        names = [event["event"] for event in events_result["body"]["events"]]
+        assert "workflow.started" in names and "client.event" in names, events_result
 
 
 thread = threading.Thread(target=broker_thread, daemon=True)
@@ -419,7 +461,6 @@ proc = subprocess.run(
         "--timeout",
         "5",
         "--connect",
-        "--once",
     ],
     text=True,
     stdout=subprocess.PIPE,
@@ -432,10 +473,11 @@ thread.join(timeout=5)
 if proc.returncode != 0:
     raise SystemExit(f"connector failed\\nSTDOUT:\\n{proc.stdout}\\nSTDERR:\\n{proc.stderr}")
 summary = json.loads(proc.stdout)
-if summary.get("mode") != "connect" or summary.get("commands") != 1:
+if summary.get("mode") != "connect" or summary.get("commands") != 3:
     raise SystemExit(f"bad connector summary: {summary}")
-if "command_result" not in results:
-    raise SystemExit("broker did not receive command result")
+for key in ("command_result", "sessions_result", "events_result"):
+    if key not in results:
+        raise SystemExit(f"broker did not receive {key}")
 PY
 
 echo "agentd_codexw_native_broker_connector_smoke OK"
