@@ -168,23 +168,32 @@ issue_payload="$("${BROKER_ADMIN}" --timeout-seconds 120 enrollment-token-issue 
 TOKEN_SECRET="$(printf '%s' "${issue_payload}" | json_field token.shared_secret)"
 
 seed_self_test_status() {
-  python3 - <<PY
+  local policy_state="$1"
+  python3 - "${policy_state}" <<PY
 import json
+import sys
 import time
 from pathlib import Path
 
+policy_state = sys.argv[1]
+if policy_state not in {"failed", "fresh"}:
+    raise SystemExit(f"unsupported seeded connector policy state: {policy_state}")
+ok = policy_state == "fresh"
+checks = [
+    {"name": "identity_files", "ok": True},
+    {"name": "agentd_health", "ok": True},
+    {"name": "broker_runtime_instance_visible", "ok": ok},
+]
+if not ok:
+    checks[-1]["error"] = "seeded readiness proof failure"
 payload = {
-    "ok": False,
+    "ok": ok,
     "mode": "self_test",
-    "checked_unix_ms": int(time.time() * 1000) - 120_000,
+    "checked_unix_ms": int(time.time() * 1000) - (120_000 if not ok else 1_000),
     "deployment_id": "${DEPLOYMENT_ID}",
     "runtime_instance_id": "${RUNTIME_INSTANCE_ID}",
     "runtime_kind": "agentd",
-    "checks": [
-        {"name": "identity_files", "ok": True},
-        {"name": "agentd_health", "ok": True},
-        {"name": "broker_runtime_instance_visible", "ok": False, "error": "seeded readiness proof failure"},
-    ],
+    "checks": checks,
 }
 path = Path("${SELF_TEST_STATUS_JSON}")
 path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
@@ -237,7 +246,7 @@ done
 "${BROKER_ADMIN}" --timeout-seconds 120 deployment-approve --deployment-id "${DEPLOYMENT_ID}" >/dev/null 2>&1 || true
 cleanup_connector
 
-seed_self_test_status
+seed_self_test_status failed
 start_connector "${CONNECTOR_LOG}"
 
 python3 - <<PY
@@ -292,27 +301,138 @@ if instance.get("connection", {}).get("state") != "online":
 
 instance_id = instance.get("instance_id") or expected_instance_id
 path_id = urllib.parse.quote(instance_id, safe="")
-status = None
-for _ in range(30):
-    status = client.request("GET", f"/api/v2/runtime-instances/{path_id}/status", token=token)
-    connector = status.get("connector") if isinstance(status.get("connector"), dict) else {}
-    if connector.get("policy_state") == "failed" and connector.get("failed_check_count") == 1:
-        break
-    time.sleep(0.5)
 
+def runtime_status_until(predicate, label, timeout=30):
+    deadline = time.time() + timeout
+    last = None
+    while time.time() < deadline:
+        last = client.request("GET", f"/api/v2/runtime-instances/{path_id}/status", token=token)
+        if predicate(last):
+            return last
+        time.sleep(0.5)
+    raise SystemExit(label + ": " + json.dumps(last)[:2000])
+
+
+def audit_events_until(predicate, label, timeout=30):
+    deadline = time.time() + timeout
+    last = None
+    while time.time() < deadline:
+        last = client.request("GET", f"/api/v2/runtime-instances/{path_id}/audit?limit=16", token=token)
+        events = last.get("events") if isinstance(last.get("events"), list) else []
+        if predicate(events):
+            return events
+        time.sleep(0.5)
+    raise SystemExit(label + ": " + json.dumps(last)[:2000])
+
+
+def transition_events(events):
+    return [
+        event
+        for event in events
+        if event.get("action") == "runtime_instance.connector_readiness_transition"
+    ]
+
+
+status = runtime_status_until(
+    lambda payload: isinstance(payload.get("connector"), dict)
+    and payload["connector"].get("policy_state") == "failed"
+    and payload["connector"].get("failed_check_count") == 1
+    and isinstance(payload.get("connector_alert"), dict)
+    and payload["connector_alert"].get("policy_state") == "failed",
+    "broker status did not include first failed connector transition alert",
+)
+
+first_alert = status.get("connector_alert") if isinstance(status.get("connector_alert"), dict) else None
+if not first_alert:
+    raise SystemExit("broker status did not include first connector_alert: " + json.dumps(status)[:2000])
+if first_alert.get("action") != "runtime_instance.connector_readiness_transition":
+    raise SystemExit("unexpected first connector alert action: " + json.dumps(first_alert, sort_keys=True))
+if first_alert.get("outcome") != "failure" or first_alert.get("policy_state") != "failed":
+    raise SystemExit("unexpected first connector alert state: " + json.dumps(first_alert, sort_keys=True))
+
+duplicate = client.request("GET", f"/api/v2/runtime-instances/{path_id}/status", token=token)
+if duplicate.get("connector_alert") is not None:
+    raise SystemExit("duplicate failed status unexpectedly emitted connector_alert: " + json.dumps(duplicate)[:2000])
+
+failed_audit_events = audit_events_until(
+    lambda events: any(
+        event.get("outcome") == "failure"
+        and event.get("details", {}).get("connector_policy_state") == "failed"
+        and event.get("details", {}).get("connector_failed_checks") == "broker_runtime_instance_visible"
+        for event in transition_events(events)
+    ),
+    "failed connector readiness transition audit event missing",
+)
+
+Path("${SELF_TEST_STATUS_JSON}").write_text(
+    json.dumps(
+        {
+            "ok": True,
+            "mode": "self_test",
+            "checked_unix_ms": int(time.time() * 1000) - 1000,
+            "deployment_id": deployment_id,
+            "runtime_instance_id": expected_instance_id,
+            "runtime_kind": "agentd",
+            "checks": [
+                {"name": "identity_files", "ok": True},
+                {"name": "agentd_health", "ok": True},
+                {"name": "broker_runtime_instance_visible", "ok": True},
+            ],
+        },
+        indent=2,
+        sort_keys=True,
+    )
+    + "\\n",
+    encoding="utf-8",
+)
+
+fresh_status = runtime_status_until(
+    lambda payload: isinstance(payload.get("connector"), dict)
+    and payload["connector"].get("policy_state") == "fresh"
+    and payload["connector"].get("last_ok") is True
+    and isinstance(payload.get("connector_alert"), dict)
+    and payload["connector_alert"].get("previous_policy_state") == "failed"
+    and payload["connector_alert"].get("policy_state") == "fresh",
+    "broker status did not include failed-to-fresh connector transition alert",
+)
+
+fresh_alert = fresh_status.get("connector_alert") if isinstance(fresh_status.get("connector_alert"), dict) else None
+if fresh_alert.get("outcome") != "success":
+    raise SystemExit("unexpected fresh connector alert outcome: " + json.dumps(fresh_alert, sort_keys=True))
+
+audit_events = audit_events_until(
+    lambda events: any(
+        event.get("outcome") == "failure" and event.get("details", {}).get("connector_policy_state") == "failed"
+        for event in transition_events(events)
+    )
+    and any(
+        event.get("outcome") == "success"
+        and event.get("details", {}).get("previous_connector_policy") == "failed"
+        and event.get("details", {}).get("connector_policy_state") == "fresh"
+        and event.get("details", {}).get("connector_last_ok") == "true"
+        for event in transition_events(events)
+    ),
+    "fresh connector readiness transition audit event missing",
+)
+
+duplicate_fresh = client.request("GET", f"/api/v2/runtime-instances/{path_id}/status", token=token)
+if duplicate_fresh.get("connector_alert") is not None:
+    raise SystemExit("duplicate fresh status unexpectedly emitted connector_alert: " + json.dumps(duplicate_fresh)[:2000])
+
+status = fresh_status
 connector = status.get("connector") if isinstance(status, dict) and isinstance(status.get("connector"), dict) else None
 if not connector:
     raise SystemExit("broker status did not include connector object: " + json.dumps(status)[:2000])
 if connector.get("source") != "agentd.codexw.self_test":
     raise SystemExit("unexpected connector source: " + json.dumps(connector, sort_keys=True))
-if connector.get("state") != "failed" or connector.get("policy_state") != "failed" or connector.get("ok") is not False:
+if connector.get("state") != "fresh" or connector.get("policy_state") != "fresh" or connector.get("ok") is not True:
     raise SystemExit("unexpected connector readiness state: " + json.dumps(connector, sort_keys=True))
-if connector.get("last_ok") is not False:
+if connector.get("last_ok") is not True:
     raise SystemExit("unexpected connector last_ok: " + json.dumps(connector, sort_keys=True))
-if connector.get("failed_check_count") != 1:
+if int(connector.get("failed_check_count") or 0) != 0:
     raise SystemExit("unexpected failed_check_count: " + json.dumps(connector, sort_keys=True))
-if "broker_runtime_instance_visible" not in connector.get("failed_checks", []):
-    raise SystemExit("missing failed check name: " + json.dumps(connector, sort_keys=True))
+if connector.get("failed_checks") or []:
+    raise SystemExit("unexpected failed checks for fresh status: " + json.dumps(connector, sort_keys=True))
 if int(connector.get("checked_unix_ms") or 0) <= 0:
     raise SystemExit("missing checked_unix_ms: " + json.dumps(connector, sort_keys=True))
 if int(connector.get("age_ms") or 0) < 0:
@@ -320,12 +440,26 @@ if int(connector.get("age_ms") or 0) < 0:
 if int(connector.get("stale_after_ms") or 0) != 900000:
     raise SystemExit("unexpected stale_after_ms: " + json.dumps(connector, sort_keys=True))
 
+transitions = transition_events(audit_events)
+failed_transition = next(
+    event
+    for event in transitions
+    if event.get("outcome") == "failure" and event.get("details", {}).get("connector_policy_state") == "failed"
+)
+fresh_transition = next(
+    event
+    for event in transitions
+    if event.get("outcome") == "success" and event.get("details", {}).get("connector_policy_state") == "fresh"
+)
+
 proof = {
     "ok": True,
     "deployment_id": deployment_id,
     "runtime_instance_id": instance_id,
     "runtime_kind": instance.get("runtime_kind"),
     "connection_state": instance.get("connection", {}).get("state"),
+    "first_connector_alert": first_alert,
+    "fresh_connector_alert": fresh_alert,
     "connector_source": connector.get("source"),
     "connector_state": connector.get("state"),
     "connector_policy_state": connector.get("policy_state"),
@@ -334,8 +468,11 @@ proof = {
     "connector_checked_unix_ms": connector.get("checked_unix_ms"),
     "connector_age_ms": connector.get("age_ms"),
     "connector_stale_after_ms": connector.get("stale_after_ms"),
-    "connector_failed_check_count": connector.get("failed_check_count"),
+    "connector_failed_check_count": int(connector.get("failed_check_count") or 0),
     "connector_failed_checks": connector.get("failed_checks", []),
+    "failed_transition_audit": failed_transition,
+    "fresh_transition_audit": fresh_transition,
+    "transition_audit_events_returned": len(transitions),
     "update_state": (status.get("update") or {}).get("state"),
 }
 Path("${PROOF_JSON}").write_text(json.dumps(proof, indent=2, sort_keys=True) + "\\n", encoding="utf-8")

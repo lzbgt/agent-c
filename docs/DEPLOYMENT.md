@@ -307,7 +307,8 @@ when you intentionally want to dispatch to the fake endpoint as a separate
 compatibility check. It removes the temporary broker deployment by default and
 does not replace any daemon binary.
 
-To prove the deployed broker-visible connector readiness status path, run:
+To prove the deployed broker-visible connector readiness status and transition
+audit path, run:
 
 ```
 tools/verify_codexw_live_agentd_connector_readiness.sh
@@ -318,8 +319,12 @@ self-test status JSON file, connects the native connector to the live broker,
 and verifies `/api/v2/runtime-instances/{id}/status` preserves the top-level
 `connector` object with `state`, `policy_state`, `last_ok`,
 `checked_unix_ms`, freshness age, `stale_after_ms`, failed check count, and
-failed check names. It removes the temporary broker deployment by default and
-leaves proof JSON under `build/`.
+failed check names. It then changes the seeded status from `failed` to `fresh`
+and proves the deployed broker returns one-shot `connector_alert` payloads,
+suppresses duplicate alerts for repeated reads, and persists
+`runtime_instance.connector_readiness_transition` events in
+`/api/v2/runtime-instances/{id}/audit`. It removes the temporary broker
+deployment by default and leaves proof JSON under `build/`.
 
 The service units intentionally read `AGENTD_AUTH_TOKEN`,
 `AGENTD_CODEXW_BROKER_PASSWORD`, and one-time enrollment secrets from the

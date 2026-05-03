@@ -166,7 +166,7 @@ want the proof to dispatch to the fake endpoint as well. No daemon binary is
 replaced in either mode.
 
 To prove that the deployed codexw broker preserves durable connector readiness
-status from `/api/v1/runtime/status`, run:
+status and readiness-transition audit from `/api/v1/runtime/status`, run:
 
 ```bash
 tools/verify_codexw_live_agentd_connector_readiness.sh
@@ -174,12 +174,16 @@ tools/verify_codexw_live_agentd_connector_readiness.sh
 
 That proof connects the native connector to a temporary loopback fake `agentd`
 API with a seeded self-test status JSON file, verifies the live broker exposes
-the runtime as `runtime_kind=agentd`, then reads
-`/api/v2/runtime-instances/{id}/status` and asserts the top-level `connector`
-object contains `state`, `policy_state`, `checked_unix_ms`, `age_ms`,
-`stale_after_ms`, failed check count, and failed check names. It removes the
-temporary deployment unless
-`KEEP_DEPLOYMENT=1` is set.
+the runtime as `runtime_kind=agentd`, reads
+`/api/v2/runtime-instances/{id}/status`, and asserts the top-level `connector`
+object contains `state`, `policy_state`, `last_ok`, `checked_unix_ms`,
+`age_ms`, `stale_after_ms`, failed check count, and failed check names. It then
+rewrites the durable self-test status from `failed` to `fresh`, verifies
+one-shot `connector_alert` responses for the first failed observation and the
+failed-to-fresh recovery, verifies duplicate status reads suppress duplicate
+alerts, and checks `/api/v2/runtime-instances/{id}/audit` for durable
+`runtime_instance.connector_readiness_transition` events. It removes the
+temporary deployment unless `KEEP_DEPLOYMENT=1` is set.
 
 For durable service installs, use the launchd/systemd connector templates in
 `docs/DEPLOYMENT.md`. They run `agentd` and the native codexw connector as
