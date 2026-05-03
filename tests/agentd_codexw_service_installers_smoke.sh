@@ -136,6 +136,8 @@ if env.get("AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT") != "1":
     raise SystemExit("launchd plist missing update preflight environment")
 if env.get("AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH") != "${TMP_DIR}/codexw-native/self-test-status.json":
     raise SystemExit("launchd plist missing self-test output path environment")
+if env.get("AGENTD_CODEXW_SELF_TEST_STALE_AFTER_SECONDS") != "900":
+    raise SystemExit("launchd plist missing self-test stale threshold environment")
 if self_test.get("KeepAlive"):
     raise SystemExit("launchd self-test plist must not be KeepAlive")
 if self_test.get("StartInterval") != 123:
@@ -210,6 +212,7 @@ grep -q -- "--self-test-output-path" "${ROOT}/packaging/systemd/agentd-codexw-co
 grep -q "OnUnitActiveSec=5min" "${ROOT}/packaging/systemd/agentd-codexw-connector-self-test.timer"
 grep -q "AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT=0" "${ROOT}/packaging/systemd/codexw-connector.env.example"
 grep -q "AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH=" "${ROOT}/packaging/systemd/codexw-connector.env.example"
+grep -q "AGENTD_CODEXW_SELF_TEST_STALE_AFTER_SECONDS=900" "${ROOT}/packaging/systemd/codexw-connector.env.example"
 if grep -q -- "--agentd-auth-token\\|--broker-user\\|--broker-password\\|--enrollment-token-id\\|--enrollment-shared-secret" "${ROOT}/packaging/systemd/agentd-codexw-connector.service"; then
   echo "systemd connector unit must not pass secrets on argv" >&2
   exit 1

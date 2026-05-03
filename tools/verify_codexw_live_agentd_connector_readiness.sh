@@ -296,7 +296,7 @@ status = None
 for _ in range(30):
     status = client.request("GET", f"/api/v2/runtime-instances/{path_id}/status", token=token)
     connector = status.get("connector") if isinstance(status.get("connector"), dict) else {}
-    if connector.get("state") == "failed" and connector.get("failed_check_count") == 1:
+    if connector.get("policy_state") == "failed" and connector.get("failed_check_count") == 1:
         break
     time.sleep(0.5)
 
@@ -305,8 +305,10 @@ if not connector:
     raise SystemExit("broker status did not include connector object: " + json.dumps(status)[:2000])
 if connector.get("source") != "agentd.codexw.self_test":
     raise SystemExit("unexpected connector source: " + json.dumps(connector, sort_keys=True))
-if connector.get("state") != "failed" or connector.get("ok") is not False:
+if connector.get("state") != "failed" or connector.get("policy_state") != "failed" or connector.get("ok") is not False:
     raise SystemExit("unexpected connector readiness state: " + json.dumps(connector, sort_keys=True))
+if connector.get("last_ok") is not False:
+    raise SystemExit("unexpected connector last_ok: " + json.dumps(connector, sort_keys=True))
 if connector.get("failed_check_count") != 1:
     raise SystemExit("unexpected failed_check_count: " + json.dumps(connector, sort_keys=True))
 if "broker_runtime_instance_visible" not in connector.get("failed_checks", []):
@@ -315,6 +317,8 @@ if int(connector.get("checked_unix_ms") or 0) <= 0:
     raise SystemExit("missing checked_unix_ms: " + json.dumps(connector, sort_keys=True))
 if int(connector.get("age_ms") or 0) < 0:
     raise SystemExit("invalid age_ms: " + json.dumps(connector, sort_keys=True))
+if int(connector.get("stale_after_ms") or 0) != 900000:
+    raise SystemExit("unexpected stale_after_ms: " + json.dumps(connector, sort_keys=True))
 
 proof = {
     "ok": True,
@@ -324,9 +328,12 @@ proof = {
     "connection_state": instance.get("connection", {}).get("state"),
     "connector_source": connector.get("source"),
     "connector_state": connector.get("state"),
+    "connector_policy_state": connector.get("policy_state"),
     "connector_ok": connector.get("ok"),
+    "connector_last_ok": connector.get("last_ok"),
     "connector_checked_unix_ms": connector.get("checked_unix_ms"),
     "connector_age_ms": connector.get("age_ms"),
+    "connector_stale_after_ms": connector.get("stale_after_ms"),
     "connector_failed_check_count": connector.get("failed_check_count"),
     "connector_failed_checks": connector.get("failed_checks", []),
     "update_state": (status.get("update") or {}).get("state"),

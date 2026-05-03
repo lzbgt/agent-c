@@ -176,8 +176,9 @@ That proof connects the native connector to a temporary loopback fake `agentd`
 API with a seeded self-test status JSON file, verifies the live broker exposes
 the runtime as `runtime_kind=agentd`, then reads
 `/api/v2/runtime-instances/{id}/status` and asserts the top-level `connector`
-object contains `state`, `checked_unix_ms`, `age_ms`, failed check count, and
-failed check names. It removes the temporary deployment unless
+object contains `state`, `policy_state`, `checked_unix_ms`, `age_ms`,
+`stale_after_ms`, failed check count, and failed check names. It removes the
+temporary deployment unless
 `KEEP_DEPLOYMENT=1` is set.
 
 For durable service installs, use the launchd/systemd connector templates in
@@ -205,7 +206,14 @@ surfaces a stable machine-readable last-readiness result. When the native
 connector serves `GET /api/v1/runtime/status`, it reads that file back into the
 top-level `connector` status object so the shared codexw broker, WebUI, and
 native clients can show last self-test freshness and failed checks without host
-filesystem access.
+filesystem access. The connector normalizes that local file into an explicit
+readiness policy: `fresh` means the last self-test passed and is newer than the
+stale threshold, `stale` means it passed but is too old, `failed` means the last
+self-test failed or the status file is invalid, and `missing` means the durable
+status file is not configured or has not been written yet. The stale threshold
+defaults to `AGENTD_CODEXW_SELF_TEST_STALE_AFTER_SECONDS=900` so the state turns
+stale after three missed five-minute timer intervals unless the deployment
+chooses a different policy.
 
 Broker operator actions are opt-in. By default the connector still does not
 advertise `runtime.restart`, `runtime.update`, or `runtime.upgrade`. Set

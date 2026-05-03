@@ -46,6 +46,7 @@ DEFAULT_CSR_NAME = "deployment.csr.pem"
 DEFAULT_ENROLLMENT_MATERIAL_NAME = "deployment.enrollment.json"
 RUNTIME_UPDATE_MODE_DISABLED = "disabled"
 RUNTIME_UPDATE_MODE_AGENTD_OTA = "agentd_ota"
+DEFAULT_SELF_TEST_STALE_AFTER_SECONDS = 900
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -53,6 +54,16 @@ def env_bool(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def env_int(name: str, default: int) -> int:
+    value = os.environ.get(name)
+    if value is None or not value.strip():
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
 
 
 def json_dumps(obj: Any) -> bytes:
@@ -134,6 +145,7 @@ def unix_ms(args: argparse.Namespace | None = None) -> int:
 
 def connector_readiness_status(args: argparse.Namespace) -> dict[str, Any]:
     source = "agentd.codexw.self_test"
+    stale_after_ms = max(0, int(getattr(args, "self_test_stale_after_seconds", DEFAULT_SELF_TEST_STALE_AFTER_SECONDS))) * 1000
     status_path = str(getattr(args, "self_test_output_path", "") or "").strip()
     if not status_path:
         return {
@@ -141,7 +153,9 @@ def connector_readiness_status(args: argparse.Namespace) -> dict[str, Any]:
             "available": False,
             "ok": False,
             "state": "unconfigured",
+            "policy_state": "missing",
             "detail": "AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH is not configured",
+            "stale_after_ms": stale_after_ms,
         }
     path = Path(status_path).expanduser()
     if not path.exists():
@@ -150,7 +164,9 @@ def connector_readiness_status(args: argparse.Namespace) -> dict[str, Any]:
             "available": False,
             "ok": False,
             "state": "missing",
+            "policy_state": "missing",
             "detail": "durable connector self-test status file has not been written yet",
+            "stale_after_ms": stale_after_ms,
         }
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -160,7 +176,9 @@ def connector_readiness_status(args: argparse.Namespace) -> dict[str, Any]:
             "available": True,
             "ok": False,
             "state": "invalid",
+            "policy_state": "failed",
             "detail": f"durable connector self-test status file is not valid JSON: {exc}",
+            "stale_after_ms": stale_after_ms,
         }
     if not isinstance(payload, dict):
         return {
@@ -168,7 +186,9 @@ def connector_readiness_status(args: argparse.Namespace) -> dict[str, Any]:
             "available": True,
             "ok": False,
             "state": "invalid",
+            "policy_state": "failed",
             "detail": "durable connector self-test status file must contain a JSON object",
+            "stale_after_ms": stale_after_ms,
         }
     checks = payload.get("checks") if isinstance(payload.get("checks"), list) else []
     failed_checks = [
@@ -176,30 +196,44 @@ def connector_readiness_status(args: argparse.Namespace) -> dict[str, Any]:
         for check in checks
         if isinstance(check, dict) and not bool(check.get("ok"))
     ]
-    ok = bool(payload.get("ok"))
+    last_ok = bool(payload.get("ok"))
     checked_ms = payload.get("checked_unix_ms")
     if not isinstance(checked_ms, (int, float)):
         checked_ms = None
+    age_ms = max(0, unix_ms(args) - int(checked_ms)) if checked_ms is not None else None
+    stale = checked_ms is None or (stale_after_ms > 0 and age_ms is not None and age_ms > stale_after_ms)
+    if not last_ok:
+        state = "failed"
+        detail = (
+            "failed checks: " + ", ".join(failed_checks[:5])
+            if failed_checks
+            else "last connector self-test failed"
+        )
+    elif stale:
+        state = "stale"
+        detail = "last connector self-test is stale"
+    else:
+        state = "fresh"
+        detail = "last connector self-test passed"
     result: dict[str, Any] = {
         "source": source,
         "available": True,
-        "ok": ok,
-        "state": "ok" if ok else "failed",
-        "detail": "last connector self-test passed"
-        if ok
-        else "failed checks: " + ", ".join(failed_checks[:5])
-        if failed_checks
-        else "last connector self-test failed",
+        "ok": state == "fresh",
+        "last_ok": last_ok,
+        "state": state,
+        "policy_state": state,
+        "detail": detail,
         "check_count": len([check for check in checks if isinstance(check, dict)]),
         "failed_check_count": len(failed_checks),
         "failed_checks": failed_checks[:20],
         "mode": str(payload.get("mode") or ""),
         "runtime_instance_id": str(payload.get("runtime_instance_id") or ""),
         "deployment_id": str(payload.get("deployment_id") or ""),
+        "stale_after_ms": stale_after_ms,
     }
     if checked_ms is not None:
         result["checked_unix_ms"] = int(checked_ms)
-        result["age_ms"] = max(0, unix_ms(args) - int(checked_ms))
+        result["age_ms"] = age_ms
     return result
 
 
@@ -1247,6 +1281,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--self-test-output-path",
         default=os.environ.get("AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH", ""),
         help="optional path where self-test writes the last readiness result as JSON",
+    )
+    parser.add_argument(
+        "--self-test-stale-after-seconds",
+        type=int,
+        default=env_int("AGENTD_CODEXW_SELF_TEST_STALE_AFTER_SECONDS", DEFAULT_SELF_TEST_STALE_AFTER_SECONDS),
+        help="seconds before durable self-test status is reported stale in runtime status",
     )
     parser.add_argument("--require-broker-visible", action="store_true", help="self-test fails unless the broker reports this runtime online")
     parser.add_argument(

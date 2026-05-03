@@ -371,6 +371,67 @@ assert "--self-test is read-only" in readonly_guard.stderr, readonly_guard.stder
 PY
 
 python3 - <<PY
+import argparse
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, "${SCRIPT_DIR}/../tools")
+import agentd_codexw_native_broker_connector as connector  # noqa: E402
+
+base = Path("${TMP_DIR}") / "connector-policy"
+base.mkdir()
+
+
+def args(path: str, timestamp: int = 1700000000, stale_after: int = 900):
+    return argparse.Namespace(
+        self_test_output_path=path,
+        timestamp=timestamp,
+        self_test_stale_after_seconds=stale_after,
+    )
+
+
+missing = connector.connector_readiness_status(args(str(base / "missing.json")))
+assert missing["state"] == "missing", missing
+assert missing["policy_state"] == "missing", missing
+assert missing["ok"] is False, missing
+assert missing["stale_after_ms"] == 900000, missing
+
+fresh_path = base / "fresh.json"
+fresh_path.write_text(json.dumps({
+    "ok": True,
+    "checked_unix_ms": 1699999999000,
+    "checks": [{"name": "broker_runtime_instance_visible", "ok": True}],
+}))
+fresh = connector.connector_readiness_status(args(str(fresh_path), timestamp=1700000000))
+assert fresh["state"] == "fresh", fresh
+assert fresh["policy_state"] == "fresh", fresh
+assert fresh["ok"] is True, fresh
+assert fresh["last_ok"] is True, fresh
+assert fresh["age_ms"] == 1000, fresh
+
+stale = connector.connector_readiness_status(args(str(fresh_path), timestamp=1700001000))
+assert stale["state"] == "stale", stale
+assert stale["policy_state"] == "stale", stale
+assert stale["ok"] is False, stale
+assert stale["last_ok"] is True, stale
+assert stale["age_ms"] == 1001000, stale
+
+failed_path = base / "failed.json"
+failed_path.write_text(json.dumps({
+    "ok": False,
+    "checked_unix_ms": 1699999999000,
+    "checks": [{"name": "broker_runtime_instance_visible", "ok": False}],
+}))
+failed = connector.connector_readiness_status(args(str(failed_path), timestamp=1700000000))
+assert failed["state"] == "failed", failed
+assert failed["policy_state"] == "failed", failed
+assert failed["ok"] is False, failed
+assert failed["last_ok"] is False, failed
+assert failed["failed_checks"] == ["broker_runtime_instance_visible"], failed
+PY
+
+python3 - <<PY
 import base64
 import hashlib
 import hmac
@@ -751,9 +812,13 @@ def broker_thread():
         assert status_result["body"]["update"]["enabled"] is True, status_result
         assert status_result["body"]["update"]["candidate"]["url"] == "file:///tmp/agentd-smoke", status_result
         connector = status_result["body"]["connector"]
-        assert connector["state"] == "ok", status_result
+        assert connector["state"] == "fresh", status_result
+        assert connector["policy_state"] == "fresh", status_result
+        assert connector["ok"] is True, status_result
+        assert connector["last_ok"] is True, status_result
         assert connector["checked_unix_ms"] == 1699999999000, status_result
         assert connector["age_ms"] == 1000, status_result
+        assert connector["stale_after_ms"] == 900000, status_result
         send_frame(
             conn,
             {

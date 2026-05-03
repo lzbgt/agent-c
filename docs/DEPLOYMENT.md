@@ -254,7 +254,14 @@ Use this file for local health dashboards or support bundles instead of
 scraping launchd/systemd logs. The native connector also projects this file into
 the top-level `connector` object on `GET /api/v1/runtime/status`, allowing the
 codexw broker and shared clients to display self-test freshness, failed check
-counts, and failure names without reading host-local files.
+counts, and failure names without reading host-local files. That projection has
+an explicit `policy_state`: `fresh` when the last self-test passed within the
+configured threshold, `stale` when the last passing result is older than
+`AGENTD_CODEXW_SELF_TEST_STALE_AFTER_SECONDS`, `failed` when the last result
+failed or the status file is invalid, and `missing` when no durable file is
+available. The packaged default is `900` seconds, matching three missed
+five-minute self-test intervals before operators and shared clients see a stale
+readiness state.
 
 Broker-driven runtime updates are disabled by default. To expose
 `runtime.update` through the shared codexw broker, first enable the daemon OTA
@@ -309,9 +316,10 @@ tools/verify_codexw_live_agentd_connector_readiness.sh
 The proof starts a temporary loopback fake `agentd` API, seeds a durable
 self-test status JSON file, connects the native connector to the live broker,
 and verifies `/api/v2/runtime-instances/{id}/status` preserves the top-level
-`connector` object with state, freshness age, failed check count, and failed
-check names. It removes the temporary broker deployment by default and leaves
-proof JSON under `build/`.
+`connector` object with `state`, `policy_state`, `last_ok`,
+`checked_unix_ms`, freshness age, `stale_after_ms`, failed check count, and
+failed check names. It removes the temporary broker deployment by default and
+leaves proof JSON under `build/`.
 
 The service units intentionally read `AGENTD_AUTH_TOKEN`,
 `AGENTD_CODEXW_BROKER_PASSWORD`, and one-time enrollment secrets from the
