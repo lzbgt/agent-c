@@ -67,6 +67,7 @@ if [[ "${unauth_status}" != "401" ]]; then
 fi
 
 runtime="$(curl -fsS --noproxy "*" -H "Authorization: Bearer ${FACADE_TOKEN}" "${FACADE_URL}/api/v1/runtime")"
+runtime_status="$(curl -fsS --noproxy "*" -H "Authorization: Bearer ${FACADE_TOKEN}" "${FACADE_URL}/api/v1/runtime/status")"
 runtime_sessions="$(curl -fsS --noproxy "*" -H "Authorization: Bearer ${FACADE_TOKEN}" "${FACADE_URL}/api/v1/runtime/sessions")"
 runtime_events="$(curl -fsS --noproxy "*" -H "Authorization: Bearer ${FACADE_TOKEN}" "${FACADE_URL}/api/v1/runtime/events?limit=8")"
 session="$(curl -fsS --noproxy "*" -H "Authorization: Bearer ${FACADE_TOKEN}" "${FACADE_URL}/api/v1/session")"
@@ -95,6 +96,7 @@ experience_action="$(curl -fsS --noproxy "*" \
 python3 - <<PY
 import base64, json, sys
 runtime = json.loads(r'''${runtime}''')
+runtime_status = json.loads(r'''${runtime_status}''')
 runtime_sessions = json.loads(r'''${runtime_sessions}''')
 runtime_events = json.loads(r'''${runtime_events}''')
 session = json.loads(r'''${session}''')
@@ -114,7 +116,7 @@ runtime_caps = runtime.get("runtime", {}).get("runtime_capabilities", {})
 if "workflow.submit" not in runtime_caps.get("actions", {}) or "experience.list" not in runtime_caps.get("actions", {}):
     print("missing runtime actions", runtime, file=sys.stderr)
     raise SystemExit(1)
-for surface in ("sessions", "events"):
+for surface in ("sessions", "events", "status"):
     if runtime_caps.get("surfaces", {}).get(surface) is not True:
         print("missing runtime surface", surface, runtime_caps, file=sys.stderr)
         raise SystemExit(1)
@@ -127,6 +129,9 @@ if runtime_sessions.get("runtime_kind") != "agentd" or not isinstance(runtime_se
     raise SystemExit(1)
 if runtime_events.get("runtime_kind") != "agentd" or not isinstance(runtime_events.get("events"), list):
     print("bad runtime events", runtime_events, file=sys.stderr)
+    raise SystemExit(1)
+if runtime_status.get("runtime_kind") != "agentd" or runtime_status.get("update", {}).get("state") != "disabled":
+    print("bad runtime status", runtime_status, file=sys.stderr)
     raise SystemExit(1)
 if session.get("session_id") != "agentd" or session.get("session", {}).get("scope") != "process":
     print("bad session", session, file=sys.stderr)

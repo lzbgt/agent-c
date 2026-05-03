@@ -62,6 +62,8 @@ contract through connector-owned routes:
 - serve `GET /api/v1/runtime/sessions` from daemon sessions and durable
   workflows
 - serve `GET /api/v1/runtime/events` from client events and workflow events
+- serve `GET /api/v1/runtime/status` as the read-only update/OTA readiness
+  source for the broker's v2 runtime-instance status route
 - keep operator actions capability-gated. The default connector must not
   advertise `runtime.restart`, `runtime.update`, or `runtime.upgrade`.
   `runtime.update` may be advertised only when the native connector is launched

@@ -24,6 +24,7 @@ from agentd_codexw_contract import (
     RUNTIME_ACTIONS,
     agentd_runtime_events,
     agentd_runtime_sessions,
+    agentd_runtime_status,
     legacy_capabilities,
     runtime_capabilities,
 )
@@ -235,6 +236,8 @@ class FacadeHandler(BaseHTTPRequestHandler):
                 self.send_json(200, self.health())
             elif method == "GET" and path == "/api/v1/runtime":
                 self.send_json(200, self.runtime())
+            elif method == "GET" and path == "/api/v1/runtime/status":
+                self.send_json(200, agentd_runtime_status(self.agentd.request))
             elif method == "GET" and path == "/api/v1/runtime/sessions":
                 self.send_json(200, agentd_runtime_sessions(self.agentd.request))
             elif method == "GET" and path == "/api/v1/runtime/events":

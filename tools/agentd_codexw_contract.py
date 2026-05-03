@@ -72,6 +72,7 @@ def runtime_capabilities(operator_actions: dict[str, dict[str, Any]] | None = No
             "experience": True,
             "sessions": True,
             "events": True,
+            "status": True,
             "transcript": True,
             "files": True,
         },
@@ -88,6 +89,7 @@ def legacy_capabilities() -> list[str]:
         "codexw.local_api.runtime_actions",
         "codexw.local_api.runtime_sessions",
         "codexw.local_api.runtime_events",
+        "codexw.local_api.runtime_status",
         "codexw.local_api.turn_start",
         "codexw.local_api.transcript",
     ]
@@ -201,6 +203,50 @@ def deployment_snapshot_frame(
         "runtime": runtime,
         "session": session,
         "last_error": None,
+    }
+
+
+def agentd_runtime_status(
+    request_agentd: Callable[[str, str, Any | None], Any],
+    *,
+    update_enabled: bool = False,
+) -> dict[str, Any]:
+    update: dict[str, Any] = {
+        "source": "agentd.ota",
+        "available": bool(update_enabled),
+        "enabled": False,
+        "state": "disabled",
+        "detail": "runtime.update is not advertised by this connector",
+    }
+    if update_enabled:
+        raw_status = request_agentd("GET", "/api/v1/ota/status", None)
+        if not isinstance(raw_status, dict):
+            raw_status = {"ok": True, "value": raw_status}
+        update = {
+            "source": "agentd.ota",
+            "available": True,
+            "enabled": bool(raw_status.get("enabled", raw_status.get("ok", True))),
+            "state": str(raw_status.get("state") or raw_status.get("status") or "unknown"),
+            "detail": str(raw_status.get("detail") or raw_status.get("message") or ""),
+            "drain_active": bool(raw_status.get("drain_active", False)),
+            "drain_reason": str(raw_status.get("drain_reason") or ""),
+            "raw": raw_status,
+        }
+        for key in (
+            "drain_until_unix_ms",
+            "jobs_running",
+            "jobs_queued",
+            "workflow_tasks_running",
+            "workflow_tasks_queued",
+            "workflows_running",
+        ):
+            value = raw_status.get(key)
+            if isinstance(value, (int, float)):
+                update[key] = int(value)
+    return {
+        "ok": True,
+        "runtime_kind": RUNTIME_KIND,
+        "update": update,
     }
 
 

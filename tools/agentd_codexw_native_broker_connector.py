@@ -24,6 +24,7 @@ from typing import Any
 from agentd_codexw_contract import (
     agentd_runtime_events,
     agentd_runtime_sessions,
+    agentd_runtime_status,
     base64_body_digest,
     canonical_json_bytes,
     default_runtime_instance_id,
@@ -613,6 +614,11 @@ def handle_command(args: argparse.Namespace, frame: dict[str, Any]) -> dict[str,
     try:
         if method == "GET" and route_path == "/api/v1/runtime":
             result = runtime_payload(args)
+        elif method == "GET" and route_path == "/api/v1/runtime/status":
+            result = agentd_runtime_status(
+                request_agentd,
+                update_enabled=args.runtime_update_mode == RUNTIME_UPDATE_MODE_AGENTD_OTA,
+            )
         elif method == "GET" and route_path == "/api/v1/runtime/sessions":
             result = agentd_runtime_sessions(request_agentd)
         elif method == "GET" and route_path == "/api/v1/runtime/events":

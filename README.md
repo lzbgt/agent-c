@@ -123,6 +123,9 @@ advertises `broker.runtime_capabilities.v1` with `surfaces.sessions` and
 - `GET /api/v1/runtime/events`: projects client events and workflow events into
   neutral `broker.runtime_event.v1` rows, with `limit`, `after_id`,
   `last_event_id`, `session_id`, and `event_prefix` filtering.
+- `GET /api/v1/runtime/status`: reports read-only update readiness. The
+  default bridge reports update disabled; the native connector reports
+  `agentd` OTA status when `AGENTD_CODEXW_RUNTIME_UPDATE_MODE=agentd_ota`.
 
 The broker only uses these routes after capability negotiation. Older bridges
 that do not advertise the surfaces continue to appear in the shared inventory

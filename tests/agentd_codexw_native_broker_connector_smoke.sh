@@ -88,6 +88,9 @@ for surface in ("sessions", "events"):
     if payload["runtime_capabilities"].get("surfaces", {}).get(surface) is not True:
         print("missing runtime surface", surface, payload["runtime_capabilities"], file=sys.stderr)
         raise SystemExit(1)
+if payload["runtime_capabilities"].get("surfaces", {}).get("status") is not True:
+    print("missing runtime status surface", payload["runtime_capabilities"], file=sys.stderr)
+    raise SystemExit(1)
 for forbidden in ("runtime.restart", "runtime.update", "runtime.upgrade"):
     if forbidden in payload["runtime_capabilities"]["actions"]:
         print("agentd connector must not advertise unsafe operator action", forbidden, payload["runtime_capabilities"], file=sys.stderr)
@@ -647,6 +650,20 @@ def broker_thread():
             {
                 "type": "deployment.command",
                 "request_id": "cmd-4",
+                "method": "GET",
+                "path": "/api/v1/runtime/status",
+            },
+        )
+        status_result = read_frame(conn)
+        results["status_result"] = status_result
+        assert status_result["status"] == 200, status_result
+        assert status_result["body"]["runtime_kind"] == "agentd", status_result
+        assert status_result["body"]["update"]["enabled"] is True, status_result
+        send_frame(
+            conn,
+            {
+                "type": "deployment.command",
+                "request_id": "cmd-5",
                 "method": "POST",
                 "path": "/api/v1/runtime/actions",
                 "body": {
@@ -706,9 +723,9 @@ thread.join(timeout=5)
 if proc.returncode != 0:
     raise SystemExit(f"connector failed\\nSTDOUT:\\n{proc.stdout}\\nSTDERR:\\n{proc.stderr}")
 summary = json.loads(proc.stdout)
-if summary.get("mode") != "connect" or summary.get("commands") != 4:
+if summary.get("mode") != "connect" or summary.get("commands") != 5:
     raise SystemExit(f"bad connector summary: {summary}")
-for key in ("command_result", "sessions_result", "events_result", "update_result", "agentd_ota_update_request"):
+for key in ("command_result", "sessions_result", "events_result", "status_result", "update_result", "agentd_ota_update_request"):
     if key not in results:
         raise SystemExit(f"broker did not receive {key}")
 assert results["agentd_ota_update_request"] == {

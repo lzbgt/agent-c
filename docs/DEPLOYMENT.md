@@ -230,6 +230,9 @@ to `POST /api/v1/ota/update` with `{url, sha256?, version?, reason?,
 drain_timeout_ms?}`. Leave the mode as `disabled` on hosts that cannot prove
 this local OTA boundary. `runtime.restart` and compatibility `runtime.upgrade`
 remain unadvertised by `agentd`.
+The shared adapter also serves `GET /api/v1/runtime/status`; the codexw broker
+uses that read-only route to show OTA state, drain state, and queue pressure in
+iOS/macOS and WebUI before an operator runs `runtime.update`.
 
 The service units intentionally read `AGENTD_AUTH_TOKEN`,
 `AGENTD_CODEXW_BROKER_PASSWORD`, and one-time enrollment secrets from the

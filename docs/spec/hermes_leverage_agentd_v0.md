@@ -256,7 +256,9 @@ Known bridge limits:
   by default, but the native connector can advertise it with
   `AGENTD_CODEXW_RUNTIME_UPDATE_MODE=agentd_ota` after the daemon OTA API is
   enabled and `GET /api/v1/ota/status` proves the local drain/update boundary.
-  The facade keeps the default conservative manifest.
+  `GET /api/v1/runtime/status` gives the shared broker a read-only update
+  readiness view for both disabled and OTA-enabled connector modes. The facade
+  keeps the default conservative manifest.
 - Shell control is represented but not yet backed by live `agentd` shell ownership.
 - The transcript is facade-local for now; a later slice should mirror `agentd` session/audit data into the codexw transcript page model.
 - Native `agentd` direct enrollment into the `codexw` broker now has a local
