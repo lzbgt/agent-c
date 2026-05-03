@@ -84,6 +84,10 @@ if frame.get("type") != "deployment.snapshot" or frame.get("deployment_id") != "
 if "workflow.submit" not in payload["runtime_capabilities"]["actions"]:
     print("missing workflow action", payload["runtime_capabilities"], file=sys.stderr)
     raise SystemExit(1)
+for forbidden in ("runtime.restart", "runtime.update", "runtime.upgrade"):
+    if forbidden in payload["runtime_capabilities"]["actions"]:
+        print("agentd connector must not advertise unsafe operator action", forbidden, payload["runtime_capabilities"], file=sys.stderr)
+        raise SystemExit(1)
 PY
 
 python3 - <<PY

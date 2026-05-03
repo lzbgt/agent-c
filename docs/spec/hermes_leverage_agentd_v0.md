@@ -251,6 +251,11 @@ instead of hardcoded runtime branches. The generic
 
 Known bridge limits:
 
+- `runtime.restart`, `runtime.update`, and `runtime.upgrade` are intentionally
+  not advertised by the agentd codexw bridge yet. The current agentd contract
+  treats restart/update adoption as an external supervisor or OTA boundary, so
+  the bridge must not expose broker operator buttons until agentd owns a
+  daemon-level safe-boundary API for those actions.
 - Shell control is represented but not yet backed by live `agentd` shell ownership.
 - The transcript is facade-local for now; a later slice should mirror `agentd` session/audit data into the codexw transcript page model.
 - Native `agentd` direct enrollment into the `codexw` broker now has a local

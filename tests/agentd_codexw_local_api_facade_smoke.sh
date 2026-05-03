@@ -110,6 +110,10 @@ runtime_caps = runtime.get("runtime", {}).get("runtime_capabilities", {})
 if "workflow.submit" not in runtime_caps.get("actions", {}) or "experience.list" not in runtime_caps.get("actions", {}):
     print("missing runtime actions", runtime, file=sys.stderr)
     raise SystemExit(1)
+for forbidden in ("runtime.restart", "runtime.update", "runtime.upgrade"):
+    if forbidden in runtime_caps.get("actions", {}):
+        print("agentd bridge must not advertise unsafe operator action", forbidden, runtime_caps, file=sys.stderr)
+        raise SystemExit(1)
 if session.get("session_id") != "agentd" or session.get("session", {}).get("scope") != "process":
     print("bad session", session, file=sys.stderr)
     raise SystemExit(1)
