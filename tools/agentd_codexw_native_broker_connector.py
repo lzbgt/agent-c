@@ -836,21 +836,25 @@ def run_connect_supervised(args: argparse.Namespace) -> dict[str, Any]:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--broker-url", required=True, help="codexw broker base URL, e.g. https://broker.example")
-    parser.add_argument("--deployment-id", required=True)
-    parser.add_argument("--display-name", default="")
-    parser.add_argument("--runtime-instance-id", default="")
-    parser.add_argument("--runtime-host-id", default="")
-    parser.add_argument("--runtime-target-os", default="")
-    parser.add_argument("--runtime-target-arch", default="")
-    parser.add_argument("--connection-mode", default="service", choices=["service", "user-session", "connect-only"])
-    parser.add_argument("--identity-dir", default=".codexw-agentd/native")
-    parser.add_argument("--deployment-cert-path", default="")
-    parser.add_argument("--deployment-key-path", default="")
-    parser.add_argument("--agentd-base-url", required=True)
+    parser.add_argument("--broker-url", default=os.environ.get("AGENTD_CODEXW_BROKER_URL", ""), help="codexw broker base URL, e.g. https://broker.example")
+    parser.add_argument("--deployment-id", default=os.environ.get("AGENTD_CODEXW_DEPLOYMENT_ID", ""))
+    parser.add_argument("--display-name", default=os.environ.get("AGENTD_CODEXW_DISPLAY_NAME", ""))
+    parser.add_argument("--runtime-instance-id", default=os.environ.get("AGENTD_CODEXW_RUNTIME_INSTANCE_ID", ""))
+    parser.add_argument("--runtime-host-id", default=os.environ.get("AGENTD_CODEXW_RUNTIME_HOST_ID", ""))
+    parser.add_argument("--runtime-target-os", default=os.environ.get("AGENTD_CODEXW_RUNTIME_TARGET_OS", ""))
+    parser.add_argument("--runtime-target-arch", default=os.environ.get("AGENTD_CODEXW_RUNTIME_TARGET_ARCH", ""))
+    parser.add_argument(
+        "--connection-mode",
+        default=os.environ.get("AGENTD_CODEXW_CONNECTION_MODE", "service"),
+        choices=["service", "user-session", "connect-only"],
+    )
+    parser.add_argument("--identity-dir", default=os.environ.get("AGENTD_CODEXW_IDENTITY_DIR", ".codexw-agentd/native"))
+    parser.add_argument("--deployment-cert-path", default=os.environ.get("AGENTD_CODEXW_DEPLOYMENT_CERT_PATH", ""))
+    parser.add_argument("--deployment-key-path", default=os.environ.get("AGENTD_CODEXW_DEPLOYMENT_KEY_PATH", ""))
+    parser.add_argument("--agentd-base-url", default=os.environ.get("AGENTD_BASE_URL", "http://127.0.0.1:8123"))
     parser.add_argument("--agentd-auth-token", default=os.environ.get("AGENTD_AUTH_TOKEN", ""))
-    parser.add_argument("--broker-user", default="")
-    parser.add_argument("--broker-password", default="")
+    parser.add_argument("--broker-user", default=os.environ.get("AGENTD_CODEXW_BROKER_USER", ""))
+    parser.add_argument("--broker-password", default=os.environ.get("AGENTD_CODEXW_BROKER_PASSWORD", ""))
     parser.add_argument("--timestamp", type=int, default=0, help="fixed Unix timestamp for deterministic tests")
     parser.add_argument("--timeout", type=float, default=15.0)
     parser.add_argument("--dry-run", action="store_true", help="print broker-ready identity/snapshot JSON")
@@ -867,9 +871,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--force-csr", action="store_true")
     parser.add_argument("--enrollment-material-path", default="")
     parser.add_argument("--certificate-days", type=int, default=365)
-    parser.add_argument("--enrollment-token-id", default="")
-    parser.add_argument("--enrollment-shared-secret", default="")
+    parser.add_argument("--enrollment-token-id", default=os.environ.get("AGENTD_CODEXW_ENROLLMENT_TOKEN_ID", ""))
+    parser.add_argument("--enrollment-shared-secret", default=os.environ.get("AGENTD_CODEXW_ENROLLMENT_SECRET", ""))
     args = parser.parse_args(argv)
+    if not str(args.broker_url).strip():
+        parser.error("--broker-url or AGENTD_CODEXW_BROKER_URL is required")
+    if not str(args.deployment_id).strip():
+        parser.error("--deployment-id or AGENTD_CODEXW_DEPLOYMENT_ID is required")
+    if not str(args.agentd_base_url).strip():
+        parser.error("--agentd-base-url or AGENTD_BASE_URL is required")
     resolve_identity_paths(args)
     if not args.runtime_instance_id:
         args.runtime_instance_id = default_runtime_instance_id()

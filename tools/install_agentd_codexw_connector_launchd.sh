@@ -76,21 +76,22 @@ args=(
   "--connect"
 )
 
-if [[ -n "${agentd_auth_token}" ]]; then
-  args+=("--agentd-auth-token" "${agentd_auth_token}")
-fi
-if [[ -n "${broker_user}" ]]; then
-  args+=("--broker-user" "${broker_user}")
-fi
-if [[ -n "${broker_password}" ]]; then
-  args+=("--broker-password" "${broker_password}")
-fi
-if [[ -n "${enrollment_token_id}" ]]; then
-  args+=("--enrollment-token-id" "${enrollment_token_id}")
-fi
-if [[ -n "${enrollment_secret}" ]]; then
-  args+=("--enrollment-shared-secret" "${enrollment_secret}")
-fi
+env_keys=()
+env_values=()
+add_env() {
+  local key="$1"
+  local value="$2"
+  if [[ -n "${value}" ]]; then
+    env_keys+=("${key}")
+    env_values+=("${value}")
+  fi
+}
+
+add_env "AGENTD_AUTH_TOKEN" "${agentd_auth_token}"
+add_env "AGENTD_CODEXW_BROKER_USER" "${broker_user}"
+add_env "AGENTD_CODEXW_BROKER_PASSWORD" "${broker_password}"
+add_env "AGENTD_CODEXW_ENROLLMENT_TOKEN_ID" "${enrollment_token_id}"
+add_env "AGENTD_CODEXW_ENROLLMENT_SECRET" "${enrollment_secret}"
 
 stdout_path="${log_dir}/agentd-codexw-connector.out.log"
 stderr_path="${log_dir}/agentd-codexw-connector.err.log"
@@ -107,6 +108,14 @@ stderr_path="${log_dir}/agentd-codexw-connector.err.log"
     echo "    <string>$(xml_escape "${arg}")</string>"
   done
   echo '  </array>'
+  if [[ "${#env_keys[@]}" -gt 0 ]]; then
+    echo '  <key>EnvironmentVariables</key>'
+    echo '  <dict>'
+    for idx in "${!env_keys[@]}"; do
+      echo "    <key>$(xml_escape "${env_keys[$idx]}")</key><string>$(xml_escape "${env_values[$idx]}")</string>"
+    done
+    echo '  </dict>'
+  fi
   echo "  <key>WorkingDirectory</key><string>$(xml_escape "${identity_dir}")</string>"
   echo '  <key>RunAtLoad</key><true/>'
   echo '  <key>KeepAlive</key><true/>'

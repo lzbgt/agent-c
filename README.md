@@ -141,6 +141,11 @@ deployment after certificate enrollment, verifies `/api/v2/runtime-instances`,
 `build/`, and removes the temporary broker deployment unless
 `KEEP_DEPLOYMENT=1` is set.
 
+For durable service installs, use the launchd/systemd connector templates in
+`docs/DEPLOYMENT.md`. They run `agentd` and the native codexw connector as
+separate OS-managed services and keep broker passwords, enrollment secrets, and
+local `AGENTD_AUTH_TOKEN` out of process arguments.
+
 Quick start (loopback only; no auth required):
 
 ```bash

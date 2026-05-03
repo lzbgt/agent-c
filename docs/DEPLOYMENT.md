@@ -195,6 +195,14 @@ deployment certificate under `AGENTD_CODEXW_IDENTITY_DIR`. After the certificate
 exists, remove the bootstrap password from `/etc/agentd/codexw-connector.env`
 and restart the connector.
 
+The service units intentionally read `AGENTD_AUTH_TOKEN`,
+`AGENTD_CODEXW_BROKER_PASSWORD`, and one-time enrollment secrets from the
+environment file instead of passing them as command-line arguments. Keep that
+property intact; process arguments are routinely visible in system process
+lists. The same rule applies to the macOS launchd helper, which places runtime
+secrets under the plist `EnvironmentVariables` block rather than
+`ProgramArguments`.
+
 macOS launchd helpers mirror the two-service layout:
 
 ```

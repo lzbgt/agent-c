@@ -226,16 +226,16 @@ if [[ "${BROKER_MODE}" == "native" ]]; then
     native_args+=(--reconnect)
   fi
   if [[ -n "${USER_NAME}" ]]; then
-    native_args+=(--broker-user "${USER_NAME}")
+    export AGENTD_CODEXW_BROKER_USER="${USER_NAME}"
   fi
   if [[ -n "${PASSWORD}" ]]; then
-    native_args+=(--broker-password "${PASSWORD}")
+    export AGENTD_CODEXW_BROKER_PASSWORD="${PASSWORD}"
   fi
   if [[ -n "${NATIVE_ENROLLMENT_TOKEN_ID}" ]]; then
-    native_args+=(--enrollment-token-id "${NATIVE_ENROLLMENT_TOKEN_ID}")
+    export AGENTD_CODEXW_ENROLLMENT_TOKEN_ID="${NATIVE_ENROLLMENT_TOKEN_ID}"
   fi
   if [[ -n "${NATIVE_ENROLLMENT_SECRET}" ]]; then
-    native_args+=(--enrollment-shared-secret "${NATIVE_ENROLLMENT_SECRET}")
+    export AGENTD_CODEXW_ENROLLMENT_SECRET="${NATIVE_ENROLLMENT_SECRET}"
   fi
 
   echo "agentd: ${AGENTD_URL}"

@@ -15,9 +15,6 @@ ExecStart=/usr/bin/env python3 /opt/agentd/tools/agentd_codexw_native_broker_con
   --display-name ${AGENTD_CODEXW_DISPLAY_NAME} \
   --identity-dir ${AGENTD_CODEXW_IDENTITY_DIR} \
   --agentd-base-url ${AGENTD_BASE_URL} \
-  --agentd-auth-token ${AGENTD_AUTH_TOKEN} \
-  --broker-user ${AGENTD_CODEXW_BROKER_USER} \
-  --broker-password ${AGENTD_CODEXW_BROKER_PASSWORD} \
   --bootstrap-identity \
   --connect
 Restart=always

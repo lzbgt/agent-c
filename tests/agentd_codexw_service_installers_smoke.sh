@@ -60,10 +60,30 @@ if ! grep -q -- "--bootstrap-identity" "${TMP_DIR}/com.agentd.codexw-connector.p
   echo "connector launchd plist missing bootstrap identity" >&2
   exit 1
 fi
+python3 - <<PY
+import plistlib
+from pathlib import Path
+plist = plistlib.loads(Path("${TMP_DIR}/com.agentd.codexw-connector.plist").read_bytes())
+args = plist.get("ProgramArguments") or []
+env = plist.get("EnvironmentVariables") or {}
+for secret in ("agentd-service-smoke-token", "admin", "secret"):
+    if secret in args:
+        raise SystemExit(f"connector secret leaked into launchd ProgramArguments: {secret}")
+if env.get("AGENTD_AUTH_TOKEN") != "agentd-service-smoke-token":
+    raise SystemExit("launchd plist missing AGENTD_AUTH_TOKEN environment")
+if env.get("AGENTD_CODEXW_BROKER_USER") != "admin":
+    raise SystemExit("launchd plist missing broker user environment")
+if env.get("AGENTD_CODEXW_BROKER_PASSWORD") != "secret":
+    raise SystemExit("launchd plist missing broker password environment")
+PY
 
 grep -q "Restart=always" "${ROOT}/packaging/systemd/agentd.service"
 grep -q "Restart=always" "${ROOT}/packaging/systemd/agentd-codexw-connector.service"
 grep -q -- "--connect" "${ROOT}/packaging/systemd/agentd-codexw-connector.service"
+if grep -q -- "--agentd-auth-token\\|--broker-user\\|--broker-password\\|--enrollment-token-id\\|--enrollment-shared-secret" "${ROOT}/packaging/systemd/agentd-codexw-connector.service"; then
+  echo "systemd connector unit must not pass secrets on argv" >&2
+  exit 1
+fi
 if grep -q -- "--reconnect" "${ROOT}/packaging/systemd/agentd-codexw-connector.service"; then
   echo "systemd connector unit must not enable in-process reconnect supervision" >&2
   exit 1
