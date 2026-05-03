@@ -64,6 +64,9 @@ contract through connector-owned routes:
 - serve `GET /api/v1/runtime/events` from client events and workflow events
 - keep operator restart/update actions unadvertised until the daemon owns a
   supervisor-safe idle/update boundary
+- keep `tools/verify_codexw_live_agentd_activity.sh` passing against the live
+  codexw broker before claiming the shared iOS/WebUI activity path is
+  production-ready
 
 This repo should **not** assume:
 

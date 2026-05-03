@@ -128,6 +128,19 @@ The broker only uses these routes after capability negotiation. Older bridges
 that do not advertise the surfaces continue to appear in the shared inventory
 with empty common activity instead of fabricated codexw-specific state.
 
+To prove the deployed codexw broker path end to end from this repo, run:
+
+```bash
+tools/verify_codexw_live_agentd_activity.sh
+```
+
+The smoke uses the sibling `codexw` repo's `scripts/broker-admin` session,
+issues a one-time deployment enrollment token, approves the temporary proof
+deployment after certificate enrollment, verifies `/api/v2/runtime-instances`,
+`/sessions`, and `/events` against the live broker, writes proof JSON under
+`build/`, and removes the temporary broker deployment unless
+`KEEP_DEPLOYMENT=1` is set.
+
 Quick start (loopback only; no auth required):
 
 ```bash
