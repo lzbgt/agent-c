@@ -95,6 +95,156 @@ for forbidden in ("runtime.restart", "runtime.update", "runtime.upgrade"):
 PY
 
 python3 - <<PY
+import json
+import subprocess
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+SCRIPT = "${SCRIPT_DIR}/../tools/agentd_codexw_native_broker_connector.py"
+KEY_PATH = "${KEY_PATH}"
+CERT_PATH = "${CERT_PATH}"
+SESSION_TOKEN = "broker-read-token"
+
+
+class AgentdHandler(BaseHTTPRequestHandler):
+    def log_message(self, fmt, *args):
+        return
+
+    def do_GET(self):
+        if self.path.startswith("/api/v1/health"):
+            self.send_json({"ok": True})
+        elif self.path.startswith("/api/v1/db/sessions"):
+            self.send_json({"ok": True, "sessions": [{"session_id": "agentd-session"}]})
+        elif self.path.startswith("/api/v1/db/client_events"):
+            self.send_json({"ok": True, "session_id": "agentd-session", "client_events": []})
+        elif self.path.startswith("/api/v1/db/workflows"):
+            self.send_json({"ok": True, "workflows": []})
+        elif self.path.startswith("/api/v1/db/workflow_events"):
+            self.send_json({"ok": True, "events": []})
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def send_json(self, payload):
+        raw = json.dumps(payload).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+
+class BrokerHandler(BaseHTTPRequestHandler):
+    def log_message(self, fmt, *args):
+        return
+
+    def do_POST(self):
+        assert self.path == "/api/v1/auth/login", self.path
+        length = int(self.headers.get("content-length") or "0")
+        body = json.loads(self.rfile.read(length))
+        assert body == {"username": "admin", "password": "secret-pass"}, body
+        self.send_json({"ok": True, "token": SESSION_TOKEN})
+
+    def do_GET(self):
+        assert self.headers.get("Authorization") == f"Bearer {SESSION_TOKEN}", dict(self.headers)
+        assert self.path == "/api/v2/runtime-instances", self.path
+        self.send_json(
+            {
+                "ok": True,
+                "runtime_instances": [
+                    {
+                        "instance_id": "agentd-native-self-test-instance",
+                        "runtime_kind": "agentd",
+                        "placement": {"deployment_id": "agentd-native-self-test"},
+                        "connection": {"state": "online"},
+                    }
+                ],
+            }
+        )
+
+    def send_json(self, payload):
+        raw = json.dumps(payload).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+
+agentd = ThreadingHTTPServer(("127.0.0.1", 0), AgentdHandler)
+broker = ThreadingHTTPServer(("127.0.0.1", 0), BrokerHandler)
+threading.Thread(target=agentd.serve_forever, daemon=True).start()
+threading.Thread(target=broker.serve_forever, daemon=True).start()
+proc = subprocess.run(
+    [
+        SCRIPT,
+        "--broker-url",
+        f"http://127.0.0.1:{broker.server_address[1]}",
+        "--deployment-id",
+        "agentd-native-self-test",
+        "--runtime-instance-id",
+        "agentd-native-self-test-instance",
+        "--deployment-cert-path",
+        CERT_PATH,
+        "--deployment-key-path",
+        KEY_PATH,
+        "--agentd-base-url",
+        f"http://127.0.0.1:{agentd.server_address[1]}",
+        "--broker-user",
+        "admin",
+        "--broker-password",
+        "secret-pass",
+        "--self-test",
+        "--require-broker-visible",
+    ],
+    text=True,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    timeout=10,
+)
+agentd.shutdown()
+broker.shutdown()
+if proc.returncode != 0:
+    raise SystemExit(f"self-test failed\\nSTDOUT:\\n{proc.stdout}\\nSTDERR:\\n{proc.stderr}")
+payload = json.loads(proc.stdout)
+assert payload["ok"] is True, payload
+checks = {check["name"]: check for check in payload["checks"]}
+for name in (
+    "identity_files",
+    "identity_certificate_fingerprint",
+    "agentd_health",
+    "runtime_sessions_surface",
+    "runtime_events_surface",
+    "broker_runtime_instance_visible",
+):
+    assert checks[name]["ok"] is True, payload
+assert checks["broker_runtime_instance_visible"]["online"] is True, payload
+readonly_guard = subprocess.run(
+    [
+        SCRIPT,
+        "--broker-url",
+        f"http://127.0.0.1:{broker.server_address[1]}",
+        "--deployment-id",
+        "agentd-native-self-test",
+        "--deployment-cert-path",
+        CERT_PATH,
+        "--deployment-key-path",
+        KEY_PATH,
+        "--agentd-base-url",
+        f"http://127.0.0.1:{agentd.server_address[1]}",
+        "--self-test",
+        "--bootstrap-identity",
+    ],
+    text=True,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    timeout=10,
+)
+assert readonly_guard.returncode != 0, readonly_guard.stdout
+assert "--self-test is read-only" in readonly_guard.stderr, readonly_guard.stderr
+PY
+
+python3 - <<PY
 import base64
 import hashlib
 import hmac

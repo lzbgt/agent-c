@@ -1,0 +1,11 @@
+[Unit]
+Description=periodically verify agentd codexw connector readiness
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=agentd-codexw-connector-self-test.service
+
+[Install]
+WantedBy=timers.target

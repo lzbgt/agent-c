@@ -80,8 +80,15 @@ PY
 grep -q "Restart=always" "${ROOT}/packaging/systemd/agentd.service"
 grep -q "Restart=always" "${ROOT}/packaging/systemd/agentd-codexw-connector.service"
 grep -q -- "--connect" "${ROOT}/packaging/systemd/agentd-codexw-connector.service"
+grep -q -- "--self-test" "${ROOT}/packaging/systemd/agentd-codexw-connector-self-test.service"
+grep -q -- "--require-broker-visible" "${ROOT}/packaging/systemd/agentd-codexw-connector-self-test.service"
+grep -q "OnUnitActiveSec=5min" "${ROOT}/packaging/systemd/agentd-codexw-connector-self-test.timer"
 if grep -q -- "--agentd-auth-token\\|--broker-user\\|--broker-password\\|--enrollment-token-id\\|--enrollment-shared-secret" "${ROOT}/packaging/systemd/agentd-codexw-connector.service"; then
   echo "systemd connector unit must not pass secrets on argv" >&2
+  exit 1
+fi
+if grep -q -- "--agentd-auth-token\\|--broker-user\\|--broker-password\\|--broker-token\\|--enrollment-token-id\\|--enrollment-shared-secret" "${ROOT}/packaging/systemd/agentd-codexw-connector-self-test.service"; then
+  echo "systemd connector self-test unit must not pass secrets on argv" >&2
   exit 1
 fi
 if grep -q -- "--reconnect" "${ROOT}/packaging/systemd/agentd-codexw-connector.service"; then

@@ -285,6 +285,13 @@ def login_broker_user(args: argparse.Namespace) -> str:
     return token.strip()
 
 
+def broker_bearer_token(args: argparse.Namespace) -> str:
+    token = str(args.broker_token or "").strip()
+    if token:
+        return token
+    return login_broker_user(args)
+
+
 def issue_enrollment_token(args: argparse.Namespace) -> dict[str, str]:
     session_token = login_broker_user(args)
     token_id = args.enrollment_token_id.strip() if args.enrollment_token_id else f"{args.deployment_id}-agentd-native"
@@ -674,6 +681,108 @@ def build_dry_run_payload(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def check_status(name: str, ok: bool, **details: Any) -> dict[str, Any]:
+    result = {"name": name, "ok": bool(ok)}
+    result.update(details)
+    return result
+
+
+def run_self_test(args: argparse.Namespace) -> dict[str, Any]:
+    checks: list[dict[str, Any]] = []
+    cert_path = Path(args.deployment_cert_path)
+    key_path = Path(args.deployment_key_path)
+    checks.append(
+        check_status(
+            "identity_files",
+            cert_path.exists() and key_path.exists(),
+            deployment_cert_path=str(cert_path),
+            deployment_key_path=str(key_path),
+        )
+    )
+    if cert_path.exists():
+        try:
+            checks.append(check_status("identity_certificate_fingerprint", True, sha256=cert_fingerprint(cert_path)))
+        except Exception as exc:  # noqa: BLE001
+            checks.append(check_status("identity_certificate_fingerprint", False, error=str(exc)))
+
+    try:
+        health = agentd_request(args, "GET", "/api/v1/health")
+        checks.append(check_status("agentd_health", bool(health.get("ok", True)), response=health))
+    except Exception as exc:  # noqa: BLE001
+        checks.append(check_status("agentd_health", False, error=str(exc)))
+
+    try:
+        sessions = agentd_runtime_sessions(lambda m, p, b=None: agentd_request(args, m, p, b))
+        checks.append(
+            check_status(
+                "runtime_sessions_surface",
+                sessions.get("runtime_kind") == "agentd" and isinstance(sessions.get("sessions"), list),
+                returned=len(sessions.get("sessions") or []),
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        checks.append(check_status("runtime_sessions_surface", False, error=str(exc)))
+
+    try:
+        events = agentd_runtime_events(lambda m, p, b=None: agentd_request(args, m, p, b), {"limit": ["8"]})
+        checks.append(
+            check_status(
+                "runtime_events_surface",
+                events.get("runtime_kind") == "agentd" and isinstance(events.get("events"), list),
+                returned=len(events.get("events") or []),
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        checks.append(check_status("runtime_events_surface", False, error=str(exc)))
+
+    should_check_broker = bool(args.require_broker_visible or args.broker_token or (args.broker_user and args.broker_password))
+    if should_check_broker:
+        try:
+            token = broker_bearer_token(args)
+            inventory = broker_json_request(args, method="GET", path="/api/v2/runtime-instances", bearer_token=token)
+            instances = inventory.get("runtime_instances") or []
+            matched = None
+            for instance in instances:
+                if not isinstance(instance, dict):
+                    continue
+                placement = instance.get("placement") if isinstance(instance.get("placement"), dict) else {}
+                if instance.get("instance_id") == args.runtime_instance_id or placement.get("deployment_id") == args.deployment_id:
+                    matched = instance
+                    break
+            online = bool(matched and (matched.get("connection") or {}).get("state") == "online")
+            checks.append(
+                check_status(
+                    "broker_runtime_instance_visible",
+                    online if args.require_broker_visible else matched is not None,
+                    runtime_instance_id=args.runtime_instance_id,
+                    deployment_id=args.deployment_id,
+                    matched=matched is not None,
+                    online=online,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            checks.append(check_status("broker_runtime_instance_visible", False, error=str(exc)))
+    else:
+        checks.append(
+            check_status(
+                "broker_runtime_instance_visible",
+                True,
+                skipped=True,
+                reason="set AGENTD_CODEXW_BROKER_TOKEN or broker user/password to verify broker inventory",
+            )
+        )
+
+    ok = all(check.get("ok") for check in checks)
+    return {
+        "ok": ok,
+        "mode": "self_test",
+        "deployment_id": args.deployment_id,
+        "runtime_instance_id": args.runtime_instance_id,
+        "runtime_kind": "agentd",
+        "checks": checks,
+    }
+
+
 def enroll_certificate(args: argparse.Namespace) -> dict[str, Any]:
     if not args.enrollment_token_id or not args.enrollment_shared_secret:
         if args.broker_user and args.broker_password:
@@ -855,9 +964,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--agentd-auth-token", default=os.environ.get("AGENTD_AUTH_TOKEN", ""))
     parser.add_argument("--broker-user", default=os.environ.get("AGENTD_CODEXW_BROKER_USER", ""))
     parser.add_argument("--broker-password", default=os.environ.get("AGENTD_CODEXW_BROKER_PASSWORD", ""))
+    parser.add_argument("--broker-token", default=os.environ.get("AGENTD_CODEXW_BROKER_TOKEN", ""))
     parser.add_argument("--timestamp", type=int, default=0, help="fixed Unix timestamp for deterministic tests")
     parser.add_argument("--timeout", type=float, default=15.0)
     parser.add_argument("--dry-run", action="store_true", help="print broker-ready identity/snapshot JSON")
+    parser.add_argument("--self-test", action="store_true", help="run a read-only connector readiness check")
+    parser.add_argument("--require-broker-visible", action="store_true", help="self-test fails unless the broker reports this runtime online")
     parser.add_argument("--connect", action="store_true", help="open the native broker deployment websocket")
     parser.add_argument("--once", action="store_true", help="exit after the first command result or broker close")
     parser.add_argument("--reconnect", action="store_true", help="reconnect after broker disconnects or transient errors")
@@ -883,9 +995,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     resolve_identity_paths(args)
     if not args.runtime_instance_id:
         args.runtime_instance_id = default_runtime_instance_id()
-    modes = sum(1 for enabled in (args.dry_run, args.connect, args.enroll_certificate) if enabled)
+    modes = sum(1 for enabled in (args.dry_run, args.self_test, args.connect, args.enroll_certificate) if enabled)
     if modes != 1:
-        parser.error("choose exactly one of --dry-run, --connect, or --enroll-certificate")
+        parser.error("choose exactly one of --dry-run, --self-test, --connect, or --enroll-certificate")
+    if args.self_test and args.bootstrap_identity:
+        parser.error("--self-test is read-only and cannot be combined with --bootstrap-identity")
     return args
 
 
@@ -902,6 +1016,10 @@ def main(argv: list[str]) -> int:
     if args.connect:
         print(json_pretty({**run_connect_supervised(args), "identity": identity}))
         return 0
+    if args.self_test:
+        result = {**run_self_test(args), "identity": identity}
+        print(json_pretty(result))
+        return 0 if result.get("ok") else 1
     print(json_pretty({**build_dry_run_payload(args), "identity": identity}))
     return 0
 

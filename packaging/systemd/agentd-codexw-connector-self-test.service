@@ -1,0 +1,19 @@
+[Unit]
+Description=agentd codexw connector readiness self-test
+After=network-online.target agentd.service agentd-codexw-connector.service
+Wants=network-online.target agentd.service
+
+[Service]
+Type=oneshot
+User=agentd
+Group=agentd
+EnvironmentFile=/etc/agentd/codexw-connector.env
+WorkingDirectory=/var/lib/agentd
+ExecStart=/usr/bin/env python3 /opt/agentd/tools/agentd_codexw_native_broker_connector.py \
+  --broker-url ${AGENTD_CODEXW_BROKER_URL} \
+  --deployment-id ${AGENTD_CODEXW_DEPLOYMENT_ID} \
+  --display-name ${AGENTD_CODEXW_DISPLAY_NAME} \
+  --identity-dir ${AGENTD_CODEXW_IDENTITY_DIR} \
+  --agentd-base-url ${AGENTD_BASE_URL} \
+  --self-test \
+  --require-broker-visible

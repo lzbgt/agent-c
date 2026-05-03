@@ -145,6 +145,10 @@ For durable service installs, use the launchd/systemd connector templates in
 `docs/DEPLOYMENT.md`. They run `agentd` and the native codexw connector as
 separate OS-managed services and keep broker passwords, enrollment secrets, and
 local `AGENTD_AUTH_TOKEN` out of process arguments.
+The connector also supports a read-only `--self-test` mode for service
+readiness checks; with `--require-broker-visible` and broker read credentials,
+it proves the durable service is enrolled, connected, and visible through
+shared broker runtime-instance inventory.
 
 Quick start (loopback only; no auth required):
 

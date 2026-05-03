@@ -183,6 +183,8 @@ Systemd service templates are provided under `packaging/systemd/`:
 sudo install -d -o agentd -g agentd /var/lib/agentd /etc/agentd
 sudo install -m 0644 packaging/systemd/agentd.service /etc/systemd/system/agentd.service
 sudo install -m 0644 packaging/systemd/agentd-codexw-connector.service /etc/systemd/system/agentd-codexw-connector.service
+sudo install -m 0644 packaging/systemd/agentd-codexw-connector-self-test.service /etc/systemd/system/agentd-codexw-connector-self-test.service
+sudo install -m 0644 packaging/systemd/agentd-codexw-connector-self-test.timer /etc/systemd/system/agentd-codexw-connector-self-test.timer
 sudo install -m 0600 packaging/systemd/agentd.env.example /etc/agentd/agentd.env
 sudo install -m 0600 packaging/systemd/codexw-connector.env.example /etc/agentd/codexw-connector.env
 sudo systemctl daemon-reload
@@ -194,6 +196,27 @@ it can mint a deployment enrollment token and persist the broker-signed
 deployment certificate under `AGENTD_CODEXW_IDENTITY_DIR`. After the certificate
 exists, remove the bootstrap password from `/etc/agentd/codexw-connector.env`
 and restart the connector.
+
+The same connector binary has a read-only readiness mode:
+
+```
+sudo -u agentd sh -c '
+  set -a
+  . /etc/agentd/codexw-connector.env
+  set +a
+  python3 /opt/agentd/tools/agentd_codexw_native_broker_connector.py \
+    --self-test --require-broker-visible
+'
+```
+
+It verifies local identity files, local `agentd` health, the shared
+session/event adapter surfaces, and, when broker credentials or
+`AGENTD_CODEXW_BROKER_TOKEN` are available, that the broker currently reports
+this runtime instance online. Enable
+`agentd-codexw-connector-self-test.timer` when you want systemd to run that
+check every five minutes after the connector service is installed. After
+first-boot certificate enrollment, prefer a read-only broker token for the
+self-test and remove the bootstrap username/password from the env file.
 
 The service units intentionally read `AGENTD_AUTH_TOKEN`,
 `AGENTD_CODEXW_BROKER_PASSWORD`, and one-time enrollment secrets from the
