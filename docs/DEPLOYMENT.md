@@ -231,6 +231,22 @@ The macOS installer writes a companion LaunchAgent at
 Set `AGENTD_CODEXW_INSTALL_SELF_TEST=0` only when another scheduler owns this
 readiness check.
 
+After installation, generate a single readiness report from the installed
+profile:
+
+```
+python3 /opt/agentd/tools/verify_agentd_codexw_connector_service.py --json
+```
+
+On macOS the verifier reads the launchd connector/self-test plists, calls
+`launchctl print` unless `--skip-supervisor` is provided, tails the configured
+connector logs, and runs the installed self-test command. On Linux it reads
+`/etc/agentd/codexw-connector.env`, calls `systemctl show` and recent
+`journalctl` self-test logs, then runs the same read-only self-test command.
+The report redacts token/password/secret environment values and includes the
+broker-visible and optional `runtime.update` preflight checks in one JSON
+object.
+
 Broker-driven runtime updates are disabled by default. To expose
 `runtime.update` through the shared codexw broker, first enable the daemon OTA
 path (`AGENTD_OTA_ENABLE=1`, `AGENTD_OTA_COMMAND`, `AGENTD_OTA_TARGET_BIN`,

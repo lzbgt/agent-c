@@ -181,6 +181,9 @@ The macOS launchd installer now installs a companion
 `com.agentd.codexw-connector.self-test` LaunchAgent by default, matching the
 systemd timer behavior with the same broker-visible and optional update
 preflight checks.
+Use `tools/verify_agentd_codexw_connector_service.py` on an installed host to
+inspect launchd/systemd state, recent self-test logs, redacted service
+configuration, broker visibility, and optional update preflight in one report.
 
 Broker operator actions are opt-in. By default the connector still does not
 advertise `runtime.restart`, `runtime.update`, or `runtime.upgrade`. Set

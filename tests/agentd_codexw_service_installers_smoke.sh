@@ -18,6 +18,26 @@ bash -n \
   "${ROOT}/tools/uninstall_agentd_codexw_connector_launchd.sh" \
   "${ROOT}/tools/run_agentd_codexw_compat.sh"
 
+python3 -m py_compile "${ROOT}/tools/verify_agentd_codexw_connector_service.py"
+
+FAKE_CONNECTOR="${TMP_DIR}/fake_connector.py"
+cat >"${FAKE_CONNECTOR}" <<'PY'
+#!/usr/bin/env python3
+import json
+import sys
+
+if "--self-test" not in sys.argv:
+    raise SystemExit("fake connector expected --self-test")
+print(json.dumps({
+    "ok": True,
+    "checks": [
+        {"name": "broker_runtime_instance_visible", "ok": True, "online": True},
+        {"name": "broker_runtime_update_preflight", "ok": "--require-update-preflight" in sys.argv},
+    ],
+}))
+PY
+chmod +x "${FAKE_CONNECTOR}"
+
 AGENTD_BIN="${AGENTD_BIN}" \
 AGENTD_AUTH_TOKEN="agentd-service-smoke-token" \
 AGENTD_STATE_DIR="${TMP_DIR}/agentd-state" \
@@ -40,6 +60,7 @@ AGENTD_CODEXW_BROKER_URL="http://127.0.0.1:8787" \
 AGENTD_CODEXW_DEPLOYMENT_ID="agentd-service-smoke" \
 AGENTD_CODEXW_DISPLAY_NAME="agentd service smoke" \
 AGENTD_CODEXW_IDENTITY_DIR="${TMP_DIR}/codexw-native" \
+AGENTD_CODEXW_CONNECTOR_BIN="${FAKE_CONNECTOR}" \
 AGENTD_CODEXW_PLIST_PATH="${TMP_DIR}/com.agentd.codexw-connector.plist" \
 AGENTD_CODEXW_SELF_TEST_PLIST_PATH="${TMP_DIR}/com.agentd.codexw-connector.self-test.plist" \
 AGENTD_CODEXW_LOG_DIR="${TMP_DIR}/logs" \
@@ -108,6 +129,56 @@ if self_test.get("StartInterval") != 123:
     raise SystemExit("launchd self-test plist missing StartInterval")
 if "--connect" in self_test_args or "--bootstrap-identity" in self_test_args:
     raise SystemExit("launchd self-test plist must be read-only")
+PY
+
+python3 "${ROOT}/tools/verify_agentd_codexw_connector_service.py" \
+  --platform launchd \
+  --launchd-plist-path "${TMP_DIR}/com.agentd.codexw-connector.plist" \
+  --launchd-self-test-plist-path "${TMP_DIR}/com.agentd.codexw-connector.self-test.plist" \
+  --skip-supervisor \
+  --json >"${TMP_DIR}/launchd-service-report.json"
+python3 - <<PY
+import json
+from pathlib import Path
+payload = json.loads(Path("${TMP_DIR}/launchd-service-report.json").read_text())
+if not payload.get("ok"):
+    raise SystemExit(f"launchd verifier failed: {payload}")
+if payload["configuration"]["environment"].get("AGENTD_CODEXW_BROKER_TOKEN") != "<redacted>":
+    raise SystemExit("launchd verifier did not redact broker token")
+checks = {check["name"]: check for check in payload["self_test"]["payload"]["checks"]}
+if not checks.get("broker_runtime_update_preflight", {}).get("ok"):
+    raise SystemExit("launchd verifier did not run update preflight self-test")
+PY
+
+SYSTEMD_ENV="${TMP_DIR}/codexw-connector.env"
+cat >"${SYSTEMD_ENV}" <<EOF
+AGENTD_BASE_URL=http://127.0.0.1:8123
+AGENTD_AUTH_TOKEN=agentd-service-smoke-token
+AGENTD_CODEXW_BROKER_URL=http://127.0.0.1:8787
+AGENTD_CODEXW_DEPLOYMENT_ID=agentd-service-smoke
+AGENTD_CODEXW_DISPLAY_NAME=agentd service smoke
+AGENTD_CODEXW_IDENTITY_DIR=${TMP_DIR}/codexw-native
+AGENTD_CODEXW_BROKER_TOKEN=read-token
+AGENTD_CODEXW_RUNTIME_UPDATE_MODE=agentd_ota
+AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT=1
+EOF
+python3 "${ROOT}/tools/verify_agentd_codexw_connector_service.py" \
+  --platform systemd \
+  --systemd-env-file "${SYSTEMD_ENV}" \
+  --connector-bin "${FAKE_CONNECTOR}" \
+  --skip-supervisor \
+  --json >"${TMP_DIR}/systemd-service-report.json"
+python3 - <<PY
+import json
+from pathlib import Path
+payload = json.loads(Path("${TMP_DIR}/systemd-service-report.json").read_text())
+if not payload.get("ok"):
+    raise SystemExit(f"systemd verifier failed: {payload}")
+if payload["configuration"]["environment"].get("AGENTD_CODEXW_BROKER_TOKEN") != "<redacted>":
+    raise SystemExit("systemd verifier did not redact broker token")
+checks = {check["name"]: check for check in payload["self_test"]["payload"]["checks"]}
+if not checks.get("broker_runtime_update_preflight", {}).get("ok"):
+    raise SystemExit("systemd verifier did not run update preflight self-test")
 PY
 
 grep -q "Restart=always" "${ROOT}/packaging/systemd/agentd.service"
