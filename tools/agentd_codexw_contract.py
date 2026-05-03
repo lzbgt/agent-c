@@ -210,6 +210,7 @@ def agentd_runtime_status(
     request_agentd: Callable[[str, str, Any | None], Any],
     *,
     update_enabled: bool = False,
+    connector: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     update: dict[str, Any] = {
         "source": "agentd.ota",
@@ -246,11 +247,14 @@ def agentd_runtime_status(
             value = raw_status.get(key)
             if isinstance(value, (int, float)):
                 update[key] = int(value)
-    return {
+    result = {
         "ok": True,
         "runtime_kind": RUNTIME_KIND,
         "update": update,
     }
+    if connector:
+        result["connector"] = connector
+    return result
 
 
 def runtime_update_candidate_from_status(raw_status: dict[str, Any]) -> dict[str, Any]:

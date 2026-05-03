@@ -251,7 +251,10 @@ Each periodic self-test also writes the same readiness payload to
 `/var/lib/agentd/codexw-native/self-test-status.json` for systemd installs and
 `${AGENTD_CODEXW_IDENTITY_DIR}/self-test-status.json` for launchd installs.
 Use this file for local health dashboards or support bundles instead of
-scraping launchd/systemd logs.
+scraping launchd/systemd logs. The native connector also projects this file into
+the top-level `connector` object on `GET /api/v1/runtime/status`, allowing the
+codexw broker and shared clients to display self-test freshness, failed check
+counts, and failure names without reading host-local files.
 
 Broker-driven runtime updates are disabled by default. To expose
 `runtime.update` through the shared codexw broker, first enable the daemon OTA

@@ -126,6 +126,83 @@ def write_json_private(path: Path, payload: dict[str, Any], mode: int = 0o600) -
     tmp_path.replace(path)
 
 
+def unix_ms(args: argparse.Namespace | None = None) -> int:
+    if args is not None and getattr(args, "timestamp", 0):
+        return int(args.timestamp) * 1000
+    return int(time.time() * 1000)
+
+
+def connector_readiness_status(args: argparse.Namespace) -> dict[str, Any]:
+    source = "agentd.codexw.self_test"
+    status_path = str(getattr(args, "self_test_output_path", "") or "").strip()
+    if not status_path:
+        return {
+            "source": source,
+            "available": False,
+            "ok": False,
+            "state": "unconfigured",
+            "detail": "AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH is not configured",
+        }
+    path = Path(status_path).expanduser()
+    if not path.exists():
+        return {
+            "source": source,
+            "available": False,
+            "ok": False,
+            "state": "missing",
+            "detail": "durable connector self-test status file has not been written yet",
+        }
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "source": source,
+            "available": True,
+            "ok": False,
+            "state": "invalid",
+            "detail": f"durable connector self-test status file is not valid JSON: {exc}",
+        }
+    if not isinstance(payload, dict):
+        return {
+            "source": source,
+            "available": True,
+            "ok": False,
+            "state": "invalid",
+            "detail": "durable connector self-test status file must contain a JSON object",
+        }
+    checks = payload.get("checks") if isinstance(payload.get("checks"), list) else []
+    failed_checks = [
+        str(check.get("name") or "unnamed")
+        for check in checks
+        if isinstance(check, dict) and not bool(check.get("ok"))
+    ]
+    ok = bool(payload.get("ok"))
+    checked_ms = payload.get("checked_unix_ms")
+    if not isinstance(checked_ms, (int, float)):
+        checked_ms = None
+    result: dict[str, Any] = {
+        "source": source,
+        "available": True,
+        "ok": ok,
+        "state": "ok" if ok else "failed",
+        "detail": "last connector self-test passed"
+        if ok
+        else "failed checks: " + ", ".join(failed_checks[:5])
+        if failed_checks
+        else "last connector self-test failed",
+        "check_count": len([check for check in checks if isinstance(check, dict)]),
+        "failed_check_count": len(failed_checks),
+        "failed_checks": failed_checks[:20],
+        "mode": str(payload.get("mode") or ""),
+        "runtime_instance_id": str(payload.get("runtime_instance_id") or ""),
+        "deployment_id": str(payload.get("deployment_id") or ""),
+    }
+    if checked_ms is not None:
+        result["checked_unix_ms"] = int(checked_ms)
+        result["age_ms"] = max(0, unix_ms(args) - int(checked_ms))
+    return result
+
+
 def read_pem_der(path: Path, label: str) -> bytes:
     text = path.read_text(encoding="utf-8")
     lines = [line.strip() for line in text.splitlines() if line and not line.startswith("-----")]
@@ -634,6 +711,7 @@ def handle_command(args: argparse.Namespace, frame: dict[str, Any]) -> dict[str,
             result = agentd_runtime_status(
                 request_agentd,
                 update_enabled=args.runtime_update_mode == RUNTIME_UPDATE_MODE_AGENTD_OTA,
+                connector=connector_readiness_status(args),
             )
         elif method == "GET" and route_path == "/api/v1/runtime/sessions":
             result = agentd_runtime_sessions(request_agentd)
@@ -965,6 +1043,7 @@ def run_self_test(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "ok": ok,
         "mode": "self_test",
+        "checked_unix_ms": unix_ms(args),
         "deployment_id": args.deployment_id,
         "runtime_instance_id": args.runtime_instance_id,
         "runtime_kind": "agentd",

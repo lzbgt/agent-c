@@ -543,10 +543,12 @@ import struct
 import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 SCRIPT = "${SCRIPT_DIR}/../tools/agentd_codexw_native_broker_connector.py"
 KEY_PATH = "${KEY_PATH}"
 CERT_PATH = "${CERT_PATH}"
+CONNECT_SELF_TEST_OUTPUT_PATH = "${TMP_DIR}/native-connect-self-test-status.json"
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
@@ -748,6 +750,10 @@ def broker_thread():
         assert status_result["body"]["runtime_kind"] == "agentd", status_result
         assert status_result["body"]["update"]["enabled"] is True, status_result
         assert status_result["body"]["update"]["candidate"]["url"] == "file:///tmp/agentd-smoke", status_result
+        connector = status_result["body"]["connector"]
+        assert connector["state"] == "ok", status_result
+        assert connector["checked_unix_ms"] == 1699999999000, status_result
+        assert connector["age_ms"] == 1000, status_result
         send_frame(
             conn,
             {
@@ -776,6 +782,18 @@ def broker_thread():
 
 thread = threading.Thread(target=broker_thread, daemon=True)
 thread.start()
+Path(CONNECT_SELF_TEST_OUTPUT_PATH).write_text(json.dumps({
+    "ok": True,
+    "mode": "self_test",
+    "checked_unix_ms": 1699999999000,
+    "deployment_id": "agentd-native-smoke",
+    "runtime_instance_id": "agentd-native-live-instance",
+    "runtime_kind": "agentd",
+    "checks": [
+        {"name": "identity_files", "ok": True},
+        {"name": "broker_runtime_instance_visible", "ok": True},
+    ],
+}) + "\\n")
 proc = subprocess.run(
     [
         SCRIPT,
@@ -795,6 +813,8 @@ proc = subprocess.run(
         agentd_url,
         "--runtime-update-mode",
         "agentd_ota",
+        "--self-test-output-path",
+        CONNECT_SELF_TEST_OUTPUT_PATH,
         "--timestamp",
         "1700000000",
         "--timeout",
