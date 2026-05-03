@@ -62,8 +62,13 @@ contract through connector-owned routes:
 - serve `GET /api/v1/runtime/sessions` from daemon sessions and durable
   workflows
 - serve `GET /api/v1/runtime/events` from client events and workflow events
-- keep operator restart/update actions unadvertised until the daemon owns a
-  supervisor-safe idle/update boundary
+- keep operator actions capability-gated. The default connector must not
+  advertise `runtime.restart`, `runtime.update`, or `runtime.upgrade`.
+  `runtime.update` may be advertised only when the native connector is launched
+  with `AGENTD_CODEXW_RUNTIME_UPDATE_MODE=agentd_ota` and the local daemon OTA
+  path proves the drain/update boundary through `GET /api/v1/ota/status`.
+  `runtime.restart` remains unadvertised until a separate supervisor-safe
+  restart contract exists.
 - keep `tools/verify_codexw_live_agentd_activity.sh` passing against the live
   codexw broker before claiming the shared iOS/WebUI activity path is
   production-ready

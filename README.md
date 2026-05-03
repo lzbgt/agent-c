@@ -150,6 +150,14 @@ readiness checks; with `--require-broker-visible` and broker read credentials,
 it proves the durable service is enrolled, connected, and visible through
 shared broker runtime-instance inventory.
 
+Broker operator actions are opt-in. By default the connector still does not
+advertise `runtime.restart`, `runtime.update`, or `runtime.upgrade`. Set
+`AGENTD_CODEXW_RUNTIME_UPDATE_MODE=agentd_ota` only on hosts where `agentd`
+OTA is enabled and configured with a daemon-owned drain/restart policy; then
+the connector advertises `runtime.update` and forwards broker requests to
+`POST /api/v1/ota/update`. `runtime.restart` remains unadvertised until it has
+its own supervisor-safe contract.
+
 Quick start (loopback only; no auth required):
 
 ```bash

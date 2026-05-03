@@ -43,6 +43,8 @@ DEFAULT_KEY_NAME = "deployment.key.pem"
 DEFAULT_CERT_NAME = "deployment.cert.pem"
 DEFAULT_CSR_NAME = "deployment.csr.pem"
 DEFAULT_ENROLLMENT_MATERIAL_NAME = "deployment.enrollment.json"
+RUNTIME_UPDATE_MODE_DISABLED = "disabled"
+RUNTIME_UPDATE_MODE_AGENTD_OTA = "agentd_ota"
 
 
 def json_dumps(obj: Any) -> bytes:
@@ -225,6 +227,7 @@ def deployment_connect_headers(args: argparse.Namespace, timestamp: str) -> dict
         runtime_identity_headers(
             instance_id=args.runtime_instance_id,
             connection_mode=args.connection_mode,
+            capabilities=runtime_capabilities_for_args(args),
             host=args.runtime_host_id,
             os_name=args.runtime_target_os,
             arch=args.runtime_target_arch,
@@ -469,6 +472,71 @@ def require_string(obj: dict[str, Any], key: str) -> str:
     return value.strip()
 
 
+def operator_runtime_actions(args: argparse.Namespace) -> dict[str, dict[str, Any]]:
+    actions: dict[str, dict[str, Any]] = {}
+    if args.runtime_update_mode == RUNTIME_UPDATE_MODE_AGENTD_OTA:
+        actions["runtime.update"] = {
+            "transport": "local_api",
+            "method": "POST",
+            "path": "/api/v1/runtime/actions",
+            "input": "agentd_ota_update_request",
+            "safe_boundary": "agentd_ota_drain",
+        }
+    return actions
+
+
+def runtime_capabilities_for_args(args: argparse.Namespace) -> dict[str, Any]:
+    return runtime_capabilities(operator_runtime_actions(args))
+
+
+def first_string_from_any(obj: Any, keys: tuple[str, ...]) -> str:
+    if not isinstance(obj, dict):
+        return ""
+    for key in keys:
+        value = obj.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def runtime_update_request_body(input_obj: dict[str, Any]) -> dict[str, Any]:
+    artifact = input_obj.get("artifact")
+    release = input_obj.get("release")
+    url = (
+        first_string_from_any(input_obj, ("url", "artifact_url", "download_url"))
+        or first_string_from_any(artifact, ("url", "download_url"))
+        or first_string_from_any(release, ("url", "download_url"))
+    )
+    if not url:
+        raise ValueError("runtime.update input.url is required")
+    sha256 = (
+        first_string_from_any(input_obj, ("sha256", "artifact_sha256"))
+        or first_string_from_any(artifact, ("sha256", "artifact_sha256"))
+        or first_string_from_any(release, ("sha256", "artifact_sha256"))
+    )
+    version = (
+        first_string_from_any(input_obj, ("version", "target_version"))
+        or first_string_from_any(artifact, ("version", "name"))
+        or first_string_from_any(release, ("version", "name"))
+    )
+    reason = first_string_from_any(input_obj, ("reason",)) or "codexw broker runtime.update"
+    body: dict[str, Any] = {"url": url, "reason": reason}
+    if sha256:
+        body["sha256"] = sha256
+    if version:
+        body["version"] = version
+    drain_timeout_ms = input_obj.get("drain_timeout_ms")
+    if isinstance(drain_timeout_ms, (int, float)) or (isinstance(drain_timeout_ms, str) and drain_timeout_ms.strip()):
+        try:
+            parsed_timeout = int(drain_timeout_ms)
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError("runtime.update input.drain_timeout_ms must be an integer") from exc
+        if parsed_timeout < 0:
+            raise ValueError("runtime.update input.drain_timeout_ms must be non-negative")
+        body["drain_timeout_ms"] = parsed_timeout
+    return body
+
+
 def forward_runtime_action(args: argparse.Namespace, body: dict[str, Any]) -> dict[str, Any]:
     action = body.get("action")
     if not isinstance(action, str) or not action.strip():
@@ -494,6 +562,10 @@ def forward_runtime_action(args: argparse.Namespace, body: dict[str, Any]) -> di
         result = agentd_request(args, "GET", "/api/v1/rl/experience_records" + (f"?{query}" if query else ""))
         if action == "experience.export" and isinstance(result, dict):
             result = {**result, "export_format": "json"}
+    elif action == "runtime.update":
+        if args.runtime_update_mode != RUNTIME_UPDATE_MODE_AGENTD_OTA:
+            raise ValueError("runtime.update is disabled; set AGENTD_CODEXW_RUNTIME_UPDATE_MODE=agentd_ota")
+        result = agentd_request(args, "POST", "/api/v1/ota/update", runtime_update_request_body(input_obj))
     else:
         raise ValueError(f"unsupported runtime action: {action}")
     return {
@@ -525,6 +597,7 @@ def runtime_payload(args: argparse.Namespace) -> dict[str, Any]:
         implementation="native_agentd_broker_connector",
         agentd_health=health,
         agentd_capabilities=caps,
+        runtime_capabilities_manifest=runtime_capabilities_for_args(args),
     )
 
 
@@ -642,6 +715,7 @@ def run_connect(args: argparse.Namespace) -> dict[str, Any]:
 
 def build_dry_run_payload(args: argparse.Namespace) -> dict[str, Any]:
     timestamp = str(int(args.timestamp or time.time()))
+    capabilities = runtime_capabilities_for_args(args)
     runtime = runtime_snapshot(
         instance_id=args.runtime_instance_id,
         deployment_id=args.deployment_id,
@@ -649,6 +723,7 @@ def build_dry_run_payload(args: argparse.Namespace) -> dict[str, Any]:
         connection_mode=args.connection_mode,
         preferred_broker_transport="native_deployment_connect",
         implementation="native_agentd_broker_connector",
+        runtime_capabilities_manifest=capabilities,
     )
     snapshot = deployment_snapshot_frame(
         deployment_id=args.deployment_id,
@@ -666,10 +741,10 @@ def build_dry_run_payload(args: argparse.Namespace) -> dict[str, Any]:
         },
         "deployment_id": args.deployment_id,
         "runtime_instance_id": args.runtime_instance_id,
-        "runtime_capabilities": runtime_capabilities(),
-        "runtime_capabilities_hash": runtime_capabilities_hash(),
+        "runtime_capabilities": capabilities,
+        "runtime_capabilities_hash": runtime_capabilities_hash(capabilities),
         "runtime_capabilities_canonical_json_sha256": hashlib.sha256(
-            canonical_json_bytes(runtime_capabilities())
+            canonical_json_bytes(capabilities)
         ).hexdigest(),
         "connect_headers": deployment_connect_headers(args, timestamp),
         "runtime_snapshot": runtime,
@@ -734,6 +809,13 @@ def run_self_test(args: argparse.Namespace) -> dict[str, Any]:
         )
     except Exception as exc:  # noqa: BLE001
         checks.append(check_status("runtime_events_surface", False, error=str(exc)))
+
+    if args.runtime_update_mode == RUNTIME_UPDATE_MODE_AGENTD_OTA:
+        try:
+            ota_status = agentd_request(args, "GET", "/api/v1/ota/status")
+            checks.append(check_status("agentd_ota_status", bool(ota_status.get("ok", True)), response=ota_status))
+        except Exception as exc:  # noqa: BLE001
+            checks.append(check_status("agentd_ota_status", False, error=str(exc)))
 
     should_check_broker = bool(args.require_broker_visible or args.broker_token or (args.broker_user and args.broker_password))
     if should_check_broker:
@@ -965,6 +1047,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--broker-user", default=os.environ.get("AGENTD_CODEXW_BROKER_USER", ""))
     parser.add_argument("--broker-password", default=os.environ.get("AGENTD_CODEXW_BROKER_PASSWORD", ""))
     parser.add_argument("--broker-token", default=os.environ.get("AGENTD_CODEXW_BROKER_TOKEN", ""))
+    parser.add_argument(
+        "--runtime-update-mode",
+        default=os.environ.get("AGENTD_CODEXW_RUNTIME_UPDATE_MODE", RUNTIME_UPDATE_MODE_DISABLED),
+        choices=[RUNTIME_UPDATE_MODE_DISABLED, RUNTIME_UPDATE_MODE_AGENTD_OTA],
+        help="advertise broker runtime.update only when agentd OTA owns the local safe update boundary",
+    )
     parser.add_argument("--timestamp", type=int, default=0, help="fixed Unix timestamp for deterministic tests")
     parser.add_argument("--timeout", type=float, default=15.0)
     parser.add_argument("--dry-run", action="store_true", help="print broker-ready identity/snapshot JSON")

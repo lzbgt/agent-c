@@ -94,6 +94,46 @@ for forbidden in ("runtime.restart", "runtime.update", "runtime.upgrade"):
         raise SystemExit(1)
 PY
 
+UPDATE_OUT_PATH="${TMP_DIR}/dry-run-runtime-update.json"
+"${SCRIPT_DIR}/../tools/agentd_codexw_native_broker_connector.py" \
+  --broker-url "http://127.0.0.1:8787" \
+  --deployment-id "agentd-native-smoke" \
+  --display-name "agentd native smoke" \
+  --runtime-instance-id "agentd-native-smoke-instance" \
+  --deployment-cert-path "${CERT_PATH}" \
+  --deployment-key-path "${KEY_PATH}" \
+  --agentd-base-url "http://127.0.0.1:18080" \
+  --runtime-update-mode agentd_ota \
+  --timestamp 1700000000 \
+  --dry-run \
+  >"${UPDATE_OUT_PATH}"
+
+python3 - <<PY
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path("${UPDATE_OUT_PATH}").read_text())
+actions = payload["runtime_capabilities"]["actions"]
+runtime_actions = payload["runtime_snapshot"]["runtime"]["runtime_capabilities"]["actions"]
+if "runtime.update" not in actions:
+    print("missing opt-in runtime.update", payload["runtime_capabilities"], file=sys.stderr)
+    raise SystemExit(1)
+if actions != runtime_actions:
+    print("runtime snapshot capabilities diverge", payload, file=sys.stderr)
+    raise SystemExit(1)
+if actions["runtime.update"].get("safe_boundary") != "agentd_ota_drain":
+    print("bad update safe boundary", actions["runtime.update"], file=sys.stderr)
+    raise SystemExit(1)
+for forbidden in ("runtime.restart", "runtime.upgrade"):
+    if forbidden in actions:
+        print("agentd connector must not advertise unsafe operator action", forbidden, actions, file=sys.stderr)
+        raise SystemExit(1)
+if payload["connect_headers"].get("X-Codexw-Runtime-Capabilities-SHA256") != payload["runtime_capabilities_hash"]:
+    print("bad update-mode capability header", payload, file=sys.stderr)
+    raise SystemExit(1)
+PY
+
 python3 - <<PY
 import json
 import subprocess
@@ -113,6 +153,8 @@ class AgentdHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/api/v1/health"):
             self.send_json({"ok": True})
+        elif self.path.startswith("/api/v1/ota/status"):
+            self.send_json({"ok": True, "enabled": True, "state": "idle"})
         elif self.path.startswith("/api/v1/db/sessions"):
             self.send_json({"ok": True, "sessions": [{"session_id": "agentd-session"}]})
         elif self.path.startswith("/api/v1/db/client_events"):
@@ -194,6 +236,8 @@ proc = subprocess.run(
         "admin",
         "--broker-password",
         "secret-pass",
+        "--runtime-update-mode",
+        "agentd_ota",
         "--self-test",
         "--require-broker-visible",
     ],
@@ -215,6 +259,7 @@ for name in (
     "agentd_health",
     "runtime_sessions_surface",
     "runtime_events_surface",
+    "agentd_ota_status",
     "broker_runtime_instance_visible",
 ):
     assert checks[name]["ok"] is True, payload
@@ -483,6 +528,18 @@ class AgentdHandler(BaseHTTPRequestHandler):
             self.send_json({"ok": True, "workflows": [{"workflow_id": "wf-smoke", "session_id": "agentd-session", "trace_id": "trace-smoke", "status": "running", "created_unix_ms": 1700000003000, "updated_unix_ms": 1700000004000, "spec": {"title": "Smoke workflow"}}]})
         elif self.path.startswith("/api/v1/db/workflow_events"):
             self.send_json({"ok": True, "workflow_id": "wf-smoke", "events": [{"event_id": 2, "workflow_id": "wf-smoke", "ts_unix_ms": 1700000005000, "type": "workflow.started", "data": {"workflow_id": "wf-smoke"}}]})
+        elif self.path.startswith("/api/v1/ota/status"):
+            self.send_json({"ok": True, "enabled": True, "state": "idle"})
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_POST(self):
+        length = int(self.headers.get("content-length") or "0")
+        body = json.loads(self.rfile.read(length) or b"{}")
+        if self.path.startswith("/api/v1/ota/update"):
+            results["agentd_ota_update_request"] = body
+            self.send_json({"ok": True, "accepted": True, "state": "draining", "request": body})
         else:
             self.send_response(404)
             self.end_headers()
@@ -585,6 +642,30 @@ def broker_thread():
         assert events_result["body"]["runtime_kind"] == "agentd", events_result
         names = [event["event"] for event in events_result["body"]["events"]]
         assert "workflow.started" in names and "client.event" in names, events_result
+        send_frame(
+            conn,
+            {
+                "type": "deployment.command",
+                "request_id": "cmd-4",
+                "method": "POST",
+                "path": "/api/v1/runtime/actions",
+                "body": {
+                    "action": "runtime.update",
+                    "input": {
+                        "url": "file:///tmp/agentd-smoke",
+                        "sha256": "abc123",
+                        "version": "v-smoke",
+                        "reason": "native connector smoke",
+                        "drain_timeout_ms": 500,
+                    },
+                },
+            },
+        )
+        update_result = read_frame(conn)
+        results["update_result"] = update_result
+        assert update_result["status"] == 200, update_result
+        assert update_result["body"]["action"] == "runtime.update", update_result
+        assert update_result["body"]["result"]["accepted"] is True, update_result
 
 
 thread = threading.Thread(target=broker_thread, daemon=True)
@@ -606,6 +687,8 @@ proc = subprocess.run(
         KEY_PATH,
         "--agentd-base-url",
         agentd_url,
+        "--runtime-update-mode",
+        "agentd_ota",
         "--timestamp",
         "1700000000",
         "--timeout",
@@ -623,11 +706,18 @@ thread.join(timeout=5)
 if proc.returncode != 0:
     raise SystemExit(f"connector failed\\nSTDOUT:\\n{proc.stdout}\\nSTDERR:\\n{proc.stderr}")
 summary = json.loads(proc.stdout)
-if summary.get("mode") != "connect" or summary.get("commands") != 3:
+if summary.get("mode") != "connect" or summary.get("commands") != 4:
     raise SystemExit(f"bad connector summary: {summary}")
-for key in ("command_result", "sessions_result", "events_result"):
+for key in ("command_result", "sessions_result", "events_result", "update_result", "agentd_ota_update_request"):
     if key not in results:
         raise SystemExit(f"broker did not receive {key}")
+assert results["agentd_ota_update_request"] == {
+    "url": "file:///tmp/agentd-smoke",
+    "sha256": "abc123",
+    "version": "v-smoke",
+    "reason": "native connector smoke",
+    "drain_timeout_ms": 500,
+}, results["agentd_ota_update_request"]
 PY
 
 echo "agentd_codexw_native_broker_connector_smoke OK"

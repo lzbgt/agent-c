@@ -218,6 +218,19 @@ check every five minutes after the connector service is installed. After
 first-boot certificate enrollment, prefer a read-only broker token for the
 self-test and remove the bootstrap username/password from the env file.
 
+Broker-driven runtime updates are disabled by default. To expose
+`runtime.update` through the shared codexw broker, first enable the daemon OTA
+path (`AGENTD_OTA_ENABLE=1`, `AGENTD_OTA_COMMAND`, `AGENTD_OTA_TARGET_BIN`,
+and a restart policy such as `AGENTD_OTA_RESTART=systemd` with
+`AGENTD_OTA_SERVICE=agentd`). Then set
+`AGENTD_CODEXW_RUNTIME_UPDATE_MODE=agentd_ota` on the connector service. In
+that mode the connector's readiness self-test also checks
+`GET /api/v1/ota/status`, and broker `runtime.update` commands are forwarded
+to `POST /api/v1/ota/update` with `{url, sha256?, version?, reason?,
+drain_timeout_ms?}`. Leave the mode as `disabled` on hosts that cannot prove
+this local OTA boundary. `runtime.restart` and compatibility `runtime.upgrade`
+remain unadvertised by `agentd`.
+
 The service units intentionally read `AGENTD_AUTH_TOKEN`,
 `AGENTD_CODEXW_BROKER_PASSWORD`, and one-time enrollment secrets from the
 environment file instead of passing them as command-line arguments. Keep that

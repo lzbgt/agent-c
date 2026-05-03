@@ -58,11 +58,14 @@ RUNTIME_ACTIONS: dict[str, dict[str, Any]] = {
 }
 
 
-def runtime_capabilities() -> dict[str, Any]:
+def runtime_capabilities(operator_actions: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+    actions = {name: dict(spec) for name, spec in RUNTIME_ACTIONS.items()}
+    if operator_actions:
+        actions.update({name: dict(spec) for name, spec in operator_actions.items()})
     return {
         "schema": RUNTIME_CAPABILITIES_SCHEMA,
         "runtime_kind": RUNTIME_KIND,
-        "actions": RUNTIME_ACTIONS,
+        "actions": actions,
         "surfaces": {
             "workflow": True,
             "schedule": True,
@@ -147,7 +150,9 @@ def runtime_snapshot(
     implementation: str = "native_agentd_broker_connector",
     agentd_health: Any | None = None,
     agentd_capabilities: Any | None = None,
+    runtime_capabilities_manifest: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    runtime_caps = runtime_capabilities_manifest or runtime_capabilities()
     return {
         "ok": True,
         "local_api_version": LOCAL_API_VERSION,
@@ -167,8 +172,8 @@ def runtime_snapshot(
             "agentd_health": agentd_health,
             "agentd_capabilities": agentd_capabilities,
             "capabilities": legacy_capabilities(),
-            "runtime_capabilities": runtime_capabilities(),
-            "runtime_capabilities_hash": runtime_capabilities_hash(),
+            "runtime_capabilities": runtime_caps,
+            "runtime_capabilities_hash": runtime_capabilities_hash(runtime_caps),
             "live_session": {
                 "status": "available",
                 "transport": "broker_deployment_connect",
