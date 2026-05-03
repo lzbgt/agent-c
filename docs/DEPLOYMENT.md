@@ -250,11 +250,14 @@ The proof starts a temporary loopback fake `agentd`/OTA API, connects the native
 connector to the live codexw broker with runtime update mode set to
 `agentd_ota`, verifies
 `/api/v2/runtime-instances/{id}/status` exposes `update.candidate`, verifies
-the broker advertises an enabled `runtime.update` descriptor, dispatches one
-confirmed `runtime.update` with an idempotency key, and checks that the fake OTA
-endpoint received the broker-prepared `{url, sha256, version, reason,
-drain_timeout_ms}` body. It removes the temporary broker deployment by default
-and does not replace any daemon binary.
+the broker advertises an enabled `runtime.update` descriptor, calls
+`/api/v2/runtime-instances/{id}/actions/preflight`, and checks that the
+non-mutating preflight response contains the broker-prepared `{url, sha256,
+version, reason, drain_timeout_ms}` body. The fake OTA update endpoint must not
+receive a request in the default proof; set `VERIFY_AGENTD_OTA_DISPATCH=1` only
+when you intentionally want to dispatch to the fake endpoint as a separate
+compatibility check. It removes the temporary broker deployment by default and
+does not replace any daemon binary.
 
 The service units intentionally read `AGENTD_AUTH_TOKEN`,
 `AGENTD_CODEXW_BROKER_PASSWORD`, and one-time enrollment secrets from the

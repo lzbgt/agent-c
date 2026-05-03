@@ -7,6 +7,7 @@ BROKER_URL="${CODEXW_BROKER_BASE_URL:-https://broker.hubstack.cn}"
 BROKER_ADMIN="${CODEXW_BROKER_ADMIN:-${CODEXW_ROOT}/scripts/broker-admin}"
 CONNECTOR_BIN="${CONNECTOR_BIN:-${ROOT}/tools/agentd_codexw_native_broker_connector.py}"
 KEEP_DEPLOYMENT="${KEEP_DEPLOYMENT:-0}"
+VERIFY_AGENTD_OTA_DISPATCH="${VERIFY_AGENTD_OTA_DISPATCH:-0}"
 NAME="codexw_live_agentd_ota_candidate"
 
 if [[ ! -x "${BROKER_ADMIN}" ]]; then
@@ -283,10 +284,11 @@ cleanup_connector
 
 start_connector "${CONNECTOR_LOG}"
 
-python3 - <<PY
+VERIFY_AGENTD_OTA_DISPATCH="${VERIFY_AGENTD_OTA_DISPATCH}" python3 - <<PY
 import importlib.machinery
 import importlib.util
 import json
+import os
 import time
 import urllib.parse
 from pathlib import Path
@@ -315,6 +317,7 @@ candidate_sha256 = "${CANDIDATE_SHA256}"
 candidate_version = "${CANDIDATE_VERSION}"
 operator_reason = "${OPERATOR_REASON}"
 operator_drain_timeout_ms = int("${OPERATOR_DRAIN_TIMEOUT_MS}")
+dispatch_update = os.environ.get("VERIFY_AGENTD_OTA_DISPATCH", "0").strip() == "1"
 
 instance = None
 last_payload = {}
@@ -374,13 +377,11 @@ if candidate.get("version") != candidate_version:
     raise SystemExit("runtime status candidate version mismatch: " + json.dumps(status)[:2000])
 
 idempotency_key = "agentd-ota-candidate-proof-${RUN_ID}"
-action_response = client.request(
+preflight_response = client.request(
     "POST",
-    f"/api/v2/runtime-instances/{path_id}/actions",
+    f"/api/v2/runtime-instances/{path_id}/actions/preflight",
     {
         "action": "runtime.update",
-        "confirmed": True,
-        "idempotency_key": idempotency_key,
         "input": {
             "reason": operator_reason,
             "drain_timeout_ms": operator_drain_timeout_ms,
@@ -388,19 +389,14 @@ action_response = client.request(
     },
     token=token,
 )
-if not action_response.get("ok"):
-    raise SystemExit("runtime.update action response was not ok: " + json.dumps(action_response)[:2000])
+if not preflight_response.get("ok") or not preflight_response.get("preview"):
+    raise SystemExit("runtime.update preflight response was not ok: " + json.dumps(preflight_response)[:2000])
+if preflight_response.get("mutates_runtime"):
+    raise SystemExit("runtime.update preflight must be non-mutating: " + json.dumps(preflight_response)[:2000])
 
-update_body_path = Path("${UPDATE_BODY_JSON}")
-deadline = time.time() + 20
-while time.time() < deadline:
-    if update_body_path.exists():
-        break
-    time.sleep(0.25)
-if not update_body_path.exists():
-    raise SystemExit("fake OTA endpoint did not receive update request")
-update_record = json.loads(update_body_path.read_text(encoding="utf-8"))
-forwarded = update_record.get("body") if isinstance(update_record.get("body"), dict) else {}
+prepared = preflight_response.get("prepared_input")
+if not isinstance(prepared, dict):
+    raise SystemExit("runtime.update preflight missing prepared_input: " + json.dumps(preflight_response)[:2000])
 expected = {
     "url": candidate_url,
     "sha256": candidate_sha256,
@@ -409,16 +405,51 @@ expected = {
     "drain_timeout_ms": operator_drain_timeout_ms,
 }
 for key, value in expected.items():
-    if forwarded.get(key) != value:
+    if prepared.get(key) != value:
         raise SystemExit(
-            f"forwarded OTA update body mismatch for {key}: "
-            + json.dumps({"expected": expected, "forwarded": forwarded}, sort_keys=True)
+            f"preflight OTA update body mismatch for {key}: "
+            + json.dumps({"expected": expected, "prepared": prepared}, sort_keys=True)
         )
 
-audit = client.request("GET", f"/api/v2/runtime-instances/{path_id}/audit?limit=8", token=token)
-audit_events = audit.get("events") if isinstance(audit.get("events"), list) else []
-if not any(event.get("action") == "runtime_instance.action" and event.get("outcome") == "success" for event in audit_events):
-    raise SystemExit("runtime action success audit event missing: " + json.dumps(audit)[:2000])
+update_body_path = Path("${UPDATE_BODY_JSON}")
+action_response = None
+forwarded = None
+audit_events = []
+if dispatch_update:
+    action_response = client.request(
+        "POST",
+        f"/api/v2/runtime-instances/{path_id}/actions",
+        {
+            "action": "runtime.update",
+            "confirmed": True,
+            "idempotency_key": idempotency_key,
+            "input": prepared,
+        },
+        token=token,
+    )
+    if not action_response.get("ok"):
+        raise SystemExit("runtime.update action response was not ok: " + json.dumps(action_response)[:2000])
+    deadline = time.time() + 20
+    while time.time() < deadline:
+        if update_body_path.exists():
+            break
+        time.sleep(0.25)
+    if not update_body_path.exists():
+        raise SystemExit("fake OTA endpoint did not receive update request")
+    update_record = json.loads(update_body_path.read_text(encoding="utf-8"))
+    forwarded = update_record.get("body") if isinstance(update_record.get("body"), dict) else {}
+    for key, value in expected.items():
+        if forwarded.get(key) != value:
+            raise SystemExit(
+                f"forwarded OTA update body mismatch for {key}: "
+                + json.dumps({"expected": expected, "forwarded": forwarded}, sort_keys=True)
+            )
+    audit = client.request("GET", f"/api/v2/runtime-instances/{path_id}/audit?limit=8", token=token)
+    audit_events = audit.get("events") if isinstance(audit.get("events"), list) else []
+    if not any(event.get("action") == "runtime_instance.action" and event.get("outcome") == "success" for event in audit_events):
+        raise SystemExit("runtime action success audit event missing: " + json.dumps(audit)[:2000])
+elif update_body_path.exists():
+    raise SystemExit("preflight-only proof unexpectedly called fake OTA update endpoint")
 
 proof = {
     "ok": True,
@@ -431,6 +462,9 @@ proof = {
     "runtime_safe_boundary": runtime_update_capability.get("safe_boundary"),
     "candidate": candidate,
     "idempotency_key": idempotency_key,
+    "preflight_prepared_input": prepared,
+    "preflight_response": preflight_response,
+    "dispatch_update": dispatch_update,
     "forwarded_update_body": forwarded,
     "action_response": action_response,
     "audit_events_returned": len(audit_events),
