@@ -25,16 +25,22 @@ cat >"${FAKE_CONNECTOR}" <<'PY'
 #!/usr/bin/env python3
 import json
 import sys
+from pathlib import Path
 
 if "--self-test" not in sys.argv:
     raise SystemExit("fake connector expected --self-test")
-print(json.dumps({
+payload = {
     "ok": True,
     "checks": [
         {"name": "broker_runtime_instance_visible", "ok": True, "online": True},
         {"name": "broker_runtime_update_preflight", "ok": "--require-update-preflight" in sys.argv},
     ],
-}))
+}
+if "--self-test-output-path" in sys.argv:
+    path = Path(sys.argv[sys.argv.index("--self-test-output-path") + 1])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, sort_keys=True) + "\n")
+print(json.dumps(payload))
 PY
 chmod +x "${FAKE_CONNECTOR}"
 
@@ -70,6 +76,7 @@ AGENTD_CODEXW_BROKER_PASSWORD="secret" \
 AGENTD_CODEXW_BROKER_TOKEN="read-token" \
 AGENTD_CODEXW_RUNTIME_UPDATE_MODE="agentd_ota" \
 AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT=1 \
+AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH="${TMP_DIR}/codexw-native/self-test-status.json" \
 AGENTD_CODEXW_SELF_TEST_INTERVAL_SECONDS=123 \
 AGENTD_CODEXW_DRY_RUN=1 \
   "${ROOT}/tools/install_agentd_codexw_connector_launchd.sh" >/dev/null
@@ -98,6 +105,10 @@ if ! grep -q -- "--require-update-preflight" "${TMP_DIR}/com.agentd.codexw-conne
   echo "connector launchd self-test plist missing update preflight check" >&2
   exit 1
 fi
+if ! grep -q -- "--self-test-output-path" "${TMP_DIR}/com.agentd.codexw-connector.self-test.plist"; then
+  echo "connector launchd self-test plist missing durable status output path" >&2
+  exit 1
+fi
 python3 - <<PY
 import plistlib
 from pathlib import Path
@@ -123,6 +134,8 @@ if env.get("AGENTD_CODEXW_RUNTIME_UPDATE_MODE") != "agentd_ota":
     raise SystemExit("launchd plist missing runtime update mode environment")
 if env.get("AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT") != "1":
     raise SystemExit("launchd plist missing update preflight environment")
+if env.get("AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH") != "${TMP_DIR}/codexw-native/self-test-status.json":
+    raise SystemExit("launchd plist missing self-test output path environment")
 if self_test.get("KeepAlive"):
     raise SystemExit("launchd self-test plist must not be KeepAlive")
 if self_test.get("StartInterval") != 123:
@@ -148,6 +161,9 @@ if payload["configuration"]["environment"].get("AGENTD_CODEXW_BROKER_TOKEN") != 
 checks = {check["name"]: check for check in payload["self_test"]["payload"]["checks"]}
 if not checks.get("broker_runtime_update_preflight", {}).get("ok"):
     raise SystemExit("launchd verifier did not run update preflight self-test")
+last_status = payload.get("last_self_test_status", {})
+if not last_status.get("exists") or not last_status.get("payload", {}).get("ok"):
+    raise SystemExit(f"launchd verifier did not read durable self-test status: {payload}")
 PY
 
 SYSTEMD_ENV="${TMP_DIR}/codexw-connector.env"
@@ -161,6 +177,7 @@ AGENTD_CODEXW_IDENTITY_DIR=${TMP_DIR}/codexw-native
 AGENTD_CODEXW_BROKER_TOKEN=read-token
 AGENTD_CODEXW_RUNTIME_UPDATE_MODE=agentd_ota
 AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT=1
+AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH=${TMP_DIR}/systemd-self-test-status.json
 EOF
 python3 "${ROOT}/tools/verify_agentd_codexw_connector_service.py" \
   --platform systemd \
@@ -179,6 +196,9 @@ if payload["configuration"]["environment"].get("AGENTD_CODEXW_BROKER_TOKEN") != 
 checks = {check["name"]: check for check in payload["self_test"]["payload"]["checks"]}
 if not checks.get("broker_runtime_update_preflight", {}).get("ok"):
     raise SystemExit("systemd verifier did not run update preflight self-test")
+last_status = payload.get("last_self_test_status", {})
+if not last_status.get("exists") or not last_status.get("payload", {}).get("ok"):
+    raise SystemExit(f"systemd verifier did not read durable self-test status: {payload}")
 PY
 
 grep -q "Restart=always" "${ROOT}/packaging/systemd/agentd.service"
@@ -186,8 +206,10 @@ grep -q "Restart=always" "${ROOT}/packaging/systemd/agentd-codexw-connector.serv
 grep -q -- "--connect" "${ROOT}/packaging/systemd/agentd-codexw-connector.service"
 grep -q -- "--self-test" "${ROOT}/packaging/systemd/agentd-codexw-connector-self-test.service"
 grep -q -- "--require-broker-visible" "${ROOT}/packaging/systemd/agentd-codexw-connector-self-test.service"
+grep -q -- "--self-test-output-path" "${ROOT}/packaging/systemd/agentd-codexw-connector-self-test.service"
 grep -q "OnUnitActiveSec=5min" "${ROOT}/packaging/systemd/agentd-codexw-connector-self-test.timer"
 grep -q "AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT=0" "${ROOT}/packaging/systemd/codexw-connector.env.example"
+grep -q "AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH=" "${ROOT}/packaging/systemd/codexw-connector.env.example"
 if grep -q -- "--agentd-auth-token\\|--broker-user\\|--broker-password\\|--enrollment-token-id\\|--enrollment-shared-secret" "${ROOT}/packaging/systemd/agentd-codexw-connector.service"; then
   echo "systemd connector unit must not pass secrets on argv" >&2
   exit 1

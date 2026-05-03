@@ -117,6 +117,15 @@ def write_text_private(path: Path, text: str, mode: int = 0o600) -> None:
     path.chmod(mode)
 
 
+def write_json_private(path: Path, payload: dict[str, Any], mode: int = 0o600) -> None:
+    path = path.expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    tmp_path.write_text(json_pretty(payload) + "\n", encoding="utf-8")
+    tmp_path.chmod(mode)
+    tmp_path.replace(path)
+
+
 def read_pem_der(path: Path, label: str) -> bytes:
     text = path.read_text(encoding="utf-8")
     lines = [line.strip() for line in text.splitlines() if line and not line.startswith("-----")]
@@ -1155,6 +1164,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--timeout", type=float, default=15.0)
     parser.add_argument("--dry-run", action="store_true", help="print broker-ready identity/snapshot JSON")
     parser.add_argument("--self-test", action="store_true", help="run a read-only connector readiness check")
+    parser.add_argument(
+        "--self-test-output-path",
+        default=os.environ.get("AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH", ""),
+        help="optional path where self-test writes the last readiness result as JSON",
+    )
     parser.add_argument("--require-broker-visible", action="store_true", help="self-test fails unless the broker reports this runtime online")
     parser.add_argument(
         "--require-update-preflight",
@@ -1210,6 +1224,8 @@ def main(argv: list[str]) -> int:
         return 0
     if args.self_test:
         result = {**run_self_test(args), "identity": identity}
+        if args.self_test_output_path:
+            write_json_private(Path(args.self_test_output_path), result)
         print(json_pretty(result))
         return 0 if result.get("ok") else 1
     print(json_pretty({**build_dry_run_payload(args), "identity": identity}))

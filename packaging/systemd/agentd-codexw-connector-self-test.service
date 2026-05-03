@@ -16,4 +16,5 @@ ExecStart=/usr/bin/env python3 /opt/agentd/tools/agentd_codexw_native_broker_con
   --identity-dir ${AGENTD_CODEXW_IDENTITY_DIR} \
   --agentd-base-url ${AGENTD_BASE_URL} \
   --self-test \
+  --self-test-output-path ${AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH} \
   --require-broker-visible

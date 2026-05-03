@@ -142,12 +142,14 @@ import json
 import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 SCRIPT = "${SCRIPT_DIR}/../tools/agentd_codexw_native_broker_connector.py"
 KEY_PATH = "${KEY_PATH}"
 CERT_PATH = "${CERT_PATH}"
 SESSION_TOKEN = "broker-read-token"
 PREFLIGHT_REQUESTS = []
+SELF_TEST_OUTPUT_PATH = "${TMP_DIR}/native-self-test-status.json"
 
 
 class AgentdHandler(BaseHTTPRequestHandler):
@@ -308,6 +310,8 @@ proc = subprocess.run(
         "--runtime-update-mode",
         "agentd_ota",
         "--self-test",
+        "--self-test-output-path",
+        SELF_TEST_OUTPUT_PATH,
         "--require-broker-visible",
         "--require-update-preflight",
     ],
@@ -322,6 +326,8 @@ if proc.returncode != 0:
     raise SystemExit(f"self-test failed\\nSTDOUT:\\n{proc.stdout}\\nSTDERR:\\n{proc.stderr}")
 payload = json.loads(proc.stdout)
 assert payload["ok"] is True, payload
+status_payload = json.loads(Path(SELF_TEST_OUTPUT_PATH).read_text())
+assert status_payload == payload, status_payload
 checks = {check["name"]: check for check in payload["checks"]}
 for name in (
     "identity_files",

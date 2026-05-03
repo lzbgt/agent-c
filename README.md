@@ -184,6 +184,9 @@ preflight checks.
 Use `tools/verify_agentd_codexw_connector_service.py` on an installed host to
 inspect launchd/systemd state, recent self-test logs, redacted service
 configuration, broker visibility, and optional update preflight in one report.
+The periodic self-test also writes a durable JSON status file at
+`AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH`, giving operators and future client
+surfaces a stable machine-readable last-readiness result.
 
 Broker operator actions are opt-in. By default the connector still does not
 advertise `runtime.restart`, `runtime.update`, or `runtime.upgrade`. Set

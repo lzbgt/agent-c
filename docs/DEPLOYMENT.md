@@ -246,6 +246,12 @@ connector logs, and runs the installed self-test command. On Linux it reads
 The report redacts token/password/secret environment values and includes the
 broker-visible and optional `runtime.update` preflight checks in one JSON
 object.
+Each periodic self-test also writes the same readiness payload to
+`AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH` with an atomic replace. The default is
+`/var/lib/agentd/codexw-native/self-test-status.json` for systemd installs and
+`${AGENTD_CODEXW_IDENTITY_DIR}/self-test-status.json` for launchd installs.
+Use this file for local health dashboards or support bundles instead of
+scraping launchd/systemd logs.
 
 Broker-driven runtime updates are disabled by default. To expose
 `runtime.update` through the shared codexw broker, first enable the daemon OTA

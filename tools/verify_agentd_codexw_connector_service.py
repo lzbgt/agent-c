@@ -91,6 +91,23 @@ def load_plist(path: Path) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def read_json_file(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {"path": str(path), "exists": False, "payload": None}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return {"path": str(path), "exists": True, "payload": payload}
+    except Exception as exc:  # noqa: BLE001
+        return {"path": str(path), "exists": True, "error": str(exc), "payload": None}
+
+
+def status_path_from_command(command: list[Any], env: dict[str, str]) -> str:
+    for index, item in enumerate(command):
+        if str(item) == "--self-test-output-path" and index + 1 < len(command):
+            return str(command[index + 1])
+    return str(env.get("AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH") or "")
+
+
 def launchd_report(args: argparse.Namespace) -> dict[str, Any]:
     label = args.launchd_label
     self_test_label = args.launchd_self_test_label or f"{label}.self-test"
@@ -134,6 +151,7 @@ def launchd_report(args: argparse.Namespace) -> dict[str, Any]:
     if not isinstance(command, list):
         command = []
     self_test = run_self_test_command(command, env, args)
+    status_path = status_path_from_command(command, {str(k): str(v) for k, v in env.items()})
     return {
         "platform": "launchd",
         "supervisor": supervisor,
@@ -145,6 +163,7 @@ def launchd_report(args: argparse.Namespace) -> dict[str, Any]:
             "self_test_keep_alive": bool(self_test_plist.get("KeepAlive")),
         },
         "logs": logs,
+        "last_self_test_status": read_json_file(Path(status_path).expanduser()) if status_path else {},
         "self_test": self_test,
     }
 
@@ -168,6 +187,11 @@ def systemd_report(args: argparse.Namespace) -> dict[str, Any]:
         "--agentd-base-url",
         env.get("AGENTD_BASE_URL", "http://127.0.0.1:8123"),
         "--self-test",
+        "--self-test-output-path",
+        env.get(
+            "AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH",
+            str(Path(env.get("AGENTD_CODEXW_IDENTITY_DIR", "/var/lib/agentd/codexw-native")) / "self-test-status.json"),
+        ),
         "--require-broker-visible",
     ]
     if env_bool(env.get("AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT")):
@@ -203,6 +227,9 @@ def systemd_report(args: argparse.Namespace) -> dict[str, Any]:
             "environment": redact_env(env),
         },
         "logs": {},
+        "last_self_test_status": read_json_file(Path(env.get("AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH", "")).expanduser())
+        if env.get("AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH")
+        else {},
         "self_test": self_test,
     }
 

@@ -19,6 +19,7 @@ enrollment_token_id="${AGENTD_CODEXW_ENROLLMENT_TOKEN_ID:-}"
 enrollment_secret="${AGENTD_CODEXW_ENROLLMENT_SECRET:-}"
 runtime_update_mode="${AGENTD_CODEXW_RUNTIME_UPDATE_MODE:-disabled}"
 require_update_preflight="${AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT:-0}"
+self_test_output_path="${AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH:-${identity_dir}/self-test-status.json}"
 log_dir="${AGENTD_CODEXW_LOG_DIR:-${HOME}/Library/Logs}"
 plist_path="${AGENTD_CODEXW_PLIST_PATH:-${HOME}/Library/LaunchAgents/${label}.plist}"
 self_test_label="${AGENTD_CODEXW_SELF_TEST_LABEL:-${label}.self-test}"
@@ -104,6 +105,7 @@ add_env "AGENTD_CODEXW_BROKER_PASSWORD" "${broker_password}"
 add_env "AGENTD_CODEXW_BROKER_TOKEN" "${broker_token}"
 add_env "AGENTD_CODEXW_RUNTIME_UPDATE_MODE" "${runtime_update_mode}"
 add_env "AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT" "${require_update_preflight}"
+add_env "AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH" "${self_test_output_path}"
 add_env "AGENTD_CODEXW_ENROLLMENT_TOKEN_ID" "${enrollment_token_id}"
 add_env "AGENTD_CODEXW_ENROLLMENT_SECRET" "${enrollment_secret}"
 
@@ -164,6 +166,7 @@ self_test_args=(
   "--identity-dir" "${identity_dir}"
   "--agentd-base-url" "${agentd_base_url}"
   "--self-test"
+  "--self-test-output-path" "${self_test_output_path}"
   "--require-broker-visible"
 )
 if [[ "${require_update_preflight}" == "1" || "${require_update_preflight}" == "true" ]]; then
