@@ -75,6 +75,7 @@ AGENTD_CODEXW_BROKER_USER="admin" \
 AGENTD_CODEXW_BROKER_PASSWORD="secret" \
 AGENTD_CODEXW_BROKER_TOKEN="read-token" \
 AGENTD_CODEXW_RUNTIME_UPDATE_MODE="agentd_ota" \
+AGENTD_CODEXW_RUNTIME_RESTART_MODE="agentd_ota" \
 AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT=1 \
 AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH="${TMP_DIR}/codexw-native/self-test-status.json" \
 AGENTD_CODEXW_SELF_TEST_INTERVAL_SECONDS=123 \
@@ -132,6 +133,8 @@ if env.get("AGENTD_CODEXW_BROKER_TOKEN") != "read-token":
     raise SystemExit("launchd plist missing broker token environment")
 if env.get("AGENTD_CODEXW_RUNTIME_UPDATE_MODE") != "agentd_ota":
     raise SystemExit("launchd plist missing runtime update mode environment")
+if env.get("AGENTD_CODEXW_RUNTIME_RESTART_MODE") != "agentd_ota":
+    raise SystemExit("launchd plist missing runtime restart mode environment")
 if env.get("AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT") != "1":
     raise SystemExit("launchd plist missing update preflight environment")
 if env.get("AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH") != "${TMP_DIR}/codexw-native/self-test-status.json":
@@ -178,6 +181,7 @@ AGENTD_CODEXW_DISPLAY_NAME=agentd service smoke
 AGENTD_CODEXW_IDENTITY_DIR=${TMP_DIR}/codexw-native
 AGENTD_CODEXW_BROKER_TOKEN=read-token
 AGENTD_CODEXW_RUNTIME_UPDATE_MODE=agentd_ota
+AGENTD_CODEXW_RUNTIME_RESTART_MODE=agentd_ota
 AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT=1
 AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH=${TMP_DIR}/systemd-self-test-status.json
 EOF
@@ -211,6 +215,7 @@ grep -q -- "--require-broker-visible" "${ROOT}/packaging/systemd/agentd-codexw-c
 grep -q -- "--self-test-output-path" "${ROOT}/packaging/systemd/agentd-codexw-connector-self-test.service"
 grep -q "OnUnitActiveSec=5min" "${ROOT}/packaging/systemd/agentd-codexw-connector-self-test.timer"
 grep -q "AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT=0" "${ROOT}/packaging/systemd/codexw-connector.env.example"
+grep -q "AGENTD_CODEXW_RUNTIME_RESTART_MODE=disabled" "${ROOT}/packaging/systemd/codexw-connector.env.example"
 grep -q "AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH=" "${ROOT}/packaging/systemd/codexw-connector.env.example"
 grep -q "AGENTD_CODEXW_SELF_TEST_STALE_AFTER_SECONDS=900" "${ROOT}/packaging/systemd/codexw-connector.env.example"
 if grep -q -- "--agentd-auth-token\\|--broker-user\\|--broker-password\\|--enrollment-token-id\\|--enrollment-shared-secret" "${ROOT}/packaging/systemd/agentd-codexw-connector.service"; then

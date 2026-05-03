@@ -74,8 +74,14 @@ New configuration knobs:
 - `--ota-command <path>` (env `AGENTD_OTA_COMMAND`)
 - `--ota-command-timeout-ms <n>` (env `AGENTD_OTA_COMMAND_TIMEOUT_MS`)
 - `--ota-drain-timeout-ms <n>` (env `AGENTD_OTA_DRAIN_TIMEOUT_MS`)
+- `AGENTD_OTA_RESTART=systemd|launchd|signal` (default `signal`)
+- `AGENTD_OTA_SERVICE=<service>` for systemd/launchd restart ownership
+- `AGENTD_OTA_RESTART_DRY_RUN=1` for restart smokes/proofs only
 
-If OTA is not enabled or the command is missing, the endpoint returns an error.
+If OTA is not enabled or the command is missing, the update endpoint returns an
+error. `POST /api/v1/ota/restart` does not require an update command, but it
+still requires OTA to be enabled and requires a supervisor restart mode of
+`systemd` or `launchd` with a safe `AGENTD_OTA_SERVICE`.
 
 ## OTA Plan File
 
@@ -85,7 +91,8 @@ Agentd writes a plan file under the state dir so that the update can be audited 
 
 The plan includes:
 
-- `ota_id`, `version`, `url`, `sha256`, `reason`, `requested_unix_ms`, `trace_id`
+- `ota_id`, `operation`, `version`, `url`, `sha256`, `reason`,
+  `requested_unix_ms`, `trace_id`, `idempotency_key`
 - `agentd_pid`, `state_dir`, `db_path`
 - `status` (queued/running/error/done)
 
@@ -110,6 +117,13 @@ The WebUI uses broker **deployments + bulk fan-out** to update multiple deployme
 - Proxy fallback per deployment remains supported:
   - `POST /v1/agents/{agent_id}/proxy/api/v1/ota/update` with `X-Agentd-Deployment`.
 
+The local daemon also exposes `POST /api/v1/ota/restart` for broker
+`runtime.restart`. That endpoint writes a restart plan, enters the same drain
+boundary as update, waits for in-flight work up to `drain_timeout_ms`, and then
+asks the configured supervisor to restart the service. The codexw connector may
+advertise `runtime.restart` only when `/api/v1/ota/status` reports
+`restart.enabled=true` and safe boundary `agentd_supervisor_restart_drain`.
+
 This leverages broker auth + audit trail and keeps multi-deployment updates consistent.
 
 ## Task Continuity After OTA
@@ -129,3 +143,6 @@ This leverages broker auth + audit trail and keeps multi-deployment updates cons
 - Broker audit trail captures OTA proxy requests.
 - `GET /api/v1/ota/status` returns best-effort inflight counts when DB is available
   (`jobs_running`, `jobs_queued`, `workflow_tasks_running`, `workflow_tasks_queued`, `workflows_running`).
+- `GET /api/v1/ota/status` returns a `restart` object describing whether
+  supervisor restart is available, enabled, dry-run, and bound to the safe
+  `agentd_supervisor_restart_drain` policy.

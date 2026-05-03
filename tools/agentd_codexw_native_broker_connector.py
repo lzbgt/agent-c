@@ -46,6 +46,8 @@ DEFAULT_CSR_NAME = "deployment.csr.pem"
 DEFAULT_ENROLLMENT_MATERIAL_NAME = "deployment.enrollment.json"
 RUNTIME_UPDATE_MODE_DISABLED = "disabled"
 RUNTIME_UPDATE_MODE_AGENTD_OTA = "agentd_ota"
+RUNTIME_RESTART_MODE_DISABLED = "disabled"
+RUNTIME_RESTART_MODE_AGENTD_OTA = "agentd_ota"
 DEFAULT_SELF_TEST_STALE_AFTER_SECONDS = 900
 
 
@@ -610,11 +612,58 @@ def operator_runtime_actions(args: argparse.Namespace) -> dict[str, dict[str, An
             "input": "agentd_ota_update_request",
             "safe_boundary": "agentd_ota_drain",
         }
+    if runtime_restart_advertisable(args):
+        actions["runtime.restart"] = {
+            "transport": "local_api",
+            "method": "POST",
+            "path": "/api/v1/runtime/actions",
+            "input": "agentd_ota_restart_request",
+            "safe_boundary": "agentd_supervisor_restart_drain",
+        }
     return actions
 
 
 def runtime_capabilities_for_args(args: argparse.Namespace) -> dict[str, Any]:
     return runtime_capabilities(operator_runtime_actions(args))
+
+
+def cached_agentd_ota_status(args: argparse.Namespace) -> dict[str, Any]:
+    cached = getattr(args, "_agentd_ota_status_cache", None)
+    if isinstance(cached, dict):
+        return cached
+    try:
+        status = agentd_request(args, "GET", "/api/v1/ota/status")
+        if not isinstance(status, dict):
+            status = {"ok": True, "value": status}
+    except Exception as exc:  # noqa: BLE001
+        setattr(args, "_agentd_ota_status_cache_error", str(exc))
+        status = {}
+    setattr(args, "_agentd_ota_status_cache", status)
+    return status
+
+
+def runtime_restart_status_from_args(args: argparse.Namespace) -> dict[str, Any]:
+    status = cached_agentd_ota_status(args)
+    restart = status.get("restart") if isinstance(status.get("restart"), dict) else {}
+    return restart
+
+
+def fresh_runtime_restart_status_from_args(args: argparse.Namespace) -> dict[str, Any]:
+    status = agentd_request(args, "GET", "/api/v1/ota/status")
+    if not isinstance(status, dict):
+        return {}
+    restart = status.get("restart") if isinstance(status.get("restart"), dict) else {}
+    return restart
+
+
+def runtime_restart_advertisable(args: argparse.Namespace) -> bool:
+    if args.runtime_restart_mode != RUNTIME_RESTART_MODE_AGENTD_OTA:
+        return False
+    restart = runtime_restart_status_from_args(args)
+    return (
+        bool(restart.get("enabled"))
+        and str(restart.get("safe_boundary") or "") == "agentd_supervisor_restart_drain"
+    )
 
 
 def first_string_from_any(obj: Any, keys: tuple[str, ...]) -> str:
@@ -665,6 +714,34 @@ def runtime_update_request_body(input_obj: dict[str, Any]) -> dict[str, Any]:
     return body
 
 
+def runtime_restart_request_body(input_obj: dict[str, Any], command_body: dict[str, Any]) -> dict[str, Any]:
+    reason = (
+        first_string_from_any(input_obj, ("reason",))
+        or first_string_from_any(command_body, ("reason",))
+        or "codexw broker runtime.restart"
+    )
+    body: dict[str, Any] = {"reason": reason}
+    idempotency_key = (
+        first_string_from_any(input_obj, ("idempotency_key",))
+        or first_string_from_any(command_body, ("idempotency_key",))
+    )
+    if idempotency_key:
+        body["idempotency_key"] = idempotency_key
+    trace_id = first_string_from_any(input_obj, ("trace_id",)) or first_string_from_any(command_body, ("trace_id",))
+    if trace_id:
+        body["trace_id"] = trace_id
+    drain_timeout_ms = input_obj.get("drain_timeout_ms", command_body.get("drain_timeout_ms"))
+    if isinstance(drain_timeout_ms, (int, float)) or (isinstance(drain_timeout_ms, str) and drain_timeout_ms.strip()):
+        try:
+            parsed_timeout = int(drain_timeout_ms)
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError("runtime.restart input.drain_timeout_ms must be an integer") from exc
+        if parsed_timeout < 0:
+            raise ValueError("runtime.restart input.drain_timeout_ms must be non-negative")
+        body["drain_timeout_ms"] = parsed_timeout
+    return body
+
+
 def forward_runtime_action(args: argparse.Namespace, body: dict[str, Any]) -> dict[str, Any]:
     action = body.get("action")
     if not isinstance(action, str) or not action.strip():
@@ -694,6 +771,15 @@ def forward_runtime_action(args: argparse.Namespace, body: dict[str, Any]) -> di
         if args.runtime_update_mode != RUNTIME_UPDATE_MODE_AGENTD_OTA:
             raise ValueError("runtime.update is disabled; set AGENTD_CODEXW_RUNTIME_UPDATE_MODE=agentd_ota")
         result = agentd_request(args, "POST", "/api/v1/ota/update", runtime_update_request_body(input_obj))
+    elif action == "runtime.restart":
+        if args.runtime_restart_mode != RUNTIME_RESTART_MODE_AGENTD_OTA:
+            raise ValueError("runtime.restart is disabled; set AGENTD_CODEXW_RUNTIME_RESTART_MODE=agentd_ota")
+        restart = fresh_runtime_restart_status_from_args(args)
+        if not bool(restart.get("enabled")):
+            raise ValueError("runtime.restart is not enabled by agentd /api/v1/ota/status restart policy")
+        if str(restart.get("safe_boundary") or "") != "agentd_supervisor_restart_drain":
+            raise ValueError("runtime.restart safe_boundary is not agentd_supervisor_restart_drain")
+        result = agentd_request(args, "POST", "/api/v1/ota/restart", runtime_restart_request_body(input_obj, body))
     else:
         raise ValueError(f"unsupported runtime action: {action}")
     return {
@@ -745,6 +831,7 @@ def handle_command(args: argparse.Namespace, frame: dict[str, Any]) -> dict[str,
             result = agentd_runtime_status(
                 request_agentd,
                 update_enabled=args.runtime_update_mode == RUNTIME_UPDATE_MODE_AGENTD_OTA,
+                restart_enabled=args.runtime_restart_mode == RUNTIME_RESTART_MODE_AGENTD_OTA,
                 connector=connector_readiness_status(args),
             )
         elif method == "GET" and route_path == "/api/v1/runtime/sessions":
@@ -978,6 +1065,20 @@ def run_self_test(args: argparse.Namespace) -> dict[str, Any]:
             checks.append(check_status("agentd_ota_status", bool(ota_status.get("ok", True)), response=ota_status))
         except Exception as exc:  # noqa: BLE001
             checks.append(check_status("agentd_ota_status", False, error=str(exc)))
+    if args.runtime_restart_mode == RUNTIME_RESTART_MODE_AGENTD_OTA:
+        try:
+            ota_status = agentd_request(args, "GET", "/api/v1/ota/status")
+            restart = ota_status.get("restart") if isinstance(ota_status.get("restart"), dict) else {}
+            checks.append(
+                check_status(
+                    "agentd_ota_restart_status",
+                    bool(restart.get("enabled"))
+                    and str(restart.get("safe_boundary") or "") == "agentd_supervisor_restart_drain",
+                    response=restart or ota_status,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            checks.append(check_status("agentd_ota_restart_status", False, error=str(exc)))
 
     should_check_broker = bool(
         args.require_broker_visible
@@ -1272,6 +1373,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=os.environ.get("AGENTD_CODEXW_RUNTIME_UPDATE_MODE", RUNTIME_UPDATE_MODE_DISABLED),
         choices=[RUNTIME_UPDATE_MODE_DISABLED, RUNTIME_UPDATE_MODE_AGENTD_OTA],
         help="advertise broker runtime.update only when agentd OTA owns the local safe update boundary",
+    )
+    parser.add_argument(
+        "--runtime-restart-mode",
+        default=os.environ.get("AGENTD_CODEXW_RUNTIME_RESTART_MODE", RUNTIME_RESTART_MODE_DISABLED),
+        choices=[RUNTIME_RESTART_MODE_DISABLED, RUNTIME_RESTART_MODE_AGENTD_OTA],
+        help="advertise broker runtime.restart only when agentd OTA status proves a supervisor restart boundary",
     )
     parser.add_argument("--timestamp", type=int, default=0, help="fixed Unix timestamp for deterministic tests")
     parser.add_argument("--timeout", type=float, default=15.0)

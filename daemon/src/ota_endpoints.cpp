@@ -7,6 +7,7 @@
 #include "string_util.h"
 
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -29,11 +30,13 @@ namespace {
 
 struct OtaPlan {
   std::string ota_id;
+  std::string operation; // update | restart
   std::string version;
   std::string url;
   std::string sha256;
   std::string reason;
   std::string trace_id;
+  std::string idempotency_key;
   std::string status; // queued | running | done | error
   std::string last_error;
   std::string plan_path;
@@ -53,6 +56,14 @@ struct OtaState {
 
 OtaState g_ota;
 std::mutex g_env_mu;
+
+struct RestartPolicy {
+  std::string mode;
+  std::string service;
+  bool dry_run = false;
+  bool enabled = false;
+  std::string detail;
+};
 
 int64_t unix_ms_now() {
   return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -104,11 +115,13 @@ std::string new_ota_id() {
 Json::Value plan_to_json(const OtaPlan& p) {
   Json::Value out(Json::objectValue);
   out["ota_id"] = p.ota_id;
+  if (!p.operation.empty()) out["operation"] = p.operation;
   if (!p.version.empty()) out["version"] = p.version;
-  out["url"] = p.url;
+  if (!p.url.empty()) out["url"] = p.url;
   if (!p.sha256.empty()) out["sha256"] = p.sha256;
   if (!p.reason.empty()) out["reason"] = p.reason;
   if (!p.trace_id.empty()) out["trace_id"] = p.trace_id;
+  if (!p.idempotency_key.empty()) out["idempotency_key"] = p.idempotency_key;
   out["status"] = p.status;
   if (!p.last_error.empty()) out["last_error"] = p.last_error;
   out["requested_unix_ms"] = (Json::Int64)p.requested_unix_ms;
@@ -166,11 +179,13 @@ bool read_plan_file(const std::string& path, OtaPlan* out_plan, std::string* out
     return false;
   }
   if (v.isMember("ota_id") && v["ota_id"].isString()) out_plan->ota_id = v["ota_id"].asString();
+  if (v.isMember("operation") && v["operation"].isString()) out_plan->operation = v["operation"].asString();
   if (v.isMember("version") && v["version"].isString()) out_plan->version = v["version"].asString();
   if (v.isMember("url") && v["url"].isString()) out_plan->url = v["url"].asString();
   if (v.isMember("sha256") && v["sha256"].isString()) out_plan->sha256 = v["sha256"].asString();
   if (v.isMember("reason") && v["reason"].isString()) out_plan->reason = v["reason"].asString();
   if (v.isMember("trace_id") && v["trace_id"].isString()) out_plan->trace_id = v["trace_id"].asString();
+  if (v.isMember("idempotency_key") && v["idempotency_key"].isString()) out_plan->idempotency_key = v["idempotency_key"].asString();
   if (v.isMember("status") && v["status"].isString()) out_plan->status = v["status"].asString();
   if (v.isMember("last_error") && v["last_error"].isString()) out_plan->last_error = v["last_error"].asString();
   if (v.isMember("requested_unix_ms") && v["requested_unix_ms"].isInt64()) out_plan->requested_unix_ms = v["requested_unix_ms"].asInt64();
@@ -342,6 +357,100 @@ bool run_ota_command(
   return true;
 }
 
+std::string getenv_trimmed(const char* key) {
+  if (!key) return "";
+  const char* value = std::getenv(key);
+  return value ? trim_copy(value) : "";
+}
+
+bool env_truthy_local(const char* key) {
+  const std::string value = getenv_trimmed(key);
+  return value == "1" || value == "true" || value == "TRUE" || value == "yes" || value == "on";
+}
+
+bool safe_supervisor_service_name(const std::string& service) {
+  if (service.empty() || service.size() > 256) return false;
+  for (unsigned char c : service) {
+    if (std::isalnum(c) || c == '_' || c == '-' || c == '.' || c == '@' || c == ':') continue;
+    return false;
+  }
+  return true;
+}
+
+RestartPolicy supervisor_restart_policy_from_env(const DaemonConfig& cfg) {
+  RestartPolicy policy;
+  policy.mode = getenv_trimmed("AGENTD_OTA_RESTART");
+  if (policy.mode.empty()) policy.mode = "signal";
+  policy.service = getenv_trimmed("AGENTD_OTA_SERVICE");
+  policy.dry_run = env_truthy_local("AGENTD_OTA_RESTART_DRY_RUN");
+  if (!cfg.ota_enable) {
+    policy.detail = "ota disabled";
+    return policy;
+  }
+  if (policy.mode != "systemd" && policy.mode != "launchd") {
+    policy.detail = "restart policy must be systemd or launchd for broker runtime.restart";
+    return policy;
+  }
+  if (!safe_supervisor_service_name(policy.service)) {
+    policy.detail = "AGENTD_OTA_SERVICE is missing or unsafe";
+    return policy;
+  }
+  policy.enabled = true;
+  policy.detail = policy.dry_run ? "supervisor restart dry-run is enabled" : "supervisor restart is configured";
+  return policy;
+}
+
+Json::Value restart_policy_to_json(const DaemonConfig& cfg, const OtaPlan& plan) {
+  const RestartPolicy policy = supervisor_restart_policy_from_env(cfg);
+  Json::Value out(Json::objectValue);
+  out["source"] = "agentd.ota.restart";
+  out["available"] = cfg.ota_enable;
+  out["enabled"] = policy.enabled;
+  out["state"] = policy.enabled ? "ready" : "disabled";
+  out["detail"] = policy.detail;
+  out["safe_boundary"] = "agentd_supervisor_restart_drain";
+  if (!policy.mode.empty()) out["method"] = policy.mode;
+  if (!policy.service.empty()) out["service"] = policy.service;
+  out["dry_run"] = policy.dry_run;
+  out["drain_timeout_ms"] = (Json::Int64)cfg.ota_drain_timeout_ms;
+  if (plan.operation == "restart" && !plan.status.empty() && plan.status != "none") {
+    out["current_ota_id"] = plan.ota_id;
+    out["current_status"] = plan.status;
+    if (plan.updated_unix_ms > 0) out["updated_unix_ms"] = (Json::Int64)plan.updated_unix_ms;
+    if (!plan.last_error.empty()) out["last_error"] = plan.last_error;
+  }
+  return out;
+}
+
+bool run_supervisor_restart_command(const RestartPolicy& policy, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!policy.enabled) {
+    if (out_err) *out_err = policy.detail.empty() ? "restart policy disabled" : policy.detail;
+    return false;
+  }
+  if (policy.dry_run) return true;
+  std::string cmd;
+  if (policy.mode == "systemd") {
+    cmd = "systemctl restart " + policy.service;
+  } else if (policy.mode == "launchd") {
+#if defined(_WIN32)
+    if (out_err) *out_err = "launchd restart is not supported on Windows";
+    return false;
+#else
+    cmd = "launchctl kickstart -k gui/" + std::to_string((long long)getuid()) + "/" + policy.service;
+#endif
+  } else {
+    if (out_err) *out_err = "unsupported restart policy";
+    return false;
+  }
+  const int rc = std::system(cmd.c_str());
+  if (rc != 0) {
+    if (out_err) *out_err = "supervisor restart command failed";
+    return false;
+  }
+  return true;
+}
+
 void run_ota_async(OtaPlan plan, DaemonConfig cfg, AgentDb* db_or_null) {
   const std::string plan_path = plan.plan_path;
   const int64_t now_ms = unix_ms_now();
@@ -381,6 +490,36 @@ void run_ota_async(OtaPlan plan, DaemonConfig cfg, AgentDb* db_or_null) {
   drain_end();
 }
 
+void run_restart_async(OtaPlan plan, DaemonConfig cfg, AgentDb* db_or_null) {
+  const std::string plan_path = plan.plan_path;
+  const int64_t now_ms = unix_ms_now();
+  const int64_t drain_until = plan.drain_timeout_ms > 0 ? now_ms + plan.drain_timeout_ms : now_ms;
+  const std::string drain_reason = plan.reason.empty() ? std::string("restart") : plan.reason;
+  drain_begin(drain_until, drain_reason);
+  {
+    std::lock_guard<std::mutex> lk(g_ota.mu);
+    g_ota.plan.status = "running";
+    g_ota.plan.updated_unix_ms = unix_ms_now();
+    plan.status = g_ota.plan.status;
+    plan.updated_unix_ms = g_ota.plan.updated_unix_ms;
+    (void)write_plan_file(plan_path, g_ota.plan, nullptr);
+  }
+
+  wait_for_inflight_or_timeout(db_or_null, plan.drain_timeout_ms);
+
+  std::string err;
+  const bool ok = run_supervisor_restart_command(supervisor_restart_policy_from_env(cfg), &err);
+
+  {
+    std::lock_guard<std::mutex> lk(g_ota.mu);
+    g_ota.plan.status = ok ? "done" : "error";
+    g_ota.plan.updated_unix_ms = unix_ms_now();
+    g_ota.plan.last_error = ok ? "" : (err.empty() ? "restart command failed" : err);
+    (void)write_plan_file(plan_path, g_ota.plan, nullptr);
+  }
+  drain_end();
+}
+
 void write_json_error(HttpResponse* resp, int status, const std::string& msg) {
   if (!resp) return;
   resp->status = status;
@@ -412,7 +551,7 @@ void handle_ota_update_endpoint(
     return;
   }
 
-  Json::Value args;
+  Json::Value args(Json::objectValue);
   std::string perr;
   if (!json_parse_object(req.body, &args, &perr)) {
     write_json_error(resp, 400, std::string("invalid JSON: ") + perr);
@@ -459,6 +598,7 @@ void handle_ota_update_endpoint(
 
   OtaPlan plan;
   plan.ota_id = new_ota_id();
+  plan.operation = "update";
   plan.version = version;
   plan.url = url;
   plan.sha256 = sha256;
@@ -496,6 +636,115 @@ void handle_ota_update_endpoint(
   resp->body = json_stringify(out);
 }
 
+void handle_ota_restart_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp,
+  AgentDb* db_or_null
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  const RestartPolicy policy = supervisor_restart_policy_from_env(cfg);
+  if (!policy.enabled) {
+    write_json_error(resp, 403, policy.detail.empty() ? "restart disabled" : policy.detail);
+    return;
+  }
+
+  Json::Value args;
+  std::string perr;
+  if (!req.body.empty() && !json_parse_object(req.body, &args, &perr)) {
+    write_json_error(resp, 400, std::string("invalid JSON: ") + perr);
+    return;
+  }
+
+  const std::string reason = args.isMember("reason") && args["reason"].isString() ? trim_copy(args["reason"].asString()) : "";
+  const std::string trace_id = args.isMember("trace_id") && args["trace_id"].isString() ? trim_copy(args["trace_id"].asString()) : "";
+  const std::string idempotency_key = args.isMember("idempotency_key") && args["idempotency_key"].isString()
+    ? trim_copy(args["idempotency_key"].asString())
+    : "";
+
+  int64_t drain_ms = cfg.ota_drain_timeout_ms;
+  if (args.isMember("drain_timeout_ms") && args["drain_timeout_ms"].isInt64()) {
+    drain_ms = args["drain_timeout_ms"].asInt64();
+  } else if (args.isMember("drain_timeout_ms") && args["drain_timeout_ms"].isUInt64()) {
+    drain_ms = (int64_t)args["drain_timeout_ms"].asUInt64();
+  }
+  if (drain_ms < 0) drain_ms = 0;
+  if (drain_ms > 60LL * 60 * 1000) drain_ms = 60LL * 60 * 1000;
+
+  const std::string plan_path = plan_path_for_cfg(cfg);
+  if (plan_path.empty()) {
+    write_json_error(resp, 500, "missing state_dir");
+    return;
+  }
+
+  {
+    std::lock_guard<std::mutex> lk(g_ota.mu);
+    if (
+      g_ota.plan.operation == "restart" &&
+      !idempotency_key.empty() &&
+      g_ota.plan.idempotency_key == idempotency_key &&
+      !g_ota.plan.status.empty()
+    ) {
+      Json::Value replay(Json::objectValue);
+      replay["ok"] = true;
+      replay["ota_id"] = g_ota.plan.ota_id;
+      replay["operation"] = "restart";
+      replay["status"] = g_ota.plan.status;
+      replay["idempotent_replay"] = true;
+      if (!g_ota.plan.last_error.empty()) replay["last_error"] = g_ota.plan.last_error;
+      resp->body = json_stringify(replay);
+      return;
+    }
+    if (g_ota.plan.status == "queued" || g_ota.plan.status == "running") {
+      write_json_error(resp, 409, "ota already running");
+      return;
+    }
+  }
+
+  OtaPlan plan;
+  plan.ota_id = new_ota_id();
+  plan.operation = "restart";
+  plan.reason = reason.empty() ? "broker operator requested runtime.restart" : reason;
+  plan.trace_id = trace_id;
+  plan.idempotency_key = idempotency_key;
+  plan.status = "queued";
+  plan.requested_unix_ms = unix_ms_now();
+  plan.updated_unix_ms = plan.requested_unix_ms;
+  plan.drain_timeout_ms = drain_ms;
+  plan.command_timeout_ms = 0;
+  plan.plan_path = plan_path;
+  plan.state_dir = cfg.state_dir;
+  plan.db_path = cfg.db_path;
+  plan.agentd_pid = current_pid();
+
+  std::string werr;
+  if (!write_plan_file(plan_path, plan, &werr)) {
+    write_json_error(resp, 500, werr.empty() ? "failed to write restart plan" : werr);
+    return;
+  }
+
+  {
+    std::lock_guard<std::mutex> lk(g_ota.mu);
+    g_ota.plan = plan;
+  }
+
+  std::thread([plan, cfg, db_or_null]() mutable {
+    run_restart_async(plan, cfg, db_or_null);
+  }).detach();
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["ota_id"] = plan.ota_id;
+  out["operation"] = "restart";
+  out["status"] = plan.status;
+  out["dry_run"] = policy.dry_run;
+  resp->body = json_stringify(out);
+}
+
 void handle_ota_status_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
@@ -519,6 +768,7 @@ void handle_ota_status_endpoint(
   Json::Value out(Json::objectValue);
   out["ok"] = true;
   out["status"] = plan.status.empty() ? "none" : plan.status;
+  out["operation"] = plan.operation.empty() ? "none" : plan.operation;
   if (!plan.ota_id.empty()) out["ota_id"] = plan.ota_id;
   if (plan.updated_unix_ms > 0) out["updated_unix_ms"] = (Json::Int64)plan.updated_unix_ms;
   if (!plan.last_error.empty()) out["last_error"] = plan.last_error;
@@ -538,6 +788,7 @@ void handle_ota_status_endpoint(
       out["workflow_tasks_queued"] = (Json::Int64)counts.workflow_tasks_queued;
     }
   }
+  out["restart"] = restart_policy_to_json(cfg, plan);
   resp->body = json_stringify(out);
 }
 

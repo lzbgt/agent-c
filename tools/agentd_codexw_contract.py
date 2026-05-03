@@ -210,6 +210,7 @@ def agentd_runtime_status(
     request_agentd: Callable[[str, str, Any | None], Any],
     *,
     update_enabled: bool = False,
+    restart_enabled: bool = False,
     connector: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     update: dict[str, Any] = {
@@ -219,10 +220,19 @@ def agentd_runtime_status(
         "state": "disabled",
         "detail": "runtime.update is not advertised by this connector",
     }
+    restart: dict[str, Any] = {
+        "source": "agentd.ota.restart",
+        "available": bool(restart_enabled),
+        "enabled": False,
+        "state": "disabled",
+        "detail": "runtime.restart is not advertised by this connector",
+        "safe_boundary": "agentd_supervisor_restart_drain",
+    }
+    raw_status: dict[str, Any] = {}
+    if update_enabled or restart_enabled:
+        fetched_status = request_agentd("GET", "/api/v1/ota/status", None)
+        raw_status = fetched_status if isinstance(fetched_status, dict) else {"ok": True, "value": fetched_status}
     if update_enabled:
-        raw_status = request_agentd("GET", "/api/v1/ota/status", None)
-        if not isinstance(raw_status, dict):
-            raw_status = {"ok": True, "value": raw_status}
         candidate = runtime_update_candidate_from_status(raw_status)
         update = {
             "source": "agentd.ota",
@@ -247,14 +257,42 @@ def agentd_runtime_status(
             value = raw_status.get(key)
             if isinstance(value, (int, float)):
                 update[key] = int(value)
+    if restart_enabled:
+        restart = runtime_restart_status_from_ota_status(raw_status)
     result = {
         "ok": True,
         "runtime_kind": RUNTIME_KIND,
         "update": update,
+        "restart": restart,
     }
     if connector:
         result["connector"] = connector
     return result
+
+
+def runtime_restart_status_from_ota_status(raw_status: dict[str, Any]) -> dict[str, Any]:
+    source = first_dict_from_any(raw_status, ("restart", "runtime_restart"))
+    restart: dict[str, Any] = {
+        "source": "agentd.ota.restart",
+        "available": bool(source.get("available", bool(raw_status.get("ok", True)))),
+        "enabled": bool(source.get("enabled", False)),
+        "state": str(source.get("state") or "disabled"),
+        "detail": str(source.get("detail") or ""),
+        "safe_boundary": str(source.get("safe_boundary") or "agentd_supervisor_restart_drain"),
+        "raw": source or raw_status,
+    }
+    for key in ("method", "service"):
+        value = first_string_from_any(source, (key,))
+        if value:
+            restart[key] = value
+    for key in ("dry_run",):
+        if key in source:
+            restart[key] = bool(source.get(key))
+    for key in ("drain_timeout_ms", "updated_unix_ms"):
+        value = source.get(key)
+        if isinstance(value, (int, float)):
+            restart[key] = int(value)
+    return restart
 
 
 def runtime_update_candidate_from_status(raw_status: dict[str, Any]) -> dict[str, Any]:

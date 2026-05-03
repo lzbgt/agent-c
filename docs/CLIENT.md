@@ -339,6 +339,7 @@ Service / config:
 - GET /api/v1/config
 - POST /api/v1/config/update
 - POST /api/v1/ota/update
+- POST /api/v1/ota/restart
 - GET /api/v1/ota/status
 
 Tools and files:

@@ -170,6 +170,16 @@ class AgentdHandler(BaseHTTPRequestHandler):
                     "version": "v-smoke",
                     "drain_timeout_ms": 500,
                 },
+                "restart": {
+                    "source": "agentd.ota.restart",
+                    "available": True,
+                    "enabled": True,
+                    "state": "ready",
+                    "safe_boundary": "agentd_supervisor_restart_drain",
+                    "method": "systemd",
+                    "service": "agentd",
+                    "drain_timeout_ms": 700,
+                },
             })
         elif self.path.startswith("/api/v1/db/sessions"):
             self.send_json({"ok": True, "sessions": [{"session_id": "agentd-session"}]})
@@ -683,6 +693,16 @@ class AgentdHandler(BaseHTTPRequestHandler):
                     "version": "v-smoke",
                     "drain_timeout_ms": 500,
                 },
+                "restart": {
+                    "source": "agentd.ota.restart",
+                    "available": True,
+                    "enabled": True,
+                    "state": "ready",
+                    "safe_boundary": "agentd_supervisor_restart_drain",
+                    "method": "systemd",
+                    "service": "agentd",
+                    "drain_timeout_ms": 700,
+                },
             })
         else:
             self.send_response(404)
@@ -694,6 +714,9 @@ class AgentdHandler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/v1/ota/update"):
             results["agentd_ota_update_request"] = body
             self.send_json({"ok": True, "accepted": True, "state": "draining", "request": body})
+        elif self.path.startswith("/api/v1/ota/restart"):
+            results["agentd_ota_restart_request"] = body
+            self.send_json({"ok": True, "accepted": True, "operation": "restart", "status": "queued", "request": body})
         else:
             self.send_response(404)
             self.end_headers()
@@ -749,6 +772,10 @@ def broker_thread():
         assert hello["type"] == "deployment.hello", hello
         assert snapshot["type"] == "deployment.snapshot", snapshot
         assert snapshot["runtime"]["runtime"]["instance_id"] == "agentd-native-live-instance", snapshot
+        actions = snapshot["runtime"]["runtime"]["runtime_capabilities"]["actions"]
+        assert "runtime.update" in actions, actions
+        assert "runtime.restart" in actions, actions
+        assert actions["runtime.restart"]["safe_boundary"] == "agentd_supervisor_restart_drain", actions
         send_frame(
             conn,
             {
@@ -811,6 +838,8 @@ def broker_thread():
         assert status_result["body"]["runtime_kind"] == "agentd", status_result
         assert status_result["body"]["update"]["enabled"] is True, status_result
         assert status_result["body"]["update"]["candidate"]["url"] == "file:///tmp/agentd-smoke", status_result
+        assert status_result["body"]["restart"]["enabled"] is True, status_result
+        assert status_result["body"]["restart"]["safe_boundary"] == "agentd_supervisor_restart_drain", status_result
         connector = status_result["body"]["connector"]
         assert connector["state"] == "fresh", status_result
         assert connector["policy_state"] == "fresh", status_result
@@ -843,6 +872,28 @@ def broker_thread():
         assert update_result["status"] == 200, update_result
         assert update_result["body"]["action"] == "runtime.update", update_result
         assert update_result["body"]["result"]["accepted"] is True, update_result
+        send_frame(
+            conn,
+            {
+                "type": "deployment.command",
+                "request_id": "cmd-6",
+                "method": "POST",
+                "path": "/api/v1/runtime/actions",
+                "body": {
+                    "action": "runtime.restart",
+                    "idempotency_key": "restart-smoke-key",
+                    "input": {
+                        "reason": "native connector restart smoke",
+                        "drain_timeout_ms": 700,
+                    },
+                },
+            },
+        )
+        restart_result = read_frame(conn)
+        results["restart_result"] = restart_result
+        assert restart_result["status"] == 200, restart_result
+        assert restart_result["body"]["action"] == "runtime.restart", restart_result
+        assert restart_result["body"]["result"]["accepted"] is True, restart_result
 
 
 thread = threading.Thread(target=broker_thread, daemon=True)
@@ -878,6 +929,8 @@ proc = subprocess.run(
         agentd_url,
         "--runtime-update-mode",
         "agentd_ota",
+        "--runtime-restart-mode",
+        "agentd_ota",
         "--self-test-output-path",
         CONNECT_SELF_TEST_OUTPUT_PATH,
         "--timestamp",
@@ -897,9 +950,9 @@ thread.join(timeout=5)
 if proc.returncode != 0:
     raise SystemExit(f"connector failed\\nSTDOUT:\\n{proc.stdout}\\nSTDERR:\\n{proc.stderr}")
 summary = json.loads(proc.stdout)
-if summary.get("mode") != "connect" or summary.get("commands") != 5:
+if summary.get("mode") != "connect" or summary.get("commands") != 6:
     raise SystemExit(f"bad connector summary: {summary}")
-for key in ("command_result", "sessions_result", "events_result", "status_result", "update_result", "agentd_ota_update_request"):
+for key in ("command_result", "sessions_result", "events_result", "status_result", "update_result", "restart_result", "agentd_ota_update_request", "agentd_ota_restart_request"):
     if key not in results:
         raise SystemExit(f"broker did not receive {key}")
 assert results["agentd_ota_update_request"] == {
@@ -909,6 +962,11 @@ assert results["agentd_ota_update_request"] == {
     "reason": "native connector smoke",
     "drain_timeout_ms": 500,
 }, results["agentd_ota_update_request"]
+assert results["agentd_ota_restart_request"] == {
+    "reason": "native connector restart smoke",
+    "idempotency_key": "restart-smoke-key",
+    "drain_timeout_ms": 700,
+}, results["agentd_ota_restart_request"]
 PY
 
 echo "agentd_codexw_native_broker_connector_smoke OK"

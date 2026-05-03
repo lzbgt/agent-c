@@ -857,6 +857,48 @@
             schema:
               $ref: "#/components/schemas/ErrorResponse"
 
+/api/v1/ota/restart:
+  post:
+    tags: [ota]
+    summary: Request supervisor-owned daemon restart after drain
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/OtaRestartRequest"
+    responses:
+      "200":
+        description: Restart accepted
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OtaRestartResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "403":
+        description: Restart policy unavailable
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "409":
+        description: OTA already running
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
 /api/v1/ota/status:
   get:
     tags: [ota]

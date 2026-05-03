@@ -141,7 +141,16 @@ Environment=AGENTD_OTA_SERVICE=agentd
 Trigger via API:
 
 - `POST /api/v1/ota/update` with `{ url, sha256?, version?, reason?, drain_timeout_ms? }`
+- `POST /api/v1/ota/restart` with `{ reason?, trace_id?, idempotency_key?, drain_timeout_ms? }`
 - `GET /api/v1/ota/status` for current state
+
+`/api/v1/ota/restart` is a restart-only OTA plan. It is disabled unless
+`AGENTD_OTA_ENABLE=1`, `AGENTD_OTA_RESTART` is `systemd` or `launchd`, and
+`AGENTD_OTA_SERVICE` names the service/unit/label to restart. It uses the same
+drain wait as update, writes the same plan/status file, and then asks the local
+supervisor to restart `agentd`. Set `AGENTD_OTA_RESTART_DRY_RUN=1` only for
+smokes and proofs; production hosts should let the supervisor perform the
+restart.
 
 OTA enters **drain mode** while the update runs:
 - new run/workflow submissions return `HTTP 503` + `drain_*` hints
@@ -263,7 +272,7 @@ available. The packaged default is `900` seconds, matching three missed
 five-minute self-test intervals before operators and shared clients see a stale
 readiness state.
 
-Broker-driven runtime updates are disabled by default. To expose
+Broker-driven runtime update/restart actions are disabled by default. To expose
 `runtime.update` through the shared codexw broker, first enable the daemon OTA
 path (`AGENTD_OTA_ENABLE=1`, `AGENTD_OTA_COMMAND`, `AGENTD_OTA_TARGET_BIN`,
 and a restart policy such as `AGENTD_OTA_RESTART=systemd` with
@@ -273,8 +282,19 @@ that mode the connector's readiness self-test also checks
 `GET /api/v1/ota/status`, and broker `runtime.update` commands are forwarded
 to `POST /api/v1/ota/update` with `{url, sha256?, version?, reason?,
 drain_timeout_ms?}`. Leave the mode as `disabled` on hosts that cannot prove
-this local OTA boundary. `runtime.restart` and compatibility `runtime.upgrade`
-remain unadvertised by `agentd`.
+this local OTA boundary.
+
+To expose `runtime.restart`, keep `AGENTD_OTA_ENABLE=1`, set
+`AGENTD_OTA_RESTART=systemd` or `launchd`, set a safe
+`AGENTD_OTA_SERVICE`, verify `/api/v1/ota/status` reports
+`restart.enabled=true` with safe boundary `agentd_supervisor_restart_drain`,
+then set `AGENTD_CODEXW_RUNTIME_RESTART_MODE=agentd_ota` on the connector
+service. In that mode the connector advertises `runtime.restart` and forwards
+broker requests to `POST /api/v1/ota/restart` with `{reason?,
+idempotency_key?, trace_id?, drain_timeout_ms?}`. The connector re-reads
+`/api/v1/ota/status` before each dispatch so a stale capability snapshot cannot
+restart a host after the supervisor boundary has been disabled. Compatibility
+`runtime.upgrade` remains unadvertised by `agentd`.
 The shared adapter also serves `GET /api/v1/runtime/status`; the codexw broker
 uses that read-only route to show OTA state, drain state, and queue pressure in
 iOS/macOS and WebUI before an operator runs `runtime.update`. Include a
@@ -306,6 +326,24 @@ receive a request in the default proof; set `VERIFY_AGENTD_OTA_DISPATCH=1` only
 when you intentionally want to dispatch to the fake endpoint as a separate
 compatibility check. It removes the temporary broker deployment by default and
 does not replace any daemon binary.
+
+Before enabling `AGENTD_CODEXW_RUNTIME_RESTART_MODE=agentd_ota` on a durable
+production connector, verify the supervisor restart path with the dry-run live
+proof:
+
+```
+tools/verify_codexw_live_agentd_restart.sh
+```
+
+The proof starts a temporary loopback fake `agentd` API that reports
+`restart.enabled=true` with safe boundary `agentd_supervisor_restart_drain`,
+connects the native connector to the live codexw broker, verifies an enabled
+`runtime.restart` action descriptor, calls `/actions/preflight`, dispatches one
+confirmed restart to the fake `/api/v1/ota/restart` endpoint, verifies the
+forwarded `{reason, idempotency_key, drain_timeout_ms}` body, and verifies a
+duplicate broker request replays from idempotency without forwarding a second
+restart. It removes the temporary broker deployment by default and does not
+restart a real daemon.
 
 To prove the deployed broker-visible connector readiness status and transition
 audit path, run:

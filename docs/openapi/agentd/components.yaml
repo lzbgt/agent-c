@@ -143,6 +143,10 @@ schemas:
     $ref: ./components/ota.yaml#/OtaUpdateRequest
   OtaUpdateResponse:
     $ref: ./components/ota.yaml#/OtaUpdateResponse
+  OtaRestartRequest:
+    $ref: ./components/ota.yaml#/OtaRestartRequest
+  OtaRestartResponse:
+    $ref: ./components/ota.yaml#/OtaRestartResponse
   OtaStatusResponse:
     $ref: ./components/ota.yaml#/OtaStatusResponse
   MemoryCheckpointMeta:
@@ -335,6 +339,12 @@ schemas:
     $ref: ./components/workflow.yaml#/WorkflowTaskAgentdParallelSpec
   WorkflowAgentdParallelSpec:
     $ref: ./components/workflow.yaml#/WorkflowAgentdParallelSpec
+  WorkflowAgentdParallelBrokerRegistrySpec:
+    $ref: ./components/workflow.yaml#/WorkflowAgentdParallelBrokerRegistrySpec
+  WorkflowAgentdParallelMemoryScopeSpec:
+    $ref: ./components/workflow.yaml#/WorkflowAgentdParallelMemoryScopeSpec
+  WorkflowAgentdParallelRoutingPolicySpec:
+    $ref: ./components/workflow.yaml#/WorkflowAgentdParallelRoutingPolicySpec
   WorkflowAgentdParallelTargetSpec:
     $ref: ./components/workflow.yaml#/WorkflowAgentdParallelTargetSpec
   WorkflowTaskMemoryConsolidateSpec:

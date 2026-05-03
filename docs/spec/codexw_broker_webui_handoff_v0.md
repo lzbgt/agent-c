@@ -72,8 +72,12 @@ contract through connector-owned routes:
   `runtime.update` may be advertised only when the native connector is launched
   with `AGENTD_CODEXW_RUNTIME_UPDATE_MODE=agentd_ota` and the local daemon OTA
   path proves the drain/update boundary through `GET /api/v1/ota/status`.
-  `runtime.restart` remains unadvertised until a separate supervisor-safe
-  restart contract exists.
+  `runtime.restart` may be advertised only when the native connector is launched
+  with `AGENTD_CODEXW_RUNTIME_RESTART_MODE=agentd_ota` and
+  `/api/v1/ota/status` reports `restart.enabled=true` with safe boundary
+  `agentd_supervisor_restart_drain`; broker restart commands are then forwarded
+  to daemon-owned `POST /api/v1/ota/restart`. `runtime.upgrade` remains
+  unadvertised.
 - keep `tools/verify_codexw_live_agentd_activity.sh` passing against the live
   codexw broker before claiming the shared iOS/WebUI activity path is
   production-ready

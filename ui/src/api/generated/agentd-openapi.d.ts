@@ -1633,6 +1633,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ota/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request supervisor-owned daemon restart after drain */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["OtaRestartRequest"];
+                };
+            };
+            responses: {
+                /** @description Restart accepted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OtaRestartResponse"];
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Restart policy unavailable */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description OTA already running */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ota/status": {
         parameters: {
             query?: never;
@@ -2758,7 +2834,9 @@ export interface paths {
         /**
          * Promote @mem markers into structured memory
          * @description Deterministic rolling consolidation:
-         *     - scans recent daily memory files for explicit `@mem` markers
+         *     - scans bounded core, daily, session, and structured-text memory files for explicit `@mem` markers
+         *     - skips the structured-memory machine JSON block to avoid recursively promoting existing records
+         *     - uses stable `structured:STRUCTURED.md` sources for structured-file markers
          *     - upserts them into `memory/STRUCTURED.md`
          *     - writes a checkpoint snapshot (best-effort) when changes occur
          *     - rebuilds the correlation index (best-effort) when `dry_run=false`
@@ -2776,9 +2854,19 @@ export interface paths {
                         /** Format: int32 */
                         daily_days?: number;
                         /** Format: int32 */
+                        session_days?: number;
+                        /** Format: int32 */
                         keep_checkpoints?: number;
                         /** Format: int32 */
                         max_entries?: number;
+                        /** Format: int32 */
+                        max_file_bytes?: number;
+                        /** Format: int32 */
+                        max_session_files?: number;
+                        include_core?: boolean;
+                        include_daily?: boolean;
+                        include_session?: boolean;
+                        include_structured?: boolean;
                         dry_run?: boolean;
                     };
                 };
@@ -3040,6 +3128,10 @@ export interface paths {
                     /** @description Only return checkpoints whose `path` matches this structured file (e.g. `STRUCTURED.md`). */
                     structured_path?: string;
                     limit?: number;
+                    /** @description Exact task id filter. Empty values are ignored. */
+                    task_id?: string;
+                    /** @description Exact workflow event type filter, for example `task_status` or `workflow_done`. */
+                    event_type?: string;
                 };
                 header?: never;
                 path?: never;
@@ -3267,6 +3359,8 @@ export interface paths {
          * Correlate structured memory evidence by trace_id (bounded)
          * @description Selects the newest structured checkpoint in the requested time window and returns
          *     structured keys whose `sources[]` mention `trace:<trace_id>`.
+         *     Responses include `relationship_graph` (`agentd.memory.relationship_graph.v1`) linking
+         *     memory items to trace/workflow/task/job IDs and bounded source excerpts.
          *     When a correlation index exists, the response also includes `daily_entries`, `recap_entries`,
          *     and `index` metadata.
          */
@@ -3762,6 +3856,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/rl/experience_records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export closed-loop workflow experience records
+         * @description Reads bounded `agentd_experience_record_v1` JSONL records persisted by workflow tasks with
+         *     `kind: experience_record`. Pagination is by JSONL line offset; filters are applied after the offset.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Zero-based JSONL line offset. */
+                    offset?: number;
+                    limit?: number;
+                    /** @description Exact label filter. */
+                    label?: string;
+                    workflow_id?: string;
+                    task_id?: string;
+                    min_reward?: number;
+                    max_reward?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Experience record page */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ExperienceRecordsResponse"];
+                    };
+                };
+                /** @description Invalid numeric filter */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workflow_schedules": {
         parameters: {
             query?: never;
@@ -4040,6 +4193,8 @@ export interface paths {
                             workflow_id: string;
                             /** Format: int64 */
                             after_event_id?: number;
+                            task_id?: string;
+                            event_type?: string;
                             /** Format: int64 */
                             cursor_next: number;
                             events: {
@@ -7605,9 +7760,32 @@ export interface components {
             status: string;
             error?: string;
         };
+        OtaRestartRequest: {
+            /** @description Optional human-readable restart reason */
+            reason?: string;
+            /**
+             * Format: int64
+             * @description Grace window before supervisor restart (ms)
+             */
+            drain_timeout_ms?: number;
+            /** @description Optional caller idempotency key for replaying an accepted restart request */
+            idempotency_key?: string;
+            trace_id?: components["schemas"]["TraceID"];
+        };
+        OtaRestartResponse: {
+            ok: boolean;
+            ota_id: string;
+            /** @enum {string} */
+            operation: "restart";
+            status: string;
+            dry_run?: boolean;
+            idempotent_replay?: boolean;
+            error?: string;
+        };
         OtaStatusResponse: {
             ok: boolean;
             status: string;
+            operation?: string;
             ota_id?: string;
             /** Format: int64 */
             updated_unix_ms?: number;
@@ -7627,6 +7805,10 @@ export interface components {
             workflow_tasks_running?: number;
             /** Format: int64 */
             workflow_tasks_queued?: number;
+            /** @description Supervisor-owned restart readiness for broker runtime.restart. */
+            restart?: {
+                [key: string]: unknown;
+            };
         };
         MemoryCheckpointMeta: {
             checkpoint_path: string;
@@ -9601,6 +9783,7 @@ export interface components {
          *     - Deterministic structured memory query tasks: `kind: memory_structured_query` with `memory_structured_query` (host tool; no LLM required)
          *     - Deterministic memory correlation tasks: `kind: memory_correlate` with `memory_correlate` (scans structured memory checkpoints; no LLM required)
          *     - Deterministic memory query tasks: `kind: memory_query` with `memory_query` (reads newest structured checkpoint; no LLM required)
+         *     - Deterministic closed-loop records: `kind: experience_record` with `experience_record` (writes bounded RL/eval JSONL)
          *     - Deterministic outbound HTTP JSON tasks: `kind: http_json` with `http_json` (gated by daemon flag; no LLM required)
          *     - Deterministic agent collaboration tasks: `kind: agentd_call` with `agentd_call` (gated by daemon flag; no LLM required)
          *     - Parallel agent collaboration macro: `kind: agentd_parallel` with `agentd_parallel` (submit-time expansion into parallel `agentd_call` tasks + an aggregate join; configurable)
@@ -9621,9 +9804,10 @@ export interface components {
          *     - If `kind == memory_structured_query`, `memory_structured_query` is required and `request.prompt` is not used.
          *     - If `kind == memory_correlate`, `memory_correlate` is required and `request.prompt` is not used.
          *     - If `kind == memory_query`, `memory_query` is required and `request.prompt` is not used.
+         *     - If `kind == experience_record`, `experience_record` is optional and `request.prompt` is not used.
          *     - If `kind == http_json`, `http_json` is required and `request.prompt` is not used.
          *     - If `kind == agentd_call`, `agentd_call` is required and `request.prompt` is not used.
-         *     - If `kind == agentd_parallel`, `agentd_parallel.targets` and `agentd_parallel.agentd_call` are required and `request.prompt` is not used (expanded into multiple tasks).
+         *     - If `kind == agentd_parallel`, `agentd_parallel.agentd_call` plus either `agentd_parallel.targets` or `agentd_parallel.targets_from_broker_registry` are required and `request.prompt` is not used (expanded into multiple tasks).
          *     - If `kind == memory_consolidate`, `memory_consolidate` is optional and `request.prompt` is not used.
          *     - If `kind == delay`, `delay_ms` is optional (default 0) and `request.prompt` is not used.
          *     - If `kind == edge_invoke`, `edge.tool`/`edge.args` are required and `request.prompt` is not used.
@@ -9633,7 +9817,7 @@ export interface components {
          *     - If `kind == delegate_parallel`, `delegate.attempts` is required and `request.prompt` is not used (expanded into multiple tasks).
          *     - Otherwise, `request.prompt` is required (or prompt at the top-level is accepted by the server for legacy reasons).
          */
-        WorkflowTaskSpec: components["schemas"]["WorkflowTaskRunSpec"] | components["schemas"]["WorkflowTaskAvmCapsuleSpec"] | components["schemas"]["WorkflowTaskAggregateSpec"] | components["schemas"]["WorkflowTaskMemoryPutSpec"] | components["schemas"]["WorkflowTaskMemorySearchSpec"] | components["schemas"]["WorkflowTaskMemoryTimelineSpec"] | components["schemas"]["WorkflowTaskMemoryStructuredQuerySpec"] | components["schemas"]["WorkflowTaskMemoryCorrelateSpec"] | components["schemas"]["WorkflowTaskMemoryQuerySpec"] | components["schemas"]["WorkflowTaskHttpJsonSpec"] | components["schemas"]["WorkflowTaskAgentdCallSpec"] | components["schemas"]["WorkflowTaskAgentdParallelSpec"] | components["schemas"]["WorkflowTaskMemoryConsolidateSpec"] | components["schemas"]["WorkflowTaskDelaySpec"] | components["schemas"]["WorkflowTaskEdgeInvokeSpec"] | components["schemas"]["WorkflowTaskEdgeParallelSpec"] | components["schemas"]["WorkflowTaskEdgeWaitSensorSpec"] | components["schemas"]["WorkflowTaskDelegateSpec"];
+        WorkflowTaskSpec: components["schemas"]["WorkflowTaskRunSpec"] | components["schemas"]["WorkflowTaskAvmCapsuleSpec"] | components["schemas"]["WorkflowTaskAggregateSpec"] | components["schemas"]["WorkflowTaskMemoryPutSpec"] | components["schemas"]["WorkflowTaskMemorySearchSpec"] | components["schemas"]["WorkflowTaskMemoryTimelineSpec"] | components["schemas"]["WorkflowTaskMemoryStructuredQuerySpec"] | components["schemas"]["WorkflowTaskMemoryCorrelateSpec"] | components["schemas"]["WorkflowTaskMemoryQuerySpec"] | components["schemas"]["WorkflowTaskExperienceRecordSpec"] | components["schemas"]["WorkflowTaskHttpJsonSpec"] | components["schemas"]["WorkflowTaskAgentdCallSpec"] | components["schemas"]["WorkflowTaskAgentdParallelSpec"] | components["schemas"]["WorkflowTaskMemoryConsolidateSpec"] | components["schemas"]["WorkflowTaskDelaySpec"] | components["schemas"]["WorkflowTaskEdgeInvokeSpec"] | components["schemas"]["WorkflowTaskEdgeParallelSpec"] | components["schemas"]["WorkflowTaskEdgeWaitSensorSpec"] | components["schemas"]["WorkflowTaskDelegateSpec"];
         WorkflowTaskRunSpec: {
             task_id: string;
             /** @description If true, task failure does not fail the workflow (soft-fail). */
@@ -9894,6 +10078,27 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        WorkflowTaskExperienceRecordSpec: {
+            task_id: string;
+            /** @description If true, task failure does not fail the workflow (soft-fail). */
+            allow_error?: boolean;
+            /** @description Optional per-task inputs (overrides workflow-level inputs). */
+            inputs?: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description Deterministic closed-loop learning record (no LLM required).
+             * @enum {string}
+             */
+            kind: "experience_record";
+            depends_on?: string[];
+            experience_record?: components["schemas"]["WorkflowExperienceRecordSpec"];
+            /**
+             * Format: int32
+             * @description Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+             */
+            priority?: number;
+        };
         /**
          * @description Memory search configuration for `kind:memory_search`.
          *
@@ -9984,7 +10189,15 @@ export interface components {
             updated_since_utc?: string;
             /** @description Optional upper bound on record updated_utc (ISO UTC like 2026-02-05T23:59:59Z). */
             updated_until_utc?: string;
-            /** @description Sort order: key_asc (default) or updated_desc. */
+            /** @description Optional lower bound on record observed_utc (ISO UTC like 2026-02-05T00:00:00Z). */
+            observed_since_utc?: string;
+            /** @description Optional upper bound on record observed_utc (ISO UTC like 2026-02-05T23:59:59Z). */
+            observed_until_utc?: string;
+            /** @description Optional lower bound on record valid_from (ISO UTC like 2026-02-05T00:00:00Z). */
+            valid_from_since_utc?: string;
+            /** @description Optional upper bound on record valid_from (ISO UTC like 2026-02-05T23:59:59Z). */
+            valid_from_until_utc?: string;
+            /** @description Sort order: key_asc (default), updated_desc, observed_desc, or valid_from_desc. */
             order_by?: string;
             /** @description Optional kinds filter (e.g. `["fact"]`, `["preference"]`, `["task"]`). */
             kinds?: string[];
@@ -10004,7 +10217,9 @@ export interface components {
          * @description Deterministic memory correlation configuration for `kind:memory_correlate`.
          *
          *     The engine scans rolling structured checkpoints under `memory/checkpoints/structured_*.json` and returns
-         *     entries whose `record.sources[]` contains a substring `trace:<trace_id>`.
+         *     entries whose `record.sources[]` contains a substring `trace:<trace_id>`. Results include
+         *     `relationship_graph` (`agentd.memory.relationship_graph.v1`) linking memory items to
+         *     trace/workflow/task/job IDs and bounded source excerpts.
          */
         WorkflowMemoryCorrelateSpec: {
             /** @description If omitted, the engine uses the workflow trace_id. */
@@ -10053,6 +10268,31 @@ export interface components {
              * @description Max entries to return (default 50; clamped 1..1000).
              */
             limit?: number;
+        };
+        /**
+         * @description Deterministic closed-loop learning record configuration for `kind:experience_record`.
+         *
+         *     The engine writes one bounded JSONL row under `state_dir/rl/experience_records.jsonl` for later eval,
+         *     reward modeling, or RL data export. Source task result payloads are bounded before persistence.
+         */
+        WorkflowExperienceRecordSpec: {
+            /** @description Source completed task IDs to include. Defaults to completed prior tasks. */
+            task_ids?: string[];
+            /** @description Optional label-safe namespace; letters, digits, `-`, `_`, `.`, `:`, and `/` are accepted. */
+            label?: string;
+            /**
+             * Format: double
+             * @description Optional reward. If omitted, defaults to ok_source_count / source_task_count.
+             */
+            reward?: number;
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Format: int32
+             * @description Per-source result bound, clamped to 1024..65536 (default 8192).
+             */
+            max_result_chars?: number;
         };
         WorkflowTaskHttpJsonSpec: {
             task_id: string;
@@ -10163,7 +10403,7 @@ export interface components {
          *     Broker compatibility:
          *     - `base_url` may also be a broker proxy prefix like `https://<broker>/v1/agents/<agent_id>/proxy` (see `docs/BROKER.md`).
          *       In that case, agentd endpoints are reached under the proxy prefix (e.g. `.../proxy/api/v1/workflow/submit`).
-         *     - Alternatively, omit `base_url` and set `broker_proxy:{broker_base_url,agent_id}` to have the server compute/persist the proxy prefix.
+         *     - Alternatively, omit `base_url` and set `broker_proxy:{broker_base_url,agent_id,deployment_id?}` to have the server compute/persist the proxy prefix, stable target identity, and optional deployment routing metadata.
          *     - Broker endpoints typically require `Authorization: Bearer <OIDC_JWT>`; use `bearer_env` so secrets are not persisted.
          *
          *     Security:
@@ -10176,6 +10416,14 @@ export interface components {
             /** @description Required base URL (must start with http:// or https://) unless `broker_proxy` is provided. */
             base_url?: string;
             broker_proxy?: components["schemas"]["WorkflowAgentdBrokerProxySpec"];
+            /** @description Optional id-safe logical target id persisted into `agentd.target_id` in the task result. */
+            target_id?: string;
+            /** @description Optional stable target identity persisted into `agentd.target_identity`; defaults to `url:<base_url>` or broker identity when `broker_proxy` is used. */
+            target_identity?: string;
+            /** @description Optional broker agent id metadata persisted into `agentd.broker_agent_id`. */
+            broker_agent_id?: string;
+            /** @description Optional broker deployment id metadata persisted into `agentd.broker_deployment_id`; also sets `X-Agentd-Deployment` unless an identical header is already present. */
+            broker_deployment_id?: string;
             /**
              * @description Operation (default workflow_submit_and_wait).
              * @enum {string}
@@ -10216,12 +10464,16 @@ export interface components {
          *
          *     If set (and `base_url` is omitted), the server computes and persists:
          *     - `base_url = <broker_base_url>/v1/agents/<agent_id>/proxy`
+         *     - `target_identity = broker:<broker_base_url>:<agent_id>[:<deployment_id>]`
+         *     - if `deployment_id` is present, `X-Agentd-Deployment` is added unless an identical header already exists.
          */
         WorkflowAgentdBrokerProxySpec: {
             /** @description Broker base URL (must start with http:// or https://). */
             broker_base_url: string;
             /** @description Target agent id (id-safe; used in the proxy path). */
             agent_id: string;
+            /** @description Optional id-safe broker deployment id used to route through `X-Agentd-Deployment`. */
+            deployment_id?: string;
         };
         WorkflowTaskAgentdParallelSpec: {
             task_id: string;
@@ -10261,14 +10513,16 @@ export interface components {
          *
          *     Notes:
          *     - The server overwrites `aggregate.task_ids` to match the derived tasks.
-         *     - `agentd_call.base_url` must be omitted; each target provides a base_url.
-         *     - For `aggregate.mode=quorum_hashes`, when `aggregate.node_pointer` is omitted the server defaults it to `/agentd/base_url`
-         *       so `require_distinct_nodes=true` counts distinct remote agent targets correctly.
+         *     - `agentd_call.base_url` must be omitted; each target provides a base_url or broker proxy.
+         *     - Targets may be provided directly with `targets`, discovered at submit time with `targets_from_broker_registry`, or both.
+         *     - For `aggregate.mode=quorum_hashes`, when `aggregate.node_pointer` is omitted the server defaults it to `/agentd/target_identity`
+         *       so `require_distinct_nodes=true` counts distinct direct URLs and broker agent/deployment targets correctly.
          *     - For `aggregate.mode=quorum_hashes`, when `aggregate.pointers` is omitted the server defaults it to [`/agentd/result_sha256`].
          */
         WorkflowAgentdParallelSpec: {
-            /** @description Collaboration target list (1..32). Each entry is either a base_url string or an object. */
-            targets: (string | components["schemas"]["WorkflowAgentdParallelTargetSpec"])[];
+            /** @description Collaboration target list (1..32 after combining direct and discovered targets). Each entry is either a base_url string or an object. */
+            targets?: (string | components["schemas"]["WorkflowAgentdParallelTargetSpec"])[];
+            targets_from_broker_registry?: components["schemas"]["WorkflowAgentdParallelBrokerRegistrySpec"];
             /**
              * @description Base `agentd_call` configuration applied to every target (except base_url).
              *
@@ -10278,13 +10532,76 @@ export interface components {
                 [key: string]: unknown;
             };
             aggregate?: components["schemas"]["WorkflowAggregateSpec"];
+            routing_policy?: components["schemas"]["WorkflowAgentdParallelRoutingPolicySpec"];
+            memory_scope?: components["schemas"]["WorkflowAgentdParallelMemoryScopeSpec"];
+        };
+        /**
+         * @description Submit-time broker target discovery for `agentd_parallel`.
+         *
+         *     The daemon fetches `GET <broker_base_url>/v1/agents` under the same workflow HTTP outbound policy as `agentd_call` and expands matching agents/deployments into ordinary `broker_proxy` targets before the workflow is scheduled.
+         */
+        WorkflowAgentdParallelBrokerRegistrySpec: {
+            /** @description Broker base URL (must start with http:// or https://). */
+            broker_base_url: string;
+            /** @description Optional env var name containing the broker bearer token. The token value is not persisted. */
+            bearer_env?: string;
+            /**
+             * @description Prefer connected deployments with agent fallback, require connected deployments only, or use agent-level proxy targets. Defaults to `prefer_deployments`.
+             * @enum {string}
+             */
+            deployment_policy?: "prefer_deployments" | "all_connected" | "agent";
+            /** @description If true, require `agents[].connected=true` and skip explicitly disconnected deployments. Defaults true. */
+            connected_only?: boolean;
+            /** @description If true, require `agents[].enabled=true`. Defaults true. */
+            enabled_only?: boolean;
+            /** @description Optional id-safe broker agent id allowlist. */
+            agent_ids?: string[];
+            /**
+             * Format: int64
+             * @description Maximum discovered targets to append. Defaults to 16.
+             */
+            max_targets?: number;
+            /**
+             * Format: int64
+             * @description Broker registry fetch timeout, clamped by the server to 1..60000 ms. Defaults to 10000.
+             */
+            timeout_ms?: number;
+            /**
+             * Format: int64
+             * @description Broker registry response cap, clamped by the server to 1 KiB..16 MiB. Defaults to 1 MiB.
+             */
+            max_bytes?: number;
+            /** @description Optional id-safe prefix for discovered target ids. */
+            id_prefix?: string;
+        };
+        /**
+         * @description Optional remote memory scope injection for every derived `agentd_call` workflow.
+         *
+         *     The server writes `workflow.defaults.memory_scope_id` and `workflow.defaults.memory_scope_mode` into each remote workflow.
+         *     It also provides `workflow.inputs.agentd_parallel_target_id` and `workflow.inputs.agentd_parallel_target_identity`.
+         */
+        WorkflowAgentdParallelMemoryScopeSpec: {
+            /** @description Id-safe base memory scope id. When `per_target` is true, the target id is appended as `<scope_id>:<target_id>`. */
+            scope_id: string;
+            /**
+             * @description Remote memory scope mode. Defaults to `read_write`; aliases such as `ro`/`rw` are accepted by the server.
+             * @enum {string}
+             */
+            mode?: "read_only" | "read_write";
+            /** @description If true, append `:<target_id>` to `scope_id` for isolated per-target memory. Defaults true. */
+            per_target?: boolean;
+        };
+        /** @description Optional submit-time routing policy for derived agentd targets. */
+        WorkflowAgentdParallelRoutingPolicySpec: {
+            /** @description If true, reject duplicate target identities before submitting derived tasks. */
+            require_distinct_targets?: boolean;
         };
         /**
          * @description Agentd collaboration target.
          *
          *     Either:
          *     - set `base_url`, or
-         *     - set `broker_proxy` (server computes `base_url` as `.../v1/agents/<agent_id>/proxy`).
+         *     - set `broker_proxy` (server computes `base_url` as `.../v1/agents/<agent_id>/proxy` and broker target identity metadata).
          */
         WorkflowAgentdParallelTargetSpec: {
             /** @description Optional id-safe target id (used in derived task ids). Default `t0`, `t1`, ... */
@@ -10388,13 +10705,24 @@ export interface components {
                 status?: string;
                 /** @description Evidence string. If omitted, the server injects workflow correlation (workflow/task/trace). */
                 source?: string;
+                /** @description Additional evidence string(s) to merge into the bounded `sources[]` set. */
+                sources?: string | string[];
+                /** @description Optional observation timestamp (`YYYY-MM-DDTHH:MM:SSZ`); defaults to write time. */
+                observed_utc?: string;
+                /** @description Optional validity start timestamp (`YYYY-MM-DDTHH:MM:SSZ`) stored on the current record and retained in superseded versions. */
+                valid_from?: string;
+                /** @description Compatibility alias for `valid_from`; stored canonically as `valid_from`. */
+                valid_from_utc?: string;
+                /** @description Optional explicit superseded fact/version references to merge into `supersedes[]`. */
+                supersedes?: string | string[];
             }[];
         };
         /**
          * @description Deterministic memory consolidation options.
          *
-         *     Scans recent daily memory files for explicit `@mem` markers, then promotes them into structured memory
-         *     (`memory/STRUCTURED.md`) via host tool `memory_put(entries=[...])`.
+         *     Scans bounded core, daily, session, and structured-text memory files for explicit `@mem` markers, then promotes them into
+         *     structured memory (`memory/STRUCTURED.md`) via host tool `memory_put(entries=[...])`. The structured-memory machine JSON
+         *     block is skipped, and structured-file markers use the stable source label `structured:STRUCTURED.md`.
          */
         WorkflowMemoryConsolidateSpec: {
             /**
@@ -10402,6 +10730,11 @@ export interface components {
              * @description Number of daily memory files (days) to scan (default from daemon config; clamped >=0).
              */
             daily_days?: number;
+            /**
+             * Format: int32
+             * @description Session-file modification-time window in days (default follows `daily_days`; clamped >=0).
+             */
+            session_days?: number;
             /**
              * Format: int32
              * @description Checkpoint pruning limit when writing structured memory (default from daemon config; clamped >=1).
@@ -10412,6 +10745,24 @@ export interface components {
              * @description Maximum distinct keys to promote (default 256; clamped >=1).
              */
             max_entries?: number;
+            /**
+             * Format: int32
+             * @description Maximum bytes read from each scanned file (default 1048576; clamped >=1024).
+             */
+            max_file_bytes?: number;
+            /**
+             * Format: int32
+             * @description Maximum newest session markdown files to scan (default 64; clamped >=0).
+             */
+            max_session_files?: number;
+            /** @description Include `memory/MEMORY.md` marker scans (default true). */
+            include_core?: boolean;
+            /** @description Include recent `memory/YYYY-MM-DD.md` marker scans (default true). */
+            include_daily?: boolean;
+            /** @description Include bounded `memory/sessions/**\/*.md` marker scans (default true). */
+            include_session?: boolean;
+            /** @description Include human-readable `memory/STRUCTURED.md` text outside the machine JSON block (default true). */
+            include_structured?: boolean;
             /** @description When true, scan and report but do not write structured memory (default false). */
             dry_run?: boolean;
         };
@@ -11272,6 +11623,62 @@ export interface components {
             budget_pressure?: {
                 [key: string]: unknown;
             };
+        };
+        ExperienceRecordsResponse: {
+            ok: boolean;
+            /** @enum {string} */
+            schema: "agentd_experience_record_v1";
+            /** @enum {string} */
+            path: "rl/experience_records.jsonl";
+            /**
+             * Format: int64
+             * @description Zero-based JSONL line offset used for this page.
+             */
+            offset: number;
+            /**
+             * Format: int64
+             * @description Maximum matching records returned; clamped to 1..500.
+             */
+            limit: number;
+            /**
+             * Format: int64
+             * @description JSONL line offset to use for the next page.
+             */
+            next_offset?: number;
+            /** @description True when the reader reached end-of-file before hitting the limit. */
+            eof?: boolean;
+            filters?: {
+                [key: string]: unknown;
+            };
+            /** Format: int32 */
+            count: number;
+            /** Format: int64 */
+            malformed_lines_skipped?: number;
+            records: ({
+                /** @enum {string} */
+                schema: "agentd_experience_record_v1";
+                workflow_id: string;
+                task_id: string;
+                session_id?: string;
+                trace_id?: components["schemas"]["TraceID"];
+                /** Format: int64 */
+                ts_unix_ms: number;
+                label?: string;
+                /** Format: double */
+                reward: number;
+                /** Format: int32 */
+                source_task_count: number;
+                /** Format: int32 */
+                source_task_ok_count: number;
+                source_results_by_task?: {
+                    [key: string]: unknown;
+                };
+                metadata?: {
+                    [key: string]: unknown;
+                };
+            } & {
+                [key: string]: unknown;
+            })[];
         };
     };
     responses: never;

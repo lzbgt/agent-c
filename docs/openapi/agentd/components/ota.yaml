@@ -32,12 +32,43 @@ OtaUpdateResponse:
     error: { type: string }
 
 
+OtaRestartRequest:
+  type: object
+  properties:
+    reason:
+      type: string
+      description: Optional human-readable restart reason
+    drain_timeout_ms:
+      type: integer
+      format: int64
+      description: Grace window before supervisor restart (ms)
+    idempotency_key:
+      type: string
+      description: Optional caller idempotency key for replaying an accepted restart request
+    trace_id:
+      $ref: "#/components/schemas/TraceID"
+
+
+OtaRestartResponse:
+  type: object
+  required: [ok, ota_id, operation, status]
+  properties:
+    ok: { type: boolean }
+    ota_id: { type: string }
+    operation: { type: string, enum: [restart] }
+    status: { type: string }
+    dry_run: { type: boolean }
+    idempotent_replay: { type: boolean }
+    error: { type: string }
+
+
 OtaStatusResponse:
   type: object
   required: [ok, status]
   properties:
     ok: { type: boolean }
     status: { type: string }
+    operation: { type: string }
     ota_id: { type: string }
     updated_unix_ms: { type: integer, format: int64 }
     last_error: { type: string }
@@ -50,3 +81,7 @@ OtaStatusResponse:
     workflows_running: { type: integer, format: int64 }
     workflow_tasks_running: { type: integer, format: int64 }
     workflow_tasks_queued: { type: integer, format: int64 }
+    restart:
+      type: object
+      additionalProperties: true
+      description: Supervisor-owned restart readiness for broker runtime.restart.

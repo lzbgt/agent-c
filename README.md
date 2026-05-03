@@ -123,13 +123,17 @@ advertises `broker.runtime_capabilities.v1` with `surfaces.sessions` and
 - `GET /api/v1/runtime/events`: projects client events and workflow events into
   neutral `broker.runtime_event.v1` rows, with `limit`, `after_id`,
   `last_event_id`, `session_id`, and `event_prefix` filtering.
-- `GET /api/v1/runtime/status`: reports read-only update readiness. The
+- `GET /api/v1/runtime/status`: reports read-only update/restart readiness. The
   default bridge reports update disabled; the native connector reports
   `agentd` OTA status when `AGENTD_CODEXW_RUNTIME_UPDATE_MODE=agentd_ota`.
   If `/api/v1/ota/status` includes a `candidate`, `update_candidate`, `release`,
   or `artifact` object with `url`, `sha256`, `version`, or
   `drain_timeout_ms`, the bridge forwards it as `update.candidate` so the
   shared broker can show and prepare the exact `runtime.update` input.
+  When `AGENTD_CODEXW_RUNTIME_RESTART_MODE=agentd_ota`, the same route exposes
+  daemon-proven `restart` readiness from `/api/v1/ota/status`; restart is enabled
+  only when `agentd` reports the supervisor boundary
+  `agentd_supervisor_restart_drain`.
 
 The broker only uses these routes after capability negotiation. Older bridges
 that do not advertise the surfaces continue to appear in the shared inventory
@@ -185,6 +189,22 @@ alerts, and checks `/api/v2/runtime-instances/{id}/audit` for durable
 `runtime_instance.connector_readiness_transition` events. It removes the
 temporary deployment unless `KEEP_DEPLOYMENT=1` is set.
 
+To prove the opt-in supervisor restart boundary through the deployed codexw
+broker without restarting a real daemon, run:
+
+```bash
+tools/verify_codexw_live_agentd_restart.sh
+```
+
+That proof connects the native connector to a temporary loopback fake `agentd`
+API that reports `restart.enabled=true` with safe boundary
+`agentd_supervisor_restart_drain`, verifies the live broker exposes an enabled
+`runtime.restart` descriptor, calls non-mutating `/actions/preflight`, dispatches
+one confirmed restart to the fake `/api/v1/ota/restart` endpoint, verifies the
+forwarded `{reason, idempotency_key, drain_timeout_ms}` body, and verifies a
+duplicate broker action replays from idempotency instead of forwarding a second
+restart.
+
 For durable service installs, use the launchd/systemd connector templates in
 `docs/DEPLOYMENT.md`. They run `agentd` and the native codexw connector as
 separate OS-managed services and keep broker passwords, enrollment secrets, and
@@ -222,10 +242,14 @@ chooses a different policy.
 Broker operator actions are opt-in. By default the connector still does not
 advertise `runtime.restart`, `runtime.update`, or `runtime.upgrade`. Set
 `AGENTD_CODEXW_RUNTIME_UPDATE_MODE=agentd_ota` only on hosts where `agentd`
-OTA is enabled and configured with a daemon-owned drain/restart policy; then
+OTA is enabled and configured with a daemon-owned drain/update policy; then
 the connector advertises `runtime.update` and forwards broker requests to
-`POST /api/v1/ota/update`. `runtime.restart` remains unadvertised until it has
-its own supervisor-safe contract.
+`POST /api/v1/ota/update`. Set `AGENTD_CODEXW_RUNTIME_RESTART_MODE=agentd_ota`
+only when `/api/v1/ota/status` reports `restart.enabled=true` for a
+systemd/launchd service with safe boundary `agentd_supervisor_restart_drain`;
+then the connector advertises `runtime.restart` and forwards broker requests to
+`POST /api/v1/ota/restart`. Compatibility `runtime.upgrade` remains
+unadvertised.
 
 Quick start (loopback only; no auth required):
 
