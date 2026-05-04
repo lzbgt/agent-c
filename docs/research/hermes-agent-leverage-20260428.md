@@ -126,3 +126,9 @@ file explorer and host-shell panels. The codexw-side external smoke harness also
 accepts `--verify-host-shell` and `--verify-files`, so a physical iPhone can
 exercise prompt submission, file explorer, shell, and direct-P2P media against
 agentd/codexw deployments through one broker entry point.
+
+The strict live activity proof now also exercises the deployed codexw broker's
+deployment-scoped file and shell routes against a temporary native `agentd`
+connector. That means `tools/verify_codexw_live_agentd_activity.sh` proves the
+same broker endpoints used by the iOS file explorer and Host Shell panels even
+when the physical iPhone smoke is blocked by device lock state.

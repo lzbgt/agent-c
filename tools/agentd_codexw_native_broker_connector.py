@@ -821,6 +821,31 @@ def codexw_session_id(args: argparse.Namespace) -> str:
     return f"agentd:{args.deployment_id}"
 
 
+def local_session_snapshot(args: argparse.Namespace) -> dict[str, Any]:
+    session_id = codexw_session_id(args)
+    return {
+        "ok": True,
+        "local_api_version": "agentd-codexw-native-v1",
+        "session_id": session_id,
+        "thread_id": session_id,
+        "session": {
+            "id": session_id,
+            "scope": "process",
+            "title": "agentd broker session",
+            "status": "active",
+            "attached_thread_id": session_id,
+            "attachment": {
+                "id": f"attach:{session_id}",
+                "client_id": "client_mobile",
+                "lease_seconds": 300,
+                "attached_thread_id": session_id,
+            },
+        },
+        "working": False,
+        "process_scoped": True,
+    }
+
+
 def session_route_tail(args: argparse.Namespace, route_path: str) -> str | None:
     prefix = f"/api/v1/session/{codexw_session_id(args)}"
     if route_path == prefix:
@@ -1030,6 +1055,8 @@ def handle_command(args: argparse.Namespace, frame: dict[str, Any]) -> dict[str,
         session_tail = session_route_tail(args, route_path)
         if method == "GET" and route_path == "/api/v1/runtime":
             result = runtime_payload(args)
+        elif method == "GET" and route_path in ("/api/v1/session", f"/api/v1/session/{codexw_session_id(args)}"):
+            result = local_session_snapshot(args)
         elif method == "GET" and route_path == "/api/v1/runtime/status":
             result = agentd_runtime_status(
                 request_agentd,

@@ -129,6 +129,10 @@ def command(method, path, body=None):
     })
 
 session = module.codexw_session_id(args)
+session_snapshot = command("GET", "/api/v1/session")
+if session_snapshot.get("status") != 200 or session_snapshot.get("body", {}).get("session_id") != session:
+    print("bad native session snapshot", session_snapshot, file=sys.stderr)
+    raise SystemExit(1)
 files = command("POST", f"/api/v1/session/{session}/files/list", {"path": "${TMP_DIR}"})
 if files.get("status") != 200 or not any(entry.get("name") == "file-smoke.txt" for entry in files.get("body", {}).get("entries", [])):
     print("bad native file list", files, file=sys.stderr)

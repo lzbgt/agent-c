@@ -168,11 +168,12 @@ tools/verify_codexw_live_agentd_activity.sh
 The smoke uses the sibling `codexw` repo's `scripts/broker-admin` session,
 issues a one-time deployment enrollment token, approves the temporary proof
 deployment after certificate enrollment, verifies `/api/v2/runtime-instances`,
-`/sessions`, bounded `/proxy/http`, and `/events` against the live broker,
-writes proof JSON under `build/`, and removes the temporary broker deployment
-unless `KEEP_DEPLOYMENT=1` is set. The live broker must be running a codexw
-build with the v2 runtime-instance session and proxy routes; a `405
-method_not_allowed` response from
+`/sessions`, bounded `/proxy/http`, `/events`, and the deployment-scoped
+file/shell routes used by the codexw iOS Files and Host Shell views against
+the live broker. It writes proof JSON under `build/` and removes the temporary
+broker deployment unless `KEEP_DEPLOYMENT=1` is set. The live broker must be
+running a codexw build with the v2 runtime-instance session and proxy routes;
+a `405 method_not_allowed` response from
 `POST /api/v2/runtime-instances/{id}/sessions` means the broker deployment is
 stale relative to the connector contract, not that the local `agentd` connector
 failed.

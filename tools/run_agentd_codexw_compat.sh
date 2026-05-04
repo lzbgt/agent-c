@@ -219,6 +219,7 @@ if [[ "${BROKER_MODE}" == "native" ]]; then
     --identity-dir "${NATIVE_IDENTITY_DIR}"
     --agentd-base-url "${AGENTD_URL}"
     --agentd-auth-token "${AGENTD_AUTH_TOKEN}"
+    --file-root "${ROOT}"
     --bootstrap-identity
     --connect
   )

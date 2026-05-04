@@ -128,6 +128,7 @@ curl -fsS --noproxy "*" -H "Authorization: Bearer ${AGENTD_TOKEN}" "${AGENTD_URL
 python3 - <<PY
 import importlib.machinery
 import importlib.util
+import base64
 import json
 import time
 import urllib.parse
@@ -182,6 +183,9 @@ cap_text = json.dumps(caps.get("capabilities", {}), sort_keys=True)
 for expected in ("sessions", "session_create", "events", "status", "proxy_http"):
     if expected not in cap_text:
         raise SystemExit(f"agentd capability response missing {expected} surface: " + cap_text[:2000])
+for expected in ("files", "shell"):
+    if expected not in cap_text:
+        raise SystemExit(f"agentd capability response missing {expected} iOS inspection surface: " + cap_text[:2000])
 
 created = client.request(
     "POST",
@@ -205,6 +209,72 @@ proxy_status = client.request(
 proxy_text = json.dumps(proxy_status, sort_keys=True)
 if not proxy_status.get("ok") or "agentd" not in proxy_text:
     raise SystemExit("broker HTTP proxy did not expose agentd runtime status: " + proxy_text[:2000])
+
+deployment_path = urllib.parse.quote(deployment_id, safe="")
+files = client.request(
+    "POST",
+    f"/api/v1/deployments/{deployment_path}/files/list",
+    {"path": ".", "limit": 40},
+    token=token,
+)
+entries = files.get("entries", []) if isinstance(files, dict) else []
+if not files.get("ok") or not entries:
+    raise SystemExit("broker file-list route did not expose agentd file explorer entries: " + json.dumps(files)[:2000])
+read_entry = None
+for candidate in entries:
+    if isinstance(candidate, dict) and not candidate.get("is_directory") and candidate.get("name") == "README.md":
+        read_entry = candidate
+        break
+if read_entry is None:
+    for candidate in entries:
+        if isinstance(candidate, dict) and not candidate.get("is_directory") and candidate.get("path"):
+            read_entry = candidate
+            break
+if read_entry is None:
+    raise SystemExit("broker file-list route returned no readable agentd file entries: " + json.dumps(files)[:2000])
+file_read = client.request(
+    "POST",
+    f"/api/v1/deployments/{deployment_path}/files/read",
+    {"path": read_entry.get("path"), "limit": 4096},
+    token=token,
+)
+file_bytes = base64.b64decode(file_read.get("data_base64") or b"", validate=True)
+if not file_read.get("ok") or not file_bytes:
+    raise SystemExit("broker file-read route did not return readable agentd file content: " + json.dumps(file_read)[:2000])
+
+shell_start = client.request(
+    "POST",
+    f"/api/v1/deployments/{deployment_path}/shells/start",
+    {
+        "command": "printf agentd-shell-proof",
+        "label": "codexw live agentd shell proof",
+        "intent": "observation",
+    },
+    token=token,
+)
+shell = shell_start.get("shell") if isinstance(shell_start, dict) else None
+if not isinstance(shell, dict) and isinstance(shell_start.get("result") if isinstance(shell_start, dict) else None, dict):
+    shell = shell_start["result"].get("shell")
+shell_id = shell.get("id") if isinstance(shell, dict) else None
+if not shell_id:
+    raise SystemExit("broker shell-start route did not return an agentd shell id: " + json.dumps(shell_start)[:2000])
+shell_path = urllib.parse.quote(str(shell_id), safe="")
+shell_read = None
+for _ in range(20):
+    shell_read = client.request("GET", f"/api/v1/deployments/{deployment_path}/shells/{shell_path}", token=token)
+    shell = shell_read.get("shell") if isinstance(shell_read, dict) else None
+    lines = []
+    if isinstance(shell, dict):
+        lines = shell.get("recent_lines") or shell.get("output_lines") or []
+    if any("agentd-shell-proof" in str(line) for line in lines):
+        break
+    time.sleep(0.25)
+if not shell_read:
+    raise SystemExit("broker shell-read route returned no response for agentd shell")
+shell = shell_read.get("shell") if isinstance(shell_read, dict) else None
+lines = shell.get("recent_lines") or shell.get("output_lines") or [] if isinstance(shell, dict) else []
+if not isinstance(shell, dict) or not any("agentd-shell-proof" in str(line) for line in lines):
+    raise SystemExit("broker shell-read route did not expose agentd shell output: " + json.dumps(shell_read)[:2000])
 
 event_body = json.dumps({
     "session_id": session_id,
@@ -265,7 +335,15 @@ proof = {
     "capability_has_session_create": "session_create" in cap_text,
     "capability_has_events": "events" in cap_text,
     "capability_has_proxy_http": "proxy_http" in cap_text,
+    "capability_has_files": "files" in cap_text,
+    "capability_has_shell": "shell" in cap_text,
     "proxy_status_ok": bool(proxy_status.get("ok")),
+    "file_list_entries": len(entries),
+    "file_read_path": file_read.get("path"),
+    "file_read_bytes": len(file_bytes),
+    "shell_id": shell_id,
+    "shell_status": shell.get("status") if isinstance(shell, dict) else None,
+    "shell_output_proved": any("agentd-shell-proof" in str(line) for line in lines),
 }
 Path("${PROOF_JSON}").write_text(json.dumps(proof, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
 print(json.dumps(proof, indent=2, sort_keys=True))
