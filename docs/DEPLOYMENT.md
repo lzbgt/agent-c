@@ -47,6 +47,7 @@ sudo systemctl enable --now agentd.service
   <key>Label</key><string>com.agentd.daemon</string>
   <key>EnvironmentVariables</key>
   <dict>
+    <key>AGENTD_AUTH_TOKEN</key><string>REPLACE_WITH_RANDOM_TOKEN</string>
     <key>AGENTD_DOTENV_PATH</key><string>/Users/you/Library/Application Support/agentd/agentd.env</string>
   </dict>
   <key>ProgramArguments</key>
@@ -54,7 +55,6 @@ sudo systemctl enable --now agentd.service
     <string>/usr/local/bin/agentd</string>
     <string>--host</string><string>127.0.0.1</string>
     <string>--port</string><string>8123</string>
-    <string>--auth-token</string><string>REPLACE_WITH_RANDOM_TOKEN</string>
     <string>--state-dir</string><string>/Users/you/Library/Application Support/agentd</string>
     <string>--db-path</string><string>/Users/you/Library/Application Support/agentd/agentd.db</string>
   </array>
@@ -74,6 +74,9 @@ For local bring-up on macOS, you can install/remove launchd services with:
 AGENTD_AUTH_TOKEN="REPLACE_WITH_RANDOM_TOKEN" tools/install_agentd_launchd.sh
 tools/uninstall_agentd_launchd.sh
 ```
+The helper writes `AGENTD_AUTH_TOKEN` into launchd `EnvironmentVariables`
+instead of `ProgramArguments`, so the daemon token is not exposed in ordinary
+process listings. Keep the same pattern when writing plists by hand.
 You can also point the daemon at a specific dotenv file when installing the service:
 ```
 AGENTD_DOTENV_PATH="/path/to/.env" tools/install_agentd_launchd.sh

@@ -76,11 +76,17 @@ The main gap versus Hermes was not another scheduler or parallel task primitive.
   --json` passed `identity_files`, `identity_certificate_fingerprint`,
   `agentd_health`, `runtime_sessions_surface`, `runtime_events_surface`, and
   `broker_runtime_instance_visible`.
+- During that install, the macOS daemon LaunchAgent was hardened so
+  `tools/install_agentd_launchd.sh` writes `AGENTD_AUTH_TOKEN` into launchd
+  `EnvironmentVariables`, not `ProgramArguments`. `agentd` already reads the
+  token from the environment, so this removes the daemon token from ordinary
+  process listings while preserving the connector-service proof.
 - The complete strict codexw verifier now passes with both service and live
   proof modes enabled:
   `scripts/verify-codexw-release-contracts --agent-root /Users/zongbaolu/work/agent --agentd-run-service --agentd-run-live --skip-doc-consistency --skip-runtime-proxy-fixture --keep-going`.
-  The 2026-05-04 result logged under
-  `/tmp/codexw-logs/codexw-release-contracts-20260504-110401` reports five
+  The final 2026-05-04 result after the token-only connector reinstall and
+  daemon launchd auth hardening logged under
+  `/tmp/codexw-logs/codexw-release-contracts-20260504-111245` and reports five
   passed proofs: `connector-service`, `connector-readiness`, `activity`,
   `ota-candidate`, and `restart`.
 

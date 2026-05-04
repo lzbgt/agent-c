@@ -55,10 +55,6 @@ args=(
   "--db-path" "${agentd_db_path}"
 )
 
-if [[ -n "${agentd_auth_token}" ]]; then
-  args+=("--auth-token" "${agentd_auth_token}")
-fi
-
 if [[ -n "${agentd_tools}" ]]; then
   args+=("--tools" "${agentd_tools}")
 fi
@@ -101,10 +97,15 @@ stderr_path="${agentd_log_dir}/agentd.err.log"
   echo '<plist version="1.0">'
   echo '<dict>'
   echo "  <key>Label</key><string>${label}</string>"
-  if [[ -n "${agentd_dotenv_path}" ]]; then
+  if [[ -n "${agentd_auth_token}" || -n "${agentd_dotenv_path}" ]]; then
     echo '  <key>EnvironmentVariables</key>'
     echo '  <dict>'
-    echo "    <key>AGENTD_DOTENV_PATH</key><string>$(xml_escape "${agentd_dotenv_path}")</string>"
+    if [[ -n "${agentd_auth_token}" ]]; then
+      echo "    <key>AGENTD_AUTH_TOKEN</key><string>$(xml_escape "${agentd_auth_token}")</string>"
+    fi
+    if [[ -n "${agentd_dotenv_path}" ]]; then
+      echo "    <key>AGENTD_DOTENV_PATH</key><string>$(xml_escape "${agentd_dotenv_path}")</string>"
+    fi
     echo '  </dict>'
   fi
   echo '  <key>ProgramArguments</key>'

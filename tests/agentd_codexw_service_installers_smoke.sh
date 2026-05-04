@@ -61,6 +61,17 @@ if ! grep -q -- "--state-dir" "${TMP_DIR}/com.agentd.daemon.plist"; then
   echo "agentd launchd plist missing state-dir" >&2
   exit 1
 fi
+python3 - <<PY
+import plistlib
+from pathlib import Path
+plist = plistlib.loads(Path("${TMP_DIR}/com.agentd.daemon.plist").read_bytes())
+args = plist.get("ProgramArguments") or []
+env = plist.get("EnvironmentVariables") or {}
+if "agentd-service-smoke-token" in args or "--auth-token" in args:
+    raise SystemExit("agentd launchd plist leaked auth token into ProgramArguments")
+if env.get("AGENTD_AUTH_TOKEN") != "agentd-service-smoke-token":
+    raise SystemExit("agentd launchd plist missing AGENTD_AUTH_TOKEN environment")
+PY
 
 AGENTD_CODEXW_BROKER_URL="http://127.0.0.1:8787" \
 AGENTD_CODEXW_DEPLOYMENT_ID="agentd-service-smoke" \
