@@ -380,7 +380,13 @@ class FacadeHandler(BaseHTTPRequestHandler):
             return self.agentd.request("POST", "/api/v1/workflow/submit", input_obj)
         if action == "workflow.read":
             workflow_id = require_string(input_obj, "workflow_id")
-            return self.agentd.request("GET", "/api/v1/workflow?" + urllib.parse.urlencode({"workflow_id": workflow_id}))
+            return self.agentd.request(
+                "GET",
+                "/api/v1/workflow?"
+                + urllib.parse.urlencode(
+                    {"workflow_id": workflow_id, "include_tasks": "1", "include_results": "1"}
+                ),
+            )
         if action == "workflow.cancel":
             workflow_id = require_string(input_obj, "workflow_id")
             return self.agentd.request("POST", "/api/v1/workflow/cancel", {"workflow_id": workflow_id})

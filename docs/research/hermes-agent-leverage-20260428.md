@@ -137,3 +137,54 @@ deployment-scoped file and shell routes against a temporary native `agentd`
 connector. That means `tools/verify_codexw_live_agentd_activity.sh` proves the
 same broker endpoints used by the iOS file explorer and Host Shell panels even
 when the physical iPhone smoke is blocked by device lock state.
+
+## 2026-05-04 agentd response proof correction
+
+Later physical iOS testing showed that broker acceptance was still too weak as
+an agentd messaging proof: workflows were being created, but the durable
+`com.agentd.daemon` service was running against OpenAI defaults without an
+OpenAI key, so workflow history accumulated provider errors and never produced
+assistant responses.
+
+The launchd installer now defaults all macOS agentd instances to DeepSeek's
+current official OpenAI-compatible model configuration:
+
+- `AGENTD_DOTENV_PATH=${HOME}/.env` for provider key discovery
+- `--base-url https://api.deepseek.com`
+- `--model deepseek-v4-pro`
+
+Secrets still stay out of `ProgramArguments`; only non-secret base/model flags
+are written there. The local durable service was reinstalled with the same
+defaults and diagnostics now report `active_provider=deepseek`, key present from
+dotenv/config discovery, and `model=deepseek-v4-pro`.
+
+The native connector and local API facade also request `include_tasks=1` and
+`include_results=1` on `workflow.read`, so codexw/iOS can verify the terminal
+assistant response rather than only a workflow status. A public-broker probe
+against `agentd-service-bruce-mac` submitted a prompt through
+`POST /api/v1/deployments/agentd-service-bruce-mac/turns`, polled
+`workflow.read`, and reached `status=done` with `assistant_text=AGENTD_OK` and
+`effective_model=deepseek-v4-pro`.
+
+On 2026-05-04, a physical iPhone smoke run exposed a deeper liveness issue:
+the prompt submit route returned a stable runtime id, but the following
+`workflow.read` failed with `runtime instance has no live or local API target`.
+The connector LaunchAgent was healthy from launchd's point of view, but two
+separate websocket lifetime bugs made the logical broker link unstable:
+
+- the service was running without in-process reconnect, so normal broker closes
+  became launchd restart windows;
+- more importantly, the connector handled each broker command synchronously
+  inside the websocket read loop. A long DeepSeek-backed `workflow.submit` or
+  follow-up read could block the same loop that must consume broker ping frames
+  and send pongs, so the broker could close an otherwise healthy connector after
+  its pong wait.
+
+Durable launchd and systemd connector units now include `--reconnect`, but the
+fundamental stability fix is that the native connector dispatches broker
+commands on worker threads while the main loop keeps reading websocket frames.
+Writes are serialized with a send lock, and the service sends an explicit
+`deployment.heartbeat` every 10 seconds. After reinstalling the LaunchAgent, a
+public-broker prompt plus follow-up `workflow.read` returned `AGENTD_OK`; 55
+seconds later the connector log still showed `heartbeat_sent` entries and no
+`connect_closed` event.

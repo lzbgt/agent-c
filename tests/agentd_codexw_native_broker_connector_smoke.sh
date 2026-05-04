@@ -770,7 +770,10 @@ class AgentdHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("content-length") or "0")
         body = json.loads(self.rfile.read(length) or b"{}")
-        if self.path.startswith("/api/v1/session/new"):
+        if self.path.startswith("/api/v1/workflow/submit"):
+            results["agentd_workflow_submit_request"] = body
+            self.send_json({"ok": True, "workflow_id": "wf-submit-smoke", "status": "queued"})
+        elif self.path.startswith("/api/v1/session/new"):
             results["agentd_session_new_request"] = body
             self.send_json({"ok": True, "session_id": body.get("session_id") or "agentd-created-session", "created": True})
         elif self.path.startswith("/api/v1/ota/update"):
@@ -855,6 +858,30 @@ def broker_thread():
         assert command_result["status"] == 200, command_result
         assert command_result["body"]["action"] == "experience.list", command_result
         assert command_result["body"]["result"]["records"][0]["label"] == "smoke", command_result
+        send_frame(
+            conn,
+            {
+                "type": "deployment.command",
+                "request_id": "cmd-submit",
+                "method": "POST",
+                "path": "/api/v1/runtime/actions",
+                "body": {
+                    "action": "workflow.submit",
+                    "input": {
+                        "prompt": "native workflow submit smoke",
+                    },
+                },
+            },
+        )
+        submit_result = read_frame(conn)
+        results["submit_result"] = submit_result
+        assert submit_result["status"] == 200, submit_result
+        assert submit_result["body"]["action"] == "workflow.submit", submit_result
+        assert submit_result["body"]["result"]["workflow_id"] == "wf-submit-smoke", submit_result
+        submit_request = results["agentd_workflow_submit_request"]
+        assert submit_request["tasks"][0]["task_id"] == "codexw_prompt", submit_request
+        assert submit_request["tasks"][0]["request"]["prompt"] == "native workflow submit smoke", submit_request
+        assert submit_request["tasks"][0]["request"]["tools"] == "none", submit_request
         send_frame(
             conn,
             {
@@ -1032,9 +1059,9 @@ thread.join(timeout=5)
 if proc.returncode != 0:
     raise SystemExit(f"connector failed\\nSTDOUT:\\n{proc.stdout}\\nSTDERR:\\n{proc.stderr}")
 summary = json.loads(proc.stdout)
-if summary.get("mode") != "connect" or summary.get("commands") != 7:
+if summary.get("mode") != "connect" or summary.get("commands") != 8:
     raise SystemExit(f"bad connector summary: {summary}")
-for key in ("command_result", "sessions_result", "create_session_result", "events_result", "status_result", "update_result", "restart_result", "agentd_session_new_request", "agentd_ota_update_request", "agentd_ota_restart_request"):
+for key in ("command_result", "submit_result", "sessions_result", "create_session_result", "events_result", "status_result", "update_result", "restart_result", "agentd_workflow_submit_request", "agentd_session_new_request", "agentd_ota_update_request", "agentd_ota_restart_request"):
     if key not in results:
         raise SystemExit(f"broker did not receive {key}")
 assert results["agentd_session_new_request"] == {"session_id": "agentd-created-session"}, results["agentd_session_new_request"]

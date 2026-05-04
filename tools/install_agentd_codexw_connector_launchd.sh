@@ -93,6 +93,9 @@ args=(
   "--agentd-base-url" "${agentd_base_url}"
   "--bootstrap-identity"
   "--connect"
+  "--reconnect"
+  "--reconnect-initial-delay" "0.1"
+  "--heartbeat-interval" "10"
 )
 
 env_keys=()

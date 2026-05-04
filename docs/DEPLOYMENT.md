@@ -74,10 +74,14 @@ For local bring-up on macOS, you can install/remove launchd services with:
 AGENTD_AUTH_TOKEN="REPLACE_WITH_RANDOM_TOKEN" tools/install_agentd_launchd.sh
 tools/uninstall_agentd_launchd.sh
 ```
-The helper writes `AGENTD_AUTH_TOKEN` into launchd `EnvironmentVariables`
-instead of `ProgramArguments`, so the daemon token is not exposed in ordinary
-process listings. Keep the same pattern when writing plists by hand.
-You can also point the daemon at a specific dotenv file when installing the service:
+The helper writes `AGENTD_AUTH_TOKEN` and provider key discovery hints into
+launchd `EnvironmentVariables` instead of `ProgramArguments`, so daemon secrets
+are not exposed in ordinary process listings. Keep the same pattern when
+writing plists by hand. By default, the helper starts the daemon against
+DeepSeek's current official OpenAI-compatible endpoint using
+`--base-url https://api.deepseek.com`, `--model deepseek-v4-pro`, and
+`AGENTD_DOTENV_PATH=${HOME}/.env` for key discovery. You can point the daemon at
+a different dotenv file when installing the service:
 ```
 AGENTD_DOTENV_PATH="/path/to/.env" tools/install_agentd_launchd.sh
 ```
@@ -99,7 +103,10 @@ Environment overrides:
 - `AGENTD_BIN` (default `./build/agentd`)
 - `AGENTD_HOST`, `AGENTD_PORT`
 - `AGENTD_STATE_DIR`, `AGENTD_DB_PATH`
-- `AGENTD_DOTENV_PATH` (optional override for provider key discovery)
+- `AGENTD_DOTENV_PATH` (default `${HOME}/.env`, provider key discovery)
+- `AGENTD_BASE_URL` (default `https://api.deepseek.com`)
+- `AGENTD_MODEL` (default `deepseek-v4-pro`)
+- `AGENTD_TIMEOUT_MS`, `AGENTD_PROXY_URL`
 - `AGENTD_AUTH_TOKEN`, `AGENTD_AUTH_COOKIE`
 - `AGENTD_TOOLS`, `AGENTD_YOLO`
 - `AGENTD_HOST_SCOPE`, `AGENTD_TOOLS_ROOT` (legacy optional args; unset by default)
@@ -175,19 +182,30 @@ Local verification:
 
 ### Native codexw broker connector as a service
 
-The native codexw connector is intentionally a foreground protocol adapter, not
-a lifetime manager. In production, run `agentd` and the connector as separate
+The native codexw connector is a foreground protocol adapter with broker
+websocket reconnect. In production, run `agentd` and the connector as separate
 OS-managed services:
 
 - `agentd.service` owns the local daemon API and durable state.
-- `agentd-codexw-connector.service` owns the outbound broker websocket and
-  exits on unrecoverable broker/local failures.
+- `agentd-codexw-connector.service` owns the outbound broker websocket, keeps
+  it connected with `--reconnect --reconnect-initial-delay 0.1`, sends a
+  lightweight application heartbeat with `--heartbeat-interval 10`, and exits
+  on unrecoverable local failures.
 - `systemd`, `launchd`, Docker Compose, Kubernetes, or another process manager
-  owns restart/backoff, boot startup, log collection, and health supervision.
+  owns crash restart, boot startup, log collection, and health supervision.
 
-Do not enable connector `--reconnect` in service units. Keep reconnect for
-manual foreground debugging only; service managers already have better,
-observable restart policy.
+Enable connector `--reconnect` in durable service units. The broker websocket is
+a long-lived logical channel; handing every normal broker close to launchd or
+systemd creates avoidable no-live windows where codexw/iOS commands can fail as
+`runtime instance has no live or local API target`. Keep the process supervisor
+as the crash and boot supervisor, not as the steady-state websocket reconnect
+loop.
+
+The connector must also keep reading broker websocket frames while handling
+long-running agentd commands. The native connector dispatches broker commands on
+worker threads and serializes websocket writes with an internal lock, so
+DeepSeek-backed workflow calls cannot starve ping/pong handling and cause the
+broker to close an otherwise healthy long-lived connection.
 
 Systemd service templates are provided under `packaging/systemd/`:
 

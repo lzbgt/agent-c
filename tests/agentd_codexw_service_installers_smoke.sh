@@ -50,6 +50,10 @@ AGENTD_STATE_DIR="${TMP_DIR}/agentd-state" \
 AGENTD_DB_PATH="${TMP_DIR}/agentd-state/agentd.db" \
 AGENTD_PLIST_PATH="${TMP_DIR}/com.agentd.daemon.plist" \
 AGENTD_LOG_DIR="${TMP_DIR}/logs" \
+AGENTD_DOTENV_PATH="${TMP_DIR}/agentd.env" \
+AGENTD_BASE_URL="https://api.deepseek.com" \
+AGENTD_MODEL="deepseek-v4-pro" \
+AGENTD_TIMEOUT_MS="45000" \
 AGENTD_DRY_RUN=1 \
   "${ROOT}/tools/install_agentd_launchd.sh" >/dev/null
 
@@ -71,6 +75,47 @@ if "agentd-service-smoke-token" in args or "--auth-token" in args:
     raise SystemExit("agentd launchd plist leaked auth token into ProgramArguments")
 if env.get("AGENTD_AUTH_TOKEN") != "agentd-service-smoke-token":
     raise SystemExit("agentd launchd plist missing AGENTD_AUTH_TOKEN environment")
+if env.get("AGENTD_DOTENV_PATH") != "${TMP_DIR}/agentd.env":
+    raise SystemExit("agentd launchd plist missing AGENTD_DOTENV_PATH environment")
+for flag, value in (
+    ("--base-url", "https://api.deepseek.com"),
+    ("--model", "deepseek-v4-pro"),
+    ("--timeout-ms", "45000"),
+):
+    try:
+        index = args.index(flag)
+    except ValueError:
+        raise SystemExit(f"agentd launchd plist missing {flag}")
+    if args[index + 1] != value:
+        raise SystemExit(f"agentd launchd plist has wrong {flag}: {args[index + 1]}")
+PY
+
+AGENTD_BIN="${AGENTD_BIN}" \
+AGENTD_AUTH_TOKEN="agentd-service-smoke-token" \
+AGENTD_STATE_DIR="${TMP_DIR}/agentd-default-state" \
+AGENTD_DB_PATH="${TMP_DIR}/agentd-default-state/agentd.db" \
+AGENTD_PLIST_PATH="${TMP_DIR}/com.agentd.daemon.defaults.plist" \
+AGENTD_LOG_DIR="${TMP_DIR}/default-logs" \
+AGENTD_DRY_RUN=1 \
+  "${ROOT}/tools/install_agentd_launchd.sh" >/dev/null
+python3 - <<PY
+import plistlib
+from pathlib import Path
+plist = plistlib.loads(Path("${TMP_DIR}/com.agentd.daemon.defaults.plist").read_bytes())
+args = plist.get("ProgramArguments") or []
+env = plist.get("EnvironmentVariables") or {}
+if env.get("AGENTD_DOTENV_PATH") != str(Path.home() / ".env"):
+    raise SystemExit("default agentd launchd plist should load provider keys from ~/.env")
+for flag, value in (
+    ("--base-url", "https://api.deepseek.com"),
+    ("--model", "deepseek-v4-pro"),
+):
+    try:
+        index = args.index(flag)
+    except ValueError:
+        raise SystemExit(f"default agentd launchd plist missing {flag}")
+    if args[index + 1] != value:
+        raise SystemExit(f"default agentd launchd plist has wrong {flag}: {args[index + 1]}")
 PY
 
 AGENTD_CODEXW_BROKER_URL="http://127.0.0.1:8787" \
@@ -97,8 +142,16 @@ if ! grep -q -- "--connect" "${TMP_DIR}/com.agentd.codexw-connector.plist"; then
   echo "connector launchd plist missing --connect" >&2
   exit 1
 fi
-if grep -q -- "--reconnect" "${TMP_DIR}/com.agentd.codexw-connector.plist"; then
-  echo "connector launchd plist must not enable in-process reconnect supervision" >&2
+if ! grep -q -- "--reconnect" "${TMP_DIR}/com.agentd.codexw-connector.plist"; then
+  echo "connector launchd plist missing in-process reconnect supervision" >&2
+  exit 1
+fi
+if ! grep -q -- "--reconnect-initial-delay" "${TMP_DIR}/com.agentd.codexw-connector.plist"; then
+  echo "connector launchd plist missing fast reconnect delay" >&2
+  exit 1
+fi
+if ! grep -q -- "--heartbeat-interval" "${TMP_DIR}/com.agentd.codexw-connector.plist"; then
+  echo "connector launchd plist missing application heartbeat interval" >&2
   exit 1
 fi
 if ! grep -q -- "--bootstrap-identity" "${TMP_DIR}/com.agentd.codexw-connector.plist"; then
@@ -228,6 +281,9 @@ PY
 grep -q "Restart=always" "${ROOT}/packaging/systemd/agentd.service"
 grep -q "Restart=always" "${ROOT}/packaging/systemd/agentd-codexw-connector.service"
 grep -q -- "--connect" "${ROOT}/packaging/systemd/agentd-codexw-connector.service"
+grep -q -- "--reconnect" "${ROOT}/packaging/systemd/agentd-codexw-connector.service"
+grep -q -- "--reconnect-initial-delay 0.1" "${ROOT}/packaging/systemd/agentd-codexw-connector.service"
+grep -q -- "--heartbeat-interval 10" "${ROOT}/packaging/systemd/agentd-codexw-connector.service"
 grep -q -- "--self-test" "${ROOT}/packaging/systemd/agentd-codexw-connector-self-test.service"
 grep -q -- "--require-broker-visible" "${ROOT}/packaging/systemd/agentd-codexw-connector-self-test.service"
 grep -q -- "--self-test-output-path" "${ROOT}/packaging/systemd/agentd-codexw-connector-self-test.service"
@@ -244,9 +300,4 @@ if grep -q -- "--agentd-auth-token\\|--broker-user\\|--broker-password\\|--broke
   echo "systemd connector self-test unit must not pass secrets on argv" >&2
   exit 1
 fi
-if grep -q -- "--reconnect" "${ROOT}/packaging/systemd/agentd-codexw-connector.service"; then
-  echo "systemd connector unit must not enable in-process reconnect supervision" >&2
-  exit 1
-fi
-
 echo "agentd_codexw_service_installers_smoke OK"

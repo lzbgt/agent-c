@@ -20,7 +20,11 @@ agentd_host_scope="${AGENTD_HOST_SCOPE:-}"
 agentd_tools_root="${AGENTD_TOOLS_ROOT:-}"
 agentd_cors_origins="${AGENTD_CORS_ORIGINS:-}"
 agentd_extra_args="${AGENTD_EXTRA_ARGS:-}"
-agentd_dotenv_path="${AGENTD_DOTENV_PATH:-}"
+agentd_dotenv_path="${AGENTD_DOTENV_PATH:-${HOME}/.env}"
+agentd_base_url="${AGENTD_BASE_URL:-https://api.deepseek.com}"
+agentd_model="${AGENTD_MODEL:-deepseek-v4-pro}"
+agentd_timeout_ms="${AGENTD_TIMEOUT_MS:-}"
+agentd_proxy_url="${AGENTD_PROXY_URL:-}"
 agentd_dry_run="${AGENTD_DRY_RUN:-0}"
 
 if [[ ! -x "${agentd_bin}" ]]; then
@@ -69,6 +73,22 @@ fi
 
 if [[ -n "${agentd_tools_root}" ]]; then
   args+=("--tools-root" "${agentd_tools_root}")
+fi
+
+if [[ -n "${agentd_base_url}" ]]; then
+  args+=("--base-url" "${agentd_base_url}")
+fi
+
+if [[ -n "${agentd_model}" ]]; then
+  args+=("--model" "${agentd_model}")
+fi
+
+if [[ -n "${agentd_timeout_ms}" ]]; then
+  args+=("--timeout-ms" "${agentd_timeout_ms}")
+fi
+
+if [[ -n "${agentd_proxy_url}" ]]; then
+  args+=("--proxy" "${agentd_proxy_url}")
 fi
 
 if [[ -n "${agentd_cors_origins}" ]]; then

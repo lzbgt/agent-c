@@ -16,7 +16,10 @@ ExecStart=/usr/bin/env python3 /opt/agentd/tools/agentd_codexw_native_broker_con
   --identity-dir ${AGENTD_CODEXW_IDENTITY_DIR} \
   --agentd-base-url ${AGENTD_BASE_URL} \
   --bootstrap-identity \
-  --connect
+  --connect \
+  --reconnect \
+  --reconnect-initial-delay 0.1 \
+  --heartbeat-interval 10
 Restart=always
 RestartSec=5
 TimeoutStopSec=20

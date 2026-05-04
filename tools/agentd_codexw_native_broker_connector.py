@@ -16,7 +16,9 @@ import ssl
 import struct
 import subprocess
 import sys
+import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -43,6 +45,16 @@ ENROLL_CERTIFICATE_PATH = "/api/v1/deployment/enroll-certificate"
 LOGIN_PATH = "/api/v1/auth/login"
 SELF_ENROLLMENT_TOKEN_PATH = "/api/v1/auth/deployment-enrollment-tokens"
 DEFAULT_KEY_NAME = "deployment.key.pem"
+
+
+def log_connector_event(args: argparse.Namespace, event: str, **fields: Any) -> None:
+    payload = {
+        "event": event,
+        "deployment_id": getattr(args, "deployment_id", ""),
+        "runtime_instance_id": getattr(args, "runtime_instance_id", ""),
+        **fields,
+    }
+    print(json.dumps(payload, sort_keys=True), file=sys.stderr, flush=True)
 DEFAULT_CERT_NAME = "deployment.cert.pem"
 DEFAULT_CSR_NAME = "deployment.csr.pem"
 DEFAULT_ENROLLMENT_MATERIAL_NAME = "deployment.enrollment.json"
@@ -400,8 +412,13 @@ def broker_json_request(
         method=method,
     )
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with opener.open(request, timeout=args.timeout) as response:
-        raw = response.read()
+    try:
+        with opener.open(request, timeout=args.timeout) as response:
+            raw = response.read()
+    except urllib.error.HTTPError as exc:
+        raw = exc.read()
+        detail = raw.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"agentd {method} {path} failed ({exc.code}): {detail}") from exc
     return json.loads(raw.decode("utf-8")) if raw else {}
 
 
@@ -544,7 +561,7 @@ def websocket_read_frame(sock: socket.socket) -> tuple[int, bytes]:
     return opcode, payload
 
 
-def websocket_read_json(sock: socket.socket) -> dict[str, Any]:
+def websocket_read_json(sock: socket.socket, send_lock: threading.Lock | None = None) -> dict[str, Any]:
     while True:
         opcode, payload = websocket_read_frame(sock)
         if opcode == 0x1:
@@ -553,9 +570,23 @@ def websocket_read_json(sock: socket.socket) -> dict[str, Any]:
                 raise ValueError("websocket JSON frame must be an object")
             return obj
         if opcode == 0x8:
-            raise EOFError("websocket close frame received")
+            code = None
+            reason = ""
+            if len(payload) >= 2:
+                code = struct.unpack("!H", payload[:2])[0]
+                reason = payload[2:].decode("utf-8", errors="replace")
+            detail = "websocket close frame received"
+            if code is not None:
+                detail += f" code={code}"
+            if reason:
+                detail += f" reason={reason}"
+            raise EOFError(detail)
         if opcode == 0x9:
-            websocket_send_frame(sock, 0xA, payload)
+            if send_lock is None:
+                websocket_send_frame(sock, 0xA, payload)
+            else:
+                with send_lock:
+                    websocket_send_frame(sock, 0xA, payload)
             continue
 
 
@@ -602,6 +633,40 @@ def require_string(obj: dict[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{key} is required")
     return value.strip()
+
+
+def first_submit_prompt(input_obj: dict[str, Any]) -> str:
+    for key in ("prompt", "text", "message", "objective", "title"):
+        value = input_obj.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def workflow_submit_request(input_obj: dict[str, Any]) -> dict[str, Any]:
+    if isinstance(input_obj.get("tasks"), list) and input_obj["tasks"]:
+        return input_obj
+    prompt = first_submit_prompt(input_obj)
+    if not prompt:
+        raise ValueError("workflow.submit input requires tasks or a text prompt")
+    request = {
+        "prompt": prompt,
+        "no_session": bool(input_obj.get("no_session", True)),
+        "tools": str(input_obj.get("tools") or "none"),
+    }
+    for key in ("model", "base_url", "timeout_ms", "max_steps", "session_id"):
+        value = input_obj.get(key)
+        if value not in (None, ""):
+            request[key] = value
+    return {
+        "allow_sessions": bool(input_obj.get("allow_sessions", True)),
+        "tasks": [
+            {
+                "task_id": str(input_obj.get("task_id") or "codexw_prompt"),
+                "request": request,
+            }
+        ],
+    }
 
 
 def operator_runtime_actions(args: argparse.Namespace) -> dict[str, dict[str, Any]]:
@@ -751,10 +816,17 @@ def forward_runtime_action(args: argparse.Namespace, body: dict[str, Any]) -> di
     action = action.strip()
     input_obj = request_input(body)
     if action == "workflow.submit":
-        result = agentd_request(args, "POST", "/api/v1/workflow/submit", input_obj)
+        result = agentd_request(args, "POST", "/api/v1/workflow/submit", workflow_submit_request(input_obj))
     elif action == "workflow.read":
         workflow_id = require_string(input_obj, "workflow_id")
-        result = agentd_request(args, "GET", "/api/v1/workflow?" + urllib.parse.urlencode({"workflow_id": workflow_id}))
+        result = agentd_request(
+            args,
+            "GET",
+            "/api/v1/workflow?"
+            + urllib.parse.urlencode(
+                {"workflow_id": workflow_id, "include_tasks": "1", "include_results": "1"}
+            ),
+        )
     elif action == "workflow.cancel":
         workflow_id = require_string(input_obj, "workflow_id")
         result = agentd_request(args, "POST", "/api/v1/workflow/cancel", {"workflow_id": workflow_id})
@@ -808,6 +880,7 @@ def runtime_payload(args: argparse.Namespace) -> dict[str, Any]:
         instance_id=args.runtime_instance_id,
         deployment_id=args.deployment_id,
         agentd_base_url=args.agentd_base_url,
+        process_started_at_ms=args.connector_started_at_ms,
         connection_mode=args.connection_mode,
         preferred_broker_transport="native_deployment_connect",
         implementation="native_agentd_broker_connector",
@@ -1114,6 +1187,13 @@ def handle_command(args: argparse.Namespace, frame: dict[str, Any]) -> dict[str,
             "body": result,
         }
     except Exception as exc:  # noqa: BLE001
+        log_connector_event(
+            args,
+            "command_failed",
+            method=method,
+            path=route_path,
+            error=str(exc),
+        )
         return {
             "type": "deployment.command_result",
             "deployment_id": args.deployment_id,
@@ -1127,19 +1207,76 @@ def handle_command(args: argparse.Namespace, frame: dict[str, Any]) -> dict[str,
 def run_connect(args: argparse.Namespace) -> dict[str, Any]:
     timestamp = str(int(args.timestamp or time.time()))
     headers = deployment_connect_headers(args, timestamp)
+    log_connector_event(args, "connect_opening", url=broker_ws_url(args.broker_url))
     sock = websocket_connect(broker_ws_url(args.broker_url), headers, args.timeout)
+    log_connector_event(args, "connect_opened")
+    send_lock = threading.Lock()
     sent_commands = 0
+    sent_commands_lock = threading.Lock()
+    command_threads: list[threading.Thread] = []
+    close_reason = ""
+    stop_commands = threading.Event()
+
+    def send_json(obj: dict[str, Any]) -> None:
+        with send_lock:
+            websocket_send_json(sock, obj)
+
+    def send_frame(opcode: int, payload: bytes = b"") -> None:
+        with send_lock:
+            websocket_send_frame(sock, opcode, payload)
+
+    def reap_command_threads() -> None:
+        command_threads[:] = [thread for thread in command_threads if thread.is_alive()]
+
+    def note_command_handled() -> int:
+        nonlocal sent_commands
+        with sent_commands_lock:
+            sent_commands += 1
+            return sent_commands
+
+    def handle_command_background(frame: dict[str, Any]) -> None:
+        try:
+            result = handle_command(args, frame)
+            if stop_commands.is_set():
+                return
+            send_json(result)
+            count = note_command_handled()
+            log_connector_event(args, "command_handled", commands=count)
+        except Exception as exc:  # noqa: BLE001
+            log_connector_event(
+                args,
+                "command_send_failed",
+                request_id=str(frame.get("request_id") or ""),
+                method=str(frame.get("method") or ""),
+                path=str(frame.get("path") or ""),
+                error=str(exc),
+            )
+
+    def heartbeat_loop() -> None:
+        interval = max(1.0, float(getattr(args, "heartbeat_interval", 10.0)))
+        while not stop_commands.wait(interval):
+            try:
+                send_json(
+                    {
+                        "type": "deployment.heartbeat",
+                        "deployment_id": args.deployment_id,
+                        "timestamp": str(int(time.time())),
+                    }
+                )
+                log_connector_event(args, "heartbeat_sent")
+            except Exception as exc:  # noqa: BLE001
+                log_connector_event(args, "heartbeat_failed", error=str(exc))
+                return
+
     try:
-        websocket_send_json(
-            sock,
+        send_json(
             {
                 "type": "deployment.hello",
                 "deployment_id": args.deployment_id,
                 "display_name": args.display_name or args.deployment_id,
             },
         )
-        websocket_send_json(
-            sock,
+        send_json(
             deployment_snapshot_frame(
                 deployment_id=args.deployment_id,
                 display_name=args.display_name or args.deployment_id,
@@ -1149,6 +1286,8 @@ def run_connect(args: argparse.Namespace) -> dict[str, Any]:
         )
         next_snapshot = time.monotonic() + args.snapshot_interval
         deadline = time.monotonic() + args.max_runtime_seconds if args.max_runtime_seconds > 0 else None
+        heartbeat_thread = threading.Thread(target=heartbeat_loop, daemon=True)
+        heartbeat_thread.start()
         while True:
             if deadline is not None and time.monotonic() >= deadline:
                 break
@@ -1157,19 +1296,31 @@ def run_connect(args: argparse.Namespace) -> dict[str, Any]:
                 timeout = min(timeout, max(0.1, deadline - time.monotonic()))
             sock.settimeout(timeout)
             try:
-                frame = websocket_read_json(sock)
+                frame = websocket_read_json(sock, send_lock=send_lock)
             except socket.timeout:
                 frame = {}
-            except EOFError:
+            except EOFError as exc:
+                close_reason = str(exc)
+                log_connector_event(args, "connect_closed", reason=close_reason, commands=sent_commands)
                 break
             if frame.get("type") == "deployment.command":
-                websocket_send_json(sock, handle_command(args, frame))
-                sent_commands += 1
+                if args.once:
+                    send_json(handle_command(args, frame))
+                    count = note_command_handled()
+                    log_connector_event(args, "command_handled", commands=count)
+                else:
+                    thread = threading.Thread(
+                        target=handle_command_background,
+                        args=(frame,),
+                        daemon=True,
+                    )
+                    command_threads.append(thread)
+                    thread.start()
                 if args.once:
                     break
+            reap_command_threads()
             if time.monotonic() >= next_snapshot:
-                websocket_send_json(
-                    sock,
+                send_json(
                     deployment_snapshot_frame(
                         deployment_id=args.deployment_id,
                         display_name=args.display_name or args.deployment_id,
@@ -1179,12 +1330,19 @@ def run_connect(args: argparse.Namespace) -> dict[str, Any]:
                 )
                 next_snapshot = time.monotonic() + args.snapshot_interval
     finally:
+        stop_commands.set()
         try:
-            websocket_send_frame(sock, 0x8)
+            send_frame(0x8)
         except Exception:  # noqa: BLE001
             pass
         sock.close()
-    return {"ok": True, "mode": "connect", "deployment_id": args.deployment_id, "commands": sent_commands}
+    return {
+        "ok": True,
+        "mode": "connect",
+        "deployment_id": args.deployment_id,
+        "commands": sent_commands,
+        "close_reason": close_reason,
+    }
 
 
 def build_dry_run_payload(args: argparse.Namespace) -> dict[str, Any]:
@@ -1570,16 +1728,26 @@ def run_connect_supervised(args: argparse.Namespace) -> dict[str, Any]:
     last_error = ""
     while True:
         attempts += 1
+        log_connector_event(args, "connect_attempt", attempt=attempts)
         try:
             result = run_connect(args)
             result["attempts"] = attempts
             result["last_error"] = last_error
             if args.once or not args.reconnect:
                 return result
+            log_connector_event(
+                args,
+                "connect_reconnect_scheduled",
+                attempt=attempts,
+                reason=result.get("close_reason") or "broker connection ended",
+                delay_seconds=max(0.1, min(delay, args.reconnect_max_delay)),
+            )
+            delay = args.reconnect_initial_delay
         except KeyboardInterrupt:
             raise
         except Exception as exc:  # noqa: BLE001
             last_error = str(exc)
+            log_connector_event(args, "connect_error", attempt=attempts, error=last_error)
             if not args.reconnect:
                 raise
         if deadline is not None and time.monotonic() >= deadline:
@@ -1665,9 +1833,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--connect", action="store_true", help="open the native broker deployment websocket")
     parser.add_argument("--once", action="store_true", help="exit after the first command result or broker close")
     parser.add_argument("--reconnect", action="store_true", help="reconnect after broker disconnects or transient errors")
-    parser.add_argument("--reconnect-initial-delay", type=float, default=1.0)
+    parser.add_argument("--reconnect-initial-delay", type=float, default=0.1)
     parser.add_argument("--reconnect-max-delay", type=float, default=30.0)
     parser.add_argument("--snapshot-interval", type=float, default=30.0)
+    parser.add_argument("--heartbeat-interval", type=float, default=10.0)
     parser.add_argument("--max-runtime-seconds", type=float, default=0.0)
     parser.add_argument("--enroll-certificate", action="store_true", help="POST a CSR to the broker enrollment endpoint")
     parser.add_argument("--bootstrap-identity", action="store_true", help="generate key/CSR and enroll a cert when missing")
@@ -1687,6 +1856,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     resolve_identity_paths(args)
     if not args.runtime_instance_id:
         args.runtime_instance_id = default_runtime_instance_id()
+    args.connector_started_at_ms = int((args.timestamp or time.time()) * 1000)
     modes = sum(1 for enabled in (args.dry_run, args.self_test, args.connect, args.enroll_certificate) if enabled)
     if modes != 1:
         parser.error("choose exactly one of --dry-run, --self-test, --connect, or --enroll-certificate")
