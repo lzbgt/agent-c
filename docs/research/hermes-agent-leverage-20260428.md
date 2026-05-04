@@ -56,6 +56,11 @@ The main gap versus Hermes was not another scheduler or parallel task primitive.
   method_not_allowed` on `POST /api/v2/runtime-instances/{id}/sessions`, which
   identifies a stale codexw broker deployment that must be rolled forward before
   the expanded live proof can pass.
+- The public codexw broker was rolled forward the same day through codexw's
+  audited `scripts/broker-admin broker-update` route to build revision
+  `9dda0eeb7c16fb26a1e403de52e59b50d42c51e6`. The strict live activity proof
+  then passed through
+  `scripts/verify-codexw-release-contracts --agent-root /Users/zongbaolu/work/agent --agentd-run-live --agentd-proof activity --skip-doc-consistency --skip-runtime-proxy-fixture`.
 
 ## Design conclusion
 
