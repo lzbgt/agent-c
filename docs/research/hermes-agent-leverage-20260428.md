@@ -61,6 +61,11 @@ The main gap versus Hermes was not another scheduler or parallel task primitive.
   `9dda0eeb7c16fb26a1e403de52e59b50d42c51e6`. The strict live activity proof
   then passed through
   `scripts/verify-codexw-release-contracts --agent-root /Users/zongbaolu/work/agent --agentd-run-live --agentd-proof activity --skip-doc-consistency --skip-runtime-proxy-fixture`.
+- The remaining strict live proof set also passed after the broker rollout:
+  `connector-readiness`, `ota-candidate`, and `restart` were run with
+  `--agentd-run-live --keep-going` through the codexw release-contract verifier.
+  This covers connector readiness/audit transitions, OTA candidate preflight,
+  and restart preflight/dispatch/idempotency against the deployed public broker.
 
 ## Design conclusion
 
