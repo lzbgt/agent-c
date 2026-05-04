@@ -188,3 +188,10 @@ Writes are serialized with a send lock, and the service sends an explicit
 public-broker prompt plus follow-up `workflow.read` returned `AGENTD_OK`; 55
 seconds later the connector log still showed `heartbeat_sent` entries and no
 `connect_closed` event.
+
+The connector contract now also publishes an explicit media boundary under
+`runtime_capabilities.media`: `direct_p2p=false`, `video=false`, `audio=false`,
+and `screen=false`. That keeps the shared codexw/agentd broker contract honest:
+messaging, Files, Host Shell, sessions, events, proxy, and status are supported
+and proven, while direct P2P media streaming remains unimplemented rather than
+implicitly degraded to broker relay.

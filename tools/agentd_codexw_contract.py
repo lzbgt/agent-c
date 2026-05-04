@@ -17,6 +17,17 @@ from typing import Any, Callable
 LOCAL_API_VERSION = "agentd-codexw-facade-v1"
 RUNTIME_KIND = "agentd"
 RUNTIME_CAPABILITIES_SCHEMA = "broker.runtime_capabilities.v1"
+MEDIA_BOUNDARY = {
+    "direct_p2p": False,
+    "video": False,
+    "audio": False,
+    "screen": False,
+    "reason": (
+        "agentd codexw connector currently supports broker control surfaces "
+        "for messaging, files, shell, sessions, and runtime actions; direct "
+        "P2P media streaming is not implemented or advertised"
+    ),
+}
 
 RUNTIME_ACTIONS: dict[str, dict[str, Any]] = {
     "workflow.submit": {
@@ -86,6 +97,7 @@ def runtime_capabilities(
         "runtime_kind": RUNTIME_KIND,
         "actions": actions,
         "surfaces": surfaces,
+        "media": dict(MEDIA_BOUNDARY),
     }
 
 

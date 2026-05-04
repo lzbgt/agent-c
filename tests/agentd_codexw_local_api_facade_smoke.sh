@@ -148,6 +148,13 @@ for surface in ("sessions", "session_create", "events", "status", "proxy_http", 
     if runtime_caps.get("surfaces", {}).get(surface) is not True:
         print("missing runtime surface", surface, runtime_caps, file=sys.stderr)
         raise SystemExit(1)
+media = runtime_caps.get("media", {})
+if media.get("direct_p2p") is not False or media.get("video") is not False or media.get("audio") is not False:
+    print("agentd facade must explicitly advertise media unsupported", runtime_caps, file=sys.stderr)
+    raise SystemExit(1)
+if "direct P2P media streaming is not implemented" not in str(media.get("reason", "")):
+    print("agentd media boundary reason missing", media, file=sys.stderr)
+    raise SystemExit(1)
 for forbidden in ("runtime.restart", "runtime.update", "runtime.upgrade"):
     if forbidden in runtime_caps.get("actions", {}):
         print("agentd bridge must not advertise unsafe operator action", forbidden, runtime_caps, file=sys.stderr)

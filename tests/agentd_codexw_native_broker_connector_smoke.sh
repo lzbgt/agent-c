@@ -88,6 +88,13 @@ for surface in ("sessions", "session_create", "events", "status", "files", "shel
     if payload["runtime_capabilities"].get("surfaces", {}).get(surface) is not True:
         print("missing runtime surface", surface, payload["runtime_capabilities"], file=sys.stderr)
         raise SystemExit(1)
+media = payload["runtime_capabilities"].get("media", {})
+if media.get("direct_p2p") is not False or media.get("video") is not False or media.get("audio") is not False:
+    print("agentd connector must explicitly advertise media unsupported", payload["runtime_capabilities"], file=sys.stderr)
+    raise SystemExit(1)
+if "direct P2P media streaming is not implemented" not in str(media.get("reason", "")):
+    print("agentd media boundary reason missing", media, file=sys.stderr)
+    raise SystemExit(1)
 if payload["runtime_capabilities"].get("surfaces", {}).get("proxy_sse") is True:
     print("native deployment-connect must not advertise local-API SSE proxy", payload["runtime_capabilities"], file=sys.stderr)
     raise SystemExit(1)

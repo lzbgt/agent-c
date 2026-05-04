@@ -207,6 +207,13 @@ worker threads and serializes websocket writes with an internal lock, so
 DeepSeek-backed workflow calls cannot starve ping/pong handling and cause the
 broker to close an otherwise healthy long-lived connection.
 
+The runtime capability manifest is intentionally explicit about media support:
+the codexw connector advertises broker control surfaces for messaging,
+sessions, Files, Host Shell, runtime status, and runtime actions, but publishes
+`media.direct_p2p=false`. Do not infer camera/audio/video parity from the
+presence of the live broker connector. Agentd media requires a separate
+capability implementation and proof before it can be surfaced as supported.
+
 Systemd service templates are provided under `packaging/systemd/`:
 
 ```
