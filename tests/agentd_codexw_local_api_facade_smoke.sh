@@ -97,6 +97,19 @@ transcript="$(curl -fsS --noproxy "*" \
 file_read="$(curl -fsS --noproxy "*" \
   -H "Authorization: Bearer ${FACADE_TOKEN}" \
   "${FACADE_URL}/api/v1/session/agentd/files/read?path=docs%2FWORKFLOWS.md&offset=0&limit=16")"
+file_list="$(curl -fsS --noproxy "*" \
+  -H "Authorization: Bearer ${FACADE_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"path":"docs","offset":0,"limit":80}' \
+  "${FACADE_URL}/api/v1/session/agentd/files/list")"
+shell_started="$(curl -fsS --noproxy "*" \
+  -H "Authorization: Bearer ${FACADE_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"command":"printf agentd-facade-shell-smoke","cwd":"docs","label":"facade smoke shell"}' \
+  "${FACADE_URL}/api/v1/session/agentd/shells/start")"
+shells="$(curl -fsS --noproxy "*" \
+  -H "Authorization: Bearer ${FACADE_TOKEN}" \
+  "${FACADE_URL}/api/v1/session/agentd/shells")"
 experience_action="$(curl -fsS --noproxy "*" \
   -H "Authorization: Bearer ${FACADE_TOKEN}" \
   -H "Content-Type: application/json" \
@@ -116,6 +129,9 @@ attach = json.loads(r'''${attach}''')
 turn = json.loads(r'''${turn}''')
 transcript = json.loads(r'''${transcript}''')
 file_read = json.loads(r'''${file_read}''')
+file_list = json.loads(r'''${file_list}''')
+shell_started = json.loads(r'''${shell_started}''')
+shells = json.loads(r'''${shells}''')
 experience_action = json.loads(r'''${experience_action}''')
 
 if runtime.get("runtime", {}).get("kind") != "agentd":
@@ -173,11 +189,21 @@ if entries[0].get("role") != "user" or "hello broker facade" not in entries[0].g
 if entries[1].get("role") != "assistant" or "agentd facade echo" not in entries[1].get("text", ""):
     print("bad assistant transcript", transcript, file=sys.stderr)
     raise SystemExit(1)
-if file_read.get("path") != "docs/WORKFLOWS.md":
+if file_read.get("relative_path") != "docs/WORKFLOWS.md":
     print("bad file path", file_read, file=sys.stderr)
     raise SystemExit(1)
 if not base64.b64decode(file_read.get("data_base64", "")).startswith(b"#"):
     print("bad file payload", file_read, file=sys.stderr)
+    raise SystemExit(1)
+if file_list.get("path", "").endswith("/docs") is not True or not any(entry.get("name") == "WORKFLOWS.md" for entry in file_list.get("entries", [])):
+    print("bad file list", file_list, file=sys.stderr)
+    raise SystemExit(1)
+shell = shell_started.get("shell", {})
+if shell.get("status") != "completed" or "agentd-facade-shell-smoke" not in "\n".join(shell.get("output_lines", [])):
+    print("bad shell start", shell_started, file=sys.stderr)
+    raise SystemExit(1)
+if not any(item.get("id") == shell.get("id") for item in shells.get("shells", [])):
+    print("bad shell list", shells, file=sys.stderr)
     raise SystemExit(1)
 if experience_action.get("action") != "experience.list" or not isinstance(experience_action.get("result"), dict):
     print("bad experience action", experience_action, file=sys.stderr)

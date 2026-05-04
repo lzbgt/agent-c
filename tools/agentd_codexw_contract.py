@@ -76,6 +76,7 @@ def runtime_capabilities(
         "status": True,
         "transcript": True,
         "files": True,
+        "shell": True,
         "proxy_http": True,
     }
     if proxy_sse:
@@ -103,6 +104,8 @@ def legacy_capabilities() -> list[str]:
         "codexw.local_api.runtime_proxy_http",
         "codexw.local_api.turn_start",
         "codexw.local_api.transcript",
+        "codexw.local_api.files",
+        "codexw.local_api.shell",
     ]
 
 

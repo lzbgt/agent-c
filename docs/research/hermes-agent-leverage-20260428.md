@@ -100,3 +100,29 @@ Do not copy Hermes Python subsystem shapes directly into this C/C++/Go daemon-fi
 - broker compatibility is adapter-based, not a fake claim of full protocol parity
 - codexw cloud/app still needs first-class surfaces for `agentd` features that are richer than the current codexw session/shell model: workflow schedules, experience records, RL export, and delegate/parallel topology
 - RL readiness starts with deterministic records and replay bundles before model-training loops
+
+## 2026-05-04 iOS Shell/File Bridge
+
+The codexw shared-broker bridge now covers the iOS app's host inspection basics
+for `agentd` deployments:
+
+- the native connector advertises `surfaces.files` and `surfaces.shell`
+- the local API facade advertises the same surfaces, plus `surfaces.proxy_sse`
+  where codexw can stream a real HTTP SSE response
+- both adapters serve codexw session-style file list/read routes
+- both adapters serve one-shot shell start/list/detail routes
+- interactive shell `send` remains intentionally unsupported until `agentd`
+  owns a durable interactive terminal contract
+
+Verification:
+
+```bash
+tests/agentd_codexw_native_broker_connector_smoke.sh
+tests/agentd_codexw_local_api_facade_smoke.sh build/agentd
+```
+
+Those proofs exercise the same shell/file route shapes used by the codexw iOS
+file explorer and host-shell panels. The codexw-side external smoke harness also
+accepts `--verify-host-shell` and `--verify-files`, so a physical iPhone can
+exercise prompt submission, file explorer, shell, and direct-P2P media against
+agentd/codexw deployments through one broker entry point.

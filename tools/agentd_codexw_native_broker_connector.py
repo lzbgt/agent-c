@@ -8,6 +8,7 @@ import base64
 import hashlib
 import hmac
 import json
+import mimetypes
 import os
 import secrets
 import socket
@@ -816,6 +817,206 @@ def runtime_payload(args: argparse.Namespace) -> dict[str, Any]:
     )
 
 
+def codexw_session_id(args: argparse.Namespace) -> str:
+    return f"agentd:{args.deployment_id}"
+
+
+def session_route_tail(args: argparse.Namespace, route_path: str) -> str | None:
+    prefix = f"/api/v1/session/{codexw_session_id(args)}"
+    if route_path == prefix:
+        return ""
+    if route_path.startswith(prefix + "/"):
+        return route_path[len(prefix) + 1 :]
+    generic_prefix = "/api/v1/session/"
+    if route_path.startswith(generic_prefix):
+        parts = route_path[len(generic_prefix) :].split("/", 1)
+        if len(parts) == 2:
+            return parts[1]
+    return None
+
+
+def file_root(args: argparse.Namespace) -> Path:
+    return Path(args.file_root).expanduser().resolve()
+
+
+def safe_file_target(args: argparse.Namespace, raw_path: str | None) -> Path:
+    root = file_root(args)
+    value = str(raw_path or "").strip()
+    candidate = Path(value).expanduser() if value else root
+    if not candidate.is_absolute():
+        candidate = root / value.lstrip("/")
+    target = candidate.resolve()
+    if target != root and root not in target.parents:
+        raise ValueError(f"path is outside agentd file root: {target}")
+    return target
+
+
+def relative_to_file_root(args: argparse.Namespace, path: Path) -> str:
+    root = file_root(args)
+    try:
+        return str(path.resolve().relative_to(root))
+    except ValueError:
+        return str(path)
+
+
+def local_file_entry(args: argparse.Namespace, path: Path) -> dict[str, Any]:
+    stat = path.stat()
+    content_type = "" if path.is_dir() else (mimetypes.guess_type(str(path))[0] or "application/octet-stream")
+    return {
+        "name": path.name or str(path),
+        "path": str(path),
+        "relative_path": relative_to_file_root(args, path),
+        "is_directory": path.is_dir(),
+        "size_bytes": None if path.is_dir() else stat.st_size,
+        "content_type": content_type,
+    }
+
+
+def local_file_list(args: argparse.Namespace, body: Any | None) -> dict[str, Any]:
+    request = body if isinstance(body, dict) else {}
+    target = safe_file_target(args, request.get("path"))
+    if target.is_file():
+        target = target.parent
+    if not target.exists() or not target.is_dir():
+        raise ValueError(f"directory not found: {target}")
+    offset = max(0, int(request.get("offset") or 0))
+    limit = max(1, min(int(request.get("limit") or 80), 500))
+    all_entries = sorted(target.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower()))
+    page = all_entries[offset : offset + limit]
+    next_offset = offset + len(page) if offset + len(page) < len(all_entries) else None
+    parent_path = str(target.parent) if target != file_root(args) else ""
+    return {
+        "ok": True,
+        "session_id": codexw_session_id(args),
+        "root_path": str(file_root(args)),
+        "path": str(target),
+        "relative_path": relative_to_file_root(args, target),
+        "parent_path": parent_path,
+        "offset": offset,
+        "limit": limit,
+        "returned": len(page),
+        "total_entries": len(all_entries),
+        "next_offset": next_offset,
+        "has_more": next_offset is not None,
+        "entries": [local_file_entry(args, item) for item in page],
+    }
+
+
+def local_file_read(args: argparse.Namespace, body: Any | None) -> dict[str, Any]:
+    request = body if isinstance(body, dict) else {}
+    target = safe_file_target(args, request.get("path") or request.get("filename"))
+    if not target.is_file():
+        raise ValueError(f"file not found: {target}")
+    offset = max(0, int(request.get("offset") or 0))
+    limit = max(1, min(int(request.get("limit") or 65536), 512 * 1024))
+    size = target.stat().st_size
+    with target.open("rb") as handle:
+        handle.seek(offset)
+        chunk = handle.read(limit)
+    next_offset = offset + len(chunk) if offset + len(chunk) < size else None
+    return {
+        "ok": True,
+        "session_id": codexw_session_id(args),
+        "root_path": str(file_root(args)),
+        "path": str(target),
+        "relative_path": relative_to_file_root(args, target),
+        "filename": target.name,
+        "content_type": mimetypes.guess_type(str(target))[0] or "application/octet-stream",
+        "size_bytes": size,
+        "offset": offset,
+        "returned_bytes": len(chunk),
+        "next_offset": next_offset,
+        "has_more": next_offset is not None,
+        "preview_truncated": next_offset is not None,
+        "data_base64": base64.b64encode(chunk).decode("ascii"),
+    }
+
+
+def shell_jobs(args: argparse.Namespace) -> dict[str, dict[str, Any]]:
+    jobs = getattr(args, "_codexw_shell_jobs", None)
+    if not isinstance(jobs, dict):
+        jobs = {}
+        setattr(args, "_codexw_shell_jobs", jobs)
+    return jobs
+
+
+def local_shell_job(args: argparse.Namespace, shell_id: str, command: str, cwd: Path, output: str, exit_code: int) -> dict[str, Any]:
+    lines = output.splitlines()
+    return {
+        "id": shell_id,
+        "pid": 0,
+        "command": command,
+        "cwd": str(cwd),
+        "intent": "observation",
+        "label": "agentd broker shell",
+        "alias": "",
+        "service_capabilities": [],
+        "dependency_capabilities": [],
+        "interaction_recipe_names": [],
+        "origin": {"source_tool": "agentd_codexw_shell"},
+        "status": "completed" if exit_code == 0 else "failed",
+        "exit_code": exit_code,
+        "total_lines": len(lines),
+        "last_output_age_seconds": 0,
+        "recent_lines": lines[-80:],
+        "output_lines": lines[-400:],
+    }
+
+
+def local_shell_list(args: argparse.Namespace) -> dict[str, Any]:
+    return {"ok": True, "session_id": codexw_session_id(args), "shells": list(shell_jobs(args).values())}
+
+
+def local_shell_start(args: argparse.Namespace, body: Any | None) -> dict[str, Any]:
+    request = body if isinstance(body, dict) else {}
+    command = str(request.get("command") or "").strip()
+    if not command:
+        raise ValueError("shell command is required")
+    cwd = safe_file_target(args, request.get("cwd")) if request.get("cwd") else file_root(args)
+    if not cwd.is_dir():
+        cwd = cwd.parent
+    try:
+        proc = subprocess.run(
+            command,
+            cwd=str(cwd),
+            shell=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=max(1.0, float(args.shell_timeout_seconds)),
+            check=False,
+        )
+        output = proc.stdout
+        exit_code = proc.returncode
+    except subprocess.TimeoutExpired as exc:
+        output = (exc.stdout or "") if isinstance(exc.stdout, str) else ""
+        output += f"\ncommand timed out after {args.shell_timeout_seconds}s"
+        exit_code = 124
+    shell_id = f"agentd-shell-{int(time.time() * 1000)}"
+    job = local_shell_job(args, shell_id, command, cwd, output[-20000:], exit_code)
+    if label := str(request.get("label") or "").strip():
+        job["label"] = label
+    if intent := str(request.get("intent") or "").strip():
+        job["intent"] = intent
+    shell_jobs(args)[shell_id] = job
+    return {"ok": True, "session_id": codexw_session_id(args), "shell": job}
+
+
+def local_shell_read(args: argparse.Namespace, reference: str) -> dict[str, Any]:
+    job = shell_jobs(args).get(reference)
+    if not job:
+        raise KeyError(reference)
+    return {"ok": True, "session_id": codexw_session_id(args), "shell": job}
+
+
+def local_shell_terminate(args: argparse.Namespace, reference: str) -> dict[str, Any]:
+    job = shell_jobs(args).get(reference)
+    if not job:
+        raise KeyError(reference)
+    job["status"] = "completed"
+    return {"ok": True, "session_id": codexw_session_id(args), "shell": job}
+
+
 def handle_command(args: argparse.Namespace, frame: dict[str, Any]) -> dict[str, Any]:
     request_id = str(frame.get("request_id") or "")
     method = str(frame.get("method") or "GET").upper()
@@ -826,6 +1027,7 @@ def handle_command(args: argparse.Namespace, frame: dict[str, Any]) -> dict[str,
     query = urllib.parse.parse_qs(parsed.query)
     request_agentd = lambda m, p, b=None: agentd_request(args, m, p, b)
     try:
+        session_tail = session_route_tail(args, route_path)
         if method == "GET" and route_path == "/api/v1/runtime":
             result = runtime_payload(args)
         elif method == "GET" and route_path == "/api/v1/runtime/status":
@@ -849,6 +1051,25 @@ def handle_command(args: argparse.Namespace, frame: dict[str, Any]) -> dict[str,
             result = forward_runtime_action(args, body)
         elif method == "GET" and route_path == "/healthz":
             result = {"ok": True, "service": "agentd-codexw-native-broker-connector"}
+        elif session_tail == "shells" and method == "GET":
+            result = local_shell_list(args)
+        elif session_tail == "shells/start" and method == "POST":
+            result = local_shell_start(args, body)
+        elif session_tail and session_tail.startswith("shells/"):
+            parts = session_tail.split("/")
+            reference = parts[1] if len(parts) >= 2 else ""
+            if method == "GET" and len(parts) == 2:
+                result = local_shell_read(args, reference)
+            elif method == "POST" and len(parts) == 3 and parts[2] == "terminate":
+                result = local_shell_terminate(args, reference)
+            elif method == "POST" and len(parts) == 3 and parts[2] == "send":
+                raise ValueError("agentd codexw shell adapter runs one-shot commands; send is unsupported after completion")
+            else:
+                raise ValueError(f"unsupported shell route: {method} {route_path}")
+        elif session_tail == "files/list" and method == "POST":
+            result = local_file_list(args, body)
+        elif session_tail == "files/read" and method == "POST":
+            result = local_file_read(args, body)
         else:
             return {
                 "type": "deployment.command_result",
@@ -1370,6 +1591,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--deployment-key-path", default=os.environ.get("AGENTD_CODEXW_DEPLOYMENT_KEY_PATH", ""))
     parser.add_argument("--agentd-base-url", default=os.environ.get("AGENTD_BASE_URL", "http://127.0.0.1:8123"))
     parser.add_argument("--agentd-auth-token", default=os.environ.get("AGENTD_AUTH_TOKEN", ""))
+    parser.add_argument("--file-root", default=os.environ.get("AGENTD_CODEXW_FILE_ROOT", os.getcwd()))
+    parser.add_argument(
+        "--shell-timeout-seconds",
+        type=float,
+        default=env_int("AGENTD_CODEXW_SHELL_TIMEOUT_SECONDS", 20),
+        help="maximum wall-clock seconds for one-shot codexw broker shell commands",
+    )
     parser.add_argument("--broker-user", default=os.environ.get("AGENTD_CODEXW_BROKER_USER", ""))
     parser.add_argument("--broker-password", default=os.environ.get("AGENTD_CODEXW_BROKER_PASSWORD", ""))
     parser.add_argument("--broker-token", default=os.environ.get("AGENTD_CODEXW_BROKER_TOKEN", ""))

@@ -9,6 +9,7 @@ import json
 import mimetypes
 import os
 import platform
+import subprocess
 import threading
 import time
 import urllib.error
@@ -39,6 +40,7 @@ class FacadeState:
         self.instance_id = f"agentd-facade-{uuid.uuid4().hex[:12]}"
         self.process_started_at_ms = int(time.time() * 1000)
         self.transcript: list[dict[str, Any]] = []
+        self.shells: dict[str, dict[str, Any]] = {}
         self.lock = threading.Lock()
 
     def append_message(self, role: str, text: str, *, status: str = "completed") -> int:
@@ -278,13 +280,24 @@ class FacadeHandler(BaseHTTPRequestHandler):
             elif method == "GET" and path == f"/api/v1/session/{self.state.session_id}/services":
                 self.send_json(200, {"ok": True, "session_id": self.state.session_id, "services": []})
             elif method == "GET" and path == f"/api/v1/session/{self.state.session_id}/shells":
-                self.send_json(200, {"ok": True, "session_id": self.state.session_id, "shells": []})
+                self.send_json(200, self.shell_list())
+            elif method == "POST" and path == f"/api/v1/session/{self.state.session_id}/shells/start":
+                self.send_json(200, self.shell_start(read_json_body(self)))
             elif method == "GET" and path.startswith(f"/api/v1/session/{self.state.session_id}/shells/"):
-                self.send_json(404, {"error": {"code": "shell_not_found", "message": "no facade shell is active"}})
+                self.send_json(200, self.shell_read(path.rsplit("/", 1)[-1]))
             elif method == "POST" and path.startswith(f"/api/v1/session/{self.state.session_id}/shells/"):
-                self.send_json(501, {"error": {"code": "shell_control_unimplemented", "message": "agentd facade does not own shell sessions yet"}})
+                if path.endswith("/terminate"):
+                    self.send_json(200, self.shell_terminate(path.split("/")[-2]))
+                elif path.endswith("/send"):
+                    self.send_json(409, {"error": {"code": "shell_completed", "message": "agentd facade shell commands are one-shot"}})
+                else:
+                    self.send_json(404, {"error": {"code": "shell_not_found", "message": path}})
+            elif method == "POST" and path == f"/api/v1/session/{self.state.session_id}/files/list":
+                self.send_json(200, self.file_list(read_json_body(self)))
             elif method == "GET" and path == f"/api/v1/session/{self.state.session_id}/files/read":
                 self.file_read(query)
+            elif method == "POST" and path == f"/api/v1/session/{self.state.session_id}/files/read":
+                self.send_json(200, self.file_read_body(read_json_body(self)))
             else:
                 self.send_json(404, {"error": {"code": "not_found", "message": path}})
         except ValueError as exc:
@@ -475,38 +488,163 @@ class FacadeHandler(BaseHTTPRequestHandler):
             },
         }
 
+    def file_root(self) -> Path:
+        return Path(self.state.args.file_root).expanduser().resolve()
+
+    def safe_file_target(self, raw_path: str | None) -> Path:
+        root = self.file_root()
+        value = str(raw_path or "").strip()
+        candidate = Path(value).expanduser() if value else root
+        if not candidate.is_absolute():
+            candidate = root / value.lstrip("/")
+        target = candidate.resolve()
+        if target != root and root not in target.parents:
+            raise ValueError(f"path is outside file root: {target}")
+        return target
+
+    def relative_path(self, target: Path) -> str:
+        try:
+            return str(target.resolve().relative_to(self.file_root()))
+        except ValueError:
+            return str(target)
+
+    def file_entry(self, target: Path) -> dict[str, Any]:
+        stat = target.stat()
+        return {
+            "name": target.name or str(target),
+            "path": str(target),
+            "relative_path": self.relative_path(target),
+            "is_directory": target.is_dir(),
+            "size_bytes": None if target.is_dir() else stat.st_size,
+            "content_type": "" if target.is_dir() else (mimetypes.guess_type(str(target))[0] or "application/octet-stream"),
+        }
+
+    def file_list(self, body: dict[str, Any]) -> dict[str, Any]:
+        target = self.safe_file_target(body.get("path"))
+        if target.is_file():
+            target = target.parent
+        if not target.exists() or not target.is_dir():
+            raise ValueError(f"directory not found: {target}")
+        offset = max(0, int(body.get("offset") or 0))
+        limit = max(1, min(int(body.get("limit") or 80), 500))
+        entries = sorted(target.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower()))
+        page = entries[offset : offset + limit]
+        next_offset = offset + len(page) if offset + len(page) < len(entries) else None
+        return {
+            "ok": True,
+            "session_id": self.state.session_id,
+            "root_path": str(self.file_root()),
+            "path": str(target),
+            "relative_path": self.relative_path(target),
+            "parent_path": str(target.parent) if target != self.file_root() else "",
+            "offset": offset,
+            "limit": limit,
+            "returned": len(page),
+            "total_entries": len(entries),
+            "next_offset": next_offset,
+            "has_more": next_offset is not None,
+            "entries": [self.file_entry(item) for item in page],
+        }
+
+    def file_read_body(self, body: dict[str, Any]) -> dict[str, Any]:
+        target = self.safe_file_target(body.get("path") or body.get("filename"))
+        if not target.is_file():
+            raise ValueError(f"file not found: {target}")
+        offset = max(0, int(body.get("offset") or 0))
+        limit = max(1, min(int(body.get("limit") or 65536), 512 * 1024))
+        size = target.stat().st_size
+        with target.open("rb") as fh:
+            fh.seek(offset)
+            chunk = fh.read(limit)
+        next_offset = offset + len(chunk) if offset + len(chunk) < size else None
+        return {
+            "ok": True,
+            "session_id": self.state.session_id,
+            "root_path": str(self.file_root()),
+            "path": str(target),
+            "relative_path": self.relative_path(target),
+            "filename": target.name,
+            "content_type": mimetypes.guess_type(str(target))[0] or "application/octet-stream",
+            "size_bytes": size,
+            "offset": offset,
+            "returned_bytes": len(chunk),
+            "next_offset": next_offset,
+            "has_more": next_offset is not None,
+            "preview_truncated": next_offset is not None,
+            "data_base64": base64.b64encode(chunk).decode("ascii"),
+        }
+
     def file_read(self, query: dict[str, list[str]]) -> None:
         path = (query.get("path") or [""])[0]
         if not path:
             self.send_json(400, {"error": {"code": "missing_path", "message": "path is required"}})
             return
-        root = Path(self.state.args.file_root).resolve()
-        target = (root / path.lstrip("/")).resolve()
-        if root not in target.parents and target != root:
-            self.send_json(403, {"error": {"code": "path_not_allowed", "message": str(target)}})
-            return
-        if not target.is_file():
-            self.send_json(404, {"error": {"code": "file_not_found", "message": path}})
-            return
-        offset = int((query.get("offset") or ["0"])[0])
-        limit = max(1, min(int((query.get("limit") or ["65536"])[0]), 512 * 1024))
-        size = target.stat().st_size
-        with target.open("rb") as fh:
-            fh.seek(offset)
-            chunk = fh.read(limit)
-        content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
-        self.send_json(
-            200,
-            {
-                "ok": True,
-                "path": str(target.relative_to(root)),
-                "offset": offset,
-                "size_bytes": size,
-                "data_base64": base64.b64encode(chunk).decode("ascii"),
-                "has_more": offset + len(chunk) < size,
-                "content_type": content_type,
-            },
-        )
+        body = {
+            "path": path,
+            "offset": int((query.get("offset") or ["0"])[0]),
+            "limit": int((query.get("limit") or ["65536"])[0]),
+        }
+        self.send_json(200, self.file_read_body(body))
+
+    def shell_list(self) -> dict[str, Any]:
+        return {"ok": True, "session_id": self.state.session_id, "shells": list(self.state.shells.values())}
+
+    def shell_start(self, body: dict[str, Any]) -> dict[str, Any]:
+        command = str(body.get("command") or "").strip()
+        if not command:
+            raise ValueError("shell command is required")
+        cwd = self.safe_file_target(body.get("cwd")) if body.get("cwd") else self.file_root()
+        if not cwd.is_dir():
+            cwd = cwd.parent
+        try:
+            proc = subprocess.run(
+                command,
+                cwd=str(cwd),
+                shell=True,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=max(1.0, float(self.state.args.shell_timeout_seconds)),
+                check=False,
+            )
+            output = proc.stdout
+            exit_code = proc.returncode
+        except subprocess.TimeoutExpired as exc:
+            output = (exc.stdout or "") if isinstance(exc.stdout, str) else ""
+            output += f"\ncommand timed out after {self.state.args.shell_timeout_seconds}s"
+            exit_code = 124
+        lines = output[-20000:].splitlines()
+        shell_id = f"agentd-shell-{int(time.time() * 1000)}"
+        job = {
+            "id": shell_id,
+            "pid": 0,
+            "command": command,
+            "cwd": str(cwd),
+            "intent": str(body.get("intent") or "observation"),
+            "label": str(body.get("label") or "agentd facade shell"),
+            "alias": "",
+            "service_capabilities": [],
+            "dependency_capabilities": [],
+            "interaction_recipe_names": [],
+            "origin": {"source_tool": "agentd_codexw_shell"},
+            "status": "completed" if exit_code == 0 else "failed",
+            "exit_code": exit_code,
+            "total_lines": len(lines),
+            "last_output_age_seconds": 0,
+            "recent_lines": lines[-80:],
+            "output_lines": lines[-400:],
+        }
+        self.state.shells[shell_id] = job
+        return {"ok": True, "session_id": self.state.session_id, "shell": job}
+
+    def shell_read(self, shell_id: str) -> dict[str, Any]:
+        job = self.state.shells.get(shell_id)
+        if not job:
+            raise ValueError(f"shell not found: {shell_id}")
+        return {"ok": True, "session_id": self.state.session_id, "shell": job}
+
+    def shell_terminate(self, shell_id: str) -> dict[str, Any]:
+        return self.shell_read(shell_id)
 
     def accepts_event_stream(self) -> bool:
         accept = self.headers.get("accept") or self.headers.get("Accept") or ""
@@ -597,6 +735,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--session-id", default="agentd")
     parser.add_argument("--thread-id", default="agentd-thread")
     parser.add_argument("--file-root", default=os.getcwd())
+    parser.add_argument("--shell-timeout-seconds", type=float, default=20.0)
     parser.add_argument("--turn-mode", choices=("agentd_run", "echo"), default="agentd_run")
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--quiet", action="store_true")

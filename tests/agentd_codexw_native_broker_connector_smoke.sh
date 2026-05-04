@@ -84,7 +84,7 @@ if frame.get("type") != "deployment.snapshot" or frame.get("deployment_id") != "
 if "workflow.submit" not in payload["runtime_capabilities"]["actions"]:
     print("missing workflow action", payload["runtime_capabilities"], file=sys.stderr)
     raise SystemExit(1)
-for surface in ("sessions", "session_create", "events", "status", "proxy_http"):
+for surface in ("sessions", "session_create", "events", "status", "files", "shell", "proxy_http"):
     if payload["runtime_capabilities"].get("surfaces", {}).get(surface) is not True:
         print("missing runtime surface", surface, payload["runtime_capabilities"], file=sys.stderr)
         raise SystemExit(1)
@@ -95,6 +95,61 @@ for forbidden in ("runtime.restart", "runtime.update", "runtime.upgrade"):
     if forbidden in payload["runtime_capabilities"]["actions"]:
         print("agentd connector must not advertise unsafe operator action", forbidden, payload["runtime_capabilities"], file=sys.stderr)
         raise SystemExit(1)
+PY
+
+printf 'agentd native file smoke\n' >"${TMP_DIR}/file-smoke.txt"
+python3 - <<PY
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+script = Path("${SCRIPT_DIR}/../tools/agentd_codexw_native_broker_connector.py")
+spec = importlib.util.spec_from_file_location("agentd_codexw_native_broker_connector", script)
+module = importlib.util.module_from_spec(spec)
+sys.path.insert(0, str(script.parent))
+spec.loader.exec_module(module)
+args = module.parse_args([
+    "--broker-url", "http://127.0.0.1:8787",
+    "--deployment-id", "agentd-native-smoke",
+    "--runtime-instance-id", "agentd-native-smoke-instance",
+    "--deployment-cert-path", "${CERT_PATH}",
+    "--deployment-key-path", "${KEY_PATH}",
+    "--agentd-base-url", "http://127.0.0.1:18080",
+    "--file-root", "${TMP_DIR}",
+    "--dry-run",
+])
+
+def command(method, path, body=None):
+    return module.handle_command(args, {
+        "request_id": f"req-{method}-{path}",
+        "method": method,
+        "path": path,
+        "body": body,
+    })
+
+session = module.codexw_session_id(args)
+files = command("POST", f"/api/v1/session/{session}/files/list", {"path": "${TMP_DIR}"})
+if files.get("status") != 200 or not any(entry.get("name") == "file-smoke.txt" for entry in files.get("body", {}).get("entries", [])):
+    print("bad native file list", files, file=sys.stderr)
+    raise SystemExit(1)
+read = command("POST", f"/api/v1/session/{session}/files/read", {"path": "${TMP_DIR}/file-smoke.txt"})
+if read.get("status") != 200 or read.get("body", {}).get("filename") != "file-smoke.txt":
+    print("bad native file read", read, file=sys.stderr)
+    raise SystemExit(1)
+shell = command("POST", f"/api/v1/session/{session}/shells/start", {"command": "printf agentd-native-shell-smoke", "cwd": "${TMP_DIR}"})
+job = shell.get("body", {}).get("shell", {})
+if shell.get("status") != 200 or "agentd-native-shell-smoke" not in "\\n".join(job.get("output_lines", [])):
+    print("bad native shell start", shell, file=sys.stderr)
+    raise SystemExit(1)
+shells = command("GET", f"/api/v1/session/{session}/shells")
+if shells.get("status") != 200 or not shells.get("body", {}).get("shells"):
+    print("bad native shell list", shells, file=sys.stderr)
+    raise SystemExit(1)
+detail = command("GET", f"/api/v1/session/{session}/shells/{job['id']}")
+if detail.get("status") != 200 or detail.get("body", {}).get("shell", {}).get("id") != job["id"]:
+    print("bad native shell detail", detail, file=sys.stderr)
+    raise SystemExit(1)
 PY
 
 UPDATE_OUT_PATH="${TMP_DIR}/dry-run-runtime-update.json"
