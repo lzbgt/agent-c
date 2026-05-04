@@ -226,6 +226,11 @@ this runtime instance online. Enable
 check every five minutes after the connector service is installed. After
 first-boot certificate enrollment, prefer a read-only broker token for the
 self-test and remove the bootstrap username/password from the env file.
+On macOS launchd, apply the same rule after first bootstrap: reinstall the
+connector LaunchAgent with `AGENTD_CODEXW_BROKER_TOKEN` and without
+`AGENTD_CODEXW_BROKER_USER` or `AGENTD_CODEXW_BROKER_PASSWORD`. The deployment
+certificate/key own the runtime websocket identity; the token is only needed for
+the read-only broker-visible self-test.
 For hosts that intentionally enable `AGENTD_CODEXW_RUNTIME_UPDATE_MODE=agentd_ota`,
 set `AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT=1` as well. That keeps the periodic
 self-test read-only while requiring the broker to accept

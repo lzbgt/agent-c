@@ -66,6 +66,23 @@ The main gap versus Hermes was not another scheduler or parallel task primitive.
   `--agentd-run-live --keep-going` through the codexw release-contract verifier.
   This covers connector readiness/audit transitions, OTA candidate preflight,
   and restart preflight/dispatch/idempotency against the deployed public broker.
+- The durable macOS connector-service proof was then closed on this host.
+  `com.agentd.daemon`, `com.agentd.codexw-connector`, and
+  `com.agentd.codexw-connector.self-test` were installed as LaunchAgents for a
+  separate service deployment id, `agentd-service-bruce-mac`. The connector was
+  bootstrapped once to persist its broker-signed deployment identity, then
+  reinstalled with `AGENTD_CODEXW_BROKER_TOKEN` only so the final plist no
+  longer carries broker username/password. `tools/verify_agentd_codexw_connector_service.py
+  --json` passed `identity_files`, `identity_certificate_fingerprint`,
+  `agentd_health`, `runtime_sessions_surface`, `runtime_events_surface`, and
+  `broker_runtime_instance_visible`.
+- The complete strict codexw verifier now passes with both service and live
+  proof modes enabled:
+  `scripts/verify-codexw-release-contracts --agent-root /Users/zongbaolu/work/agent --agentd-run-service --agentd-run-live --skip-doc-consistency --skip-runtime-proxy-fixture --keep-going`.
+  The 2026-05-04 result logged under
+  `/tmp/codexw-logs/codexw-release-contracts-20260504-110401` reports five
+  passed proofs: `connector-service`, `connector-readiness`, `activity`,
+  `ota-candidate`, and `restart`.
 
 ## Design conclusion
 
