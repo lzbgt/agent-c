@@ -57,8 +57,11 @@ This repo should treat the following `codexw` surfaces as real:
 For `agentd` interoperability, this repo should expose the shared activity
 contract through connector-owned routes:
 
-- advertise `broker.runtime_capabilities.v1` with `surfaces.sessions` and
-  `surfaces.events`
+- advertise `broker.runtime_capabilities.v1` with `surfaces.sessions`,
+  `surfaces.session_create`, `surfaces.events`, and `surfaces.proxy_http`
+- advertise `surfaces.proxy_sse` only on the external local-API facade path,
+  where codexw has a registered `deployment-local-api-base-url` and can stream
+  a real `text/event-stream` response
 - serve `GET /api/v1/runtime/sessions` from daemon sessions and durable
   workflows
 - serve `GET /api/v1/runtime/events` from client events and workflow events

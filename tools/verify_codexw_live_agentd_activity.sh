@@ -125,36 +125,13 @@ for _ in $(seq 1 120); do
 done
 curl -fsS --noproxy "*" -H "Authorization: Bearer ${AGENTD_TOKEN}" "${AGENTD_URL}/api/v1/health" >/dev/null
 
-SESSION_ID="$(curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${AGENTD_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{}' \
-  "${AGENTD_URL}/api/v1/session/new" | json_field session_id)"
-
-curl -fsS --noproxy "*" --max-time 10 \
-  -H "Authorization: Bearer ${AGENTD_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d "$(python3 - <<PY
-import json
-print(json.dumps({
-    "session_id": "${SESSION_ID}",
-    "type": "codexw_live_agentd_activity_proof",
-    "data": {
-        "deployment_id": "${DEPLOYMENT_ID}",
-        "purpose": "shared runtime-instance activity proof",
-    },
-    "append_to_session": False,
-}))
-PY
-)" \
-  "${AGENTD_URL}/api/v1/session/client_event" >/dev/null
-
 python3 - <<PY
 import importlib.machinery
 import importlib.util
 import json
 import time
 import urllib.parse
+import urllib.request
 from pathlib import Path
 
 broker_admin = "${BROKER_ADMIN}"
@@ -174,7 +151,8 @@ client = mod.BrokerAdminClient(
 )
 token = (args.token or "").strip() or client.login(args.username, mod.require_password(args.password))
 deployment_id = "${DEPLOYMENT_ID}"
-session_id = "${SESSION_ID}"
+agentd_url = "${AGENTD_URL}"
+agentd_token = "${AGENTD_TOKEN}"
 
 instance = None
 last_payload = {}
@@ -201,8 +179,54 @@ instance_id = instance.get("instance_id") or instance.get("runtime_instance_id")
 path_id = urllib.parse.quote(instance_id, safe="")
 caps = client.request("GET", f"/api/v2/runtime-instances/{path_id}/capabilities", token=token)
 cap_text = json.dumps(caps.get("capabilities", {}), sort_keys=True)
-if "sessions" not in cap_text or "events" not in cap_text:
-    raise SystemExit("agentd capability response missing sessions/events surfaces: " + cap_text[:2000])
+for expected in ("sessions", "session_create", "events", "status", "proxy_http"):
+    if expected not in cap_text:
+        raise SystemExit(f"agentd capability response missing {expected} surface: " + cap_text[:2000])
+
+created = client.request(
+    "POST",
+    f"/api/v2/runtime-instances/{path_id}/sessions",
+    {
+        "objective": "codexw live agentd activity proof",
+        "client_id": "codexw-live-agentd-activity-proof",
+    },
+    token=token,
+)
+session_id = created.get("session", {}).get("session_id")
+if not session_id:
+    raise SystemExit("broker session-create route did not return a session_id: " + json.dumps(created)[:2000])
+
+proxy_status = client.request(
+    "POST",
+    f"/api/v2/runtime-instances/{path_id}/proxy/http",
+    {"method": "GET", "path": "/api/v1/runtime/status"},
+    token=token,
+)
+proxy_text = json.dumps(proxy_status, sort_keys=True)
+if not proxy_status.get("ok") or "agentd" not in proxy_text:
+    raise SystemExit("broker HTTP proxy did not expose agentd runtime status: " + proxy_text[:2000])
+
+event_body = json.dumps({
+    "session_id": session_id,
+    "type": "codexw_live_agentd_activity_proof",
+    "data": {
+        "deployment_id": deployment_id,
+        "purpose": "shared runtime-instance activity proof",
+    },
+    "append_to_session": False,
+}).encode()
+event_request = urllib.request.Request(
+    agentd_url.rstrip("/") + "/api/v1/session/client_event",
+    data=event_body,
+    headers={
+        "Authorization": f"Bearer {agentd_token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    },
+    method="POST",
+)
+with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(event_request, timeout=10) as response:
+    response.read()
 
 sessions = None
 for _ in range(30):
@@ -238,7 +262,10 @@ proof = {
     "events_returned": len(events.get("events", [])),
     "event_names": [e.get("event") for e in events.get("events", [])],
     "capability_has_sessions": "sessions" in cap_text,
+    "capability_has_session_create": "session_create" in cap_text,
     "capability_has_events": "events" in cap_text,
+    "capability_has_proxy_http": "proxy_http" in cap_text,
+    "proxy_status_ok": bool(proxy_status.get("ok")),
 }
 Path("${PROOF_JSON}").write_text(json.dumps(proof, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
 print(json.dumps(proof, indent=2, sort_keys=True))

@@ -69,7 +69,17 @@ fi
 runtime="$(curl -fsS --noproxy "*" -H "Authorization: Bearer ${FACADE_TOKEN}" "${FACADE_URL}/api/v1/runtime")"
 runtime_status="$(curl -fsS --noproxy "*" -H "Authorization: Bearer ${FACADE_TOKEN}" "${FACADE_URL}/api/v1/runtime/status")"
 runtime_sessions="$(curl -fsS --noproxy "*" -H "Authorization: Bearer ${FACADE_TOKEN}" "${FACADE_URL}/api/v1/runtime/sessions")"
+runtime_created="$(curl -fsS --noproxy "*" \
+  -H "Authorization: Bearer ${FACADE_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"session_id":"agentd-runtime-created","objective":"facade runtime session create smoke"}' \
+  "${FACADE_URL}/api/v1/runtime/sessions")"
 runtime_events="$(curl -fsS --noproxy "*" -H "Authorization: Bearer ${FACADE_TOKEN}" "${FACADE_URL}/api/v1/runtime/events?limit=8")"
+runtime_events_sse="$(curl -fsS --noproxy "*" \
+  -H "Authorization: Bearer ${FACADE_TOKEN}" \
+  -H "Accept: text/event-stream" \
+  -H "Last-Event-ID: 1" \
+  "${FACADE_URL}/api/v1/runtime/events?limit=8")"
 session="$(curl -fsS --noproxy "*" -H "Authorization: Bearer ${FACADE_TOKEN}" "${FACADE_URL}/api/v1/session")"
 attach="$(curl -fsS --noproxy "*" \
   -H "Authorization: Bearer ${FACADE_TOKEN}" \
@@ -98,7 +108,9 @@ import base64, json, sys
 runtime = json.loads(r'''${runtime}''')
 runtime_status = json.loads(r'''${runtime_status}''')
 runtime_sessions = json.loads(r'''${runtime_sessions}''')
+runtime_created = json.loads(r'''${runtime_created}''')
 runtime_events = json.loads(r'''${runtime_events}''')
+runtime_events_sse = r'''${runtime_events_sse}'''
 session = json.loads(r'''${session}''')
 attach = json.loads(r'''${attach}''')
 turn = json.loads(r'''${turn}''')
@@ -116,7 +128,7 @@ runtime_caps = runtime.get("runtime", {}).get("runtime_capabilities", {})
 if "workflow.submit" not in runtime_caps.get("actions", {}) or "experience.list" not in runtime_caps.get("actions", {}):
     print("missing runtime actions", runtime, file=sys.stderr)
     raise SystemExit(1)
-for surface in ("sessions", "events", "status"):
+for surface in ("sessions", "session_create", "events", "status", "proxy_http", "proxy_sse"):
     if runtime_caps.get("surfaces", {}).get(surface) is not True:
         print("missing runtime surface", surface, runtime_caps, file=sys.stderr)
         raise SystemExit(1)
@@ -127,8 +139,17 @@ for forbidden in ("runtime.restart", "runtime.update", "runtime.upgrade"):
 if runtime_sessions.get("runtime_kind") != "agentd" or not isinstance(runtime_sessions.get("sessions"), list):
     print("bad runtime sessions", runtime_sessions, file=sys.stderr)
     raise SystemExit(1)
+if runtime_created.get("runtime_kind") != "agentd" or runtime_created.get("session", {}).get("session_id") != "agentd-runtime-created":
+    print("bad runtime session create", runtime_created, file=sys.stderr)
+    raise SystemExit(1)
+if runtime_created.get("session", {}).get("objective") != "facade runtime session create smoke":
+    print("bad runtime session objective", runtime_created, file=sys.stderr)
+    raise SystemExit(1)
 if runtime_events.get("runtime_kind") != "agentd" or not isinstance(runtime_events.get("events"), list):
     print("bad runtime events", runtime_events, file=sys.stderr)
+    raise SystemExit(1)
+if "event: runtime.events" not in runtime_events_sse or "data: " not in runtime_events_sse:
+    print("bad runtime events SSE", runtime_events_sse, file=sys.stderr)
     raise SystemExit(1)
 if runtime_status.get("runtime_kind") != "agentd" or runtime_status.get("update", {}).get("state") != "disabled":
     print("bad runtime status", runtime_status, file=sys.stderr)

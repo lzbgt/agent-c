@@ -238,8 +238,28 @@ facade-backed and native broker paths from drifting.
 
 `/api/v1/runtime` advertises a `broker.runtime_capabilities.v1` manifest so the
 codexw broker and app can drive agentd-specific panels through capabilities
-instead of hardcoded runtime branches. The generic
-`POST /api/v1/runtime/actions` adapter supports:
+instead of hardcoded runtime branches. The shared runtime surfaces include
+`sessions`, `session_create`, `events`, `status`, and `proxy_http`.
+The external local-API facade also advertises `proxy_sse` because codexw can
+open a real local `text/event-stream` response from its registered
+`deployment-local-api-base-url`; the native deployment websocket connector does
+not advertise `proxy_sse` because deployment command results are finite JSON
+frames, not broker-streamable HTTP bodies.
+
+`POST /api/v1/runtime/sessions` creates an agentd daemon session through
+`/api/v1/session/new` and returns a neutral session row for codexw
+`/api/v2/runtime-instances/{id}/sessions`. `surfaces.proxy_http` allows codexw's
+bounded `/api/v2/runtime-instances/{id}/proxy/http` route to call the same
+allowlisted `/api/v1/runtime/...` JSON routes without exposing arbitrary daemon
+paths.
+
+Live proof prerequisite: the target codexw broker must include the v2
+runtime-instance session and proxy routes. If the live bridge proof receives
+`405 method_not_allowed` from `POST /api/v2/runtime-instances/{id}/sessions`,
+the broker deployment is stale relative to this connector contract and must be
+updated before treating the `agentd` side as failed.
+
+The generic `POST /api/v1/runtime/actions` adapter supports:
 
 - `workflow.submit` -> `POST /api/v1/workflow/submit`
 - `workflow.read` -> `GET /api/v1/workflow?workflow_id=...`
@@ -297,7 +317,8 @@ agentd broker-client:
 - sends `deployment.hello` and `deployment.snapshot` frames
 - handles broker ping frames and periodic snapshot refresh
 - dispatches `deployment.command` for `GET /api/v1/runtime`,
-  `GET /healthz`, and `POST /api/v1/runtime/actions`
+  `GET /api/v1/runtime/status`, runtime session/event routes, `GET /healthz`,
+  and `POST /api/v1/runtime/actions`
 - can sign and submit a CSR body to
   `POST /api/v1/deployment/enroll-certificate` when supplied an enrollment
   token id, shared secret, and CSR PEM

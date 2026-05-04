@@ -163,6 +163,34 @@ actions = caps.get("capabilities", {}).get("actions", {})
 if "experience.list" not in actions or "workflow.submit" not in actions:
     print(f"missing agentd actions: {caps}", file=sys.stderr)
     raise SystemExit(1)
+surfaces = caps.get("capabilities", {}).get("surfaces", {})
+for surface in ("sessions", "session_create", "events", "status", "proxy_http"):
+    if surfaces.get(surface) is not True:
+        print(f"missing agentd surface {surface}: {caps}", file=sys.stderr)
+        raise SystemExit(1)
+if surfaces.get("proxy_sse") is True:
+    print(f"native websocket connector must not advertise proxy_sse without local API URL: {caps}", file=sys.stderr)
+    raise SystemExit(1)
+
+created = request(
+    "POST",
+    f"/api/v2/runtime-instances/{path_id}/sessions",
+    {"objective": "native broker e2e session create"},
+    token=token,
+)
+if not created.get("ok") or not created.get("session", {}).get("session_id"):
+    print(f"bad runtime session create response: {created}", file=sys.stderr)
+    raise SystemExit(1)
+
+proxy = request(
+    "POST",
+    f"/api/v2/runtime-instances/{path_id}/proxy/http",
+    {"method": "GET", "path": "/api/v1/runtime/status"},
+    token=token,
+)
+if not proxy.get("ok") or "agentd" not in json.dumps(proxy, sort_keys=True):
+    print(f"bad runtime proxy status response: {proxy}", file=sys.stderr)
+    raise SystemExit(1)
 
 result = request(
     "POST",

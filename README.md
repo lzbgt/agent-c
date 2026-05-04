@@ -115,14 +115,23 @@ For WebUI dev/build/runtime config, see `docs/WEBUI.md`.
 
 `tools/agentd_codexw_native_broker_connector.py` registers `agentd` as a
 `runtime_kind=agentd` instance in the sibling `codexw` broker. The connector
-advertises `broker.runtime_capabilities.v1` with `surfaces.sessions` and
-`surfaces.events`, then serves these runtime-local adapter commands:
+advertises `broker.runtime_capabilities.v1` with neutral activity and control
+surfaces, then serves these runtime-local adapter commands:
 
 - `GET /api/v1/runtime/sessions`: projects daemon sessions and workflows into
   neutral runtime-instance session rows.
+- `POST /api/v1/runtime/sessions`: creates an `agentd` daemon session through
+  `/api/v1/session/new` and returns a neutral runtime-instance session row for
+  codexw `/api/v2/runtime-instances/{id}/sessions`.
 - `GET /api/v1/runtime/events`: projects client events and workflow events into
   neutral `broker.runtime_event.v1` rows, with `limit`, `after_id`,
   `last_event_id`, `session_id`, and `event_prefix` filtering.
+- `GET /api/v1/runtime/events` with `Accept: text/event-stream` is implemented
+  by the external local-API facade for the codexw
+  `/api/v2/runtime-instances/{id}/proxy/sse` route. The native deployment
+  websocket connector does not advertise `surfaces.proxy_sse` because codexw's
+  SSE proxy requires a broker-known local API URL rather than a command-result
+  websocket frame.
 - `GET /api/v1/runtime/status`: reports read-only update/restart readiness. The
   default bridge reports update disabled; the native connector reports
   `agentd` OTA status when `AGENTD_CODEXW_RUNTIME_UPDATE_MODE=agentd_ota`.
@@ -134,6 +143,8 @@ advertises `broker.runtime_capabilities.v1` with `surfaces.sessions` and
   daemon-proven `restart` readiness from `/api/v1/ota/status`; restart is enabled
   only when `agentd` reports the supervisor boundary
   `agentd_supervisor_restart_drain`.
+- `surfaces.proxy_http` lets codexw's bounded HTTP proxy call the same
+  `/api/v1/runtime/...` JSON routes. It does not expose arbitrary agentd paths.
 
 The broker only uses these routes after capability negotiation. Older bridges
 that do not advertise the surfaces continue to appear in the shared inventory
@@ -148,9 +159,14 @@ tools/verify_codexw_live_agentd_activity.sh
 The smoke uses the sibling `codexw` repo's `scripts/broker-admin` session,
 issues a one-time deployment enrollment token, approves the temporary proof
 deployment after certificate enrollment, verifies `/api/v2/runtime-instances`,
-`/sessions`, and `/events` against the live broker, writes proof JSON under
-`build/`, and removes the temporary broker deployment unless
-`KEEP_DEPLOYMENT=1` is set.
+`/sessions`, bounded `/proxy/http`, and `/events` against the live broker,
+writes proof JSON under `build/`, and removes the temporary broker deployment
+unless `KEEP_DEPLOYMENT=1` is set. The live broker must be running a codexw
+build with the v2 runtime-instance session and proxy routes; a `405
+method_not_allowed` response from
+`POST /api/v2/runtime-instances/{id}/sessions` means the broker deployment is
+stale relative to the connector contract, not that the local `agentd` connector
+failed.
 
 To prove the opt-in OTA update boundary without replacing a real daemon, run:
 

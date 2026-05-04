@@ -84,12 +84,12 @@ if frame.get("type") != "deployment.snapshot" or frame.get("deployment_id") != "
 if "workflow.submit" not in payload["runtime_capabilities"]["actions"]:
     print("missing workflow action", payload["runtime_capabilities"], file=sys.stderr)
     raise SystemExit(1)
-for surface in ("sessions", "events"):
+for surface in ("sessions", "session_create", "events", "status", "proxy_http"):
     if payload["runtime_capabilities"].get("surfaces", {}).get(surface) is not True:
         print("missing runtime surface", surface, payload["runtime_capabilities"], file=sys.stderr)
         raise SystemExit(1)
-if payload["runtime_capabilities"].get("surfaces", {}).get("status") is not True:
-    print("missing runtime status surface", payload["runtime_capabilities"], file=sys.stderr)
+if payload["runtime_capabilities"].get("surfaces", {}).get("proxy_sse") is True:
+    print("native deployment-connect must not advertise local-API SSE proxy", payload["runtime_capabilities"], file=sys.stderr)
     raise SystemExit(1)
 for forbidden in ("runtime.restart", "runtime.update", "runtime.upgrade"):
     if forbidden in payload["runtime_capabilities"]["actions"]:
@@ -711,7 +711,10 @@ class AgentdHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("content-length") or "0")
         body = json.loads(self.rfile.read(length) or b"{}")
-        if self.path.startswith("/api/v1/ota/update"):
+        if self.path.startswith("/api/v1/session/new"):
+            results["agentd_session_new_request"] = body
+            self.send_json({"ok": True, "session_id": body.get("session_id") or "agentd-created-session", "created": True})
+        elif self.path.startswith("/api/v1/ota/update"):
             results["agentd_ota_update_request"] = body
             self.send_json({"ok": True, "accepted": True, "state": "draining", "request": body})
         elif self.path.startswith("/api/v1/ota/restart"):
@@ -808,6 +811,26 @@ def broker_thread():
         assert sessions_result["body"]["runtime_kind"] == "agentd", sessions_result
         session_ids = [s["session_id"] for s in sessions_result["body"]["sessions"]]
         assert "agentd-session" in session_ids and "wf-smoke" in session_ids, sessions_result
+        send_frame(
+            conn,
+            {
+                "type": "deployment.command",
+                "request_id": "cmd-session-create",
+                "method": "POST",
+                "path": "/api/v1/runtime/sessions",
+                "body": {
+                    "session_id": "agentd-created-session",
+                    "objective": "native session create smoke",
+                },
+            },
+        )
+        create_session_result = read_frame(conn)
+        results["create_session_result"] = create_session_result
+        assert create_session_result["status"] == 200, create_session_result
+        created_body = create_session_result["body"]
+        assert created_body["runtime_kind"] == "agentd", create_session_result
+        assert created_body["session"]["session_id"] == "agentd-created-session", create_session_result
+        assert created_body["session"]["objective"] == "native session create smoke", create_session_result
         send_frame(
             conn,
             {
@@ -950,11 +973,12 @@ thread.join(timeout=5)
 if proc.returncode != 0:
     raise SystemExit(f"connector failed\\nSTDOUT:\\n{proc.stdout}\\nSTDERR:\\n{proc.stderr}")
 summary = json.loads(proc.stdout)
-if summary.get("mode") != "connect" or summary.get("commands") != 6:
+if summary.get("mode") != "connect" or summary.get("commands") != 7:
     raise SystemExit(f"bad connector summary: {summary}")
-for key in ("command_result", "sessions_result", "events_result", "status_result", "update_result", "restart_result", "agentd_ota_update_request", "agentd_ota_restart_request"):
+for key in ("command_result", "sessions_result", "create_session_result", "events_result", "status_result", "update_result", "restart_result", "agentd_session_new_request", "agentd_ota_update_request", "agentd_ota_restart_request"):
     if key not in results:
         raise SystemExit(f"broker did not receive {key}")
+assert results["agentd_session_new_request"] == {"session_id": "agentd-created-session"}, results["agentd_session_new_request"]
 assert results["agentd_ota_update_request"] == {
     "url": "file:///tmp/agentd-smoke",
     "sha256": "abc123",

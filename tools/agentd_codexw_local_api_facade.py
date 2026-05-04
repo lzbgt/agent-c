@@ -23,6 +23,7 @@ from agentd_codexw_contract import (
     LOCAL_API_VERSION,
     RUNTIME_ACTIONS,
     agentd_runtime_events,
+    agentd_runtime_session_create,
     agentd_runtime_sessions,
     agentd_runtime_status,
     legacy_capabilities,
@@ -240,8 +241,14 @@ class FacadeHandler(BaseHTTPRequestHandler):
                 self.send_json(200, agentd_runtime_status(self.agentd.request))
             elif method == "GET" and path == "/api/v1/runtime/sessions":
                 self.send_json(200, agentd_runtime_sessions(self.agentd.request))
+            elif method == "POST" and path == "/api/v1/runtime/sessions":
+                self.send_json(200, agentd_runtime_session_create(self.agentd.request, read_json_body(self)))
             elif method == "GET" and path == "/api/v1/runtime/events":
-                self.send_json(200, agentd_runtime_events(self.agentd.request, query))
+                events = agentd_runtime_events(self.agentd.request, self.query_with_last_event_id(query))
+                if self.accepts_event_stream():
+                    self.send_sse_events(events)
+                else:
+                    self.send_json(200, events)
             elif method == "POST" and path == "/api/v1/runtime/actions":
                 self.send_json(200, self.runtime_action(read_json_body(self)))
             elif method == "GET" and path in ("/api/v1/session", f"/api/v1/session/{self.state.session_id}"):
@@ -324,7 +331,7 @@ class FacadeHandler(BaseHTTPRequestHandler):
                 "agentd_health": agentd_health,
                 "agentd_capabilities": agentd_caps,
                 "capabilities": legacy_capabilities(),
-                "runtime_capabilities": runtime_capabilities(),
+                "runtime_capabilities": runtime_capabilities(proxy_sse=True),
                 "live_session": {
                     "status": "available",
                     "transport": "broker_signaled_webrtc",
@@ -454,7 +461,7 @@ class FacadeHandler(BaseHTTPRequestHandler):
             "ok": True,
             "session_id": self.state.session_id,
             "capabilities": legacy_capabilities(),
-            "runtime_capabilities": runtime_capabilities(),
+            "runtime_capabilities": runtime_capabilities(proxy_sse=True),
         }
 
     def capability_report(self) -> dict[str, Any]:
@@ -501,6 +508,43 @@ class FacadeHandler(BaseHTTPRequestHandler):
             },
         )
 
+    def accepts_event_stream(self) -> bool:
+        accept = self.headers.get("accept") or self.headers.get("Accept") or ""
+        return "text/event-stream" in accept.lower()
+
+    def query_with_last_event_id(self, query: dict[str, list[str]]) -> dict[str, list[str]]:
+        if query.get("after_id") or query.get("last_event_id"):
+            return query
+        last_event_id = self.headers.get("Last-Event-ID") or self.headers.get("last-event-id") or ""
+        if not last_event_id.strip():
+            return query
+        merged = {key: list(value) for key, value in query.items()}
+        merged["last_event_id"] = [last_event_id.strip()]
+        return merged
+
+    def send_sse_events(self, envelope: dict[str, Any]) -> None:
+        self.send_response(200)
+        self.send_common_headers()
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        latest = envelope.get("latest_event_id")
+        if isinstance(latest, int) and latest > 0:
+            self.wfile.write(f"id: {latest}\n".encode("utf-8"))
+        self.wfile.write(b"event: runtime.events\n")
+        self.wfile.write(b"data: " + json_dumps(envelope) + b"\n\n")
+        for event in envelope.get("events", []) if isinstance(envelope.get("events"), list) else []:
+            if not isinstance(event, dict):
+                continue
+            seq = event.get("seq")
+            if isinstance(seq, int) and seq > 0:
+                self.wfile.write(f"id: {seq}\n".encode("utf-8"))
+            name = str(event.get("event") or "runtime.event").replace("\n", " ").replace("\r", " ")
+            self.wfile.write(f"event: {name}\n".encode("utf-8"))
+            self.wfile.write(b"data: " + json_dumps(event) + b"\n\n")
+        self.close_connection = True
+
     def try_agentd(self, method: str, path: str) -> Any:
         try:
             return self.agentd.request(method, path)
@@ -509,7 +553,7 @@ class FacadeHandler(BaseHTTPRequestHandler):
 
     def send_common_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "authorization,content-type")
+        self.send_header("Access-Control-Allow-Headers", "authorization,content-type,accept,last-event-id")
         self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
         self.send_header("X-Codexw-Local-Api-Version", LOCAL_API_VERSION)
 

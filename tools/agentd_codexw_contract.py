@@ -58,24 +58,33 @@ RUNTIME_ACTIONS: dict[str, dict[str, Any]] = {
 }
 
 
-def runtime_capabilities(operator_actions: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+def runtime_capabilities(
+    operator_actions: dict[str, dict[str, Any]] | None = None,
+    *,
+    proxy_sse: bool = False,
+) -> dict[str, Any]:
     actions = {name: dict(spec) for name, spec in RUNTIME_ACTIONS.items()}
     if operator_actions:
         actions.update({name: dict(spec) for name, spec in operator_actions.items()})
+    surfaces = {
+        "workflow": True,
+        "schedule": True,
+        "experience": True,
+        "sessions": True,
+        "session_create": True,
+        "events": True,
+        "status": True,
+        "transcript": True,
+        "files": True,
+        "proxy_http": True,
+    }
+    if proxy_sse:
+        surfaces["proxy_sse"] = True
     return {
         "schema": RUNTIME_CAPABILITIES_SCHEMA,
         "runtime_kind": RUNTIME_KIND,
         "actions": actions,
-        "surfaces": {
-            "workflow": True,
-            "schedule": True,
-            "experience": True,
-            "sessions": True,
-            "events": True,
-            "status": True,
-            "transcript": True,
-            "files": True,
-        },
+        "surfaces": surfaces,
     }
 
 
@@ -88,8 +97,10 @@ def legacy_capabilities() -> list[str]:
         "codexw.local_api.runtime",
         "codexw.local_api.runtime_actions",
         "codexw.local_api.runtime_sessions",
+        "codexw.local_api.runtime_session_create",
         "codexw.local_api.runtime_events",
         "codexw.local_api.runtime_status",
+        "codexw.local_api.runtime_proxy_http",
         "codexw.local_api.turn_start",
         "codexw.local_api.transcript",
     ]
@@ -481,6 +492,41 @@ def agentd_runtime_sessions(agentd_request: Callable[[str, str, Any | None], Any
         "ok": True,
         "runtime_kind": RUNTIME_KIND,
         "sessions": sessions[:limit],
+    }
+
+
+def agentd_runtime_session_create(
+    agentd_request: Callable[[str, str, Any | None], Any],
+    body: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create an agentd daemon session and return a broker-neutral session row."""
+    body = body or {}
+    request: dict[str, Any] = {}
+    for key in ("session_id", "create_files"):
+        if key in body:
+            request[key] = body[key]
+    response = agentd_request("POST", "/api/v1/session/new", request)
+    if not isinstance(response, dict):
+        response = {"ok": True, "value": response}
+    session_id = _first_string(response, ("session_id",)) or _first_string(body, ("session_id",))
+    state = "created" if bool(response.get("created", True)) else "idle"
+    objective = _first_string(body, ("objective", "prompt", "title", "name")) or session_id
+    session = {
+        "session_id": session_id,
+        "state": state,
+        "objective": objective,
+        "working": False,
+        "transcript_length": 0,
+        "progress": {
+            "label": "daemon session created" if state == "created" else "daemon session",
+        },
+        "source": "agentd.session",
+    }
+    return {
+        "ok": True,
+        "runtime_kind": RUNTIME_KIND,
+        "session": session,
+        "result": response,
     }
 
 

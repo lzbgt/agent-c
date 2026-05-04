@@ -23,6 +23,7 @@ from typing import Any
 
 from agentd_codexw_contract import (
     agentd_runtime_events,
+    agentd_runtime_session_create,
     agentd_runtime_sessions,
     agentd_runtime_status,
     base64_body_digest,
@@ -836,6 +837,10 @@ def handle_command(args: argparse.Namespace, frame: dict[str, Any]) -> dict[str,
             )
         elif method == "GET" and route_path == "/api/v1/runtime/sessions":
             result = agentd_runtime_sessions(request_agentd)
+        elif method == "POST" and route_path == "/api/v1/runtime/sessions":
+            if not isinstance(body, dict):
+                raise ValueError("runtime session-create command body must be an object")
+            result = agentd_runtime_session_create(request_agentd, body)
         elif method == "GET" and route_path == "/api/v1/runtime/events":
             result = agentd_runtime_events(request_agentd, query)
         elif method == "POST" and route_path == "/api/v1/runtime/actions":

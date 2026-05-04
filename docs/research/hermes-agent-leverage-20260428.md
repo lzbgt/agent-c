@@ -45,6 +45,17 @@ The main gap versus Hermes was not another scheduler or parallel task primitive.
 - Drafted `docs/spec/hermes_leverage_agentd_v0.md` to define the closed-loop learning, schedule, delegation, RL, and `codexw` broker compatibility direction.
 - Added `tools/run_agentd_codexw_compat.sh` as an operator bridge for the current sibling `codexw` broker/iOS deployment path.
 - Added `tools/agentd_codexw_local_api_facade.py` so the bridge uses codexw's documented external-local-API deployment mode instead of only colocating `agentd` beside a broker-connected `codexw` process.
+- Extended the shared codexw runtime-instance contract to advertise and prove
+  `session_create` and bounded `proxy_http` for the native deployment connector,
+  plus `proxy_sse` for the external local-API facade where codexw has a real
+  streamable local API URL.
+- Local fixture and broker E2E proofs now cover the expanded codexw contract:
+  native websocket connector session creation, bounded runtime HTTP proxy, and
+  facade-only SSE proxy. A strict live proof against the default public broker
+  on 2026-05-04 reached the deployed broker but failed with `405
+  method_not_allowed` on `POST /api/v2/runtime-instances/{id}/sessions`, which
+  identifies a stale codexw broker deployment that must be rolled forward before
+  the expanded live proof can pass.
 
 ## Design conclusion
 
