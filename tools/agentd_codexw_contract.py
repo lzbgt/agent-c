@@ -66,6 +66,24 @@ RUNTIME_ACTIONS: dict[str, dict[str, Any]] = {
         "path": "/api/v1/runtime/actions",
         "input": "agentd_experience_record_filter",
     },
+    "voice.webrtc_peer.status": {
+        "transport": "local_api",
+        "method": "POST",
+        "path": "/api/v1/runtime/actions",
+        "input": {"session_id": "optional string"},
+    },
+    "voice.webrtc_peer.start": {
+        "transport": "local_api",
+        "method": "POST",
+        "path": "/api/v1/runtime/actions",
+        "input": "agentd_voice_webrtc_peer_start_request",
+    },
+    "voice.webrtc_peer.stop": {
+        "transport": "local_api",
+        "method": "POST",
+        "path": "/api/v1/runtime/actions",
+        "input": "agentd_voice_webrtc_peer_stop_request",
+    },
 }
 
 
@@ -88,6 +106,7 @@ def runtime_capabilities(
         "transcript": True,
         "files": True,
         "shell": True,
+        "voice_webrtc_peer": True,
         "proxy_http": True,
     }
     if proxy_sse:
@@ -107,6 +126,7 @@ def legacy_capabilities() -> list[str]:
         "agentd.workflow",
         "agentd.schedule",
         "agentd.rl.experience_records",
+        "agentd.voice_webrtc_peer",
         "codexw.local_api.runtime",
         "codexw.local_api.runtime_actions",
         "codexw.local_api.runtime_sessions",
@@ -118,6 +138,7 @@ def legacy_capabilities() -> list[str]:
         "codexw.local_api.transcript",
         "codexw.local_api.files",
         "codexw.local_api.shell",
+        "codexw.local_api.voice_webrtc_peer",
     ]
 
 

@@ -186,6 +186,9 @@ for expected in ("sessions", "session_create", "events", "status", "proxy_http")
 for expected in ("files", "shell"):
     if expected not in cap_text:
         raise SystemExit(f"agentd capability response missing {expected} iOS inspection surface: " + cap_text[:2000])
+for expected in ("voice_webrtc_peer", "voice.webrtc_peer.status"):
+    if expected not in cap_text:
+        raise SystemExit(f"agentd capability response missing {expected} media-runtime action surface: " + cap_text[:2000])
 
 created = client.request(
     "POST",
@@ -209,6 +212,16 @@ proxy_status = client.request(
 proxy_text = json.dumps(proxy_status, sort_keys=True)
 if not proxy_status.get("ok") or "agentd" not in proxy_text:
     raise SystemExit("broker HTTP proxy did not expose agentd runtime status: " + proxy_text[:2000])
+
+voice_status = client.request(
+    "POST",
+    f"/api/v2/runtime-instances/{path_id}/actions",
+    {"action": "voice.webrtc_peer.status", "input": {"session_id": session_id}},
+    token=token,
+)
+voice_text = json.dumps(voice_status, sort_keys=True)
+if not voice_status.get("ok") or "voice.webrtc_peer.status" not in voice_text:
+    raise SystemExit("broker runtime action did not expose agentd voice peer status: " + voice_text[:2000])
 
 deployment_path = urllib.parse.quote(deployment_id, safe="")
 files = client.request(
@@ -337,7 +350,10 @@ proof = {
     "capability_has_proxy_http": "proxy_http" in cap_text,
     "capability_has_files": "files" in cap_text,
     "capability_has_shell": "shell" in cap_text,
+    "capability_has_voice_webrtc_peer": "voice_webrtc_peer" in cap_text,
+    "capability_has_voice_webrtc_peer_status_action": "voice.webrtc_peer.status" in cap_text,
     "proxy_status_ok": bool(proxy_status.get("ok")),
+    "voice_peer_status_ok": bool(voice_status.get("ok")),
     "file_list_entries": len(entries),
     "file_read_path": file_read.get("path"),
     "file_read_bytes": len(file_bytes),

@@ -81,10 +81,11 @@ if runtime.get("runtime_capabilities", {}).get("schema") != "broker.runtime_capa
 if frame.get("type") != "deployment.snapshot" or frame.get("deployment_id") != "agentd-native-smoke":
     print("bad snapshot frame", frame, file=sys.stderr)
     raise SystemExit(1)
-if "workflow.submit" not in payload["runtime_capabilities"]["actions"]:
-    print("missing workflow action", payload["runtime_capabilities"], file=sys.stderr)
-    raise SystemExit(1)
-for surface in ("sessions", "session_create", "events", "status", "files", "shell", "proxy_http"):
+for action in ("workflow.submit", "voice.webrtc_peer.status", "voice.webrtc_peer.start", "voice.webrtc_peer.stop"):
+    if action not in payload["runtime_capabilities"]["actions"]:
+        print("missing runtime action", action, payload["runtime_capabilities"], file=sys.stderr)
+        raise SystemExit(1)
+for surface in ("sessions", "session_create", "events", "status", "files", "shell", "voice_webrtc_peer", "proxy_http"):
     if payload["runtime_capabilities"].get("surfaces", {}).get(surface) is not True:
         print("missing runtime surface", surface, payload["runtime_capabilities"], file=sys.stderr)
         raise SystemExit(1)
@@ -135,6 +136,19 @@ def command(method, path, body=None):
         "body": body,
     })
 
+captured_agentd = []
+def fake_agentd_request(args, method, path, body=None):
+    captured_agentd.append({"method": method, "path": path, "body": body})
+    if method == "POST" and path == "/api/v1/session/new":
+        return {"ok": True, "session_id": (body or {}).get("session_id"), "created": False}
+    if method == "GET" and path.startswith("/api/v1/session/voice_webrtc_peer?"):
+        return {"ok": True, "peer": {"running": False, "native_media_active": False}}
+    if method == "POST" and path == "/api/v1/session/voice_webrtc_peer":
+        return {"ok": True, "peer": {"running": body.get("action") == "start"}, "echo": body}
+    raise AssertionError(f"unexpected agentd request: {method} {path} {body}")
+
+module.agentd_request = fake_agentd_request
+
 session = module.codexw_session_id(args)
 session_snapshot = command("GET", "/api/v1/session")
 if session_snapshot.get("status") != 200 or session_snapshot.get("body", {}).get("session_id") != session:
@@ -160,6 +174,21 @@ if shells.get("status") != 200 or not shells.get("body", {}).get("shells"):
 detail = command("GET", f"/api/v1/session/{session}/shells/{job['id']}")
 if detail.get("status") != 200 or detail.get("body", {}).get("shell", {}).get("id") != job["id"]:
     print("bad native shell detail", detail, file=sys.stderr)
+    raise SystemExit(1)
+voice_status = command("POST", "/api/v1/runtime/actions", {"action": "voice.webrtc_peer.status", "input": {"session_id": session}})
+if voice_status.get("status") != 200 or voice_status.get("body", {}).get("action") != "voice.webrtc_peer.status":
+    print("bad voice peer status action", voice_status, file=sys.stderr)
+    raise SystemExit(1)
+voice_start = command("POST", "/api/v1/runtime/actions", {"action": "voice.webrtc_peer.start", "input": {"session_id": session, "broker_agent_id": "a-1", "broker_deployment_id": "agentd-native-smoke"}})
+if voice_start.get("status") != 200 or voice_start.get("body", {}).get("result", {}).get("echo", {}).get("action") != "start":
+    print("bad voice peer start action", voice_start, file=sys.stderr)
+    raise SystemExit(1)
+voice_stop = command("POST", "/api/v1/runtime/actions", {"action": "voice.webrtc_peer.stop", "input": {"session_id": session}})
+if voice_stop.get("status") != 200 or voice_stop.get("body", {}).get("result", {}).get("echo", {}).get("action") != "stop":
+    print("bad voice peer stop action", voice_stop, file=sys.stderr)
+    raise SystemExit(1)
+if not any(item.get("path") == "/api/v1/session/new" for item in captured_agentd):
+    print("voice peer start did not ensure the agentd session exists", captured_agentd, file=sys.stderr)
     raise SystemExit(1)
 PY
 

@@ -209,10 +209,14 @@ broker to close an otherwise healthy long-lived connection.
 
 The runtime capability manifest is intentionally explicit about media support:
 the codexw connector advertises broker control surfaces for messaging,
-sessions, Files, Host Shell, runtime status, and runtime actions, but publishes
+sessions, Files, Host Shell, runtime status, runtime actions, and the
+managed voice-peer runtime actions `voice.webrtc_peer.status`,
+`voice.webrtc_peer.start`, and `voice.webrtc_peer.stop`, but publishes
 `media.direct_p2p=false`. Do not infer camera/audio/video parity from the
-presence of the live broker connector. Agentd media requires a separate
-capability implementation and proof before it can be surfaced as supported.
+presence of the live broker connector. The voice-peer actions expose agentd's
+existing `/api/v1/session/voice_webrtc_peer` control/status surface through the
+codexw broker runtime-action plane; they are not a claim that iOS camera/audio
+media parity is implemented.
 
 Systemd service templates are provided under `packaging/systemd/`:
 

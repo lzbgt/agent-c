@@ -152,6 +152,13 @@ surfaces, then serves these runtime-local adapter commands:
   daemon-proven `restart` readiness from `/api/v1/ota/status`; restart is enabled
   only when `agentd` reports the supervisor boundary
   `agentd_supervisor_restart_drain`.
+- `POST /api/v1/runtime/actions` now also advertises and forwards
+  `voice.webrtc_peer.status`, `voice.webrtc_peer.start`, and
+  `voice.webrtc_peer.stop` to the existing agentd
+  `/api/v1/session/voice_webrtc_peer` managed WebRTC runtime. This exposes the
+  voice-peer runtime through the same codexw broker action plane as workflows,
+  schedules, experience records, and operator actions without changing the
+  separate `media.direct_p2p=false` boundary.
 - `surfaces.proxy_http` lets codexw's bounded HTTP proxy call the same
   `/api/v1/runtime/...` JSON routes. It does not expose arbitrary agentd paths.
 

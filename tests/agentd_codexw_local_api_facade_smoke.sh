@@ -115,6 +115,11 @@ experience_action="$(curl -fsS --noproxy "*" \
   -H "Content-Type: application/json" \
   -d '{"action":"experience.list","input":{"limit":5}}' \
   "${FACADE_URL}/api/v1/runtime/actions")"
+voice_status_action="$(curl -fsS --noproxy "*" \
+  -H "Authorization: Bearer ${FACADE_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"voice.webrtc_peer.status","input":{"session_id":"agentd-runtime-created"}}' \
+  "${FACADE_URL}/api/v1/runtime/actions")"
 
 python3 - <<PY
 import base64, json, sys
@@ -133,6 +138,7 @@ file_list = json.loads(r'''${file_list}''')
 shell_started = json.loads(r'''${shell_started}''')
 shells = json.loads(r'''${shells}''')
 experience_action = json.loads(r'''${experience_action}''')
+voice_status_action = json.loads(r'''${voice_status_action}''')
 
 if runtime.get("runtime", {}).get("kind") != "agentd":
     print("bad runtime", runtime, file=sys.stderr)
@@ -141,10 +147,11 @@ if runtime.get("runtime", {}).get("connection_mode") != "service":
     print("bad connection mode", runtime, file=sys.stderr)
     raise SystemExit(1)
 runtime_caps = runtime.get("runtime", {}).get("runtime_capabilities", {})
-if "workflow.submit" not in runtime_caps.get("actions", {}) or "experience.list" not in runtime_caps.get("actions", {}):
-    print("missing runtime actions", runtime, file=sys.stderr)
-    raise SystemExit(1)
-for surface in ("sessions", "session_create", "events", "status", "proxy_http", "proxy_sse"):
+for action in ("workflow.submit", "experience.list", "voice.webrtc_peer.status", "voice.webrtc_peer.start", "voice.webrtc_peer.stop"):
+    if action not in runtime_caps.get("actions", {}):
+        print("missing runtime action", action, runtime, file=sys.stderr)
+        raise SystemExit(1)
+for surface in ("sessions", "session_create", "events", "status", "voice_webrtc_peer", "proxy_http", "proxy_sse"):
     if runtime_caps.get("surfaces", {}).get(surface) is not True:
         print("missing runtime surface", surface, runtime_caps, file=sys.stderr)
         raise SystemExit(1)
@@ -214,6 +221,13 @@ if not any(item.get("id") == shell.get("id") for item in shells.get("shells", []
     raise SystemExit(1)
 if experience_action.get("action") != "experience.list" or not isinstance(experience_action.get("result"), dict):
     print("bad experience action", experience_action, file=sys.stderr)
+    raise SystemExit(1)
+if voice_status_action.get("action") != "voice.webrtc_peer.status":
+    print("bad voice peer status action", voice_status_action, file=sys.stderr)
+    raise SystemExit(1)
+voice_result = voice_status_action.get("result")
+if not isinstance(voice_result, dict) or "peer" not in voice_result:
+    print("voice peer status did not expose a peer snapshot", voice_status_action, file=sys.stderr)
     raise SystemExit(1)
 PY
 

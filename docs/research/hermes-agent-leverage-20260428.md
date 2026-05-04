@@ -195,3 +195,14 @@ and `screen=false`. That keeps the shared codexw/agentd broker contract honest:
 messaging, Files, Host Shell, sessions, events, proxy, and status are supported
 and proven, while direct P2P media streaming remains unimplemented rather than
 implicitly degraded to broker relay.
+
+The follow-up bridge exposes the existing agentd managed WebRTC voice peer
+through the same broker runtime-action plane without changing that media
+boundary. The native connector and local API facade now advertise
+`voice.webrtc_peer.status`, `voice.webrtc_peer.start`, and
+`voice.webrtc_peer.stop`, forward them to `/api/v1/session/voice_webrtc_peer`,
+and the live activity proof verifies the `voice.webrtc_peer.status` action
+through codexw `/api/v2/runtime-instances/{id}/actions`. This is the correct
+unification shape: broker/iOS can inspect and control the agentd voice-peer
+runtime explicitly, while media remains unsupported until a separate direct-P2P
+media proof makes `media.direct_p2p=true` truthful.

@@ -669,6 +669,30 @@ def workflow_submit_request(input_obj: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def voice_webrtc_peer_session_id(args: argparse.Namespace, input_obj: dict[str, Any]) -> str:
+    value = input_obj.get("session_id")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return codexw_session_id(args)
+
+
+def voice_webrtc_peer_start_request(args: argparse.Namespace, input_obj: dict[str, Any]) -> dict[str, Any]:
+    session_id = voice_webrtc_peer_session_id(args, input_obj)
+    if bool(input_obj.get("ensure_session", True)):
+        agentd_runtime_session_create(lambda m, p, b=None: agentd_request(args, m, p, b), {"session_id": session_id})
+    request = dict(input_obj)
+    request["session_id"] = session_id
+    request["action"] = "start"
+    return request
+
+
+def voice_webrtc_peer_stop_request(args: argparse.Namespace, input_obj: dict[str, Any]) -> dict[str, Any]:
+    request = dict(input_obj)
+    request["session_id"] = voice_webrtc_peer_session_id(args, input_obj)
+    request["action"] = "stop"
+    return request
+
+
 def operator_runtime_actions(args: argparse.Namespace) -> dict[str, dict[str, Any]]:
     actions: dict[str, dict[str, Any]] = {}
     if args.runtime_update_mode == RUNTIME_UPDATE_MODE_AGENTD_OTA:
@@ -841,6 +865,17 @@ def forward_runtime_action(args: argparse.Namespace, body: dict[str, Any]) -> di
         result = agentd_request(args, "GET", "/api/v1/rl/experience_records" + (f"?{query}" if query else ""))
         if action == "experience.export" and isinstance(result, dict):
             result = {**result, "export_format": "json"}
+    elif action == "voice.webrtc_peer.status":
+        session_id = voice_webrtc_peer_session_id(args, input_obj)
+        result = agentd_request(
+            args,
+            "GET",
+            "/api/v1/session/voice_webrtc_peer?" + urllib.parse.urlencode({"session_id": session_id}),
+        )
+    elif action == "voice.webrtc_peer.start":
+        result = agentd_request(args, "POST", "/api/v1/session/voice_webrtc_peer", voice_webrtc_peer_start_request(args, input_obj))
+    elif action == "voice.webrtc_peer.stop":
+        result = agentd_request(args, "POST", "/api/v1/session/voice_webrtc_peer", voice_webrtc_peer_stop_request(args, input_obj))
     elif action == "runtime.update":
         if args.runtime_update_mode != RUNTIME_UPDATE_MODE_AGENTD_OTA:
             raise ValueError("runtime.update is disabled; set AGENTD_CODEXW_RUNTIME_UPDATE_MODE=agentd_ota")

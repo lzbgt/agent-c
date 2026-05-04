@@ -404,7 +404,38 @@ class FacadeHandler(BaseHTTPRequestHandler):
             if action == "experience.export" and isinstance(result, dict):
                 return {**result, "export_format": "json"}
             return result
+        if action == "voice.webrtc_peer.status":
+            session_id = self.voice_webrtc_peer_session_id(input_obj)
+            return self.agentd.request(
+                "GET",
+                "/api/v1/session/voice_webrtc_peer?" + urllib.parse.urlencode({"session_id": session_id}),
+            )
+        if action == "voice.webrtc_peer.start":
+            return self.agentd.request("POST", "/api/v1/session/voice_webrtc_peer", self.voice_webrtc_peer_start(input_obj))
+        if action == "voice.webrtc_peer.stop":
+            return self.agentd.request("POST", "/api/v1/session/voice_webrtc_peer", self.voice_webrtc_peer_stop(input_obj))
         raise ValueError(f"unsupported runtime action: {action}")
+
+    def voice_webrtc_peer_session_id(self, input_obj: dict[str, Any]) -> str:
+        value = input_obj.get("session_id")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return self.state.session_id
+
+    def voice_webrtc_peer_start(self, input_obj: dict[str, Any]) -> dict[str, Any]:
+        session_id = self.voice_webrtc_peer_session_id(input_obj)
+        if bool(input_obj.get("ensure_session", True)):
+            agentd_runtime_session_create(self.agentd.request, {"session_id": session_id})
+        request = dict(input_obj)
+        request["session_id"] = session_id
+        request["action"] = "start"
+        return request
+
+    def voice_webrtc_peer_stop(self, input_obj: dict[str, Any]) -> dict[str, Any]:
+        request = dict(input_obj)
+        request["session_id"] = self.voice_webrtc_peer_session_id(input_obj)
+        request["action"] = "stop"
+        return request
 
     def session_snapshot(self) -> dict[str, Any]:
         return {
