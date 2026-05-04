@@ -157,17 +157,32 @@ agentd_token = "${AGENTD_TOKEN}"
 
 instance = None
 last_payload = {}
+preferred_instance_id = f"{deployment_id}-runtime"
 deadline = time.time() + 60
 while time.time() < deadline:
     payload = client.request("GET", "/api/v2/runtime-instances", token=token)
     last_payload = payload
+    candidates = []
     for candidate in payload.get("runtime_instances", []):
         if (
             candidate.get("runtime_kind") == "agentd"
             and candidate.get("placement", {}).get("deployment_id") == deployment_id
         ):
-            instance = candidate
-            break
+            candidates.append(candidate)
+    online_candidates = [c for c in candidates if c.get("connection", {}).get("state") == "online"]
+    exact_candidates = [
+        c
+        for c in online_candidates
+        if (c.get("instance_id") or c.get("runtime_instance_id")) == preferred_instance_id
+    ]
+    if exact_candidates:
+        instance = exact_candidates[0]
+        break
+    if online_candidates:
+        instance = online_candidates[0]
+        break
+    if candidates:
+        instance = candidates[0]
     if instance and instance.get("connection", {}).get("state") == "online":
         break
     time.sleep(0.5)
