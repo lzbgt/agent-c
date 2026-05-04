@@ -206,3 +206,11 @@ through codexw `/api/v2/runtime-instances/{id}/actions`. This is the correct
 unification shape: broker/iOS can inspect and control the agentd voice-peer
 runtime explicitly, while media remains unsupported until a separate direct-P2P
 media proof makes `media.direct_p2p=true` truthful.
+
+The same surface was also proved against the durable local connector
+deployment. After the public broker was updated to codexw commit
+`8ec2d13bea78`, `agentd-service-bruce-mac-runtime` accepted broker session
+creation and `voice.webrtc_peer.status` via the v2 runtime-action route. The
+status payload reported the session exists and the voice peer is not running
+because no bundled/external `audio_webrtc_peer_node_bin` is available. That is
+a successful compatibility proof for the control plane, not a media proof.
