@@ -218,6 +218,19 @@ existing `/api/v1/session/voice_webrtc_peer` control/status surface through the
 codexw broker runtime-action plane; they are not a claim that iOS camera/audio
 media parity is implemented.
 
+On macOS, `launchd` starts services with a minimal system `PATH`, so the daemon
+must not depend on shell discovery for the shipped WebRTC peer runtime. The
+`tools/install_agentd_launchd.sh` installer writes explicit
+`AGENTD_AUDIO_WEBRTC_PEER_TOOL`, `AGENTD_AUDIO_WEBRTC_PEER_NODE_BIN`, and
+`AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND=external` environment variables when
+it can discover Node. That runtime kind matches the explicit tool path in the
+plist. The codexw connector also supplies its broker URL/token to
+`voice.webrtc_peer.start` over the local authenticated daemon API and defaults
+`broker_agent_id` / `broker_deployment_id` to the durable deployment id. Broker
+runtime actions therefore do not require static voice broker credentials in the
+daemon plist and callers do not need to construct broker audio-session routing
+metadata by hand.
+
 Systemd service templates are provided under `packaging/systemd/`:
 
 ```

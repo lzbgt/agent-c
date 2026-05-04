@@ -25,6 +25,9 @@ agentd_base_url="${AGENTD_BASE_URL:-https://api.deepseek.com}"
 agentd_model="${AGENTD_MODEL:-deepseek-v4-pro}"
 agentd_timeout_ms="${AGENTD_TIMEOUT_MS:-}"
 agentd_proxy_url="${AGENTD_PROXY_URL:-}"
+agentd_audio_webrtc_peer_tool="${AGENTD_AUDIO_WEBRTC_PEER_TOOL:-${repo_root}/tools/agentd_audio_webrtc_peer.js}"
+agentd_audio_webrtc_peer_node_bin="${AGENTD_AUDIO_WEBRTC_PEER_NODE_BIN:-}"
+agentd_audio_webrtc_default_runtime_kind="${AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND:-external}"
 agentd_dry_run="${AGENTD_DRY_RUN:-0}"
 
 if [[ ! -x "${agentd_bin}" ]]; then
@@ -50,6 +53,16 @@ xml_escape() {
   s="${s//\"/&quot;}"
   printf '%s' "${s}"
 }
+
+if [[ -z "${agentd_audio_webrtc_peer_node_bin}" ]]; then
+  if command -v node >/dev/null 2>&1; then
+    agentd_audio_webrtc_peer_node_bin="$(command -v node)"
+  elif [[ -x /opt/homebrew/bin/node ]]; then
+    agentd_audio_webrtc_peer_node_bin="/opt/homebrew/bin/node"
+  elif [[ -x /usr/local/bin/node ]]; then
+    agentd_audio_webrtc_peer_node_bin="/usr/local/bin/node"
+  fi
+fi
 
 args=(
   "${agentd_bin}"
@@ -117,7 +130,7 @@ stderr_path="${agentd_log_dir}/agentd.err.log"
   echo '<plist version="1.0">'
   echo '<dict>'
   echo "  <key>Label</key><string>${label}</string>"
-  if [[ -n "${agentd_auth_token}" || -n "${agentd_dotenv_path}" ]]; then
+  if [[ -n "${agentd_auth_token}" || -n "${agentd_dotenv_path}" || -n "${agentd_audio_webrtc_peer_tool}" || -n "${agentd_audio_webrtc_peer_node_bin}" || -n "${agentd_audio_webrtc_default_runtime_kind}" ]]; then
     echo '  <key>EnvironmentVariables</key>'
     echo '  <dict>'
     if [[ -n "${agentd_auth_token}" ]]; then
@@ -125,6 +138,15 @@ stderr_path="${agentd_log_dir}/agentd.err.log"
     fi
     if [[ -n "${agentd_dotenv_path}" ]]; then
       echo "    <key>AGENTD_DOTENV_PATH</key><string>$(xml_escape "${agentd_dotenv_path}")</string>"
+    fi
+    if [[ -n "${agentd_audio_webrtc_peer_tool}" ]]; then
+      echo "    <key>AGENTD_AUDIO_WEBRTC_PEER_TOOL</key><string>$(xml_escape "${agentd_audio_webrtc_peer_tool}")</string>"
+    fi
+    if [[ -n "${agentd_audio_webrtc_peer_node_bin}" ]]; then
+      echo "    <key>AGENTD_AUDIO_WEBRTC_PEER_NODE_BIN</key><string>$(xml_escape "${agentd_audio_webrtc_peer_node_bin}")</string>"
+    fi
+    if [[ -n "${agentd_audio_webrtc_default_runtime_kind}" ]]; then
+      echo "    <key>AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND</key><string>$(xml_escape "${agentd_audio_webrtc_default_runtime_kind}")</string>"
     fi
     echo '  </dict>'
   fi

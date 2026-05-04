@@ -214,3 +214,15 @@ creation and `voice.webrtc_peer.status` via the v2 runtime-action route. The
 status payload reported the session exists and the voice peer is not running
 because no bundled/external `audio_webrtc_peer_node_bin` is available. That is
 a successful compatibility proof for the control plane, not a media proof.
+
+The next service-compatibility pass fixed that host-specific launchd gap:
+macOS `launchd` was starting the daemon with a minimal PATH, so agentd could not
+discover `/opt/homebrew/bin/node` even though the repository ships
+`tools/agentd_audio_webrtc_peer.js`. The daemon launchd installer now writes the
+peer tool path, discovered Node path, and `external` default runtime kind into the
+daemon environment, while the codexw connector injects the broker URL/token into
+`voice.webrtc_peer.start` over the local daemon API and fills broker
+agent/deployment routing metadata from the durable deployment id when the caller
+omits it. This keeps credentials out of daemon argv, avoids requiring static
+audio broker secrets in the daemon plist, and lets codexw/iOS call the action
+without hand-built audio-session metadata.

@@ -54,6 +54,9 @@ AGENTD_DOTENV_PATH="${TMP_DIR}/agentd.env" \
 AGENTD_BASE_URL="https://api.deepseek.com" \
 AGENTD_MODEL="deepseek-v4-pro" \
 AGENTD_TIMEOUT_MS="45000" \
+AGENTD_AUDIO_WEBRTC_PEER_TOOL="${ROOT}/tools/agentd_audio_webrtc_peer.js" \
+AGENTD_AUDIO_WEBRTC_PEER_NODE_BIN="/tmp/agentd-node-smoke" \
+AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND="external" \
 AGENTD_DRY_RUN=1 \
   "${ROOT}/tools/install_agentd_launchd.sh" >/dev/null
 
@@ -77,6 +80,12 @@ if env.get("AGENTD_AUTH_TOKEN") != "agentd-service-smoke-token":
     raise SystemExit("agentd launchd plist missing AGENTD_AUTH_TOKEN environment")
 if env.get("AGENTD_DOTENV_PATH") != "${TMP_DIR}/agentd.env":
     raise SystemExit("agentd launchd plist missing AGENTD_DOTENV_PATH environment")
+if env.get("AGENTD_AUDIO_WEBRTC_PEER_TOOL") != "${ROOT}/tools/agentd_audio_webrtc_peer.js":
+    raise SystemExit("agentd launchd plist missing voice WebRTC peer tool environment")
+if env.get("AGENTD_AUDIO_WEBRTC_PEER_NODE_BIN") != "/tmp/agentd-node-smoke":
+    raise SystemExit("agentd launchd plist missing voice WebRTC node environment")
+if env.get("AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND") != "external":
+    raise SystemExit("agentd launchd plist missing voice WebRTC default runtime kind")
 for flag, value in (
     ("--base-url", "https://api.deepseek.com"),
     ("--model", "deepseek-v4-pro"),
@@ -106,6 +115,13 @@ args = plist.get("ProgramArguments") or []
 env = plist.get("EnvironmentVariables") or {}
 if env.get("AGENTD_DOTENV_PATH") != str(Path.home() / ".env"):
     raise SystemExit("default agentd launchd plist should load provider keys from ~/.env")
+if env.get("AGENTD_AUDIO_WEBRTC_PEER_TOOL") != "${ROOT}/tools/agentd_audio_webrtc_peer.js":
+    raise SystemExit("default agentd launchd plist should configure the bundled voice WebRTC peer tool")
+if env.get("AGENTD_AUDIO_WEBRTC_DEFAULT_RUNTIME_KIND") != "external":
+    raise SystemExit("default agentd launchd plist should use the explicitly configured voice WebRTC peer runtime")
+if Path("/opt/homebrew/bin/node").exists() or Path("/usr/local/bin/node").exists():
+    if not env.get("AGENTD_AUDIO_WEBRTC_PEER_NODE_BIN"):
+        raise SystemExit("default agentd launchd plist should configure a node binary when one is installed")
 for flag, value in (
     ("--base-url", "https://api.deepseek.com"),
     ("--model", "deepseek-v4-pro"),

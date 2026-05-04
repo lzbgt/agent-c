@@ -124,6 +124,7 @@ args = module.parse_args([
     "--deployment-cert-path", "${CERT_PATH}",
     "--deployment-key-path", "${KEY_PATH}",
     "--agentd-base-url", "http://127.0.0.1:18080",
+    "--broker-token", "broker-read-token",
     "--file-root", "${TMP_DIR}",
     "--dry-run",
 ])
@@ -179,9 +180,16 @@ voice_status = command("POST", "/api/v1/runtime/actions", {"action": "voice.webr
 if voice_status.get("status") != 200 or voice_status.get("body", {}).get("action") != "voice.webrtc_peer.status":
     print("bad voice peer status action", voice_status, file=sys.stderr)
     raise SystemExit(1)
-voice_start = command("POST", "/api/v1/runtime/actions", {"action": "voice.webrtc_peer.start", "input": {"session_id": session, "broker_agent_id": "a-1", "broker_deployment_id": "agentd-native-smoke"}})
+voice_start = command("POST", "/api/v1/runtime/actions", {"action": "voice.webrtc_peer.start", "input": {"session_id": session}})
 if voice_start.get("status") != 200 or voice_start.get("body", {}).get("result", {}).get("echo", {}).get("action") != "start":
     print("bad voice peer start action", voice_start, file=sys.stderr)
+    raise SystemExit(1)
+voice_start_echo = voice_start.get("body", {}).get("result", {}).get("echo", {})
+if voice_start_echo.get("broker_url") != "http://127.0.0.1:8787" or voice_start_echo.get("broker_token") != "broker-read-token":
+    print("voice peer start did not inherit broker defaults", voice_start, file=sys.stderr)
+    raise SystemExit(1)
+if voice_start_echo.get("broker_agent_id") != "agentd-native-smoke" or voice_start_echo.get("broker_deployment_id") != "agentd-native-smoke":
+    print("voice peer start did not inherit broker routing metadata", voice_start, file=sys.stderr)
     raise SystemExit(1)
 voice_stop = command("POST", "/api/v1/runtime/actions", {"action": "voice.webrtc_peer.stop", "input": {"session_id": session}})
 if voice_stop.get("status") != 200 or voice_stop.get("body", {}).get("result", {}).get("echo", {}).get("action") != "stop":

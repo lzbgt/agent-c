@@ -683,6 +683,14 @@ def voice_webrtc_peer_start_request(args: argparse.Namespace, input_obj: dict[st
     request = dict(input_obj)
     request["session_id"] = session_id
     request["action"] = "start"
+    if not str(request.get("broker_url") or "").strip() and str(args.broker_url or "").strip():
+        request["broker_url"] = str(args.broker_url).strip()
+    if not str(request.get("broker_token") or "").strip() and str(args.broker_token or "").strip():
+        request["broker_token"] = str(args.broker_token).strip()
+    if not str(request.get("broker_agent_id") or "").strip() and str(args.deployment_id or "").strip():
+        request["broker_agent_id"] = str(args.deployment_id).strip()
+    if not str(request.get("broker_deployment_id") or "").strip() and str(args.deployment_id or "").strip():
+        request["broker_deployment_id"] = str(args.deployment_id).strip()
     return request
 
 
