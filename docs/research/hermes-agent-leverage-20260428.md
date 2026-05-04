@@ -226,3 +226,18 @@ agent/deployment routing metadata from the durable deployment id when the caller
 omits it. This keeps credentials out of daemon argv, avoids requiring static
 audio broker secrets in the daemon plist, and lets codexw/iOS call the action
 without hand-built audio-session metadata.
+
+The public-broker side then added the missing signaling endpoint family that
+the agentd peer expects. Codexw broker revision `82568dd4de91` exposes
+authenticated `/v1/audio/sessions`, `/v1/audio/sessions/{id}/signal`, and
+`/v1/audio/sessions/{id}/signal/stream` for JSON SDP/ICE exchange only. After
+deploying that broker, the durable `agentd-service-bruce-mac-runtime` instance
+passed `voice.webrtc_peer.status`, `voice.webrtc_peer.start`, and
+`voice.webrtc_peer.stop` through codexw
+`/api/v2/runtime-instances/{id}/actions`. The start proof launched the external
+Node peer through `/opt/homebrew/bin/node`, created a managed broker signaling
+session, and reported `media_engine_kind=browser_peer`; the stop proof exited
+cleanly with `exit_code=0`. This completes the broker-compatible voice-peer
+control/signaling path while keeping the media boundary explicit: the broker is
+not relaying camera or audio media, and `media.direct_p2p` remains false until a
+separate direct-media proof exists.
