@@ -81,6 +81,11 @@ The main gap versus Hermes was not another scheduler or parallel task primitive.
   `EnvironmentVariables`, not `ProgramArguments`. `agentd` already reads the
   token from the environment, so this removes the daemon token from ordinary
   process listings while preserving the connector-service proof.
+- The codexw connector LaunchAgent now pins `--runtime-instance-id` to a stable
+  default of `<deployment_id>-runtime`. This was added after iOS prompt testing
+  found that connector restarts could rotate the visible `agentd-*` runtime id,
+  making the unified codexw/iOS runtime card harder to reason about while
+  diagnosing stale live websocket 502s.
 - The complete strict codexw verifier now passes with both service and live
   proof modes enabled:
   `scripts/verify-codexw-release-contracts --agent-root /Users/zongbaolu/work/agent --agentd-run-service --agentd-run-live --skip-doc-consistency --skip-runtime-proxy-fixture --keep-going`.

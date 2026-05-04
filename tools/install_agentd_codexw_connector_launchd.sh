@@ -17,6 +17,7 @@ broker_password="${AGENTD_CODEXW_BROKER_PASSWORD:-}"
 broker_token="${AGENTD_CODEXW_BROKER_TOKEN:-}"
 enrollment_token_id="${AGENTD_CODEXW_ENROLLMENT_TOKEN_ID:-}"
 enrollment_secret="${AGENTD_CODEXW_ENROLLMENT_SECRET:-}"
+runtime_instance_id="${AGENTD_CODEXW_RUNTIME_INSTANCE_ID:-}"
 runtime_update_mode="${AGENTD_CODEXW_RUNTIME_UPDATE_MODE:-disabled}"
 runtime_restart_mode="${AGENTD_CODEXW_RUNTIME_RESTART_MODE:-disabled}"
 require_update_preflight="${AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT:-0}"
@@ -67,6 +68,9 @@ if [[ -z "${deployment_id}" ]]; then
   echo "AGENTD_CODEXW_DEPLOYMENT_ID is required" >&2
   exit 2
 fi
+if [[ -z "${runtime_instance_id}" ]]; then
+  runtime_instance_id="${deployment_id}-runtime"
+fi
 
 mkdir -p "${identity_dir}" "${log_dir}" "$(dirname "${plist_path}")" "$(dirname "${self_test_plist_path}")"
 
@@ -83,6 +87,7 @@ args=(
   "/usr/bin/env" "python3" "${connector_bin}"
   "--broker-url" "${broker_url}"
   "--deployment-id" "${deployment_id}"
+  "--runtime-instance-id" "${runtime_instance_id}"
   "--display-name" "${display_name:-${deployment_id}}"
   "--identity-dir" "${identity_dir}"
   "--agentd-base-url" "${agentd_base_url}"
@@ -166,6 +171,7 @@ self_test_args=(
   "/usr/bin/env" "python3" "${connector_bin}"
   "--broker-url" "${broker_url}"
   "--deployment-id" "${deployment_id}"
+  "--runtime-instance-id" "${runtime_instance_id}"
   "--display-name" "${display_name:-${deployment_id}}"
   "--identity-dir" "${identity_dir}"
   "--agentd-base-url" "${agentd_base_url}"

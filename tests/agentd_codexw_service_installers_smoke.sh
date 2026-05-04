@@ -152,6 +152,13 @@ if env.get("AGENTD_CODEXW_SELF_TEST_OUTPUT_PATH") != "${TMP_DIR}/codexw-native/s
     raise SystemExit("launchd plist missing self-test output path environment")
 if env.get("AGENTD_CODEXW_SELF_TEST_STALE_AFTER_SECONDS") != "900":
     raise SystemExit("launchd plist missing self-test stale threshold environment")
+for runtime_args in (args, self_test_args):
+    try:
+        runtime_arg_index = runtime_args.index("--runtime-instance-id")
+    except ValueError:
+        raise SystemExit("launchd plist missing stable --runtime-instance-id")
+    if runtime_args[runtime_arg_index + 1] != "agentd-service-smoke-runtime":
+        raise SystemExit(f"unexpected default runtime instance id: {runtime_args[runtime_arg_index + 1]}")
 if self_test.get("KeepAlive"):
     raise SystemExit("launchd self-test plist must not be KeepAlive")
 if self_test.get("StartInterval") != 123:

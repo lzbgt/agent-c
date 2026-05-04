@@ -247,6 +247,11 @@ The macOS launchd installer now installs a companion
 `com.agentd.codexw-connector.self-test` LaunchAgent by default, matching the
 systemd timer behavior with the same broker-visible and optional update
 preflight checks.
+It also passes a stable `--runtime-instance-id`, defaulting to
+`<deployment_id>-runtime` unless `AGENTD_CODEXW_RUNTIME_INSTANCE_ID` is set.
+That keeps codexw's runtime-instance inventory and native iOS deployment row
+stable across launchd restarts instead of rotating through random `agentd-*`
+ids.
 Use `tools/verify_agentd_codexw_connector_service.py` on an installed host to
 inspect launchd/systemd state, recent self-test logs, redacted service
 configuration, broker visibility, and optional update preflight in one report.

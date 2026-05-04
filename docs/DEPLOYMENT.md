@@ -247,6 +247,12 @@ The macOS installer writes a companion LaunchAgent at
 `--require-update-preflight` when `AGENTD_CODEXW_REQUIRE_UPDATE_PREFLIGHT=1`.
 Set `AGENTD_CODEXW_INSTALL_SELF_TEST=0` only when another scheduler owns this
 readiness check.
+The connector and self-test LaunchAgents both receive a stable
+`--runtime-instance-id`. By default the installer derives it as
+`<AGENTD_CODEXW_DEPLOYMENT_ID>-runtime`; set
+`AGENTD_CODEXW_RUNTIME_INSTANCE_ID` when a host needs a different durable id.
+Keeping this id stable avoids confusing codexw/iOS runtime cards after launchd
+restarts the connector.
 
 After installation, generate a single readiness report from the installed
 profile:
