@@ -241,3 +241,9 @@ cleanly with `exit_code=0`. This completes the broker-compatible voice-peer
 control/signaling path while keeping the media boundary explicit: the broker is
 not relaying camera or audio media, and `media.direct_p2p` remains false until a
 separate direct-media proof exists.
+
+The proof was also repeated through a fresh codexw broker admin login instead
+of relying on a default `CODEXW_BROKER_TOKEN` or local token-cache fallback.
+That confirms the durable agentd voice-peer control/signaling path remains
+verifiable in a clean shell as long as valid broker user credentials are
+provided.
