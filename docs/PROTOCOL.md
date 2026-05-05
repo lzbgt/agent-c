@@ -229,6 +229,17 @@ Behavior:
   containing text + image parts (and text blocks for non-image attachments).
 - Not all models support image input. Some models (and some providers) will reject image parts with an HTTP `400`.
   - In that case, use a vision-capable model, or remove `input_files`.
+- The codexw broker connector accepts broker `workflow.submit` attachment descriptors, uploads them through this
+  session-upload route, and rewrites the workflow task request plus the workflow
+  envelope to persistent `input_files`, `allow_sessions=true`, and the safe
+  workflow `session_id` before calling `/api/v1/workflow/submit`.
+- Connector-created session ids must also obey agentd's safe filename grammar
+  (`[A-Za-z0-9._-]` only). Broker deployment ids are normalized to
+  `agentd-<deployment-id>` before session upload; ids such as
+  `agentd:<deployment-id>` are invalid for the daemon upload API.
+- Codexw-native prompt submissions default to `tools=host` unless the caller
+  explicitly narrows the request, because the iOS agentd chat expects the same
+  shell/file tool surface as a direct agentd workflow prompt.
 
 ## Tool registry introspection (UI → agentd)
 

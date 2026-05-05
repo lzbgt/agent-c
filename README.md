@@ -26,7 +26,9 @@ Key capabilities:
 - **Shared codexw broker bridge**: the native connector advertises runtime
   actions plus session/event activity surfaces so codexw's broker, iOS app, and
   WebUI can show `agentd` daemon sessions, workflows, client events, and
-  workflow events through `/api/v2/runtime-instances/...`.
+  workflow events through `/api/v2/runtime-instances/...`. Prompt attachments
+  from codexw are uploaded into agentd sessions and submitted as workflow
+  `input_files`.
 
 ## NanoClaw leverage (in progress)
 

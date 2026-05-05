@@ -166,6 +166,9 @@ Facts from `../codexw`:
 - The broker-visible surface is deployment/session/shell/service/capability oriented.
 - `codexw deploy` supports an external local API mode through `--deployment-local-api-base-url <url>` plus `--local-api-token <token>`.
 - The broker live peer runtime polls and controls the external API using endpoints such as `/api/v1/runtime`, `/api/v1/session`, `/api/v1/session/{session_id}/turn/start`, `/api/v1/session/{session_id}/transcript`, and shell/file/capability routes.
+- For agentd-native deployments, codexw prompt attachments are bridged through
+  `workflow.submit` descriptors into agentd `/api/v1/session/upload` and
+  workflow `input_files`, not through a codexw-only turn attachment lease.
 - Compatibility target is partial protocol compatibility through explicit adapters, not full drop-in equivalence.
 
 Therefore v0 uses a facade-backed bridge launcher, not a false native claim:

@@ -207,6 +207,21 @@ worker threads and serializes websocket writes with an internal lock, so
 DeepSeek-backed workflow calls cannot starve ping/pong handling and cause the
 broker to close an otherwise healthy long-lived connection.
 
+Broker-originated prompt attachments are also handled in the connector rather
+than being left to the iOS app. When codexw sends `workflow.submit` with
+attachment descriptors, the connector uploads those files to
+`/api/v1/session/upload`, forces the workflow task into a persistent session,
+and passes the accepted files as workflow `input_files`. Broker-originated
+agentd chat prompts default to `tools=host`, matching the macOS daemon's
+default host-tool install, so DeepSeek can invoke `shell_exec` for prompts that
+ask to use the shell tool.
+
+DeepSeek V4 Pro tool-call follow-ups require the assistant tool-call message's
+`reasoning_content` to be replayed. The provider adapter preserves that field
+for DeepSeek endpoints and omits forced `tool_choice`, so broker/iOS prompts
+that use host tools or uploaded input files do not fail after the first tool
+call with DeepSeek's thinking-mode validation error.
+
 The runtime capability manifest is intentionally explicit about media support:
 the codexw connector advertises broker control surfaces for messaging,
 sessions, Files, Host Shell, runtime status, runtime actions, and the

@@ -11,7 +11,7 @@ import socket
 import time
 import urllib.parse
 import uuid
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 
 LOCAL_API_VERSION = "agentd-codexw-facade-v1"
@@ -473,6 +473,206 @@ def _workflow_session(workflow: dict[str, Any]) -> dict[str, Any]:
         },
         "source": "agentd.workflow",
         "updated_at": _unix_ms_to_iso(updated_ms),
+    }
+
+
+def _workflow_task_request(workflow: dict[str, Any]) -> dict[str, Any]:
+    task_id = "ios_prompt"
+    spec = _json_object(workflow.get("spec")) or _json_object(workflow.get("spec_json")) or {}
+    for source in (workflow.get("tasks"), spec.get("tasks")):
+        if not isinstance(source, list):
+            continue
+        for row in source:
+            if not isinstance(row, dict):
+                continue
+            row_task_id = _first_string(row, ("task_id", "id"))
+            if row_task_id == task_id:
+                request = _json_object(row.get("request")) or _json_object(row.get("request_json"))
+                return request if isinstance(request, dict) else row
+        for row in source:
+            if isinstance(row, dict):
+                request = _json_object(row.get("request")) or _json_object(row.get("request_json"))
+                return request if isinstance(request, dict) else row
+    return spec or workflow
+
+
+def _json_object(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except Exception:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+    return None
+
+
+def _json_array(value: Any) -> list[Any] | None:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except Exception:
+            return None
+        return parsed if isinstance(parsed, list) else None
+    return None
+
+
+def _iter_dicts_deep(value: Any) -> Iterable[dict[str, Any]]:
+    parsed_object = _json_object(value)
+    if parsed_object is not None:
+        value = parsed_object
+    else:
+        parsed_array = _json_array(value)
+        if parsed_array is not None:
+            value = parsed_array
+    if isinstance(value, dict):
+        yield value
+        for nested in value.values():
+            yield from _iter_dicts_deep(nested)
+    elif isinstance(value, list):
+        for nested in value:
+            yield from _iter_dicts_deep(nested)
+
+
+def _workflow_user_event_text(workflow: dict[str, Any]) -> str:
+    for row in _iter_dicts_deep(workflow):
+        event_type = _first_string(row, ("type", "event"))
+        if event_type and event_type not in {"user_message", "prompt", "workflow.user_message"}:
+            continue
+        data = _json_object(row.get("data")) or row
+        prompt = _first_string(data, ("user_content", "prompt", "text", "message", "content"))
+        if prompt:
+            return prompt
+    return ""
+
+
+def _workflow_prompt_text(workflow: dict[str, Any]) -> str:
+    request = _workflow_task_request(workflow)
+    prompt = _first_string(request, ("prompt", "text", "message", "objective", "title"))
+    return prompt or _workflow_user_event_text(workflow) or _workflow_objective(workflow)
+
+
+def _assistant_text_from_result(obj: Any) -> str:
+    if not isinstance(obj, dict):
+        return ""
+    for key in ("assistant_text", "text", "output", "response"):
+        value = obj.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    result = obj.get("result")
+    if isinstance(result, dict):
+        nested = _assistant_text_from_result(result)
+        if nested:
+            return nested
+    by_task = obj.get("results_by_task")
+    if isinstance(by_task, dict):
+        for task_id in ("ios_prompt", "codexw_prompt"):
+            value = by_task.get(task_id)
+            nested = _assistant_text_from_result(value)
+            if nested:
+                return nested
+        for value in by_task.values():
+            nested = _assistant_text_from_result(value)
+            if nested:
+                return nested
+    return ""
+
+
+def _workflow_transcript_entries(workflow: dict[str, Any]) -> list[dict[str, str]]:
+    entries: list[dict[str, str]] = []
+    prompt = _workflow_prompt_text(workflow)
+    if prompt:
+        entries.append({"role": "user", "text": prompt})
+    assistant = _assistant_text_from_result(workflow)
+    if assistant:
+        entries.append({"role": "assistant", "text": assistant})
+    return entries
+
+
+def _workflow_timestamp(workflow: dict[str, Any]) -> int:
+    for key in ("created_unix_ms", "updated_unix_ms", "finished_unix_ms", "started_unix_ms"):
+        value = workflow.get(key)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            return int(value)
+        if isinstance(value, str) and value.isdigit():
+            return int(value)
+    return 0
+
+
+def _transcript_page(entries: list[dict[str, str]], limit: int, before: int | None) -> tuple[list[dict[str, str]], int, int, bool, int | None]:
+    total = len(entries)
+    end = total if before is None else max(0, min(before, total))
+    start = max(0, end - limit)
+    next_before = start if start > 0 else None
+    return entries[start:end], start, end, start > 0, next_before
+
+
+def agentd_runtime_transcript(
+    agentd_request: Callable[[str, str, Any | None], Any],
+    session_id: str,
+    query: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
+    """Project recent agentd workflow prompts/results into a codexw transcript."""
+    query = query or {}
+    limit = _clamp_int((query.get("limit") or ["120"])[0], 120, 1, 200)
+    before_raw = (query.get("before") or [None])[0]
+    before = _clamp_int(before_raw, 0, 0, 2**31 - 1) if before_raw not in (None, "") else None
+    workflow_limit = min(100, max(20, limit))
+    entries: list[dict[str, str]] = []
+    seen: set[str] = set()
+
+    response = agentd_request("GET", f"/api/v1/db/workflows?{_query({'limit': workflow_limit, 'include_spec': 1})}", None)
+    workflows = response.get("workflows", []) if isinstance(response, dict) else []
+    merged_workflows: list[dict[str, Any]] = []
+    for row in workflows:
+        if not isinstance(row, dict):
+            continue
+        workflow_id = _first_string(row, ("workflow_id",))
+        if workflow_id and workflow_id not in seen:
+            seen.add(workflow_id)
+            try:
+                detail = agentd_request(
+                    "GET",
+                    "/api/v1/workflow?"
+                    + _query(
+                        {
+                            "workflow_id": workflow_id,
+                            "include_tasks": 1,
+                            "include_results": 1,
+                            "include_spec": 1,
+                        }
+                    ),
+                    None,
+                )
+                if isinstance(detail, dict):
+                    row = {**row, **detail}
+            except Exception:
+                pass
+        merged_workflows.append(row)
+
+    merged_workflows.sort(key=_workflow_timestamp)
+    for row in merged_workflows:
+        entries.extend(_workflow_transcript_entries(row))
+
+    page, start, end, has_older, next_before = _transcript_page(entries, limit, before)
+    return {
+        "ok": True,
+        "session_id": session_id,
+        "thread_id": session_id,
+        "transcript": page,
+        "total_entries": len(entries),
+        "returned": len(page),
+        "limit": limit,
+        "range_start": start,
+        "range_end": end,
+        "has_older": has_older,
+        "next_before": next_before,
+        "source": "agentd.workflow_transcript",
     }
 
 

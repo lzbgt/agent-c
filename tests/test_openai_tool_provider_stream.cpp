@@ -182,6 +182,47 @@ static OpenAIStreamResult fake_stream_legacy_function_call(
   return r;
 }
 
+static int g_deepseek_reasoning_raw_calls = 0;
+
+static OpenAIRawResult fake_raw_deepseek_v4_pro_reasoning_tool_call(
+  const OpenAIClientConfig& /*cfg*/,
+  const std::string& request_body_json
+) {
+  g_deepseek_reasoning_raw_calls++;
+
+  Json::CharReaderBuilder rb;
+  std::string errs;
+  std::istringstream iss(request_body_json);
+  Json::Value req;
+  expect_true(Json::parseFromStream(rb, iss, &req, &errs), "parse DeepSeek request");
+  expect_true(req.isObject(), "DeepSeek request is object");
+  expect_streq(req["model"].asString(), "deepseek-v4-pro", "DeepSeek model forwarded");
+  expect_true(!req.isMember("tool_choice"), "DeepSeek request omits forced tool_choice");
+
+  OpenAIRawResult r;
+  r.http_status = 200;
+  if (g_deepseek_reasoning_raw_calls == 1) {
+    r.response_body =
+      R"({"choices":[{"message":{"role":"assistant","content":"","reasoning_content":"tool reasoning","tool_calls":[{"id":"call_reason","type":"function","function":{"name":"fs_read","arguments":"{}"}}]}}]})";
+    return r;
+  }
+
+  expect_true(req.isMember("messages") && req["messages"].isArray(), "DeepSeek follow-up has messages");
+  bool found_assistant = false;
+  for (const auto& msg : req["messages"]) {
+    if (!msg.isObject() || !msg.isMember("role") || !msg["role"].isString()) continue;
+    if (msg["role"].asString() != "assistant") continue;
+    if (!msg.isMember("tool_calls") || !msg["tool_calls"].isArray() || msg["tool_calls"].empty()) continue;
+    found_assistant = true;
+    expect_true(msg.isMember("reasoning_content"), "DeepSeek assistant tool turn carries reasoning_content");
+    expect_streq(msg["reasoning_content"].asString(), "tool reasoning", "DeepSeek reasoning_content preserved");
+  }
+  expect_true(found_assistant, "DeepSeek follow-up assistant tool turn found");
+
+  r.response_body = R"({"choices":[{"message":{"role":"assistant","content":"ok"}}]})";
+  return r;
+}
+
 static agent_tool_registry_t* make_minimal_registry() {
   agent_tool_registry_t* r = nullptr;
   const agent_status_t st = agent_tool_registry_create(&r);
@@ -352,6 +393,67 @@ int main() {
     expect_true(cap.retries >= 1, "stream_options retry event emitted");
     expect_streq(cap.retry_reason, "stream_options_rejected", "stream_options retry reason");
     agent_tool_provider_response_free(&resp);
+    agent_tool_registry_destroy(tools);
+  }
+
+  {
+    // DeepSeek V4 Pro can return reasoning_content in tool-calling turns and requires it on follow-up requests.
+    agent_tool_registry_t* tools = make_minimal_registry();
+
+    OpenAIToolProviderCtx ctx;
+    ctx.cfg.base_url = "https://api.deepseek.com";
+    ctx.cfg.api_key = "dummy";
+    ctx.cfg.model = "deepseek-v4-pro";
+    ctx.stream_assistant = false;
+    ctx.chat_raw_fn = fake_raw_deepseek_v4_pro_reasoning_tool_call;
+    g_deepseek_reasoning_raw_calls = 0;
+
+    agent_tool_provider_t p = openai_make_tool_provider(&ctx);
+    agent_tool_provider_request_t first = make_req(tools);
+    first.model = "deepseek-v4-pro";
+    first.force_tool_or_null = "fs_read";
+    agent_tool_provider_response_t resp1{};
+    const agent_status_t st1 = p.generate(p.ctx, &first, &resp1);
+    expect_true(st1 == AGENT_OK, "DeepSeek first tool-call status");
+    expect_eq(resp1.tool_call_count, 1u, "DeepSeek first tool-call count");
+    expect_streq(std::string(resp1.tool_calls[0].id.data, resp1.tool_calls[0].id.len), "call_reason", "DeepSeek tool id");
+
+    const char* assistant_content = "";
+    agent_chat_tool_call_view_t assistant_call{};
+    assistant_call.id = "call_reason";
+    assistant_call.name = "fs_read";
+    assistant_call.arguments_json = "{}";
+
+    agent_chat_message_view_t follow_messages[3]{};
+    follow_messages[0].role = AGENT_ROLE_USER;
+    follow_messages[0].content = "hi";
+    follow_messages[0].content_len = 2;
+    follow_messages[1].role = AGENT_ROLE_ASSISTANT;
+    follow_messages[1].content = assistant_content;
+    follow_messages[1].content_len = 0;
+    follow_messages[1].tool_calls = &assistant_call;
+    follow_messages[1].tool_call_count = 1;
+    follow_messages[2].role = AGENT_ROLE_TOOL;
+    follow_messages[2].content = "file";
+    follow_messages[2].content_len = 4;
+    follow_messages[2].tool_call_id = "call_reason";
+
+    agent_tool_provider_request_t second{};
+    second.model = "deepseek-v4-pro";
+    second.messages = follow_messages;
+    second.message_count = 3;
+    second.tools = tools;
+    second.step = 1;
+    second.epoch = 0;
+
+    agent_tool_provider_response_t resp2{};
+    const agent_status_t st2 = p.generate(p.ctx, &second, &resp2);
+    expect_true(st2 == AGENT_OK, "DeepSeek follow-up status");
+    expect_streq(std::string(resp2.assistant_content.data, resp2.assistant_content.len), "ok", "DeepSeek follow-up assistant text");
+    expect_eq((size_t)g_deepseek_reasoning_raw_calls, 2u, "DeepSeek raw call count");
+
+    agent_tool_provider_response_free(&resp2);
+    agent_tool_provider_response_free(&resp1);
     agent_tool_registry_destroy(tools);
   }
 

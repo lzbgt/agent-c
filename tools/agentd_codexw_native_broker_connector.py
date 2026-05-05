@@ -10,6 +10,7 @@ import hmac
 import json
 import mimetypes
 import os
+import re
 import secrets
 import socket
 import ssl
@@ -29,6 +30,7 @@ from agentd_codexw_contract import (
     agentd_runtime_session_create,
     agentd_runtime_sessions,
     agentd_runtime_status,
+    agentd_runtime_transcript,
     base64_body_digest,
     canonical_json_bytes,
     default_runtime_instance_id,
@@ -38,6 +40,7 @@ from agentd_codexw_contract import (
     runtime_identity_headers,
     runtime_snapshot,
 )
+from agentd_codexw_attachments import attach_workflow_input_files
 
 
 CONNECT_PATH = "/api/v1/deployment/connect"
@@ -652,12 +655,15 @@ def workflow_submit_request(input_obj: dict[str, Any]) -> dict[str, Any]:
     request = {
         "prompt": prompt,
         "no_session": bool(input_obj.get("no_session", True)),
-        "tools": str(input_obj.get("tools") or "none"),
+        "tools": str(input_obj.get("tools") or "host"),
     }
     for key in ("model", "base_url", "timeout_ms", "max_steps", "session_id"):
         value = input_obj.get(key)
         if value not in (None, ""):
             request[key] = value
+    attachments = input_obj.get("attachments")
+    if isinstance(attachments, list) and attachments:
+        request["attachments"] = attachments
     return {
         "allow_sessions": bool(input_obj.get("allow_sessions", True)),
         "tasks": [
@@ -848,7 +854,14 @@ def forward_runtime_action(args: argparse.Namespace, body: dict[str, Any]) -> di
     action = action.strip()
     input_obj = request_input(body)
     if action == "workflow.submit":
-        result = agentd_request(args, "POST", "/api/v1/workflow/submit", workflow_submit_request(input_obj))
+        workflow_request = workflow_submit_request(input_obj)
+        workflow_request = attach_workflow_input_files(
+            lambda m, p, b=None: agentd_request(args, m, p, b),
+            workflow_request,
+            default_session_id=codexw_session_id(args),
+            timeout=float(args.timeout),
+        )
+        result = agentd_request(args, "POST", "/api/v1/workflow/submit", workflow_request)
     elif action == "workflow.read":
         workflow_id = require_string(input_obj, "workflow_id")
         result = agentd_request(
@@ -934,7 +947,9 @@ def runtime_payload(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def codexw_session_id(args: argparse.Namespace) -> str:
-    return f"agentd:{args.deployment_id}"
+    raw = f"agentd-{args.deployment_id}"
+    normalized = re.sub(r"[^A-Za-z0-9._-]+", "-", raw).strip(".-_")
+    return normalized or "agentd-codexw"
 
 
 def local_session_snapshot(args: argparse.Namespace) -> dict[str, Any]:
@@ -1194,6 +1209,8 @@ def handle_command(args: argparse.Namespace, frame: dict[str, Any]) -> dict[str,
             result = forward_runtime_action(args, body)
         elif method == "GET" and route_path == "/healthz":
             result = {"ok": True, "service": "agentd-codexw-native-broker-connector"}
+        elif session_tail == "transcript" and method == "GET":
+            result = agentd_runtime_transcript(request_agentd, codexw_session_id(args), query)
         elif session_tail == "shells" and method == "GET":
             result = local_shell_list(args)
         elif session_tail == "shells/start" and method == "POST":

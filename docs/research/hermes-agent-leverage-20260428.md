@@ -166,6 +166,30 @@ against `agentd-service-bruce-mac` submitted a prompt through
 `workflow.read`, and reached `status=done` with `assistant_text=AGENTD_OK` and
 `effective_model=deepseek-v4-pro`.
 
+On 2026-05-05, the codexw deployment prompt route removed the old 409
+attachment block for agentd deployments. The broker forwards URL and staged
+upload attachments to `workflow.submit` as descriptors, and the native
+connector/local facade convert those descriptors into agentd
+`POST /api/v1/session/upload` calls plus workflow `input_files`. This keeps the
+iOS composer on the same broker route while using agentd's documented
+session-persistent multimodal/file input path. The codexw prompt adapter also
+requests `tools=host`, fixing the adjacent issue where an iOS prompt asking the
+agentd instance to use the shell tool could reach DeepSeek but never receive a
+tool-backed answer because the workflow request had been constrained to
+`tools=none`. Live attachment testing also found that agentd's upload API
+rejects session ids containing `:`, because session ids become filenames. The
+connector now normalizes broker deployment ids to safe session ids such as
+`agentd-service-bruce-mac` before uploading attachments.
+
+The same live attachment proof then exposed a DeepSeek V4 Pro compatibility
+bug in the OpenAI-compatible tool provider rather than in codexw or iOS:
+DeepSeek returned `reasoning_content` with the assistant tool call and rejected
+the follow-up request unless that field was carried forward. The provider now
+treats DeepSeek endpoints as thinking/tool-call compatible for this purpose,
+omits forced `tool_choice` for DeepSeek, and preserves `reasoning_content`
+across the tool loop. The regression covers the exact `deepseek-v4-pro` two-step
+tool-call request shape that previously ended with HTTP 400.
+
 On 2026-05-04, a physical iPhone smoke run exposed a deeper liveness issue:
 the prompt submit route returned a stable runtime id, but the following
 `workflow.read` failed with `runtime instance has no live or local API target`.

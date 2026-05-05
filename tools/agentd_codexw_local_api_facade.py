@@ -30,6 +30,7 @@ from agentd_codexw_contract import (
     legacy_capabilities,
     runtime_capabilities,
 )
+from agentd_codexw_attachments import attach_workflow_input_files
 
 
 class FacadeState:
@@ -377,6 +378,12 @@ class FacadeHandler(BaseHTTPRequestHandler):
 
     def forward_runtime_action(self, action: str, input_obj: dict[str, Any]) -> Any:
         if action == "workflow.submit":
+            input_obj = attach_workflow_input_files(
+                lambda m, p, b=None: self.agentd.request(m, p, b),
+                input_obj,
+                default_session_id=self.state.session_id,
+                timeout=float(self.state.args.timeout),
+            )
             return self.agentd.request("POST", "/api/v1/workflow/submit", input_obj)
         if action == "workflow.read":
             workflow_id = require_string(input_obj, "workflow_id")

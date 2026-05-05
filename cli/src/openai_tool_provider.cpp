@@ -42,6 +42,10 @@ static bool is_moonshot_provider(const std::string& base_url) {
   return url_contains_ci(base_url, "moonshot");
 }
 
+static bool is_deepseek_provider(const std::string& base_url) {
+  return url_contains_ci(base_url, "deepseek");
+}
+
 static bool provider_rejects_image_parts(const std::string& base_url, const std::string& model) {
   // Some OpenAI-compatible providers only support `content` parts of `{"type":"text","text":"..."}` and will
   // reject `{"type":"image_url",...}` with a 400 deserialization error.
@@ -51,7 +55,7 @@ static bool provider_rejects_image_parts(const std::string& base_url, const std:
   // - DeepSeek's API schema expects only `text` parts (even when content is an array).
   (void)model;
   if (is_moonshot_provider(base_url)) return true;
-  if (url_contains_ci(base_url, "deepseek")) return true;
+  if (is_deepseek_provider(base_url)) return true;
   return false;
 }
 
@@ -401,11 +405,9 @@ static agent_status_t openai_tool_provider_generate(
 
   Json::Value root(Json::objectValue);
   root["model"] = req->model ? req->model : "";
-  const bool deepseek_reasoner =
-    url_contains_ci(ctx->cfg.base_url, "deepseek") &&
-    (url_contains_ci(root["model"].asString(), "reasoner") || url_contains_ci(root["model"].asString(), "deepseek-reasoner"));
+  const bool deepseek_provider = is_deepseek_provider(ctx->cfg.base_url);
   const bool moonshot = is_moonshot_provider(ctx->cfg.base_url);
-  const bool include_reasoning = deepseek_reasoner || moonshot;
+  const bool include_reasoning = deepseek_provider || moonshot;
   const bool use_stream_assistant = ctx->stream_assistant && !moonshot;
   if (moonshot && ctx->stream_assistant) {
     // Kimi K2.5 tool-use constraints + requirements make streaming tricky:
@@ -434,8 +436,8 @@ static agent_status_t openai_tool_provider_generate(
   root["tools"] = tools;
 
   if (req->force_tool_or_null && req->force_tool_or_null[0]) {
-    // Some providers (DeepSeek reasoner, Kimi thinking mode) do not support forcing tool_choice.
-    if (!deepseek_reasoner && !moonshot) {
+    // Some providers (DeepSeek thinking mode, Kimi thinking mode) do not support forcing tool_choice.
+    if (!deepseek_provider && !moonshot) {
       Json::Value tc(Json::objectValue);
       tc["type"] = "function";
       Json::Value fn(Json::objectValue);

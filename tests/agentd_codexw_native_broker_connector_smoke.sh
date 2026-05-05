@@ -716,6 +716,7 @@ import socket
 import struct
 import subprocess
 import threading
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -782,7 +783,36 @@ class AgentdHandler(BaseHTTPRequestHandler):
         elif self.path.startswith("/api/v1/db/client_events"):
             self.send_json({"ok": True, "session_id": "agentd-session", "client_events": [{"id": 1, "ts_unix_ms": 1700000002000, "type": "client.event", "data": {"note": "session smoke"}}]})
         elif self.path.startswith("/api/v1/db/workflows"):
-            self.send_json({"ok": True, "workflows": [{"workflow_id": "wf-smoke", "session_id": "agentd-session", "trace_id": "trace-smoke", "status": "running", "created_unix_ms": 1700000003000, "updated_unix_ms": 1700000004000, "spec": {"title": "Smoke workflow"}}]})
+            self.send_json({"ok": True, "workflows": [
+                {"workflow_id": "wf-new", "session_id": "agentd-session", "trace_id": "trace-new", "status": "done", "created_unix_ms": 1700000005000, "updated_unix_ms": 1700000006000},
+                {"workflow_id": "wf-old", "session_id": "agentd-session", "trace_id": "trace-old", "status": "done", "created_unix_ms": 1700000003000, "updated_unix_ms": 1700000004000, "spec": {"title": "Smoke workflow", "tasks": [{"task_id": "ios_prompt", "request": {"prompt": "native transcript prompt"}}]}},
+            ]})
+        elif self.path.startswith("/api/v1/workflow?"):
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            workflow_id = (query.get("workflow_id") or [""])[0]
+            if workflow_id == "wf-new":
+                self.send_json({
+                    "ok": True,
+                    "workflow_id": "wf-new",
+                    "status": "done",
+                    "result": {
+                        "ok": True,
+                        "results_by_task": {
+                            "ios_prompt": {
+                                "ok": True,
+                                "assistant_text": "new native transcript response",
+                                "events": [
+                                    {
+                                        "type": "user_message",
+                                        "data": {"user_content": "new native transcript prompt"},
+                                    }
+                                ],
+                            }
+                        },
+                    },
+                })
+            else:
+                self.send_json({"ok": True, "workflow_id": "wf-old", "status": "done", "result": {"ok": True, "results_by_task": {"ios_prompt": {"ok": True, "assistant_text": "native transcript response"}}}})
         elif self.path.startswith("/api/v1/db/workflow_events"):
             self.send_json({"ok": True, "workflow_id": "wf-smoke", "events": [{"event_id": 2, "workflow_id": "wf-smoke", "ts_unix_ms": 1700000005000, "type": "workflow.started", "data": {"workflow_id": "wf-smoke"}}]})
         elif self.path.startswith("/api/v1/ota/status"):
@@ -817,6 +847,18 @@ class AgentdHandler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/v1/workflow/submit"):
             results["agentd_workflow_submit_request"] = body
             self.send_json({"ok": True, "workflow_id": "wf-submit-smoke", "status": "queued"})
+        elif self.path.startswith("/api/v1/session/upload"):
+            results["agentd_session_upload_request"] = body
+            files = body.get("files") or []
+            accepted = []
+            for idx, file in enumerate(files):
+                accepted.append({
+                    "path": f"uploads/{idx}_{file.get('name', 'attachment.bin')}",
+                    "name": file.get("name"),
+                    "mime": file.get("mime"),
+                    "kind": "image" if str(file.get("mime") or "").startswith("image/") else "file",
+                })
+            self.send_json({"ok": True, "files": accepted})
         elif self.path.startswith("/api/v1/session/new"):
             results["agentd_session_new_request"] = body
             self.send_json({"ok": True, "session_id": body.get("session_id") or "agentd-created-session", "created": True})
@@ -913,6 +955,11 @@ def broker_thread():
                     "action": "workflow.submit",
                     "input": {
                         "prompt": "native workflow submit smoke",
+                        "attachments": [{
+                            "filename": "pixel.png",
+                            "content_type": "image/png",
+                            "data_base64": "iVBORw0KGgo=",
+                        }],
                     },
                 },
             },
@@ -923,9 +970,24 @@ def broker_thread():
         assert submit_result["body"]["action"] == "workflow.submit", submit_result
         assert submit_result["body"]["result"]["workflow_id"] == "wf-submit-smoke", submit_result
         submit_request = results["agentd_workflow_submit_request"]
+        assert submit_request["allow_sessions"] is True, submit_request
+        assert submit_request["session_id"] == "agentd-agentd-native-smoke", submit_request
         assert submit_request["tasks"][0]["task_id"] == "codexw_prompt", submit_request
         assert submit_request["tasks"][0]["request"]["prompt"] == "native workflow submit smoke", submit_request
-        assert submit_request["tasks"][0]["request"]["tools"] == "none", submit_request
+        assert submit_request["tasks"][0]["request"]["tools"] == "host", submit_request
+        assert submit_request["tasks"][0]["request"]["no_session"] is False, submit_request
+        assert submit_request["tasks"][0]["request"]["session_id"] == "agentd-agentd-native-smoke", submit_request
+        assert submit_request["tasks"][0]["request"]["input_files"] == [{
+            "path": "uploads/0_pixel.png",
+            "name": "pixel.png",
+            "mime": "image/png",
+            "kind": "image",
+        }], submit_request
+        upload_request = results["agentd_session_upload_request"]
+        assert upload_request["session_id"] == "agentd-agentd-native-smoke", upload_request
+        assert upload_request["files"][0]["name"] == "pixel.png", upload_request
+        assert upload_request["files"][0]["mime"] == "image/png", upload_request
+        assert upload_request["files"][0]["data_base64"] == "iVBORw0KGgo=", upload_request
         send_frame(
             conn,
             {
@@ -940,7 +1002,7 @@ def broker_thread():
         assert sessions_result["status"] == 200, sessions_result
         assert sessions_result["body"]["runtime_kind"] == "agentd", sessions_result
         session_ids = [s["session_id"] for s in sessions_result["body"]["sessions"]]
-        assert "agentd-session" in session_ids and "wf-smoke" in session_ids, sessions_result
+        assert "agentd-session" in session_ids and "wf-old" in session_ids and "wf-new" in session_ids, sessions_result
         send_frame(
             conn,
             {
@@ -976,6 +1038,29 @@ def broker_thread():
         assert events_result["body"]["runtime_kind"] == "agentd", events_result
         names = [event["event"] for event in events_result["body"]["events"]]
         assert "workflow.started" in names and "client.event" in names, events_result
+        send_frame(
+            conn,
+            {
+                "type": "deployment.command",
+                "request_id": "cmd-transcript",
+                "method": "GET",
+                "path": "/api/v1/session/agentd-agentd-native-smoke/transcript?limit=20",
+            },
+        )
+        transcript_result = read_frame(conn)
+        results["transcript_result"] = transcript_result
+        assert transcript_result["status"] == 200, transcript_result
+        transcript_body = transcript_result["body"]
+        assert transcript_body["session_id"] == "agentd-agentd-native-smoke", transcript_result
+        assert transcript_body["total_entries"] == 4, transcript_result
+        assert transcript_body["transcript"][0]["role"] == "user", transcript_result
+        assert transcript_body["transcript"][0]["text"] == "native transcript prompt", transcript_result
+        assert transcript_body["transcript"][1]["role"] == "assistant", transcript_result
+        assert transcript_body["transcript"][1]["text"] == "native transcript response", transcript_result
+        assert transcript_body["transcript"][2]["role"] == "user", transcript_result
+        assert transcript_body["transcript"][2]["text"] == "new native transcript prompt", transcript_result
+        assert transcript_body["transcript"][3]["role"] == "assistant", transcript_result
+        assert transcript_body["transcript"][3]["text"] == "new native transcript response", transcript_result
         send_frame(
             conn,
             {
@@ -1103,9 +1188,9 @@ thread.join(timeout=5)
 if proc.returncode != 0:
     raise SystemExit(f"connector failed\\nSTDOUT:\\n{proc.stdout}\\nSTDERR:\\n{proc.stderr}")
 summary = json.loads(proc.stdout)
-if summary.get("mode") != "connect" or summary.get("commands") != 8:
+if summary.get("mode") != "connect" or summary.get("commands") != 9:
     raise SystemExit(f"bad connector summary: {summary}")
-for key in ("command_result", "submit_result", "sessions_result", "create_session_result", "events_result", "status_result", "update_result", "restart_result", "agentd_workflow_submit_request", "agentd_session_new_request", "agentd_ota_update_request", "agentd_ota_restart_request"):
+for key in ("command_result", "submit_result", "sessions_result", "create_session_result", "events_result", "transcript_result", "status_result", "update_result", "restart_result", "agentd_workflow_submit_request", "agentd_session_upload_request", "agentd_session_new_request", "agentd_ota_update_request", "agentd_ota_restart_request"):
     if key not in results:
         raise SystemExit(f"broker did not receive {key}")
 assert results["agentd_session_new_request"] == {"session_id": "agentd-created-session"}, results["agentd_session_new_request"]
