@@ -1088,6 +1088,47 @@ def local_file_read(args: argparse.Namespace, body: Any | None) -> dict[str, Any
     }
 
 
+def local_file_write(args: argparse.Namespace, body: Any | None) -> dict[str, Any]:
+    request = body if isinstance(body, dict) else {}
+    target = safe_file_target(args, request.get("path"))
+    filename = str(request.get("filename") or "").strip()
+    if target.exists() and target.is_dir():
+        if not filename:
+            raise ValueError("filename is required when writing into a directory")
+        target = safe_file_target(args, str(target / filename))
+    parent = target.parent
+    if not parent.exists() or not parent.is_dir():
+        raise ValueError(f"target directory not found: {parent}")
+    if target.exists() and not bool(request.get("overwrite")):
+        raise FileExistsError(str(target))
+    encoded = str(request.get("data_base64") or "")
+    if not encoded:
+        raise ValueError("data_base64 is required")
+    try:
+        data = base64.b64decode(encoded, validate=True)
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError("data_base64 must be valid base64") from exc
+    if not data:
+        raise ValueError("file data must not be empty")
+    if len(data) > 20 * 1024 * 1024:
+        raise ValueError("workspace file exceeds 20 MiB limit")
+    target.write_bytes(data)
+    content_type = str(request.get("content_type") or "").strip() or (
+        mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+    )
+    return {
+        "ok": True,
+        "session_id": codexw_session_id(args),
+        "root_path": str(file_root(args)),
+        "path": str(target),
+        "relative_path": relative_to_file_root(args, target),
+        "filename": target.name,
+        "content_type": content_type,
+        "size_bytes": len(data),
+        "overwritten": bool(request.get("overwrite")),
+    }
+
+
 def shell_jobs(args: argparse.Namespace) -> dict[str, dict[str, Any]]:
     jobs = getattr(args, "_codexw_shell_jobs", None)
     if not isinstance(jobs, dict):
@@ -1230,6 +1271,8 @@ def handle_command(args: argparse.Namespace, frame: dict[str, Any]) -> dict[str,
             result = local_file_list(args, body)
         elif session_tail == "files/read" and method == "POST":
             result = local_file_read(args, body)
+        elif session_tail == "files/write" and method == "POST":
+            result = local_file_write(args, body)
         else:
             return {
                 "type": "deployment.command_result",

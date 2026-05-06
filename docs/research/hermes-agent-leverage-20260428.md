@@ -271,3 +271,12 @@ of relying on a default `CODEXW_BROKER_TOKEN` or local token-cache fallback.
 That confirms the durable agentd voice-peer control/signaling path remains
 verifiable in a clean shell as long as valid broker user credentials are
 provided.
+
+The codexw file-browser bridge now includes the write side as well as list/read.
+The native connector and local API facade both serve
+`POST /api/v1/session/{session_id}/files/write` against the same bounded
+file-root policy used by list/read, accepting a base64 payload and rejecting
+path traversal or silent overwrites by default. That lets the codexw iOS Files
+view upload a selected local document into an agentd working-tree directory
+through the shared broker route
+`POST /api/v1/deployments/{deployment_id}/files/write`.

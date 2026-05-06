@@ -102,6 +102,11 @@ file_list="$(curl -fsS --noproxy "*" \
   -H "Content-Type: application/json" \
   -d '{"path":"docs","offset":0,"limit":80}' \
   "${FACADE_URL}/api/v1/session/agentd/files/list")"
+file_write="$(curl -fsS --noproxy "*" \
+  -H "Authorization: Bearer ${FACADE_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"path":"docs","filename":"codexw-facade-upload-smoke.txt","content_type":"text/plain","data_base64":"YWdlbnRkLWZhY2FkZS1maWxlLXdyaXRlLXNtb2tlCg=="}' \
+  "${FACADE_URL}/api/v1/session/agentd/files/write")"
 shell_started="$(curl -fsS --noproxy "*" \
   -H "Authorization: Bearer ${FACADE_TOKEN}" \
   -H "Content-Type: application/json" \
@@ -122,7 +127,7 @@ voice_status_action="$(curl -fsS --noproxy "*" \
   "${FACADE_URL}/api/v1/runtime/actions")"
 
 python3 - <<PY
-import base64, json, sys
+import base64, json, pathlib, sys
 runtime = json.loads(r'''${runtime}''')
 runtime_status = json.loads(r'''${runtime_status}''')
 runtime_sessions = json.loads(r'''${runtime_sessions}''')
@@ -135,6 +140,7 @@ turn = json.loads(r'''${turn}''')
 transcript = json.loads(r'''${transcript}''')
 file_read = json.loads(r'''${file_read}''')
 file_list = json.loads(r'''${file_list}''')
+file_write = json.loads(r'''${file_write}''')
 shell_started = json.loads(r'''${shell_started}''')
 shells = json.loads(r'''${shells}''')
 experience_action = json.loads(r'''${experience_action}''')
@@ -212,6 +218,14 @@ if not base64.b64decode(file_read.get("data_base64", "")).startswith(b"#"):
 if file_list.get("path", "").endswith("/docs") is not True or not any(entry.get("name") == "WORKFLOWS.md" for entry in file_list.get("entries", [])):
     print("bad file list", file_list, file=sys.stderr)
     raise SystemExit(1)
+if file_write.get("relative_path") != "docs/codexw-facade-upload-smoke.txt":
+    print("bad file write", file_write, file=sys.stderr)
+    raise SystemExit(1)
+written = pathlib.Path(r'''${SCRIPT_DIR}/../docs/codexw-facade-upload-smoke.txt''').resolve()
+if written.read_text() != "agentd-facade-file-write-smoke\n":
+    print("bad file write payload", written.read_text(), file=sys.stderr)
+    raise SystemExit(1)
+written.unlink(missing_ok=True)
 shell = shell_started.get("shell", {})
 if shell.get("status") != "completed" or "agentd-facade-shell-smoke" not in "\n".join(shell.get("output_lines", [])):
     print("bad shell start", shell_started, file=sys.stderr)

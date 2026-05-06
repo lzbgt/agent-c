@@ -129,8 +129,10 @@ surfaces, then serves these runtime-local adapter commands:
   neutral `broker.runtime_event.v1` rows, with `limit`, `after_id`,
   `last_event_id`, `session_id`, and `event_prefix` filtering.
 - `POST /api/v1/session/{session_id}/files/list` and
-  `POST /api/v1/session/{session_id}/files/read`: expose a bounded file-root
-  adapter for the codexw iOS file explorer.
+  `POST /api/v1/session/{session_id}/files/read` and
+  `POST /api/v1/session/{session_id}/files/write`: expose a bounded file-root
+  adapter for the codexw iOS file explorer, including remote document uploads
+  into the selected working-tree directory.
 - `GET /api/v1/session/{session_id}/shells`,
   `POST /api/v1/session/{session_id}/shells/start`, and
   `GET /api/v1/session/{session_id}/shells/{shell_id}`: expose one-shot shell

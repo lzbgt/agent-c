@@ -299,6 +299,8 @@ class FacadeHandler(BaseHTTPRequestHandler):
                 self.file_read(query)
             elif method == "POST" and path == f"/api/v1/session/{self.state.session_id}/files/read":
                 self.send_json(200, self.file_read_body(read_json_body(self)))
+            elif method == "POST" and path == f"/api/v1/session/{self.state.session_id}/files/write":
+                self.send_json(200, self.file_write_body(read_json_body(self)))
             else:
                 self.send_json(404, {"error": {"code": "not_found", "message": path}})
         except ValueError as exc:
@@ -616,6 +618,45 @@ class FacadeHandler(BaseHTTPRequestHandler):
             "has_more": next_offset is not None,
             "preview_truncated": next_offset is not None,
             "data_base64": base64.b64encode(chunk).decode("ascii"),
+        }
+
+    def file_write_body(self, body: dict[str, Any]) -> dict[str, Any]:
+        target = self.safe_file_target(body.get("path"))
+        filename = str(body.get("filename") or "").strip()
+        if target.exists() and target.is_dir():
+            if not filename:
+                raise ValueError("filename is required when writing into a directory")
+            target = self.safe_file_target(str(target / filename))
+        parent = target.parent
+        if not parent.exists() or not parent.is_dir():
+            raise ValueError(f"target directory not found: {parent}")
+        if target.exists() and not bool(body.get("overwrite")):
+            raise FileExistsError(str(target))
+        encoded = str(body.get("data_base64") or "")
+        if not encoded:
+            raise ValueError("data_base64 is required")
+        try:
+            data = base64.b64decode(encoded, validate=True)
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError("data_base64 must be valid base64") from exc
+        if not data:
+            raise ValueError("file data must not be empty")
+        if len(data) > 20 * 1024 * 1024:
+            raise ValueError("workspace file exceeds 20 MiB limit")
+        target.write_bytes(data)
+        content_type = str(body.get("content_type") or "").strip() or (
+            mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+        )
+        return {
+            "ok": True,
+            "session_id": self.state.session_id,
+            "root_path": str(self.file_root()),
+            "path": str(target),
+            "relative_path": self.relative_path(target),
+            "filename": target.name,
+            "content_type": content_type,
+            "size_bytes": len(data),
+            "overwritten": bool(body.get("overwrite")),
         }
 
     def file_read(self, query: dict[str, list[str]]) -> None:

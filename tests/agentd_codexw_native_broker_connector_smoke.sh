@@ -163,6 +163,18 @@ read = command("POST", f"/api/v1/session/{session}/files/read", {"path": "${TMP_
 if read.get("status") != 200 or read.get("body", {}).get("filename") != "file-smoke.txt":
     print("bad native file read", read, file=sys.stderr)
     raise SystemExit(1)
+write = command("POST", f"/api/v1/session/{session}/files/write", {
+    "path": "${TMP_DIR}",
+    "filename": "uploaded-from-ios.txt",
+    "content_type": "text/plain",
+    "data_base64": "YWdlbnRkLWZpbGUtd3JpdGUtc21va2UK",
+})
+if write.get("status") != 200 or write.get("body", {}).get("relative_path") != "uploaded-from-ios.txt":
+    print("bad native file write", write, file=sys.stderr)
+    raise SystemExit(1)
+if Path("${TMP_DIR}/uploaded-from-ios.txt").read_text() != "agentd-file-write-smoke\n":
+    print("native file write content mismatch", file=sys.stderr)
+    raise SystemExit(1)
 shell = command("POST", f"/api/v1/session/{session}/shells/start", {"command": "printf agentd-native-shell-smoke", "cwd": "${TMP_DIR}"})
 job = shell.get("body", {}).get("shell", {})
 if shell.get("status") != 200 or "agentd-native-shell-smoke" not in "\\n".join(job.get("output_lines", [])):

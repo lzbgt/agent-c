@@ -229,6 +229,7 @@ Facade route contract:
 - `GET /api/v1/session/{session_id}/services`
 - `GET /api/v1/session/{session_id}/shells`
 - `GET /api/v1/session/{session_id}/files/read`
+- `POST /api/v1/session/{session_id}/files/write`
 
 In production mode the facade forwards mobile `turn/start` prompts to `agentd /api/v1/run`. In smoke/offline mode it can run with `--turn-mode echo` to verify the broker-facing contract without a model provider key.
 
