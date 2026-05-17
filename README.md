@@ -1,5 +1,8 @@
 # agent
 
+
+[![Paid_Architecture_Review](https://img.shields.io/badge/Paid_Architecture_Review-brightgreen)](https://x2.brucelu.top/agent-c/checkout/?source=github-badge-agent-c) [![Ask_First](https://img.shields.io/badge/Ask_First-blue)](https://x2.brucelu.top/products/contact/?offer=agentc&source=github-badge-agent-c) [![Sample](https://img.shields.io/badge/Sample-informational)](https://x2.brucelu.top/agent-c/sample/)
+
 This repo is a **production-oriented agentic platform**: a portable core plus a daemon, broker, CLI, and WebUI for durable, audited automation.
 It is **not a prototype** — the repo includes deployment checklists, verification scripts, and evidence bundles for repeatable, production-grade runs.
 
