@@ -7,8 +7,10 @@ It is **not a prototype** — the repo includes deployment checklists, verificat
 
 If you are evaluating durable agent infrastructure for a real deployment, a focused Agent-C architecture review is available here:
 
-- Review page: https://x2.brucelu.top/agent-c/
-- Checkout: https://x2.brucelu.top/agent-c/checkout/?source=github-agent-c
+- Review page: https://x2.brucelu.top/agent-c/?source=github-agent-c-top
+- Ask a pre-sales question: https://x2.brucelu.top/products/contact/?offer=agentc&source=github-agent-c-top
+- Sample deliverable: https://x2.brucelu.top/agent-c/sample/
+- Checkout: https://x2.brucelu.top/agent-c/checkout/?source=github-agent-c-top
 
 The review covers daemon/process model, persistence, workflow replay, approvals, audit evidence, and a prioritized next-step checklist. It is architecture guidance, not a guaranteed production deployment or managed service.
 
