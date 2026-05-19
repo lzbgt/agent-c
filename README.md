@@ -3,6 +3,11 @@
 This repo is a **production-oriented agentic platform**: a portable core plus a daemon, broker, CLI, and WebUI for durable, audited automation.
 It is **not a prototype** — the repo includes deployment checklists, verification scripts, and evidence bundles for repeatable, production-grade runs.
 
+## Support
+
+If Agent-C helps your work, you can make an optional PayPal contribution to support public project maintenance and experiments: https://x2.brucelu.top/products/support/checkout/?source=github-agent-c-readme
+
+
 ## Status
 
 - Rolling release: expect breaking changes until the first stability milestone.
