@@ -71,11 +71,12 @@ indexing, trace correlation, scheduling and cleanup stay closed. Merely opening
 Memory makes no memory maintenance requests. Preview selects summary inputs
 without a model call or write; generating and saving are distinct explicit actions.
 
-Voice leads with source, volume, mute and playback actions. A queued browser
-request is reported as queued, never as completed playback. Diagnostic polling
-starts only when its closed section is opened and stops when it closes. Provider
-voice streaming is a separate implementation requirement; the current playback
-panel does not claim it.
+Voice leads with a clear call state, microphone action and compact speaker,
+camera, image and end controls. Shared images have a visible remove action.
+Captions use the same primary chat renderer once per utterance/reply; text and
+audio-transcript events cannot create duplicate messages. There is no diagnostic
+polling or transport JSON on the default page. Ending/leaving a call releases its
+devices, audio processors, WebSocket and timers. See [VOICE.md](VOICE.md).
 
 Run comparison leads with the loaded runs' messages and outputs. Evidence,
 baselines, hashes, usage and tool-record differences stay behind closed controls.

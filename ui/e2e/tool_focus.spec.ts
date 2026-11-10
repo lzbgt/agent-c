@@ -22,14 +22,13 @@ for (const width of [1440, 768, 390, 320]) {
       } });
       return route.fulfill({ json: { ok: true, service: "agentd", version: "test", sessions: ["default"], messages: [], runs: [], entries: [], events: [], tools: [], skills: [], entities: [], artifacts: [], prefs: {}, features: { client_prefs: { enabled: false } } } });
     });
+    await page.route("**/voice/v1/config", (route) => route.fulfill({ json: { available: true, max_session_seconds: 300 } }));
     await page.goto("/");
     const nav = page.getByRole("navigation", { name: "Workspace navigation" });
     const main = page.locator("#workspace-main");
     await nav.getByRole("button", { name: "Voice", exact: true }).click();
-    await expect(page.getByTestId("voice-panel-play")).toBeInViewport({ ratio: 1 });
-    await expect(page.getByTestId("voice-diagnostics")).not.toHaveAttribute("open", "");
-    await expect(page.getByTestId("voice-playback-options")).not.toHaveAttribute("open", "");
-    await expect(page.getByLabel("Mute audio", { exact: true })).toBeChecked();
+    await expect(page.getByTestId("voice-call-start")).toBeInViewport({ ratio: 1 });
+    await expect(page.getByTestId("voice-call-end")).toHaveCount(0);
     expect(await main.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath("voice.png") });
     await nav.getByRole("button", { name: "Run Diff", exact: true }).click();

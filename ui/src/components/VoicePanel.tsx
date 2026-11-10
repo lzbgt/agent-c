@@ -1,70 +1,43 @@
 import React from "react";
-import type { ApiAuth } from "../api";
-import useVoicePanelState from "./voice/useVoicePanelState";
-import { JsonDetails, ToolError } from "./ToolOutput";
+import ChatThread from "./history/ChatThread";
+import useOmniVoice from "../voice/useOmniVoice";
+import { ToolError } from "./ToolOutput";
 
-export type VoicePanelProps = { baseUrl: string; auth: ApiAuth; sessionId: string };
-
-export default function VoicePanel(props: VoicePanelProps) {
-  const [diagnosticsOpen, setDiagnosticsOpen] = React.useState(false);
-  const state = useVoicePanelState({ ...props, diagnosticsOpen });
-  const action = state.lastActionResponse;
-  return <section className="tool-workspace" data-testid="voice-panel" aria-label="Voice controls">
-    {!state.canQuery ? <ToolError error="Choose a conversation in Settings to use voice controls." /> : null}
-    <section data-testid="voice-control-section">
-      <label className="tool-field">Audio source URL
-        <input data-testid="voice-panel-source-url" value={state.sourceUrl} onChange={(event) => state.setSourceUrl(event.target.value)} placeholder="Audio URL, or leave empty to resume" />
-      </label>
-      <div className="tool-fields">
-        <label className="tool-field">Volume (0–1)
-          <input data-testid="voice-panel-volume" value={state.volumeText} onChange={(event) => state.setVolumeText(event.target.value)} inputMode="decimal" />
-        </label>
-        <label className="tool-checks"><input checked={state.muted} onChange={(event) => state.setMuted(event.target.checked)} type="checkbox" />Mute audio</label>
-      </div>
-      <div className="tool-form-row">
-        {(["play", "pause", "snapshot"] as const).map((kind) => <button key={kind} data-testid={`voice-panel-${kind}`} className={`workspace-button ${kind === "play" ? "tool-primary" : ""}`} type="button" disabled={!state.canQuery || state.actionMutation.isPending} onClick={() => state.actionMutation.mutate(kind)}>
-          {kind === "play" ? "Play" : kind === "pause" ? "Pause" : "Check playback"}
-        </button>)}
-      </div>
-      <ToolError error={state.actionError} />
-      {action ? <div role="status" className="mt-4" data-testid="voice-panel-last-action">
-        <p>{action.action === "play" ? "Play" : action.action === "pause" ? "Pause" : "Playback check"} request {action.pending_client_execution ? "queued for the browser." : "accepted."}</p>
-        <JsonDetails label="Action details" value={action} />
-      </div> : null}
-      <details className="tool-details" data-testid="voice-playback-options">
-        <summary>Playback options</summary>
-        <div className="tool-fields">
-          <label className="tool-field">Title<input data-testid="voice-panel-title" value={state.title} onChange={(event) => state.setTitle(event.target.value)} /></label>
-          <label className="tool-field">Player selector<input data-testid="voice-panel-selector" value={state.selector} onChange={(event) => state.setSelector(event.target.value)} placeholder="#voice-audio" /></label>
-        </div>
-        <label className="tool-field">Operator note<textarea data-testid="voice-panel-message" className="mt-2 w-full rounded-md border border-white/10 bg-black/30 p-2" value={state.message} onChange={(event) => state.setMessage(event.target.value)} /></label>
-        <div className="tool-checks">
-          <label><input checked={state.controls} onChange={(event) => state.setControls(event.target.checked)} type="checkbox" />Show player controls</label>
-          <label><input checked={state.autoplay} onChange={(event) => state.setAutoplay(event.target.checked)} type="checkbox" />Autoplay</label>
-          <label><input checked={state.loop} onChange={(event) => state.setLoop(event.target.checked)} type="checkbox" />Loop</label>
-        </div>
-      </details>
-    </section>
-    <details className="tool-details tool-maintenance" data-testid="voice-diagnostics" onToggle={(event) => setDiagnosticsOpen(event.currentTarget.open)}>
-      <summary>Playback activity & diagnostics</summary>
-      <section data-testid="voice-stats-section">
-        <div className="tool-form-row">
-          <button data-testid="voice-panel-refresh" className="workspace-button" type="button" disabled={!state.canQuery || state.statsQuery.isFetching} onClick={() => void state.statsQuery.refetch()}>{state.statsQuery.isFetching ? "Loading…" : "Refresh"}</button>
-          <label className="tool-checks"><input checked={state.autoRefresh} onChange={(event) => state.setAutoRefresh(event.target.checked)} type="checkbox" />Auto refresh</label>
-        </div>
-        <ToolError error={state.statsQuery.error instanceof Error ? state.statsQuery.error.message : state.statsQuery.error ? String(state.statsQuery.error) : null} />
-        {state.statsQuery.data ? <>
-          <p className="tool-muted">{state.statsQuery.data.client_count ?? 0} clients · play {String(state.counts.media_play ?? 0)} · pause {String(state.counts.media_pause ?? 0)} · snapshot {String(state.counts.media_snapshot ?? 0)}</p>
-          <JsonDetails label="Clients" value={state.clients} />
-          <JsonDetails label="Latest playback result" value={state.statsQuery.data.latest_result} />
-          <JsonDetails label="Latest snapshot" value={state.statsQuery.data.latest_snapshot} />
-          <JsonDetails label="Recent results" value={state.recentResults} />
-          <JsonDetails label="Response details" value={state.statsQuery.data} />
-        </> : null}
-        <details className="tool-details"><summary>Query options</summary>
-          <label className="tool-field">Maximum bytes<input data-testid="voice-panel-max-bytes" value={state.maxBytesText} onChange={(event) => state.setMaxBytesText(event.target.value)} inputMode="numeric" /></label>
-        </details>
-      </section>
-    </details>
+export type VoicePanelProps = { sessionId: string };
+function VoiceIcon({ kind }: { kind: "mic" | "camera" | "image" | "speaker" | "end" }) {
+  const paths = {
+    mic: <><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" /></>,
+    camera: <><rect x="3" y="6" width="12" height="12" rx="2" /><path d="m15 10 6-3v10l-6-3" /></>,
+    image: <><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8" cy="8" r="1.5" /><path d="m21 15-6-6L3 21" /></>,
+    speaker: <><path d="M11 5 6 9H3v6h3l5 4ZM15 8a6 6 0 0 1 0 8M18 5a10 10 0 0 1 0 14" /></>,
+    end: <rect x="6" y="6" width="12" height="12" rx="2" />,
+  };
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[kind]}</svg>;
+}
+export default function VoicePanel({ sessionId }: VoicePanelProps) {
+  const voice = useOmniVoice(sessionId);
+  const file = React.useRef<HTMLInputElement>(null);
+  const connected = voice.active && voice.phase !== "connecting";
+  const available = voice.config.data?.available === true;
+  const status = voice.config.isLoading ? "Loading…" : !available ? "Voice unavailable" : ({ ready: "Ready", connecting: "Connecting…", listening: voice.microphoneMuted ? "Microphone muted" : "Listening", thinking: "Thinking…", speaking: "Speaking", ended: "Call ended" })[voice.phase];
+  return <section className="voice-workspace" data-testid="voice-panel" aria-label="Voice conversation">
+    <div className={`voice-call voice-${voice.phase}`}>
+      <span className="voice-provider">Aliyun Omni</span>
+      <div className="voice-orb" aria-hidden="true"><VoiceIcon kind="mic" /><span /><span /></div>
+      <div className="voice-status" role="status">{status}</div>
+      {voice.active ? <time className="voice-time" aria-label="Call time remaining">{Math.floor(voice.remaining / 60)}:{String(voice.remaining % 60).padStart(2, "0")}</time> : null}
+      {!voice.active ? <button className="workspace-button voice-start" data-testid="voice-call-start" type="button" disabled={!available || voice.config.isLoading} onClick={() => void voice.start()}><VoiceIcon kind="mic" />Start voice call</button> : <div className="voice-controls">
+        <button type="button" className="workspace-button" disabled={!connected} aria-pressed={voice.microphoneMuted} onClick={voice.toggleMicrophone}><VoiceIcon kind="mic" />{voice.microphoneMuted ? "Unmute" : "Mute"}</button>
+        <button type="button" className="workspace-button" disabled={!connected} aria-pressed={voice.speakerMuted} onClick={voice.toggleSpeaker}><VoiceIcon kind="speaker" />{voice.speakerMuted ? "Speaker off" : "Speaker on"}</button>
+        <button type="button" className="workspace-button" disabled={!connected} aria-pressed={voice.cameraOn} onClick={() => void voice.toggleCamera()}><VoiceIcon kind="camera" />{voice.cameraOn ? "Stop camera" : "Share camera"}</button>
+        <button type="button" className="workspace-button" disabled={!connected} onClick={() => file.current?.click()}><VoiceIcon kind="image" />Share image</button>
+        <button type="button" className="workspace-button voice-end" data-testid="voice-call-end" onClick={voice.stop}><VoiceIcon kind="end" />End call</button>
+      </div>}
+      <input ref={file} type="file" accept="image/*" hidden data-testid="voice-image-input" onChange={(event) => { const image = event.target.files?.[0]; event.currentTarget.value = ""; if (image) void voice.shareFile(image); }} />
+      <ToolError error={voice.error} />
+      <video ref={voice.video} autoPlay muted playsInline hidden={!voice.cameraOn} className="voice-preview" aria-label="Shared camera" />
+      {voice.image && !voice.cameraOn ? <div className="voice-image"><img className="voice-preview" src={voice.image} alt="Shared image" /><button type="button" className="workspace-button" onClick={voice.removeImage}>Remove image</button></div> : null}
+    </div>
+    {voice.messages.length ? <ChatThread messages={voice.messages} working={false} /> : null}
   </section>;
 }

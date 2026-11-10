@@ -20,7 +20,7 @@ Chat shows your messages and the agent's replies naturally, once, in chronologic
 
 Presentations keep their keyboard events and animation clocks local; typing in the composer leaves them running.
 
-Messages have one renderer: expanding Activity & details never repeats the chat. Tool pages lead with saved knowledge, summaries, playback controls and run outputs; technical evidence stays closed.
+Messages have one renderer: expanding Activity & details never repeats the chat. Tool pages lead with saved knowledge, summaries, voice calls and run outputs; technical evidence stays closed.
 
 The composer focuses on **Attach** and **Send**. Settings leads with model, capabilities and conversation; technical controls and conversation management are collapsed by default. Desktop, phone and tablet layouts share these defaults. [UI design](docs/UI_DESIGN.md) records the attention hierarchy and verification contract.
 
@@ -34,6 +34,7 @@ Workflows has separate **Runs**, **Create workflow** and **Schedules** sections.
 - **HTTP effects:** stable effect identity, intent/receipt journaling and reconciliation for guarded writes. Independent branches continue when another branch needs recovery. [Effect contract](docs/WORKFLOW_EFFECTS.md)
 - **CLI harness:** `exec`, stdin, `resume`, `sessions`, explicit work/session directories, versioned JSONL events and successful final-message files. Coalesced streams drain without transport-boundary truncation. [CLI](docs/CLI.md)
 - **Host platform:** native daemon APIs/SSE, memory, artifacts, policy/limits, diagnostic tools and optional broker routing, teams and event replay.
+- **Realtime voice:** Aliyun Omni streams microphone audio, spoken replies and shared images through the authenticated gateway. Captions stay concise and provider keys stay on the server. [Voice](docs/VOICE.md)
 - **Authenticated deployment:** an Arch-hosted gateway serves the UI and protects the private daemon using shared Hubstack OAuth, server-held credentials and verified administrator identities.
 
 These capabilities do not establish distributed exactly-once execution, arbitrary-tool effect safety, broker-authoritative requirements, complete SOP decisions/compensation or hardware qualification. Those boundaries and delivery priorities are explicit in the [snapshot](docs/CURRENT_SNAPSHOT.md) and [roadmap](TODOS.md).
@@ -83,7 +84,7 @@ cd ..
 tools/verify_current_snapshot.sh
 ```
 
-The current lane covers **20 native/CLI/API checks**, Go broker/gateway tests, **50 browser checks**, generated OpenAPI types and the production UI build. Browser cases include greeting clarity, streaming handoff, repeated identical turns, IME-safe sends, hidden metadata, subject-oriented settings, authorized browser effects and responsive workflow tools.
+The current lane covers **20 native/CLI/API checks**, Go broker/gateway tests, **54 browser checks**, generated OpenAPI types and the production UI build. Browser cases include greeting clarity, streaming handoff, repeated identical turns, IME-safe sends, hidden metadata, subject-oriented settings, authorized browser effects and responsive workflow tools.
 
 For the embedded-safe build:
 

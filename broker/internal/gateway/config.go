@@ -15,6 +15,7 @@ import (
 )
 
 type Config struct {
+	Voice              VoiceConfig    `json:"voice"`
 	SourceRevision     string         `json:"source_revision"`
 	Listen             string         `json:"listen"`
 	PublicURL          string         `json:"public_url"`

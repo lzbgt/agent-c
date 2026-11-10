@@ -44,6 +44,11 @@ def main():
     assert status == 200 and health["source_revision"] == cfg["source_revision"]
     assert call("/api/v1/config")[0] == 401
     assert call("/broker/v1/agents")[0] == 401
+    assert call("/voice/v1/config")[0] == 401
+    voice = json.loads(call("/voice/v1/config", authenticated=True)[2])
+    assert voice["protocol"] == "agentc.voice.v1" and voice["provider"] == "aliyun"
+    if cfg.get("voice", {}).get("env_file"):
+        assert voice["available"] is True
     assert json.loads(call("/auth/session")[2])["authenticated"] is False
     runtime = call("/agentui-config.js")[2].decode()
     assert "identityEnabled:true" in runtime
@@ -90,6 +95,7 @@ def main():
     report = {
         "checked_at": datetime.now(timezone.utc).isoformat(), "url": origin,
         "source_revision": health["source_revision"], "https_health": True,
+        "voice": {"available": voice["available"], "model": voice["model"], "anonymous_denied": True, "live_inference": "separate agentc-voice-check"},
         "anonymous_execution_denied": True, "browser_runtime_contains_no_credentials": True,
         "shared_provider_redirects": redirects, "live_user_callback": "not_exercised_by_this_script",
         "administrator_authority": "Pinned verified provider proofs and optional Agent-C product account IDs; Panda product IDs and email are not authorization inputs",

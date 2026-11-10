@@ -34,8 +34,6 @@ type AppAdvancedPanelProps = {
     auth: ApiAuth;
   };
   voicePanel: {
-    baseUrl: string;
-    auth: ApiAuth;
     sessionId: string;
   };
   approvalsPanel: {
@@ -96,8 +94,6 @@ export default function AppAdvancedPanel(props: AppAdvancedPanelProps) {
         />
       ) : props.advancedPage === "voice" ? (
         <VoicePanel
-          baseUrl={props.voicePanel.baseUrl}
-          auth={props.voicePanel.auth}
           sessionId={props.voicePanel.sessionId}
         />
       ) : props.advancedPage === "approvals" ? (

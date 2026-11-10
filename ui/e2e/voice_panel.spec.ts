@@ -1,282 +1,99 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page, type WebSocketRoute } from "@playwright/test";
 
-test("voice panel sends session voice controls and renders durable stats", async ({ page }) => {
-  const voiceControlBodies: any[] = [];
-  let statsReads = 0;
-  let failAction = false;
-  const corsHeaders = {
-    "access-control-allow-origin": "*",
-    "access-control-allow-methods": "GET,POST,OPTIONS",
-    "access-control-allow-headers": "authorization,content-type",
-  };
+test.use({ launchOptions: { executablePath: process.env.AGENT_E2E_BROWSER_EXECUTABLE, args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", "--autoplay-policy=no-user-gesture-required"] } });
 
-  const voiceStats = {
-    ok: true,
-    session_id: "default",
-    max_bytes: 1048576,
-    scanned_events: 5,
-    client_count: 1,
-    result_count: 1,
-    clients: [{ id: "webui-1", kind: "browser" }],
-    counts: {
-      media_play: 1,
-      media_pause: 0,
-      media_snapshot: 0,
-    },
-    latest_result: {
-      rpc_kind: "media_play",
-      ok: true,
-      selector: "#voice-audio",
-    },
-    latest_snapshot: {
-      selector: "#voice-audio",
-      current_src: "data:audio/wav;base64,AAA=",
-    },
-    recent_results: [
-      {
-        rpc_kind: "media_play",
-        ok: true,
-        selector: "#voice-audio",
-      },
-    ],
-  } as Record<string, any>;
-
-  await page.addInitScript(() => {
-    try {
-      window.localStorage.setItem("agentui.simpleMode", "false");
-      window.localStorage.setItem("agentui.connectionMode", JSON.stringify("direct"));
-      window.localStorage.setItem("agentui.base", "http://127.0.0.1:7794");
-      window.localStorage.setItem("agentui.showSettings", "false");
-      window.localStorage.setItem("agentui.allowClientRpcs", "true");
-      window.localStorage.setItem("agentui.allowClientEffects", "true");
-    } catch {
-      // ignore
-    }
+async function workspace(page: Page, delayMicrophone = false) {
+  await page.addInitScript(({ delay }) => {
+    localStorage.setItem("agentui.connectionMode", JSON.stringify("direct"));
+    localStorage.setItem("agentui.base", "http://127.0.0.1:7777");
+    localStorage.setItem("agentui.showSettings", "false");
+    const state = (window as any).__voiceTest = { tracks: [], contexts: [], release: null };
+    const media = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = async (options) => {
+      const stream = await media(options); state.tracks.push(...stream.getTracks());
+      if (delay && options.audio) await new Promise<void>((resolve) => { state.release = resolve; });
+      return stream;
+    };
+    const Original = window.AudioContext;
+    window.AudioContext = class extends Original { constructor(options?: AudioContextOptions) { super(options); state.contexts.push(this); } };
+  }, { delay: delayMicrophone });
+  await page.route("**/api/v1/**", (route) => route.fulfill({ headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization,content-type", "access-control-allow-methods": "GET,POST,OPTIONS" }, json: { ok: true, service: "agentd", sessions: ["default"], messages: [], events: [], runs: [], entries: [], scene: {}, prefs: {}, features: {} } }));
+  await page.route("**/voice/v1/config", (route) => route.fulfill({ json: { available: true, model: "qwen3.5-omni-flash-realtime", max_session_seconds: 300 } }));
+  const events: any[] = []; const sockets: WebSocketRoute[] = []; let closed = 0;
+  await page.routeWebSocket("**/voice/v1/realtime", (socket) => {
+    sockets.push(socket); socket.onMessage((raw) => events.push(JSON.parse(String(raw)))); socket.onClose(() => closed++);
+    socket.send(JSON.stringify({ type: "session.created" })); socket.send(JSON.stringify({ type: "session.updated" }));
   });
+  await page.goto("/"); await page.getByRole("navigation", { name: "Workspace navigation" }).getByRole("button", { name: "Voice", exact: true }).click();
+  await expect(page.getByTestId("voice-call-start")).toBeEnabled();
+  return { events, sockets, closed: () => closed };
+}
+async function disposed(page: Page) {
+  await expect.poll(() => page.evaluate(() => {
+    const state = (window as any).__voiceTest;
+    return state.tracks.every((track: MediaStreamTrack) => track.readyState === "ended") && state.contexts.every((context: AudioContext) => context.state === "closed");
+  })).toBe(true);
+}
 
-  await page.route("http://127.0.0.1:7794/api/v1/**", async (route, request) => {
-    const url = new URL(request.url());
-    const path = url.pathname;
-    const method = request.method();
+for (const width of [1440, 390]) test(`voice streams bounded PCM and images with one caption at ${width}px`, async ({ page }, info) => {
+  await page.setViewportSize({ width, height: 900 }); const mock = await workspace(page);
+  expect(mock.sockets).toHaveLength(0);
+  await page.getByTestId("voice-call-start").click();
+  await expect(page.getByTestId("voice-panel").getByRole("status")).toHaveText("Listening");
+  await expect.poll(() => mock.events.filter((event) => event.type === "input_audio_buffer.append").length).toBeGreaterThan(2);
+  const audio = mock.events.find((event) => event.type === "input_audio_buffer.append"); expect(Buffer.from(audio.audio, "base64").length).toBe(640);
+  const socket = mock.sockets[0];
+  for (const event of [
+    { type: "conversation.item.input_audio_transcription.delta", item_id: "u1", text: "Read this", stash: " image" },
+    { type: "conversation.item.input_audio_transcription.completed", item_id: "u1", transcript: "Read this image" },
+    { type: "response.created", response: { id: "r1" } },
+    { type: "response.text.delta", response_id: "r1", delta: "Ready for the next shift." },
+    { type: "response.audio_transcript.delta", response_id: "r1", delta: "Ready for the next shift." },
+    { type: "response.audio.delta", response_id: "r1", delta: Buffer.alloc(4800).toString("base64") },
+    { type: "response.done", response: { id: "r1", status: "completed" } },
+  ]) socket.send(JSON.stringify(event));
+  await expect(page.getByTestId("chat-user")).toHaveCount(1); await expect(page.getByTestId("chat-assistant")).toHaveCount(1);
+  await expect(page.getByTestId("chat-assistant")).toContainText("Ready for the next shift.");
+  await page.getByRole("button", { name: "Mute", exact: true }).click();
+  expect(await page.evaluate(() => (window as any).__voiceTest.tracks.filter((track: MediaStreamTrack) => track.kind === "audio").every((track: MediaStreamTrack) => !track.enabled))).toBe(true);
+  await page.getByRole("button", { name: "Unmute", exact: true }).click();
+  const png = await page.evaluate(() => { const canvas = document.createElement("canvas"); canvas.width = canvas.height = 16; const context = canvas.getContext("2d")!; context.fillStyle = "white"; context.fillRect(0, 0, 16, 16); return canvas.toDataURL("image/png").split(",")[1]; });
+  await page.getByTestId("voice-image-input").setInputFiles({ name: "dot.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
+  await expect.poll(() => mock.events.filter((event) => event.type === "input_image_buffer.append").length).toBeGreaterThan(0);
+  const image = mock.events.find((event) => event.type === "input_image_buffer.append"); expect(Buffer.from(image.image, "base64").subarray(0, 2)).toEqual(Buffer.from([255, 216]));
+  expect(image.image.length).toBeLessThanOrEqual(256 * 1024);
+  await expect.poll(() => mock.events.filter((event) => event.type === "input_image_buffer.append").length).toBeGreaterThan(1);
+  await page.getByRole("button", { name: "Remove image", exact: true }).click();
+  await expect(page.getByAltText("Shared image")).toHaveCount(0);
+  const beforeCamera = mock.events.filter((event) => event.type === "input_image_buffer.append").length;
+  await page.getByRole("button", { name: "Share camera", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Stop camera", exact: true })).toBeVisible();
+  await expect.poll(() => mock.events.filter((event) => event.type === "input_image_buffer.append").length).toBeGreaterThan(beforeCamera);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath("omni-voice.png") });
+  await page.getByTestId("voice-call-end").click(); await disposed(page); await expect.poll(mock.closed).toBe(1);
+  await expect(page.getByTestId("voice-panel").getByRole("status")).toHaveText("Call ended");
+});
 
-    if (method === "OPTIONS") {
-      await route.fulfill({ status: 204, headers: corsHeaders, body: "" });
-      return;
-    }
+test("ending a call while microphone permission is pending releases late media", async ({ page }) => {
+  const mock = await workspace(page, true); await page.getByTestId("voice-call-start").click();
+  await expect.poll(() => page.evaluate(() => Boolean((window as any).__voiceTest.release))).toBe(true);
+  await page.getByTestId("voice-call-end").click(); await page.evaluate(() => (window as any).__voiceTest.release());
+  await disposed(page); expect(mock.sockets).toHaveLength(0);
+  await expect(page.getByTestId("voice-panel").getByRole("status")).toHaveText("Call ended");
+});
 
-    if (method === "GET" && path === "/api/v1/health") {
-      await route.fulfill({ status: 200, contentType: "application/json", headers: corsHeaders, body: JSON.stringify({ ok: true }) });
-      return;
-    }
+test("leaving voice closes its socket and microphone", async ({ page }) => {
+  const mock = await workspace(page); await page.getByTestId("voice-call-start").click();
+  await expect.poll(() => mock.events.length).toBeGreaterThan(0);
+  await page.getByRole("navigation", { name: "Workspace navigation" }).getByRole("button", { name: "Chat", exact: true }).click();
+  await disposed(page); await expect.poll(mock.closed).toBe(1);
+});
 
-    if (method === "GET" && path === "/api/v1/config") {
-      await route.fulfill({ status: 200, contentType: "application/json", headers: corsHeaders, body: JSON.stringify({ ok: true }) });
-      return;
-    }
-
-    if (method === "GET" && path === "/api/v1/sessions") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        headers: corsHeaders,
-        body: JSON.stringify({ ok: true, sessions: ["default"] }),
-      });
-      return;
-    }
-
-    if (method === "GET" && path === "/api/v1/session") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        headers: corsHeaders,
-        body: JSON.stringify({ ok: true, session_id: "default", messages: [] }),
-      });
-      return;
-    }
-
-    if (method === "GET" && path === "/api/v1/session/audit") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        headers: corsHeaders,
-        body: JSON.stringify({ ok: true, session_id: "default", entries: [] }),
-      });
-      return;
-    }
-
-    if (method === "GET" && path === "/api/v1/session/scene") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        headers: corsHeaders,
-        body: JSON.stringify({ ok: true, session_id: "default", updated_unix_ms: 0, scene: {} }),
-      });
-      return;
-    }
-
-    if (method === "GET" && path === "/api/v1/session/client_events") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        headers: corsHeaders,
-        body: JSON.stringify({ ok: true, session_id: "default", count: 0, events: [] }),
-      });
-      return;
-    }
-
-    if (method === "GET" && path === "/api/v1/db/messages") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        headers: corsHeaders,
-        body: JSON.stringify({ ok: true, messages: [] }),
-      });
-      return;
-    }
-
-    if (method === "GET" && path === "/api/v1/db/runs") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        headers: corsHeaders,
-        body: JSON.stringify({ ok: true, runs: [] }),
-      });
-      return;
-    }
-
-    if (method === "GET" && path === "/api/v1/db/ui_actions") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        headers: corsHeaders,
-        body: JSON.stringify({ ok: true, ui_actions: [] }),
-      });
-      return;
-    }
-
-    if (method === "GET" && path === "/api/v1/db/client_events") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        headers: corsHeaders,
-        body: JSON.stringify({ ok: true, client_events: [] }),
-      });
-      return;
-    }
-
-    if (method === "POST" && path === "/api/v1/session/voice_control") {
-      const body = request.postDataJSON();
-      voiceControlBodies.push(body);
-      if (failAction) return route.fulfill({ status: 503, headers: corsHeaders, json: { ok: false, error: "Playback service unavailable." } });
-      const action = String(body?.action || "");
-      const kind = action === "pause" ? "media_pause" : action === "snapshot" ? "media_snapshot" : "media_play";
-      const counts = voiceStats.counts as Record<string, number>;
-      counts[kind] = Number(counts[kind] || 0) + 1;
-      voiceStats.result_count = Number(voiceStats.result_count || 0) + 1;
-      voiceStats.scanned_events = Number(voiceStats.scanned_events || 0) + 1;
-      voiceStats.latest_result = {
-        rpc_kind: kind,
-        ok: true,
-        selector: body?.selector || "#voice-audio",
-        url: body?.url,
-      };
-      if (action === "snapshot") {
-        voiceStats.latest_snapshot = {
-          selector: body?.selector || "#voice-audio",
-          current_src: body?.url || "data:audio/wav;base64,AAA=",
-        };
-      }
-      voiceStats.recent_results = [
-        voiceStats.latest_result,
-        ...(Array.isArray(voiceStats.recent_results) ? voiceStats.recent_results : []),
-      ].slice(0, 5);
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        headers: corsHeaders,
-        body: JSON.stringify({
-          ok: true,
-          session_id: "default",
-          action,
-          rpc_kind: kind,
-          rpc_id: `rpc-${action}-${voiceControlBodies.length}`,
-          tool_call_id: `tool-${action}-${voiceControlBodies.length}`,
-          pending_client_execution: true,
-        }),
-      });
-      return;
-    }
-
-    if (method === "GET" && path === "/api/v1/session/voice_stats") {
-      statsReads++;
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        headers: corsHeaders,
-        body: JSON.stringify(voiceStats),
-      });
-      return;
-    }
-
-    await route.fulfill({
-      status: 404,
-      contentType: "application/json",
-      headers: corsHeaders,
-      body: JSON.stringify({ ok: false, error: "not_found", path, method }),
-    });
-  });
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
-
-  await page.getByRole("button", { name: "Voice" }).click();
-  await expect(page.getByTestId("voice-panel")).toBeVisible();
-  await expect(page.getByTestId("voice-diagnostics")).not.toHaveAttribute("open", "");
-  await expect(page.getByTestId("voice-playback-options")).not.toHaveAttribute("open", "");
-  expect(statsReads).toBe(0);
-  expect(voiceControlBodies).toEqual([]);
-  expect(await page.getByTestId("voice-panel").innerText()).not.toMatch(/tool call|rpc:|scanned events|webui-1/);
-  await page.getByTestId("voice-playback-options").locator(":scope > summary").click();
-
-  await page.getByTestId("voice-panel-source-url").fill("data:audio/wav;base64,BBBB");
-  await page.getByTestId("voice-panel-message").fill("Operator-triggered voice output");
-  await page.getByTestId("voice-panel-play").click();
-
-  await expect.poll(() => voiceControlBodies.length).toBe(1);
-  expect(voiceControlBodies[0]).toMatchObject({
-    session_id: "default",
-    action: "play",
-    selector: "#voice-audio",
-    url: "data:audio/wav;base64,BBBB",
-    title: "Voice output",
-    message: "Operator-triggered voice output",
-    muted: true,
-    controls: true,
-    autoplay: true,
-    loop: false,
-    volume: 1,
-  });
-  await expect(page.getByTestId("voice-panel-last-action")).toContainText("Play request queued for the browser.");
-  expect(statsReads).toBe(0);
-  await page.getByTestId("voice-diagnostics").locator(":scope > summary").click();
-  await expect(page.getByTestId("voice-stats-section")).toContainText("play 2");
-
-  await page.getByTestId("voice-panel-pause").click();
-  await page.getByTestId("voice-panel-snapshot").click();
-  await expect.poll(() => voiceControlBodies.length).toBe(3);
-  expect(voiceControlBodies[1]).toMatchObject({ session_id: "default", action: "pause", selector: "#voice-audio" });
-  expect(voiceControlBodies[2]).toMatchObject({ session_id: "default", action: "snapshot", selector: "#voice-audio" });
-
-  await expect(page.getByTestId("voice-stats-section")).toContainText("pause 1");
-  await expect(page.getByTestId("voice-stats-section")).toContainText("snapshot 1");
-  await page.getByText("Latest snapshot", { exact: true }).click();
-  await expect(page.getByTestId("voice-stats-section").getByText(/current_src/)).toBeVisible();
-  await page.getByText("Recent results", { exact: true }).click();
-  await expect(page.getByTestId("voice-stats-section").getByText(/media_snapshot/)).toBeVisible();
-  expect(await page.locator("#workspace-main").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
-  failAction = true;
-  await page.getByTestId("voice-diagnostics").locator(":scope > summary").click();
-  await page.getByTestId("voice-panel-play").click();
-  await expect(page.getByRole("alert")).toHaveText("Playback service unavailable.");
-  await expect(page.getByTestId("voice-panel-last-action")).toHaveCount(0);
+test("provider failure ends capture and exposes a concise error", async ({ page }) => {
+  const mock = await workspace(page); await page.getByTestId("voice-call-start").click();
+  await expect.poll(() => mock.events.length).toBeGreaterThan(0);
+  mock.sockets[0].send(JSON.stringify({ type: "error", error: { code: "model_unavailable", message: "Voice is temporarily unavailable." } }));
+  await expect(page.getByRole("alert")).toHaveText("Voice is temporarily unavailable."); await disposed(page); await expect.poll(mock.closed).toBe(1);
+  await expect(page.getByTestId("voice-call-start")).toBeEnabled();
 });

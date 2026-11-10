@@ -51,6 +51,7 @@ def main():
         "daemon_url": "http://127.0.0.1:18123", "daemon_token": cfg.get("daemon_token") or secrets.token_hex(32),
         "operator_token": cfg.get("operator_token") or secrets.token_hex(32),
     })
+    cfg.setdefault("voice", {"env_file": str(Path.home() / ".env"), "endpoint": "wss://dashscope.aliyuncs.com/api-ws/v1/realtime", "model": "qwen3.5-omni-flash-realtime", "voice": "Ethan"})
     revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     artifacts = {"bin/agentd": ROOT / "build/agentd", "bin/agentd-gateway": ROOT / "build/agentd-gateway"}
     artifacts.update({"web/" + str(file.relative_to(ROOT / "ui/dist")): file for file in sorted((ROOT / "ui/dist").rglob("*")) if file.is_file()})

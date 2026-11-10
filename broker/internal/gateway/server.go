@@ -13,6 +13,7 @@ import (
 	"errors"
 	shared "github.com/lzbgt/hubstack-payments/sdk/identity"
 	"io/fs"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -33,6 +34,7 @@ type identity interface {
 	Logout(context.Context, string) error
 }
 type Server struct {
+	voice          *voiceProxy
 	cfg            Config
 	db             store
 	identity       identity
@@ -55,6 +57,10 @@ func New(ctx context.Context, cfg Config) (*Server, error) {
 		return nil, err
 	}
 	s := &Server{cfg: cfg, db: db, identity: client, close: db.pool.Close, oauthSlots: make(chan struct{}, 4)}
+	s.voice, err = newVoiceProxy(cfg.Voice)
+	if err != nil {
+		log.Print("Voice unavailable: ", err)
+	}
 	s.daemon, err = proxy(cfg.DaemonURL, cfg.DaemonToken, "")
 	if err != nil {
 		s.Close()
@@ -75,6 +81,9 @@ func New(ctx context.Context, cfg Config) (*Server, error) {
 	return s, nil
 }
 func (s *Server) Close() {
+	if s.voice != nil {
+		s.voice.close()
+	}
 	if s.close != nil {
 		s.close()
 	}
@@ -209,7 +218,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.authRoute(w, r)
 		return
 	}
-	if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/broker/") {
+	if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/broker/") || strings.HasPrefix(r.URL.Path, "/voice/") {
 		account, admin, status := s.authenticate(r)
 		if status != 200 {
 			fail(w, status, "Sign in to continue")
@@ -221,6 +230,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if !s.originOK(r, account == "operator") {
 			fail(w, 403, "Request origin does not match this workspace")
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/voice/") {
+			s.voiceRoute(w, r, account)
 			return
 		}
 		if strings.HasPrefix(r.URL.Path, "/broker/") {
