@@ -107,11 +107,11 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 33;
+  const int kSchemaVersion = 34;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
-  if (!exec_locked("PRAGMA synchronous=NORMAL;", out_error)) return false;
+  if (!exec_locked("PRAGMA synchronous=FULL;", out_error)) return false;
   if (!exec_locked("PRAGMA busy_timeout=5000;", out_error)) return false;
   if (!exec_locked("PRAGMA foreign_keys=ON;", out_error)) return false;
 
@@ -923,6 +923,30 @@ CREATE INDEX IF NOT EXISTS workflow_schedule_runs_by_schedule ON workflow_schedu
 )SQL";
     if (!exec_locked(schema_v33, out_error)) return false;
     cur_ver = 33;
+  }
+
+  if (cur_ver < 34) {
+    const char* schema_v34 = R"SQL(
+CREATE TABLE IF NOT EXISTS workflow_effects(
+  effect_id TEXT PRIMARY KEY,
+  workflow_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  request_hash TEXT NOT NULL,
+  mode TEXT NOT NULL CHECK(mode IN ('guarded','idempotent')),
+  state TEXT NOT NULL CHECK(state IN ('prepared','dispatching','completed','unknown')),
+  revision INTEGER NOT NULL DEFAULT 0,
+  attempt INTEGER NOT NULL DEFAULT 0,
+  created_unix_ms INTEGER NOT NULL,
+  updated_unix_ms INTEGER NOT NULL,
+  receipt_json TEXT NOT NULL DEFAULT '',
+  reconcile_url TEXT NOT NULL DEFAULT '',
+  UNIQUE(workflow_id, task_id),
+  FOREIGN KEY(workflow_id,task_id) REFERENCES workflow_tasks(workflow_id,task_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS workflow_effects_by_workflow ON workflow_effects(workflow_id,task_id);
+)SQL";
+    if (!exec_locked(schema_v34, out_error)) return false;
+    cur_ver = 34;
   }
 
   // Record schema version.

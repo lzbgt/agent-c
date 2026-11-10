@@ -256,6 +256,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
   # `AGENTD_ENABLE_HTTP` (useful for app embedding where a cloud broker / custom transport is used).
   set(AGENTD_LIB_SOURCES
     daemon/src/agent_db.cpp
+    daemon/src/agent_db_effects.cpp
     daemon/src/agent_db_approvals.cpp
     daemon/src/agent_db_state.cpp
     daemon/src/agent_db_sessions.cpp
@@ -426,6 +427,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/workflow_schedule_engine.cpp
     daemon/src/workflow_endpoint_util.cpp
     daemon/src/workflow_http_json.cpp
+    daemon/src/workflow_effect.cpp
     daemon/src/workflow_agentd_call.cpp
     daemon/src/workflow_memory_correlate.cpp
     daemon/src/workflow_memory_query.cpp
@@ -1984,6 +1986,14 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
     add_executable(workflow_sop_tests tests/test_workflow_sop.cpp)
     target_link_libraries(workflow_sop_tests PRIVATE agentd_lib)
     add_test(NAME workflow_sop_tests COMMAND workflow_sop_tests)
+    if(AGENT_ENABLE_SQLITE3)
+      add_executable(workflow_effect_tests tests/test_workflow_effect.cpp)
+      target_link_libraries(workflow_effect_tests PRIVATE agentd_lib)
+      add_test(NAME workflow_effect_tests COMMAND workflow_effect_tests)
+      if(AGENTD_ENABLE_HTTP)
+        add_test(NAME agentd_workflow_effect_recovery_smoke COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/workflow_effect_recovery_smoke.py $<TARGET_FILE:agentd>)
+      endif()
+    endif()
     if(AGENTD_ENABLE_HTTP)
       add_test(NAME agentd_workflow_sop_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_sop_smoke.sh $<TARGET_FILE:agentd>)
     endif()
@@ -2028,6 +2038,7 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
     add_executable(agent_db_tests
       tests/test_agent_db.cpp
       daemon/src/agent_db.cpp
+      daemon/src/agent_db_effects.cpp
       daemon/src/agent_db_approvals.cpp
       daemon/src/agent_db_state.cpp
       daemon/src/agent_db_sessions.cpp

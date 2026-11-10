@@ -65,6 +65,22 @@ bool workflow_is_terminal_status(const std::string& s) {
   return (s == "done" || s == "error" || s == "cancelled");
 }
 
+bool workflow_dependencies_satisfied(const AgentDb::WorkflowTaskRow& task,
+  const std::unordered_map<std::string,std::string>& statuses,
+  const std::unordered_map<std::string,bool>& allow_errors) {
+  const bool aggregate = workflow_task_kind_best_effort(task) == "aggregate";
+  for (const auto& id : parse_dep_ids(task.depends_on_json)) {
+    const auto found = statuses.find(id);
+    if (found == statuses.end()) return false;
+    const auto allowed = allow_errors.find(id);
+    if (found->second == "done" ||
+        (found->second == "error" && allowed != allow_errors.end() && allowed->second) ||
+        (aggregate && workflow_is_terminal_status(found->second))) continue;
+    return false;
+  }
+  return true;
+}
+
 std::string workflow_task_kind_best_effort(const AgentDb::WorkflowTaskRow& t) {
   if (t.request_json.empty()) return "";
   Json::Value v;

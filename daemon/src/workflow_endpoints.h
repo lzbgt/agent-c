@@ -34,6 +34,10 @@ void handle_workflow_list_endpoint(
   HttpResponse* resp
 );
 
+// POST /api/v1/workflow/reconcile
+void handle_workflow_reconcile_endpoint(const DaemonConfig& cfg, const CorsConfig& cors_cfg,
+  AgentDb* db_or_null, const HttpRequest& req, HttpResponse* resp);
+
 // POST /api/v1/workflow/cancel
 void handle_workflow_cancel_endpoint(
   const DaemonConfig& cfg,

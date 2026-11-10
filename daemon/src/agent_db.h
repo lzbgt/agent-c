@@ -452,6 +452,31 @@ class AgentDb {
     std::string data_json; // JSON object string (required; stable fallback)
   };
 
+  // Stable effect identity is independent of scheduler retries. Revision guards
+  // reject stale receipts; attempt increases only when a dispatch is admitted.
+  struct WorkflowEffectRow {
+    std::string effect_id;
+    std::string workflow_id;
+    std::string task_id;
+    std::string request_hash;
+    std::string mode; // guarded|idempotent
+    std::string state; // prepared|dispatching|completed|unknown
+    int64_t revision = 0;
+    int64_t attempt = 0;
+    int64_t created_unix_ms = 0;
+    int64_t updated_unix_ms = 0;
+    std::string receipt_json;
+    std::string reconcile_url;
+  };
+  bool prepare_workflow_effect(const WorkflowEffectRow& definition, WorkflowEffectRow* out, std::string* error);
+  bool transition_workflow_effect(const WorkflowEffectRow& expected, const std::string& state,
+                                  const std::string& receipt_json, WorkflowEffectRow* out, std::string* error);
+  bool list_workflow_effects(const std::string& workflow_id, std::vector<WorkflowEffectRow>* out, std::string* error);
+  bool requeue_workflow_effect(const WorkflowTaskRow& task, const WorkflowEffectRow& effect,
+                              const std::string& reconcile_url, std::string* error);
+  bool update_workflow_from_task_snapshot(const WorkflowRow& expected, const std::vector<WorkflowTaskRow>& tasks,
+                                         const WorkflowRow& updated, std::string* error);
+
   // Workflow schedules (cron-bound templates).
   struct WorkflowScheduleRow {
     std::string schedule_id;

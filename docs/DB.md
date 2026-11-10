@@ -100,7 +100,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v33)
+## Schema (v34)
 
 All timestamps are Unix milliseconds.
 
@@ -1393,3 +1393,7 @@ Response fields:
 ## Host work ledger (separate store)
 
 The `work_state` host tool and `agent work` command use a separate `work.sqlite` file with a `work_state(id, value)` table. The JSON value is versioned as `agentd.work.v1` and updated transactionally. This is not a migration of the main agentd database and is not available through its DB query API. Back up/delete it with the corresponding workspace or session. Paths, bounds and semantics are in [AUTONOMOUS_WORK.md](AUTONOMOUS_WORK.md).
+
+## Workflow effect journal (v34)
+
+`workflow_effects` records stable effect identity, workflow/task foreign keys, request hash, guarded/idempotent mode, prepared/dispatching/completed/unknown state, revision, dispatch attempt, timestamps, bounded receipt JSON and receipt endpoint. The unique workflow/task pair prevents accidental new identities for the same action. The main DB uses `PRAGMA synchronous=FULL` with WAL so admitted effects are committed before dispatch. See [WORKFLOW_EFFECTS.md](WORKFLOW_EFFECTS.md) for protocol and backup/erase considerations.

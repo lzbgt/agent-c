@@ -1,5 +1,7 @@
 # Publishing Agent-C snapshots
 
+Current owner direction: **commit locally and do not push** while the Panda worker upgrades the publishing helper. Keep developing and verifying source/docs. The private-destination instructions below are retained for future authorized publication; do not run their push command during this hold.
+
 Owner direction, 2026-11-10: publish committed achievements to the private [bruce/agent-c repository](https://git.hubstack.cn/bruce/agent-c), **not GitHub**. The owner explicitly authorized this project destination after its historical removal. That authorization applies to Agent-C only; other excluded Panda repositories remain excluded.
 
 The local `panda` remote is `https://git.hubstack.cn/bruce/agent-c.git`. The repository is private, with default branch `master`. GitHub `origin` remains a fetch source for existing upstream history. `remote.pushDefault=panda` and `branch.master.pushRemote=panda` select the private destination for ordinary pushes, but do not prohibit an explicit command targeting another remote. Publishing automation must use the policy helper below and must not push `origin`.
@@ -26,3 +28,5 @@ python3 ~/.local/share/panda/push-project.py .
 ```
 
 If the clone already names the private destination `origin`, retain that name and configure the push default accordingly; the helper discovers the existing HTTPS Panda remote. Check the current remote list before adding anything. Older GitHub publishing examples in historical operational notes do not supersede this owner direction.
+
+The owner also authorized revising the 20-commit threshold when needed. This is permission to adjust the history policy, not an instruction to increase unrelated service limits. Current committed history is below the live threshold and has been exported in full, so no server-wide change was needed. The stored-size limit remains effective.

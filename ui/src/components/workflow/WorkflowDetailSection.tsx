@@ -1,4 +1,6 @@
 import React from "react";
+import WorkflowEffectsSection from "./WorkflowEffectsSection";
+import type { ApiAuth } from "../../api/auth";
 import type { WorkflowDetailResp } from "../../api";
 import type { WorkflowBudgetSnapshot, WorkflowSummaryRow } from "../../workflowTypes";
 import {
@@ -10,6 +12,7 @@ import {
 
 type WorkflowDetailSectionProps = {
   detail: WorkflowDetailResp | null;
+  effectControls?: { baseUrl: string; auth?: ApiAuth };
   summary: WorkflowSummaryRow | null;
   tasks: WorkflowTask[];
   taskCounts: Record<string, number>;
@@ -157,6 +160,9 @@ export default function WorkflowDetailSection(props: WorkflowDetailSectionProps)
           </div>
         </div>
       </div>
+
+      <WorkflowEffectsSection key={summary.workflow_id} workflowId={summary.workflow_id} effects={props.detail.effects ?? []}
+        tasks={props.tasks} controls={props.effectControls} onReload={props.onReloadWorkflow} />
 
       {(props.workflowLimits || props.workflowUsage || props.workflowRemaining) && (
         <div className="rounded-md border border-white/10 bg-black/30 p-3">

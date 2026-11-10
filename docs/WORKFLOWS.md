@@ -956,3 +956,9 @@ See `docs/DB.md` for:
 - `workflows`
 - `workflow_tasks`
 - `workflow_events`
+
+## HTTP write recovery and independent branches
+
+POST `http_json` tasks now use the durable effect protocol described in [WORKFLOW_EFFECTS.md](WORKFLOW_EFFECTS.md). Default guarded mode refuses blind duplicates; explicit destination idempotency or a matching terminal receipt controls recovery. A task result's explicit `retryable:false` suppresses automatic retries. Task recovery remains at-least-once at other boundaries.
+
+A hard failure no longer removes independent runnable tasks from scheduling. The workflow retains an active status until those branches settle; descendants requiring the failed result remain unexecuted. Receipt reconciliation can requeue only the affected failed action while preserving completed independent work and owner stops.

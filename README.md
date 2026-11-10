@@ -115,7 +115,7 @@ Full details, env flags, port notes, and Keycloak guidance live in `docs/DEPLOYM
 
 ## Git remote (publishing)
 
-Committed achievements are published only to the owner’s private Git service. See [publishing policy](docs/PUBLISHING.md); GitHub remains a fetch source.
+Development commits currently remain local while the owner upgrades the publishing helper. Future publication targets the private Git service only; see [publishing policy](docs/PUBLISHING.md). GitHub remains a fetch source.
 
 ## CLI usage
 

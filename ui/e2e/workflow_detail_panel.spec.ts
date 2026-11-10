@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 
 test("workflow detail panel loads summary and DAG from selected workflow", async ({ page }) => {
+  let reconciliation: unknown = null;
+  await page.route("**/api/v1/workflow/reconcile", async (route) => {
+    reconciliation = route.request().postDataJSON();
+    await route.fulfill({ json: { ok: true, workflow_id: "wf-detail-1", task_id: "task-b", effect_id: "fx-fixture" } });
+  });
   await page.addInitScript(() => {
     try {
       window.localStorage.setItem("agentui.simpleMode", "false");
@@ -61,12 +66,13 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
           },
           {
             task_id: "task-b",
-            status: "running",
+            status: "error",
             depends_on: ["task-a"],
             attempt: 1,
             max_attempts: 2,
           },
         ],
+        effects: [{effect_id: "fx-fixture", task_id: "task-b", request_hash: "sha256:fixture", mode: "guarded", state: "unknown", revision: 2, attempt: 1, updated_unix_ms: 1700000100000}],
         workflow_limits: { max_steps: 12 },
         workflow_usage: { steps: 4 },
         workflow_remaining: { steps: 8 },
@@ -94,7 +100,12 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
   await expect(page.getByTestId("workflow-dag-panel")).toContainText("tasks: 2");
   await expect(page.getByTestId("workflow-dag-panel")).toContainText("task-a");
   await expect(page.getByTestId("workflow-dag-panel")).toContainText("task-b");
+  await expect(page.getByTestId("workflow-effects")).toContainText("Outcome unresolved");
+  await expect(page.getByTestId("workflow-effects")).toContainText("Independent tasks can continue");
   await expect(page.getByText("Budgets", { exact: true })).toBeVisible();
   await expect(page.getByText("Workflow result", { exact: true })).toBeVisible();
   await expect(page.getByText("Workflow spec", { exact: true })).toBeVisible();
+  await page.getByRole("textbox", { name: "Receipt endpoint for task-b" }).fill("http://127.0.0.1:7777/receipts");
+  await page.getByRole("button", { name: "Reconcile outcome", exact: true }).click();
+  await expect.poll(() => reconciliation).toEqual({ workflow_id: "wf-detail-1", task_id: "task-b", reconcile_url: "http://127.0.0.1:7777/receipts" });
 });

@@ -1602,6 +1602,10 @@ int main(int argc, char** argv) {
     handle_workflow_list_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
+  server.handle("POST", "/api/v1/workflow/reconcile", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_workflow_reconcile_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
   server.handle("POST", "/api/v1/workflow/cancel", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_workflow_cancel_endpoint(cur, cors_cfg, db_or_null, req, resp);

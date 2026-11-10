@@ -1179,7 +1179,7 @@ bool AgentDb::upsert_workflow(const WorkflowRow& wf, std::string* out_error) {
 	  END,
 	  updated_unix_ms = excluded.updated_unix_ms,
 	  status = excluded.status,
-	  cancel_requested = excluded.cancel_requested,
+	  cancel_requested = MAX(workflows.cancel_requested,excluded.cancel_requested),
 	  error = excluded.error,
 	  spec_json = excluded.spec_json,
 	  result_json = excluded.result_json;

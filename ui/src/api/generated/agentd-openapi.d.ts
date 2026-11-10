@@ -3816,6 +3816,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workflow/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Requeue receipt reconciliation for one failed uncertain external effect
+         * @description Preserves effect identity and completed independent tasks. May supply a same-origin receipt endpoint after an external prerequisite is fixed. Does not bypass cancellation, deadlines, workflow budgets or the guarded-write protocol.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        workflow_id: string;
+                        task_id: string;
+                        reconcile_url?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Reconciliation queued */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok: boolean;
+                            workflow_id: string;
+                            task_id: string;
+                            effect_id: string;
+                        };
+                    };
+                };
+                /** @description Invalid request, cross-origin resolver or outbound policy rejection */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Workflow or effect task not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Conflicting state, cancellation, deadline or disabled HTTP tasks */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workflow/cancel": {
         parameters: {
             query?: never;
@@ -10350,6 +10423,13 @@ export interface components {
             bearer_env?: string;
             /** @description Optional JSON request body (any JSON value). Must be omitted for method=GET. */
             body?: unknown;
+            /** @description POST effect contract. Default guarded journals the intent/response and refuses a blind repeat after an uncertain outcome. Idempotent requires the destination to enforce the server-generated Idempotency-Key for an unchanged request. GET tasks cannot declare an effect. */
+            effect?: {
+                /** @enum {string} */
+                mode?: "guarded" | "idempotent";
+                /** @description Optional same-origin GET endpoint implementing the versioned effect receipt contract. The runtime appends effect_id, attempt and request_hash. A terminal not_applied receipt must close/fence the old attempt; an absent lookup is insufficient. Existing outbound policy applies. */
+                reconcile_url?: string;
+            };
             /**
              * Format: int64
              * @description Request timeout in milliseconds (default 30000; clamp 1..300000).
@@ -11586,10 +11666,26 @@ export interface components {
             workflow_remaining?: {
                 [key: string]: unknown;
             };
+            /** @description Durable external-effect metadata, including attempts whose task result was lost. Receipts are excluded from this polling surface. */
+            effects?: {
+                effect_id: string;
+                task_id: string;
+                request_hash: string;
+                /** @enum {string} */
+                mode: "guarded" | "idempotent";
+                /** @enum {string} */
+                state: "prepared" | "dispatching" | "completed" | "unknown";
+                /** Format: int64 */
+                revision: number;
+                /** Format: int64 */
+                attempt: number;
+                /** Format: int64 */
+                updated_unix_ms: number;
+            }[];
             result?: {
                 [key: string]: unknown;
             };
-            /** @description Redacted persisted submit request (raw JSON string; may be truncated). */
+            /** @description Redacted persisted submit request. New oversized specs are rejected; legacy records may have been truncated. */
             spec_json?: string;
             /** @description Parsed spec_json when available. */
             spec?: {

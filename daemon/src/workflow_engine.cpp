@@ -1193,7 +1193,11 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         out["error"] = "http_json missing http_json object";
       } else {
         std::string herr;
-        out = workflow_http_json_to_json(cfg, hj, &herr);
+        const WorkflowEffectContext effect{db_,wf.workflow_id,task.task_id,[&]() {
+          cancel_ctx.last_check_unix_ms = 0;
+          return workflow_run_should_cancel(&cancel_ctx);
+        }};
+        out = workflow_http_json_to_json(cfg, hj, &herr, &effect);
         out["kind"] = "http_json";
         // Budget charging: deterministic external call. Count as one tool call / step per attempt.
         if (!out.isMember("tool_calls_total")) out["tool_calls_total"] = (Json::Int64)1;
@@ -1761,7 +1765,8 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     return;
   }
 
-  const bool can_retry = upd.attempt < std::max(1, upd.max_attempts);
+  const bool retry_forbidden = out.isObject() && out["retryable"].isBool() && !out["retryable"].asBool();
+  const bool can_retry = !retry_forbidden && upd.attempt < std::max(1, upd.max_attempts);
   upd.error = !expect_ok ? expect_err : (out.isObject() && out.isMember("error") && out["error"].isString() ? out["error"].asString() : "error");
 
   bool wf_cancel_requested = wf_latest.cancel_requested;
@@ -1829,7 +1834,11 @@ void WorkflowEngine::maybe_finalize_workflow(const std::string& workflow_id) {
   bool any_hard_error = false;
   std::string first_error;
   bool all_terminal = true;
+  std::unordered_map<std::string,std::string> statuses;
+  std::unordered_map<std::string,bool> allow_errors;
   for (const auto& t : tasks) {
+    statuses[t.task_id] = t.status;
+    allow_errors[t.task_id] = t.allow_error;
     if (t.status == "running") any_running = true;
     if (t.status == "queued") any_queued = true;
     if (t.status == "error" && !t.allow_error) {
@@ -1842,8 +1851,20 @@ void WorkflowEngine::maybe_finalize_workflow(const std::string& workflow_id) {
 
   std::string new_status = wf.status;
   std::string wf_error = wf.error;
+  bool independent_queued = false;
+  if (any_hard_error && !wf.cancel_requested) {
+    for (const auto& t : tasks) {
+      if (t.status == "queued" && workflow_dependencies_satisfied(t,statuses,allow_errors)) {
+        independent_queued = true;
+        break;
+      }
+    }
+  }
 
-  if (any_hard_error) {
+  if (any_hard_error && !wf.cancel_requested && (any_running || independent_queued)) {
+    // A failed branch must not remove independent work from the scheduler.
+    new_status = any_running ? "running" : "queued";
+  } else if (any_hard_error) {
     new_status = "error";
     if (wf_error.empty()) wf_error = first_error.empty() ? "workflow task failed" : first_error;
   } else if (wf.cancel_requested) {
@@ -1908,12 +1929,13 @@ void WorkflowEngine::maybe_finalize_workflow(const std::string& workflow_id) {
   }
 
   if (new_status != wf.status || wf_error != wf.error || (!result_json.empty() && result_json != wf.result_json)) {
+    const auto expected = wf;
     const std::string prev = wf.status;
     wf.status = new_status;
     wf.updated_unix_ms = unix_ms_now();
     wf.error = wf_error;
     if (!result_json.empty()) wf.result_json = result_json;
-    (void)db_->upsert_workflow(wf, nullptr);
+    if (!db_->update_workflow_from_task_snapshot(expected,tasks,wf,nullptr)) return;
 
     {
       Json::Value d(Json::objectValue);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "daemon_config.h"
+#include "workflow_effect.h"
 
 #include <json/json.h>
 
@@ -15,7 +16,8 @@ namespace agentd {
 Json::Value workflow_http_json_to_json(
   const DaemonConfig& cfg,
   const Json::Value& http_json,
-  std::string* out_err
+  std::string* out_err,
+  const WorkflowEffectContext* effect_context = nullptr
 );
 
 }  // namespace agentd

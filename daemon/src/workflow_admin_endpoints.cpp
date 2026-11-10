@@ -5,6 +5,8 @@
 #include "json_util.h"
 #include "string_util.h"
 #include "workflow_event_schema.h"
+#include "workflow_effect.h"
+#include "http_allowlist.h"
 
 #include <json/json.h>
 
@@ -31,6 +33,49 @@ static std::string json_stringify_compact(const Json::Value& v) {
 }
 
 }  // namespace
+
+void handle_workflow_reconcile_endpoint(const DaemonConfig& cfg, const CorsConfig& cors_cfg,
+  AgentDb* db, const HttpRequest& req, HttpResponse* resp) {
+  cors_apply(req,resp,cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg,req,resp)) return;
+  const auto fail = [&](int status,const std::string& error) { resp->status=status; resp->body=json_error_body(error); };
+  if (!db || !db->is_open()) { fail(503,"db not available"); return; }
+  if (!cfg.workflow_enable_http_tasks) { fail(409,"HTTP workflow tasks are disabled"); return; }
+  Json::Value args;
+  std::string error;
+  if (!json_parse_object(req.body,&args,&error)) { fail(400,"invalid reconciliation request"); return; }
+  for (const auto& field : args.getMemberNames()) if (field != "workflow_id" && field != "task_id" && field != "reconcile_url") { fail(400,"unknown reconciliation field"); return; }
+  if (!args["workflow_id"].isString() || !args["task_id"].isString() ||
+      (args.isMember("reconcile_url") && !args["reconcile_url"].isString())) { fail(400,"workflow_id and task_id are required strings"); return; }
+  AgentDb::WorkflowRow workflow;
+  if (!db->get_workflow(args["workflow_id"].asString(),&workflow,&error)) { fail(404,"workflow not found"); return; }
+  std::vector<AgentDb::WorkflowTaskRow> tasks;
+  std::vector<AgentDb::WorkflowEffectRow> effects;
+  if (!db->list_workflow_tasks(workflow.workflow_id,&tasks,&error) || !db->list_workflow_effects(workflow.workflow_id,&effects,&error)) { fail(500,"cannot load effect state"); return; }
+  const auto task = std::find_if(tasks.begin(),tasks.end(),[&](const auto& t) { return t.task_id == args["task_id"].asString(); });
+  const auto effect = std::find_if(effects.begin(),effects.end(),[&](const auto& e) { return e.task_id == args["task_id"].asString(); });
+  if (task == tasks.end() || effect == effects.end()) { fail(404,"effect task not found"); return; }
+  const auto resolver = args.isMember("reconcile_url") ? args["reconcile_url"].asString() : effect->reconcile_url;
+  Json::Value request;
+  if (!json_parse_object(task->request_json,&request,&error) || !request["http_json"].isObject()) { fail(409,"stored effect task is invalid"); return; }
+  auto spec = request["http_json"];
+  spec["effect"]["reconcile_url"] = resolver;
+  if (!workflow_effect_validate_http(spec,&error) || !workflow_http_url_is_allowed(cfg,resolver,&error)) { fail(400,error); return; }
+  if (!db->requeue_workflow_effect(*task,*effect,resolver,&error)) { fail(409,error); return; }
+  Json::Value event;
+  event["workflow_id"] = workflow.workflow_id; event["task_id"] = task->task_id;
+  event["status"] = "queued"; event["reason"] = "reconciliation_requested";
+  event["effect_id"] = effect->effect_id; event["reconcile_url"] = resolver;
+  event["ts_unix_ms"] = Json::Int64(unix_ms_now());
+  AgentDb::WorkflowEventRow row;
+  row.workflow_id = workflow.workflow_id; row.task_id = task->task_id;
+  row.ts_unix_ms = unix_ms_now(); row.type = "task_status"; row.data_json = json_stringify_compact(event);
+  db->insert_workflow_event(row,nullptr,nullptr);
+  Json::Value out; out["ok"] = true; out["workflow_id"] = workflow.workflow_id;
+  out["task_id"] = task->task_id; out["effect_id"] = effect->effect_id;
+  resp->body = json_stringify_compact(out);
+}
 
 void handle_workflow_cancel_endpoint(
   const DaemonConfig& cfg,

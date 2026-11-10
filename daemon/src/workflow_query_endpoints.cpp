@@ -83,6 +83,27 @@ void handle_workflow_get_endpoint(
   if (!wf.error.empty()) w["error"] = wf.error;
   o["workflow"] = w;
 
+  // Metadata remains inspectable even when an attempt died before persisting a
+  // task result. Large receipts stay out of this polling surface.
+  std::vector<AgentDb::WorkflowEffectRow> effects;
+  if (!db_or_null->list_workflow_effects(wf.workflow_id,&effects,&err)) {
+    resp->status = 500;
+    resp->body = json_error_body("failed to load workflow effects");
+    return;
+  }
+  if (!effects.empty()) {
+    o["effects"] = Json::Value(Json::arrayValue);
+    for (const auto& row : effects) {
+      Json::Value effect(Json::objectValue);
+      effect["effect_id"] = row.effect_id; effect["task_id"] = row.task_id;
+      effect["request_hash"] = row.request_hash; effect["mode"] = row.mode;
+      effect["state"] = row.state; effect["revision"] = Json::Int64(row.revision);
+      effect["attempt"] = Json::Int64(row.attempt);
+      effect["updated_unix_ms"] = Json::Int64(row.updated_unix_ms);
+      o["effects"].append(effect);
+    }
+  }
+
   // Best-effort: surface workflow_limits + aggregate usage/remaining budgets from the persisted spec_json and
   // task cumulative counters (retry-safe).
   {

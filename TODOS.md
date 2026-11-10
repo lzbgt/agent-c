@@ -9,7 +9,8 @@ The authoritative capability/verification snapshot is [docs/CURRENT_SNAPSHOT.md]
 - [x] Portable proposed-completion hook with host continuation within existing run budgets.
 - [x] CLI exec/stdin/resume/sessions/work commands and autonomous default instructions.
 - [x] Modern responsive workspace shell with accessible navigation and deferred advanced panels.
-- [ ] P0: durable effect IDs, receipt/reconciliation state and crash-injection tests for external writes.
+- [x] HTTP POST effect IDs, durable intent/receipt/reconciliation, API/WebUI recovery and real process-crash tests.
+- [ ] P0: extend the effect boundary to arbitrary tools/device adapters and add atomic budget reservations.
 - [ ] P0: connect goal/requirement/blocker authority to the broker and event-driven wakeup; preserve explicit stops.
 - [ ] P1: immutable SOP registry, durable signals/timers and explicit process decisions/compensation.
 - [ ] P1: instance-scoped pollable core ports and board-level resource/power-loss evidence.

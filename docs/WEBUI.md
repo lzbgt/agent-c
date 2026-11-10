@@ -292,3 +292,5 @@ The WebUI defaults to:
 The 2026-11-10 shell adds grouped accessible navigation, an Overview return path, real connection/session context, a responsive mobile navigation strip, keyboard focus and reduced-motion support. The initial scene offers a direct path into the prompt composer. Advanced panels use lazy loading, while existing APIs and state persistence stay in place. The workflow template picker includes SOP stages/actions; execution still belongs to agentd.
 
 Run `e2e/workspace_shell.spec.ts` with the existing prompt/scene/workflow tests to verify these paths. `AGENT_E2E_BROWSER_EXECUTABLE` selects an installed Chromium executable. `AGENT_E2E_RECORD=0` disables video/trace recording for minimal environments; screenshots remain enabled. These affect the test harness, not production browser behavior.
+
+Workflow detail now includes an external-effects section. It distinguishes prepared, admitted, saved-receipt and unresolved states and can requeue receipt reconciliation for a failed uncertain action. This is an operational recovery action; it does not approve or blindly repeat an external write.

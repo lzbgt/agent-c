@@ -1,4 +1,5 @@
 #include "workflow_submit_task_builders.h"
+#include "workflow_effect.h"
 
 #include "string_util.h"
 
@@ -90,6 +91,7 @@ bool workflow_submit_build_http_json_task_request(
     return false;
   }
   const auto& hj = task_spec["http_json"];
+  if (!workflow_effect_validate_http(hj,out_error)) return false;
   const std::string url =
     hj.isMember("url") && hj["url"].isString() ? trim_copy(hj["url"].asString()) : "";
   if (url.empty()) {
@@ -162,6 +164,7 @@ bool workflow_submit_build_http_json_task_request(
   Json::Value hj2(Json::objectValue);
   hj2["url"] = url;
   hj2["method"] = method;
+  if (hj.isMember("effect")) hj2["effect"] = hj["effect"];
   if (!headers2.empty()) hj2["headers"] = headers2;
   if (has_body) {
     // Bound persisted body size to keep specs lean.

@@ -40,127 +40,13 @@ static std::string method_upper(std::string s) {
   return s;
 }
 
-Json::Value workflow_http_json_to_json(
-  const DaemonConfig& cfg,
-  const Json::Value& http_json,
-  std::string* out_err
-) {
-  if (out_err) out_err->clear();
-
-  auto err_out = [&](const std::string& e) -> Json::Value {
-    if (out_err) *out_err = e;
-    Json::Value o(Json::objectValue);
-    o["ok"] = false;
-    o["assistant_text"] = "";
-    o["error"] = e;
-    return o;
-  };
-
-  if (!cfg.workflow_enable_http_tasks) {
-    return err_out("http_json workflow tasks are disabled (start agentd with --workflow-enable-http-tasks)");
-  }
-
-  if (!http_json.isObject()) {
-    return err_out("http_json must be an object");
-  }
-
-  const std::string url =
-    http_json.isMember("url") && http_json["url"].isString() ? trim_copy(http_json["url"].asString()) : "";
-  if (url.empty()) return err_out("http_json.url is required");
-  if (!url_has_http_scheme(url)) return err_out("http_json.url must start with http:// or https://");
-  if (url.size() > 4096) return err_out("http_json.url is too long");
-  WorkflowHttpUrlCheck check;
-  {
-    std::string why;
-    if (!workflow_http_url_check(cfg, url, &check, &why)) {
-      return err_out("http_json url is not allowed by workflow_http outbound policy: " + why);
-    }
-    if (cfg.workflow_http_dns_pin && !check.host_is_ip && check.resolved_addrs.empty()) {
-      return err_out("http_json url DNS pin is enabled but DNS resolution produced no addresses for host");
-    }
-  }
-
-  const std::string method_raw =
-    http_json.isMember("method") && http_json["method"].isString() ? trim_copy(http_json["method"].asString()) : "POST";
-  const std::string method = method_upper(method_raw);
-  if (!(method == "GET" || method == "POST")) {
-    return err_out("http_json.method must be GET or POST");
-  }
-
-  int64_t timeout_ms = 30000;
-  if (http_json.isMember("timeout_ms") &&
-      (http_json["timeout_ms"].isInt64() || http_json["timeout_ms"].isUInt64() || http_json["timeout_ms"].isInt() || http_json["timeout_ms"].isUInt())) {
-    timeout_ms = http_json["timeout_ms"].asInt64();
-  }
-  if (timeout_ms < 1) timeout_ms = 1;
-  if (timeout_ms > 300000) timeout_ms = 300000;
-
-  size_t max_bytes = 1024 * 1024;
-  if (http_json.isMember("max_bytes") && (http_json["max_bytes"].isInt64() || http_json["max_bytes"].isUInt64() || http_json["max_bytes"].isInt() || http_json["max_bytes"].isUInt())) {
-    const int64_t v = http_json["max_bytes"].asInt64();
-    if (v > 0) max_bytes = (size_t)v;
-  }
-  if (max_bytes < 1024) max_bytes = 1024;
-  if (max_bytes > 16 * 1024 * 1024) max_bytes = 16 * 1024 * 1024;
-
-  std::string body;
-  if (http_json.isMember("body") && !http_json["body"].isNull()) {
-    if (method == "GET") {
-      return err_out("http_json.body is not allowed for method=GET");
-    }
-    Json::StreamWriterBuilder wb;
-    wb["indentation"] = "";
-    body = Json::writeString(wb, http_json["body"]);
-  }
-
-  std::map<std::string, std::string> headers;
-  // Defaults: make the response more likely to be JSON.
-  headers["Accept"] = "application/json";
-  if (!body.empty()) {
-    headers["Content-Type"] = "application/json";
-  }
-
-  if (http_json.isMember("headers") && http_json["headers"].isObject()) {
-    const auto& h = http_json["headers"];
-    for (const auto& k : h.getMemberNames()) {
-      if (!h[k].isString()) continue;
-      headers[k] = h[k].asString();
-    }
-  }
-
-  if (http_json.isMember("bearer_env") && http_json["bearer_env"].isString()) {
-    const std::string env = trim_copy(http_json["bearer_env"].asString());
-    if (!env.empty()) {
-      if (!env_name_is_safe(env)) {
-        return err_out("http_json.bearer_env must be a safe env var name");
-      }
-      const char* v = std::getenv(env.c_str());
-      if (!v || !v[0]) {
-        return err_out("http_json.bearer_env is set but the env var is missing/empty: " + env);
-      }
-      headers["Authorization"] = std::string("Bearer ") + v;
-    }
-  }
-
-  HttpClientPinnedResolve pin;
-  const HttpClientPinnedResolve* pinp = nullptr;
-  if (cfg.workflow_http_dns_pin && !check.host_is_ip) {
-    pin.host = check.host;
-    pin.port = check.port;
-    // Prefer IPv4 pinning when both families are available (improves compatibility with IPv4-only local stubs).
-    for (const auto& ip : check.resolved_addrs) {
-      if (!ip.empty() && ip.find(':') == std::string::npos) pin.addrs.push_back(ip);
-    }
-    if (pin.addrs.empty()) pin.addrs = check.resolved_addrs;
-    pinp = &pin;
-  }
-  const HttpClientResult r = http_request(url, method, headers, body, timeout_ms, max_bytes, cfg.proxy_url, pinp);
-
+static Json::Value http_result_to_json(const HttpClientResult& r) {
   Json::Value out(Json::objectValue);
   out["ok"] = false;
   out["assistant_text"] = "";
 
   Json::Value http(Json::objectValue);
+  http["transport_ok"] = r.ok;
   http["status"] = (Json::Int64)r.http_status;
   http["response_text"] = r.response_body;
   if (r.retry_after_ms >= 0) http["retry_after_ms"] = (Json::Int64)r.retry_after_ms;
@@ -236,6 +122,148 @@ Json::Value workflow_http_json_to_json(
   }
 
   return out;
+}
+
+Json::Value workflow_http_json_to_json(
+  const DaemonConfig& cfg,
+  const Json::Value& http_json,
+  std::string* out_err,
+  const WorkflowEffectContext* effect_context
+) {
+  if (out_err) out_err->clear();
+
+  auto err_out = [&](const std::string& e) -> Json::Value {
+    if (out_err) *out_err = e;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["assistant_text"] = "";
+    o["error"] = e;
+    return o;
+  };
+
+  if (!cfg.workflow_enable_http_tasks) {
+    return err_out("http_json workflow tasks are disabled (start agentd with --workflow-enable-http-tasks)");
+  }
+
+  if (!http_json.isObject()) {
+    return err_out("http_json must be an object");
+  }
+
+  const std::string url =
+    http_json.isMember("url") && http_json["url"].isString() ? trim_copy(http_json["url"].asString()) : "";
+  if (url.empty()) return err_out("http_json.url is required");
+  if (!url_has_http_scheme(url)) return err_out("http_json.url must start with http:// or https://");
+  if (url.size() > 4096) return err_out("http_json.url is too long");
+  WorkflowHttpUrlCheck check;
+  {
+    std::string why;
+    if (!workflow_http_url_check(cfg, url, &check, &why)) {
+      return err_out("http_json url is not allowed by workflow_http outbound policy: " + why);
+    }
+    if (cfg.workflow_http_dns_pin && !check.host_is_ip && check.resolved_addrs.empty()) {
+      return err_out("http_json url DNS pin is enabled but DNS resolution produced no addresses for host");
+    }
+  }
+
+  const std::string method_raw =
+    http_json.isMember("method") && http_json["method"].isString() ? trim_copy(http_json["method"].asString()) : "POST";
+  const std::string method = method_upper(method_raw);
+  if (!(method == "GET" || method == "POST")) {
+    return err_out("http_json.method must be GET or POST");
+  }
+  std::string effect_error;
+  if (!workflow_effect_validate_http(http_json,&effect_error)) return err_out(effect_error);
+
+  int64_t timeout_ms = 30000;
+  if (http_json.isMember("timeout_ms") &&
+      (http_json["timeout_ms"].isInt64() || http_json["timeout_ms"].isUInt64() || http_json["timeout_ms"].isInt() || http_json["timeout_ms"].isUInt())) {
+    timeout_ms = http_json["timeout_ms"].asInt64();
+  }
+  if (timeout_ms < 1) timeout_ms = 1;
+  if (timeout_ms > 300000) timeout_ms = 300000;
+
+  size_t max_bytes = 1024 * 1024;
+  if (http_json.isMember("max_bytes") && (http_json["max_bytes"].isInt64() || http_json["max_bytes"].isUInt64() || http_json["max_bytes"].isInt() || http_json["max_bytes"].isUInt())) {
+    const int64_t v = http_json["max_bytes"].asInt64();
+    if (v > 0) max_bytes = (size_t)v;
+  }
+  if (max_bytes < 1024) max_bytes = 1024;
+  if (max_bytes > 16 * 1024 * 1024) max_bytes = 16 * 1024 * 1024;
+
+  std::string body;
+  if (http_json.isMember("body") && !http_json["body"].isNull()) {
+    if (method == "GET") {
+      return err_out("http_json.body is not allowed for method=GET");
+    }
+    Json::StreamWriterBuilder wb;
+    wb["indentation"] = "";
+    body = Json::writeString(wb, http_json["body"]);
+  }
+
+  std::map<std::string, std::string> headers;
+  // Defaults: make the response more likely to be JSON.
+  headers["Accept"] = "application/json";
+  if (!body.empty()) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  if (http_json.isMember("headers") && http_json["headers"].isObject()) {
+    const auto& h = http_json["headers"];
+    for (const auto& k : h.getMemberNames()) {
+      if (!h[k].isString()) continue;
+      headers[k] = h[k].asString();
+    }
+  }
+
+  if (http_json.isMember("bearer_env") && http_json["bearer_env"].isString()) {
+    const std::string env = trim_copy(http_json["bearer_env"].asString());
+    if (!env.empty()) {
+      if (!env_name_is_safe(env)) {
+        return err_out("http_json.bearer_env must be a safe env var name");
+      }
+      const char* v = std::getenv(env.c_str());
+      if (!v || !v[0]) {
+        return err_out("http_json.bearer_env is set but the env var is missing/empty: " + env);
+      }
+      headers["Authorization"] = std::string("Bearer ") + v;
+    }
+  }
+
+  HttpClientPinnedResolve pin;
+  const HttpClientPinnedResolve* pinp = nullptr;
+  if (cfg.workflow_http_dns_pin && !check.host_is_ip) {
+    pin.host = check.host;
+    pin.port = check.port;
+    // Prefer IPv4 pinning when both families are available (improves compatibility with IPv4-only local stubs).
+    for (const auto& ip : check.resolved_addrs) {
+      if (!ip.empty() && ip.find(':') == std::string::npos) pin.addrs.push_back(ip);
+    }
+    if (pin.addrs.empty()) pin.addrs = check.resolved_addrs;
+    pinp = &pin;
+  }
+  int64_t network_calls = 0;
+  auto dispatch = [&](const std::map<std::string,std::string>& identity) {
+    ++network_calls;
+    auto request_headers = headers;
+    request_headers.insert(identity.begin(),identity.end());
+    return http_result_to_json(http_request(url,method,request_headers,body,timeout_ms,max_bytes,cfg.proxy_url,pinp));
+  };
+  if (method == "POST") {
+    if (!effect_context) return err_out("POST requires a durable workflow effect context");
+    auto reconcile = [&](const Json::Value& query) {
+      ++network_calls;
+      std::string error;
+      return workflow_http_json_to_json(cfg,query,&error,nullptr);
+    };
+    auto result = workflow_effect_execute(*effect_context,http_json,dispatch,reconcile);
+    if (effect_context->should_cancel && effect_context->should_cancel()) {
+      result["cancelled"] = true;
+      result["error"] = "cancelled";
+    }
+    result["tool_calls_total"] = Json::Int64(network_calls);
+    return result;
+  }
+  return dispatch({});
 }
 
 }  // namespace agentd

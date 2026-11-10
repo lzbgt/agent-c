@@ -66,6 +66,12 @@ export const WorkflowDetailRespSchema = z
     ok: z.boolean().optional(),
     workflow: WorkflowSummarySchema.optional(),
     tasks: z.array(WorkflowTaskSchema).optional(),
+    effects: z.array(z.object({
+      effect_id: z.string(), task_id: z.string(), request_hash: z.string(),
+      mode: z.enum(["guarded", "idempotent"]),
+      state: z.enum(["prepared", "dispatching", "completed", "unknown"]),
+      revision: z.number(), attempt: z.number(), updated_unix_ms: z.number(),
+    })).optional(),
     workflow_limits: WorkflowBudgetSnapshotSchema.optional(),
     workflow_usage: WorkflowBudgetSnapshotSchema.optional(),
     workflow_remaining: WorkflowBudgetSnapshotSchema.optional(),

@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 namespace agentd {
 namespace workflow_engine_internal {
@@ -21,6 +22,9 @@ std::string json_stringify_compact_local(const Json::Value& v);
 bool workflow_is_terminal_status(const std::string& s);
 
 std::string workflow_task_kind_best_effort(const AgentDb::WorkflowTaskRow& t);
+bool workflow_dependencies_satisfied(const AgentDb::WorkflowTaskRow& task,
+  const std::unordered_map<std::string,std::string>& statuses,
+  const std::unordered_map<std::string,bool>& allow_errors);
 int64_t workflow_deadline_unix_ms_best_effort(const AgentDb::WorkflowRow& wf);
 int workflow_session_weight_best_effort(const AgentDb::WorkflowRow& wf, int max_weight);
 

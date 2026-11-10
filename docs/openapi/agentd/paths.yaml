@@ -2336,6 +2336,43 @@
                       created_unix_ms: { type: integer, format: int64 }
                       updated_unix_ms: { type: integer, format: int64 }
 
+/api/v1/workflow/reconcile:
+  post:
+    tags: [workflows]
+    summary: Requeue receipt reconciliation for one failed uncertain external effect
+    description: Preserves effect identity and completed independent tasks. May supply a same-origin receipt endpoint after an external prerequisite is fixed. Does not bypass cancellation, deadlines, workflow budgets or the guarded-write protocol.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [workflow_id, task_id]
+            properties:
+              workflow_id: { type: string }
+              task_id: { type: string }
+              reconcile_url: { type: string }
+    responses:
+      "200":
+        description: Reconciliation queued
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok, workflow_id, task_id, effect_id]
+              properties:
+                ok: { type: boolean }
+                workflow_id: { type: string }
+                task_id: { type: string }
+                effect_id: { type: string }
+      "400":
+        description: Invalid request, cross-origin resolver or outbound policy rejection
+      "404":
+        description: Workflow or effect task not found
+      "409":
+        description: Conflicting state, cancellation, deadline or disabled HTTP tasks
+
 /api/v1/workflow/cancel:
   post:
     tags: [workflows]

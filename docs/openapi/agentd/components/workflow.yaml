@@ -667,6 +667,15 @@ WorkflowHttpJsonSpec:
     body:
       description: Optional JSON request body (any JSON value). Must be omitted for method=GET.
       nullable: true
+    effect:
+      type: object
+      additionalProperties: false
+      description: POST effect contract. Default guarded journals the intent/response and refuses a blind repeat after an uncertain outcome. Idempotent requires the destination to enforce the server-generated Idempotency-Key for an unchanged request. GET tasks cannot declare an effect.
+      properties:
+        mode: { type: string, enum: [guarded, idempotent] }
+        reconcile_url:
+          type: string
+          description: Optional same-origin GET endpoint implementing the versioned effect receipt contract. The runtime appends effect_id, attempt and request_hash. A terminal not_applied receipt must close/fence the old attempt; an absent lookup is insufficient. Existing outbound policy applies.
     timeout_ms:
       type: integer
       format: int64
@@ -2007,12 +2016,27 @@ WorkflowGetResponse:
         Best-effort remaining budgets computed as (limit - used) for any positive limits.
         Only includes keys where a limit exists and is >0.
       additionalProperties: true
+    effects:
+      type: array
+      description: Durable external-effect metadata, including attempts whose task result was lost. Receipts are excluded from this polling surface.
+      items:
+        type: object
+        required: [effect_id, task_id, request_hash, mode, state, revision, attempt, updated_unix_ms]
+        properties:
+          effect_id: { type: string }
+          task_id: { type: string }
+          request_hash: { type: string }
+          mode: { type: string, enum: [guarded, idempotent] }
+          state: { type: string, enum: [prepared, dispatching, completed, unknown] }
+          revision: { type: integer, format: int64 }
+          attempt: { type: integer, format: int64 }
+          updated_unix_ms: { type: integer, format: int64 }
     result:
       type: object
       additionalProperties: true
     spec_json:
       type: string
-      description: Redacted persisted submit request (raw JSON string; may be truncated).
+      description: Redacted persisted submit request. New oversized specs are rejected; legacy records may have been truncated.
     spec:
       type: object
       description: Parsed spec_json when available.

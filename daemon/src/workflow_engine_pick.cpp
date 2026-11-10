@@ -239,28 +239,7 @@ bool WorkflowEngine::pick_and_claim_one(
       if (t.status != "queued") continue;
       if (t.ready_unix_ms > 0 && now_unix_ms < t.ready_unix_ms) continue;
 
-      const std::string kind = workflow_task_kind_best_effort(t);
-
-      const std::vector<std::string> deps = parse_dep_ids(t.depends_on_json);
-      bool deps_ok = true;
-      for (const auto& dep : deps) {
-        auto it = status_by_id.find(dep);
-        if (it == status_by_id.end()) {
-          deps_ok = false;
-          break;
-        }
-        const std::string& st = it->second;
-        if (st == "done") continue;
-        // Allow a dependent to proceed if the dependency is a soft-fail error.
-        const bool dep_allow_error =
-          allow_error_by_id.count(dep) ? allow_error_by_id[dep] : false;
-        if (st == "error" && dep_allow_error) continue;
-        // Aggregation tasks often need to read terminal outcomes (including error) to compute a join result.
-        if (kind == "aggregate" && workflow_is_terminal_status(st)) continue;
-        deps_ok = false;
-        break;
-      }
-      if (!deps_ok) continue;
+      if (!workflow_dependencies_satisfied(t,status_by_id,allow_error_by_id)) continue;
 
       const int new_attempt = t.attempt + 1;
       if (!db_->claim_workflow_task_budgeted(

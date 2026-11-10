@@ -9,13 +9,14 @@ Date: 2026-11-10. This document records implemented behavior and reproducible ch
 - **SOPs:** `agentd.sop.v1` compiles ordered stages and sequential/parallel actions through the existing workflow submit API. A canonical definition hash and stage mapping are stored with the redacted spec. Strict compiler validation precedes ordinary task/policy/admission validation. Oversized persisted specs are rejected instead of truncated.
 - **CLI:** command dispatch is separated from provider execution. `exec`, bounded stdin, `resume`, `sessions`, explicit working/session directories and model-free `work` commands reuse existing execution/persistence. Existing JSONL transcript export stays available. Resumed host prompts refresh when the built-in contract changes.
 - **WebUI:** responsive graphite/mint workspace, grouped icon navigation, Overview return path, actual connection/session context, accessible template selection, useful empty state, keyboard focus and reduced-motion support. Advanced panels are lazy-loaded. A provider-free SOP authoring template is included.
+- **External HTTP effects:** guarded POST actions persist intent and response identity; uncertain writes reconcile through a same-origin receipt adapter or emit a scoped blocker. An explicit destination-idempotency contract permits safe retries. Recovery is inspectable and resumable through the API/WebUI, and independent workflow branches continue after a failure even with one worker. See [WORKFLOW_EFFECTS.md](WORKFLOW_EFFECTS.md).
 - **Reproducibility:** npm lockfile tarballs use the canonical registry with existing integrity hashes and versions preserved. OpenAPI client types are regenerated. Local deterministic tests cover the new behavior without provider credentials.
 
 Usage and exact contracts: [CLI](CLI.md), [work state](AUTONOMOUS_WORK.md), [SOP workflows](SOP_WORKFLOWS.md), [embedded C](EMBEDDED_C_API.md), [WebUI](WEBUI.md).
 
 ## Publishing destination
 
-Committed achievements are published to the owner’s private [git.hubstack.cn/bruce/agent-c](https://git.hubstack.cn/bruce/agent-c) destination. GitHub publishing is excluded by owner direction. See [PUBLISHING.md](PUBLISHING.md) for the host helper, credential handling, history/size policy and local push preferences.
+New achievements are committed locally while the Panda worker upgrades the publishing helper. No pushes are performed during this owner-directed hold. The future authorized destination is private [git.hubstack.cn/bruce/agent-c](https://git.hubstack.cn/bruce/agent-c); GitHub publishing remains excluded. See [PUBLISHING.md](PUBLISHING.md) for the host helper, credential handling, history/size policy and local push preferences.
 
 ## Reproduce
 
@@ -41,22 +42,23 @@ The verifier configures **Debug** builds so assertion-based existing C tests exe
 
 ## Verification evidence
 
-The snapshot verification script passed 12 targeted native/CLI/API checks and six browser checks on Linux. The separate core-only Debug build/test passed. Coverage includes:
+The snapshot verification script passed 19 targeted native/CLI/API checks and six browser checks on Linux. The separate core-only Debug build/test passed. Coverage includes:
 
 - C tool loop, continuation and unchanged step caps; host tool and pinned-prompt regressions.
 - Requirement DAG validation, scoped blockers, evidence gates, rollback, stale revision rejection and concurrent independent CLI writers.
 - Local model-stub exec/stdin/resume and project instruction discovery; premature completion continues until recorded work is verified; repeated no-progress completion fails with a limit.
 - Real local daemon SOP submit, persisted definition/mapping, stage barriers, idempotency and invalid-input rejection.
+- HTTP effect crash boundaries, receipt reuse, destination deduplication, terminal reconciliation proofs, stale finalizers and preservation of owner stops; API/WebUI recovery of one affected branch.
 - Existing local streaming, workflow idempotency and replay-spec regression paths.
 - Desktop/mobile navigation, prompt focus, SOP template submission, workflow details, prompt uploads and scene history.
 - TypeScript/Vite production build, generated OpenAPI drift check, repository guards and whitespace checks.
 
-Local logs: `build/snapshot_verification.log`, `build/snapshot_core_only.log`, and `build/snapshot_repo_guards.log`. Browser tests regenerate `ui/test-results/workspace-desktop.png` and `workspace-mobile.png`; generated artifacts are ignored, while their source fixtures and commands are tracked. On the checked host, advanced-panel splitting reduced the main application chunk from approximately 1,087 kB to 798 kB before gzip; this is a build observation, not a latency benchmark.
+Local logs: `build/effect_snapshot_verification.log`, `build/snapshot_core_only.log`, and `build/effect_repo_guards.log`. Browser tests regenerate `ui/test-results/workspace-desktop.png` and `workspace-mobile.png`; generated artifacts are ignored, while their source fixtures and commands are tracked. On the checked host, advanced-panel splitting reduced the main application chunk from approximately 1,087 kB to 798 kB before gzip; this is a build observation, not a latency benchmark.
 
 ## Boundaries and next work
 
-This is a coherent implemented slice, not a claim that every item in the architecture is shipped. Current workflows retain single-daemon, at-least-once recovery. Submit dedupe and SOP hashes do not prevent duplicate external writes. Effect intent/receipt/reconciliation is the next production correctness priority.
+This is a coherent implemented slice, not a claim that every item in the architecture is shipped. Current workflows retain single-daemon, at-least-once task recovery. The new effect protocol protects deterministic HTTP POST tasks under its destination/receipt contracts. Submit dedupe and SOP hashes alone still do not prevent duplicate external writes. Extending effect semantics to other tool/device boundaries and strict budget reservations remains production correctness work.
 
-The work ledger is host-side current state, separate from the main daemon DB. It does not yet implement broker-authoritative goals, an append-only work audit, automatic wakeup after a human edit, a dedicated REST API or a blocker UI. `agent work` can update it and `resume`/a subsequent run can adopt it. Evidence text still needs a trustworthy verifier.
+The work ledger is host-side current state, separate from the main daemon DB. It does not yet implement broker-authoritative goals, an append-only work audit, automatic wakeup after a human edit, a general requirement/blocker REST API or UI. The HTTP effect slice has its own reconciliation API/UI. `agent work` can update it and `resume`/a subsequent run can adopt it. Evidence text still needs a trustworthy verifier.
 
 SOP registry immutability, durable process decisions/signals, branches, loops, compensation, complete native provider adapters and full legacy CLI decomposition remain planned. Explicit operator policy still controls configured approvals and access. No live-provider compatibility, ESP32 hardware performance, PLC qualification, distributed exactly-once execution or full-system production certification was established by the local tests.

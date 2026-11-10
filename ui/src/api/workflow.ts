@@ -112,3 +112,14 @@ export async function apiCancelWorkflow(
   const j = await r.json();
   return WorkflowCancelRespSchema.parse(j);
 }
+
+// Reuses the existing daemon authentication and error envelope.
+export async function apiReconcileWorkflowEffect(
+  base: string,
+  payload: { workflow_id: string; task_id: string; reconcile_url?: string },
+  auth?: ApiAuth,
+): Promise<WorkflowCancelResp> {
+  const response = await fetch(`${base}/api/v1/workflow/reconcile`,
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }));
+  return WorkflowCancelRespSchema.parse(await response.json());
+}

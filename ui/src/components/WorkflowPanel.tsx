@@ -185,6 +185,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
         ) : null}
 
         <WorkflowDetailSection
+          effectControls={{ baseUrl: props.baseUrl, auth: props.auth }}
           detail={workflowState.detail}
           summary={workflowState.summary}
           tasks={workflowState.tasks}
