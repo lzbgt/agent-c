@@ -1999,6 +1999,12 @@ WorkflowGetResponse:
       type: array
       items:
         type: object
+        properties:
+          needs_input: { type: boolean }
+          blocker:
+            type: object
+            description: Scoped required action, included without include_results for a failed task needing external input.
+            additionalProperties: { type: string }
         additionalProperties: true
     workflow_limits:
       type: object

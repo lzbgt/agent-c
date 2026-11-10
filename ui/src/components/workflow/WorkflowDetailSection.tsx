@@ -34,6 +34,13 @@ export default function WorkflowDetailSection(props: WorkflowDetailSectionProps)
 
   return (
     <div className="grid gap-3" data-testid="workflow-detail-panel">
+      {props.tasks.some((task) => task.status === "error" && task.blocker?.required_action) ? <section className="rounded-md border border-amber-300/30 bg-amber-300/5 p-3" data-testid="workflow-blockers" aria-label="Needs your attention">
+        <h2 className="text-sm font-semibold text-amber-100">Needs your attention</h2>
+        {props.tasks.filter((task) => task.status === "error" && task.blocker?.required_action).map((task) => <div key={task.task_id} className="mt-2">
+          <span className="break-all text-xs text-white/60">{task.task_id}</span>
+          <p className="mt-1 break-words text-sm leading-relaxed text-white/90">{task.blocker!.required_action}</p>
+        </div>)}
+      </section> : null}
       <div className="rounded-md border border-white/10 bg-black/30 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="text-xs font-semibold text-white/70">Workflow summary</div>

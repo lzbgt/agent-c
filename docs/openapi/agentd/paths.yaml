@@ -2978,7 +2978,7 @@
                 node_id: { type: string }
                 task_id: { type: string }
                 step_id: { type: string }
-                outbox_id: { type: integer, format: int64 }
+                outbox_id: { type: integer, format: int64, description: "New assignment outbox ID; zero on an identical retry that publishes no command." }
                 deduped: { type: boolean }
 
 /api/v1/edge/task:

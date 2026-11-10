@@ -183,10 +183,19 @@ void handle_workflow_get_endpoint(
           std::string derr;
           if (json_parse_any(t.depends_on_json, &deps, &derr) && deps.isArray()) row["depends_on"] = deps;
         }
-        if (include_results && !t.result_json.empty()) {
+        if ((include_results || t.status == "error") && !t.result_json.empty()) {
           Json::Value rr;
           std::string rerr;
-          if (json_parse_any(t.result_json, &rr, &rerr)) row["result"] = rr;
+          if (json_parse_any(t.result_json, &rr, &rerr)) {
+            if (include_results) row["result"] = rr;
+            if (rr.isObject() && rr["needs_input"] == true && rr["blocker"].isObject()) {
+              row["needs_input"] = true;
+              // Expose the required human action without loading the full tool
+              // result or copying assistant/provider messages into metadata.
+              for (const auto* key : {"id", "kind", "reason", "required_action", "workflow_id", "task_id", "node_id"})
+                if (rr["blocker"][key].isString()) row["blocker"][key] = rr["blocker"][key].asString().substr(0,4096);
+            }
+          }
         }
         arr.append(row);
       }

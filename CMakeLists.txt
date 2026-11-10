@@ -269,6 +269,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/agent_db_stats.cpp
     daemon/src/agent_db_edge_nodes.cpp
     daemon/src/agent_db_edge_tasks.cpp
+    daemon/src/agent_db_edge_admission.cpp
     daemon/src/agent_db_edge_workflows.cpp
     daemon/src/cron_util.cpp
     daemon/src/agentd_api.cpp
@@ -293,6 +294,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/edge_confidentiality.cpp
     daemon/src/edge_platform_bundle.cpp
     daemon/src/edge_interop_endpoints.cpp
+    daemon/src/edge_task_assignment_endpoint.cpp
     daemon/src/edge_consensus_identity_tokens.cpp
     daemon/src/edge_consensus_member_ids.cpp
     daemon/src/edge_consensus_membership_bundle.cpp
@@ -427,6 +429,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/workflow_engine_pick.cpp
     daemon/src/workflow_schedule_engine.cpp
     daemon/src/workflow_endpoint_util.cpp
+    daemon/src/workflow_edge_invoke.cpp
     daemon/src/workflow_http_json.cpp
     daemon/src/workflow_effect.cpp
     daemon/src/workflow_agentd_call.cpp
@@ -1989,6 +1992,9 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
     target_link_libraries(workflow_sop_tests PRIVATE agentd_lib)
     add_test(NAME workflow_sop_tests COMMAND workflow_sop_tests)
     if(AGENT_ENABLE_SQLITE3)
+      add_executable(device_assignment_tests tests/test_device_assignment.cpp)
+      target_link_libraries(device_assignment_tests PRIVATE agentd_lib)
+      add_test(NAME device_assignment_tests COMMAND device_assignment_tests)
       add_executable(workflow_effect_tests tests/test_workflow_effect.cpp)
       target_link_libraries(workflow_effect_tests PRIVATE agentd_lib)
       add_test(NAME workflow_effect_tests COMMAND workflow_effect_tests)
@@ -2050,6 +2056,7 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
       daemon/src/agent_db_runs.cpp
       daemon/src/agent_db_edge_nodes.cpp
       daemon/src/agent_db_edge_tasks.cpp
+    daemon/src/agent_db_edge_admission.cpp
       daemon/src/agent_db_edge_workflows.cpp
       daemon/src/agent_db_stats.cpp
     )

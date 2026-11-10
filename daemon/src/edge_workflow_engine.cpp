@@ -478,6 +478,8 @@ void EdgeWorkflowEngine::worker_main() {
           read_arr("tags_none", &tags_none);
           (void)select_node_match_any(db_, requires_tools, tags_all, tags_any, tags_none, &node_id);
         }
+        AgentDb::EdgeTaskRow durable_assignment;
+        if (db_->get_edge_task(wf.workflow_id, s.step_id, &durable_assignment, nullptr)) node_id = durable_assignment.node_id;
         if (node_id.empty() || !id_is_safe(node_id)) {
           s.state = "FAILED";
           s.error = "no matching node";
@@ -512,7 +514,7 @@ void EdgeWorkflowEngine::worker_main() {
 
         const int attempt_next = s.attempt + 1;
         const std::string idempotency_key =
-          std::string("wf:") + wf.workflow_id + ":" + s.step_id + ":a" + std::to_string(attempt_next);
+          std::string("wf:") + wf.workflow_id + ":" + s.step_id;
 
         int64_t outbox_id = 0;
         bool deduped = false;

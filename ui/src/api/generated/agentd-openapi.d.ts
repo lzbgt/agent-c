@@ -4874,7 +4874,10 @@ export interface paths {
                             node_id: string;
                             task_id: string;
                             step_id: string;
-                            /** Format: int64 */
+                            /**
+                             * Format: int64
+                             * @description New assignment outbox ID; zero on an identical retry that publishes no command.
+                             */
                             outbox_id: number;
                             deduped?: boolean;
                         };
@@ -11645,9 +11648,15 @@ export interface components {
                 /** Format: int64 */
                 updated_unix_ms: number;
             };
-            tasks?: {
+            tasks?: ({
+                needs_input?: boolean;
+                /** @description Scoped required action, included without include_results for a failed task needing external input. */
+                blocker?: {
+                    [key: string]: string;
+                };
+            } & {
                 [key: string]: unknown;
-            }[];
+            })[];
             /** @description Best-effort workflow_limits parsed from the persisted submit spec_json (when present). */
             workflow_limits?: {
                 [key: string]: unknown;

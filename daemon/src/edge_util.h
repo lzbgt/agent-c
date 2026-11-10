@@ -69,7 +69,7 @@ bool edge_tool_result_schema_from_manifest_best_effort(
 
 struct EdgeToolMeta {
   std::string side_effect_level;
-  std::string resource_lock; // optional; best-effort platform-side tool lock key
+  std::string resource_lock; // optional platform assignment lock (not a physical interlock)
   std::unordered_set<std::string> hazards;
   bool has_rate_limit = false;
   int max_per_minute = 0;
@@ -81,21 +81,6 @@ bool edge_tool_meta_from_manifest(
   const std::string& tool_name,
   EdgeToolMeta* out_meta,
   std::string* out_error
-);
-
-bool edge_rate_limit_check_best_effort(
-  AgentDb* db,
-  const std::string& node_id,
-  const std::string& tool_name,
-  const EdgeToolMeta& meta,
-  int64_t now_utc_ms,
-  AgentDb::EdgeToolRateStateRow* out_next_state,
-  std::string* out_error
-);
-
-void edge_rate_limit_commit_best_effort(
-  AgentDb* db,
-  const AgentDb::EdgeToolRateStateRow& next_state
 );
 
 bool edge_enqueue_task_assign(

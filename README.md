@@ -32,6 +32,7 @@ Workflows has separate **Runs**, **Create workflow** and **Schedules** sections.
 - **Autonomous work state:** a SQLite requirement/blocker ledger shared by `work_state` and `agent work`, with dependency validation, revision checks and evidence-gated transitions.
 - **Durable workflows:** SOP compilation, definition hashes, task recovery, scheduling, dataflow and inspectable evidence.
 - **HTTP effects:** stable effect identity, intent/receipt journaling and reconciliation for guarded writes. Independent branches continue when another branch needs recovery. [Effect contract](docs/WORKFLOW_EFFECTS.md)
+- **Device dispatch:** immutable operation/node identity and transactional assignment, capacity and outbox publication prevent retry-driven command duplication. Uncertain outcomes expose a scoped human action while independent work continues. [Device contract](docs/DEVICE_ASSIGNMENTS.md)
 - **CLI harness:** `exec`, stdin, `resume`, `sessions`, explicit work/session directories, versioned JSONL events and successful final-message files. Coalesced streams drain without transport-boundary truncation. [CLI](docs/CLI.md)
 - **Host platform:** native daemon APIs/SSE, memory, artifacts, policy/limits, diagnostic tools and optional broker routing, teams and event replay.
 - **Realtime voice:** Aliyun Omni streams microphone audio, spoken replies and shared images through the authenticated gateway. Captions stay concise and provider keys stay on the server. [Voice](docs/VOICE.md)
@@ -84,7 +85,7 @@ cd ..
 tools/verify_current_snapshot.sh
 ```
 
-The current lane covers **20 native/CLI/API checks**, Go broker/gateway tests, **54 browser checks**, generated OpenAPI types and the production UI build. Browser cases include greeting clarity, streaming handoff, repeated identical turns, IME-safe sends, hidden metadata, subject-oriented settings, authorized browser effects and responsive workflow tools.
+The current lane covers **21 native/CLI/API checks**, Go broker/gateway tests, **54 browser checks**, generated OpenAPI types and the production UI build. Browser cases include greeting clarity, streaming handoff, repeated identical turns, IME-safe sends, hidden metadata, subject-oriented settings, authorized browser effects and responsive workflow tools.
 
 For the embedded-safe build:
 

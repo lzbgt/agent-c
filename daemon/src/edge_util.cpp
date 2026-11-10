@@ -356,63 +356,6 @@ bool edge_tool_meta_from_manifest(
   return false;
 }
 
-bool edge_rate_limit_check_best_effort(
-  AgentDb* db,
-  const std::string& node_id,
-  const std::string& tool_name,
-  const EdgeToolMeta& meta,
-  int64_t now_utc_ms,
-  AgentDb::EdgeToolRateStateRow* out_next_state,
-  std::string* out_error
-) {
-  if (out_error) out_error->clear();
-  if (out_next_state) *out_next_state = AgentDb::EdgeToolRateStateRow{};
-  if (!db || !db->is_open()) return false;
-  if (!meta.has_rate_limit) return true;
-  if (node_id.empty() || tool_name.empty()) return true;
-  const int64_t now = now_utc_ms > 0 ? now_utc_ms : edge_unix_ms_now();
-
-  AgentDb::EdgeToolRateStateRow st;
-  std::string err;
-  const bool has = db->get_edge_tool_rate_state(node_id, tool_name, &st, &err);
-  if (!has) {
-    st.node_id = node_id;
-    st.tool_name = tool_name;
-    st.window_start_utc_ms = 0;
-    st.window_count = 0;
-    st.last_call_utc_ms = 0;
-  }
-
-  if (meta.cooldown_ms > 0 && st.last_call_utc_ms > 0) {
-    const int64_t since = now - st.last_call_utc_ms;
-    if (since >= 0 && since < meta.cooldown_ms) {
-      if (out_error) *out_error = "rate_limited: cooldown";
-      return false;
-    }
-  }
-
-  const int64_t window_ms = 60000;
-  if (st.window_start_utc_ms <= 0 || (now - st.window_start_utc_ms) >= window_ms || (now - st.window_start_utc_ms) < 0) {
-    st.window_start_utc_ms = now;
-    st.window_count = 0;
-  }
-  if (meta.max_per_minute > 0 && st.window_count >= meta.max_per_minute) {
-    if (out_error) *out_error = "rate_limited: max_per_minute";
-    return false;
-  }
-
-  st.window_count += 1;
-  st.last_call_utc_ms = now;
-  if (out_next_state) *out_next_state = st;
-  return true;
-}
-
-void edge_rate_limit_commit_best_effort(AgentDb* db, const AgentDb::EdgeToolRateStateRow& next_state) {
-  if (!db || !db->is_open()) return;
-  if (next_state.node_id.empty() || next_state.tool_name.empty()) return;
-  (void)db->upsert_edge_tool_rate_state(next_state, nullptr);
-}
-
 bool edge_enqueue_task_assign(
   AgentDb* db,
   const std::string& node_id,
@@ -494,28 +437,25 @@ bool edge_enqueue_task_assign(
     }
   }
 
-  bool have_rate_state_to_commit = false;
-  AgentDb::EdgeToolRateStateRow next_rate_state;
+  int max_per_minute = 0, cooldown_ms = 0;
   std::string resource_lock;
-
-  // Dedupe on (node_id, idempotency_key).
   AgentDb::EdgeTaskRow existing;
   std::string err;
-  const bool has_existing = db->get_edge_task_by_node_idempotency(node_id, idempotency_key, &existing, &err);
-  if (has_existing) {
-    if (out_deduped) *out_deduped = true;
-    if (existing.task_id != task_id || existing.step_id != step_id) {
-      if (out_error) *out_error = "idempotency_key collision with different task_id/step_id";
+  // The logical operation owns node/key/payload, including after a restart.
+  if (db->get_edge_task(task_id, step_id, &existing, &err)) {
+    if (existing.node_id != node_id || existing.idempotency_key != idempotency_key ||
+        existing.mode != mode || existing.payload_json != json_stringify_compact_local(payload)) {
+      if (out_error) *out_error = "device assignment identity/payload conflict; original operation preserved";
       if (out_http_status) *out_http_status = 409;
       return false;
     }
-    // Best-effort: backfill trace_id if a newer caller provides it.
-    if (!trace_id.empty() && existing.trace_id.empty()) {
-      existing.trace_id = trace_id;
-      existing.updated_utc_ms = edge_unix_ms_now();
-      (void)db->upsert_edge_task(existing, nullptr);
-    }
-  } else {
+    if (out_deduped) *out_deduped = true;
+    if (out_http_status) *out_http_status = 200;
+    return true; // Observe the durable assignment; never publish another command.
+  }
+  AgentDb::EdgeTaskRow tr;
+  AgentDb::EdgeTaskEventRow ev;
+  {
     if (mode == "invoke" && (enforce_safety || enforce_rate_limit)) {
       AgentDb::EdgeNodeRow nr;
       std::string nerr;
@@ -546,19 +486,6 @@ bool edge_enqueue_task_assign(
         return false;
       }
       if (!meta.resource_lock.empty()) resource_lock = meta.resource_lock;
-
-      if (!resource_lock.empty()) {
-        std::string ctid, csid, cerr;
-        const bool conflict = db->get_edge_task_lock_conflict(node_id, resource_lock, &ctid, &csid, &cerr);
-        if (conflict) {
-          if (out_error) {
-            *out_error = "resource_locked: " + resource_lock;
-            if (!ctid.empty() && !csid.empty()) *out_error += " (held by " + ctid + "/" + csid + ")";
-          }
-          if (out_http_status) *out_http_status = 429;
-          return false;
-        }
-      }
 
       // Validate tool arguments against the manifest schema (best-effort).
       // This is a high-leverage correctness/safety guardrail for MCU/actuator tools.
@@ -598,18 +525,9 @@ bool edge_enqueue_task_assign(
         }
       }
 
-      if (enforce_rate_limit) {
-        std::string rlerr;
-        if (!edge_rate_limit_check_best_effort(db, node_id, tool_name, meta, edge_unix_ms_now(), &next_rate_state, &rlerr)) {
-          if (out_error) *out_error = rlerr.empty() ? "rate_limited" : rlerr;
-          if (out_http_status) *out_http_status = 429;
-          return false;
-        }
-        if (meta.has_rate_limit) have_rate_state_to_commit = true;
-      }
+      if (enforce_rate_limit) { max_per_minute = meta.max_per_minute; cooldown_ms = meta.cooldown_ms; }
     }
 
-    AgentDb::EdgeTaskRow tr;
     tr.task_id = task_id;
     tr.step_id = step_id;
     tr.node_id = node_id;
@@ -623,13 +541,6 @@ bool edge_enqueue_task_assign(
     tr.state = "QUEUED";
     tr.created_utc_ms = edge_unix_ms_now();
     tr.updated_utc_ms = tr.created_utc_ms;
-    if (!db->upsert_edge_task(tr, &err)) {
-      if (out_error) *out_error = std::string("failed to persist edge task: ") + err;
-      if (out_http_status) *out_http_status = 500;
-      return false;
-    }
-
-    AgentDb::EdgeTaskEventRow ev;
     ev.task_id = task_id;
     ev.step_id = step_id;
     ev.ts_utc_ms = tr.created_utc_ms;
@@ -645,7 +556,7 @@ bool edge_enqueue_task_assign(
     if (!tool_name.empty()) d["tool"] = tool_name;
     if (trace.isObject()) d["trace"] = trace;
     ev.data_json = json_stringify_compact_local(d);
-    (void)db->insert_edge_task_event(ev, nullptr, nullptr);
+
   }
 
   // Enqueue UM‑BMP TASK_ASSIGN envelope to node outbox.
@@ -674,21 +585,8 @@ bool edge_enqueue_task_assign(
   orow.node_id = node_id;
   orow.ts_utc_ms = now;
   orow.envelope_json = json_stringify_compact_local(env);
-  int64_t outbox_id = 0;
-  if (!db->insert_edge_outbox_message(orow, &outbox_id, &err)) {
-    if (out_error) *out_error = std::string("failed to enqueue outbox message: ") + err;
-    if (out_http_status) *out_http_status = 500;
-    return false;
-  }
-
-  if (out_outbox_id) *out_outbox_id = outbox_id;
-
-  if (!has_existing && enforce_rate_limit && have_rate_state_to_commit) {
-    edge_rate_limit_commit_best_effort(db, next_rate_state);
-  }
-
-  if (out_http_status) *out_http_status = 200;
-  return true;
+  return db->admit_edge_task_assignment(tr, orow, ev, max_per_minute, cooldown_ms,
+    out_outbox_id, out_deduped, out_http_status, out_error);
 }
 
 }  // namespace agentd

@@ -844,6 +844,12 @@ class AgentDb {
     std::string error;
   };
 
+  // One transaction binds immutable task identity/payload, reserves active
+  // resource/rate capacity, and publishes its single TASK_ASSIGN outbox entry.
+  // An identical retry returns deduped=true and outbox_id=0 without redispatch.
+  bool admit_edge_task_assignment(const EdgeTaskRow& task, const EdgeOutboxMessageRow& message,
+    const EdgeTaskEventRow& event, int max_per_minute, int cooldown_ms,
+    int64_t* out_outbox_id, bool* out_deduped, int* out_http_status, std::string* out_error);
   bool upsert_edge_task(const EdgeTaskRow& row, std::string* out_error);
   bool get_edge_task(const std::string& task_id, const std::string& step_id, EdgeTaskRow* out_row, std::string* out_error);
   bool get_edge_task_by_node_idempotency(

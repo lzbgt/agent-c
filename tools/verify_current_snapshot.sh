@@ -17,8 +17,8 @@ fi
 pkg-config --exists sqlite3 jsoncpp || { echo 'snapshot host verification requires sqlite3 and jsoncpp development packages' >&2; exit 1; }
 SNAPSHOT_BUILD="${AGENT_SNAPSHOT_BUILD_DIR:-${ROOT}/build-snapshot}"
 cmake -S . -B "${SNAPSHOT_BUILD}" -DCMAKE_BUILD_TYPE=Debug -DAGENT_BUILD_HOST=ON -DAGENTD_ENABLE_HTTP=ON
-cmake --build "${SNAPSHOT_BUILD}" --target agent agentd agent_core_tests work_ledger_tests workflow_sop_tests workflow_effect_tests agent_db_tests host_session_prompts_tests host_toolset_tests docs_sanity_tests -j "${AGENT_SNAPSHOT_JOBS:-4}"
-ctest --test-dir "${SNAPSHOT_BUILD}" -R '^(agent_core_tests|work_ledger_tests|workflow_sop_tests|workflow_effect_tests|agent_db_tests|agentd_workflow_effect_recovery_smoke|host_session_prompts_tests|host_toolset_tests|docs_sanity_tests|cli_harness_smoke|cli_machine_output_smoke|agentd_workflow_sop_smoke|agent_local_stream_tool_loop_smoke|agent_local_stream_assistant_smoke|agentd_workflow_idempotency_smoke|agentd_workflow_replay_spec_smoke|agentd_workflow_http_json_smoke|agentd_workflow_http_allowlist_smoke|agentd_workflow_http_dns_pin_smoke|agentd_workflow_http_deny_cidr_smoke)$' --output-on-failure
+cmake --build "${SNAPSHOT_BUILD}" --target agent agentd agent_core_tests work_ledger_tests workflow_sop_tests workflow_effect_tests device_assignment_tests agent_db_tests host_session_prompts_tests host_toolset_tests docs_sanity_tests -j "${AGENT_SNAPSHOT_JOBS:-4}"
+ctest --test-dir "${SNAPSHOT_BUILD}" -R '^(agent_core_tests|work_ledger_tests|workflow_sop_tests|workflow_effect_tests|device_assignment_tests|agent_db_tests|agentd_workflow_effect_recovery_smoke|host_session_prompts_tests|host_toolset_tests|docs_sanity_tests|cli_harness_smoke|cli_machine_output_smoke|agentd_workflow_sop_smoke|agent_local_stream_tool_loop_smoke|agent_local_stream_assistant_smoke|agentd_workflow_idempotency_smoke|agentd_workflow_replay_spec_smoke|agentd_workflow_http_json_smoke|agentd_workflow_http_allowlist_smoke|agentd_workflow_http_dns_pin_smoke|agentd_workflow_http_deny_cidr_smoke)$' --output-on-failure
 npm ci --prefix ui --no-audit --no-fund
 npm run openapi:types:check --prefix ui
 npm run build --prefix ui

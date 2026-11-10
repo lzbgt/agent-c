@@ -52,7 +52,9 @@ ON CONFLICT(task_id, step_id) DO UPDATE SET
   result_json = CASE WHEN excluded.result_json IS NOT NULL AND excluded.result_json <> '' THEN excluded.result_json ELSE edge_tasks.result_json END,
   result_sha256 = CASE WHEN excluded.result_sha256 IS NOT NULL AND excluded.result_sha256 <> '' THEN excluded.result_sha256 ELSE edge_tasks.result_sha256 END,
   attest_json = CASE WHEN excluded.attest_json IS NOT NULL AND excluded.attest_json <> '' THEN excluded.attest_json ELSE edge_tasks.attest_json END,
-  error = CASE WHEN excluded.error IS NOT NULL AND excluded.error <> '' THEN excluded.error ELSE edge_tasks.error END;
+  error = CASE WHEN excluded.error IS NOT NULL AND excluded.error <> '' THEN excluded.error ELSE edge_tasks.error END
+WHERE edge_tasks.node_id=excluded.node_id AND edge_tasks.idempotency_key=excluded.idempotency_key
+  AND edge_tasks.mode=excluded.mode AND edge_tasks.payload_json=excluded.payload_json;
 )SQL";
   if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
     if (out_error) *out_error = agent_db_sqlite_err(db_);
@@ -79,6 +81,7 @@ ON CONFLICT(task_id, step_id) DO UPDATE SET
   ok = ok && agent_db_bind_text_or_null(st, 17, row.error);
 
   ok = ok && agent_db_step_done(st);
+  if (ok && sqlite3_changes(db_) != 1) { ok = false; if (out_error) *out_error = "device task identity/payload is immutable"; }
   if (!ok && out_error && out_error->empty()) *out_error = agent_db_sqlite_err(db_);
   sqlite3_finalize(st);
   return ok;

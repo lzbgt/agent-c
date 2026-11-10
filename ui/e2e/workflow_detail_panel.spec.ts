@@ -67,6 +67,7 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
           {
             task_id: "task-b",
             status: "error",
+            blocker: { required_action: "Verify the original device operation and its readback." },
             depends_on: ["task-a"],
             attempt: 1,
             max_attempts: 2,
@@ -95,6 +96,7 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
   await page.getByTestId("workflow-list-panel").getByText("wf-detail-1").click();
 
   await expect(page.getByTestId("workflow-detail-panel")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Needs your attention" })).toContainText("Verify the original device operation and its readback.");
   await expect(page.getByTestId("workflow-detail-panel")).toContainText("Workflow summary");
   await expect(page.getByTestId("workflow-detail-panel")).toContainText("trace-123");
   await expect(page.getByTestId("workflow-dag-panel")).toContainText("tasks: 2");
@@ -105,6 +107,9 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
   await expect(page.getByText("Budgets", { exact: true })).toBeVisible();
   await expect(page.getByText("Workflow result", { exact: true })).toBeVisible();
   await expect(page.getByText("Workflow spec", { exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 740 });
+  await expect(page.getByRole("region", { name: "Needs your attention" })).toBeVisible();
+  expect(await page.getByTestId("workflow-blockers").evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await page.getByRole("textbox", { name: "Receipt endpoint for task-b" }).fill("http://127.0.0.1:7777/receipts");
   await page.getByRole("button", { name: "Reconcile outcome", exact: true }).click();
   await expect.poll(() => reconciliation).toEqual({ workflow_id: "wf-detail-1", task_id: "task-b", reconcile_url: "http://127.0.0.1:7777/receipts" });
