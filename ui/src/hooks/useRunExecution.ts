@@ -294,7 +294,9 @@ export default function useRunExecution(args: RunExecutionArgs) {
       const out = await apiRun(effectiveBase, req, daemonAuth);
       return { mode: "sync" as const, out, req };
     },
-    onSuccess: (value) => {
+    onSuccess: (value, submitted) => {
+      const accepted = value.mode === "sync" ? value.out.ok : value.job.ok && Boolean(value.job.job_id);
+      if (accepted) setPrompt((current) => current === submitted.prompt ? "" : current);
       if (value.mode === "sync") {
         setComposerTaskNonce((count) => count + 1);
         lastRunPromptRef.current = value.req.prompt;

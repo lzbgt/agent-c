@@ -17,7 +17,7 @@ const groups = [
 ];
 
 export default function AppToolsSidebar(props: AppToolsSidebarProps) {
-  const pages = [{ id: "", label: "Overview" }, ...props.advancedPages];
+  const pages = [{ id: "", label: "Chat" }, ...props.advancedPages];
   const navRef = React.useRef<HTMLElement>(null);
   React.useEffect(() => {
     if (window.matchMedia("(max-width: 1023px)").matches) {
@@ -27,7 +27,7 @@ export default function AppToolsSidebar(props: AppToolsSidebarProps) {
   return (
     <aside className={`workspace-sidebar ${props.toolsCollapsed ? "is-collapsed" : ""}`}>
       <div className="workspace-sidebar-heading">
-        <span>CONTROL CENTER</span>
+        <span>WORKSPACE</span>
         <button type="button" className="workspace-collapse" onClick={() => props.setToolsCollapsed((prev) => !prev)} aria-label={props.toolsCollapsed ? "Expand tools" : "Collapse tools"} aria-expanded={!props.toolsCollapsed} title={props.toolsCollapsed ? "Expand tools" : "Collapse tools"}>
           {props.toolsCollapsed ? "»" : "«"}
         </button>
@@ -51,7 +51,7 @@ export default function AppToolsSidebar(props: AppToolsSidebarProps) {
           </div>
         ))}
       </nav>
-      <div className="workspace-sidebar-note"><span className="workspace-note-mark">C</span><span>Portable core.<br /><strong>Durable execution.</strong></span></div>
+
     </aside>
   );
 }

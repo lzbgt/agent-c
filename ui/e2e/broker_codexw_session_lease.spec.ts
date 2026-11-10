@@ -214,6 +214,8 @@ test("broker codexw lease controls attach renew and release through session rout
 
   await page.goto("/");
   await expect(page.getByTestId("settings-drawer")).toBeVisible();
+  await page.getByTestId("settings-advanced").locator(":scope > summary").click();
+  await page.getByText("Connections & access", { exact: true }).click();
   await page.getByTestId("session-id-input").fill(sessionId);
   await expect(page.getByText("No active lease reported for this session.")).toBeVisible();
 
@@ -396,6 +398,8 @@ test("broker codexw lease conflicts surface current holder details", async ({ pa
 
   await page.goto("/");
   await expect(page.getByTestId("settings-drawer")).toBeVisible();
+  await page.getByTestId("settings-advanced").locator(":scope > summary").click();
+  await page.getByText("Connections & access", { exact: true }).click();
   await page.getByTestId("session-id-input").fill(sessionId);
   await expect(page.getByText("Observer: lease-owner currently holds the active lease.")).toBeVisible();
 

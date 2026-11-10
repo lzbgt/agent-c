@@ -12,6 +12,7 @@ const paths: Record<string, React.ReactNode> = {
   arrow: <path d="M5 12h14m-5-5 5 5-5 5" />,
   settings: <><path d="m9 3-1 3-3 1-2 5 2 5 3 1 1 3h6l1-3 3-1 2-5-2-5-3-1-1-3z" /><circle cx="12" cy="12" r="3" /></>,
   "sign-out": <><path d="M9 4H4v16h5M13 8l4 4-4 4M8 12h13" /></>,
+  attach: <path d="m8 13 7-7a3 3 0 0 1 4 4L9 20a5 5 0 0 1-7-7L12 3a3 3 0 0 1 4 4L7 16" />,
 };
 
 export default function WorkspaceIcon({ name, className = "" }: { name: string; className?: string }) {

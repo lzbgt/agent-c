@@ -13,11 +13,14 @@ The authoritative capability/verification snapshot is [docs/CURRENT_SNAPSHOT.md]
 - [x] HTTP POST effect IDs, durable intent/receipt/reconciliation, API/WebUI recovery and real process-crash tests.
 - [x] Deploy the verified snapshot on Arch behind the shared VPS reverse proxy/OAuth; qualify the pinned system administrator and inspect only proven Agent-C VPS workloads (none were present to remove).
 - [x] Make each workspace tool the primary page, split workflow runs/authoring/schedules, preserve composer drafts and verify phone/tablet layout and modal keyboard access.
+- [x] Put messages and results first, group metadata behind closed details, simplify the composer, and lead settings with subject options while preserving authorized browser actions.
 - [ ] P0: extend the effect boundary to arbitrary tools/device adapters and add atomic budget reservations.
 - [ ] P0: connect goal/requirement/blocker authority to the broker and event-driven wakeup; preserve explicit stops.
 - [ ] P1: immutable SOP registry, durable signals/timers and explicit process decisions/compensation.
 - [ ] P1: instance-scoped pollable core ports and board-level resource/power-loss evidence.
 - [ ] P1: provider metadata/checkpoint contracts, mid-turn steering and remaining legacy CLI decomposition.
+- [ ] P1: subject-oriented SOP stage/action authoring; keep raw execution configuration behind advanced controls.
+- [ ] P1: append-only conversation IDs/pagination and client submission reconciliation; replace model-context snapshots as the long-term chat authority and avoid blind queue retries after uncertain submission.
 
 
 Date: 2026-02-19

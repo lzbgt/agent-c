@@ -5,8 +5,6 @@ import useLocalStorageState from "../hooks/useLocalStorageState";
 import type { TeamConversationItem } from "../hooks/teamChatOrchestrationTypes";
 import {
   buildPersistedConversationItems,
-  findLastAssistantMessage,
-  findLastRun,
   parseToolArgumentsJson,
   type DbMessageRow,
   type DbRunDetailRow,
@@ -18,12 +16,16 @@ import {
 import type { SceneEntity } from "./SceneView";
 import ArtifactView from "./ArtifactView";
 import Markdown from "./Markdown";
+import ChatThread from "./history/ChatThread";
+import { buildChatTranscript, latestChatFailure } from "../history/chatTranscript";
 import HistoryPanelTeamSection from "./history/HistoryPanelTeamSection";
 import HistoryPanelTechnicalSection from "./history/HistoryPanelTechnicalSection";
 import useHistoryPanelTeamState from "./history/useHistoryPanelTeamState";
 
 export type HistoryPanelProps = {
   entries: HistoryEntry[];
+  activeJobId?: string;
+  chatTarget?: "session" | "team";
   showAllEntries: boolean;
   setShowAllEntries: React.Dispatch<React.SetStateAction<boolean>>;
   showMessages: boolean;
@@ -100,45 +102,82 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     [dbMessages, dbRunDetailsById, dbRuns],
   );
 
-  const lastAssistantMessage = React.useMemo(() => findLastAssistantMessage(dbMessages), [dbMessages]);
-  const lastRun = React.useMemo(() => findLastRun(dbRuns), [dbRuns]);
+  const chatMessages = React.useMemo(() => {
+    if (props.chatTarget === "team") return teamConversationItems.flatMap((item, index) => {
+      const role = item.message.role;
+      return (role === "user" || role === "assistant") && item.message.content
+        ? [{ key: `team:${item.ts}:${index}`, role: role as "user" | "assistant", content: item.message.content }]
+        : [];
+    });
+    return buildChatTranscript(dbMessages, entries);
+  }, [dbMessages, entries, props.chatTarget, teamConversationItems]);
+
+  const artifactContent = (
+      <div className="mb-4">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div data-testid="history-artifact-heading" className="text-sm font-semibold text-white/80">
+            {artifactCatalogMode === "direct" ? "Artifacts" : "Artifact references"}
+          </div>
+          <div className="text-[11px] text-white/50">
+            {artifactCatalogMode === "unsupported"
+              ? "connector-managed"
+              : sessionArtifacts.length > 0
+                ? `${sessionArtifacts.length} items`
+                : "none"}
+          </div>
+        </div>
+        {artifactCatalogMode === "unsupported" ? (
+          <div
+            data-testid="history-artifact-unsupported-note"
+            className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-xs text-amber-100"
+          >
+            Broker connector mode does not expose a stable artifact catalog here. Use transcript, shell output, session
+            events, and service metadata as the current result surfaces, and treat richer artifact browsing as a separate
+            requirement.
+          </div>
+        ) : sessionArtifacts.length === 0 ? (
+          <div className="rounded-md border border-white/10 bg-black/20 px-3 py-3 text-xs text-white/60">
+            {artifactCatalogMode === "broker_reference"
+              ? "No broker artifact references are currently available from the session artifact surface."
+              : "No artifacts captured yet."}
+          </div>
+        ) : (
+          <div className="grid gap-2">
+            {sessionArtifacts.slice(0, 20).map((row, idx) => {
+              const key =
+                typeof row.path === "string"
+                  ? `artifact:${row.path}`
+                  : typeof row.resolved_path === "string"
+                    ? `artifact:${row.resolved_path}`
+                    : `artifact:${idx}`;
+              return (
+                <div key={key} className="rounded-md border border-white/10 bg-black/20 p-3">
+                  <ArtifactView
+                    baseUrl={props.effectiveBase}
+                    yolo={props.yolo}
+                    artifact={row.artifact}
+                    allowAutoplay={props.allowAutoplay}
+                    sessionId={props.sessionId}
+                    client={props.client}
+                    daemonAuth={props.daemonAuth}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+  );
 
   return (
-    <div>
-      <div className="mb-4">
-        {lastAssistantMessage || lastRun ? (
-          <div className="mb-4 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-            <div className="text-xs font-semibold text-white/70">Latest outcome</div>
-            {lastAssistantMessage && typeof lastAssistantMessage.content === "string" ? (
-              <details className="mt-2">
-                <summary className="cursor-pointer text-[11px] text-white/60">Assistant response (collapsed)</summary>
-                <div className="mt-2 text-sm text-white/90">
-                  <Markdown text={String(lastAssistantMessage.content)} />
-                </div>
-              </details>
-            ) : null}
-            {lastRun ? (
-              <details className="mt-2">
-                <summary className="cursor-pointer text-[11px] text-white/60">Run info (collapsed)</summary>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-                  <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-semibold text-white/80">
-                    run
-                  </span>
-                  <span className="text-white/50">
-                    {typeof lastRun.ts_unix_ms === "number" ? new Date(lastRun.ts_unix_ms).toLocaleString() : ""}
-                  </span>
-                  {typeof lastRun.ok === "boolean" ? (
-                    <span className={lastRun.ok ? "text-emerald-300" : "text-rose-300"}>
-                      {lastRun.ok ? "ok" : "error"}
-                    </span>
-                  ) : null}
-                  {lastRun.error ? <span className="text-rose-200">{String(lastRun.error)}</span> : null}
-                </div>
-              </details>
-            ) : null}
-          </div>
-        ) : null}
-
+    <div className="conversation-layout">
+      <ChatThread messages={chatMessages} working={Boolean(props.activeJobId)} error={latestChatFailure(entries)} />
+      {sessionArtifacts.length ? artifactContent : null}
+      <details className="conversation-details" data-testid="conversation-details">
+        <summary>Activity & details</summary>
+        <div className="conversation-diagnostics">
+        <div className="mb-4 text-xs text-white/50">Session: <code>{props.sessionId}</code></div>
+        {props.sceneEntities.length ? <details className="mb-4 text-xs text-white/60"><summary>Result state</summary><pre className="mt-2 overflow-auto whitespace-pre-wrap break-words">{JSON.stringify(props.sceneEntities, null, 2)}</pre></details> : null}
         <HistoryPanelTeamSection
           teamId={teamId}
           teamRunId={teamRunId}
@@ -151,7 +190,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
         />
 
         <div className="mb-2 flex items-center justify-between gap-2">
-          <div className="text-sm font-semibold text-white/80">Conversation</div>
+          <div className="text-sm font-semibold text-white/80">Stored context</div>
           <div className="text-[11px] text-white/50">
             {conversationItems.length > 0 ? `${conversationItems.length} items` : "no persisted history"}
           </div>
@@ -289,62 +328,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
             })}
           </div>
         )}
-      </div>
-
-      <div className="mb-4">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <div data-testid="history-artifact-heading" className="text-sm font-semibold text-white/80">
-            {artifactCatalogMode === "direct" ? "Artifacts" : "Artifact references"}
-          </div>
-          <div className="text-[11px] text-white/50">
-            {artifactCatalogMode === "unsupported"
-              ? "connector-managed"
-              : sessionArtifacts.length > 0
-                ? `${sessionArtifacts.length} items`
-                : "none"}
-          </div>
-        </div>
-        {artifactCatalogMode === "unsupported" ? (
-          <div
-            data-testid="history-artifact-unsupported-note"
-            className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-xs text-amber-100"
-          >
-            Broker connector mode does not expose a stable artifact catalog here. Use transcript, shell output, session
-            events, and service metadata as the current result surfaces, and treat richer artifact browsing as a separate
-            requirement.
-          </div>
-        ) : sessionArtifacts.length === 0 ? (
-          <div className="rounded-md border border-white/10 bg-black/20 px-3 py-3 text-xs text-white/60">
-            {artifactCatalogMode === "broker_reference"
-              ? "No broker artifact references are currently available from the session artifact surface."
-              : "No artifacts captured yet."}
-          </div>
-        ) : (
-          <div className="grid gap-2">
-            {sessionArtifacts.slice(0, 20).map((row, idx) => {
-              const key =
-                typeof row.path === "string"
-                  ? `artifact:${row.path}`
-                  : typeof row.resolved_path === "string"
-                    ? `artifact:${row.resolved_path}`
-                    : `artifact:${idx}`;
-              return (
-                <div key={key} className="rounded-md border border-white/10 bg-black/20 p-3">
-                  <ArtifactView
-                    baseUrl={props.effectiveBase}
-                    yolo={props.yolo}
-                    artifact={row.artifact}
-                    allowAutoplay={props.allowAutoplay}
-                    sessionId={props.sessionId}
-                    client={props.client}
-                    daemonAuth={props.daemonAuth}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {!sessionArtifacts.length ? artifactContent : null}
 
       <HistoryPanelTechnicalSection
         entries={entries}
@@ -370,6 +354,8 @@ export default function HistoryPanel(props: HistoryPanelProps) {
         showSystemMessages={showSystemMessages}
         setShowSystemMessages={setShowSystemMessages}
       />
+        </div>
+      </details>
     </div>
   );
 }

@@ -29,8 +29,8 @@ test.beforeEach(async ({ page }) => {
 test("workspace navigation retains accessible names, active state and return path", async ({ page }) => {
   await page.goto("/");
   const nav = page.getByRole("navigation", { name: "Workspace navigation" });
-  await expect(nav.getByRole("button", { name: "Overview", exact: true })).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("heading", { name: "Workspace", exact: true })).toBeVisible();
+  await expect(nav.getByRole("button", { name: "Chat", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("heading", { name: "Conversation", exact: true })).toBeVisible();
   await expect(page.getByTestId("workspace-empty")).toBeVisible();
   await page.screenshot({ path: "test-results/workspace-desktop.png", fullPage: true });
   await nav.getByRole("button", { name: "Workflows", exact: true }).click();
@@ -41,9 +41,8 @@ test("workspace navigation retains accessible names, active state and return pat
   await expect(page.getByTestId("workflow-list-panel")).toBeVisible();
   await expect(page.getByText("wf_89cf09b3-ba91-4a18-bead-9381a6a81b45", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Collapse tools", exact: true }).click();
-  await nav.getByRole("button", { name: "Overview", exact: true }).click();
+  await nav.getByRole("button", { name: "Chat", exact: true }).click();
   await expect(page.getByTestId("workspace-empty")).toBeVisible();
-  await page.getByTestId("promptbar-toggle-collapse").click();
   await page.getByRole("button", { name: "Start a conversation" }).click();
   await expect(page.getByTestId("prompt")).toBeFocused();
 });
@@ -63,7 +62,7 @@ for (const size of [{ width: 320, height: 740 }, { width: 390, height: 844 }, { 
 test(`responsive workspace at ${size.width}px keeps tools primary and preserves the composer draft`, async ({ page }) => {
   await page.setViewportSize(size);
   await page.goto("/");
-  await expect(page.getByLabel("Environment", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Workspace navigation" })).toBeVisible();
   await expect(page.getByTestId("prompt")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -92,7 +91,7 @@ test(`responsive workspace at ${size.width}px keeps tools primary and preserves 
     await expect(nav.getByRole("button", { name, exact: true })).toBeInViewport();
     expect(await page.locator("#workspace-main").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
   }
-  await nav.getByRole("button", { name: "Overview", exact: true }).click();
+  await nav.getByRole("button", { name: "Chat", exact: true }).click();
   await expect(page.getByTestId("prompt")).toHaveValue("Prepare the inspection workflow");
   const main = await page.locator("#workspace-main").boundingBox();
   const composer = await page.getByTestId("promptbar-root").boundingBox();

@@ -43,7 +43,7 @@ export default function useUiClientSettings({ defaults }: UseUiClientSettingsPar
   );
   const [showDebugInConversation, setShowDebugInConversation] = useLocalStorageState(
     "agentui.showDebugInConversation",
-    true,
+    false,
   );
   const [brokerPanelOpen, setBrokerPanelOpen] = useLocalStorageState(
     "agentui.brokerPanelOpen",

@@ -1,7 +1,6 @@
 import React from "react";
 
 import { apiCancelJob, apiPostSessionUpload } from "../../api";
-import useLocalStorageState from "../../hooks/useLocalStorageState";
 import { safeObject } from "../../jsonUtils";
 import type { Attachment, PromptBarProps } from "./promptBarTypes";
 import { fileToBase64, guessMimeFromName, isSafeSessionId, sanitizeUploadName } from "./promptBarUtils";
@@ -16,18 +15,6 @@ export default function usePromptBarState(props: PromptBarProps) {
   const [attachments, setAttachments] = React.useState<Attachment[]>([]);
   const [drawerOpen, setDrawerOpen] = React.useState<boolean>(false);
   const [uploadBusy, setUploadBusy] = React.useState<boolean>(false);
-  const collapsedKey = React.useMemo(
-    () => `agentui.composer.collapsed:${String(props.effectiveBase || "").trim() || "default"}`,
-    [props.effectiveBase],
-  );
-  const [collapsed, setCollapsed] = useLocalStorageState<boolean>(collapsedKey, false);
-
-  const promptPreview = React.useMemo(() => {
-    const prompt = String(props.prompt || "").trim();
-    if (!prompt) return "";
-    return prompt.length > 140 ? `${prompt.slice(0, 140)}…` : prompt;
-  }, [props.prompt]);
-
   const uploadsEnabled = props.uploadsEnabled !== false;
   const uploadsDisabledReason = String(props.uploadsDisabledReason || "").trim();
   const uploadMaxBytes =
@@ -57,12 +44,6 @@ export default function usePromptBarState(props: PromptBarProps) {
   }, [chatTarget, teamAction]);
 
   React.useEffect(() => {
-    if (props.jobError || props.runError || props.resultError) {
-      setDrawerOpen(true);
-    }
-  }, [props.jobError, props.resultError, props.runError]);
-
-  React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") setDrawerOpen(false);
     };
@@ -86,7 +67,7 @@ export default function usePromptBarState(props: PromptBarProps) {
       if (teamAction === "goal") return "Describe the goal (first line), add success criteria on new lines…";
       return "Describe the team task…";
     }
-    return "Describe the task… (Ctrl/⌘+Enter to run)";
+    return "Message your agent…";
   }, [chatTarget, teamAction]);
 
   const handleCancel = React.useCallback(async () => {
@@ -198,14 +179,11 @@ export default function usePromptBarState(props: PromptBarProps) {
   return {
     attachments,
     chatTarget,
-    collapsed,
     drawerOpen,
     onRun,
     promptPlaceholder,
-    promptPreview,
     removeAttachment,
     setAttachments,
-    setCollapsed,
     setDrawerOpen,
     teamAction,
     teamAvailable,

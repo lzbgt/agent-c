@@ -18,7 +18,7 @@ async function seedSessionScope(page: Parameters<typeof seedBrokerState>[0]) {
 }
 
 test("broker codexw history keeps artifact UX explicit when catalog route is unsupported", async ({ page }) => {
-  await seedBrokerState(page, { agentId, brokerBase, brokerToken: "test-token", showSettings: false });
+  await seedBrokerState(page, { agentId, brokerBase, brokerToken: "test-token", showSettings: false, brokerPanelOpen: false });
   await seedSessionScope(page);
 
   await page.route("**/v1/**", async (route, request) => {
@@ -121,6 +121,8 @@ test("broker codexw history keeps artifact UX explicit when catalog route is uns
   await page.goto("/");
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByTestId("session-id-input").fill(sessionId);
+  await page.getByTestId("settings-close").click();
+  await page.getByTestId("conversation-details").locator(":scope > summary").click();
   await expect(page.getByTestId("history-artifact-heading")).toHaveText("Artifact references");
   await expect(page.getByTestId("history-artifact-unsupported-note")).toContainText(
     "Broker connector mode does not expose a stable artifact catalog here.",

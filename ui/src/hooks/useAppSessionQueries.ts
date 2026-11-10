@@ -125,6 +125,7 @@ export function useAppSessionQueries(args: AppDataPlaneArgs) {
       job_id: activeJobId || undefined,
       job_status: activeJobId ? jobStatus ?? "running" : "live_session",
       live: true,
+      trace_id: liveEvents.find((event) => event.trace_id)?.trace_id,
     };
     return [live, ...auditEntriesDesc];
   }, [activeJobId, auditEntriesDesc, jobStatus, jobUpdatedMs, lastRunPrompt, liveEvents, lastRunPromptRef]);

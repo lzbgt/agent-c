@@ -3,7 +3,6 @@ import { expect, test } from "@playwright/test";
 test("scene view shows latest entity by default and can reveal and collapse history", async ({ page }) => {
   test.setTimeout(20_000);
   const scene = page.locator('[data-testid="scene"]');
-  const sceneSession = page.locator('[data-testid="scene-session"]');
   const historyToggle = page.locator('[data-testid="scene-history-toggle"]');
   const collapseAll = page.locator('[data-testid="scene-collapse-all"]');
   const latestEntity = page.locator('[data-testid="scene-entity-latest"]');
@@ -227,7 +226,9 @@ test("scene view shows latest entity by default and can reveal and collapse hist
   await page.goto("/");
 
   await expect(scene).toBeVisible();
-  await expect(sceneSession).toContainText("session=default");
+  await page.getByTestId("conversation-details").locator(":scope > summary").click();
+  await expect(page.getByTestId("conversation-details")).toContainText("Session: default");
+  await page.getByTestId("conversation-details").locator(":scope > summary").click();
   await expect(page.getByText("Showing latest 1; 2 hidden.")).toBeVisible();
   await expect(latestEntity).toBeVisible();
   await expect(betaEntity).toHaveCount(0);

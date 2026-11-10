@@ -39,116 +39,13 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
       />
 
       <div className="workspace-composer-inner">
-        <div className="workspace-composer-toolbar" data-testid="promptbar-summary-row">
-          <div className="workspace-composer-options">
-            <button
-              className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/70 hover:bg-black/40"
-              type="button"
-              data-testid="promptbar-toggle-collapse"
-              onClick={() => state.setCollapsed((value) => !value)}
-              aria-expanded={!state.collapsed}
-              title={state.collapsed ? "Expand composer" : "Collapse composer"}
-            >
-              {state.collapsed ? "Expand" : "Collapse"}
-              {state.collapsed && state.promptPreview ? <span className="max-w-[48vw] truncate text-white/50">{state.promptPreview}</span> : null}
-              {state.attachments.length > 0 ? (
-                <span className="text-white/50">
-                  ({state.attachments.length} attachment{state.attachments.length === 1 ? "" : "s"})
-                </span>
-              ) : null}
-            </button>
-
-            <button
-              className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/70 hover:bg-black/40"
-              type="button"
-              data-testid="promptbar-toggle-details"
-              onClick={() => state.setDrawerOpen((value) => !value)}
-              aria-expanded={state.drawerOpen}
-            >
-              {state.drawerOpen ? "Hide details" : "Show details"}
-              {props.jobError || props.runError || props.resultError ? <span className="text-rose-300">•</span> : null}
-              {props.jobNotice ? <span className="text-amber-200">•</span> : null}
-            </button>
-
-            {state.teamAvailable ? (
-              <div className="inline-flex items-center overflow-hidden rounded-md border border-white/10 bg-black/30 text-xs text-white/70">
-                <button
-                  className={`px-2 py-1 ${state.chatTarget === "session" ? "bg-indigo-500/20 text-indigo-100" : "hover:bg-black/40"}`}
-                  type="button"
-                  onClick={() => props.onChatTargetChange?.("session")}
-                >
-                  Session
-                </button>
-                <button
-                  className={`px-2 py-1 ${state.chatTarget === "team" ? "bg-indigo-500/20 text-indigo-100" : "hover:bg-black/40"}`}
-                  type="button"
-                  onClick={() => props.onChatTargetChange?.("team")}
-                >
-                  Team {state.teamId ? `· ${state.teamId}` : ""}
-                </button>
-              </div>
-            ) : null}
-
-            {state.chatTarget === "team" ? (
-              <div className="inline-flex items-center overflow-hidden rounded-md border border-white/10 bg-black/30 text-xs text-white/70">
-                <button
-                  className={`px-2 py-1 ${state.teamAction === "run" ? "bg-indigo-500/20 text-indigo-100" : "hover:bg-black/40"}`}
-                  type="button"
-                  onClick={() => props.onTeamActionChange?.("run")}
-                >
-                  Run
-                </button>
-                <button
-                  className={`px-2 py-1 ${state.teamAction === "guidance" ? "bg-indigo-500/20 text-indigo-100" : "hover:bg-black/40"}`}
-                  type="button"
-                  onClick={() => props.onTeamActionChange?.("guidance")}
-                >
-                  Guidance
-                </button>
-                <button
-                  className={`px-2 py-1 ${state.teamAction === "goal" ? "bg-indigo-500/20 text-indigo-100" : "hover:bg-black/40"}`}
-                  type="button"
-                  onClick={() => props.onTeamActionChange?.("goal")}
-                >
-                  Goal
-                </button>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="workspace-composer-actions">
-            {props.activeJobId ? (
-              <button
-                className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200 hover:bg-rose-500/15"
-                onClick={() => void state.handleCancel()}
-                type="button"
-              >
-                Cancel
-              </button>
-            ) : null}
-            <button
-              className="workspace-run rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
-              onClick={state.onRun}
-              disabled={props.runDisabled}
-              type="button"
-              data-testid="run"
-            >
-              {props.runLabel}
-            </button>
-            {props.queueCount && props.queueCount > 0 ? (
-              <span className="rounded-md border border-indigo-400/30 bg-indigo-500/10 px-2 py-1 text-xs text-indigo-100">
-                {props.queueCount} queued
-              </span>
-            ) : null}
-          </div>
-        </div>
-
+        <div className="chat-composer-box">
         <PromptBarComposerBody
-          attachmentsCount={state.attachments.length}
-          collapsed={state.collapsed}
+          attachments={state.attachments}
+          onRemoveAttachment={state.removeAttachment}
           prompt={props.prompt}
           promptPlaceholder={state.promptPlaceholder}
-          runDisabled={props.runDisabled}
+          runDisabled={props.runDisabled || (!props.prompt.trim() && !state.attachments.length)}
           setJobNotice={props.setJobNotice}
           setPrompt={props.setPrompt}
           uploadBusy={state.uploadBusy}
@@ -156,7 +53,21 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
           uploadsEnabled={state.uploadsEnabled}
           onRun={state.onRun}
           onUploadChange={state.handleUploadFiles}
+          controls={<>
+            {state.teamAvailable ? <select className="chat-target" aria-label="Message target" value={state.chatTarget} onChange={(event) => props.onChatTargetChange?.(event.target.value as "session" | "team")}><option value="session">Conversation</option><option value="team">Team</option></select> : null}
+            {state.chatTarget === "team" ? <select className="chat-target" aria-label="Team message type" value={state.teamAction} onChange={(event) => props.onTeamActionChange?.(event.target.value as "run" | "guidance" | "goal")}><option value="run">Task</option><option value="guidance">Guidance</option><option value="goal">Goal</option></select> : null}
+            <button className="chat-more" type="button" aria-label="Message details" title="Message details" data-testid="promptbar-toggle-details" onClick={() => state.setDrawerOpen((value) => !value)} aria-expanded={state.drawerOpen}>···</button>
+            <div className="workspace-composer-actions">
+              {props.queueCount ? <span className="text-xs text-white/50">{props.queueCount} queued</span> : null}
+              {props.activeJobId ? <button className="workspace-button" onClick={() => void state.handleCancel()} type="button">Stop</button> : null}
+              <button className="workspace-run rounded-lg px-4 py-2 text-sm disabled:opacity-40" onClick={state.onRun} disabled={props.runDisabled || (!props.prompt.trim() && !state.attachments.length)} type="button" data-testid="run">{props.runLabel}</button>
+            </div>
+          </>}
         />
+        </div>
+        {props.jobError || props.runError || props.resultError ? <div className="chat-send-error" role="alert">{String(props.jobError || props.runError || props.resultError).slice(0, 180)}<button type="button" onClick={() => state.setDrawerOpen(true)}>Details</button></div> : null}
+        {props.jobNotice && !/^(queued|uploaded \d+ file)/.test(props.jobNotice) ? <div className="text-xs text-white/60" role="status">{props.jobNotice}</div> : null}
+
       </div>
     </div>
   );

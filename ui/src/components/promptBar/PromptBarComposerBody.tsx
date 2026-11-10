@@ -1,10 +1,12 @@
 import React from "react";
 
-import type { PromptBarProps } from "./promptBarTypes";
+import type { Attachment, PromptBarProps } from "./promptBarTypes";
+import WorkspaceIcon from "../app/WorkspaceIcon";
 
 type PromptBarComposerBodyProps = {
-  attachmentsCount: number;
-  collapsed: boolean;
+  attachments: Attachment[];
+  onRemoveAttachment: (path: string) => void;
+  controls: React.ReactNode;
   promptPlaceholder: string;
   uploadBusy: boolean;
   uploadsEnabled: boolean;
@@ -15,32 +17,35 @@ type PromptBarComposerBodyProps = {
 
 export default function PromptBarComposerBody(props: PromptBarComposerBodyProps) {
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
-  if (props.collapsed) return null;
   return (
     <>
       <textarea
-        className="mt-2 w-full resize-none rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm leading-relaxed shadow-inner max-h-[30vh] overflow-y-auto"
+        className="w-full resize-none border-0 bg-transparent px-1 py-2 text-sm leading-relaxed max-h-[30vh] overflow-y-auto"
         data-testid="prompt"
         aria-label="Message your agent"
-        rows={3}
+        rows={2}
         value={props.prompt}
         placeholder={props.promptPlaceholder}
         onChange={(event) => props.setPrompt(event.target.value)}
         onKeyDown={(event) => {
           if (props.runDisabled) return;
-          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+          if (!event.nativeEvent.isComposing && event.key === "Enter" && (event.ctrlKey || event.metaKey || (!event.shiftKey && window.matchMedia("(pointer: fine)").matches))) {
             event.preventDefault();
             props.onRun();
           }
         }}
       />
 
-      <div className="mt-2 flex flex-wrap items-center gap-2" data-testid="promptbar-composer-body">
+      {props.attachments.length ? <div className="chat-attachments" data-testid="promptbar-attachment-count">
+        {props.attachments.map((file) => <span key={file.path}>{file.name || file.path}<button type="button" onClick={() => props.onRemoveAttachment(file.path)} aria-label={`Remove ${file.name || file.path}`}>×</button></span>)}
+      </div> : null}
+      <div className="chat-composer-footer" data-testid="promptbar-composer-body">
         <input
           ref={fileInputRef}
           type="file"
           multiple
           className="sr-only"
+          tabIndex={-1}
           data-testid="promptbar-file-input"
           disabled={!props.uploadsEnabled || props.uploadBusy}
           onChange={async (event) => {
@@ -56,27 +61,22 @@ export default function PromptBarComposerBody(props: PromptBarComposerBodyProps)
         <button
           type="button"
           data-testid="promptbar-attach-button"
-          className={`inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 ${
+          className={`chat-attach inline-flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-xs text-white/70 hover:bg-white/5 ${
             props.uploadBusy || !props.uploadsEnabled ? "opacity-50 pointer-events-none" : ""
           }`}
           disabled={props.uploadBusy || !props.uploadsEnabled}
+          aria-label={props.uploadBusy ? "Uploading files" : "Attach files"}
+          title="Attach files"
           onClick={() => fileInputRef.current?.click()}
         >
-          {props.uploadBusy ? "Uploading…" : "Attach files"}
+          <WorkspaceIcon name="attach" />
+          <span>{props.uploadBusy ? "Uploading…" : "Attach"}</span>
         </button>
         {!props.uploadsEnabled ? (
           <div className="text-xs text-rose-200">{props.uploadsDisabledReason || "Uploads disabled by daemon caps."}</div>
         ) : null}
 
-        {props.attachmentsCount > 0 ? (
-          <div className="text-xs text-white/60" data-testid="promptbar-attachment-count">
-            Staged: <span className="text-white/80">{props.attachmentsCount}</span>
-          </div>
-        ) : (
-          <div className="text-xs text-white/50" data-testid="promptbar-attachment-count">
-            No staged attachments
-          </div>
-        )}
+        {props.controls}
       </div>
     </>
   );

@@ -168,7 +168,7 @@ test("conversation history replays entity_apply actions into the scene and posts
 
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Show technical" }).click();
+  await page.getByTestId("conversation-details").locator(":scope > summary").click();
   await page.getByRole("button", { name: "Show messages" }).click();
 
   await expect(page.getByTestId("conversation-view")).toContainText("Scene updated.");

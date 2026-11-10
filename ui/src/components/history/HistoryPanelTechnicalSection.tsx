@@ -1,6 +1,5 @@
 import React from "react";
 import type { AgentEvent, ApiAuth } from "../../api";
-import useLocalStorageState from "../../hooks/useLocalStorageState";
 import type { HistoryEntry } from "../../history/historyPanelData";
 import type { SceneEntity } from "../SceneView";
 import ConversationView from "../ConversationView";
@@ -35,13 +34,6 @@ type HistoryPanelTechnicalSectionProps = {
 const MAX_HISTORY_EXPANDED_KEYS = 200;
 
 export default function HistoryPanelTechnicalSection(props: HistoryPanelTechnicalSectionProps) {
-  const technicalHistoryKey = React.useMemo(() => {
-    const base = String(props.effectiveBase || "").trim() || "default";
-    const sid = String(props.sessionId || "").trim() || "default";
-    return `agentui.technicalHistory:${base}::${sid}`;
-  }, [props.effectiveBase, props.sessionId]);
-  const [showTechnicalHistory, setShowTechnicalHistory] = useLocalStorageState<boolean>(technicalHistoryKey, false);
-
   const entryKeyFor = React.useCallback((entry: HistoryEntry) => {
     const isLive = entry?.live === true;
     const jobId = typeof entry?.job_id === "string" ? entry.job_id : "";
@@ -89,14 +81,6 @@ export default function HistoryPanelTechnicalSection(props: HistoryPanelTechnica
           <button
             className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
             type="button"
-            onClick={() => setShowTechnicalHistory((value) => !value)}
-            title={showTechnicalHistory ? "Hide technical history" : "Show technical history"}
-          >
-            {showTechnicalHistory ? "Hide technical" : "Show technical"}
-          </button>
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-            type="button"
             onClick={() => props.setShowMessages((value) => !value)}
             title={props.showMessages ? "Hide per-run event transcript" : "Show per-run event transcript"}
           >
@@ -115,8 +99,7 @@ export default function HistoryPanelTechnicalSection(props: HistoryPanelTechnica
         </div>
       </div>
 
-      {showTechnicalHistory ? (
-        props.entries.length === 0 ? (
+      {props.entries.length === 0 ? (
           <div className="rounded-md border border-white/10 bg-black/20 px-3 py-3 text-xs text-white/60">
             No history yet. Run a prompt to populate the timeline.
           </div>
@@ -257,11 +240,6 @@ export default function HistoryPanelTechnicalSection(props: HistoryPanelTechnica
               );
             })}
           </div>
-        )
-      ) : (
-        <div className="rounded-md border border-white/10 bg-black/20 px-3 py-3 text-xs text-white/50">
-          Technical history is hidden by default.
-        </div>
       )}
     </>
   );

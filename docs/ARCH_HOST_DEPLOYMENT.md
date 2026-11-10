@@ -52,7 +52,9 @@ python3 tools/deploy/install_arch.py \
 
 The installer creates/reuses private random PostgreSQL, daemon and operator credentials; starts only the project-owned PostgreSQL Compose service; installs the two project user services; and publishes only Agent-C's Traefik file. It requires the parent infrastructure (Docker, systemd user session/lingering, the existing ZeroTier route, DNS and Traefik certificate resolver). It does not change another project's limits, routes or services.
 
-Artifacts install under `~/.local/share/agent-c/releases/<source>-<artifact-hash>/`, with a manifest of the source revision and every binary/UI SHA-256. `current` switches atomically. Persistent daemon state and its working directory are separate under `~/.local/share/agent-c/{state,workspace}`. Credentials remain under mode-0700 `~/.config/agent-c`, with mode-0600 files. The existing owner `~/.env` supplies provider keys through the daemon's normal server-side discovery. The selected DeepSeek model is `deepseek-v4-pro`; the authenticated provider model catalog returned this ID on 2026-11-10.
+Artifacts install under `~/.local/share/agent-c/releases/<source>-<artifact-hash>/`, with a manifest of the source revision and every binary/UI SHA-256. `current` switches atomically. UI-only updates restart the gateway and leave an
+unchanged daemon running; the installer compares its binary, environment and unit
+before requesting a daemon restart. Persistent daemon state and its working directory are separate under `~/.local/share/agent-c/{state,workspace}`. Credentials remain under mode-0700 `~/.config/agent-c`, with mode-0600 files. The existing owner `~/.env` supplies provider keys through the daemon's normal server-side discovery. The selected DeepSeek model is `deepseek-v4-pro`; the authenticated provider model catalog returned this ID on 2026-11-10.
 
 The gateway schema is fingerprinted separately from daemon SQLite. The older general Docker/Keycloak development stack is not the production deployment for this host. Broker integration is an optional gateway upstream; the initial administrator workspace uses the direct local daemon.
 

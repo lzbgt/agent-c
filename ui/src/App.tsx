@@ -40,7 +40,6 @@ export default function App() {
   const { connection, run: runSettings, client: clientSettings } = ui;
   const { brokerPanelOpen } = ui;
   const { effectiveBase, effectiveSseBase, daemonAuth, authKey } = connection;
-  const profileName = connection.profileName;
   const profileId = connection.activeProfileId;
   const workflowTargets = ui.defaults.workflowAgentTargets;
   const workflowBearerEnv = ui.defaults.workflowBearerEnv;
@@ -521,19 +520,13 @@ export default function App() {
   };
 
   return (
-    <div className="workspace-shell">
+    <div className="workspace-shell" style={appGridStyle}>
       <a className="workspace-skip" href="#workspace-main">Skip to workspace</a>
       <AppHeader
-        profiles={connection.profiles}
-        activeProfileId={connection.activeProfileId}
-        profileName={profileName}
-        onProfileChange={connection.setActiveProfileId}
-        runOverridesEnabled={runSettings.profileOverridesEnabled}
         effectiveBase={effectiveBase}
         healthState={health.isSuccess ? "ok" : health.isFetching ? "checking" : "offline"}
         healthService={health.data?.service}
         healthVersion={health.data?.version}
-        onRecheck={() => health.refetch()}
         onShowSettings={() => setShowSettings(true)}
       />
 
@@ -561,10 +554,9 @@ export default function App() {
         className="workspace-main"
       >
         <div className="mx-auto w-full max-w-none">
-            <WorkspaceHeading page={advancedPage} label={advancedPages.find((page) => page.id === advancedPage)?.label ?? "Workspace"} sessionId={sessionId} model={model} activeJobId={activeJobId ?? ""} />
+            <WorkspaceHeading page={advancedPage} label={advancedPages.find((page) => page.id === advancedPage)?.label ?? "Workspace"} activeJobId={activeJobId ?? ""} />
             <div
               className="workspace-grid"
-              style={appGridStyle}
             >
               <AppToolsSidebar
                 advancedPages={advancedPages}
@@ -653,6 +645,8 @@ export default function App() {
                 }}
                 historyPanelProps={{
                   entries: historyEntriesDesc,
+                  activeJobId: activeJobId || "",
+                  chatTarget: isTeamTarget ? "team" : "session",
                   showAllEntries: showAllHistoryEntries,
                   setShowAllEntries: setShowAllHistoryEntries,
                   showMessages: showHistoryMessages,
@@ -765,7 +759,7 @@ export default function App() {
                   : "Run team"
             : run.isPending || activeJobId
               ? "Queue"
-              : "Run"
+              : "Send"
         }
         queueCount={
           isTeamTarget ? (Array.isArray(teamQueue) ? teamQueue.length : 0) : Array.isArray(runQueue) ? runQueue.length : 0

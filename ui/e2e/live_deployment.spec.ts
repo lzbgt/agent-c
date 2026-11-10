@@ -35,6 +35,8 @@ for (const viewport of [
     const main = page.locator("#workspace-main");
     await expect(page.getByRole("button", { name: "Sign out of workspace" })).toBeInViewport({ ratio: 1 });
     expect(await main.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    const activity = page.getByTestId("conversation-details");
+    if (await activity.count()) await expect(activity).not.toHaveAttribute("open", "");
     await page.screenshot({ path: info.outputPath("workspace.png") });
 
     await nav.getByRole("button", { name: "Workflows", exact: true }).click();
@@ -54,6 +56,8 @@ for (const viewport of [
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
     await expect(dialog).toBeVisible();
+    await expect(dialog.getByLabel("Model", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("settings-advanced")).not.toHaveAttribute("open", "");
     expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);

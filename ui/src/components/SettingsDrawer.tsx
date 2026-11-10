@@ -1,5 +1,6 @@
 import React from "react";
 
+import SettingsBasics from "./settings/SettingsBasics";
 import SettingsConnectionSection from "./settings/SettingsConnectionSection";
 import SettingsDiagnosticsSection from "./settings/SettingsDiagnosticsSection";
 import SettingsExecutionSection from "./settings/SettingsExecutionSection";
@@ -12,7 +13,9 @@ export type { SettingsDrawerProps } from "./settings/settingsDrawerTypes";
 
 export default function SettingsDrawer(props: SettingsDrawerProps) {
   const { connection, run, client } = props;
-  const state = useSettingsDrawerState(props);
+  const [advancedOpen, setAdvancedOpen] = React.useState(false);
+  React.useEffect(() => { if (!props.open) setAdvancedOpen(false); }, [props.open]);
+  const state = useSettingsDrawerState({ ...props, open: props.open && advancedOpen });
   const dialogRef = React.useRef<HTMLDialogElement>(null);
   React.useEffect(() => {
     const dialog = dialogRef.current;
@@ -57,6 +60,20 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
           </button>
         </div>
 
+        <SettingsBasics connection={connection} run={run} session={props.session} />
+        <details className="settings-disclosure">
+          <summary>Manage conversations</summary>
+        <SettingsSessionsSection
+          session={props.session}
+          clearAllArmed={state.clearAllArmed}
+          setClearAllArmed={state.setClearAllArmed}
+          clearAllArmTimeoutRef={state.clearAllArmTimeoutRef}
+        />
+        </details>
+        <details className="settings-disclosure" data-testid="settings-advanced" open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
+          <summary>Advanced settings</summary>
+          {advancedOpen ? <>
+        <details className="settings-disclosure"><summary>Connections & access</summary>
         <SettingsConnectionSection
           connection={connection}
           run={run}
@@ -81,6 +98,8 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
           automationOverrideAllowed={state.automationOverrideAllowed}
         />
 
+        </details>
+        <details className="settings-disclosure"><summary>Team coordination</summary>
         <SettingsModeratorSection
           connection={connection}
           sessionId={props.session.id}
@@ -152,6 +171,8 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
           moderatorTasksEnabled={state.moderatorTasksEnabled}
         />
 
+        </details>
+        <details className="settings-disclosure"><summary>Execution & providers</summary>
         <SettingsExecutionSection
           connection={connection}
           run={run}
@@ -172,6 +193,8 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
           openrouterModels={state.openrouterModels}
         />
 
+        </details>
+        <details className="settings-disclosure"><summary>Diagnostics</summary>
         <SettingsDiagnosticsSection
           diagnostics={state.diag}
           diagnosticsProviders={state.diagnosticsProviders.data}
@@ -200,12 +223,10 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
           onRunProviderTest={(provider) => void state.runProviderTest(provider)}
         />
 
-        <SettingsSessionsSection
-          session={props.session}
-          clearAllArmed={state.clearAllArmed}
-          setClearAllArmed={state.setClearAllArmed}
-          clearAllArmTimeoutRef={state.clearAllArmTimeoutRef}
-        />
+
+        </details>
+          </> : null}
+        </details>
       </div>
     </dialog>
   );

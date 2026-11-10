@@ -1,133 +1,117 @@
-# agent
+# Agent-C
 
-This repo is a **production-oriented agentic platform**: a portable core plus a daemon, broker, CLI, and WebUI for durable, audited automation.
-The current source, capability boundaries, verification commands and follow-up priorities are recorded in [the current snapshot](docs/CURRENT_SNAPSHOT.md). The [architecture](docs/ARCHITECTURE_CURRENT.md) covers embedded execution, customizable SOP pipelines and autonomous work, with [primary-source research](docs/research/agent-systems-20261110.md).
+A portable agent core, durable process execution and a lean workspace for autonomous work.
 
-Authorized work runs autonomously by default. Human-action blockers affect only named requirements; unrelated runnable work continues. Explicit operator controls and SOP business decisions remain effective.
+Agent-C serves three connected uses:
 
-## Support
+| Use | Current foundation |
+| --- | --- |
+| **Embedded agent core** | Portable C sessions, bounded tool loops, streaming, compaction, completion/cancellation hooks and embedded wire/authentication helpers. Host services stay outside the core. |
+| **Customizable process pipelines** | Versioned SOP stages/actions compile into a durable workflow DAG. Retries, evidence, scheduling and guarded HTTP effects support office, industrial and other defined processes. |
+| **Autonomous agents** | Durable requirements, dependencies and scoped human-action blockers drive continued work. The CLI, daemon and optional broker share execution capabilities. |
 
-If Agent-C helps your work, you can make an optional PayPal contribution to support public project maintenance and experiments: https://x2.brucelu.top/products/support/checkout/?source=github-agent-c-readme
+Authorized work runs **autonomously by default**, without routine permission prompts. A genuine human dependency identifies the required action and affected requirements; unrelated work remains runnable. Explicit stops, resource limits, access controls and SOP business decisions remain effective.
 
-## Status
+This is a rolling project. We prefer coherent refactoring and fresh deployments over compatibility layers and migrations. [Current snapshot](docs/CURRENT_SNAPSHOT.md), [architecture](docs/ARCHITECTURE_CURRENT.md) and [primary-source research](docs/research/agent-systems-20261110.md) distinguish implemented behavior from the remaining work.
 
-- Rolling release: expect breaking changes until the first stability milestone.
-- Production-oriented verification and deployment tooling (see `docs/OPERATIONS.md` and `docs/DEPLOYMENT.md`).
-- Evidence bundles + repo guards for repeatable runs (`tools/capture_agent_evidence_bundle.sh`, `tools/verify_repo_guards.sh`).
+## A workspace built around the answer
 
-## Components
-- **agent_core** (portable C library): sessions, tool loop, compaction, completion/cancellation hooks, streaming and embedded wire/authentication helpers.
-- **agentd** (daemon): HTTP/SSE APIs, persistence, tool runtime, workflows, approvals, diagnostics.
-- **broker** (optional relay): auth + multi-deployment routing, audit/event replay, team runs, OTA fanout.
-- **WebUI** (advanced layout): Scene + Conversation, queued prompts, Memory/Trace/Workflows panels, broker console + teams.
-- **CLI** (`agent`): local sessions or remote daemon targeting.
+Chat shows your messages and the agent's replies naturally, once, in chronological order. Files, notes and interactive results remain useful outputs. System context, tool records, timestamps, traces and execution settings are grouped under closed **Activity & details**.
 
-Key capabilities:
-- **OpenAI-compatible providers** (OpenAI/OpenRouter/DeepSeek/Moonshot, etc.) with runtime diagnostics and smoke tests.
-- **Durable workflows** (DAGs + idempotency) with restart-safe requeueing and evidence tooling.
-- **Team orchestration** with role plans, approvals, runtime members, and replayable events.
-- **Memory tooling** (recaps, correlation index, trace linking) and operator-grade panels.
-- **Policy/limits hooks** for tool budgets, approvals, and automation profiles.
-- **OTA updates** (agentd + broker + WebUI) with drain + continuity checks.
+The composer focuses on **Attach** and **Send**. Settings leads with model, capabilities and conversation; technical controls and conversation management are collapsed by default. Desktop, phone and tablet layouts share these defaults. [UI design](docs/UI_DESIGN.md) records the attention hierarchy and verification contract.
 
-## Demo: ESP32 voice agentic
+Workflows has separate **Runs**, **Create workflow** and **Schedules** sections. Its SOP template defines ordered stages and sequential or parallel actions; JSON and graph authoring remain available. [SOP guide](docs/SOP_WORKFLOWS.md)
 
-https://github.com/user-attachments/assets/be605653-04cf-49f1-9696-4dff41796635
+## What is implemented
 
-## Build
+- **Portable core:** C tool execution with bounded budgets and cancellation; hosts can continue a premature final response within the original limits.
+- **Autonomous work state:** a SQLite requirement/blocker ledger shared by `work_state` and `agent work`, with dependency validation, revision checks and evidence-gated transitions.
+- **Durable workflows:** SOP compilation, definition hashes, task recovery, scheduling, dataflow and inspectable evidence.
+- **HTTP effects:** stable effect identity, intent/receipt journaling and reconciliation for guarded writes. Independent branches continue when another branch needs recovery. [Effect contract](docs/WORKFLOW_EFFECTS.md)
+- **CLI harness:** `exec`, stdin, `resume`, `sessions`, explicit work/session directories, versioned JSONL events and successful final-message files. Coalesced streams drain without transport-boundary truncation. [CLI](docs/CLI.md)
+- **Host platform:** native daemon APIs/SSE, memory, artifacts, policy/limits, diagnostic tools and optional broker routing, teams and event replay.
+- **Authenticated deployment:** an Arch-hosted gateway serves the UI and protects the private daemon using shared Hubstack OAuth, server-held credentials and verified administrator identities.
 
-```bash
-cmake -S . -B build
-cmake --build build -j
-ctest --test-dir build --output-on-failure
+These capabilities do not establish distributed exactly-once execution, arbitrary-tool effect safety, broker-authoritative requirements, complete SOP decisions/compensation or hardware qualification. Those boundaries and delivery priorities are explicit in the [snapshot](docs/CURRENT_SNAPSHOT.md) and [roadmap](TODOS.md).
+
+## Build and run
+
+Install the CMake/C/C++ and host dependencies listed in [Operations](docs/OPERATIONS.md), then build an assertion-enabled development snapshot:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug \
+  -DAGENT_BUILD_HOST=ON -DAGENTD_ENABLE_HTTP=ON
+cmake --build build --target agent agentd -j 4
 ```
 
-One-command verify (configure + build + tests; logs under `build/`):
+Configure provider credentials on the host using the [CLI guide](docs/CLI.md). Keep provider keys and service credentials out of browser configuration and committed files.
 
-```bash
-tools/verify.sh
+```sh
+./build/agent exec "Inspect this project and implement the requested change"
+printf '%s' 'Summarize this build result' | ./build/agent exec - --no-session
+./build/agent exec --json -o final.txt "Verify the completed work"
+./build/agent sessions
+./build/agent resume <session-id>
+./build/agent work
 ```
 
-Include repo hygiene guards:
+`--json` emits `agentd.cli.event.v1`; `-o` publishes the exact final text only after successful execution and session saving. [Machine-output protocol](docs/CLI_EVENT_PROTOCOL.md)
 
-```bash
-tools/verify.sh --repo-guards
+For WebUI development:
+
+```sh
+cd ui
+npm ci
+npm run dev
 ```
 
-For a CI-equivalent workspace-size check, run `tools/verify_repo_guards.sh --strict`.
+Connection and production build details are in [WebUI](docs/WEBUI.md). Tool extensions are documented in [Tools](docs/TOOLS.md).
 
-For the Docker broker lane, run `tools/verify_compose_broker_smokes.sh`.
+## Reproduce the checked snapshot
 
-Source `${HOME}/.env` before verification (provider keys for smokes):
+The full verifier uses Debug native builds, local model stubs and mocked browser APIs. It does not need production provider keys:
 
-```bash
-tools/verify_prod.sh
+```sh
+cd ui
+npm ci
+npx playwright install chromium
+cd ..
+tools/verify_current_snapshot.sh
 ```
 
-Platform dependencies, Windows helpers, core-only build, and smoke-test notes live in `docs/OPERATIONS.md`.
+The current lane covers **20 native/CLI/API checks**, Go broker/gateway tests, **31 browser checks**, generated OpenAPI types and the production UI build. Browser cases include greeting clarity, streaming handoff, repeated identical turns, IME-safe sends, hidden metadata, subject-oriented settings, authorized browser effects and responsive workflow tools.
 
-### Tool extensions
+For the embedded-safe build:
 
-Tool plugins and tool servers are documented in `docs/TOOLS.md`.
-
-## Current workflow and CLI entry points
-
-- [SOP stages/actions](docs/SOP_WORKFLOWS.md): submit a versioned SOP through the existing workflow API or WebUI composer.
-- [Autonomous requirements and blockers](docs/AUTONOMOUS_WORK.md): durable work state shared by CLI and daemon host tools.
-- CLI: `agent exec "goal"`, `agent exec -`, `agent resume <session-id>`, `agent sessions`, `agent work`.
-- Reproduce the verified snapshot with `tools/verify_current_snapshot.sh` (or `--core-only`).
-
-## Testing
-
-For network smokes, the real browser E2E harness, and verification workflows, see `docs/OPERATIONS.md`.
-Daemon runtime details (config snapshot, defaults update, state safety, and HTTP APIs) live in `docs/AGENTD.md`.
-
-## Run in production (agentd + WebUI)
-
-Production shape:
-- `agentd` runs as the backend daemon (tools + persistence + HTTP API).
-- The WebUI runs as a separate static site (Vite build) that talks to `agentd` or the broker.
-
-For a full production checklist (TLS, broker/connector, auth hardening, backups), see `docs/DEPLOYMENT.md`.
-For WebUI dev/build/runtime config, see `docs/WEBUI.md`.
-
-## Cleanup (disk usage)
-
-Cleanup commands, repo size reports, and guard scripts live in `docs/OPERATIONS.md`.
-
-## Docker Compose (prod-like local verification)
-
-For a prod-like local stack (Postgres + Keycloak + broker + connector + agentd + WebUI):
-
-```bash
-./tools/verify_compose_stack.sh
+```sh
+tools/verify_current_snapshot.sh --core-only
 ```
 
-Alternatives:
-- No Docker: `tools/verify_mac_local_stack.sh` (agentd + WebUI only).
-- Docker runs but builds blocked: `tools/verify_mac_full_stack_host.sh`.
-- No Docker/Keycloak, local Postgres: `tools/verify_mac_full_stack_local_postgres.sh`.
-- One-command devstack: `tools/devstack_agent.sh` (stop with `tools/devstack_agent_down.sh`, add `--wipe-volumes` to reset Keycloak).
+Set `AGENT_E2E_BROWSER_EXECUTABLE` for an existing supported Chromium and `AGENT_E2E_UI_PORT` for an unused test port. Physical MCU and phone keyboard qualification remain separate from host/browser checks. Broader verification and Docker development lanes are documented in [Operations](docs/OPERATIONS.md).
 
-Tip: local verify supports provider tests via `MAC_LOCAL_PROVIDER_TEST=1` (uses `AGENTD_TOOLS=basic` by default; override with `AGENTD_TOOLS=basic|host|none`).
+## Deployment
 
-Full details, env flags, port notes, and Keycloak guidance live in `docs/DEPLOYMENT.md`.
+The current reference deployment is [agent.hubstack.cn](https://agent.hubstack.cn), protected by shared Hubstack login. Execution, UI and the dedicated database run on Arch; the VPS supplies HTTPS reverse-proxy ingress and the existing identity service. UI-only releases preserve an unchanged running daemon.
 
-## Git remote (publishing)
+[Arch deployment](docs/ARCH_HOST_DEPLOYMENT.md) documents private configuration, owner authorization, reproducible installation, immutable artifact manifests and live qualification. [Deployment](docs/DEPLOYMENT.md) describes other supported development/operations paths. The general Docker/Keycloak stack is a verification option, not the current production topology.
 
-Development commits currently remain local while the owner upgrades the publishing helper. Future publication targets the private Git service only; see [publishing policy](docs/PUBLISHING.md). GitHub remains a fetch source.
+## Source map
 
-## CLI usage
+| Area | Source / documentation |
+| --- | --- |
+| Portable C library | `core/` · [Embedded API](docs/EMBEDDED_C_API.md) |
+| Native executor and CLI | `cli/` · [CLI](docs/CLI.md) · [Autonomous work](docs/AUTONOMOUS_WORK.md) |
+| Daemon and workflow engine | `daemon/` · [Daemon](docs/AGENTD.md) · [SOPs](docs/SOP_WORKFLOWS.md) |
+| Broker and authenticated gateway | `broker/` · [Arch deployment](docs/ARCH_HOST_DEPLOYMENT.md) |
+| Responsive workspace | `ui/` · [WebUI](docs/WEBUI.md) · [UI design](docs/UI_DESIGN.md) |
+| Reproducible checks and deployment | `tools/` · [Operations](docs/OPERATIONS.md) |
 
-CLI examples and tool-loop guidance live in `docs/CLI.md`.
+## Publishing
 
-## Core library
+The owner's latest direction is to publish this verified snapshot to **GitHub**. Panda publishing remains on hold while that service is being fixed. Existing remotes are preserved; excluded Panda repositories are never recreated automatically. [Publishing policy](docs/PUBLISHING.md)
 
-- Header: `core/include/agent/agent.h`
-- Scope: session and tool execution, char-budget compaction, continuation/cancellation ports, streaming and embedded interop.
-- No environment variable access in the core (host-only concern).
+## Embedded example and support
 
-## Daemon + Web UI (day-1)
+The existing [ESP32 voice-agent demonstration](https://github.com/user-attachments/assets/be605653-04cf-49f1-9696-4dff41796635) illustrates an integration; it is not board-level qualification evidence for every current feature.
 
-Local daemon usage and HTTP/SSE API notes live in `docs/AGENTD.md`.
-WebUI dev/build/runtime config lives in `docs/WEBUI.md`.
+Optional contributions support public maintenance and experiments: [Support Agent-C](https://x2.brucelu.top/products/support/checkout/?source=github-agent-c-readme).

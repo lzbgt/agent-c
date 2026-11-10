@@ -28,11 +28,14 @@ type AppMainColumnProps = {
 
 export default function AppMainColumn(props: AppMainColumnProps) {
   const history = props.historyPanelProps;
-  const hasHistory = [history.entries, history.dbMessages, history.dbRuns, history.sessionArtifacts, history.teamConversationItems]
-    .some((items) => items && items.length > 0);
+  const hasHistory = Boolean(history.activeJobId) || (history.dbMessages || []).some((message) => (message.role === "user" || message.role === "assistant") && (message.content || message.mm_json)) || [history.entries, history.dbRuns, history.sessionArtifacts, history.teamConversationItems].some((items) => items && items.length > 0);
   const hasScene = props.sceneEntities.length > 0;
+  const hasDiagnostics = history.artifactCatalogMode === "unsupported";
   return (
     <section className="min-w-0" aria-label="Conversation workspace">
+      {hasHistory ? <div className="mb-4">
+        <HistoryPanel {...props.historyPanelProps} />
+      </div> : null}
       {hasScene || !hasHistory ? (
       <div
         className={`workspace-surface workspace-scene p-4 ${
@@ -41,18 +44,18 @@ export default function AppMainColumn(props: AppMainColumnProps) {
       >
         {hasScene ? (
         <div className="flex items-center justify-between gap-2">
-          <div className="text-sm font-semibold text-white/80">Scene</div>
+          <div className="text-sm font-semibold text-white/80">Results</div>
           <button
             className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
             type="button"
             onClick={() => props.setSceneCollapsed((prev) => !prev)}
           >
-            {props.sceneCollapsed ? "Show scene" : "Collapse"}
+            {props.sceneCollapsed ? "Show results" : "Collapse"}
           </button>
         </div>
         ) : null}
         {hasScene && props.sceneCollapsed ? (
-          <div className="mt-2 text-xs text-white/50">Scene is hidden to save space.</div>
+          <div className="mt-2 text-xs text-white/50">Results are collapsed.</div>
         ) : (
           <div className="min-h-0 flex-1">
             <SceneView
@@ -70,7 +73,9 @@ export default function AppMainColumn(props: AppMainColumnProps) {
       </div>
       ) : null}
 
-      {props.brokerChatAvailable ? <TeamHubCard {...props.teamHubProps} /> : null}
+      {!hasHistory && (hasScene || hasDiagnostics) ? <HistoryPanel {...props.historyPanelProps} /> : null}
+
+      {props.brokerChatAvailable ? <details className="conversation-details"><summary>Team setup</summary><TeamHubCard {...props.teamHubProps} /></details> : null}
 
       {props.brokerChatAvailable && props.inlineTeamSetupOpen && props.advancedPage !== "broker" ? (
         <details
@@ -90,9 +95,7 @@ export default function AppMainColumn(props: AppMainColumnProps) {
         </details>
       ) : null}
 
-      {hasHistory || hasScene ? <div className="mt-4">
-        <HistoryPanel {...props.historyPanelProps} />
-      </div> : null}
+
     </section>
   );
 }

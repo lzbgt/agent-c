@@ -111,8 +111,9 @@ export default function SettingsModelProviderSection(props: SettingsModelProvide
           <input
             className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
             value={run.apiKey}
+            type="password"
             onChange={(e) => run.setApiKey(e.target.value)}
-            placeholder="Stored in browser storage"
+            placeholder="Held for this browser session"
           />
         </div>
         <div>

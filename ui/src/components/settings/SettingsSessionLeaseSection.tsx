@@ -30,13 +30,7 @@ export default function SettingsSessionLeaseSection(props: SettingsSessionLeaseS
 
   return (
     <div className="col-span-2" data-testid="settings-session-lease-section">
-      <FieldLabel>Session</FieldLabel>
-      <input
-        className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-        data-testid="session-id-input"
-        value={session.id}
-        onChange={(e) => session.setId(e.target.value)}
-      />
+      <FieldLabel>Connection lease</FieldLabel>
       <div className="mt-2 grid grid-cols-2 gap-3">
         <div>
           <FieldLabel>Lease seconds</FieldLabel>

@@ -9,8 +9,11 @@ The workspace uses a graphite/mint design with a bounded desktop content width,
 grouped navigation and a single primary task area. Selecting Workflows, Memory,
 Trace or another tool opens that tool directly. The conversation composer remains
 mounted but hidden on tool pages, preserving its draft and staged attachments;
-ongoing execution/streaming continues. Overview restores the conversation. Empty
-conversation/artifact sections appear once they have content.
+ongoing execution/streaming continues. Chat restores the conversation. Messages
+and real outputs lead the page; system context, tools, timestamps and run settings
+are grouped under a closed **Activity & details** section. The composer presents
+Attach and Send, without empty counters or routine execution knobs. See
+[UI_DESIGN.md](UI_DESIGN.md) for the attention hierarchy and transcript contracts.
 
 Workflows separates **Runs**, **Create workflow** and **Schedules**. Switching
 between these sections preserves the authoring draft. Submission opens Runs with
@@ -18,8 +21,10 @@ the submitted workflow selected; opening a scheduled run does the same. Create
 workflow includes the provider-free SOP template alongside JSON/graph authoring.
 
 On phones and tablets, navigation becomes a horizontally scrollable touch strip
-and keeps the selected item in view. The compact header retains environment,
-connection status, settings and authenticated sign-out. The composer participates
+and keeps the selected item in view. The compact header retains connection status, settings and authenticated sign-out.
+Settings leads with model, agent capabilities and conversation. Environments, when
+there is a choice, appear there. Technical configuration and conversation
+management are closed by default. The composer participates
 in the viewport layout so it cannot cover the scrollable task area. Dynamic
 viewport sizing, safe-area padding and 16px mobile text inputs support smaller
 screens. Settings uses a full-width mobile modal with contained keyboard focus,

@@ -1,32 +1,36 @@
 # Publishing Agent-C snapshots
 
-Current owner direction: **commit locally and do not push** while the Panda worker upgrades the publishing helper. Keep developing and verifying source/docs. The private-destination instructions below are retained for future authorized publication; do not run their push command during this hold.
+The owner's latest direction is **publish this verified snapshot to GitHub**. This supersedes the earlier GitHub exclusion and local-only hold for this publication. **Panda publishing remains on hold** while its service is being fixed. Do not publish to Panda, recreate a missing/excluded destination or change its server policy during this hold.
 
-Owner direction, 2026-11-10: publish committed achievements to the private [bruce/agent-c repository](https://git.hubstack.cn/bruce/agent-c), **not GitHub**. The owner explicitly authorized this project destination after its historical removal. That authorization applies to Agent-C only; other excluded Panda repositories remain excluded.
+## Current GitHub publication
 
-The local `panda` remote is `https://git.hubstack.cn/bruce/agent-c.git`. The repository is private, with default branch `master`. GitHub `origin` remains a fetch source for existing upstream history. `remote.pushDefault=panda` and `branch.master.pushRemote=panda` select the private destination for ordinary pushes, but do not prohibit an explicit command targeting another remote. Publishing automation must use the policy helper below and must not push `origin`.
+The existing `origin` is `https://github.com/lzbgt/agent-c.git`, with branch `master`. Publish reviewed committed changes through the existing authenticated Git transport, verify that the update is a fast-forward, and compare the remote branch to the committed local HEAD afterward. Never include private configuration, credentials, generated artifacts or unrelated files. Do not force-push or rewrite existing remote history.
 
-On an enrolled host, read its `PANDA_PUSH.md` and use the existing private automation credential through the host helper. Do not commit credentials or embed them in URLs, command arguments or logs.
+```sh
+git push origin HEAD:refs/heads/master
+git ls-remote origin refs/heads/master
+```
+
+Repository-local push preferences can select `origin` for this active direction. Preserve both remote definitions so a later explicit owner instruction can resume Panda publication without rebuilding source history.
+
+Use the owner's existing GitHub credential helper. On this Arch host an existing
+private `~/.git-credentials` store can be selected for the command with
+`-c 'credential.helper=store --file /home/bruce/.git-credentials'`. Credentials stay
+in that private store; do not copy them into the repository or log HTTP headers.
+
+## Panda when publication is authorized again
+
+The configured Panda remote is `https://git.hubstack.cn/bruce/agent-c.git`. Its presence is not proof that the destination currently exists. Read the enrolled host's `PANDA_PUSH.md`; Agent-C appears in its exclusion history, and a missing remote must never be recreated automatically.
+
+Use the documented helper and its existing private automation credential. The helper does not create repositories. Never print credentials, commit them, embed them in URLs or pass them in command arguments.
 
 ```sh
 python3 ~/.local/share/panda/push-project.py .
 python3 ~/.local/share/panda/push-project.py . --push
 ```
 
-The first command verifies access and current server policy without publishing. The second exports committed state with the owner's history/size policy, then verifies remote refs. It preserves uncommitted work and source history. The helper does not create a destination; an absent repository is not permission to recreate it.
+These commands are retained for a future authorized Panda publication; do not run them during the present service hold.
 
-Current server defaults are a 20-commit threshold and 20,000,000-byte stored repository limit. At or below the threshold, the helper exports committed branches/tags. Above it, the helper exports a depth-one shadow snapshot using isolated storage; source history is retained locally. Read live settings before publishing rather than assuming these defaults are permanent. Do not force push, raise limits or switch to a full-history push to bypass policy.
+The current host guide describes a 20-commit initialization threshold. Larger repositories start from a depth-one shadow of the committed HEAD, then retain subsequent history from that boundary. Existing shadows are not automatically deepened; refs outside the retained boundary remain omitted. Source history and working files stay intact. The documented 20,000,000-byte threshold is an administrator **warning**, not a stored-size prohibition. Separate upload, cache, memory and free-disk controls still apply. Read current settings before publication, and never force-update refs or bypass policy.
 
-A fresh clone does not reproduce local remote preferences automatically. Set `panda` and the push preferences explicitly for the authorized existing destination, then verify them:
-
-```sh
-git remote add panda https://git.hubstack.cn/bruce/agent-c.git
-git config remote.pushDefault panda
-git config branch.master.pushRemote panda
-git remote -v
-python3 ~/.local/share/panda/push-project.py .
-```
-
-If the clone already names the private destination `origin`, retain that name and configure the push default accordingly; the helper discovers the existing HTTPS Panda remote. Check the current remote list before adding anything. Older GitHub publishing examples in historical operational notes do not supersede this owner direction.
-
-The owner also authorized revising the 20-commit threshold when needed. This is permission to adjust the history policy, not an instruction to increase unrelated service limits. Current committed history is below the live threshold and has been exported in full, so no server-wide change was needed. The stored-size limit remains effective.
+The owner authorized revising the history threshold when necessary; this does not require a server-wide change for ordinary local commits or the current GitHub publication.

@@ -9,7 +9,7 @@ Date: 2026-11-10. This document records implemented behavior and reproducible ch
 - **SOPs:** `agentd.sop.v1` compiles ordered stages and sequential/parallel actions through the existing workflow submit API. A canonical definition hash and stage mapping are stored with the redacted spec. Strict compiler validation precedes ordinary task/policy/admission validation. Oversized persisted specs are rejected instead of truncated.
 - **CLI:** command dispatch and output policy are separated from provider execution. `exec`, bounded stdin, `resume`, `sessions`, explicit working/session directories and model-free `work` commands reuse existing execution/persistence. `--json` emits versioned lifecycle/progress events; `-o` publishes final text after successful execution/session saving. Existing JSONL transcript export stays available. Resumed host prompts refresh when the built-in contract changes. See [CLI_EVENT_PROTOCOL.md](CLI_EVENT_PROTOCOL.md).
 - **Streaming:** coalesced SSE packets drain through bounded parser batches; transport packet boundaries no longer truncate the checked streams. The host event log enforces its 4,000-event/2-MiB capture bounds while live callbacks continue after capture fills.
-- **WebUI:** responsive graphite/mint workspace with a single primary tool page, grouped icon navigation and a preserved conversation draft. Workflows separates runs, authoring and schedules; JSON/graph/SOP authoring stays available. The viewport composer cannot cover the task area. Phone/tablet controls, safe-area padding, selected-navigation scrolling, modal keyboard access and reduced-motion support are included. Advanced panels are lazy-loaded.
+- **WebUI:** a lean responsive chat presents user messages and assistant outputs once, with a compact Attach/Send composer. System context, tools, traces and other metadata are grouped under closed Activity & details. Settings leads with model, capabilities and conversation; technical controls and management are closed by default. Real files, notes and visual results stay visible. Tool pages remain primary, workflow runs/creation/schedules are separate, and authorized browser effects run independently of collapsed presentation. See [UI_DESIGN.md](UI_DESIGN.md).
 - **External HTTP effects:** guarded POST actions persist intent and response identity; uncertain writes reconcile through a same-origin receipt adapter or emit a scoped blocker. An explicit destination-idempotency contract permits safe retries. Recovery is inspectable and resumable through the API/WebUI, and independent workflow branches continue after a failure even with one worker. See [WORKFLOW_EFFECTS.md](WORKFLOW_EFFECTS.md).
 - **Authenticated deployment:** an Arch gateway serves the modern UI and proxies private daemon execution with server-held credentials. It uses Panda's shared Hubstack OAuth with a separate application, immutable verified provider-proof pins and optional Agent-C product account pins, browser-bound one-use attempts, central revision checks and explicit member access state. A canonical schema fingerprint requires fresh deployment on incompatible change. See [ARCH_HOST_DEPLOYMENT.md](ARCH_HOST_DEPLOYMENT.md) for installation and rollout qualification.
 - **Reproducibility:** npm lockfile tarballs use the canonical registry with existing integrity hashes and versions preserved. OpenAPI client types are regenerated. Local deterministic tests cover the new behavior without provider credentials.
@@ -22,7 +22,7 @@ The verified snapshot is deployed at **https://agent.hubstack.cn**. Execution, U
 
 ## Publishing destination
 
-New achievements are committed locally while the Panda worker upgrades the publishing helper. No pushes are performed during this owner-directed hold. The future authorized destination is private [git.hubstack.cn/bruce/agent-c](https://git.hubstack.cn/bruce/agent-c); GitHub publishing remains excluded. See [PUBLISHING.md](PUBLISHING.md) for the host helper, credential handling, history/size policy and local push preferences.
+The owner's latest instruction authorizes publishing this verified snapshot to **GitHub** at [lzbgt/agent-c](https://github.com/lzbgt/agent-c). Panda publishing remains on hold while that service is being fixed. Existing remotes and the host's exclusion/history policies are preserved; no Panda destination is recreated. See [PUBLISHING.md](PUBLISHING.md).
 
 ## Reproduce
 
@@ -48,7 +48,7 @@ The verifier configures **Debug** builds so assertion-based existing C tests exe
 
 ## Verification evidence
 
-The snapshot verification script passed 20 targeted native/CLI/API checks, Go broker/gateway tests and 16 browser checks on Linux. The separate core-only Debug build/test passed. Gateway race tests and actual dedicated PostgreSQL persistence/schema checks also passed. Coverage includes:
+The snapshot verification script passed 20 targeted native/CLI/API checks, Go broker/gateway tests and 31 browser checks on Linux. The separate core-only Debug build/test passed. Gateway race tests and actual dedicated PostgreSQL persistence/schema checks also passed. Coverage includes:
 
 - C tool loop, continuation and unchanged step caps; host tool and pinned-prompt regressions.
 - Requirement DAG validation, scoped blockers, evidence gates, rollback, stale revision rejection and concurrent independent CLI writers.
@@ -57,11 +57,12 @@ The snapshot verification script passed 20 targeted native/CLI/API checks, Go br
 - Real local daemon SOP submit, persisted definition/mapping, stage barriers, idempotency and invalid-input rejection.
 - HTTP effect crash boundaries, receipt reuse, destination deduplication, terminal reconciliation proofs, stale finalizers and preservation of owner stops; API/WebUI recovery of one affected branch.
 - Existing local streaming, workflow idempotency and replay-spec regression paths.
+- Greeting messages without metadata clutter; repeated identical turns, streaming handoff, accepted draft clearing, IME input, collapsed settings, authorized hidden browser effects and advanced broker controls.
 - Desktop and 320/390/768px navigation, populated workflow layout, primary tool visibility, draft preservation, modal focus/Escape, reduced-height composer access, SOP submission, workflow details, graph editing, schedules, prompt uploads and scene history.
 - Shared identity browser binding/replay refusal, central revocation/outage/instance checks, administrator/member separation, proxy secret isolation and desktop/mobile sign-in.
 - TypeScript/Vite production build, generated OpenAPI drift check, repository guards and whitespace checks.
 
-Local logs: `build/responsive_snapshot_verification.log`, `build/cli_snapshot_core_only.log`, `build/arch_broker_all_tests.log`, `build/arch_gateway_postgres_tests.log` and `build/arch_repo_guards.log`. Browser tests regenerate workspace and deployment sign-in screenshots under `ui/test-results/`; generated artifacts are ignored, while their source fixtures and commands are tracked. On the checked host, advanced-panel splitting reduced the main application chunk from approximately 1,087 kB to 798 kB before gzip; this is a build observation, not a latency benchmark.
+Local logs: `build/lean_snapshot_verification.log`, `build/cli_snapshot_core_only.log`, `build/arch_broker_all_tests.log`, `build/arch_gateway_postgres_tests.log` and `build/arch_repo_guards.log`. Browser tests regenerate workspace and deployment sign-in screenshots under `ui/test-results/`; generated artifacts are ignored, while their source fixtures and commands are tracked. On the checked host, advanced-panel splitting reduced the main application chunk from approximately 1,087 kB to 798 kB before gzip; this is a build observation, not a latency benchmark.
 
 ## Boundaries and next work
 

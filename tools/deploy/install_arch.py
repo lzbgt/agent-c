@@ -57,6 +57,17 @@ def main():
     if not (ROOT / "ui/dist/index.html").exists() or not all(file.is_file() for file in artifacts.values()):
         raise SystemExit("Build agentd, agentd-gateway and the WebUI before installation")
     hashes = {name: hashlib.sha256(file.read_bytes()).hexdigest() for name, file in artifacts.items()}
+    previous_manifest = data / "current/manifest.json"
+    previous = json.loads(previous_manifest.read_text()) if previous_manifest.is_file() else {}
+    daemon_env = "AGENTD_AUTH_TOKEN=" + cfg["daemon_token"] + "\nAGENTD_DOTENV_PATH=" + str(Path.home() / ".env") + "\nOPENAI_API_BASE=https://api.deepseek.com\nAGENT_MODEL=" + args.model + "\n"
+    daemon_unit = Path.home() / ".config/systemd/user/agent-c-daemon.service"
+    restart_daemon = (
+        previous.get("artifacts", {}).get("bin/agentd") != hashes["bin/agentd"]
+        or not (private / "daemon.env").is_file()
+        or (private / "daemon.env").read_text() != daemon_env
+        or not daemon_unit.is_file()
+        or daemon_unit.read_bytes() != (ROOT / "deploy/arch/agent-c-daemon.service").read_bytes()
+    )
     build_id = hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()[:12]
     release = data / "releases" / (revision[:12] + "-" + build_id)
     if not release.exists():
@@ -69,7 +80,7 @@ def main():
     cfg["source_revision"] = revision
     cfg["web_dir"] = str(data / "current/web")
     private_write(gateway, json.dumps(cfg, indent=2) + "\n")
-    private_write(private / "daemon.env", "AGENTD_AUTH_TOKEN=" + cfg["daemon_token"] + "\nAGENTD_DOTENV_PATH=" + str(Path.home() / ".env") + "\nOPENAI_API_BASE=https://api.deepseek.com\nAGENT_MODEL=" + args.model + "\n")
+    private_write(private / "daemon.env", daemon_env)
     for name in ("state", "workspace"):
         (data / name).mkdir(mode=0o700, parents=True, exist_ok=True)
     candidate = data / "current.next"
@@ -84,11 +95,12 @@ def main():
     subprocess.run(["docker", "compose", "-p", "agent-c", "-f", str(ROOT / "deploy/arch/compose.yml"), "up", "-d", "--wait"], env=env, check=True)
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
     subprocess.run(["systemctl", "--user", "enable", "agent-c-daemon.service", "agent-c-gateway.service"], check=True)
-    subprocess.run(["systemctl", "--user", "restart", "agent-c-daemon.service", "agent-c-gateway.service"], check=True)
+    subprocess.run(["systemctl", "--user", "restart" if restart_daemon else "start", "agent-c-daemon.service"], check=True)
+    subprocess.run(["systemctl", "--user", "restart", "agent-c-gateway.service"], check=True)
     if args.publish_ingress:
         subprocess.run(["scp", "-q", str(ROOT / "deploy/arch/traefik-agent-c.yml"), "root@hubstack.cn:/tmp/agent-c-traefik.yml"], check=True)
         subprocess.run(["ssh", "-o", "BatchMode=yes", "root@hubstack.cn", "install -m 0644 /tmp/agent-c-traefik.yml /etc/traefik/agent-c.yml && rm /tmp/agent-c-traefik.yml"], check=True)
-    print(json.dumps({"source_revision": revision, "release": str(release), "url": cfg["public_url"], "data_host": "Arch", "cloud_runtime_installed": False}))
+    print(json.dumps({"source_revision": revision, "release": str(release), "url": cfg["public_url"], "data_host": "Arch", "daemon_restarted": restart_daemon, "cloud_runtime_installed": False}))
 
 
 if __name__ == "__main__":

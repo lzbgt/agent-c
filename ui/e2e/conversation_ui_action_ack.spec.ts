@@ -138,7 +138,7 @@ test("conversation ui actions send client-state snapshots and notification ackno
 
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Show technical" }).click();
+  await page.getByTestId("conversation-details").locator(":scope > summary").click();
   await page.getByRole("button", { name: "Show messages" }).click();
 
   await expect(page.getByTestId("conversation-view")).toContainText("Snapshot requested.");

@@ -11,9 +11,9 @@ const descriptions: Record<string, string> = {
   broker: "Coordinate deployments, teams, and autonomous runs.",
 };
 
-export default function WorkspaceHeading(props: { page: string; label: string; sessionId: string; model: string; activeJobId: string }) {
-  return <div className="workspace-heading" data-testid="workspace-heading">
-    <div><div className="workspace-eyebrow">AGENT WORKSPACE <span>/</span> {props.page ? "CONTROL CENTER" : "OVERVIEW"}</div><h1>{props.label}</h1><p>{descriptions[props.page]}</p></div>
-    <div className="workspace-context"><span className="workspace-context-label">CURRENT SESSION</span><span className="workspace-session" title={props.sessionId}>{props.sessionId}</span><span className="workspace-context-detail">{props.activeJobId ? "Run in progress" : "Ready for work"}{props.model ? ` · ${props.model}` : ""}</span></div>
+export default function WorkspaceHeading(props: { page: string; label: string; activeJobId: string }) {
+  return <div className={`workspace-heading ${props.page ? "" : "conversation-heading"}`} data-testid="workspace-heading">
+    <div><h1>{props.page ? props.label : "Conversation"}</h1>{props.page ? <p>{descriptions[props.page]}</p> : null}</div>
+    {props.page && props.activeJobId ? <span className="text-xs text-white/50" role="status">Agent working…</span> : null}
   </div>;
 }

@@ -23,6 +23,7 @@ test("broker session events replay with Last-Event-ID and dedupe on reload", asy
   await seedSessionScope(page);
 
   let streamRequestCount = 0;
+  let replayEnabled = false;
   const replayHeaders: string[] = [];
 
   await page.route("**/v1/**", async (route, request) => {
@@ -75,7 +76,7 @@ test("broker session events replay with Last-Event-ID and dedupe on reload", asy
       streamRequestCount += 1;
       const replayHeader = request.headers()["last-event-id"] || "";
       replayHeaders.push(replayHeader);
-      if (streamRequestCount === 1) {
+      if (!replayEnabled) {
         await route.fulfill({
           status: 200,
           contentType: "text/event-stream",
@@ -212,6 +213,8 @@ test("broker session events replay with Last-Event-ID and dedupe on reload", asy
 
   await page.goto("/");
   await expect(page.getByTestId("settings-drawer")).toBeVisible();
+  await page.getByTestId("settings-advanced").locator(":scope > summary").click();
+  await page.getByText("Connections & access", { exact: true }).click();
   await page.getByTestId("session-id-input").fill(sessionId);
   await expect.poll(async () => {
     const persisted = await page.evaluate(({ key }) => {
@@ -226,7 +229,10 @@ test("broker session events replay with Last-Event-ID and dedupe on reload", asy
   await expect(page.getByTestId("session-stream-status")).toContainText("last_event_id: 41");
   await expect(page.getByTestId("session-stream-status")).toContainText("buffered_events: 1");
 
+  replayEnabled = true;
   await page.reload();
+  await page.getByTestId("settings-advanced").locator(":scope > summary").click();
+  await page.getByText("Connections & access", { exact: true }).click();
 
   await expect.poll(async () => {
     const persisted = await page.evaluate(({ key }) => {
