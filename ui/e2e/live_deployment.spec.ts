@@ -17,6 +17,8 @@ for (const viewport of [
     const cfg = JSON.parse(fs.readFileSync(configPath!, "utf8"));
     const origin = new URL(cfg.public_url).origin;
     const executionWrites: string[] = [];
+    const voiceConnections: string[] = [];
+    await page.routeWebSocket(`${origin.replace(/^http/, "ws")}/voice/v1/realtime`, (socket) => { voiceConnections.push("unexpected_call"); socket.close(); });
     await page.setViewportSize(viewport);
     await page.route(`${origin}/**`, async (route) => {
       const { pathname } = new URL(route.request().url());
@@ -24,7 +26,7 @@ for (const viewport of [
         executionWrites.push(pathname);
         return route.fulfill({ status: 403, json: { error: "layout_probe_refuses_execution" } });
       }
-      if (pathname.startsWith("/api/") || pathname === "/auth/session") {
+      if (pathname.startsWith("/api/") || pathname === "/auth/session" || pathname === "/voice/v1/config") {
         return route.continue({ headers: { ...route.request().headers(), Authorization: `Bearer ${cfg.operator_token}` } });
       }
       return route.continue();
@@ -69,6 +71,14 @@ for (const viewport of [
     await expect(page.getByTestId("workflow-composer-json")).toHaveValue(/agentd\.sop\.v1/);
     expect(await main.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath("workflow-create.png") });
+
+    await nav.getByRole("button", { name: "Voice", exact: true }).click();
+    await expect(page.getByTestId("voice-call-start")).toBeEnabled();
+    await expect(page.getByTestId("voice-panel").getByRole("status")).toHaveText("Ready");
+    await expect(page.getByTestId("voice-call-end")).toHaveCount(0);
+    expect(await main.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await page.screenshot({ path: info.outputPath("voice-ready.png") });
+    expect(voiceConnections).toEqual([]);
 
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Settings", exact: true });

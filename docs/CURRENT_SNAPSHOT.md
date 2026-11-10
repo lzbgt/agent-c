@@ -19,7 +19,7 @@ Usage and exact contracts: [CLI](CLI.md), [work state](AUTONOMOUS_WORK.md), [SOP
 
 ## Live deployment
 
-The verified snapshot is deployed at **https://agent.hubstack.cn**. Execution, UI and its dedicated PostgreSQL run on Arch; the existing VPS provides only Agent-C ingress and the shared identity service. The verified owner completed Apple SSO and reached the connected workspace. Public authenticated qualification ran a four-action SOP and a bounded `deepseek-v4-pro` request. No existing Agent-C VPS runtime was found to remove; other deployments were preserved. See [deployment operations and qualification](ARCH_HOST_DEPLOYMENT.md).
+The verified snapshot is deployed at **https://agent.hubstack.cn**. Execution, UI and its dedicated PostgreSQL run on Arch; the existing VPS provides only Agent-C ingress and the shared identity service. The verified owner completed Apple SSO and reached the connected workspace. Public authenticated qualification ran a four-action SOP and a bounded `deepseek-v4-pro` request. The public authenticated voice WebSocket also passed a synthetic ASR/image/PCM round trip with the expected image word. No existing Agent-C VPS runtime was found to remove; other deployments were preserved. See [deployment operations and qualification](ARCH_HOST_DEPLOYMENT.md).
 
 ## Publishing destination
 
@@ -65,7 +65,7 @@ The snapshot verification script passed 20 targeted native/CLI/API checks, Go br
 - Voice microphone/camera lifecycle, late device permissions, image conversion/refresh, one-caption replies and provider failure; gateway input bounds, pinned credentials, capacity, revocation and shutdown.
 - TypeScript/Vite production build, generated OpenAPI drift check, repository guards and whitespace checks.
 
-Local logs: `build/omni_voice_snapshot_verification.log`, `build/cli_snapshot_core_only.log`, `build/arch_broker_all_tests.log`, `build/arch_gateway_postgres_tests.log` and `build/arch_repo_guards.log`. Browser tests regenerate workspace and deployment sign-in screenshots under `ui/test-results/`; generated artifacts are ignored, while their source fixtures and commands are tracked. On the checked host, the combined UI refactor reduced the main application chunk from approximately 1,087 kB to 752 kB before gzip; this is a build observation, not a latency benchmark.
+Local logs: `build/omni_voice_snapshot_verification.log`, `build/cli_snapshot_core_only.log`, `build/arch_broker_all_tests.log`, `build/arch_gateway_postgres_tests.log` and `build/arch_repo_guards.log`. Browser tests regenerate workspace and deployment sign-in screenshots under `ui/test-results/`; generated artifacts are ignored, while their source fixtures and commands are tracked. Live voice evidence is in `build/aliyun_voice_roundtrip_public.log`; `build/omni_voice_live_ui_checks.log` covers four public viewport checks without starting device capture. On the checked host, the combined UI refactor reduced the main application chunk from approximately 1,087 kB to 752 kB before gzip; this is a build observation, not a latency benchmark.
 
 ## Boundaries and next work
 
