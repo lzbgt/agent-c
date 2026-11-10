@@ -173,7 +173,7 @@ func (s *Server) authenticate(r *http.Request) (string, bool, int) {
 	if state.ApplicationID != s.cfg.ApplicationID || state.InstanceID != s.cfg.InstanceID || state.AccountID != v.AccountID || !state.Active || state.Revision != v.Revision {
 		return "", false, 401
 	}
-	return v.AccountID, s.cfg.isAdmin(v.AccountID), 200
+	return v.AccountID, s.cfg.isAdmin(v.AccountID, v.Proof), 200
 }
 func (s *Server) originOK(r *http.Request, operator bool) bool {
 	origin := r.Header.Get("Origin")

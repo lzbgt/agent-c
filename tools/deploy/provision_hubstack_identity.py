@@ -13,9 +13,10 @@ def main():
     parser.add_argument("--service-config", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--public-url", default="https://agent.hubstack.cn")
-    parser.add_argument("--admin-account", required=True)
+    parser.add_argument("--admin-proof-file", type=Path, required=True)
     args = parser.parse_args()
-    if args.public_url != "https://agent.hubstack.cn" or not args.admin_account.startswith("usr_"):
+    trusted = json.loads(args.admin_proof_file.read_text())
+    if args.public_url != "https://agent.hubstack.cn" or trusted.get("admin_email") != "lzbgt@icloud.com" or not trusted.get("admin_identities"):
         raise SystemExit("This provisioner is scoped to the Agent-C installation")
     output = Path(args.output)
     service = json.loads(Path(args.service_config).read_text())
@@ -45,17 +46,21 @@ def main():
             raise RuntimeError("Agent-C application already exists; recover its private credential before proceeding")
         else:
             created = call("POST", "/admin/api/apps", {"id": "agent-c", "name": "Agent-C"})
-            private = {"application_id": "agent-c", "credential": created["token"], "admin_email": "lzbgt@icloud.com", "admin_account_ids": [args.admin_account]}
+            private = {"application_id": "agent-c", "credential": created["token"]}
             output.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             fd = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             with os.fdopen(fd, "w") as file:
                 json.dump(private, file)
+        # Product account IDs are intentionally different across applications.
+        # Bootstrap from verified provider proofs, never Panda's product ID.
+        private.update({"admin_email": trusted["admin_email"], "admin_identities": trusted["admin_identities"], "admin_account_ids": trusted.get("admin_account_ids", [])})
         settings = call("GET", "/admin/api/apps/agent-c/identity")["client"]
         callbacks = [args.public_url + "/auth/" + provider + "/callback" for provider in ("google", "github", "apple")]
         desired = {"enabled": True, "providers": ["google", "github", "apple"], "redirect_uris": callbacks, "deletion_enabled": False, "revision": settings["revision"]}
         if not settings["enabled"] or settings["redirect_uris"] != callbacks or settings["providers"] != desired["providers"]:
             call("PUT", "/admin/api/apps/agent-c/identity", desired)
-        state = call("POST", "/v1/identity/account-state", {"account_id": args.admin_account}, private["credential"])
+        probe = next(iter(private["admin_account_ids"]), "usr_" + "0" * 32)
+        state = call("POST", "/v1/identity/account-state", {"account_id": probe}, private["credential"])
         if state["application_id"] != "agent-c":
             raise RuntimeError("Registered credential has the wrong application scope")
         private["instance_id"] = state["instance_id"]

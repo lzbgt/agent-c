@@ -6,5 +6,5 @@ CREATE TABLE agentc_gateway.login_attempts(
 CREATE INDEX login_attempt_expiry ON agentc_gateway.login_attempts(expires_at);
 CREATE TABLE agentc_gateway.sessions(
  token_hash text PRIMARY KEY, account_id text NOT NULL, revision bigint NOT NULL,
- expires_at timestamptz NOT NULL);
+ expires_at timestamptz NOT NULL, proof jsonb NOT NULL DEFAULT '{}');
 CREATE INDEX session_expiry ON agentc_gateway.sessions(expires_at);

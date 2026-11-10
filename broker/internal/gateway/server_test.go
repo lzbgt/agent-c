@@ -84,7 +84,7 @@ func (f *identityFixture) Exchange(_ context.Context, code, verifier, provider, 
 	if state != f.state || verifier != f.verifier {
 		return shared.Result{}, errors.New("binding mismatch")
 	}
-	return shared.Result{Account: shared.Account{ID: f.account.AccountID, Revision: f.account.Revision}, SessionToken: strings.Repeat("a", 64)}, nil
+	return shared.Result{Account: shared.Account{ID: f.account.AccountID, Revision: f.account.Revision}, Identity: shared.Proof{Provider: provider, Namespace: namespace, Subject: "verified-owner"}, SessionToken: strings.Repeat("a", 64)}, nil
 }
 func (f *identityFixture) AccountState(context.Context, string) (shared.AccountState, error) {
 	if f.unavailable {
@@ -230,7 +230,7 @@ func TestPrivateConfigAndAdministratorPins(t *testing.T) {
 		t.Fatal("public-readable configuration accepted")
 	}
 	s, _, _ := fixture(t)
-	if s.cfg.isAdmin("owner@example.com") {
+	if s.cfg.isAdmin("owner@example.com", shared.Proof{}) {
 		t.Fatal("email became administrator proof")
 	}
 }
@@ -264,7 +264,7 @@ func TestPostgresFreshSnapshotPersistence(t *testing.T) {
 	if _, err = db.TakeAttempt(ctx, a.StateHash, a.BrowserHash, a.Provider); err == nil {
 		t.Fatal("stored attempt replayed")
 	}
-	v := session{"token", ownerAccount, 1, time.Now().Add(time.Hour)}
+	v := session{"token", ownerAccount, 1, time.Now().Add(time.Hour), shared.Proof{Provider: "apple", Namespace: "cn.hubstack.accounts", Subject: "verified-owner"}}
 	if db.PutSession(ctx, v) != nil {
 		t.Fatal("session not stored")
 	}
@@ -273,7 +273,7 @@ func TestPostgresFreshSnapshotPersistence(t *testing.T) {
 		t.Fatal("snapshot restart failed", err)
 	}
 	defer other.pool.Close()
-	if got, err := other.Session(ctx, v.TokenHash); err != nil || got.AccountID != ownerAccount {
+	if got, err := other.Session(ctx, v.TokenHash); err != nil || got.AccountID != ownerAccount || got.Proof != v.Proof {
 		t.Fatal("session did not survive another process connection")
 	}
 	if _, err = db.pool.Exec(ctx, "UPDATE agentc_gateway.schema_snapshot SET fingerprint='obsolete'"); err != nil {
@@ -281,5 +281,21 @@ func TestPostgresFreshSnapshotPersistence(t *testing.T) {
 	}
 	if _, err = openStore(ctx, dsn); err == nil {
 		t.Fatal("superseded schema silently migrated")
+	}
+}
+
+func TestAdministratorProofSurvivesProductScopedAccountIDs(t *testing.T) {
+	s, f, _ := fixture(t)
+	// The same verified owner receives different IDs in different products.
+	s.cfg.AdminAccountIDs = nil
+	s.cfg.AdminIdentities = []shared.Proof{{Provider: "apple", Namespace: "cn.hubstack.accounts", Subject: "verified-owner"}}
+	f.account.AccountID = "usr_33333333333333333333333333333333"
+	cookie := login(t, s, f)
+	if request(s, "GET", "/api/v1/config", cookie, "").Code != 204 {
+		t.Fatal("verified owner was stranded on the member page by a product-specific account ID")
+	}
+	s.cfg.AdminIdentities[0].Subject = "another-subject"
+	if request(s, "GET", "/api/v1/config", cookie, "").Code != 403 {
+		t.Fatal("removed administrator proof retained authorization")
 	}
 }

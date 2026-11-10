@@ -33,7 +33,7 @@ def main():
     private.mkdir(mode=0o700, parents=True, exist_ok=True)
     private.chmod(0o700)
     identity = json.loads(args.identity_file.read_text())
-    if identity["application_id"] != "agent-c" or identity["admin_email"] != "lzbgt@icloud.com" or not identity["admin_account_ids"]:
+    if identity["application_id"] != "agent-c" or identity["admin_email"] != "lzbgt@icloud.com" or not (identity.get("admin_account_ids") or identity.get("admin_identities")):
         raise SystemExit("A registered Agent-C credential and verified system administrator are required")
     postgres = private / "postgres.env"
     if not postgres.exists():
@@ -46,6 +46,7 @@ def main():
         "application_id": identity["application_id"], "instance_id": identity["instance_id"],
         "identity_credential": identity["credential"], "admin_email": identity["admin_email"],
         "admin_account_ids": identity["admin_account_ids"],
+        "admin_identities": identity.get("admin_identities", []),
         "database_url": "postgres://agentc:" + pg["POSTGRES_PASSWORD"] + "@127.0.0.1:15439/agentc?sslmode=disable",
         "daemon_url": "http://127.0.0.1:18123", "daemon_token": cfg.get("daemon_token") or secrets.token_hex(32),
         "operator_token": cfg.get("operator_token") or secrets.token_hex(32),

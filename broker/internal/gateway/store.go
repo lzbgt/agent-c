@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	_ "embed"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"github.com/jackc/pgx/v5/pgxpool"
+	shared "github.com/lzbgt/hubstack-payments/sdk/identity"
 	"time"
 )
 
@@ -21,6 +23,7 @@ type session struct {
 	TokenHash, AccountID string
 	Revision             int64
 	Expires              time.Time
+	Proof                shared.Proof
 }
 type store interface {
 	AddAttempt(context.Context, attempt) error
@@ -118,14 +121,22 @@ func (s *postgresStore) PutSession(ctx context.Context, v session) error {
 	if _, err = tx.Exec(ctx, "DELETE FROM agentc_gateway.sessions WHERE expires_at<=now()"); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, "INSERT INTO agentc_gateway.sessions VALUES($1,$2,$3,$4)", v.TokenHash, v.AccountID, v.Revision, v.Expires); err != nil {
+	proof, err := json.Marshal(v.Proof)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, "INSERT INTO agentc_gateway.sessions(token_hash,account_id,revision,expires_at,proof) VALUES($1,$2,$3,$4,$5::jsonb)", v.TokenHash, v.AccountID, v.Revision, v.Expires, string(proof)); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
 }
 func (s *postgresStore) Session(ctx context.Context, hash string) (session, error) {
 	var v session
-	err := s.pool.QueryRow(ctx, "SELECT token_hash,account_id,revision,expires_at FROM agentc_gateway.sessions WHERE token_hash=$1 AND expires_at>now()", hash).Scan(&v.TokenHash, &v.AccountID, &v.Revision, &v.Expires)
+	var proof []byte
+	err := s.pool.QueryRow(ctx, "SELECT token_hash,account_id,revision,expires_at,proof FROM agentc_gateway.sessions WHERE token_hash=$1 AND expires_at>now()", hash).Scan(&v.TokenHash, &v.AccountID, &v.Revision, &v.Expires, &proof)
+	if err == nil {
+		err = json.Unmarshal(proof, &v.Proof)
+	}
 	return v, err
 }
 func (s *postgresStore) DeleteSession(ctx context.Context, hash string) error {

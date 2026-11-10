@@ -116,7 +116,7 @@ func (s *Server) finishLogin(w http.ResponseWriter, r *http.Request, provider st
 		fail(w, 503, "Cannot open session")
 		return
 	}
-	if s.db.PutSession(r.Context(), session{digest(token), result.Account.ID, result.Account.Revision, time.Now().Add(12 * time.Hour)}) != nil {
+	if s.db.PutSession(r.Context(), session{digest(token), result.Account.ID, result.Account.Revision, time.Now().Add(12 * time.Hour), result.Identity}) != nil {
 		fail(w, 503, "Cannot save session")
 		return
 	}
