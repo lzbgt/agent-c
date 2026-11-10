@@ -38,6 +38,23 @@ for (const viewport of [
     const activity = page.getByTestId("conversation-details");
     if (await activity.count()) await expect(activity).not.toHaveAttribute("open", "");
     await page.screenshot({ path: info.outputPath("workspace.png") });
+    const presentation = page.locator('iframe[data-testid="scene-script-frame"]').first();
+    if (await presentation.count()) {
+      const canvas = presentation.contentFrame().locator("canvas");
+      if (await canvas.count()) {
+        await expect(canvas).toBeVisible();
+        const runtime = await presentation.evaluate((frame: HTMLIFrameElement) => frame.contentDocument?.body.dataset.sceneRuntime);
+        const hash = () => canvas.evaluate(async (element: HTMLCanvasElement) => {
+          const bytes = await (await fetch(element.toDataURL())).arrayBuffer();
+          return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))).map((n) => n.toString(16).padStart(2, "0")).join("");
+        });
+        const first = await hash();
+        await page.getByTestId("prompt").pressSequentially("local draft probe");
+        if (process.env.AGENTC_LIVE_EXPECT_ANIMATION === "1") await expect.poll(() => hash()).not.toBe(first);
+        expect(await presentation.evaluate((frame: HTMLIFrameElement) => frame.contentDocument?.body.dataset.sceneRuntime)).toBe(runtime);
+        await page.getByTestId("prompt").fill("");
+      }
+    }
 
     await nav.getByRole("button", { name: "Workflows", exact: true }).click();
     await expect(page.getByRole("group", { name: "Workflow sections" })).toBeInViewport({ ratio: 1 });

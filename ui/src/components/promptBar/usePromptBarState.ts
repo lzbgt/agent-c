@@ -13,7 +13,6 @@ function errorMessage(error: unknown, fallback: string): string {
 
 export default function usePromptBarState(props: PromptBarProps) {
   const [attachments, setAttachments] = React.useState<Attachment[]>([]);
-  const [drawerOpen, setDrawerOpen] = React.useState<boolean>(false);
   const [uploadBusy, setUploadBusy] = React.useState<boolean>(false);
   const uploadsEnabled = props.uploadsEnabled !== false;
   const uploadsDisabledReason = String(props.uploadsDisabledReason || "").trim();
@@ -30,26 +29,16 @@ export default function usePromptBarState(props: PromptBarProps) {
 
   React.useEffect(() => {
     setAttachments([]);
-    setDrawerOpen(false);
     setUploadBusy(false);
   }, [props.clearAttachmentsNonce]);
 
   React.useEffect(() => {
     setAttachments([]);
-    setDrawerOpen(false);
   }, [props.effectiveBase, String(props.sessionId || "").trim()]);
 
   React.useEffect(() => {
     setAttachments([]);
   }, [chatTarget, teamAction]);
-
-  React.useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setDrawerOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   const removeAttachment = React.useCallback((path: string) => {
     const trimmed = String(path || "").trim();
@@ -179,12 +168,10 @@ export default function usePromptBarState(props: PromptBarProps) {
   return {
     attachments,
     chatTarget,
-    drawerOpen,
     onRun,
     promptPlaceholder,
     removeAttachment,
     setAttachments,
-    setDrawerOpen,
     teamAction,
     teamAvailable,
     teamId,

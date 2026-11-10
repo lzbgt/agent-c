@@ -15,6 +15,7 @@ The authoritative capability/verification snapshot is [docs/CURRENT_SNAPSHOT.md]
 - [x] Make each workspace tool the primary page, split workflow runs/authoring/schedules, preserve composer drafts and verify phone/tablet layout and modal keyboard access.
 - [x] Put messages and results first, group metadata behind closed details, simplify the composer, and lead settings with subject options while preserving authorized browser actions.
 - [x] Remove duplicate conversation renderers and developer setup notes; simplify Memory, playback, traces, comparisons, decisions and workflow lists around content/actions.
+- [x] Give canvas/DOM presentations their own event and clock lifecycle; preserve animation while typing/polling, dispose detached clocks and remove the composer overlay.
 - [ ] P0: Aliyun Omni realtime audio/image voice, defaulting to the verified Model Studio setup from ~/.env and the Mac ~/work/lang_learn reference; credentials stay server-side.
 - [ ] P0: extend the effect boundary to arbitrary tools/device adapters and add atomic budget reservations.
 - [ ] P0: connect goal/requirement/blocker authority to the broker and event-driven wakeup; preserve explicit stops.

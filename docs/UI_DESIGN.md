@@ -22,8 +22,8 @@ a greeting, with one user message and one reply.
    by opening basic settings.
 3. **Execution evidence:** Activity & details groups system context, tool
    records, timestamps, run settings and technical history. It is closed on
-   entry. Message details is an optional composer utility, also closed by
-   default. Details remain inspectable without competing with the answer.
+   entry. The composer has no duplicate attachment/metadata drawer or page-wide
+   overlay; attachments appear once as removable chips. Details remain inspectable without competing with the answer.
 
 Errors remain visible in plain language. Execution and authorized browser actions
 continue independently of whether their detail sections are open. Collapsing
@@ -94,3 +94,21 @@ implementation roadmaps. Architecture guidance belongs in repository docs.
 `approval_queue_panel.spec.ts` exercise default visibility, real content,
 requested advanced actions and mobile overflow. The chat checks also expand
 activity and team setup to verify that messages still occur once.
+
+## Presentation ownership
+
+Scripted canvas and DOM results share a per-entity browsing context. Their
+`window`, `document`, keyboard listeners, CSS, animation frames and timers belong
+to that presentation. Canvas focus is visible and follows pointer/keyboard
+navigation. Composer keyboard events remain within the composer. Unrelated
+React updates and snapshots with equal execution inputs preserve the document;
+changed execution inputs create a new document, and unmounting disposes it.
+
+The shared runtime retains the existing trusted script and authenticated
+artifact API. Its same-origin frame scopes events and lifecycle; it is not a
+security boundary against hostile code. DOM query/evaluation for presentation
+content must target the frame's document rather than the workspace document.
+
+`scene_scope.spec.ts` checks continuous animation during typing, sibling canvas
+focus, composer submission, equal-value polling, explicit source updates, draft
+restoration, detached animation/timer cleanup and DOM style/input separation.

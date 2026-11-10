@@ -18,6 +18,8 @@ This is a rolling project. We prefer coherent refactoring and fresh deployments 
 
 Chat shows your messages and the agent's replies naturally, once, in chronological order. Files, notes and interactive results remain useful outputs. System context, tool records, timestamps, traces and execution settings are grouped under closed **Activity & details**.
 
+Presentations keep their keyboard events and animation clocks local; typing in the composer leaves them running.
+
 Messages have one renderer: expanding Activity & details never repeats the chat. Tool pages lead with saved knowledge, summaries, playback controls and run outputs; technical evidence stays closed.
 
 The composer focuses on **Attach** and **Send**. Settings leads with model, capabilities and conversation; technical controls and conversation management are collapsed by default. Desktop, phone and tablet layouts share these defaults. [UI design](docs/UI_DESIGN.md) records the attention hierarchy and verification contract.
@@ -81,7 +83,7 @@ cd ..
 tools/verify_current_snapshot.sh
 ```
 
-The current lane covers **20 native/CLI/API checks**, Go broker/gateway tests, **47 browser checks**, generated OpenAPI types and the production UI build. Browser cases include greeting clarity, streaming handoff, repeated identical turns, IME-safe sends, hidden metadata, subject-oriented settings, authorized browser effects and responsive workflow tools.
+The current lane covers **20 native/CLI/API checks**, Go broker/gateway tests, **50 browser checks**, generated OpenAPI types and the production UI build. Browser cases include greeting clarity, streaming handoff, repeated identical turns, IME-safe sends, hidden metadata, subject-oriented settings, authorized browser effects and responsive workflow tools.
 
 For the embedded-safe build:
 

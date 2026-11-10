@@ -1,193 +1,19 @@
 import React from "react";
-
-import { type ApiAuth } from "../../api";
+import type { ApiAuth } from "../../api";
 import type { SceneEntity, SceneScriptErrorArgs } from "./sceneViewTypes";
-import {
-  clampInt,
-  createSceneArtifactUrlResolver,
-  getSceneCleanup,
-  getSceneDaemonContext,
-  makeSceneConsole,
-  safeNumber,
-  safeObject,
-  safeString,
-  safeToString,
-  type SceneDaemonContext,
-  type UnknownRecord,
-} from "./sceneViewUtils";
+import SceneScriptFrame from "./SceneScriptFrame";
+import { clampInt, safeObject, safeString, safeNumber } from "./sceneViewUtils";
 
-type SceneCanvasScriptApi = {
-  root: HTMLCanvasElement;
-  ctx: CanvasRenderingContext2D;
-  width: number;
-  height: number;
-  props: UnknownRecord;
-  daemon: SceneDaemonContext;
-  artifact: {
-    url: (path: unknown) => Promise<string>;
-  };
-};
+type Props = { entity: SceneEntity; baseUrl?: string; yolo?: boolean; sessionId?: string; daemonAuth?: ApiAuth; onScriptError?: (args: SceneScriptErrorArgs) => void };
 
-export default function Canvas2DEntityView({
-  entity,
-  baseUrl,
-  yolo,
-  sessionId,
-  daemonAuth,
-  onScriptError,
-}: {
-  entity: SceneEntity;
-  baseUrl?: string;
-  yolo?: boolean;
-  sessionId?: string;
-  daemonAuth?: ApiAuth;
-  onScriptError?: (args: SceneScriptErrorArgs) => void;
-}) {
-  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
-  const blobUrlsRef = React.useRef<string[]>([]);
-  const cleanupRef = React.useRef<null | (() => void)>(null);
-  const props = safeObject(entity.props);
-  const width = clampInt(props.width, 64, 4096, 640);
-  const height = clampInt(props.height, 64, 4096, 240);
-  const draw = Array.isArray(props.draw) ? props.draw : [];
-  const scriptRaw = safeString(props.script || props.js || props.code);
-  const script = scriptRaw.length > 100_000 ? scriptRaw.slice(0, 100_000) : scriptRaw;
-  const scriptArgs = safeObject(props.script_args ?? props.args);
-  const scriptArgsJson = React.useMemo(() => {
-    try {
-      const s = JSON.stringify(scriptArgs);
-      return s.length > 32_000 ? s.slice(0, 32_000) : s;
-    } catch {
-      return "{}";
-    }
-  }, [scriptArgs]);
-
+function StaticCanvas({ width, height, draw }: { width: number; height: number; draw: unknown[] }) {
+  const canvasRef = React.useRef<HTMLCanvasElement>(null);
   React.useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    canvas.width = width;
-    canvas.height = height;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    canvas.width = width; canvas.height = height;
     ctx.clearRect(0, 0, width, height);
-
-    if (script && script.trim().length > 0) {
-      try {
-        cleanupRef.current?.();
-      } catch {
-        // ignore
-      }
-      cleanupRef.current = null;
-      blobUrlsRef.current.forEach((u) => {
-        try {
-          URL.revokeObjectURL(u);
-        } catch {
-          // ignore
-        }
-      });
-      blobUrlsRef.current = [];
-
-      const reportError = (error: unknown) => {
-        const errorRecord = safeObject(error);
-        const msg = safeToString(error) || "unknown error";
-        const stack = safeString(errorRecord.stack);
-        try {
-          ctx.save();
-          ctx.fillStyle = "#fca5a5";
-          ctx.font = "12px ui-sans-serif";
-          ctx.fillText(`canvas script error: ${msg.slice(0, 200)}`, 8, 16);
-          ctx.restore();
-        } catch {
-          // ignore
-        }
-        try {
-          onScriptError?.({
-            entity_id: entity.id,
-            entity_kind: entity.kind,
-            error: msg,
-            stack_preview: typeof stack === "string" ? stack.slice(0, 1200) : "",
-            script_preview: script.slice(0, 800),
-          });
-        } catch {
-          // ignore
-        }
-      };
-
-      try {
-        const api: SceneCanvasScriptApi = {
-          root: canvas,
-          ctx,
-          width,
-          height,
-          props,
-          daemon: getSceneDaemonContext({ baseUrl: baseUrl || "", yolo: !!yolo, sessionId, daemonAuth }),
-          artifact: {
-            url: createSceneArtifactUrlResolver({ baseUrl: baseUrl || "", yolo: !!yolo, sessionId, daemonAuth, blobUrlsRef }),
-          },
-        };
-
-        const trimmed = script.trim();
-        const looksLikeFnExpr =
-          trimmed.startsWith("function") ||
-          trimmed.startsWith("async function") ||
-          trimmed.startsWith("(") ||
-          trimmed.startsWith("async (") ||
-          trimmed.startsWith("async(") ||
-          /^[a-zA-Z_$][\\w$]*\\s*=>/.test(trimmed);
-
-        const body = looksLikeFnExpr
-          ? `
-const __fn = (${script});
-if (typeof __fn === "function") return await __fn(api, args);
-return __fn;
-`
-          : `
-with ({ api, args, ctx: api.ctx, canvas: api.root, width: api.width, height: api.height, props: api.props, artifact: api.artifact, daemon: api.daemon }) {
-  ${script}
-}
-`;
-
-        const fn = new Function(
-          "api",
-          "args",
-          "__console",
-          `const console = __console; return (async function() {\n${body}\n})();`,
-        ) as (api: SceneCanvasScriptApi, args: UnknownRecord, __console: Console) => Promise<unknown>;
-
-        let cancelled = false;
-        void (async () => {
-          try {
-            const res = await fn(api, scriptArgs, makeSceneConsole());
-            if (cancelled) return;
-            cleanupRef.current = getSceneCleanup(res);
-          } catch (e) {
-            if (!cancelled) reportError(e);
-          }
-        })();
-
-        return () => {
-          cancelled = true;
-          try {
-            cleanupRef.current?.();
-          } catch {
-            // ignore
-          }
-          cleanupRef.current = null;
-          blobUrlsRef.current.forEach((u) => {
-            try {
-              URL.revokeObjectURL(u);
-            } catch {
-              // ignore
-            }
-          });
-          blobUrlsRef.current = [];
-        };
-      } catch (e) {
-        reportError(e);
-      }
-      return;
-    }
-
     for (const drawValue of draw.slice(0, 2000)) {
       const op = safeObject(drawValue);
       const kind = safeString(op.op);
@@ -245,27 +71,15 @@ with ({ api, args, ctx: api.ctx, canvas: api.root, width: api.width, height: api
       }
     }
 
-    return () => {
-      try {
-        cleanupRef.current?.();
-      } catch {
-        // ignore
-      }
-      cleanupRef.current = null;
-      blobUrlsRef.current.forEach((u) => {
-        try {
-          URL.revokeObjectURL(u);
-        } catch {
-          // ignore
-        }
-      });
-      blobUrlsRef.current = [];
-    };
-  }, [baseUrl, daemonAuth, draw, entity.id, entity.kind, height, onScriptError, props, script, scriptArgs, scriptArgsJson, sessionId, width, yolo]);
+  }, [draw, width, height]);
+  return <canvas ref={canvasRef} className="mt-2 max-w-full rounded-md border border-white/10" />;
+}
 
-  return (
-    <div className="mt-2 overflow-auto rounded-md border border-white/10 bg-black/20 p-2">
-      <canvas ref={canvasRef} className="max-w-full" />
-    </div>
-  );
+export default function Canvas2DEntityView(props: Props) {
+  const values = safeObject(props.entity.props);
+  const width = clampInt(values.width, 64, 4096, 640);
+  const height = clampInt(values.height, 64, 4096, 240);
+  const script = safeString(values.script || values.js || values.code).slice(0, 100_000);
+  const draw = React.useMemo(() => Array.isArray(values.draw) ? values.draw : [], [values.draw]);
+  return script.trim() ? <SceneScriptFrame {...props} kind="canvas" script={script} width={width} height={height} /> : <StaticCanvas width={width} height={height} draw={draw} />;
 }

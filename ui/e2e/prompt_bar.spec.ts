@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("composer stages attachments and keeps optional details closed", async ({ page }) => {
+test("composer stages and removes attachments without a duplicate detail layer", async ({ page }) => {
   let uploadBody: any = null;
   const corsHeaders = {
     "access-control-allow-origin": "*",
@@ -73,10 +73,9 @@ test("composer stages attachments and keeps optional details closed", async ({ p
   });
 
   await expect(page.getByTestId("promptbar-attachment-count")).toContainText("note.md");
-  await page.getByTestId("promptbar-toggle-details").click();
-  await expect(page.getByTestId("promptbar-attachments-section")).toContainText("note.md");
-  await expect(page.getByTestId("promptbar-details")).toContainText("uploaded 1 file(s)");
-
-  await page.getByRole("button", { name: /Clear \(1\)/ }).click();
-  await expect(page.getByTestId("promptbar-attachments-section")).toContainText("No attachments staged for the next run.");
+  await expect(page.getByRole("button", { name: "Remove note.md", exact: true })).toHaveCount(1);
+  expect((await page.getByTestId("promptbar-root").innerText()).match(/note\.md/g)).toHaveLength(1);
+  await page.getByRole("button", { name: "Remove note.md", exact: true }).click();
+  await expect(page.getByTestId("promptbar-attachment-count")).toHaveCount(0);
+  await expect(page.getByTestId("promptbar-details")).toHaveCount(0);
 });

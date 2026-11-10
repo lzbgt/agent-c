@@ -48,7 +48,7 @@ The verifier configures **Debug** builds so assertion-based existing C tests exe
 
 ## Verification evidence
 
-The snapshot verification script passed 20 targeted native/CLI/API checks, Go broker/gateway tests and 47 browser checks on Linux. The separate core-only Debug build/test passed. Gateway race tests and actual dedicated PostgreSQL persistence/schema checks also passed. Coverage includes:
+The snapshot verification script passed 20 targeted native/CLI/API checks, Go broker/gateway tests and 50 browser checks on Linux. The separate core-only Debug build/test passed. Gateway race tests and actual dedicated PostgreSQL persistence/schema checks also passed. Coverage includes:
 
 - C tool loop, continuation and unchanged step caps; host tool and pinned-prompt regressions.
 - Requirement DAG validation, scoped blockers, evidence gates, rollback, stale revision rejection and concurrent independent CLI writers.
@@ -58,11 +58,12 @@ The snapshot verification script passed 20 targeted native/CLI/API checks, Go br
 - HTTP effect crash boundaries, receipt reuse, destination deduplication, terminal reconciliation proofs, stale finalizers and preservation of owner stops; API/WebUI recovery of one affected branch.
 - Existing local streaming, workflow idempotency and replay-spec regression paths.
 - Greeting messages without metadata clutter; repeated identical turns, streaming handoff, accepted draft clearing, IME input, collapsed settings, authorized hidden browser effects and advanced broker controls.
+- Presentation clocks and input stay in their own browsing context; typing, unrelated renders and equal-value polling preserve the current animation. Keyboard focus remains local to each presentation/composer, meaningful input changes replace the runtime, and detaching a presentation stops its clocks even without returned cleanup.
 - Desktop and 320/390/768px navigation, populated workflow layout, primary tool visibility, draft preservation, modal focus/Escape, reduced-height composer access, SOP submission, workflow details, graph editing, schedules, prompt uploads and scene history.
 - Shared identity browser binding/replay refusal, central revocation/outage/instance checks, administrator/member separation, proxy secret isolation and desktop/mobile sign-in.
 - TypeScript/Vite production build, generated OpenAPI drift check, repository guards and whitespace checks.
 
-Local logs: `build/concise_snapshot_verification.log`, `build/cli_snapshot_core_only.log`, `build/arch_broker_all_tests.log`, `build/arch_gateway_postgres_tests.log` and `build/arch_repo_guards.log`. Browser tests regenerate workspace and deployment sign-in screenshots under `ui/test-results/`; generated artifacts are ignored, while their source fixtures and commands are tracked. On the checked host, the combined UI refactor reduced the main application chunk from approximately 1,087 kB to 763 kB before gzip; this is a build observation, not a latency benchmark.
+Local logs: `build/presentation_snapshot_verification.log`, `build/cli_snapshot_core_only.log`, `build/arch_broker_all_tests.log`, `build/arch_gateway_postgres_tests.log` and `build/arch_repo_guards.log`. Browser tests regenerate workspace and deployment sign-in screenshots under `ui/test-results/`; generated artifacts are ignored, while their source fixtures and commands are tracked. On the checked host, the combined UI refactor reduced the main application chunk from approximately 1,087 kB to 758 kB before gzip; this is a build observation, not a latency benchmark.
 
 ## Boundaries and next work
 
