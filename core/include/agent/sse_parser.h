@@ -30,7 +30,9 @@ void agent_sse_event_free(agent_sse_event_t* ev);
 // Feed raw bytes from a text/event-stream and emit complete events.
 // - out_events is filled with up to events_cap events.
 // - out_events_count returns how many events were written.
-// Returns AGENT_ERR_LIMIT if more events were parsed than events_cap.
+// Returns AGENT_ERR_LIMIT when the output batch is full and another complete
+// event is pending. Consume/free the emitted events, then feed NULL,0 repeatedly
+// until AGENT_OK to drain retained input. No new bytes are needed to drain.
 agent_status_t agent_sse_parser_feed(
   agent_sse_parser_t* parser,
   const char* bytes,

@@ -8,11 +8,14 @@ printf '%s' 'inspect the project' | ./build/agent exec - --no-session
 ./build/agent sessions
 ./build/agent resume myproj "continue remaining work"
 ./build/agent work
+./build/agent exec "implement and verify" --json -o ./verified-result.txt
 ```
 
 `exec` shares the existing one-shot executor with `run`. `-` reads at most 1 MiB from stdin; empty prompts and unknown options are rejected. `resume` requires an existing nonempty session and opens chat if no prompt is supplied. `--session-root <path>` isolates file-backed session storage. `-C` / `--cd` selects the working directory before project instructions and relative paths are resolved. These options follow the command; this is not a claim of Codex command-line compatibility.
 
 The host defaults to autonomous execution without permission prompts. Durable requirements, scoped human-action blockers and completion continuation are documented in [AUTONOMOUS_WORK.md](AUTONOMOUS_WORK.md). Configured policies and explicit stops remain effective. Local commands (`sessions`, `work`, `--help`) do not need a provider credential. New command dispatch is isolated in `cli/src/cli_commands.cpp`; the existing provider/run implementation remains shared.
+
+For production pipelines, `--json` emits a versioned JSONL stream and `-o` / `--output-last-message` publishes the exact final text after successful execution/session saving. See [CLI_EVENT_PROTOCOL.md](CLI_EVENT_PROTOCOL.md) for lifecycle, failure, streaming and artifact guarantees. Output policy is isolated in `cli/src/cli_run_output.cpp`.
 
 Historical guide baseline: 2026-02-19
 

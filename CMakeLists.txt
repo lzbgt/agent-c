@@ -232,6 +232,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
   add_executable(agent
     cli/src/main.cpp
     cli/src/cli_commands.cpp
+    cli/src/cli_run_output.cpp
   )
 
   target_compile_options(agent PRIVATE
@@ -1893,6 +1894,7 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
     target_link_libraries(work_ledger_tests PRIVATE agent_host)
     add_test(NAME work_ledger_tests COMMAND work_ledger_tests)
     add_test(NAME cli_harness_smoke COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_harness_smoke.py $<TARGET_FILE:agent>)
+  add_test(NAME cli_machine_output_smoke COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_machine_output_smoke.py $<TARGET_FILE:agent>)
   endif()
 
   add_executable(host_session_prompts_tests

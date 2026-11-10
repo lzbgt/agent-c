@@ -425,125 +425,129 @@ agent_status_t agent_stream_decoder_feed(
   if (!dec->decode_fn) return AGENT_ERR_INVALID_ARGUMENT;
 
   const size_t cap = dec->cfg.max_events_per_feed > 0 ? dec->cfg.max_events_per_feed : 32;
+  if (cap > SIZE_MAX / sizeof(agent_sse_event_t)) return AGENT_ERR_LIMIT;
   agent_sse_event_t* events = (agent_sse_event_t*)agent_malloc(sizeof(agent_sse_event_t) * cap);
   if (!events) return AGENT_ERR_OOM;
   memset(events, 0, sizeof(agent_sse_event_t) * cap);
 
-  size_t event_count = 0;
-  agent_status_t st = agent_sse_parser_feed(&dec->parser, bytes, len, events, cap, &event_count);
-  if (st != AGENT_OK) {
+  const char* next_bytes = bytes;
+  size_t next_len = len;
+  agent_status_t st = AGENT_OK;
+  for (;;) {
+    size_t event_count = 0;
+    const agent_status_t parsed = agent_sse_parser_feed(&dec->parser, next_bytes, next_len, events, cap, &event_count);
+    next_bytes = NULL; next_len = 0;
+    if (parsed != AGENT_OK && parsed != AGENT_ERR_LIMIT) {
+      for (size_t i = 0; i < event_count; i++) agent_sse_event_free(&events[i]);
+      st = parsed;
+      break;
+    }
+    for (size_t i = 0; i < event_count; i++) {
+      agent_sse_event_t* ev = &events[i];
+      if (!ev->data.data || ev->data.len == 0) {
+        agent_sse_event_free(ev);
+        continue;
+      }
+
+      agent_stream_chunk_t chunk;
+      memset(&chunk, 0, sizeof(chunk));
+      st = dec->decode_fn(dec->decode_ctx, ev->data.data, ev->data.len, &chunk);
+      if (st != AGENT_OK) {
+        agent_stream_chunk_free(&chunk);
+        agent_sse_event_free(ev);
+        break;
+      }
+
+      if (chunk.has_error && chunk.error_message.data && chunk.error_message.len) {
+        agent_string_t payload = {0};
+        sd_buf_t b = {0};
+        agent_status_t st2 = sd_buf_append_char(&b, '{');
+        if (st2 == AGENT_OK) st2 = sd_append_kv_string(&b, "error", chunk.error_message.data, chunk.error_message.len);
+        if (st2 == AGENT_OK) st2 = sd_buf_append_char(&b, '}');
+        if (st2 == AGENT_OK) st2 = sd_buf_to_string(&b, &payload);
+        if (st2 == AGENT_OK) sd_emit_event(dec, "error", &payload);
+        agent_string_free(&payload);
+        sd_buf_free(&b);
+        if (st2 != AGENT_OK) {
+          agent_stream_chunk_free(&chunk);
+          agent_sse_event_free(ev);
+          st = st2;
+          break;
+        }
+      }
+
+      if (chunk.has_delta_text && chunk.delta_text.data) {
+        agent_string_t payload = {0};
+        st = sd_build_assistant_delta_json(dec, chunk.delta_text.data, chunk.delta_text.len, &payload);
+        if (st == AGENT_OK) sd_emit_event(dec, "assistant_delta", &payload);
+        agent_string_free(&payload);
+        if (st != AGENT_OK) {
+          agent_stream_chunk_free(&chunk);
+          agent_sse_event_free(ev);
+          break;
+        }
+      }
+
+      for (size_t j = 0; j < chunk.tool_calls_count; j++) {
+        agent_stream_tool_call_delta_t* d = &chunk.tool_calls[j];
+        st = sd_apply_tool_call_delta(dec, d);
+        if (st != AGENT_OK) break;
+        agent_string_t payload = {0};
+        agent_status_t st2 = sd_build_tool_call_delta_json(d, &payload);
+        if (st2 == AGENT_OK) sd_emit_event(dec, "tool_call_delta", &payload);
+        agent_string_free(&payload);
+        if (st2 != AGENT_OK) {
+          st = st2;
+          break;
+        }
+      }
+      if (st != AGENT_OK) {
+        agent_stream_chunk_free(&chunk);
+        agent_sse_event_free(ev);
+        break;
+      }
+
+      if (chunk.has_usage) {
+        agent_string_t payload = {0};
+        st = sd_build_usage_json(&chunk, &payload);
+        if (st == AGENT_OK) sd_emit_event(dec, "llm_usage", &payload);
+        agent_string_free(&payload);
+        if (st != AGENT_OK) {
+          agent_stream_chunk_free(&chunk);
+          agent_sse_event_free(ev);
+          break;
+        }
+      }
+
+      if (chunk.has_finish_reason) {
+        st = sd_emit_tool_calls(dec);
+        if (st != AGENT_OK) {
+          agent_stream_chunk_free(&chunk);
+          agent_sse_event_free(ev);
+          break;
+        }
+        agent_string_t payload = {0};
+        sd_buf_t b = {0};
+        agent_status_t st2 = sd_buf_append_char(&b, '{');
+        if (st2 == AGENT_OK) st2 = sd_append_kv_string(&b, "finish_reason", chunk.finish_reason.data, chunk.finish_reason.len);
+        if (st2 == AGENT_OK) st2 = sd_buf_append_char(&b, '}');
+        if (st2 == AGENT_OK) st2 = sd_buf_to_string(&b, &payload);
+        if (st2 == AGENT_OK) sd_emit_event(dec, "end", &payload);
+        agent_string_free(&payload);
+        sd_buf_free(&b);
+        if (st2 != AGENT_OK) {
+          agent_stream_chunk_free(&chunk);
+          agent_sse_event_free(ev);
+          st = st2;
+          break;
+        }
+      }
+
+      agent_stream_chunk_free(&chunk);
+      agent_sse_event_free(ev);
+    }
     for (size_t i = 0; i < event_count; i++) agent_sse_event_free(&events[i]);
-    agent_free(events);
-    return st;
-  }
-
-  for (size_t i = 0; i < event_count; i++) {
-    agent_sse_event_t* ev = &events[i];
-    if (!ev->data.data || ev->data.len == 0) {
-      agent_sse_event_free(ev);
-      continue;
-    }
-
-    agent_stream_chunk_t chunk;
-    memset(&chunk, 0, sizeof(chunk));
-    st = dec->decode_fn(dec->decode_ctx, ev->data.data, ev->data.len, &chunk);
-    if (st != AGENT_OK) {
-      agent_stream_chunk_free(&chunk);
-      agent_sse_event_free(ev);
-      break;
-    }
-
-    if (chunk.has_error && chunk.error_message.data && chunk.error_message.len) {
-      agent_string_t payload = {0};
-      sd_buf_t b = {0};
-      agent_status_t st2 = sd_buf_append_char(&b, '{');
-      if (st2 == AGENT_OK) st2 = sd_append_kv_string(&b, "error", chunk.error_message.data, chunk.error_message.len);
-      if (st2 == AGENT_OK) st2 = sd_buf_append_char(&b, '}');
-      if (st2 == AGENT_OK) st2 = sd_buf_to_string(&b, &payload);
-      if (st2 == AGENT_OK) sd_emit_event(dec, "error", &payload);
-      agent_string_free(&payload);
-      sd_buf_free(&b);
-      if (st2 != AGENT_OK) {
-        agent_stream_chunk_free(&chunk);
-        agent_sse_event_free(ev);
-        st = st2;
-        break;
-      }
-    }
-
-    if (chunk.has_delta_text && chunk.delta_text.data) {
-      agent_string_t payload = {0};
-      st = sd_build_assistant_delta_json(dec, chunk.delta_text.data, chunk.delta_text.len, &payload);
-      if (st == AGENT_OK) sd_emit_event(dec, "assistant_delta", &payload);
-      agent_string_free(&payload);
-      if (st != AGENT_OK) {
-        agent_stream_chunk_free(&chunk);
-        agent_sse_event_free(ev);
-        break;
-      }
-    }
-
-    for (size_t j = 0; j < chunk.tool_calls_count; j++) {
-      agent_stream_tool_call_delta_t* d = &chunk.tool_calls[j];
-      st = sd_apply_tool_call_delta(dec, d);
-      if (st != AGENT_OK) break;
-      agent_string_t payload = {0};
-      agent_status_t st2 = sd_build_tool_call_delta_json(d, &payload);
-      if (st2 == AGENT_OK) sd_emit_event(dec, "tool_call_delta", &payload);
-      agent_string_free(&payload);
-      if (st2 != AGENT_OK) {
-        st = st2;
-        break;
-      }
-    }
-    if (st != AGENT_OK) {
-      agent_stream_chunk_free(&chunk);
-      agent_sse_event_free(ev);
-      break;
-    }
-
-    if (chunk.has_usage) {
-      agent_string_t payload = {0};
-      st = sd_build_usage_json(&chunk, &payload);
-      if (st == AGENT_OK) sd_emit_event(dec, "llm_usage", &payload);
-      agent_string_free(&payload);
-      if (st != AGENT_OK) {
-        agent_stream_chunk_free(&chunk);
-        agent_sse_event_free(ev);
-        break;
-      }
-    }
-
-    if (chunk.has_finish_reason) {
-      st = sd_emit_tool_calls(dec);
-      if (st != AGENT_OK) {
-        agent_stream_chunk_free(&chunk);
-        agent_sse_event_free(ev);
-        break;
-      }
-      agent_string_t payload = {0};
-      sd_buf_t b = {0};
-      agent_status_t st2 = sd_buf_append_char(&b, '{');
-      if (st2 == AGENT_OK) st2 = sd_append_kv_string(&b, "finish_reason", chunk.finish_reason.data, chunk.finish_reason.len);
-      if (st2 == AGENT_OK) st2 = sd_buf_append_char(&b, '}');
-      if (st2 == AGENT_OK) st2 = sd_buf_to_string(&b, &payload);
-      if (st2 == AGENT_OK) sd_emit_event(dec, "end", &payload);
-      agent_string_free(&payload);
-      sd_buf_free(&b);
-      if (st2 != AGENT_OK) {
-        agent_stream_chunk_free(&chunk);
-        agent_sse_event_free(ev);
-        st = st2;
-        break;
-      }
-    }
-
-    agent_stream_chunk_free(&chunk);
-    agent_sse_event_free(ev);
-  }
-
-  for (size_t i = 0; i < event_count; i++) {
-    agent_sse_event_free(&events[i]);
+    if (st != AGENT_OK || parsed != AGENT_ERR_LIMIT) break;
   }
   agent_free(events);
   return st;

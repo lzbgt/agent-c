@@ -100,6 +100,10 @@ struct ToolLoopResult {
   // Structured event log as a JSON array string (best-effort).
   // This is intended for UIs; do not assume a fixed schema beyond `type`.
   std::string events_json;
+  // In-memory audit capture may truncate while live callbacks keep flowing.
+  bool events_truncated = false;
+  size_t events_captured = 0;
+  size_t event_bytes_captured = 0;
   bool saw_tool_call = false;
   size_t steps_executed = 0;
   size_t tool_calls_executed = 0;

@@ -68,6 +68,14 @@ try:
         assert "verified:completed" in result.stdout and "premature completion" not in result.stdout
         assert len(requests) - first_request == 4, "proposed completion must continue with the original turn"
         run("exec", "AUTONOMY_SENTINEL STALL", "-C", tmp, "--no-session", "--max-steps", "8", *options, expected=1)
+        json_root = root / "json-work"
+        json_root.mkdir()
+        final_file = root / "verified.txt"
+        final_file.write_text("previous verified result")
+        result = run("exec", "AUTONOMY_SENTINEL STALL", "-C", str(json_root), "--no-session", "--max-steps", "8", "--json", "-o", str(final_file), *options, expected=1)
+        events = [json.loads(line) for line in result.stdout.splitlines()]
+        assert events[-1]["type"] == "run.failed" and not any(e["type"] == "assistant.completed" for e in events)
+        assert final_file.read_text() == "previous verified result", "premature completion replaced a verified artifact"
         work = root / "work.sqlite"
         def update(i):
             payload = {"op": "requirement", "id": f"task{i}", "title": f"Independent requirement {i}"}

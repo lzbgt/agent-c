@@ -16,6 +16,7 @@
 #include "base64.h"
 #include "cli_transcript_writer.h"
 #include "cli_commands.h"
+#include "cli_run_output.h"
 
 #include <cstdlib>
 #include <algorithm>
@@ -432,7 +433,9 @@ static void usage() {
     << "  --tool-call-limit <tool>=<n>  Per-tool call cap (repeatable; 0 means unlimited for that tool)\n"
     << "  --attach <path>           Attach a local file (repeatable; images are sent as base64)\n"
     << "  --stream-assistant        Stream assistant deltas (tools=none|basic|host; provider-dependent)\n"
-    << "  --transcript-jsonl <path> Write tool-loop events as JSONL (append)\n";
+    << "  --transcript-jsonl <path> Write tool-loop events as JSONL (append)\n"
+    << "  --json                    Emit versioned JSONL on stdout (exec/run/resume with prompt)\n"
+    << "  -o, --output-last-message <path> Publish final text after a successful execution\n";
 }
 
 static bool take_switch(std::vector<std::string>& args, const std::string& flag, bool* out_enabled) {
@@ -521,7 +524,7 @@ static bool take_enum(std::vector<std::string>& args, const std::string& flag, s
   return true;
 }
 
-int main(int argc, char** argv) {
+static int cli_main(int argc, char** argv, CliRunOutput* output) {
   std::vector<std::string> args;
   args.reserve((size_t)argc);
   for (int i = 1; i < argc; i++) {
@@ -536,6 +539,10 @@ int main(int argc, char** argv) {
   if (args[0] == "--help" || args[0] == "-h" ||
       std::find(args.begin(), args.end(), "--help") != args.end()) {
     usage(); return 0;
+  }
+  std::string output_error;
+  if (!output->parse_options(&args,&output_error)) {
+    std::cerr << output_error << '\n'; output->set_error(output_error); return 2;
   }
   CliCommand entry;
   const int command_status = cli_prepare_command(&args, &entry);
@@ -710,6 +717,10 @@ int main(int argc, char** argv) {
 
   std::string prompt;
   if (resume) cmd = args.empty() ? "chat" : "run";
+  if (cmd == "chat" && output->requested()) {
+    std::cerr << "Machine output and last-message files require a non-interactive prompt\n";
+    return 2;
+  }
   if (cmd == "run") {
     if (args.size() != 1 || (args[0].size() > 1 && args[0][0] == '-')) {
       std::cerr << "Expected one prompt (or '-' for stdin); check option spelling\n";
@@ -909,6 +920,10 @@ int main(int argc, char** argv) {
     }
   }
 
+  if (!output->begin(cmd,model,tools_mode,no_session ? "" : session_id,&output_error)) {
+    std::cerr << output_error << '\n'; output->set_error(output_error);
+    agent_session_destroy(session); agent_persistor_destroy(&persistor); return 2;
+  }
   if (tools_mode != "none") {
     agent_tool_registry_t* registry = nullptr;
     agent_tool_executor_t executor{};
@@ -951,7 +966,7 @@ int main(int argc, char** argv) {
 	    opt.stream_assistant = stream_assistant;
 	    // For CLI trace output, we prefer human-friendly (non-JSON) printing based on tool loop events.
 	    // Enable verbose events so we have tool arguments + tool outputs available to print.
-	    opt.verbose = (trace && !quiet) || !transcript_jsonl.empty();
+	    opt.verbose = (trace && !quiet) || !transcript_jsonl.empty() || output->json();
 	    opt.max_capture_bytes = (size_t)1024u * 1024u;
 
 	    auto run_one = [&](const std::string& user_prompt) -> int {
@@ -974,20 +989,22 @@ int main(int argc, char** argv) {
 	        CliPrettyConsoleWriter::Options wopt;
 	        wopt.out = (trace && !quiet) ? &std::cerr : nullptr;
 	        wopt.assistant_delta_out = &std::cout;
-	        wopt.stream_deltas = stream_assistant;
+	        wopt.stream_deltas = stream_assistant && !output->json();
 	        wopt.style = cli_default_transcript_style(is_tty_file(stderr));
 	        mux.add(std::make_unique<CliPrettyConsoleWriter>(wopt));
 	      }
 	      if (!transcript_jsonl.empty()) {
 	        mux.add(std::make_unique<CliJsonlFileWriter>(transcript_jsonl));
 	      }
+	      if (output->json()) mux.add(output->event_writer());
 
 	      // Important: even in --quiet, we may need on_event enabled for assistant deltas / JSONL.
-	      const bool want_events = stream_assistant || (trace && !quiet) || !transcript_jsonl.empty();
+	      const bool want_events = stream_assistant || (trace && !quiet) || !transcript_jsonl.empty() || output->json();
 	      opt.on_event = want_events ? cli_transcript_on_tool_loop_event : nullptr;
 	      opt.on_event_ctx = want_events ? (void*)&mux : nullptr;
 #endif
 	      if (!run_tool_loop(pctx.cfg, session, prompt_for_llm, registry, &executor, opt, trace_stream, &r, &err, &http_status, &http_body)) {
+        output->set_error(err.empty() ? "Tool loop failed" : err);
 	        if (http_status) {
 	          std::cerr << openai_format_http_error(http_status, http_body) << "\n";
         } else if (!err.empty()) {
@@ -1043,16 +1060,9 @@ int main(int argc, char** argv) {
         (void)session_store_append_audit_jsonl(store_cfg, session_id, Json::writeString(wb, record));
 #endif
       }
-#if defined(AGENT_HAVE_JSONCPP)
-	      if (stream_assistant) {
-	        // Deltas were already printed; terminate with a newline for shell ergonomics.
-	        std::cout << "\n";
-	      } else {
-	        std::cout << r.final_assistant_text << "\n";
-	      }
-#else
-	      std::cout << r.final_assistant_text << "\n";
-#endif
+      output->set_usage(r.steps_executed,r.tool_calls_executed);
+      output->set_capture(r.events_truncated,r.events_captured,r.event_bytes_captured);
+      output->assistant(r.final_assistant_text,stream_assistant);
 	      return 0;
 	    };
 
@@ -1193,10 +1203,10 @@ int main(int argc, char** argv) {
           }
 
           struct StreamCtx {
-            std::ostream* out = nullptr;
+            CliRunOutput* output = nullptr;
             OpenAIStreamCoreAdapter core;
           } sctx;
-          sctx.out = &std::cout;
+          sctx.output = output;
 
           OpenAIStreamCoreConfig scfg{};
           scfg.max_tool_calls_total = 0;
@@ -1208,10 +1218,10 @@ int main(int argc, char** argv) {
 
           auto on_delta = [](void* vctx, const char* delta, size_t delta_len, uint64_t step, uint64_t epoch) {
             auto* s = static_cast<StreamCtx*>(vctx);
-            if (!s || !s->out || !delta || delta_len == 0) return;
+            if (!s || !s->output || !delta || delta_len == 0) return;
             (void)step;
             (void)epoch;
-            (*s->out) << std::string(delta, delta_len) << std::flush;
+            s->output->delta(std::string(delta, delta_len));
           };
 
           openai_stream_core_init(&sctx.core, &scfg, on_delta, &sctx);
@@ -1335,11 +1345,7 @@ int main(int argc, char** argv) {
           return 1;
         }
 
-        if (saw_stream_delta) {
-          std::cout << "\n";
-        } else {
-          std::cout << assistant_text << "\n";
-        }
+        output->assistant(assistant_text,saw_stream_delta);
         return 0;
 #endif
       }
@@ -1496,7 +1502,7 @@ int main(int argc, char** argv) {
           if (!http_body.empty()) std::cerr << http_body << "\n";
           return 1;
         }
-        std::cout << assistant_text << "\n";
+        output->assistant(assistant_text);
         return 0;
       }
 #endif
@@ -1625,7 +1631,7 @@ int main(int argc, char** argv) {
                     << " inserted_summary=" << (int)rep_final.compact.inserted_summary
                     << "\n";
         }
-        std::cout << assistant_text << "\n";
+        output->assistant(assistant_text);
         return 0;
       }
 
@@ -1677,4 +1683,10 @@ int main(int argc, char** argv) {
   }
 
   // Unreachable.
+}
+
+int main(int argc, char** argv) {
+  CliRunOutput output;
+  const int status = cli_main(argc,argv,&output);
+  return output.finish(status);
 }

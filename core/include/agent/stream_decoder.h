@@ -55,6 +55,8 @@ typedef void (*agent_stream_event_fn)(
 typedef struct agent_stream_config {
   size_t max_tool_calls_total;
   size_t max_tool_call_args_chars;
+  // Maximum parser batch allocation (0 = 32). Coalesced input is drained in
+  // batches, so transport packet boundaries cannot truncate decoded content.
   size_t max_events_per_feed;
   uint64_t step;
   uint64_t epoch;

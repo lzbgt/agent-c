@@ -138,7 +138,7 @@ static void test_stream_decoder_happy_path(void) {
   agent_stream_config_t cfg = {
     .max_tool_calls_total = 4,
     .max_tool_call_args_chars = 2048,
-    .max_events_per_feed = 16,
+    .max_events_per_feed = 2,
     .step = 7,
     .epoch = 42,
   };

@@ -294,31 +294,36 @@ static size_t write_stream_cb(char* ptr, size_t size, size_t nmemb, void* userda
     ctx->capture.append(ptr, ptr + to_add);
   }
 
-  agent_sse_event_t events[32] = {0};
-  size_t event_count = 0;
-  const agent_status_t st = agent_sse_parser_feed(&ctx->parser, ptr, n, events, 32, &event_count);
-  for (size_t i = 0; i < event_count; i++) {
-    const agent_sse_event_t* ev = &events[i];
-    const std::string data = (ev->data.data && ev->data.len > 0)
-      ? std::string(ev->data.data, ev->data.len)
-      : std::string();
-    if (data == "[DONE]") {
-      ctx->saw_done = true;
-      agent_sse_event_free(&events[i]);
-      continue;
-    }
-    if (!data.empty()) {
-      ctx->chunks++;
-      if (ctx->on_chunk) {
-        ctx->on_chunk(ctx->on_chunk_ctx, data.data(), data.size());
+  agent_status_t st;
+  const char* next_bytes = ptr;
+  size_t next_len = n;
+  do {
+    agent_sse_event_t events[32] = {0};
+    size_t event_count = 0;
+    st = agent_sse_parser_feed(&ctx->parser, next_bytes, next_len, events, 32, &event_count);
+    next_bytes = nullptr; next_len = 0;
+    for (size_t i = 0; i < event_count; i++) {
+      const agent_sse_event_t* ev = &events[i];
+      const std::string data = (ev->data.data && ev->data.len > 0)
+        ? std::string(ev->data.data, ev->data.len)
+        : std::string();
+      if (data == "[DONE]") {
+        ctx->saw_done = true;
+        agent_sse_event_free(&events[i]);
+        continue;
       }
+      if (!data.empty()) {
+        ctx->chunks++;
+        if (ctx->on_chunk) {
+          ctx->on_chunk(ctx->on_chunk_ctx, data.data(), data.size());
+        }
+      }
+      agent_sse_event_free(&events[i]);
     }
-    agent_sse_event_free(&events[i]);
-  }
-  if (st == AGENT_ERR_LIMIT) {
-    // Drop excess events to avoid unbounded buffering.
-  }
-  return n;
+  } while (st == AGENT_ERR_LIMIT);
+  // A malformed/failed decoder must abort the transfer rather than silently
+  // accepting a partially decoded successful completion.
+  return st == AGENT_OK ? n : 0;
 }
 
 static void ensure_curl_global_init() {

@@ -32,29 +32,28 @@ size_t voice_broker_signal_stream_write_cb(char* ptr, size_t size, size_t nmemb,
   const size_t n = size * nmemb;
   if (!st || !ptr || n == 0) return n;
 
-  agent_sse_event_t events[8];
-  size_t event_count = 0;
-  const agent_status_t feed_status = agent_sse_parser_feed(&st->parser, ptr, n, events, 8, &event_count);
-  if (feed_status != AGENT_OK) {
-    st->error = "failed to parse broker signal stream";
-    return 0;
-  }
-
-  for (size_t i = 0; i < event_count; ++i) {
-    const agent_sse_event_t& ev = events[i];
-    std::string data;
-    if (ev.data.data && ev.data.len > 0) data.assign(ev.data.data, ev.data.len);
-
-    VoiceBrokerSignalEvent parsed;
-    const bool ok = parse_voice_broker_signal_event_json(data, &parsed);
-    agent_sse_event_free(&events[i]);
-    if (!ok) continue;
-
-    if (st->on_event && !st->on_event(parsed)) {
-      st->stopped_by_callback = true;
-      return 0;
+  const char* next_bytes = ptr;
+  size_t next_len = n;
+  agent_status_t feed_status;
+  do {
+    agent_sse_event_t events[8] = {};
+    size_t event_count = 0;
+    feed_status = agent_sse_parser_feed(&st->parser,next_bytes,next_len,events,8,&event_count);
+    next_bytes = nullptr; next_len = 0;
+    const bool valid = feed_status == AGENT_OK || feed_status == AGENT_ERR_LIMIT;
+    for (size_t i = 0; i < event_count; ++i) {
+      if (valid && !st->stopped_by_callback) {
+        const agent_sse_event_t& ev = events[i];
+        std::string data;
+        if (ev.data.data && ev.data.len > 0) data.assign(ev.data.data,ev.data.len);
+        VoiceBrokerSignalEvent parsed;
+        if (parse_voice_broker_signal_event_json(data,&parsed) && st->on_event && !st->on_event(parsed)) st->stopped_by_callback = true;
+      }
+      agent_sse_event_free(&events[i]);
     }
-  }
+    if (!valid) { st->error = "failed to parse broker signal stream"; return 0; }
+    if (st->stopped_by_callback) return 0;
+  } while (feed_status == AGENT_ERR_LIMIT);
   return n;
 }
 

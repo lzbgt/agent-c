@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agent-c:cli:event:v1",
+  "title": "Agent-C CLI event envelope v1",
+  "type": "object",
+  "required": ["schema", "sequence", "type", "data"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "agentd.cli.event.v1"},
+    "sequence": {"type": "integer", "minimum": 1},
+    "type": {"type": "string", "pattern": "^(run\\.(started|completed|failed)|assistant\\.(delta|completed)|loop\\.[A-Za-z0-9_.-]+)$"},
+    "data": {"type": "object"}
+  }
+}

@@ -7,7 +7,8 @@ Date: 2026-11-10. This document records implemented behavior and reproducible ch
 - **Autonomy:** default host instructions execute authorized work without permission prompts. The shared SQLite requirement/blocker ledger keeps independent work runnable, validates dependency DAGs, requires evidence for completion/resolution, and rejects stale revisions. A human dependency affects only its named requirements; advisory blockers can affect none.
 - **Completion:** a portable C completion hook allows hosts to continue a proposed final response within the original budgets. The host uses it after a run adopts `work_state`; an unchanged-ledger repetition guard prevents endless false completion. Empty/unrelated ledgers are not automatically adopted.
 - **SOPs:** `agentd.sop.v1` compiles ordered stages and sequential/parallel actions through the existing workflow submit API. A canonical definition hash and stage mapping are stored with the redacted spec. Strict compiler validation precedes ordinary task/policy/admission validation. Oversized persisted specs are rejected instead of truncated.
-- **CLI:** command dispatch is separated from provider execution. `exec`, bounded stdin, `resume`, `sessions`, explicit working/session directories and model-free `work` commands reuse existing execution/persistence. Existing JSONL transcript export stays available. Resumed host prompts refresh when the built-in contract changes.
+- **CLI:** command dispatch and output policy are separated from provider execution. `exec`, bounded stdin, `resume`, `sessions`, explicit working/session directories and model-free `work` commands reuse existing execution/persistence. `--json` emits versioned lifecycle/progress events; `-o` publishes final text after successful execution/session saving. Existing JSONL transcript export stays available. Resumed host prompts refresh when the built-in contract changes. See [CLI_EVENT_PROTOCOL.md](CLI_EVENT_PROTOCOL.md).
+- **Streaming:** coalesced SSE packets drain through bounded parser batches; transport packet boundaries no longer truncate the checked streams. The host event log enforces its 4,000-event/2-MiB capture bounds while live callbacks continue after capture fills.
 - **WebUI:** responsive graphite/mint workspace, grouped icon navigation, Overview return path, actual connection/session context, accessible template selection, useful empty state, keyboard focus and reduced-motion support. Advanced panels are lazy-loaded. A provider-free SOP authoring template is included.
 - **External HTTP effects:** guarded POST actions persist intent and response identity; uncertain writes reconcile through a same-origin receipt adapter or emit a scoped blocker. An explicit destination-idempotency contract permits safe retries. Recovery is inspectable and resumable through the API/WebUI, and independent workflow branches continue after a failure even with one worker. See [WORKFLOW_EFFECTS.md](WORKFLOW_EFFECTS.md).
 - **Reproducibility:** npm lockfile tarballs use the canonical registry with existing integrity hashes and versions preserved. OpenAPI client types are regenerated. Local deterministic tests cover the new behavior without provider credentials.
@@ -42,18 +43,19 @@ The verifier configures **Debug** builds so assertion-based existing C tests exe
 
 ## Verification evidence
 
-The snapshot verification script passed 19 targeted native/CLI/API checks and six browser checks on Linux. The separate core-only Debug build/test passed. Coverage includes:
+The snapshot verification script passed 20 targeted native/CLI/API checks and six browser checks on Linux. The separate core-only Debug build/test passed. Coverage includes:
 
 - C tool loop, continuation and unchanged step caps; host tool and pinned-prompt regressions.
 - Requirement DAG validation, scoped blockers, evidence gates, rollback, stale revision rejection and concurrent independent CLI writers.
 - Local model-stub exec/stdin/resume and project instruction discovery; premature completion continues until recorded work is verified; repeated no-progress completion fails with a limit.
+- Versioned CLI lifecycle/stream events, escaped Unicode, tool/no-tool/multimodal paths, failure-safe final artifacts and complete 608,000-character streams beyond bounded event capture.
 - Real local daemon SOP submit, persisted definition/mapping, stage barriers, idempotency and invalid-input rejection.
 - HTTP effect crash boundaries, receipt reuse, destination deduplication, terminal reconciliation proofs, stale finalizers and preservation of owner stops; API/WebUI recovery of one affected branch.
 - Existing local streaming, workflow idempotency and replay-spec regression paths.
 - Desktop/mobile navigation, prompt focus, SOP template submission, workflow details, prompt uploads and scene history.
 - TypeScript/Vite production build, generated OpenAPI drift check, repository guards and whitespace checks.
 
-Local logs: `build/effect_snapshot_verification.log`, `build/snapshot_core_only.log`, and `build/effect_repo_guards.log`. Browser tests regenerate `ui/test-results/workspace-desktop.png` and `workspace-mobile.png`; generated artifacts are ignored, while their source fixtures and commands are tracked. On the checked host, advanced-panel splitting reduced the main application chunk from approximately 1,087 kB to 798 kB before gzip; this is a build observation, not a latency benchmark.
+Local logs: `build/cli_snapshot_verification.log`, `build/cli_snapshot_core_only.log`, and `build/cli_snapshot_repo_guards.log`. Browser tests regenerate `ui/test-results/workspace-desktop.png` and `workspace-mobile.png`; generated artifacts are ignored, while their source fixtures and commands are tracked. On the checked host, advanced-panel splitting reduced the main application chunk from approximately 1,087 kB to 798 kB before gzip; this is a build observation, not a latency benchmark.
 
 ## Boundaries and next work
 

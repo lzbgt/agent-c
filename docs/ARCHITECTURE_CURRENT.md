@@ -93,7 +93,7 @@ Retain a provider-neutral transcript with opaque adapter metadata. API compatibi
 
 Split immutable instructions and capability declarations, current goal/state, retrieved knowledge and recent observations. Keep large data as artifact references and fetch bounded slices. Evaluate artifact-backed context exploration inspired by RLMs on host workloads, behind recursion/cost limits. Preserve evidence and constraints during compaction; do not depend on a prose summary to retain pending effects or human dependencies.
 
-CLI `exec`, stdin, `resume`, `sessions`, explicit workspace/session-root selection and model-free work-state commands now share the existing executor. JSONL transcript export remains available. Further split legacy provider/config/run rendering code behind the same service interfaces used by the daemon. Add structured stdout events, interruption-safe step checkpoints and steering as explicit contracts before advertising equivalence with upstream harnesses.
+CLI `exec`, stdin, `resume`, `sessions`, explicit workspace/session-root selection and model-free work-state commands now share the existing executor. Versioned JSONL stdout and final-message publication are implemented in a separate output policy module; the older transcript export remains available. Live delivery continues after bounded audit capture fills, and SSE consumers drain coalesced transport batches. Further split legacy provider/config/run rendering code behind the same service interfaces used by the daemon. Add interruption-safe step checkpoints and steering before advertising equivalence with upstream harnesses.
 
 ## UI direction
 

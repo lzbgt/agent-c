@@ -165,23 +165,21 @@ struct EventSink {
   std::ostream* trace_stream = nullptr;
 };
 
-static void sink_note_capture(EventSink* sink, const std::string& s) {
-  if (!sink) return;
-  if (s.size() > sink->max_total_capture_bytes) {
-    sink->captured_bytes += sink->max_total_capture_bytes;
-  } else {
-    sink->captured_bytes += s.size();
+static void sink_capture(EventSink* sink, const Json::Value& event) {
+  if (sink->events_count >= sink->max_events) { sink->events_truncated = true; return; }
+  const auto bytes = json_stringify(event).size() + 1;
+  if (bytes > sink->max_total_capture_bytes - sink->captured_bytes) {
+    sink->events_truncated = true;
+    return;
   }
+  sink->events.append(event);
+  sink->events_count++;
+  sink->captured_bytes += bytes;
 }
 
 static void sink_on_event(void* vctx, const char* type, const char* data_json) {
   auto* sink = static_cast<EventSink*>(vctx);
   if (!sink || !type) return;
-
-  if (sink->events_count >= sink->max_events) {
-    sink->events_truncated = true;
-    return;
-  }
 
   Json::Value data;
   std::string perr;
@@ -196,10 +194,9 @@ static void sink_on_event(void* vctx, const char* type, const char* data_json) {
   Json::Value e(Json::objectValue);
   e["type"] = type;
   e["data"] = data;
-  sink->events.append(e);
-  sink->events_count++;
-
-  if (data_json) sink_note_capture(sink, data_json);
+  // Capture is bounded independently of live delivery. Reaching an audit limit
+  // must never silence late tool results, streaming deltas or errors.
+  sink_capture(sink,e);
 
   // Derived UI event: artifact
   if (data.isObject() && std::string(type) == "tool_result") {
@@ -226,7 +223,7 @@ static void sink_on_event(void* vctx, const char* type, const char* data_json) {
         }
       }
 
-      if (artifact.isObject() && sink->events_count < sink->max_events) {
+      if (artifact.isObject()) {
         Json::Value ad(Json::objectValue);
         if (data.isMember("step")) ad["step"] = data["step"];
         if (data.isMember("tool_call_id")) ad["tool_call_id"] = data["tool_call_id"];
@@ -236,8 +233,7 @@ static void sink_on_event(void* vctx, const char* type, const char* data_json) {
         Json::Value ae(Json::objectValue);
         ae["type"] = "artifact";
         ae["data"] = ad;
-        sink->events.append(ae);
-        sink->events_count++;
+        sink_capture(sink,ae);
 
         const std::string aj = json_stringify(ad);
         if (sink->forward_cb) {
@@ -268,7 +264,7 @@ static void sink_on_event(void* vctx, const char* type, const char* data_json) {
         }
       }
 
-      if (action.isObject() && sink->events_count < sink->max_events) {
+      if (action.isObject()) {
         Json::Value ad(Json::objectValue);
         if (data.isMember("step")) ad["step"] = data["step"];
         if (data.isMember("tool_call_id")) ad["tool_call_id"] = data["tool_call_id"];
@@ -278,8 +274,7 @@ static void sink_on_event(void* vctx, const char* type, const char* data_json) {
         Json::Value ae(Json::objectValue);
         ae["type"] = "ui_action";
         ae["data"] = ad;
-        sink->events.append(ae);
-        sink->events_count++;
+        sink_capture(sink,ae);
 
         const std::string aj = json_stringify(ad);
         if (sink->forward_cb) {
@@ -311,7 +306,7 @@ static void sink_on_event(void* vctx, const char* type, const char* data_json) {
         }
       }
 
-      if (ops.isArray() && sink->events_count < sink->max_events) {
+      if (ops.isArray()) {
         Json::Value ad(Json::objectValue);
         if (data.isMember("step")) ad["step"] = data["step"];
         if (data.isMember("tool_call_id")) ad["tool_call_id"] = data["tool_call_id"];
@@ -321,8 +316,7 @@ static void sink_on_event(void* vctx, const char* type, const char* data_json) {
         Json::Value ae(Json::objectValue);
         ae["type"] = "scene_apply";
         ae["data"] = ad;
-        sink->events.append(ae);
-        sink->events_count++;
+        sink_capture(sink,ae);
 
         const std::string aj = json_stringify(ad);
         if (sink->forward_cb) {
@@ -565,6 +559,9 @@ bool run_tool_loop(
   }
 
   out_result->events_json = json_stringify(sink.events);
+  out_result->events_truncated = sink.events_truncated;
+  out_result->events_captured = sink.events_count;
+  out_result->event_bytes_captured = sink.captured_bytes;
 
   if (st != AGENT_OK) {
     if (out_error) {

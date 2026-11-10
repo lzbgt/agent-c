@@ -170,8 +170,7 @@ agent_status_t agent_sse_parser_feed(
 ) {
   if (!parser || (!bytes && len != 0) || !out_events_count) return AGENT_ERR_INVALID_ARGUMENT;
   *out_events_count = 0;
-  if (!bytes || len == 0) return AGENT_OK;
-
+  // An empty feed drains input retained when the output batch filled up.
   agent_status_t st = sse_string_append(&parser->buf, bytes, len);
   if (st != AGENT_OK) return st;
 
