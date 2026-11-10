@@ -1,4 +1,5 @@
 import React from "react";
+import { JsonDetails } from "../ToolOutput";
 
 import type { WaitState, WaitStatePersisted, WorkflowComposerSubmitResult } from "./workflowComposerTypes";
 
@@ -30,13 +31,6 @@ export default function WorkflowComposerStatus(props: WorkflowComposerStatusProp
           {props.submitBusy ? "Submitting…" : "Submit workflow"}
         </button>
         {props.submitError ? <span className="text-xs text-rose-200">{props.submitError}</span> : null}
-        {props.serverWaitStatus === "error" ? (
-          <span className="text-[11px] text-amber-200">wait sync: local-only</span>
-        ) : props.serverWaitStatus === "loading" ? (
-          <span className="text-[11px] text-white/50">wait sync: loading…</span>
-        ) : props.serverWaitStatus === "ready" ? (
-          <span className="text-[11px] text-emerald-200">wait sync: server</span>
-        ) : null}
         {props.waitState ? (
           <>
             <span className="text-[11px] text-white/60">
@@ -78,11 +72,7 @@ export default function WorkflowComposerStatus(props: WorkflowComposerStatusProp
         ) : null}
       </div>
 
-      {props.submitResult ? (
-        <pre className="mt-2 max-h-40 overflow-auto rounded bg-black/40 p-2 text-[10px] text-white/70">
-          {JSON.stringify(props.submitResult, null, 2)}
-        </pre>
-      ) : null}
+      {props.submitResult ? <JsonDetails label="Submission details" value={props.submitResult} /> : null}
     </>
   );
 }

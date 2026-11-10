@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 
 test("voice panel sends session voice controls and renders durable stats", async ({ page }) => {
   const voiceControlBodies: any[] = [];
+  let statsReads = 0;
+  let failAction = false;
   const corsHeaders = {
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET,POST,OPTIONS",
@@ -165,6 +167,7 @@ test("voice panel sends session voice controls and renders durable stats", async
     if (method === "POST" && path === "/api/v1/session/voice_control") {
       const body = request.postDataJSON();
       voiceControlBodies.push(body);
+      if (failAction) return route.fulfill({ status: 503, headers: corsHeaders, json: { ok: false, error: "Playback service unavailable." } });
       const action = String(body?.action || "");
       const kind = action === "pause" ? "media_pause" : action === "snapshot" ? "media_snapshot" : "media_play";
       const counts = voiceStats.counts as Record<string, number>;
@@ -205,6 +208,7 @@ test("voice panel sends session voice controls and renders durable stats", async
     }
 
     if (method === "GET" && path === "/api/v1/session/voice_stats") {
+      statsReads++;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -222,12 +226,17 @@ test("voice panel sends session voice controls and renders durable stats", async
     });
   });
 
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
 
   await page.getByRole("button", { name: "Voice" }).click();
   await expect(page.getByTestId("voice-panel")).toBeVisible();
-  await expect(page.getByTestId("voice-stats-section")).toContainText("play 1");
-  await expect(page.getByTestId("voice-panel-clients")).toContainText("webui-1");
+  await expect(page.getByTestId("voice-diagnostics")).not.toHaveAttribute("open", "");
+  await expect(page.getByTestId("voice-playback-options")).not.toHaveAttribute("open", "");
+  expect(statsReads).toBe(0);
+  expect(voiceControlBodies).toEqual([]);
+  expect(await page.getByTestId("voice-panel").innerText()).not.toMatch(/tool call|rpc:|scanned events|webui-1/);
+  await page.getByTestId("voice-playback-options").locator(":scope > summary").click();
 
   await page.getByTestId("voice-panel-source-url").fill("data:audio/wav;base64,BBBB");
   await page.getByTestId("voice-panel-message").fill("Operator-triggered voice output");
@@ -247,7 +256,9 @@ test("voice panel sends session voice controls and renders durable stats", async
     loop: false,
     volume: 1,
   });
-  await expect(page.getByTestId("voice-panel-last-action")).toContainText("last action: play");
+  await expect(page.getByTestId("voice-panel-last-action")).toContainText("Play request queued for the browser.");
+  expect(statsReads).toBe(0);
+  await page.getByTestId("voice-diagnostics").locator(":scope > summary").click();
   await expect(page.getByTestId("voice-stats-section")).toContainText("play 2");
 
   await page.getByTestId("voice-panel-pause").click();
@@ -258,6 +269,14 @@ test("voice panel sends session voice controls and renders durable stats", async
 
   await expect(page.getByTestId("voice-stats-section")).toContainText("pause 1");
   await expect(page.getByTestId("voice-stats-section")).toContainText("snapshot 1");
-  await expect(page.getByTestId("voice-panel-latest-snapshot")).toContainText("#voice-audio");
-  await expect(page.getByTestId("voice-panel-recent-results")).toContainText("media_snapshot");
+  await page.getByText("Latest snapshot", { exact: true }).click();
+  await expect(page.getByTestId("voice-stats-section").getByText(/current_src/)).toBeVisible();
+  await page.getByText("Recent results", { exact: true }).click();
+  await expect(page.getByTestId("voice-stats-section").getByText(/media_snapshot/)).toBeVisible();
+  expect(await page.locator("#workspace-main").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  failAction = true;
+  await page.getByTestId("voice-diagnostics").locator(":scope > summary").click();
+  await page.getByTestId("voice-panel-play").click();
+  await expect(page.getByRole("alert")).toHaveText("Playback service unavailable.");
+  await expect(page.getByTestId("voice-panel-last-action")).toHaveCount(0);
 });

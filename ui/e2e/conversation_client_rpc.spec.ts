@@ -169,9 +169,9 @@ test("conversation history replays entity_apply actions into the scene and posts
   await page.goto("/");
 
   await page.getByTestId("conversation-details").locator(":scope > summary").click();
-  await page.getByRole("button", { name: "Show messages" }).click();
 
-  await expect(page.getByTestId("conversation-view")).toContainText("Scene updated.");
+  await expect(page.getByTestId("chat-thread")).toContainText("Scene updated.");
+  await expect(page.getByTestId("execution-activity")).not.toContainText("Scene updated.");
   await expect.poll(() => clientEvents.some((event) => event?.type === "ui_action_shown")).toBeTruthy();
   await page.getByRole("button", { name: "Run RPC" }).click();
   await expect(page.getByTestId("scene-entity-entity-alpha")).toContainText("Entity Alpha");

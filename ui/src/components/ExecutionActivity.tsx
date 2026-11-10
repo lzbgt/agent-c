@@ -1,10 +1,10 @@
 import React from "react";
 
-import ConversationEventList from "./conversation/ConversationEventList";
+import ExecutionEventList from "./conversation/ExecutionEventList";
 import useConversationViewState from "./conversation/useConversationViewState";
 import type { ConversationViewProps } from "./conversation/conversationViewTypes";
 
-export default function ConversationView(props: ConversationViewProps) {
+export default function ExecutionActivity(props: ConversationViewProps) {
   const state = useConversationViewState(props);
-  return <ConversationEventList {...props} {...state} />;
+  return <ExecutionEventList {...props} {...state} />;
 }

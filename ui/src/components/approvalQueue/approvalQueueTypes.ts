@@ -1,8 +1,6 @@
 import type { ApiAuth, ApprovalDecision, ApprovalRequest } from "../../api";
 
 export type ApprovalQueuePanelProps = {
-  open: boolean;
-  onToggle: (open: boolean) => void;
   baseUrl: string;
   auth: ApiAuth;
 };

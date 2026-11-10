@@ -20,9 +20,7 @@ export default function SceneView({ baseUrl, yolo, allowAutoplay, client, daemon
         {entities.length === 0 ? (
           <div className="workspace-empty" data-testid="workspace-empty">
             <div className="workspace-empty-symbol"><WorkspaceIcon name="workspace" /></div>
-            <div className="workspace-eyebrow">YOUR NEXT IDEA STARTS HERE</div>
-            <h2>From intent to action.</h2>
-            <p>Give your agent a goal below. Artifacts and interactive results will appear in this space.</p>
+            <h2>What can I help with?</h2>
             <button className="workspace-button" type="button" onClick={() => {
               requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('[data-testid="prompt"]')?.focus());
             }}>Start a conversation <WorkspaceIcon name="arrow" /></button>

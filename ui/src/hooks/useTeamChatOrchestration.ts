@@ -81,7 +81,6 @@ export default function useTeamChatOrchestration(args: TeamChatOrchestrationArgs
     teamQueue: conversationState.teamQueue,
     teamQueueCount: conversationState.teamQueueCount,
     teamQueueNeedsRun: conversationState.teamQueueNeedsRun,
-    teamRecentActivity: conversationState.teamRecentActivity,
     teamRunCreate: actionState.teamRunCreate,
     teamStatus: conversationState.teamStatus,
   };

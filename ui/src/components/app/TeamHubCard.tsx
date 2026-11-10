@@ -7,13 +7,6 @@ export type TeamHubQueueEntry = {
   action: "run" | "guidance" | "goal";
 };
 
-export type TeamHubActivity = {
-  key: string;
-  label: string;
-  preview: string;
-  ts?: number;
-};
-
 type TeamHubCardProps = {
   selectedTeamId: string;
   latestTeamRunId: string;
@@ -34,7 +27,6 @@ type TeamHubCardProps = {
   teamQueueNeedsRun: boolean;
   onClearQueue: () => void;
   onStartQueuedRun: () => void;
-  recentActivity: TeamHubActivity[];
 };
 
 export default function TeamHubCard(props: TeamHubCardProps) {
@@ -118,9 +110,6 @@ export default function TeamHubCard(props: TeamHubCardProps) {
           </button>
         </div>
       </div>
-      <div className="mt-2 text-[11px] text-white/50">
-        Prompts and attachments below are shared with all team members. Use Guidance for mid-run updates.
-      </div>
       {props.teamConversationUsingCache ? (
         <div className="mt-2 text-[11px] text-amber-100">
           Showing cached team history
@@ -187,28 +176,6 @@ export default function TeamHubCard(props: TeamHubCardProps) {
                 +{props.teamQueueCount - 3} more queued
               </div>
             ) : null}
-          </div>
-        </div>
-      ) : null}
-      {props.recentActivity.length > 0 ? (
-        <div className="mt-2 rounded-md border border-white/10 bg-black/30 px-2 py-2 text-[11px] text-white/70">
-          <div className="flex items-center justify-between gap-2">
-            <div className="font-semibold text-white/70">Recent activity</div>
-            <div className="text-[10px] text-white/40">
-              {props.recentActivity[0]?.ts
-                ? new Date(props.recentActivity[0].ts).toLocaleTimeString()
-                : ""}
-            </div>
-          </div>
-          <div className="mt-1 grid gap-1">
-            {props.recentActivity.map((entry) => (
-              <div key={entry.key} className="flex flex-wrap items-baseline gap-2">
-                <span className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/60">
-                  {entry.label}
-                </span>
-                <span className="text-white/80">{entry.preview}</span>
-              </div>
-            ))}
           </div>
         </div>
       ) : null}

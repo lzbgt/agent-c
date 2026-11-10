@@ -306,7 +306,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
   const [salienceBusy, setSalienceBusy] = React.useState(false);
 
   const [recapsLimit, setRecapsLimit] = React.useState("20");
-  const [recapsIncludeSummary, setRecapsIncludeSummary] = React.useState(false);
+  const [recapsIncludeSummary, setRecapsIncludeSummary] = React.useState(true);
   const [recapsDryRun, setRecapsDryRun] = React.useState(true);
   const [recapsWriteFile, setRecapsWriteFile] = React.useState(true);
   const [recapsKind, setRecapsKind] = React.useState("");
@@ -367,7 +367,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
       if (!res.ok) throw new Error(res.error || "query failed");
       setQueryResult(res);
     } catch (e) {
-      setQueryError(String(e));
+      setQueryError(e instanceof Error ? e.message : String(e));
     } finally {
       setQueryBusy(false);
     }
@@ -401,7 +401,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
       if (!res.ok) throw new Error(res.error || "correlate failed");
       setCorrelateResult(res);
     } catch (e) {
-      setCorrelateError(String(e));
+      setCorrelateError(e instanceof Error ? e.message : String(e));
     } finally {
       setCorrelateBusy(false);
     }
@@ -430,7 +430,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
       if (!res.ok) throw new Error(res.error || "correlation index build failed");
       setCorrelationIndexResult(res);
     } catch (e) {
-      setCorrelationIndexError(String(e));
+      setCorrelationIndexError(e instanceof Error ? e.message : String(e));
     } finally {
       setCorrelationIndexBusy(false);
     }
@@ -456,7 +456,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
       if (!res.ok) throw new Error(res.error || "checkpoint query failed");
       setCheckpointResult(res);
     } catch (e) {
-      setCheckpointError(String(e));
+      setCheckpointError(e instanceof Error ? e.message : String(e));
     } finally {
       setCheckpointBusy(false);
     }
@@ -486,7 +486,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
       if (!res.ok) throw new Error(res.error || "index failed");
       setIndexResult(res);
     } catch (e) {
-      setIndexError(String(e));
+      setIndexError(e instanceof Error ? e.message : String(e));
     } finally {
       setIndexBusy(false);
     }
@@ -528,7 +528,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
       if (!res.ok) throw new Error(res.error || "salience failed");
       setSalienceResult(res);
     } catch (e) {
-      setSalienceError(String(e));
+      setSalienceError(e instanceof Error ? e.message : String(e));
     } finally {
       setSalienceBusy(false);
     }
@@ -567,7 +567,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
       if (!res.ok) throw new Error(res.error || "recaps list failed");
       setRecapsResult(res);
     } catch (e) {
-      setRecapsError(String(e));
+      setRecapsError(e instanceof Error ? e.message : String(e));
     } finally {
       setRecapsListBusy(false);
     }
@@ -611,7 +611,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
       if (!res.ok) throw new Error(res.error || "recap generation failed");
       setRecapsResult(res);
     } catch (e) {
-      setRecapsError(String(e));
+      setRecapsError(e instanceof Error ? e.message : String(e));
     } finally {
       setRecapsGenerateBusy(false);
     }
@@ -653,7 +653,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
       setRecapScheduleWeeklyDays(String(memory.recap_weekly_days ?? "7"));
       setRecapSummaryModel(String(daemon.summary_model || ""));
     } catch (e) {
-      setRecapScheduleError(String(e));
+      setRecapScheduleError(e instanceof Error ? e.message : String(e));
     } finally {
       setRecapScheduleBusy(false);
     }
@@ -685,7 +685,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
       if (!res.ok) throw new Error(res.error || res.err || "schedule update failed");
       setRecapScheduleResult(res);
     } catch (e) {
-      setRecapScheduleError(String(e));
+      setRecapScheduleError(e instanceof Error ? e.message : String(e));
     } finally {
       setRecapScheduleBusy(false);
     }
@@ -726,7 +726,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
       if (!res.ok) throw new Error(res.error || "retention enforce failed");
       setRetentionResult(res);
     } catch (e) {
-      setRetentionError(String(e));
+      setRetentionError(e instanceof Error ? e.message : String(e));
     } finally {
       setRetentionBusy(false);
     }

@@ -72,10 +72,6 @@ export default function AppAdvancedPanel(props: AppAdvancedPanelProps) {
     <section className="workspace-surface workspace-tool min-w-0 p-4" data-testid="workspace-tool">
       {props.advancedPage === "trace" ? (
         <TraceLookupPanel
-          open={true}
-          onToggle={(open) => {
-            if (!open) props.setAdvancedPage("");
-          }}
           traceId={props.tracePanel.traceId}
           onTraceIdChange={props.tracePanel.onTraceIdChange}
           onLoad={props.tracePanel.onLoad}
@@ -90,38 +86,22 @@ export default function AppAdvancedPanel(props: AppAdvancedPanelProps) {
         />
       ) : props.advancedPage === "run-diff" ? (
         <RunDiffPanel
-          open={true}
-          onToggle={(open) => {
-            if (!open) props.setAdvancedPage("");
-          }}
           baseUrl={props.runDiffPanel.baseUrl}
           auth={props.runDiffPanel.auth}
         />
       ) : props.advancedPage === "memory" ? (
         <MemoryPanel
-          open={true}
-          onToggle={(open) => {
-            if (!open) props.setAdvancedPage("");
-          }}
           baseUrl={props.memoryPanel.baseUrl}
           auth={props.memoryPanel.auth}
         />
       ) : props.advancedPage === "voice" ? (
         <VoicePanel
-          open={true}
-          onToggle={(open) => {
-            if (!open) props.setAdvancedPage("");
-          }}
           baseUrl={props.voicePanel.baseUrl}
           auth={props.voicePanel.auth}
           sessionId={props.voicePanel.sessionId}
         />
       ) : props.advancedPage === "approvals" ? (
         <ApprovalQueuePanel
-          open={true}
-          onToggle={(open) => {
-            if (!open) props.setAdvancedPage("");
-          }}
           baseUrl={props.approvalsPanel.baseUrl}
           auth={props.approvalsPanel.auth}
         />

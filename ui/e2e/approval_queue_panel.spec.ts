@@ -140,14 +140,17 @@ test("approval queue loads, selects, and submits a decision", async ({ page }) =
     await route.fallback();
   });
 
+  await page.setViewportSize({ width: 320, height: 900 });
   await page.goto("/");
   await page.getByRole("button", { name: "Approvals" }).click();
 
   const filters = page.getByTestId("approval-queue-filters");
+  await expect(page.getByTestId("approval-more-filters")).not.toHaveAttribute("open", "");
   await filters.getByRole("button", { name: "Load approvals" }).click();
 
   const list = page.getByTestId("approval-queue-list");
-  await expect(list.getByText("approval-1")).toBeVisible();
+  await expect(list.getByText("shell_exec", { exact: true })).toBeVisible();
+  expect(await list.innerText()).not.toContain("approval-1");
   await list.getByRole("button", { name: "Details" }).click();
 
   const detail = page.getByTestId("approval-queue-detail");
@@ -164,5 +167,6 @@ test("approval queue loads, selects, and submits a decision", async ({ page }) =
     note: "looks safe",
   });
   await expect(detail.getByText("Decision reason: approved")).toBeVisible();
-  await expect(detail.getByText("member-1")).toBeVisible();
+  await expect(detail.getByText("member-1", { exact: false })).toBeVisible();
+  expect(await page.locator("#workspace-main").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 });

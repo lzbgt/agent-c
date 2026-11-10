@@ -58,10 +58,11 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
           onCopyText={workflowState.copyText}
           onCancelWorkflow={workflowState.cancelWorkflow}
         />
+        <details className="tool-details"><summary>Find by ID & load options</summary>
         <div className="flex flex-wrap items-center gap-2">
           <input
-            className="min-w-[260px] flex-1 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
-            placeholder="workflow_id (e.g. wf_...)"
+            className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+            aria-label="Workflow ID" placeholder="Workflow ID"
             value={workflowState.workflowId}
             onChange={(e) => workflowState.setWorkflowId(e.target.value)}
           />
@@ -83,10 +84,6 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
           </button>
         </div>
         {workflowState.copyNotice ? <div className="text-[10px] text-white/50">{workflowState.copyNotice}</div> : null}
-        {workflowState.copyNotice ? (
-          <div className="text-[10px] text-white/50">Tip: use the copy buttons in the workflow list rows for quick sharing.</div>
-        ) : null}
-
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/70">
           <label className="flex items-center gap-1">
             <input
@@ -110,6 +107,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
 
 
 
+        </details>
         {workflowState.detailError ? (
           <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
             {workflowState.detailError}
@@ -134,6 +132,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
           onTraceIdClick={props.onTraceIdClick}
         />
 
+        <details className="tool-details"><summary>Execution activity</summary>
         <WorkflowTimelineSection
           workflowId={workflowState.timelineWorkflowId}
           taskIdFilter={workflowState.timelineTaskIdFilter}
@@ -146,7 +145,8 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
           setAutoRefresh={workflowState.setTimelineAutoRefresh}
           eventsQuery={workflowState.timelineQuery}
           onCopyText={workflowState.copyText}
-        />
+        />        </details>
+
 
       </div>
       <div hidden={view !== "create"}>

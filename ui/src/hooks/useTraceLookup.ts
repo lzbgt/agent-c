@@ -40,9 +40,13 @@ export default function useTraceLookup(args: TraceLookupArgs) {
       if (connectionMode === "broker") {
         const base = String(brokerBase || "").trim();
         if (!base) throw new Error("missing broker base");
-        return { mode: "broker" as const, data: await apiBrokerTrace(base, traceId, daemonAuth) };
+        const data = await apiBrokerTrace(base, traceId, daemonAuth);
+        if (!data.ok) throw new Error(data.error || data.err || data.code || "Trace lookup failed.");
+        return { mode: "broker" as const, data };
       }
-      return { mode: "direct" as const, data: await apiAgentdTrace(effectiveBase, traceId, daemonAuth) };
+      const data = await apiAgentdTrace(effectiveBase, traceId, daemonAuth);
+      if (!data.ok) throw new Error(data.error || data.err || data.code || "Trace lookup failed.");
+      return { mode: "direct" as const, data };
     },
     onSuccess: (value) => {
       if (value.mode === "broker") {

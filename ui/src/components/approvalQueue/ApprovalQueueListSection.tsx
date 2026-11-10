@@ -1,4 +1,5 @@
 import React from "react";
+import { JsonDetails } from "../ToolOutput";
 import type { ApprovalQueueState } from "./approvalQueueTypes";
 
 type ApprovalQueueListSectionProps = {
@@ -26,15 +27,11 @@ export default function ApprovalQueueListSection({ state }: ApprovalQueueListSec
                 }`}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-semibold text-white/90">{approval.approval_id || "(missing id)"}</div>
+                  <div className="font-semibold text-white/90">{approval.tool_name || "Requested action"}</div>
                   <div className="text-[11px] text-white/50">{approval.status || "pending"}</div>
                 </div>
-                <div className="mt-1 grid gap-1 text-[11px] text-white/60">
-                  <div>Tool: {approval.tool_name || "-"}</div>
-                  <div>Trace: {approval.trace_id || "-"}</div>
-                  <div>Run: {approval.run_id ?? "-"}</div>
-                  <div>Created: {approval.created_unix_ms ?? "-"}</div>
-                </div>
+                {approval.decision_reason ? <p className="tool-muted">{approval.decision_reason}</p> : null}
+                <JsonDetails label="Request details" value={approval} />
                 <div className="mt-2 flex flex-wrap gap-2">
                   <button
                     className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"

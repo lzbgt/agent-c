@@ -139,9 +139,9 @@ test("conversation ui actions send client-state snapshots and notification ackno
   await page.goto("/");
 
   await page.getByTestId("conversation-details").locator(":scope > summary").click();
-  await page.getByRole("button", { name: "Show messages" }).click();
 
-  await expect(page.getByTestId("conversation-view")).toContainText("Snapshot requested.");
+  await expect(page.getByTestId("chat-thread")).toContainText("Snapshot requested.");
+  await expect(page.getByTestId("execution-activity")).not.toContainText("Snapshot requested.");
   await page.getByRole("button", { name: "Send snapshot" }).click();
   await page.getByRole("button", { name: "Acknowledge" }).click();
 

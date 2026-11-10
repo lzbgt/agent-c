@@ -1,11 +1,9 @@
 import React from "react";
 
 import type { AgentEvent } from "../../api";
-import { parseAssistantMultimodal, renderAssistantMultimodal } from "../AssistantMultimodal";
+import { executionEvent } from "../../history/executionEvidence";
 import ArtifactView from "../ArtifactView";
 import ConversationCard from "../ConversationCard";
-import LlmDebugView from "../LlmDebugView";
-import Markdown from "../Markdown";
 import ToolResultView from "../ToolResultView";
 import ConversationUiActionCard from "./ConversationUiActionCard";
 import {
@@ -16,7 +14,7 @@ import {
 import { prettyJsonOrRaw, safeObject } from "./utils";
 import type { ConversationToolCallSummaryById, ConversationViewProps } from "./conversationViewTypes";
 
-type ConversationEventListProps = Pick<
+type ExecutionEventListProps = Pick<
   ConversationViewProps,
   | "allowAutoplay"
   | "allowClientEffects"
@@ -28,7 +26,6 @@ type ConversationEventListProps = Pick<
   | "disableAutoClientRpcs"
   | "events"
   | "onSceneApply"
-  | "prompt"
   | "reverseOrder"
   | "sceneEntities"
   | "sessionId"
@@ -46,7 +43,7 @@ type ConversationEventListProps = Pick<
 
 const Card = ConversationCard;
 
-export default function ConversationEventList(props: ConversationEventListProps) {
+export default function ExecutionEventList(props: ExecutionEventListProps) {
   const {
     ackError,
     ackedKeys,
@@ -62,7 +59,6 @@ export default function ConversationEventList(props: ConversationEventListProps)
     markAckedKey,
     onSceneApply,
     postClientEvent,
-    prompt,
     reverseOrder,
     rpcRuntime,
     sceneEntities,
@@ -74,46 +70,14 @@ export default function ConversationEventList(props: ConversationEventListProps)
   } = props;
 
   const items: Array<React.ReactNode> = [];
-  let streamedAssistant = "";
-  let sawFinalAssistant = false;
-  let sawToolOrAssistant = false;
-  let lastHeartbeat: unknown = null;
-
-  if (prompt.trim().length > 0) {
-    items.push(
-      <Card key="user" title="User">
-        <Markdown text={prompt} />
-      </Card>,
-    );
-  }
-
-  events.forEach((ev: AgentEvent, idx: number) => {
+  events.forEach((original: AgentEvent, idx: number) => {
+    const ev = executionEvent(original);
+    if (!ev) return;
     const type = ev.type;
     const rawData = getNormalizedEventData(ev.data);
     const data = safeObject(rawData);
 
-    if (type === "assistant_message") {
-      sawFinalAssistant = true;
-      sawToolOrAssistant = true;
-      const mm = parseAssistantMultimodal(rawData);
-      items.push(
-        <Card key={`a-${idx}`} title="Assistant">
-          <Markdown text={String(data.assistant_content ?? "")} />
-          {renderAssistantMultimodal(mm)}
-        </Card>,
-      );
-      return;
-    }
-
-    if (type === "assistant_delta") {
-      const delta = typeof data.delta === "string" ? data.delta : "";
-      if (delta) streamedAssistant += delta;
-      if (delta) sawToolOrAssistant = true;
-      return;
-    }
-
     if (type === "tool_call") {
-      sawToolOrAssistant = true;
       const name = String(data.tool_name ?? "");
       const toolCallId = typeof data.tool_call_id === "string" ? data.tool_call_id : "";
       const args = extractToolCallArgumentsText(data);
@@ -148,7 +112,6 @@ export default function ConversationEventList(props: ConversationEventListProps)
     }
 
     if (type === "tool_result") {
-      sawToolOrAssistant = true;
       const name = String(data.tool_name ?? "");
       const toolCallId = typeof data.tool_call_id === "string" ? data.tool_call_id : "";
       const summaryFromResult = toolCallId && toolCallSummaryById[toolCallId] ? toolCallSummaryById[toolCallId] : null;
@@ -217,7 +180,6 @@ export default function ConversationEventList(props: ConversationEventListProps)
     }
 
     if (type === "artifact") {
-      sawToolOrAssistant = true;
       const artifact: Record<string, unknown> & { tool_call_id: string } = {
         ...safeObject(data.artifact),
         tool_call_id: String(data.tool_call_id ?? ""),
@@ -240,7 +202,6 @@ export default function ConversationEventList(props: ConversationEventListProps)
     }
 
     if (type === "ui_action") {
-      sawToolOrAssistant = true;
       items.push(
         <ConversationUiActionCard
           key={`ua-${idx}`}
@@ -268,7 +229,6 @@ export default function ConversationEventList(props: ConversationEventListProps)
     }
 
     if (type === "heartbeat") {
-      lastHeartbeat = rawData ?? {};
       return;
     }
 
@@ -313,30 +273,9 @@ export default function ConversationEventList(props: ConversationEventListProps)
         );
         return;
       }
-      if (type === "llm_request" || type === "llm_response" || type === "start" || type === "end" || type === "done") {
-        if (type === "llm_request") {
-          items.push(
-            <Card key={`dbg-${type}-${idx}`} title="LLM request">
-              <LlmDebugView kind="request" data={data} />
-            </Card>,
-          );
-          return;
-        }
-        if (type === "llm_response") {
-          items.push(
-            <Card key={`dbg-${type}-${idx}`} title="LLM response">
-              <LlmDebugView kind="response" data={data} />
-            </Card>,
-          );
-          return;
-        }
-        items.push(
-          <Card key={`dbg-${type}-${idx}`} title={`Debug: ${type}`}>
-            <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
-              {typeof rawData === "string" ? rawData : JSON.stringify(rawData, null, 2)}
-            </pre>
-          </Card>,
-        );
+      if (type === "start" || type === "end" || type === "done") {
+        const metadata = Object.fromEntries(["ok", "status", "model", "tools", "trace_id", "job_id", "elapsed_ms", "usage", "finish_reason"].filter((key) => data[key] !== undefined).map((key) => [key, data[key]]));
+        items.push(<Card key={`dbg-${type}-${idx}`} title={`Debug: ${type}`}><pre className="overflow-auto whitespace-pre-wrap">{JSON.stringify(metadata, null, 2)}</pre></Card>);
         return;
       }
     }
@@ -354,33 +293,9 @@ export default function ConversationEventList(props: ConversationEventListProps)
     }
   });
 
-  if (!sawToolOrAssistant && events.length > 0) {
-    const heartbeatJson = lastHeartbeat && typeof lastHeartbeat === "object" ? JSON.stringify(lastHeartbeat, null, 2) : "";
-    items.push(
-      <Card key="working" title="Working…">
-        <div className="text-xs text-white/70">
-          Waiting for assistant output / tool calls.
-          {heartbeatJson ? (
-            <pre className="mt-2 overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-[11px] leading-relaxed text-white/80">
-              {heartbeatJson}
-            </pre>
-          ) : null}
-        </div>
-      </Card>,
-    );
-  }
-
-  if (!sawFinalAssistant && streamedAssistant.trim().length > 0) {
-    items.push(
-      <Card key="assistant-stream" title="Assistant (streaming)">
-        <Markdown text={streamedAssistant} />
-      </Card>,
-    );
-  }
-
   const displayItems = reverseOrder ? [...items].reverse() : items;
   return (
-    <div className="grid gap-3" data-testid="conversation-view">
+    <div className="grid gap-3" data-testid="execution-activity">
       {displayItems}
     </div>
   );

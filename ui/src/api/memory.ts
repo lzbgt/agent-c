@@ -1,5 +1,6 @@
 import { daemonFetchInit, type ApiAuth } from "./auth";
 import { addQueryParam } from "./query";
+import type { z } from "zod";
 import {
   MemoryCheckpointsRespSchema,
   type MemoryCheckpointsResp,
@@ -23,6 +24,20 @@ import {
   MemorySalienceRespSchema,
   type MemorySalienceResp,
 } from "./schemas/memory";
+
+async function memoryResponse<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
+  const body: unknown = await response.json().catch(() => {
+    throw new Error(`Memory request failed (HTTP ${response.status}).`);
+  });
+  const record = body && typeof body === "object" ? body as Record<string, unknown> : {};
+  if (!response.ok || record.ok === false) {
+    const message = typeof record.error === "string" ? record.error : typeof record.err === "string" ? record.err : "Memory request failed.";
+    throw new Error(message);
+  }
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) throw new Error("Memory service returned an unexpected response.");
+  return parsed.data;
+}
 
 export type MemoryQueryParams = {
   sinceUtcMs?: number;
@@ -88,8 +103,7 @@ export async function apiMemoryQuery(
   addQueryParam(qs, "limit", params.limit);
   const url = qs.toString() ? `${base}/api/v1/memory/query?${qs.toString()}` : `${base}/api/v1/memory/query`;
   const r = await fetch(url, daemonFetchInit(auth));
-  const j = await r.json();
-  return MemoryQueryRespSchema.parse(j);
+  return memoryResponse(r, MemoryQueryRespSchema);
 }
 
 export async function apiMemoryCorrelate(
@@ -109,8 +123,7 @@ export async function apiMemoryCorrelate(
   if (params.timeline) addQueryParam(qs, "timeline", "1");
   const url = `${base}/api/v1/memory/correlate?${qs.toString()}`;
   const r = await fetch(url, daemonFetchInit(auth));
-  const j = await r.json();
-  return MemoryCorrelateRespSchema.parse(j);
+  return memoryResponse(r, MemoryCorrelateRespSchema);
 }
 
 export async function apiMemoryCorrelationIndexBuild(
@@ -122,8 +135,7 @@ export async function apiMemoryCorrelationIndexBuild(
     `${base}/api/v1/memory/correlation/index`,
     daemonFetchInit(auth, { method: "POST", body: JSON.stringify(body ?? {}) }, { "Content-Type": "application/json" }),
   );
-  const j = await r.json();
-  return MemoryCorrelationIndexRespSchema.parse(j);
+  return memoryResponse(r, MemoryCorrelationIndexRespSchema);
 }
 
 export async function apiMemoryCheckpoints(
@@ -138,8 +150,7 @@ export async function apiMemoryCheckpoints(
   addQueryParam(qs, "limit", params.limit);
   const url = qs.toString() ? `${base}/api/v1/memory/checkpoints?${qs.toString()}` : `${base}/api/v1/memory/checkpoints`;
   const r = await fetch(url, daemonFetchInit(auth));
-  const j = await r.json();
-  return MemoryCheckpointsRespSchema.parse(j);
+  return memoryResponse(r, MemoryCheckpointsRespSchema);
 }
 
 export async function apiMemoryIndex(
@@ -156,8 +167,7 @@ export async function apiMemoryIndex(
   addQueryParam(qs, "daily_days", params.dailyDays);
   const url = qs.toString() ? `${base}/api/v1/memory/index?${qs.toString()}` : `${base}/api/v1/memory/index`;
   const r = await fetch(url, daemonFetchInit(auth));
-  const j = await r.json();
-  return MemoryIndexRespSchema.parse(j);
+  return memoryResponse(r, MemoryIndexRespSchema);
 }
 
 export async function apiMemorySalience(
@@ -176,8 +186,7 @@ export async function apiMemorySalience(
   addQueryParam(qs, "importance_weight", params.importanceWeight);
   const url = qs.toString() ? `${base}/api/v1/memory/salience?${qs.toString()}` : `${base}/api/v1/memory/salience`;
   const r = await fetch(url, daemonFetchInit(auth));
-  const j = await r.json();
-  return MemorySalienceRespSchema.parse(j);
+  return memoryResponse(r, MemorySalienceRespSchema);
 }
 
 export async function apiMemoryRetentionEnforce(
@@ -189,8 +198,7 @@ export async function apiMemoryRetentionEnforce(
     `${base}/api/v1/memory/retention/enforce`,
     daemonFetchInit(auth, { method: "POST", body: JSON.stringify(body ?? {}) }, { "Content-Type": "application/json" }),
   );
-  const j = await r.json();
-  return MemoryRetentionRespSchema.parse(j);
+  return memoryResponse(r, MemoryRetentionRespSchema);
 }
 
 export async function apiMemoryRecapsList(
@@ -204,8 +212,7 @@ export async function apiMemoryRecapsList(
   addQueryParam(qs, "kind", params.kind);
   const url = qs.toString() ? `${base}/api/v1/memory/recaps?${qs.toString()}` : `${base}/api/v1/memory/recaps`;
   const r = await fetch(url, daemonFetchInit(auth));
-  const j = await r.json();
-  return MemoryRecapsListRespSchema.parse(j);
+  return memoryResponse(r, MemoryRecapsListRespSchema);
 }
 
 export async function apiMemoryRecapsCreate(
@@ -217,6 +224,5 @@ export async function apiMemoryRecapsCreate(
     `${base}/api/v1/memory/recaps`,
     daemonFetchInit(auth, { method: "POST", body: JSON.stringify(body ?? {}) }, { "Content-Type": "application/json" }),
   );
-  const j = await r.json();
-  return MemoryRecapRespSchema.parse(j);
+  return memoryResponse(r, MemoryRecapRespSchema);
 }

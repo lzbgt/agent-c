@@ -34,12 +34,12 @@ test("workspace navigation retains accessible names, active state and return pat
   await expect(page.getByTestId("workspace-empty")).toBeVisible();
   await page.screenshot({ path: "test-results/workspace-desktop.png", fullPage: true });
   await nav.getByRole("button", { name: "Workflows", exact: true }).click();
-  await expect(page.getByTestId("workspace-heading")).toContainText("Compose repeatable processes");
+  await expect(page.getByRole("heading", { name: "Workflows", exact: true })).toBeVisible();
   await expect(nav.getByRole("button", { name: "Workflows", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(page.getByTestId("workspace-empty")).toHaveCount(0);
   await expect(page.getByTestId("promptbar-root")).toBeHidden();
   await expect(page.getByTestId("workflow-list-panel")).toBeVisible();
-  await expect(page.getByText("wf_89cf09b3-ba91-4a18-bead-9381a6a81b45", { exact: true })).toBeVisible();
+  await expect(page.getByText("Workflow · a6a81b45", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Collapse tools", exact: true }).click();
   await nav.getByRole("button", { name: "Chat", exact: true }).click();
   await expect(page.getByTestId("workspace-empty")).toBeVisible();

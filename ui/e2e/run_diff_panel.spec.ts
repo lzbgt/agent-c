@@ -104,25 +104,35 @@ test("run diff panel compares replay bundles and DB evidence", async ({ page }) 
     await route.fallback();
   });
 
+  await page.setViewportSize({ width: 320, height: 900 });
   await page.goto("/");
 
   await page.getByRole("button", { name: "Run Diff" }).click();
   await expect(page.getByTestId("run-diff-panel")).toBeVisible();
+  await expect(page.getByTestId("run-diff-details")).not.toHaveAttribute("open", "");
+  await expect(page.getByTestId("run-diff-evidence-options")).not.toHaveAttribute("open", "");
 
   await page.getByTestId("run-diff-run-a-input").fill("101");
   await page.getByTestId("run-diff-run-b-input").fill("202");
   await page.getByRole("button", { name: "Load A" }).click();
   await page.getByRole("button", { name: "Load B" }).click();
 
-  const loadersSection = page.getByTestId("run-diff-loaders-section");
+  const outputs = page.getByTestId("run-diff-outputs");
+  await expect(outputs).toContainText("Assistant outputs differ.");
+  await expect(outputs.getByText("A", { exact: true })).toBeVisible();
+  await expect(outputs.getByText("B", { exact: true })).toBeVisible();
+  expect(await page.getByTestId("run-diff-panel").innerText()).not.toMatch(/hash-a|total_tokens|shell|tool records/);
+  await page.getByTestId("run-diff-details").locator(":scope > summary").click();
+  const loadersSection = page.getByTestId("run-diff-metadata");
   const replaySection = page.getByTestId("run-diff-replay-section");
   await expect(loadersSection).toContainText("replay hash differs");
-  await expect(replaySection).toContainText("prompt");
-  await expect(replaySection).toContainText("hello world");
+  await expect(replaySection).not.toContainText("hello world");
+  await expect(replaySection).toContainText("system");
   await expect(page.getByText("usage delta: total_tokens +6")).toBeVisible();
 
-  await page.getByRole("button", { name: "Load evidence" }).first().click();
-  await page.getByRole("button", { name: "Load evidence" }).nth(1).click();
+  await page.getByTestId("run-diff-evidence-options").locator(":scope > summary").click();
+  await page.getByRole("button", { name: "Load evidence A", exact: true }).click();
+  await page.getByRole("button", { name: "Load evidence B", exact: true }).click();
 
   const evidenceSection = page.getByTestId("run-diff-evidence-section");
   await expect(evidenceSection).toContainText("event type deltas");
@@ -130,4 +140,7 @@ test("run diff panel compares replay bundles and DB evidence", async ({ page }) 
   await expect(evidenceSection).toContainText("/tmp/new.txt");
   await expect(evidenceSection).toContainText("artifacts changed");
   await expect(page.getByText("db usage delta: total_tokens +6")).toBeVisible();
+  await page.getByTestId("run-diff-details").locator(":scope > summary").click();
+  await expect(outputs.getByText("Added · /tmp/new.txt", { exact: true })).toBeVisible();
+  expect(await page.locator("#workspace-main").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 });

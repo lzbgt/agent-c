@@ -27,35 +27,9 @@ type WorkflowComposerBodyProps = {
 export default function WorkflowComposerBody(props: WorkflowComposerBodyProps) {
   return (
     <>
-      <div className="mt-2 grid gap-2 text-[11px] text-white/60">
-        {props.composerMode === "json" ? (
-          <div>
-            Templates are read-only helpers. Edit the JSON below before submitting.
-            {props.templateKind === "agent_parallel" ? (
-              <span className="text-amber-200"> Requires `--workflow-enable-http-tasks` on the primary agentd.</span>
-            ) : null}
-          </div>
-        ) : (
-          <div>Graph editor supports LLM and agentd_parallel tasks. Use JSON mode for advanced workflow kinds.</div>
-        )}
-        {props.defaults.api_key ? (
-          <label className="flex items-center gap-1">
-            <input
-              type="checkbox"
-              className="h-3 w-3"
-              checked={props.allowInlineKeys}
-              onChange={(event) => props.onSetAllowInlineKeys(event.target.checked)}
-            />
-            allow inline API keys (stored in DB)
-          </label>
-        ) : null}
-        {props.composerMode === "json" && props.templateKind === "agent_parallel" && !props.bearerEnv ? (
-          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-100">
-            No bearer env configured. If remote agents require auth, set a bearer env in UI runtime config
-            (e.g. <code className="text-amber-100">workflowBearerEnv</code>).
-          </div>
-        ) : null}
-      </div>
+      {props.defaults.api_key ? <details className="tool-details"><summary>Credential options</summary>
+        <label className="tool-checks"><input type="checkbox" checked={props.allowInlineKeys} onChange={(event) => props.onSetAllowInlineKeys(event.target.checked)} />Store provider key with this workflow</label>
+      </details> : null}
 
       {props.composerMode === "graph" ? (
         <WorkflowGraphComposer
@@ -75,7 +49,7 @@ export default function WorkflowComposerBody(props: WorkflowComposerBodyProps) {
           data-testid="workflow-composer-json"
           value={props.composerJson}
           onChange={(event) => props.onSetComposerJson(event.target.value)}
-          placeholder='Paste workflow JSON here. Use "Apply" to load a template.'
+          aria-label="Workflow definition"
         />
       )}
 

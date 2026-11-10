@@ -170,7 +170,6 @@ export default function useAppShellState({
     return `agentui.runQueue:${baseKey}::${sidKey}`;
   }, [effectiveBase, sessionId]);
   const [showAllHistoryEntries, setShowAllHistoryEntries] = useLocalStorageState<boolean>(`${historyUiKey}:showAll`, false);
-  const [showHistoryMessages, setShowHistoryMessages] = useLocalStorageState<boolean>(`${historyUiKey}:showMessages`, false);
   const [historyExpandedByKey, setHistoryExpandedByKey] = useLocalStorageState<Record<string, boolean>>(
     `${historyUiKey}:expandedByKey`,
     {},
@@ -235,8 +234,6 @@ export default function useAppShellState({
     runQueueKey,
     showAllHistoryEntries,
     setShowAllHistoryEntries,
-    showHistoryMessages,
-    setShowHistoryMessages,
     historyExpandedByKey,
     setHistoryExpandedByKey,
     sceneCollapsed,

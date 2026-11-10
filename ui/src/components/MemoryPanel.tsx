@@ -3,60 +3,56 @@ import MemoryExplorerIndexSection from "./memoryExplorer/MemoryExplorerIndexSect
 import MemoryExplorerQuerySection from "./memoryExplorer/MemoryExplorerQuerySection";
 import MemoryExplorerRecapsSection from "./memoryExplorer/MemoryExplorerRecapsSection";
 import MemoryExplorerRetentionSection from "./memoryExplorer/MemoryExplorerRetentionSection";
+import MemoryDiagnosticsSection from "./memoryExplorer/MemoryDiagnosticsSection";
 import { useMemoryPanelState } from "./memoryExplorer/useMemoryPanelState";
 import type { ApiAuth } from "../api";
 
 export type MemoryPanelProps = {
-  open: boolean;
-  onToggle: (open: boolean) => void;
   baseUrl: string;
   auth: ApiAuth;
 };
 
 export default function MemoryPanel(props: MemoryPanelProps) {
   const state = useMemoryPanelState({ baseUrl: props.baseUrl, auth: props.auth });
+  const [section, setSection] = React.useState<"knowledge" | "summaries">("knowledge");
 
   return (
-    <details
-      className="mb-4 rounded-lg border border-white/10 bg-white/5 px-3 py-2"
-      open={props.open}
-      onToggle={(ev) => props.onToggle((ev.currentTarget as HTMLDetailsElement).open)}
+    <section
+      aria-label="Memory workspace"
       data-testid="memory-panel"
     >
-      <summary className="cursor-pointer select-none text-xs text-white/80">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="font-semibold text-white/80">Memory explorer</div>
-          <div className="text-[11px] text-white/50">
-            Query structured memory + correlate by trace_id + build the correlation index
-          </div>
+      <div className="tool-workspace">
+        <div className="workspace-tabs" role="group" aria-label="Memory sections">
+          <button type="button" aria-pressed={section === "knowledge"} onClick={() => setSection("knowledge")}>Saved knowledge</button>
+          <button type="button" aria-pressed={section === "summaries"} onClick={() => setSection("summaries")}>Summaries</button>
         </div>
-      </summary>
-
-      <div className="mt-3 grid gap-4">
-        <MemoryExplorerQuerySection
-          canQuery={state.canQuery}
-          stringifyJson={state.stringifyJson}
-          query={state.query}
-          correlation={state.correlation}
-          checkpoints={state.checkpoints}
-        />
-        <MemoryExplorerIndexSection
-          canQuery={state.canQuery}
-          stringifyJson={state.stringifyJson}
-          index={state.index}
-          salience={state.salience}
-        />
-        <MemoryExplorerRecapsSection
+        <div hidden={section !== "knowledge"}>
+          <MemoryExplorerQuerySection canQuery={state.canQuery} query={state.query} />
+        </div>
+        <div hidden={section !== "summaries"}><MemoryExplorerRecapsSection
           canQuery={state.canQuery}
           stringifyJson={state.stringifyJson}
           recaps={state.recaps}
-        />
-        <MemoryExplorerRetentionSection
-          canQuery={state.canQuery}
-          stringifyJson={state.stringifyJson}
-          retention={state.retention}
-        />
+        /></div>
+        <details className="tool-details tool-maintenance" data-testid="memory-advanced">
+          <summary>Advanced memory tools</summary>
+          <details className="tool-details">
+            <summary>Trace correlation & checkpoints</summary>
+            <MemoryDiagnosticsSection canQuery={state.canQuery} stringifyJson={state.stringifyJson} correlation={state.correlation} checkpoints={state.checkpoints} />
+          </details>
+          <details className="tool-details">
+            <summary>Index & relevance tuning</summary>
+            <MemoryExplorerIndexSection canQuery={state.canQuery} stringifyJson={state.stringifyJson} index={state.index} salience={state.salience} />
+          </details>
+          <details className="tool-details">
+            <summary>Retention & cleanup</summary>
+            <MemoryExplorerRetentionSection
+              canQuery={state.canQuery}
+              retention={state.retention}
+            />
+          </details>
+        </details>
       </div>
-    </details>
+    </section>
   );
 }

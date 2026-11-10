@@ -6,6 +6,7 @@ export type ChatMessage = {
   key: string;
   role: "user" | "assistant";
   content: string;
+  author?: string;
   multimodal?: Record<string, unknown>;
   truncated?: boolean;
 };

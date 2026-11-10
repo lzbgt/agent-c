@@ -144,9 +144,9 @@ return await api.dom.query({ selector: "#rpc-script-input", fields: ["value"] })
   await page.goto("/");
 
   await page.getByTestId("conversation-details").locator(":scope > summary").click();
-  await page.getByRole("button", { name: "Show messages" }).click();
 
-  await expect(page.getByTestId("conversation-view")).toContainText("Worker bridge ready.");
+  await expect(page.getByTestId("chat-thread")).toContainText("Worker bridge ready.");
+  await expect(page.getByTestId("execution-activity")).not.toContainText("Worker bridge ready.");
   await page.getByRole("button", { name: "Run RPC" }).click();
 
   await expect(page.locator("#rpc-script-input")).toHaveValue("from script eval");

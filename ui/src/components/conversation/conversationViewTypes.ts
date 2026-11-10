@@ -27,7 +27,6 @@ export type ConversationViewProps = {
   sessionId?: string;
   client?: { id?: string; kind?: string; instance_id?: string };
   daemonAuth?: ApiAuth;
-  prompt: string;
   events: AgentEvent[];
   showDebugEvents?: boolean;
   allowAutoplay: boolean;

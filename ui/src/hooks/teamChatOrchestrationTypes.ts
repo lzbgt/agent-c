@@ -72,13 +72,6 @@ export type TeamConversationCache = {
   updated_ms: number;
 };
 
-export type TeamRecentActivity = {
-  key: string;
-  label: string;
-  preview: string;
-  ts: number;
-};
-
 export type TeamChatOrchestrationArgs = {
   authKey: string;
   brokerAgentId: string;

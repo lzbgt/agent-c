@@ -18,9 +18,7 @@ import ArtifactView from "./ArtifactView";
 import Markdown from "./Markdown";
 import ChatThread from "./history/ChatThread";
 import { buildChatTranscript, latestChatFailure } from "../history/chatTranscript";
-import HistoryPanelTeamSection from "./history/HistoryPanelTeamSection";
 import HistoryPanelTechnicalSection from "./history/HistoryPanelTechnicalSection";
-import useHistoryPanelTeamState from "./history/useHistoryPanelTeamState";
 
 export type HistoryPanelProps = {
   entries: HistoryEntry[];
@@ -28,8 +26,6 @@ export type HistoryPanelProps = {
   chatTarget?: "session" | "team";
   showAllEntries: boolean;
   setShowAllEntries: React.Dispatch<React.SetStateAction<boolean>>;
-  showMessages: boolean;
-  setShowMessages: React.Dispatch<React.SetStateAction<boolean>>;
   historyExpandedByKey: Record<string, boolean>;
   setHistoryExpandedByKey: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   dbMessages?: DbMessageRow[];
@@ -90,23 +86,22 @@ export default function HistoryPanel(props: HistoryPanelProps) {
   }, [props.effectiveBase, props.sessionId]);
   const [showSystemMessages, setShowSystemMessages] = useLocalStorageState<boolean>(systemMessagesKey, false);
 
-  const teamState = useHistoryPanelTeamState({
-    effectiveBase: props.effectiveBase,
-    sessionId: props.sessionId,
-    teamId,
-    teamConversationItems,
-  });
-
-  const conversationItems = React.useMemo<PersistedConversationItem[]>(
-    () => buildPersistedConversationItems(dbMessages, dbRuns, dbRunDetailsById),
-    [dbMessages, dbRunDetailsById, dbRuns],
-  );
+  const conversationItems = React.useMemo<PersistedConversationItem[]>(() => {
+    // ChatThread owns user/assistant text. Details contains only model context
+    // and execution evidence, regardless of which history source is current.
+    const contextRows = props.chatTarget === "team"
+      ? teamConversationItems.map((item) => item.message)
+      : dbMessages;
+    return buildPersistedConversationItems(
+      contextRows.filter((message) => message.role !== "user" && message.role !== "assistant"), dbRuns, dbRunDetailsById,
+    );
+  }, [dbMessages, dbRunDetailsById, dbRuns, props.chatTarget, teamConversationItems]);
 
   const chatMessages = React.useMemo(() => {
     if (props.chatTarget === "team") return teamConversationItems.flatMap((item, index) => {
       const role = item.message.role;
       return (role === "user" || role === "assistant") && item.message.content
-        ? [{ key: `team:${item.ts}:${index}`, role: role as "user" | "assistant", content: item.message.content }]
+        ? [{ key: `team:${item.ts}:${index}`, role: role as "user" | "assistant", content: item.message.content, author: role === "assistant" ? item.meta.agent_id || item.meta.member_id : undefined }]
         : [];
     });
     return buildChatTranscript(dbMessages, entries);
@@ -120,7 +115,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
           </div>
           <div className="text-[11px] text-white/50">
             {artifactCatalogMode === "unsupported"
-              ? "connector-managed"
+              ? "unavailable"
               : sessionArtifacts.length > 0
                 ? `${sessionArtifacts.length} items`
                 : "none"}
@@ -131,9 +126,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
             data-testid="history-artifact-unsupported-note"
             className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-xs text-amber-100"
           >
-            Broker connector mode does not expose a stable artifact catalog here. Use transcript, shell output, session
-            events, and service metadata as the current result surfaces, and treat richer artifact browsing as a separate
-            requirement.
+            Files are unavailable for this connection.
           </div>
         ) : sessionArtifacts.length === 0 ? (
           <div className="rounded-md border border-white/10 bg-black/20 px-3 py-3 text-xs text-white/60">
@@ -171,33 +164,29 @@ export default function HistoryPanel(props: HistoryPanelProps) {
 
   return (
     <div className="conversation-layout">
-      <ChatThread messages={chatMessages} working={Boolean(props.activeJobId)} error={latestChatFailure(entries)} />
+      <div id={props.chatTarget === "team" ? "team-chat" : undefined}><ChatThread messages={chatMessages} working={Boolean(props.activeJobId)} error={latestChatFailure(entries)} /></div>
       {sessionArtifacts.length ? artifactContent : null}
       <details className="conversation-details" data-testid="conversation-details">
         <summary>Activity & details</summary>
         <div className="conversation-diagnostics">
         <div className="mb-4 text-xs text-white/50">Session: <code>{props.sessionId}</code></div>
         {props.sceneEntities.length ? <details className="mb-4 text-xs text-white/60"><summary>Result state</summary><pre className="mt-2 overflow-auto whitespace-pre-wrap break-words">{JSON.stringify(props.sceneEntities, null, 2)}</pre></details> : null}
-        <HistoryPanelTeamSection
-          teamId={teamId}
-          teamRunId={teamRunId}
-          teamRunCreatedMs={teamRunCreatedMs}
-          teamRunStatus={teamRunStatus}
-          teamConversationItems={teamConversationItems}
-          teamConversationWarnings={teamConversationWarnings}
-          teamState={teamState}
-          setShowSystemMessages={setShowSystemMessages}
-        />
+        {teamId ? <div className="mb-4 text-xs text-white/60" data-testid="team-execution-details">
+          <p>Team: {teamId}{teamRunId ? ` · Run: ${teamRunId}` : ""}{teamRunStatus ? ` · ${teamRunStatus}` : ""}</p>
+          {teamRunCreatedMs ? <p>Started: {new Date(teamRunCreatedMs).toLocaleString()}</p> : null}
+          {teamConversationWarnings.map((warning, i) => <p className="text-amber-200" key={i}>{warning}</p>)}
+        </div> : null}
 
         <div className="mb-2 flex items-center justify-between gap-2">
           <div className="text-sm font-semibold text-white/80">Stored context</div>
+          <button className="workspace-button" type="button" onClick={() => setShowSystemMessages((value) => !value)}>{showSystemMessages ? "Hide system" : "Show system"}</button>
           <div className="text-[11px] text-white/50">
             {conversationItems.length > 0 ? `${conversationItems.length} items` : "no persisted history"}
           </div>
         </div>
         {conversationItems.length === 0 ? (
           <div className="rounded-md border border-white/10 bg-black/20 px-3 py-3 text-xs text-white/60">
-            No persisted messages yet. Run a prompt to populate the chat history.
+            No additional model context or tool records.
           </div>
         ) : (
           <div className="grid gap-3">
@@ -334,8 +323,6 @@ export default function HistoryPanel(props: HistoryPanelProps) {
         entries={entries}
         showAllEntries={props.showAllEntries}
         setShowAllEntries={props.setShowAllEntries}
-        showMessages={props.showMessages}
-        setShowMessages={props.setShowMessages}
         historyExpandedByKey={props.historyExpandedByKey}
         setHistoryExpandedByKey={props.setHistoryExpandedByKey}
         effectiveBase={props.effectiveBase}
@@ -351,8 +338,6 @@ export default function HistoryPanel(props: HistoryPanelProps) {
         sceneEntities={props.sceneEntities}
         onSceneApply={props.onSceneApply}
         onTraceIdClick={props.onTraceIdClick}
-        showSystemMessages={showSystemMessages}
-        setShowSystemMessages={setShowSystemMessages}
       />
         </div>
       </details>

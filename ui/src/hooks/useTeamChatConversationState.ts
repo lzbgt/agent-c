@@ -19,7 +19,6 @@ import type {
   TeamConversationMessage,
   TeamConversationMeta,
   TeamConversationPayload,
-  TeamRecentActivity,
   TeamQueuedAction,
   TeamRunSessionSnapshot,
 } from "./teamChatOrchestrationTypes";
@@ -420,31 +419,6 @@ export function useTeamChatConversationState(args: TeamChatConversationStateArgs
   const teamConversationCacheUpdatedMs =
     typeof teamConversationCache?.updated_ms === "number" ? teamConversationCache.updated_ms : 0;
 
-  const teamRecentActivity = React.useMemo(() => {
-    const items = teamConversationItems;
-    const out: TeamRecentActivity[] = [];
-    for (let i = items.length - 1; i >= 0 && out.length < 3; i -= 1) {
-      const item = items[i];
-      const ts = typeof item.ts === "number" ? item.ts : 0;
-      const role = String(item.message.role || "").trim() || "message";
-      const meta = item.meta;
-      const agentLabel = typeof meta.agent_id === "string" ? meta.agent_id : "";
-      const label =
-        role === "guidance"
-          ? "guidance"
-          : role === "goal"
-            ? "goal"
-            : role === "user"
-              ? "you"
-              : agentLabel || role;
-      const content = String(item.message.content || "").trim();
-      if (!content) continue;
-      const preview = content.length > 140 ? `${content.slice(0, 140)}...` : content;
-      out.push({ key: `${ts}-${i}`, label, preview, ts });
-    }
-    return out;
-  }, [teamConversationItems]);
-
   React.useEffect(() => {
     if (teamConversationLiveCount === 0) return;
     if (!Array.isArray(teamConversationItems) || teamConversationItems.length === 0) return;
@@ -496,7 +470,6 @@ export function useTeamChatConversationState(args: TeamChatConversationStateArgs
     teamQueue: teamQueueEntries,
     teamQueueCount,
     teamQueueNeedsRun,
-    teamRecentActivity,
     teamRunList,
     teamStatus,
   };

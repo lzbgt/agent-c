@@ -92,7 +92,7 @@ export default function WorkflowGraphToolbar({
 
       {hasRemoteNodes ? (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-100">
-          agentd_parallel tasks require `--workflow-enable-http-tasks` on the primary agentd.
+          Remote agent actions must be enabled for this connection.
         </div>
       ) : null}
 

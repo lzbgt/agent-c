@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   apiGetSessionVoiceStats,
   apiPostSessionVoiceControl,
+  extractSessionErrorMessage,
   type ApiAuth,
   type SessionVoiceControlReq,
   type SessionVoiceControlResp,
@@ -13,6 +14,7 @@ type UseVoicePanelStateArgs = {
   baseUrl: string;
   auth: ApiAuth;
   sessionId: string;
+  diagnosticsOpen: boolean;
 };
 
 function parsePositiveInt(raw: string, fallback: number, max: number): number {
@@ -52,9 +54,13 @@ export default function useVoicePanelState(args: UseVoicePanelStateArgs) {
 
   const statsQuery = useQuery({
     queryKey: ["sessionVoiceStats", baseUrl, sessionId, maxBytes],
-    enabled: canQuery,
-    queryFn: () => apiGetSessionVoiceStats(baseUrl, sessionId, args.auth, { maxBytes }),
-    refetchInterval: canQuery && autoRefresh ? 5_000 : false,
+    enabled: canQuery && args.diagnosticsOpen,
+    queryFn: async () => {
+      const response = await apiGetSessionVoiceStats(baseUrl, sessionId, args.auth, { maxBytes });
+      if (!response.ok) throw new Error(extractSessionErrorMessage(response) || "Playback activity could not be loaded.");
+      return response;
+    },
+    refetchInterval: canQuery && args.diagnosticsOpen && autoRefresh ? 5_000 : false,
   });
 
   const actionMutation = useMutation({
@@ -80,15 +86,17 @@ export default function useVoicePanelState(args: UseVoicePanelStateArgs) {
         const volume = parseVolume(volumeText);
         if (typeof volume === "number") payload.volume = volume;
       }
-      return apiPostSessionVoiceControl(baseUrl, payload, args.auth);
+      const response = await apiPostSessionVoiceControl(baseUrl, payload, args.auth);
+      if (!response.ok) throw new Error(extractSessionErrorMessage(response) || "Playback request failed.");
+      return response;
     },
-    onMutate: () => setActionError(null),
+    onMutate: () => { setActionError(null); setLastActionResponse(null); },
     onSuccess: async (response) => {
       setLastActionResponse(response);
-      await statsQuery.refetch();
+      if (args.diagnosticsOpen) await statsQuery.refetch();
     },
     onError: (error) => {
-      setActionError(String(error));
+      setActionError(error instanceof Error ? error.message : String(error));
     },
   });
 

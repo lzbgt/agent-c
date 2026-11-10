@@ -14,6 +14,8 @@ The authoritative capability/verification snapshot is [docs/CURRENT_SNAPSHOT.md]
 - [x] Deploy the verified snapshot on Arch behind the shared VPS reverse proxy/OAuth; qualify the pinned system administrator and inspect only proven Agent-C VPS workloads (none were present to remove).
 - [x] Make each workspace tool the primary page, split workflow runs/authoring/schedules, preserve composer drafts and verify phone/tablet layout and modal keyboard access.
 - [x] Put messages and results first, group metadata behind closed details, simplify the composer, and lead settings with subject options while preserving authorized browser actions.
+- [x] Remove duplicate conversation renderers and developer setup notes; simplify Memory, playback, traces, comparisons, decisions and workflow lists around content/actions.
+- [ ] P0: Aliyun Omni realtime audio/image voice, defaulting to the verified Model Studio setup from ~/.env and the Mac ~/work/lang_learn reference; credentials stay server-side.
 - [ ] P0: extend the effect boundary to arbitrary tools/device adapters and add atomic budget reservations.
 - [ ] P0: connect goal/requirement/blocker authority to the broker and event-driven wakeup; preserve explicit stops.
 - [ ] P1: immutable SOP registry, durable signals/timers and explicit process decisions/compensation.

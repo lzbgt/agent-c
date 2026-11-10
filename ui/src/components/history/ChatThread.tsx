@@ -21,7 +21,7 @@ export default function ChatThread({ messages, working, error }: { messages: Cha
   return (
     <div ref={root} className="chat-thread" role="log" aria-label="Conversation" aria-live="polite" aria-relevant="additions text" data-testid="chat-thread">
       {messages.map((message) => <article key={message.key} className={`chat-message chat-${message.role}`} data-testid={`chat-${message.role}`}>
-        <div className="chat-author">{message.role === "user" ? "You" : "Agent"}</div>
+        <div className="chat-author">{message.role === "user" ? "You" : message.author || "Agent"}</div>
         <div className="chat-message-body">
           {message.content ? <Markdown text={message.content} /> : null}
           {renderAssistantMultimodal(parseAssistantMultimodal(message.multimodal))}

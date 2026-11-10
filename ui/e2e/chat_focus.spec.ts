@@ -9,6 +9,9 @@ const turn = (time: number, trace: string) => ({
     { type: "tool_result", data: { tool_name: "shell_exec", content: "tool-metadata-marker" } },
     { type: "assistant_delta", data: { delta: "Hello! " } },
     { type: "assistant_message", data: { assistant_content: greeting } },
+    { type: "llm_request", data: { messages: [{ role: "user", content: "hello" }] } },
+    { type: "llm_response", data: { assistant_content: greeting } },
+    { type: "end", data: { ok: true, assistant_text: greeting, prompt: "hello" } },
   ],
 });
 
@@ -19,6 +22,7 @@ test.beforeEach(async ({ page }) => {
     localStorage.setItem("agentui.showSettings", "false");
     // Existing debug preferences must never expand the default conversation.
     localStorage.setItem("agentui.showDebugInConversation", "true");
+    localStorage.setItem("agentui.historyUi:http://127.0.0.1:7777::default:showMessages", "true");
   });
 });
 
@@ -55,6 +59,15 @@ for (const width of [1440, 390, 320]) {
     await page.getByTestId("conversation-details").locator(":scope > summary").click();
     await expect(page.getByText("Stored context", { exact: true })).toBeVisible();
     await expect(page.getByText("Technical history", { exact: true })).toBeVisible();
+    // Opening every run must never create another transcript, even with old
+    // debug/message preferences and raw provider payloads in persisted events.
+    const details = page.getByTestId("conversation-details");
+    await details.getByRole("button", { name: /Show history/ }).click();
+    expect(await details.innerText()).not.toContain(greeting);
+    expect(await details.textContent()).not.toContain(greeting);
+    await expect(details.getByRole("button", { name: /Show messages|Hide messages/ })).toHaveCount(0);
+    await expect(page.getByText(greeting, { exact: true })).toHaveCount(2);
+    await expect(details.getByText("tool-metadata-marker", { exact: false }).first()).toBeVisible();
   });
 }
 
@@ -169,4 +182,28 @@ test("sending a message clears only the accepted draft and respects IME composit
   await expect(page.getByRole("alert")).toContainText("Provider unavailable");
   await expect(prompt).toHaveValue("next draft");
   await expect(page.getByTestId("promptbar-details")).toHaveCount(0);
+});
+
+test("team messages have one renderer when both detail panels are expanded", async ({ page }) => {
+  const { seedBrokerState } = await import("./brokerTestState");
+  await seedBrokerState(page, { brokerPanelOpen: false });
+  await page.addInitScript(() => {
+    localStorage.setItem("agentui.brokerTeamId", JSON.stringify("team-test"));
+    localStorage.setItem("agentui.chatTarget", JSON.stringify("team"));
+    localStorage.setItem("agentui.teamChatCache:https://broker.example.invalid::team-test", JSON.stringify({ updated_ms: 300, items: [
+      { kind: "message", ts: 100, message: { role: "user", content: "Inspect the cooling system", created_unix_ms: 100 }, meta: { agent_id: "inspector" } },
+      { kind: "message", ts: 200, message: { role: "assistant", content: "The cooling system passed inspection.", created_unix_ms: 200 }, meta: { agent_id: "inspector" } },
+      { kind: "message", ts: 300, message: { role: "tool", content: "sensor-result-marker", created_unix_ms: 300 }, meta: { agent_id: "inspector" } },
+    ] }));
+  });
+  await page.route("https://broker.example.invalid/**", (route) => route.fulfill({ json: { ok: true, runs: [], guidance: [], members: [], sessions: [], events: [], tools: [], features: {} } }));
+  await page.goto("/");
+  await expect(page.getByTestId("chat-thread")).toContainText("The cooling system passed inspection.");
+  await expect(page.getByTestId("chat-assistant").getByText("inspector", { exact: true })).toBeVisible();
+  await page.getByTestId("conversation-details").locator(":scope > summary").click();
+  await page.getByText("Team setup", { exact: true }).click();
+  await expect(page.getByText("The cooling system passed inspection.", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("Inspect the cooling system", { exact: true })).toHaveCount(1);
+  expect(await page.getByTestId("conversation-details").textContent()).not.toContain("The cooling system passed inspection.");
+  await expect(page.getByText("sensor-result-marker", { exact: true })).toBeVisible();
 });

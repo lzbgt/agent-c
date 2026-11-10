@@ -1,10 +1,10 @@
 import React from "react";
 import FieldLabel from "../FieldLabel";
 import type { MemoryRetentionState } from "./useMemoryPanelState";
+import { JsonDetails, ToolError } from "../ToolOutput";
 
 type MemoryExplorerRetentionSectionProps = {
   canQuery: boolean;
-  stringifyJson: (value: unknown) => string;
   retention: MemoryRetentionState;
 };
 
@@ -20,7 +20,7 @@ export default function MemoryExplorerRetentionSection(props: MemoryExplorerRete
             disabled={props.retention.busy || !props.canQuery}
             onClick={() => void props.retention.run()}
           >
-            {props.retention.busy ? "Running…" : "Enforce"}
+            {props.retention.busy ? "Running…" : props.retention.dryRun ? "Preview cleanup" : "Apply cleanup"}
           </button>
           <button
             className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
@@ -104,9 +104,12 @@ export default function MemoryExplorerRetentionSection(props: MemoryExplorerRete
         </div>
       ) : null}
       {props.retention.result ? (
-        <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70">
-          {props.stringifyJson(props.retention.result)}
-        </pre>
+        <div role="status" className="mt-3">
+          <p>{props.retention.result.dry_run ? "Cleanup preview · nothing changed" : "Cleanup completed"}</p>
+          <p className="tool-muted">Daily files: {props.retention.result.daily_deleted_count ?? 0} · Checkpoints: {props.retention.result.checkpoint_deleted_count ?? 0} · Deprecated records: {props.retention.result.structured_deprecated_count ?? 0}</p>
+          {props.retention.result.errors?.map((error, i) => <ToolError key={i} error={error} />)}
+          <JsonDetails value={props.retention.result} />
+        </div>
       ) : null}
     </section>
   );

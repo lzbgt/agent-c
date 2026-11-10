@@ -142,8 +142,7 @@ export default function ToolResultParsedView(props: ToolResultParsedViewProps) {
             </div>
           ) : null}
           <div className="mt-1 text-amber-100/80">
-            The client may not have been connected (or may have missed the request). If this was a client RPC flow, prefer
-            requesting a deterministic follow-up RPC (dom_query/entity_query/state_snapshot) instead of looping on retries.
+            The browser did not confirm this action.
           </div>
         </div>
       ) : null}
@@ -152,8 +151,7 @@ export default function ToolResultParsedView(props: ToolResultParsedViewProps) {
         <div className="mb-2 rounded-md border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-100/90">
           <div className="font-semibold">Tool server protocol violation</div>
           <div className="mt-1 text-rose-100/80">
-            The tool server returned malformed JSON or exceeded the response size cap. Agentd treats this as a hard
-            protocol error and restarts the server before the next call.
+            The tool returned an invalid response.
           </div>
         </div>
       ) : null}

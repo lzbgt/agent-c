@@ -11,6 +11,8 @@ import type {
 import { safeObject } from "../jsonUtils";
 import EventTimeline from "./EventTimeline";
 import Markdown from "./Markdown";
+import { JsonDetails, ToolError } from "./ToolOutput";
+import { executionEvents, executionMetadata } from "../history/executionEvidence";
 
 function safeNum(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -80,67 +82,24 @@ function buildTimelineFromBroker(trace: BrokerTraceResp): TimelineItem[] {
   return items;
 }
 
-function AgentdRecordCard({
-  baseUrl,
-  yolo,
-  agentId,
-  record,
-}: {
-  baseUrl: string;
-  yolo: boolean;
-  agentId?: string;
-  record: AgentdTraceRecord;
+function AgentdRecordCard({ baseUrl, yolo, agentId, record }: {
+  baseUrl: string; yolo: boolean; agentId?: string; record: AgentdTraceRecord;
 }) {
-  const ts = safeNum(record.ts_unix_ms);
-  const when = fmtTs(ts);
-  const sid = safeStr(record.session_id);
-  const ok = typeof record.ok === "boolean" ? record.ok : undefined;
-  const traceId = safeStr(record.trace_id);
-  const prompt = safeStr(record.prompt);
-  const assistantText = safeStr(record.assistant_text);
-  const events: AgentEvent[] = Array.isArray(record.events) ? record.events : [];
-
-  const status = ok === true ? "ok" : ok === false ? "error" : "";
-  const summary = prompt.trim().length > 0 ? prompt.trim().slice(0, 160) : "(no prompt)";
-
-  return (
-    <details className="rounded-lg border border-white/10 bg-white/5 px-3 py-2" open>
-      <summary className="cursor-pointer select-none text-xs text-white/80">
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span className="shrink-0 text-white/60">{when}</span>
-          {agentId ? (
-            <span className="shrink-0 text-indigo-300">
-              agent <code className="text-indigo-200/80">{agentId}</code>
-            </span>
-          ) : null}
-          {status ? <span className={status === "ok" ? "text-emerald-300" : "text-rose-300"}>{status}</span> : null}
-          {sid ? (
-            <span className="shrink-0 text-white/60">
-              session <code className="text-white/70">{sid}</code>
-            </span>
-          ) : null}
-          {traceId ? (
-            <span className="shrink-0 text-white/50">
-              trace <code className="text-white/60">{traceId}</code>
-            </span>
-          ) : null}
-          <span className="min-w-0 flex-1">{summary}</span>
-          <span className="shrink-0 text-white/40">({events.length} events)</span>
-        </div>
-      </summary>
-      <div className="mt-3 grid gap-3">
-        {assistantText ? (
-          <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
-            <div className="text-[11px] font-semibold text-white/60">Assistant</div>
-            <div className="mt-2">
-              <Markdown text={assistantText} />
-            </div>
-          </div>
-        ) : null}
-        {events.length > 0 ? <EventTimeline baseUrl={baseUrl} yolo={yolo} events={events} /> : null}
-      </div>
-    </details>
-  );
+  const [activityOpen, setActivityOpen] = React.useState(false);
+  const events: AgentEvent[] = executionEvents(Array.isArray(record.events) ? record.events : []);
+  const error = safeStr(record.error) || safeStr(record.err) || (record.ok === false ? "This run failed." : "");
+  return <article className="tool-card" data-testid="trace-output">
+    {record.prompt ? <div><p className="tool-muted">You</p><Markdown text={record.prompt} /></div> : null}
+    <div className="tool-preview"><p className="tool-muted">{agentId ? `Agent · ${agentId}` : "Agent"}</p>
+      {record.assistant_text ? <Markdown text={record.assistant_text} /> : <p className="tool-muted">No assistant output recorded.</p>}
+    </div>
+    <ToolError error={error || null} />
+    <JsonDetails label="Record details" value={executionMetadata({ ...record, events: undefined })} />
+    {events.length ? <details className="tool-details" onToggle={(event) => setActivityOpen(event.currentTarget.open)}>
+      <summary>Tool activity</summary>
+      {activityOpen ? <EventTimeline baseUrl={baseUrl} yolo={yolo} events={events} /> : null}
+    </details> : null}
+  </article>;
 }
 
 function BrokerRelayCard({ row }: { row: BrokerTraceRelayAuditRow }) {
@@ -155,7 +114,7 @@ function BrokerRelayCard({ row }: { row: BrokerTraceRelayAuditRow }) {
   const ok = status >= 200 && status < 300;
 
   return (
-    <details className="rounded-lg border border-white/10 bg-white/5 px-3 py-2" open>
+    <details className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
       <summary className="cursor-pointer select-none text-xs text-white/80">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
           <span className="shrink-0 text-white/60">{when}</span>
@@ -200,7 +159,7 @@ function BrokerOrchestrateCard({ row }: { row: BrokerTraceOrchestrateRow }) {
   })();
 
   return (
-    <details className="rounded-lg border border-white/10 bg-white/5 px-3 py-2" open>
+    <details className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
       <summary className="cursor-pointer select-none text-xs text-white/80">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
           <span className="shrink-0 text-white/60">{when}</span>
@@ -220,14 +179,14 @@ function BrokerOrchestrateCard({ row }: { row: BrokerTraceOrchestrateRow }) {
         <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
           <div className="text-[11px] font-semibold text-white/60">Request</div>
           <pre className="mt-2 overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
-            {JSON.stringify(req, null, 2)}
+            {JSON.stringify(executionMetadata(req), null, 2)}
           </pre>
         </div>
 
         <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
           <div className="text-[11px] font-semibold text-white/60">Response</div>
           <pre className="mt-2 overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
-            {JSON.stringify(resp, null, 2)}
+            {JSON.stringify(executionMetadata(resp), null, 2)}
           </pre>
         </div>
       </div>
@@ -235,48 +194,18 @@ function BrokerOrchestrateCard({ row }: { row: BrokerTraceOrchestrateRow }) {
   );
 }
 
-function AgentdErrorCard({
-  ts,
-  row,
-  agentId,
-}: {
-  ts: number;
-  row: BrokerTraceAgentdFanoutRow;
-  agentId?: string;
-}) {
-  const ok = typeof row.ok === "boolean" ? row.ok : false;
-  const ms = safeNum(row.ms);
-  const err = safeStr(row.error) || safeStr(row.body?.error);
-  const httpStatus = safeNum(row.http_status) || safeNum(row.agent_status);
-
-  return (
-    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/80">
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="shrink-0 text-white/60">{fmtTs(ts)}</span>
-        <span className="shrink-0 text-white/70">agentd trace fetch</span>
-        {agentId ? (
-          <span className="shrink-0 text-indigo-300">
-            agent <code className="text-indigo-200/80">{agentId}</code>
-          </span>
-        ) : null}
-        <span className={ok ? "shrink-0 text-emerald-300" : "shrink-0 text-rose-300"}>{ok ? "ok" : "error"}</span>
-        {httpStatus ? <span className="shrink-0 text-white/50">http {httpStatus}</span> : null}
-        {ms ? <span className="shrink-0 text-white/50">{ms}ms</span> : null}
-      </div>
-      {err ? (
-        <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-          {err}
-        </div>
-      ) : null}
-    </div>
-  );
+function AgentdErrorCard({ row, agentId }: { row: BrokerTraceAgentdFanoutRow; agentId?: string }) {
+  const error = safeStr(row.error) || safeStr(row.body?.error);
+  return <div className="tool-card">
+    {row.ok === true && !error ? <p className="tool-muted">No saved records from {agentId || "this agent"}.</p> : <ToolError error={`${agentId || "Agent"}: ${error || "Trace lookup failed."}`} />}
+    <JsonDetails label="Lookup details" value={row} />
+  </div>;
 }
 
 export default function TraceIdTimelineView({
   mode,
   baseUrl,
   yolo,
-  traceId,
   agentdTrace,
   brokerTrace,
 }: {
@@ -300,39 +229,22 @@ export default function TraceIdTimelineView({
     return timeline;
   }, [agentdTrace, brokerTrace, mode]);
 
-  return (
-    <div className="grid gap-2">
-      <div className="text-xs text-white/60">
-        trace <code className="text-white/80">{traceId}</code> · {items.length} items
-      </div>
-      {items.length === 0 ? (
-        <div className="rounded-md border border-white/10 bg-black/20 px-3 py-3 text-xs text-white/60">
-          No records found for this trace_id (or the run used <code className="font-mono">no_session=true</code> so it was not persisted).
-        </div>
-      ) : (
-        <div className="grid gap-2">
-          {items.map((item, index) => {
-            if (item.kind === "broker_orchestrate") {
-              return <BrokerOrchestrateCard key={`orch-${index}`} row={item.row} />;
-            }
-            if (item.kind === "broker_relay") {
-              return <BrokerRelayCard key={`relay-${index}`} row={item.row} />;
-            }
-            if (item.kind === "agentd_error") {
-              return <AgentdErrorCard key={`agentd_err-${index}`} ts={item.ts} agentId={item.agentId} row={item.row} />;
-            }
-            return (
-              <AgentdRecordCard
-                key={`agentd-${index}`}
-                baseUrl={baseUrl}
-                yolo={yolo}
-                agentId={item.agentId}
-                record={item.record}
-              />
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
+  const records = items.filter((item) => item.kind === "agentd_record" || item.kind === "agentd_error");
+  const transport = items.filter((item) => item.kind === "broker_relay" || item.kind === "broker_orchestrate");
+  return <div className="grid gap-4" data-testid="trace-results">
+    {records.length ? records.map((item, index) => item.kind === "agentd_error" ?
+      <AgentdErrorCard key={`fetch-${index}`} agentId={item.agentId} row={item.row} /> : item.kind === "agentd_record" ?
+      <AgentdRecordCard key={`record-${index}`} baseUrl={baseUrl} yolo={yolo} agentId={item.agentId} record={item.record} /> : null
+    ) : <p className="tool-empty">No saved conversation records found for this trace.</p>}
+    {transport.map((item, index) => {
+      if (item.kind === "broker_relay" && (safeStr(item.row.error) || safeNum(item.row.status) >= 400)) return <ToolError key={index} error={safeStr(item.row.error) || `Relay returned HTTP ${item.row.status}.`} />;
+      if (item.kind === "broker_orchestrate" && safeObject(item.row.response_json).all_ok === false) return <ToolError key={index} error="Some orchestrated tasks did not complete. Open transport details to inspect their results." />;
+      return null;
+    })}
+    {transport.length ? <details className="tool-details tool-maintenance" data-testid="trace-transport-details">
+      <summary>Transport & orchestration details</summary>
+      {transport.map((item, index) => item.kind === "broker_relay" ? <BrokerRelayCard key={index} row={item.row} /> : item.kind === "broker_orchestrate" ? <BrokerOrchestrateCard key={index} row={item.row} /> : null)}
+    </details> : null}
+    <JsonDetails label="Trace response details" value={mode === "broker" ? { trace_id: brokerTrace?.trace_id, record_count: records.length, transport_count: transport.length } : { trace_id: agentdTrace?.trace_id, record_count: records.length }} />
+  </div>;
 }

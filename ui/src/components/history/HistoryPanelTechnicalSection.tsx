@@ -2,16 +2,13 @@ import React from "react";
 import type { AgentEvent, ApiAuth } from "../../api";
 import type { HistoryEntry } from "../../history/historyPanelData";
 import type { SceneEntity } from "../SceneView";
-import ConversationView from "../ConversationView";
+import ExecutionActivity from "../ExecutionActivity";
 import type { ConversationViewProps } from "../conversation/conversationViewTypes";
-import Markdown from "../Markdown";
 
 type HistoryPanelTechnicalSectionProps = {
   entries: HistoryEntry[];
   showAllEntries: boolean;
   setShowAllEntries: React.Dispatch<React.SetStateAction<boolean>>;
-  showMessages: boolean;
-  setShowMessages: React.Dispatch<React.SetStateAction<boolean>>;
   historyExpandedByKey: Record<string, boolean>;
   setHistoryExpandedByKey: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   effectiveBase: string;
@@ -27,8 +24,6 @@ type HistoryPanelTechnicalSectionProps = {
   sceneEntities: SceneEntity[];
   onSceneApply: ConversationViewProps["onSceneApply"];
   onTraceIdClick: (traceId: string) => void;
-  showSystemMessages: boolean;
-  setShowSystemMessages: React.Dispatch<React.SetStateAction<boolean>>;
 };
 
 const MAX_HISTORY_EXPANDED_KEYS = 200;
@@ -70,22 +65,6 @@ export default function HistoryPanelTechnicalSection(props: HistoryPanelTechnica
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="text-sm font-semibold text-white/80">Technical history</div>
         <div className="flex items-center gap-2">
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-            type="button"
-            onClick={() => props.setShowSystemMessages((value) => !value)}
-            title={props.showSystemMessages ? "Hide system messages everywhere" : "Show system messages everywhere"}
-          >
-            {props.showSystemMessages ? "Hide system" : "Show system"}
-          </button>
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-            type="button"
-            onClick={() => props.setShowMessages((value) => !value)}
-            title={props.showMessages ? "Hide per-run event transcript" : "Show per-run event transcript"}
-          >
-            {props.showMessages ? "Hide messages" : "Show messages"}
-          </button>
           {props.entries.length > 1 ? (
             <button
               className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
@@ -108,8 +87,6 @@ export default function HistoryPanelTechnicalSection(props: HistoryPanelTechnica
             {(props.showAllEntries ? props.entries : props.entries.slice(0, 1)).map((entry, idx: number) => {
               const ts = typeof entry.ts_unix_ms === "number" ? entry.ts_unix_ms : 0;
               const when = ts ? new Date(ts).toLocaleString() : "";
-              const promptText = typeof entry.prompt === "string" ? entry.prompt : "";
-              const assistantText = typeof entry.assistant_text === "string" ? entry.assistant_text : "";
               const events: AgentEvent[] = Array.isArray(entry.events) ? entry.events : [];
               const ok = typeof entry.ok === "boolean" ? entry.ok : undefined;
               const isLive = entry.live === true;
@@ -117,7 +94,7 @@ export default function HistoryPanelTechnicalSection(props: HistoryPanelTechnica
               const jobStatus = typeof entry.job_status === "string" ? entry.job_status : "";
               const traceId = typeof entry.trace_id === "string" ? entry.trace_id : "";
               const status = ok === true ? "ok" : ok === false ? "error" : "";
-              const summary = promptText.trim().length > 0 ? promptText.trim().slice(0, 200) : "(no prompt)";
+              const summary = isLive ? "Active run" : "Run";
               const entryKey = entryKeyFor(entry);
               const expanded = Object.prototype.hasOwnProperty.call(props.historyExpandedByKey, entryKey)
                 ? !!props.historyExpandedByKey[entryKey]
@@ -205,24 +182,13 @@ export default function HistoryPanelTechnicalSection(props: HistoryPanelTechnica
                         </div>
                       </div>
                     ) : null}
-                    {assistantText ? (
-                      <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
-                        <div className="flex items-start gap-2">
-                          <div className="shrink-0 text-[11px] font-semibold text-white/60">Assistant</div>
-                          <div className="min-w-0 flex-1">
-                            <Markdown text={assistantText} />
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
-                    {events.length > 0 && (isLive || props.showMessages) ? (
-                      <ConversationView
+                    {events.length > 0 ? (
+                      <ExecutionActivity
                         baseUrl={props.effectiveBase}
                         yolo={props.yolo}
                         sessionId={props.sessionId}
                         client={props.client}
                         daemonAuth={props.daemonAuth}
-                        prompt={promptText}
                         events={events}
                         showDebugEvents={props.showDebugInConversation}
                         allowAutoplay={props.allowAutoplay}
@@ -230,7 +196,7 @@ export default function HistoryPanelTechnicalSection(props: HistoryPanelTechnica
                         allowClientEffects={props.allowClientEffects}
                         allowUnsafePageEval={props.allowUnsafePageEval}
                         reverseOrder={false}
-                        disableAutoClientRpcs={idx !== 0 || !jobId}
+                        disableAutoClientRpcs={!isLive || idx !== 0 || !jobId}
                         sceneEntities={props.sceneEntities}
                         onSceneApply={props.onSceneApply}
                       />

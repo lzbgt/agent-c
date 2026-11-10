@@ -81,8 +81,6 @@ export default function App() {
     runQueueKey,
     showAllHistoryEntries,
     setShowAllHistoryEntries,
-    showHistoryMessages,
-    setShowHistoryMessages,
     historyExpandedByKey,
     setHistoryExpandedByKey,
     sceneCollapsed,
@@ -94,15 +92,6 @@ export default function App() {
     mainScrollRestoredKeyRef,
     onMainScroll,
   } = shell;
-
-  const webOrigin = React.useMemo(() => {
-    try {
-      // Used for actionable connectivity hints (CORS).
-      return typeof window !== "undefined" ? String(window.location.origin || "") : "";
-    } catch {
-      return "";
-    }
-  }, []);
 
   const capsKey = React.useMemo(() => `${effectiveBase}::${authKey}`, [effectiveBase, authKey]);
   const capsQuery = useQuery({
@@ -274,7 +263,7 @@ export default function App() {
   const {
     audit, auditRefetch, clearAllSessions, clearAllSessionsError, clearDaemonApiKey, daemonConfig, dbClientEventRows,
     dbMessageRows, dbRunDetailsById, dbRunRows, dbUiActionRows, deleteSession, deleteSessionError, health, historyEntriesDesc,
-    isLocalDaemonBase, missingBrokerAuthToken, missingDaemonAuthToken, newSession, attachSession, attachSessionError,
+    newSession, attachSession, attachSessionError,
     renewSessionAttachment, renewSessionAttachmentError, releaseSessionAttachment, releaseSessionAttachmentError,
     sessionInfoData, sessionLeaseConflict, setSessionLeaseConflict, saveDaemonApiKey, saveDaemonDefaults, sessionsRefetch,
     sessionsUnauthorized, sessionArtifactRows, sessionArtifactsUnsupported, sessionList, sessionSceneSnapshot, updateDaemonDefaults,
@@ -371,7 +360,7 @@ export default function App() {
   const {
     clearTeamQueue, handleTeamRunRequest, latestTeamRunCreatedMs, latestTeamRunId, openTeamPanel,
     teamConversationCacheUpdatedMs, teamConversationItems, teamConversationUsingCache, teamConversationWarnings,
-    teamQueue, teamQueueCount, teamQueueNeedsRun, teamRecentActivity, teamRunCreate, teamStatus,
+    teamQueue, teamQueueCount, teamQueueNeedsRun, teamRunCreate, teamStatus,
   } = useTeamChatOrchestration({
     authKey,
     brokerAgentId: String(connection.brokerAgentId || "").trim(),
@@ -530,19 +519,7 @@ export default function App() {
         onShowSettings={() => setShowSettings(true)}
       />
 
-      <AppConnectionBanner
-        healthError={health.isError}
-        sessionsUnauthorized={sessionsUnauthorized}
-        connectionMode={connectionMode}
-        missingBrokerAuthToken={missingBrokerAuthToken}
-        brokerCookieAuth={connection.brokerCookieAuth}
-        effectiveBase={effectiveBase}
-        webOrigin={webOrigin}
-        missingDaemonAuthToken={missingDaemonAuthToken}
-        isLocalDaemonBase={isLocalDaemonBase}
-        onShowSettings={() => setShowSettings(true)}
-        onUseDevToken={() => connection.setDaemonAuthToken("dev-agentd-token")}
-      />
+      <AppConnectionBanner healthError={health.isError} sessionsUnauthorized={sessionsUnauthorized} onShowSettings={() => setShowSettings(true)} />
 
       <main
         id="workspace-main"
@@ -629,7 +606,6 @@ export default function App() {
                       promptbarRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
                     }
                   },
-                  recentActivity: teamRecentActivity,
                 }}
                 inlineTeamSetupOpen={inlineTeamSetupOpen}
                 setInlineTeamSetupOpen={setInlineTeamSetupOpen}
@@ -649,8 +625,6 @@ export default function App() {
                   chatTarget: isTeamTarget ? "team" : "session",
                   showAllEntries: showAllHistoryEntries,
                   setShowAllEntries: setShowAllHistoryEntries,
-                  showMessages: showHistoryMessages,
-                  setShowMessages: setShowHistoryMessages,
                   historyExpandedByKey,
                   setHistoryExpandedByKey,
                   dbMessages: dbMessageRows,

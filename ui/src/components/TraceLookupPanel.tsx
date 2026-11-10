@@ -3,8 +3,6 @@ import type { AgentdTraceResp, BrokerTraceResp } from "../api";
 import TraceIdTimelineView from "./TraceIdTimelineView";
 
 export type TraceLookupPanelProps = {
-  open: boolean;
-  onToggle: (open: boolean) => void;
   traceId: string;
   onTraceIdChange: (next: string) => void;
   onLoad: (traceId: string) => void;
@@ -23,23 +21,12 @@ export default function TraceLookupPanel(props: TraceLookupPanelProps) {
   const canLoad = traceId.trim().length > 0;
 
   return (
-    <details
-      className="mb-4 rounded-lg border border-white/10 bg-white/5 px-3 py-2"
-      open={!!props.open}
-      onToggle={(ev) => props.onToggle((ev.currentTarget as HTMLDetailsElement).open)}
-    >
-      <summary className="cursor-pointer select-none text-xs text-white/80">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="font-semibold text-white/80">Trace lookup</div>
-          <div className="text-[11px] text-white/50">
-            Debug a distributed run by <code className="text-white/60">trace_id</code>
-          </div>
-        </div>
-      </summary>
+    <section className="tool-workspace" data-testid="trace-lookup-panel" aria-label="Trace lookup">
       <div className="mt-3 grid gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <input
-            className="min-w-[260px] flex-1 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+            className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+            aria-label="Trace ID"
             placeholder="trace_id (e.g. trace_...)"
             value={traceId}
             onChange={(e) => props.onTraceIdChange(e.target.value)}
@@ -84,6 +71,6 @@ export default function TraceLookupPanel(props: TraceLookupPanelProps) {
           />
         ) : null}
       </div>
-    </details>
+    </section>
   );
 }
