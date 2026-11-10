@@ -1,0 +1,19 @@
+[Unit]
+Description=Agent-C private execution daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/agent-c/workspace
+EnvironmentFile=%h/.config/agent-c/daemon.env
+ExecStart=%h/.local/share/agent-c/current/bin/agentd --host 127.0.0.1 --port 18123 --state-dir %h/.local/share/agent-c/state --db-path %h/.local/share/agent-c/state/agentd.db --tools host --yolo --base-url ${OPENAI_API_BASE} --model ${AGENT_MODEL}
+Restart=on-failure
+RestartSec=3
+UMask=0077
+MemoryMax=1536M
+TasksMax=256
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

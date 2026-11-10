@@ -1,5 +1,7 @@
 # Production Deployment Guide (agentd + broker + WebUI)
 
+The owner's current topology is the [Arch-hosted workspace](ARCH_HOST_DEPLOYMENT.md), with shared Hubstack OAuth, private local execution/data and VPS reverse proxy ingress. Only Agent-C-related VPS deployments are in removal scope; other hosted projects remain untouched. This rolling project prefers fresh deployment over compatibility/migration work. The general patterns below remain reference material for other topologies.
+
 This guide focuses on **production-grade** deployment patterns for:
 - `agentd` (daemon backend)
 - `agentd-broker` + `agentd-connector` (secure relay + NAT traversal)

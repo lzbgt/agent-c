@@ -1,0 +1,22 @@
+# Install only this Agent-C-owned file on the VPS. Runtime and data stay on Arch.
+http:
+  routers:
+    agent-c-http:
+      rule: Host(`agent.hubstack.cn`)
+      entryPoints: [web]
+      middlewares: [agent-c-https]
+      service: agent-c-arch
+    agent-c-secure:
+      rule: Host(`agent.hubstack.cn`)
+      entryPoints: [web-secure]
+      service: agent-c-arch
+      tls: {certResolver: hubstack}
+  middlewares:
+    agent-c-https:
+      redirectScheme: {scheme: https, permanent: true}
+  services:
+    agent-c-arch:
+      loadBalancer:
+        passHostHeader: true
+        healthCheck: {path: /healthz, interval: 15s, timeout: 3s}
+        servers: [{url: "http://10.147.16.2:18784"}]

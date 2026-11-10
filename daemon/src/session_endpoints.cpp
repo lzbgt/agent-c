@@ -12,6 +12,7 @@
 
 #include "base64.h"
 
+#include <unordered_map>
 #include <json/json.h>
 
 #include <chrono>

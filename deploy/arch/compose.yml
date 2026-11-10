@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agent-c-postgres
+    restart: unless-stopped
+    env_file: ["${AGENTC_PRIVATE_DIR:?set private config directory}/postgres.env"]
+    ports: ["127.0.0.1:15439:5432"]
+    volumes: ["agent-c-postgres:/var/lib/postgresql/data"]
+    command: ["postgres", "-c", "max_connections=32", "-c", "shared_buffers=32MB"]
+    mem_limit: 256m
+    cpus: 1
+    labels: {cn.hubstack.project: agent-c}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentc -d agentc"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+volumes:
+  agent-c-postgres:
+    name: agent-c-postgres
+    labels: {cn.hubstack.project: agent-c}

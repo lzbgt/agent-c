@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/lzbgt/hubstack-payments",
+  "revision": "fadce8d34268fd7e1d5246ffb59854abd00b0c55",
+  "path": "sdk/identity",
+  "files": {
+    "account_state.go": "941b40f678d7f1607b2e7e01c8f1bc863c5782e6e422156d81218871543a6a4e",
+    "go.mod": "a104f7fb45748448d20172f517e2001372a16ef92de34c39019fc4efd96379cb",
+    "client.go": "f96eff002a0faf9375dc9504b22e181c43e7b648b2463444ba0b58aaba81507c",
+    "deletion.go": "ae26eb2c2e164c982f182543cba4093b7ced1748384b1a54018e33f9d420224f"
+  }
+}

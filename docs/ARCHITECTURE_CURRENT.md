@@ -2,6 +2,8 @@
 
 Decision date: 2026-11-10. This is the current architectural direction. [Current snapshot](CURRENT_SNAPSHOT.md) distinguishes implemented behavior from the design backlog. [Research and primary sources](research/agent-systems-20261110.md) document the upstream basis. Older design/spec documents remain useful descriptions of their individual subsystems; this document takes precedence on product direction.
 
+This is a rolling project with no compatibility requirement. Prefer coherent refactoring and fresh deployment over migration or compatibility layers. Keep producers, consumers, deployment and verification aligned in one current snapshot. Active process version pinning remains a correctness property within a running deployment; it does not require an upgrade/migration product.
+
 ## Product contract
 
 Agent-C is a portable execution kernel with host services, a control plane, and replaceable clients. Its three deployment profiles share execution concepts while retaining different resource and persistence implementations:

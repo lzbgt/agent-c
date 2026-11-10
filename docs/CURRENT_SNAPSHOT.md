@@ -11,6 +11,7 @@ Date: 2026-11-10. This document records implemented behavior and reproducible ch
 - **Streaming:** coalesced SSE packets drain through bounded parser batches; transport packet boundaries no longer truncate the checked streams. The host event log enforces its 4,000-event/2-MiB capture bounds while live callbacks continue after capture fills.
 - **WebUI:** responsive graphite/mint workspace, grouped icon navigation, Overview return path, actual connection/session context, accessible template selection, useful empty state, keyboard focus and reduced-motion support. Advanced panels are lazy-loaded. A provider-free SOP authoring template is included.
 - **External HTTP effects:** guarded POST actions persist intent and response identity; uncertain writes reconcile through a same-origin receipt adapter or emit a scoped blocker. An explicit destination-idempotency contract permits safe retries. Recovery is inspectable and resumable through the API/WebUI, and independent workflow branches continue after a failure even with one worker. See [WORKFLOW_EFFECTS.md](WORKFLOW_EFFECTS.md).
+- **Authenticated deployment:** an Arch gateway serves the modern UI and proxies private daemon execution with server-held credentials. It uses Panda's shared Hubstack OAuth with a separate application, immutable administrator account pins, browser-bound one-use attempts, central revision checks and explicit member access state. A canonical schema fingerprint requires fresh deployment on incompatible change. See [ARCH_HOST_DEPLOYMENT.md](ARCH_HOST_DEPLOYMENT.md) for installation and rollout qualification.
 - **Reproducibility:** npm lockfile tarballs use the canonical registry with existing integrity hashes and versions preserved. OpenAPI client types are regenerated. Local deterministic tests cover the new behavior without provider credentials.
 
 Usage and exact contracts: [CLI](CLI.md), [work state](AUTONOMOUS_WORK.md), [SOP workflows](SOP_WORKFLOWS.md), [embedded C](EMBEDDED_C_API.md), [WebUI](WEBUI.md).
@@ -21,7 +22,7 @@ New achievements are committed locally while the Panda worker upgrades the publi
 
 ## Reproduce
 
-Install the platform's normal CMake/C/C++/curl/OpenSSL/jsoncpp/SQLite/pkg-config dependencies, Python 3, and Node/npm as described in [OPERATIONS.md](OPERATIONS.md). The UI uses its committed npm lockfile. Install a Playwright Chromium browser if one is not already available:
+Install the platform's normal CMake/C/C++/curl/OpenSSL/jsoncpp/SQLite/pkg-config dependencies, Python 3, Go 1.24+ and Node/npm as described in [OPERATIONS.md](OPERATIONS.md). The UI uses its committed npm lockfile. Install a Playwright Chromium browser if one is not already available:
 
 ```sh
 cd ui
@@ -43,7 +44,7 @@ The verifier configures **Debug** builds so assertion-based existing C tests exe
 
 ## Verification evidence
 
-The snapshot verification script passed 20 targeted native/CLI/API checks and six browser checks on Linux. The separate core-only Debug build/test passed. Coverage includes:
+The snapshot verification script passed 20 targeted native/CLI/API checks, Go broker/gateway tests and nine browser checks on Linux. The separate core-only Debug build/test passed. Gateway race tests and actual dedicated PostgreSQL persistence/schema checks also passed. Coverage includes:
 
 - C tool loop, continuation and unchanged step caps; host tool and pinned-prompt regressions.
 - Requirement DAG validation, scoped blockers, evidence gates, rollback, stale revision rejection and concurrent independent CLI writers.
@@ -53,9 +54,10 @@ The snapshot verification script passed 20 targeted native/CLI/API checks and si
 - HTTP effect crash boundaries, receipt reuse, destination deduplication, terminal reconciliation proofs, stale finalizers and preservation of owner stops; API/WebUI recovery of one affected branch.
 - Existing local streaming, workflow idempotency and replay-spec regression paths.
 - Desktop/mobile navigation, prompt focus, SOP template submission, workflow details, prompt uploads and scene history.
+- Shared identity browser binding/replay refusal, central revocation/outage/instance checks, administrator/member separation, proxy secret isolation and desktop/mobile sign-in.
 - TypeScript/Vite production build, generated OpenAPI drift check, repository guards and whitespace checks.
 
-Local logs: `build/cli_snapshot_verification.log`, `build/cli_snapshot_core_only.log`, and `build/cli_snapshot_repo_guards.log`. Browser tests regenerate `ui/test-results/workspace-desktop.png` and `workspace-mobile.png`; generated artifacts are ignored, while their source fixtures and commands are tracked. On the checked host, advanced-panel splitting reduced the main application chunk from approximately 1,087 kB to 798 kB before gzip; this is a build observation, not a latency benchmark.
+Local logs: `build/arch_snapshot_verification.log`, `build/cli_snapshot_core_only.log`, `build/arch_broker_all_tests.log`, `build/arch_gateway_postgres_tests.log` and `build/arch_repo_guards.log`. Browser tests regenerate workspace and deployment sign-in screenshots under `ui/test-results/`; generated artifacts are ignored, while their source fixtures and commands are tracked. On the checked host, advanced-panel splitting reduced the main application chunk from approximately 1,087 kB to 798 kB before gzip; this is a build observation, not a latency benchmark.
 
 ## Boundaries and next work
 

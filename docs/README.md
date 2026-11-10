@@ -9,6 +9,7 @@ Start here if you want the shortest path to the right document.
 - [ARCHITECTURE_CURRENT.md](ARCHITECTURE_CURRENT.md): current embedded/SOP/autonomy architecture and delivery gates.
 - [WORKFLOW_EFFECTS.md](WORKFLOW_EFFECTS.md): durable HTTP effects, receipt reconciliation and crash recovery.
 - [CLI_EVENT_PROTOCOL.md](CLI_EVENT_PROTOCOL.md): versioned stdout events, execution lifecycle and successful final-message publication.
+- [ARCH_HOST_DEPLOYMENT.md](ARCH_HOST_DEPLOYMENT.md): Arch services, shared OAuth, immutable administrator authority and scoped VPS ingress.
 - [SOP_WORKFLOWS.md](SOP_WORKFLOWS.md): stage/action authoring through the durable workflow API.
 - [AUTONOMOUS_WORK.md](AUTONOMOUS_WORK.md): independent requirements, scoped human dependencies and continuation.
 - [Current research](research/agent-systems-20261110.md): primary sources inspected for the design.

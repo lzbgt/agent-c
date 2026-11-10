@@ -1,0 +1,21 @@
+[Unit]
+Description=Agent-C authenticated workspace gateway
+After=network-online.target agent-c-daemon.service
+Wants=network-online.target agent-c-daemon.service
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/agent-c/current/bin/agentd-gateway --config %h/.config/agent-c/gateway.json
+Restart=on-failure
+RestartSec=3
+UMask=0077
+Environment=GOMEMLIMIT=192MiB
+MemoryMax=256M
+TasksMax=128
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

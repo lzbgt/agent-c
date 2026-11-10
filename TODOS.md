@@ -11,6 +11,7 @@ The authoritative capability/verification snapshot is [docs/CURRENT_SNAPSHOT.md]
 - [x] Versioned CLI JSONL stdout, successful final-message publication, complete coalesced SSE delivery and bounded audit capture independent of live events.
 - [x] Modern responsive workspace shell with accessible navigation and deferred advanced panels.
 - [x] HTTP POST effect IDs, durable intent/receipt/reconciliation, API/WebUI recovery and real process-crash tests.
+- [ ] Deploy the verified snapshot on Arch behind the shared VPS reverse proxy/OAuth; qualify the pinned system administrator and remove only proven Agent-C VPS workloads.
 - [ ] P0: extend the effect boundary to arbitrary tools/device adapters and add atomic budget reservations.
 - [ ] P0: connect goal/requirement/blocker authority to the broker and event-driven wakeup; preserve explicit stops.
 - [ ] P1: immutable SOP registry, durable signals/timers and explicit process decisions/compensation.

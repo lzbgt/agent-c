@@ -1,4 +1,5 @@
 import React from "react";
+import { useDeploymentIdentity } from "../DeploymentAuthBoundary";
 
 export type AppHeaderProfile = { id: string; name: string };
 type AppHeaderProps = {
@@ -17,6 +18,7 @@ type AppHeaderProps = {
 };
 
 export default function AppHeader(props: AppHeaderProps) {
+  const identity = useDeploymentIdentity();
   return (
     <header ref={props.topbarRef} className="workspace-topbar">
       <div className="workspace-brand"><div className="workspace-brand-mark" aria-hidden="true">a<span>c</span></div><div><div className="workspace-brand-name">agent<span> / C</span></div><div className="workspace-brand-caption">Agent operations</div></div></div>
@@ -31,6 +33,7 @@ export default function AppHeader(props: AppHeaderProps) {
         <div className={`workspace-health health-${props.healthState}`} role="status" title={`${props.effectiveBase} · ${props.healthService ?? "agentd"} ${props.healthVersion ?? ""}`}><span />{props.healthState === "ok" ? "Connected" : props.healthState === "checking" ? "Connecting" : "Offline"}</div>
         <button className="workspace-button workspace-recheck" onClick={props.onRecheck} type="button">Recheck</button>
         <button className="workspace-button" onClick={props.onShowSettings} type="button">Settings</button>
+        {identity ? <button className="workspace-button" title={identity.displayName} aria-label="Sign out of workspace" disabled={identity.signingOut} onClick={() => void identity.signOut()} type="button">Sign out</button> : null}
       </div>
     </header>
   );

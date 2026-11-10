@@ -38,7 +38,7 @@ agentd_smoke_curl() {
     command "${curl_bin}" "$@"
   else
     env -u HTTPS_PROXY -u https_proxy -u HTTP_PROXY -u http_proxy -u ALL_PROXY -u all_proxy \
-      command "${curl_bin}" "$@"
+      "${curl_bin}" "$@"
   fi
 }
 

@@ -6,6 +6,7 @@ export type HostPolicy = "full" | "readonly";
 export type ServerPrefsMode = "off" | "auto" | "on";
 
 export type AgentUIRuntimeConfig = {
+  identityEnabled?: boolean;
   clientId?: string;
   connectionMode?: ConnectionMode | string;
   daemonBaseUrl?: string;
