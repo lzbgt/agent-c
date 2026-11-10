@@ -297,3 +297,7 @@ where package metadata is incomplete, such as `libjuice` lacking a local
 - tests/tool_server_echo.py (example tool server)
 - tools/agentd_tool_plugin_echo.c (example plugin)
 - docs/spec/tool_plugins_sandbox_v0.md (sandbox policy details)
+
+## Durable work state
+
+SQLite-enabled host builds expose `work_state` for requirement updates and scoped human-action blockers. A successful call adopts that ledger for the current run's completion guard. Read-only policy permits reads and rejects mutations. The tool records work without waiting for a person; independent requirements remain runnable. See [AUTONOMOUS_WORK.md](AUTONOMOUS_WORK.md) for operations, storage paths, bounds, evidence and continuation semantics.

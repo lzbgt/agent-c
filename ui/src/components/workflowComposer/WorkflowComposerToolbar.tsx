@@ -49,6 +49,7 @@ export default function WorkflowComposerToolbar(props: WorkflowComposerToolbarPr
             <label className="flex items-center gap-1">
               template
               <select
+                aria-label="Workflow template"
                 className="rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
                 value={props.templateKind}
                 onChange={(event) => props.onApplyTemplate(event.target.value as TemplateKind)}

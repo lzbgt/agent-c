@@ -4,6 +4,12 @@ Start here if you want the shortest path to the right document.
 
 ## Essentials
 
+- [CURRENT_SNAPSHOT.md](CURRENT_SNAPSHOT.md): implemented capabilities, limits, and reproducible verification.
+- [ARCHITECTURE_CURRENT.md](ARCHITECTURE_CURRENT.md): current embedded/SOP/autonomy architecture and delivery gates.
+- [SOP_WORKFLOWS.md](SOP_WORKFLOWS.md): stage/action authoring through the durable workflow API.
+- [AUTONOMOUS_WORK.md](AUTONOMOUS_WORK.md): independent requirements, scoped human dependencies and continuation.
+- [Current research](research/agent-systems-20261110.md): primary sources inspected for the design.
+
 - `docs/HANDBOOK.md`: compact, generated summary (no history).
 - `DESIGN.md`: architecture map + goals.
 - `docs/AGENTIC_VISION.md`: user/architect expectations for a cutting-edge agentic framework.

@@ -1481,6 +1481,26 @@ agent_status_t agent_tool_loop_run(
     }
 
     if (!has_tool_calls) {
+      if (hooks && hooks->on_proposed_completion) {
+        agent_string_t continuation = {0};
+        agent_status_t guard = hooks->on_proposed_completion(hooks->on_proposed_completion_ctx, &continuation);
+        if (guard != AGENT_OK) {
+          agent_string_free(&continuation);
+          agent_tool_provider_response_free(&presp);
+          status = guard;
+          (void)agent_string_set_copy(&res.error_message, "completion guard failed", strlen("completion guard failed"));
+          goto cleanup;
+        }
+        if (continuation.len > 0 && continuation.data) {
+          guard = tl_list_push_message_copy(&messages, AGENT_ROLE_USER, continuation.data, NULL, NULL);
+          agent_string_free(&continuation);
+          agent_tool_provider_response_free(&presp);
+          if (guard != AGENT_OK) { status = guard; goto cleanup; }
+          tl_emit_event(hooks, "retry", "{\"reason\":\"unfinished_runnable_work\"}");
+          continue;
+        }
+        agent_string_free(&continuation);
+      }
       if (tl_events_enabled(hooks)) {
         tl_buf_t d = {0};
         uint8_t first = 1;

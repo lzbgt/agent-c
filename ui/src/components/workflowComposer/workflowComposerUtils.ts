@@ -19,6 +19,7 @@ export { DEFAULT_GRAPH_STATE, clampGraphState, normalizeTargets, parseWorkflowTo
 export type { GraphBuildResult, GraphState };
 
 export const TEMPLATE_LABELS: Record<TemplateKind, string> = {
+  sop: "SOP · stages and actions",
   llm_dag: "LLM DAG (A→B/C)",
   agent_parallel: "Agent collaboration (agentd_parallel)",
   agent_parallel_demo: "Agent collaboration demo (agentd_parallel)",
@@ -246,3 +247,21 @@ export const buildGraphWorkflow = (
     return { result: null, error: String(err) };
   }
 };
+
+// Provider-free seed: replace delays with validated task kinds for a real process.
+export function buildSopTemplate() {
+  return {
+    sop: {
+      schema: "agentd.sop.v1" as const,
+      id: "inspection", version: "1", title: "Inspection process",
+      stages: [
+        { id: "intake", title: "Intake", mode: "sequence" as const, actions: [{ task_id: "register", kind: "delay" as const, delay_ms: 0 }] },
+        { id: "checks", title: "Parallel checks", mode: "parallel" as const, actions: [
+          { task_id: "quality", kind: "delay" as const, delay_ms: 0 },
+          { task_id: "inventory", kind: "delay" as const, delay_ms: 0 },
+        ] },
+        { id: "release", title: "Release", mode: "sequence" as const, actions: [{ task_id: "record", kind: "delay" as const, delay_ms: 0 }] },
+      ],
+    },
+  };
+}

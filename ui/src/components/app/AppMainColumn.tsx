@@ -31,8 +31,8 @@ export default function AppMainColumn(props: AppMainColumnProps) {
   return (
     <section className="min-w-0">
       <div
-        className={`rounded-lg border border-white/10 bg-black/20 p-3 ${
-          props.sceneCollapsed ? "" : "flex h-[calc(100vh-var(--topbar-h)-var(--promptbar-h)-56px)] min-h-0 flex-col"
+        className={`workspace-surface p-4 ${
+          props.sceneCollapsed ? "" : "flex min-h-[320px] h-[min(48vh,520px)] flex-col"
         }`}
       >
         <div className="flex items-center justify-between gap-2">

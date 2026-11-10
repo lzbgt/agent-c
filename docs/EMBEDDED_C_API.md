@@ -273,3 +273,9 @@ On ESP32-S3, treat the core tool loop as a **single task**:
 - Side effects: tools run via `agent_tool_executor_t` only
 
 Keep all persistence (flash/SD/network) and UI outside the core library. This keeps the C API portable and minimizes binary size.
+
+## Completion continuation port
+
+`agent_tool_loop_hooks_t.on_proposed_completion` is optional. Return `AGENT_OK` with an empty output to accept completion, or an allocated `agent_string_t` prompt to continue within the same run and existing budgets. Return an error to reject completion with a failure. The core frees the output. This port is independent of storage and JSON; an embedded host can consult a bounded requirement table. Existing synchronous providers/tools remain supported. Rebuild consumers when updating the public hooks struct; no stable binary ABI is claimed for this rolling version.
+
+The Linux/core-only test lane verifies portable behavior, not ESP32 timing, flash durability or RAM budgets. See [the current architecture](ARCHITECTURE_CURRENT.md) for the measured embedded release gates.

@@ -200,6 +200,8 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     cli/src/toolset_host_ui_wait_event.cpp
     cli/src/toolset_host_client_peek.cpp
     cli/src/toolset_host_memory.cpp
+    cli/src/toolset_host_work.cpp
+    cli/src/work_ledger.cpp
   )
 
   target_compile_options(agent_host PRIVATE
@@ -229,6 +231,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
 
   add_executable(agent
     cli/src/main.cpp
+    cli/src/cli_commands.cpp
   )
 
   target_compile_options(agent PRIVATE
@@ -433,6 +436,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/workflow_endpoints.cpp
     daemon/src/workflow_schedule_endpoints.cpp
     daemon/src/workflow_submit.cpp
+    daemon/src/workflow_sop.cpp
     daemon/src/workflow_submit_macros.cpp
     daemon/src/workflow_submit_task_builders.cpp
     daemon/src/workflow_fairq_cost.cpp
@@ -1882,6 +1886,13 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
   target_link_libraries(host_toolset_tests PRIVATE agent_host)
   add_test(NAME host_toolset_tests COMMAND host_toolset_tests)
 
+  if(AGENT_ENABLE_SQLITE3)
+    add_executable(work_ledger_tests tests/test_work_ledger.cpp)
+    target_link_libraries(work_ledger_tests PRIVATE agent_host)
+    add_test(NAME work_ledger_tests COMMAND work_ledger_tests)
+    add_test(NAME cli_harness_smoke COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_harness_smoke.py $<TARGET_FILE:agent>)
+  endif()
+
   add_executable(host_session_prompts_tests
     tests/test_host_session_prompts.cpp
   )
@@ -1969,6 +1980,13 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
     target_link_libraries(workflow_fairq_cost_tests PRIVATE agentd_lib)
     target_compile_definitions(workflow_fairq_cost_tests PRIVATE AGENT_HAVE_JSONCPP=1)
     add_test(NAME workflow_fairq_cost_tests COMMAND workflow_fairq_cost_tests)
+
+    add_executable(workflow_sop_tests tests/test_workflow_sop.cpp)
+    target_link_libraries(workflow_sop_tests PRIVATE agentd_lib)
+    add_test(NAME workflow_sop_tests COMMAND workflow_sop_tests)
+    if(AGENTD_ENABLE_HTTP)
+      add_test(NAME agentd_workflow_sop_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_sop_smoke.sh $<TARGET_FILE:agentd>)
+    endif()
 
     add_executable(workflow_run_budget_clamp_tests
       tests/test_workflow_run_budget_clamp.cpp

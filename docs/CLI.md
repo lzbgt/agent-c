@@ -1,6 +1,20 @@
 # CLI Usage (`agent`)
 
-Date: 2026-02-19
+Current entry points (2026-11-10):
+
+```sh
+./build/agent exec "implement and verify the change" -C /path/to/project
+printf '%s' 'inspect the project' | ./build/agent exec - --no-session
+./build/agent sessions
+./build/agent resume myproj "continue remaining work"
+./build/agent work
+```
+
+`exec` shares the existing one-shot executor with `run`. `-` reads at most 1 MiB from stdin; empty prompts and unknown options are rejected. `resume` requires an existing nonempty session and opens chat if no prompt is supplied. `--session-root <path>` isolates file-backed session storage. `-C` / `--cd` selects the working directory before project instructions and relative paths are resolved. These options follow the command; this is not a claim of Codex command-line compatibility.
+
+The host defaults to autonomous execution without permission prompts. Durable requirements, scoped human-action blockers and completion continuation are documented in [AUTONOMOUS_WORK.md](AUTONOMOUS_WORK.md). Configured policies and explicit stops remain effective. Local commands (`sessions`, `work`, `--help`) do not need a provider credential. New command dispatch is isolated in `cli/src/cli_commands.cpp`; the existing provider/run implementation remains shared.
+
+Historical guide baseline: 2026-02-19
 
 This guide covers the `agent` CLI and tool-loop behavior.
 
@@ -132,7 +146,7 @@ See `docs/TOOLS.md` for the built-in host tool list and token-safety guidance.
 Some failure modes look like “capture camera → register artifact → repeat forever”. To keep runs bounded, the tool loop
 has a guard that stops if the model repeats the **exact same tool call** too many times:
 
-- CLI: `--max-repeated-tool-calls <n>` (default: `12`; set `0` to disable)
+- CLI: `--max-repeated-tool-calls <n>` (default: `0`, disabled; set a positive cap to enable)
 - Daemon/UI: request field `max_repeated_tool_calls` (see `docs/PROTOCOL.md`)
 - For daemon runs, `max_steps` can be left blank in the UI to use the daemon’s default step cap (`/api/v1/config: daemon.max_steps_default`).
 - For worst-case safety, daemon also applies a default cap on total tool calls (`/api/v1/config: daemon.max_tool_calls_total_default`).

@@ -16,7 +16,7 @@ import {
 } from "../../api";
 import useLocalStorageState from "../../hooks/useLocalStorageState";
 import { brokerBaseFromProxy } from "../../utils/brokerBase";
-import type { WorkflowDefaults, WorkflowJsonObject, WorkflowSpec, WorkflowSubmitRequest } from "../../workflowTypes";
+import type { WorkflowDefaults, WorkflowJsonObject, WorkflowSubmitRequest } from "../../workflowTypes";
 import type {
   WorkflowComposerProps,
   TemplateKind,
@@ -34,6 +34,7 @@ import {
   buildAgentParallelTemplate,
   buildGraphWorkflow,
   buildLlmDagTemplate,
+  buildSopTemplate,
   clampGraphState,
   extractWorkflowWaitByScope,
   mergeWaitMaps,
@@ -642,8 +643,11 @@ export default function useWorkflowComposerState(props: WorkflowComposerProps) {
   const applyTemplate = React.useCallback(
     (kind: TemplateKind, opts?: { toGraph?: boolean }) => {
       setTemplateKind(kind);
-      let template: WorkflowSpec;
-      if (kind === "agent_parallel_demo") {
+      let template: WorkflowSubmitRequest;
+      if (kind === "sop") {
+        template = buildSopTemplate();
+        setComposerMode("json");
+      } else if (kind === "agent_parallel_demo") {
         template = buildAgentParallelDemoTemplate(defaults, targets, bearerEnv, allowInlineKeys);
       } else if (kind === "agent_parallel") {
         template = buildAgentParallelTemplate(defaults, targets, bearerEnv, allowInlineKeys);

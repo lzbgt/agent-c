@@ -13,7 +13,7 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
   return (
     <div
       ref={ref}
-      className="fixed bottom-0 left-0 right-0 z-30 border-t border-white/10 bg-slate-950/90 backdrop-blur"
+      className="workspace-composer fixed bottom-0 left-0 right-0 z-30 border-t border-white/10 backdrop-blur"
       data-testid="promptbar-root"
     >
       <PromptBarDetailsDrawer
@@ -126,7 +126,7 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
               </button>
             ) : null}
             <button
-              className="rounded-md bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400 disabled:opacity-50"
+              className="workspace-run rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
               onClick={state.onRun}
               disabled={props.runDisabled}
               type="button"

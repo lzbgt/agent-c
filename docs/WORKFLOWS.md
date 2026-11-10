@@ -1,6 +1,8 @@
 # Durable Workflows (agentd)
 
-Date: 2026-02-05
+Current stage/action authoring: [SOP_WORKFLOWS.md](SOP_WORKFLOWS.md). It compiles into the scheduler described here; at-least-once recovery remains the execution guarantee.
+
+Historical baseline: 2026-02-05
 
 `agentd` includes a durable workflow scheduler: a workflow is a persisted DAG of tasks (typically normal `/api/v1/run` requests)
 that can continue running across daemon restarts.

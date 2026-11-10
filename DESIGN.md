@@ -1,6 +1,8 @@
 # Agent Project – Architecture & Design
 
-Last updated: 2026-02-19
+Current direction: [docs/ARCHITECTURE_CURRENT.md](docs/ARCHITECTURE_CURRENT.md), decided 2026-11-10. The source-level feature and verification snapshot is [docs/CURRENT_SNAPSHOT.md](docs/CURRENT_SNAPSHOT.md). The sections below retain the historical subsystem design; dated roadmap claims are not a current verification report.
+
+Historical baseline: 2026-02-19
 
 ## Goals
 

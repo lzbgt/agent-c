@@ -1849,10 +1849,45 @@ AvmCapsuleMountResult:
       description: Canonical allowlist root that authorized the mount.
 
 
+WorkflowSop:
+  type: object
+  additionalProperties: false
+  required: [schema, id, version, stages]
+  description: Versioned SOP lowered server-side into the existing durable DAG. Stages execute in order; actions within each stage are sequential or parallel. No approval, branching, compensation, or exactly-once guarantee is implied.
+  properties:
+    schema: { type: string, enum: [agentd.sop.v1] }
+    id: { type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_.:-]+$' }
+    version: { type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_.:-]+$' }
+    title: { type: string, maxLength: 256 }
+    stages:
+      type: array
+      minItems: 1
+      maxItems: 32
+      items:
+        type: object
+        additionalProperties: false
+        required: [id, actions]
+        properties:
+          id: { type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_.:-]+$' }
+          title: { type: string, maxLength: 256 }
+          mode: { type: string, enum: [sequence, parallel], default: sequence }
+          actions:
+            type: array
+            minItems: 1
+            maxItems: 128
+            description: Existing WorkflowTaskSpec objects with globally unique task_id; dependencies are generated. Submit-time macros, explicit depends_on and allow_error=true are rejected. Max 128 actions across all stages. Unknown action fields are rejected.
+            items:
+              $ref: '#/components/schemas/WorkflowTaskSpec'
+
 WorkflowSubmitRequest:
   type: object
-  required: [tasks]
+  description: Supply exactly one of tasks or sop. SOP compilation precedes ordinary task validation, policy checks and admission control. The stored spec includes the definition hash and stage-to-task mapping.
+  oneOf:
+    - required: [tasks]
+    - required: [sop]
   properties:
+    sop:
+      $ref: '#/components/schemas/WorkflowSop'
     workflow_id: { type: string }
     trace_id: { $ref: "#/components/schemas/TraceID" }
     session_id:

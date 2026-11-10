@@ -241,5 +241,6 @@ agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, 
 agent_status_t tool_memory_timeline(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+agent_status_t tool_work_state(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 
 } // namespace host_tools_internal

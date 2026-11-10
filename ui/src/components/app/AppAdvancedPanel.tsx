@@ -1,13 +1,13 @@
 import React from "react";
 import type { AgentdTraceResp, ApiAuth, BrokerTraceResp } from "../../api";
 import type { WorkflowDefaults } from "../../workflowTypes";
-import ApprovalQueuePanel from "../ApprovalQueuePanel";
-import BrokerPanel from "../BrokerPanel";
-import MemoryPanel from "../MemoryPanel";
-import RunDiffPanel from "../RunDiffPanel";
-import TraceLookupPanel from "../TraceLookupPanel";
-import VoicePanel from "../VoicePanel";
-import WorkflowPanel from "../WorkflowPanel";
+const ApprovalQueuePanel = React.lazy(() => import("../ApprovalQueuePanel"));
+const BrokerPanel = React.lazy(() => import("../BrokerPanel"));
+const MemoryPanel = React.lazy(() => import("../MemoryPanel"));
+const RunDiffPanel = React.lazy(() => import("../RunDiffPanel"));
+const TraceLookupPanel = React.lazy(() => import("../TraceLookupPanel"));
+const VoicePanel = React.lazy(() => import("../VoicePanel"));
+const WorkflowPanel = React.lazy(() => import("../WorkflowPanel"));
 
 type AppAdvancedPanelProps = {
   advancedPage: string;
@@ -70,7 +70,8 @@ export default function AppAdvancedPanel(props: AppAdvancedPanelProps) {
   if (!props.advancedPage) return null;
 
   return (
-    <aside className="min-w-0 overflow-x-auto rounded-lg border border-white/10 bg-black/20 p-3">
+    <React.Suspense fallback={<div className="workspace-surface p-6 text-sm text-white/60" role="status">Loading workspace…</div>}>
+    <aside className="workspace-surface min-w-0 overflow-x-auto p-4">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="text-[11px] font-semibold text-white/60">Panel view</div>
         <button
@@ -172,5 +173,6 @@ export default function AppAdvancedPanel(props: AppAdvancedPanelProps) {
         />
       ) : null}
     </aside>
+    </React.Suspense>
   );
 }

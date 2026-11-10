@@ -1,5 +1,21 @@
 # Roadmap / TODOs (highest leverage)
 
+## Current architectural priorities (2026-11-10)
+
+The authoritative capability/verification snapshot is [docs/CURRENT_SNAPSHOT.md](docs/CURRENT_SNAPSHOT.md). Current direction and acceptance gates are in [docs/ARCHITECTURE_CURRENT.md](docs/ARCHITECTURE_CURRENT.md); dated items below retain their subsystem history.
+
+- [x] Stage/action SOP compiler through the existing workflow submit path, version/hash provenance and WebUI template.
+- [x] Shared durable requirement/blocker ledger; independent work remains runnable; evidence-gated state transitions.
+- [x] Portable proposed-completion hook with host continuation within existing run budgets.
+- [x] CLI exec/stdin/resume/sessions/work commands and autonomous default instructions.
+- [x] Modern responsive workspace shell with accessible navigation and deferred advanced panels.
+- [ ] P0: durable effect IDs, receipt/reconciliation state and crash-injection tests for external writes.
+- [ ] P0: connect goal/requirement/blocker authority to the broker and event-driven wakeup; preserve explicit stops.
+- [ ] P1: immutable SOP registry, durable signals/timers and explicit process decisions/compensation.
+- [ ] P1: instance-scoped pollable core ports and board-level resource/power-loss evidence.
+- [ ] P1: provider metadata/checkpoint contracts, structured CLI stdout and remaining legacy CLI decomposition.
+
+
 Date: 2026-02-19
 
 This roadmap is biased toward “power unleashed” coming from the **agentic framework itself**:

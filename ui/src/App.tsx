@@ -18,6 +18,7 @@ import AppConnectionBanner from "./components/app/AppConnectionBanner";
 import AppAdvancedPanel from "./components/app/AppAdvancedPanel";
 import AppHeader from "./components/app/AppHeader";
 import AppToolsSidebar from "./components/app/AppToolsSidebar";
+import WorkspaceHeading from "./components/app/WorkspaceHeading";
 import useLocalStorageState from "./hooks/useLocalStorageState";
 import useAppDataPlane from "./hooks/useAppDataPlane";
 import useAppShellState from "./hooks/useAppShellState";
@@ -539,11 +540,12 @@ export default function App() {
     "--promptbar-h": `${promptbarHeightPx}px`,
   };
   const appGridStyle: AppGridStyle = {
-    "--tools-col": toolsCollapsed ? "72px" : "minmax(140px,12vw)",
+    "--tools-col": toolsCollapsed ? "72px" : "208px",
   };
 
   return (
-    <div className="h-screen w-full bg-slate-950 text-white" style={appShellStyle}>
+    <div className="workspace-shell h-screen w-full text-white" style={appShellStyle}>
+      <a className="workspace-skip" href="#workspace-main">Skip to workspace</a>
       <AppHeader
         topbarRef={topbarRef}
         profiles={connection.profiles}
@@ -574,15 +576,18 @@ export default function App() {
       />
 
       <main
+        id="workspace-main"
+        tabIndex={-1}
         ref={(el) => {
           mainScrollRef.current = el;
         }}
         onScroll={onMainScroll}
-        className="h-[calc(100vh-var(--topbar-h))] overflow-y-auto px-3 py-3 pb-[var(--promptbar-h)]"
+        className="workspace-main h-[calc(100dvh-var(--topbar-h))] overflow-y-auto pb-[var(--promptbar-h)]"
       >
         <div className="mx-auto w-full max-w-none">
+            <WorkspaceHeading page={advancedPage} label={advancedPages.find((page) => page.id === advancedPage)?.label ?? "Workspace"} sessionId={sessionId} model={model} activeJobId={activeJobId ?? ""} />
             <div
-              className={`mt-4 grid gap-4 ${
+              className={`workspace-grid grid gap-5 ${
                 advancedPage
                   ? advancedGridCols
                   : "lg:grid-cols-[var(--tools-col)_minmax(0,1fr)]"

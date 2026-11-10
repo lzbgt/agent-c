@@ -11316,7 +11316,28 @@ export interface components {
              */
             mounts?: components["schemas"]["AvmCapsuleMountRequest"][];
         };
+        /** @description Versioned SOP lowered server-side into the existing durable DAG. Stages execute in order; actions within each stage are sequential or parallel. No approval, branching, compensation, or exactly-once guarantee is implied. */
+        WorkflowSop: {
+            /** @enum {string} */
+            schema: "agentd.sop.v1";
+            id: string;
+            version: string;
+            title?: string;
+            stages: {
+                id: string;
+                title?: string;
+                /**
+                 * @default sequence
+                 * @enum {string}
+                 */
+                mode: "sequence" | "parallel";
+                /** @description Existing WorkflowTaskSpec objects with globally unique task_id; dependencies are generated. Submit-time macros, explicit depends_on and allow_error=true are rejected. Max 128 actions across all stages. Unknown action fields are rejected. */
+                actions: components["schemas"]["WorkflowTaskSpec"][];
+            }[];
+        };
+        /** @description Supply exactly one of tasks or sop. SOP compilation precedes ordinary task validation, policy checks and admission control. The stored spec includes the definition hash and stage-to-task mapping. */
         WorkflowSubmitRequest: {
+            sop?: components["schemas"]["WorkflowSop"];
             workflow_id?: string;
             trace_id?: components["schemas"]["TraceID"];
             /** @description Optional. Only honored when allow_sessions=true. If provided, the server upserts the session row on submit. */
@@ -11351,8 +11372,8 @@ export interface components {
                 [key: string]: unknown;
             };
             workflow_limits?: components["schemas"]["WorkflowLimits"];
-            tasks: components["schemas"]["WorkflowTaskSpec"][];
-        };
+            tasks?: components["schemas"]["WorkflowTaskSpec"][];
+        } & (unknown | unknown);
         RuntimeSkillSummary: {
             skill_id: string;
             version: string;

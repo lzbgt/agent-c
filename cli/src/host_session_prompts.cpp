@@ -208,6 +208,7 @@ bool ensure_pinned_host_session_prompts(
 
   if (have_host_leading &&
       have_host_profile_leading &&
+      session_leading_system_has_exact(session, host_prompt) &&
       have_client_profile_leading &&
       have_project_instructions_leading &&
       !stale_client_profile_leading &&

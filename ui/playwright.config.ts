@@ -33,9 +33,12 @@ export default defineConfig({
   use: {
     baseURL,
     headless: true,
-    trace: "on",
+    launchOptions: process.env.AGENT_E2E_BROWSER_EXECUTABLE
+      ? { executablePath: process.env.AGENT_E2E_BROWSER_EXECUTABLE }
+      : undefined,
+    trace: process.env.AGENT_E2E_RECORD === "0" ? "off" : "on",
     screenshot: "on",
-    video: "on",
+    video: process.env.AGENT_E2E_RECORD === "0" ? "off" : "on",
   },
   webServer: useExistingServer
     ? undefined

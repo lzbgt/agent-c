@@ -1389,3 +1389,7 @@ Response fields:
 
 - If the DB is disabled, endpoints return `404` (not found) or `{ok:false,error:"db disabled"}` depending on call site.
 - For richer queries, use `sqlite3` directly against `db_path` shown in `/api/v1/config`.
+
+## Host work ledger (separate store)
+
+The `work_state` host tool and `agent work` command use a separate `work.sqlite` file with a `work_state(id, value)` table. The JSON value is versioned as `agentd.work.v1` and updated transactionally. This is not a migration of the main agentd database and is not available through its DB query API. Back up/delete it with the corresponding workspace or session. Paths, bounds and semantics are in [AUTONOMOUS_WORK.md](AUTONOMOUS_WORK.md).

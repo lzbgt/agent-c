@@ -41,6 +41,42 @@ static bool parse_json_object(const std::string& s, Json::Value* out_obj) {
   return true;
 }
 
+struct WorkAwareExecutor {
+  const agent_tool_executor_t* inner = nullptr;
+  bool adopted = false;
+  Json::Int64 last_revision = -1;
+  size_t stagnant_completions = 0;
+};
+
+static agent_status_t execute_with_work_tracking(void* ctx, const char* name, const char* args, agent_string_t* out) {
+  auto* work = static_cast<WorkAwareExecutor*>(ctx);
+  const auto status = work->inner->execute(work->inner->ctx, name, args, out);
+  if (status == AGENT_OK && std::string(name) == "work_state") {
+    Json::Value result;
+    if (parse_json_object(std::string(out->data ? out->data : "", out->len), &result) && result["ok"] == true) work->adopted = true;
+  }
+  return status;
+}
+
+static agent_status_t guard_work_completion(void* ctx, agent_string_t* prompt) {
+  auto* work = static_cast<WorkAwareExecutor*>(ctx);
+  if (!work->adopted) return AGENT_OK;
+  agent_string_t raw{};
+  const auto status = work->inner->execute(work->inner->ctx, "work_state", "{\"op\":\"read\"}", &raw);
+  Json::Value state;
+  const bool parsed = parse_json_object(std::string(raw.data ? raw.data : "", raw.len), &state);
+  agent_string_free(&raw);
+  if (status != AGENT_OK || !parsed || state["ok"] != true) return AGENT_ERR_INTERNAL;
+  if (state["can_continue"] != true) return AGENT_OK;
+  const auto revision = state["state"]["revision"].asInt64();
+  work->stagnant_completions = revision == work->last_revision ? work->stagnant_completions + 1 : 0;
+  work->last_revision = revision;
+  if (work->stagnant_completions >= 3) return AGENT_ERR_LIMIT;
+  const auto text = "Your durable work ledger still has runnable requirements: " + json_stringify(state["runnable"]) +
+    ". Continue authorized work and verify outcomes. Use work_state to record evidence. A human-action blocker affects only its requirement_ids; continue independent requirements. Honor cancellation and configured budgets.";
+  return agent_string_set_copy(prompt, text.data(), text.size());
+}
+
 static Json::Value summarize_tool_output_json(const std::string& tool_out) {
   Json::Value obj;
   if (!parse_json_object(tool_out, &obj)) {
@@ -469,10 +505,14 @@ bool run_tool_loop(
   hooks.summarize_tool_output_ctx = nullptr;
 
   agent_tool_loop_result_t core_res{};
+  WorkAwareExecutor work_executor{executor, false};
+  agent_tool_executor_t tracked_executor{&work_executor, execute_with_work_tracking};
+  hooks.on_proposed_completion = guard_work_completion;
+  hooks.on_proposed_completion_ctx = &work_executor;
   const agent_status_t st = agent_tool_loop_run(
     &provider,
     tools_registry,
-    executor,
+    &tracked_executor,
     seed_session,
     user_prompt.c_str(),
     &opt,

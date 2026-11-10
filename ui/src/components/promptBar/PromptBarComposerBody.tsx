@@ -21,6 +21,7 @@ export default function PromptBarComposerBody(props: PromptBarComposerBodyProps)
       <textarea
         className="mt-2 w-full resize-none rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm leading-relaxed shadow-inner max-h-[30vh] overflow-y-auto"
         data-testid="prompt"
+        aria-label="Message your agent"
         rows={3}
         value={props.prompt}
         placeholder={props.promptPlaceholder}

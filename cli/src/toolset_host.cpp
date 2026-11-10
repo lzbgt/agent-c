@@ -14,6 +14,7 @@ static agent_status_t host_tools_execute(void* vctx, const char* tool_name, cons
   }
   HostToolCtx* ctx = (HostToolCtx*)vctx;
   const std::string name(tool_name);
+  if (name == "work_state") return tool_work_state(ctx, arguments_json, out_result);
   if (ctx->policy == HostToolsetPolicyMode::ReadOnly) {
     if (name == "shell_exec" || name == "proc_exec" || name == "file_apply_patch") {
 #if !defined(AGENT_HAVE_JSONCPP)
@@ -699,6 +700,13 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     );
     if (st != AGENT_OK) goto fail;
   }
+
+  #if defined(AGENT_HAVE_SQLITE3)
+  st = agent_tool_registry_add(r, "work_state",
+    "Read or update durable requirements and human-action blockers. Blockers affect only requirement_ids; continue runnable work. Raise only after recovery attempts fail. Done and resolve require verification evidence.",
+    R"({"type":"object","properties":{"op":{"type":"string","enum":["read","requirement","raise_blocker","resolve_blocker"]},"id":{"type":"string"},"expected_revision":{"type":"integer"},"title":{"type":"string"},"status":{"type":"string","enum":["pending","running","done"]},"depends_on":{"type":"array","items":{"type":"string"}},"evidence":{"type":"string"},"reason":{"type":"string"},"required_action":{"type":"string"},"attempts":{"type":"array","items":{"type":"string"}},"requirement_ids":{"type":"array","items":{"type":"string"}}},"additionalProperties":false})");
+  if (st != AGENT_OK) goto fail;
+  #endif
 
   // Executor context (owned by host; for CLI we just heap-allocate).
   ctx = new (std::nothrow) HostToolCtx();

@@ -15,8 +15,10 @@
 #include "toolset_host.h"
 #include "base64.h"
 #include "cli_transcript_writer.h"
+#include "cli_commands.h"
 
 #include <cstdlib>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -394,7 +396,12 @@ static void usage() {
     << "Usage:\n"
     << "  agent run \"prompt text\" [options]\n"
     << "  agent chat [options]\n\n"
+    << "  agent exec \"prompt\"|- [options]   Run once; '-' reads a bounded prompt from stdin\n"
+    << "  agent resume <session-id> [\"prompt\"] [options]\n"
+    << "  agent sessions                    List saved session IDs without a model call\n"
+    << "  agent work [JSON|-] [--file path]  Read/update durable requirements and blockers\n\n"
     << "Options:\n"
+    << "  -C, --cd <path>           Run from this working directory\n"
     << "  --model <name>            Model name (default: gpt-4o-mini)\n"
     << "  --base-url <url>          API base url (default: https://api.openai.com/v1)\n"
     << "  --api-key <key>           API key (default: OPENAI_API_KEY)\n"
@@ -403,6 +410,7 @@ static void usage() {
     << "  --trace                   Print full request/response/tool transcript to stderr (default: on)\n"
     << "  --quiet                   Suppress transcript; print assistant text only\n"
     << "  --session <id>            Session id to load/save (default: default)\n"
+    << "  --session-root <path>     Override the file-backed session directory\n"
     << "  --no-session              Disable persistence (ephemeral run)\n"
     << "  --system <text>           Add a system message at the start (one time)\n"
     << "  --system-profile <name>   Select built-in host system prompt (default: default)\n"
@@ -525,9 +533,17 @@ int main(int argc, char** argv) {
     return 2;
   }
 
-  const std::string cmd = args[0];
-  args.erase(args.begin());
-  if (cmd != "run" && cmd != "chat") {
+  if (args[0] == "--help" || args[0] == "-h" ||
+      std::find(args.begin(), args.end(), "--help") != args.end()) {
+    usage(); return 0;
+  }
+  CliCommand entry;
+  const int command_status = cli_prepare_command(&args, &entry);
+  if (command_status >= 0) return command_status;
+  std::string cmd = entry.command;
+  const bool resume = entry.resume;
+  const std::string session_root = entry.session_root;
+  if (cmd != "run" && cmd != "chat" && !resume) {
     usage();
     return 2;
   }
@@ -693,13 +709,23 @@ int main(int argc, char** argv) {
   }
 
   std::string prompt;
+  if (resume) cmd = args.empty() ? "chat" : "run";
   if (cmd == "run") {
-    // Remaining args should be the prompt (single token or quoted string as one arg).
-    if (args.empty()) {
-      std::cerr << "Missing prompt\n";
+    if (args.size() != 1 || (args[0].size() > 1 && args[0][0] == '-')) {
+      std::cerr << "Expected one prompt (or '-' for stdin); check option spelling\n";
       return 2;
     }
     prompt = args[0];
+    if (prompt == "-") {
+      prompt.clear(); char ch;
+      while (std::cin.get(ch)) {
+        if (prompt.size() >= 1024 * 1024) { std::cerr << "Prompt exceeds 1 MiB\n"; return 2; }
+        prompt.push_back(ch);
+      }
+    }
+    if (trim_copy(prompt).empty()) { std::cerr << "Prompt must not be empty\n"; return 2; }
+  } else if (!args.empty()) {
+    std::cerr << "Unexpected chat argument; check option spelling\n"; return 2;
   }
 
   std::vector<ToolCallLimit> tool_call_limits;
@@ -793,7 +819,7 @@ int main(int argc, char** argv) {
   // Session load (mandatory for CLI/daemon use cases, but optional via flag).
   agent_session_t* session = nullptr;
   SessionStoreConfig store_cfg;
-  store_cfg.root_dir = (std::filesystem::path(home_dir_best_effort()) / ".agent" / "sessions").string();
+  store_cfg.root_dir = session_root;
 
   agent_persistor_t persistor{};
   if (agent_file_persistor_create(store_cfg.root_dir.c_str(), &persistor) != AGENT_OK) {
@@ -818,6 +844,10 @@ int main(int argc, char** argv) {
   }
 
   const bool session_started_empty = (agent_session_message_count(session) == 0);
+  if (resume && session_started_empty) {
+    std::cerr << "Cannot resume a missing or empty session: " << session_id << "\n";
+    agent_session_destroy(session); agent_persistor_destroy(&persistor); return 2;
+  }
 
   // Add one-time system message if requested and session is empty.
   if (!system_msg.empty() && session_started_empty) {

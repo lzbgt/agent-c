@@ -381,6 +381,8 @@ schemas:
     $ref: ./components/workflow.yaml#/AvmCapsuleHostEffects
   AvmCapsuleRunArgs:
     $ref: ./components/workflow.yaml#/AvmCapsuleRunArgs
+  WorkflowSop:
+    $ref: ./components/workflow.yaml#/WorkflowSop
   WorkflowSubmitRequest:
     $ref: ./components/workflow.yaml#/WorkflowSubmitRequest
   RuntimeSkillSummary:

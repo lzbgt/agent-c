@@ -1,7 +1,9 @@
 # agent
 
 This repo is a **production-oriented agentic platform**: a portable core plus a daemon, broker, CLI, and WebUI for durable, audited automation.
-It is **not a prototype** — the repo includes deployment checklists, verification scripts, and evidence bundles for repeatable, production-grade runs.
+The current source, capability boundaries, verification commands and follow-up priorities are recorded in [the current snapshot](docs/CURRENT_SNAPSHOT.md). The [architecture](docs/ARCHITECTURE_CURRENT.md) covers embedded execution, customizable SOP pipelines and autonomous work, with [primary-source research](docs/research/agent-systems-20261110.md).
+
+Authorized work runs autonomously by default. Human-action blockers affect only named requirements; unrelated runnable work continues. Explicit operator controls and SOP business decisions remain effective.
 
 ## Support
 
@@ -14,7 +16,7 @@ If Agent-C helps your work, you can make an optional PayPal contribution to supp
 - Evidence bundles + repo guards for repeatable runs (`tools/capture_agent_evidence_bundle.sh`, `tools/verify_repo_guards.sh`).
 
 ## Components
-- **agent_core** (portable C library): session model, compaction helpers, role utilities.
+- **agent_core** (portable C library): sessions, tool loop, compaction, completion/cancellation hooks, streaming and embedded wire/authentication helpers.
 - **agentd** (daemon): HTTP/SSE APIs, persistence, tool runtime, workflows, approvals, diagnostics.
 - **broker** (optional relay): auth + multi-deployment routing, audit/event replay, team runs, OTA fanout.
 - **WebUI** (advanced layout): Scene + Conversation, queued prompts, Memory/Trace/Workflows panels, broker console + teams.
@@ -68,6 +70,13 @@ Platform dependencies, Windows helpers, core-only build, and smoke-test notes li
 
 Tool plugins and tool servers are documented in `docs/TOOLS.md`.
 
+## Current workflow and CLI entry points
+
+- [SOP stages/actions](docs/SOP_WORKFLOWS.md): submit a versioned SOP through the existing workflow API or WebUI composer.
+- [Autonomous requirements and blockers](docs/AUTONOMOUS_WORK.md): durable work state shared by CLI and daemon host tools.
+- CLI: `agent exec "goal"`, `agent exec -`, `agent resume <session-id>`, `agent sessions`, `agent work`.
+- Reproduce the verified snapshot with `tools/verify_current_snapshot.sh` (or `--core-only`).
+
 ## Testing
 
 For network smokes, the real browser E2E harness, and verification workflows, see `docs/OPERATIONS.md`.
@@ -115,7 +124,7 @@ CLI examples and tool-loop guidance live in `docs/CLI.md`.
 ## Core library
 
 - Header: `core/include/agent/agent.h`
-- Scope: session model + char-budget compaction + role helpers
+- Scope: session and tool execution, char-budget compaction, continuation/cancellation ports, streaming and embedded interop.
 - No environment variable access in the core (host-only concern).
 
 ## Daemon + Web UI (day-1)

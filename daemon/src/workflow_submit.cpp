@@ -1,4 +1,5 @@
 #include "workflow_submit.h"
+#include "workflow_sop.h"
 
 #include "edge_util.h"
 #include "http_util.h"
@@ -58,6 +59,12 @@ void workflow_submit_handle(
   Json::Value args,
   HttpResponse* resp
 ) {
+  std::string sop_error;
+  if (!workflow_compile_sop(&args, &sop_error)) {
+    resp->status = 400;
+    resp->body = json_error_body(sop_error);
+    return;
+  }
   Json::Value tasks = args["tasks"];
   if (!tasks.isArray() || tasks.empty()) {
     resp->status = 400;
@@ -1873,7 +1880,9 @@ void workflow_submit_handle(
     view["submitted_unix_ms"] = (Json::Int64)now;
     wf.spec_json = redact_json_best_effort(json_stringify_compact(view));
     if (wf.spec_json.size() > 256 * 1024) {
-      wf.spec_json.resize(256 * 1024);
+      resp->status = 400;
+      resp->body = json_error_body("workflow spec exceeds persisted size limit (256 KiB)");
+      return;
     }
   }
 

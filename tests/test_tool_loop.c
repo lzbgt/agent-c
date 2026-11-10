@@ -672,7 +672,42 @@ static void test_tool_loop_cancel(void) {
   agent_tool_registry_destroy(reg);
 }
 
+static agent_status_t completion_provider(void* ctx, const agent_tool_provider_request_t* req, agent_tool_provider_response_t* out) {
+  (void)req;
+  (*(int*)ctx)++;
+  return agent_string_set_copy(&out->assistant_content, "proposed completion", strlen("proposed completion"));
+}
+
+static agent_status_t completion_guard(void* ctx, agent_string_t* out) {
+  int* remaining = (int*)ctx;
+  if (*remaining <= 0) return AGENT_OK;
+  (*remaining)--;
+  return agent_string_set_copy(out, "continue runnable work", strlen("continue runnable work"));
+}
+
+static void test_tool_loop_completion_guard(void) {
+  for (int limited = 0; limited < 2; ++limited) {
+    int calls = 0, remaining = 2;
+    agent_tool_provider_t provider = {0};
+    provider.ctx = &calls; provider.generate = completion_provider;
+    agent_tool_registry_t* reg = NULL;
+    assert(agent_tool_registry_create(&reg) == AGENT_OK);
+    agent_tool_executor_t exec = {0}; exec.execute = fake_tool_execute;
+    agent_tool_loop_hooks_t hooks = {0};
+    hooks.on_proposed_completion = completion_guard; hooks.on_proposed_completion_ctx = &remaining;
+    agent_tool_loop_options_t opt = {0}; opt.model = "fake"; opt.max_steps = limited ? 2 : 8;
+    agent_tool_loop_result_t out = {0};
+    agent_session_t* seed = NULL;
+    assert(agent_session_create(&seed) == AGENT_OK);
+    const agent_status_t status = agent_tool_loop_run(&provider, reg, &exec, seed, "goal", &opt, &hooks, &out);
+    assert(status == (limited ? AGENT_ERR_LIMIT : AGENT_OK));
+    assert(calls == (limited ? 2 : 3));
+    agent_tool_loop_result_free(&out); agent_tool_registry_destroy(reg); agent_session_destroy(seed);
+  }
+}
+
 void test_tool_loop_module(void) {
+  test_tool_loop_completion_guard();
   test_tool_loop_happy_path();
   test_tool_loop_repeated_tool_call_guard();
   test_tool_loop_max_steps_guard();

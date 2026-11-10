@@ -18,6 +18,11 @@ const char* agent_tool_loop_compaction_summary_name(void);
 typedef void (*agent_tool_loop_event_fn)(void* ctx, const char* type, const char* data_json);
 typedef uint8_t (*agent_tool_loop_cancel_fn)(void* ctx);
 
+// Optional completion guard. Empty output accepts completion; a nonempty prompt
+// continues within the same run and budgets. The core frees the returned string.
+// Hosts may inspect durable work; the core remains storage/JSON independent.
+typedef agent_status_t (*agent_tool_loop_completion_fn)(void* ctx, agent_string_t* out_continue_prompt);
+
 // Optional host hook to cap tool outputs before they enter the prompt (or events).
 // - `max_chars` is a character budget (best-effort; host may treat as bytes for UTF-8).
 // - `out_truncated` should be set to 1 when truncation occurred.
@@ -54,6 +59,9 @@ typedef struct agent_tool_loop_hooks {
 
   agent_tool_loop_summarize_output_fn summarize_tool_output;
   void* summarize_tool_output_ctx;
+
+  agent_tool_loop_completion_fn on_proposed_completion;
+  void* on_proposed_completion_ctx;
 } agent_tool_loop_hooks_t;
 
 typedef struct agent_tool_call_limit {

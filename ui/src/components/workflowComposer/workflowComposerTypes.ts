@@ -15,7 +15,7 @@ export type WorkflowComposerProps = {
   onSubmitted?: (workflowId: string) => void;
 };
 
-export type TemplateKind = "llm_dag" | "agent_parallel" | "agent_parallel_demo";
+export type TemplateKind = "llm_dag" | "agent_parallel" | "agent_parallel_demo" | "sop";
 export type ComposerMode = "json" | "graph";
 export type GraphSetter = Dispatch<SetStateAction<GraphState>>;
 export type WaitState = {

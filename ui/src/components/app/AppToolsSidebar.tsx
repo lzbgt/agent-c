@@ -1,10 +1,7 @@
 import React from "react";
+import WorkspaceIcon from "./WorkspaceIcon";
 
-export type AppAdvancedPage = {
-  id: string;
-  label: string;
-};
-
+export type AppAdvancedPage = { id: string; label: string };
 type AppToolsSidebarProps = {
   advancedPages: AppAdvancedPage[];
   advancedPage: string;
@@ -13,41 +10,42 @@ type AppToolsSidebarProps = {
   setAdvancedPage: (next: string) => void;
 };
 
+const groups = [
+  { label: "Workspace", ids: ["", "workflows"] },
+  { label: "Intelligence", ids: ["memory", "trace", "run-diff"] },
+  { label: "Operations", ids: ["approvals", "voice", "broker"] },
+];
+
 export default function AppToolsSidebar(props: AppToolsSidebarProps) {
+  const pages = [{ id: "", label: "Overview" }, ...props.advancedPages];
   return (
-    <aside
-      className={`rounded-lg border border-white/10 bg-black/20 ${props.toolsCollapsed ? "px-2 py-3" : "p-3"} lg:sticky lg:top-4 lg:self-start`}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-[11px] font-semibold text-white/60">Tools</div>
-        <button
-          className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
-          type="button"
-          onClick={() => props.setToolsCollapsed((prev) => !prev)}
-          title={props.toolsCollapsed ? "Expand tools" : "Collapse tools"}
-        >
+    <aside className={`workspace-sidebar ${props.toolsCollapsed ? "is-collapsed" : ""}`}>
+      <div className="workspace-sidebar-heading">
+        <span>CONTROL CENTER</span>
+        <button type="button" className="workspace-collapse" onClick={() => props.setToolsCollapsed((prev) => !prev)} aria-label={props.toolsCollapsed ? "Expand tools" : "Collapse tools"} aria-expanded={!props.toolsCollapsed} title={props.toolsCollapsed ? "Expand tools" : "Collapse tools"}>
           {props.toolsCollapsed ? "»" : "«"}
         </button>
       </div>
-      <div className="mt-2 grid gap-1">
-        {props.advancedPages.map((page) => {
-          const active = page.id === props.advancedPage;
-          const shortLabel = page.label.slice(0, 3).toUpperCase();
-          return (
-            <button
-              key={page.id}
-              className={`rounded-md ${props.toolsCollapsed ? "px-2 py-2 text-center text-[11px]" : "px-3 py-2 text-left text-sm"} ${
-                active ? "bg-indigo-500/20 text-indigo-100" : "bg-black/20 text-white/70 hover:bg-black/30"
-              }`}
-              type="button"
-              onClick={() => props.setAdvancedPage(page.id)}
-              title={page.label}
-            >
-              {props.toolsCollapsed ? shortLabel : page.label}
-            </button>
-          );
-        })}
-      </div>
+      <nav aria-label="Workspace navigation">
+        {groups.map((group) => (
+          <div className="workspace-nav-group" key={group.label}>
+            <div className="workspace-nav-label">{group.label}</div>
+            {group.ids.map((id) => {
+              const page = pages.find((entry) => entry.id === id);
+              if (!page) return null;
+              const active = id === props.advancedPage;
+              return (
+                <button key={id} className={`workspace-nav-item ${active ? "is-active" : ""}`} type="button" onClick={() => props.setAdvancedPage(id)} title={page.label} aria-label={page.label} aria-current={active ? "page" : undefined}>
+                  <WorkspaceIcon name={id || "workspace"} />
+                  <span>{page.label}</span>
+                  {active ? <span className="workspace-nav-indicator" /> : null}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </nav>
+      <div className="workspace-sidebar-note"><span className="workspace-note-mark">C</span><span>Portable core.<br /><strong>Durable execution.</strong></span></div>
     </aside>
   );
 }
