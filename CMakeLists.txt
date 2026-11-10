@@ -258,6 +258,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
   set(AGENTD_LIB_SOURCES
     daemon/src/agent_db.cpp
     daemon/src/agent_db_effects.cpp
+    daemon/src/agent_db_workflow_budget.cpp
     daemon/src/agent_db_approvals.cpp
     daemon/src/agent_db_state.cpp
     daemon/src/agent_db_sessions.cpp
@@ -447,6 +448,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/workflow_submit_task_builders.cpp
     daemon/src/workflow_fairq_cost.cpp
     daemon/src/workflow_run_budget_clamp.cpp
+    daemon/src/workflow_budget.cpp
   )
 
   if(AGENTD_ENABLE_HTTP)
@@ -1992,6 +1994,12 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
     target_link_libraries(workflow_sop_tests PRIVATE agentd_lib)
     add_test(NAME workflow_sop_tests COMMAND workflow_sop_tests)
     if(AGENT_ENABLE_SQLITE3)
+      if(AGENTD_ENABLE_HTTP)
+        add_test(NAME workflow_budget_parallel_smoke COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/workflow_budget_parallel_smoke.py $<TARGET_FILE:agentd> $<TARGET_FILE:agentd_tool_plugin_echo>)
+      endif()
+      add_executable(workflow_budget_tests tests/test_workflow_budget.cpp)
+      target_link_libraries(workflow_budget_tests PRIVATE agentd_lib)
+      add_test(NAME workflow_budget_tests COMMAND workflow_budget_tests)
       add_executable(device_assignment_tests tests/test_device_assignment.cpp)
       target_link_libraries(device_assignment_tests PRIVATE agentd_lib)
       add_test(NAME device_assignment_tests COMMAND device_assignment_tests)
@@ -2047,6 +2055,7 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
       tests/test_agent_db.cpp
       daemon/src/agent_db.cpp
       daemon/src/agent_db_effects.cpp
+    daemon/src/agent_db_workflow_budget.cpp
       daemon/src/agent_db_approvals.cpp
       daemon/src/agent_db_state.cpp
       daemon/src/agent_db_sessions.cpp

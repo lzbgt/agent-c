@@ -1,4 +1,5 @@
 #include "workflow_endpoints.h"
+#include "workflow_budget.h"
 
 #include "daemon_auth.h"
 #include "http_util.h"
@@ -152,6 +153,27 @@ void handle_workflow_get_endpoint(
           o["workflow_remaining"] = rem;
         }
       }
+    }
+  }
+
+  AgentDb::WorkflowBudgetSnapshot budget;
+  if (!db_or_null->get_workflow_budget_snapshot(wf.workflow_id,&budget,&err)) {
+    resp->status=503;resp->body=json_error_body("workflow budget state is unavailable");return;
+  }
+  auto& accounting=o["budget_accounting"];
+  accounting["schema"]="agentd.workflow.budget.v1";
+  accounting["charged"]=workflow_budget_amounts_json(budget.charged);
+  accounting["held"]=workflow_budget_amounts_json(budget.held);
+  accounting["uncertain"]=workflow_budget_amounts_json(budget.uncertain);
+  accounting["active_attempts"]=budget.active_attempts;
+  accounting["uncertain_attempts"]=budget.uncertain_attempts;
+  if (o.isMember("workflow_limits") && o["workflow_limits"].isObject()) for (int i=0;i<4;i++) {
+    const auto* key=workflow_budget_dimension(i);
+    const auto limit=o["workflow_limits"][key];
+    if (limit.isInt64() && limit.asInt64()>0) {
+      const auto max=limit.asInt64();
+      const auto left=max-std::min(max,budget.charged[i]);
+      o["workflow_remaining"][key]=Json::Int64(left-std::min(left,budget.held[i]));
     }
   }
 

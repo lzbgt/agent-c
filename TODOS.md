@@ -1,6 +1,6 @@
 # Roadmap / TODOs (highest leverage)
 
-## Current architectural priorities (2026-11-10)
+## Current architectural priorities (2026-11-11)
 
 The authoritative capability/verification snapshot is [docs/CURRENT_SNAPSHOT.md](docs/CURRENT_SNAPSHOT.md). Current direction and acceptance gates are in [docs/ARCHITECTURE_CURRENT.md](docs/ARCHITECTURE_CURRENT.md); dated items below retain their subsystem history.
 
@@ -18,7 +18,8 @@ The authoritative capability/verification snapshot is [docs/CURRENT_SNAPSHOT.md]
 - [x] Give canvas/DOM presentations their own event and clock lifecycle; preserve animation while typing/polling, dispose detached clocks and remove the composer overlay.
 - [x] Aliyun Omni realtime audio/image voice with server-held Model Studio credentials, bounded device/media lifecycles, one-caption replies and synthetic provider roundtrip qualification; see [voice](docs/VOICE.md).
 - [x] Atomic device assignment/outbox/rate admission, immutable operation identity, pinned recovery and visible scoped device uncertainty; verify crash recovery and one-worker independent progress.
-- [ ] P0: extend durable effects to arbitrary host tools and device receipt resolvers; add atomic workflow budget reservations.
+- [x] Transactional workflow budget reservations/settlement, conservative lost charges, bounded parallel admission and retry-preserving capacity waits; one-shot model step accounting.
+- [ ] P0: extend durable effects to arbitrary host tools and device receipt resolvers; add strict provider/adapter resource metering.
 - [ ] P0: connect goal/requirement/blocker authority to the broker and event-driven wakeup; preserve explicit stops.
 - [ ] P1: immutable SOP registry, durable signals/timers and explicit process decisions/compensation.
 - [ ] P1: instance-scoped pollable core ports and board-level resource/power-loss evidence.

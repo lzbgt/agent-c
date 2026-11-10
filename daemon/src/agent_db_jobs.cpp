@@ -409,7 +409,7 @@ bool AgentDb::recover_inflight_workflows(int64_t now_unix_ms, std::string* out_e
   // At-least-once semantics: if a task was running when the daemon died, we cannot know if it completed.
   // Recover it back to queued so it can resume.
   if (!exec_locked("BEGIN IMMEDIATE TRANSACTION;", out_error)) return false;
-  bool ok = true;
+  bool ok = exec_locked("UPDATE workflow_budget_reservations SET state='lost',settled_unix_ms=" + std::to_string(now) + " WHERE state='reserved';", out_error);
   ok = ok && exec_locked("UPDATE workflows SET status='queued', updated_unix_ms=" + std::to_string((long long)now) +
                            " WHERE status='running';", out_error);
   ok = ok && exec_locked("UPDATE workflow_tasks SET status='queued', updated_unix_ms=" + std::to_string((long long)now) +
@@ -1474,6 +1474,9 @@ bool AgentDb::claim_workflow_task_budgeted(
     return false;
   }
 
+  if (!exec_locked("BEGIN IMMEDIATE",out_error)) return false;
+  struct Rollback { sqlite3* db; bool committed=false; ~Rollback(){if(!committed)sqlite3_exec(db,"ROLLBACK",nullptr,nullptr,nullptr);} } transaction{db_};
+
   auto count_i64 = [&](const char* sql, std::function<bool(sqlite3_stmt*)> binder, int64_t* out) -> bool {
     if (!out) return false;
     *out = 0;
@@ -1560,7 +1563,9 @@ WHERE workflow_id=? AND task_id=? AND status='queued';
   }
   const int changed = sqlite3_changes(db_);
   sqlite3_finalize(st);
-  return changed > 0;
+  if (changed <= 0 || !exec_locked("COMMIT",out_error)) return false;
+  transaction.committed=true;
+  return true;
 #endif
 }
 

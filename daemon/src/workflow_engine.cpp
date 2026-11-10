@@ -22,6 +22,7 @@
 #include "workflow_templates.h"
 #include "workflow_memory_ops.h"
 #include "workflow_run_budget_clamp.h"
+#include "workflow_budget.h"
 
 #include <algorithm>
 #include <chrono>
@@ -158,6 +159,17 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   const int64_t now = unix_ms_now();
   const auto started_steady = std::chrono::steady_clock::now();
 
+  std::string budget_token;
+  AgentDb::WorkflowBudgetGrant budget_grant;
+  const auto settle = [&](const AgentDb::WorkflowTaskRow& updated) {
+    std::string error;
+    if (db_->settle_workflow_attempt(task,updated,budget_token,&error)) return true;
+    Json::Value event; event["workflow_id"]=wf.workflow_id;event["task_id"]=task.task_id;
+    event["attempt"]=task.attempt;event["error"]=error;
+    insert_workflow_event_best_effort(db_,wf.workflow_id,task.task_id,"workflow_settlement_rejected",unix_ms_now(),event);
+    return false;
+  };
+
   // Refresh workflow view (cancel_requested/deadline can change after claim).
   AgentDb::WorkflowRow wf_latest = wf;
   {
@@ -195,7 +207,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
       }
       upd.result_json = json_stringify_compact(out);
     }
-    (void)db_->upsert_workflow_task(upd, nullptr);
+    if (!settle(upd)) return;
     {
       Json::Value d(Json::objectValue);
       d["workflow_id"] = wf.workflow_id;
@@ -268,7 +280,8 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     }
   }
 
-  const WorkflowLimits wf_limits = workflow_limits_best_effort(wf_latest);
+  WorkflowLimits wf_limits = workflow_limits_best_effort(wf_latest);
+  const auto configured_limits=workflow_budget_limits(wf_limits);
   int64_t wf_tool_calls_remaining = 0;
   if (wf_limits.max_tool_calls_total > 0) {
     const int64_t max_total = wf_limits.max_tool_calls_total;
@@ -389,6 +402,53 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   const OpenAIClientConfig ocfg = ocfg_from_cfg_(cfg);
   std::string kind;
   if (rr.isObject()) kind = json_get_string(rr, "kind");
+  if (out.isNull()) {
+    auto demand=workflow_budget_demand(rr,cfg,configured_limits);
+    if (kind=="edge_invoke") {
+      AgentDb::EdgeTaskRow assigned;
+      if (db_->get_edge_task(wf.workflow_id,task.task_id,&assigned,nullptr)) {
+        demand[0]=0;demand[1]=0; // Durable assignment observation publishes no new command.
+      }
+    }
+    AgentDb::WorkflowBudgetAmounts minimum{};
+    for (int i=0;i<4;i++) minimum[i]=demand[i]>0 ? 1:0;
+    std::string error;
+    if (!db_->reserve_workflow_budget(wf_latest,task,configured_limits,demand,minimum,&budget_grant,&error)) {
+      // No grant means no provider/tool execution and no authority to settle
+      // another worker's reservation for the same attempt.
+      Json::Value event;event["error"]=error;event["attempt"]=task.attempt;
+      insert_workflow_event_best_effort(db_,wf.workflow_id,task.task_id,"workflow_reservation_rejected",unix_ms_now(),event);
+      (void)db_->yield_workflow_task_capacity(task,unix_ms_now()+500,nullptr);
+      return;
+    }
+    workflow_tool_calls_used=budget_grant.charged[0];workflow_steps_used=budget_grant.charged[1];
+    workflow_elapsed_ms_used=budget_grant.charged[2];workflow_total_tokens_used=budget_grant.charged[3];
+    const auto available=[&](int i) { const auto left=configured_limits[i]-std::min(configured_limits[i],budget_grant.charged[i]);return left-std::min(left,budget_grant.held[i]); };
+    wf_tool_calls_remaining=available(0);wf_steps_remaining=available(1);
+    wf_elapsed_ms_remaining=available(2);wf_total_tokens_remaining=available(3);
+    if (budget_grant.status=="waiting") {
+      (void)db_->yield_workflow_task_capacity(task,unix_ms_now()+100,&error);
+      return; // Capacity waiting consumes neither an attempt nor a grant.
+    }
+    if (budget_grant.status=="stopped") { cancel_task_now("cancelled", "cancel_requested"); return; }
+    if (budget_grant.status=="exhausted") { workflow_budget_exceeded_cancel(workflow_budget_dimension(budget_grant.dimension)); return; }
+    budget_token=budget_grant.token;
+    wf_tool_calls_remaining=budget_grant.granted[0];wf_steps_remaining=budget_grant.granted[1];
+    wf_elapsed_ms_remaining=budget_grant.granted[2];wf_total_tokens_remaining=budget_grant.granted[3];
+    // A task that cannot consume a dimension does not wait on that dimension.
+    if (!demand[0]) wf_limits.max_tool_calls_total=0;
+    if (!demand[1]) wf_limits.max_steps_total=0;
+    if (!demand[2]) wf_limits.max_elapsed_ms_total=0;
+    if (!demand[3]) wf_limits.max_total_tokens=0;
+    if (wf_limits.max_elapsed_ms_total>0) {
+      const auto deadline=unix_ms_now()+wf_elapsed_ms_remaining;
+      cancel_ctx.budget_deadline_unix_ms=deadline;
+      for (const char* field : {"http_json","agentd_call"}) if (rr[field].isObject()) {
+        const auto configured=rr[field].get("timeout_ms",Json::Int64(wf_elapsed_ms_remaining));
+        rr[field]["timeout_ms"]=Json::Int64(configured.isInt64() && configured.asInt64()>0 ? std::min(configured.asInt64(),wf_elapsed_ms_remaining):wf_elapsed_ms_remaining);
+      }
+    }
+  }
   if (!out.isNull()) {
     // Template expansion failed: do not execute provider calls. `out` is already populated as an error.
   } else if (kind == "avm_capsule") {
@@ -1194,10 +1254,11 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         out["error"] = "http_json missing http_json object";
       } else {
         std::string herr;
-        const WorkflowEffectContext effect{db_,wf.workflow_id,task.task_id,[&]() {
+        WorkflowEffectContext effect{db_,wf.workflow_id,task.task_id,[&]() {
           cancel_ctx.last_check_unix_ms = 0;
           return workflow_run_should_cancel(&cancel_ctx);
         }};
+        effect.max_network_calls=wf_limits.max_tool_calls_total>0 ? wf_tool_calls_remaining:0;
         out = workflow_http_json_to_json(cfg, hj, &herr, &effect);
         out["kind"] = "http_json";
         // Budget charging: deterministic external call. Count as one tool call / step per attempt.
@@ -1453,6 +1514,22 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     }
   }
 
+  if (cancel_ctx.reason==WorkflowCancelReason::BudgetGrantElapsed) {
+    out["ok"]=false;out["cancelled"]=false;
+    out["error"]="workflow attempt elapsed grant exhausted";
+    out["retryable"]=true;out["retry_in_ms"]=Json::Int64(100);
+  }
+
+  if (!budget_token.empty()) {
+    auto& evidence=out["workflow_budget"];
+    evidence["schema"]="agentd.workflow.budget.v1";evidence["attempt"]=task.attempt;
+    evidence["granted"]=workflow_budget_amounts_json(budget_grant.granted);
+    AgentDb::WorkflowBudgetAmounts observed={out.get("tool_calls_total",Json::Int64(0)).asInt64(),out.get("steps_executed",Json::Int64(0)).asInt64(),out.get("elapsed_ms",Json::Int64(0)).asInt64(),out.get("total_tokens",Json::Int64(0)).asInt64()};
+    evidence["observed"]=workflow_budget_amounts_json(observed);
+    evidence["overrun"]=Json::Value(Json::arrayValue);
+    for (int i=0;i<4;i++) if (configured_limits[i]>0 && observed[i]>budget_grant.granted[i]) evidence["overrun"].append(workflow_budget_dimension(i));
+  }
+
   std::string expect_err;
   const bool expect_ok = apply_expectations(task.expect_json, out, &expect_err);
   const bool run_ok = out.isObject() && out.isMember("ok") && out["ok"].isBool() && out["ok"].asBool();
@@ -1507,7 +1584,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
       out.isObject() && out.isMember("error") && out["error"].isString() && !out["error"].asString().empty()
       ? out["error"].asString()
       : (cancel_ctx.reason == WorkflowCancelReason::DeadlineExceeded ? "deadline exceeded" : "cancelled");
-    (void)db_->upsert_workflow_task(upd, nullptr);
+    if (!settle(upd)) return;
 
     {
       Json::Value d(Json::objectValue);
@@ -1543,7 +1620,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     upd.status = "done";
     upd.error.clear();
     upd.ready_unix_ms = 0;
-    (void)db_->upsert_workflow_task(upd, nullptr);
+    if (!settle(upd)) return;
     {
       Json::Value d(Json::objectValue);
       d["workflow_id"] = wf.workflow_id;
@@ -1582,7 +1659,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
       if (delay_ms > 60 * 1000) delay_ms = 60 * 1000;
     }
     upd.ready_unix_ms = now + delay_ms;
-    (void)db_->upsert_workflow_task(upd, nullptr);
+    if (!settle(upd)) return;
     {
       Json::Value d(Json::objectValue);
       d["workflow_id"] = wf.workflow_id;
@@ -1600,7 +1677,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 
   upd.status = "error";
   upd.ready_unix_ms = 0;
-  (void)db_->upsert_workflow_task(upd, nullptr);
+  if (!settle(upd)) return;
   {
     Json::Value d(Json::objectValue);
     d["workflow_id"] = wf.workflow_id;

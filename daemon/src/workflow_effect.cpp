@@ -177,6 +177,7 @@ Json::Value workflow_effect_execute(const WorkflowEffectContext& context, const 
   }
 
   if (cancelled()) return cancelled_result();
+  if (context.dispatch_capacity_available && !context.dispatch_capacity_available()) return failure("workflow tool-call grant exhausted before dispatch");
   if (!transition("dispatching")) return failure(error,true);
   const std::map<std::string,std::string> identity_headers = {
     {"Idempotency-Key",row.effect_id}, {"X-Agent-Effect-Hash",row.request_hash}, {"X-Agent-Effect-Attempt",std::to_string(row.attempt)},

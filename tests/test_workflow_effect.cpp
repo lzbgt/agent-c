@@ -26,7 +26,7 @@ int main() {
   workflow.workflow_id = "wf"; workflow.status = "queued"; workflow.spec_json = "{}";
   workflow.created_unix_ms = workflow.updated_unix_ms = 1;
   std::vector<AgentDb::WorkflowTaskRow> tasks;
-  for (const auto& id : {"once","crash","idempotent","reconcile","absent","cas","pending","nonfinal","wrong_hash","http_error","cancel_midway"}) {
+  for (const auto& id : {"once","crash","idempotent","reconcile","absent","cas","pending","nonfinal","wrong_hash","http_error","cancel_midway","capacity"}) {
     AgentDb::WorkflowTaskRow task; task.workflow_id = "wf"; task.task_id = id;
     task.status = "queued"; task.request_json = "{}"; task.depends_on_json = "[]";
     task.created_unix_ms = task.updated_unix_ms = 1; tasks.push_back(task);
@@ -59,6 +59,11 @@ int main() {
   auto changed = spec; changed["body"]["item"] = 43;
   out = workflow_effect_execute(context,changed,send,no_reconcile);
   check(out["ok"] == false && dispatches == 1,"changed payload must not reuse the same effect");
+  context.task_id = "capacity";
+  context.dispatch_capacity_available = [] { return false; };
+  out = workflow_effect_execute(context,spec,send,no_reconcile);
+  check(out["ok"] == false && dispatches == 1 && out["needs_input"] != true,"capacity refusal dispatched or fabricated uncertainty");
+  context.dispatch_capacity_available = {};
   // Simulate process death immediately after dispatch admission.
   context.task_id = "crash";
   try { workflow_effect_execute(context,spec,[](const auto&) -> Json::Value { throw std::runtime_error("process death"); },no_reconcile); }

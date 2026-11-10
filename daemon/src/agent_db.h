@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 
 #include <cstdint>
 #include <map>
@@ -443,6 +444,28 @@ class AgentDb {
     int64_t total_tokens_cum = 0;
   };
 
+  // Dimensions: tool calls, model/tool steps, elapsed milliseconds, total tokens.
+  using WorkflowBudgetAmounts = std::array<int64_t, 4>;
+  struct WorkflowBudgetGrant {
+    std::string status; // reserved|waiting|exhausted|stopped
+    std::string token;
+    int dimension = -1;
+    WorkflowBudgetAmounts granted{}, charged{}, held{};
+  };
+  struct WorkflowBudgetSnapshot {
+    WorkflowBudgetAmounts charged{}, held{}, uncertain{};
+    int active_attempts = 0;
+    int uncertain_attempts = 0;
+  };
+  bool reserve_workflow_budget(const WorkflowRow& workflow, const WorkflowTaskRow& task,
+    const WorkflowBudgetAmounts& limits, const WorkflowBudgetAmounts& demand,
+    const WorkflowBudgetAmounts& minimum, WorkflowBudgetGrant* out, std::string* error);
+  bool settle_workflow_attempt(const WorkflowTaskRow& expected, const WorkflowTaskRow& updated,
+    const std::string& reservation_token, std::string* error);
+  bool mark_workflow_running(const std::string& workflow_id, int64_t now_ms, std::string* error);
+  bool yield_workflow_task_capacity(const WorkflowTaskRow& expected, int64_t ready_ms, std::string* error);
+  bool get_workflow_budget_snapshot(const std::string& workflow_id, WorkflowBudgetSnapshot* out, std::string* error);
+
   struct WorkflowEventRow {
     int64_t event_id = 0;
     std::string workflow_id;
@@ -655,7 +678,7 @@ class AgentDb {
   );
 
   // Attempts to claim a queued workflow task while enforcing simple fairness/budget caps.
-  // Caps are best-effort but deterministic within a single agentd process (AgentDb is mutex-locked).
+  // Counts and the claim share a SQLite write transaction across connections.
   //
   // - max_inflight_per_workflow: max number of tasks with status='running' in the same workflow (<=0 disables)
   // - max_inflight_per_session: max number of tasks with status='running' across all workflows sharing the same session_id (<=0 disables)

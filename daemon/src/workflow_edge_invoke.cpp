@@ -197,6 +197,8 @@ Json::Value workflow_edge_invoke_to_json(AgentDb *db,
                                                     : deadline_utc_ms);
         edge["outbox_id"] = (Json::Int64)outbox_id;
         edge["deduped"] = deduped;
+        out["tool_calls_total"] = Json::Int64(enq_ok && !deduped ? 1 : 0);
+        out["steps_executed"] = Json::Int64(enq_ok && !deduped ? 1 : 0);
         edge["mode"] = mode;
         out["edge"] = edge;
 

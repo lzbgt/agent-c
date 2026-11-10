@@ -242,7 +242,9 @@ Json::Value workflow_http_json_to_json(
     pinp = &pin;
   }
   int64_t network_calls = 0;
+  auto available = [&]() { return !effect_context || effect_context->max_network_calls <= 0 || network_calls < effect_context->max_network_calls; };
   auto dispatch = [&](const std::map<std::string,std::string>& identity) {
+    if (!available()) { auto out=err_out("workflow tool-call grant exhausted");out["retryable"]=false;return out; }
     ++network_calls;
     auto request_headers = headers;
     request_headers.insert(identity.begin(),identity.end());
@@ -251,11 +253,14 @@ Json::Value workflow_http_json_to_json(
   if (method == "POST") {
     if (!effect_context) return err_out("POST requires a durable workflow effect context");
     auto reconcile = [&](const Json::Value& query) {
+      if (!available()) { auto out=err_out("workflow tool-call grant exhausted");out["retryable"]=false;return out; }
       ++network_calls;
       std::string error;
       return workflow_http_json_to_json(cfg,query,&error,nullptr);
     };
-    auto result = workflow_effect_execute(*effect_context,http_json,dispatch,reconcile);
+    auto bounded_context=*effect_context;
+    bounded_context.dispatch_capacity_available=[&]() { return available() && (!effect_context->dispatch_capacity_available || effect_context->dispatch_capacity_available()); };
+    auto result = workflow_effect_execute(bounded_context,http_json,dispatch,reconcile);
     if (effect_context->should_cancel && effect_context->should_cancel()) {
       result["cancelled"] = true;
       result["error"] = "cancelled";

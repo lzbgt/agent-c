@@ -34,7 +34,7 @@ Note: the CLI (`./build/agent`) still uses the portable file-backed session stor
 - Keep the DB writer robust and safe:
   - bounded writes (we already cap event fields / tool outputs)
   - WAL mode for concurrency
-  - simple schema migrations
+  - versioned schemas; fresh deployment for incompatible changes
 
 ## Additional goals
 
@@ -50,13 +50,13 @@ SQLite is a strong fit for agentd’s workload because it provides, in one small
 
 - **ACID transactions** (crash-safe durability for workflows/jobs/scheduler state).
 - **Relational queries + indexes** (cheap stats, backpressure admission, fairness scans, trace correlation).
-- **A stable migration story** (schema versioning is already built into `agentd`).
+- **A versioned schema** (fresh deployment remains preferred for incompatible changes).
 - **Portability** (single file; works across Linux/macOS/Windows; easy to ship for edge gateways).
 - **Tunable, deterministic performance** (WAL mode + bounded writes; predictable behavior under load).
 
 `agentd` already configures SQLite pragmas for multi-connection safety and performance:
 - `PRAGMA journal_mode=WAL;`
-- `PRAGMA synchronous=NORMAL;`
+- `PRAGMA synchronous=FULL;`
 - `PRAGMA busy_timeout=5000;`
 - `PRAGMA foreign_keys=ON;`
 
@@ -100,7 +100,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v34)
+## Schema (v35)
 
 All timestamps are Unix milliseconds.
 
@@ -1397,3 +1397,10 @@ The `work_state` host tool and `agent work` command use a separate `work.sqlite`
 ## Workflow effect journal (v34)
 
 `workflow_effects` records stable effect identity, workflow/task foreign keys, request hash, guarded/idempotent mode, prepared/dispatching/completed/unknown state, revision, dispatch attempt, timestamps, bounded receipt JSON and receipt endpoint. The unique workflow/task pair prevents accidental new identities for the same action. The main DB uses `PRAGMA synchronous=FULL` with WAL so admitted effects are committed before dispatch. See [WORKFLOW_EFFECTS.md](WORKFLOW_EFFECTS.md) for protocol and backup/erase considerations.
+
+
+## Workflow budget reservations (v35)
+
+`workflow_budget_reservations` has a primary key of `(workflow_id, task_id, attempt)` and a foreign key to the task with cascading deletion. It records a private fencing token, `reserved`/`settled`/`lost` state, nonnegative `tools`, `steps`, `elapsed_ms`, and `tokens` grants, and creation/settlement timestamps. The `(workflow_id,state)` index supports active/uncertain accounting without scanning completed attempts.
+
+Admission checks charged and held capacity in one write transaction. Task state/observed cumulative usage and reservation release settle atomically; startup converts open grants to conservative lost charges. Metadata exposes amounts and counts, never fencing tokens. See [WORKFLOW_BUDGETS.md](WORKFLOW_BUDGETS.md) for resource scopes, provider/time overages and failure-injection evidence. Include reservation rows in DB backup/erase procedures.

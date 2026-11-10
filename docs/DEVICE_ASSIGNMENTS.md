@@ -22,7 +22,7 @@ Workflow `edge_invoke` reads the original device task/result. `TIMED_OUT` or `CA
 
 This is a platform dispatch guarantee. It does not certify exactly-once physical execution, power-loss behavior, device-side command deduplication or physical stopping. Nodes must retain operation identity/results through their actual recovery horizon and enforce command expiry, unit/range checks, interlocks and controller fencing locally. A repeatedly delivered transport message is not a newly admitted platform command.
 
-Resource locks cover active platform assignments; they are not physical interlocks. Platform terminal status alone cannot establish that hardware is safe to reuse. Rate/cooldown admission is atomic, while overall workflow token/time/tool budgets still use their documented accounting semantics. General workflow budget reservations and arbitrary host-tool effect adapters remain separate required work.
+Resource locks cover active platform assignments; they are not physical interlocks. Platform terminal status alone cannot establish that hardware is safe to reuse. Rate/cooldown admission is atomic, while overall workflow token/time/tool budgets still use their documented accounting semantics. Workflow-wide reservation/settlement now has its own [budget contract](WORKFLOW_BUDGETS.md); arbitrary host-tool effect adapters and strict provider/adapter resource metering remain required work.
 
 This change does not add a general device receipt reconciliation API. A timeout needs verified destination readback or a device-specific resolver before an agent can safely plan another business action. The required action remains inspectable; it is never replaced by a model's unverified success claim.
 

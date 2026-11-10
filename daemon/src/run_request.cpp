@@ -965,6 +965,7 @@ static Json::Value run_request_to_json_impl(
   std::ostream* trace_stream = trace ? &trace_buf : nullptr;
   Json::Value events_out;
   ToolLoopResult tool_loop_result;
+  size_t one_shot_steps = 0;
   // tool-loop helpers moved into run_request_tool_loop.{h,cpp}
 
   std::atomic<bool> heartbeat_stop{false};
@@ -1161,6 +1162,14 @@ static Json::Value run_request_to_json_impl(
           push_ev("cancelled", d);
           break;
         }
+        if (max_steps > 0 && one_shot_steps >= max_steps) {
+          ok = false;
+          err = "model step limit exceeded";
+          Json::Value data; data["reason"] = "max_steps"; data["steps_executed"] = Json::UInt64(one_shot_steps);
+          push_ev("limit", data);
+          break;
+        }
+        ++one_shot_steps;
         // Apply core compaction policy (same as agent_run_once) and surface a compaction event.
         agent_compact_report_t compact{};
         const agent_status_t cst = agent_session_compact_char_budget(session, attempt_max_chars, keep, nullptr, &compact);
@@ -1416,6 +1425,14 @@ static Json::Value run_request_to_json_impl(
           push_ev("cancelled", d);
           break;
         }
+        if (max_steps > 0 && one_shot_steps >= max_steps) {
+          ok = false;
+          err = "model step limit exceeded";
+          Json::Value data; data["reason"] = "max_steps"; data["steps_executed"] = Json::UInt64(one_shot_steps);
+          push_ev("limit", data);
+          break;
+        }
+        ++one_shot_steps;
 
         run_opt.max_chars = attempt_max_chars;
         run_opt.summary_or_null = nullptr;
@@ -1667,7 +1684,7 @@ static Json::Value run_request_to_json_impl(
   out["effective_max_tool_calls_per_tool"] = (Json::UInt64)max_tool_calls_per_tool;
   out["effective_max_tool_call_args_chars"] = (Json::UInt64)max_tool_call_args_chars;
   out["effective_max_tool_result_chars"] = (Json::UInt64)max_tool_result_chars;
-  out["steps_executed"] = use_tool_loop ? (Json::UInt64)tool_loop_result.steps_executed : (Json::UInt64)0;
+  out["steps_executed"] = use_tool_loop ? (Json::UInt64)tool_loop_result.steps_executed : (Json::UInt64)one_shot_steps;
   out["tool_calls_total"] = use_tool_loop ? (Json::UInt64)tool_loop_result.tool_records.size() : (Json::UInt64)0;
   if (use_tool_loop && !tool_loop_result.tool_records.empty()) {
     Json::Value by_tool(Json::objectValue);

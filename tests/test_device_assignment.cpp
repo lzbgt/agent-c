@@ -245,6 +245,8 @@ int main(int argc, char **argv) {
   auto out = workflow_edge_invoke_to_json(&db, wf, task, rr);
   check(out["edge"]["node_id"] == "first" && out["retryable"] == true,
         "initial device selection failed");
+  check(out["tool_calls_total"] == 1 && out["steps_executed"] == 1,
+        "new device dispatch was not metered");
   AgentDb::EdgeTaskRow original;
   check(db.get_edge_task(wf.workflow_id, task.task_id, &original, &error),
         error);
@@ -256,6 +258,8 @@ int main(int argc, char **argv) {
   check(out["ok"] == true && out["edge"]["node_id"] == "first" &&
             out["edge"]["deduped"] == true,
         "recovery switched devices");
+  check(out["tool_calls_total"] == 0 && out["steps_executed"] == 0,
+        "device observation charged a second dispatch");
   original.state = "TIMED_OUT";
   check(db.upsert_edge_task(original, &error), error);
   out = workflow_edge_invoke_to_json(&db, wf, task, rr);

@@ -77,7 +77,7 @@ Office example: intake → document extraction → deterministic policy checks �
 
 External writes need an effect protocol: persist intent and stable effect ID before dispatch; record the remote receipt; reconcile by ID/readback after a crash. Classify tools as pure, read-only, idempotent write or non-idempotent write. For an unknown non-idempotent outcome, reconcile or raise a scoped human dependency instead of blindly retrying. Compensation is a separately audited business action, not time travel that undoes physical reality.
 
-Continue to describe current task recovery as at-least-once. Device rate/resource admission now commits atomically with assignment/outbox identity, while workflow budget accounting currently has best-effort scheduler semantics; production-wide strict caps require atomic reservation, settlement and reconciliation across parallel work. Workflow upgrades pin active runs to the old representation until an explicit migration maps state, waits and outstanding effects.
+Continue to describe current task recovery as at-least-once. Device rate/resource admission now commits atomically with assignment/outbox identity, and workflow attempt grants/settlement now serialize capacity across workers with conservative crash charges. Provider token/time overages and uninstrumented remote adapter internals remain outside a certified hard resource ceiling; see [WORKFLOW_BUDGETS.md](WORKFLOW_BUDGETS.md). Workflow upgrades pin active runs to the old representation until an explicit migration maps state, waits and outstanding effects.
 
 ## Autonomous profile
 

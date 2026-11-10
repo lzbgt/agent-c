@@ -86,6 +86,8 @@ def main():
         time.sleep(0.1)
     assert detail["workflow"]["status"] == "done" and len(detail["tasks"]) == 4
     assert detail["spec"]["sop_compiled"]["definition_hash"].startswith("sha256:")
+    assert detail["budget_accounting"]["schema"] == "agentd.workflow.budget.v1"
+    assert detail["budget_accounting"]["active_attempts"] == 0
     model = {"executed": False}
     if args.live_model:
         status, _, body = call("/api/v1/run", {"prompt": "Return exactly AGENT_C_ARCH_READY", "tools": "none", "model": "deepseek-v4-pro", "no_session": True, "timeout_ms": 25000, "max_steps": 1}, True)
@@ -99,7 +101,7 @@ def main():
         "anonymous_execution_denied": True, "browser_runtime_contains_no_credentials": True,
         "shared_provider_redirects": redirects, "live_user_callback": "not_exercised_by_this_script",
         "administrator_authority": "Pinned verified provider proofs and optional Agent-C product account IDs; Panda product IDs and email are not authorization inputs",
-        "sop_workflow": {"workflow_id": workflow_id, "status": "done", "tasks": 4}, "live_model": model,
+        "sop_workflow": {"workflow_id": workflow_id, "status": "done", "tasks": 4, "budget_reservations_settled": True}, "live_model": model,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n")

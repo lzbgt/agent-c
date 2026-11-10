@@ -255,10 +255,9 @@ bool WorkflowEngine::pick_and_claim_one(
       }
 
       // Mark workflow as running once it has any running task.
-      if (wf.status != "running") {
+      if (wf.status != "running" && db_->mark_workflow_running(wf.workflow_id,now_unix_ms,&err)) {
         wf.status = "running";
         wf.updated_unix_ms = now_unix_ms;
-        (void)db_->upsert_workflow(wf, nullptr);
         {
           Json::Value d(Json::objectValue);
           d["workflow_id"] = wf.workflow_id;

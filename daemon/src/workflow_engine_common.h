@@ -41,12 +41,14 @@ enum class WorkflowCancelReason {
   None = 0,
   CancelRequested = 1,
   DeadlineExceeded = 2,
+  BudgetGrantElapsed = 3,
 };
 
 struct WorkflowRunCancelCtx {
   AgentDb* db = nullptr;
   std::string workflow_id;
   int64_t deadline_unix_ms = 0;
+  int64_t budget_deadline_unix_ms = 0;
   int64_t last_check_unix_ms = 0;
   WorkflowCancelReason reason = WorkflowCancelReason::None;
 };

@@ -2019,9 +2019,20 @@ WorkflowGetResponse:
     workflow_remaining:
       type: object
       description: |
-        Best-effort remaining budgets computed as (limit - used) for any positive limits.
+        Remaining admission capacity computed as max(0, limit - charged - held) for any positive limits.
         Only includes keys where a limit exists and is >0.
       additionalProperties: true
+    budget_accounting:
+      type: object
+      description: Atomic attempt reservations. Charged includes settled observed usage and conservative lost grants; held is active capacity; uncertain is the lost-grant portion. Provider/time overruns remain observable and are not a certified hard token/time cap.
+      required: [schema, charged, held, uncertain, active_attempts, uncertain_attempts]
+      properties:
+        schema: { type: string, enum: [agentd.workflow.budget.v1] }
+        charged: { type: object, additionalProperties: { type: integer, format: int64 } }
+        held: { type: object, additionalProperties: { type: integer, format: int64 } }
+        uncertain: { type: object, additionalProperties: { type: integer, format: int64 } }
+        active_attempts: { type: integer }
+        uncertain_attempts: { type: integer }
     effects:
       type: array
       description: Durable external-effect metadata, including attempts whose task result was lost. Receipts are excluded from this polling surface.

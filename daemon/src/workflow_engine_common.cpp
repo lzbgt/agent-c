@@ -168,6 +168,11 @@ bool workflow_run_should_cancel(void* vctx) {
     return true;
   }
 
+  if (c->budget_deadline_unix_ms > 0 && now > c->budget_deadline_unix_ms) {
+    c->reason = WorkflowCancelReason::BudgetGrantElapsed;
+    return true;
+  }
+
   if (!c->db || c->workflow_id.empty()) return false;
   if (c->last_check_unix_ms > 0 && (now - c->last_check_unix_ms) < 50) {
     return false;

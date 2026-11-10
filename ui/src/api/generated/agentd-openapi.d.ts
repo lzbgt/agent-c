@@ -11669,11 +11669,27 @@ export interface components {
                 [key: string]: unknown;
             };
             /**
-             * @description Best-effort remaining budgets computed as (limit - used) for any positive limits.
+             * @description Remaining admission capacity computed as max(0, limit - charged - held) for any positive limits.
              *     Only includes keys where a limit exists and is >0.
              */
             workflow_remaining?: {
                 [key: string]: unknown;
+            };
+            /** @description Atomic attempt reservations. Charged includes settled observed usage and conservative lost grants; held is active capacity; uncertain is the lost-grant portion. Provider/time overruns remain observable and are not a certified hard token/time cap. */
+            budget_accounting?: {
+                /** @enum {string} */
+                schema: "agentd.workflow.budget.v1";
+                charged: {
+                    [key: string]: number;
+                };
+                held: {
+                    [key: string]: number;
+                };
+                uncertain: {
+                    [key: string]: number;
+                };
+                active_attempts: number;
+                uncertain_attempts: number;
             };
             /** @description Durable external-effect metadata, including attempts whose task result was lost. Receipts are excluded from this polling surface. */
             effects?: {

@@ -10,6 +10,8 @@ struct WorkflowEffectContext {
   std::string workflow_id;
   std::string task_id;
   std::function<bool()> should_cancel = {};
+  int64_t max_network_calls = 0; // 0 means no workflow grant limit.
+  std::function<bool()> dispatch_capacity_available = {};
 };
 using EffectDispatch = std::function<Json::Value(const std::map<std::string,std::string>&)>;
 using EffectReconcile = std::function<Json::Value(const Json::Value&)>;

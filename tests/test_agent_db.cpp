@@ -474,7 +474,7 @@ int main() {
   const int64_t approval_req_distinct_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('approval_requests') WHERE name='require_distinct_roles';");
   sqlite3_close(raw2);
-  assert(ver == 34);
+  assert(ver == 35);
   assert(fairq_sessions_tbl == 1);
   assert(approval_requests_tbl == 1);
   assert(approval_decisions_tbl == 1);
