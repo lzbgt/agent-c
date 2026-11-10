@@ -4,7 +4,9 @@ Updated 2026-11-11 on the Arch host, workspace `/home/bruce/work/agent-c`.
 
 ## Verified baseline
 
-The current implementation is committed on GitHub `origin/master` and deployed at **https://agent.hubstack.cn**. Query `/healthz` and `~/.local/share/agent-c/current/manifest.json` for the exact deployed revision/release; the rollout verifier and 20 artifact SHA-256 hashes must match. Latest evidence is under `build/workflow_budget_*`. The earlier device implementation baseline was `76412ac05524e2c03e9e1f6ef1a626cda65650b1`, followed by the documentation-only `c5a3e88` handoff; the current delivery adds workflow budget reservations.
+The implementation baseline is **`a0890c07a9dc53f1993ce726dea56aa04f156248`**, deployed at **https://agent.hubstack.cn** as release **`a0890c07a9dc-79684198d197`**. Handoff preparation verified public health/manifest revision equality, all **20 artifact SHA-256 hashes**, native schema **v35** and no open budget reservations. The documentation-only stop/handoff commit follows this runtime baseline; it does not require another deployment. Both implementation and handoff are published to GitHub `origin/master`.
+
+Latest evidence is under `build/workflow_budget_*`. Earlier implementation checkpoints were `76412ac` (atomic device assignments), `c5a3e88` (initial handoff), and `a0890c0` (workflow budget reservations).
 
 There are no pending implementation edits. Transactional workflow budget work is now implemented and verified; the next task is arbitrary host-tool effect recovery and device receipt resolvers. Preserve these pre-existing untracked local files/directories; they are not handoff changes and must not be staged:
 
@@ -14,7 +16,7 @@ AGENTS.md
 PANDA_PUSH.md
 ```
 
-The native project Goal remains active and unfinished. Preparing this handoff does not mark the broader objective complete or change its scope.
+The owner explicitly requested **“prepare handoff and stop”**. The unfinished native Goal is to be paused after this handoff is saved. Do not resume implementation or deploy further changes until the owner requests continuation. The broader objective remains unfinished; this is not a completion claim.
 
 ## Standing owner instructions
 
@@ -61,8 +63,11 @@ Ignored local evidence:
 - `build/device_blocker_browser_checks.log`: visible human action at desktop and 320 px.
 - `build/device_assignment_live_verification.json`: public API with synthetic nodes only; pinned node, payload conflict, one command and terminal replay.
 - `build/workflow_budget_live_verification.json`: current OAuth redirects, anonymous API/voice denial, credential isolation and successful four-action SOP.
-- `build/workflow_budget_live_ui_checks.log`: 1440/320/390/768 px workspace/workflow/voice readiness and actual canvas animation while typing.
+- `build/device_effect_live_ui_checks.log`: the prior 76412ac public 1440/320/390/768 px workspace/workflow/voice readiness and canvas animation check. This public browser lane was not rerun for a0890c0 before the owner stop; its current local browser lane passed all 54 cases.
 - `build/workflow_budget_repo_guards.log`: current repository guards.
+- `build/workflow_budget_extended_regressions.log`: 15 targeted budget/device/clamp checks.
+- `build/workflow_budget_live_verification.json`: public rollout, authentication, four-action SOP and settled reservation checks.
+- `build/workflow_budget_device_verification.json`: latest public synthetic device-assignment qualification.
 - `build/aliyun_voice_roundtrip_public.log`: synthetic speech ASR, image word READY, reply caption and streamed PCM through the real public gateway/provider. Physical acoustic/mobile background qualification remains separate.
 
 Reproduce the tracked verification lane:
@@ -77,7 +82,7 @@ tools/verify_repo_guards.sh
 
 Use assertion-enabled `build-snapshot/` for native checks. Production `build/` is a separate Release build; do not overwrite it with Debug test configuration. The canonical verifier uses local model stubs/fake browser media, not live paid inference. `verify_device_assignment.py` is an opt-in synthetic deployment test; its source and command are documented in the device contract.
 
-## Next task: extend effect recovery
+## Next task after owner resume: extend effect recovery
 
 The next concrete priorities are **arbitrary host-tool effect adapters and device receipt resolvers**, followed by broker-authoritative work state/wakeups. Keep the other explicit requirements in `TODOS.md`; do not declare the whole project finished after this slice.
 
@@ -126,4 +131,4 @@ push origin HEAD:refs/heads/master > build/github_push.log 2>&1
 git ls-remote origin refs/heads/master
 ```
 
-The native Goal owns continuation. Do not recreate or narrow it, mark it complete, or infer a pause from this handoff. Local milestone report: `build/arch_project_report.json`; `codexw report --file ...` last returned 404 for the host project-dashboard route. Keep the local report current and recheck reporting at meaningful boundaries; that host reporting fault is not an owner blocker for repository work. No subagents were requested or used.
+The native Goal owns continuation. Honor the explicit owner stop: pause the unfinished Goal after saving this handoff and resume only on a subsequent owner request. Do not recreate/narrow it or mark the broader project complete. Local milestone report: `build/arch_project_report.json`; `codexw report --file ...` last returned 404 for the host project-dashboard route. Keep the local report current and recheck reporting at meaningful boundaries; that host reporting fault is not an owner blocker for repository work. No subagents were requested or used.
