@@ -13,6 +13,10 @@ Date: 2026-11-10. This document records implemented behavior and reproducible ch
 
 Usage and exact contracts: [CLI](CLI.md), [work state](AUTONOMOUS_WORK.md), [SOP workflows](SOP_WORKFLOWS.md), [embedded C](EMBEDDED_C_API.md), [WebUI](WEBUI.md).
 
+## Publishing destination
+
+Committed achievements are published to the owner’s private [git.hubstack.cn/bruce/agent-c](https://git.hubstack.cn/bruce/agent-c) destination. GitHub publishing is excluded by owner direction. See [PUBLISHING.md](PUBLISHING.md) for the host helper, credential handling, history/size policy and local push preferences.
+
 ## Reproduce
 
 Install the platform's normal CMake/C/C++/curl/OpenSSL/jsoncpp/SQLite/pkg-config dependencies, Python 3, and Node/npm as described in [OPERATIONS.md](OPERATIONS.md). The UI uses its committed npm lockfile. Install a Playwright Chromium browser if one is not already available:

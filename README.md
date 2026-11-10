@@ -115,7 +115,7 @@ Full details, env flags, port notes, and Keycloak guidance live in `docs/DEPLOYM
 
 ## Git remote (publishing)
 
-Remote setup and publish helpers live in `docs/OPERATIONS.md`.
+Committed achievements are published only to the owner’s private Git service. See [publishing policy](docs/PUBLISHING.md); GitHub remains a fetch source.
 
 ## CLI usage
 

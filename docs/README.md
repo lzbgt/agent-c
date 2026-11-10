@@ -4,6 +4,7 @@ Start here if you want the shortest path to the right document.
 
 ## Essentials
 
+- [PUBLISHING.md](PUBLISHING.md): private hosting destination and owner publishing policy.
 - [CURRENT_SNAPSHOT.md](CURRENT_SNAPSHOT.md): implemented capabilities, limits, and reproducible verification.
 - [ARCHITECTURE_CURRENT.md](ARCHITECTURE_CURRENT.md): current embedded/SOP/autonomy architecture and delivery gates.
 - [SOP_WORKFLOWS.md](SOP_WORKFLOWS.md): stage/action authoring through the durable workflow API.
