@@ -91,7 +91,7 @@ def main():
         "checked_at": datetime.now(timezone.utc).isoformat(), "url": origin,
         "source_revision": health["source_revision"], "https_health": True,
         "anonymous_execution_denied": True, "browser_runtime_contains_no_credentials": True,
-        "shared_provider_redirects": redirects, "live_user_callback_verified": False,
+        "shared_provider_redirects": redirects, "live_user_callback": "not_exercised_by_this_script",
         "administrator_authority": "Pinned verified provider proofs and optional Agent-C product account IDs; Panda product IDs and email are not authorization inputs",
         "sop_workflow": {"workflow_id": workflow_id, "status": "done", "tasks": 4}, "live_model": model,
     }

@@ -15,8 +15,9 @@ test("workflow graph editor renders and can add nodes", async ({ page }) => {
 
   await page.goto("/");
 
-  await expect(page.getByText("Workflows", { exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation").getByRole("button", { name: "Workflows", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Workflows" }).click();
+  await page.getByRole("button", { name: "Create workflow", exact: true }).click();
   await page.getByTestId("workflow-composer-tab-graph").click();
 
   const addLlm = page.getByTestId("workflow-graph-add-llm");

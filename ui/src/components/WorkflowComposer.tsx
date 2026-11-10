@@ -24,20 +24,24 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
         onFormatJson={state.formatJson}
       />
 
-      <WorkflowComposerRuntimeSkillSection
-        applyBusy={state.runtimeSkillApplyBusy}
-        inputsJson={state.runtimeSkillInputsJson}
-        inputsParseError={state.runtimeSkillInputsParseError}
-        loadError={state.runtimeSkillListError}
-        loading={state.runtimeSkillListLoading}
-        runtimeSkillError={state.runtimeSkillError}
-        selectedSkill={state.selectedRuntimeSkill}
-        selectedSkillId={state.runtimeSkillId}
-        skills={state.runtimeSkills}
-        onApply={() => void state.applyRuntimeSkill()}
-        onSelectSkill={state.selectRuntimeSkill}
-        onSetInputsJson={state.setRuntimeSkillInputsJson}
-      />
+      <details className="mt-4 text-xs text-white/60">
+        <summary className="flex cursor-pointer items-center">Use a runtime skill</summary>
+        <WorkflowComposerRuntimeSkillSection
+          applyBusy={state.runtimeSkillApplyBusy}
+          inputsJson={state.runtimeSkillInputsJson}
+          inputsParseError={state.runtimeSkillInputsParseError}
+          loadError={state.runtimeSkillListError}
+          loading={state.runtimeSkillListLoading}
+          runtimeSkillError={state.runtimeSkillError}
+          selectedSkill={state.selectedRuntimeSkill}
+          selectedSkillId={state.runtimeSkillId}
+          skills={state.runtimeSkills}
+          onApply={() => void state.applyRuntimeSkill()}
+          onSelectSkill={state.selectRuntimeSkill}
+          onSetInputsJson={state.setRuntimeSkillInputsJson}
+        />
+
+      </details>
 
       <WorkflowComposerBody
         allowInlineKeys={state.allowInlineKeys}

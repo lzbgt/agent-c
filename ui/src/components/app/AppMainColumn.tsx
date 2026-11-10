@@ -23,18 +23,23 @@ type AppMainColumnProps = {
   setInlineTeamSetupOpen: React.Dispatch<React.SetStateAction<boolean>>;
   advancedPage: string;
   inlineTeamConsoleProps: React.ComponentProps<typeof BrokerTeamConsole>;
-  promptbarRef: React.RefObject<HTMLDivElement | null>;
   historyPanelProps: React.ComponentProps<typeof HistoryPanel>;
 };
 
 export default function AppMainColumn(props: AppMainColumnProps) {
+  const history = props.historyPanelProps;
+  const hasHistory = [history.entries, history.dbMessages, history.dbRuns, history.sessionArtifacts, history.teamConversationItems]
+    .some((items) => items && items.length > 0);
+  const hasScene = props.sceneEntities.length > 0;
   return (
-    <section className="min-w-0">
+    <section className="min-w-0" aria-label="Conversation workspace">
+      {hasScene || !hasHistory ? (
       <div
-        className={`workspace-surface p-4 ${
-          props.sceneCollapsed ? "" : "flex min-h-[320px] h-[min(48vh,520px)] flex-col"
+        className={`workspace-surface workspace-scene p-4 ${
+          hasScene && props.sceneCollapsed ? "" : "flex min-h-[280px] h-[min(48vh,520px)] flex-col"
         }`}
       >
+        {hasScene ? (
         <div className="flex items-center justify-between gap-2">
           <div className="text-sm font-semibold text-white/80">Scene</div>
           <button
@@ -45,10 +50,11 @@ export default function AppMainColumn(props: AppMainColumnProps) {
             {props.sceneCollapsed ? "Show scene" : "Collapse"}
           </button>
         </div>
-        {props.sceneCollapsed ? (
+        ) : null}
+        {hasScene && props.sceneCollapsed ? (
           <div className="mt-2 text-xs text-white/50">Scene is hidden to save space.</div>
         ) : (
-          <div className="mt-3 min-h-0 flex-1">
+          <div className="min-h-0 flex-1">
             <SceneView
               baseUrl={props.effectiveBase}
               yolo={props.yolo}
@@ -62,6 +68,7 @@ export default function AppMainColumn(props: AppMainColumnProps) {
           </div>
         )}
       </div>
+      ) : null}
 
       {props.brokerChatAvailable ? <TeamHubCard {...props.teamHubProps} /> : null}
 
@@ -83,9 +90,9 @@ export default function AppMainColumn(props: AppMainColumnProps) {
         </details>
       ) : null}
 
-      <div className="mt-4">
+      {hasHistory || hasScene ? <div className="mt-4">
         <HistoryPanel {...props.historyPanelProps} />
-      </div>
+      </div> : null}
     </section>
   );
 }

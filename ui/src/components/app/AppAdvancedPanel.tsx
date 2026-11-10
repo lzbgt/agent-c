@@ -11,8 +11,6 @@ const WorkflowPanel = React.lazy(() => import("../WorkflowPanel"));
 
 type AppAdvancedPanelProps = {
   advancedPage: string;
-  focusAdvancedPanel: boolean;
-  setFocusAdvancedPanel: React.Dispatch<React.SetStateAction<boolean>>;
   setAdvancedPage: (next: string) => void;
   tracePanel: {
     traceId: string;
@@ -71,22 +69,7 @@ export default function AppAdvancedPanel(props: AppAdvancedPanelProps) {
 
   return (
     <React.Suspense fallback={<div className="workspace-surface p-6 text-sm text-white/60" role="status">Loading workspace…</div>}>
-    <aside className="workspace-surface min-w-0 overflow-x-auto p-4">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="text-[11px] font-semibold text-white/60">Panel view</div>
-        <button
-          className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/70 hover:bg-black/40"
-          type="button"
-          onClick={() => props.setFocusAdvancedPanel((prev) => !prev)}
-          title={
-            props.focusAdvancedPanel
-              ? "Show scene and history again"
-              : "Hide scene + history to focus on this panel"
-          }
-        >
-          {props.focusAdvancedPanel ? "Show main view" : "Focus panel"}
-        </button>
-      </div>
+    <section className="workspace-surface workspace-tool min-w-0 p-4" data-testid="workspace-tool">
       {props.advancedPage === "trace" ? (
         <TraceLookupPanel
           open={true}
@@ -145,9 +128,6 @@ export default function AppAdvancedPanel(props: AppAdvancedPanelProps) {
       ) : props.advancedPage === "workflows" ? (
         <WorkflowPanel
           open={true}
-          onToggle={(open) => {
-            if (!open) props.setAdvancedPage("");
-          }}
           baseUrl={props.workflowPanel.baseUrl}
           auth={props.workflowPanel.auth}
           authKey={props.workflowPanel.authKey}
@@ -172,7 +152,7 @@ export default function AppAdvancedPanel(props: AppAdvancedPanelProps) {
           clientId={props.brokerPanel.clientId}
         />
       ) : null}
-    </aside>
+    </section>
     </React.Suspense>
   );
 }

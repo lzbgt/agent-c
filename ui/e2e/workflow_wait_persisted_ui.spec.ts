@@ -45,6 +45,7 @@ test("workflow wait resume controls show for persisted wait", async ({ page }) =
 
   await expect(page.getByText("Workflows", { exact: true })).toBeVisible();
   await page.getByText("Workflows", { exact: true }).click();
+  await page.getByRole("button", { name: "Create workflow", exact: true }).click();
   await expect(page.getByText(/Resume wait: wf-test/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Resume" })).toBeVisible();
   await expect(page.getByText(/Resume wait: wf-test/).locator("..").getByRole("button", { name: "Clear" })).toBeVisible();

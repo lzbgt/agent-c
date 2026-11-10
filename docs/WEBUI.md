@@ -3,6 +3,38 @@
 The WebUI is a Vite-based static site that talks to `agentd` over HTTP. It can run in
 direct mode (connects to agentd) or broker mode (OIDC + broker console).
 
+## Workspace layout
+
+The workspace uses a graphite/mint design with a bounded desktop content width,
+grouped navigation and a single primary task area. Selecting Workflows, Memory,
+Trace or another tool opens that tool directly. The conversation composer remains
+mounted but hidden on tool pages, preserving its draft and staged attachments;
+ongoing execution/streaming continues. Overview restores the conversation. Empty
+conversation/artifact sections appear once they have content.
+
+Workflows separates **Runs**, **Create workflow** and **Schedules**. Switching
+between these sections preserves the authoring draft. Submission opens Runs with
+the submitted workflow selected; opening a scheduled run does the same. Create
+workflow includes the provider-free SOP template alongside JSON/graph authoring.
+
+On phones and tablets, navigation becomes a horizontally scrollable touch strip
+and keeps the selected item in view. The compact header retains environment,
+connection status, settings and authenticated sign-out. The composer participates
+in the viewport layout so it cannot cover the scrollable task area. Dynamic
+viewport sizing, safe-area padding and 16px mobile text inputs support smaller
+screens. Settings uses a full-width mobile modal with contained keyboard focus,
+Escape dismissal and focus restoration.
+
+Responsive browser fixtures exercise 320px, 390px and 768px widths, desktop
+navigation, tool accessibility, preserved drafts, overflow boundaries, modal
+keyboard behavior and a shortened viewport resembling an open keyboard. This is
+browser-emulation evidence; physical iOS/Android keyboard testing remains a
+separate device qualification.
+
+For the shared OAuth Arch production deployment, see
+[ARCH_HOST_DEPLOYMENT.md](ARCH_HOST_DEPLOYMENT.md). Its browser configuration has
+no execution or identity credentials.
+
 ## Dev (hot reload)
 
 ```bash

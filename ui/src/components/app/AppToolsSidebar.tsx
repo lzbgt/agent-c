@@ -18,6 +18,12 @@ const groups = [
 
 export default function AppToolsSidebar(props: AppToolsSidebarProps) {
   const pages = [{ id: "", label: "Overview" }, ...props.advancedPages];
+  const navRef = React.useRef<HTMLElement>(null);
+  React.useEffect(() => {
+    if (window.matchMedia("(max-width: 1023px)").matches) {
+      navRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+  }, [props.advancedPage]);
   return (
     <aside className={`workspace-sidebar ${props.toolsCollapsed ? "is-collapsed" : ""}`}>
       <div className="workspace-sidebar-heading">
@@ -26,7 +32,7 @@ export default function AppToolsSidebar(props: AppToolsSidebarProps) {
           {props.toolsCollapsed ? "»" : "«"}
         </button>
       </div>
-      <nav aria-label="Workspace navigation">
+      <nav ref={navRef} aria-label="Workspace navigation">
         {groups.map((group) => (
           <div className="workspace-nav-group" key={group.label}>
             <div className="workspace-nav-label">{group.label}</div>

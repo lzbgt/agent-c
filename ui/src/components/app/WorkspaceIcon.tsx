@@ -10,6 +10,8 @@ const paths: Record<string, React.ReactNode> = {
   "run-diff": <><circle cx="6" cy="5" r="2" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="19" r="2" /><path d="M6 7v10M6 9c0 5 12 1 12 8" /></>,
   broker: <><rect x="3" y="3" width="18" height="7" rx="2" /><rect x="3" y="14" width="18" height="7" rx="2" /><path d="M7 6.5h.01M7 17.5h.01M11 6.5h6M11 17.5h6" /></>,
   arrow: <path d="M5 12h14m-5-5 5 5-5 5" />,
+  settings: <><path d="m9 3-1 3-3 1-2 5 2 5 3 1 1 3h6l1-3 3-1 2-5-2-5-3-1-1-3z" /><circle cx="12" cy="12" r="3" /></>,
+  "sign-out": <><path d="M9 4H4v16h5M13 8l4 4-4 4M8 12h13" /></>,
 };
 
 export default function WorkspaceIcon({ name, className = "" }: { name: string; className?: string }) {

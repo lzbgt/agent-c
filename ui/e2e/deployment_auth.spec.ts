@@ -38,6 +38,9 @@ test("verified administrators reach the workspace with an explicit sign-out cont
   await page.goto("/");
   await expect(page.getByRole("navigation", { name: "Workspace navigation" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign out of workspace" })).toBeVisible();
-  await page.setViewportSize({ width: 390, height: 844 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  for (const width of [320, 390, 768]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(page.getByRole("button", { name: "Sign out of workspace" })).toBeInViewport({ ratio: 1 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
 });

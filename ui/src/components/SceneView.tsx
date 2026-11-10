@@ -15,7 +15,7 @@ export default function SceneView({ baseUrl, yolo, allowAutoplay, client, daemon
       className={["flex min-h-0 flex-col rounded-lg border border-white/10 bg-white/5", className].filter(Boolean).join(" ")}
       data-testid="scene"
     >
-      <div className="flex shrink-0 items-center justify-between px-3 py-2">
+      {entities.length > 0 ? <div className="flex shrink-0 items-center justify-between px-3 py-2">
         <div className="text-sm font-semibold" data-testid="scene-header">
           Scene
         </div>
@@ -24,7 +24,7 @@ export default function SceneView({ baseUrl, yolo, allowAutoplay, client, daemon
             {state.sid ? `session=${state.sid}` : ""}
           </div>
         </div>
-      </div>
+      </div> : null}
 
       <div className="min-h-0 flex-1 overflow-auto px-3 pb-3">
         {entities.length === 0 ? (
@@ -33,7 +33,10 @@ export default function SceneView({ baseUrl, yolo, allowAutoplay, client, daemon
             <div className="workspace-eyebrow">YOUR NEXT IDEA STARTS HERE</div>
             <h2>From intent to action.</h2>
             <p>Give your agent a goal below. Artifacts and interactive results will appear in this space.</p>
-            <button className="workspace-button" type="button" onClick={() => document.querySelector<HTMLTextAreaElement>('[data-testid="prompt"]')?.focus()}>Start a conversation <WorkspaceIcon name="arrow" /></button>
+            <button className="workspace-button" type="button" onClick={() => {
+              document.querySelector<HTMLButtonElement>('[data-testid="promptbar-toggle-collapse"][aria-expanded="false"]')?.click();
+              requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('[data-testid="prompt"]')?.focus());
+            }}>Start a conversation <WorkspaceIcon name="arrow" /></button>
           </div>
         ) : (
           <div className="space-y-3">

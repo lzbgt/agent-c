@@ -69,4 +69,27 @@ curl -fsS https://agent.hubstack.cn/auth/providers
 
 `broker/internal/gateway` tests cover browser binding, one-use callback exchange, grant cleanup, central revision/instance mismatch, outage refusal, local logout, non-admin denial, CSRF, proxy credential isolation and administrator entry when product-specific account IDs differ. Set a **disposable** `AGENTC_TEST_DATABASE_URL` to exercise actual PostgreSQL persistence/restart, persisted provider proofs and schema mismatch refusal; the test requires a database name ending in `_test` and drops only its dedicated `agentc_gateway` schema. Browser fixtures cover unauthenticated/member/admin surfaces and mobile layout. Live qualification also executed the four-action inspection SOP and a bounded `deepseek-v4-pro` request through public authenticated ingress.
 
+On 2026-11-10, the owner's real Apple callback completed through the shared service
+and the authenticated browser reached the connected execution workspace. The
+initial signed-in access page was caused by copying Panda's product-specific
+account ID; immutable central provider proofs now establish the owner's Agent-C
+administration independently of product IDs. This observed browser acceptance is
+separate from `tools/deploy/verify_arch.py`, which checks anonymous rejection,
+provider redirects, source revision and an authenticated SOP. The script's
+`--live-model` option also makes a bounded provider call; it never claims to have
+performed an interactive owner callback.
+
+An opt-in live UI probe uses the private operator credential in an isolated
+Chromium context. It checks the connected workspace, workflow sections and
+settings at desktop/320/390/768px widths, refuses execution submissions and always
+disables header/cookie traces. Screenshots remain in ignored local test output.
+It qualifies the deployed UI separately from the mocked snapshot tests:
+
+```sh
+cd ui
+AGENTC_LIVE_CONFIG="$HOME/.config/agent-c/gateway.json" \
+AGENT_E2E_UI_BASE_URL=https://agent.hubstack.cn \
+AGENT_E2E_RECORD=0 npx playwright test e2e/live_deployment.spec.ts --workers=1
+```
+
 VPS removal must identify Agent-C ownership from unit/container configuration or source paths before stopping/removing anything. Never use a global prune or remove generic `agent`, `broker`, `postgres` or `webui` workloads by name. The inspected VPS inventory contained no proven Agent-C runtime, container, unit or source deployment; no unrelated workload was removed.

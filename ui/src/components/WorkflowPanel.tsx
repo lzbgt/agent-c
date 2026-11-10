@@ -10,7 +10,6 @@ import useWorkflowPanelState from "./workflow/useWorkflowPanelState";
 
 export type WorkflowPanelProps = {
   open: boolean;
-  onToggle: (open: boolean) => void;
   baseUrl: string;
   auth?: ApiAuth;
   authKey?: string;
@@ -22,6 +21,7 @@ export type WorkflowPanelProps = {
 };
 
 export default function WorkflowPanel(props: WorkflowPanelProps) {
+  const [view, setView] = React.useState("runs");
   const workflowState = useWorkflowPanelState({
     open: props.open,
     baseUrl: props.baseUrl,
@@ -30,18 +30,34 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   });
 
   return (
-    <details
-      className="mb-4 rounded-lg border border-white/10 bg-white/5 px-3 py-2"
-      open={!!props.open}
-      onToggle={(ev) => props.onToggle((ev.currentTarget as HTMLDetailsElement).open)}
-    >
-      <summary className="cursor-pointer select-none text-xs text-white/80">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="font-semibold text-white/80">Workflow editor</div>
-          <div className="text-[11px] text-white/50">Durable workflow DAGs + composer</div>
-        </div>
-      </summary>
-      <div className="mt-3 grid gap-3">
+    <section aria-label="Workflow operations">
+      <div className="workspace-tabs" role="group" aria-label="Workflow sections">
+        {[["runs", "Runs"], ["create", "Create workflow"], ["schedules", "Schedules"]].map(([id, label]) => (
+          <button type="button" key={id} aria-pressed={view === id} onClick={() => setView(id)}>{label}</button>
+        ))}
+      </div>
+      <div hidden={view !== "runs"} className="grid gap-4">
+        <WorkflowListSection
+          baseUrl={props.baseUrl}
+          normalizedListStatus={workflowState.normalizedListStatus}
+          listStatus={workflowState.listStatus}
+          setListStatus={workflowState.setListStatus}
+          listLimit={workflowState.listLimit}
+          setListLimit={workflowState.setListLimit}
+          listFilter={workflowState.listFilter}
+          setListFilter={workflowState.setListFilter}
+          listAutoRefresh={workflowState.listAutoRefresh}
+          setListAutoRefresh={workflowState.setListAutoRefresh}
+          listQuery={workflowState.listQuery}
+          filteredWorkflows={workflowState.filteredWorkflows}
+          cancelBusyId={workflowState.cancelBusyId}
+          onSelectWorkflow={(id) => {
+            workflowState.setWorkflowId(id);
+            workflowState.loadWorkflow(id);
+          }}
+          onCopyText={workflowState.copyText}
+          onCancelWorkflow={workflowState.cancelWorkflow}
+        />
         <div className="flex flex-wrap items-center gap-2">
           <input
             className="min-w-[260px] flex-1 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
@@ -92,28 +108,64 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
           </label>
         </div>
 
-        <WorkflowListSection
-          baseUrl={props.baseUrl}
-          normalizedListStatus={workflowState.normalizedListStatus}
-          listStatus={workflowState.listStatus}
-          setListStatus={workflowState.setListStatus}
-          listLimit={workflowState.listLimit}
-          setListLimit={workflowState.setListLimit}
-          listFilter={workflowState.listFilter}
-          setListFilter={workflowState.setListFilter}
-          listAutoRefresh={workflowState.listAutoRefresh}
-          setListAutoRefresh={workflowState.setListAutoRefresh}
-          listQuery={workflowState.listQuery}
-          filteredWorkflows={workflowState.filteredWorkflows}
+
+
+        {workflowState.detailError ? (
+          <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+            {workflowState.detailError}
+          </div>
+        ) : null}
+
+        <WorkflowDetailSection
+          effectControls={{ baseUrl: props.baseUrl, auth: props.auth }}
+          detail={workflowState.detail}
+          summary={workflowState.summary}
+          tasks={workflowState.tasks}
+          taskCounts={workflowState.taskCounts}
+          graph={workflowState.graph}
+          workflowLimits={workflowState.workflowLimits}
+          workflowUsage={workflowState.workflowUsage}
+          workflowRemaining={workflowState.workflowRemaining}
           cancelBusyId={workflowState.cancelBusyId}
-          onSelectWorkflow={(id) => {
-            workflowState.setWorkflowId(id);
-            workflowState.loadWorkflow(id);
-          }}
-          onCopyText={workflowState.copyText}
+          workflowLookupPending={workflowState.workflowLookup.isPending}
+          onReloadWorkflow={workflowState.loadWorkflow}
           onCancelWorkflow={workflowState.cancelWorkflow}
+          onCopyText={workflowState.copyText}
+          onTraceIdClick={props.onTraceIdClick}
         />
 
+        <WorkflowTimelineSection
+          workflowId={workflowState.timelineWorkflowId}
+          taskIdFilter={workflowState.timelineTaskIdFilter}
+          setTaskIdFilter={workflowState.setTimelineTaskIdFilter}
+          eventTypeFilter={workflowState.timelineEventTypeFilter}
+          setEventTypeFilter={workflowState.setTimelineEventTypeFilter}
+          limit={workflowState.timelineLimit}
+          setLimit={workflowState.setTimelineLimit}
+          autoRefresh={workflowState.timelineAutoRefresh}
+          setAutoRefresh={workflowState.setTimelineAutoRefresh}
+          eventsQuery={workflowState.timelineQuery}
+          onCopyText={workflowState.copyText}
+        />
+
+      </div>
+      <div hidden={view !== "create"}>
+        <WorkflowComposer
+          baseUrl={props.baseUrl}
+          auth={props.auth}
+          authKey={props.authKey}
+          clientId={props.clientId}
+          workflowDefaults={props.workflowDefaults}
+          workflowTargets={props.workflowTargets}
+          workflowBearerEnv={props.workflowBearerEnv}
+          onSubmitted={(workflowId) => {
+            setView("runs");
+            workflowState.setWorkflowId(workflowId);
+            workflowState.loadWorkflow(workflowId);
+          }}
+        />
+      </div>
+      <div hidden={view !== "schedules"}>
         <WorkflowSchedulesSection
           baseUrl={props.baseUrl}
           normalizedScheduleStatus={workflowState.normalizedScheduleStatus}
@@ -166,6 +218,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
           onDownloadJson={workflowState.downloadJson}
           onLoadScheduleRuns={workflowState.loadScheduleRuns}
           onLoadWorkflowFromRun={(id) => {
+            setView("runs");
             workflowState.setWorkflowId(id);
             workflowState.loadWorkflow(id);
           }}
@@ -178,58 +231,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
           scheduleCreateCurlSnippet={workflowState.scheduleCreateCurlSnippet}
         />
 
-        {workflowState.detailError ? (
-          <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-            {workflowState.detailError}
-          </div>
-        ) : null}
-
-        <WorkflowDetailSection
-          effectControls={{ baseUrl: props.baseUrl, auth: props.auth }}
-          detail={workflowState.detail}
-          summary={workflowState.summary}
-          tasks={workflowState.tasks}
-          taskCounts={workflowState.taskCounts}
-          graph={workflowState.graph}
-          workflowLimits={workflowState.workflowLimits}
-          workflowUsage={workflowState.workflowUsage}
-          workflowRemaining={workflowState.workflowRemaining}
-          cancelBusyId={workflowState.cancelBusyId}
-          workflowLookupPending={workflowState.workflowLookup.isPending}
-          onReloadWorkflow={workflowState.loadWorkflow}
-          onCancelWorkflow={workflowState.cancelWorkflow}
-          onCopyText={workflowState.copyText}
-          onTraceIdClick={props.onTraceIdClick}
-        />
-
-        <WorkflowTimelineSection
-          workflowId={workflowState.timelineWorkflowId}
-          taskIdFilter={workflowState.timelineTaskIdFilter}
-          setTaskIdFilter={workflowState.setTimelineTaskIdFilter}
-          eventTypeFilter={workflowState.timelineEventTypeFilter}
-          setEventTypeFilter={workflowState.setTimelineEventTypeFilter}
-          limit={workflowState.timelineLimit}
-          setLimit={workflowState.setTimelineLimit}
-          autoRefresh={workflowState.timelineAutoRefresh}
-          setAutoRefresh={workflowState.setTimelineAutoRefresh}
-          eventsQuery={workflowState.timelineQuery}
-          onCopyText={workflowState.copyText}
-        />
-
-        <WorkflowComposer
-          baseUrl={props.baseUrl}
-          auth={props.auth}
-          authKey={props.authKey}
-          clientId={props.clientId}
-          workflowDefaults={props.workflowDefaults}
-          workflowTargets={props.workflowTargets}
-          workflowBearerEnv={props.workflowBearerEnv}
-          onSubmitted={(workflowId) => {
-            workflowState.setWorkflowId(workflowId);
-            workflowState.loadWorkflow(workflowId);
-          }}
-        />
       </div>
-    </details>
+    </section>
   );
 }

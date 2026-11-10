@@ -13,15 +13,40 @@ export type { SettingsDrawerProps } from "./settings/settingsDrawerTypes";
 export default function SettingsDrawer(props: SettingsDrawerProps) {
   const { connection, run, client } = props;
   const state = useSettingsDrawerState(props);
+  const dialogRef = React.useRef<HTMLDialogElement>(null);
+  React.useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!props.open || !dialog) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialog.showModal();
+    dialog.querySelector<HTMLButtonElement>('[data-testid="settings-close"]')?.focus({ preventScroll: true });
+    return () => {
+      dialog.close();
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+    };
+  }, [props.open]);
+
+  function containTab(event: React.KeyboardEvent<HTMLDialogElement>) {
+    if (event.key !== "Tab") return;
+    const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("button, input, select, textarea, a[href], [tabindex]"))
+      .filter((el) => el.tabIndex >= 0 && !el.matches(":disabled") && el.getClientRects().length > 0);
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault(); last?.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault(); first?.focus();
+    }
+  }
 
   if (!props.open) return null;
 
   return (
-    <div className="fixed inset-0 z-40" data-testid="settings-drawer">
-      <div className="absolute inset-0 bg-black/60" onClick={props.onClose} role="button" tabIndex={0} />
-      <div className="absolute right-0 top-0 h-full w-[520px] max-w-[94vw] overflow-auto border-l border-white/10 bg-slate-950 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-sm font-semibold">Settings</div>
+    <dialog ref={dialogRef} className="workspace-settings" data-testid="settings-drawer" aria-labelledby="workspace-settings-title" onKeyDown={containTab} onCancel={(event) => { event.preventDefault(); props.onClose(); }}>
+      <div className="absolute inset-0 bg-black/60" onClick={props.onClose} aria-hidden="true" />
+      <div className="workspace-settings-panel">
+        <div className="workspace-settings-heading">
+          <h2 id="workspace-settings-title" className="text-sm font-semibold">Settings</h2>
           <button
             className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
             onClick={props.onClose}
@@ -182,6 +207,6 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
           clearAllArmTimeoutRef={state.clearAllArmTimeoutRef}
         />
       </div>
-    </div>
+    </dialog>
   );
 }

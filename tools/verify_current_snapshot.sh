@@ -30,6 +30,7 @@ npm run build --prefix ui
   cd ui
   AGENT_E2E_PREFER_DEVSTACK=0 AGENT_E2E_RECORD="${AGENT_E2E_RECORD:-0}" npx playwright test \
     e2e/workspace_shell.spec.ts e2e/workflow_detail_panel.spec.ts e2e/prompt_bar.spec.ts e2e/scene_view.spec.ts e2e/deployment_auth.spec.ts \
+    e2e/workflow_graph_editor.spec.ts e2e/workflow_wait_persisted_ui.spec.ts e2e/workflow_schedules.spec.ts e2e/broker_team_layout.spec.ts \
     --workers=2 --timeout=45000
 )
 git diff --check

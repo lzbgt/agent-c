@@ -42,10 +42,7 @@ export default function useAppShellState({
     }
   }, [chatTarget, setTeamAction, teamAction]);
 
-  const topbarRef = React.useRef<HTMLElement | null>(null);
   const promptbarRef = React.useRef<HTMLDivElement | null>(null);
-  const [topbarHeightPx, setTopbarHeightPx] = React.useState<number>(56);
-  const [promptbarHeightPx, setPromptbarHeightPx] = React.useState<number>(220);
 
   const sessionScopeKey = React.useMemo(
     () =>
@@ -179,7 +176,6 @@ export default function useAppShellState({
     {},
   );
   const [sceneCollapsed, setSceneCollapsed] = useLocalStorageState<boolean>(`${historyUiKey}:sceneCollapsed`, false);
-  const [focusAdvancedPanel, setFocusAdvancedPanel] = useLocalStorageState<boolean>("agentui.focusAdvancedPanel", false);
   const [inlineTeamSetupOpen, setInlineTeamSetupOpen] = useLocalStorageState<boolean>("agentui.inlineTeamSetupOpen", false);
 
   const [mainScrollTop, setMainScrollTop] = useLocalStorageState<number>(`${historyUiKey}:scrollTop`, 0);
@@ -198,42 +194,6 @@ export default function useAppShellState({
         }
       }
       mainScrollSaveRafRef.current = 0;
-    };
-  }, []);
-
-  React.useLayoutEffect(() => {
-    const measure = () => {
-      try {
-        const topbarHeight = topbarRef.current?.getBoundingClientRect().height;
-        const promptbarHeight = promptbarRef.current?.getBoundingClientRect().height;
-        if (typeof topbarHeight === "number" && Number.isFinite(topbarHeight) && topbarHeight > 0) {
-          setTopbarHeightPx(Math.round(topbarHeight));
-        }
-        if (typeof promptbarHeight === "number" && Number.isFinite(promptbarHeight) && promptbarHeight > 0) {
-          setPromptbarHeightPx(Math.round(promptbarHeight));
-        }
-      } catch {
-        // ignore
-      }
-    };
-
-    measure();
-
-    let observer: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== "undefined") {
-      observer = new ResizeObserver(() => measure());
-      if (topbarRef.current) observer.observe(topbarRef.current);
-      if (promptbarRef.current) observer.observe(promptbarRef.current);
-    }
-
-    window.addEventListener("resize", measure);
-    return () => {
-      window.removeEventListener("resize", measure);
-      try {
-        observer?.disconnect();
-      } catch {
-        // ignore
-      }
     };
   }, []);
 
@@ -260,10 +220,7 @@ export default function useAppShellState({
     setChatTarget,
     teamAction,
     setTeamAction,
-    topbarRef,
     promptbarRef,
-    topbarHeightPx,
-    promptbarHeightPx,
     sessionScopeKey,
     sessionId,
     setSessionId,
@@ -284,8 +241,6 @@ export default function useAppShellState({
     setHistoryExpandedByKey,
     sceneCollapsed,
     setSceneCollapsed,
-    focusAdvancedPanel,
-    setFocusAdvancedPanel,
     inlineTeamSetupOpen,
     setInlineTeamSetupOpen,
     mainScrollTop,

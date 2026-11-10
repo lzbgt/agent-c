@@ -31,11 +31,6 @@ import useTraceLookup from "./hooks/useTraceLookup";
 import useUiSettings from "./hooks/useUiSettings";
 import { buildWorkflowDefaults } from "./workflowDefaults";
 
-type AppShellStyle = React.CSSProperties & {
-  "--topbar-h": string;
-  "--promptbar-h": string;
-};
-
 type AppGridStyle = React.CSSProperties & {
   "--tools-col": string;
 };
@@ -72,10 +67,7 @@ export default function App() {
     setChatTarget,
     teamAction,
     setTeamAction,
-    topbarRef,
     promptbarRef,
-    topbarHeightPx,
-    promptbarHeightPx,
     sessionScopeKey,
     sessionId,
     setSessionId,
@@ -96,8 +88,6 @@ export default function App() {
     setHistoryExpandedByKey,
     sceneCollapsed,
     setSceneCollapsed,
-    focusAdvancedPanel,
-    setFocusAdvancedPanel,
     inlineTeamSetupOpen,
     setInlineTeamSetupOpen,
     mainScrollTop,
@@ -522,32 +512,18 @@ export default function App() {
     setLiveEvents,
   });
 
-  const showMainColumn = !advancedPage || !focusAdvancedPanel;
-  const advancedGridCols = focusAdvancedPanel
-    ? "lg:grid-cols-[var(--tools-col)_minmax(0,1fr)]"
-    : advancedPage === "broker"
-      ? "lg:grid-cols-[var(--tools-col)_minmax(260px,1fr)_minmax(0,1.4fr)]"
-      : "lg:grid-cols-[var(--tools-col)_minmax(0,1fr)_minmax(0,1fr)]";
-
   React.useEffect(() => {
-    if (!advancedPage && focusAdvancedPanel) {
-      setFocusAdvancedPanel(false);
-    }
-  }, [advancedPage, focusAdvancedPanel, setFocusAdvancedPanel]);
+    mainScrollRef.current?.scrollTo({ top: 0 });
+  }, [advancedPage]);
 
-  const appShellStyle: AppShellStyle = {
-    "--topbar-h": `${topbarHeightPx}px`,
-    "--promptbar-h": `${promptbarHeightPx}px`,
-  };
   const appGridStyle: AppGridStyle = {
     "--tools-col": toolsCollapsed ? "72px" : "208px",
   };
 
   return (
-    <div className="workspace-shell h-screen w-full text-white" style={appShellStyle}>
+    <div className="workspace-shell">
       <a className="workspace-skip" href="#workspace-main">Skip to workspace</a>
       <AppHeader
-        topbarRef={topbarRef}
         profiles={connection.profiles}
         activeProfileId={connection.activeProfileId}
         profileName={profileName}
@@ -582,16 +558,12 @@ export default function App() {
           mainScrollRef.current = el;
         }}
         onScroll={onMainScroll}
-        className="workspace-main h-[calc(100dvh-var(--topbar-h))] overflow-y-auto pb-[var(--promptbar-h)]"
+        className="workspace-main"
       >
         <div className="mx-auto w-full max-w-none">
             <WorkspaceHeading page={advancedPage} label={advancedPages.find((page) => page.id === advancedPage)?.label ?? "Workspace"} sessionId={sessionId} model={model} activeJobId={activeJobId ?? ""} />
             <div
-              className={`workspace-grid grid gap-5 ${
-                advancedPage
-                  ? advancedGridCols
-                  : "lg:grid-cols-[var(--tools-col)_minmax(0,1fr)]"
-              }`}
+              className="workspace-grid"
               style={appGridStyle}
             >
               <AppToolsSidebar
@@ -601,7 +573,7 @@ export default function App() {
                 setToolsCollapsed={setToolsCollapsed}
                 setAdvancedPage={setAdvancedPage}
               />
-              {showMainColumn ? (
+              {!advancedPage ? (
               <AppMainColumn
                 sceneCollapsed={sceneCollapsed}
                 setSceneCollapsed={setSceneCollapsed}
@@ -628,7 +600,6 @@ export default function App() {
                   },
                   onOpenFullSetup: () => {
                     openTeamPanel("setup");
-                    setFocusAdvancedPanel(true);
                   },
                   onOpenMembers: () => openTeamPanel("members"),
                   onOpenRuns: () => openTeamPanel("run"),
@@ -680,7 +651,6 @@ export default function App() {
                   authKey,
                   clientId: client.id,
                 }}
-                promptbarRef={promptbarRef}
                 historyPanelProps={{
                   entries: historyEntriesDesc,
                   showAllEntries: showAllHistoryEntries,
@@ -723,8 +693,6 @@ export default function App() {
               ) : null}
               <AppAdvancedPanel
                 advancedPage={advancedPage}
-                focusAdvancedPanel={focusAdvancedPanel}
-                setFocusAdvancedPanel={setFocusAdvancedPanel}
                 setAdvancedPage={setAdvancedPage}
                 tracePanel={{
                   traceId: traceLookupId,
@@ -774,6 +742,7 @@ export default function App() {
 
       <PromptBar
         ref={promptbarRef}
+        hidden={Boolean(advancedPage)}
         effectiveBase={effectiveBase}
         sessionId={sessionId}
         tools={tools}

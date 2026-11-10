@@ -119,7 +119,7 @@ export default function WorkflowListSection(props: WorkflowListSectionProps) {
                   if (!id) return;
                   props.onSelectWorkflow(id);
                 }}
-                className="flex flex-1 flex-wrap items-center justify-between gap-2 text-left hover:text-white"
+                className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-2 text-left hover:text-white"
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={`rounded border px-2 py-0.5 text-[10px] ${statusBadge(wf.status)}`}>
@@ -139,7 +139,7 @@ export default function WorkflowListSection(props: WorkflowListSectionProps) {
                 </div>
                 <div className="text-[10px] text-white/40">updated {formatUnixMs(wf.updated_unix_ms)}</div>
               </button>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {id ? (
                   <button
                     className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"

@@ -10,6 +10,7 @@ export type Attachment = {
 };
 
 export type PromptBarProps = {
+  hidden?: boolean;
   effectiveBase: string;
   sessionId: string | null | undefined;
   tools: string;

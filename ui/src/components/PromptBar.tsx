@@ -13,7 +13,8 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
   return (
     <div
       ref={ref}
-      className="workspace-composer fixed bottom-0 left-0 right-0 z-30 border-t border-white/10 backdrop-blur"
+      className="workspace-composer"
+      hidden={props.hidden}
       data-testid="promptbar-root"
     >
       <PromptBarDetailsDrawer
@@ -37,9 +38,9 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
         tools={props.tools}
       />
 
-      <div className="mx-auto max-w-7xl px-3 py-3">
-        <div className="flex min-w-0 items-center justify-between gap-2" data-testid="promptbar-summary-row">
-          <div className="flex min-w-0 items-center gap-2 text-[11px] text-white/60">
+      <div className="workspace-composer-inner">
+        <div className="workspace-composer-toolbar" data-testid="promptbar-summary-row">
+          <div className="workspace-composer-options">
             <button
               className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/70 hover:bg-black/40"
               type="button"
@@ -115,7 +116,7 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
             ) : null}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="workspace-composer-actions">
             {props.activeJobId ? (
               <button
                 className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200 hover:bg-rose-500/15"
