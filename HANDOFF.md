@@ -44,6 +44,18 @@ tools/verify_repo_guards.sh
 
 Use assertion-enabled `build-snapshot/` for native verification. Keep the production Release `build/` configuration separate.
 
+## Publication CI and broader qualification
+
+The receipt feature was published to GitHub as `ac37208a00d3aceb711098eeaaf93b86d3d4b770`. Its first hosted CI run exposed additional build/CI problems. This follow-up preserves all checks while repairing remote-ref/commit baseline resolution in the vendored guard, a packet-metadata header's accidental dependency on optional SRTP, the retired macOS runner and pinned Windows compiler, and the local-only proxy default leaking into container CI. Explicitly empty proxy values now disable the local default; leaving them unset preserves local behavior.
+
+The complete assertion-enabled native target build passed. Ten isolated vendored-guard regressions, four focused native device/DB/media tests, all three Compose proxy-configuration cases, YAML parsing and repository guards passed. Packet accounting also compiled and ran without OpenSSL/SRTP linkage.
+
+**The wider suite is not green.** The offline 334-test run had 298 passes, 27 intentionally skipped network tests and nine failures. Managed consensus recovery passed on its bounded retry; eight failures remain: trace workflow assignment returns 409, autonomous consensus does not always report a vote grant, four certificate tests require a missing local CA fixture, and two WebRTC smoke tests cannot complete with the available browser/tool setup. The audio peer log specifically reports a missing Playwright headless-shell executable. Do not present the focused feature pass as a full-suite or CI pass.
+
+The failed-test retry was stopped after CTest's filtered numeric indices selected a Compose build. It did not start new containers; existing container uptime and public health remained unchanged. For further retries use anchored test names and keep the same exclusions, rather than reusing numeric selections across differently filtered test lists.
+
+Additional evidence is in `build/ci_portability_full_build.log`, `build/ci_portability_full_ctest.log`, `build/ci_portability_ctest_rerun_failed.log`, `build/ci_portability_voice_retry.log` and `build/ci_portability_guards.log`. Check hosted CI against the exact new remote revision after publication. The immediate qualification follow-up is to repair the remaining test fixtures/contracts and verify remote Linux, macOS, Windows and container checks; none of this authorizes deployment.
+
 ## Next product work
 
 1. Extend durable effect identity, intent, reconciliation and scoped uncertainty to arbitrary host tools; add adapters beyond signed UM-BMP original-result receipts.

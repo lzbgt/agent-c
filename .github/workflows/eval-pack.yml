@@ -21,6 +21,9 @@ jobs:
   eval-pack-docker:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
     if: github.event_name != 'pull_request'
     steps:
       - name: Checkout

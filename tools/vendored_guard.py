@@ -22,23 +22,22 @@ def diff_paths(root: Path, args: list[str]) -> list[str]:
     return [line.strip() for line in output.splitlines() if line.strip()]
 
 
-def ref_exists(root: Path, ref: str) -> bool:
-    try:
-        subprocess.check_call(
-            ["git", "-C", str(root), "show-ref", "--verify", "--quiet", ref]
-        )
-        return True
-    except subprocess.CalledProcessError:
-        return False
-
-
 def normalize_base_ref(root: Path, ref: str) -> Optional[str]:
-    if ref_exists(root, ref):
-        return ref
-    if not ref.startswith("refs/") and not ref.startswith("origin/"):
-        origin_ref = f"refs/remotes/origin/{ref}"
-        if ref_exists(root, origin_ref):
-            return origin_ref
+    # show-ref --verify accepts full refs only, so short remote refs such as
+    # origin/master and the commit IDs supplied by CI used to be rejected.
+    for candidate in (ref, f"refs/remotes/origin/{ref}"):
+        result = subprocess.run(
+            [
+                "git", "-C", str(root), "rev-parse", "--verify", "--quiet",
+                "--end-of-options", f"{candidate}^{{commit}}",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
     return None
 
 
@@ -122,6 +121,10 @@ def main() -> int:
         candidates.append(git_base)
     candidates.extend(["origin/master", "origin/main"])
 
+    explicit_base = args.base or env_base
+    if explicit_base and not normalize_base_ref(root, explicit_base):
+        error(f"[vendored_guard] Invalid explicit base ref: {explicit_base}")
+        return 2
     base_ref = pick_base_ref(root, candidates)
     require_base = args.require_base or bool_env("VENDORED_GUARD_REQUIRE_BASE")
     if not base_ref and require_base:

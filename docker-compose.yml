@@ -1,6 +1,7 @@
+# Unset keeps the local proxy default; explicitly empty disables it for CI.
 x-proxy-args: &proxy_args
-  HTTP_PROXY: ${HTTP_PROXY:-http://host.docker.internal:8120}
-  HTTPS_PROXY: ${HTTPS_PROXY:-http://host.docker.internal:8120}
+  HTTP_PROXY: ${HTTP_PROXY-http://host.docker.internal:8120}
+  HTTPS_PROXY: ${HTTPS_PROXY-http://host.docker.internal:8120}
   NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal}
 
 x-build-extra-hosts: &build_extra_hosts

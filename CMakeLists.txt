@@ -1169,14 +1169,6 @@ if(AGENT_BUILD_HOST)
   )
   target_include_directories(session_voice_builtin_packet_accounting_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
-    ${LIBSRTP2_INCLUDE_DIRS}
-  )
-  target_link_directories(session_voice_builtin_packet_accounting_tests PRIVATE
-    ${LIBSRTP2_LIBRARY_DIRS}
-  )
-  target_link_libraries(session_voice_builtin_packet_accounting_tests PRIVATE
-    OpenSSL::SSL
-    OpenSSL::Crypto
   )
   add_test(
     NAME session_voice_builtin_packet_accounting_tests

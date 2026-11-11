@@ -13,6 +13,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Vendored guard regression tests
+        run: python3 tests/test_vendored_guard.py
+
       - name: Repo hygiene guards
+        env:
+          VENDORED_GUARD_BASE: ${{ github.event.pull_request.base.sha || (github.event.before != '0000000000000000000000000000000000000000' && github.event.before) || 'HEAD^' }}
         run: |
           VENDORED_GUARD_REQUIRE_BASE=1 tools/verify_repo_guards.sh --strict
