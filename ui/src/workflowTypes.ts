@@ -148,7 +148,7 @@ export type WorkflowTaskRow = WorkflowJsonObject & {
   attempt?: number;
   max_attempts?: number;
   error?: string;
-  blocker?: { required_action: string };
+  blocker?: { required_action: string; kind?: string };
   ready_unix_ms?: number;
   started_unix_ms?: number;
   finished_unix_ms?: number;

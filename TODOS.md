@@ -19,7 +19,8 @@ The authoritative capability/verification snapshot is [docs/CURRENT_SNAPSHOT.md]
 - [x] Aliyun Omni realtime audio/image voice with server-held Model Studio credentials, bounded device/media lifecycles, one-caption replies and synthetic provider roundtrip qualification; see [voice](docs/VOICE.md).
 - [x] Atomic device assignment/outbox/rate admission, immutable operation identity, pinned recovery and visible scoped device uncertainty; verify crash recovery and one-worker independent progress.
 - [x] Transactional workflow budget reservations/settlement, conservative lost charges, bounded parallel admission and retry-preserving capacity waits; one-shot model step accounting.
-- [ ] P0: extend durable effects to arbitrary host tools and device receipt resolvers; add strict provider/adapter resource metering.
+- [x] Signed UM-BMP device receipt resolver: immutable original-result receipts, late-outcome recovery, no redispatch, preserved owner stops and API/WebUI control.
+- [ ] P0: extend durable effects to arbitrary host tools and additional device receipt adapters; add strict provider/adapter resource metering.
 - [ ] P0: connect goal/requirement/blocker authority to the broker and event-driven wakeup; preserve explicit stops.
 - [ ] P1: immutable SOP registry, durable signals/timers and explicit process decisions/compensation.
 - [ ] P1: instance-scoped pollable core ports and board-level resource/power-loss evidence.

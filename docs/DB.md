@@ -13,6 +13,7 @@ When built with SQLite support (`AGENT_HAVE_SQLITE3`), `agentd` stores its canon
 - durable scene snapshots (`scene_states`)
 - durable async job metadata (`jobs`)
 - durable workflows (`workflows`, `workflow_tasks`, `workflow_events`)
+- immutable signed device receipts (`edge_task_receipts`, schema v36), bound to original assignment identity/payload and separate from platform timeout/cancellation. Receipt result and attestation data follow the same sensitive-data retention/erase policy as device tasks; deleting the parent assignment cascades its receipt. See [DEVICE_ASSIGNMENTS.md](DEVICE_ASSIGNMENTS.md).
 
 This is convenient for debugging problems like:
 
@@ -100,7 +101,11 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v35)
+## Schema (v36)
+
+### `edge_task_receipts`
+
+Immutable successful original-device receipts, keyed by `(task_id, step_id)` and linked to `edge_tasks` with cascading deletion. Columns pin `node_id`, `idempotency_key`, `payload_json`, canonical `result_json`, `result_sha256`, optional `attest_json` and `received_utc_ms`. Only validated signed device ingress records them. They do not rewrite platform timeout/cancellation; workflow reconciliation reads the matching receipt and atomically requeues the affected task under existing cancellation/deadline fences. See [device receipt contract](DEVICE_ASSIGNMENTS.md).
 
 All timestamps are Unix milliseconds.
 

@@ -618,6 +618,7 @@ void handle_edge_message_endpoint(
       // Unknown task; ignore to keep ingestion robust.
       return;
     }
+    const auto original_task = tr;
     const bool terminal = edge_is_terminal_task_state(tr.state);
     const int64_t ts_eff = ts_utc_ms > 0 ? ts_utc_ms : now;
 
@@ -644,7 +645,13 @@ void handle_edge_message_endpoint(
 
     // Do not regress/override terminal states set by the platform (e.g. deadline sweeper) or earlier completion.
     // We still persist the event for observability.
-    const bool apply_update = !terminal && !idempotency_mismatch;
+    const bool node_mismatch = from_id != "node:" + tr.node_id;
+    const bool apply_update = !terminal && !idempotency_mismatch && !node_mismatch;
+    // A late TASK_DONE can supply authoritative outcome evidence without erasing
+    // the platform timeout/cancellation or causing another device command.
+    const bool capture_receipt = type == "TASK_DONE" && state == "SUCCEEDED" &&
+      !idempotency_mismatch && !node_mismatch && got_idem == tr.idempotency_key &&
+      tr.state != "FAILED" && env["auth"].isObject();
     std::string state_eff = state;
     std::string error_text_eff = error_text;
     bool attest_result_sha_mismatch = false;
@@ -655,7 +662,7 @@ void handle_edge_message_endpoint(
     bool attest_sig_checked = false;
     bool attest_sig_ok = false;
     std::string attest_sig_error;
-    if (apply_update) {
+    if (apply_update || capture_receipt) {
       if (state == "SUCCEEDED" && !result_json.empty()) {
         std::string stored_result_json = result_json;
         // Default signing/hash surface is the stored result JSON bytes.
@@ -725,6 +732,9 @@ void handle_edge_message_endpoint(
       }
     }
     Json::Value d = event_data.isNull() ? Json::Value(Json::objectValue) : event_data;
+    // Underscore fields are platform evidence, never trusted inbound claims.
+    for (const auto& field : d.getMemberNames())
+      if (!field.empty() && field.front() == '_') d.removeMember(field);
     // Verify node-provided attestation signature when possible.
     //
     // When `edge_attest_required` / `edge_attest_require_sig` are enabled, we may fail the task on
@@ -855,7 +865,7 @@ void handle_edge_message_endpoint(
       }
     }
 
-    if (apply_update && state == "SUCCEEDED") {
+    if ((apply_update || capture_receipt) && state == "SUCCEEDED") {
       const bool enforce_attest = cfg.edge_attest_required && tr.mode == "invoke";
       const bool enforce_sig = cfg.edge_attest_require_sig && tr.mode == "invoke";
       if (enforce_attest) d["_attest_required"] = true;
@@ -892,6 +902,17 @@ void handle_edge_message_endpoint(
       }
     }
 
+    if (capture_receipt && state_eff == "SUCCEEDED" &&
+        (!attest_present || (edge_sha256_token_is_safe(attest_result_sha) &&
+          !attest_result_sha_mismatch && attest_sig_checked && attest_sig_ok))) {
+      std::string receipt_error;
+      if (!db_or_null->record_edge_task_receipt(tr, &receipt_error)) {
+        resp->status = receipt_error.rfind("device receipt conflicts", 0) == 0 ? 409 : 500;
+        resp->body = json_error_body(receipt_error);
+        return;
+      }
+      d["_device_receipt_recorded"] = true;
+    }
     const std::string effective_state = apply_update ? state_eff : tr.state;
     if (apply_update) {
       tr.state = state_eff;
@@ -900,7 +921,8 @@ void handle_edge_message_endpoint(
       if (!error_text_eff.empty()) tr.error = error_text_eff;
       if (can_backfill_trace_id) tr.trace_id = msg_trace_id_eff;
       (void)db_or_null->upsert_edge_task(tr, nullptr);
-    } else if (can_backfill_trace_id) {
+    } else if (can_backfill_trace_id && !node_mismatch && !idempotency_mismatch) {
+      tr = original_task;
       tr.trace_id = msg_trace_id_eff;
       tr.updated_utc_ms = std::max<int64_t>(tr.updated_utc_ms, ts_eff);
       (void)db_or_null->upsert_edge_task(tr, nullptr);
@@ -921,7 +943,10 @@ void handle_edge_message_endpoint(
       d["_platform_trace_id"] = tr.trace_id;
       d["_msg_trace_id"] = msg_trace_id_eff;
     }
-    if (idempotency_mismatch) {
+    if (node_mismatch) {
+      d["_ignored_by_platform"] = true;
+      d["_reason"] = "node_identity_mismatch";
+    } else if (idempotency_mismatch) {
       d["_ignored_by_platform"] = true;
       d["_reason"] = "idempotency_key_mismatch";
       d["_platform_idempotency_key"] = tr.idempotency_key;
@@ -1108,6 +1133,7 @@ void handle_edge_message_endpoint(
     } else {
       update_task_state(task_id, step_id, "SUCCEEDED", result_json, /*error_text=*/"", d);
     }
+    if (resp->status >= 400) return;
     resp->body = "{\"ok\":true}";
     return;
   }

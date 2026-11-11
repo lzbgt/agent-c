@@ -74,6 +74,8 @@ npm run dev
 
 Connection and production build details are in [WebUI](docs/WEBUI.md). Tool extensions are documented in [Tools](docs/TOOLS.md).
 
+Signed original-device receipts can now recover an uncertain workflow without another device command. The API and **Check device receipt** control preserve cancellation, deadlines and completed independent work. This source change is not yet deployed; the live runtime remains `a0890c0`. [Device receipt contract](docs/DEVICE_ASSIGNMENTS.md)
+
 ## Reproduce the checked snapshot
 
 The full verifier uses Debug native builds, local model stubs and mocked browser APIs. It does not need production provider keys:

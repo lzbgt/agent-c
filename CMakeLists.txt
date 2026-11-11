@@ -270,6 +270,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/agent_db_stats.cpp
     daemon/src/agent_db_edge_nodes.cpp
     daemon/src/agent_db_edge_tasks.cpp
+    daemon/src/agent_db_device_receipts.cpp
     daemon/src/agent_db_edge_admission.cpp
     daemon/src/agent_db_edge_workflows.cpp
     daemon/src/cron_util.cpp
@@ -2065,6 +2066,7 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
       daemon/src/agent_db_runs.cpp
       daemon/src/agent_db_edge_nodes.cpp
       daemon/src/agent_db_edge_tasks.cpp
+    daemon/src/agent_db_device_receipts.cpp
     daemon/src/agent_db_edge_admission.cpp
       daemon/src/agent_db_edge_workflows.cpp
       daemon/src/agent_db_stats.cpp

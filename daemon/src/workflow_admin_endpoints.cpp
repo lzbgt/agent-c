@@ -41,7 +41,6 @@ void handle_workflow_reconcile_endpoint(const DaemonConfig& cfg, const CorsConfi
   if (!daemon_require_auth(cfg,req,resp)) return;
   const auto fail = [&](int status,const std::string& error) { resp->status=status; resp->body=json_error_body(error); };
   if (!db || !db->is_open()) { fail(503,"db not available"); return; }
-  if (!cfg.workflow_enable_http_tasks) { fail(409,"HTTP workflow tasks are disabled"); return; }
   Json::Value args;
   std::string error;
   if (!json_parse_object(req.body,&args,&error)) { fail(400,"invalid reconciliation request"); return; }
@@ -54,6 +53,26 @@ void handle_workflow_reconcile_endpoint(const DaemonConfig& cfg, const CorsConfi
   std::vector<AgentDb::WorkflowEffectRow> effects;
   if (!db->list_workflow_tasks(workflow.workflow_id,&tasks,&error) || !db->list_workflow_effects(workflow.workflow_id,&effects,&error)) { fail(500,"cannot load effect state"); return; }
   const auto task = std::find_if(tasks.begin(),tasks.end(),[&](const auto& t) { return t.task_id == args["task_id"].asString(); });
+  if (task == tasks.end()) { fail(404,"workflow task not found"); return; }
+  Json::Value device_request;
+  if (json_parse_object(task->request_json,&device_request,&error) &&
+      device_request["kind"].isString() && device_request["kind"].asString() == "edge_invoke") {
+    if (args.isMember("reconcile_url")) { fail(400,"device recovery uses the recorded node receipt, not a URL"); return; }
+    Json::Value prior;
+    if (!json_parse_object(task->result_json,&prior,&error) ||
+        !prior["blocker"].isObject() || prior["blocker"]["kind"] != "device_outcome_unknown") {
+      fail(409,"only an unresolved device outcome can be reconciled"); return;
+    }
+    AgentDb::EdgeTaskRow assignment;
+    if (!db->get_edge_task(workflow.workflow_id,task->task_id,&assignment,&error)) { fail(404,"device assignment not found"); return; }
+    if (!db->requeue_workflow_device_receipt(*task,assignment,&error)) { fail(409,error); return; }
+    Json::Value out;
+    out["ok"] = true; out["workflow_id"] = workflow.workflow_id; out["task_id"] = task->task_id;
+    out["kind"] = "device_receipt"; out["node_id"] = assignment.node_id;
+    resp->body = json_stringify_compact(out);
+    return;
+  }
+  if (!cfg.workflow_enable_http_tasks) { fail(409,"HTTP workflow tasks are disabled"); return; }
   const auto effect = std::find_if(effects.begin(),effects.end(),[&](const auto& e) { return e.task_id == args["task_id"].asString(); });
   if (task == tasks.end() || effect == effects.end()) { fail(404,"effect task not found"); return; }
   const auto resolver = args.isMember("reconcile_url") ? args["reconcile_url"].asString() : effect->reconcile_url;

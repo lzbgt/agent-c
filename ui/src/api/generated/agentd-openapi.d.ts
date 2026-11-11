@@ -3826,8 +3826,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Requeue receipt reconciliation for one failed uncertain external effect
-         * @description Preserves effect identity and completed independent tasks. May supply a same-origin receipt endpoint after an external prerequisite is fixed. Does not bypass cancellation, deadlines, workflow budgets or the guarded-write protocol.
+         * Requeue receipt reconciliation for one failed uncertain external or device effect
+         * @description Preserves effect identity and completed independent tasks. HTTP effects may supply a same-origin receipt endpoint. Device effects use only a matching signed TASK_DONE receipt already recorded by the original node; reconcile_url is rejected and no command is repeated. Caller-supplied results are never accepted. Does not bypass cancellation, deadlines, workflow budgets or the guarded-write protocol.
          */
         post: {
             parameters: {
@@ -3856,7 +3856,10 @@ export interface paths {
                             ok: boolean;
                             workflow_id: string;
                             task_id: string;
-                            effect_id: string;
+                            effect_id?: string;
+                            /** @enum {string} */
+                            kind?: "device_receipt";
+                            node_id?: string;
                         };
                     };
                 };
@@ -3874,7 +3877,7 @@ export interface paths {
                     };
                     content?: never;
                 };
-                /** @description Conflicting state, cancellation, deadline or disabled HTTP tasks */
+                /** @description Conflicting state, missing validated device receipt, cancellation, deadline or disabled HTTP tasks */
                 409: {
                     headers: {
                         [name: string]: unknown;

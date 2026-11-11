@@ -24,7 +24,26 @@ This is a platform dispatch guarantee. It does not certify exactly-once physical
 
 Resource locks cover active platform assignments; they are not physical interlocks. Platform terminal status alone cannot establish that hardware is safe to reuse. Rate/cooldown admission is atomic, while overall workflow token/time/tool budgets still use their documented accounting semantics. Workflow-wide reservation/settlement now has its own [budget contract](WORKFLOW_BUDGETS.md); arbitrary host-tool effect adapters and strict provider/adapter resource metering remain required work.
 
-This change does not add a general device receipt reconciliation API. A timeout needs verified destination readback or a device-specific resolver before an agent can safely plan another business action. The required action remains inspectable; it is never replaced by a model's unverified success claim.
+## Signed device receipt recovery
+
+Schema v36 stores validated successful `TASK_DONE` receipts separately in `edge_task_receipts`. A receipt is bound to the original task, step, node, idempotency key and immutable command payload. It retains the canonical result, its platform-computed SHA-256, optional attestation and receipt time. The first committed receipt is immutable: identical repeats are observations; a different result conflicts. The receipt transaction does not change the platform timeout/cancellation state or publish a command.
+
+Recovery receipts require a cryptographically verified envelope, even when unsigned legacy ingress is enabled. The authenticated sender must be the assigned node and the key must match the original operation. Result-schema checks and configured attestation requirements still apply. Invalid supplied signatures or result-hash attestations never produce recovery evidence, and inbound underscore-prefixed fields cannot forge platform validation decisions. Keep per-node key policy and revocation configuration appropriate to the deployment; shared trusted signing keys do not provide isolation between their holders.
+
+A matching signed late result can settle an already timed-out or canceled assignment. This proves only the destination's reported completion under its trust contract, not independent physical quality or safety. An absent receipt, unsigned success claim, expired deadline, cancellation or transport acknowledgment cannot establish completion or authorize another action.
+
+For an uncertain workflow task, agents and the **Check device receipt** control use the existing authenticated endpoint:
+
+```sh
+curl -X POST "$AGENTD_BASE/api/v1/workflow/reconcile" \
+  -H 'Content-Type: application/json' \
+  -d '{"workflow_id":"wf_42","task_id":"device_action"}'
+```
+
+Use the deployment's normal API authentication. Device reconciliation accepts no result, success flag or resolver URL. It checks the original recorded receipt, then atomically requeues only that failed workflow task. It preserves completed independent work, budgets, deadlines and sticky owner cancellation; a conflicting active request returns 409. Missing evidence returns 409 without changing the workflow. Receipt observation costs no new device dispatch. The scheduler exposes both `edge_platform_state` and `edge_receipt_reconciled`, so a recovered result does not hide its earlier timeout.
+
+This is the signed UM-BMP receipt adapter, not a generic arbitrary-device readback service. Nodes must submit their existing original result through authenticated ingestion. There is no automatic replay for `not_applied`, no inferred rollback and no certification of board power-loss behavior or destination fencing. Other device protocols and arbitrary host-tool effect adapters remain separate work.
+
 
 ## Verification
 
@@ -37,6 +56,8 @@ This change does not add a general device receipt reconciliation API. A timeout 
 - Stable node selection in workflow and direct API recovery after the preferred node changes.
 - A real one-worker scheduler: an uncertain device action exposes its required action, independent work completes, dependents do not run, and no second command is published.
 - A real writer killed during repeated transactions; restart retains equal task/outbox/event/rate counts.
+- Signed late receipts, wrong node/key, unsigned claims, schema/attestation rejection, immutable duplicate/conflict handling, abrupt receipt-writer exit, transactional recovery rollback and restart.
+- A one-worker workflow recovers its original result, releases dependent work, preserves completed independent tasks and refuses owner cancellation/deadline bypass, with exactly one platform command throughout.
 
 Existing device schema, receipt/result, deadline, workflow submit/cancel and template expansion smoke tests remain part of the checked regression lane. These host tests do not substitute for board/device qualification.
 

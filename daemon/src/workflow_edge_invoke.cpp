@@ -212,6 +212,17 @@ Json::Value workflow_edge_invoke_to_json(AgentDb *db,
             out["retryable"] = true;
             out["retry_in_ms"] = 100;
           } else {
+            out["edge_platform_state"] = tr.state;
+            AgentDb::EdgeTaskRow receipt;
+            if (tr.state != "FAILED" &&
+                db->get_edge_task_receipt(tr, &receipt, &terr)) {
+              tr = receipt;
+              out["edge_receipt_reconciled"] = true;
+            } else if (!terr.empty()) {
+              out["error"] = "cannot inspect device receipt: " + terr;
+              out["retryable"] = true;
+              return out;
+            }
             out["edge_state"] = tr.state;
             if (!tr.result_sha256.empty())
               out["edge_result_sha256"] = tr.result_sha256;
@@ -258,9 +269,9 @@ Json::Value workflow_edge_invoke_to_json(AgentDb *db,
                 out["blocker"]["task_id"] = task.task_id;
                 out["blocker"]["node_id"] = tr.node_id;
                 out["blocker"]["required_action"] =
-                    "Verify the original device operation and its readback; an "
-                    "elapsed deadline or cancellation is not proof of physical "
-                    "rollback.";
+                    "Obtain the original device result, then check its receipt. "
+                    "An elapsed deadline or cancellation is not proof of "
+                    "physical rollback.";
               }
             } else {
               out["ok"] = false;

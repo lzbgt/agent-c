@@ -1,5 +1,6 @@
 import React from "react";
 import WorkflowEffectsSection from "./WorkflowEffectsSection";
+import DeviceReceiptButton from "./DeviceReceiptButton";
 import type { ApiAuth } from "../../api/auth";
 import type { WorkflowDetailResp } from "../../api";
 import type { WorkflowBudgetSnapshot, WorkflowSummaryRow } from "../../workflowTypes";
@@ -39,6 +40,10 @@ export default function WorkflowDetailSection(props: WorkflowDetailSectionProps)
         {props.tasks.filter((task) => task.status === "error" && task.blocker?.required_action).map((task) => <div key={task.task_id} className="mt-2">
           <span className="break-all text-xs text-white/60">{task.task_id}</span>
           <p className="mt-1 break-words text-sm leading-relaxed text-white/90">{task.blocker!.required_action}</p>
+          {task.blocker?.kind === "device_outcome_unknown" && props.effectControls && !summary.cancel_requested ?
+            <DeviceReceiptButton key={summary.workflow_id + ":" + task.task_id}
+              workflowId={summary.workflow_id} taskId={task.task_id} controls={props.effectControls}
+              onReload={props.onReloadWorkflow} /> : null}
         </div>)}
       </section> : null}
       <div className="rounded-md border border-white/10 bg-black/30 p-3">

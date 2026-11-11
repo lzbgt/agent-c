@@ -1,6 +1,6 @@
 # Durable effects and reconciliation
 
-`kind: http_json` POST actions now have a durable effect boundary. The scheduler can recover a task after a crash without blindly repeating its external write. GET remains a read-only HTTP task. Device assignments have a separate atomic identity/admission/outbox boundary described in [DEVICE_ASSIGNMENTS.md](DEVICE_ASSIGNMENTS.md). Shell commands, arbitrary agent tools and capsules do not acquire an effect guarantee merely by belonging to the same workflow.
+`kind: http_json` POST actions now have a durable effect boundary. The scheduler can recover a task after a crash without blindly repeating its external write. GET remains a read-only HTTP task. Device assignments have a separate atomic identity/admission/outbox boundary and signed original-result receipt resolver described in [DEVICE_ASSIGNMENTS.md](DEVICE_ASSIGNMENTS.md). Device recovery shares the reconcile endpoint but accepts no URL or caller-supplied outcome. Shell commands, arbitrary agent tools and capsules do not acquire an effect guarantee merely by belonging to the same workflow.
 
 ## Default contract
 

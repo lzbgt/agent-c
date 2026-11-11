@@ -1,4 +1,7 @@
 #include "agent_db.h"
+#include "base64.h"
+#include "agent/hmac_sha256.h"
+#include "agent/json_c14n.h"
 #include "edge_interop_endpoints.h"
 #include "edge_util.h"
 #include "workflow_edge_invoke.h"
@@ -113,6 +116,47 @@ void concurrent(AgentDb &a, AgentDb &b, const std::string &prefix, int rate,
     worker.join();
   check(accepted == expected, "parallel capacity exceeded");
 }
+
+HttpResponse deliver_receipt(AgentDb& db, const DaemonConfig& cfg,
+                             const AgentDb::EdgeTaskRow& assignment,
+                             const std::string& source, const std::string& key,
+                             Json::Value result, bool sign = true) {
+  static int sequence = 0;
+  Json::Value envelope;
+  envelope["msg_id"] = "receipt-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + "-" + std::to_string(++sequence);
+  envelope["type"] = "TASK_DONE";
+  envelope["from"] = "node:" + source;
+  envelope["to"] = "platform";
+  envelope["ts_utc_ms"] = Json::Int64(edge_unix_ms_now());
+  envelope["body"]["task_id"] = assignment.task_id;
+  envelope["body"]["step_id"] = assignment.step_id;
+  envelope["body"]["idempotency_key"] = key;
+  envelope["body"]["result"] = result;
+  // Attempt to smuggle a platform attestation decision. It must be discarded.
+  envelope["body"]["_attest_sig_ok"] = true;
+  if (sign) {
+    envelope["auth"]["alg"] = "hmac-sha256";
+    envelope["auth"]["kid"] = source;
+    const auto bytes = encode(envelope);
+    char* canonical = nullptr;
+    size_t size = 0;
+    char message[256]{};
+    check(agent_json_c14n_canonicalize(bytes.data(),bytes.size(),&canonical,&size,message,sizeof(message)) == AGENT_OK,
+          "cannot sign fixture");
+    uint8_t mac[32];
+    const auto secret = cfg.edge_auth_hmac_keys.at(source);
+    agent_hmac_sha256(secret.data(),secret.size(),canonical,size,mac);
+    agent_free(canonical);
+    envelope["auth"]["sig"] = base64_encode(mac,sizeof(mac));
+  }
+  HttpRequest req;
+  req.method = "POST";
+  req.body = encode(envelope);
+  HttpResponse resp;
+  handle_edge_message_endpoint(cfg,CorsConfig{},&db,req,&resp);
+  return resp;
+}
+
 void node(AgentDb &db, const std::string &id, int64_t seen) {
   AgentDb::EdgeNodeRow n;
   n.node_id = id;
@@ -126,6 +170,25 @@ void node(AgentDb &db, const std::string &id, int64_t seen) {
 }
 } // namespace
 int main(int argc, char **argv) {
+#if !defined(_WIN32)
+  if (argc == 3 && std::string(argv[1]) == "--receipt-writer") {
+    AgentDb db;
+    std::string error;
+    check(db.open(argv[2],&error),error);
+    AgentDb::EdgeTaskRow assignment;
+    check(db.get_edge_task("independent","action",&assignment,&error),error);
+    DaemonConfig config;
+    config.edge_auth_kid_policy = "match_node";
+    config.edge_auth_hmac_keys["first"] = "isolated-test-first-key";
+    Json::Value result;
+    result["readback"] = 1;
+    check(deliver_receipt(db,config,assignment,"first",assignment.idempotency_key,result).status==200,
+          "child receipt ingestion failed");
+    // Abrupt process death after receipt commit, before workflow recovery and
+    // without a clean SQLite close, must not lose the evidence.
+    _exit(0);
+  }
+#endif
   if (argc == 3 && std::string(argv[1]) == "--crash-writer") {
     AgentDb db;
     std::string error;
@@ -374,6 +437,145 @@ int main(int argc, char **argv) {
     check(count((root / "engine.sqlite").string(),
                 "SELECT COUNT(*) FROM edge_outbox_messages") == 1,
           "workflow recovery republished device command");
+
+    // Recovery is readback-only: without a signed matching receipt, no task changes.
+    HttpRequest reconcile;
+    reconcile.method = "POST";
+    reconcile.body = R"({"workflow_id":"independent","task_id":"action"})";
+    const auto recover = [&]() {
+      HttpResponse response;
+      handle_workflow_reconcile_endpoint(config,CorsConfig{},&engine_db,reconcile,&response);
+      return response;
+    };
+    check(recover().status == 409, "missing receipt allowed workflow recovery");
+    config.edge_auth_kid_policy = "match_node";
+    config.edge_auth_hmac_keys["first"] = "isolated-test-first-key";
+    config.edge_auth_hmac_keys["second"] = "isolated-test-second-key";
+    Json::Value result;
+    result["readback"] = 1;
+    check(deliver_receipt(engine_db,config,original,"first",original.idempotency_key,result,false).status == 200,
+          "optional-auth legacy ingress changed");
+    check(count((root/"engine.sqlite").string(),"SELECT COUNT(*) FROM edge_task_receipts") == 0,
+          "unsigned late claim became a recovery receipt");
+    check(deliver_receipt(engine_db,config,original,"second",original.idempotency_key,result).status == 200,
+          "wrong-node observation rejected unexpectedly");
+    check(deliver_receipt(engine_db,config,original,"first","wrong-operation",result).status == 200,
+          "wrong-key observation rejected unexpectedly");
+    AgentDb::EdgeNodeRow schema_node;
+    check(engine_db.get_edge_node("first",&schema_node,&error),error);
+    const auto original_manifest = schema_node.manifest_json;
+    schema_node.manifest_json = R"({"tools":[{"name":"actuator","side_effect_level":"low","parameters_schema":{"type":"object"},"result_schema":{"type":"object","required":["readback"]}}]})";
+    check(engine_db.upsert_edge_node(schema_node,&error),error);
+    check(deliver_receipt(engine_db,config,original,"first",original.idempotency_key,result).status==200,
+          "invalid schema observation failed");
+    check(count((root/"engine.sqlite").string(),"SELECT COUNT(*) FROM edge_task_receipts")==0,
+          "schema-invalid late result became a receipt");
+    schema_node.manifest_json = original_manifest;
+    check(engine_db.upsert_edge_node(schema_node,&error),error);
+    config.edge_attest_require_sig = true;
+    auto invalid = result;
+    invalid["attest"]["kid"] = "first";
+    invalid["attest"]["alg"] = "hmac-sha256";
+    invalid["attest"]["sig"] = "invalid";
+    invalid["attest"]["ts_utc_ms"] = Json::Int64(edge_unix_ms_now());
+    invalid["attest"]["result_sha256"] = "sha256:" + std::string(64,'0');
+    check(deliver_receipt(engine_db,config,original,"first",original.idempotency_key,invalid).status == 200,
+          "invalid attestation observation failed");
+    check(count((root/"engine.sqlite").string(),"SELECT COUNT(*) FROM edge_task_receipts") == 0,
+          "wrong identity or forged attestation became a receipt");
+    config.edge_attest_require_sig = false;
+    auto incomplete_attest = result;
+    incomplete_attest["attest"]["sig"] = "unverifiable";
+    check(deliver_receipt(engine_db,config,original,"first",original.idempotency_key,incomplete_attest).status==200,
+          "incomplete optional attestation observation failed");
+    check(count((root/"engine.sqlite").string(),"SELECT COUNT(*) FROM edge_task_receipts")==0,
+          "incomplete optional attestation became a trusted receipt");
+#if !defined(_WIN32)
+    const auto receipt_child = fork();
+    check(receipt_child>=0,"fork receipt writer");
+    if (receipt_child==0) {
+      execl(argv[0],argv[0],"--receipt-writer",(root/"engine.sqlite").c_str(),static_cast<char*>(nullptr));
+      _exit(4);
+    }
+    int receipt_status = 0;
+    check(waitpid(receipt_child,&receipt_status,0)==receipt_child &&
+          WIFEXITED(receipt_status) && WEXITSTATUS(receipt_status)==0,
+          "abrupt receipt writer failed");
+#else
+    check(deliver_receipt(engine_db,config,original,"first",original.idempotency_key,result).status == 200,
+          "signed late receipt was not accepted");
+#endif
+    check(count((root/"engine.sqlite").string(),"SELECT COUNT(*) FROM edge_task_receipts") == 1,
+          "signed receipt not durable");
+    check(deliver_receipt(engine_db,config,original,"first",original.idempotency_key,result).status == 200,
+          "identical receipt not idempotent");
+    result["readback"] = 2;
+    check(deliver_receipt(engine_db,config,original,"first",original.idempotency_key,result).status == 409,
+          "conflicting receipt replaced committed evidence");
+    AgentDb::EdgeTaskRow receipt;
+    check(engine_db.get_edge_task(wf.workflow_id,task.task_id,&original,&error) &&
+          original.state == "TIMED_OUT" && original.result_json.empty(),
+          "late receipt erased platform timeout or mutated platform result");
+    check(engine_db.get_edge_task_receipt(original,&receipt,&error) &&
+          receipt.result_json == R"({"readback":1})",
+          "receipt result changed after conflict");
+    engine_db.close();
+    check(engine_db.open((root/"engine.sqlite").string(),&error),error);
+    check(engine_db.get_edge_task_receipt(original,&receipt,&error),"receipt lost on restart");
+    check(engine_db.get_workflow(wf.workflow_id,&current,&error),error);
+    current.cancel_requested = true;
+    check(engine_db.upsert_workflow(current,&error),error);
+    check(recover().status == 409,"receipt recovery cleared owner cancellation");
+    // Cancellation is sticky in production. Reset only this isolated fixture
+    // to test the independent deadline and successful-recovery cases.
+    sql((root/"engine.sqlite").string(),"UPDATE workflows SET cancel_requested=0 WHERE workflow_id=\'independent\';");
+    current.cancel_requested = false;
+    current.deadline_unix_ms = edge_unix_ms_now()-1;
+    check(engine_db.upsert_workflow(current,&error),error);
+    check(recover().status == 409,"receipt recovery bypassed workflow deadline");
+    current.deadline_unix_ms = edge_unix_ms_now()+60000;
+    check(engine_db.upsert_workflow(current,&error),error);
+    reconcile.body = R"({"workflow_id":"independent","task_id":"action","result":{"ok":true}})";
+    check(recover().status == 400,"caller supplied outcome accepted");
+    reconcile.body = R"({"workflow_id":"independent","task_id":"action","reconcile_url":"https://example.test"})";
+    check(recover().status == 400,"arbitrary device resolver URL accepted");
+    reconcile.body = R"({"workflow_id":"independent","task_id":"action"})";
+    // Roll back the workflow change if task update or evidence checks fail.
+    sql((root/"engine.sqlite").string(),
+        "CREATE TRIGGER refuse_recovery BEFORE UPDATE ON workflow_tasks WHEN NEW.status='queued' BEGIN SELECT RAISE(ABORT,'test'); END;");
+    check(recover().status == 409,"failed transaction claimed recovery");
+    check(engine_db.get_workflow(wf.workflow_id,&current,&error) && current.status=="error",
+          "failed recovery partially requeued workflow");
+    sql((root/"engine.sqlite").string(),"DROP TRIGGER refuse_recovery;");
+    const auto resumed = recover();
+    check(resumed.status == 200,"verified receipt did not requeue workflow: " + resumed.body);
+    check(recover().status == 409,"duplicate active recovery accepted");
+    check(engine.start(&error),error);
+    const auto recovered_by = std::chrono::steady_clock::now()+std::chrono::seconds(3);
+    do {
+      check(engine_db.get_workflow(wf.workflow_id,&current,&error),error);
+      if (current.status=="done") break;
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    } while (std::chrono::steady_clock::now()<recovered_by);
+    engine.stop();
+    check(current.status=="done","receipt recovery did not release dependent work");
+    check(engine_db.list_workflow_tasks(wf.workflow_id,&settled,&error),error);
+    for (const auto& row : settled) {
+      check(row.status=="done","recovered workflow retained failed/pending task");
+      if (row.task_id=="independent") check(row.attempt==1,"completed independent work replayed");
+      if (row.task_id=="action") {
+        Json::Value value;
+        std::istringstream input(row.result_json);
+        check(Json::parseFromStream(reader,input,&value,&error) &&
+              value["edge_receipt_reconciled"]==true &&
+              value["edge_platform_state"]=="TIMED_OUT" &&
+              value["edge"]["node_id"]=="first" && value["tool_calls_total"]==0,
+              "recovered outcome lost provenance or charged another command");
+      }
+    }
+    check(count((root/"engine.sqlite").string(),"SELECT COUNT(*) FROM edge_outbox_messages")==1,
+          "receipt recovery republished a device command");
+
   }
 #if !defined(_WIN32)
   // Kill a real writer during repeated transactions. WAL recovery must expose

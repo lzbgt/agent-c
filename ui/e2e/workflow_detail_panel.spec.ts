@@ -2,8 +2,18 @@ import { expect, test } from "@playwright/test";
 
 test("workflow detail panel loads summary and DAG from selected workflow", async ({ page }) => {
   let reconciliation: unknown = null;
+  let deviceChecks = 0;
+  let cancelled = false;
   await page.route("**/api/v1/workflow/reconcile", async (route) => {
     reconciliation = route.request().postDataJSON();
+    if (route.request().postDataJSON().task_id === "task-c") {
+      deviceChecks++;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await route.fulfill({ status: deviceChecks === 1 ? 409 : 200,
+        json: deviceChecks === 1 ? {ok:false,error:"No matching signed device receipt is recorded"} :
+          {ok:true,workflow_id:"wf-detail-1",task_id:"task-c",kind:"device_receipt",node_id:"original"} });
+      return;
+    }
     await route.fulfill({ json: { ok: true, workflow_id: "wf-detail-1", task_id: "task-b", effect_id: "fx-fixture" } });
   });
   await page.addInitScript(() => {
@@ -54,7 +64,7 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
           created_unix_ms: 1700000000000,
           updated_unix_ms: 1700000100000,
           deadline_unix_ms: 1700003600000,
-          cancel_requested: false,
+          cancel_requested: cancelled,
         },
         tasks: [
           {
@@ -71,6 +81,11 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
             depends_on: ["task-a"],
             attempt: 1,
             max_attempts: 2,
+          },
+          {
+            task_id: "task-c", status: "error", depends_on: [],
+            blocker: {kind:"device_outcome_unknown", required_action:"Obtain the original device result, then check its receipt."},
+            attempt: 1, max_attempts: 1,
           },
         ],
         effects: [{effect_id: "fx-fixture", task_id: "task-b", request_hash: "sha256:fixture", mode: "guarded", state: "unknown", revision: 2, attempt: 1, updated_unix_ms: 1700000100000}],
@@ -99,7 +114,7 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
   await expect(page.getByRole("region", { name: "Needs your attention" })).toContainText("Verify the original device operation and its readback.");
   await expect(page.getByTestId("workflow-detail-panel")).toContainText("Workflow summary");
   await expect(page.getByTestId("workflow-detail-panel")).toContainText("trace-123");
-  await expect(page.getByTestId("workflow-dag-panel")).toContainText("tasks: 2");
+  await expect(page.getByTestId("workflow-dag-panel")).toContainText("tasks: 3");
   await expect(page.getByTestId("workflow-dag-panel")).toContainText("task-a");
   await expect(page.getByTestId("workflow-dag-panel")).toContainText("task-b");
   await expect(page.getByTestId("workflow-effects")).toContainText("Outcome unresolved");
@@ -113,4 +128,16 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
   await page.getByRole("textbox", { name: "Receipt endpoint for task-b" }).fill("http://127.0.0.1:7777/receipts");
   await page.getByRole("button", { name: "Reconcile outcome", exact: true }).click();
   await expect.poll(() => reconciliation).toEqual({ workflow_id: "wf-detail-1", task_id: "task-b", reconcile_url: "http://127.0.0.1:7777/receipts" });
+  const receipt = page.getByRole("button", {name:"Check device receipt",exact:true});
+  await receipt.evaluate((button: HTMLButtonElement) => {button.click(); button.click();});
+  await expect(page.getByRole("button",{name:"Checking…",exact:true})).toBeDisabled();
+  await expect(page.getByRole("alert")).toContainText("No matching signed device receipt");
+  expect(deviceChecks).toBe(1);
+  await receipt.click();
+  await expect.poll(() => deviceChecks).toBe(2);
+  await expect.poll(() => reconciliation).toEqual({workflow_id:"wf-detail-1",task_id:"task-c"});
+  await expect(receipt).toBeEnabled();
+  cancelled = true;
+  await page.getByTestId("workflow-detail-panel").getByRole("button",{name:"Reload",exact:true}).click();
+  await expect(receipt).toHaveCount(0);
 });

@@ -57,7 +57,7 @@ export function normalizeTask(raw: unknown): WorkflowTask | null {
   return {
     task_id: taskId,
     blocker: isObjectRecord(raw.blocker) && typeof raw.blocker.required_action === "string"
-      ? { required_action: raw.blocker.required_action } : undefined,
+      ? { required_action: raw.blocker.required_action, kind: typeof raw.blocker.kind === "string" ? raw.blocker.kind : undefined } : undefined,
     status: typeof raw.status === "string" ? raw.status : undefined,
     depends_on: deps,
     allow_error: typeof raw.allow_error === "boolean" ? raw.allow_error : undefined,

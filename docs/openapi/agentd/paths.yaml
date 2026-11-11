@@ -2339,8 +2339,8 @@
 /api/v1/workflow/reconcile:
   post:
     tags: [workflows]
-    summary: Requeue receipt reconciliation for one failed uncertain external effect
-    description: Preserves effect identity and completed independent tasks. May supply a same-origin receipt endpoint after an external prerequisite is fixed. Does not bypass cancellation, deadlines, workflow budgets or the guarded-write protocol.
+    summary: Requeue receipt reconciliation for one failed uncertain external or device effect
+    description: Preserves effect identity and completed independent tasks. HTTP effects may supply a same-origin receipt endpoint. Device effects use only a matching signed TASK_DONE receipt already recorded by the original node; reconcile_url is rejected and no command is repeated. Caller-supplied results are never accepted. Does not bypass cancellation, deadlines, workflow budgets or the guarded-write protocol.
     requestBody:
       required: true
       content:
@@ -2360,18 +2360,20 @@
           application/json:
             schema:
               type: object
-              required: [ok, workflow_id, task_id, effect_id]
+              required: [ok, workflow_id, task_id]
               properties:
                 ok: { type: boolean }
                 workflow_id: { type: string }
                 task_id: { type: string }
                 effect_id: { type: string }
+                kind: { type: string, enum: [device_receipt] }
+                node_id: { type: string }
       "400":
         description: Invalid request, cross-origin resolver or outbound policy rejection
       "404":
         description: Workflow or effect task not found
       "409":
-        description: Conflicting state, cancellation, deadline or disabled HTTP tasks
+        description: Conflicting state, missing validated device receipt, cancellation, deadline or disabled HTTP tasks
 
 /api/v1/workflow/cancel:
   post:

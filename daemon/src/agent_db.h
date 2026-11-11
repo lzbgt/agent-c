@@ -873,6 +873,10 @@ class AgentDb {
   bool admit_edge_task_assignment(const EdgeTaskRow& task, const EdgeOutboxMessageRow& message,
     const EdgeTaskEventRow& event, int max_per_minute, int cooldown_ms,
     int64_t* out_outbox_id, bool* out_deduped, int* out_http_status, std::string* out_error);
+  // Validated destination receipts are immutable and separate from platform timeout/cancellation.
+  bool record_edge_task_receipt(const EdgeTaskRow& receipt, std::string* error);
+  bool get_edge_task_receipt(const EdgeTaskRow& assignment, EdgeTaskRow* receipt, std::string* error);
+  bool requeue_workflow_device_receipt(const WorkflowTaskRow& task, const EdgeTaskRow& assignment, std::string* error);
   bool upsert_edge_task(const EdgeTaskRow& row, std::string* out_error);
   bool get_edge_task(const std::string& task_id, const std::string& step_id, EdgeTaskRow* out_row, std::string* out_error);
   bool get_edge_task_by_node_idempotency(
