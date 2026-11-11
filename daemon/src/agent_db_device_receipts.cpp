@@ -38,19 +38,22 @@ FROM edge_tasks WHERE task_id=? AND step_id=? AND node_id=? AND idempotency_key=
 ON CONFLICT(task_id,step_id) DO NOTHING;
 )SQL";
   if (sqlite3_prepare_v2(db_,insert,-1,&raw,nullptr) != SQLITE_OK) {
-    if (error) *error = agent_db_sqlite_err(db_); return rollback();
+    if (error) *error = agent_db_sqlite_err(db_);
+    return rollback();
   }
   {
     Statement stmt(raw,sqlite3_finalize);
     if (!(agent_db_bind_text(raw,1,row.result_json) && agent_db_bind_text(raw,2,row.result_sha256) &&
           agent_db_bind_text(raw,3,row.attest_json) && agent_db_bind_i64(raw,4,agent_db_unix_ms_now()) &&
           bind_identity(raw,row,5) && agent_db_step_done(raw))) {
-      if (error) *error = agent_db_sqlite_err(db_); return rollback();
+      if (error) *error = agent_db_sqlite_err(db_);
+      return rollback();
     }
   }
   const char* check = "SELECT 1 FROM edge_task_receipts WHERE task_id=? AND step_id=? AND node_id=? AND idempotency_key=? AND payload_json=? AND result_json=? AND result_sha256=?";
   if (sqlite3_prepare_v2(db_,check,-1,&raw,nullptr) != SQLITE_OK) {
-    if (error) *error = agent_db_sqlite_err(db_); return rollback();
+    if (error) *error = agent_db_sqlite_err(db_);
+    return rollback();
   }
   {
     Statement stmt(raw,sqlite3_finalize);
@@ -77,7 +80,8 @@ bool AgentDb::get_edge_task_receipt(const EdgeTaskRow& assignment, EdgeTaskRow* 
   sqlite3_stmt* raw = nullptr;
   const char* query = "SELECT result_json,result_sha256,attest_json,received_utc_ms FROM edge_task_receipts WHERE task_id=? AND step_id=? AND node_id=? AND idempotency_key=? AND payload_json=?";
   if (sqlite3_prepare_v2(db_,query,-1,&raw,nullptr) != SQLITE_OK) {
-    if (error) *error = agent_db_sqlite_err(db_); return false;
+    if (error) *error = agent_db_sqlite_err(db_);
+    return false;
   }
   Statement stmt(raw,sqlite3_finalize);
   if (!bind_identity(raw,assignment)) { if (error) *error = agent_db_sqlite_err(db_); return false; }
@@ -117,7 +121,8 @@ AND r.node_id=t.node_id AND r.idempotency_key=t.idempotency_key AND r.payload_js
 AND t.state IN ('TIMED_OUT','CANCELED','SUCCEEDED');
 )SQL";
   if (sqlite3_prepare_v2(db_,receipt,-1,&raw,nullptr) != SQLITE_OK) {
-    if (error) *error = agent_db_sqlite_err(db_); return rollback();
+    if (error) *error = agent_db_sqlite_err(db_);
+    return rollback();
   }
   {
     Statement stmt(raw,sqlite3_finalize);

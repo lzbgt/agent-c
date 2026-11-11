@@ -17,6 +17,7 @@ ENV GOSUMDB=${GOSUMDB}
 
 WORKDIR /src
 COPY broker/go.mod broker/go.sum ./broker/
+COPY broker/third_party/ ./broker/third_party/
 WORKDIR /src/broker
 RUN go mod download
 

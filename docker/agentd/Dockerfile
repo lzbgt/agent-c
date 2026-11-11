@@ -25,6 +25,7 @@ RUN set -e; \
     git \
     curl \
     libcurl4-openssl-dev \
+    libssl-dev \
     libjsoncpp-dev \
     libsqlite3-dev \
     && rm -rf /var/lib/apt/lists/* /etc/apt/apt.conf.d/99proxy \
@@ -41,6 +42,7 @@ RUN set -e; \
         git \
         curl \
         libcurl4-openssl-dev \
+        libssl-dev \
         libjsoncpp-dev \
         libsqlite3-dev \
         && rm -rf /var/lib/apt/lists/* \
@@ -68,6 +70,7 @@ RUN set -e; \
   apt-get update ${APT_OPTS} && apt-get install -y --no-install-recommends \
     ca-certificates \
     libcurl4 \
+    libssl3t64 \
     libjsoncpp25 \
     libsqlite3-0 \
     && rm -rf /var/lib/apt/lists/* /etc/apt/apt.conf.d/99proxy \
@@ -78,6 +81,7 @@ RUN set -e; \
       apt-get update ${APT_OPTS} && apt-get install -y --no-install-recommends \
         ca-certificates \
         libcurl4 \
+        libssl3t64 \
         libjsoncpp25 \
         libsqlite3-0 \
         && rm -rf /var/lib/apt/lists/* \

@@ -6,6 +6,7 @@
 
 #include "toolset_host.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cctype>
 #include <cstdint>

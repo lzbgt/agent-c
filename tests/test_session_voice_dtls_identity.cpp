@@ -29,6 +29,8 @@ void test_generate_ephemeral_dtls_identity_returns_usable_keypair() {
   assert(fingerprint.find(':') != std::string::npos);
   assert(subject.find("agentd builtin embedded transport") != std::string::npos);
   assert(X509_check_private_key(certificate, private_key) == 1);
+  assert(X509_NAME_cmp(X509_get_subject_name(certificate), X509_get_issuer_name(certificate)) == 0);
+  assert(X509_verify(certificate, private_key) == 1);
 
   X509_free(certificate);
   EVP_PKEY_free(private_key);

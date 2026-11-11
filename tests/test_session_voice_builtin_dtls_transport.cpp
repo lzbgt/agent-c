@@ -55,6 +55,7 @@ bool generate_ephemeral_dtls_identity(EVP_PKEY** out_key, X509** out_cert) {
   using PkeyCtxPtr = std::unique_ptr<EVP_PKEY_CTX, decltype(&EVP_PKEY_CTX_free)>;
   using PkeyPtr = std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)>;
   using X509Ptr = std::unique_ptr<X509, decltype(&X509_free)>;
+  using X509NamePtr = std::unique_ptr<X509_NAME, decltype(&X509_NAME_free)>;
   using ASN1IntPtr = std::unique_ptr<ASN1_INTEGER, decltype(&ASN1_INTEGER_free)>;
   using BnPtr = std::unique_ptr<BIGNUM, decltype(&BN_free)>;
 
@@ -86,17 +87,18 @@ bool generate_ephemeral_dtls_identity(EVP_PKEY** out_key, X509** out_cert) {
     return false;
   }
 
-  X509_NAME* name = X509_get_subject_name(cert.get());
+  X509NamePtr name(X509_NAME_new(), X509_NAME_free);
   if (!name ||
       X509_NAME_add_entry_by_txt(
-        name,
+        name.get(),
         "CN",
         MBSTRING_ASC,
         reinterpret_cast<const unsigned char*>("agentd builtin dtls loopback"),
         -1,
         -1,
         0) != 1 ||
-      X509_set_issuer_name(cert.get(), name) != 1) {
+      X509_set_subject_name(cert.get(), name.get()) != 1 ||
+      X509_set_issuer_name(cert.get(), name.get()) != 1) {
     return false;
   }
 
