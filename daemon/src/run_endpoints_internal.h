@@ -50,8 +50,11 @@ bool load_session_from_db(
   AgentDb& db,
   const std::string& session_id,
   agent_session_t** out_session,
-  std::string* out_error
+  std::string* out_error,
+  int64_t* out_revision = nullptr
 );
+
+bool snapshot_session_messages(const agent_session_t* session, std::vector<AgentDb::MessageRow>* messages, std::string* error);
 
 bool persist_session_to_db(
   AgentDb& db,

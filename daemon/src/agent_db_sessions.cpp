@@ -4,7 +4,68 @@
 
 namespace agentd {
 
-bool AgentDb::load_session_messages(
+bool AgentDb::load_session_messages(const std::string& session_id, std::vector<MessageRow>* messages,
+                                    std::string* error, int64_t* revision) {
+  if (error) error->clear();
+  if (revision) *revision = 0;
+  std::lock_guard<std::mutex> lock(mu_);
+  // Snapshot messages and their generation in one read transaction. The mutex
+  // alone would not fence a second database connection/process.
+  if (!revision) return load_session_messages_locked(session_id, messages, error);
+  if (!db_ || !exec_locked("BEGIN", error)) return false;
+  if (!session_revision_locked(session_id, revision, error) ||
+      !load_session_messages_locked(session_id, messages, error) || !exec_locked("COMMIT", error)) {
+    exec_locked("ROLLBACK", nullptr); return false;
+  }
+  return true;
+}
+
+bool AgentDb::session_revision_locked(const std::string& id, int64_t* revision, std::string* error) {
+  if (revision) *revision = 0;
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)id; if (error) *error = "SQLite support required"; return false;
+#else
+  if (!db_ || !revision || id.empty()) { if (error) *error = "invalid session snapshot"; return false; }
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_, "SELECT revision FROM session_revisions WHERE session_id=?", -1, &stmt, nullptr) != SQLITE_OK) {
+    if (error) *error = agent_db_sqlite_err(db_); return false;
+  }
+  const bool bound = agent_db_bind_text(stmt, 1, id);
+  const int rc = bound ? sqlite3_step(stmt) : SQLITE_ERROR;
+  if (rc == SQLITE_ROW) *revision = sqlite3_column_int64(stmt, 0);
+  const bool ok = (rc == SQLITE_DONE || rc == SQLITE_ROW) && *revision >= 0 && *revision < 9007199254740991LL;
+  if (!ok && error) *error = "session revision unavailable or exhausted";
+  sqlite3_finalize(stmt); return ok;
+#endif
+}
+bool AgentDb::session_matches_locked(const SessionFence& expected, std::string* error) {
+  int64_t revision = 0;
+  if (expected.revision < 0 || !session_revision_locked(expected.session_id, &revision, error)) return false;
+  if (revision != expected.revision) { if (error) *error = "session revision conflict; newer conversation preserved"; return false; }
+  return true;
+}
+bool AgentDb::session_matches(const SessionFence& expected, std::string* error) {
+  if (error) error->clear();
+  std::lock_guard<std::mutex> lock(mu_);
+  return session_matches_locked(expected, error);
+}
+bool AgentDb::bump_session_revision_locked(const std::string& id, std::string* error) {
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)id; if (error) *error = "SQLite support required"; return false;
+#else
+  sqlite3_stmt* stmt = nullptr;
+  const char* sql = "INSERT INTO session_revisions(session_id,revision) VALUES(?,1) "
+    "ON CONFLICT(session_id) DO UPDATE SET revision=revision+1 WHERE revision<9007199254740990";
+  if (!db_ || sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+    if (error) *error = "cannot prepare session generation"; return false;
+  }
+  const bool ok = agent_db_bind_text(stmt, 1, id) && agent_db_step_done(stmt) && sqlite3_changes(db_) == 1;
+  if (!ok && error) *error = "cannot advance session generation";
+  sqlite3_finalize(stmt); return ok;
+#endif
+}
+
+bool AgentDb::load_session_messages_locked(
   const std::string& session_id,
   std::vector<MessageRow>* out_messages,
   std::string* out_error
@@ -16,7 +77,6 @@ bool AgentDb::load_session_messages(
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  std::lock_guard<std::mutex> lock(mu_);
   if (!db_) {
     if (out_error) *out_error = "db is not open";
     return false;
@@ -31,7 +91,8 @@ bool AgentDb::load_session_messages(
   }
   bool ok = agent_db_bind_text(st, 1, session_id);
   std::vector<MessageRow> rows;
-  while (ok && agent_db_step_row(st)) {
+  int rc = SQLITE_DONE;
+  while (ok && (rc = sqlite3_step(st)) == SQLITE_ROW) {
     MessageRow row;
     const unsigned char* role = sqlite3_column_text(st, 0);
     const unsigned char* content = sqlite3_column_text(st, 1);
@@ -76,6 +137,7 @@ bool AgentDb::load_session_messages(
       break;
     }
   }
+  if (ok && rc != SQLITE_DONE) ok = false;
   if (!ok && out_error && out_error->empty()) *out_error = agent_db_sqlite_err(db_);
   sqlite3_finalize(st);
   if (ok && out_messages) *out_messages = std::move(rows);
@@ -188,90 +250,44 @@ bool AgentDb::upsert_session_locked(const std::string& session_id, int64_t now_u
 #endif
 }
 
-bool AgentDb::replace_session_messages(
-  const std::string& session_id,
-  const std::vector<MessageRow>& messages,
-  int64_t now_unix_ms,
-  std::string* out_error
-) {
-  if (out_error) out_error->clear();
-#if !defined(AGENT_HAVE_SQLITE3)
-  (void)session_id;
-  (void)messages;
-  (void)now_unix_ms;
-  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
-  return false;
-#else
+bool AgentDb::replace_session_messages(const std::string& id, const std::vector<MessageRow>& messages,
+                                       int64_t now, std::string* error, const SessionFence* expected) {
+  if (error) error->clear();
   std::lock_guard<std::mutex> lock(mu_);
-  if (!db_) {
-    if (out_error) *out_error = "db is not open";
-    return false;
-  }
-
-  // Transaction.
-  if (!exec_locked("BEGIN IMMEDIATE TRANSACTION;", out_error)) return false;
-
-  if (!upsert_session_locked(session_id, now_unix_ms, out_error)) {
-    (void)exec_locked("ROLLBACK;", nullptr);
-    return false;
-  }
-
-  {
-    sqlite3_stmt* del = nullptr;
-    if (sqlite3_prepare_v2(db_, "DELETE FROM messages WHERE session_id=?;", -1, &del, nullptr) != SQLITE_OK) {
-      if (out_error) *out_error = agent_db_sqlite_err(db_);
-      (void)exec_locked("ROLLBACK;", nullptr);
-      return false;
-    }
-    const bool ok = agent_db_bind_text(del, 1, session_id) && agent_db_step_done(del);
-    if (!ok && out_error) *out_error = agent_db_sqlite_err(db_);
-    sqlite3_finalize(del);
-    if (!ok) {
-      (void)exec_locked("ROLLBACK;", nullptr);
-      return false;
-    }
-  }
-
-  sqlite3_stmt* ins = nullptr;
-  const char* sql =
-    "INSERT INTO messages(session_id, idx, role, content, mm_json, mm_bytes, mm_truncated, created_unix_ms) "
-    "VALUES(?,?,?,?,?,?,?,?);";
-  if (sqlite3_prepare_v2(db_, sql, -1, &ins, nullptr) != SQLITE_OK) {
-    if (out_error) *out_error = agent_db_sqlite_err(db_);
-    (void)exec_locked("ROLLBACK;", nullptr);
-    return false;
-  }
-
-  bool ok = true;
-  for (size_t i = 0; i < messages.size(); i++) {
-    sqlite3_reset(ins);
-    sqlite3_clear_bindings(ins);
-    ok = ok &&
-      agent_db_bind_text(ins, 1, session_id) &&
-      agent_db_bind_i32(ins, 2, (int)i) &&
-      agent_db_bind_text(ins, 3, messages[i].role) &&
-      agent_db_bind_text(ins, 4, messages[i].content) &&
-      agent_db_bind_text(ins, 5, messages[i].mm_json) &&
-      agent_db_bind_i64(ins, 6, messages[i].mm_bytes) &&
-      agent_db_bind_i64(ins, 7, messages[i].mm_truncated) &&
-      agent_db_bind_i64(ins, 8, now_unix_ms) &&
-      agent_db_step_done(ins);
-    if (!ok) {
-      if (out_error) *out_error = agent_db_sqlite_err(db_);
-      break;
-    }
-  }
-  sqlite3_finalize(ins);
-
-  if (!ok) {
-    (void)exec_locked("ROLLBACK;", nullptr);
-    return false;
-  }
-  if (!exec_locked("COMMIT;", out_error)) {
-    (void)exec_locked("ROLLBACK;", nullptr);
-    return false;
+  if (!db_ || (expected && expected->session_id != id) || !exec_locked("BEGIN IMMEDIATE", error)) return false;
+  if ((expected && !session_matches_locked(*expected, error)) ||
+      !replace_session_messages_locked(id, messages, now, error) || !exec_locked("COMMIT", error)) {
+    exec_locked("ROLLBACK", nullptr); return false;
   }
   return true;
+}
+
+bool AgentDb::replace_session_messages_locked(const std::string& id, const std::vector<MessageRow>& messages,
+                                              int64_t now, std::string* error) {
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)id; (void)messages; (void)now; if (error) *error = "SQLite support required"; return false;
+#else
+  if (!upsert_session_locked(id, now, error)) return false;
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_, "DELETE FROM messages WHERE session_id=?", -1, &stmt, nullptr) != SQLITE_OK) {
+    if (error) *error = agent_db_sqlite_err(db_); return false;
+  }
+  bool ok = agent_db_bind_text(stmt, 1, id) && agent_db_step_done(stmt);
+  if (!ok && error) *error = agent_db_sqlite_err(db_);
+  sqlite3_finalize(stmt); if (!ok) return false;
+  const char* sql = "INSERT INTO messages(session_id,idx,role,content,mm_json,mm_bytes,mm_truncated,created_unix_ms) VALUES(?,?,?,?,?,?,?,?)";
+  if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) { if (error) *error = agent_db_sqlite_err(db_); return false; }
+  for (size_t i = 0; ok && i < messages.size(); ++i) {
+    sqlite3_reset(stmt); sqlite3_clear_bindings(stmt);
+    const auto& message = messages[i];
+    ok = agent_db_bind_text(stmt,1,id) && agent_db_bind_i64(stmt,2,static_cast<int64_t>(i)) &&
+      agent_db_bind_text(stmt,3,message.role) && agent_db_bind_text(stmt,4,message.content) &&
+      agent_db_bind_text(stmt,5,message.mm_json) && agent_db_bind_i64(stmt,6,message.mm_bytes) &&
+      agent_db_bind_i64(stmt,7,message.mm_truncated) && agent_db_bind_i64(stmt,8,now) && agent_db_step_done(stmt);
+  }
+  if (!ok && error) *error = agent_db_sqlite_err(db_);
+  sqlite3_finalize(stmt);
+  return ok && bump_session_revision_locked(id, error);
 #endif
 }
 
@@ -287,15 +303,18 @@ bool AgentDb::delete_session(const std::string& session_id, std::string* out_err
     if (out_error) *out_error = "db is not open";
     return false;
   }
+  if (!exec_locked("BEGIN IMMEDIATE", out_error)) return false;
+  auto rollback = [&]() { exec_locked("ROLLBACK", nullptr); return false; };
   sqlite3_stmt* st = nullptr;
   if (sqlite3_prepare_v2(db_, "DELETE FROM sessions WHERE session_id=?;", -1, &st, nullptr) != SQLITE_OK) {
     if (out_error) *out_error = agent_db_sqlite_err(db_);
-    return false;
+    return rollback();
   }
   const bool ok = agent_db_bind_text(st, 1, session_id) && agent_db_step_done(st);
   if (!ok && out_error) *out_error = agent_db_sqlite_err(db_);
   sqlite3_finalize(st);
-  return ok;
+  if (!ok || !bump_session_revision_locked(session_id, out_error) || !exec_locked("COMMIT", out_error)) return rollback();
+  return true;
 #endif
 }
 

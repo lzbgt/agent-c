@@ -94,10 +94,11 @@ bool AgentDb::prepare_workflow_effect(const WorkflowEffectRow& def, WorkflowEffe
 }
 
 bool AgentDb::transition_workflow_effect(const WorkflowEffectRow& expected, const std::string& state,
-                                        const std::string& receipt, WorkflowEffectRow* out, std::string* error) {
+                                        const std::string& receipt, WorkflowEffectRow* out, std::string* error,
+                                        const SessionFence* session, const std::vector<MessageRow>* session_messages) {
   if (error) error->clear();
 #if !defined(AGENT_HAVE_SQLITE3)
-  (void)expected; (void)state; (void)receipt; (void)out;
+  (void)expected; (void)state; (void)receipt; (void)out; (void)session; (void)session_messages;
   if (error) *error = "SQLite support required";
   return false;
 #else
@@ -105,24 +106,30 @@ bool AgentDb::transition_workflow_effect(const WorkflowEffectRow& expected, cons
     (expected.state == "prepared" || (expected.mode == "idempotent" && (expected.state == "unknown" || expected.state == "dispatching" || expected.state == "completed")));
   const bool settle = (state == "completed" || state == "unknown") && expected.state == "dispatching";
   const bool reconcile = (state == "prepared" || state == "completed") && (expected.state == "unknown" || expected.state == "dispatching");
-  if (!out || (!dispatch && !settle && !reconcile) || receipt.size() > 32 * 1024 * 1024 ||
+  if (!out || (session_messages && (!session || state != "completed" || expected.effect_id.rfind("mfx_",0) != 0)) ||
+      (!dispatch && !settle && !reconcile) || receipt.size() > 32 * 1024 * 1024 ||
       expected.revision == std::numeric_limits<int64_t>::max() || expected.attempt == std::numeric_limits<int64_t>::max()) {
     if (error) *error = "invalid effect transition or receipt size";
     return false;
   }
   std::lock_guard<std::mutex> lock(mu_);
   if (!db_) { if (error) *error = "database unavailable"; return false; }
+  if (!exec_locked("BEGIN IMMEDIATE",error)) return false;
+  auto rollback = [&]() { exec_locked("ROLLBACK",nullptr); return false; };
+  if (session && !session_matches_locked(*session,error)) return rollback();
   sqlite3_stmt* raw = nullptr;
   const char* sql = "UPDATE workflow_effects SET state=?,revision=revision+1,attempt=attempt+?,updated_unix_ms=?,receipt_json=? WHERE effect_id=? AND revision=? AND state=? AND mode=? AND request_hash=? AND (?=0 OR EXISTS(SELECT 1 FROM workflows w WHERE w.workflow_id=workflow_effects.workflow_id AND w.cancel_requested=0 AND (COALESCE(w.deadline_unix_ms,0)=0 OR w.deadline_unix_ms>?)))";
-  if (sqlite3_prepare_v2(db_,sql,-1,&raw,nullptr) != SQLITE_OK) { if (error) *error = agent_db_sqlite_err(db_); return false; }
+  if (sqlite3_prepare_v2(db_,sql,-1,&raw,nullptr) != SQLITE_OK) { if (error) *error = agent_db_sqlite_err(db_); return rollback(); }
   Statement stmt(raw,sqlite3_finalize);
   const auto now = agent_db_unix_ms_now();
   const bool ok = agent_db_bind_text(raw,1,state) && agent_db_bind_i64(raw,2,dispatch ? 1 : 0) &&
     agent_db_bind_i64(raw,3,now) && agent_db_bind_text(raw,4,receipt) && agent_db_bind_text(raw,5,expected.effect_id) &&
     agent_db_bind_i64(raw,6,expected.revision) && agent_db_bind_text(raw,7,expected.state) &&
     agent_db_bind_text(raw,8,expected.mode) && agent_db_bind_text(raw,9,expected.request_hash) &&
-    agent_db_bind_i32(raw,10,dispatch ? 1 : 0) && agent_db_bind_i64(raw,11,now) && agent_db_step_done(raw);
-  if (!ok || sqlite3_changes(db_) != 1) { if (error) *error = ok ? "effect revision conflict; stale attempt rejected" : agent_db_sqlite_err(db_); return false; }
+    agent_db_bind_i32(raw,10,(dispatch || session_messages) ? 1 : 0) && agent_db_bind_i64(raw,11,now) && agent_db_step_done(raw);
+  if (!ok || sqlite3_changes(db_) != 1) { if (error) *error = ok ? "effect revision conflict; stale attempt rejected" : agent_db_sqlite_err(db_); return rollback(); }
+  if (session_messages && !replace_session_messages_locked(session->session_id,*session_messages,now,error)) return rollback();
+  if (!exec_locked("COMMIT",error)) return rollback();
   *out = expected;
   out->state = state; out->revision++; out->attempt += dispatch ? 1 : 0;
   out->updated_unix_ms = now; out->receipt_json = receipt;
@@ -131,10 +138,11 @@ bool AgentDb::transition_workflow_effect(const WorkflowEffectRow& expected, cons
 }
 
 bool AgentDb::checkpoint_workflow_model_effect(const WorkflowEffectRow& expected, const std::string& receipt,
-                                               bool admitting_tool, WorkflowEffectRow* out, std::string* error) {
+                                               bool admitting_tool, WorkflowEffectRow* out, std::string* error,
+                                               const SessionFence* session) {
   if (error) error->clear();
 #if !defined(AGENT_HAVE_SQLITE3)
-  (void)expected; (void)receipt; (void)admitting_tool; (void)out;
+  (void)expected; (void)receipt; (void)admitting_tool; (void)out; (void)session;
   if (error) *error = "SQLite support required";
   return false;
 #else
@@ -146,9 +154,12 @@ bool AgentDb::checkpoint_workflow_model_effect(const WorkflowEffectRow& expected
   }
   std::lock_guard<std::mutex> lock(mu_);
   if (!db_) { if (error) *error = "database unavailable"; return false; }
+  if (!exec_locked("BEGIN IMMEDIATE",error)) return false;
+  auto rollback = [&]() { exec_locked("ROLLBACK",nullptr); return false; };
+  if (admitting_tool && session && !session_matches_locked(*session,error)) return rollback();
   sqlite3_stmt* raw = nullptr;
   const char* sql = "UPDATE workflow_effects SET revision=revision+1,updated_unix_ms=?,receipt_json=? WHERE effect_id=? AND revision=? AND state='dispatching' AND mode='guarded' AND request_hash=? AND workflow_id=? AND task_id=? AND (?=0 OR EXISTS(SELECT 1 FROM workflows w WHERE w.workflow_id=workflow_effects.workflow_id AND w.cancel_requested=0 AND (COALESCE(w.deadline_unix_ms,0)=0 OR w.deadline_unix_ms>?)))";
-  if (sqlite3_prepare_v2(db_,sql,-1,&raw,nullptr) != SQLITE_OK) { if (error) *error = agent_db_sqlite_err(db_); return false; }
+  if (sqlite3_prepare_v2(db_,sql,-1,&raw,nullptr) != SQLITE_OK) { if (error) *error = agent_db_sqlite_err(db_); return rollback(); }
   Statement stmt(raw,sqlite3_finalize);
   const auto now = agent_db_unix_ms_now();
   const bool ok = agent_db_bind_i64(raw,1,now) && agent_db_bind_text(raw,2,receipt) &&
@@ -158,8 +169,9 @@ bool AgentDb::checkpoint_workflow_model_effect(const WorkflowEffectRow& expected
     agent_db_bind_i64(raw,9,now) && agent_db_step_done(raw);
   if (!ok || sqlite3_changes(db_) != 1) {
     if (error) *error = ok ? "model checkpoint conflict, deadline, or owner stop" : agent_db_sqlite_err(db_);
-    return false;
+    return rollback();
   }
+  if (!exec_locked("COMMIT",error)) return rollback();
   *out = expected; out->revision++; out->updated_unix_ms = now; out->receipt_json = receipt;
   return true;
 #endif

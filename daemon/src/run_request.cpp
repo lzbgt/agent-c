@@ -733,13 +733,15 @@ static Json::Value run_request_to_json_impl(
     );
   }
 
+  const bool guarded_session = model_effect && tools == "host" && !no_session;
+  int64_t session_revision = 0;
   agent_session_t* session = nullptr;
   if (!no_session) {
     if (!db_or_null || !db_or_null->is_open()) {
       return run_request_error(500, "db not available (session persistence required)");
     }
     std::string load_err;
-    if (!load_session_from_db(*db_or_null, session_id, &session, &load_err)) {
+    if (!load_session_from_db(*db_or_null, session_id, &session, &load_err, guarded_session ? &session_revision : nullptr)) {
       return run_request_error(500, load_err.empty() ? "failed to load session from db" : load_err);
     }
   } else {
@@ -749,6 +751,11 @@ static Json::Value run_request_to_json_impl(
       o["status"] = (Json::Int64)st;
       return o;
     }
+  }
+
+  if (guarded_session) {
+    const auto refused = model_effect->bind_session(session_id, session_revision);
+    if (!refused.isNull()) { agent_session_destroy(session); return refused; }
   }
 
   std::string project_instructions_prompt;
@@ -803,7 +810,7 @@ static Json::Value run_request_to_json_impl(
       ? ensure_pinned_host_session_prompts(
           &session, system_profile, client_profile_prompt, client_profile_marker, project_instructions_prompt)
       : false;
-    if (changed && !no_session) {
+    if (changed && !no_session && !guarded_session) {
       // Persist the prefix change even if the run later fails, so subsequent runs don't regress.
       if (db_or_null && db_or_null->is_open()) {
         (void)persist_session_to_db(*db_or_null, session_id, session, run_ts_ms, nullptr);
@@ -1777,11 +1784,25 @@ static Json::Value run_request_to_json_impl(
   out["verbose"] = verbose;
   out["events"] = events_out;
 
+  if (guarded_session) {
+    if (out["ok"] == true) {
+      std::vector<AgentDb::MessageRow> messages; std::string snapshot_error;
+      if (!snapshot_session_messages(session, &messages, &snapshot_error) && snapshot_error.empty())
+        snapshot_error = "failed to snapshot the completed conversation";
+      model_effect->stage_session(std::move(messages), snapshot_error);
+    }
+    // The model receipt and conversation CAS commit together before auxiliary
+    // audit/scene mirrors. A restart replays the receipt, never appends again.
+    out = model_effect->finish(std::move(out));
+  }
+
   // Canonical persistence: sessions + audit + telemetry in SQLite.
   //
   // Respect `no_session`: "ephemeral" runs should not persist anything to disk.
-  if (!no_session && db_or_null && db_or_null->is_open()) {
+  if (!no_session && db_or_null && db_or_null->is_open() &&
+      (!guarded_session || model_effect->session_committed())) {
     RunRequestPersistInput persist;
+    persist.skip_session_write = guarded_session;
     persist.db = db_or_null;
     persist.session = session;
     persist.session_id = &session_id;

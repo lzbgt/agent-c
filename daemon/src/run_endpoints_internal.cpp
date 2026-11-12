@@ -183,7 +183,8 @@ bool load_session_from_db(
   AgentDb& db,
   const std::string& session_id,
   agent_session_t** out_session,
-  std::string* out_error
+  std::string* out_error,
+  int64_t* out_revision
 ) {
   if (out_error) out_error->clear();
   if (!out_session) return false;
@@ -191,7 +192,7 @@ bool load_session_from_db(
 
   std::vector<AgentDb::MessageRow> msgs;
   std::string err;
-  if (!db.load_session_messages(session_id, &msgs, &err)) {
+  if (!db.load_session_messages(session_id, &msgs, &err, out_revision)) {
     if (out_error) *out_error = err.empty() ? "failed to load session messages" : err;
     return false;
   }
@@ -222,23 +223,20 @@ bool load_session_from_db(
   return true;
 }
 
-bool persist_session_to_db(
-  AgentDb& db,
-  const std::string& session_id,
-  const agent_session_t* session,
-  int64_t now_unix_ms,
-  std::string* out_error
-) {
+bool snapshot_session_messages(const agent_session_t* session, std::vector<AgentDb::MessageRow>* messages, std::string* out_error) {
   if (out_error) out_error->clear();
   if (!session) {
     if (out_error) *out_error = "missing session";
     return false;
   }
-  std::vector<AgentDb::MessageRow> msgs;
+  if (!messages) return false;
+  auto& msgs = *messages; msgs.clear();
   msgs.reserve(agent_session_message_count(session));
   for (size_t i = 0; i < agent_session_message_count(session); i++) {
     agent_message_view_t v{};
-    if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
+    if (agent_session_get_message(session, i, &v) != AGENT_OK) {
+      if (out_error) *out_error = "session message snapshot failed"; return false;
+    }
     AgentDb::MessageRow row;
     row.role = agent_role_to_string(v.role);
     const std::string content = std::string(v.content ? v.content : "", v.content_len);
@@ -264,7 +262,19 @@ bool persist_session_to_db(
     }
     msgs.push_back(std::move(row));
   }
-  return db.replace_session_messages(session_id, msgs, now_unix_ms, out_error);
+  return true;
+}
+
+bool persist_session_to_db(
+  AgentDb& db,
+  const std::string& session_id,
+  const agent_session_t* session,
+  int64_t now_unix_ms,
+  std::string* out_error
+) {
+  std::vector<AgentDb::MessageRow> messages;
+  if (!snapshot_session_messages(session, &messages, out_error)) return false;
+  return db.replace_session_messages(session_id, messages, now_unix_ms, out_error);
 }
 
 }  // namespace agentd

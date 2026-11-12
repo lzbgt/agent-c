@@ -265,7 +265,7 @@ RunRequestToolLoopResult run_request_tool_loop(const RunRequestToolLoopInput& in
     }
   }
 
-  if (in.model_effect && *in.tools == "host" && in.no_session && !out.vision_prefetch_attempted) {
+  if (in.model_effect && *in.tools == "host" && !out.vision_prefetch_attempted) {
     Json::Value identity;
     identity["base_url"] = in.run_cfg->base_url;
     identity["model"] = in.run_cfg->model;

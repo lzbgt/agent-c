@@ -107,7 +107,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 38;
+  const int kSchemaVersion = 39;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -1020,6 +1020,20 @@ CREATE TABLE IF NOT EXISTS workflow_decisions(
 )SQL";
     if (!exec_locked(schema_v38, out_error)) return false;
     cur_ver = 38;
+  }
+
+  if (cur_ver < 39) {
+    // Kept independently of session deletion so an old model checkpoint cannot
+    // mistake a deleted/recreated conversation for the original snapshot.
+    const char* schema_v39 = R"SQL(
+CREATE TABLE IF NOT EXISTS session_revisions(
+  session_id TEXT PRIMARY KEY,
+  revision INTEGER NOT NULL CHECK(revision>=0 AND revision<9007199254740991)
+);
+INSERT OR IGNORE INTO session_revisions(session_id,revision) SELECT session_id,1 FROM sessions;
+)SQL";
+    if (!exec_locked(schema_v39, out_error)) return false;
+    cur_ver = 39;
   }
 
   // Record schema version.

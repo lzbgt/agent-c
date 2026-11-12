@@ -93,9 +93,11 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
             blocker: {kind:"model_run_outcome_unknown", required_action:"Inspect prior model-selected host actions; do not rerun this incomplete run."},
             attempt: 1, max_attempts: 8,
           },
+          { task_id: "task-f", status: "error", depends_on: [], attempt: 1, max_attempts: 2,
+            blocker: {kind:"model_session_changed", required_action:"Inspect the newer conversation and preserved tool receipts."} },
           { task_id: "task-e", status: "error", depends_on: [], attempt: 2, max_attempts: 2, error: "Provider unavailable" },
         ],
-        effects: [{effect_id:"mfx-saved",task_id:"task-e",request_hash:"sha256:saved",mode:"guarded",boundary:"model_run",state:"dispatching",revision:4,attempt:1,updated_unix_ms:1700000100000,resume_available:true}, {effect_id:"mfx-fixture",task_id:"task-d",request_hash:"sha256:model",mode:"guarded",boundary:"model_run",state:"unknown",revision:2,attempt:1,updated_unix_ms:1700000100000}, {effect_id:"fx-host",task_id:"task-a",request_hash:"sha256:host",mode:"guarded",state:"unknown",revision:2,attempt:1,updated_unix_ms:1700000100000}, {effect_id: "fx-fixture", task_id: "task-b", request_hash: "sha256:fixture", mode: "guarded", state: "unknown", revision: 2, attempt: 1, updated_unix_ms: 1700000100000}],
+        effects: [{effect_id:"mfx-session",task_id:"task-f",request_hash:"sha256:session",mode:"guarded",boundary:"model_run",state:"unknown",revision:5,attempt:1,updated_unix_ms:1700000100000}, {effect_id:"mfx-saved",task_id:"task-e",request_hash:"sha256:saved",mode:"guarded",boundary:"model_run",state:"dispatching",revision:4,attempt:1,updated_unix_ms:1700000100000,resume_available:true}, {effect_id:"mfx-fixture",task_id:"task-d",request_hash:"sha256:model",mode:"guarded",boundary:"model_run",state:"unknown",revision:2,attempt:1,updated_unix_ms:1700000100000}, {effect_id:"fx-host",task_id:"task-a",request_hash:"sha256:host",mode:"guarded",state:"unknown",revision:2,attempt:1,updated_unix_ms:1700000100000}, {effect_id: "fx-fixture", task_id: "task-b", request_hash: "sha256:fixture", mode: "guarded", state: "unknown", revision: 2, attempt: 1, updated_unix_ms: 1700000100000}],
         workflow_limits: { max_steps: 12 },
         workflow_usage: { steps: 4 },
         workflow_remaining: { steps: 8 },
@@ -121,7 +123,7 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
   await expect(page.getByRole("region", { name: "Needs your attention" })).toContainText("Verify the original device operation and its readback.");
   await expect(page.getByTestId("workflow-detail-panel")).toContainText("Workflow summary");
   await expect(page.getByTestId("workflow-detail-panel")).toContainText("trace-123");
-  await expect(page.getByTestId("workflow-dag-panel")).toContainText("tasks: 5");
+  await expect(page.getByTestId("workflow-dag-panel")).toContainText("tasks: 6");
   await expect(page.getByTestId("workflow-dag-panel")).toContainText("task-a");
   await expect(page.getByTestId("workflow-dag-panel")).toContainText("task-b");
   await expect(page.getByTestId("workflow-effects")).toContainText("Outcome unresolved");
@@ -134,6 +136,9 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
   await expect(page.getByTestId("workflow-effects")).toContainText("No manual resume control is available");
   await expect(page.getByRole("textbox",{name:"Receipt endpoint for task-e"})).toHaveCount(0);
   await expect(page.getByTestId("workflow-effects")).toContainText("Automatic rerun and transcript resume are disabled");
+  await expect(page.getByTestId("workflow-effects")).toContainText("Conversation changed");
+  await expect(page.getByTestId("workflow-effects")).toContainText("The newer conversation was preserved");
+  await expect(page.getByRole("textbox",{name:"Receipt endpoint for task-f"})).toHaveCount(0);
   await expect(page.getByText("Budgets", { exact: true })).toBeVisible();
   await expect(page.getByText("Workflow result", { exact: true })).toBeVisible();
   await expect(page.getByText("Workflow spec", { exact: true })).toBeVisible();

@@ -57,7 +57,7 @@ void persist_run_request(const RunRequestPersistInput& in) {
     }
     msgs.push_back(std::move(row));
   }
-  (void)db.replace_session_messages(*in.session_id, msgs, in.run_ts_ms, nullptr);
+  if (!in.skip_session_write) (void)db.replace_session_messages(*in.session_id, msgs, in.run_ts_ms, nullptr);
 
   RunReplayBundle replay = build_run_replay_bundle(
     *in.args,

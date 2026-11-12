@@ -58,7 +58,7 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
             request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             messages = request.get("messages", [])
             case = ("vision_prefetch" if "/moonshot/" in self.path else
-                    "reasoning_resume" if "/deepseek/" in self.path else next(str(m.get("content")) for m in messages if m.get("role") == "user"))
+                    "reasoning_resume" if "/deepseek/" in self.path else next(str(m.get("content")) for m in reversed(messages) if m.get("role") == "user"))
             prefetch = case == "vision_prefetch" and not request.get("tools")
             with counts_lock:
                 counts[case] = counts.get(case, 0) + 1
@@ -67,11 +67,11 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
             missing_reasoning = case == "reasoning_resume" and after_tool and any(
                 m.get("reasoning_content") != "synthetic reasoning checkpoint"
                 for m in messages if m.get("role") == "assistant" and m.get("tool_calls"))
-            if case == "crash_receipted" and after_tool and number == 2:
+            if case in ("crash_receipted", "session_crash", "session_changed") and after_tool and number == 2:
                 provider_waiting.set()
                 release_provider.wait(12)
             fail = ((case == "provider_before" and number == 1) or (case in ("provider_after", "vision_prefetch") and after_tool) or
-                    (case in ("transient_after", "frontier_budget", "batch_resume", "reasoning_resume") and after_tool and number == 2) or missing_reasoning)
+                    (case in ("transient_after", "session_transient", "frontier_budget", "batch_resume", "reasoning_resume") and after_tool and number == 2) or missing_reasoning)
             if fail:
                 body = {"error": {"message": "synthetic unavailable", "type": "server_error"}}
             else:
@@ -135,10 +135,15 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
         path = root / (case + ".count")
         return len(path.read_text().splitlines()) if path.exists() else 0
 
-    def submit(case, others=True, budget=None, deadline=None, attempts=8):
+    def submit(case, others=True, budget=None, deadline=None, attempts=8, session=None):
         request = {"prompt": case, "tools": "host", "no_session": True, "no_default_system": True,
                    "max_steps": 4, "max_tool_calls_total": 2, "max_retries": 0, "timeout_ms": 6000,
                    "base_url": f"http://127.0.0.1:{stub.server_port}/v1", "model": "stub", "api_key": "synthetic"}
+        if session:
+            request["no_session"] = False
+            request["session_id"] = session
+            # Cover pinned host prompts without persisting them on a failed attempt.
+            request["no_default_system"] = case != "session_transient"
         if case == "reasoning_resume":
             request["base_url"] = f"http://127.0.0.1:{stub.server_port}/deepseek/v1"
             request["model"] = "deepseek-reasoner"
@@ -147,11 +152,14 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
                      "b64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="}
             request["prompt"] = "__AGENT_MM_V1__" + json.dumps({"images": [image]}) + "\nvision_prefetch"
             request["base_url"] = f"http://127.0.0.1:{stub.server_port}/moonshot/v1"
-        if case == "saved":
+        if case in ("saved", "session_saved"):
             request["max_steps"] = 2
             request["max_tool_calls_total"] = 1
         payload = {"workflow_id": "model_" + case, "allow_inline_api_keys": True, "tasks": [
             {"task_id": "write", "priority": 100, "max_attempts": attempts, "request": request}]}
+        if session:
+            payload["session_id"] = session
+            payload["allow_sessions"] = True
         if others:
             payload["tasks"] += [
                 {"task_id": "independent", "kind": "delay", "delay_ms": 0, "priority": -100},
@@ -163,6 +171,24 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
         result = call("/api/v1/workflow/submit", payload)
         assert result["ok"], result
         return result["workflow_id"]
+
+    def session_rows(sid):
+        return call("/api/v1/session?session_id=" + sid)["messages"]
+
+    def seed_session(case):
+        sid = "conversation-" + case
+        call("/api/v1/session/new", {"session_id": sid})
+        call("/api/v1/session/ui_event", {"session_id": sid, "type": "prior_context",
+             "ts_unix_ms": 1700000000000, "data": {"text": "keep original conversation"}, "append_to_session": True})
+        return sid, session_rows(sid), sql("SELECT revision FROM session_revisions WHERE session_id=?", (sid,))[0][0]
+
+    def assert_session_commit(case, sid, original, revision):
+        rows = session_rows(sid)
+        assert all(row in rows for row in original), rows
+        assert sum(row["role"] == "user" and row["content"] == case for row in rows) == 1, rows
+        assert sum(row["role"] == "assistant" and row["content"] == "completed:" + case for row in rows) == 1, rows
+        assert sql("SELECT revision FROM session_revisions WHERE session_id=?", (sid,))[0][0] == revision + 1
+        return rows
 
     def detail(wid):
         return call("/api/v1/workflow?workflow_id=" + wid + "&include_tasks=1&include_results=1")
@@ -273,6 +299,81 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
         stop()
         start()
 
+        # Persistent sessions use the same verified prefix. Failed attempts do
+        # not append prompts or replies; completion publishes exactly once.
+        sid, original, revision = seed_session("session_transient")
+        wid = submit("session_transient", others=False, attempts=2, session=sid,
+                     budget={"max_tool_calls_total": 1, "max_steps_total": 3})
+        value = terminal(wid)
+        assert value["workflow"]["status"] == "done" and count("session_transient") == 1, value
+        assert counts["session_transient"] == 3 and result(value)["effect"]["session_committed"] is True, value
+        assert_session_commit("session_transient", sid, original, revision)
+        assert value["budget_accounting"]["charged"]["max_tool_calls_total"] == 1, value
+
+        # Kill before final provider receipt, then resume cached tools under a
+        # restrictive current policy. The original conversation is still intact.
+        provider_waiting.clear()
+        release_provider.clear()
+        sid, original, revision = seed_session("session_crash")
+        wid = submit("session_crash", others=False, attempts=3, session=sid, budget={"max_tool_calls_total": 1})
+        wait_for(provider_waiting.is_set, "session provider did not reach saved frontier")
+        assert session_rows(sid) == original
+        checkpoint = json.loads(sql("SELECT receipt_json FROM workflow_effects WHERE workflow_id=?", (wid,))[0][0])
+        assert checkpoint["session"] == {"id": sid, "revision": revision} and checkpoint["pending"] is None, checkpoint
+        stop(kill=True)
+        release_provider.set()
+        start(("--policy-mode", "enforce", "--policy-tool-deny", "proc_exec",
+               "--policy-approval-tools", "proc_exec", "--policy-approval-timeout-ms", "100"))
+        value = terminal(wid)
+        assert value["workflow"]["status"] == "done" and count("session_crash") == 1 and counts["session_crash"] == 3, value
+        assert result(value)["effect"]["replayed_tool_calls"] == 1, value
+        assert_session_commit("session_crash", sid, original, revision)
+        stop()
+        start()
+
+        # A real authenticated conversation edit wins while a provider is in
+        # flight. No stale final result or automatic rebase overwrites it.
+        provider_waiting.clear()
+        release_provider.clear()
+        sid, original, revision = seed_session("session_changed")
+        wid = submit("session_changed", session=sid)
+        wait_for(provider_waiting.is_set, "session edit window absent")
+        assert session_rows(sid) == original
+        call("/api/v1/session/ui_event", {"session_id": sid, "type": "newer_context",
+             "data": {"text": "owner conversation edit"}, "append_to_session": True})
+        newer = session_rows(sid)
+        release_provider.set()
+        value = terminal(wid)
+        assert value["workflow"]["status"] == "error" and count("session_changed") == 1, value
+        assert result(value)["blocker"]["kind"] == "model_session_changed" and result(value)["retryable"] is False, value
+        assert session_rows(sid) == newer and len(newer) == len(original) + 1
+        checkpoint = json.loads(sql("SELECT receipt_json FROM workflow_effects WHERE workflow_id=?", (wid,))[0][0])
+        assert checkpoint["session_conflict"] is True and checkpoint["pending"] is None, checkpoint
+        assert [r["kind"] for r in checkpoint["records"]] == ["provider", "tool", "provider"], checkpoint
+        assert next(t for t in value["tasks"] if t["task_id"] == "independent")["status"] == "done", value
+
+        # The conversation and complete run receipt precede task settlement
+        # together. Recovery must not append again or overwrite a later edit.
+        sid, original, revision = seed_session("session_saved")
+        sql("CREATE TRIGGER stop_session_done BEFORE UPDATE OF status ON workflow_tasks WHEN NEW.workflow_id='model_session_saved' AND NEW.task_id='write' AND NEW.status='done' BEGIN SELECT RAISE(FAIL,'before session completion'); END")
+        wid = submit("session_saved", others=False, session=sid, attempts=1,
+                     budget={"max_tool_calls_total": 1, "max_steps_total": 2})
+        wait_for(lambda: sql("SELECT 1 FROM workflow_effects WHERE workflow_id=? AND state='completed'", (wid,)), "atomic session receipt absent")
+        assert_session_commit("session_saved", sid, original, revision)
+        call("/api/v1/session/ui_event", {"session_id": sid, "type": "after_completion",
+             "data": {"text": "preserve newer edit on recovery"}, "append_to_session": True})
+        newer = session_rows(sid)
+        before = counts["session_saved"]
+        stop(kill=True)
+        sql("DROP TRIGGER stop_session_done")
+        start(("--policy-mode", "enforce", "--policy-tool-deny", "proc_exec"))
+        value = terminal(wid)
+        assert value["workflow"]["status"] == "done" and count("session_saved") == 1 and counts["session_saved"] == before, value
+        assert result(value)["effect"]["replayed"] is True and result(value)["effect"]["session_committed"] is True, value
+        assert session_rows(sid) == newer
+        stop()
+        start()
+
         # Intent exists, SQL admission has not happened: recovery can still run.
         sql("CREATE TRIGGER stop_dispatch BEFORE UPDATE OF state ON workflow_effects WHEN NEW.workflow_id='model_prepared' AND NEW.state='dispatching' BEGIN SELECT RAISE(FAIL,'before dispatch'); END")
         wid = submit("prepared")
@@ -370,4 +471,4 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
         stub.shutdown()
         stub.server_close()
         log.close()
-print("Model-selected host effects: provider retry, multi-tool run, crash/receipt recovery, no fresh grants, policy/approval, uncertainty, timeout and owner stops passed")
+print("Model-selected host effects: provider retry, multi-tool run, crash/receipt recovery, atomic session publication, conversation-edit fences, no fresh grants, policy/approval, uncertainty, timeout and owner stops passed")

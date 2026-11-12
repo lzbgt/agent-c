@@ -58,18 +58,23 @@ class AgentDb {
     int64_t mm_bytes = 0;
     int64_t mm_truncated = 0;
   };
+  // Durable conversation generation; retained across deletion/recreation.
+  struct SessionFence { std::string session_id; int64_t revision = 0; };
+  bool session_matches(const SessionFence& expected, std::string* out_error);
   bool upsert_session(const std::string& session_id, int64_t now_unix_ms, std::string* out_error);
   bool session_exists(const std::string& session_id, bool* out_exists, std::string* out_error);
   bool replace_session_messages(
     const std::string& session_id,
     const std::vector<MessageRow>& messages,
     int64_t now_unix_ms,
-    std::string* out_error
+    std::string* out_error,
+    const SessionFence* expected = nullptr
   );
   bool load_session_messages(
     const std::string& session_id,
     std::vector<MessageRow>* out_messages,
-    std::string* out_error
+    std::string* out_error,
+    int64_t* out_revision = nullptr
   );
   bool list_sessions(std::vector<std::string>* out_session_ids_desc, std::string* out_error);
   bool delete_session(const std::string& session_id, std::string* out_error);
@@ -494,11 +499,14 @@ class AgentDb {
   bool get_workflow_effect(const std::string& effect_id, WorkflowEffectRow* out, bool* found, std::string* error);
   bool prepare_workflow_effect(const WorkflowEffectRow& definition, WorkflowEffectRow* out, std::string* error);
   bool transition_workflow_effect(const WorkflowEffectRow& expected, const std::string& state,
-                                  const std::string& receipt_json, WorkflowEffectRow* out, std::string* error);
+                                  const std::string& receipt_json, WorkflowEffectRow* out, std::string* error,
+                                  const SessionFence* session = nullptr,
+                                  const std::vector<MessageRow>* session_messages = nullptr);
   // Internal model transcript CAS. A fresh tool admission checks owner stop and
   // deadline; saving a receipt after a stop is still allowed. Never redispatches.
   bool checkpoint_workflow_model_effect(const WorkflowEffectRow& expected, const std::string& receipt_json,
-                                        bool admitting_tool, WorkflowEffectRow* out, std::string* error);
+                                        bool admitting_tool, WorkflowEffectRow* out, std::string* error,
+                                        const SessionFence* session = nullptr);
   bool list_workflow_effects(const std::string& workflow_id, std::vector<WorkflowEffectRow>* out, std::string* error);
   bool requeue_workflow_effect(const WorkflowTaskRow& task, const WorkflowEffectRow& effect,
                               const std::string& reconcile_url, std::string* error);
@@ -1084,6 +1092,11 @@ class AgentDb {
   bool ensure_schema_locked(std::string* out_error);
   bool exec_locked(const std::string& sql, std::string* out_error);
   bool upsert_session_locked(const std::string& session_id, int64_t now_unix_ms, std::string* out_error);
+  bool load_session_messages_locked(const std::string&, std::vector<MessageRow>*, std::string*);
+  bool session_revision_locked(const std::string&, int64_t*, std::string*);
+  bool session_matches_locked(const SessionFence&, std::string*);
+  bool bump_session_revision_locked(const std::string&, std::string*);
+  bool replace_session_messages_locked(const std::string&, const std::vector<MessageRow>&, int64_t, std::string*);
 
   sqlite3* db_ = nullptr;
   std::string path_;

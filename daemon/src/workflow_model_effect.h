@@ -8,8 +8,8 @@ struct ToolLoopOptions;
 struct OpenAIToolProviderCtx;
 namespace agentd {
 
-// Workflow-owned effect guard. Ephemeral host-model runs may checkpoint and
-// replay exact provider/tool records; uncertain in-flight tools still stop.
+// Workflow-owned effect guard. Host-model runs may checkpoint and replay exact
+// provider/tool records. Persistent conversations use durable revision fences.
 class WorkflowModelEffect {
  public:
   WorkflowModelEffect(WorkflowEffectContext context, const std::string& task_request_json);
@@ -17,6 +17,10 @@ class WorkflowModelEffect {
   using Authorize = std::function<agent_status_t(const char*, const char*)>;
   agent_tool_executor_t wrap(agent_tool_executor_t base, Authorize authorize = {});
   void bind_scope(const Json::Value& scope);
+  Json::Value bind_session(const std::string& session_id, int64_t revision);
+  void stage_session(std::vector<AgentDb::MessageRow> messages, const std::string& error = {});
+  bool session_committed() const { return session_committed_; }
+  bool finished() const { return finished_; }
   void configure_transcript(ToolLoopOptions* options, const Json::Value& provider_identity);
   void set_fresh_budget(bool tools_limited, int64_t tools, bool steps_limited, int64_t steps);
   bool has_checkpoint() const { return restored_; }
@@ -30,6 +34,7 @@ class WorkflowModelEffect {
   Json::Value unresolved(const std::string& reason) const;
   void annotate(Json::Value* result, bool replayed = false) const;
   bool cancelled() const;
+  bool validate_session();
   Json::Value checkpoint_value() const;
   bool save_checkpoint(bool admitting_tool);
   bool append_record(Json::Value record);
@@ -41,6 +46,10 @@ class WorkflowModelEffect {
   agent_tool_provider_t provider_{};
   OpenAIToolProviderCtx* provider_context_ = nullptr;
   Authorize authorize_;
+  AgentDb::SessionFence session_;
+  std::vector<AgentDb::MessageRow> session_messages_;
+  bool session_bound_ = false, session_configured_ = false, session_staged_ = false;
+  bool session_conflict_ = false, session_committed_ = false, finished_ = false;
   bool checked_ = false, dispatched_ = false;
   bool transcript_ = false, restored_ = false, provider_failed_ = false, budget_refused_ = false;
   bool tools_budget_limited_ = false, steps_budget_limited_ = false;

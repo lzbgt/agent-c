@@ -480,7 +480,7 @@ int main() {
   const int64_t workflow_decisions_tbl =
     query_i64(raw2, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='workflow_decisions';");
   sqlite3_close(raw2);
-  assert(ver == 38);
+  assert(ver == 39);
   assert(workflow_decisions_tbl == 1);
   assert(sop_definitions_tbl == 1);
   assert(device_receipts_tbl == 1);

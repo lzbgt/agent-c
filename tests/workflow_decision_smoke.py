@@ -227,7 +227,7 @@ with tempfile.TemporaryDirectory(prefix="workflow-decision-") as temp:
         corrupt_row = waiting(corrupt)
         stop()
         with sqlite3.connect(database) as db:
-            assert db.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == "38"
+            assert db.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == "39"
             db.execute("UPDATE workflow_decisions SET spec_json='{}' WHERE workflow_id=?", (corrupt,))
         start()
         call("/api/v1/workflow/decision", answer(corrupt_row), expected=500)

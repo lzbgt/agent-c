@@ -6,6 +6,7 @@ Status: rolling
 
 When built with SQLite support (`AGENT_HAVE_SQLITE3`), `agentd` stores its canonical daemon state in SQLite:
 - sessions + message history
+- durable conversation generations (`session_revisions`, schema v39), retained across session deletion/recreation to fence stale workflow continuations. Ordinary message replacement/deletion advances the generation; final model receipt and conversation replacement commit atomically. Generation tombstones retain the session identifier/counter, not message content. Include them in backup and explicit data-erasure planning. See [session continuity](WORKFLOW_EFFECTS.md#session-backed-conversation-continuity).
 - runs + events + tool records
 - artifacts + UI actions
 - client events (client ↔ daemon collaboration)
@@ -103,7 +104,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v38)
+## Schema (v39)
 
 ### `edge_task_receipts`
 
@@ -121,6 +122,13 @@ All timestamps are Unix milliseconds.
 - `session_id TEXT PRIMARY KEY`
 - `created_unix_ms INTEGER`
 - `updated_unix_ms INTEGER`
+
+### `session_revisions`
+
+- `session_id TEXT PRIMARY KEY` (intentionally independent of cascading session deletion)
+- `revision INTEGER NOT NULL` (0 through 9007199254740990; normal stored generations start at 1)
+
+Schema v39 seeds existing sessions at generation 1. Normal message replacements and deletions increment the generation transactionally; exhaustion fails closed. A snapshot reads messages and generation together. Session-backed model checkpoints pin that generation, and completed model effects can replace messages in the same transaction as their receipt. A deleted ID keeps its generation fence so recreation cannot revive an old continuation.
 
 ### `messages`
 

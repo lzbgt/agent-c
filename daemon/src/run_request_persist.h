@@ -21,6 +21,7 @@ struct RunRequestPersistInput {
   const Json::Value* args = nullptr;
   const Json::Value* response_json = nullptr;
   bool use_tool_loop = false;
+  bool skip_session_write = false; // Conversation already atomically published with the workflow receipt.
   const ToolLoopResult* tool_loop_result = nullptr;
   const std::string* trace_id = nullptr;
   const std::string* prompt = nullptr;
