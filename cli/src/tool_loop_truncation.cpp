@@ -19,13 +19,12 @@ static std::string truncate_str(const std::string& s, size_t max_chars, bool* ou
   return s.substr(0, keep) + "...(truncated)";
 }
 
-std::string tool_loop_cap_tool_output_for_prompt(const std::string& tool_out, size_t max_chars, bool* out_truncated) {
+std::string tool_loop_cap_tool_output_for_prompt(
+  const std::string& tool_out, size_t max_chars, bool* out_truncated,
+  const std::string& executed_tool_name) {
   if (out_truncated) *out_truncated = false;
-  if (max_chars == 0) {
-    return tool_out;
-  }
-
 #if !defined(AGENT_HAVE_JSONCPP)
+  (void)executed_tool_name;
   return truncate_str(tool_out, max_chars, out_truncated);
 #else
   // Try to preserve JSON envelope shape:
@@ -44,15 +43,48 @@ std::string tool_loop_cap_tool_output_for_prompt(const std::string& tool_out, si
     return Json::writeString(wb, v);
   };
 
+
+  bool did = false;
+  const bool saved_listing = executed_tool_name == "fs_list";
+  if ((executed_tool_name == "shell_exec" || executed_tool_name == "proc_exec" || saved_listing) &&
+      root["data"].isObject() && root["data"]["output"].isString() &&
+      root["data"]["output_artifact"].isObject() &&
+      root["data"]["output_artifact"]["path"].isString() &&
+      !root["data"]["output_artifact"]["path"].asString().empty()) {
+    auto& data = root["data"];
+    // Bulk output is an artifact, not text for the model to reproduce or extend.
+    // Analysis can explicitly fetch the required lines through the readback tool.
+    data.removeMember("output");
+    if (saved_listing) {
+      // Both fields contain the same directory entry names. Remove both before
+      // the fits-fast-path, even when the overall model context budget is large.
+      if (data["entries"].isArray()) data["entries_count"] = Json::UInt64(data["entries"].size());
+      data.removeMember("entries");
+      data["entries_omitted_from_prompt"] = true;
+    }
+    data["prompt_truncated"] = true;
+    data["output_omitted_from_prompt"] = true;
+    auto& readback = data["output_readback"];
+    readback["tool"] = "fs_read";
+    readback["arguments"]["path"] = data["output_artifact"]["path"];
+    readback["arguments"]["start_line"] = 1;
+    readback["arguments"]["max_lines"] = 80;
+    readback["arguments"]["max_chars"] = 8000;
+    data["output_note"] = saved_listing
+      ? "This is a saved directory-listing receipt; entry names and listing text are intentionally absent. entries_count is the number captured under the listed filters; truncated means additional entries may be missing. Exact native listing bytes are at output_artifact.path; Tool outputs may show a marked display excerpt. For analysis, explicitly fs_read relevant lines. For exact listing delivery, artifact_register the saved path. Do not invent or regenerate entries."
+      : "This is a saved-output receipt; stdout/stderr text is intentionally absent. Exact captured bytes are at output_artifact.path; Tool outputs may show a marked display excerpt. For analysis, explicitly fs_read relevant lines. For exact file delivery, artifact_register the saved path. Do not invent or regenerate command output.";
+    did = true;
+  }
+
   // If it already fits, keep it (normalized) verbatim.
   {
     const std::string s = stringify(root);
-    if (s.size() <= max_chars) {
+    if (max_chars == 0 || s.size() <= max_chars) {
+      if (out_truncated) *out_truncated = did;
       return s;
     }
   }
 
-  bool did = false;
   if (root.isMember("data") && root["data"].isObject()) {
     Json::Value& data = root["data"];
     if (data.isMember("output") && data["output"].isString()) {

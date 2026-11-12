@@ -720,6 +720,17 @@ agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json, agent_
     }
     data["output"] = oss.str();
   }
+  // Keep the native rendered listing and structured entries intact for evidence.
+  // The model prompt adapter uses only the saved listing's receipt when large.
+  const std::string listing = data["output"].asString();
+  data["entries_count"] = Json::UInt64(arr.size());
+  data["captured_output_bytes"] = Json::UInt64(listing.size());
+  data["observed_output_bytes"] = Json::UInt64(listing.size());
+  data["capture_truncated"] = data["truncated"];
+  data["capture_complete"] = !data["truncated"].asBool() && !ec;
+  data["listing_complete"] = data["capture_complete"];
+  if (ec) data["listing_error"] = ec.message();
+  attach_text_output_artifact(ctx, "fs_list directory listing", listing, data);
   return write_envelope(true, "", data);
 #endif
 }

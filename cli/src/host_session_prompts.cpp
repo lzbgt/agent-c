@@ -1,6 +1,7 @@
 #include "host_session_prompts.h"
 
 #include "default_system_prompt.h"
+#include "agent/parts.h"
 
 #include <algorithm>
 #include <cstring>
@@ -115,6 +116,22 @@ static std::vector<ProjectInstructionDoc> load_instruction_docs(const std::files
   return docs;
 }
 
+
+static bool copy_session_message(
+    const agent_session_t* source, size_t index, agent_session_t* destination,
+    agent_role_t role, const std::string& content) {
+  const size_t count = agent_session_message_part_count(source, index);
+  if (!count) return agent_session_add_message(destination, role, content.c_str()) == AGENT_OK;
+  std::vector<agent_content_part_t> parts(count);
+  for (size_t i = 0; i < count; ++i) {
+    agent_content_part_view_t view{};
+    if (agent_session_get_message_part(source, index, i, &view) != AGENT_OK) return false;
+    parts[i] = {view.type, view.text, view.url, view.bytes, view.bytes_len, view.mime};
+  }
+  // Part views remain owned by source until core has copied them into destination.
+  return agent_session_add_message_parts(destination, role, parts.data(), parts.size()) == AGENT_OK;
+}
+
 static bool session_leading_system_has_prefix(const agent_session_t* session, const char* prefix) {
   if (!session || !prefix || !prefix[0]) return false;
   const size_t prefix_len = std::strlen(prefix);
@@ -179,6 +196,73 @@ std::string build_project_instructions_system_prompt(const std::filesystem::path
   return out.str();
 }
 
+
+std::string build_current_date_system_prompt(std::time_t now) {
+  std::tm utc{}, local{};
+  if (!gmtime_r(&now, &utc) || !localtime_r(&now, &local)) return "";
+  char utc_date[16]{}, local_date[16]{}, offset[16]{}, zone[64]{};
+  if (!std::strftime(utc_date, sizeof(utc_date), "%Y-%m-%d", &utc) ||
+      !std::strftime(local_date, sizeof(local_date), "%Y-%m-%d", &local) ||
+      !std::strftime(offset, sizeof(offset), "%z", &local)) return "";
+  std::strftime(zone, sizeof(zone), "%Z", &local);
+  std::ostringstream out;
+  out << kCurrentDateContextPrefix << "\n"
+      << "Host local date: " << local_date << " (UTC offset " << offset;
+  if (*zone) out << ", zone " << zone;
+  out << ").\n"
+      << "Current UTC date: " << utc_date << ".\n"
+      << "This runtime date supersedes date assumptions in model memory or earlier conversation. "
+      << "Resolve today/latest relative to the host local date unless the user specifies a timezone or an explicit historical period. "
+      << "For latest news, start web_search with time_range=day; broaden only if needed and disclose the actual coverage dates. "
+      << "A newly fetched or modified page is not necessarily newly published. Verify publication and event dates in fetched sources; "
+      << "undated pages and older reports are not proof of current news. Cite a supporting source URL and its publication/event date "
+      << "for every news item, and state when a date is unknown. Do not invent dates or claim a future as-of date.\n";
+  return out.str();
+}
+
+bool ensure_current_date_system_prompt(agent_session_t** session_io, std::time_t now) {
+  if (!session_io || !*session_io) return false;
+  const auto prompt = build_current_date_system_prompt(now);
+  if (prompt.empty()) return false;
+  agent_session_t* session = *session_io;
+  struct Msg { agent_role_t role; std::string content; size_t source_index; };
+  std::vector<Msg> messages;
+  messages.reserve(agent_session_message_count(session));
+  bool leading = true, have_current = false;
+  size_t managed_count = 0;
+  for (size_t i = 0; i < agent_session_message_count(session); ++i) {
+    agent_message_view_t view{};
+    if (agent_session_get_message(session, i, &view) != AGENT_OK) return false;
+    const std::string content(view.content ? view.content : "", view.content_len);
+    if (view.role != AGENT_ROLE_SYSTEM) leading = false;
+    if (view.role == AGENT_ROLE_SYSTEM && content.rfind(kCurrentDateContextPrefix, 0) == 0) {
+      ++managed_count;
+      have_current = have_current || (leading && content == prompt);
+      continue;
+    }
+    messages.push_back({view.role, content, i});
+  }
+  if (have_current && managed_count == 1) return false;
+  agent_session_t* rebuilt = nullptr;
+  if (agent_session_create(&rebuilt) != AGENT_OK || !rebuilt) return false;
+  const auto append = [&](agent_role_t role, const std::string& content) {
+    return agent_session_add_message(rebuilt, role, content.c_str()) == AGENT_OK;
+  };
+  bool added = false, ok = true;
+  for (const auto& message : messages) {
+    if (!added && message.role != AGENT_ROLE_SYSTEM) {
+      ok = append(AGENT_ROLE_SYSTEM, prompt);
+      added = true;
+    }
+    if (!ok || !(ok = copy_session_message(session, message.source_index, rebuilt, message.role, message.content))) break;
+  }
+  if (ok && !added) ok = append(AGENT_ROLE_SYSTEM, prompt);
+  if (!ok) { agent_session_destroy(rebuilt); return false; }
+  agent_session_destroy(session);
+  *session_io = rebuilt;
+  return true;
+}
+
 bool ensure_pinned_host_session_prompts(
   agent_session_t** session_io,
   const std::string& host_system_profile,
@@ -199,7 +283,7 @@ bool ensure_pinned_host_session_prompts(
   const bool have_host_profile_leading = session_leading_system_has_substring(session, host_profile_marker);
   const bool have_any_client_profile_leading = session_leading_system_has_prefix(session, kClientProfilePrefix);
   const bool have_client_profile_leading =
-    want_client_profile ? session_leading_system_has_substring(session, client_profile_marker) : true;
+    want_client_profile ? session_leading_system_has_exact(session, client_profile_prompt) : true;
   const bool have_any_project_instructions_leading = session_leading_system_has_prefix(session, kProjectInstructionsPrefix);
   const bool have_project_instructions_leading =
     want_project_instructions ? session_leading_system_has_exact(session, project_instructions_prompt) : true;
@@ -219,6 +303,7 @@ bool ensure_pinned_host_session_prompts(
   struct Msg {
     agent_role_t role;
     std::string content;
+    size_t source_index;
   };
 
   std::vector<Msg> msgs;
@@ -226,7 +311,7 @@ bool ensure_pinned_host_session_prompts(
   for (size_t i = 0; i < agent_session_message_count(session); i++) {
     agent_message_view_t v{};
     if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
-    msgs.push_back(Msg{v.role, std::string(v.content ? v.content : "", v.content_len)});
+    msgs.push_back(Msg{v.role, std::string(v.content ? v.content : "", v.content_len), i});
   }
 
   agent_session_t* rebuilt = nullptr;
@@ -249,7 +334,10 @@ bool ensure_pinned_host_session_prompts(
       if (m.content.rfind(kClientProfilePrefix, 0) == 0) continue;
       if (m.content.rfind(kProjectInstructionsPrefix, 0) == 0) continue;
     }
-    (void)agent_session_add_message(rebuilt, m.role, m.content.c_str());
+    if (!copy_session_message(session, m.source_index, rebuilt, m.role, m.content)) {
+      agent_session_destroy(rebuilt);
+      return false;
+    }
   }
 
   agent_session_destroy(session);

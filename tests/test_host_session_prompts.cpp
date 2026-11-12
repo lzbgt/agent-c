@@ -1,9 +1,12 @@
 #include "host_session_prompts.h"
 
 #include "agent/agent.h"
+#include "agent/parts.h"
 
 #include <cassert>
 #include <chrono>
+#include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -75,6 +78,88 @@ int main() {
   assert(message_text(stale, 2) == "keep me");
   agent_session_destroy(stale);
 
+  // UTC and the host's local day can differ, including across a year boundary.
+  const char* old_tz_value = std::getenv("TZ");
+  const bool had_tz = old_tz_value != nullptr;
+  const std::string old_tz = old_tz_value ? old_tz_value : "";
+  setenv("TZ", "CST-8", 1);
+  tzset();
+  constexpr std::time_t before_local_new_year = 1798732799; // 2026-12-31 15:59:59 UTC.
+  constexpr std::time_t local_new_year = 1798732800;
+  constexpr std::time_t utc_new_year = 1798761600;
+  const auto before_date = build_current_date_system_prompt(before_local_new_year);
+  const auto after_date = build_current_date_system_prompt(local_new_year);
+  assert(before_date.find("Host local date:") < before_date.find("Current UTC date:"));
+  assert(before_date.find("Current UTC date: 2026-12-31.") != std::string::npos);
+  assert(before_date.find("Host local date: 2026-12-31 (UTC offset +0800") != std::string::npos);
+  assert(after_date.find("Current UTC date: 2026-12-31.") != std::string::npos);
+  assert(after_date.find("Host local date: 2027-01-01 (UTC offset +0800") != std::string::npos);
+  assert(before_date == build_current_date_system_prompt(before_local_new_year - 1));
+
+  agent_session_t* dated = nullptr;
+  assert(agent_session_create(&dated) == AGENT_OK);
+  assert(ensure_current_date_system_prompt(&dated, before_local_new_year));
+  assert(agent_session_message_count(dated) == 1);
+  assert(message_text(dated, 0) == before_date);
+  assert(!ensure_current_date_system_prompt(&dated, before_local_new_year - 1));
+  assert(agent_session_add_message(dated, AGENT_ROLE_USER, "Historical 2025 request must remain intact") == AGENT_OK);
+  assert(agent_session_add_message(dated, AGENT_ROLE_ASSISTANT, "Retain prior answer") == AGENT_OK);
+  assert(agent_session_add_message(dated, AGENT_ROLE_SYSTEM, "CURRENT_DATE_CONTEXT=v1\nStale imported clock") == AGENT_OK);
+  assert(ensure_current_date_system_prompt(&dated, local_new_year));
+  assert(agent_session_message_count(dated) == 3);
+  assert(message_text(dated, 0) == after_date);
+  assert(message_text(dated, 1) == "Historical 2025 request must remain intact");
+  assert(message_text(dated, 2) == "Retain prior answer");
+  assert(!ensure_current_date_system_prompt(&dated, local_new_year + 60));
+  assert(ensure_current_date_system_prompt(&dated, utc_new_year));
+  assert(message_text(dated, 0).find("Current UTC date: 2027-01-01.") != std::string::npos);
+  assert(agent_session_message_count(dated) == 3);
+  agent_session_destroy(dated);
+
+  agent_session_t* multimodal = nullptr;
+  assert(agent_session_create(&multimodal) == AGENT_OK);
+  assert(agent_session_add_message(multimodal, AGENT_ROLE_SYSTEM, "Owner instructions") == AGENT_OK);
+  const uint8_t binary[] = {0, 1, 255};
+  agent_content_part_t parts[3]{};
+  parts[0].type = AGENT_PART_TEXT;
+  parts[0].text_or_null = "Preserve attachments";
+  parts[1].type = AGENT_PART_IMAGE_URL;
+  parts[1].url_or_null = "https://example.org/image.png";
+  parts[2].type = AGENT_PART_BINARY;
+  parts[2].bytes_or_null = binary;
+  parts[2].bytes_len = sizeof(binary);
+  parts[2].mime_or_null = "application/octet-stream";
+  assert(agent_session_add_message_parts(multimodal, AGENT_ROLE_USER, parts, 3) == AGENT_OK);
+  const auto check_parts = [&](size_t index) {
+    assert(message_text(multimodal, index) == "Preserve attachments");
+    assert(agent_session_message_part_count(multimodal, index) == 3);
+    agent_content_part_view_t view{};
+    assert(agent_session_get_message_part(multimodal, index, 1, &view) == AGENT_OK);
+    assert(view.type == AGENT_PART_IMAGE_URL && std::string(view.url, view.url_len) == "https://example.org/image.png");
+    assert(agent_session_get_message_part(multimodal, index, 2, &view) == AGENT_OK);
+    assert(view.type == AGENT_PART_BINARY && view.bytes_len == sizeof(binary));
+    assert(view.bytes[0] == 0 && view.bytes[1] == 1 && view.bytes[2] == 255);
+    assert(std::string(view.mime, view.mime_len) == "application/octet-stream");
+  };
+  assert(ensure_current_date_system_prompt(&multimodal, before_local_new_year));
+  check_parts(2);
+  assert(ensure_current_date_system_prompt(&multimodal, local_new_year));
+  check_parts(2);
+  assert(ensure_pinned_host_session_prompts(&multimodal, "default", "", "", ""));
+  check_parts(3);
+  const std::string original_client = "CLIENT_PROFILE=webui\nOriginal output instructions";
+  const std::string revised_client = "CLIENT_PROFILE=webui\nUpdated output instructions";
+  assert(ensure_pinned_host_session_prompts(&multimodal, "default", original_client, "CLIENT_PROFILE=webui", ""));
+  check_parts(4);
+  assert(ensure_pinned_host_session_prompts(&multimodal, "default", revised_client, "CLIENT_PROFILE=webui", ""));
+  assert(message_text(multimodal, 1) == revised_client);
+  check_parts(4);
+  assert(!ensure_pinned_host_session_prompts(&multimodal, "default", revised_client, "CLIENT_PROFILE=webui", ""));
+  agent_session_destroy(multimodal);
+
+  if (had_tz) setenv("TZ", old_tz.c_str(), 1);
+  else unsetenv("TZ");
+  tzset();
   fs::remove_all(temp_root);
   return 0;
 }

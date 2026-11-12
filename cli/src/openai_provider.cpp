@@ -7,6 +7,7 @@
 
 #if defined(AGENT_HAVE_JSONCPP)
 #include <json/json.h>
+#include "openai_message_normalization.h"
 #endif
 
 #include <sstream>
@@ -55,6 +56,7 @@ agent_status_t openai_provider_generate(
       m["content"] = std::string(req->messages[i].content, req->messages[i].content_len);
       messages.append(m);
     }
+    openai_coalesce_leading_system_messages(messages);
     root["messages"] = messages;
     Json::StreamWriterBuilder wb;
     wb["indentation"] = "";
@@ -266,6 +268,7 @@ agent_status_t openai_provider_generate_ex(
     messages.append(m);
   }
 
+  openai_coalesce_leading_system_messages(messages);
   root["messages"] = messages;
   const std::string request_json = json_stringify(root);
   ctx->last_request_body = request_json;
@@ -273,6 +276,11 @@ agent_status_t openai_provider_generate_ex(
   OpenAIRawResult raw = openai_chat_completions_raw(cfg, request_json);
   ctx->last_http_status = raw.http_status;
   ctx->last_body = raw.response_body;
+
+  if (raw.cancelled) {
+    ctx->last_error = "cancelled";
+    return AGENT_ERR_CANCELLED;
+  }
 
   if (raw.http_status < 200 || raw.http_status >= 300) {
     ctx->last_error = openai_format_http_error(raw.http_status, raw.response_body);

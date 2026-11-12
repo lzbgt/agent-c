@@ -818,6 +818,10 @@ static Json::Value run_request_to_json_impl(
     }
   }
 
+  if (!no_default_system && tools == "host") {
+    (void)ensure_current_date_system_prompt(&session);
+  }
+
   agent_tool_registry_t* registry = nullptr;
   agent_tool_executor_t base_executor{};
   agent_tool_executor_t executor{};
@@ -1682,6 +1686,8 @@ static Json::Value run_request_to_json_impl(
   }
   // Cancellation is a first-class terminal state for async jobs. Surface an explicit flag so
   // job state can be `status=cancelled` (instead of overloading `error`).
+  // Event capture can be truncated; the explicit cancellation error still wins.
+  if (!ok && err == "cancelled") out["cancelled"] = true;
   if (!ok && events_out.isArray()) {
     bool cancelled = false;
     for (Json::ArrayIndex i = 0; i < events_out.size(); i++) {

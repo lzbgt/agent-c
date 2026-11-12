@@ -227,6 +227,14 @@ agent_status_t tool_shell_exec(HostToolCtx* ctx, const char* arguments_json, age
 agent_status_t tool_proc_exec(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 agent_status_t tool_file_apply_patch(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 
+#if defined(AGENT_HAVE_JSONCPP)
+// Save a large native rendered output unchanged, with bounded owner-only storage.
+// Callers provide capture completeness/counts; storage failure adds an honest error.
+void attach_text_output_artifact(
+  HostToolCtx* ctx, const std::string& title, const std::string& output, Json::Value& data
+);
+#endif
+
 // Artifact/UI signaling tool(s) (also in separate TU).
 agent_status_t tool_artifact_register(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 agent_status_t tool_scene_apply(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);

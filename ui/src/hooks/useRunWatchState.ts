@@ -253,7 +253,6 @@ export function useRunWatchState(args: UseRunWatchStateArgs) {
     const rec = jobs[jobStoreKey] || jobs[sid];
     const jobId = typeof rec?.job_id === "string" ? rec.job_id : "";
     if (!jobId) return;
-    const cursor = typeof rec?.cursor === "number" && Number.isFinite(rec.cursor) && rec.cursor >= 0 ? Math.floor(rec.cursor) : 0;
 
     if (!jobs[jobStoreKey] && jobs[sid]) {
       writeJobsBySession((prev) => {
@@ -279,7 +278,10 @@ export function useRunWatchState(args: UseRunWatchStateArgs) {
         }
         const status = typeof job.status === "string" ? job.status : "";
         if (status === "queued" || status === "running") {
-          cursorRef.current = cursor;
+          // The cursor is persisted, but liveEvents are not. Replay the job's
+          // retained events when rebuilding a watcher so completed tool output
+          // remains available after reload/reconnect.
+          cursorRef.current = 0;
           setJobError(null);
           setJobStatus(status);
           setJobUpdatedMs(typeof job.updated_unix_ms === "number" ? job.updated_unix_ms : null);

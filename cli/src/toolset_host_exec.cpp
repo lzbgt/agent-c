@@ -1,6 +1,8 @@
 #include "toolset_host_internal.h"
 
 #include <chrono>
+#include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <optional>
@@ -34,8 +36,35 @@ struct ExecResult {
   bool timed_out = false;
   bool truncated = false;
   bool cancelled = false;
+  bool output_eof = false;
+  uint64_t observed_output_bytes = 0;
   std::string output;
 };
+
+static bool drain_exec_output(int fd, size_t max_output_bytes, ExecResult& result) {
+  // Always drain the pipe after the capture cap; otherwise a verbose child
+  // blocks on a full pipe and appears to hang until its execution timeout.
+  // A bounded batch keeps timeout and cancellation checks responsive.
+  char buffer[4096];
+  for (size_t reads = 0; reads < 64; ++reads) {
+    const ssize_t n = read(fd, buffer, sizeof(buffer));
+    if (n > 0) {
+      const size_t bytes = static_cast<size_t>(n);
+      result.observed_output_bytes += bytes;
+      const size_t remaining = max_output_bytes > result.output.size() ? max_output_bytes - result.output.size() : 0;
+      const size_t captured = std::min(bytes, remaining);
+      result.output.append(buffer, captured);
+      if (captured < bytes) result.truncated = true;
+    } else if (n < 0 && errno == EINTR) {
+      continue;
+    } else {
+      if (n == 0) result.output_eof = true;
+      return true; // EOF, no bytes currently available, or a read error.
+    }
+  }
+  return false; // More output may be ready; return to the cancellation check.
+}
+
 
 static std::string trim_ws(std::string s) {
   while (!s.empty() && (s.back() == '\r' || s.back() == '\n' || s.back() == ' ' || s.back() == '\t')) s.pop_back();
@@ -193,6 +222,18 @@ static std::optional<std::filesystem::path> write_temp_file(const std::string& c
   return std::filesystem::path(std::string(buf.data()));
 }
 
+
+#if defined(AGENT_HAVE_JSONCPP)
+static void attach_exec_output_artifact(HostToolCtx* ctx, const char* tool, const ExecResult& result, Json::Value& data) {
+  data["tool"] = tool;
+  data["captured_output_bytes"] = Json::UInt64(result.output.size());
+  data["observed_output_bytes"] = Json::UInt64(result.observed_output_bytes);
+  data["capture_truncated"] = result.truncated;
+  data["capture_complete"] = result.output_eof && !result.truncated && !result.timed_out && !result.cancelled;
+  host_tools_internal::attach_text_output_artifact(ctx, std::string(tool) + " captured output", result.output, data);
+}
+#endif
+
 static ExecResult run_shell_exec(
   const std::string& cmd,
   int timeout_ms,
@@ -238,31 +279,28 @@ static ExecResult run_shell_exec(
   while (true) {
     if (should_cancel && should_cancel(should_cancel_ctx)) {
       r.cancelled = true;
-      kill(pid, SIGKILL);
-      (void)waitpid(pid, &status, 0);
+      if (!child_done) {
+        kill(pid, SIGKILL);
+        (void)waitpid(pid, &status, 0);
+      }
+      (void)drain_exec_output(pipefd[0], max_output_bytes, r);
+      break;
+    }
+    // Check deadlines before any bounded-drain continuation, including after the
+    // direct child exits while a descendant still holds its output pipe open.
+    const auto now = std::chrono::steady_clock::now();
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+    if (timeout_ms > 0 && elapsed >= timeout_ms) {
+      r.timed_out = true;
+      if (!child_done) {
+        kill(pid, SIGKILL);
+        (void)waitpid(pid, &status, 0);
+      }
+      (void)drain_exec_output(pipefd[0], max_output_bytes, r);
       break;
     }
     // Drain output.
-    char buf[4096];
-    while (r.output.size() < max_output_bytes) {
-      ssize_t n = read(pipefd[0], buf, sizeof(buf));
-      if (n > 0) {
-        size_t to_add = (size_t)n;
-        if (r.output.size() + to_add > max_output_bytes) {
-          to_add = max_output_bytes - r.output.size();
-        }
-        r.output.append(buf, buf + to_add);
-        if (to_add < (size_t)n) {
-          // Truncated.
-          r.truncated = true;
-          break;
-        }
-      } else if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-        break;
-      } else {
-        break;
-      }
-    }
+    const bool output_drained = drain_exec_output(pipefd[0], max_output_bytes, r);
 
     if (!child_done) {
       pid_t w = waitpid(pid, &status, WNOHANG);
@@ -272,15 +310,8 @@ static ExecResult run_shell_exec(
     }
 
     if (child_done) {
-      break;
-    }
-
-    const auto now = std::chrono::steady_clock::now();
-    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
-    if (timeout_ms > 0 && elapsed > timeout_ms) {
-      r.timed_out = true;
-      kill(pid, SIGKILL);
-      (void)waitpid(pid, &status, 0);
+      // Include bytes written between the first drain and waitpid observing exit.
+      if (!output_drained || !drain_exec_output(pipefd[0], max_output_bytes, r)) continue;
       break;
     }
 
@@ -357,29 +388,27 @@ static ExecResult run_proc_exec(
   while (true) {
     if (should_cancel && should_cancel(should_cancel_ctx)) {
       r.cancelled = true;
-      kill(pid, SIGKILL);
-      (void)waitpid(pid, &status, 0);
+      if (!child_done) {
+        kill(pid, SIGKILL);
+        (void)waitpid(pid, &status, 0);
+      }
+      (void)drain_exec_output(pipefd[0], max_output_bytes, r);
       break;
     }
-    char buf[4096];
-    while (r.output.size() < max_output_bytes) {
-      ssize_t n = read(pipefd[0], buf, sizeof(buf));
-      if (n > 0) {
-        size_t to_add = (size_t)n;
-        if (r.output.size() + to_add > max_output_bytes) {
-          to_add = max_output_bytes - r.output.size();
-        }
-        r.output.append(buf, buf + to_add);
-        if (to_add < (size_t)n) {
-          r.truncated = true;
-          break;
-        }
-      } else if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-        break;
-      } else {
-        break;
+    // Check deadlines before any bounded-drain continuation, including after the
+    // direct child exits while a descendant still holds its output pipe open.
+    const auto now = std::chrono::steady_clock::now();
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+    if (timeout_ms > 0 && elapsed >= timeout_ms) {
+      r.timed_out = true;
+      if (!child_done) {
+        kill(pid, SIGKILL);
+        (void)waitpid(pid, &status, 0);
       }
+      (void)drain_exec_output(pipefd[0], max_output_bytes, r);
+      break;
     }
+    const bool output_drained = drain_exec_output(pipefd[0], max_output_bytes, r);
 
     if (!child_done) {
       pid_t w = waitpid(pid, &status, WNOHANG);
@@ -389,15 +418,8 @@ static ExecResult run_proc_exec(
     }
 
     if (child_done) {
-      break;
-    }
-
-    const auto now = std::chrono::steady_clock::now();
-    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
-    if (timeout_ms > 0 && elapsed > timeout_ms) {
-      r.timed_out = true;
-      kill(pid, SIGKILL);
-      (void)waitpid(pid, &status, 0);
+      // Include bytes written between the first drain and waitpid observing exit.
+      if (!output_drained || !drain_exec_output(pipefd[0], max_output_bytes, r)) continue;
       break;
     }
 
@@ -479,29 +501,27 @@ static ExecResult run_proc_exec_with_cwd(
   while (true) {
     if (should_cancel && should_cancel(should_cancel_ctx)) {
       r.cancelled = true;
-      kill(pid, SIGKILL);
-      (void)waitpid(pid, &status, 0);
+      if (!child_done) {
+        kill(pid, SIGKILL);
+        (void)waitpid(pid, &status, 0);
+      }
+      (void)drain_exec_output(pipefd[0], max_output_bytes, r);
       break;
     }
-    char buf[4096];
-    while (r.output.size() < max_output_bytes) {
-      ssize_t n = read(pipefd[0], buf, sizeof(buf));
-      if (n > 0) {
-        size_t to_add = (size_t)n;
-        if (r.output.size() + to_add > max_output_bytes) {
-          to_add = max_output_bytes - r.output.size();
-        }
-        r.output.append(buf, buf + to_add);
-        if (to_add < (size_t)n) {
-          r.truncated = true;
-          break;
-        }
-      } else if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-        break;
-      } else {
-        break;
+    // Check deadlines before any bounded-drain continuation, including after the
+    // direct child exits while a descendant still holds its output pipe open.
+    const auto now = std::chrono::steady_clock::now();
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+    if (timeout_ms > 0 && elapsed >= timeout_ms) {
+      r.timed_out = true;
+      if (!child_done) {
+        kill(pid, SIGKILL);
+        (void)waitpid(pid, &status, 0);
       }
+      (void)drain_exec_output(pipefd[0], max_output_bytes, r);
+      break;
     }
+    const bool output_drained = drain_exec_output(pipefd[0], max_output_bytes, r);
 
     if (!child_done) {
       pid_t w = waitpid(pid, &status, WNOHANG);
@@ -511,15 +531,8 @@ static ExecResult run_proc_exec_with_cwd(
     }
 
     if (child_done) {
-      break;
-    }
-
-    const auto now = std::chrono::steady_clock::now();
-    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
-    if (timeout_ms > 0 && elapsed > timeout_ms) {
-      r.timed_out = true;
-      kill(pid, SIGKILL);
-      (void)waitpid(pid, &status, 0);
+      // Include bytes written between the first drain and waitpid observing exit.
+      if (!output_drained || !drain_exec_output(pipefd[0], max_output_bytes, r)) continue;
       break;
     }
 
@@ -578,7 +591,13 @@ agent_status_t tool_shell_exec(HostToolCtx* ctx, const char* arguments_json, age
   const std::string cwd =
     args.isMember("cwd") && args["cwd"].isString() ? args["cwd"].asString() : default_exec_cwd(ctx);
   const int timeout_ms = args.isMember("timeout_ms") && args["timeout_ms"].isInt() ? args["timeout_ms"].asInt() : 30000;
-  const int max_output = args.isMember("max_output_bytes") && args["max_output_bytes"].isInt() ? args["max_output_bytes"].asInt() : 65536;
+  if (args.isMember("max_output_bytes") && !args["max_output_bytes"].isInt()) {
+    return write_envelope(false, "max_output_bytes must be an integer from 1 to 1048576", Json::Value(Json::objectValue));
+  }
+  const int max_output = args.isMember("max_output_bytes") ? args["max_output_bytes"].asInt() : 65536;
+  if (max_output < 1 || max_output > 1024 * 1024) {
+    return write_envelope(false, "max_output_bytes must be an integer from 1 to 1048576", Json::Value(Json::objectValue));
+  }
 
   std::string cmd_run = cmd;
   if (!trim_ws(cwd).empty()) {
@@ -607,6 +626,7 @@ agent_status_t tool_shell_exec(HostToolCtx* ctx, const char* arguments_json, age
   data["truncated"] = r.truncated;
   data["cancelled"] = r.cancelled;
   data["output"] = r.output;
+  attach_exec_output_artifact(ctx, "shell_exec", r, data);
   // Note: ok is a hint only; the model should still judge based on output for cases like pip warnings.
   const bool ok_hint = (!r.timed_out && !r.cancelled && r.exit_code == 0);
   return write_envelope(ok_hint, r.cancelled ? "cancelled" : "", data);
@@ -654,7 +674,13 @@ agent_status_t tool_proc_exec(HostToolCtx* ctx, const char* arguments_json, agen
   const std::string cwd =
     args.isMember("cwd") && args["cwd"].isString() ? args["cwd"].asString() : default_exec_cwd(ctx);
   const int timeout_ms = args.isMember("timeout_ms") && args["timeout_ms"].isInt() ? args["timeout_ms"].asInt() : 30000;
-  const int max_output = args.isMember("max_output_bytes") && args["max_output_bytes"].isInt() ? args["max_output_bytes"].asInt() : 65536;
+  if (args.isMember("max_output_bytes") && !args["max_output_bytes"].isInt()) {
+    return write_envelope(false, "max_output_bytes must be an integer from 1 to 1048576", Json::Value(Json::objectValue));
+  }
+  const int max_output = args.isMember("max_output_bytes") ? args["max_output_bytes"].asInt() : 65536;
+  if (max_output < 1 || max_output > 1024 * 1024) {
+    return write_envelope(false, "max_output_bytes must be an integer from 1 to 1048576", Json::Value(Json::objectValue));
+  }
 
   ExecResult r;
   if (!trim_ws(cwd).empty()) {
@@ -675,6 +701,7 @@ agent_status_t tool_proc_exec(HostToolCtx* ctx, const char* arguments_json, agen
   data["truncated"] = r.truncated;
   data["cancelled"] = r.cancelled;
   data["output"] = r.output;
+  attach_exec_output_artifact(ctx, "proc_exec", r, data);
   const bool ok_hint = (!r.timed_out && !r.cancelled && r.exit_code == 0);
   return write_envelope(ok_hint, r.cancelled ? "cancelled" : "", data);
 #endif
@@ -715,7 +742,13 @@ agent_status_t tool_file_apply_patch(HostToolCtx* ctx, const char* arguments_jso
   }
 
   const int timeout_ms = args.isMember("timeout_ms") && args["timeout_ms"].isInt() ? args["timeout_ms"].asInt() : 30000;
-  const int max_output = args.isMember("max_output_bytes") && args["max_output_bytes"].isInt() ? args["max_output_bytes"].asInt() : 65536;
+  if (args.isMember("max_output_bytes") && !args["max_output_bytes"].isInt()) {
+    return write_envelope(false, "max_output_bytes must be an integer from 1 to 1048576", Json::Value(Json::objectValue));
+  }
+  const int max_output = args.isMember("max_output_bytes") ? args["max_output_bytes"].asInt() : 65536;
+  if (max_output < 1 || max_output > 1024 * 1024) {
+    return write_envelope(false, "max_output_bytes must be an integer from 1 to 1048576", Json::Value(Json::objectValue));
+  }
   // Never allow --unsafe-paths in scoped mode: it can enable patch path traversal.
   const bool unsafe_paths = ctx->unrestricted &&
     (args.isMember("unsafe_paths") && args["unsafe_paths"].isBool() ? args["unsafe_paths"].asBool() : true);

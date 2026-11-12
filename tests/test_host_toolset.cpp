@@ -4,7 +4,12 @@
 
 #include <json/json.h>
 
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
+#include <chrono>
+#include <iostream>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -1474,7 +1479,245 @@ static void test_memory_tools() {
   std::filesystem::remove_all(root);
 }
 
-int main() {
+
+static std::string exec_fixture_output() {
+  std::string output;
+  output.reserve(128 * 1024);
+  for (size_t i = 0; i < 8192; ++i) output += "0123456789abcde\n";
+  return output;
+}
+
+static void test_exec_output_offload_and_drain(const std::string& executable) {
+  const auto root = std::filesystem::temp_directory_path() / ("agent_exec_capture_" + std::to_string((long long)getpid()));
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  const std::string expected = exec_fixture_output();
+  const auto binary = std::filesystem::absolute(executable).string();
+  std::string quoted = "'";
+  for (char c : binary) quoted += c == '\'' ? "'\\''" : std::string(1, c);
+  quoted += "'";
+
+  // Cover all three drain paths: shell, proc, and proc with a session cwd.
+  for (int mode = 0; mode < 3; ++mode) {
+    HostToolsetConfig cfg;
+    cfg.root_dir = root.string();
+    cfg.allow_symlinks = false;
+    if (mode == 2) {
+      cfg.sessions_root_dir = (root / "sessions").string();
+      cfg.session_id = "capture";
+    }
+    const auto session_root = mode == 2 ? root / "sessions" / "session_capture" : root;
+    std::filesystem::create_directories(session_root);
+    agent_tool_registry_t* reg = nullptr;
+    agent_tool_executor_t executor{};
+    assert(toolset_host_create(cfg, &reg, &executor) == AGENT_OK);
+    const char* tool = mode == 0 ? "shell_exec" : "proc_exec";
+    Json::Value args(Json::objectValue);
+    if (mode == 0) args["cmd"] = quoted + " --emit-output-fixture";
+    else {
+      args["argv"] = Json::Value(Json::arrayValue);
+      args["argv"].append(binary);
+      args["argv"].append("--emit-output-fixture");
+    }
+    args["timeout_ms"] = 3000;
+    args["max_output_bytes"] = 16384; // exact boundary previously hid truncation or blocked the child
+    const auto execute = [&](const char* name, const Json::Value& input) {
+      const std::string request = json_stringify(input);
+      agent_string_t raw{};
+      assert(executor.execute(executor.ctx, name, request.c_str(), &raw) == AGENT_OK);
+      const Json::Value result = json_parse(std::string(raw.data, raw.len));
+      agent_string_free(&raw);
+      return result;
+    };
+    const auto result = execute(tool, args);
+    const auto& data = result["data"];
+    assert(result["ok"].asBool() && data["exit_code"].asInt() == 0);
+    assert(!data["timed_out"].asBool());
+    assert(data["output"].asString() == expected.substr(0, 16384));
+    assert(data["captured_output_bytes"].asUInt64() == 16384);
+    assert(data["observed_output_bytes"].asUInt64() == expected.size());
+    assert(data["truncated"].asBool() && data["capture_truncated"].asBool());
+    assert(!data["capture_complete"].asBool());
+    assert(data["output_artifact"]["capture_truncated"].asBool());
+    const auto file = session_root / data["output_artifact"]["path"].asString();
+    std::ifstream saved(file, std::ios::binary);
+    const std::string saved_output((std::istreambuf_iterator<char>(saved)), std::istreambuf_iterator<char>());
+    assert(saved_output == data["output"].asString());
+    const auto permissions = std::filesystem::status(file).permissions();
+    assert((permissions & (std::filesystem::perms::group_all | std::filesystem::perms::others_all)) == std::filesystem::perms::none);
+
+    Json::Value read(Json::objectValue);
+    read["path"] = data["output_artifact"]["path"];
+    read["start_line"] = 9;
+    read["max_lines"] = 2;
+    read["max_chars"] = 1000;
+    const auto page = execute("fs_read", read);
+    assert(page["ok"].asBool());
+    assert(page["data"]["content"].asString() == "0123456789abcde\n0123456789abcde\n");
+
+
+    Json::Value descendant_args = args;
+    if (mode == 0) descendant_args["cmd"] = quoted + " --emit-descendant-fixture";
+    else descendant_args["argv"][1] = "--emit-descendant-fixture";
+    descendant_args["timeout_ms"] = 100;
+    descendant_args["max_output_bytes"] = 4096;
+    const auto descendant_started = std::chrono::steady_clock::now();
+    const auto descendant = execute(tool, descendant_args);
+    const auto descendant_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - descendant_started).count();
+    // Direct child exits immediately; its finite descendants keep stdout busy.
+    // Drain continuations must still obey the deadline, and a reaped pid must
+    // never be signalled. Early pipe closure is also a valid incomplete capture.
+    assert(descendant_ms < 750);
+    assert(!descendant["data"]["capture_complete"].asBool());
+    assert(descendant["data"]["timed_out"].asBool() || descendant["data"]["exit_code"].asInt() == 0);
+
+    if (mode == 2) {
+      args["max_output_bytes"] = static_cast<Json::UInt64>(expected.size());
+      const auto full = execute(tool, args);
+      assert(full["ok"].asBool());
+      assert(full["data"]["output"].asString() == expected);
+      assert(!full["data"]["capture_truncated"].asBool());
+      assert(full["data"]["capture_complete"].asBool());
+      std::ifstream complete_file(session_root / full["data"]["output_artifact"]["path"].asString(), std::ios::binary);
+      const std::string complete((std::istreambuf_iterator<char>(complete_file)), std::istreambuf_iterator<char>());
+      assert(complete == expected);
+
+      // A storage failure preserves raw evidence and never fabricates readback.
+      std::filesystem::remove_all(session_root / "out");
+      { std::ofstream blocker(session_root / "out"); blocker << "not a directory"; }
+      const auto failed_store = execute(tool, args);
+      assert(failed_store["ok"].asBool());
+      assert(failed_store["data"]["output"].asString() == expected);
+      assert(!failed_store["data"].isMember("output_artifact"));
+      assert(failed_store["data"]["output_artifact_error"].isString());
+
+      for (int invalid : {-1, 0, 1048577}) {
+        args["max_output_bytes"] = invalid;
+        const auto rejected = execute(tool, args);
+        assert(!rejected["ok"].asBool());
+        assert(rejected["error"].asString().find("max_output_bytes") != std::string::npos);
+      }
+    }
+    toolset_host_destroy(&executor);
+    agent_tool_registry_destroy(reg);
+  }
+  std::filesystem::remove_all(root);
+}
+
+
+static void test_fs_list_output_receipt_storage() {
+  const auto root = std::filesystem::temp_directory_path() / ("agent_listing_capture_" + std::to_string((long long)getpid()));
+  std::filesystem::remove_all(root);
+  for (bool with_session : {false, true}) {
+    HostToolsetConfig cfg;
+    cfg.root_dir = (root / (with_session ? "daemon" : "cli")).string();
+    cfg.allow_symlinks = false;
+    if (with_session) {
+      cfg.sessions_root_dir = (root / "sessions").string();
+      cfg.session_id = "listing";
+    }
+    const auto base = with_session ? root / "sessions" / "session_listing" : std::filesystem::path(cfg.root_dir);
+    std::filesystem::create_directories(base / "input");
+    for (int i = 0; i < 160; ++i) {
+      std::ofstream entry(base / "input" / ("entry-" + std::to_string(i) + "-" + std::string(96, 'x')));
+      entry << "entry\n";
+    }
+    agent_tool_registry_t* registry = nullptr;
+    agent_tool_executor_t executor{};
+    assert(toolset_host_create(cfg, &registry, &executor) == AGENT_OK);
+    const auto execute = [&](const char* name, const Json::Value& input) {
+      const std::string request = json_stringify(input);
+      agent_string_t raw{};
+      assert(executor.execute(executor.ctx, name, request.c_str(), &raw) == AGENT_OK);
+      const auto result = json_parse(std::string(raw.data, raw.len));
+      agent_string_free(&raw);
+      return result;
+    };
+    Json::Value args;
+    args["path"] = "input";
+    args["max_entries"] = 500;
+    const auto full = execute("fs_list", args);
+    const auto& data = full["data"];
+    const std::string expected = data["output"].asString();
+    assert(full["ok"].asBool() && data["entries"].size() == 160);
+    assert(data["entries_count"].asUInt64() == 160 && expected.size() > 8192);
+    assert(!data["truncated"].asBool() && !data["capture_truncated"].asBool());
+    assert(data["capture_complete"].asBool() && data["listing_complete"].asBool());
+    assert(data["captured_output_bytes"].asUInt64() == expected.size());
+    assert(data["observed_output_bytes"].asUInt64() == expected.size());
+    const auto saved_path = base / data["output_artifact"]["path"].asString();
+    std::ifstream saved(saved_path, std::ios::binary);
+    const std::string captured((std::istreambuf_iterator<char>(saved)), std::istreambuf_iterator<char>());
+    assert(captured == expected);
+    const auto permissions = std::filesystem::status(saved_path).permissions();
+    assert((permissions & (std::filesystem::perms::group_all | std::filesystem::perms::others_all)) == std::filesystem::perms::none);
+
+    Json::Value read;
+    read["path"] = data["output_artifact"]["path"];
+    read["start_line"] = 9;
+    read["max_lines"] = 2;
+    read["max_chars"] = 2000;
+    std::istringstream lines(expected);
+    std::string line, expected_page;
+    for (int i = 1; i <= 10 && std::getline(lines, line); ++i) {
+      if (i >= 9) expected_page += line + "\n";
+    }
+    const auto page = execute("fs_read", read);
+    assert(page["ok"].asBool() && page["data"]["content"].asString() == expected_page);
+
+    // Entry-limit truncation remains distinct from saving all returned text.
+    args["max_entries"] = 100;
+    const auto partial = execute("fs_list", args);
+    assert(partial["data"]["entries"].size() == 100);
+    assert(partial["data"]["truncated"].asBool() && partial["data"]["capture_truncated"].asBool());
+    assert(!partial["data"]["capture_complete"].asBool() && !partial["data"]["listing_complete"].asBool());
+    std::ifstream partial_file(base / partial["data"]["output_artifact"]["path"].asString(), std::ios::binary);
+    const std::string partial_text((std::istreambuf_iterator<char>(partial_file)), std::istreambuf_iterator<char>());
+    assert(partial_text == partial["data"]["output"].asString());
+
+    // Small lists keep their original inline result and need no saved file.
+    args["max_entries"] = 1;
+    const auto small = execute("fs_list", args);
+    assert(small["data"]["entries"].size() == 1 && !small["data"].isMember("output_artifact"));
+
+    // Failed storage leaves the exact native listing available in raw evidence.
+    std::filesystem::remove_all(base / "out");
+    { std::ofstream blocker(base / "out"); blocker << "not a directory"; }
+    args["max_entries"] = 500;
+    const auto failed = execute("fs_list", args);
+    assert(failed["ok"].asBool() && failed["data"]["entries"].size() == 160);
+    assert(failed["data"]["output"].asString() == expected);
+    assert(!failed["data"].isMember("output_artifact") && failed["data"]["output_artifact_error"].isString());
+    toolset_host_destroy(&executor);
+    agent_tool_registry_destroy(registry);
+  }
+  std::filesystem::remove_all(root);
+}
+
+int main(int argc, char** argv) {
+  if (argc == 2 && std::string(argv[1]) == "--emit-descendant-fixture") {
+    for (int i = 0; i < 4; ++i) {
+      const pid_t child = fork();
+      if (child == 0) {
+        const std::string block(4096, 'D');
+        const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(1000);
+        while (std::chrono::steady_clock::now() < until) {
+          if (write(STDOUT_FILENO, block.data(), block.size()) <= 0) break;
+        }
+        _exit(0);
+      }
+      if (child < 0) return 1;
+    }
+    return 0;
+  }
+  if (argc == 2 && std::string(argv[1]) == "--emit-output-fixture") {
+    const std::string output = exec_fixture_output();
+    std::cout.write(output.data(), static_cast<std::streamsize>(output.size()));
+    return 0;
+  }
+  test_exec_output_offload_and_drain(argv[0]);
+  test_fs_list_output_receipt_storage();
   test_file_apply_patch();
   test_readonly_policy_disables_exec_and_patch();
   test_scoped_mode_disables_exec_tools_but_keeps_patch();

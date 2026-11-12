@@ -8,6 +8,7 @@
 
 #if defined(AGENT_HAVE_JSONCPP)
 #include <json/json.h>
+#include "web_evidence_guard.h"
 #endif
 
 #include <algorithm>
@@ -47,15 +48,22 @@ struct WorkAwareExecutor {
   Json::Int64 last_revision = -1;
   size_t stagnant_completions = 0;
   std::string last_tool_name = {};
+  const ToolLoopOptions* options = nullptr;
+  WebEvidenceGuard web_evidence{};
+  bool evidence_repair_pending = false;
 };
 
 static agent_status_t execute_with_work_tracking(void* ctx, const char* name, const char* args, agent_string_t* out) {
   auto* work = static_cast<WorkAwareExecutor*>(ctx);
   work->last_tool_name = name ? name : "";
   const auto status = work->inner->execute(work->inner->ctx, name, args, out);
-  if (status == AGENT_OK && std::string(name) == "work_state") {
+  if (status == AGENT_OK && (work->last_tool_name == "work_state" ||
+      work->last_tool_name == "web_search" || work->last_tool_name == "web_fetch")) {
     Json::Value result;
-    if (parse_json_object(std::string(out->data ? out->data : "", out->len), &result) && result["ok"] == true) work->adopted = true;
+    if (parse_json_object(std::string(out->data ? out->data : "", out->len), &result)) {
+      if (work->last_tool_name == "work_state" && result["ok"] == true) work->adopted = true;
+      else work->web_evidence.observe_tool_result(work->last_tool_name, result);
+    }
   }
   return status;
 }
@@ -77,6 +85,20 @@ static agent_status_t guard_work_completion(void* ctx, agent_string_t* prompt) {
   const auto text = "Your durable work ledger still has runnable requirements: " + json_stringify(state["runnable"]) +
     ". Continue authorized work and verify outcomes. Use work_state to record evidence. A human-action blocker affects only its requirement_ids; continue independent requirements. Honor cancellation and configured budgets.";
   return agent_string_set_copy(prompt, text.data(), text.size());
+}
+
+
+static agent_status_t guard_completion(void* ctx, agent_string_t* prompt) {
+  auto* work = static_cast<WorkAwareExecutor*>(ctx);
+  if (work->options && work->options->should_cancel &&
+      work->options->should_cancel(work->options->should_cancel_ctx)) return AGENT_ERR_CANCELLED;
+  const auto status = guard_work_completion(ctx, prompt);
+  if (status != AGENT_OK || prompt->len > 0) return status;
+  const auto decision = work->web_evidence.check_completion();
+  if (decision.action == WebEvidenceGuard::Action::Accept) return AGENT_OK;
+  if (decision.action == WebEvidenceGuard::Action::Reject) return AGENT_ERR_LIMIT;
+  work->evidence_repair_pending = true;
+  return agent_string_set_copy(prompt, decision.prompt.data(), decision.prompt.size());
 }
 
 // Keep public web provenance available when verbose event capture is disabled.
@@ -120,10 +142,24 @@ static Json::Value summarize_web_output_json(const Json::Value& obj, bool search
     to[name] = value;
     return true;
   };
+  const auto copy_dates = [&](const Json::Value& from, Json::Value& to) {
+    for (const auto* name : {"published_at", "publication_date_source", "publication_date_status",
+                             "modified_at", "modified_date_source"}) {
+      if (!from[name].isString()) continue;
+      // Date evidence is retained whole or omitted; truncating it could change
+      // an unrecognized string into an apparently valid publication date.
+      const auto value = from[name].asString();
+      if (value.size() > 128) { clipped = true; continue; }
+      to[name] = value;
+    }
+    if (from["publication_date_unknown"].isBool())
+      to["publication_date_unknown"] = from["publication_date_unknown"];
+  };
+  copy_dates(data, summary);
   copy_string("source", 64, 256);
   copy_string("engine", 32, 128);
   copy_string("fetched_at", 64, 128);
-  for (const auto* name : {"cache_hit", "rendered", "blocked", "cancelled", "timed_out", "truncated", "untrusted_content"}) {
+  for (const auto* name : {"cache_hit", "rendered", "blocked", "cancelled", "timed_out", "truncated", "untrusted_content", "freshness_verified"}) {
     if (data[name].isBool()) summary[name] = data[name];
   }
   for (const auto* name : {"http_status", "cache_age_ms"}) {
@@ -131,6 +167,8 @@ static Json::Value summarize_web_output_json(const Json::Value& obj, bool search
   }
   if (search) {
     copy_string("query", 1024, 2048);
+    copy_string("time_range", 16, 64);
+    copy_string("time_range_scope", 32, 128);
     if (data["results"].isArray()) {
       const auto& results = data["results"];
       summary["result_count"] = Json::UInt64(results.size());
@@ -141,6 +179,7 @@ static Json::Value summarize_web_output_json(const Json::Value& obj, bool search
         Json::Value entry(Json::objectValue);
         if (!copy_url(item, entry, "url")) { clipped = true; continue; }
         entry["title"] = cap(item["title"].asString(), 512, 1024);
+        copy_dates(item, entry);
         summary["results"].append(entry);
       }
       summary["results_truncated"] = summary["results"].size() < results.size();
@@ -213,6 +252,15 @@ Json::Value summarize_tool_output_json(const std::string& tool_out, const std::s
     if (data.isMember("output") && data["output"].isString()) {
       summary["output"] = cap_str(data["output"].asString(), 64 * 1024);
     }
+    if (tool_name == "shell_exec" || tool_name == "proc_exec" || tool_name == "fs_list") {
+      for (const char* field : {"captured_output_bytes", "observed_output_bytes", "capture_truncated", "capture_complete", "entries_count", "listing_complete"}) {
+        if (data.isMember(field)) summary[field] = data[field];
+      }
+      if (data["output_artifact"].isObject()) summary["output_artifact"] = data["output_artifact"];
+      if (data["output_artifact_error"].isString()) summary["output_artifact_error"] = cap_str(data["output_artifact_error"].asString(), 512);
+      summary["output_display_truncated"] = data["output"].isString() && data["output"].asString().size() > 64 * 1024;
+      summary["output_truncated"] = summary["output_display_truncated"];
+    }
     if (data.isMember("tool")) summary["tool"] = data["tool"];
     // Include key fields for file tools so the UI is debuggable even when output is empty/truncated.
     // Example: fs_read on a binary file intentionally returns empty output but sets truncated=true.
@@ -267,6 +315,7 @@ struct EventSink {
   void* forward_ctx = nullptr;
 
   std::ostream* trace_stream = nullptr;
+  WorkAwareExecutor* work = nullptr;
 };
 
 static void sink_capture(EventSink* sink, const Json::Value& event) {
@@ -295,6 +344,20 @@ static void sink_on_event(void* vctx, const char* type, const char* data_json) {
     data = Json::Value(Json::objectValue);
   }
 
+  bool rewritten_retry = false;
+  // Observe the proposed answer before capture truncation and before the core's
+  // completion hook. The hook continues using a rendered USER message.
+  if (sink->work && data.isObject()) {
+    if (std::string(type) == "assistant_message" && data["assistant_content"].isString() &&
+        data["has_tool_calls"].isNumeric() && data["has_tool_calls"].asUInt64() == 0)
+      sink->work->web_evidence.observe_assistant_message(data["assistant_content"].asString());
+    if (std::string(type) == "retry" && sink->work->evidence_repair_pending &&
+        data["reason"] == "unfinished_runnable_work") {
+      data["reason"] = "missing_web_source_citations";
+      rewritten_retry = true;
+      sink->work->evidence_repair_pending = false;
+    }
+  }
   Json::Value e(Json::objectValue);
   e["type"] = type;
   e["data"] = data;
@@ -453,7 +516,12 @@ static void sink_on_event(void* vctx, const char* type, const char* data_json) {
   }
 
   if (sink->forward_cb) {
-    sink->forward_cb(sink->forward_ctx, type, data_json ? data_json : "");
+    if (rewritten_retry) {
+      const auto forwarded = json_stringify(data);
+      sink->forward_cb(sink->forward_ctx, type, forwarded.c_str());
+    } else {
+      sink->forward_cb(sink->forward_ctx, type, data_json ? data_json : "");
+    }
   }
 }
 
@@ -465,6 +533,7 @@ static uint8_t sink_should_cancel(void* vctx) {
 
 static agent_status_t cap_tool_output_cb(
   void* /*ctx*/,
+  const char* executed_tool_name,
   const char* tool_out,
   size_t tool_out_len,
   size_t max_chars,
@@ -475,9 +544,20 @@ static agent_status_t cap_tool_output_cb(
   if (out_truncated) *out_truncated = 0;
   const std::string in(tool_out ? tool_out : "", tool_out_len);
   bool trunc = false;
-  const std::string capped = tool_loop_cap_tool_output_for_prompt(in, max_chars, &trunc);
+  const std::string capped = tool_loop_cap_tool_output_for_prompt(in, max_chars, &trunc,
+    executed_tool_name ? executed_tool_name : "");
   if (out_truncated) *out_truncated = trunc ? 1 : 0;
   return agent_string_set_copy(out_capped, capped.data(), capped.size());
+}
+
+// Event/UI captures retain their original output contract. Offload compaction
+// applies only to model-context copies, never to the recorded evidence.
+static agent_status_t cap_event_output_cb(
+  void* ctx, const char* /*executed_tool_name*/, const char* tool_out,
+  size_t tool_out_len, size_t max_chars, agent_string_t* out_capped,
+  uint8_t* out_truncated
+) {
+  return cap_tool_output_cb(ctx, nullptr, tool_out, tool_out_len, max_chars, out_capped, out_truncated);
 }
 
 static agent_status_t summarize_tool_output_cb(
@@ -539,6 +619,10 @@ bool run_tool_loop(
 
   OpenAIToolProviderCtx pctx;
   pctx.cfg = cfg;
+  if (options.should_cancel) {
+    pctx.cfg.should_cancel = options.should_cancel;
+    pctx.cfg.should_cancel_ctx = options.should_cancel_ctx;
+  }
   // Surface provider retries (429/5xx/timeouts) into the same event stream as the tool loop so
   // the daemon/UI can explain "why it was slow" without requiring verbose request/response blobs.
   pctx.cfg.on_retry = [](void* vctx, const char* data_json) {
@@ -599,16 +683,18 @@ bool run_tool_loop(
   hooks.should_cancel_ctx = const_cast<ToolLoopOptions*>(&options);
   hooks.cap_tool_output_for_prompt = cap_tool_output_cb;
   hooks.cap_tool_output_for_prompt_ctx = nullptr;
-  hooks.cap_tool_output_for_event = cap_tool_output_cb;
+  hooks.cap_tool_output_for_event = cap_event_output_cb;
   hooks.cap_tool_output_for_event_ctx = nullptr;
   hooks.summarize_tool_output = summarize_tool_output_cb;
   hooks.summarize_tool_output_ctx = nullptr;
 
   agent_tool_loop_result_t core_res{};
   WorkAwareExecutor work_executor{executor, false};
+  work_executor.options = &options;
+  sink.work = &work_executor;
   hooks.summarize_tool_output_ctx = &work_executor;
   agent_tool_executor_t tracked_executor{&work_executor, execute_with_work_tracking};
-  hooks.on_proposed_completion = guard_work_completion;
+  hooks.on_proposed_completion = guard_completion;
   hooks.on_proposed_completion_ctx = &work_executor;
   const agent_status_t st = agent_tool_loop_run(
     &provider,
@@ -646,14 +732,30 @@ bool run_tool_loop(
     out_result->tool_records.push_back(std::move(rec));
   }
 
+
+  std::string terminal_error;
+  if (st != AGENT_OK) {
+    if (st == AGENT_ERR_CANCELLED) {
+      terminal_error = "cancelled";
+    } else if (!work_executor.web_evidence.failure_message().empty()) {
+      terminal_error = work_executor.web_evidence.failure_message();
+      // The rejected draft remains in audit events, not the accepted final text.
+      out_result->final_assistant_text = terminal_error;
+    } else if (core_res.error_message.data && core_res.error_message.data[0]) {
+      terminal_error.assign(core_res.error_message.data, core_res.error_message.len);
+    } else if (pctx.last_http_status) {
+      terminal_error = openai_format_http_error(pctx.last_http_status, pctx.last_response_body);
+    } else {
+      terminal_error = "tool loop failed";
+    }
+  }
+
   // End event (host-side envelope stats).
   {
     Json::Value d(Json::objectValue);
     d["ok"] = (st == AGENT_OK);
     d["status"] = (Json::Int64)st;
-    if (core_res.error_message.data && core_res.error_message.data[0]) {
-      d["error"] = std::string(core_res.error_message.data, core_res.error_message.len);
-    }
+    if (!terminal_error.empty()) d["error"] = terminal_error;
     d["truncated"] = sink.events_truncated;
     d["captured_bytes"] = (Json::UInt64)sink.captured_bytes;
     d["max_total_capture_bytes"] = (Json::UInt64)sink.max_total_capture_bytes;
@@ -671,17 +773,7 @@ bool run_tool_loop(
   out_result->event_bytes_captured = sink.captured_bytes;
 
   if (st != AGENT_OK) {
-    if (out_error) {
-      if (core_res.error_message.data && core_res.error_message.data[0]) {
-        *out_error = std::string(core_res.error_message.data, core_res.error_message.len);
-      } else if (pctx.last_http_status) {
-        *out_error = openai_format_http_error(pctx.last_http_status, pctx.last_response_body);
-      } else if (st == AGENT_ERR_CANCELLED) {
-        *out_error = "cancelled";
-      } else {
-        *out_error = "tool loop failed";
-      }
-    }
+    if (out_error) *out_error = terminal_error;
     agent_tool_loop_result_free(&core_res);
     return false;
   }

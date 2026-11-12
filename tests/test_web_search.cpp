@@ -90,10 +90,53 @@ int main() {
   check(web_search_execute(R"({"query":"Arch Linux installation guide","fresh":true})", &raw, fake, nullptr, nullptr, fake_discovery) == AGENT_OK, "configured discovery dispatch failed");
   out = parse(std::string(raw.data, raw.len)); agent_string_free(&raw);
   check(out["ok"].asBool() && discovery_request.fresh && out["data"]["quality"] == "low_lexical_overlap" && out["data"]["untrusted_content"].asBool(), "discovery evidence metadata missing");
+  check(out["data"]["results"][0]["publication_date_unknown"].asBool() &&
+        out["data"]["results"][0]["publication_date_status"] == "unknown",
+        "undated discovery result was presented as current");
+  found.results[0].published_at = "2025-11-15T12:00:00Z";
+  found.results[0].publication_date_source = "searxng.publishedDate";
+  check(web_search_execute(R"({"query":"tech news","time_range":"day","fresh":true})", &raw, fake, nullptr, nullptr, fake_discovery) == AGENT_OK, "dated discovery dispatch failed");
+  out = parse(std::string(raw.data, raw.len)); agent_string_free(&raw);
+  check(out["ok"].asBool() && discovery_request.time_range == "day" &&
+        out["data"]["time_range"] == "day" && out["data"]["time_range_scope"] == "upstream_hint" &&
+        !out["data"]["freshness_verified"].asBool() &&
+        out["data"]["results"][0]["published_at"] == "2025-11-15T12:00:00Z" &&
+        out["data"]["results"][0]["publication_date_status"] == "unverified",
+        "range or publication evidence was lost or falsely verified");
+  const auto discovery_before_invalid = discovery_calls;
+  const auto browser_before_invalid = calls;
+  for (const char* args : {R"({"query":"x","time_range":"week"})", R"({"query":"x","time_range":true})",
+                           R"({"query":"x","time_range":""})", R"({"query":"x","time_range":"day","engine":"bing"})"}) {
+    check(web_search_execute(args, &raw, fake, nullptr, nullptr, fake_discovery) == AGENT_OK, "invalid range bypassed JSON envelope");
+    out = parse(std::string(raw.data, raw.len)); agent_string_free(&raw);
+    check(!out["ok"].asBool(), "invalid or unsupported browser range was silently ignored");
+  }
+  check(discovery_calls == discovery_before_invalid && calls == browser_before_invalid,
+        "invalid range started a search");
   page(); next.source = "http"; next.rendered = false; next.cache_hit = true; next.cache_age_ms = 40;
   next.page["url"] = "https://example.org/source";
   out = call(R"({"url":"https://example.org/source","mode":"http","fresh":true})", false);
   check(out["ok"].asBool() && requested.mode == "http" && requested.fresh && !out["data"]["rendered"].asBool() && out["data"]["cache_hit"].asBool() && out["data"]["source"] == "http", "fetch provenance/options lost");
+  check(out["data"]["publication_date_unknown"].asBool() &&
+        out["data"]["publication_date_status"] == "unknown" && !out["data"]["fetched_at"].asString().empty(),
+        "retrieval time became a publication date");
+  next.page["metadata"]["article:published_time"] = "2025-11-15T12:00:00Z";
+  next.page["metadata"]["article:modified_time"] = "2026-11-12T09:00:00Z";
+  out = call(R"({"url":"https://example.org/source"})", false);
+  check(out["data"]["published_at"] == "2025-11-15T12:00:00Z" &&
+        out["data"]["modified_at"] == "2026-11-12T09:00:00Z" &&
+        !out["data"]["publication_date_unknown"].asBool() &&
+        out["data"]["publication_date_status"] == "unverified" &&
+        out["data"]["publication_date_source"] == "page.metadata.article:published_time",
+        "publication/modified dates were conflated or lost");
+  next.page["metadata"].removeMember("article:published_time");
+  out = call(R"({"url":"https://example.org/source"})", false);
+  check(out["data"]["publication_date_unknown"].asBool() &&
+        out["data"]["published_at"] == "" && out["data"]["modified_at"] == "2026-11-12T09:00:00Z",
+        "modified time was promoted to publication time");
+  next.page["metadata"]["datepublished"] = " \t\r\n";
+  out = call(R"({"url":"https://example.org/source"})", false);
+  check(out["data"]["publication_date_unknown"].asBool(), "blank publication date became evidence");
   check(!call(R"({"url":"https://example.org","mode":"invalid"})", false)["ok"].asBool(), "invalid fetch mode accepted");
   check(!call(R"({"url":"https://example.org","fresh":1})", false)["ok"].asBool(), "invalid fresh accepted");
   for (const auto policy : {HostToolsetPolicyMode::Full, HostToolsetPolicyMode::ReadOnly}) {

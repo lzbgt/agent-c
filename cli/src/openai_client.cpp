@@ -7,6 +7,7 @@
 
 #if defined(AGENT_HAVE_JSONCPP)
 #include <json/json.h>
+#include "openai_message_normalization.h"
 #endif
 
 #include <sstream>
@@ -54,14 +55,58 @@ static int retry_sleep_ms(int attempt) {
   return ms;
 }
 
+struct RequestCancelCtx {
+  const OpenAIClientConfig* cfg = nullptr;
+  bool cancelled = false;
+
+  bool requested() {
+    if (!cancelled && cfg && cfg->should_cancel) {
+      cancelled = cfg->should_cancel(cfg->should_cancel_ctx);
+    }
+    return cancelled;
+  }
+};
+
+static int transfer_cancel_cb(void* vctx, curl_off_t, curl_off_t, curl_off_t, curl_off_t) {
+  auto* ctx = static_cast<RequestCancelCtx*>(vctx);
+  return ctx && ctx->requested() ? 1 : 0;
+}
+
+static void configure_cancellation(CURL* curl, RequestCancelCtx* ctx) {
+  if (!ctx || !ctx->cfg || !ctx->cfg->should_cancel) return;
+  // libcurl also calls this while waiting for headers/tokens, so Stop works
+  // during a long model prefill even when no body callback has fired.
+  curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+  curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, transfer_cancel_cb);
+  curl_easy_setopt(curl, CURLOPT_XFERINFODATA, ctx);
+}
+
+static bool wait_for_retry(RequestCancelCtx& cancel, long sleep_ms) {
+  const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(std::max(0L, sleep_ms));
+  while (!cancel.requested()) {
+    const auto remaining = until - std::chrono::steady_clock::now();
+    if (remaining <= std::chrono::steady_clock::duration::zero()) return true;
+    std::this_thread::sleep_for(std::min(remaining,
+      std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::milliseconds(25))));
+  }
+  return false;
+}
+
+struct RawWriteCtx {
+  std::string* response = nullptr;
+  RequestCancelCtx* cancel = nullptr;
+};
+
 static size_t write_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
-  auto* out = static_cast<std::string*>(userdata);
-  out->append(ptr, size * nmemb);
+  auto* ctx = static_cast<RawWriteCtx*>(userdata);
+  if (!ctx || !ctx->response || (ctx->cancel && ctx->cancel->requested())) return 0;
+  ctx->response->append(ptr, size * nmemb);
   return size * nmemb;
 }
 
 struct HeaderCaptureCtx {
   long retry_after_ms = 0;
+  RequestCancelCtx* cancel = nullptr;
 };
 
 static bool ascii_istarts_with(const char* s, size_t n, const char* prefix) {
@@ -108,6 +153,7 @@ static size_t header_cb(char* buffer, size_t size, size_t nitems, void* userdata
   const size_t n = size * nitems;
   auto* cap = static_cast<HeaderCaptureCtx*>(userdata);
   if (!cap || !buffer || n == 0) return n;
+  if (cap->cancel && cap->cancel->requested()) return 0;
 
   if (ascii_istarts_with(buffer, n, "Retry-After:")) {
     const long ms = parse_retry_after_ms(buffer, n);
@@ -272,6 +318,7 @@ static void emit_retry_event(
 
 struct StreamingWriteCtx {
   agent_sse_parser_t parser;
+  RequestCancelCtx* cancel = nullptr;
   OpenAIStreamChunkCallback on_chunk = nullptr;
   void* on_chunk_ctx = nullptr;
   std::string capture;
@@ -287,6 +334,7 @@ static size_t write_stream_cb(char* ptr, size_t size, size_t nmemb, void* userda
   auto* ctx = static_cast<StreamingWriteCtx*>(userdata);
   const size_t n = size * nmemb;
   if (!ctx || !ptr || n == 0) return n;
+  if (ctx->cancel && ctx->cancel->requested()) return 0;
 
   if (ctx->capture.size() < ctx->capture_limit) {
     const size_t remaining = ctx->capture_limit - ctx->capture.size();
@@ -303,6 +351,10 @@ static size_t write_stream_cb(char* ptr, size_t size, size_t nmemb, void* userda
     st = agent_sse_parser_feed(&ctx->parser, next_bytes, next_len, events, 32, &event_count);
     next_bytes = nullptr; next_len = 0;
     for (size_t i = 0; i < event_count; i++) {
+      if (ctx->cancel && ctx->cancel->requested()) {
+        for (; i < event_count; i++) agent_sse_event_free(&events[i]);
+        return 0;
+      }
       const agent_sse_event_t* ev = &events[i];
       const std::string data = (ev->data.data && ev->data.len > 0)
         ? std::string(ev->data.data, ev->data.len)
@@ -323,7 +375,7 @@ static size_t write_stream_cb(char* ptr, size_t size, size_t nmemb, void* userda
   } while (st == AGENT_ERR_LIMIT);
   // A malformed/failed decoder must abort the transfer rather than silently
   // accepting a partially decoded successful completion.
-  return st == AGENT_OK ? n : 0;
+  return st == AGENT_OK && !(ctx->cancel && ctx->cancel->requested()) ? n : 0;
 }
 
 static void ensure_curl_global_init() {
@@ -395,8 +447,14 @@ static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::
 
   ensure_curl_global_init();
 
+  RequestCancelCtx cancel{&cfg};
   const int max_retries = std::max(0, cfg.max_retries);
   for (int attempt = 0; attempt <= max_retries; attempt++) {
+    if (cancel.requested()) {
+      result.cancelled = true;
+      result.response_body = "cancelled";
+      return result;
+    }
     const char* proxy = effective_proxy(cfg);
     const bool have_proxy = (proxy && proxy[0]);
 
@@ -407,6 +465,8 @@ static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::
     }
 
     HeaderCaptureCtx header_cap;
+    header_cap.cancel = &cancel;
+    configure_cancellation(curl, &cancel);
 
     struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, "Content-Type: application/json");
@@ -421,13 +481,14 @@ static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::
     }
 
     std::string response;
+    RawWriteCtx wctx{&response, &cancel};
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_POST, 1L);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body.size());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &wctx);
     curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_cb);
     curl_easy_setopt(curl, CURLOPT_HEADERDATA, &header_cap);
     // Make timeouts reliable even when used from background threads.
@@ -451,13 +512,21 @@ static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::
     }
 
     CURLcode rc = curl_easy_perform(curl);
-    if (rc != CURLE_OK && have_proxy) {
+    if (rc != CURLE_OK && have_proxy && !cancel.requested()) {
       // Proxy can be flaky/unavailable. Retry once with proxy disabled so tests can still run.
       response.clear();
       header_cap.retry_after_ms = 0;
       curl_easy_setopt(curl, CURLOPT_PROXY, "");
       curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 0L);
       rc = curl_easy_perform(curl);
+    }
+
+    if (cancel.requested()) {
+      result.cancelled = true;
+      result.response_body = response;
+      curl_slist_free_all(headers);
+      curl_easy_cleanup(curl);
+      return result;
     }
 
     long http_status = 0;
@@ -494,8 +563,10 @@ static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::
     const long sleep_ms = compute_retry_sleep_ms(cfg, attempt, header_cap.retry_after_ms);
     const std::string preview = truncate_for_error(response, 256);
     emit_retry_event(cfg, "POST", url, /*stream=*/false, attempt, max_retries, sleep_ms, header_cap.retry_after_ms, http_status, rc, preview, have_proxy);
-    if (sleep_ms > 0) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+    if (!wait_for_retry(cancel, sleep_ms)) {
+      result.cancelled = true;
+      result.response_body = "cancelled";
+      return result;
     }
   }
 
@@ -510,8 +581,14 @@ static OpenAIRawResult http_get_raw(const OpenAIClientConfig& cfg, const std::st
 
   ensure_curl_global_init();
 
+  RequestCancelCtx cancel{&cfg};
   const int max_retries = std::max(0, cfg.max_retries);
   for (int attempt = 0; attempt <= max_retries; attempt++) {
+    if (cancel.requested()) {
+      result.cancelled = true;
+      result.response_body = "cancelled";
+      return result;
+    }
     const char* proxy = effective_proxy(cfg);
     const bool have_proxy = (proxy && proxy[0]);
 
@@ -522,6 +599,8 @@ static OpenAIRawResult http_get_raw(const OpenAIClientConfig& cfg, const std::st
     }
 
     HeaderCaptureCtx header_cap;
+    header_cap.cancel = &cancel;
+    configure_cancellation(curl, &cancel);
 
     struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, "Accept: application/json");
@@ -541,13 +620,14 @@ static OpenAIRawResult http_get_raw(const OpenAIClientConfig& cfg, const std::st
     }
 
     std::string response;
+    RawWriteCtx wctx{&response, &cancel};
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
     // Enable built-in content decoding (gzip/br/etc when supported by libcurl).
     curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &wctx);
     curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_cb);
     curl_easy_setopt(curl, CURLOPT_HEADERDATA, &header_cap);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
@@ -565,12 +645,20 @@ static OpenAIRawResult http_get_raw(const OpenAIClientConfig& cfg, const std::st
     }
 
     CURLcode rc = curl_easy_perform(curl);
-    if (rc != CURLE_OK && have_proxy) {
+    if (rc != CURLE_OK && have_proxy && !cancel.requested()) {
       response.clear();
       header_cap.retry_after_ms = 0;
       curl_easy_setopt(curl, CURLOPT_PROXY, "");
       curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 0L);
       rc = curl_easy_perform(curl);
+    }
+
+    if (cancel.requested()) {
+      result.cancelled = true;
+      result.response_body = response;
+      curl_slist_free_all(headers);
+      curl_easy_cleanup(curl);
+      return result;
     }
 
     long http_status = 0;
@@ -601,8 +689,10 @@ static OpenAIRawResult http_get_raw(const OpenAIClientConfig& cfg, const std::st
     const long sleep_ms = compute_retry_sleep_ms(cfg, attempt, header_cap.retry_after_ms);
     const std::string preview = truncate_for_error(response, 256);
     emit_retry_event(cfg, "GET", url, /*stream=*/false, attempt, max_retries, sleep_ms, header_cap.retry_after_ms, http_status, rc, preview, have_proxy);
-    if (sleep_ms > 0) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+    if (!wait_for_retry(cancel, sleep_ms)) {
+      result.cancelled = true;
+      result.response_body = "cancelled";
+      return result;
     }
   }
 
@@ -624,8 +714,14 @@ static OpenAIStreamResult http_post_json_stream(
 
   ensure_curl_global_init();
 
+  RequestCancelCtx cancel{&cfg};
   const int max_retries = std::max(0, cfg.max_retries);
   for (int attempt = 0; attempt <= max_retries; attempt++) {
+    if (cancel.requested()) {
+      result.cancelled = true;
+      result.response_body = "cancelled";
+      return result;
+    }
     const char* proxy = effective_proxy(cfg);
     const bool have_proxy = (proxy && proxy[0]);
 
@@ -636,6 +732,8 @@ static OpenAIStreamResult http_post_json_stream(
     }
 
     HeaderCaptureCtx header_cap;
+    header_cap.cancel = &cancel;
+    configure_cancellation(curl, &cancel);
 
     struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, "Content-Type: application/json");
@@ -651,6 +749,7 @@ static OpenAIStreamResult http_post_json_stream(
     }
 
     StreamingWriteCtx wctx;
+    wctx.cancel = &cancel;
     wctx.on_chunk = on_chunk;
     wctx.on_chunk_ctx = on_chunk_ctx;
     wctx.capture_limit = max_capture_bytes;
@@ -684,7 +783,7 @@ static OpenAIStreamResult http_post_json_stream(
     }
 
     CURLcode rc = curl_easy_perform(curl);
-    if (rc != CURLE_OK && have_proxy) {
+    if (rc != CURLE_OK && have_proxy && !cancel.requested()) {
       // Retry once with proxy disabled.
       wctx.capture.clear();
       agent_sse_parser_reset(&wctx.parser);
@@ -694,6 +793,15 @@ static OpenAIStreamResult http_post_json_stream(
       curl_easy_setopt(curl, CURLOPT_PROXY, "");
       curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 0L);
       rc = curl_easy_perform(curl);
+    }
+
+    if (cancel.requested()) {
+      result.cancelled = true;
+      result.response_body = wctx.capture;
+      result.error_message = "cancelled";
+      curl_slist_free_all(headers);
+      curl_easy_cleanup(curl);
+      return result;
     }
 
     long http_status = 0;
@@ -733,8 +841,10 @@ static OpenAIStreamResult http_post_json_stream(
     const long sleep_ms = compute_retry_sleep_ms(cfg, attempt, header_cap.retry_after_ms);
     const std::string preview = truncate_for_error(wctx.capture, 256);
     emit_retry_event(cfg, "POST", url, /*stream=*/true, attempt, max_retries, sleep_ms, header_cap.retry_after_ms, http_status, rc, preview, have_proxy);
-    if (sleep_ms > 0) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+    if (!wait_for_retry(cancel, sleep_ms)) {
+      result.cancelled = true;
+      result.response_body = "cancelled";
+      return result;
     }
   }
 
@@ -925,6 +1035,7 @@ OpenAIChatResult openai_chat_completions(
   }
   Json::Value messages(Json::arrayValue);
   append_message_views_json(messages, messages_view, message_count);
+  openai_coalesce_leading_system_messages(messages);
   root["messages"] = messages;
   const std::string body = json_stringify(root);
 #else
@@ -936,6 +1047,11 @@ OpenAIChatResult openai_chat_completions(
   OpenAIRawResult raw = http_post_json(cfg, url, body);
   result.http_status = raw.http_status;
   result.response_body = raw.response_body;
+  result.cancelled = raw.cancelled;
+  if (raw.cancelled) {
+    result.error_message = "cancelled";
+    return result;
+  }
 
 #if defined(AGENT_HAVE_JSONCPP)
   Json::CharReaderBuilder rb;

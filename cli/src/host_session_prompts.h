@@ -2,12 +2,20 @@
 
 #include "agent/agent.h"
 
+#include <ctime>
 #include <filesystem>
 #include <string>
 
 // Marker prefix for auto-injected project instructions derived from AGENTS.md files.
 // Kept stable so long-lived sessions can refresh/deduplicate the prompt cleanly.
 constexpr const char* kProjectInstructionsPrefix = "PROJECT_INSTRUCTIONS=agmd-v1";
+
+// Runtime dates are refreshed before every host run, but remain stable within the
+// same UTC/local calendar day to preserve the model's prompt cache.
+constexpr const char* kCurrentDateContextPrefix = "CURRENT_DATE_CONTEXT=v1";
+std::string build_current_date_system_prompt(std::time_t now);
+bool ensure_current_date_system_prompt(
+  agent_session_t** session_io, std::time_t now = std::time(nullptr));
 
 // Build a pinned system prompt from AGENTS.md files discovered from start_dir upward.
 // Returns "" when no AGENTS.md files are found or the start directory cannot be resolved.

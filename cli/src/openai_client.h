@@ -7,6 +7,7 @@
 // Optional callback for surfacing provider retries to UIs/logs.
 // `data_json` is a JSON object string for the event's `data` field.
 using OpenAIRetryEventCallback = void (*)(void* ctx, const char* data_json);
+using OpenAICancelCallback = bool (*)(void* ctx);
 
 struct OpenAIClientConfig {
   std::string base_url;  // e.g. https://api.openai.com/v1
@@ -43,6 +44,11 @@ struct OpenAIClientConfig {
   // Optional hook invoked immediately before a retry sleep.
   OpenAIRetryEventCallback on_retry = nullptr;
   void* on_retry_ctx = nullptr;
+
+  // Polled during connection/prefill, response transfer, and retry backoff.
+  // The callback and borrowed context must remain valid until the request returns.
+  OpenAICancelCallback should_cancel = nullptr;
+  void* should_cancel_ctx = nullptr;
 };
 
 struct OpenAIChatResult {
@@ -50,11 +56,13 @@ struct OpenAIChatResult {
   std::string response_body;
   std::string assistant_text;  // best-effort extracted
   std::string error_message;   // best-effort extracted (when non-2xx or parse failure)
+  bool cancelled = false;
 };
 
 struct OpenAIRawResult {
   long http_status = 0;
   std::string response_body;
+  bool cancelled = false;
 };
 
 OpenAIChatResult openai_chat_completions(
@@ -86,6 +94,7 @@ struct OpenAIStreamResult {
   std::string response_body;
   std::string error_message;
   bool saw_done = false;
+  bool cancelled = false;
 };
 
 OpenAIStreamResult openai_chat_completions_raw_stream(

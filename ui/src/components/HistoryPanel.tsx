@@ -16,6 +16,8 @@ import {
 import type { SceneEntity } from "./SceneView";
 import ArtifactView from "./ArtifactView";
 import Markdown from "./Markdown";
+import ToolResultView from "./ToolResultView";
+import { normalizeEventData, safeObject } from "../jsonUtils";
 import ChatThread from "./history/ChatThread";
 import { buildChatTranscript, latestChatFailure } from "../history/chatTranscript";
 import HistoryPanelTechnicalSection from "./history/HistoryPanelTechnicalSection";
@@ -107,6 +109,24 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     return buildChatTranscript(dbMessages, entries);
   }, [dbMessages, entries, props.chatTarget, teamConversationItems]);
 
+  const latestToolResults = React.useMemo(() => (entries[0]?.events || []).flatMap((event, index) => {
+    if (event.type !== "tool_result") return [];
+    const data = safeObject(normalizeEventData(event.data));
+    const summary = safeObject(data.summary);
+    const toolName = String(data.tool_name || summary.tool || "tool");
+    const content = typeof data.content === "string" ? data.content
+      : typeof summary.output === "string"
+        ? JSON.stringify({ ok: summary.ok ?? true, data: { ...summary, tool: toolName } })
+        : null;
+    if (content === null) return [];
+    return [{
+      key: index,
+      toolName,
+      toolCallId: typeof data.tool_call_id === "string" ? data.tool_call_id : "",
+      content,
+    }];
+  }), [entries]);
+
   const artifactContent = (
       <div className="mb-4">
         <div className="mb-2 flex items-center justify-between gap-2">
@@ -165,6 +185,23 @@ export default function HistoryPanel(props: HistoryPanelProps) {
   return (
     <div className="conversation-layout">
       <div id={props.chatTarget === "team" ? "team-chat" : undefined}><ChatThread messages={chatMessages} working={Boolean(props.activeJobId)} error={latestChatFailure(entries)} /></div>
+      {latestToolResults.length ? <details className="conversation-details" data-testid="chat-tool-outputs">
+        <summary>Tool outputs ({latestToolResults.length}){props.activeJobId ? " · available now" : ""}</summary>
+        <div className="mt-3 grid gap-3">
+          {latestToolResults.map((result) => <section key={result.key} className="rounded-lg border border-white/10 bg-white/5 p-3">
+            <h3 className="mb-2 text-sm font-semibold">{result.toolName}</h3>
+            <ToolResultView
+              baseUrl={props.effectiveBase}
+              yolo={props.yolo}
+              daemonAuth={props.daemonAuth}
+              sessionId={props.sessionId}
+              toolCallId={result.toolCallId}
+              toolName={result.toolName}
+              content={result.content}
+            />
+          </section>)}
+        </div>
+      </details> : null}
       {sessionArtifacts.length ? artifactContent : null}
       <details className="conversation-details" data-testid="conversation-details">
         <summary>Activity & details</summary>

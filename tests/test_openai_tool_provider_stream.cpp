@@ -256,7 +256,105 @@ static agent_tool_provider_request_t make_req(const agent_tool_registry_t* tools
   return req;
 }
 
+
+static Json::Value g_captured_wire_request;
+
+static void capture_wire_request(const std::string& body) {
+  Json::CharReaderBuilder reader;
+  std::istringstream input(body);
+  std::string error;
+  expect_true(Json::parseFromStream(reader, input, &g_captured_wire_request, &error), "parse captured wire request");
+}
+
+static OpenAIRawResult fake_raw_capture_context(const OpenAIClientConfig&, const std::string& body) {
+  capture_wire_request(body);
+  OpenAIRawResult result;
+  result.http_status = 200;
+  result.response_body = R"({"choices":[{"message":{"role":"assistant","content":"ok"}}]})";
+  return result;
+}
+
+static OpenAIStreamResult fake_stream_capture_context(
+    const OpenAIClientConfig& cfg, const std::string& body,
+    OpenAIStreamChunkCallback on_chunk, void* context, size_t max_capture) {
+  capture_wire_request(body);
+  return fake_stream_assistant_text(cfg, body, on_chunk, context, max_capture);
+}
+
+static void test_leading_system_wire_context() {
+  auto* tools = make_minimal_registry();
+  OpenAIToolProviderCtx ctx;
+  ctx.cfg.base_url = "http://stub";
+  ctx.cfg.model = "stub";
+  ctx.chat_raw_fn = fake_raw_capture_context;
+  ctx.chat_stream_fn = fake_stream_capture_context;
+  auto provider = openai_make_tool_provider(&ctx);
+  const std::vector<std::string> contents = {
+    "HOST_SYSTEM_PROFILE=default",
+    "CLIENT_PROFILE=webui",
+    "PROJECT_INSTRUCTIONS=agmd-v1",
+    "CURRENT_DATE_CONTEXT=v1\nHost local date: 2026-11-13.",
+    "__AGENT_MM_V1__{\"images\":[{\"mime\":\"image/png\",\"b64\":\"AA==\"}]}\nDescribe the image",
+    "",
+    "{\"ok\":true,\"data\":\"fixture\"}",
+    "Follow-up user request",
+    "Later system message must remain in place"
+  };
+  agent_chat_message_view_t messages[9]{};
+  for (size_t i = 0; i < contents.size(); ++i) {
+    messages[i].role = i < 4 || i == 8 ? AGENT_ROLE_SYSTEM : AGENT_ROLE_USER;
+    messages[i].content = contents[i].c_str();
+    messages[i].content_len = contents[i].size();
+  }
+  agent_chat_tool_call_view_t call{};
+  call.id = "call_preserved";
+  call.name = "fs_read";
+  call.arguments_json = "{\"path\":\"README.md\"}";
+  messages[5].role = AGENT_ROLE_ASSISTANT;
+  messages[5].tool_calls = &call;
+  messages[5].tool_call_count = 1;
+  messages[6].role = AGENT_ROLE_TOOL;
+  messages[6].tool_call_id = call.id;
+  messages[6].name = call.name;
+
+  auto request = make_req(tools);
+  request.messages = messages;
+  request.message_count = 9;
+  agent_tool_provider_response_t response{};
+  expect_true(provider.generate(provider.ctx, &request, &response) == AGENT_OK, "coalesced raw provider response");
+  agent_tool_provider_response_free(&response);
+  const auto normalized = g_captured_wire_request["messages"];
+  expect_eq(normalized.size(), 6u, "four leading system messages become one");
+  expect_streq(normalized[0]["content"].asString(),
+      contents[0] + "\n\n" + contents[1] + "\n\n" + contents[2] + "\n\n" + contents[3],
+      "all managed context retained once in order");
+  expect_streq(normalized[1]["content"][1]["image_url"]["url"].asString(),
+      "data:image/png;base64,AA==", "user image part preserved");
+
+  // Capture the same suffix without any leading systems. The normalization must
+  // not alter user parts, assistant tool calls, tool-result ids/names, or order.
+  request.messages = messages + 4;
+  request.message_count = 5;
+  expect_true(provider.generate(provider.ctx, &request, &response) == AGENT_OK, "suffix-only provider response");
+  agent_tool_provider_response_free(&response);
+  const auto suffix = g_captured_wire_request["messages"];
+  expect_eq(suffix.size(), 5u, "suffix message count preserved");
+  for (Json::ArrayIndex i = 0; i < suffix.size(); ++i)
+    expect_true(normalized[i + 1] == suffix[i], "nonleading message JSON unchanged");
+
+  ctx.stream_assistant = true;
+  request.messages = messages;
+  request.message_count = 9;
+  expect_true(provider.generate(provider.ctx, &request, &response) == AGENT_OK, "coalesced streaming provider response");
+  agent_tool_provider_response_free(&response);
+  expect_true(g_captured_wire_request["messages"] == normalized, "streaming uses same context normalization");
+  expect_true(messages[3].content == contents[3].c_str() && messages[4].role == AGENT_ROLE_USER,
+      "input transcript remains separate and unchanged");
+  agent_tool_registry_destroy(tools);
+}
+
 int main() {
+  test_leading_system_wire_context();
   {
     // Streaming tool_call reconstruction (delta.tool_calls) without assistant text.
     agent_tool_registry_t* tools = make_minimal_registry();

@@ -215,6 +215,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     cli/src/summary_llm.cpp
     cli/src/memory_index.cpp
     cli/src/tool_loop.cpp
+    cli/src/web_evidence_guard.cpp
     cli/src/tool_loop_compaction.cpp
     cli/src/tool_loop_truncation.cpp
     cli/src/toolset_basic.cpp
@@ -1999,6 +2000,10 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
   target_link_libraries(tool_loop_compaction_tests PRIVATE agent_host)
   add_test(NAME tool_loop_compaction_tests COMMAND tool_loop_compaction_tests)
 
+  add_executable(web_evidence_guard_tests tests/test_web_evidence_guard.cpp)
+  target_link_libraries(web_evidence_guard_tests PRIVATE agent_host)
+  add_test(NAME web_evidence_guard_tests COMMAND web_evidence_guard_tests)
+
   add_executable(tool_loop_truncation_tests
     tests/test_tool_loop_truncation.cpp
   )
@@ -2016,6 +2021,13 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
   )
   target_link_libraries(openai_error_tests PRIVATE agent_host)
   add_test(NAME openai_error_tests COMMAND openai_error_tests)
+
+  if(UNIX)
+    add_executable(openai_cancellation_tests tests/test_openai_cancellation.cpp)
+    target_link_libraries(openai_cancellation_tests PRIVATE agent_host)
+    add_test(NAME openai_cancellation_tests COMMAND openai_cancellation_tests)
+    set_tests_properties(openai_cancellation_tests PROPERTIES TIMEOUT 20)
+  endif()
 
   add_executable(openai_provider_tests
     tests/test_openai_provider.cpp

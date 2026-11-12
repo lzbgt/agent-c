@@ -26,8 +26,11 @@ typedef agent_status_t (*agent_tool_loop_completion_fn)(void* ctx, agent_string_
 // Optional host hook to cap tool outputs before they enter the prompt (or events).
 // - `max_chars` is a character budget (best-effort; host may treat as bytes for UTF-8).
 // - `out_truncated` should be set to 1 when truncation occurred.
+// - `tool_name` is the executed tool identity, or NULL for non-tool event payloads.
+//   It is never inferred from fields in the tool result.
 typedef agent_status_t (*agent_tool_loop_cap_output_fn)(
   void* ctx,
+  const char* tool_name,
   const char* tool_out,
   size_t tool_out_len,
   size_t max_chars,

@@ -465,6 +465,7 @@ static agent_status_t tl_build_message_views(
 static agent_status_t tl_cap_output(
   agent_tool_loop_cap_output_fn fn,
   void* fn_ctx,
+  const char* tool_name,
   const char* tool_out,
   size_t tool_out_len,
   size_t max_chars,
@@ -752,7 +753,7 @@ static agent_status_t tl_run_memory_flush_best_effort(
 
       agent_string_t tool_out_for_prompt = {0};
       uint8_t trunc_prompt = 0;
-      (void)tl_cap_output(silent.cap_tool_output_for_prompt, silent.cap_tool_output_for_prompt_ctx,
+      (void)tl_cap_output(silent.cap_tool_output_for_prompt, silent.cap_tool_output_for_prompt_ctx, tool_name,
                           tool_out.data ? tool_out.data : "", tool_out.len,
                           options->max_tool_result_chars,
                           &tool_out_for_prompt, &trunc_prompt);
@@ -846,6 +847,7 @@ static agent_status_t tl_cap_output_default(
 static agent_status_t tl_cap_output(
   agent_tool_loop_cap_output_fn fn,
   void* fn_ctx,
+  const char* tool_name,
   const char* tool_out,
   size_t tool_out_len,
   size_t max_chars,
@@ -855,7 +857,7 @@ static agent_status_t tl_cap_output(
   if (!fn) {
     return tl_cap_output_default(NULL, tool_out, tool_out_len, max_chars, out_capped, out_truncated);
   }
-  return fn(fn_ctx, tool_out, tool_out_len, max_chars, out_capped, out_truncated);
+  return fn(fn_ctx, tool_name, tool_out, tool_out_len, max_chars, out_capped, out_truncated);
 }
 
 static agent_status_t tl_summarize_output(
@@ -1108,7 +1110,7 @@ agent_status_t agent_tool_loop_run(
         // Cap summary content for event capture.
         agent_string_t capped = {0};
         uint8_t trunc = 0;
-        (void)tl_cap_output(hooks ? hooks->cap_tool_output_for_event : NULL, hooks ? hooks->cap_tool_output_for_event_ctx : NULL,
+        (void)tl_cap_output(hooks ? hooks->cap_tool_output_for_event : NULL, hooks ? hooks->cap_tool_output_for_event_ctx : NULL, NULL,
                             crep.summary.data, crep.summary.len, max_capture, &capped, &trunc);
         (void)tl_json_append_string_field(&d, "summary", capped.data ? capped.data : "", capped.len, &first);
         (void)tl_json_append_u64_field(&d, "summary_truncated", (unsigned long long)trunc, &first);
@@ -1152,7 +1154,7 @@ agent_status_t agent_tool_loop_run(
       agent_string_t capped = {0};
       uint8_t trunc = 0;
       (void)tl_cap_output(hooks ? hooks->cap_tool_output_for_event : NULL,
-                          hooks ? hooks->cap_tool_output_for_event_ctx : NULL,
+                          hooks ? hooks->cap_tool_output_for_event_ctx : NULL, NULL,
                           mm_json, mm_json_len, max_capture, &capped, &trunc);
       (void)tl_json_append_string_field(&d, "user_mm_json",
                                         capped.data ? capped.data : "",
@@ -1232,7 +1234,7 @@ agent_status_t agent_tool_loop_run(
         if (options->verbose_events && rep.inserted_summary && rep.summary.data) {
           agent_string_t capped = {0};
           uint8_t trunc = 0;
-          (void)tl_cap_output(hooks ? hooks->cap_tool_output_for_event : NULL, hooks ? hooks->cap_tool_output_for_event_ctx : NULL,
+          (void)tl_cap_output(hooks ? hooks->cap_tool_output_for_event : NULL, hooks ? hooks->cap_tool_output_for_event_ctx : NULL, NULL,
                               rep.summary.data, rep.summary.len, max_capture, &capped, &trunc);
           (void)tl_json_append_string_field(&d, "summary", capped.data ? capped.data : "", capped.len, &first);
           (void)tl_json_append_u64_field(&d, "summary_truncated", (unsigned long long)trunc, &first);
@@ -1278,6 +1280,24 @@ agent_status_t agent_tool_loop_run(
       if (views) agent_free(views);
       if (call_views) agent_free(call_views);
       (void)total_call_views;
+
+      // A stop requested while the provider was blocked must win over both a
+      // successful final answer and a retryable provider error.
+      if (stp == AGENT_ERR_CANCELLED || tl_should_cancel(hooks)) {
+        (void)agent_string_set_copy(&res.error_message, "cancelled", strlen("cancelled"));
+        if (tl_events_enabled(hooks)) {
+          tl_buf_t d = {0};
+          uint8_t first = 1;
+          (void)tl_buf_append_char(&d, '{');
+          (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
+          (void)tl_json_append_string_field(&d, "reason", "cancel_requested", strlen("cancel_requested"), &first);
+          (void)tl_buf_append_char(&d, '}');
+          tl_emit_event(hooks, "cancelled", d.data ? d.data : "{}");
+          tl_buf_free(&d);
+        }
+        status = AGENT_ERR_CANCELLED;
+        goto cleanup;
+      }
 
       if (stp == AGENT_ERR_CONTEXT_TOO_LONG && retry < max_retries) {
         // Emit a retry event.
@@ -1464,7 +1484,7 @@ agent_status_t agent_tool_loop_run(
         agent_string_t capped = {0};
         uint8_t trunc = 0;
         (void)tl_cap_output(hooks ? hooks->cap_tool_output_for_event : NULL,
-                            hooks ? hooks->cap_tool_output_for_event_ctx : NULL,
+                            hooks ? hooks->cap_tool_output_for_event_ctx : NULL, NULL,
                             mm_json, mm_json_len, max_capture, &capped, &trunc);
         (void)tl_json_append_string_field(&d, "assistant_mm_json",
                                           capped.data ? capped.data : "",
@@ -1670,7 +1690,7 @@ agent_status_t agent_tool_loop_run(
           // cap args for event capture
           agent_string_t capped = {0};
           uint8_t trunc = 0;
-          (void)tl_cap_output(hooks ? hooks->cap_tool_output_for_event : NULL, hooks ? hooks->cap_tool_output_for_event_ctx : NULL,
+          (void)tl_cap_output(hooks ? hooks->cap_tool_output_for_event : NULL, hooks ? hooks->cap_tool_output_for_event_ctx : NULL, tool_name,
                               args_json, strlen(args_json), max_capture, &capped, &trunc);
           (void)tl_json_append_string_field(&d, "arguments_json", capped.data ? capped.data : "", capped.len, &first);
           agent_string_free(&capped);
@@ -1706,7 +1726,7 @@ agent_status_t agent_tool_loop_run(
       // Cap tool output for prompt.
       agent_string_t tool_out_for_prompt = {0};
       uint8_t trunc_prompt = 0;
-      (void)tl_cap_output(hooks ? hooks->cap_tool_output_for_prompt : NULL, hooks ? hooks->cap_tool_output_for_prompt_ctx : NULL,
+      (void)tl_cap_output(hooks ? hooks->cap_tool_output_for_prompt : NULL, hooks ? hooks->cap_tool_output_for_prompt_ctx : NULL, tool_name,
                           tool_out.data ? tool_out.data : "", tool_out.len, max_tool_result_chars, &tool_out_for_prompt, &trunc_prompt);
 
       // Store tool record.
@@ -1726,7 +1746,7 @@ agent_status_t agent_tool_loop_run(
         if (options->verbose_events) {
           agent_string_t capped = {0};
           uint8_t trunc = 0;
-          (void)tl_cap_output(hooks ? hooks->cap_tool_output_for_event : NULL, hooks ? hooks->cap_tool_output_for_event_ctx : NULL,
+          (void)tl_cap_output(hooks ? hooks->cap_tool_output_for_event : NULL, hooks ? hooks->cap_tool_output_for_event_ctx : NULL, tool_name,
                               tool_out.data ? tool_out.data : "", tool_out.len, max_capture, &capped, &trunc);
           (void)tl_json_append_string_field(&d, "content", capped.data ? capped.data : "", capped.len, &first);
           (void)tl_json_append_u64_field(&d, "content_truncated", (unsigned long long)trunc, &first);

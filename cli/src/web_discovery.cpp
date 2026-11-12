@@ -226,6 +226,14 @@ void parse_results(const Json::Value& root, WebDiscoveryResult& out, size_t max_
     entry.url = public_url(item["url"].asString());
     if (entry.title.empty() || entry.url.empty()) { ++out.skipped_results; continue; }
     if (item["content"].isString()) entry.snippet = clean_text(item["content"].asString(), 1000);
+    for (const char* field : {"publishedDate", "pubdate"}) {
+      if (!item[field].isString() || item[field].asString().size() > 128) continue;
+      const auto date = clean_text(item[field].asString(), 128);
+      if (date.empty()) continue;
+      entry.published_at = date;
+      entry.publication_date_source = std::string("searxng.") + field;
+      break;
+    }
     if (item["engine"].isString()) add_engine(entry.engines, item["engine"].asString());
     if (item["engines"].isArray()) {
       for (Json::ArrayIndex n = 0; n < item["engines"].size() && n < 16; ++n)
@@ -240,6 +248,10 @@ void parse_results(const Json::Value& root, WebDiscoveryResult& out, size_t max_
       auto& existing = out.results[previous->second];
       for (const auto& engine : entry.engines) add_engine(existing.engines, engine);
       existing.score = std::max(existing.score, entry.score);
+      if (existing.published_at.empty() && !entry.published_at.empty()) {
+        existing.published_at = entry.published_at;
+        existing.publication_date_source = entry.publication_date_source;
+      }
       continue;
     }
     if (out.results.size() >= max_results) continue;
@@ -278,7 +290,9 @@ WebDiscoveryResult web_discover_with_transport(
   }
   if (!transport || request.query.empty() || request.query.size() > 1024 ||
       !valid_utf8(request.query) || request.max_results < 1 || request.max_results > 10 ||
-      request.timeout_ms < 1000 || request.timeout_ms > 30000) {
+      request.timeout_ms < 1000 || request.timeout_ms > 30000 ||
+      (!request.time_range.empty() && request.time_range != "day" &&
+       request.time_range != "month" && request.time_range != "year")) {
     out.error = "Invalid discovery request";
     return out;
   }
@@ -295,7 +309,7 @@ WebDiscoveryResult web_discover_with_transport(
   if (stopped()) return out;
   const auto now = clock ? clock : monotonic_ms;
   const auto started = now();
-  const std::string cache_key = base + "\n" + request.query + "\n" + std::to_string(request.max_results);
+  const std::string cache_key = base + "\n" + request.query + "\n" + std::to_string(request.max_results) + "\n" + request.time_range;
   {
     std::lock_guard<std::mutex> guard(cache_mutex);
     auto found = cache.find(cache_key);
@@ -318,8 +332,9 @@ WebDiscoveryResult web_discover_with_transport(
   if (!curl) { out.error = "Cannot encode discovery query"; return out; }
   char* encoded = curl_easy_escape(curl.get(), request.query.data(), static_cast<int>(request.query.size()));
   if (!encoded) { out.error = "Cannot encode discovery query"; return out; }
-  const std::string url = base + "?format=json&q=" + encoded;
+  std::string url = base + "?format=json&q=" + encoded;
   curl_free(encoded);
+  if (!request.time_range.empty()) url += "&time_range=" + request.time_range;
   const std::map<std::string, std::string> headers = {
       {"Accept", "application/json"}, {"Accept-Encoding", "gzip, deflate"}, {"User-Agent", "AgentC/1.0"}};
   // Endpoint is operator-owned loopback. Never forward provider headers,

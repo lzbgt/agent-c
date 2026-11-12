@@ -81,10 +81,11 @@ void respond(const Json::Value& body, long status = 200) {
   next_response.response_headers["content-type"] = "application/json; charset=utf-8";
   next_response.response_body = json(body);
 }
-WebDiscoveryResult run(const std::string& query, bool fresh = true) {
+WebDiscoveryResult run(const std::string& query, bool fresh = true, const std::string& time_range = "") {
   WebDiscoveryRequest request;
   request.query = query;
   request.fresh = fresh;
+  request.time_range = time_range;
   return web_discover_with_transport(request, fake_http, nullptr, nullptr, now_ms);
 }
 bool cancel_now(void*) { return true; }
@@ -117,6 +118,11 @@ int main() {
     check(!web_discover_with_transport(invalid_request, fake_http, nullptr, nullptr, now_ms).ok && calls == 0,
           "invalid timeout reached transport");
 
+    for (const char* range : {"week", "all", "day&q=other"}) {
+      check(!run("invalid range", true, range).ok && calls == 0,
+            "unsupported or injected time_range reached transport");
+    }
+
     respond(sample());
     auto result = run("a &format=html 中文");
     check(result.ok && !result.partial && result.results.size() == 2, "valid results failed");
@@ -131,6 +137,24 @@ int main() {
     check(run("IPv6 endpoint").ok && observed_url.find("http://[::1]:18091/search?") == 0,
           "literal IPv6 loopback endpoint failed");
     setenv("AGENT_SEARXNG_URL", "http://127.0.0.1:18091", 1);
+
+    check(result.results[0].published_at.empty() && result.results[0].publication_date_source.empty(),
+          "retrieval timestamp became an inferred publication date");
+    auto dated = sample();
+    dated["results"][0]["publishedDate"] = "2025-11-15T12:00:00Z";
+    dated["results"][2]["pubdate"] = "2026-11-12 08:00:00+0000";
+    respond(dated);
+    result = run("reported publication dates");
+    check(result.results[0].published_at == "2025-11-15T12:00:00Z" &&
+          result.results[0].publication_date_source == "searxng.publishedDate" &&
+          result.results[1].publication_date_source == "searxng.pubdate",
+          "upstream publication metadata was dropped or replaced by retrieval time");
+    dated["results"][0]["publishedDate"] = Json::Value(Json::arrayValue);
+    dated["results"][2]["pubdate"] = std::string(129, 'x');
+    respond(dated);
+    result = run("invalid publication metadata");
+    check(result.ok && result.results[0].published_at.empty() && result.results[1].published_at.empty(),
+          "invalid or unbounded publication metadata accepted");
 
     auto body = sample();
     body["results"][0]["title"] = "&amp;lt;script&amp;gt;";
@@ -231,6 +255,23 @@ int main() {
     fake_time += 300000;
     result = run("cache", false);
     check(result.ok && !result.cache_hit && calls == before + 3, "expired cache was reused");
+    before = calls;
+    result = run("range cache", false);
+    check(result.ok && !result.cache_hit && observed_url.find("time_range=") == std::string::npos,
+          "unrestricted search acquired an implicit date filter");
+    result = run("range cache", false, "day");
+    check(result.ok && !result.cache_hit && observed_url.find("&time_range=day") != std::string::npos,
+          "day range was dropped or reused an unrestricted cache entry");
+    result = run("range cache", false, "month");
+    check(result.ok && !result.cache_hit && observed_url.find("&time_range=month") != std::string::npos,
+          "month range reused a differently filtered cache entry");
+    result = run("range cache", false, "day");
+    check(result.ok && result.cache_hit && calls == before + 3,
+          "range-specific cache identity failed");
+    result = run("range cache", true, "year");
+    check(result.ok && !result.cache_hit && observed_url.find("&time_range=year") != std::string::npos,
+          "year range was not forwarded");
+
     body = sample(); body["unresponsive_engines"].append(failure);
     respond(body);
     result = run("partial cache", false);

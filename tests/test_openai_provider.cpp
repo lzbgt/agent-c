@@ -1,4 +1,5 @@
 #include "openai_provider.h"
+#include "openai_message_normalization.h"
 
 #include "agent/agent.h"
 
@@ -6,6 +7,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <sstream>
 
 static void expect_true(bool v, const char* what) {
   if (!v) {
@@ -62,7 +64,70 @@ static OpenAIChatResult fake_non_2xx_other(
   return r;
 }
 
+
+static void test_leading_system_wire_context() {
+  const std::string content[] = {"HOST", "CLIENT", "PROJECT", "CURRENT_DATE=2026-11-13", "user question"};
+  agent_message_view_t messages[5]{};
+  for (size_t i = 0; i < 5; ++i) {
+    messages[i].role = i < 4 ? AGENT_ROLE_SYSTEM : AGENT_ROLE_USER;
+    messages[i].content = content[i].c_str();
+    messages[i].content_len = content[i].size();
+  }
+  OpenAIProviderCtx ctx;
+  ctx.cfg.model = "fixture";
+  ctx.chat_fn = fake_capture_model_ok;
+  agent_generate_request_t request{};
+  request.messages = messages;
+  request.message_count = 5;
+  agent_generate_response_t response{};
+  expect_eq(openai_provider_generate(&ctx, &request, &response), AGENT_OK, "plain context request status");
+  agent_string_free(&response.assistant_text);
+  Json::CharReaderBuilder reader;
+  Json::Value captured;
+  std::string error;
+  std::istringstream input(ctx.last_request_body);
+  expect_true(Json::parseFromStream(reader, input, &captured, &error), "parse plain request capture");
+  expect_eq(captured["messages"].size(), 2, "plain wire system count");
+  expect_true(captured["messages"][0]["content"] == "HOST\n\nCLIENT\n\nPROJECT\n\nCURRENT_DATE=2026-11-13",
+      "plain wire retains every system block in order");
+  expect_true(captured["messages"][1]["content"] == "user question", "plain user content preserved");
+  expect_true(messages[3].role == AGENT_ROLE_SYSTEM && request.message_count == 5,
+      "original plain transcript unchanged");
+
+  // A multimodal system content array keeps its complete parts. Named system
+  // envelopes and every message after a non-system boundary remain untouched.
+  Json::Value sequence(Json::arrayValue), message(Json::objectValue);
+  message["role"] = "system"; message["content"] = "first";
+  sequence.append(message);
+  message["content"] = Json::Value(Json::arrayValue);
+  Json::Value part(Json::objectValue);
+  part["type"] = "text"; part["text"] = "second";
+  message["content"].append(part);
+  part = Json::Value(Json::objectValue);
+  part["type"] = "image_url"; part["image_url"]["url"] = "https://example.org/system-image.png";
+  message["content"].append(part);
+  sequence.append(message);
+  message["name"] = "compaction_summary"; message["content"] = "summary";
+  sequence.append(message);
+  message.removeMember("name"); message["role"] = "user"; message["content"] = "question";
+  sequence.append(message);
+  message["role"] = "system"; message["content"] = "later";
+  sequence.append(message);
+  const auto original = sequence;
+  openai_coalesce_leading_system_messages(sequence);
+  expect_eq(sequence.size(), 4, "structured prefix coalesced");
+  expect_true(sequence[0]["content"].isArray() && sequence[0]["content"].size() == 4,
+      "system content part boundaries preserved");
+  expect_true(sequence[0]["content"][3] == original[1]["content"][1], "system image part retained exactly");
+  for (Json::ArrayIndex i = 1; i < sequence.size(); ++i)
+    expect_true(sequence[i] == original[i + 1], "named system and conversation suffix unchanged");
+  const auto once = sequence;
+  openai_coalesce_leading_system_messages(sequence);
+  expect_true(sequence == once, "normalization is idempotent");
+}
+
 int main() {
+  test_leading_system_wire_context();
   agent_message_view_t msgs[1]{};
   msgs[0].role = AGENT_ROLE_USER;
   msgs[0].content = "hi";

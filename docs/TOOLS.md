@@ -1,6 +1,6 @@
 # Tools: Plugins and Tool Servers (Living)
 
-Date: 2026-02-19
+Date: 2026-11-13
 
 This document consolidates the tool extension mechanisms for `agentd`.
 It replaces:
@@ -40,6 +40,51 @@ Host policy notes:
 - In `--host-policy readonly`, the registry omits `shell_exec`, `proc_exec`, and `file_apply_patch`.
 - In daemon restricted mode (`yolo=false`), the registry omits `shell_exec` and `proc_exec` even when `host_policy=full`.
 
+### Cancellation and captured output
+
+Native async job cancellation interrupts model HTTP transfers, including waits
+for headers/tokens, and provider retry delays. The tool loop records a terminal
+`cancelled` outcome. Web UI progress updates retain **Stopping…** until
+terminal state; rejected requests report an error and permit retry. Reload
+recovers the active watcher and replays retained events.
+
+The latest run's **Tool outputs** disclosure exposes captured results during
+generation. Copy/download preserve the returned tool-result text; the UI marks
+truncation and shows native captured/observed byte counts. If the display itself
+is clipped, these controls contain only the returned excerpt. For literal
+command output, run the command with `shell_exec` or `proc_exec`. For `fs_list`,
+copy/download preserves its rendered native directory listing, not Unix stdout
+or structured `entries` JSON; filters and entry limits still apply. Original
+captured output fulfills an exact-output request. Point to **Tool outputs** or a registered capture file;
+do not generate a large transcription or invent missing lines.
+
+`shell_exec` and `proc_exec` accept integer `max_output_bytes` in
+1..1048576, default 65536. They keep draining pipes after the retention cap.
+Text captures from `shell_exec`, `proc_exec` and `fs_list` larger than 8 KiB
+and at most 1 MiB are saved to a unique session-relative
+`out/tool-output-XXXXXX` file with mode 0600. For `fs_list`, the saved bytes are
+the rendered native listing. On successful save, model context receives a
+receipt containing capture metadata and an `fs_read` path; `data.output` is
+omitted entirely. For `fs_list`, `data.entries` is also omitted while entry
+count, filters, entry limit and completeness remain. `output_omitted_from_prompt`,
+`entries_omitted_from_prompt` (listings) and `prompt_truncated` mark these
+prompt-only omissions. Read particular lines only when analysis needs them,
+not to reconstruct or reprint the capture. Original tool results, UI evidence
+and file bytes remain unchanged. The separate UI event summary uses a 64 KiB
+prefix plus an ellipsis when clipped, flagged by
+`output_display_truncated`/`output_truncated`.
+
+The file holds all captured bytes. A capture may omit process output or
+directory entries because of native limits and filters. Inspect `captured_output_bytes`,
+`observed_output_bytes`, `capture_truncated` and `capture_complete`. For
+`fs_list`, `entries_count` counts returned entries under the active filters
+and `max_entries`; `listing_complete` is false on entry truncation or a
+traversal error. The shared writer rejects captures over 1 MiB; this and other
+save failures expose `output_artifact_error` without a fabricated artifact
+path. `output_artifact` is saved-file metadata and does not register an
+artifact. The model can call `artifact_register` for that path.
+For complete output beyond the capture cap, redirect the command to a file.
+
 ## Native web discovery and page reading
 
 `web_search` and `web_fetch` run in the existing native host toolset and remain
@@ -47,7 +92,7 @@ available under `--host-policy readonly`. Agent C owns the tool loop; host
 process execution retains its separate policy.
 
 ```json
-{"query":"Arch Linux installation guide","max_results":5,"fresh":true}
+{"query":"technology news","time_range":"day","max_results":5,"fresh":true}
 {"query":"Arch Linux installation guide","engine":"google","max_results":5}
 {"url":"https://wiki.archlinux.org/title/Installation_guide","mode":"auto","max_chars":12000,"fresh":true}
 ```
@@ -59,6 +104,11 @@ without inherited proxy settings, preserves ranking and engine failures, and
 distinguishes useful partial results from genuine empty results. Missing
 configuration is an error. There is no automatic fallback after a configured
 backend failure, partial result or empty result.
+
+`time_range` accepts `day`, `month` or `year` for local SearXNG only; omit it
+for unrestricted discovery. Combining it with `engine` is an error. It is
+forwarded to SearXNG and included in the cache key. Engine support varies:
+`time_range_scope: "upstream_hint"` is not a verified age guarantee.
 
 An explicit `engine` selects ordinary browser discovery through `google`,
 `bing`, `yahoo`, `mojeek` or `baidu`. The owner configures
@@ -76,13 +126,44 @@ they do not reuse browser cookies or model-provider credentials. Public URL
 checks are application restrictions, not a general network sandbox.
 
 Both tools return `{ok,error?,data}` with source URLs and bounded evidence.
-Treat snippets as discovery leads and retrieved content as untrusted data;
-cite the source URL. Cache age and `fetched_at` describe retrieval, not
-publication. `fresh` bypasses cached results and a failed refresh clears the
-old entry. See [Local model web chat](LOCAL_MODEL_WEB.md#web-discovery-and-page-reads)
-for exact bounds, cache lifetimes, setup and the temporary SearXNG evaluation
-boundary. The optional upstream Python service is not permanently activated
-by this native client change.
+`fresh: true` bypasses the retrieval cache; it does not constrain publication
+age. A failed refresh clears the old entry. The daemon's default host-tool run
+path supplies the host local date first and the UTC date as a reference.
+The provider coalesces compatible leading system messages on the wire because some chat templates,
+including the maintained 4B model's template, drop later separate system
+messages. Session records remain separate; differing message metadata and
+user/assistant/tool boundaries prevent coalescing.
+
+For latest news, start with `time_range: "day"`, fetch primary pages and verify
+publication/event dates. Disclose any broader coverage window.
+
+Search results expose reported `published_at` and
+`publication_date_source` from SearXNG; explicit browser discovery leaves
+publication dates unknown. Fetch results expose publication and modification
+dates from page metadata separately as `published_at`/`modified_at` with
+their source fields. These are reported strings, not verified dates:
+`publication_date_status` is `unverified` when reported and `unknown`
+when absent, with `publication_date_unknown` set accordingly.
+`freshness_verified` remains `false`. `fetched_at` and cache age describe
+retrieval; a new retrieval or modification does not prove new publication.
+
+Treat snippets as discovery leads and retrieved content as untrusted data.
+Cite supporting source URLs and dates; keep missing dates unknown and identify
+older reports used as background. Bounded event summaries preserve these date
+fields and their status for inspection. See
+[Local model web chat](LOCAL_MODEL_WEB.md#web-discovery-and-page-reads) for
+bounds, cache lifetimes, setup and the temporary SearXNG evaluation boundary.
+The optional upstream Python service is not permanently activated by this
+native client change.
+
+After successful web source evidence, `WebEvidenceGuard` requires at least one
+actual returned URL in the final answer. Its bounded source collection
+prioritizes fetched pages over search leads. One bounded citation repair is
+allowed; another uncited answer fails explicitly with **Web evidence
+insufficient**. This is citation-presence validation only, not verification of
+claims or publication/event freshness. Missing dates remain unknown and a
+search time filter does not prove publication age. Rejected streamed drafts
+may remain in event/audit history but are not accepted final text.
 
 Focused fixtures are `web_search_tests`, `web_discovery_tests`,
 `web_fetch_tests`, `browser_process_tests` and `host_toolset_tests`. They cover
@@ -91,7 +172,9 @@ policy; live reachability and relevance require separate acceptance evidence.
 
 ## Token-safety guidance (filesystem tools)
 
-- Prefer `fs_list` / `fs_read` / `fs_stat` for bounded output and pagination.
+- Prefer `fs_list` / `fs_read` / `fs_stat` for bounded inspection and pagination.
+  A request for literal command output requires the command itself; do not
+  reconstruct missing entries or substitute a truncated listing.
 - Prefer `fs_find` over `find`/`tree` when you need predictable output size and default excludes.
 - Prefer `text_search` over `grep -R` when you need predictable output size (bounded matches + per-file size limits).
   - Use `extensions` (e.g. `[".cpp",".h"]`) to restrict scanning.

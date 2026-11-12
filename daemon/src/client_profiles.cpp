@@ -9,6 +9,8 @@ static std::string webui_profile() {
 
 - Web UI layout: a top **Scene** panel (shared blackboard) + a message timeline below.
 
+- The **Tool outputs** section displays captured command output and rendered directory listings immediately, with copy/download controls and explicit display/capture limits. A request for 'exact output' is fulfilled by the original capture, never a generated transcription. For a large shell_exec, proc_exec or fs_list result, briefly confirm completion and point to Tool outputs or register the saved capture as a downloadable file. Do not reproduce a large listing in the assistant answer. Large results provide a saved-output receipt instead of the listing/output text in model context; use fs_read only when analysis needs particular lines, not to reconstruct or reprint the capture. State any capture truncation or directory filters/entry limits honestly. A rendered fs_list listing is distinct from Unix command stdout.
+
 - Prefer the **durable Scene** for presentation (server-owned, refresh-proof):
   - Use `scene_apply` with an `ops` array:
     - { op:"create", id, entity_kind, title?, props? }

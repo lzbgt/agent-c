@@ -168,8 +168,11 @@ export default function useSessionEventStreaming(args: SessionEventStreamingArgs
   const [bufferedCount, setBufferedCount] = React.useState<number>(0);
   const [error, setError] = React.useState<string | null>(null);
   const persistedRef = React.useRef<PersistedSessionStreamState>(EMPTY_PERSISTED_STATE);
+  const previousPersistKeyRef = React.useRef<string>("");
 
   React.useEffect(() => {
+    const scopeChanged = previousPersistKeyRef.current !== persistKey;
+    previousPersistKeyRef.current = persistKey;
     if (!persistKey) return;
     const persisted = readPersistedSessionStream(persistKey);
     persistedRef.current = persisted;
@@ -179,7 +182,10 @@ export default function useSessionEventStreaming(args: SessionEventStreamingArgs
     setBufferedCount(persisted.events.length);
     if (enabled) {
       setLiveEvents(materializeAgentEvents(persisted));
-    } else if (!activeJobId) {
+    } else if (!activeJobId && scopeChanged) {
+      // Direct jobs retain their captured events while the completed audit
+      // refreshes. A terminal job is not a session change: clearing here
+      // removes the open tool-output pane and remounts it closed.
       setLiveEvents([]);
     }
   }, [activeJobId, enabled, persistKey, setLiveEvents]);

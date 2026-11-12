@@ -15,6 +15,8 @@ struct WebDiscoveryRequest {
   size_t max_results = 5;
   int timeout_ms = 12000;
   bool fresh = false;
+  // Empty means unrestricted. These ranges are documented by the SearXNG API.
+  std::string time_range;
 };
 
 struct WebDiscoveryEntry {
@@ -23,6 +25,9 @@ struct WebDiscoveryEntry {
   std::string snippet;
   std::vector<std::string> engines;
   double score = 0;
+  // Upstream-reported, unverified publication metadata; never fetched_at.
+  std::string published_at;
+  std::string publication_date_source;
 };
 
 struct WebDiscoveryFailure {

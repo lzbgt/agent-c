@@ -5,6 +5,7 @@
 
 #if defined(AGENT_HAVE_JSONCPP)
 #include <json/json.h>
+#include "openai_message_normalization.h"
 #endif
 
 #include <vector>
@@ -370,6 +371,7 @@ static Json::Value build_messages_json(
     }
     out.append(m);
   }
+  openai_coalesce_leading_system_messages(out);
   return out;
 }
 
@@ -500,7 +502,7 @@ static agent_status_t openai_tool_provider_generate(
 
     const auto stream_fn = ctx->chat_stream_fn ? ctx->chat_stream_fn : openai_chat_completions_raw_stream;
     OpenAIStreamResult sr = stream_fn(ctx->cfg, request_json, on_chunk, &acc, ctx->max_capture_bytes);
-    if (want_stream_usage && (sr.http_status < 200 || sr.http_status >= 300) &&
+    if (!sr.cancelled && want_stream_usage && (sr.http_status < 200 || sr.http_status >= 300) &&
         (!acc.core.saw_delta && acc.core.dec.tool_call_count == 0)) {
       // Best-effort compatibility: some OpenAI-compatible providers reject stream_options.
       // If we didn't decode any deltas/tool_calls, retry once without stream_options.
@@ -552,6 +554,12 @@ static agent_status_t openai_tool_provider_generate(
         d["response_truncated"] = trunc;
       }
       provider_emit_event(ctx, "llm_response", d);
+    }
+
+    if (sr.cancelled) {
+      (void)set_error(out_resp, "cancelled");
+      openai_stream_core_free(&acc.core);
+      return AGENT_ERR_CANCELLED;
     }
 
     // Flush any pending delta.
@@ -652,6 +660,11 @@ static agent_status_t openai_tool_provider_generate(
         d["response_truncated"] = trunc;
       }
       provider_emit_event(ctx, "llm_response", d);
+    }
+
+    if (raw.cancelled) {
+      (void)set_error(out_resp, "cancelled");
+      return AGENT_ERR_CANCELLED;
     }
 
     if (raw.http_status < 200 || raw.http_status >= 300) {

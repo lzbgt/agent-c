@@ -40,13 +40,15 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
             {state.chatTarget === "team" ? <select className="chat-target" aria-label="Team message type" value={state.teamAction} onChange={(event) => props.onTeamActionChange?.(event.target.value as "run" | "guidance" | "goal")}><option value="run">Task</option><option value="guidance">Guidance</option><option value="goal">Goal</option></select> : null}
             <div className="workspace-composer-actions">
               {props.queueCount ? <span className="text-xs text-white/50">{props.queueCount} queued</span> : null}
-              {props.activeJobId ? <button className="workspace-button" onClick={() => void state.handleCancel()} type="button">Stop</button> : null}
+              {props.activeJobId ? <button className="workspace-button" onClick={() => void state.handleCancel()} disabled={state.cancelPending} aria-busy={state.cancelPending || undefined} type="button" data-testid="stop-run">{state.cancelPending ? "Stopping…" : "Stop"}</button> : null}
               <button className="workspace-run rounded-lg px-4 py-2 text-sm disabled:opacity-40" onClick={state.onRun} disabled={props.composerDisabled || props.runDisabled || (!props.prompt.trim() && !state.attachments.length)} type="button" data-testid="run">{props.runLabel}</button>
             </div>
           </>}
         />
         </div>
         {props.jobError || props.runError || props.resultError ? <div className="chat-send-error" role="alert">{String(props.jobError || props.runError || props.resultError).length <= 180 ? String(props.jobError || props.runError || props.resultError) : <>This request failed.<details><summary>Error details</summary><pre className="whitespace-pre-wrap break-words">{String(props.jobError || props.runError || props.resultError)}</pre></details></>}</div> : null}
+        {state.cancelPending ? <div className="text-xs text-white/70" role="status">Stopping current run…</div> : null}
+        {state.cancelError ? <div className="chat-send-error" role="alert">Stop failed: {state.cancelError}</div> : null}
         {props.jobNotice && !/^(queued|uploaded \d+ file)/.test(props.jobNotice) ? <div className="text-xs text-white/60" role="status">{props.jobNotice}</div> : null}
 
       </div>

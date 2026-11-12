@@ -672,6 +672,79 @@ static void test_tool_loop_cancel(void) {
   agent_tool_registry_destroy(reg);
 }
 
+
+typedef struct CancelDuringProviderCtx {
+  int requested;
+  int provider_calls;
+  int cancelled_events;
+  int done_events;
+  int error_events;
+  int mode;
+} CancelDuringProviderCtx;
+
+static uint8_t cancel_during_provider_requested(void* vctx) {
+  return ((CancelDuringProviderCtx*)vctx)->requested ? 1 : 0;
+}
+
+static agent_status_t cancel_during_provider_generate(
+  void* vctx, const agent_tool_provider_request_t* req, agent_tool_provider_response_t* out
+) {
+  (void)req;
+  CancelDuringProviderCtx* ctx = (CancelDuringProviderCtx*)vctx;
+  ctx->provider_calls++;
+  if (ctx->mode == 2) return AGENT_ERR_CANCELLED;
+  ctx->requested = 1;
+  if (ctx->mode == 1) return AGENT_ERR_CONTEXT_TOO_LONG;
+  assert(agent_string_set_copy(&out->assistant_content, "late final answer", strlen("late final answer")) == AGENT_OK);
+  return AGENT_OK;
+}
+
+static void cancel_during_provider_event(void* vctx, const char* type, const char* data_json) {
+  (void)data_json;
+  CancelDuringProviderCtx* ctx = (CancelDuringProviderCtx*)vctx;
+  if (strcmp(type, "cancelled") == 0) ctx->cancelled_events++;
+  if (strcmp(type, "done") == 0) ctx->done_events++;
+  if (strcmp(type, "error") == 0) ctx->error_events++;
+}
+
+static void test_tool_loop_cancel_during_provider(void) {
+  // Cancellation must win over a late successful final answer, context retries,
+  // and an explicit provider cancellation even without a separate hook flag.
+  for (int mode = 0; mode < 3; mode++) {
+    CancelDuringProviderCtx ctx = {0};
+    ctx.mode = mode;
+    agent_tool_provider_t provider = {0};
+    provider.ctx = &ctx;
+    provider.generate = cancel_during_provider_generate;
+    agent_tool_registry_t* reg = NULL;
+    assert(agent_tool_registry_create(&reg) == AGENT_OK);
+    agent_tool_executor_t exec = {0};
+    exec.execute = fake_tool_execute;
+    agent_session_t* seed = NULL;
+    assert(agent_session_create(&seed) == AGENT_OK);
+    agent_tool_loop_hooks_t hooks = {0};
+    hooks.should_cancel = cancel_during_provider_requested;
+    hooks.should_cancel_ctx = &ctx;
+    hooks.on_event = cancel_during_provider_event;
+    hooks.on_event_ctx = &ctx;
+    agent_tool_loop_options_t opt = {0};
+    opt.model = "fake";
+    opt.max_steps = 4;
+    agent_tool_loop_result_t out = {0};
+    const agent_status_t st = agent_tool_loop_run(&provider, reg, &exec, seed, "answer", &opt, &hooks, &out);
+    assert(st == AGENT_ERR_CANCELLED);
+    assert(ctx.provider_calls == 1);
+    assert(ctx.cancelled_events == 1);
+    assert(ctx.done_events == 0);
+    assert(ctx.error_events == 0);
+    assert(out.final_assistant_text.len == 0);
+    assert(out.error_message.data && strcmp(out.error_message.data, "cancelled") == 0);
+    agent_tool_loop_result_free(&out);
+    agent_session_destroy(seed);
+    agent_tool_registry_destroy(reg);
+  }
+}
+
 static agent_status_t completion_provider(void* ctx, const agent_tool_provider_request_t* req, agent_tool_provider_response_t* out) {
   (void)req;
   (*(int*)ctx)++;
@@ -706,7 +779,48 @@ static void test_tool_loop_completion_guard(void) {
   }
 }
 
+
+static agent_status_t tool_identity_cap(
+  void* ctx, const char* tool_name, const char* output, size_t output_len,
+  size_t max_chars, agent_string_t* capped, uint8_t* truncated
+) {
+  (void)max_chars;
+  int* calls = (int*)ctx;
+  assert(tool_name && strcmp(tool_name, "echo") == 0);
+  (*calls)++;
+  *truncated = 0;
+  return agent_string_set_copy(capped, output, output_len);
+}
+
+static void test_tool_loop_cap_receives_executed_identity(void) {
+  FakeProviderCtx pctx = {0};
+  agent_tool_provider_t provider = {0};
+  provider.ctx = &pctx;
+  provider.generate = fake_provider_generate;
+  agent_tool_registry_t* reg = NULL;
+  assert(agent_tool_registry_create(&reg) == AGENT_OK);
+  assert(agent_tool_registry_add(reg, "echo", "echo", "{\"type\":\"object\"}") == AGENT_OK);
+  agent_tool_executor_t executor = {0};
+  executor.execute = fake_tool_execute;
+  agent_session_t* seed = NULL;
+  assert(agent_session_create(&seed) == AGENT_OK);
+  int cap_calls = 0;
+  agent_tool_loop_hooks_t hooks = {0};
+  hooks.cap_tool_output_for_prompt = tool_identity_cap;
+  hooks.cap_tool_output_for_prompt_ctx = &cap_calls;
+  agent_tool_loop_options_t opt = {0};
+  opt.model = "fake";
+  opt.max_steps = 4;
+  agent_tool_loop_result_t result = {0};
+  assert(agent_tool_loop_run(&provider, reg, &executor, seed, "test", &opt, &hooks, &result) == AGENT_OK);
+  assert(cap_calls == 1);
+  agent_tool_loop_result_free(&result);
+  agent_session_destroy(seed);
+  agent_tool_registry_destroy(reg);
+}
+
 void test_tool_loop_module(void) {
+  test_tool_loop_cap_receives_executed_identity();
   test_tool_loop_completion_guard();
   test_tool_loop_happy_path();
   test_tool_loop_repeated_tool_call_guard();
@@ -719,5 +833,6 @@ void test_tool_loop_module(void) {
   test_tool_loop_require_tool_call_errors();
   test_tool_loop_multimodal_event();
   test_tool_loop_cancel();
+  test_tool_loop_cancel_during_provider();
   printf("test_tool_loop_module OK\n");
 }

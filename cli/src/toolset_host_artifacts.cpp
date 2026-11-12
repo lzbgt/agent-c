@@ -4,12 +4,78 @@
 #include <json/json.h>
 #endif
 
+#include <cerrno>
+#include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <string>
+#include <vector>
+
+#include <fcntl.h>
+#include <unistd.h>
 
 namespace host_tools_internal {
 
 #if defined(AGENT_HAVE_JSONCPP)
+void attach_text_output_artifact(
+  HostToolCtx* ctx, const std::string& title, const std::string& output, Json::Value& data
+) {
+  if (output.size() <= 8 * 1024 || !ctx) return;
+  // File storage is bounded even for structured tools with larger result limits.
+  if (output.size() > 1024 * 1024) {
+    data["output_artifact_error"] = "captured output exceeds the 1 MiB artifact limit; narrow the requested listing or output";
+    return;
+  }
+
+  // Store exactly the captured bytes once. The raw tool result stays unchanged
+  // for UI/evidence; the prompt adapter substitutes a metadata-only receipt.
+  auto base = session_root_dir(ctx);
+  if (base.empty()) base = ctx->root;
+  const auto directory = base / "out";
+  if (!ctx->unrestricted && !ctx->allow_symlinks && path_contains_symlink_component(base, directory)) {
+    data["output_artifact_error"] = "output directory contains a disallowed symlink";
+    return;
+  }
+  std::error_code ec;
+  std::filesystem::create_directories(directory, ec);
+  if (ec) {
+    data["output_artifact_error"] = "cannot create output directory: " + ec.message();
+    return;
+  }
+  std::string pattern = (directory / "tool-output-XXXXXX").string();
+  std::vector<char> filename(pattern.begin(), pattern.end());
+  filename.push_back('\0');
+  const int fd = mkstemp(filename.data()); // unique, owner-only 0600
+  if (fd < 0) {
+    data["output_artifact_error"] = std::string("cannot create output artifact: ") + std::strerror(errno);
+    return;
+  }
+  (void)fcntl(fd, F_SETFD, FD_CLOEXEC);
+  size_t written = 0;
+  bool saved = true;
+  while (written < output.size()) {
+    const ssize_t n = write(fd, output.data() + written, output.size() - written);
+    if (n < 0 && errno == EINTR) continue;
+    if (n <= 0) { saved = false; break; }
+    written += static_cast<size_t>(n);
+  }
+  if (close(fd) != 0) saved = false;
+  if (!saved) {
+    unlink(filename.data());
+    data["output_artifact_error"] = "cannot write complete captured output artifact";
+    return;
+  }
+  Json::Value artifact(Json::objectValue);
+  artifact["path"] = (std::filesystem::path("out") / std::filesystem::path(filename.data()).filename()).generic_string();
+  artifact["kind"] = "file";
+  artifact["mime"] = "text/plain";
+  artifact["title"] = title;
+  artifact["size_bytes"] = Json::UInt64(output.size());
+  artifact["capture_truncated"] = data["capture_truncated"];
+  artifact["capture_complete"] = data["capture_complete"];
+  data["output_artifact"] = std::move(artifact);
+}
+
 static std::string lower_copy(std::string s) {
   for (char& c : s) {
     if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');

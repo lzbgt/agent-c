@@ -14,6 +14,15 @@ function errorMessage(error: unknown, fallback: string): string {
 export default function usePromptBarState(props: PromptBarProps) {
   const [attachments, setAttachments] = React.useState<Attachment[]>([]);
   const [uploadBusy, setUploadBusy] = React.useState<boolean>(false);
+  const [cancelRequest, setCancelRequest] = React.useState<{
+    jobId: string;
+    phase: "sending" | "requested" | "error";
+    error?: string;
+  } | null>(null);
+  React.useEffect(() => setCancelRequest(null), [props.activeJobId]);
+  const currentCancelRequest = cancelRequest?.jobId === props.activeJobId ? cancelRequest : null;
+  const cancelPending = currentCancelRequest?.phase === "sending" || currentCancelRequest?.phase === "requested";
+  const cancelError = currentCancelRequest?.phase === "error" ? currentCancelRequest.error : null;
   const uploadsEnabled = props.uploadsEnabled !== false;
   const uploadsDisabledReason = String(props.uploadsDisabledReason || "").trim();
   const uploadMaxBytes =
@@ -62,14 +71,20 @@ export default function usePromptBarState(props: PromptBarProps) {
 
   const handleCancel = React.useCallback(async () => {
     const jobId = props.activeJobId;
-    if (!jobId) return;
+    if (!jobId || cancelPending) return;
+    setCancelRequest({ jobId, phase: "sending" });
     try {
-      await apiCancelJob(props.effectiveBase, jobId, props.daemonAuth);
-      props.setJobNotice("cancel requested");
+      const response = await apiCancelJob(props.effectiveBase, jobId, props.daemonAuth);
+      if (response.ok !== true) {
+        throw new Error(response.error || response.err || response.code || `HTTP ${response.status ?? "error"}`);
+      }
+      setCancelRequest((current) => current?.jobId === jobId ? { jobId, phase: "requested" } : current);
     } catch (error) {
-      props.setJobNotice(`cancel failed: ${String(error)}`);
+      setCancelRequest((current) => current?.jobId === jobId
+        ? { jobId, phase: "error", error: errorMessage(error, "Cancellation failed") }
+        : current);
     }
-  }, [props]);
+  }, [cancelPending, props]);
 
   const handleUploadFiles = React.useCallback(
     async (files: FileList | File[]) => {
@@ -169,6 +184,8 @@ export default function usePromptBarState(props: PromptBarProps) {
 
   return {
     attachments,
+    cancelError,
+    cancelPending,
     chatTarget,
     onRun,
     promptPlaceholder,

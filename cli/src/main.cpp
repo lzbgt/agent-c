@@ -992,6 +992,9 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
 	    opt.max_capture_bytes = (size_t)1024u * 1024u;
 
 	    auto run_one = [&](const std::string& user_prompt) -> int {
+          if (!no_default_system && tools_mode == "host") {
+            (void)ensure_current_date_system_prompt(&session);
+          }
 	      std::string prompt_for_llm = user_prompt;
 #if defined(AGENT_HAVE_JSONCPP)
 	      if (!attach_paths.empty()) {
