@@ -4,6 +4,37 @@ The current deployment target is **https://agent.hubstack.cn**. Execution, UI se
 
 This rolling project has no backward compatibility requirement. The gateway bootstraps one canonical schema and checks its fingerprint on restart. A changed schema requires a fresh deployment/database; there is no automatic migration or compatibility branch. Deployment never silently erases an existing database. Keep any required artifacts/backups before intentionally replacing state.
 
+## Owner stop (2026-11-12)
+
+The owner stopped Agent-C project development and requested shutdown of related
+services to prevent cloud-model API fees. Do not resume implementation, deployment
+or service operation without a new owner instruction. The last integrated source
+is `ab69b1788c644d993578c828d0f0581f332a6ee0`; this shutdown record does not deploy it.
+The prior installed runtime, source history, local configuration, artifacts and
+persistent databases remain preserved. The Panda publication hold remains in force.
+
+On Arch, shutdown used `systemctl --user disable --now agent-c-gateway.service
+agent-c-daemon.service`, then `docker update --restart=no agent-c-postgres` and
+`docker stop --timeout 20 agent-c-postgres`. Disabling the user units and container
+restart policy prevents their ordinary automatic startup. The shared VPS ingress,
+identity, Docker daemon and unrelated services were not stopped. The Agent-C site
+is intentionally unavailable while its dedicated gateway is stopped.
+
+Verify the hold without starting workloads:
+
+```sh
+systemctl --user show agent-c-daemon.service agent-c-gateway.service \
+  -p ActiveState -p MainPID -p UnitFileState
+docker inspect agent-c-postgres \
+  --format '{{.State.Status}} restart={{.HostConfig.RestartPolicy.Name}}'
+ss -ltnp | grep -E ':(18123|18784|15439)\b'
+```
+
+Expected results are `inactive`, `MainPID=0`, `disabled`, container `exited`
+with restart `no`, and no listeners on the three project ports. This establishes
+local shutdown, not retrospective provider billing or revocation of shared keys.
+Do not run the deployment or live-model probes below while this owner hold applies.
+
 ## Runtime and authority
 
 | Component | Location | Boundary |
