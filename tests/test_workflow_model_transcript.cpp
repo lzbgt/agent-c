@@ -73,7 +73,8 @@ int main() {
   wf.created_unix_ms = wf.updated_unix_ms = 1;
   std::vector<AgentDb::WorkflowTaskRow> tasks;
   for (const char* id : {"resume", "crash", "pending", "config", "request", "tool", "corrupt", "budget", "context",
-                         "cas", "stop", "malformed", "limit", "unconfigured", "receipt_fail", "terminal_limit", "fresh_policy", "zero_steps", "reasoning", "reasoning_large"}) {
+                         "cas", "stop", "malformed", "limit", "unconfigured", "receipt_fail", "terminal_limit", "fresh_policy", "zero_steps", "reasoning", "reasoning_large", "vision_complete", "vision_shape", "vision_resume", "vision_request", "vision_fallback", "vision_budget",
+                         "vision_large", "vision_input", "vision_invalid", "vision_session", "vision_stop", "vision_order"}) {
     AgentDb::WorkflowTaskRow task; task.workflow_id = "wf"; task.task_id = id; task.status = "queued";
     task.request_json = "{}"; task.depends_on_json = "[]";
     task.created_unix_ms = task.updated_unix_ms = 1; tasks.push_back(task);
@@ -270,6 +271,85 @@ int main() {
     ToolLoopOptions options; configure(guard, options);
     check(generate(guard.wrap_provider(fake.provider(), &provider_context)) != AGENT_OK &&
       execute(guard.wrap(fake.executor())) != AGENT_OK && !fake.tools, "unbounded reasoning admitted a host call");
+  }
+
+  auto vision_request = [] {
+    Json::Value value; value["model"]="stub"; value["messages"][0]["role"]="user";
+    value["messages"][0]["content"]="synthetic-original-image-private-marker";
+    value["max_completion_tokens"]=32; return value;
+  };
+  auto vision_result = [] {
+    Json::Value value; value["text"]="original image description"; value["error"]="";
+    value["http_status"]=200; value["usage"]["prompt_tokens"]=3;
+    value["usage"]["completion_tokens"]=1; value["usage"]["total_tokens"]=4; return value;
+  };
+  for(const char* id:{"vision_complete","vision_resume","vision_request","vision_fallback"}) {
+    Fake fake; int preparations=0;auto prepared=vision_result();
+    if(std::string(id)=="vision_fallback"){prepared["text"]="";prepared["error"]="original unavailable";prepared["http_status"]=503;}
+    auto invoke=[&]{++preparations;return prepared;};
+    WorkflowModelEffect first(ctx(id),task_request);check(first.preflight().isNull(),"vision initial");
+    ToolLoopOptions opt;opt.max_steps=3;opt.max_tool_calls_total=1;configure(first,opt);
+    Json::Value value;bool replayed=false;
+    check(first.vision_prefetch(vision_request(),invoke,&value,&replayed)&&!replayed&&value==prepared,"vision original");
+    auto provider=first.wrap_provider(fake.provider());
+    check(generate(provider)==AGENT_OK&&execute(first.wrap(fake.executor()))==AGENT_OK,"vision host prefix");
+    if(std::string(id)=="vision_complete"){
+      fake.tool_response=false;check(generate(provider,1)==AGENT_OK,"vision complete provider");
+      check(first.finish(result(true))["ok"]==true,"vision complete receipt");
+      WorkflowModelEffect cached(ctx(id),task_request);const auto replay=cached.preflight();
+      check(replay["ok"]==true&&replay["steps_executed"]==0&&replay["effect"]["prefetch_calls"]==0&&
+            replay["effect"]["original_usage"]["prefetch_calls"]==1&&preparations==1,"vision complete receipt charged new analysis");
+      continue;
+    }
+    fake.status=AGENT_ERR_INTERNAL;check(generate(provider,1)==AGENT_ERR_INTERNAL,"vision frontier failure");
+    const auto failed=first.finish(result(false));
+    check(failed["steps_executed"]==3&&failed["effect"]["prefetch_calls"]==1&&failed["retryable"]==true,"vision fresh accounting");
+    AgentDb::WorkflowEffectRow row;bool found=false;
+    check(db.get_workflow_effect(failed["effect"]["effect_id"].asString(),&row,&found,&error)&&found,"vision checkpoint");
+    check(row.receipt_json.find("synthetic-original-image-private-marker")==std::string::npos,"image payload copied into receipt");
+    WorkflowModelEffect resumed(ctx(id),task_request);check(resumed.preflight().isNull(),"vision restore");
+    ToolLoopOptions resumed_opt;resumed_opt.max_steps=3;resumed_opt.max_tool_calls_total=1;
+    resumed.set_fresh_budget(true,0,true,1);configure(resumed,resumed_opt);
+    auto request=vision_request();request["max_completion_tokens"]=1; // Smaller remaining token grant is not changed image intent.
+    if(std::string(id)=="vision_request"){
+      request["messages"][0]["content"]="changed image";
+      check(!resumed.vision_prefetch(request,invoke,&value,&replayed)&&preparations==1,"changed image reinterpreted");
+      check(resumed.finish(result(false))["needs_input"]==true,"changed image not blocked");continue;
+    }
+    check(resumed.vision_prefetch(request,invoke,&value,&replayed)&&replayed&&value==prepared&&preparations==1,"vision regenerated on resume");
+    fake.status=AGENT_OK;provider=resumed.wrap_provider(fake.provider());
+    check(generate(provider)==AGENT_OK&&execute(resumed.wrap(fake.executor()))==AGENT_OK,"vision cached tools");
+    fake.tool_response=false;check(generate(provider,1)==AGENT_OK,"vision final frontier");
+    const auto done=resumed.finish(result(true));
+    check(done["ok"]==true&&done["steps_executed"]==1&&done["tool_calls_total"]==0&&
+          done["effect"]["replayed_prefetch_calls"].asUInt64()==1&&done["effect"]["prefetch_calls"]==0&&fake.tools==1,"vision replay metering: "+done.toStyledString());
+  }
+  for(const char* id:{"vision_shape","vision_budget","vision_large","vision_input","vision_invalid","vision_session","vision_stop","vision_order"}){
+    int preparations=0;auto context=ctx(id);bool stopped=false;context.should_cancel=[&]{return stopped;};
+    WorkflowModelEffect guard(context,task_request);check(guard.preflight().isNull(),"vision refusal preflight");
+    if(std::string(id)=="vision_session"){
+      std::vector<AgentDb::MessageRow> rows;int64_t revision=0;
+      check(db.load_session_messages(id,&rows,&error,&revision),error);
+      check(guard.bind_session(id,revision).isNull(),"vision bind");
+      check(db.replace_session_messages(id,{{"user","newer"}},1,&error),error);
+    }
+    ToolLoopOptions opt;opt.max_steps=2;
+    if(std::string(id)=="vision_budget")guard.set_fresh_budget(false,0,true,0);
+    configure(guard,opt);
+    auto request=vision_request(),prepared=vision_result();
+    if(std::string(id)=="vision_large")prepared["text"]=std::string(2*1024*1024+1,'x');
+    if(std::string(id)=="vision_shape")request="invalid";
+    if(std::string(id)=="vision_input")request["messages"][0]["content"]=std::string(8*1024*1024+1,'x');
+    if(std::string(id)=="vision_invalid")prepared["usage"]["total_tokens"]=-1;
+    if(std::string(id)=="vision_stop")stopped=true;
+    auto invoke=[&]{++preparations;return prepared;};Json::Value value;bool replayed=false;
+    if(std::string(id)=="vision_order")check(guard.vision_prefetch(request,invoke,&value,&replayed),"first vision order");
+    check(!guard.vision_prefetch(request,invoke,&value,&replayed),"invalid vision request accepted");
+    const auto out=guard.finish(result(false));check(out["ok"]==false,"invalid vision succeeded");
+    const int expected=(std::string(id)=="vision_large"||std::string(id)=="vision_invalid"||std::string(id)=="vision_order")?1:0;
+    check(preparations==expected,"vision refusal made unexpected provider call");
+    if(std::string(id)=="vision_session")check(out["blocker"]["kind"]=="model_session_changed","vision ignored newer session");
+    if(std::string(id)=="vision_stop")check(out["cancelled"]==true,"vision ignored owner stop");
   }
   db.close(); std::filesystem::remove_all(root);
   std::cout << "Transcript replay, exact call identities, zero-cost grants, policy, CAS, corruption, pending receipts and owner stops passed\n";

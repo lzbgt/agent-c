@@ -12217,7 +12217,7 @@ export interface components {
                 /** @enum {string} */
                 mode: "guarded" | "idempotent";
                 /**
-                 * @description Model-run host-effect boundary. Ordinary host-model tasks without vision prefetch support bounded verified transcript continuation. Persistent sessions pin a conversation generation and atomically commit messages with the final receipt; changed conversations stop with model_session_changed. Uncertain calls and legacy records remain guarded. No HTTP receipt resolver is supported.
+                 * @description Model-run host-effect boundary. Ordinary host-model tasks support bounded verified preparation/provider/tool continuation, including the existing image-description prefetch. Saved preparation is replayed without reinterpreting images or consuming a fresh provider-step grant. Persistent sessions pin a conversation generation and atomically commit messages with the final receipt; changed conversations stop with model_session_changed. Uncertain calls and legacy records remain guarded. No HTTP receipt resolver is supported.
                  * @enum {string}
                  */
                 boundary?: "model_run";

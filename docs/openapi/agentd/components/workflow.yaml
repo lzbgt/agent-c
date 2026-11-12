@@ -2222,7 +2222,7 @@ WorkflowGetResponse:
           boundary:
             type: string
             enum: [model_run]
-            description: Model-run host-effect boundary. Ordinary host-model tasks without vision prefetch support bounded verified transcript continuation. Persistent sessions pin a conversation generation and atomically commit messages with the final receipt; changed conversations stop with model_session_changed. Uncertain calls and legacy records remain guarded. No HTTP receipt resolver is supported.
+            description: Model-run host-effect boundary. Ordinary host-model tasks support bounded verified preparation/provider/tool continuation, including the existing image-description prefetch. Saved preparation is replayed without reinterpreting images or consuming a fresh provider-step grant. Persistent sessions pin a conversation generation and atomically commit messages with the final receipt; changed conversations stop with model_session_changed. Uncertain calls and legacy records remain guarded. No HTTP receipt resolver is supported.
           resume_available:
             type: boolean
             description: The matching failed attempt retained a verified transcript frontier. Informational only; does not grant budget, revive owner stops or expose a manual resume action.

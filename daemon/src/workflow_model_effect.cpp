@@ -89,6 +89,20 @@ bool response_value(const agent_tool_provider_response_t& response, Json::Value*
   }
   return encode(*out).size() <= kMaxToolReceipt;
 }
+bool valid_prefetch(const Json::Value& value) {
+  if (!value.isObject() || !value["text"].isString() || !value["error"].isString() ||
+      !value["http_status"].isInt64() || value["http_status"].asInt64() < 0 ||
+      value["http_status"].asInt64() > 599 || !value["usage"].isObject() ||
+      encode(value).size() > kMaxToolReceipt) return false;
+  if (value["error"].asString().empty() &&
+      (value["text"].asString().empty() || value["http_status"].asInt64() < 200 || value["http_status"].asInt64() >= 300))
+    return false;
+  for (const auto& name : value["usage"].getMemberNames()) {
+    if ((name != "prompt_tokens" && name != "completion_tokens" && name != "total_tokens") ||
+        !value["usage"][name].isInt64() || value["usage"][name].asInt64() < 0) return false;
+  }
+  return true;
+}
 bool valid_response(const Json::Value& value) {
   if (!value.isObject() || !value["assistant"].isString() || !value["error"].isString() ||
       !value["calls"].isArray() || value["calls"].size() > 1024 || encode(value).size() > kMaxToolReceipt) return false;
@@ -198,6 +212,8 @@ void WorkflowModelEffect::annotate(Json::Value* out, bool replayed) const {
     effect["checkpoint"] = "provider_tool_v1";
     effect["replayed_provider_calls"] = Json::UInt64(replayed_providers_);
     effect["replayed_tool_calls"] = Json::UInt64(replayed_tools_);
+    effect["prefetch_calls"] = Json::Int64(prefetch_calls_);
+    effect["replayed_prefetch_calls"] = Json::UInt64(replayed_prefetch_);
     effect["resume_available"] = row_.state == "dispatching" && pending_.isNull() && uncertain_.empty() && refusal_.isNull();
   }
 }
@@ -228,12 +244,15 @@ bool WorkflowModelEffect::restore_checkpoint(const Json::Value& value) {
       !value.isMember("pending") || !value["pending"].isNull() || !value["checksum"].isString()) return false;
   auto checked = value; const auto checksum = checked["checksum"].asString(); checked.removeMember("checksum");
   if (checksum.empty() || hash(checked) != checksum) return false;
-  for (const auto& record : value["records"]) {
+  for (Json::ArrayIndex i = 0; i < value["records"].size(); ++i) {
+    const auto& record = value["records"][i];
     if (!record.isObject() || !record["request_hash"].isString() || record["request_hash"].asString().empty()) return false;
     if (record["kind"] == "provider") {
       if (!record["status"].isInt() || (record["status"].asInt() != AGENT_OK && record["status"].asInt() != AGENT_ERR_CONTEXT_TOO_LONG) ||
           !valid_response(record["response"]) || !valid_adapter_state(record["adapter_state"]) ||
           encode(record).size() > kMaxToolReceipt) return false;
+    } else if (record["kind"] == "vision_prefetch") {
+      if (i != 0 || !valid_prefetch(record["result"])) return false;
     } else if (record["kind"] == "tool") {
       if (!record["name"].isString() || !record["result"].isString() ||
           !terminal_tool(record["name"].asString(), record["result"].asString())) return false;
@@ -273,7 +292,12 @@ Json::Value WorkflowModelEffect::preflight() {
   }
   if (!parsed || receipt["schema"] != "agentd.model_run.receipt.v1" || !receipt["result"].isObject() || receipt["result"]["ok"] != true)
     return unresolved("saved model-run receipt is invalid; refusing redispatch");
-  auto out = receipt["result"]; out["retryable"] = false; annotate(&out, true);
+  auto out = receipt["result"]; out["retryable"] = false;
+  if (out["effect"].isMember("prefetch_calls")) {
+    out["effect"]["original_usage"]["prefetch_calls"] = out["effect"]["prefetch_calls"];
+    out["effect"]["prefetch_calls"] = Json::Int64(0);
+  }
+  annotate(&out, true);
   for (const char* key : {"tool_calls_total", "steps_executed", "elapsed_ms", "prompt_tokens", "completion_tokens", "total_tokens"}) {
     if (out.isMember(key)) out["effect"]["original_usage"][key] = out[key];
     out[key] = Json::Int64(0);
@@ -368,7 +392,7 @@ void WorkflowModelEffect::configure_transcript(ToolLoopOptions* options, const J
   std::map<std::string, size_t> historical;
   for (const auto& record : records_) {
     if (record["kind"] == "provider") ++providers;
-    else { ++tools; max_per_tool = std::max(max_per_tool, ++historical[record["name"].asString()]); }
+    else if (record["kind"] == "tool") { ++tools; max_per_tool = std::max(max_per_tool, ++historical[record["name"].asString()]); }
   }
   // Core traversal includes replay; explicit adapter limits below count only
   // new calls. One sentinel slot lets a zero-grant frontier refuse before I/O.
@@ -376,6 +400,39 @@ void WorkflowModelEffect::configure_transcript(ToolLoopOptions* options, const J
   if (tool_limited_) options->max_tool_calls_total = add_limit(std::max<size_t>(1, tool_limit_), tools);
   if (options->max_tool_calls_per_tool) options->max_tool_calls_per_tool = add_limit(options->max_tool_calls_per_tool, max_per_tool);
   for (auto& limit : options->tool_call_limits) if (limit.max_calls) limit.max_calls = add_limit(limit.max_calls, historical[limit.tool]);
+}
+bool WorkflowModelEffect::vision_prefetch(const Json::Value& request,
+    const std::function<Json::Value()>& invoke, Json::Value* result, bool* replayed) {
+  if (replayed) *replayed = false;
+  if (!result || !replayed || !invoke || !checked_ || !transcript_ || config_hash_.empty() ||
+      !refusal_.isNull() || !uncertain_.empty()) return false;
+  if (cancelled()) { refusal_ = failure("cancelled"); refusal_["cancelled"] = true; return false; }
+  if (!request.isObject()) { reject("vision preparation request is not an object"); return false; }
+  Json::Value input; input["protocol"] = "agentd.vision_prefetch.v1";
+  input["config_hash"] = config_hash_; input["request"] = request;
+  // The task fingerprint pins user-requested settings. Runtime remaining-token
+  // clamps may shrink on retry; cached analysis needs no new output-token grant.
+  input["request"].removeMember("max_completion_tokens");
+  input["request"].removeMember("max_tokens");
+  const auto digest = hash(input);
+  if (digest.empty() || cursor_ != 0) { reject("vision preparation request or ordering cannot be checkpointed safely"); return false; }
+  if (cursor_ < records_.size()) {
+    const auto& record = records_[Json::ArrayIndex(cursor_)];
+    if (record["kind"] != "vision_prefetch" || record["request_hash"] != digest || !valid_prefetch(record["result"])) {
+      reject("vision preparation differs from saved model transcript; refusing reinterpretation"); return false;
+    }
+    *result = record["result"]; *replayed = true; ++cursor_; ++replayed_prefetch_; return true;
+  }
+  if (!validate_session()) return false;
+  if (provider_limited_ && size_t(provider_calls_) >= provider_limit_) {
+    refusal_ = failure("vision preparation has no fresh provider-step grant"); budget_refused_ = true; return false;
+  }
+  ++provider_calls_; ++prefetch_calls_;
+  try { *result = invoke(); }
+  catch (...) { reject("vision preparation adapter threw before a usable receipt"); return false; }
+  if (!valid_prefetch(*result)) { reject("vision preparation result exceeds its bounded transcript contract"); return false; }
+  Json::Value record; record["kind"] = "vision_prefetch"; record["request_hash"] = digest; record["result"] = *result;
+  return append_record(std::move(record));
 }
 agent_tool_executor_t WorkflowModelEffect::wrap(agent_tool_executor_t base, Authorize authorize) {
   base_ = base; authorize_ = std::move(authorize); return {this, execute};

@@ -42,6 +42,8 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
     base = f"http://127.0.0.1:{port}"
     process = None
     counts = {}
+    prefetch_counts = {}
+    prefetch_caps = {}
     counts_lock = threading.Lock()
     provider_waiting = threading.Event()
     release_provider = threading.Event()
@@ -57,27 +59,38 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
         def do_POST(self):
             request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             messages = request.get("messages", [])
-            case = ("vision_prefetch" if "/moonshot/" in self.path else
+            case = (self.path.split("/")[2] if "/moonshot/" in self.path else
                     "reasoning_resume" if "/deepseek/" in self.path else next(str(m.get("content")) for m in reversed(messages) if m.get("role") == "user"))
-            prefetch = case == "vision_prefetch" and not request.get("tools")
+            vision = case.startswith("vision_")
+            prefetch = vision and not request.get("tools")
             with counts_lock:
                 counts[case] = counts.get(case, 0) + 1
                 number = counts[case]
+                if prefetch:
+                    prefetch_counts[case] = prefetch_counts.get(case, 0) + 1
+                    prefetch_caps[case] = request.get("max_completion_tokens", request.get("max_tokens"))
             after_tool = any(m.get("role") == "tool" for m in messages)
             missing_reasoning = case == "reasoning_resume" and after_tool and any(
                 m.get("reasoning_content") != "synthetic reasoning checkpoint"
                 for m in messages if m.get("role") == "assistant" and m.get("tool_calls"))
-            if case in ("crash_receipted", "session_crash", "session_changed") and after_tool and number == 2:
+            missing_vision = vision and not prefetch and case != "vision_fallback" and (
+                "description:" + case + ":1" not in json.dumps(messages))
+            if after_tool and ((case in ("crash_receipted", "session_crash", "session_changed") and number == 2) or
+                               (case in ("vision_crash", "vision_session_changed") and number == 3)):
                 provider_waiting.set()
                 release_provider.wait(12)
-            fail = ((case == "provider_before" and number == 1) or (case in ("provider_after", "vision_prefetch") and after_tool) or
-                    (case in ("transient_after", "session_transient", "frontier_budget", "batch_resume", "reasoning_resume") and after_tool and number == 2) or missing_reasoning)
+            fail = ((case == "provider_before" and number == 1) or (case in ("provider_after", "vision_persistent") and after_tool) or
+                    (case in ("transient_after", "session_transient", "frontier_budget", "batch_resume", "reasoning_resume") and after_tool and number == 2) or missing_reasoning or missing_vision or
+                    (case == "vision_fallback" and prefetch) or
+                    (case in ("vision_transient", "vision_fallback") and after_tool and number == 3))
             if fail:
                 body = {"error": {"message": "synthetic unavailable", "type": "server_error"}}
             else:
-                message = {"role": "assistant", "content": "completed:" + case}
-                if not prefetch and (not after_tool or (case == "frontier_budget" and number == 3)):
-                    pause = 1.5 if case in ("lost", "cancel", "deadline", "elapsed") else 1 if case == "timeout" else 0
+                message = {"role": "assistant", "content": ("description:" + case + ":" + str(prefetch_counts[case])) if prefetch else "completed:" + case}
+                if prefetch and case == "vision_oversized":
+                    message["content"] = "x" * (2 * 1024 * 1024 + 1)
+                if not prefetch and case != "vision_direct" and (not after_tool or (case == "frontier_budget" and number == 3)):
+                    pause = 1.5 if case in ("lost", "vision_lost", "cancel", "deadline", "elapsed") else 1 if case == "timeout" else 0
                     arguments = {"argv": [sys.executable, str(helper), str(root / (case + ".count")), str(pause)],
                                  "timeout_ms": 100 if case == "timeout" else 5000}
                     tool = {"id": "action-1", "type": "function",
@@ -147,11 +160,12 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
         if case == "reasoning_resume":
             request["base_url"] = f"http://127.0.0.1:{stub.server_port}/deepseek/v1"
             request["model"] = "deepseek-reasoner"
-        if case == "vision_prefetch":
+        if case.startswith("vision_"):
             image = {"name": "synthetic.png", "mime": "image/png",
                      "b64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="}
-            request["prompt"] = "__AGENT_MM_V1__" + json.dumps({"images": [image]}) + "\nvision_prefetch"
-            request["base_url"] = f"http://127.0.0.1:{stub.server_port}/moonshot/v1"
+            request["prompt"] = "__AGENT_MM_V1__" + json.dumps({"images": [image]}) + "\n" + case
+            request["base_url"] = f"http://127.0.0.1:{stub.server_port}/moonshot/{case}/v1"
+            request["max_completion_tokens"] = 17
         if case in ("saved", "session_saved"):
             request["max_steps"] = 2
             request["max_tool_calls_total"] = 1
@@ -429,12 +443,105 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
         stop()
         start()
 
-        # Vision prefetch is a nondurable preparatory call, so this path keeps
-        # the conservative whole-run guard instead of promising transcript replay.
-        wid = submit("vision_prefetch", others=False)
+        # The same preparation helper still serves ordinary non-workflow
+        # requests. This local basic-tools path needs no durable host guard.
+        image = {"name": "synthetic.png", "mime": "image/png",
+                 "b64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="}
+        direct = call("/api/v1/run", {"prompt": "__AGENT_MM_V1__" + json.dumps({"images": [image]}) + "\nvision_direct",
+                      "tools": "basic", "no_session": True, "no_default_system": True, "max_steps": 2,
+                      "max_retries": 0, "timeout_ms": 5000, "api_key": "synthetic", "model": "stub",
+                      "base_url": f"http://127.0.0.1:{stub.server_port}/moonshot/vision_direct/v1"})
+        assert direct["ok"] is True and direct["assistant_text"] == "completed:vision_direct", direct
+        assert direct["total_tokens"] == 8 and counts["vision_direct"] == 2 and count("vision_direct") == 0, direct
+        assert next(e["data"] for e in direct["events"] if e["type"] == "vision_prefetch")["replayed"] is False
+
+        # Image preparation is part of the verified prefix. A changed second
+        # caption would invalidate the transcript, so the stub labels every one.
+        # Current provider-step/token grants include fresh preparation only.
+        for case in ("vision_transient", "vision_fallback"):
+            wid = submit(case, others=False, attempts=2,
+                         budget={"max_tool_calls_total": 1, "max_steps_total": 4, "max_total_tokens": 20})
+            value = terminal(wid)
+            out = result(value)
+            assert value["workflow"]["status"] == "done" and count(case) == 1, value
+            assert counts[case] == 4 and prefetch_counts[case] == 1 and prefetch_caps[case] == 17, counts
+            assert out["effect"]["replayed_prefetch_calls"] == 1 and out["effect"]["replayed_tool_calls"] == 1, value
+            assert out["steps_executed"] == 1 and out["total_tokens"] == 4 and out["tool_calls_total"] == 0, value
+            assert value["budget_accounting"]["charged"]["max_steps_total"] == 4, value
+            # An unavailable preparation keeps its original fallback. It is not
+            # retried later in a way that could reinterpret a receipted action.
+            if case == "vision_transient":
+                assert value["budget_accounting"]["charged"]["max_total_tokens"] == 12, value
+            event = next(e["data"] for e in out["events"] if e["type"] == "vision_prefetch")
+            assert event["replayed"] is True and event["ok"] is (case != "vision_fallback"), event
+
+        wid = submit("vision_persistent", others=False, attempts=2)
         value = terminal(wid)
-        no_repeat(value, "vision_prefetch")
-        assert counts["vision_prefetch"] == 3 and "checkpoint" not in result(value)["effect"], value
+        assert count("vision_persistent") == 1 and prefetch_counts["vision_persistent"] == 1, value
+        assert counts["vision_persistent"] == 4 and result(value)["effect"]["resume_available"] is True, value
+        assert result(value).get("needs_input") is not True, value
+        metadata = call("/api/v1/workflow?workflow_id=" + wid + "&include_results=0")
+        assert metadata["effects"][0]["resume_available"] is True and "records" not in metadata["effects"][0], metadata
+
+        # With only one provider step, analysis itself uses that grant. No host
+        # call or second model request can be hidden outside the step meter.
+        wid = submit("vision_low_steps", others=False, attempts=1, budget={"max_steps_total": 1})
+        value = terminal(wid)
+        assert value["workflow"]["status"] == "error" and count("vision_low_steps") == 0, value
+        assert counts["vision_low_steps"] == 1 and result(value)["steps_executed"] == 1, value
+        assert value["budget_accounting"]["charged"]["max_steps_total"] == 1, value
+
+        wid = submit("vision_oversized", others=False, attempts=1)
+        value = terminal(wid)
+        assert value["workflow"]["status"] == "error" and count("vision_oversized") == 0, value
+        assert counts["vision_oversized"] == 1 and result(value)["steps_executed"] == 1, value
+        assert result(value)["total_tokens"] == 4, value
+        assert not sql("SELECT 1 FROM workflow_effects WHERE workflow_id=?", (wid,)), value
+
+        provider_waiting.clear()
+        release_provider.clear()
+        sid, original, revision = seed_session("vision_crash")
+        wid = submit("vision_crash", others=False, attempts=3, session=sid, budget={"max_tool_calls_total": 1})
+        wait_for(provider_waiting.is_set, "vision receipted frontier absent")
+        checkpoint = json.loads(sql("SELECT receipt_json FROM workflow_effects WHERE workflow_id=?", (wid,))[0][0])
+        assert [r["kind"] for r in checkpoint["records"]] == ["vision_prefetch", "provider", "tool"], checkpoint
+        assert session_rows(sid) == original and prefetch_counts["vision_crash"] == 1
+        stop(kill=True)
+        release_provider.set()
+        start(("--policy-mode", "enforce", "--policy-tool-deny", "proc_exec",
+               "--policy-approval-tools", "proc_exec", "--policy-approval-timeout-ms", "100"))
+        value = terminal(wid)
+        assert value["workflow"]["status"] == "done" and count("vision_crash") == 1, value
+        assert counts["vision_crash"] == 4 and prefetch_counts["vision_crash"] == 1, counts
+        assert result(value)["effect"]["replayed_prefetch_calls"] == 1, value
+        assert_session_commit("vision_crash", sid, original, revision)
+        stop()
+        start()
+
+        provider_waiting.clear()
+        release_provider.clear()
+        sid, original, revision = seed_session("vision_session_changed")
+        wid = submit("vision_session_changed", others=False, session=sid)
+        wait_for(provider_waiting.is_set, "vision session edit window absent")
+        call("/api/v1/session/ui_event", {"session_id": sid, "type": "newer_vision_context",
+             "data": {"text": "preserve newer image conversation"}, "append_to_session": True})
+        newer = session_rows(sid)
+        release_provider.set()
+        value = terminal(wid)
+        assert result(value)["blocker"]["kind"] == "model_session_changed" and count("vision_session_changed") == 1, value
+        assert session_rows(sid) == newer and prefetch_counts["vision_session_changed"] == 1
+
+        # An unreceipted physical action still forbids any restart work,
+        # including another supposedly harmless image-analysis request.
+        wid = submit("vision_lost", others=False)
+        wait_for(lambda: count("vision_lost") == 1, "vision host action did not begin")
+        before = counts["vision_lost"]
+        stop(kill=True)
+        time.sleep(1.6)
+        start()
+        value = terminal(wid)
+        assert count("vision_lost") == 1 and counts["vision_lost"] == before and prefetch_counts["vision_lost"] == 1, value
+        assert result(value)["blocker"]["kind"] == "model_run_outcome_unknown", value
 
         # A timed out first tool prevents the second call in the same batch.
         wid = submit("timeout")
@@ -471,4 +578,4 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
         stub.shutdown()
         stub.server_close()
         log.close()
-print("Model-selected host effects: provider retry, multi-tool run, crash/receipt recovery, atomic session publication, conversation-edit fences, no fresh grants, policy/approval, uncertainty, timeout and owner stops passed")
+print("Model-selected host effects: provider retry, multi-tool run, crash/receipt recovery, atomic session publication, conversation-edit fences, exact image preparation replay, no fresh grants, policy/approval, uncertainty, timeout and owner stops passed")

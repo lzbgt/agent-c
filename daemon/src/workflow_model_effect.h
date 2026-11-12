@@ -22,6 +22,10 @@ class WorkflowModelEffect {
   bool session_committed() const { return session_committed_; }
   bool finished() const { return finished_; }
   void configure_transcript(ToolLoopOptions* options, const Json::Value& provider_identity);
+  // Configure the transcript first. Only the normalized outcome is journaled;
+  // the image-bearing request is fingerprinted, never copied into the receipt.
+  bool vision_prefetch(const Json::Value& request, const std::function<Json::Value()>& invoke,
+                       Json::Value* result, bool* replayed);
   void set_fresh_budget(bool tools_limited, int64_t tools, bool steps_limited, int64_t steps);
   bool has_checkpoint() const { return restored_; }
   agent_tool_provider_t wrap_provider(agent_tool_provider_t base, OpenAIToolProviderCtx* context = nullptr);
@@ -57,11 +61,11 @@ class WorkflowModelEffect {
   std::string identity_error_, uncertain_, scope_hash_, config_hash_;
   Json::Value refusal_;
   Json::Value calls_by_tool_{Json::objectValue};
-  int64_t calls_ = 0, provider_calls_ = 0;
+  int64_t calls_ = 0, provider_calls_ = 0, prefetch_calls_ = 0;
   size_t provider_limit_ = 0, tool_limit_ = 0, per_tool_limit_ = 0;
   bool provider_limited_ = false, tool_limited_ = false;
   std::map<std::string, size_t> per_tool_limits_;
   Json::Value records_{Json::arrayValue}, pending_;
-  size_t cursor_ = 0, replayed_providers_ = 0, replayed_tools_ = 0;
+  size_t cursor_ = 0, replayed_providers_ = 0, replayed_tools_ = 0, replayed_prefetch_ = 0;
 };
 }  // namespace agentd

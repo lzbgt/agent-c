@@ -16,6 +16,8 @@ Settlement commits the task result/state, cumulative observed usage and reservat
 
 HTTP POST/reconciliation checks the remaining granted network-call capacity before a new dispatch. A receipt lookup and subsequent redispatch cannot spend the same final call twice; capacity refusal before dispatch preserves a prepared effect and does not invent an ambiguous external write. One-shot `tools:none` model attempts now count steps and obey their step cap, including bounded context-retry attempts, instead of reporting zero steps.
 
+Ordinary host-model workflow vision preparation now shares the same provider-step meter as the tool loop. A fresh image-description prefetch spends one step and contributes provider-reported token usage, even if the returned caption is rejected as oversized. Configured output-token caps are sent to the preparation provider. A one-step grant can perform preparation but cannot then make another provider request or host action. Verified preparation/provider/tool replay costs no fresh calls or tokens; a reduced remaining output-token cap does not force a cached image to be interpreted again. This covers the existing bounded prefetch adapter, not its internal HTTP retries, missing usage reports or all delegated/native-provider work. See [durable image preparation](WORKFLOW_EFFECTS.md#durable-image-preparation).
+
 ## Recovery and uncertainty
 
 On daemon recovery, open grants become `lost`; their full reserved amounts remain conservatively charged, while ordinary held capacity is released. Old holders cannot settle after recovery or overwrite a newer attempt. Successfully settled usage is not charged again. Repeated recovery is idempotent.

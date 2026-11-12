@@ -3,6 +3,7 @@
 
 #include "daemon_config.h"
 #include "job_manager.h"
+#include "llm_usage.h"
 #include "openai_client.h"
 #include "openai_provider.h"
 #include "policy_hooks.h"
@@ -87,108 +88,6 @@ RunRequestToolLoopResult run_request_tool_loop(const RunRequestToolLoopInput& in
     return out;
   }
 
-  Json::Value pre_events(Json::arrayValue);
-  std::string prompt_for_tool_loop = *in.prompt_for_llm;
-  {
-    const bool want_prefetch =
-      !(in.args->isMember("vision_prefetch") && (*in.args)["vision_prefetch"].isBool() &&
-        (*in.args)["vision_prefetch"].asBool() == false);
-
-    Json::Value mm(Json::nullValue);
-    std::string user_text = *in.prompt_for_llm;
-    const bool has_mm = try_parse_multimodal_prefix(*in.prompt_for_llm, &mm, &user_text) && mm.isObject();
-    const bool has_images = has_mm && mm.isMember("images") && mm["images"].isArray() && !mm["images"].empty();
-    const bool should_prefetch =
-      want_prefetch && has_images && provider_requires_tools_none_for_vision(in.run_cfg->base_url, in.run_cfg->model);
-
-    if (should_prefetch) {
-      // This preparatory provider call is outside the durable tool-loop seam.
-      // Do not spend or regenerate it while restoring a saved transcript.
-      if (in.model_effect && in.model_effect->has_checkpoint()) {
-        out.err = "vision prefetch cannot restore a saved model transcript";
-        return out;
-      }
-      out.vision_prefetch_attempted = true;
-      std::string vision_desc;
-      std::string v_err;
-      long v_http = 0;
-      try {
-        const std::string pre_text =
-          std::string("Describe the attached image(s) in detail so I can answer the user's request.\n")
-          + "User request:\n"
-          + *in.prompt;
-
-        Json::Value root(Json::objectValue);
-        root["model"] = in.run_cfg->model;
-        root["stream"] = false;
-        Json::Value messages(Json::arrayValue);
-
-        {
-          Json::Value sm(Json::objectValue);
-          sm["role"] = "system";
-          sm["content"] = "You are a vision captioning assistant. Output plain text.";
-          messages.append(sm);
-        }
-        {
-          Json::Value um(Json::objectValue);
-          um["role"] = "user";
-          um["content"] = multimodal_content_from_parts(pre_text, mm, /*allow_image_parts=*/true);
-          messages.append(um);
-        }
-
-        root["messages"] = messages;
-        Json::StreamWriterBuilder wb;
-        wb["indentation"] = "";
-        const std::string req_json = Json::writeString(wb, root);
-
-        OpenAIRawResult raw = openai_chat_completions_raw(*in.run_cfg, req_json);
-        v_http = raw.http_status;
-        if (raw.http_status < 200 || raw.http_status >= 300) {
-          v_err = openai_format_http_error(raw.http_status, raw.response_body);
-        } else {
-          vision_desc = try_extract_assistant_text_from_response_json(raw.response_body);
-          if (vision_desc.empty()) {
-            v_err = "vision prefetch returned empty assistant text";
-          }
-        }
-      } catch (const std::exception& e) {
-        v_err = std::string("vision prefetch threw exception: ") + e.what();
-      } catch (...) {
-        v_err = "vision prefetch threw unknown exception";
-      }
-
-      Json::Value ev(Json::objectValue);
-      ev["type"] = "vision_prefetch";
-      if (!in.trace_id->empty()) ev["trace_id"] = *in.trace_id;
-      Json::Value d(Json::objectValue);
-      d["ok"] = (bool)v_err.empty();
-      d["provider"] = provider_from_base_url(in.run_cfg->base_url);
-      d["model"] = in.run_cfg->model;
-      if (v_http) d["http_status"] = (Json::Int64)v_http;
-      if (!v_err.empty()) d["error"] = v_err;
-      if (!vision_desc.empty()) {
-        d["chars"] = (Json::UInt64)vision_desc.size();
-        const size_t kPreview = 512;
-        d["preview"] = vision_desc.size() <= kPreview ? vision_desc : (vision_desc.substr(0, kPreview) + "…");
-      }
-      ev["data"] = d;
-      pre_events.append(ev);
-
-      if (v_err.empty() && !vision_desc.empty()) {
-        out.vision_prefetch_ok = true;
-        Json::Value mm2 = mm;
-        if (mm2.isObject() && mm2.isMember("images")) {
-          mm2.removeMember("images");
-        }
-        Json::StreamWriterBuilder wb;
-        wb["indentation"] = "";
-        prompt_for_tool_loop = std::string(kMultimodalPrefix) + Json::writeString(wb, mm2) + "\n" + user_text;
-        prompt_for_tool_loop += "\n\n[Image description]\n";
-        prompt_for_tool_loop += vision_desc;
-      }
-    }
-  }
-
   ToolLoopOptions opt;
   opt.max_steps = in.max_steps;
   opt.max_tool_calls_total = in.max_tool_calls_total;
@@ -240,6 +139,120 @@ RunRequestToolLoopResult run_request_tool_loop(const RunRequestToolLoopInput& in
     opt.should_cancel_ctx = (void*)in.job_id;
   }
 
+  if (in.model_effect && *in.tools == "host") {
+    Json::Value identity;
+    identity["base_url"] = in.run_cfg->base_url;
+    identity["model"] = in.run_cfg->model;
+    in.model_effect->configure_transcript(&opt, identity);
+  }
+
+  Json::Value pre_events(Json::arrayValue);
+  std::string prompt_for_tool_loop = *in.prompt_for_llm;
+  {
+    const bool want_prefetch =
+      !(in.args->isMember("vision_prefetch") && (*in.args)["vision_prefetch"].isBool() &&
+        (*in.args)["vision_prefetch"].asBool() == false);
+
+    Json::Value mm(Json::nullValue);
+    std::string user_text = *in.prompt_for_llm;
+    const bool has_mm = try_parse_multimodal_prefix(*in.prompt_for_llm, &mm, &user_text) && mm.isObject();
+    const bool has_images = has_mm && mm.isMember("images") && mm["images"].isArray() && !mm["images"].empty();
+    const bool should_prefetch =
+      want_prefetch && has_images && provider_requires_tools_none_for_vision(in.run_cfg->base_url, in.run_cfg->model);
+
+    if (should_prefetch) {
+      out.vision_prefetch_attempted = true;
+      const std::string pre_text =
+        std::string("Describe the attached image(s) in detail so I can answer the user's request.\n")
+        + "User request:\n" + *in.prompt;
+      Json::Value root(Json::objectValue);
+      root["model"] = in.run_cfg->model;
+      root["stream"] = false;
+      if (in.run_cfg->max_completion_tokens > 0) root["max_completion_tokens"] = Json::Int64(in.run_cfg->max_completion_tokens);
+      else if (in.run_cfg->max_tokens > 0) root["max_tokens"] = Json::Int64(in.run_cfg->max_tokens);
+      Json::Value messages(Json::arrayValue), sm, um;
+      sm["role"] = "system"; sm["content"] = "You are a vision captioning assistant. Output plain text.";
+      messages.append(sm);
+      um["role"] = "user"; um["content"] = multimodal_content_from_parts(pre_text, mm, /*allow_image_parts=*/true);
+      messages.append(um); root["messages"] = messages;
+      Json::StreamWriterBuilder writer; writer["indentation"] = "";
+      const auto req_json = Json::writeString(writer, root);
+      auto invoke = [&]() {
+        Json::Value result; result["text"] = ""; result["error"] = "";
+        result["http_status"] = Json::Int64(0); result["usage"] = Json::Value(Json::objectValue);
+        try {
+          const auto raw = openai_chat_completions_raw(*in.run_cfg, req_json);
+          result["http_status"] = Json::Int64(raw.http_status);
+          if (raw.http_status < 200 || raw.http_status >= 300) {
+            result["error"] = openai_format_http_error(raw.http_status, raw.response_body);
+          } else {
+            result["text"] = try_extract_assistant_text_from_response_json(raw.response_body);
+            if (result["text"].asString().empty()) result["error"] = "vision prefetch returned empty assistant text";
+          }
+          Json::Value usage;
+          if (llm_try_extract_usage_tokens_from_openai_response_body(raw.response_body, &usage) && usage.isObject())
+            result["usage"] = std::move(usage);
+        } catch (const std::exception& e) {
+          result["error"] = std::string("vision prefetch threw exception: ") + e.what();
+        } catch (...) { result["error"] = "vision prefetch threw unknown exception"; }
+        return result;
+      };
+      Json::Value prepared; bool replayed = false, accepted = true;
+      if (in.model_effect && *in.tools == "host")
+        accepted = in.model_effect->vision_prefetch(root, invoke, &prepared, &replayed);
+      else prepared = invoke();
+      const auto vision_desc = prepared["text"].asString();
+      const auto v_err = prepared["error"].asString();
+      const auto v_http = prepared["http_status"].asInt64();
+      // Cached preparation has no fresh token charge. Keep its original usage
+      // only as informational metadata on the preparation event.
+      if (!replayed && !prepared["usage"].empty()) {
+        Json::Value usage; usage["type"] = "llm_usage"; usage["data"] = prepared["usage"];
+        usage["data"]["phase"] = "vision_prefetch"; pre_events.append(std::move(usage));
+      }
+
+      if (!accepted) {
+        // Even an unusable returned caption may carry a real provider charge.
+        out.events_out = pre_events;
+        inject_trace_id_into_events(&out.events_out, *in.trace_id);
+        inject_schema_into_events(&out.events_out);
+        out.err = "vision preparation refused; inspect the model effect boundary"; return out;
+      }
+
+      Json::Value ev(Json::objectValue);
+      ev["type"] = "vision_prefetch";
+      if (!in.trace_id->empty()) ev["trace_id"] = *in.trace_id;
+      Json::Value d(Json::objectValue);
+      d["ok"] = (bool)v_err.empty();
+      d["provider"] = provider_from_base_url(in.run_cfg->base_url);
+      d["model"] = in.run_cfg->model;
+      d["replayed"] = replayed;
+      if (replayed && !prepared["usage"].empty()) d["original_usage"] = prepared["usage"];
+      if (v_http) d["http_status"] = (Json::Int64)v_http;
+      if (!v_err.empty()) d["error"] = v_err;
+      if (!vision_desc.empty()) {
+        d["chars"] = (Json::UInt64)vision_desc.size();
+        const size_t kPreview = 512;
+        d["preview"] = vision_desc.size() <= kPreview ? vision_desc : (vision_desc.substr(0, kPreview) + "…");
+      }
+      ev["data"] = d;
+      pre_events.append(ev);
+
+      if (v_err.empty() && !vision_desc.empty()) {
+        out.vision_prefetch_ok = true;
+        Json::Value mm2 = mm;
+        if (mm2.isObject() && mm2.isMember("images")) {
+          mm2.removeMember("images");
+        }
+        Json::StreamWriterBuilder wb;
+        wb["indentation"] = "";
+        prompt_for_tool_loop = std::string(kMultimodalPrefix) + Json::writeString(wb, mm2) + "\n" + user_text;
+        prompt_for_tool_loop += "\n\n[Image description]\n";
+        prompt_for_tool_loop += vision_desc;
+      }
+    }
+  }
+
   struct SessionDel {
     void operator()(agent_session_t* s) const {
       if (s) agent_session_destroy(s);
@@ -263,13 +276,6 @@ RunRequestToolLoopResult run_request_tool_loop(const RunRequestToolLoopInput& in
         seed_for_run = tmp;
       }
     }
-  }
-
-  if (in.model_effect && *in.tools == "host" && !out.vision_prefetch_attempted) {
-    Json::Value identity;
-    identity["base_url"] = in.run_cfg->base_url;
-    identity["model"] = in.run_cfg->model;
-    in.model_effect->configure_transcript(&opt, identity);
   }
 
   try {
