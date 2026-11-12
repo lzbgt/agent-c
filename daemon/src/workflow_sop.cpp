@@ -58,7 +58,7 @@ bool workflow_compile_sop(Json::Value* args, std::string* error) {
   std::vector<std::string> previous;
   // Submit-time macros are excluded: their derived IDs would change stage boundaries.
   const std::unordered_set<std::string> kinds = {
-    "llm", "delay", "http_json", "agentd_call", "aggregate", "avm_capsule",
+    "llm", "delay", "host_tool", "http_json", "agentd_call", "aggregate", "avm_capsule",
     "memory_put", "memory_consolidate", "memory_search", "memory_timeline",
     "memory_structured_query", "memory_correlate", "memory_query", "experience_record",
     "edge_invoke", "edge_wait_sensor", "delegate"
@@ -85,7 +85,7 @@ bool workflow_compile_sop(Json::Value* args, std::string* error) {
       const std::string id = action["task_id"].asString();
       if (!task_ids.insert(id).second) return fail("duplicate action task_id: " + id);
       if (action.isMember("depends_on") || action.isMember("id")) return fail("action dependencies are generated from stages: " + id);
-      if (!fields_allowed(action, {"task_id", "kind", "request", "allow_error", "priority", "max_attempts", "expect", "inputs", "delay_ms", "result", "http_json", "agentd_call", "aggregate", "capsule", "memory_put", "memory_consolidate", "memory_search", "memory_timeline", "memory_structured_query", "memory_correlate", "memory_query", "experience_record", "edge", "edge_wait_sensor", "delegate"})) return fail("unsupported action field: " + id);
+      if (!fields_allowed(action, {"task_id", "kind", "request", "allow_error", "priority", "max_attempts", "expect", "inputs", "delay_ms", "result", "host_tool", "http_json", "agentd_call", "aggregate", "capsule", "memory_put", "memory_consolidate", "memory_search", "memory_timeline", "memory_structured_query", "memory_correlate", "memory_query", "experience_record", "edge", "edge_wait_sensor", "delegate"})) return fail("unsupported action field: " + id);
       if (action.isMember("allow_error") && (!action["allow_error"].isBool() || action["allow_error"].asBool())) return fail("allow_error is unsupported in SOP v1: " + id);
       if (action.isMember("kind") && (!action["kind"].isString() || !kinds.count(action["kind"].asString()))) return fail("unsupported action kind: " + id);
       Json::Value task = action;

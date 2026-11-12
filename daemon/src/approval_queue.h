@@ -3,6 +3,7 @@
 #include "agent/agent.h"
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -39,6 +40,7 @@ struct ApprovalGateCtx {
   std::string job_id;
   std::string team_id;
   int64_t run_id = 0;
+  std::function<bool()> should_cancel = {};
 };
 
 agent_status_t approval_gate_tool(

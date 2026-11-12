@@ -9,6 +9,7 @@
 #include "workflow_endpoint_util.h"
 #include "workflow_submit_macros.h"
 #include "workflow_submit_task_builders.h"
+#include "workflow_host_tool.h"
 
 #include <json/json.h>
 
@@ -443,11 +444,12 @@ void workflow_submit_handle(
 	    const bool is_memory_correlate = (kind == "memory_correlate");
 	    const bool is_memory_query = (kind == "memory_query");
 	    const bool is_memory_consolidate = (kind == "memory_consolidate");
+	    const bool is_host_tool = (kind == "host_tool");
 	    const bool is_http_json = (kind == "http_json");
 	    const bool is_agentd_call = (kind == "agentd_call");
 	    const bool is_special =
 	      is_avm || is_aggregate || is_edge || is_edge_wait_sensor || is_delay || is_delegate || is_experience_record || is_memory_put || is_memory_search ||
-	      is_memory_timeline || is_memory_structured_query || is_memory_correlate || is_memory_query || is_memory_consolidate || is_http_json || is_agentd_call;
+	      is_memory_timeline || is_memory_structured_query || is_memory_correlate || is_memory_query || is_memory_consolidate || is_host_tool || is_http_json || is_agentd_call;
 
     Json::Value run_req = t.isMember("request") && t["request"].isObject() ? t["request"] : t;
     if (!is_special && defaults.isObject()) {
@@ -1529,6 +1531,16 @@ void workflow_submit_handle(
 	        resp->body = json_stringify_compact(o);
 	        return;
 	      }
+	    } else if (is_host_tool) {
+      std::string validation_error;
+      if (!workflow_host_tool_validate(t["host_tool"],&validation_error)) {
+        resp->status=400;
+        resp->body=json_error_body(validation_error);
+        return;
+      }
+      task_req["kind"]="host_tool"; task_req["host_tool"]=t["host_tool"];
+      task_req["host_tool"]["timeout_ms"]=t["host_tool"].get("timeout_ms",Json::Int64(30000));
+      task_req["priority"]=task_priority; task_req["trace_id"]=trace_id+":"+task_id;
 	    } else if (is_http_json) {
 	      std::string berr;
 	      if (!workflow_submit_build_http_json_task_request(t, task_id, task_priority, trace_id, &task_req, &berr)) {

@@ -69,7 +69,8 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
         tasks: [
           {
             task_id: "task-a",
-            status: "done",
+            status: "error",
+            blocker: {kind:"host_tool_outcome_unknown",required_action:"Inspect the original host operation before repeating it."},
             depends_on: [],
             attempt: 1,
             max_attempts: 1,
@@ -88,7 +89,7 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
             attempt: 1, max_attempts: 1,
           },
         ],
-        effects: [{effect_id: "fx-fixture", task_id: "task-b", request_hash: "sha256:fixture", mode: "guarded", state: "unknown", revision: 2, attempt: 1, updated_unix_ms: 1700000100000}],
+        effects: [{effect_id:"fx-host",task_id:"task-a",request_hash:"sha256:host",mode:"guarded",state:"unknown",revision:2,attempt:1,updated_unix_ms:1700000100000}, {effect_id: "fx-fixture", task_id: "task-b", request_hash: "sha256:fixture", mode: "guarded", state: "unknown", revision: 2, attempt: 1, updated_unix_ms: 1700000100000}],
         workflow_limits: { max_steps: 12 },
         workflow_usage: { steps: 4 },
         workflow_remaining: { steps: 8 },
@@ -119,6 +120,8 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
   await expect(page.getByTestId("workflow-dag-panel")).toContainText("task-b");
   await expect(page.getByTestId("workflow-effects")).toContainText("Outcome unresolved");
   await expect(page.getByTestId("workflow-effects")).toContainText("Independent tasks can continue");
+  await expect(page.getByTestId("workflow-effects")).toContainText("No automatic receipt resolver is available for this tool.");
+  await expect(page.getByRole("textbox",{name:"Receipt endpoint for task-a"})).toHaveCount(0);
   await expect(page.getByText("Budgets", { exact: true })).toBeVisible();
   await expect(page.getByText("Workflow result", { exact: true })).toBeVisible();
   await expect(page.getByText("Workflow spec", { exact: true })).toBeVisible();

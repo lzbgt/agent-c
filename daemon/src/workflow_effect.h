@@ -18,4 +18,9 @@ using EffectReconcile = std::function<Json::Value(const Json::Value&)>;
 bool workflow_effect_validate_http(const Json::Value& spec, std::string* error);
 Json::Value workflow_effect_execute(const WorkflowEffectContext& context, const Json::Value& spec,
                                     const EffectDispatch& dispatch, const EffectReconcile& reconcile);
+struct GuardedEffectResult { Json::Value result; bool terminal = false; };
+using GuardedEffectDispatch = std::function<GuardedEffectResult()>;
+Json::Value workflow_effect_execute_guarded(const WorkflowEffectContext& context,
+    const Json::Value& request, const GuardedEffectDispatch& dispatch,
+    const std::function<Json::Value()>& authorize_dispatch = {});
 }  // namespace agentd

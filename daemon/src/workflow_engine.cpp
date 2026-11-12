@@ -15,6 +15,7 @@
 #include "workflow_memory_correlate.h"
 #include "workflow_memory_query.h"
 #include "workflow_http_json.h"
+#include "workflow_host_tool.h"
 #include "workflow_edge_invoke.h"
 #include "workflow_agentd_call.h"
 #include "workflow_evidence.h"
@@ -1220,6 +1221,18 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         if (!merr.empty() && (!out.isMember("error") || !out["error"].isString())) out["error"] = merr;
       }
     }
+  } else if (kind == "host_tool") {
+    WorkflowEffectContext effect{db_,wf.workflow_id,task.task_id,[&]() {
+      cancel_ctx.last_check_unix_ms=0;
+      return workflow_run_should_cancel(&cancel_ctx);
+    }};
+    effect.dispatch_capacity_available=[&]() {
+      return (wf_limits.max_tool_calls_total<=0 || wf_tool_calls_remaining>0) &&
+             (wf_limits.max_steps_total<=0 || wf_steps_remaining>0);
+    };
+    out=workflow_host_tool_execute(cfg,effect,rr["host_tool"],
+      !cfg.sessions_root_dir.empty() ? cfg.sessions_root_dir : sessions_root_dir_,wf.session_id,
+      wf_limits.max_elapsed_ms_total>0 ? wf_elapsed_ms_remaining : 0);
   } else if (kind == "http_json") {
     // Deterministic outbound HTTP JSON call (broker/agent interop; gated by daemon config).
     if (wf_limits.max_tool_calls_total > 0 && wf_tool_calls_remaining <= 0) {

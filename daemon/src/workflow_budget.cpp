@@ -38,6 +38,7 @@ Amounts workflow_budget_demand(const Json::Value &input,
       "edge_wait_sensor",
       "edge_invoke",
       "http_json",
+      "host_tool",
       "avm_capsule",
       "experience_record",
       "memory_put",
@@ -74,7 +75,8 @@ Amounts workflow_budget_demand(const Json::Value &input,
       request["http_json"]["effect"]["reconcile_url"].isString() &&
       !request["http_json"]["effect"]["reconcile_url"].asString().empty())
     demand[0] = 2;
-  const auto &timed = kind == "http_json"     ? request["http_json"]
+  const auto &timed = kind == "host_tool"     ? request["host_tool"]
+                      : kind == "http_json"     ? request["http_json"]
                       : kind == "agentd_call" ? request["agentd_call"]
                                               : request;
   demand[2] =

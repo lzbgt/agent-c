@@ -261,7 +261,8 @@ agent_status_t approval_gate_tool(
   const int64_t poll_ms = std::max<int64_t>(50, gate->poll_ms);
 
   for (;;) {
-    if (!gate->job_id.empty() && job_is_cancel_requested(gate->job_id)) {
+    if ((gate->should_cancel && gate->should_cancel()) ||
+        (!gate->job_id.empty() && job_is_cancel_requested(gate->job_id))) {
       req.status = "denied";
       req.decision_reason = "cancelled";
       (void)gate->db->update_approval_status(req.approval_id, req.status, req.decision_reason, nullptr);

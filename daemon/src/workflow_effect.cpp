@@ -195,4 +195,59 @@ Json::Value workflow_effect_execute(const WorkflowEffectContext& context, const 
   metadata(&out,row);
   return out;
 }
+
+Json::Value workflow_effect_execute_guarded(const WorkflowEffectContext& context,
+    const Json::Value& request, const GuardedEffectDispatch& dispatch,
+    const std::function<Json::Value()>& authorize_dispatch) {
+  const auto cancelled = [&]() { return context.should_cancel && context.should_cancel(); };
+  if (cancelled()) { auto out=failure("cancelled"); out["cancelled"]=true; return out; }
+  if (!context.db || !context.db->is_open() || context.workflow_id.empty() || context.task_id.empty())
+    return failure("durable effect context unavailable; tool refused");
+  AgentDb::WorkflowEffectRow definition;
+  definition.workflow_id=context.workflow_id; definition.task_id=context.task_id;
+  Json::Value identity(Json::arrayValue); identity.append(context.workflow_id); identity.append(context.task_id);
+  const auto digest=hash(identity);
+  definition.request_hash=hash(request); definition.mode="guarded";
+  if (digest.empty() || definition.request_hash.empty()) return failure("cannot hash host effect identity");
+  definition.effect_id="fx_"+digest.substr(7);
+  AgentDb::WorkflowEffectRow row;
+  std::string error;
+  if (!context.db->prepare_workflow_effect(definition,&row,&error)) return failure(error);
+  const auto unknown = [&](const std::string& reason) {
+    auto out=unresolved(row,reason,false);
+    out["blocker"]["kind"]="host_tool_outcome_unknown";
+    out["blocker"]["required_action"]="Inspect the original host operation and its downstream effects. "
+      "Do not repeat it while its outcome is uncertain. This host-tool adapter has no automatic receipt resolver.";
+    return out;
+  };
+  if (row.state=="completed") {
+    Json::Value receipt;
+    if (!json_parse_any(row.receipt_json,&receipt,&error) || !receipt.isObject() || !receipt["ok"].isBool())
+      return unknown("saved host-tool receipt is invalid; refusing redispatch");
+    receipt["retryable"]=false; metadata(&receipt,row,true);
+    return receipt;
+  }
+  if (row.state!="prepared") return unknown("host-tool dispatch has no terminal saved receipt; no tool was repeated");
+  if (authorize_dispatch) { auto denied=authorize_dispatch(); if (!denied.isNull()) return denied; }
+  if (cancelled()) { auto out=failure("cancelled"); out["cancelled"]=true; return out; }
+  if (context.dispatch_capacity_available && !context.dispatch_capacity_available())
+    return failure("workflow tool-call grant exhausted before dispatch");
+  AgentDb::WorkflowEffectRow admitted;
+  if (!context.db->transition_workflow_effect(row,"dispatching","",&admitted,&error)) return failure(error,true);
+  row=std::move(admitted);
+  GuardedEffectResult result;
+  try { result=dispatch(); }
+  catch (...) { return unknown("host-tool executor interrupted; no terminal receipt was saved"); }
+  if (!result.result.isObject() || !result.result["ok"].isBool())
+    result={failure("invalid host-tool response"),false};
+  result.result["retryable"]=false;
+  AgentDb::WorkflowEffectRow settled;
+  if (!context.db->transition_workflow_effect(row,result.terminal ? "completed" : "unknown",
+      encode(result.result),&settled,&error))
+    return unknown("could not durably save host-tool receipt: "+error);
+  row=std::move(settled);
+  if (!result.terminal) return unknown("host-tool result is uncertain: "+result.result.get("error","interrupted execution").asString());
+  metadata(&result.result,row);
+  return result.result;
+}
 }  // namespace agentd

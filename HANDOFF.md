@@ -1,75 +1,49 @@
 # Agent-C handoff
 
-Updated 2026-11-11 in the existing Arch checkout, `/home/bruce/work/agent-c`, on `master`.
+Updated 2026-11-12 in the existing Arch checkout on `master`.
 
-## Current source and runtime
+## Delivered now: guarded deterministic host actions
 
-The owner resumed project work on Arch through Local Work Bridge after the earlier stop/handoff at `8124798d43f2fe599c70819a9b22dcdfba8a567b`. The current source adds the signed UM-BMP device receipt recovery slice below. This is a rolling-project milestone, not completion of the overall roadmap.
+Workflow and SOP actions can invoke a registered host tool with `kind: host_tool`, without a model. Durable intent and original-result capture prevent a scheduler restart from blindly repeating a host-side effect. Saved results release dependents without another tool invocation; ambiguous outcomes expose a scoped blocker while independent work continues.
 
-**No deployment was performed.** The public runtime at https://agent.hubstack.cn remains implementation revision `a0890c07a9dc53f1993ce726dea56aa04f156248`, release `a0890c07a9dc-79684198d197`. Public health was checked again during this work. A future release needs applicable deployment authorization and the maintained deployment pipeline. GitHub is the publication destination; Panda publication remains on hold.
+The action uses existing daemon host/sandbox policy, allow/deny lists and explicit approvals. Policy checks precede dispatch admission; cancellation during approval causes no effect. Saved results do not require another execution approval. Request identity pins tool arguments, execution root and session context. Caller-declared host idempotency and invented reconciliation URLs are rejected.
 
-The existing native session was left paused to avoid duplicate work. No new clone, worktree or editable shadow source was created. Preserve the unrelated pre-existing untracked `.config/`, `AGENTS.md` and `PANDA_PUSH.md`; they must not be staged. Do not change `project.md`.
+Known nonzero exits are saved failures, not automatic retries. Timeouts, lost results and uncertain persistence remain unresolved. This is a useful deterministic workflow boundary, not a universal journal around LLM-selected tools or proof of business/physical exactly-once execution. Generic trusted host receipt adapters and strict non-cooperative metering remain outstanding.
 
-## Delivered receipt recovery
+Contracts and usage: [durable effects](docs/WORKFLOW_EFFECTS.md), [current snapshot](docs/CURRENT_SNAPSHOT.md), [roadmap](TODOS.md).
 
-- Schema v36 adds immutable `edge_task_receipts`, bound to the original task, step, node, idempotency key and command payload.
-- A matching, cryptographically authenticated `TASK_DONE` can retain its validated original result after a platform timeout/cancellation. Unsigned messages, wrong identities, invalid result schemas, invalid/incomplete supplied attestations and conflicting receipts do not become recovery evidence.
-- The receipt is separate from platform status. Its persistence does not clear a timeout/cancellation or send another device command. A saved receipt survives abrupt process exit.
-- The existing authenticated workflow reconciliation endpoint resolves only a recorded original device receipt. It accepts no model-supplied result or arbitrary device resolver URL. Transactional requeue preserves sticky owner cancellation, workflow deadlines, budgets and completed independent work.
-- The scheduler consumes the receipt without another dispatch, records the original platform state and releases dependent work. The responsive **Check device receipt** control prevents duplicate active requests and reports missing evidence.
-- Device trust and physical-execution limits remain explicit. This adapter does not certify physical readback quality, board power-loss behavior, stopping or exactly-once action.
+## Verification
 
-Contracts: [device assignments and receipts](docs/DEVICE_ASSIGNMENTS.md), [HTTP effects](docs/WORKFLOW_EFFECTS.md), [workflow budgets](docs/WORKFLOW_BUDGETS.md), [current snapshot](docs/CURRENT_SNAPSHOT.md).
+Focused checks passed on Arch: native host-tool identity/policy/recovery tests, existing effect and SOP tests, and both real process-crash smoke tests. The host smoke proves one original write across crash-before-dispatch, crash-after-effect and saved-receipt-before-task-completion boundaries; timeout/nonzero exits, budgets, owner stops and independent branches are covered. The UI production build, regenerated OpenAPI types and responsive workflow-detail browser test passed.
 
-## Verified source
-
-On the final source, the canonical verifier passed **23 native/CLI/API checks**, all Go broker/gateway tests, generated OpenAPI checks, the production UI build and **54 browser checks**. Twelve additional edge authentication, attestation, CBOR transport, result-schema, message-replay, deadline and workflow regressions passed. Repository guards and whitespace checks passed.
-
-Evidence remains in ignored build outputs:
-
-- `build/device_receipt_snapshot_verification.log`
-- `build/device_receipt_extended_regressions.log`
-- `build/device_receipt_repo_guards.log`
-
-The receipt tests exercise real signed ingress, immutable duplicate/conflict handling, result-schema and forged-attestation rejection, an abruptly exiting writer, restart, requeue rollback, cancellation/deadline rejection and one-worker dependent-work recovery with one original outbox command. Browser coverage includes 320-pixel layout, repeated clicks, absent receipts and cancellation visibility. No production data or real device was used.
-
-Reproduce:
+The final canonical verifier passed **25 native/CLI/API checks**, all Go broker/gateway tests, generated OpenAPI checks, the UI production build and **54 browser checks**. Six additional host/policy/approval/budget regression tests, repository guards and whitespace checks passed. Reproduce:
 
 ```sh
 AGENT_E2E_BROWSER_EXECUTABLE=/home/bruce/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome \
 AGENT_E2E_UI_PORT=4187 tools/verify_current_snapshot.sh
-cmake --build build-snapshot --target agent_ed25519_tool agent_core_umbmp_cbor_encode -j 4
-tools/verify_repo_guards.sh
 ```
 
-Use assertion-enabled `build-snapshot/` for native verification. Keep the production Release `build/` configuration separate.
+Evidence: `build/host_tool_snapshot_verification.log`, `build/host_tool_extended_tests.log`, `build/host_tool_repo_guards.log`, `build/host_tool_build.log`, `build/host_tool_focused_tests.log`, `build/host_tool_openapi.log`, `build/host_tool_ui_build.log`, `build/host_tool_ui_tests.log`. Use assertion-enabled `build-snapshot/`; do not change the production Release `build/` configuration.
 
-## Publication CI and broader qualification
+## Source versus runtime and publication boundaries
 
-The receipt feature was published to GitHub as `ac37208a00d3aceb711098eeaaf93b86d3d4b770`. Its first hosted CI run exposed additional build/CI problems. This follow-up preserves all checks while repairing remote-ref/commit baseline resolution in the vendored guard, a packet-metadata header's accidental dependency on optional SRTP, the retired macOS runner and pinned Windows compiler, and the local-only proxy default leaking into container CI. Explicitly empty proxy values now disable the local default; leaving them unset preserves local behavior.
+**No deployment was performed.** Public health still reports source `a0890c07a9dc53f1993ce726dea56aa04f156248`. The signed-device receipt milestone at `ac37208` and portability repairs through `2e49ff7` were already on GitHub before this work; this host-action slice is a further source milestone. A release needs applicable deployment authorization and the maintained deployment pipeline.
 
-The complete assertion-enabled native target build passed. Ten isolated vendored-guard regressions, four focused native device/DB/media tests, all three Compose proxy-configuration cases, YAML parsing and repository guards passed. Packet accounting also compiled and ran without OpenSSL/SRTP linkage.
+GitHub `origin/master` is the authorized publication destination. Panda remains excluded and on hold; never recreate its Agent-C repository. Preserve the existing unrelated untracked `.config/`, `AGENTS.md` and `PANDA_PUSH.md`, and never change `project.md` or stage credentials.
 
-**The wider suite is not green.** The offline 334-test run had 298 passes, 27 intentionally skipped network tests and nine failures. Managed consensus recovery passed on its bounded retry; eight failures remain: trace workflow assignment returns 409, autonomous consensus does not always report a vote grant, four certificate tests require a missing local CA fixture, and two WebRTC smoke tests cannot complete with the available browser/tool setup. The audio peer log specifically reports a missing Playwright headless-shell executable. Do not present the focused feature pass as a full-suite or CI pass.
+The existing native Agent-C session is paused. No parallel implementer, clone, worktree or editable shadow source was created. Arch owns execution/UI/database; the VPS provides shared OAuth and reverse-proxy ingress. Unrelated services, credentials and deployments remain untouched.
 
-The failed-test retry was stopped after CTest's filtered numeric indices selected a Compose build. It did not start new containers; existing container uptime and public health remained unchanged. For further retries use anchored test names and keep the same exclusions, rather than reusing numeric selections across differently filtered test lists.
+## Qualification gaps are not a product-work gate
 
-The next hosted run at `cd64854bc83c56e3859d1287b907b4cf1e331586` passed the repository guard and self-contained eval pack, and advanced past the original runner/proxy failures. It then exposed a missing `<algorithm>` include on Linux, OpenSSL's const subject-name API on macOS, CMake package discovery without pkg-config on Windows, and missing OpenSSL/vendored-module inputs in the container images. The current follow-up fixes those exact build errors without reducing coverage. A full Arch native build, six DTLS/memory/receipt regressions, ten guard tests and two dependency-discovery regressions passed. The package-discovery check uses the installed JsonCpp library through a native-target test fixture because Arch's package does not ship its CMake config. These are local results, not a claim that hosted CI is green.
+The previous full offline suite and hosted matrix are not green. At `2e49ff7`, size-guard and self-contained eval passed; macOS, Windows, Ubuntu and container lanes had remaining failures. Known causes include the other OpenSSL const formatter, GNU warning flags on MSVC, a newer DTLS memory-BIO API in container tests, absent certificate/browser fixtures, consensus/memory regressions and a container module-download timeout.
 
-Additional evidence is in `build/ci_portability_full_build.log`, `build/ci_portability_full_ctest.log`, `build/ci_portability_ctest_rerun_failed.log`, `build/ci_portability_voice_retry.log` and `build/ci_portability_guards.log`. The latest compiler checks are in `build/ci_compiler_portability_build.log`, `build/ci_package_build.log` and `build/ci_compiler_portability_guards.log`. Check hosted CI against the exact new remote revision after publication. The immediate qualification follow-up is to repair the remaining test fixtures/contracts and verify remote Linux, macOS, Windows and container checks; none of this authorizes deployment.
+Those are reported qualification gaps, not owner-only blockers and not permission to stop substantive product progress. Focused tests are not a full-matrix pass. Check CI for the exact new published revision. Do not use CTest numeric `--rerun-failed` indices across differently filtered suites; use anchored test names. Earlier details remain in `build/ci_2e49ff7_*` and the prior Git history.
 
-## Next product work
+## Next meaningful work
 
-1. Extend durable effect identity, intent, reconciliation and scoped uncertainty to arbitrary host tools; add adapters beyond signed UM-BMP original-result receipts.
-2. Close strict provider/adapter resource-metering gaps. Recorded overages and conservative crash charges must remain honest.
-3. Connect goal/requirement/blocker authority to the broker and event-driven wakeups while preserving explicit stops.
-4. Continue immutable SOP registry, signals/timers/decisions/compensation and subject-oriented SOP authoring.
-5. Continue embedded instance-scoped pollable ports, provider/checkpoint contracts and CLI decomposition, plus durable conversation identity/pagination.
+1. Trusted host receipt adapters and a stable per-tool journal inside model-driven turns; additional device adapters and strict resource meters.
+2. Broker-backed goal/requirement/blocker authority and event-driven wakeups, preserving owner stops.
+3. Immutable SOP registry, durable signals/timers, explicit business decisions and compensation.
+4. Instance-scoped pollable embedded ports, provider/checkpoint contracts, remaining CLI decomposition and durable conversation identity.
 
-Keep every unfinished acceptance criterion in `TODOS.md`; do not narrow the project to this slice.
-
-## Operational constraints
-
-Execution, UI and the dedicated database belong on Arch. The VPS provides shared Hubstack OAuth and reverse-proxy ingress. Preserve unrelated deployments, containers, credentials and data. Shared identity/admin pins and server-held provider secrets must not be printed or committed. Voice remains Aliyun Omni with its existing server-side credential locator; no live media or paid inference was needed here.
-
-Read `PANDA_PUSH.md`, preserve Agent-C's Panda exclusion and never recreate that repository. Publish ordinary commits only to the existing GitHub `origin/master`, without force-pushing. For an authorized future deployment, use the existing installer/verifier documented in [Arch deployment](docs/ARCH_HOST_DEPLOYMENT.md), check active work before a daemon restart, and independently verify the public revision/artifact hashes/authentication afterward.
+Keep all unfinished acceptance criteria in `TODOS.md`; this is not completion of the rolling project.

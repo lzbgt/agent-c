@@ -1,8 +1,40 @@
 # Durable effects and reconciliation
 
-`kind: http_json` POST actions now have a durable effect boundary. The scheduler can recover a task after a crash without blindly repeating its external write. GET remains a read-only HTTP task. Device assignments have a separate atomic identity/admission/outbox boundary and signed original-result receipt resolver described in [DEVICE_ASSIGNMENTS.md](DEVICE_ASSIGNMENTS.md). Device recovery shares the reconcile endpoint but accepts no URL or caller-supplied outcome. Shell commands, arbitrary agent tools and capsules do not acquire an effect guarantee merely by belonging to the same workflow.
+`kind: http_json` POST actions now have a durable effect boundary. The scheduler can recover a task after a crash without blindly repeating its external write. GET remains a read-only HTTP task. Device assignments have a separate atomic identity/admission/outbox boundary and signed original-result receipt resolver described in [DEVICE_ASSIGNMENTS.md](DEVICE_ASSIGNMENTS.md). Device recovery shares the reconcile endpoint but accepts no URL or caller-supplied outcome. Explicit deterministic `host_tool` actions have the guarded journal boundary below. Tools chosen inside an LLM turn and capsules do not acquire that guarantee merely by belonging to the same workflow.
 
-## Default contract
+
+## Deterministic host tools
+
+A workflow or SOP action can invoke one registered host tool without an LLM:
+
+```json
+{
+  "task_id": "maintain",
+  "kind": "host_tool",
+  "max_attempts": 3,
+  "host_tool": {
+    "name": "proc_exec",
+    "arguments": {"argv": ["python3", "/srv/maintenance/check_inventory.py"]},
+    "timeout_ms": 30000
+  }
+}
+```
+
+This uses the daemon's existing `--tools host`, host policy, tool allow/deny lists and explicitly configured approval rules. Process execution is available only when the daemon already permits it (`yolo`); requests cannot elevate that setting. In scoped mode the deterministic file-tool boundary is rooted in the daemon state directory, rejects symlink escapes and does not attach the legacy unrestricted session context. Unrestricted session-backed tools use the existing session behavior. This boundary does not enable extension tools or silently change policy settings.
+
+The stable effect identity belongs to the workflow/task, not its scheduler attempt. The request fingerprint pins the protocol, tool name/arguments, configured timeout, execution root and session context. Changed requests or scopes cannot reuse that identity. Arguments and bounded results are persisted application data: use host-side credential locators rather than inline secrets.
+
+The journal admits a dispatch only after configured policy/approval checks. A denied or cancelled approval leaves no admitted effect. A saved terminal result is replayed without invoking the tool, charging another tool call or asking for another execution approval. It is exposed as `host_tool.result`; process output is also the task's `assistant_text`. A completed nonzero exit is a saved failure, not permission to repeat a command that may already have partially changed something.
+
+Crash before admission can resume. Crash after admission without a saved terminal response, timeout, interrupted process, malformed/oversized result or failed receipt persistence produces `host_tool_outcome_unknown`, never an automatic repeat. Independent workflow branches continue; dependents wait. The UI explains the uncertainty and deliberately offers no HTTP receipt URL for host tools. The reconciliation endpoint rejects invented host receipts and URLs. There is no generic host resolver or caller-declared idempotency mode in this slice. Inspect the original operation and downstream effects; a future trusted adapter must establish a terminal outcome before recovery can be automated.
+
+The normal workflow reservation/settlement ledger remains active. Each actual invocation reports one tool call and zero provider tokens; receipt replay reports zero tool calls. Interrupted grants retain their conservative charge. The configured timeout (1–300000 ms) and workflow elapsed grant cancel cooperative tools and bound process execution; non-cooperative adapters can still overrun and are not certified strict meters. Output capture is capped, not silently retried.
+
+This protects explicit deterministic `host_tool` actions, including SOP actions. It does **not** journal arbitrary tools chosen inside an LLM turn, certify all subprocess descendants have stopped, prove a business transaction committed, or guarantee exactly-once physical/external execution. A new workflow/task identity is a new action, not a safe retry of an uncertain old one.
+
+Verification: `workflow_host_tool_tests` covers identity conflicts, policy/scope/argument limits, approval cancellation, cached receipts without fresh approval, malformed/interrupted results and capacity/owner stops. On POSIX hosts `agentd_workflow_host_tool_recovery_smoke` kills real daemons before dispatch, after a real file write, and after durable receipt capture. It also checks nonzero exits, timeout, budget admission, preserved cancellation, SOP invocation and one-worker independent progress.
+
+## Default HTTP contract
 
 A POST defaults to `effect.mode: guarded`. After URL/policy/credential validation, the runtime derives a stable effect ID from workflow/task identity and a canonical request hash from the protocol, method, URL, body, case-normalized headers and bearer environment reference. The secret bearer value is not included. The business account/namespace represented by that reference must remain consistent across recovery.
 

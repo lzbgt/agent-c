@@ -9863,6 +9863,7 @@ export interface components {
          *     - Deterministic memory correlation tasks: `kind: memory_correlate` with `memory_correlate` (scans structured memory checkpoints; no LLM required)
          *     - Deterministic memory query tasks: `kind: memory_query` with `memory_query` (reads newest structured checkpoint; no LLM required)
          *     - Deterministic closed-loop records: `kind: experience_record` with `experience_record` (writes bounded RL/eval JSONL)
+         *     - Deterministic guarded host tools: `kind: host_tool` with `host_tool` (daemon host policy applies; no LLM required)
          *     - Deterministic outbound HTTP JSON tasks: `kind: http_json` with `http_json` (gated by daemon flag; no LLM required)
          *     - Deterministic agent collaboration tasks: `kind: agentd_call` with `agentd_call` (gated by daemon flag; no LLM required)
          *     - Parallel agent collaboration macro: `kind: agentd_parallel` with `agentd_parallel` (submit-time expansion into parallel `agentd_call` tasks + an aggregate join; configurable)
@@ -9896,7 +9897,7 @@ export interface components {
          *     - If `kind == delegate_parallel`, `delegate.attempts` is required and `request.prompt` is not used (expanded into multiple tasks).
          *     - Otherwise, `request.prompt` is required (or prompt at the top-level is accepted by the server for legacy reasons).
          */
-        WorkflowTaskSpec: components["schemas"]["WorkflowTaskRunSpec"] | components["schemas"]["WorkflowTaskAvmCapsuleSpec"] | components["schemas"]["WorkflowTaskAggregateSpec"] | components["schemas"]["WorkflowTaskMemoryPutSpec"] | components["schemas"]["WorkflowTaskMemorySearchSpec"] | components["schemas"]["WorkflowTaskMemoryTimelineSpec"] | components["schemas"]["WorkflowTaskMemoryStructuredQuerySpec"] | components["schemas"]["WorkflowTaskMemoryCorrelateSpec"] | components["schemas"]["WorkflowTaskMemoryQuerySpec"] | components["schemas"]["WorkflowTaskExperienceRecordSpec"] | components["schemas"]["WorkflowTaskHttpJsonSpec"] | components["schemas"]["WorkflowTaskAgentdCallSpec"] | components["schemas"]["WorkflowTaskAgentdParallelSpec"] | components["schemas"]["WorkflowTaskMemoryConsolidateSpec"] | components["schemas"]["WorkflowTaskDelaySpec"] | components["schemas"]["WorkflowTaskEdgeInvokeSpec"] | components["schemas"]["WorkflowTaskEdgeParallelSpec"] | components["schemas"]["WorkflowTaskEdgeWaitSensorSpec"] | components["schemas"]["WorkflowTaskDelegateSpec"];
+        WorkflowTaskSpec: components["schemas"]["WorkflowTaskRunSpec"] | components["schemas"]["WorkflowTaskAvmCapsuleSpec"] | components["schemas"]["WorkflowTaskAggregateSpec"] | components["schemas"]["WorkflowTaskMemoryPutSpec"] | components["schemas"]["WorkflowTaskMemorySearchSpec"] | components["schemas"]["WorkflowTaskMemoryTimelineSpec"] | components["schemas"]["WorkflowTaskMemoryStructuredQuerySpec"] | components["schemas"]["WorkflowTaskMemoryCorrelateSpec"] | components["schemas"]["WorkflowTaskMemoryQuerySpec"] | components["schemas"]["WorkflowTaskExperienceRecordSpec"] | components["schemas"]["WorkflowTaskHostToolSpec"] | components["schemas"]["WorkflowTaskHttpJsonSpec"] | components["schemas"]["WorkflowTaskAgentdCallSpec"] | components["schemas"]["WorkflowTaskAgentdParallelSpec"] | components["schemas"]["WorkflowTaskMemoryConsolidateSpec"] | components["schemas"]["WorkflowTaskDelaySpec"] | components["schemas"]["WorkflowTaskEdgeInvokeSpec"] | components["schemas"]["WorkflowTaskEdgeParallelSpec"] | components["schemas"]["WorkflowTaskEdgeWaitSensorSpec"] | components["schemas"]["WorkflowTaskDelegateSpec"];
         WorkflowTaskRunSpec: {
             task_id: string;
             /** @description If true, task failure does not fail the workflow (soft-fail). */
@@ -10372,6 +10373,36 @@ export interface components {
              * @description Per-source result bound, clamped to 1024..65536 (default 8192).
              */
             max_result_chars?: number;
+        };
+        WorkflowTaskHostToolSpec: {
+            task_id: string;
+            /** @enum {string} */
+            kind: "host_tool";
+            depends_on?: string[];
+            /** Format: int32 */
+            max_attempts?: number;
+            allow_error?: boolean;
+            priority?: number;
+            expect?: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description One deterministic registered host tool under daemon tool/sandbox/policy and
+             *     explicit approval rules. Guarded intent/receipt prevents blind replay.
+             *     Arguments and bounded results are durable application data; use secret
+             *     locators rather than literal credentials. Interrupted effects stay unresolved.
+             */
+            host_tool: {
+                name: string;
+                arguments: {
+                    [key: string]: unknown;
+                };
+                /**
+                 * Format: int64
+                 * @default 30000
+                 */
+                timeout_ms: number;
+            };
         };
         WorkflowTaskHttpJsonSpec: {
             task_id: string;

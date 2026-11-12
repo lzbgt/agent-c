@@ -1,8 +1,10 @@
 # Current Agent-C snapshot
 
-Date: 2026-11-11. This document records implemented behavior and reproducible checks. It is the entry point for the current snapshot; [architecture and delivery gates](ARCHITECTURE_CURRENT.md) describe the longer-term design and [research](research/agent-systems-20261110.md) records inspected primary sources.
+Date: 2026-11-12. This document records implemented behavior and reproducible checks. It is the entry point for the current snapshot; [architecture and delivery gates](ARCHITECTURE_CURRENT.md) describe the longer-term design and [research](research/agent-systems-20261110.md) records inspected primary sources.
 
 ## Implemented in this snapshot
+
+- **Deterministic host actions:** `host_tool` workflows and SOP actions reuse daemon policy/explicit approvals, persist original intent/results, reject changed identities and never blindly repeat an interrupted effect. Saved results need no new tool charge or execution approval. Independent work continues; the UI explains unresolved host outcomes without offering an unsupported HTTP resolver. See [host effect contract](WORKFLOW_EFFECTS.md#deterministic-host-tools).
 
 - **Autonomy:** default host instructions execute authorized work without permission prompts. The shared SQLite requirement/blocker ledger keeps independent work runnable, validates dependency DAGs, requires evidence for completion/resolution, and rejects stale revisions. A human dependency affects only its named requirements; advisory blockers can affect none.
 - **Completion:** a portable C completion hook allows hosts to continue a proposed final response within the original budgets. The host uses it after a run adopts `work_state`; an unchanged-ledger repetition guard prevents endless false completion. Empty/unrelated ledgers are not automatically adopted.
@@ -51,7 +53,7 @@ The verifier configures **Debug** builds so assertion-based existing C tests exe
 
 ## Verification evidence
 
-The snapshot verification script passed 23 targeted native/CLI/API checks, Go broker/gateway tests and 54 browser checks on Linux. The separate core-only Debug build/test passed. Gateway race tests and actual dedicated PostgreSQL persistence/schema checks also passed. Coverage includes:
+The November 12 snapshot verifier passed 25 targeted native/CLI/API checks, Go broker/gateway tests and 54 browser checks on Linux. Six additional host/policy/approval/budget regressions and repository guards passed. Earlier core-only Debug, gateway race and dedicated PostgreSQL persistence/schema checks also passed; those separate qualifications were not rerun for the host-action slice. Coverage includes:
 
 - C tool loop, continuation and unchanged step caps; host tool and pinned-prompt regressions.
 - Requirement DAG validation, scoped blockers, evidence gates, rollback, stale revision rejection and concurrent independent CLI writers.
@@ -69,11 +71,13 @@ The snapshot verification script passed 23 targeted native/CLI/API checks, Go br
 - Voice microphone/camera lifecycle, late device permissions, image conversion/refresh, one-caption replies and provider failure; gateway input bounds, pinned credentials, capacity, revocation and shutdown.
 - TypeScript/Vite production build, generated OpenAPI drift check, repository guards and whitespace checks.
 
+Host-action verification is in `build/host_tool_focused_tests.log`, `build/host_tool_ui_tests.log` and `build/host_tool_snapshot_verification.log`. The process tests use isolated fixtures, not production state.
+
 Latest receipt recovery logs: `build/device_receipt_snapshot_verification.log`, `build/device_receipt_extended_regressions.log` and `build/device_receipt_repo_guards.log`. Earlier local logs: `build/workflow_budget_snapshot_verification.log`, `build/cli_snapshot_core_only.log`, `build/arch_broker_all_tests.log`, `build/arch_gateway_postgres_tests.log` and `build/arch_repo_guards.log`. Browser tests regenerate workspace and deployment sign-in screenshots under `ui/test-results/`; generated artifacts are ignored, while their source fixtures and commands are tracked. Live voice evidence is in `build/aliyun_voice_roundtrip_public.log`; `build/omni_voice_live_ui_checks.log` covers four public viewport checks without starting device capture. On the checked host, the combined UI refactor reduced the main application chunk from approximately 1,087 kB to 752 kB before gzip; this is a build observation, not a latency benchmark.
 
 ## Boundaries and next work
 
-This is a coherent implemented slice, not a claim that every item in the architecture is shipped. Current workflows retain single-daemon, at-least-once task recovery. The new effect protocol protects deterministic HTTP POST tasks under its destination/receipt contracts. Submit dedupe and SOP hashes alone still do not prevent duplicate external writes. Device assignment publication is now atomic, but arbitrary host-tool effects, adapters beyond the signed UM-BMP receipt resolver, physical execution guarantees and strict provider/adapter resource metering remain production correctness work. Workflow reservation/settlement is now atomic, with observed usage and conservative uncertainty kept distinct.
+This is a coherent implemented slice, not a claim that every item in the architecture is shipped. Current workflows retain single-daemon, at-least-once task recovery. The new effect protocol protects deterministic HTTP POST tasks under its destination/receipt contracts. Submit dedupe and SOP hashes alone still do not prevent duplicate external writes. Device assignment publication is now atomic, but model-selected host-tool effects, trusted host receipt adapters, adapters beyond the signed UM-BMP receipt resolver, physical execution guarantees and strict provider/adapter resource metering remain production correctness work. Workflow reservation/settlement is now atomic, with observed usage and conservative uncertainty kept distinct.
 
 The work ledger is host-side current state, separate from the main daemon DB. It does not yet implement broker-authoritative goals, an append-only work audit, automatic wakeup after a human edit, a general requirement/blocker REST API or UI. The HTTP effect slice has its own reconciliation API/UI. `agent work` can update it and `resume`/a subsequent run can adopt it. Evidence text still needs a trustworthy verifier.
 

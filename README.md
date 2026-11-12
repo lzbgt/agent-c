@@ -31,6 +31,7 @@ Workflows has separate **Runs**, **Create workflow** and **Schedules** sections.
 - **Portable core:** C tool execution with bounded budgets and cancellation; hosts can continue a premature final response within the original limits.
 - **Autonomous work state:** a SQLite requirement/blocker ledger shared by `work_state` and `agent work`, with dependency validation, revision checks and evidence-gated transitions.
 - **Durable workflows:** SOP compilation, definition hashes, task recovery, scheduling, dataflow and inspectable evidence.
+- **Deterministic host actions:** workflow/SOP tools run under existing policy with durable intent and saved-result replay. Interrupted effects are not blindly repeated; independent work continues. [Host action contract](docs/WORKFLOW_EFFECTS.md#deterministic-host-tools)
 - **HTTP effects:** stable effect identity, intent/receipt journaling and reconciliation for guarded writes. Independent branches continue when another branch needs recovery. [Effect contract](docs/WORKFLOW_EFFECTS.md)
 - **Device dispatch:** immutable operation/node identity and transactional assignment, capacity and outbox publication prevent retry-driven command duplication. Uncertain outcomes expose a scoped human action while independent work continues. [Device contract](docs/DEVICE_ASSIGNMENTS.md)
 - **Workflow budgets:** per-attempt transactional grants, atomic settlement/refunds and conservative crash charges prevent duplicate capacity admission. Observed token/time overages remain explicit. [Budget contract](docs/WORKFLOW_BUDGETS.md)
@@ -74,7 +75,7 @@ npm run dev
 
 Connection and production build details are in [WebUI](docs/WEBUI.md). Tool extensions are documented in [Tools](docs/TOOLS.md).
 
-Signed original-device receipts can now recover an uncertain workflow without another device command. The API and **Check device receipt** control preserve cancellation, deadlines and completed independent work. This source change is not yet deployed; the live runtime remains `a0890c0`. [Device receipt contract](docs/DEVICE_ASSIGNMENTS.md)
+Signed original-device receipts can now recover an uncertain workflow without another device command. The API and **Check device receipt** control preserve cancellation, deadlines and completed independent work. This receipt change and the guarded host-action source are not yet deployed; the live runtime remains `a0890c0`. [Device receipt contract](docs/DEVICE_ASSIGNMENTS.md)
 
 ## Reproduce the checked snapshot
 
@@ -88,7 +89,7 @@ cd ..
 tools/verify_current_snapshot.sh
 ```
 
-The current lane covers **23 native/CLI/API checks**, Go broker/gateway tests, **54 browser checks**, generated OpenAPI types and the production UI build. Browser cases include greeting clarity, streaming handoff, repeated identical turns, IME-safe sends, hidden metadata, subject-oriented settings, authorized browser effects and responsive workflow tools.
+The current lane covers **25 native/CLI/API checks**, Go broker/gateway tests, **54 browser checks**, generated OpenAPI types and the production UI build. Browser cases include greeting clarity, streaming handoff, repeated identical turns, IME-safe sends, hidden metadata, subject-oriented settings, authorized browser effects and responsive workflow tools.
 
 For the embedded-safe build:
 

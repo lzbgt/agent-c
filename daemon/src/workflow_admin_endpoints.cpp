@@ -72,6 +72,7 @@ void handle_workflow_reconcile_endpoint(const DaemonConfig& cfg, const CorsConfi
     resp->body = json_stringify_compact(out);
     return;
   }
+  if (device_request["kind"] == "host_tool") { fail(409,"host-tool outcome requires original host evidence; no automatic resolver is available"); return; }
   if (!cfg.workflow_enable_http_tasks) { fail(409,"HTTP workflow tasks are disabled"); return; }
   const auto effect = std::find_if(effects.begin(),effects.end(),[&](const auto& e) { return e.task_id == args["task_id"].asString(); });
   if (task == tasks.end() || effect == effects.end()) { fail(404,"effect task not found"); return; }

@@ -325,6 +325,8 @@ schemas:
     $ref: ./components/workflow.yaml#/WorkflowMemoryQuerySpec
   WorkflowExperienceRecordSpec:
     $ref: ./components/workflow.yaml#/WorkflowExperienceRecordSpec
+  WorkflowTaskHostToolSpec:
+    $ref: ./components/workflow.yaml#/WorkflowTaskHostToolSpec
   WorkflowTaskHttpJsonSpec:
     $ref: ./components/workflow.yaml#/WorkflowTaskHttpJsonSpec
   WorkflowHttpJsonSpec:
