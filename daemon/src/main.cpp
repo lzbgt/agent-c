@@ -1588,6 +1588,9 @@ int main(int argc, char** argv) {
     });
   }
 
+  server.handle("POST", "/api/v1/workflow/decision", [&](const HttpRequest& req, HttpResponse* resp) {
+    handle_workflow_decision_endpoint(cfg_store.snapshot(), cors_cfg, db_or_null, req, resp);
+  });
   server.handle("POST", "/api/v1/workflow/submit", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_workflow_submit_endpoint(cur, cors_cfg, db_or_null, req, resp);

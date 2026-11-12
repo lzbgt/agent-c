@@ -214,6 +214,12 @@ int main() {
     svc.stop(); std::cerr << "service SOP save route failed\n"; return 21;
   }
 
+  std::string decision_response;
+  if (!http_post("127.0.0.1", port, "/api/v1/workflow/decision", "{}", &decision_response) ||
+      decision_response.find("400") == std::string::npos || decision_response.find("choice_id") == std::string::npos) {
+    svc.stop(); std::cerr << "service decision route failed\n"; return 22;
+  }
+
   std::string resp_post;
   const std::string body =
     std::string("{\"host_path\":\"") + allow_root_str + "\",\"container_path\":\"/workspace/extra/tmp\"}";

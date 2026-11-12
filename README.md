@@ -24,7 +24,7 @@ Messages have one renderer: expanding Activity & details never repeats the chat.
 
 The composer focuses on **Attach** and **Send**. Settings leads with model, capabilities and conversation; technical controls and conversation management are collapsed by default. Desktop, phone and tablet layouts share these defaults. [UI design](docs/UI_DESIGN.md) records the attention hierarchy and verification contract.
 
-Workflows has separate **Runs**, **Create workflow** and **Schedules** sections. Its SOP template defines ordered stages and sequential or parallel actions. The saved SOP library persists immutable versions and loads exact hash-pinned references without starting a run; JSON and graph authoring remain available. [SOP guide](docs/SOP_WORKFLOWS.md)
+Workflows has separate **Runs**, **Create workflow** and **Schedules** sections. Its SOP templates define ordered stages and sequential or parallel actions, including explicit durable review decisions that release workers while waiting. The saved SOP library persists immutable versions and loads exact hash-pinned references without starting a run; JSON and graph authoring remain available. [SOP guide](docs/SOP_WORKFLOWS.md)
 
 ## What is implemented
 

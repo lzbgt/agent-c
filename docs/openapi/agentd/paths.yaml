@@ -2196,6 +2196,34 @@
       "500": { description: Storage or definition integrity error }
       "503": { description: Database unavailable }
 
+/api/v1/workflow/decision:
+  post:
+    tags: [workflows]
+    summary: Record one configured process choice and wake only its waiting task
+    description: |
+      Authenticated daemon boundary, not per-person role authorization. Maximum 8 KiB
+      body. The server obtains the outcome from its immutable saved definition; callers
+      cannot supply an outcome or actor. Same delivery/choice/note returns the saved
+      receipt even after the workflow stops, without waking or clearing cancellation.
+      Conflicting responses, stopped workflows and expired decisions cannot resume work.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/WorkflowDecisionRequest" }
+    responses:
+      "200":
+        description: Choice recorded or exact historical receipt replayed
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkflowDecisionResponse" }
+      "400": { description: Invalid request or choice not configured }
+      "401": { description: Authentication required }
+      "404": { description: Decision not found or not yet activated }
+      "409": { description: Conflicting receipt, identity mismatch, expiry or stopped workflow }
+      "500": { description: Storage or integrity failure }
+      "503": { description: Database unavailable }
+
 /api/v1/workflow/submit:
   post:
     tags: [workflows]

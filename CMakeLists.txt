@@ -283,6 +283,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/agent_db.cpp
     daemon/src/agent_db_effects.cpp
     daemon/src/agent_db_sops.cpp
+    daemon/src/agent_db_decisions.cpp
     daemon/src/agent_db_workflow_budget.cpp
     daemon/src/agent_db_approvals.cpp
     daemon/src/agent_db_state.cpp
@@ -472,6 +473,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/workflow_submit.cpp
     daemon/src/workflow_sop.cpp
     daemon/src/workflow_sop_registry.cpp
+    daemon/src/workflow_decision.cpp
     daemon/src/workflow_submit_macros.cpp
     daemon/src/workflow_submit_task_builders.cpp
     daemon/src/workflow_fairq_cost.cpp
@@ -2023,6 +2025,12 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
       add_executable(device_assignment_tests tests/test_device_assignment.cpp)
       target_link_libraries(device_assignment_tests PRIVATE agentd_lib)
       add_test(NAME device_assignment_tests COMMAND device_assignment_tests)
+      add_executable(workflow_decision_tests tests/test_workflow_decision.cpp)
+      target_link_libraries(workflow_decision_tests PRIVATE agentd_lib)
+      add_test(NAME workflow_decision_tests COMMAND workflow_decision_tests)
+      if(AGENTD_ENABLE_HTTP)
+        add_test(NAME agentd_workflow_decision_smoke COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/workflow_decision_smoke.py $<TARGET_FILE:agentd>)
+      endif()
       add_executable(workflow_sop_registry_tests tests/test_workflow_sop_registry.cpp)
       target_link_libraries(workflow_sop_registry_tests PRIVATE agentd_lib)
       add_test(NAME workflow_sop_registry_tests COMMAND workflow_sop_registry_tests)
@@ -2088,7 +2096,8 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
       daemon/src/agent_db.cpp
       daemon/src/agent_db_effects.cpp
       daemon/src/agent_db_sops.cpp
-    daemon/src/agent_db_workflow_budget.cpp
+      daemon/src/agent_db_decisions.cpp
+      daemon/src/agent_db_workflow_budget.cpp
       daemon/src/agent_db_approvals.cpp
       daemon/src/agent_db_state.cpp
       daemon/src/agent_db_sessions.cpp

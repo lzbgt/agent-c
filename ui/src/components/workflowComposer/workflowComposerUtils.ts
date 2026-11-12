@@ -20,6 +20,7 @@ export type { GraphBuildResult, GraphState };
 
 export const TEMPLATE_LABELS: Record<TemplateKind, string> = {
   sop: "SOP · stages and actions",
+  sop_decision: "SOP · review decision",
   llm_dag: "LLM DAG (A→B/C)",
   agent_parallel: "Agent collaboration (agentd_parallel)",
   agent_parallel_demo: "Agent collaboration demo (agentd_parallel)",
@@ -247,6 +248,26 @@ export const buildGraphWorkflow = (
     return { result: null, error: String(err) };
   }
 };
+
+// Provider-free review sample: no external action and no implicit choice.
+export function buildSopDecisionTemplate() {
+  return {
+    sop: {
+      schema: "agentd.sop.v1" as const, id: "inspection-review", version: "1", title: "Inspection with review",
+      stages: [
+        { id: "checks", mode: "sequence" as const, actions: [{ task_id: "inspect", kind: "delay" as const, delay_ms: 0 }] },
+        { id: "review", mode: "sequence" as const, actions: [{ task_id: "review", kind: "decision" as const, decision: {
+          prompt: "Are the inspection results acceptable?", timeout_ms: 86400000,
+          choices: [
+            { id: "accept", label: "Accept inspection", outcome: "continue" as const },
+            { id: "reject", label: "Reject inspection", outcome: "fail" as const },
+          ],
+        } }] },
+        { id: "record", mode: "sequence" as const, actions: [{ task_id: "record", kind: "delay" as const, delay_ms: 0 }] },
+      ],
+    },
+  };
+}
 
 // Provider-free seed: replace delays with validated task kinds for a real process.
 export function buildSopTemplate() {

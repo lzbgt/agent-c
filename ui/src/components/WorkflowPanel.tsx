@@ -22,6 +22,13 @@ export type WorkflowPanelProps = {
 
 export default function WorkflowPanel(props: WorkflowPanelProps) {
   const [view, setView] = React.useState("runs");
+  // Never reuse private detail or actionable controls under a different connection.
+  const scope = JSON.stringify([props.baseUrl, props.authKey, props.auth]);
+  return <WorkflowPanelForConnection key={scope} {...props} view={view} setView={setView} />;
+}
+
+function WorkflowPanelForConnection(props: WorkflowPanelProps & { view: string; setView: (view: string) => void }) {
+  const { view, setView } = props;
   const workflowState = useWorkflowPanelState({
     open: props.open,
     baseUrl: props.baseUrl,

@@ -13,6 +13,7 @@ When built with SQLite support (`AGENT_HAVE_SQLITE3`), `agentd` stores its canon
 - durable scene snapshots (`scene_states`)
 - durable async job metadata (`jobs`)
 - durable workflows (`workflows`, `workflow_tasks`, `workflow_events`)
+- durable process decisions (`workflow_decisions`, schema v38), unique by workflow/task, with worker-free waits, one immutable configured answer and atomic task wakeup. Notes are durable application data, not secrets. See [WORKFLOW_DECISIONS.md](WORKFLOW_DECISIONS.md).
 - immutable saved SOP versions (`workflow_sop_definitions`, schema v37), unique by `(definition_id, version)` with canonical source hash and keyset-paged metadata. Exact versions are copied into submitted workflow snapshots. Definitions are not credentials storage; known inline credential fields are rejected. See [SOP_WORKFLOWS.md](SOP_WORKFLOWS.md).
 - immutable signed device receipts (`edge_task_receipts`, schema v36), bound to original assignment identity/payload and separate from platform timeout/cancellation. Receipt result and attestation data follow the same sensitive-data retention/erase policy as device tasks; deleting the parent assignment cascades its receipt. See [DEVICE_ASSIGNMENTS.md](DEVICE_ASSIGNMENTS.md).
 
@@ -102,7 +103,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v37)
+## Schema (v38)
 
 ### `edge_task_receipts`
 
@@ -447,6 +448,17 @@ Indexes:
 - `CREATE INDEX workflow_tasks_by_workflow ON workflow_tasks(workflow_id, updated_unix_ms DESC)`
 - `CREATE INDEX workflow_tasks_by_status ON workflow_tasks(status, ready_unix_ms, updated_unix_ms DESC)`
 - `CREATE INDEX workflow_tasks_by_status_prio ON workflow_tasks(status, priority DESC, ready_unix_ms, updated_unix_ms DESC)`
+
+### `workflow_decisions`
+
+- `decision_id TEXT PRIMARY KEY`; stable identity binds workflow, task and canonical definition hash.
+- `workflow_id TEXT NOT NULL`, `task_id TEXT NOT NULL`; unique pair and cascading foreign key to `workflow_tasks`.
+- `request_hash TEXT NOT NULL`, `spec_json TEXT NOT NULL`; integrity-checked normalized prompt/choices/timeout.
+- `state TEXT NOT NULL`: `waiting|resolved|expired`. `stopped` is a read projection from authoritative workflow/task state.
+- `created_unix_ms INTEGER NOT NULL`, `expires_unix_ms INTEGER NOT NULL DEFAULT 0`, `resolved_unix_ms INTEGER NOT NULL DEFAULT 0`.
+- `choice_id TEXT NOT NULL DEFAULT ''`, `outcome TEXT NOT NULL DEFAULT ''`, `note TEXT NOT NULL DEFAULT ''`, `delivery_id TEXT NOT NULL DEFAULT ''`.
+
+First wait creation and worker/attempt release are one transaction. First answer and queued-task wakeup are one transaction. Historical receipt replays never mutate workflow cancellation or task readiness. See [decision contract](WORKFLOW_DECISIONS.md).
 
 ### `workflow_events`
 

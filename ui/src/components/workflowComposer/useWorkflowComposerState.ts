@@ -35,6 +35,7 @@ import {
   buildGraphWorkflow,
   buildLlmDagTemplate,
   buildSopTemplate,
+  buildSopDecisionTemplate,
   clampGraphState,
   extractWorkflowWaitByScope,
   mergeWaitMaps,
@@ -644,8 +645,8 @@ export default function useWorkflowComposerState(props: WorkflowComposerProps) {
     (kind: TemplateKind, opts?: { toGraph?: boolean }) => {
       setTemplateKind(kind);
       let template: WorkflowSubmitRequest;
-      if (kind === "sop") {
-        template = buildSopTemplate();
+      if (kind === "sop" || kind === "sop_decision") {
+        template = kind === "sop_decision" ? buildSopDecisionTemplate() : buildSopTemplate();
         setComposerMode("json");
       } else if (kind === "agent_parallel_demo") {
         template = buildAgentParallelDemoTemplate(defaults, targets, bearerEnv, allowInlineKeys);

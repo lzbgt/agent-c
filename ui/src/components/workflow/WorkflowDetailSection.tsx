@@ -1,5 +1,6 @@
 import React from "react";
 import WorkflowEffectsSection from "./WorkflowEffectsSection";
+import WorkflowDecisionsSection from "./WorkflowDecisionsSection";
 import DeviceReceiptButton from "./DeviceReceiptButton";
 import type { ApiAuth } from "../../api/auth";
 import type { WorkflowDetailResp } from "../../api";
@@ -35,6 +36,10 @@ export default function WorkflowDetailSection(props: WorkflowDetailSectionProps)
 
   return (
     <div className="grid gap-3" data-testid="workflow-detail-panel">
+      <WorkflowDecisionsSection workflowId={summary.workflow_id} decisions={props.detail.decisions ?? []}
+        active={!summary.cancel_requested && (summary.status === "queued" || summary.status === "running") &&
+          !(summary.deadline_unix_ms && summary.deadline_unix_ms <= Date.now())}
+        controls={props.effectControls} onReload={props.onReloadWorkflow} />
       {props.tasks.some((task) => task.status === "error" && task.blocker?.required_action) ? <section className="rounded-md border border-amber-300/30 bg-amber-300/5 p-3" data-testid="workflow-blockers" aria-label="Needs your attention">
         <h2 className="text-sm font-semibold text-amber-100">Needs your attention</h2>
         {props.tasks.filter((task) => task.status === "error" && task.blocker?.required_action).map((task) => <div key={task.task_id} className="mt-2">

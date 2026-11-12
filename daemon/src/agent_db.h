@@ -1056,6 +1056,25 @@ class AgentDb {
   // Newest first, exclusive before_id (0 starts at newest). Metadata only.
   bool list_workflow_sops(int64_t before_id, size_t limit, std::vector<WorkflowSopRow>* out, std::string* error);
 
+  struct WorkflowDecisionRow {
+    std::string decision_id, workflow_id, task_id, request_hash, spec_json, state;
+    int64_t created_unix_ms = 0, expires_unix_ms = 0, resolved_unix_ms = 0;
+    std::string choice_id, outcome, note, delivery_id;
+  };
+  // Atomically create/read a decision and yield its claimed task while waiting.
+  // No budget reservation exists; the claim attempt is returned, not consumed.
+  bool prepare_workflow_decision(const WorkflowTaskRow& expected, const WorkflowDecisionRow& definition,
+    int64_t timeout_ms, WorkflowDecisionRow* out, bool* yielded, std::string* error);
+  bool get_workflow_decision(const std::string& workflow_id, const std::string& task_id,
+    WorkflowDecisionRow* out, std::string* error);
+  bool list_workflow_decisions(const std::string& workflow_id, std::vector<WorkflowDecisionRow>* out, std::string* error);
+  enum class WorkflowDecisionResolution { Recorded, Replayed, Conflict, Stopped, Expired, NotFound, StorageError };
+  // Definition and selected outcome have already been validated by the service.
+  // A single transaction records the immutable answer and wakes only this task.
+  WorkflowDecisionResolution resolve_workflow_decision(const WorkflowDecisionRow& expected,
+    const std::string& choice_id, const std::string& outcome, const std::string& note,
+    const std::string& delivery_id, WorkflowDecisionRow* out, std::string* error);
+
  private:
   bool ensure_schema_locked(std::string* out_error);
   bool exec_locked(const std::string& sql, std::string* out_error);

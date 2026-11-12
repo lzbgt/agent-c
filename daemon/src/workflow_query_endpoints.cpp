@@ -1,5 +1,6 @@
 #include "workflow_endpoints.h"
 #include "workflow_budget.h"
+#include "workflow_decision.h"
 
 #include "daemon_auth.h"
 #include "http_util.h"
@@ -9,6 +10,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -83,6 +85,11 @@ void handle_workflow_get_endpoint(
   w["updated_unix_ms"] = (Json::Int64)wf.updated_unix_ms;
   if (!wf.error.empty()) w["error"] = wf.error;
   o["workflow"] = w;
+  if (!workflow_decisions_projection(db_or_null, wf, &o["decisions"], &err)) {
+    resp->status = 500;
+    resp->body = json_error_body("failed to load workflow decisions");
+    return;
+  }
 
   // Metadata remains inspectable even when an attempt died before persisting a
   // task result. Large receipts stay out of this polling surface.
@@ -196,7 +203,8 @@ void handle_workflow_get_endpoint(
         row["completion_tokens_cum"] = (Json::Int64)std::max<int64_t>(0, t.completion_tokens_cum);
         row["total_tokens_cum"] = (Json::Int64)std::max<int64_t>(0, t.total_tokens_cum);
 
-        row["ready_unix_ms"] = (Json::Int64)t.ready_unix_ms;
+        // Indefinite input waiting is not a representable wall-clock date.
+        if (t.ready_unix_ms != std::numeric_limits<int64_t>::max()) row["ready_unix_ms"] = (Json::Int64)t.ready_unix_ms;
         row["started_unix_ms"] = (Json::Int64)t.started_unix_ms;
         row["finished_unix_ms"] = (Json::Int64)t.finished_unix_ms;
         if (!t.error.empty()) row["error"] = t.error;

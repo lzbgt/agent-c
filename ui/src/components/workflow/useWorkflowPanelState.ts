@@ -223,23 +223,26 @@ export default function useWorkflowPanelState(args: UseWorkflowPanelStateArgs) {
     return () => window.clearTimeout(handle);
   }, [listFilter]);
 
+  const latestLookup = React.useRef(0);
   const workflowLookup = useMutation({
-    mutationFn: async (id: string) =>
+    mutationFn: async (request: { id: string; sequence: number }) =>
       apiGetWorkflow(
         args.baseUrl,
         {
-          workflowId: id,
+          workflowId: request.id,
           includeTasks: true,
           includeResults,
           includeSpec,
         },
         args.auth,
       ),
-    onSuccess: (resp) => {
+    onSuccess: (resp, request) => {
+      if (request.sequence !== latestLookup.current) return;
       setDetail(resp);
       setDetailError(resp && resp.ok === false ? resp.error || "workflow lookup failed" : null);
     },
-    onError: (err) => {
+    onError: (err, request) => {
+      if (request.sequence !== latestLookup.current) return;
       setDetail(null);
       setDetailError(String(err));
     },
@@ -314,10 +317,22 @@ export default function useWorkflowPanelState(args: UseWorkflowPanelStateArgs) {
         return;
       }
       setDetailError(null);
-      workflowLookup.mutate(trimmed);
+      setDetail((current) => current?.workflow?.workflow_id === trimmed ? current : null);
+      workflowLookup.mutate({ id: trimmed, sequence: ++latestLookup.current });
     },
     [args.baseUrl, workflowLookup],
   );
+
+  // Review steps may activate after the first read. Refresh active detail without
+  // changing its identity or discarding an in-flight decision delivery.
+  React.useEffect(() => {
+    if (!args.open || !summary?.workflow_id || (summary.status !== "queued" && summary.status !== "running")) return;
+    const id = summary.workflow_id;
+    const timer = window.setInterval(() => {
+      if (!workflowLookup.isPending) loadWorkflow(id);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [args.open, summary?.workflow_id, summary?.status, workflowLookup.isPending, loadWorkflow]);
 
   const loadScheduleRuns = React.useCallback((id: string) => {
     const trimmed = String(id || "").trim();
@@ -326,6 +341,7 @@ export default function useWorkflowPanelState(args: UseWorkflowPanelStateArgs) {
   }, []);
 
   const clearWorkflow = React.useCallback(() => {
+    ++latestLookup.current;
     setDetail(null);
     setDetailError(null);
   }, []);

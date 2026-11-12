@@ -34,6 +34,7 @@ Amounts workflow_budget_demand(const Json::Value &input,
       request["kind"].isString() ? request["kind"].asString() : std::string();
   static const std::unordered_set<std::string> deterministic = {
       "delay",
+      "decision",
       "aggregate",
       "edge_wait_sensor",
       "edge_invoke",
@@ -50,7 +51,7 @@ Amounts workflow_budget_demand(const Json::Value &input,
       "memory_query"};
   const bool model = deterministic.count(kind) == 0;
   const bool pure =
-      kind == "delay" || kind == "aggregate" || kind == "edge_wait_sensor";
+      kind == "delay" || kind == "decision" || kind == "aggregate" || kind == "edge_wait_sensor";
   Amounts demand{};
   if (model) {
     const auto tools = lower_copy(trim_copy(
@@ -85,6 +86,7 @@ Amounts workflow_budget_demand(const Json::Value &input,
                 600000, std::max<int64_t>(0, value(request, "delay_ms", 0))) +
                 1
           : value(timed, "timeout_ms", std::max<int64_t>(1, cfg.timeout_ms));
+  if (kind == "decision") demand[2] = 0; // Waiting for input is not execution time.
   for (int i = 0; i < 4; i++)
     demand[i] = limits[i] > 0 ? std::min(limits[i], demand[i]) : 0;
   return demand;

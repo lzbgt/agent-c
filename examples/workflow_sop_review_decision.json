@@ -1,0 +1,58 @@
+{
+  "sop": {
+    "schema": "agentd.sop.v1",
+    "id": "inspection-review",
+    "version": "1",
+    "title": "Inspection with review",
+    "stages": [
+      {
+        "id": "checks",
+        "mode": "sequence",
+        "actions": [
+          {
+            "task_id": "inspect",
+            "kind": "delay",
+            "delay_ms": 0
+          }
+        ]
+      },
+      {
+        "id": "review",
+        "mode": "sequence",
+        "actions": [
+          {
+            "task_id": "review",
+            "kind": "decision",
+            "decision": {
+              "prompt": "Are the inspection results acceptable?",
+              "timeout_ms": 86400000,
+              "choices": [
+                {
+                  "id": "accept",
+                  "label": "Accept inspection",
+                  "outcome": "continue"
+                },
+                {
+                  "id": "reject",
+                  "label": "Reject inspection",
+                  "outcome": "fail"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "id": "record",
+        "mode": "sequence",
+        "actions": [
+          {
+            "task_id": "record",
+            "kind": "delay",
+            "delay_ms": 0
+          }
+        ]
+      }
+    ]
+  }
+}

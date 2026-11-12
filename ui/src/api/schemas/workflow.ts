@@ -61,11 +61,24 @@ export const WorkflowListRespSchema = z
   })
   .passthrough();
 
+export const WorkflowDecisionSchema = z.object({
+  workflow_id: z.string(), task_id: z.string(), decision_id: z.string(), request_hash: z.string(),
+  prompt: z.string(), choices: z.array(z.object({
+    id: z.string(), label: z.string(), outcome: z.enum(["continue", "fail"]),
+  })).min(1).max(8),
+  state: z.enum(["waiting", "resolved", "expired", "stopped"]),
+  available: z.boolean(), created_unix_ms: z.number(),
+  expires_unix_ms: z.number().optional(), resolved_unix_ms: z.number().optional(),
+  choice_id: z.string().optional(), outcome: z.enum(["continue", "fail"]).optional(), note: z.string().optional(),
+});
+export type WorkflowDecision = z.infer<typeof WorkflowDecisionSchema>;
+
 export const WorkflowDetailRespSchema = z
   .object({
     ok: z.boolean().optional(),
     workflow: WorkflowSummarySchema.optional(),
     tasks: z.array(WorkflowTaskSchema).optional(),
+    decisions: z.array(WorkflowDecisionSchema).optional(),
     effects: z.array(z.object({
       effect_id: z.string(), task_id: z.string(), request_hash: z.string(),
       mode: z.enum(["guarded", "idempotent"]),

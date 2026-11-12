@@ -477,8 +477,11 @@ int main() {
     query_i64(raw2, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='edge_task_receipts';");
   const int64_t sop_definitions_tbl =
     query_i64(raw2, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='workflow_sop_definitions';");
+  const int64_t workflow_decisions_tbl =
+    query_i64(raw2, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='workflow_decisions';");
   sqlite3_close(raw2);
-  assert(ver == 37);
+  assert(ver == 38);
+  assert(workflow_decisions_tbl == 1);
   assert(sop_definitions_tbl == 1);
   assert(device_receipts_tbl == 1);
   assert(fairq_sessions_tbl == 1);

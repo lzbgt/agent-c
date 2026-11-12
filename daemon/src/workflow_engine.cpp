@@ -16,6 +16,7 @@
 #include "workflow_memory_query.h"
 #include "workflow_http_json.h"
 #include "workflow_host_tool.h"
+#include "workflow_decision.h"
 #include "workflow_edge_invoke.h"
 #include "workflow_agentd_call.h"
 #include "workflow_evidence.h"
@@ -403,6 +404,11 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   const OpenAIClientConfig ocfg = ocfg_from_cfg_(cfg);
   std::string kind;
   if (rr.isObject()) kind = json_get_string(rr, "kind");
+  if (out.isNull() && kind == "decision") {
+    bool yielded = false;
+    out = workflow_decision_step(db_, task, rr["decision"], &yielded);
+    if (yielded) return; // Durable wait holds no worker, attempt or budget grant.
+  }
   if (out.isNull()) {
     auto demand=workflow_budget_demand(rr,cfg,configured_limits);
     if (kind=="edge_invoke") {
@@ -451,7 +457,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     }
   }
   if (!out.isNull()) {
-    // Template expansion failed: do not execute provider calls. `out` is already populated as an error.
+    // Template failure or a terminal process decision already produced a result. No provider call.
   } else if (kind == "avm_capsule") {
     const Json::Value cap = rr.isMember("capsule") && rr["capsule"].isObject() ? rr["capsule"] : Json::Value(Json::nullValue);
     Json::Value avm_out;

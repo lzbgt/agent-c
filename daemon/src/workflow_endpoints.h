@@ -7,6 +7,11 @@
 
 namespace agentd {
 
+void handle_workflow_decision_endpoint(
+  const DaemonConfig& cfg, const CorsConfig& cors_cfg, AgentDb* db,
+  const HttpRequest& req, HttpResponse* resp
+);
+
 void handle_workflow_sops_endpoint(
   const DaemonConfig& cfg, const CorsConfig& cors_cfg, AgentDb* db,
   const HttpRequest& req, HttpResponse* resp

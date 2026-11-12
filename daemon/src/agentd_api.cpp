@@ -1077,6 +1077,10 @@ bool AgentdApi::init(std::string* out_error) {
       handle_workflow_sops_endpoint(self->cfg_store->snapshot(), self->cors_cfg, &self->db, req, resp);
     });
   }
+  impl_->route("POST", "/api/v1/workflow/decision", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    handle_workflow_decision_endpoint(self->cfg_store->snapshot(), self->cors_cfg, &self->db, req, resp);
+  });
   impl_->route("POST", "/api/v1/workflow/submit", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();
