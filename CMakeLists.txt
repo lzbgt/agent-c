@@ -461,6 +461,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/workflow_http_json.cpp
     daemon/src/workflow_host_tool.cpp
     daemon/src/workflow_effect.cpp
+    daemon/src/workflow_model_effect.cpp
     daemon/src/workflow_agentd_call.cpp
     daemon/src/workflow_memory_correlate.cpp
     daemon/src/workflow_memory_query.cpp
@@ -2037,6 +2038,9 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
       if(AGENTD_ENABLE_HTTP)
         add_test(NAME agentd_workflow_sop_registry_smoke COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/workflow_sop_registry_smoke.py $<TARGET_FILE:agentd>)
       endif()
+      add_executable(workflow_model_effect_tests tests/test_workflow_model_effect.cpp)
+      target_link_libraries(workflow_model_effect_tests PRIVATE agentd_lib)
+      add_test(NAME workflow_model_effect_tests COMMAND workflow_model_effect_tests)
       add_executable(workflow_host_tool_tests tests/test_workflow_host_tool.cpp)
       target_link_libraries(workflow_host_tool_tests PRIVATE agentd_lib)
       add_test(NAME workflow_host_tool_tests COMMAND workflow_host_tool_tests)
@@ -2045,6 +2049,7 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
       add_test(NAME workflow_effect_tests COMMAND workflow_effect_tests)
       if(AGENTD_ENABLE_HTTP)
         if(UNIX)
+          add_test(NAME agentd_workflow_model_effect_recovery_smoke COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/workflow_model_effect_recovery_smoke.py $<TARGET_FILE:agentd>)
           add_test(NAME agentd_workflow_host_tool_recovery_smoke COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/workflow_host_tool_recovery_smoke.py $<TARGET_FILE:agentd>)
         endif()
         add_test(NAME agentd_workflow_effect_recovery_smoke COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/workflow_effect_recovery_smoke.py $<TARGET_FILE:agentd>)

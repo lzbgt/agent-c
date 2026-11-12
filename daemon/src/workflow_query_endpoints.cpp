@@ -105,6 +105,7 @@ void handle_workflow_get_endpoint(
       Json::Value effect(Json::objectValue);
       effect["effect_id"] = row.effect_id; effect["task_id"] = row.task_id;
       effect["request_hash"] = row.request_hash; effect["mode"] = row.mode;
+      if (row.effect_id.rfind("mfx_", 0) == 0) effect["boundary"] = "model_run";
       effect["state"] = row.state; effect["revision"] = Json::Int64(row.revision);
       effect["attempt"] = Json::Int64(row.attempt);
       effect["updated_unix_ms"] = Json::Int64(row.updated_unix_ms);

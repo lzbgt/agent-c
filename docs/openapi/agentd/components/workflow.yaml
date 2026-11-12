@@ -2219,6 +2219,10 @@ WorkflowGetResponse:
           task_id: { type: string }
           request_hash: { type: string }
           mode: { type: string, enum: [guarded, idempotent] }
+          boundary:
+            type: string
+            enum: [model_run]
+            description: Whole model-run host-effect guard, not per-tool transcript resume. No HTTP receipt resolver is supported.
           state: { type: string, enum: [prepared, dispatching, completed, unknown] }
           revision: { type: integer, format: int64 }
           attempt: { type: integer, format: int64 }

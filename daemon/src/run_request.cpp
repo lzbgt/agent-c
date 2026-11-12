@@ -13,6 +13,7 @@
 #include "llm_usage.h"
 #include "openai_provider.h"
 #include "policy_hooks.h"
+#include "workflow_model_effect.h"
 #include "provider_util.h"
 #include "sandbox_policy.h"
 #include "session_id_util.h"
@@ -292,7 +293,8 @@ static Json::Value run_request_to_json_impl(
   const std::string& request_body,
   const char* job_id_or_null,
   RunCancelCallback should_cancel_or_null,
-  void* should_cancel_ctx_or_null
+  void* should_cancel_ctx_or_null,
+  WorkflowModelEffect* model_effect
 ) {
   const auto started_steady = std::chrono::steady_clock::now();
   RunRequestParseResult parsed;
@@ -901,6 +903,10 @@ static Json::Value run_request_to_json_impl(
       }
     }
   }
+
+  // Keep policy/approval checks outside this wrapper: admission is committed
+  // immediately before the actual host executor, never while waiting for approval.
+  if (model_effect && tools == "host" && executor.execute) executor = model_effect->wrap(executor);
 
   ApprovalGateCtx approval_gate{};
   const bool approvals_enabled = policy_active && use_tool_loop &&
@@ -1800,6 +1806,7 @@ Json::Value run_request_to_json_internal(
     request_body,
     job_id_or_null,
     nullptr,
+    nullptr,
     nullptr
   );
 }
@@ -1813,7 +1820,8 @@ Json::Value run_request_to_json_internal_cancellable(
   const std::string& request_body,
   const char* job_id_or_null,
   RunCancelCallback should_cancel,
-  void* should_cancel_ctx
+  void* should_cancel_ctx,
+  WorkflowModelEffect* model_effect
 ) {
   return run_request_to_json_impl(
     daemon_cfg,
@@ -1824,7 +1832,8 @@ Json::Value run_request_to_json_internal_cancellable(
     request_body,
     job_id_or_null,
     should_cancel,
-    should_cancel_ctx
+    should_cancel_ctx,
+    model_effect
   );
 }
 

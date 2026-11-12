@@ -491,6 +491,7 @@ class AgentDb {
     std::string receipt_json;
     std::string reconcile_url;
   };
+  bool get_workflow_effect(const std::string& effect_id, WorkflowEffectRow* out, bool* found, std::string* error);
   bool prepare_workflow_effect(const WorkflowEffectRow& definition, WorkflowEffectRow* out, std::string* error);
   bool transition_workflow_effect(const WorkflowEffectRow& expected, const std::string& state,
                                   const std::string& receipt_json, WorkflowEffectRow* out, std::string* error);

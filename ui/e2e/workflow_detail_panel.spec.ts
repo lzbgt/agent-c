@@ -88,8 +88,13 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
             blocker: {kind:"device_outcome_unknown", required_action:"Obtain the original device result, then check its receipt."},
             attempt: 1, max_attempts: 1,
           },
+          {
+            task_id: "task-d", status: "error", depends_on: [],
+            blocker: {kind:"model_run_outcome_unknown", required_action:"Inspect prior model-selected host actions; do not rerun this incomplete run."},
+            attempt: 1, max_attempts: 8,
+          },
         ],
-        effects: [{effect_id:"fx-host",task_id:"task-a",request_hash:"sha256:host",mode:"guarded",state:"unknown",revision:2,attempt:1,updated_unix_ms:1700000100000}, {effect_id: "fx-fixture", task_id: "task-b", request_hash: "sha256:fixture", mode: "guarded", state: "unknown", revision: 2, attempt: 1, updated_unix_ms: 1700000100000}],
+        effects: [{effect_id:"mfx-fixture",task_id:"task-d",request_hash:"sha256:model",mode:"guarded",boundary:"model_run",state:"unknown",revision:2,attempt:1,updated_unix_ms:1700000100000}, {effect_id:"fx-host",task_id:"task-a",request_hash:"sha256:host",mode:"guarded",state:"unknown",revision:2,attempt:1,updated_unix_ms:1700000100000}, {effect_id: "fx-fixture", task_id: "task-b", request_hash: "sha256:fixture", mode: "guarded", state: "unknown", revision: 2, attempt: 1, updated_unix_ms: 1700000100000}],
         workflow_limits: { max_steps: 12 },
         workflow_usage: { steps: 4 },
         workflow_remaining: { steps: 8 },
@@ -115,19 +120,24 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
   await expect(page.getByRole("region", { name: "Needs your attention" })).toContainText("Verify the original device operation and its readback.");
   await expect(page.getByTestId("workflow-detail-panel")).toContainText("Workflow summary");
   await expect(page.getByTestId("workflow-detail-panel")).toContainText("trace-123");
-  await expect(page.getByTestId("workflow-dag-panel")).toContainText("tasks: 3");
+  await expect(page.getByTestId("workflow-dag-panel")).toContainText("tasks: 4");
   await expect(page.getByTestId("workflow-dag-panel")).toContainText("task-a");
   await expect(page.getByTestId("workflow-dag-panel")).toContainText("task-b");
   await expect(page.getByTestId("workflow-effects")).toContainText("Outcome unresolved");
   await expect(page.getByTestId("workflow-effects")).toContainText("Independent tasks can continue");
   await expect(page.getByTestId("workflow-effects")).toContainText("No automatic receipt resolver is available for this tool.");
   await expect(page.getByRole("textbox",{name:"Receipt endpoint for task-a"})).toHaveCount(0);
+  await expect(page.getByRole("textbox",{name:"Receipt endpoint for task-d"})).toHaveCount(0);
+  await expect(page.getByTestId("workflow-effects")).toContainText("Model-run host boundary");
+  await expect(page.getByTestId("workflow-effects")).toContainText("Automatic rerun and transcript resume are disabled");
   await expect(page.getByText("Budgets", { exact: true })).toBeVisible();
   await expect(page.getByText("Workflow result", { exact: true })).toBeVisible();
   await expect(page.getByText("Workflow spec", { exact: true })).toBeVisible();
   await page.setViewportSize({ width: 320, height: 740 });
   await expect(page.getByRole("region", { name: "Needs your attention" })).toBeVisible();
   expect(await page.getByTestId("workflow-blockers").evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  expect(await page.getByTestId("workflow-effects").evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await page.getByTestId("workflow-effects").screenshot({ path: "test-results/workflow-model-effects-mobile.png" });
   await page.getByRole("textbox", { name: "Receipt endpoint for task-b" }).fill("http://127.0.0.1:7777/receipts");
   await page.getByRole("button", { name: "Reconcile outcome", exact: true }).click();
   await expect.poll(() => reconciliation).toEqual({ workflow_id: "wf-detail-1", task_id: "task-b", reconcile_url: "http://127.0.0.1:7777/receipts" });

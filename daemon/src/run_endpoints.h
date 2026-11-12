@@ -14,6 +14,7 @@
 namespace agentd {
 
 using RunCancelCallback = bool (*)(void* ctx);
+class WorkflowModelEffect;
 
 // Internal helper (also used by orchestrate endpoint): converts a run request JSON body into a response JSON.
 Json::Value run_request_to_json_internal(
@@ -37,7 +38,8 @@ Json::Value run_request_to_json_internal_cancellable(
   const std::string& request_body,
   const char* job_id_or_null,
   RunCancelCallback should_cancel,
-  void* should_cancel_ctx
+  void* should_cancel_ctx,
+  WorkflowModelEffect* model_effect = nullptr // server-owned workflow context, never request JSON
 );
 
 void handle_run_endpoint(

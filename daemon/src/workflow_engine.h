@@ -28,7 +28,8 @@ namespace agentd {
 //
 // It is intentionally conservative:
 // - no cross-daemon distributed locking (single agentd process owns the DB)
-// - at-least-once semantics on restart (running tasks are recovered back to queued)
+// - running tasks recover to queued; durable effect boundaries replay receipts
+//   or refuse uncertain redispatch rather than promise exactly-once execution
 class WorkflowEngine {
  public:
   struct Options {

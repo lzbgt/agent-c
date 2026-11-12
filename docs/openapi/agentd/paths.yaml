@@ -2428,7 +2428,7 @@
   post:
     tags: [workflows]
     summary: Requeue receipt reconciliation for one failed uncertain external or device effect
-    description: Preserves effect identity and completed independent tasks. HTTP effects may supply a same-origin receipt endpoint. Device effects use only a matching signed TASK_DONE receipt already recorded by the original node; reconcile_url is rejected and no command is repeated. Caller-supplied results are never accepted. Does not bypass cancellation, deadlines, workflow budgets or the guarded-write protocol.
+    description: Preserves effect identity and completed independent tasks. HTTP effects may supply a same-origin receipt endpoint. Device effects use only a matching signed TASK_DONE receipt already recorded by the original node; reconcile_url is rejected and no command is repeated. Caller-supplied results are never accepted. Deterministic host tools and model-run host-effect guards have no generic resolver and cannot be requeued here. Does not bypass cancellation, deadlines, workflow budgets or the guarded-write protocol.
     requestBody:
       required: true
       content:

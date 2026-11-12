@@ -62,7 +62,8 @@ class H(BaseHTTPRequestHandler):
       req = {}
     messages = req.get("messages") if isinstance(req.get("messages"), list) else []
 
-    if has_tool_result(messages):
+    print("MODEL_REQUEST", flush=True)
+    if has_tool_result(messages) or not req.get("tools"):
       body = {
         "id": "cmpl_stub_2",
         "object": "chat.completion",
@@ -126,7 +127,7 @@ req = {
   "allow_inline_api_keys": True,
   "workflow_limits": {
     # Only enough for a single tool call across the workflow.
-    # The second attempt of A must be blocked if retries are charged correctly.
+    # Host-effect safety refuses any rerun after the completed first attempt.
     "max_tool_calls_total": 1
   },
   "tasks": [
@@ -145,7 +146,7 @@ req = {
         "max_steps": 4,
         "verbose": True
       },
-      # Force an expectation failure so A retries, but without changing provider behavior.
+      # A failed expectation cannot authorize replay of completed host effects.
       "expect":{
         "assistant_text_contains":"NEVER_MATCH"
       }
@@ -191,31 +192,30 @@ if not obj.get("ok"):
   print("workflow get failed", obj, file=sys.stderr)
   raise SystemExit(1)
 w = obj.get("workflow") or {}
-if w.get("status") != "cancelled":
-  print("expected workflow status cancelled (retry should be blocked by budget)", w, file=sys.stderr)
+if w.get("status") != "error" or w.get("cancel_requested"):
+  print("expected scoped expectation error, not owner/workflow cancellation", w, file=sys.stderr)
   raise SystemExit(1)
-if "workflow budget exceeded" not in str(w.get("error","")):
-  print("expected workflow error to mention budget exceeded", w, file=sys.stderr)
+if "expectation failed" not in str(w.get("error","")):
+  print("expected original expectation failure to remain visible", w, file=sys.stderr)
   raise SystemExit(1)
 
 tasks = obj.get("tasks") or []
 by_id = {t.get("task_id"): t for t in tasks if isinstance(t, dict)}
 a = by_id.get("A") or {}
 
-# Second attempt should have been claimed then cancelled; attempt==2 is a strong invariant.
-if int(a.get("attempt", 0) or 0) != 2:
-  print("expected A.attempt == 2 (retry started, then cancelled by budget)", a, file=sys.stderr)
+# No second host attempt is needed, even when a retry was configured.
+if int(a.get("attempt", 0) or 0) != 1:
+  print("expected A.attempt == 1 (completed host run must not be repeated)", a, file=sys.stderr)
   raise SystemExit(1)
-if a.get("status") != "cancelled":
-  print("expected A cancelled by workflow budget", a, file=sys.stderr)
+if a.get("status") != "error":
+  print("expected A to retain its expectation error", a, file=sys.stderr)
   raise SystemExit(1)
 
 res = obj.get("result") or {}
 by_task = res.get("results_by_task") if isinstance(res.get("results_by_task"), dict) else {}
 ar = by_task.get("A") if isinstance(by_task.get("A"), dict) else {}
-if int(ar.get("tool_calls_total", 0) or 0) != 0:
-  # Cancelled attempt should not add any tool calls.
-  print("expected cancelled attempt tool_calls_total == 0", ar, file=sys.stderr)
+if int(ar.get("tool_calls_total", 0) or 0) != 1 or ar.get("retryable") is not False or ar.get("effect", {}).get("state") != "completed":
+  print("expected one charged host call, completed receipt and no automatic retry", ar, file=sys.stderr)
   raise SystemExit(1)
 
 # Cumulative counters should show the charged first attempt.
@@ -223,6 +223,33 @@ if int(a.get("tool_calls_total_cum", 0) or 0) != 1:
   print("expected A.tool_calls_total_cum == 1", a, file=sys.stderr)
   raise SystemExit(1)
 PY
+
+
+# Provider-only retries remain allowed, but the first attempt's model step is
+# still charged. The exhausted grant prevents a second provider request.
+pure_submit="$(curl -fsS --noproxy "*" --max-time 20 \
+  -H "Content-Type: application/json" \
+  -d "{\"allow_inline_api_keys\":true,\"workflow_limits\":{\"max_steps_total\":1},\"tasks\":[{\"task_id\":\"pure\",\"max_attempts\":2,\"request\":{\"prompt\":\"Say OK without tools\",\"tools\":\"none\",\"no_session\":true,\"base_url\":\"${STUB_BASE}\",\"api_key\":\"dummy\",\"model\":\"stub\",\"max_steps\":1},\"expect\":{\"assistant_text_contains\":\"NEVER_MATCH\"}}]}" \
+  "${DAEMON_URL}/api/v1/workflow/submit")"
+pure_id="$(printf '%s' "${pure_submit}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["workflow_id"])')"
+pure_final=""
+for _ in $(seq 1 320); do
+  pure_final="$(curl -fsS --noproxy "*" --max-time 5 "${DAEMON_URL}/api/v1/workflow?workflow_id=${pure_id}&include_tasks=1&include_results=1")"
+  if printf '%s' "${pure_final}" | python3 -c 'import json,sys; w=json.load(sys.stdin)["workflow"]; sys.exit(0 if w["status"] in ("done","error","cancelled") else 1)'; then break; fi
+  sleep 0.05
+done
+printf '%s' "${pure_final}" | python3 -c '
+import json,sys
+obj=json.load(sys.stdin); task=obj["tasks"][0]; workflow=obj["workflow"]
+assert workflow["status"] == "cancelled" and "workflow budget exceeded" in workflow["error"], obj
+assert task["attempt"] == 2 and task["steps_executed_cum"] == 1 and task["tool_calls_total_cum"] == 0, obj
+assert obj["budget_accounting"]["charged"]["max_steps_total"] == 1, obj
+assert not obj.get("effects"), obj
+'
+if [[ "$(grep -c '^MODEL_REQUEST$' "${LOG_DIR}/${NAME}.stub.stdout.log")" != "3" ]]; then
+  echo "expected two original host-model requests and one pure request; no retry reached the provider" >&2
+  exit 1
+fi
 
 echo "ok: ${NAME}"
 

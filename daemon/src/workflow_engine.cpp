@@ -16,6 +16,7 @@
 #include "workflow_memory_query.h"
 #include "workflow_http_json.h"
 #include "workflow_host_tool.h"
+#include "workflow_model_effect.h"
 #include "workflow_decision.h"
 #include "workflow_edge_invoke.h"
 #include "workflow_agentd_call.h"
@@ -404,6 +405,13 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   const OpenAIClientConfig ocfg = ocfg_from_cfg_(cfg);
   std::string kind;
   if (rr.isObject()) kind = json_get_string(rr, "kind");
+  WorkflowEffectContext model_context{db_, wf.workflow_id, task.task_id, [&]() {
+    return workflow_run_should_cancel(&cancel_ctx);
+  }};
+  WorkflowModelEffect model_effect(model_context, task.request_json);
+  // Probe before allocating fresh budget. Pure/deterministic tasks create no
+  // model journal row. Old model receipts and unresolved effects need no calls.
+  if (out.isNull()) out = model_effect.preflight();
   if (out.isNull() && kind == "decision") {
     bool yielded = false;
     out = workflow_decision_step(db_, task, rr["decision"], &yielded);
@@ -1434,8 +1442,10 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
       request_body,
       nullptr,
       workflow_run_should_cancel,
-      &cancel_ctx
+      &cancel_ctx,
+      &model_effect
     );
+    out = model_effect.finish(std::move(out));
   }
 
   // Ensure deterministic tasks (and budget cancellation results) have basic telemetry fields.
@@ -1535,8 +1545,11 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 
   if (cancel_ctx.reason==WorkflowCancelReason::BudgetGrantElapsed) {
     out["ok"]=false;out["cancelled"]=false;
-    out["error"]="workflow attempt elapsed grant exhausted";
-    out["retryable"]=true;out["retry_in_ms"]=Json::Int64(100);
+    // A spent time grant is not permission to repeat an uncertain host effect.
+    if (out["retryable"] != false) {
+      out["error"]="workflow attempt elapsed grant exhausted";
+      out["retryable"]=true;out["retry_in_ms"]=Json::Int64(100);
+    }
   }
 
   if (!budget_token.empty()) {

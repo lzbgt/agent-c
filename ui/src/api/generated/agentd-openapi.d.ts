@@ -4068,7 +4068,7 @@ export interface paths {
         put?: never;
         /**
          * Requeue receipt reconciliation for one failed uncertain external or device effect
-         * @description Preserves effect identity and completed independent tasks. HTTP effects may supply a same-origin receipt endpoint. Device effects use only a matching signed TASK_DONE receipt already recorded by the original node; reconcile_url is rejected and no command is repeated. Caller-supplied results are never accepted. Does not bypass cancellation, deadlines, workflow budgets or the guarded-write protocol.
+         * @description Preserves effect identity and completed independent tasks. HTTP effects may supply a same-origin receipt endpoint. Device effects use only a matching signed TASK_DONE receipt already recorded by the original node; reconcile_url is rejected and no command is repeated. Caller-supplied results are never accepted. Deterministic host tools and model-run host-effect guards have no generic resolver and cannot be requeued here. Does not bypass cancellation, deadlines, workflow budgets or the guarded-write protocol.
          */
         post: {
             parameters: {
@@ -12082,6 +12082,11 @@ export interface components {
                 request_hash: string;
                 /** @enum {string} */
                 mode: "guarded" | "idempotent";
+                /**
+                 * @description Whole model-run host-effect guard, not per-tool transcript resume. No HTTP receipt resolver is supported.
+                 * @enum {string}
+                 */
+                boundary?: "model_run";
                 /** @enum {string} */
                 state: "prepared" | "dispatching" | "completed" | "unknown";
                 /** Format: int64 */

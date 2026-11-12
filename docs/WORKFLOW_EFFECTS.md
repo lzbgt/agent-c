@@ -1,6 +1,6 @@
 # Durable effects and reconciliation
 
-`kind: http_json` POST actions now have a durable effect boundary. The scheduler can recover a task after a crash without blindly repeating its external write. GET remains a read-only HTTP task. Device assignments have a separate atomic identity/admission/outbox boundary and signed original-result receipt resolver described in [DEVICE_ASSIGNMENTS.md](DEVICE_ASSIGNMENTS.md). Device recovery shares the reconcile endpoint but accepts no URL or caller-supplied outcome. Explicit deterministic `host_tool` actions have the guarded journal boundary below. Tools chosen inside an LLM turn and capsules do not acquire that guarantee merely by belonging to the same workflow.
+`kind: http_json` POST actions now have a durable effect boundary. The scheduler can recover a task after a crash without blindly repeating its external write. GET remains a read-only HTTP task. Device assignments have a separate atomic identity/admission/outbox boundary and signed original-result receipt resolver described in [DEVICE_ASSIGNMENTS.md](DEVICE_ASSIGNMENTS.md). Device recovery shares the reconcile endpoint but accepts no URL or caller-supplied outcome. Explicit deterministic `host_tool` actions have the guarded journal boundary below. Ordinary workflow model runs with host tools now have a conservative whole-run guard described below. Capsules and delegated model sub-attempts do not acquire that guarantee merely by belonging to the same workflow.
 
 
 ## Deterministic host tools
@@ -30,9 +30,27 @@ Crash before admission can resume. Crash after admission without a saved termina
 
 The normal workflow reservation/settlement ledger remains active. Each actual invocation reports one tool call and zero provider tokens; receipt replay reports zero tool calls. Interrupted grants retain their conservative charge. The configured timeout (1–300000 ms) and workflow elapsed grant cancel cooperative tools and bound process execution; non-cooperative adapters can still overrun and are not certified strict meters. Output capture is capped, not silently retried.
 
-This protects explicit deterministic `host_tool` actions, including SOP actions. It does **not** journal arbitrary tools chosen inside an LLM turn, certify all subprocess descendants have stopped, prove a business transaction committed, or guarantee exactly-once physical/external execution. A new workflow/task identity is a new action, not a safe retry of an uncertain old one.
+This protects explicit deterministic `host_tool` actions, including SOP actions. The separate model-run boundary below covers ordinary model-selected host calls conservatively. Neither boundary certifies all subprocess descendants have stopped, proves a business transaction committed, or guarantees exactly-once physical/external execution. A new workflow/task identity is a new action, not a safe retry of an uncertain old one.
 
 Verification: `workflow_host_tool_tests` covers identity conflicts, policy/scope/argument limits, approval cancellation, cached receipts without fresh approval, malformed/interrupted results and capacity/owner stops. On POSIX hosts `agentd_workflow_host_tool_recovery_smoke` kills real daemons before dispatch, after a real file write, and after durable receipt capture. It also checks nonzero exits, timeout, budget admission, preserved cancellation, SOP invocation and one-worker independent progress.
+
+## Model-selected host tools
+
+Ordinary model workflow tasks (including model actions compiled from an SOP) now have a conservative **whole-run** effect boundary when their effective toolset is `host`. No new request flag, claimed idempotency key or client-supplied workflow identity is accepted. Direct chat/CLI runs, delegate sub-attempts, capsules and provider-native tools are not covered by this boundary.
+
+The runtime probes the stable workflow/task record before reserving fresh budget. Provider-only failures remain retryable and pure tasks create no model effect row. Immediately before the first actual host-tool invocation, after existing policy and approval checks, it persists an admitted `dispatching` boundary. This includes read-only calls conservatively. The boundary does not alter the existing model-run filesystem scope, sandbox settings, tool registry or extension permissions. Cancellation and deadlines still win.
+
+A successfully finished model run saves a bounded complete run receipt. Recovery reuses that answer and its original event evidence without calling the provider or tools, asking for fresh execution approval, or needing another provider/tool budget grant. The replay reports zero new usage; historical usage appears in `result.effect.original_usage`. The authoritative `budget_accounting.charged`/uncertain ledger retains charges for grants interrupted by a crash, even when legacy task cumulative counters could not be saved.
+
+If the daemon dies after admission, a provider fails after a host call, a tool times out or returns an invalid/unbounded result, or receipt persistence fails, the task returns `needs_input: true`, `retryable: false` and a `model_run_outcome_unknown` blocker. Later calls in the same run are refused after an uncertain tool result. A time-grant expiry cannot turn that refusal back into permission to retry. Independent work can continue within remaining budgets; dependent work does not advance.
+
+Host/extension results at this boundary must be bounded JSON objects with a boolean `ok` field (2 MiB maximum). Process timeout/cancellation and negative exit status are uncertain. A known nonzero exit remains available to the model as a failed tool result; it does not by itself authorize a workflow retry. Complete run receipts are bounded to 8 MiB. No credentials are added to the identity record; the persisted source request is hashed before dynamic budget clamps. Existing workflow run evidence may contain tool inputs/outputs, so use host credential references rather than literal secrets.
+
+The polling effect metadata marks this boundary as `boundary: model_run`. The operator UI identifies an incomplete model run and intentionally provides no HTTP receipt-URL form. Inspect the original run, tool receipts and downstream effects. The reconcile endpoint does not accept invented model-run receipts. A replacement workflow/task identity would be a new action, **not** a safe retry.
+
+This is not per-tool transcript checkpointing, automatic model continuation, exactly-once physical execution, proof of business commit, or certification that every subprocess descendant has stopped. It cannot retroactively protect calls executed before the guard existed. Trusted host receipt adapters and durable provider/tool transcript replay remain roadmap work.
+
+Verification: `workflow_model_effect_tests` covers lazy intent, stable identity, cached usage, interrupted/malformed receipts, stale-runner CAS, failed admission/persistence, capacity and stop fences. `agentd_workflow_model_effect_recovery_smoke` uses a local stub provider and real host subprocesses, kills/restarts daemons around admission/receipt/task settlement, verifies provider-only retry, exact-budget recovery without fresh approval, configured deny/approval gates, multiple calls, timeout, independent progress, cancellation and deadlines.
 
 ## Default HTTP contract
 

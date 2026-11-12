@@ -27,6 +27,33 @@ void read_row(sqlite3_stmt* stmt, AgentDb::WorkflowEffectRow* out) {
 }
 #endif
 
+bool AgentDb::get_workflow_effect(const std::string& effect_id, WorkflowEffectRow* out, bool* found, std::string* error) {
+  if (error) error->clear();
+  if (found) *found = false;
+  if (out) *out = WorkflowEffectRow{};
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)effect_id;
+  if (error) *error = "SQLite support required";
+  return false;
+#else
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_ || !out || !found || effect_id.empty()) {
+    if (error) *error = "invalid effect lookup or unavailable database";
+    return false;
+  }
+  sqlite3_stmt* raw = nullptr;
+  const auto sql = std::string("SELECT ") + columns + " FROM workflow_effects WHERE effect_id=?";
+  if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &raw, nullptr) != SQLITE_OK) { if (error) *error = agent_db_sqlite_err(db_); return false; }
+  Statement stmt(raw, sqlite3_finalize);
+  if (!agent_db_bind_text(raw, 1, effect_id)) { if (error) *error = agent_db_sqlite_err(db_); return false; }
+  const int rc = sqlite3_step(raw);
+  if (rc == SQLITE_ROW) { read_row(raw, out); *found = true; return true; }
+  if (rc == SQLITE_DONE) return true;
+  if (error) *error = agent_db_sqlite_err(db_);
+  return false;
+#endif
+}
+
 bool AgentDb::prepare_workflow_effect(const WorkflowEffectRow& def, WorkflowEffectRow* out, std::string* error) {
   if (error) error->clear();
 #if !defined(AGENT_HAVE_SQLITE3)
