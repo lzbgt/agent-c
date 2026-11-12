@@ -107,7 +107,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 36;
+  const int kSchemaVersion = 37;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -979,6 +979,23 @@ CREATE TABLE IF NOT EXISTS edge_task_receipts(
 )SQL";
     if (!exec_locked(schema_v36, out_error)) return false;
     cur_ver = 36;
+  }
+
+  if (cur_ver < 37) {
+    const char* schema_v37 = R"SQL(
+CREATE TABLE IF NOT EXISTS workflow_sop_definitions(
+  registry_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  definition_id TEXT NOT NULL,
+  version TEXT NOT NULL,
+  definition_hash TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  sop_json TEXT NOT NULL,
+  created_unix_ms INTEGER NOT NULL,
+  UNIQUE(definition_id, version)
+);
+)SQL";
+    if (!exec_locked(schema_v37, out_error)) return false;
+    cur_ver = 37;
   }
 
   // Record schema version.

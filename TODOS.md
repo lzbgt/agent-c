@@ -23,7 +23,8 @@ The authoritative capability/verification snapshot is [docs/CURRENT_SNAPSHOT.md]
 - [x] Deterministic `host_tool` workflow/SOP actions: guarded intent/result capture, no blind retry after interruption, existing policy/approvals and budget accounting, saved-result recovery and scoped UI uncertainty.
 - [ ] P0: extend durable effects into model-driven host tool loops, add trusted host receipt resolvers and additional device adapters; add strict provider/adapter resource metering.
 - [ ] P0: connect goal/requirement/blocker authority to the broker and event-driven wakeup; preserve explicit stops.
-- [ ] P1: immutable SOP registry, durable signals/timers and explicit process decisions/compensation.
+- [x] Immutable daemon-local SOP library: save/list/read exact versions, canonical conflict detection, hash-pinned run snapshots, restart integrity and composer save/use flow.
+- [ ] P1: durable signals/timers, explicit process decisions/compensation, and active-run version migration.
 - [ ] P1: instance-scoped pollable core ports and board-level resource/power-loss evidence.
 - [ ] P1: provider metadata/checkpoint contracts, mid-turn steering and remaining legacy CLI decomposition.
 - [ ] P1: subject-oriented SOP stage/action authoring; keep raw execution configuration behind advanced controls.

@@ -1328,6 +1328,11 @@ struct AgentdService::Impl {
     });
 
     // Workflow endpoints.
+    for (const auto* method : {"GET", "POST"}) {
+      server.handle(method, "/api/v1/workflow/sops", [this](const HttpRequest& req, HttpResponse* resp) {
+        handle_workflow_sops_endpoint(cfg_store->snapshot(), cors_cfg, &db, req, resp);
+      });
+    }
     server.handle("POST", "/api/v1/workflow/submit", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_workflow_submit_endpoint(cur, cors_cfg, &db, req, resp);

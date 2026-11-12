@@ -3512,6 +3512,158 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workflow/sops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List saved SOP version metadata or read one exact definition
+         * @description Authenticated daemon-local append-only library. Supply both id and version for an exact read; otherwise pages are newest-first and omit source bodies.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    id?: string;
+                    version?: string;
+                    limit?: number;
+                    before_id?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Saved version or metadata page */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowSopResponse"];
+                    };
+                };
+                /** @description Invalid query */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Exact version not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Storage or definition integrity error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Database unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Save an immutable SOP version without executing it
+         * @description Up to 128 KiB request. Structural compilation is validated now; task payloads, permissions and admission are validated on run submission. Identical canonical content is idempotent; changed content at an existing id/version returns 409. Known inline credential fields are rejected; use server-side references. There is no overwrite or delete endpoint.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        sop: components["schemas"]["WorkflowSop"];
+                    };
+                };
+            };
+            responses: {
+                /** @description Identical version already saved */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowSopResponse"];
+                    };
+                };
+                /** @description New version saved */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowSopResponse"];
+                    };
+                };
+                /** @description Invalid definition */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Immutable version conflict; save a new version */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Storage or definition integrity error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Database unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workflow/submit": {
         parameters: {
             query?: never;
@@ -11452,8 +11604,39 @@ export interface components {
                 actions: components["schemas"]["WorkflowTaskSpec"][];
             }[];
         };
-        /** @description Supply exactly one of tasks or sop. SOP compilation precedes ordinary task validation, policy checks and admission control. The stored spec includes the definition hash and stage-to-task mapping. */
+        WorkflowSopReference: {
+            id: string;
+            version: string;
+            /** @description Optional expected canonical hash. A mismatch returns 409. Always populated by the server in the persisted run spec. */
+            definition_hash?: string;
+        };
+        WorkflowSopDefinition: {
+            /** Format: int64 */
+            registry_id: number;
+            id: string;
+            version: string;
+            definition_hash: string;
+            title: string;
+            /** Format: int64 */
+            created_unix_ms: number;
+            /** @description Included only on exact-version reads and save responses, never in list pages. */
+            sop?: components["schemas"]["WorkflowSop"];
+        };
+        WorkflowSopResponse: {
+            ok: boolean;
+            error?: string;
+            created?: boolean;
+            definition?: components["schemas"]["WorkflowSopDefinition"];
+            definitions?: components["schemas"]["WorkflowSopDefinition"][];
+            /**
+             * Format: int64
+             * @description Exclusive keyset cursor for the next older page. Omitted at the end.
+             */
+            next_before_id?: number;
+        };
+        /** @description Supply exactly one of tasks, inline sop, or an exact saved sop_ref. The selected definition is copied into the run snapshot. SOP compilation precedes ordinary task validation, policy checks and admission control; saving a definition grants no execution authority. */
         WorkflowSubmitRequest: {
+            sop_ref?: components["schemas"]["WorkflowSopReference"];
             sop?: components["schemas"]["WorkflowSop"];
             workflow_id?: string;
             trace_id?: components["schemas"]["TraceID"];
@@ -11490,7 +11673,7 @@ export interface components {
             };
             workflow_limits?: components["schemas"]["WorkflowLimits"];
             tasks?: components["schemas"]["WorkflowTaskSpec"][];
-        } & (unknown | unknown);
+        } & (unknown | unknown | unknown);
         RuntimeSkillSummary: {
             skill_id: string;
             version: string;

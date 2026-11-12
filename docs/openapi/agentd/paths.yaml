@@ -2136,6 +2136,66 @@
             schema:
               $ref: "#/components/schemas/MemoryQueryResponse"
 
+/api/v1/workflow/sops:
+  get:
+    tags: [workflows]
+    summary: List saved SOP version metadata or read one exact definition
+    description: Authenticated daemon-local append-only library. Supply both id and version for an exact read; otherwise pages are newest-first and omit source bodies.
+    parameters:
+      - in: query
+        name: id
+        schema: { type: string }
+      - in: query
+        name: version
+        schema: { type: string }
+      - in: query
+        name: limit
+        schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+      - in: query
+        name: before_id
+        schema: { type: integer, format: int64, minimum: 1 }
+    responses:
+      "200":
+        description: Saved version or metadata page
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkflowSopResponse" }
+      "400": { description: Invalid query }
+      "401": { description: Authentication required }
+      "404": { description: Exact version not found }
+      "500": { description: Storage or definition integrity error }
+      "503": { description: Database unavailable }
+  post:
+    tags: [workflows]
+    summary: Save an immutable SOP version without executing it
+    description: Up to 128 KiB request. Structural compilation is validated now; task payloads, permissions and admission are validated on run submission. Identical canonical content is idempotent; changed content at an existing id/version returns 409. Known inline credential fields are rejected; use server-side references. There is no overwrite or delete endpoint.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [sop]
+            properties:
+              sop: { $ref: "#/components/schemas/WorkflowSop" }
+    responses:
+      "201":
+        description: New version saved
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkflowSopResponse" }
+      "200":
+        description: Identical version already saved
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkflowSopResponse" }
+      "400": { description: Invalid definition, request size or inline credentials }
+      "401": { description: Authentication required }
+      "409": { description: Immutable version conflict; save a new version }
+      "500": { description: Storage or definition integrity error }
+      "503": { description: Database unavailable }
+
 /api/v1/workflow/submit:
   post:
     tags: [workflows]

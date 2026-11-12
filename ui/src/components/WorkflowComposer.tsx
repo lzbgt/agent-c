@@ -1,6 +1,7 @@
 import React from "react";
 
 import WorkflowComposerBody from "./workflowComposer/WorkflowComposerBody";
+import WorkflowSopLibrary from "./workflowComposer/WorkflowSopLibrary";
 import WorkflowComposerRuntimeSkillSection from "./workflowComposer/WorkflowComposerRuntimeSkillSection";
 import WorkflowComposerStatus from "./workflowComposer/WorkflowComposerStatus";
 import WorkflowComposerToolbar from "./workflowComposer/WorkflowComposerToolbar";
@@ -22,6 +23,18 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
         onApplyTemplate={state.applyTemplate}
         onSubmitDemoAndWait={state.submitDemoAndWait}
         onFormatJson={state.formatJson}
+      />
+
+      <WorkflowSopLibrary
+        key={`${props.baseUrl}::${props.authKey || ""}`}
+        baseUrl={props.baseUrl}
+        auth={props.auth}
+        composerJson={state.composerMode === "json" ? state.composerJson : ""}
+        disabled={state.submitBusy}
+        onUse={(sop_ref) => {
+          state.setComposerMode("json");
+          state.setComposerJson(JSON.stringify({ sop_ref }, null, 2));
+        }}
       />
 
       <details className="mt-4 text-xs text-white/60">

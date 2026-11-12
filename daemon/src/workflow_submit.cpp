@@ -1,5 +1,6 @@
 #include "workflow_submit.h"
 #include "workflow_sop.h"
+#include "workflow_sop_registry.h"
 
 #include "edge_util.h"
 #include "http_util.h"
@@ -61,6 +62,8 @@ void workflow_submit_handle(
   HttpResponse* resp
 ) {
   std::string sop_error;
+  const int sop_status = workflow_resolve_sop_reference(db_or_null, &args, &sop_error);
+  if (sop_status) { resp->status = sop_status; resp->body = json_error_body(sop_error); return; }
   if (!workflow_compile_sop(&args, &sop_error)) {
     resp->status = 400;
     resp->body = json_error_body(sop_error);

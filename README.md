@@ -24,13 +24,13 @@ Messages have one renderer: expanding Activity & details never repeats the chat.
 
 The composer focuses on **Attach** and **Send**. Settings leads with model, capabilities and conversation; technical controls and conversation management are collapsed by default. Desktop, phone and tablet layouts share these defaults. [UI design](docs/UI_DESIGN.md) records the attention hierarchy and verification contract.
 
-Workflows has separate **Runs**, **Create workflow** and **Schedules** sections. Its SOP template defines ordered stages and sequential or parallel actions; JSON and graph authoring remain available. [SOP guide](docs/SOP_WORKFLOWS.md)
+Workflows has separate **Runs**, **Create workflow** and **Schedules** sections. Its SOP template defines ordered stages and sequential or parallel actions. The saved SOP library persists immutable versions and loads exact hash-pinned references without starting a run; JSON and graph authoring remain available. [SOP guide](docs/SOP_WORKFLOWS.md)
 
 ## What is implemented
 
 - **Portable core:** C tool execution with bounded budgets and cancellation; hosts can continue a premature final response within the original limits.
 - **Autonomous work state:** a SQLite requirement/blocker ledger shared by `work_state` and `agent work`, with dependency validation, revision checks and evidence-gated transitions.
-- **Durable workflows:** SOP compilation, definition hashes, task recovery, scheduling, dataflow and inspectable evidence.
+- **Durable workflows:** immutable saved SOP versions, hash-pinned run snapshots, SOP compilation, task recovery, scheduling, dataflow and inspectable evidence.
 - **Deterministic host actions:** workflow/SOP tools run under existing policy with durable intent and saved-result replay. Interrupted effects are not blindly repeated; independent work continues. [Host action contract](docs/WORKFLOW_EFFECTS.md#deterministic-host-tools)
 - **HTTP effects:** stable effect identity, intent/receipt journaling and reconciliation for guarded writes. Independent branches continue when another branch needs recovery. [Effect contract](docs/WORKFLOW_EFFECTS.md)
 - **Device dispatch:** immutable operation/node identity and transactional assignment, capacity and outbox publication prevent retry-driven command duplication. Uncertain outcomes expose a scoped human action while independent work continues. [Device contract](docs/DEVICE_ASSIGNMENTS.md)
@@ -89,7 +89,7 @@ cd ..
 tools/verify_current_snapshot.sh
 ```
 
-The current lane covers **25 native/CLI/API checks**, Go broker/gateway tests, **54 browser checks**, generated OpenAPI types and the production UI build. Browser cases include greeting clarity, streaming handoff, repeated identical turns, IME-safe sends, hidden metadata, subject-oriented settings, authorized browser effects and responsive workflow tools.
+The current lane covers **27 native/CLI/API checks**, Go broker/gateway tests, **59 browser checks**, generated OpenAPI types and the production UI build. Browser cases include greeting clarity, streaming handoff, repeated identical turns, IME-safe sends, hidden metadata, subject-oriented settings, authorized browser effects and responsive workflow tools.
 
 For the embedded-safe build:
 

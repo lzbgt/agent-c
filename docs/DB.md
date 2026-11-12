@@ -13,6 +13,7 @@ When built with SQLite support (`AGENT_HAVE_SQLITE3`), `agentd` stores its canon
 - durable scene snapshots (`scene_states`)
 - durable async job metadata (`jobs`)
 - durable workflows (`workflows`, `workflow_tasks`, `workflow_events`)
+- immutable saved SOP versions (`workflow_sop_definitions`, schema v37), unique by `(definition_id, version)` with canonical source hash and keyset-paged metadata. Exact versions are copied into submitted workflow snapshots. Definitions are not credentials storage; known inline credential fields are rejected. See [SOP_WORKFLOWS.md](SOP_WORKFLOWS.md).
 - immutable signed device receipts (`edge_task_receipts`, schema v36), bound to original assignment identity/payload and separate from platform timeout/cancellation. Receipt result and attestation data follow the same sensitive-data retention/erase policy as device tasks; deleting the parent assignment cascades its receipt. See [DEVICE_ASSIGNMENTS.md](DEVICE_ASSIGNMENTS.md).
 
 This is convenient for debugging problems like:
@@ -101,7 +102,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v36)
+## Schema (v37)
 
 ### `edge_task_receipts`
 

@@ -201,6 +201,19 @@ int main() {
   const bool ok_status = resp.find("200") != std::string::npos;
   const bool ok_body = resp.find("\"ok\":true") != std::string::npos;
 
+  // Keep the embedded HTTP service's SOP routes aligned with standalone/API entrypoints.
+  std::string sop_response;
+  if (!http_get("127.0.0.1", port, "/api/v1/workflow/sops", &sop_response) ||
+      sop_response.find("200") == std::string::npos || sop_response.find("\"definitions\":[") == std::string::npos) {
+    svc.stop(); std::cerr << "service SOP list route failed\n"; return 20;
+  }
+  const std::string sop_body = R"({"sop":{"schema":"agentd.sop.v1","id":"service-test","version":"1","stages":[{"id":"s","actions":[{"task_id":"a","kind":"delay","delay_ms":0}]}]}})";
+  if (!http_post("127.0.0.1", port, "/api/v1/workflow/sops", sop_body, &sop_response) ||
+      (sop_response.find("201") == std::string::npos && sop_response.find("200") == std::string::npos) ||
+      sop_response.find("\"id\":\"service-test\"") == std::string::npos || sop_response.find("\"ok\":true") == std::string::npos) {
+    svc.stop(); std::cerr << "service SOP save route failed\n"; return 21;
+  }
+
   std::string resp_post;
   const std::string body =
     std::string("{\"host_path\":\"") + allow_root_str + "\",\"container_path\":\"/workspace/extra/tmp\"}";

@@ -475,8 +475,11 @@ int main() {
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('approval_requests') WHERE name='require_distinct_roles';");
   const int64_t device_receipts_tbl =
     query_i64(raw2, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='edge_task_receipts';");
+  const int64_t sop_definitions_tbl =
+    query_i64(raw2, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='workflow_sop_definitions';");
   sqlite3_close(raw2);
-  assert(ver == 36);
+  assert(ver == 37);
+  assert(sop_definitions_tbl == 1);
   assert(device_receipts_tbl == 1);
   assert(fairq_sessions_tbl == 1);
   assert(approval_requests_tbl == 1);

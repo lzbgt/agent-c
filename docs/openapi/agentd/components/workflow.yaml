@@ -1921,13 +1921,59 @@ WorkflowSop:
             items:
               $ref: '#/components/schemas/WorkflowTaskSpec'
 
+WorkflowSopReference:
+  type: object
+  additionalProperties: false
+  required: [id, version]
+  properties:
+    id: { type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_.:-]+$' }
+    version: { type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_.:-]+$' }
+    definition_hash:
+      type: string
+      description: Optional expected canonical hash. A mismatch returns 409. Always populated by the server in the persisted run spec.
+      minLength: 1
+      maxLength: 96
+
+WorkflowSopDefinition:
+  type: object
+  required: [registry_id, id, version, definition_hash, title, created_unix_ms]
+  properties:
+    registry_id: { type: integer, format: int64 }
+    id: { type: string }
+    version: { type: string }
+    definition_hash: { type: string }
+    title: { type: string }
+    created_unix_ms: { type: integer, format: int64 }
+    sop:
+      $ref: '#/components/schemas/WorkflowSop'
+      description: Included only on exact-version reads and save responses, never in list pages.
+
+WorkflowSopResponse:
+  type: object
+  required: [ok]
+  properties:
+    ok: { type: boolean }
+    error: { type: string }
+    created: { type: boolean }
+    definition: { $ref: '#/components/schemas/WorkflowSopDefinition' }
+    definitions:
+      type: array
+      items: { $ref: '#/components/schemas/WorkflowSopDefinition' }
+    next_before_id:
+      type: integer
+      format: int64
+      description: Exclusive keyset cursor for the next older page. Omitted at the end.
+
 WorkflowSubmitRequest:
   type: object
-  description: Supply exactly one of tasks or sop. SOP compilation precedes ordinary task validation, policy checks and admission control. The stored spec includes the definition hash and stage-to-task mapping.
+  description: Supply exactly one of tasks, inline sop, or an exact saved sop_ref. The selected definition is copied into the run snapshot. SOP compilation precedes ordinary task validation, policy checks and admission control; saving a definition grants no execution authority.
   oneOf:
     - required: [tasks]
     - required: [sop]
+    - required: [sop_ref]
   properties:
+    sop_ref:
+      $ref: '#/components/schemas/WorkflowSopReference'
     sop:
       $ref: '#/components/schemas/WorkflowSop'
     workflow_id: { type: string }

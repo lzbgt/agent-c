@@ -1044,6 +1044,18 @@ class AgentDb {
   );
 
 
+  // Append-only named SOP versions. create returns the original row on an existing
+  // identity; the caller must compare definition_hash before reporting a save.
+  struct WorkflowSopRow {
+    int64_t registry_id = 0;
+    std::string definition_id, version, definition_hash, title, sop_json;
+    int64_t created_unix_ms = 0;
+  };
+  bool create_workflow_sop(const WorkflowSopRow& def, WorkflowSopRow* out, bool* created, std::string* error);
+  bool get_workflow_sop(const std::string& id, const std::string& version, WorkflowSopRow* out, std::string* error);
+  // Newest first, exclusive before_id (0 starts at newest). Metadata only.
+  bool list_workflow_sops(int64_t before_id, size_t limit, std::vector<WorkflowSopRow>* out, std::string* error);
+
  private:
   bool ensure_schema_locked(std::string* out_error);
   bool exec_locked(const std::string& sql, std::string* out_error);

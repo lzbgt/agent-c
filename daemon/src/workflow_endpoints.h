@@ -7,6 +7,12 @@
 
 namespace agentd {
 
+void handle_workflow_sops_endpoint(
+  const DaemonConfig& cfg, const CorsConfig& cors_cfg, AgentDb* db,
+  const HttpRequest& req, HttpResponse* resp
+);
+
+
 // POST /api/v1/workflow/submit
 void handle_workflow_submit_endpoint(
   const DaemonConfig& cfg,
