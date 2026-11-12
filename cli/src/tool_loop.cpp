@@ -449,6 +449,7 @@ bool run_tool_loop(
   pctx.max_event_chars = options.max_capture_bytes;
 
   agent_tool_provider_t provider = openai_make_tool_provider(&pctx);
+  if (options.provider_decorator) provider = options.provider_decorator(options.provider_decorator_ctx, provider, &pctx);
 
   std::vector<agent_tool_call_limit_t> core_tool_call_limits;
   core_tool_call_limits.reserve(options.tool_call_limits.size());

@@ -22,7 +22,8 @@ The authoritative capability/verification snapshot is [docs/CURRENT_SNAPSHOT.md]
 - [x] Signed UM-BMP device receipt resolver: immutable original-result receipts, late-outcome recovery, no redispatch, preserved owner stops and API/WebUI control.
 - [x] Deterministic `host_tool` workflow/SOP actions: guarded intent/result capture, no blind retry after interruption, existing policy/approvals and budget accounting, saved-result recovery and scoped UI uncertainty.
 - [x] Conservative whole-run guard for ordinary workflow/SOP model-selected host tools: policy-first lazy admission, no blind retry after incomplete runs, saved-answer recovery before fresh grants, scoped operator blocker and real daemon crash tests.
-- [ ] P0: durable provider/tool transcript replay for automatic model continuation and delegated sub-attempts, trusted host receipt resolvers and additional device adapters; strict provider/adapter resource metering.
+- [x] Bounded durable provider/tool transcript continuation for ephemeral ordinary host-model workflow/SOP actions: exact replay of saved model decisions/tool receipts, zero-cost cached calls, current-policy fresh dispatch and safe provider-failure/crash recovery. Unreceipted calls remain blocked.
+- [ ] P0: extend verified transcript continuation to session-backed runs, provider-specific vision prefetch and delegated sub-attempts; trusted host receipt resolvers and additional device adapters; strict provider/adapter resource metering.
 - [ ] P0: connect goal/requirement/blocker authority to the broker and event-driven wakeup; preserve explicit stops.
 - [x] Immutable daemon-local SOP library: save/list/read exact versions, canonical conflict detection, hash-pinned run snapshots, restart integrity and composer save/use flow.
 - [x] Durable explicit process decisions: configured continue/fail choices, worker-free waits, immutable idempotent answers, expiry/cancellation, pinned-SOP integration and operator UI.

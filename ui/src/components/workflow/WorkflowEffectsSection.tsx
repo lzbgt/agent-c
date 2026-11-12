@@ -45,13 +45,15 @@ export default function WorkflowEffectsSection(props: Props) {
         const task = props.tasks.find((item) => item.task_id === effect.task_id);
         const hostTool = task?.blocker?.kind === "host_tool_outcome_unknown";
         const modelRun = effect.boundary === "model_run" || task?.blocker?.kind === "model_run_outcome_unknown";
-        const unresolved = effect.state === "unknown" || (effect.state === "dispatching" && task?.status === "error");
+        const savedProgress = modelRun && effect.state === "dispatching" && effect.resume_available === true && task?.status === "error";
+        const unresolved = !savedProgress && (effect.state === "unknown" || (effect.state === "dispatching" && task?.status === "error"));
         return <div key={effect.effect_id} className={`rounded-md border p-3 ${unresolved ? "border-amber-300/20 bg-amber-300/5" : "border-white/10 bg-white/[.02]"}`}>
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
             <span className="font-medium text-white/80">{effect.task_id}</span>
-            <span className={unresolved ? "text-amber-200" : "text-emerald-200"}>{unresolved ? "Outcome unresolved" : effect.state === "completed" ? "Receipt saved" : effect.state === "prepared" ? "Prepared" : "Dispatch admitted"}</span>
+            <span className={unresolved ? "text-amber-200" : "text-emerald-200"}>{savedProgress ? "Verified progress saved" : unresolved ? "Outcome unresolved" : effect.state === "completed" ? "Receipt saved" : effect.state === "prepared" ? "Prepared" : "Dispatch admitted"}</span>
           </div>
           <div className="mt-1 text-[11px] text-white/50">{modelRun ? "Model-run host boundary" : effect.mode === "idempotent" ? "Destination deduplication" : "Guarded write"} · dispatch {effect.attempt}</div>
+          {savedProgress ? <p className="mt-2 text-[11px] leading-relaxed text-white/70">The provider/tool transcript is saved. Inspect the provider error and remaining budget; automatic attempts have stopped. Replayed receipts do not repeat host actions. No manual resume control is available.</p> : null}
           {unresolved ? <p className="mt-2 text-[11px] leading-relaxed text-amber-100/80">{modelRun ? "Inspect prior model-selected host actions. Automatic rerun and transcript resume are disabled for this incomplete run." : hostTool ? "Inspect the original host operation before repeating it. No automatic receipt resolver is available for this tool." : "Verify the destination receipt before repeating this write. Automatic reconciliation follows the task retry policy when a receipt endpoint is configured."}</p> : null}
           {unresolved && !hostTool && !modelRun && task?.status === "error" && props.controls ? <form className="mt-3 flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); void reconcile(effect.task_id); }}>
             <input aria-label={`Receipt endpoint for ${effect.task_id}`} type="url" value={urls[effect.task_id] ?? ""} onChange={(event) => setUrls((prev) => ({ ...prev, [effect.task_id]: event.target.value }))} placeholder="Receipt endpoint (optional if configured)" className="min-w-0 flex-1 rounded border border-white/10 bg-black/20 px-2 py-1 text-xs" />

@@ -83,6 +83,7 @@ export const WorkflowDetailRespSchema = z
       effect_id: z.string(), task_id: z.string(), request_hash: z.string(),
       mode: z.enum(["guarded", "idempotent"]),
       boundary: z.literal("model_run").optional(),
+      resume_available: z.boolean().optional(),
       state: z.enum(["prepared", "dispatching", "completed", "unknown"]),
       revision: z.number(), attempt: z.number(), updated_unix_ms: z.number(),
     })).optional(),

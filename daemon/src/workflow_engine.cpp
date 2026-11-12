@@ -427,6 +427,9 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     }
     AgentDb::WorkflowBudgetAmounts minimum{};
     for (int i=0;i<4;i++) minimum[i]=demand[i]>0 ? 1:0;
+    // A verified transcript may finish by replay alone or need only a provider
+    // response. Zero new-call grants are enforced at the adapter frontier.
+    if (model_effect.has_checkpoint()) { minimum[0]=0; minimum[1]=0; }
     std::string error;
     if (!db_->reserve_workflow_budget(wf_latest,task,configured_limits,demand,minimum,&budget_grant,&error)) {
       // No grant means no provider/tool execution and no authority to settle
@@ -1423,6 +1426,12 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   } else {
     WorkflowRunBudgetClampInput run_clamp;
     run_clamp.limits = wf_limits;
+    model_effect.set_fresh_budget(wf_limits.max_tool_calls_total > 0, wf_tool_calls_remaining,
+                                 wf_limits.max_steps_total > 0, wf_steps_remaining);
+    if (model_effect.has_checkpoint()) {
+      if (wf_tool_calls_remaining <= 0) run_clamp.limits.max_tool_calls_total = 0;
+      if (wf_steps_remaining <= 0) run_clamp.limits.max_steps_total = 0;
+    }
     run_clamp.tool_calls_remaining = wf_tool_calls_remaining;
     run_clamp.steps_remaining = wf_steps_remaining;
     run_clamp.elapsed_ms_remaining = wf_elapsed_ms_remaining;

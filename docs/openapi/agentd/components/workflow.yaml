@@ -2222,7 +2222,10 @@ WorkflowGetResponse:
           boundary:
             type: string
             enum: [model_run]
-            description: Whole model-run host-effect guard, not per-tool transcript resume. No HTTP receipt resolver is supported.
+            description: Model-run host-effect boundary. Ephemeral host-model tasks without vision prefetch support bounded verified transcript continuation; uncertain calls and legacy/session-backed runs remain guarded. No HTTP receipt resolver is supported.
+          resume_available:
+            type: boolean
+            description: The matching failed attempt retained a verified transcript frontier. Informational only; does not grant budget, revive owner stops or expose a manual resume action.
           state: { type: string, enum: [prepared, dispatching, completed, unknown] }
           revision: { type: integer, format: int64 }
           attempt: { type: integer, format: int64 }

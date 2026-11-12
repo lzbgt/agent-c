@@ -219,6 +219,21 @@ void handle_workflow_get_endpoint(
           std::string rerr;
           if (json_parse_any(t.result_json, &rr, &rerr)) {
             if (include_results) row["result"] = rr;
+            // Only a matching server-produced attempt receipt may describe a
+            // safe transcript frontier. Never infer safety from dispatching alone
+            // or return provider/tool payloads in the metadata projection.
+            if (t.status == "error" && rr.isObject() && rr["effect"].isObject() &&
+                rr["effect"]["boundary"] == "model_run" &&
+                rr["effect"]["checkpoint"] == "provider_tool_v1" &&
+                rr["effect"]["resume_available"] == true) {
+              for (auto& effect : o["effects"]) {
+                if (effect["task_id"] == t.task_id && effect["state"] == "dispatching" &&
+                    effect["effect_id"] == rr["effect"]["effect_id"] &&
+                    effect["request_hash"] == rr["effect"]["request_hash"] &&
+                    effect["revision"] == rr["effect"]["revision"])
+                  effect["resume_available"] = true;
+              }
+            }
             if (rr.isObject() && rr["needs_input"] == true && rr["blocker"].isObject()) {
               row["needs_input"] = true;
               // Expose the required human action without loading the full tool

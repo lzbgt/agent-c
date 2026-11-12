@@ -1,4 +1,5 @@
 #include "run_request_tool_loop.h"
+#include "workflow_model_effect.h"
 
 #include "daemon_config.h"
 #include "job_manager.h"
@@ -101,6 +102,12 @@ RunRequestToolLoopResult run_request_tool_loop(const RunRequestToolLoopInput& in
       want_prefetch && has_images && provider_requires_tools_none_for_vision(in.run_cfg->base_url, in.run_cfg->model);
 
     if (should_prefetch) {
+      // This preparatory provider call is outside the durable tool-loop seam.
+      // Do not spend or regenerate it while restoring a saved transcript.
+      if (in.model_effect && in.model_effect->has_checkpoint()) {
+        out.err = "vision prefetch cannot restore a saved model transcript";
+        return out;
+      }
       out.vision_prefetch_attempted = true;
       std::string vision_desc;
       std::string v_err;
@@ -256,6 +263,13 @@ RunRequestToolLoopResult run_request_tool_loop(const RunRequestToolLoopInput& in
         seed_for_run = tmp;
       }
     }
+  }
+
+  if (in.model_effect && *in.tools == "host" && in.no_session && !out.vision_prefetch_attempted) {
+    Json::Value identity;
+    identity["base_url"] = in.run_cfg->base_url;
+    identity["model"] = in.run_cfg->model;
+    in.model_effect->configure_transcript(&opt, identity);
   }
 
   try {

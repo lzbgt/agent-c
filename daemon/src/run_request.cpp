@@ -904,10 +904,6 @@ static Json::Value run_request_to_json_impl(
     }
   }
 
-  // Keep policy/approval checks outside this wrapper: admission is committed
-  // immediately before the actual host executor, never while waiting for approval.
-  if (model_effect && tools == "host" && executor.execute) executor = model_effect->wrap(executor);
-
   ApprovalGateCtx approval_gate{};
   const bool approvals_enabled = policy_active && use_tool_loop &&
     (!policy_cfg.approval_rules.empty() || !policy_cfg.approval_tools.empty());
@@ -960,6 +956,35 @@ static Json::Value run_request_to_json_impl(
     policy_exec_ctx.approval_gate = approvals_enabled ? (void*)&approval_gate : nullptr;
     executor.ctx = &policy_exec_ctx;
     executor.execute = policy_tool_execute;
+  }
+
+  if (model_effect && tools == "host" && executor.execute) {
+    // Replay returns only already-receipted results. Fresh calls still pass the
+    // exact current policy/approval gate before durable admission or host I/O.
+    WorkflowModelEffect::Authorize authorize;
+    auto actual = executor;
+    if (policy_active && use_tool_loop) {
+      actual = policy_exec_ctx.base;
+      authorize = [&](const char* name, const char* arguments) {
+        auto gate = policy_exec_ctx;
+        gate.base = {nullptr, [](void*, const char*, const char*, agent_string_t*) { return AGENT_OK; }};
+        agent_string_t ignored{};
+        const auto status = policy_tool_execute(&gate, name, arguments, &ignored);
+        agent_string_free(&ignored);
+        return status;
+      };
+    }
+    Json::Value scope;
+    std::error_code cwd_error;
+    scope["cwd"] = std::filesystem::current_path(cwd_error).string();
+    scope["state_dir"] = daemon_cfg.state_dir;
+    scope["sessions_root"] = sessions_root_dir;
+    scope["session_id"] = no_session ? "" : session_id;
+    scope["no_session"] = no_session; scope["yolo"] = yolo;
+    scope["memory_root"] = memory_root_override;
+    scope["host_policy"] = int(effective_policy);
+    model_effect->bind_scope(scope);
+    executor = model_effect->wrap(actual, std::move(authorize));
   }
 
   bool ok = false;
@@ -1048,6 +1073,7 @@ static Json::Value run_request_to_json_impl(
     tl_in.session = session;
     tl_in.registry = registry;
     tl_in.executor = &executor;
+    tl_in.model_effect = model_effect;
     tl_in.trace_stream = trace_stream;
     tl_in.should_cancel_or_null = should_cancel_or_null;
     tl_in.should_cancel_ctx_or_null = should_cancel_ctx_or_null;

@@ -17,6 +17,7 @@ namespace agentd {
 
 struct DaemonConfig;
 struct PolicyHookCtx;
+class WorkflowModelEffect;
 
 struct RunRequestToolLoopInput {
   const DaemonConfig* daemon_cfg = nullptr;
@@ -46,6 +47,7 @@ struct RunRequestToolLoopInput {
   agent_session_t* session = nullptr;
   agent_tool_registry_t* registry = nullptr;
   agent_tool_executor_t* executor = nullptr;
+  WorkflowModelEffect* model_effect = nullptr;
   std::ostream* trace_stream = nullptr;
   RunCancelCallback should_cancel_or_null = nullptr;
   void* should_cancel_ctx_or_null = nullptr;

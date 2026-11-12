@@ -495,6 +495,10 @@ class AgentDb {
   bool prepare_workflow_effect(const WorkflowEffectRow& definition, WorkflowEffectRow* out, std::string* error);
   bool transition_workflow_effect(const WorkflowEffectRow& expected, const std::string& state,
                                   const std::string& receipt_json, WorkflowEffectRow* out, std::string* error);
+  // Internal model transcript CAS. A fresh tool admission checks owner stop and
+  // deadline; saving a receipt after a stop is still allowed. Never redispatches.
+  bool checkpoint_workflow_model_effect(const WorkflowEffectRow& expected, const std::string& receipt_json,
+                                        bool admitting_tool, WorkflowEffectRow* out, std::string* error);
   bool list_workflow_effects(const std::string& workflow_id, std::vector<WorkflowEffectRow>* out, std::string* error);
   bool requeue_workflow_effect(const WorkflowTaskRow& task, const WorkflowEffectRow& effect,
                               const std::string& reconcile_url, std::string* error);

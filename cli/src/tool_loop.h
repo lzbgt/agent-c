@@ -2,6 +2,7 @@
 
 #include "openai_client.h"
 #include "agent/tools.h"
+#include "agent/tool_provider.h"
 #include "agent/agent.h"
 
 #include <cstddef>
@@ -18,6 +19,8 @@ struct ToolCallLimit {
   std::string tool;
   size_t max_calls = 0; // 0 means unlimited for this tool
 };
+
+struct OpenAIToolProviderCtx;
 
 struct ToolLoopOptions {
   std::string force_tool;    // optional tool name to force on first request
@@ -72,6 +75,11 @@ struct ToolLoopOptions {
   size_t memory_flush_max_excerpt_chars = 8000;
   size_t memory_flush_max_messages = 32;
   size_t memory_flush_per_message_chars = 800;
+
+  // Host-only adapter seam for durable workflow transcript replay. The portable
+  // core remains unaware of persistence; direct CLI/chat callers leave this unset.
+  agent_tool_provider_t (*provider_decorator)(void*, agent_tool_provider_t, OpenAIToolProviderCtx*) = nullptr;
+  void* provider_decorator_ctx = nullptr;
 
   // Optional live event hook. When set, run_tool_loop will invoke this callback for every event.
   // This is used by the daemon/UI to show progress while long requests are running.

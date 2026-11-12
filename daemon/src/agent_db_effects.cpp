@@ -130,6 +130,41 @@ bool AgentDb::transition_workflow_effect(const WorkflowEffectRow& expected, cons
 #endif
 }
 
+bool AgentDb::checkpoint_workflow_model_effect(const WorkflowEffectRow& expected, const std::string& receipt,
+                                               bool admitting_tool, WorkflowEffectRow* out, std::string* error) {
+  if (error) error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)expected; (void)receipt; (void)admitting_tool; (void)out;
+  if (error) *error = "SQLite support required";
+  return false;
+#else
+  if (!out || expected.mode != "guarded" || expected.state != "dispatching" ||
+      expected.effect_id.rfind("mfx_", 0) != 0 || receipt.empty() || receipt.size() > 8 * 1024 * 1024 ||
+      expected.revision == std::numeric_limits<int64_t>::max()) {
+    if (error) *error = "invalid model checkpoint";
+    return false;
+  }
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) { if (error) *error = "database unavailable"; return false; }
+  sqlite3_stmt* raw = nullptr;
+  const char* sql = "UPDATE workflow_effects SET revision=revision+1,updated_unix_ms=?,receipt_json=? WHERE effect_id=? AND revision=? AND state='dispatching' AND mode='guarded' AND request_hash=? AND workflow_id=? AND task_id=? AND (?=0 OR EXISTS(SELECT 1 FROM workflows w WHERE w.workflow_id=workflow_effects.workflow_id AND w.cancel_requested=0 AND (COALESCE(w.deadline_unix_ms,0)=0 OR w.deadline_unix_ms>?)))";
+  if (sqlite3_prepare_v2(db_,sql,-1,&raw,nullptr) != SQLITE_OK) { if (error) *error = agent_db_sqlite_err(db_); return false; }
+  Statement stmt(raw,sqlite3_finalize);
+  const auto now = agent_db_unix_ms_now();
+  const bool ok = agent_db_bind_i64(raw,1,now) && agent_db_bind_text(raw,2,receipt) &&
+    agent_db_bind_text(raw,3,expected.effect_id) && agent_db_bind_i64(raw,4,expected.revision) &&
+    agent_db_bind_text(raw,5,expected.request_hash) && agent_db_bind_text(raw,6,expected.workflow_id) &&
+    agent_db_bind_text(raw,7,expected.task_id) && agent_db_bind_i32(raw,8,admitting_tool ? 1 : 0) &&
+    agent_db_bind_i64(raw,9,now) && agent_db_step_done(raw);
+  if (!ok || sqlite3_changes(db_) != 1) {
+    if (error) *error = ok ? "model checkpoint conflict, deadline, or owner stop" : agent_db_sqlite_err(db_);
+    return false;
+  }
+  *out = expected; out->revision++; out->updated_unix_ms = now; out->receipt_json = receipt;
+  return true;
+#endif
+}
+
 bool AgentDb::list_workflow_effects(const std::string& workflow_id, std::vector<WorkflowEffectRow>* out, std::string* error) {
   if (error) error->clear();
   if (out) out->clear();

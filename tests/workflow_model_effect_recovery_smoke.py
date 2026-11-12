@@ -43,6 +43,8 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
     process = None
     counts = {}
     counts_lock = threading.Lock()
+    provider_waiting = threading.Event()
+    release_provider = threading.Event()
     helper = root / "action.py"
     helper.write_text("import pathlib,sys,time\np=pathlib.Path(sys.argv[1])\n"
                       "with p.open('a') as f: f.write('applied\\n'); f.flush()\n"
@@ -55,25 +57,36 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
         def do_POST(self):
             request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             messages = request.get("messages", [])
-            case = next(str(m.get("content")) for m in messages if m.get("role") == "user")
+            case = ("vision_prefetch" if "/moonshot/" in self.path else
+                    "reasoning_resume" if "/deepseek/" in self.path else next(str(m.get("content")) for m in messages if m.get("role") == "user"))
+            prefetch = case == "vision_prefetch" and not request.get("tools")
             with counts_lock:
                 counts[case] = counts.get(case, 0) + 1
                 number = counts[case]
             after_tool = any(m.get("role") == "tool" for m in messages)
-            fail = (case == "provider_before" and number == 1) or (case == "provider_after" and after_tool)
+            missing_reasoning = case == "reasoning_resume" and after_tool and any(
+                m.get("reasoning_content") != "synthetic reasoning checkpoint"
+                for m in messages if m.get("role") == "assistant" and m.get("tool_calls"))
+            if case == "crash_receipted" and after_tool and number == 2:
+                provider_waiting.set()
+                release_provider.wait(12)
+            fail = ((case == "provider_before" and number == 1) or (case in ("provider_after", "vision_prefetch") and after_tool) or
+                    (case in ("transient_after", "frontier_budget", "batch_resume", "reasoning_resume") and after_tool and number == 2) or missing_reasoning)
             if fail:
                 body = {"error": {"message": "synthetic unavailable", "type": "server_error"}}
             else:
                 message = {"role": "assistant", "content": "completed:" + case}
-                if not after_tool:
+                if not prefetch and (not after_tool or (case == "frontier_budget" and number == 3)):
                     pause = 1.5 if case in ("lost", "cancel", "deadline", "elapsed") else 1 if case == "timeout" else 0
                     arguments = {"argv": [sys.executable, str(helper), str(root / (case + ".count")), str(pause)],
                                  "timeout_ms": 100 if case == "timeout" else 5000}
                     tool = {"id": "action-1", "type": "function",
                             "function": {"name": "proc_exec", "arguments": json.dumps(arguments)}}
                     message = {"role": "assistant", "content": "", "tool_calls": [tool]}
-                    if case in ("timeout", "double"):
+                    if case in ("timeout", "double", "batch_resume", "reasoning_resume"):
                         message["tool_calls"].append({**tool, "id": "action-2"})
+                    if case == "reasoning_resume":
+                        message["reasoning_content"] = "synthetic reasoning checkpoint"
                 body = {"id": "synthetic", "object": "chat.completion", "model": "stub",
                         "choices": [{"index": 0, "message": message,
                                      "finish_reason": "tool_calls" if "tool_calls" in message else "stop"}],
@@ -126,6 +139,14 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
         request = {"prompt": case, "tools": "host", "no_session": True, "no_default_system": True,
                    "max_steps": 4, "max_tool_calls_total": 2, "max_retries": 0, "timeout_ms": 6000,
                    "base_url": f"http://127.0.0.1:{stub.server_port}/v1", "model": "stub", "api_key": "synthetic"}
+        if case == "reasoning_resume":
+            request["base_url"] = f"http://127.0.0.1:{stub.server_port}/deepseek/v1"
+            request["model"] = "deepseek-reasoner"
+        if case == "vision_prefetch":
+            image = {"name": "synthetic.png", "mime": "image/png",
+                     "b64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="}
+            request["prompt"] = "__AGENT_MM_V1__" + json.dumps({"images": [image]}) + "\nvision_prefetch"
+            request["base_url"] = f"http://127.0.0.1:{stub.server_port}/moonshot/v1"
         if case == "saved":
             request["max_steps"] = 2
             request["max_tool_calls_total"] = 1
@@ -171,13 +192,21 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
         assert value["workflow"]["status"] == "done" and count("double") == 2, value
         assert result(value)["tool_calls_total"] == 2, value
 
-        # Failed provider after a real host write is not a request to repeat it.
-        wid = submit("provider_after")
+        # Persistent provider failure exhausts attempts, but retains a verified
+        # prefix rather than inventing an uncertain host outcome or repeating it.
+        wid = submit("provider_after", attempts=2)
         value = terminal(wid)
-        no_repeat(value, "provider_after")
+        out = result(value)
+        assert count("provider_after") == 1 and out["effect"]["resume_available"] is True, value
+        assert out.get("needs_input") is not True and out["tool_calls_total"] == 0, value
+        assert next(t for t in value["tasks"] if t["task_id"] == "write")["attempt"] == 2, value
         tasks = {t["task_id"]: t for t in value["tasks"]}
         assert tasks["independent"]["status"] == "done" and tasks["after"]["status"] != "done", value
-        assert counts["provider_after"] == 2, counts
+        assert counts["provider_after"] == 3, counts
+        metadata = call("/api/v1/workflow?workflow_id=" + wid + "&include_results=0")
+        assert metadata["effects"][0]["resume_available"] is True, metadata
+        assert all("result" not in t for t in metadata["tasks"]), metadata
+        assert "records" not in metadata["effects"][0] and "receipt_json" not in metadata["effects"][0], metadata
         try:
             call("/api/v1/workflow/reconcile", {"workflow_id": wid, "task_id": "write",
                                                "reconcile_url": "https://example.invalid/pretend"})
@@ -185,6 +214,64 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
             assert error.code == 409
         else:
             raise AssertionError("unsupported model-run resolver accepted")
+
+        # A provider failure after a receipted host write resumes with the exact
+        # original transcript. No fresh tool grant is needed or consumed.
+        wid = submit("transient_after", others=False, attempts=2,
+                     budget={"max_tool_calls_total": 1, "max_steps_total": 3})
+        value = terminal(wid)
+        out = result(value)
+        assert value["workflow"]["status"] == "done" and count("transient_after") == 1, value
+        assert counts["transient_after"] == 3 and out["steps_executed"] == 1 and out["tool_calls_total"] == 0, value
+        assert out["effect"]["replayed_provider_calls"] == 1 and out["effect"]["replayed_tool_calls"] == 1, value
+        assert value["budget_accounting"]["charged"]["max_tool_calls_total"] == 1, value
+        assert value["budget_accounting"]["charged"]["max_steps_total"] == 3, value
+
+        # Two tools from one model decision are both restored, not regenerated.
+        wid = submit("batch_resume", others=False, attempts=2,
+                     budget={"max_tool_calls_total": 2, "max_steps_total": 3})
+        value = terminal(wid)
+        assert value["workflow"]["status"] == "done" and count("batch_resume") == 2, value
+        assert counts["batch_resume"] == 3 and result(value)["effect"]["replayed_tool_calls"] == 2, value
+
+        # The OpenAI-compatible adapter keeps required reasoning state outside
+        # the C transcript. The stub rejects a resumed batch without its original
+        # reasoning_content, so core-visible messages alone cannot pass this test.
+        wid = submit("reasoning_resume", others=False, attempts=2,
+                     budget={"max_tool_calls_total": 2, "max_steps_total": 3})
+        value = terminal(wid)
+        assert value["workflow"]["status"] == "done" and count("reasoning_resume") == 2, value
+        assert counts["reasoning_resume"] == 3 and result(value)["effect"]["replayed_tool_calls"] == 2, value
+
+        # The continuation may spend a new provider step, but it cannot enlarge
+        # an exhausted host-call grant when the model requests another effect.
+        wid = submit("frontier_budget", others=False, attempts=2,
+                     budget={"max_tool_calls_total": 1, "max_steps_total": 3})
+        value = terminal(wid)
+        out = result(value)
+        assert value["workflow"]["status"] == "error" and count("frontier_budget") == 1, value
+        assert counts["frontier_budget"] == 3 and out["retryable"] is False and out.get("needs_input") is not True, value
+        assert out["effect"]["resume_available"] is True and out["steps_executed"] == 1, value
+        assert value["budget_accounting"]["charged"]["max_steps_total"] == 3, value
+
+        # Process death while waiting for the next provider response preserves a
+        # completed tool receipt. On restart even a new denial/approval policy
+        # must not ask to authorize that old effect again.
+        wid = submit("crash_receipted", others=False, attempts=3, budget={"max_tool_calls_total": 1})
+        wait_for(provider_waiting.is_set, "provider did not reach receipted frontier")
+        rows = sql("SELECT receipt_json FROM workflow_effects WHERE workflow_id=?", (wid,))
+        checkpoint = json.loads(rows[0][0])
+        assert checkpoint["pending"] is None and [r["kind"] for r in checkpoint["records"]] == ["provider", "tool"], rows
+        stop(kill=True)
+        release_provider.set()
+        start(("--policy-mode", "enforce", "--policy-tool-deny", "proc_exec",
+               "--policy-approval-tools", "proc_exec", "--policy-approval-timeout-ms", "100"))
+        value = terminal(wid)
+        assert value["workflow"]["status"] == "done" and count("crash_receipted") == 1, value
+        assert counts["crash_receipted"] == 3 and result(value)["effect"]["replayed_tool_calls"] == 1, value
+        assert value["budget_accounting"]["charged"]["max_tool_calls_total"] == 1, value
+        stop()
+        start()
 
         # Intent exists, SQL admission has not happened: recovery can still run.
         sql("CREATE TRIGGER stop_dispatch BEFORE UPDATE OF state ON workflow_effects WHEN NEW.workflow_id='model_prepared' AND NEW.state='dispatching' BEGIN SELECT RAISE(FAIL,'before dispatch'); END")
@@ -241,6 +328,13 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
         stop()
         start()
 
+        # Vision prefetch is a nondurable preparatory call, so this path keeps
+        # the conservative whole-run guard instead of promising transcript replay.
+        wid = submit("vision_prefetch", others=False)
+        value = terminal(wid)
+        no_repeat(value, "vision_prefetch")
+        assert counts["vision_prefetch"] == 3 and "checkpoint" not in result(value)["effect"], value
+
         # A timed out first tool prevents the second call in the same batch.
         wid = submit("timeout")
         value = terminal(wid)
@@ -271,6 +365,7 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
         print(log.read()[-9000:], file=sys.stderr)
         raise
     finally:
+        release_provider.set()
         stop()
         stub.shutdown()
         stub.server_close()
