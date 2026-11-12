@@ -205,6 +205,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     cli/src/file_persistor.cpp
     cli/src/host_session_prompts.cpp
     cli/src/openai_client.cpp
+    daemon/src/http_client.cpp
     cli/src/openai_provider.cpp
     cli/src/openai_stream_decoder.cpp
     cli/src/openai_stream_adapter.cpp
@@ -244,6 +245,15 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     target_link_libraries(agent_host PUBLIC ${JSONCPP_LIBRARIES})
     target_compile_definitions(agent_host PUBLIC AGENT_HAVE_JSONCPP=1)
     target_compile_definitions(agent_core PRIVATE AGENT_HAVE_JSONCPP=1)
+  endif()
+
+  # Native public search reuses the bounded HTTP transport and existing JSON parser.
+  set(AGENT_ENABLE_WEB_SEARCH OFF)
+  if(AGENT_ENABLE_JSONCPP)
+    set(AGENT_ENABLE_WEB_SEARCH ON)
+    target_sources(agent_host PRIVATE cli/src/toolset_host_web.cpp)
+    target_include_directories(agent_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src)
+    target_compile_definitions(agent_host PUBLIC AGENT_HAVE_WEB_SEARCH=1)
   endif()
 
   if(AGENT_ENABLE_SQLITE3)
@@ -359,7 +369,6 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/blob_object_store.cpp
     daemon/src/blob_tier_policy.cpp
     daemon/src/file_endpoint.cpp
-    daemon/src/http_client.cpp
     daemon/src/http_allowlist.cpp
     daemon/src/http_util.cpp
     daemon/src/net_compat.cpp
@@ -1917,6 +1926,13 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
   )
   target_link_libraries(host_toolset_tests PRIVATE agent_host)
   add_test(NAME host_toolset_tests COMMAND host_toolset_tests)
+
+  if(AGENT_ENABLE_WEB_SEARCH)
+    add_executable(web_search_tests tests/test_web_search.cpp)
+    target_include_directories(web_search_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src)
+    target_link_libraries(web_search_tests PRIVATE agent_host)
+    add_test(NAME web_search_tests COMMAND web_search_tests)
+  endif()
 
   if(AGENT_ENABLE_SQLITE3)
     add_executable(work_ledger_tests tests/test_work_ledger.cpp)

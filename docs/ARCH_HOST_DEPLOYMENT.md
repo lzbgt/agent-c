@@ -35,6 +35,28 @@ with restart `no`, and no listeners on the three project ports. This establishes
 local shutdown, not retrospective provider billing or revocation of shared keys.
 Do not run the deployment or live-model probes below while this owner hold applies.
 
+## Owner-directed local 4B CLI use (2026-11-12)
+
+The local model task explicitly uses the existing Agent C core and CLI with
+the 4B Qwen3.5 fine-tune on Arch. This narrow integration adds a bounded native
+`web_search` tool and explicit response-token limits; it uses the authenticated
+loopback model at `127.0.0.1:18088`. Its launcher and measured 126K profile are
+maintained in `/home/bruce/work/ai_model`:
+
+```sh
+python3 /home/bruce/work/ai_model/scripts/deepseek_qwen35.py agent chat
+```
+
+This is local, on-demand CLI use. The production service stop above and the
+Panda publication hold remain effective; general Agent C development and
+cloud-model service operation are not resumed. The dedicated daemon/gateway
+remain inactive and disabled, and the database container remains exited with
+restart disabled. Native `agent` and `agentd` were built for verification;
+only the CLI and local llama.cpp model were executed for this integration.
+See [CLI](CLI.md#local-models-and-response-budgets) and
+[Tools](TOOLS.md#native-public-web-search) for the native contracts and search
+coverage limits.
+
 ## Runtime and authority
 
 | Component | Location | Boundary |

@@ -568,6 +568,15 @@ static agent_status_t openai_tool_provider_generate(
       return AGENT_ERR_INTERNAL;
     }
 
+    if (acc.core.saw_error) {
+      const std::string error = acc.core.error_message.data
+        ? std::string(acc.core.error_message.data, acc.core.error_message.len)
+        : std::string("Provider stream failed");
+      (void)set_error(out_resp, error);
+      openai_stream_core_free(&acc.core);
+      return error == kOpenAIOutputLimitError ? AGENT_ERR_LIMIT : AGENT_ERR_INTERNAL;
+    }
+
     // Some providers ignore `stream: true` and return a normal JSON response.
     // If we didn't decode any deltas/tool_calls, fall back to parsing the raw body.
     bool decoded_any = acc.core.saw_delta != 0;
@@ -678,6 +687,10 @@ static agent_status_t openai_tool_provider_generate(
   }
 
   if (!parsed_is_stream) {
+    if (openai_response_hit_output_limit(ctx->last_response_body)) {
+      (void)set_error(out_resp, kOpenAIOutputLimitError);
+      return AGENT_ERR_LIMIT;
+    }
     Json::Value assistant_msg;
     if (!extract_choice0_message(parsed, &assistant_msg)) {
       (void)set_error(out_resp, "missing choices[0].message");

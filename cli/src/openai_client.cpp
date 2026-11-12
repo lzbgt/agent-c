@@ -945,6 +945,10 @@ OpenAIChatResult openai_chat_completions(
   if (Json::parseFromStream(rb, iss, &parsed, &errs)) {
     result.assistant_text = json_try_extract_assistant_text(parsed);
     result.error_message = json_try_extract_error_message(parsed);
+    if (openai_response_hit_output_limit(result.response_body)) {
+      result.assistant_text.clear();
+      result.error_message = kOpenAIOutputLimitError;
+    }
   }
 #endif
   return result;
@@ -980,7 +984,24 @@ OpenAIStreamResult openai_chat_completions_raw_stream(
   return r;
 }
 
+bool openai_response_hit_output_limit(const std::string& response_body) {
+#if !defined(AGENT_HAVE_JSONCPP)
+  (void)response_body;
+  return false;
+#else
+  Json::CharReaderBuilder rb;
+  std::string errors;
+  std::istringstream stream(response_body);
+  Json::Value root;
+  if (!Json::parseFromStream(rb, stream, &root, &errors) || !root.isObject()) return false;
+  const auto& choices = root["choices"];
+  return choices.isArray() && !choices.empty() && choices[0].isObject() &&
+    choices[0]["finish_reason"].isString() && choices[0]["finish_reason"].asString() == "length";
+#endif
+}
+
 std::string openai_try_extract_error_message(const std::string& response_body) {
+  if (openai_response_hit_output_limit(response_body)) return kOpenAIOutputLimitError;
 #if !defined(AGENT_HAVE_JSONCPP)
   (void)response_body;
   return "";

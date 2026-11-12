@@ -408,6 +408,7 @@ static void usage() {
     << "  --api-key <key>           API key (default: OPENAI_API_KEY)\n"
     << "  --proxy <url>             Optional HTTP proxy override (else env HTTPS_PROXY/http_proxy)\n"
     << "  --timeout-ms <n>          HTTP timeout in ms (default: 60000)\n"
+    "  --max-output-tokens <n>   Per-response output token cap, including thinking (default: 0, provider default)\n"
     << "  --trace                   Print full request/response/tool transcript to stderr (default: on)\n"
     << "  --quiet                   Suppress transcript; print assistant text only\n"
     << "  --session <id>            Session id to load/save (default: default)\n"
@@ -569,6 +570,8 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
   std::string summary_model;
   size_t summary_max_chars = 1200;
   size_t timeout_ms = 60000;
+  int64_t max_output_tokens = 0;
+  std::string max_output_tokens_arg;
   std::string tools_mode = "host";
   std::string tools_root; // empty => unrestricted (YOLO)
   std::string host_policy = "full";
@@ -605,6 +608,24 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
   if (!take_flag_u64(args, "--timeout-ms", &timeout_ms)) {
     std::cerr << "Invalid value for --timeout-ms\n";
     return 2;
+  }
+  const bool output_cap_supplied = std::find(args.begin(), args.end(), "--max-output-tokens") != args.end();
+  if (!take_flag(args, "--max-output-tokens", &max_output_tokens_arg)) {
+    std::cerr << "Missing value for --max-output-tokens\n";
+    return 2;
+  }
+  if (output_cap_supplied) {
+    bool valid = std::all_of(max_output_tokens_arg.begin(), max_output_tokens_arg.end(),
+                            [](unsigned char c) { return c >= '0' && c <= '9'; });
+    try {
+      if (valid) max_output_tokens = std::stoll(max_output_tokens_arg);
+    } catch (...) {
+      valid = false;
+    }
+    if (!valid) {
+      std::cerr << "Invalid value for --max-output-tokens (expected a nonnegative integer)\n";
+      return 2;
+    }
   }
   if (!take_switch(args, "--trace", &trace)) {
     std::cerr << "Invalid flag: --trace\n";
@@ -871,6 +892,7 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
   pctx.cfg.model = model;
   pctx.cfg.proxy_url = proxy_url;
   pctx.cfg.timeout_ms = (long)timeout_ms;
+  pctx.cfg.max_tokens = max_output_tokens;
   if (const char* r = getenv_s("OPENROUTER_HTTP_REFERER")) {
     pctx.cfg.openrouter_http_referer = r;
   }
@@ -1005,7 +1027,7 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
 #endif
 	      if (!run_tool_loop(pctx.cfg, session, prompt_for_llm, registry, &executor, opt, trace_stream, &r, &err, &http_status, &http_body)) {
         output->set_error(err.empty() ? "Tool loop failed" : err);
-	        if (http_status) {
+	        if (http_status && (http_status < 200 || http_status >= 300)) {
 	          std::cerr << openai_format_http_error(http_status, http_body) << "\n";
         } else if (!err.empty()) {
           std::cerr << "Tool loop failed: " << err << "\n";
@@ -1175,6 +1197,8 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
           {
             Json::Value root(Json::objectValue);
             root["model"] = run_cfg.model;
+            if (run_cfg.max_completion_tokens > 0) root["max_completion_tokens"] = (Json::Int64)run_cfg.max_completion_tokens;
+            else if (run_cfg.max_tokens > 0) root["max_tokens"] = (Json::Int64)run_cfg.max_tokens;
             root["stream"] = true;
             Json::Value messages(Json::arrayValue);
             const size_t n = agent_session_message_count(session);
@@ -1270,6 +1294,15 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
             }
             ok = false;
             err = (!sr.error_message.empty() ? sr.error_message : openai_format_http_error(sr.http_status, sr.response_body));
+            openai_stream_core_free(&sctx.core);
+            break;
+          }
+
+          if (sctx.core.saw_error || openai_response_hit_output_limit(sr.response_body)) {
+            ok = false;
+            err = sctx.core.error_message.data
+              ? std::string(sctx.core.error_message.data, sctx.core.error_message.len)
+              : std::string(kOpenAIOutputLimitError);
             openai_stream_core_free(&sctx.core);
             break;
           }
@@ -1397,6 +1430,8 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
           {
             Json::Value root(Json::objectValue);
             root["model"] = run_cfg.model;
+            if (run_cfg.max_completion_tokens > 0) root["max_completion_tokens"] = (Json::Int64)run_cfg.max_completion_tokens;
+            else if (run_cfg.max_tokens > 0) root["max_tokens"] = (Json::Int64)run_cfg.max_tokens;
             root["stream"] = false;
             Json::Value messages(Json::arrayValue);
             const size_t n = agent_session_message_count(session);
@@ -1441,6 +1476,12 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
             }
             ok = false;
             err = openai_format_http_error(raw.http_status, raw.response_body);
+            break;
+          }
+
+          if (openai_response_hit_output_limit(raw.response_body)) {
+            ok = false;
+            err = kOpenAIOutputLimitError;
             break;
           }
 

@@ -96,6 +96,12 @@ OpenAIStreamResult openai_chat_completions_raw_stream(
   size_t max_capture_bytes = 256 * 1024
 );
 
+inline constexpr const char* kOpenAIOutputLimitError =
+  "Output token limit reached (finish_reason=length); increase the output token budget or request a shorter response.";
+
+// A successful HTTP response can still be an incomplete generation.
+bool openai_response_hit_output_limit(const std::string& response_body);
+
 // Best-effort extraction of a human-readable provider error from an OpenAI-compatible response.
 // Returns empty string if no error message could be extracted.
 std::string openai_try_extract_error_message(const std::string& response_body);

@@ -77,6 +77,10 @@ agent_status_t openai_provider_generate(
     }
     return AGENT_ERR_INTERNAL;
   }
+  if (openai_response_hit_output_limit(r.response_body)) {
+    ctx->last_error = kOpenAIOutputLimitError;
+    return AGENT_ERR_LIMIT;
+  }
   if (r.assistant_text.empty()) {
     // If parsing failed, treat as error (caller can inspect last_body).
     if (ctx->last_error.empty()) {
@@ -287,6 +291,10 @@ agent_status_t openai_provider_generate_ex(
     return AGENT_ERR_INTERNAL;
   }
 
+  if (openai_response_hit_output_limit(raw.response_body)) {
+    ctx->last_error = kOpenAIOutputLimitError;
+    return AGENT_ERR_LIMIT;
+  }
   const std::string assistant = json_try_extract_assistant_text(parsed);
   if (assistant.empty()) {
     ctx->last_error = "failed to extract assistant text from response";

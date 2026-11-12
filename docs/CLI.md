@@ -45,6 +45,39 @@ If your environment requires an HTTP proxy for outbound HTTPS, pass an explicit 
 ./build/agent run "hello" --proxy http://localhost:8120
 ```
 
+## Local models and response budgets
+
+An OpenAI-compatible local server can use the same native core and host tools:
+
+```sh
+# OPENAI_API_KEY is read from the local server's private key file by the caller.
+./build/agent exec "Inspect this project" \
+  --base-url http://127.0.0.1:18088/v1 --model deepseek-qwen35-heretic-4b \
+  --tools host --max-chars 480000 --max-output-tokens 8192 \
+  --timeout-ms 600000 --max-steps 32 --max-tool-calls-total 64
+```
+
+`--max-output-tokens` sets the existing provider's `max_tokens` field for
+each response, including thinking tokens when counted by the provider.
+The default `0` leaves the provider's default unchanged. It does not change
+the model's total context window; input, tool schemas/results and output
+share the server's configured capacity. A provider response ending with
+`finish_reason: length` fails explicitly: partial text is not published as a
+completed final answer, and truncated tool calls are not executed. Streamed
+text may already be visible, but the run remains failed and the previous
+`-o` final file is preserved. Increase the budget or request a shorter result.
+
+`--max-chars` is an approximate UTF-8 byte budget for conversation compaction,
+not a tokenizer or token count. The server enforces the actual token limit.
+Context overflow can trigger the existing compaction retry; a single oversized
+prompt still needs to be shortened. Local model profiles should raise the
+20,000-character default and reserve room for tool schemas and output.
+
+When an outbound proxy is set, include loopback addresses in both
+`NO_PROXY` and `no_proxy` (for example `127.0.0.1,localhost,::1`) so model
+requests stay local. Keep local sessions in a dedicated `--session-root`;
+this CLI needs no daemon or gateway service.
+
 ## Explicit session id
 
 ```bash

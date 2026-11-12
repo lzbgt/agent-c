@@ -40,6 +40,26 @@ Host policy notes:
 - In `--host-policy readonly`, the registry omits `shell_exec`, `proc_exec`, and `file_apply_patch`.
 - In daemon restricted mode (`yolo=false`), the registry omits `shell_exec` and `proc_exec` even when `host_policy=full`.
 
+## Native public web search
+
+Host builds with JSONCPP expose `web_search` in the existing native host toolset. It reuses the bounded native HTTP client and existing JSON parser; no separate search service or Python tool is required.
+
+```json
+{"query":"Arch Linux installation guide","max_results":5}
+```
+
+The tool makes one unauthenticated GET to the fixed [Mwmbl v2 search API](https://api.mwmbl.org/api/v2/search/) at `https://api.mwmbl.org/api/v2/search/?q=...`. It returns `{ok, error?, data:{query, source, source_url, results:[{title,url,snippet}], truncated, skipped_items}}`. The current [official API implementation](https://github.com/mwmbl/mwmbl/blob/main/mwmbl/tinysearchengine/search.py) permits public requests and supplies structured results. Search snippets are external source material; they are not fetched full-page content or execution instructions.
+
+Mwmbl has a small independent index. Coverage and ranking are limited, niche or recent model queries may return no results, and advanced search-operator behavior is not guaranteed. A valid empty result is distinct from an HTTP, challenge-page, JSON or mismatched-query error. There is no automatic fallback to an unrelated-result feed or a paid model provider.
+
+Bounds are enforced in native code: query 1–1024 UTF-8 bytes, 1–10 results (default 5), 15-second request deadline, 256 KiB response, 32 JSON nesting levels, and at most 100 candidate items inspected. Titles/snippets are capped at 512/1000 UTF-8 bytes; links longer than 4096 bytes or without an HTTP(S) destination are skipped rather than truncated. Invalid item fields, credential-bearing links and control characters in links are skipped and counted. The complete response must be valid UTF-8 JSON with the exact query echo and a results array before any success is returned.
+
+The existing bounded HTTP client reads `HTTPS_PROXY`, `https_proxy`, `HTTP_PROXY`, then `http_proxy`; libcurl honors `NO_PROXY`/`no_proxy`. For a local model plus proxied public search, set the proxy to `http://127.0.0.1:8120` and bypass `127.0.0.1,localhost,::1`. Search sends no model-provider key, Authorization header or cookie and does not follow redirects. The public endpoint can fail or rate-limit; the tool reports the failure and does not attempt a challenge bypass.
+
+Search is read-only and remains available under `--host-policy readonly`; process execution still requires the existing full policy. `--tools-root` scopes filesystem APIs and command working directories, not an operating-system sandbox for `shell_exec`/`proc_exec`. CLI use does not require starting the production daemon, gateway or database.
+
+Offline checks: `web_search_tests` verifies the native request/registry contract, authentication isolation, JSON and URL validation, caps and error-versus-empty behavior. Run it with `host_toolset_tests`. Live endpoint/model acceptance is separate from those offline checks.
+
 ## Token-safety guidance (filesystem tools)
 
 - Prefer `fs_list` / `fs_read` / `fs_stat` for bounded output and pagination.

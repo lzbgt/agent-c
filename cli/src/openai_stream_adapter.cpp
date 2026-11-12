@@ -1,4 +1,5 @@
 #include "openai_stream_adapter.h"
+#include "openai_client.h"
 
 #if defined(AGENT_HAVE_JSONCPP)
 #include <json/json.h>
@@ -138,6 +139,11 @@ static agent_status_t openai_stream_decode_chunk_json(
     const std::string s = fr.asString();
     agent_status_t st = set_agent_string(&out_chunk->finish_reason, s.c_str(), s.size());
     if (st != AGENT_OK) return st;
+    if (s == "length") {
+      out_chunk->has_error = 1;
+      st = set_agent_string(&out_chunk->error_message, kOpenAIOutputLimitError, strlen(kOpenAIOutputLimitError));
+      if (st != AGENT_OK) return st;
+    }
   }
 
   const auto& delta = choice0["delta"];

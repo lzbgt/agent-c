@@ -21,6 +21,32 @@ class Model(BaseHTTPRequestHandler):
         requests.append(req)
         last = next(m["content"] for m in reversed(req["messages"]) if m["role"] == "user")
         message = {"role": "assistant", "content": f"verified:{last}"}
+        if "OUTPUT_LIMIT" in str(last):
+            message["content"] = "" if "THINKING" in str(last) else "incomplete answer"
+            if "TOOL" in str(last):
+                message["tool_calls"] = [{"id": "truncated-call", "type": "function",
+                    "function": {"name": "work_state", "arguments": json.dumps({
+                        "op": "requirement", "id": "truncated-effect", "title": "MUST NOT EXECUTE"})}}]
+            if req.get("stream"):
+                delta = {"content": message["content"]}
+                if "tool_calls" in message:
+                    delta["tool_calls"] = [dict(message["tool_calls"][0], index=0)]
+                chunks = [
+                    {"choices": [{"index": 0, "delta": delta, "finish_reason": None}]},
+                    {"choices": [{"index": 0, "delta": {}, "finish_reason": "length"}]},
+                ]
+                body = ("".join("data: " + json.dumps(chunk) + "\n\n" for chunk in chunks) +
+                        "data: [DONE]\n\n").encode()
+                content_type = "text/event-stream"
+            else:
+                body = json.dumps({"choices": [{"message": message, "finish_reason": "length"}]}).encode()
+                content_type = "application/json"
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if any(m["role"] == "user" and "AUTONOMY_SENTINEL" in str(m["content"]) for m in req["messages"]):
             tools = sum(m["role"] == "tool" for m in req["messages"])
             stall = any(m["role"] == "user" and "STALL" in str(m["content"]) for m in req["messages"])
@@ -53,6 +79,40 @@ try:
 
         run("--help")
         assert "verified:stdin goal" in run("exec", "-", "--no-session", "--tools", "none", *options, input="stdin goal").stdout
+        assert "max_tokens" not in requests[-1], "default provider budget must remain unchanged"
+        for mode in ("none", "host"):
+            run("exec", "bounded output", "-C", tmp, "--no-session", "--tools", mode,
+                "--max-output-tokens", "8192", *options)
+            assert requests[-1].get("max_tokens") == 8192, "output cap must reach the real provider request"
+        run("exec", "provider default", "--no-session", "--tools", "none",
+            "--max-output-tokens", "0", *options)
+        assert "max_tokens" not in requests[-1]
+        before_invalid = len(requests)
+        for invalid in ("", "-1", "8x", "9223372036854775808"):
+            run("exec", "invalid cap", "--max-output-tokens", invalid, *options, expected=2)
+        run("exec", "missing cap", "--max-output-tokens", expected=2)
+        assert len(requests) == before_invalid, "invalid budgets must fail before a provider call"
+        limited_final = root / "limited-final.txt"
+        for mode, stream, suffix in (
+            ("none", False, "PARTIAL"), ("host", False, "PARTIAL"),
+            ("host", False, "THINKING"), ("host", False, "TOOL"),
+            ("none", True, "PARTIAL"), ("host", True, "PARTIAL"),
+            ("host", True, "THINKING"), ("host", True, "TOOL"),
+        ):
+            limited_final.write_text("previous verified answer")
+            before = len(requests)
+            result = run("exec", "OUTPUT_LIMIT_" + suffix, "-C", tmp, "--no-session",
+                         "--tools", mode, "--max-output-tokens", "8", "--json",
+                         "-o", str(limited_final), *(["--stream-assistant"] if stream else []),
+                         *options, expected=1)
+            events = [json.loads(line) for line in result.stdout.splitlines()]
+            assert events[-1]["type"] == "run.failed"
+            assert not any(e["type"] == "assistant.completed" for e in events)
+            assert limited_final.read_text() == "previous verified answer"
+            assert len(requests) == before + 1, "output exhaustion must not silently retry"
+            assert requests[-1].get("max_tokens") == 8
+        ledger = json.loads(run("work", "-C", tmp).stdout)
+        assert "truncated-effect" not in json.dumps(ledger), "truncated tool calls executed"
         run("exec", "first goal", "-C", tmp, "--session", "durable", *options)
         assert any("PROJECT_SENTINEL" in str(m["content"]) for m in requests[-1]["messages"])
         assert any("without permission prompts" in str(m["content"]) for m in requests[-1]["messages"])
