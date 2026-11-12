@@ -28,9 +28,17 @@ export default function useUiSettings(): UiSettings {
     showSettings,
     setShowSettings,
     connection: connectionPlane.connection,
-    run,
-    client: clientPlane.client,
-    brokerPanelOpen: clientPlane.brokerPanelOpen,
+    run: defaults.localModelProfile ? {
+      ...run, tools: "host", hostPolicy: "full", yolo: true, automationProfile: "full",
+      model: defaults.model, summaryModel: defaults.model, baseUrl: defaults.baseUrl,
+      apiKey: "", proxyUrl: "", timeoutMs: defaults.timeoutMs,
+      streamAssistant: true, useAsync: true, trace: false, verbose: false,
+      maxChars: "480000", maxSteps: "32", maxToolCallsTotal: "64", maxRepeatedToolCalls: "3",
+    } : run,
+    client: defaults.localModelProfile ? {
+      ...clientPlane.client, allowClientRpcs: false, allowClientEffects: false, allowUnsafePageEval: false,
+    } : clientPlane.client,
+    brokerPanelOpen: defaults.localModelProfile ? false : clientPlane.brokerPanelOpen,
     setBrokerPanelOpen: clientPlane.setBrokerPanelOpen,
   };
 }

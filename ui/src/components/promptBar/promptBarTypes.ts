@@ -22,6 +22,7 @@ export type PromptBarProps = {
   prompt: string;
   setPrompt: (next: string) => void;
   runDisabled: boolean;
+  composerDisabled?: boolean;
   runLabel: string;
   queueCount?: number;
   onRun: (vars: { prompt: string; attachments: Attachment[] }) => void;

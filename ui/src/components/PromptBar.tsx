@@ -25,8 +25,9 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
           attachments={state.attachments}
           onRemoveAttachment={state.removeAttachment}
           prompt={props.prompt}
+          composerDisabled={props.composerDisabled}
           promptPlaceholder={state.promptPlaceholder}
-          runDisabled={props.runDisabled || (!props.prompt.trim() && !state.attachments.length)}
+          runDisabled={props.composerDisabled || props.runDisabled || (!props.prompt.trim() && !state.attachments.length)}
           setJobNotice={props.setJobNotice}
           setPrompt={props.setPrompt}
           uploadBusy={state.uploadBusy}
@@ -40,7 +41,7 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
             <div className="workspace-composer-actions">
               {props.queueCount ? <span className="text-xs text-white/50">{props.queueCount} queued</span> : null}
               {props.activeJobId ? <button className="workspace-button" onClick={() => void state.handleCancel()} type="button">Stop</button> : null}
-              <button className="workspace-run rounded-lg px-4 py-2 text-sm disabled:opacity-40" onClick={state.onRun} disabled={props.runDisabled || (!props.prompt.trim() && !state.attachments.length)} type="button" data-testid="run">{props.runLabel}</button>
+              <button className="workspace-run rounded-lg px-4 py-2 text-sm disabled:opacity-40" onClick={state.onRun} disabled={props.composerDisabled || props.runDisabled || (!props.prompt.trim() && !state.attachments.length)} type="button" data-testid="run">{props.runLabel}</button>
             </div>
           </>}
         />

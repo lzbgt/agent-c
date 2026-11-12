@@ -2,6 +2,7 @@ import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   apiGetCaps,
+  extractSessionErrorMessage,
   RunResponse,
   type Caps,
   type AgentEvent,
@@ -37,6 +38,7 @@ type AppGridStyle = React.CSSProperties & {
 
 export default function App() {
   const ui = useUiSettings();
+  const localModelProfile = ui.defaults.localModelProfile;
   const { connection, run: runSettings, client: clientSettings } = ui;
   const { brokerPanelOpen } = ui;
   const { effectiveBase, effectiveSseBase, daemonAuth, authKey } = connection;
@@ -48,6 +50,7 @@ export default function App() {
   const brokerAuthToken = connection.brokerAuthToken;
   const daemonAuthToken = connection.daemonAuthToken;
   const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "");
+  const [localSessionCreating, setLocalSessionCreating] = React.useState(false);
   const [capsCache, setCapsCache] = useLocalStorageState<Record<string, { caps: Caps; ts: number }>>(
     "agentui.capsByBase",
     {},
@@ -74,7 +77,7 @@ export default function App() {
     setSessionLeaseSeconds,
     scopedSessionKey,
     advancedPages,
-    advancedPage,
+    advancedPage: storedAdvancedPage,
     setAdvancedPage,
     toolsCollapsed,
     setToolsCollapsed,
@@ -92,6 +95,13 @@ export default function App() {
     mainScrollRestoredKeyRef,
     onMainScroll,
   } = shell;
+  const localPageIds = ["trace", "run-diff"];
+  const advancedPagesVisible = localModelProfile ? advancedPages.filter((page) => localPageIds.includes(page.id)) : advancedPages;
+  const advancedPage = localModelProfile && !localPageIds.includes(storedAdvancedPage) ? "" : storedAdvancedPage;
+
+  React.useEffect(() => {
+    if (localModelProfile) document.title = "Local 4B agent · Agent C";
+  }, [localModelProfile]);
 
   const capsKey = React.useMemo(() => `${effectiveBase}::${authKey}`, [effectiveBase, authKey]);
   const capsQuery = useQuery({
@@ -238,10 +248,10 @@ export default function App() {
   }, [daemonAuth.mode, effectiveBase]);
   const runWatchPrefsClientId = React.useMemo(() => String(clientId || "webui"), [clientId]);
   const runWatchCanUse = React.useMemo(() => {
-    if (!runWatchPrefsBase || !runWatchPrefsClientId) return false;
+    if (localModelProfile || !runWatchPrefsBase || !runWatchPrefsClientId) return false;
     if (daemonAuth.mode !== "broker") return true;
     return connection.brokerCookieAuth || String(brokerAuthToken || "").trim().length > 0;
-  }, [brokerAuthToken, connection.brokerCookieAuth, daemonAuth.mode, runWatchPrefsBase, runWatchPrefsClientId]);
+  }, [brokerAuthToken, connection.brokerCookieAuth, daemonAuth.mode, localModelProfile, runWatchPrefsBase, runWatchPrefsClientId]);
   const [runQueue, setRunQueue] = useLocalStorageState<QueuedRun[]>(runQueueKey, []);
   const jobStoreKey = scopedSessionKey;
 
@@ -508,6 +518,8 @@ export default function App() {
     "--tools-col": toolsCollapsed ? "72px" : "208px",
   };
 
+  const composerSessionPending = localSessionCreating || newSession.isPending;
+
   return (
     <div className="workspace-shell" style={appGridStyle}>
       <a className="workspace-skip" href="#workspace-main">Skip to workspace</a>
@@ -517,9 +529,16 @@ export default function App() {
         healthService={health.data?.service}
         healthVersion={health.data?.version}
         onShowSettings={() => setShowSettings(true)}
+        localModelProfile={localModelProfile}
+        onLocalSignOut={() => {
+          void fetch("/local/logout", { method: "POST" }).then((response) => {
+            if (response.ok) window.location.reload();
+            else setJobNotice("Unable to lock this workspace; retry after the current connection recovers.");
+          }).catch(() => setJobNotice("Unable to reach the local web server."));
+        }}
       />
 
-      <AppConnectionBanner healthError={health.isError} sessionsUnauthorized={sessionsUnauthorized} onShowSettings={() => setShowSettings(true)} />
+      {localModelProfile ? (health.isError || sessionsUnauthorized ? <div role="status" className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-sm text-amber-100">The local agent connection needs attention. Check the serving terminal or reload to unlock this workspace.</div> : null) : <AppConnectionBanner healthError={health.isError} sessionsUnauthorized={sessionsUnauthorized} onShowSettings={() => setShowSettings(true)} />}
 
       <main
         id="workspace-main"
@@ -531,12 +550,28 @@ export default function App() {
         className="workspace-main"
       >
         <div className="mx-auto w-full max-w-none">
+            {localModelProfile ? <section aria-label="Local model workspace" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+              <div><p className="text-sm font-semibold text-lime-200">Local 4B · Browser search · Host execution</p><p className="mt-1 text-xs text-white/60">Agent C runs tools on this computer. Open a tool result to inspect its actual output.</p></div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="sr-only" htmlFor="local-chat-session">Chat session</label>
+                <select id="local-chat-session" aria-label="Chat session" value={sessionId} onChange={(event) => setSessionId(event.target.value)} disabled={Boolean(activeJobId) || composerSessionPending} className="max-w-64 rounded-lg border border-white/15 bg-[#17201d] px-3 py-2 text-sm">
+                  <option value="">Choose a chat</option>
+                  {Array.from(new Set([sessionId, ...sessionList])).filter(Boolean).map((id) => <option key={id} value={id}>{id}</option>)}
+                </select>
+                <button type="button" className="workspace-button" onClick={() => {
+                  setLocalSessionCreating(true);
+                  void newSession.mutateAsync().then((response) => {
+                    if (!response.ok) setJobNotice(extractSessionErrorMessage(response) || "Unable to create a chat.");
+                  }).catch((error) => setJobNotice(String(error))).finally(() => setLocalSessionCreating(false));
+                }} disabled={composerSessionPending || Boolean(activeJobId)}>{composerSessionPending ? "Creating chat…" : "New chat"}</button>
+              </div>
+            </section> : null}
             <WorkspaceHeading page={advancedPage} label={advancedPages.find((page) => page.id === advancedPage)?.label ?? "Workspace"} activeJobId={activeJobId ?? ""} />
             <div
               className="workspace-grid"
             >
               <AppToolsSidebar
-                advancedPages={advancedPages}
+                advancedPages={advancedPagesVisible}
                 advancedPage={advancedPage}
                 toolsCollapsed={toolsCollapsed}
                 setToolsCollapsed={setToolsCollapsed}
@@ -721,9 +756,10 @@ export default function App() {
         daemonAuth={daemonAuth}
         prompt={prompt}
         setPrompt={setPrompt}
-        runDisabled={isTeamTarget ? !brokerChatAvailable : false}
+        composerDisabled={composerSessionPending}
+        runDisabled={composerSessionPending || (isTeamTarget ? !brokerChatAvailable : false)}
         runLabel={
-          isTeamTarget
+          composerSessionPending ? "Creating chat…" : isTeamTarget
             ? teamRunCreate.isPending
               ? "Sending…"
               : teamActionNormalized === "goal"
@@ -761,7 +797,7 @@ export default function App() {
         onTeamActionChange={(next) => setTeamAction(next)}
       />
 
-      <SettingsDrawer
+      {!localModelProfile ? <SettingsDrawer
         open={showSettings}
         onClose={() => setShowSettings(false)}
         connection={connection}
@@ -822,7 +858,7 @@ export default function App() {
           error: capsError,
           refresh: () => void capsQuery.refetch(),
         }}
-      />
+      /> : null}
     </div>
   );
 }

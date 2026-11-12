@@ -31,19 +31,36 @@ static std::string lowercase_ascii(std::string s) {
   return s;
 }
 
+struct CancelCtx {
+  HttpClientCancelCallback callback = nullptr;
+  void* context = nullptr;
+  bool cancelled = false;
+  bool check() {
+    if (callback && callback(context)) cancelled = true;
+    return cancelled;
+  }
+};
+
+static int progress_cb(void* userdata, curl_off_t, curl_off_t, curl_off_t, curl_off_t) {
+  auto* ctx = static_cast<CancelCtx*>(userdata);
+  return ctx && ctx->check() ? 1 : 0;
+}
+
 struct WriteCtx {
   std::string* out = nullptr;
   size_t cap = 0;
   bool too_large = false;
+  CancelCtx* cancel = nullptr;
 };
 
 static size_t write_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
   auto* ctx = static_cast<WriteCtx*>(userdata);
   const size_t n = size * nmemb;
   if (!ctx || !ctx->out || !ptr || n == 0) return n;
+  if (ctx->cancel && ctx->cancel->check()) return 0;
 
   const size_t cur = ctx->out->size();
-  if (cur + n > ctx->cap) {
+  if (n > ctx->cap - std::min(cur, ctx->cap)) {
     ctx->too_large = true;
     // Returning 0 aborts the transfer (CURLE_WRITE_ERROR), which we treat as a fail-closed cap violation.
     return 0;
@@ -55,6 +72,9 @@ static size_t write_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
 struct HeaderCtx {
   std::map<std::string, std::string>* out = nullptr;
   int64_t retry_after_ms = -1;
+  size_t bytes = 0;
+  bool too_large = false;
+  CancelCtx* cancel = nullptr;
 };
 
 static std::optional<int64_t> parse_retry_after_seconds(std::string_view v) {
@@ -75,6 +95,9 @@ static size_t header_cb(char* buffer, size_t size, size_t nmemb, void* userdata)
   auto* ctx = static_cast<HeaderCtx*>(userdata);
   const size_t n = size * nmemb;
   if (!ctx || !ctx->out || !buffer || n == 0) return n;
+  if (ctx->cancel && ctx->cancel->check()) return 0;
+  if (n > 65536 - std::min<size_t>(ctx->bytes, 65536)) { ctx->too_large = true; return 0; }
+  ctx->bytes += n;
 
   std::string_view line(buffer, n);
   // Ignore status line.
@@ -107,11 +130,16 @@ HttpClientResult http_request(
   int64_t timeout_ms,
   size_t max_response_bytes,
   const std::string& proxy_url,
-  const HttpClientPinnedResolve* pinned_resolve_or_null
+  const HttpClientPinnedResolve* pinned_resolve_or_null,
+  HttpClientCancelCallback should_cancel,
+  void* cancel_context,
+  bool use_env_proxy
 ) {
   HttpClientResult out;
   out.http_status = 0;
   out.retry_after_ms = -1;
+  CancelCtx cancel{should_cancel, cancel_context, false};
+  if (cancel.check()) { out.cancelled = true; out.error = "request cancelled"; return out; }
 
   ensure_curl_global_init();
 
@@ -138,6 +166,7 @@ HttpClientResult http_request(
   for (const auto& kv : headers) {
     if (kv.first.empty()) continue;
     hdrs = curl_slist_append(hdrs, (kv.first + ": " + kv.second).c_str());
+    if (lowercase_ascii(kv.first) == "accept-encoding") curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, kv.second.c_str());
   }
 
   std::string response_body;
@@ -145,10 +174,12 @@ HttpClientResult http_request(
   WriteCtx wctx;
   wctx.out = &response_body;
   wctx.cap = max_response_bytes;
+  wctx.cancel = &cancel;
 
   std::map<std::string, std::string> response_headers;
   HeaderCtx hctx;
   hctx.out = &response_headers;
+  hctx.cancel = &cancel;
 
   curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
   curl_easy_setopt(curl, CURLOPT_HTTPHEADER, hdrs);
@@ -158,6 +189,15 @@ HttpClientResult http_request(
   curl_easy_setopt(curl, CURLOPT_HEADERDATA, &hctx);
   // Make timeouts reliable even when used from background threads.
   curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+  curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
+  if (should_cancel) {
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progress_cb);
+    curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &cancel);
+  }
+#if LIBCURL_VERSION_NUM >= 0x075500
+  curl_easy_setopt(curl, CURLOPT_PROTOCOLS_STR, "http,https");
+#endif
 
   // Defense-in-depth: pin DNS results (best-effort) to mitigate DNS rebinding between policy check and connect.
   // Uses CURLOPT_RESOLVE to bypass DNS at connect-time (SNI/cert verification still use the hostname).
@@ -185,9 +225,11 @@ HttpClientResult http_request(
 
   const char* proxy = nullptr;
   if (!proxy_url.empty()) proxy = proxy_url.c_str();
-  else proxy = pick_env_proxy();
+  else if (use_env_proxy) proxy = pick_env_proxy();
   if (proxy && proxy[0]) {
     curl_easy_setopt(curl, CURLOPT_PROXY, proxy);
+  } else if (!use_env_proxy) {
+    curl_easy_setopt(curl, CURLOPT_PROXY, "");
   }
 
   std::string m = method;
@@ -207,7 +249,13 @@ HttpClientResult http_request(
   }
 
   const CURLcode rc = curl_easy_perform(curl);
-  if (wctx.too_large) {
+  if (cancel.cancelled) {
+    out.cancelled = true;
+    out.error = "request cancelled";
+  } else if (hctx.too_large) {
+    out.response_too_large = true;
+    out.error = "response headers exceeded byte cap";
+  } else if (wctx.too_large) {
     out.response_too_large = true;
     out.error = "response exceeded max_bytes cap";
   } else if (rc != CURLE_OK) {

@@ -168,11 +168,12 @@ export default function useUiConnectionProfileState({
   );
 
   const activeProfile = React.useMemo(() => {
-    if (connectionProfiles.length === 0) return fallbackProfile;
+    // A local adapter owns its connection; do not replay a saved cloud profile.
+    if (defaults.localModelProfile || connectionProfiles.length === 0) return fallbackProfile;
     const found = connectionProfiles.find((profile) => profile.id === activeProfileId);
     const baseProfile = found || connectionProfiles[0];
     return mergeProfileSecrets(baseProfile, connectionProfileSecrets[baseProfile.id]);
-  }, [activeProfileId, connectionProfileSecrets, connectionProfiles, fallbackProfile]);
+  }, [activeProfileId, connectionProfileSecrets, connectionProfiles, fallbackProfile, defaults.localModelProfile]);
 
   const updateActiveProfile = React.useCallback<ConnectionProfileUpdater>(
     (update) => {
@@ -288,8 +289,8 @@ export default function useUiConnectionProfileState({
   return {
     connectionProfiles,
     setConnectionProfiles,
-    connectionProfileSecrets,
-    activeProfileId,
+    connectionProfileSecrets: defaults.localModelProfile ? {} : connectionProfileSecrets,
+    activeProfileId: defaults.localModelProfile ? "local-model" : activeProfileId,
     setActiveProfileId,
     activeProfile,
     updateActiveProfile,

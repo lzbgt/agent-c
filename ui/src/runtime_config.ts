@@ -7,6 +7,7 @@ export type ServerPrefsMode = "off" | "auto" | "on";
 
 export type AgentUIRuntimeConfig = {
   identityEnabled?: boolean;
+  localModelProfile?: boolean;
   clientId?: string;
   connectionMode?: ConnectionMode | string;
   daemonBaseUrl?: string;
@@ -54,6 +55,7 @@ export type AgentUIRuntimeConfig = {
 };
 
 export type AgentUIDefaults = {
+  localModelProfile: boolean;
   clientId: string;
   connectionMode: ConnectionMode;
   daemonBaseUrl: string;
@@ -107,6 +109,7 @@ declare global {
 }
 
 const DEFAULTS: AgentUIDefaults = {
+  localModelProfile: false,
   clientId: "webui",
   connectionMode: "direct",
   daemonBaseUrl: "http://127.0.0.1:8123",
@@ -223,6 +226,7 @@ const readRuntimeConfig = (): AgentUIRuntimeConfig => {
 export const getUiDefaults = (): AgentUIDefaults => {
   const cfg = readRuntimeConfig();
   const out: AgentUIDefaults = { ...DEFAULTS };
+  out.localModelProfile = coerceBool(cfg.localModelProfile) ?? false;
 
   out.clientId = coerceString(cfg.clientId) ?? coerceString(envString("VITE_AGENTUI_CLIENT_ID")) ?? out.clientId;
 

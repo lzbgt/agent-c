@@ -13,7 +13,7 @@ type PromptBarComposerBodyProps = {
   uploadsDisabledReason: string;
   onRun: () => void;
   onUploadChange: (files: FileList | File[]) => Promise<void>;
-} & Pick<PromptBarProps, "prompt" | "runDisabled" | "setJobNotice" | "setPrompt">;
+} & Pick<PromptBarProps, "prompt" | "runDisabled" | "composerDisabled" | "setJobNotice" | "setPrompt">;
 
 export default function PromptBarComposerBody(props: PromptBarComposerBodyProps) {
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -25,6 +25,8 @@ export default function PromptBarComposerBody(props: PromptBarComposerBodyProps)
         aria-label="Message your agent"
         rows={2}
         value={props.prompt}
+        disabled={props.composerDisabled}
+        aria-busy={props.composerDisabled || undefined}
         placeholder={props.promptPlaceholder}
         onChange={(event) => props.setPrompt(event.target.value)}
         onKeyDown={(event) => {
@@ -47,7 +49,7 @@ export default function PromptBarComposerBody(props: PromptBarComposerBodyProps)
           className="sr-only"
           tabIndex={-1}
           data-testid="promptbar-file-input"
-          disabled={!props.uploadsEnabled || props.uploadBusy}
+          disabled={props.composerDisabled || !props.uploadsEnabled || props.uploadBusy}
           onChange={async (event) => {
             if (!props.uploadsEnabled) {
               props.setJobNotice("uploads disabled by daemon caps");
@@ -64,7 +66,7 @@ export default function PromptBarComposerBody(props: PromptBarComposerBodyProps)
           className={`chat-attach inline-flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-xs text-white/70 hover:bg-white/5 ${
             props.uploadBusy || !props.uploadsEnabled ? "opacity-50 pointer-events-none" : ""
           }`}
-          disabled={props.uploadBusy || !props.uploadsEnabled}
+          disabled={props.composerDisabled || props.uploadBusy || !props.uploadsEnabled}
           aria-label={props.uploadBusy ? "Uploading files" : "Attach files"}
           title="Attach files"
           onClick={() => fileInputRef.current?.click()}

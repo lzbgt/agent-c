@@ -47,6 +47,7 @@ export default function usePromptBarState(props: PromptBarProps) {
   }, []);
 
   const onRun = React.useCallback(() => {
+    if (props.composerDisabled || props.runDisabled) return;
     props.onRun({ prompt: props.prompt, attachments });
   }, [attachments, props]);
 
@@ -72,6 +73,7 @@ export default function usePromptBarState(props: PromptBarProps) {
 
   const handleUploadFiles = React.useCallback(
     async (files: FileList | File[]) => {
+      if (props.composerDisabled) return;
       if (!uploadsEnabled) {
         props.setJobNotice("uploads disabled by daemon caps");
         return;

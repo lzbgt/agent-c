@@ -173,6 +173,7 @@ agent_status_t tool_fs_read(HostToolCtx* ctx, const char* arguments_json, agent_
 agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 #if defined(AGENT_HAVE_WEB_SEARCH)
 agent_status_t tool_web_search(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+agent_status_t tool_web_fetch(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 #endif
 
 inline bool is_cancelled(const HostToolCtx* ctx) {

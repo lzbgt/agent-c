@@ -247,12 +247,14 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     target_compile_definitions(agent_core PRIVATE AGENT_HAVE_JSONCPP=1)
   endif()
 
-  # Native public search reuses the bounded HTTP transport and existing JSON parser.
+  # Native HTTP/discovery/browser tools share the host registry and parsers.
   set(AGENT_ENABLE_WEB_SEARCH OFF)
   if(AGENT_ENABLE_JSONCPP)
+    find_package(LibXml2 REQUIRED)
     set(AGENT_ENABLE_WEB_SEARCH ON)
-    target_sources(agent_host PRIVATE cli/src/toolset_host_web.cpp)
-    target_include_directories(agent_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src)
+    target_sources(agent_host PRIVATE cli/src/toolset_host_web.cpp cli/src/browser_process.cpp cli/src/web_fetch.cpp cli/src/web_discovery.cpp)
+    target_include_directories(agent_host PUBLIC daemon/src)
+    target_link_libraries(agent_host PUBLIC LibXml2::LibXml2)
     target_compile_definitions(agent_host PUBLIC AGENT_HAVE_WEB_SEARCH=1)
   endif()
 
@@ -1929,9 +1931,20 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
 
   if(AGENT_ENABLE_WEB_SEARCH)
     add_executable(web_search_tests tests/test_web_search.cpp)
-    target_include_directories(web_search_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src)
     target_link_libraries(web_search_tests PRIVATE agent_host)
     add_test(NAME web_search_tests COMMAND web_search_tests)
+
+    add_executable(browser_process_tests tests/test_browser_process.cpp)
+    target_link_libraries(browser_process_tests PRIVATE agent_host)
+    add_test(NAME browser_process_tests COMMAND browser_process_tests)
+
+    add_executable(web_fetch_tests tests/test_web_fetch.cpp)
+    target_link_libraries(web_fetch_tests PRIVATE agent_host)
+    add_test(NAME web_fetch_tests COMMAND web_fetch_tests)
+
+    add_executable(web_discovery_tests tests/test_web_discovery.cpp)
+    target_link_libraries(web_discovery_tests PRIVATE agent_host)
+    add_test(NAME web_discovery_tests COMMAND web_discovery_tests)
   endif()
 
   if(AGENT_ENABLE_SQLITE3)

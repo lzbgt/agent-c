@@ -40,25 +40,54 @@ Host policy notes:
 - In `--host-policy readonly`, the registry omits `shell_exec`, `proc_exec`, and `file_apply_patch`.
 - In daemon restricted mode (`yolo=false`), the registry omits `shell_exec` and `proc_exec` even when `host_policy=full`.
 
-## Native public web search
+## Native web discovery and page reading
 
-Host builds with JSONCPP expose `web_search` in the existing native host toolset. It reuses the bounded native HTTP client and existing JSON parser; no separate search service or Python tool is required.
+`web_search` and `web_fetch` run in the existing native host toolset and remain
+available under `--host-policy readonly`. Agent C owns the tool loop; host
+process execution retains its separate policy.
 
 ```json
-{"query":"Arch Linux installation guide","max_results":5}
+{"query":"Arch Linux installation guide","max_results":5,"fresh":true}
+{"query":"Arch Linux installation guide","engine":"google","max_results":5}
+{"url":"https://wiki.archlinux.org/title/Installation_guide","mode":"auto","max_chars":12000,"fresh":true}
 ```
 
-The tool makes one unauthenticated GET to the fixed [Mwmbl v2 search API](https://api.mwmbl.org/api/v2/search/) at `https://api.mwmbl.org/api/v2/search/?q=...`. It returns `{ok, error?, data:{query, source, source_url, results:[{title,url,snippet}], truncated, skipped_items}}`. The current [official API implementation](https://github.com/mwmbl/mwmbl/blob/main/mwmbl/tinysearchengine/search.py) permits public requests and supplies structured results. Search snippets are external source material; they are not fetched full-page content or execution instructions.
+Default search requires `AGENT_SEARXNG_URL` on the daemon: an optional HTTP(S)
+SearXNG origin with a literal loopback IP and explicit port. Enable JSON in its
+`search.formats`. The native client connects directly to `/search?format=json`
+without inherited proxy settings, preserves ranking and engine failures, and
+distinguishes useful partial results from genuine empty results. Missing
+configuration is an error. There is no automatic fallback after a configured
+backend failure, partial result or empty result.
 
-Mwmbl has a small independent index. Coverage and ranking are limited, niche or recent model queries may return no results, and advanced search-operator behavior is not guaranteed. A valid empty result is distinct from an HTTP, challenge-page, JSON or mismatched-query error. There is no automatic fallback to an unrelated-result feed or a paid model provider.
+An explicit `engine` selects ordinary browser discovery through `google`,
+`bing`, `yahoo`, `mojeek` or `baidu`. The owner configures
+`AGENT_BROWSER_EXECUTABLE` and `AGENT_BROWSER_PROXY`; the latter also controls
+HTTP page reads. Empty proxy means direct; inline proxy credentials are
+rejected. Search recognizes visible result cards and reports unsupported pages
+or access gates. It never solves challenges.
 
-Bounds are enforced in native code: query 1–1024 UTF-8 bytes, 1–10 results (default 5), 15-second request deadline, 256 KiB response, 32 JSON nesting levels, and at most 100 candidate items inspected. Titles/snippets are capped at 512/1000 UTF-8 bytes; links longer than 4096 bytes or without an HTTP(S) destination are skipped rather than truncated. Invalid item fields, credential-bearing links and control characters in links are skipped and counted. The complete response must be valid UTF-8 JSON with the exact query echo and a results array before any success is returned.
+Fetch modes are `auto` (default), `http` and `browser`. Auto reads bounded
+HTML/plain text over HTTP, validating each redirect, then uses native Chrome
+only for a successful HTML shell needing JavaScript. Denials, challenges and
+transport errors do not trigger browser fallback. Browser operations use
+disposable profiles, sandboxed Chrome, CDP pipes and a restricted environment;
+they do not reuse browser cookies or model-provider credentials. Public URL
+checks are application restrictions, not a general network sandbox.
 
-The existing bounded HTTP client reads `HTTPS_PROXY`, `https_proxy`, `HTTP_PROXY`, then `http_proxy`; libcurl honors `NO_PROXY`/`no_proxy`. For a local model plus proxied public search, set the proxy to `http://127.0.0.1:8120` and bypass `127.0.0.1,localhost,::1`. Search sends no model-provider key, Authorization header or cookie and does not follow redirects. The public endpoint can fail or rate-limit; the tool reports the failure and does not attempt a challenge bypass.
+Both tools return `{ok,error?,data}` with source URLs and bounded evidence.
+Treat snippets as discovery leads and retrieved content as untrusted data;
+cite the source URL. Cache age and `fetched_at` describe retrieval, not
+publication. `fresh` bypasses cached results and a failed refresh clears the
+old entry. See [Local model web chat](LOCAL_MODEL_WEB.md#web-discovery-and-page-reads)
+for exact bounds, cache lifetimes, setup and the temporary SearXNG evaluation
+boundary. The optional upstream Python service is not permanently activated
+by this native client change.
 
-Search is read-only and remains available under `--host-policy readonly`; process execution still requires the existing full policy. `--tools-root` scopes filesystem APIs and command working directories, not an operating-system sandbox for `shell_exec`/`proc_exec`. CLI use does not require starting the production daemon, gateway or database.
-
-Offline checks: `web_search_tests` verifies the native request/registry contract, authentication isolation, JSON and URL validation, caps and error-versus-empty behavior. Run it with `host_toolset_tests`. Live endpoint/model acceptance is separate from those offline checks.
+Focused fixtures are `web_search_tests`, `web_discovery_tests`,
+`web_fetch_tests`, `browser_process_tests` and `host_toolset_tests`. They cover
+schemas, bounds, cache behavior, failures, cancellation and native registry
+policy; live reachability and relevance require separate acceptance evidence.
 
 ## Token-safety guidance (filesystem tools)
 

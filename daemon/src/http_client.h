@@ -7,6 +7,8 @@
 
 namespace agentd {
 
+using HttpClientCancelCallback = bool (*)(void*);
+
 struct HttpClientPinnedResolve {
   // Hostname (lowercased) and port to pin for this request.
   // The host must match the request URL host (without IPv6 brackets).
@@ -37,6 +39,7 @@ struct HttpClientResult {
   std::vector<std::string> resolved_addrs;
 
   bool timed_out = false;
+  bool cancelled = false;
   bool response_too_large = false;
 };
 
@@ -45,6 +48,8 @@ struct HttpClientResult {
 // - Supports http/https (URL scheme must be validated by the caller).
 // - Uses libcurl (already required by host build).
 // - Bounded response capture (fail-closed when response exceeds max_response_bytes).
+// - Explicit Accept-Encoding enables libcurl decoding before the byte cap.
+// - use_env_proxy=false with an empty proxy explicitly selects a direct request.
 HttpClientResult http_request(
   const std::string& url,
   const std::string& method,
@@ -53,7 +58,10 @@ HttpClientResult http_request(
   int64_t timeout_ms,
   size_t max_response_bytes,
   const std::string& proxy_url,
-  const HttpClientPinnedResolve* pinned_resolve_or_null
+  const HttpClientPinnedResolve* pinned_resolve_or_null,
+  HttpClientCancelCallback should_cancel = nullptr,
+  void* cancel_context = nullptr,
+  bool use_env_proxy = true
 );
 
 }  // namespace agentd

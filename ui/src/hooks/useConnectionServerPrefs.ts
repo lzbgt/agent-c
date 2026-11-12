@@ -94,12 +94,12 @@ export default function useConnectionServerPrefs({
   const serverPrefsLastPayloadRef = React.useRef("");
   const serverPrefsPullInFlightRef = React.useRef(false);
 
-  const serverPrefsAuto = serverPrefsDefaultMode === "auto" && !serverPrefsUserSet;
-  const serverPrefsEffectiveEnabled = serverPrefsUserSet
+  const serverPrefsAuto = !defaults.localModelProfile && serverPrefsDefaultMode === "auto" && !serverPrefsUserSet;
+  const serverPrefsEffectiveEnabled = !defaults.localModelProfile && (serverPrefsUserSet
     ? serverPrefsEnabled
     : serverPrefsDefaultMode === "auto"
       ? serverPrefsAutoEnabled
-      : serverPrefsDefaultMode === "on";
+      : serverPrefsDefaultMode === "on");
 
   React.useEffect(() => {
     if (!serverPrefsAuto) {

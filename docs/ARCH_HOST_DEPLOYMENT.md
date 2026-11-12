@@ -35,27 +35,49 @@ with restart `no`, and no listeners on the three project ports. This establishes
 local shutdown, not retrospective provider billing or revocation of shared keys.
 Do not run the deployment or live-model probes below while this owner hold applies.
 
-## Owner-directed local 4B CLI use (2026-11-12)
+## Owner-directed local 4B web and CLI use (2026-11-12)
 
-The local model task explicitly uses the existing Agent C core and CLI with
-the 4B Qwen3.5 fine-tune on Arch. This narrow integration adds a bounded native
-`web_search` tool and explicit response-token limits; it uses the authenticated
-loopback model at `127.0.0.1:18088`. Its launcher and measured 126K profile are
-maintained in `/home/bruce/work/ai_model`:
+The owner's local model task explicitly authorizes the existing Agent C core,
+CLI and a local web interface for the 4B Qwen3.5 fine-tune. The web interface
+uses the native `agentd` chat/session/job APIs through `agentd-local-ui`, which
+serves the existing built UI, handles local browser authentication, and pins
+runs to this local model. Native host tools execute commands. Native web tools
+provide bounded HTTP-first page extraction and an isolated headless Chrome
+fallback over CDP pipes. Search discovery can use an explicitly configured
+local SearXNG JSON service; browser discovery requires an explicit engine.
+No paid search API key or second model agent loop is required. Missing or
+blocked discovery is reported rather than replaced with unrelated results.
+
+| Local component | Loopback address | Purpose |
+| --- | --- | --- |
+| `agentd-local-ui` | `127.0.0.1:18088` | Tool-enabled web chat and authenticated same-origin API proxy |
+| `llama-server` | `127.0.0.1:18089` | 4B inference API, 129,024-token context; embedded model UI disabled |
+| Local-profile `agentd` | `127.0.0.1:18090` | Existing native core, sessions, jobs and host/browser tools |
+
+The launcher and profile are maintained in `/home/bruce/work/ai_model`:
 
 ```sh
+python3 /home/bruce/work/ai_model/scripts/deepseek_qwen35.py serve --model 4b
 python3 /home/bruce/work/ai_model/scripts/deepseek_qwen35.py agent chat
 ```
 
-This is local, on-demand CLI use. The production service stop above and the
-Panda publication hold remain effective; general Agent C development and
-cloud-model service operation are not resumed. The dedicated daemon/gateway
-remain inactive and disabled, and the database container remains exited with
-restart disabled. Native `agent` and `agentd` were built for verification;
-only the CLI and local llama.cpp model were executed for this integration.
-See [CLI](CLI.md#local-models-and-response-budgets) and
-[Tools](TOOLS.md#native-public-web-search) for the native contracts and search
-coverage limits.
+The first command supervises all three native processes; Ctrl-C stops the
+stack. Private keys, logs and separate local daemon/session state live under
+`ai_model/.config/deepseek-qwen35`. The web sign-in uses the existing private
+model key without exposing provider or daemon credentials in UI configuration.
+
+For an existing local JSON-enabled SearXNG service, add
+`--searxng-url http://127.0.0.1:18091` to `serve`, or before the native CLI
+command after `agent`. The launcher does not start that service. Its temporary
+development evaluation returned relevant results on this host; permanent
+operation of Python-based SearXNG is not authorized by the project's native
+production-runtime rule. The committed profile leaves this endpoint unset.
+
+The production service stop above and Panda publication hold remain effective.
+This local profile does not enable or restart `agent-c-daemon.service`,
+`agent-c-gateway.service`, the dedicated PostgreSQL container, shared ingress
+or any cloud-model workflow. See [Local model web interface](LOCAL_MODEL_WEB.md),
+[CLI](CLI.md#local-models-and-response-budgets), and [Tools](TOOLS.md).
 
 ## Runtime and authority
 

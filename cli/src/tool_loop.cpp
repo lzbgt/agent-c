@@ -46,10 +46,12 @@ struct WorkAwareExecutor {
   bool adopted = false;
   Json::Int64 last_revision = -1;
   size_t stagnant_completions = 0;
+  std::string last_tool_name = {};
 };
 
 static agent_status_t execute_with_work_tracking(void* ctx, const char* name, const char* args, agent_string_t* out) {
   auto* work = static_cast<WorkAwareExecutor*>(ctx);
+  work->last_tool_name = name ? name : "";
   const auto status = work->inner->execute(work->inner->ctx, name, args, out);
   if (status == AGENT_OK && std::string(name) == "work_state") {
     Json::Value result;
@@ -77,13 +79,115 @@ static agent_status_t guard_work_completion(void* ctx, agent_string_t* prompt) {
   return agent_string_set_copy(prompt, text.data(), text.size());
 }
 
-static Json::Value summarize_tool_output_json(const std::string& tool_out) {
+// Keep public web provenance available when verbose event capture is disabled.
+// Field and serialized limits are independent of the much larger tool payload.
+static Json::Value summarize_web_output_json(const Json::Value& obj, bool search) {
+  Json::Value summary(Json::objectValue);
+  summary["kind"] = "json_envelope";
+  if (obj["ok"].isBool()) summary["ok"] = obj["ok"];
+  bool clipped = false;
+  const auto cap = [&](const std::string& value, size_t max_chars, size_t max_json_bytes) {
+    size_t end = 0, chars = 0;
+    while (end < value.size() && chars < max_chars) {
+      ++end;
+      while (end < value.size() && (static_cast<unsigned char>(value[end]) & 0xc0) == 0x80) ++end;
+      ++chars;
+    }
+    std::string text = value.substr(0, end);
+    while (json_stringify(Json::Value(text)).size() > max_json_bytes) {
+      size_t cut = text.size() / 2;
+      while (cut && (static_cast<unsigned char>(text[cut]) & 0xc0) == 0x80) --cut;
+      text.resize(cut);
+    }
+    clipped = clipped || text.size() != value.size();
+    return text;
+  };
+  if (obj["error"].isString()) summary["error"] = cap(obj["error"].asString(), 512, 1024);
+  const auto& data = obj["data"];
+  if (!data.isObject()) return summary;
+  const auto copy_string = [&](const char* name, size_t chars, size_t bytes) {
+    if (data[name].isString()) summary[name] = cap(data[name].asString(), chars, bytes);
+  };
+  const auto copy_url = [&](const Json::Value& from, Json::Value& to, const char* name) {
+    if (!from[name].isString()) return false;
+    const auto value = from[name].asString();
+    // A URL is an identifier: retain it whole or omit it, never make a new
+    // prefix URL. Account for the two JSON quotes around a full 4096-byte URL.
+    if (value.size() > 4096 || json_stringify(Json::Value(value)).size() > 4096 + 2) {
+      clipped = true;
+      return false;
+    }
+    to[name] = value;
+    return true;
+  };
+  copy_string("source", 64, 256);
+  copy_string("engine", 32, 128);
+  copy_string("fetched_at", 64, 128);
+  for (const auto* name : {"cache_hit", "rendered", "blocked", "cancelled", "timed_out", "truncated", "untrusted_content"}) {
+    if (data[name].isBool()) summary[name] = data[name];
+  }
+  for (const auto* name : {"http_status", "cache_age_ms"}) {
+    if (data[name].isInt64() || data[name].isUInt64()) summary[name] = data[name];
+  }
+  if (search) {
+    copy_string("query", 1024, 2048);
+    if (data["results"].isArray()) {
+      const auto& results = data["results"];
+      summary["result_count"] = Json::UInt64(results.size());
+      summary["results"] = Json::Value(Json::arrayValue);
+      for (Json::ArrayIndex i = 0; i < results.size() && i < 3; ++i) {
+        const auto& item = results[i];
+        if (!item.isObject() || !item["title"].isString() || !item["url"].isString()) { clipped = true; continue; }
+        Json::Value entry(Json::objectValue);
+        if (!copy_url(item, entry, "url")) { clipped = true; continue; }
+        entry["title"] = cap(item["title"].asString(), 512, 1024);
+        summary["results"].append(entry);
+      }
+      summary["results_truncated"] = summary["results"].size() < results.size();
+      clipped = clipped || summary["results_truncated"].asBool();
+    }
+  } else {
+    copy_url(data, summary, "requested_url");
+    copy_url(data, summary, "url");
+    copy_string("title", 512, 1024);
+    copy_string("mode", 16, 64);
+    if (data["text"].isString()) {
+      const auto text = data["text"].asString();
+      size_t chars = 0;
+      for (unsigned char c : text) if ((c & 0xc0) != 0x80) ++chars;
+      const auto excerpt = cap(text, 1024, 4096);
+      summary["text_chars"] = Json::UInt64(chars);
+      summary["text_excerpt"] = excerpt;
+      summary["excerpt_truncated"] = excerpt.size() < text.size();
+    }
+  }
+  summary["summary_truncated"] = clipped;
+  // Escaped JSON can be larger than its UTF-8 strings. Retain first-ranked
+  // sources within a fixed event budget, and never add raw snippets or headers.
+  while (json_stringify(summary).size() > 16 * 1024 && summary["results"].isArray() && !summary["results"].empty()) {
+    summary["results"].resize(summary["results"].size() - 1);
+    summary["results_truncated"] = true;
+    summary["summary_truncated"] = true;
+  }
+  if (json_stringify(summary).size() > 16 * 1024) {
+    summary.removeMember("text_excerpt");
+    summary["excerpt_truncated"] = true;
+    summary["summary_truncated"] = true;
+  }
+  return summary;
+}
+
+// Host-private entry point shared by the production callback and regression tests.
+Json::Value summarize_tool_output_json(const std::string& tool_out, const std::string& tool_name) {
   Json::Value obj;
   if (!parse_json_object(tool_out, &obj)) {
     Json::Value s(Json::objectValue);
     s["kind"] = "text";
     s["bytes"] = (Json::UInt64)tool_out.size();
     return s;
+  }
+  if (tool_name == "web_search" || tool_name == "web_fetch") {
+    return summarize_web_output_json(obj, tool_name == "web_search");
   }
   Json::Value summary(Json::objectValue);
   summary["kind"] = "json_envelope";
@@ -377,14 +481,15 @@ static agent_status_t cap_tool_output_cb(
 }
 
 static agent_status_t summarize_tool_output_cb(
-  void* /*ctx*/,
+  void* ctx,
   const char* tool_out,
   size_t tool_out_len,
   agent_string_t* out_summary_json
 ) {
   if (!out_summary_json) return AGENT_ERR_INVALID_ARGUMENT;
   const std::string in(tool_out ? tool_out : "", tool_out_len);
-  const Json::Value summary = summarize_tool_output_json(in);
+  const auto* work = static_cast<const WorkAwareExecutor*>(ctx);
+  const Json::Value summary = summarize_tool_output_json(in, work ? work->last_tool_name : "");
   const std::string s = json_stringify(summary);
   return agent_string_set_copy(out_summary_json, s.data(), s.size());
 }
@@ -501,6 +606,7 @@ bool run_tool_loop(
 
   agent_tool_loop_result_t core_res{};
   WorkAwareExecutor work_executor{executor, false};
+  hooks.summarize_tool_output_ctx = &work_executor;
   agent_tool_executor_t tracked_executor{&work_executor, execute_with_work_tracking};
   hooks.on_proposed_completion = guard_work_completion;
   hooks.on_proposed_completion_ctx = &work_executor;

@@ -33,7 +33,7 @@ export default function AppToolsSidebar(props: AppToolsSidebarProps) {
         </button>
       </div>
       <nav ref={navRef} aria-label="Workspace navigation">
-        {groups.map((group) => (
+        {groups.filter((group) => group.ids.some((id) => pages.some((page) => page.id === id))).map((group) => (
           <div className="workspace-nav-group" key={group.label}>
             <div className="workspace-nav-label">{group.label}</div>
             {group.ids.map((id) => {

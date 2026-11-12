@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unlock local agent · Agent C</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#101416;color:#e7ece8}
+body{min-height:100vh;margin:0;display:grid;place-items:center}
+main{box-sizing:border-box;width:min(92vw,440px);padding:32px;border:1px solid #35413d;border-radius:16px;background:#17201d}
+h1{font-size:26px;margin:8px 0 16px}p{line-height:1.6;color:#b7c4bd}label{display:block;margin-bottom:8px}
+input,button{font:inherit;box-sizing:border-box;width:100%;padding:12px;border-radius:8px}
+input{border:1px solid #53675c;background:#101713;color:inherit}button{border:0;background:#b9dc6f;color:#17201d;font-weight:700;margin-top:16px;cursor:pointer}
+button:disabled{opacity:.6}small{display:block;margin-top:20px;color:#9caea3;line-height:1.5}
+#error{min-height:1.4em;color:#ffb5a6}code{font-size:12px;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<main>
+<p>AGENT C · LOCAL 4B</p>
+<h1>Unlock your local agent</h1>
+<p>Chat with your local model using live browser search and native host tools.</p>
+<form id="login">
+<label for="key">Local access key</label>
+<input id="key" type="password" autocomplete="current-password" required autofocus>
+<button id="submit" type="submit">Open workspace</button>
+<p id="error" role="alert"></p>
+</form>
+<small>Use the key in <code>ai_model/.config/deepseek-qwen35/api-key</code>. It stays on this host and is not saved in browser storage. The browser session lasts up to 24 hours or until the local web server restarts.</small>
+</main>
+<script src="/local-login.js"></script>
+</body>
+</html>
