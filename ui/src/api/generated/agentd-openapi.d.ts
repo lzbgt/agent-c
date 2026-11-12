@@ -56,13 +56,19 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Read the authoritative session requirement and blocker ledger
-         * @description Read-only projection of the existing work_state ledger. Auth and configured session-root confinement apply. Missing storage returns an empty revision-zero state without creating or migrating files. Mutations remain policy-gated host work_state or agent work operations. Initialized ledgers have a stable ledger_id; legacy ledgers gain one only on a successful mutation.
+         * Read or await a change in the authoritative session work ledger
+         * @description Read-only projection of the existing work_state ledger. Auth and configured session-root confinement apply. Missing storage returns an empty revision-zero state without creating or migrating files. Mutations remain policy-gated host work_state or agent work operations. Initialized ledgers have a stable ledger_id; legacy ledgers gain one only on a successful mutation. Optional after_ledger_id, after_revision and wait_ms must be supplied together. A watch returns 200 with work_watch when identity or revision differs, or 204 after an unchanged timeout. The hint grants no dispatch authority; clients must reconcile current goal controls and ledger state before acting. In-process mutations signal waiting reads; external writers are discovered by fallback reads at most 250 ms apart, excluding ledger read/lock time. Wait duration is at most 5000 ms plus bounded ledger read time. There are at most 32 active watches per daemon process. Ordinary reads are not watch-limited. All responses use Cache-Control no-store.
          */
         get: {
             parameters: {
                 query: {
                     session_id: string;
+                    /** @description Previously observed nonempty safe ledger identifier; requires after_revision and wait_ms. */
+                    after_ledger_id?: string;
+                    /** @description Previously observed revision as unsigned decimal digits; requires after_ledger_id and wait_ms. */
+                    after_revision?: number;
+                    /** @description Bounded long-poll wait in milliseconds; requires both cursor fields. */
+                    wait_ms?: number;
                 };
                 header?: never;
                 path?: never;
@@ -70,9 +76,10 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Validated ledger projection; empty state is not goal completion */
+                /** @description Validated projection, or changed identity/revision for a watch; empty state is not completion */
                 200: {
                     headers: {
+                        "Cache-Control"?: "no-store";
                         [name: string]: unknown;
                     };
                     content: {
@@ -111,10 +118,25 @@ export interface paths {
                             open_blockers: string[];
                             all_requirements_done: boolean;
                             can_continue: boolean;
+                            /** @description Present only on a changed long-poll response; advisory scheduling hint. */
+                            work_watch?: {
+                                /** @constant */
+                                schema: "agentd.work-watch.v1";
+                                /** @constant */
+                                changed: true;
+                            };
                         };
                     };
                 };
-                /** @description Invalid session identifier */
+                /** @description Watch timed out with unchanged identity and revision; empty response body */
+                204: {
+                    headers: {
+                        "Cache-Control"?: "no-store";
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid session identifier or incomplete/invalid watch cursor or duration */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -131,6 +153,14 @@ export interface paths {
                 /** @description Invalid */
                 409: {
                     headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Daemon watch capacity reached; use bounded backoff and ordinary reconciliation */
+                429: {
+                    headers: {
+                        "Retry-After"?: "1";
                         [name: string]: unknown;
                     };
                     content?: never;

@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <iostream>
 #include <sstream>
+#include <future>
+#include <thread>
 
 namespace {
 void check(bool ok, const std::string& error) { if (!ok) { std::cerr << error << '\n'; std::exit(1); } }
@@ -52,5 +54,26 @@ int main() {
   check(executor.execute(executor.ctx, "work_state", R"({"op":"requirement","id":"x","title":"x"})", &result) == AGENT_OK, "tool execution failed");
   check(parse(std::string(result.data, result.len))["ok"] == false, "readonly policy must deny work mutations");
   agent_string_free(&result); toolset_host_destroy(&executor); agent_tool_registry_destroy(registry);
+
+  // Change hints are per-path, commit-only, and cannot miss a commit before wait.
+  auto watch = work_ledger_subscribe(db);
+  auto same = work_ledger_subscribe(db.parent_path() / "." / db.filename());
+  auto version = watch->generation();
+  apply("{}");
+  reject(R"({"op":"requirement","id":"new","title":"new","expected_revision":0})");
+  check(watch->generation() == version, "reads/failed transactions must not notify");
+  Json::Value unrelated;
+  check(work_ledger_apply(root / "other.sqlite", parse(R"({"op":"requirement","id":"y","title":"other mutation"})"), &unrelated, &error), error);
+  check(watch->generation() == version, "unrelated authority woke watcher");
+  apply(R"({"op":"requirement","id":"new","title":"Additional work"})");
+  check(same->wait_for(version, std::chrono::milliseconds(1)), "commit between snapshot and wait was lost");
+  version = watch->generation();
+  auto waiting = std::async(std::launch::async, [&] { return watch->wait_for(version, std::chrono::seconds(2)); });
+  apply(R"({"op":"requirement","id":"new","status":"done","evidence":"verified"})");
+  check(waiting.get(), "committed mutation did not wake subscriber");
+  version = watch->generation();
+  check(!watch->wait_for(version, std::chrono::milliseconds(10)), "unchanged ledger spuriously signaled");
+  auto absent = work_ledger_subscribe(root / "uncreated" / "work.sqlite");
+  check(!std::filesystem::exists(root / "uncreated"), "subscription created ledger storage");
   std::filesystem::remove_all(root);
 }

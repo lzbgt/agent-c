@@ -23,6 +23,8 @@ func parseFlags() config {
 	flag.StringVar(&cfg.status, "status", "running", "Orchestrator run status filter (default: running).")
 	flag.BoolVar(&cfg.includePlanned, "include-planned", true, "Also include planned runs (auto-start).")
 	flag.StringVar(&cfg.orchestratorID, "orchestrator-id", strings.TrimSpace(os.Getenv("ORCHESTRATOR_ID")), "Orchestrator loop id stored in run meta.")
+	flag.BoolVar(&cfg.disableLedgerWatch, "disable-ledger-watch", false, "Use periodic reconciliation only, without requirement-change watches.")
+	flag.IntVar(&cfg.ledgerWatchLimit, "ledger-watch-limit", 16, "Maximum concurrent authoritative requirement watches (1..64, or 0 for default 16); excess goals retain polling.")
 	flag.Parse()
 	if cfg.orchestratorID == "" {
 		cfg.orchestratorID = "orchestrator_" + randID(8)
@@ -36,6 +38,9 @@ func (c config) validate() error {
 	}
 	if c.oidcToken == "" && c.oidcTokenFile == "" {
 		return fmt.Errorf("missing oidc token")
+	}
+	if c.ledgerWatchLimit < 0 || c.ledgerWatchLimit > 64 {
+		return fmt.Errorf("ledger-watch-limit must be 0 (default 16) or 1..64")
 	}
 	if c.limit <= 0 {
 		c.limit = 50
@@ -67,22 +72,55 @@ func (c config) bearerToken() (string, error) {
 }
 
 func runLoop(ctx context.Context, client *http.Client, cfg config) {
+	interval := cfg.pollInterval
+	if interval <= 0 {
+		interval = 5 * time.Second
+	}
+	var watches *ledgerWatchManager
+	if !cfg.once && !cfg.disableLedgerWatch {
+		watches = newLedgerWatchManager(ctx, client, cfg)
+		defer watches.close()
+	}
+	rearm := true
 	for {
-		if err := runOnce(ctx, client, cfg); err != nil {
+		desired := map[string]ledgerWatchSpec{}
+		var observe func(string, orchestratorRun)
+		if watches != nil {
+			observe = func(teamID string, run orchestratorRun) {
+				if spec, ok := ledgerWatchForRun(run, cfg.orchestratorID); ok {
+					desired[spec.key()] = spec
+				}
+			}
+		}
+		if err := runCycle(ctx, client, cfg, observe); err != nil {
 			fmt.Fprintf(os.Stderr, "orchestrator error: %v\n", err)
 		}
 		if cfg.once {
 			return
 		}
+		var wake <-chan struct{}
+		if watches != nil {
+			watches.sync(desired, rearm)
+			wake = watches.wake
+		}
+		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return
-		case <-time.After(cfg.pollInterval):
+		case <-wake:
+			timer.Stop()
+			rearm = false
+		case <-timer.C:
+			rearm = true
 		}
 	}
 }
 
 func runOnce(ctx context.Context, client *http.Client, cfg config) error {
+	return runCycle(ctx, client, cfg, nil)
+}
+func runCycle(ctx context.Context, client *http.Client, cfg config, observe func(string, orchestratorRun)) error {
 	teams, err := fetchTeams(ctx, client, cfg)
 	if err != nil {
 		return err
@@ -131,6 +169,14 @@ func runOnce(ctx context.Context, client *http.Client, cfg config) error {
 			}
 			if err := handleRun(ctx, client, cfg, teamID, run); err != nil {
 				fmt.Fprintf(os.Stderr, "orchestrator run %s error: %v\n", run.OrchestratorRunID, err)
+			}
+			if observe != nil {
+				if _, bound := run.Meta["work_ledger"]; bound {
+					// Re-arm from fresh authoritative goal metadata, never from a wake hint.
+					if current, err := getLedgerGoal(ctx, client, cfg, teamID, run.OrchestratorRunID); err == nil {
+						observe(teamID, current)
+					}
+				}
 			}
 		}
 	}

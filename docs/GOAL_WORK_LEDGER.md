@@ -50,7 +50,8 @@ It pins the authority, ledger identity, monotonic revision and content digest.
   host turns on the authority session.
 - A successful turn with unchanged requirement revision waits instead of
   repeating. A new verified ledger revision can wake a managed wait.
-- This slice uses **revision-driven polling**, not push/event delivery. No
+- Continuous coordinators use bounded **server-notified long polling** for
+  requirement-blocked/no-progress waits, plus periodic reconciliation. No
   execution availability is implied when the coordinator is stopped.
 - Owner pause, error/done, disabled autonomy and manual waits do not wake.
   A status-only PATCH to `waiting` clears managed wakeup. Bound heartbeats only
@@ -64,6 +65,57 @@ UI progress is explicitly the **last observed** ledger state. It shows the
 authority, observed revision, requirement readiness and why continuation is
 waiting. Connection/team/selection fences prevent late replies from painting
 another goal. Bound-goal updates use the displayed metadata as an exact CAS.
+
+## Prompt requirement wakeups
+
+The same authenticated read endpoint accepts an optional all-or-none cursor:
+
+```text
+GET /api/v1/session/work?session_id=goal-session&after_ledger_id=work_123&after_revision=7&wait_ms=4000
+```
+
+A changed ledger identity or revision returns the normal validated projection
+with `work_watch: {"schema":"agentd.work-watch.v1","changed":true}`. Unchanged
+timeout returns **204 with no body**. Replies are not cached. Invalid/incomplete
+cursors or durations return 400. The safe, nonempty ledger ID and unsigned
+decimal revision identify an observation, not permission to run work.
+
+The daemon subscribes before reading so a commit between the read and wait is
+not lost. Successful in-process ledger commits signal subscribers; reads and
+rejected mutations do not. Other-process/CLI writes, replacement and deletion
+are discovered with fallback reads at most 250 ms apart, excluding read/lock
+time. Path/sidecar guards are rechecked after each wake. Watches do not create,
+migrate or mutate storage. A replacement is only a hint: ordinary goal
+reconciliation still rejects changed authority history.
+
+The daemon caps watch wait at **5 seconds**, plus bounded SQLite read time, and
+admits at most **32 concurrent watches per process**. Excess requests receive
+429 with `Retry-After: 1`; ordinary reads stay available. A disconnected client
+does not instantly interrupt this synchronous handler: its slot is released on
+change, timeout or error. The coordinator cancels its own requests/workers on
+shutdown or when their observation is no longer selected.
+
+Continuous `agentd-orchestrator` loops watch only explicitly bound, initialized,
+coordinator-managed requirement/no-progress waits with no active or uncertain
+dispatch. The default cap is **16 distinct authority/cursor watches**;
+`--ledger-watch-limit=1..64` adjusts it (`0` selects the default). Identical
+cursors share a watch; excess goals retain polling. A host's 32-watch cap can
+still apply across multiple coordinators. `--disable-ledger-watch` keeps
+periodic reconciliation only, and `--once` starts no background watcher.
+
+Wake hints are coalesced and **never persisted as progress, completion or
+dispatch authority**. Each wake reruns normal goal/ledger reads, owner and lease
+checks, evidence validation, policy and admission CAS. Pause, manual waiting,
+disabled autonomy, protected ownership and terminal states stay stopped.
+Existing explicitly allowed stale-lease takeover semantics are unchanged.
+An unchanged/stale hint cannot cause a tight redispatch or watch loop.
+
+Periodic reconciliation still discovers goals, checks active turns and pending
+receipts, and covers watch limits, older daemons, authentication/connectivity
+failures and restarts. Errors back off for 1..30 seconds; immediate unchanged
+responses are throttled. Restart establishes fresh watches from authoritative
+state. This is **not a durable event log, replayable push stream or exactly-once
+event delivery**, and no event payload can clear an uncertain host outcome.
 
 ## Admission, crashes and uncertain outcomes
 
@@ -139,7 +191,7 @@ Run one active bound goal per authority session. This slice does not add a globa
 cross-goal authority lease; single-use admission is scoped to each goal.
 Unbound goals retain their existing legacy behavior. This slice does not
 centralize arbitrary team members' local ledgers, implement multi-authority
-handoff, push wakeups, lifetime goal resource budgets, semantic proof checking,
+handoff, durable replayable event streams, lifetime goal resource budgets, semantic proof checking,
 or reconstruction of unrecorded host outcomes. The existing per-turn host limits still
 apply. Do not attach a binding to an already active unbound turn and assume its
 receipt belongs to the new authority.
@@ -150,13 +202,17 @@ deployment is part of this source milestone.
 ## Verification
 
 `tools/verify_current_snapshot.sh` includes native ledger identity tests,
-real authenticated daemon read/auth/path/empty-state checks, Go coordinator
-outcome tests, and the old/new orchestrator browser flows.
+real authenticated daemon read/watch/auth/path/empty-state checks, Go coordinator
+outcome tests, and the old/new orchestrator browser flows. Watch tests cover
+native commit-before-wait races, external-process changes, replacement/deletion,
+unsafe paths, capacity/timeout cleanup, prompt continuous-loop continuation
+before a 30-second poll, owner controls, stale/untrusted hints, response bounds,
+cancellation, older-daemon fallback and repeated race-detector runs.
 
 For additional race/integration checks:
 
 ```sh
-(cd broker && go test -race ./cmd/agentd-orchestrator -run BoundGoal -count=1)
+(cd broker && go test -race ./cmd/agentd-orchestrator -run 'BoundGoal|LedgerWatch' -count=1)
 (cd broker && AGENT_TEST_POSTGRES_DSN='<disposable PostgreSQL DSN>' \
   go test -race ./internal/broker -run TestWorkLedger -count=1)
 ```

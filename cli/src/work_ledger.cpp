@@ -13,6 +13,25 @@
 #endif
 
 namespace {
+std::mutex watches_mutex;
+std::unordered_map<std::string, std::weak_ptr<WorkLedgerWatch>> watches;
+std::string watch_key(const std::filesystem::path& path) {
+  std::error_code ec;
+  const auto absolute = std::filesystem::absolute(path, ec);
+  return (ec ? path : absolute).lexically_normal().string();
+}
+void notify_work_watch(const std::filesystem::path& path) noexcept {
+  // Notification failure must never turn a committed mutation into a failure.
+  try {
+    std::shared_ptr<WorkLedgerWatch> watch;
+    {
+      std::lock_guard<std::mutex> lock(watches_mutex);
+      const auto it = watches.find(watch_key(path));
+      if (it != watches.end()) watch = it->second.lock();
+    }
+    if (watch) watch->notify();
+  } catch (...) {}
+}
 Json::Value empty_state() {
   Json::Value state(Json::objectValue);
   state["schema"] = "agentd.work.v1";
@@ -206,6 +225,31 @@ bool work_ledger_apply(const std::filesystem::path& path, const Json::Value& req
     if (sqlite3_step(stmt) != SQLITE_DONE) { *error = "cannot persist work update"; return false; }
   }
   if (!sql("COMMIT")) { *error = "cannot commit work update"; return false; }
+  if (!read) notify_work_watch(path);
   return true;
 #endif
+}
+
+uint64_t WorkLedgerWatch::generation() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return generation_;
+}
+bool WorkLedgerWatch::wait_for(uint64_t observed, std::chrono::milliseconds timeout) {
+  std::unique_lock<std::mutex> lock(mutex_);
+  return changed_.wait_for(lock, timeout, [&] { return generation_ != observed; });
+}
+void WorkLedgerWatch::notify() {
+  { std::lock_guard<std::mutex> lock(mutex_); ++generation_; }
+  changed_.notify_all();
+}
+std::shared_ptr<WorkLedgerWatch> work_ledger_subscribe(const std::filesystem::path& path) {
+  std::lock_guard<std::mutex> lock(watches_mutex);
+  // Weak entries never retain stopped subscribers or grow across old sessions.
+  for (auto it = watches.begin(); it != watches.end();) {
+    if (it->second.expired()) it = watches.erase(it); else ++it;
+  }
+  auto& slot = watches[watch_key(path)];
+  auto watch = slot.lock();
+  if (!watch) { watch = std::make_shared<WorkLedgerWatch>(); slot = watch; }
+  return watch;
 }

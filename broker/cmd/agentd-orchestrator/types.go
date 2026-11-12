@@ -6,16 +6,18 @@ import (
 )
 
 type config struct {
-	brokerBase     string
-	oidcToken      string
-	oidcTokenFile  string
-	insecureTLS    bool
-	pollInterval   time.Duration
-	once           bool
-	limit          int
-	status         string
-	includePlanned bool
-	orchestratorID string
+	brokerBase         string
+	oidcToken          string
+	oidcTokenFile      string
+	insecureTLS        bool
+	pollInterval       time.Duration
+	once               bool
+	limit              int
+	status             string
+	includePlanned     bool
+	orchestratorID     string
+	disableLedgerWatch bool
+	ledgerWatchLimit   int
 }
 
 type teamRow struct {

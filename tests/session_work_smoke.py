@@ -1,7 +1,8 @@
 """Read-only requirement authority through a real authenticated daemon."""
 import copy, json, socket, sqlite3, subprocess, sys, tempfile, time
 from pathlib import Path
-import urllib.error, urllib.request
+import urllib.error, urllib.request, urllib.parse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 agentd = str(Path(sys.argv[1]).resolve())
 opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 with tempfile.TemporaryDirectory(prefix="agentc-ledger-api-") as temp:
@@ -60,6 +61,71 @@ with tempfile.TemporaryDirectory(prefix="agentc-ledger-api-") as temp:
         state["requirements"]["a"].update(status="done", evidence="build verified"); state["revision"] += 1
         write("goal", state)
         assert call()["all_requirements_done"], "requirement evidence did not project"
+        # Long-poll wake hints never mutate the ledger or substitute for its state.
+        watched = copy.deepcopy(state); watched["revision"] = 1
+        watch_path = write("watched", watched)
+        def watch(sid="watched", ledger_id="work_fixture", revision=1, wait_ms=4000, auth=True):
+            query = urllib.parse.urlencode(dict(session_id=sid, after_ledger_id=ledger_id,
+                after_revision=revision, wait_ms=wait_ms))
+            request = urllib.request.Request(base + "/api/v1/session/work?" + query,
+                headers={"Authorization": "Bearer " + token} if auth else {})
+            local = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            try: response = local.open(request, timeout=9)
+            except urllib.error.HTTPError as error: response = error
+            with response:
+                data = response.read()
+                return response.status, json.loads(data) if data else None, response.headers
+        before = watch_path.read_bytes()
+        started = time.monotonic()
+        status, body, headers = watch(wait_ms=70)
+        assert status == 204 and body is None and headers["Cache-Control"] == "no-store"
+        assert time.monotonic() - started >= .05, "unchanged watch did not wait"
+        assert watch_path.read_bytes() == before, "watch mutated the authority"
+        status, changed, _ = watch(revision=0, wait_ms=0)
+        assert status == 200 and changed["work_watch"] == {"schema": "agentd.work-watch.v1", "changed": True}
+        assert watch(auth=False)[0] == 401
+        for query in (
+            "session_id=watched&wait_ms=10",
+            "session_id=watched&after_ledger_id=..&after_revision=1&wait_ms=10",
+            "session_id=watched&after_ledger_id=work_fixture&after_revision=-1&wait_ms=10",
+            "session_id=watched&after_ledger_id=work_fixture&after_revision=1&wait_ms=5001",
+            "session_id=watched&after_ledger_id=work_fixture&after_revision=1&wait_ms=1.5",
+            "session_id=watched&after_ledger_id=work_fixture&after_revision=9007199254740992&wait_ms=0",
+        ): call(query, expected=400)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            waiting = executor.submit(watch)
+            time.sleep(.1)
+            watched["revision"] = 2; write("watched", watched)
+            status, changed, _ = waiting.result(timeout=3)
+            assert status == 200 and changed["state"]["revision"] == 2, "external process commit did not wake"
+            waiting = executor.submit(watch, revision=2)
+            time.sleep(.1)
+            watch_path.unlink()
+            watched["ledger_id"] = "work_replaced"; watched["revision"] = 1
+            write("watched", watched)
+            assert waiting.result(timeout=3)[1]["state"]["ledger_id"] == "work_replaced"
+            waiting = executor.submit(watch, ledger_id="work_replaced")
+            time.sleep(.1); watch_path.unlink()
+            assert waiting.result(timeout=3)[1]["state"]["revision"] == 0, "deletion did not wake"
+            assert not watch_path.exists(), "missing authority was recreated"
+            write("watched", watched)
+            waiting = executor.submit(watch, ledger_id="work_replaced")
+            time.sleep(.1); watch_path.unlink(); watch_path.symlink_to(path)
+            assert waiting.result(timeout=3)[0] == 409, "path became unsafe while waiting"
+            watch_path.unlink()
+        # Watch saturation cannot consume ordinary read/auth access indefinitely.
+        capacity = copy.deepcopy(state); capacity["revision"] = 1
+        write("capacity", capacity)
+        with ThreadPoolExecutor(max_workers=33) as executor:
+            futures = [executor.submit(watch, sid="capacity", wait_ms=5000) for _ in range(33)]
+            first = next(as_completed(futures, timeout=3)).result()
+            assert first[0] == 429, ("watch capacity not bounded", first[0])
+            assert call("session_id=capacity")["state"]["revision"] == 1
+            call("session_id=capacity", expected=401, auth=False)
+            capacity["revision"] = 2; write("capacity", capacity)
+            results = [future.result(timeout=4)[0] for future in futures]
+            assert results.count(429) >= 1 and set(results) <= {200, 429}
+        assert watch(sid="capacity", revision=2, wait_ms=0)[0] == 204, "watch capacity leaked"
         corrupt = copy.deepcopy(state); del corrupt["requirements"]["a"]["evidence"]
         write("corrupt", corrupt); call("session_id=corrupt", expected=409)
         legacy = copy.deepcopy(state); del legacy["ledger_id"]
@@ -76,6 +142,6 @@ with tempfile.TemporaryDirectory(prefix="agentc-ledger-api-") as temp:
         (path.parent / "work.sqlite-wal").symlink_to(root / "not-created")
         call(expected=409)
         assert not (root / "not-created").exists()
-        print("session work API: auth, empty read, scoped progress, evidence, legacy nonmutation and symlink guards passed")
+        print("session work API: auth, empty read, scoped progress, evidence, legacy nonmutation, change/timeout/replacement/deletion watches, capacity and symlink guards passed")
     finally:
         process.terminate(); process.wait(timeout=10); log.close()
