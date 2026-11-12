@@ -74,7 +74,7 @@ func handleLedgerBoundRun(ctx context.Context, client *http.Client, cfg config, 
 	dispatch := ledgerDispatch(runtime)
 	active := strings.TrimSpace(asString(meta["active_team_run_id"]))
 	if active == "" && (dispatch["state"] == "admitted" || dispatch["state"] == "submitted") {
-		return save("waiting", "dispatch_outcome_unknown", false)
+		return reconcileLedgerDispatch(ctx, client, cfg, teamID, run.OrchestratorRunID, asString(dispatch["id"]), "", true)
 	}
 	if active != "" && (dispatch["team_run_id"] != active || dispatch["state"] != "running") {
 		return save("waiting", "unbound_active_run", false)
@@ -173,13 +173,15 @@ func handleLedgerBoundRun(ctx context.Context, client *http.Client, cfg config, 
 		return nil
 	}
 	created, err := createTeamRun(ctx, client, cfg, teamID, runPayload, teamMeta)
-	if err != nil {
-		return fmt.Errorf("bound dispatch outcome requires reconciliation; admission %s is not retried", nonce)
+	expectedTeamRunID := ""
+	recovered := true
+	if err == nil && created != nil && created.OK && created.TeamRunID != "" {
+		expectedTeamRunID = created.TeamRunID
+		recovered = false
 	}
-	if created == nil || !created.OK || created.TeamRunID == "" {
-		return fmt.Errorf("bound dispatch receipt missing; admission is not retried")
-	}
-	return recordLedgerDispatch(ctx, client, cfg, teamID, run.OrchestratorRunID, nonce, created.TeamRunID)
+	// Even a successful HTTP response is correlated with broker-owned provenance.
+	// A failed/lost response only triggers a read, never another POST.
+	return reconcileLedgerDispatch(ctx, client, cfg, teamID, run.OrchestratorRunID, nonce, expectedTeamRunID, recovered)
 }
 
 func ledgerControllable(run orchestratorRun, owner string) bool {
@@ -191,39 +193,4 @@ func ledgerConflict(err error) error {
 		return nil
 	}
 	return err
-}
-
-// Receipt recording preserves a pause/owner change after admission and never admits work.
-func recordLedgerDispatch(ctx context.Context, client *http.Client, cfg config, teamID, runID, nonce, teamRunID string) error {
-	for attempt := 0; attempt < 2; attempt++ {
-		current, err := getLedgerGoal(ctx, client, cfg, teamID, runID)
-		if err != nil {
-			return err
-		}
-		meta := cloneMap(current.Meta)
-		runtime := ledgerRuntime(meta)
-		dispatch := ledgerDispatch(runtime)
-		if dispatch["id"] != nonce {
-			return fmt.Errorf("dispatch receipt no longer matches goal admission")
-		}
-		active := asString(meta["active_team_run_id"])
-		if active != "" && active != teamRunID {
-			return fmt.Errorf("goal has a different active run")
-		}
-		if active == teamRunID {
-			return nil
-		}
-		dispatch["state"] = "running"
-		dispatch["team_run_id"] = teamRunID
-		runtime["dispatch"] = dispatch
-		runtime["reason"] = "working"
-		meta["work_ledger_runtime"] = runtime
-		meta["active_team_run_id"] = teamRunID
-		_, err = casLedgerGoal(ctx, client, cfg, teamID, current, current.Status, meta)
-		if isHTTPStatus(err, http.StatusConflict) {
-			continue
-		}
-		return err
-	}
-	return fmt.Errorf("dispatch receipt needs reconciliation after concurrent goal edits")
 }

@@ -307,6 +307,10 @@ func (s *Server) handleTeamsSubroutes(w http.ResponseWriter, r *http.Request) {
 				}
 				return
 			}
+			if len(parts) >= 5 && strings.HasPrefix(parts[4], "dispatches/") {
+				s.handleTeamGoalDispatchGet(w, r, teamID, parts[3], strings.TrimPrefix(parts[4], "dispatches/"))
+				return
+			}
 			if len(parts) >= 5 && parts[4] == "heartbeat" {
 				s.handleTeamOrchestratorRunHeartbeat(w, r, teamID, parts[3])
 				return

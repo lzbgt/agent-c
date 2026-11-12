@@ -2242,6 +2242,50 @@
       "409":
         description: Orchestrator run conflict
 
+/v1/teams/{team_id}/orchestrator/runs/{orchestrator_run_id}/dispatches/{dispatch_id}:
+  get:
+    tags: [teams]
+    summary: Read an immutable goal dispatch admission and its original team-run receipt
+    description: |
+      Team-owner/admin automation access, identical to goal reads. Reads broker-owned
+      provenance only; never dispatches, retries, changes goal state or completes work.
+      An admitted record has no durable team-run receipt yet and its host outcome
+      may be unknown. A recorded receipt links the original team row, not successful
+      requirement completion. A missing receipt is not permission to retry.
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: orchestrator_run_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: dispatch_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Exact admission identity and optional original team-run receipt
+        headers:
+          Cache-Control:
+            schema: { type: string, const: no-store }
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GoalDispatchReceiptResponse"
+      "400":
+        description: Invalid dispatch identity
+      "401":
+        description: Authentication required
+      "403":
+        description: Goal-owner/admin automation access required
+      "404":
+        description: No matching durable admission; not proof of non-execution
+      "500":
+        description: Receipt unavailable; do not resubmit the turn
+
 /v1/teams/{team_id}/orchestrator/runs/{orchestrator_run_id}/heartbeat:
   post:
     tags: [teams]

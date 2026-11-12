@@ -109,3 +109,53 @@ test("late requirement state cannot cross goal selection or a team boundary", as
   await page.getByTestId("orchestrator-run-row-goal-b").click();
   await expect(page.getByTestId("goal-ledger-count")).toBeVisible();
 });
+
+test("receipt waits never offer resend and owner pause stays authoritative on a phone", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await setup(page);
+  const waiting = { ...goal("goal-a"), meta: { ...goal("goal-a").meta, work_ledger_runtime: {
+    ...goal("goal-a").meta.work_ledger_runtime, reason: "dispatch_receipt_pending", managed_wait: true,
+    dispatch: { id: "original-nonce", state: "submitted" },
+  } } };
+  await page.route("**/orchestrator/runs/goal-a", async (route, request) => {
+    const paused = request.method() === "PATCH";
+    if (paused) {
+      expect(request.postDataJSON().expected_meta).toEqual(waiting.meta);
+      expect(request.postDataJSON().status).toBe("paused");
+    }
+    return route.fulfill({ json: { ok: true, team_id: "team-alpha", run: { ...waiting, status: paused ? "paused" : "waiting" } } });
+  });
+  await open(page);
+  await page.getByTestId("orchestrator-run-row-goal-a").click();
+  await expect(page.getByTestId("goal-ledger-status")).toHaveText("Waiting for the original turn's receipt");
+  await expect(page.getByTestId("goal-dispatch-receipt-wait")).toContainText("It does not resend the turn.");
+  await expect(page.getByTestId("goal-ledger-progress").getByRole("button")).toHaveCount(0);
+  await page.getByTestId("orchestrator-run-update-status").fill("paused");
+  await page.getByTestId("orchestrator-run-update").click();
+  await expect(page.getByTestId("goal-ledger-status")).toHaveText("Paused by owner");
+  const overflow = await page.getByTestId("goal-ledger-progress").evaluate((node) => node.scrollWidth > node.clientWidth);
+  expect(overflow).toBe(false);
+});
+
+test("recovered original turn and mismatched receipts have distinct operator states", async ({ page }) => {
+  await setup(page);
+  await page.route("**/orchestrator/runs/goal-a", (route) => route.fulfill({ json: { ok: true, team_id: "team-alpha", run: {
+    ...goal("goal-a"), status: "running", meta: { ...goal("goal-a").meta, active_team_run_id: "original-team-run", work_ledger_runtime: {
+      ...goal("goal-a").meta.work_ledger_runtime, reason: "working", managed_wait: false,
+      dispatch: { id: "original-nonce", state: "running", team_run_id: "original-team-run", receipt_recovered: true },
+    } },
+  } } }));
+  await page.route("**/orchestrator/runs/goal-b", (route) => route.fulfill({ json: { ok: true, team_id: "team-alpha", run: {
+    ...goal("goal-b"), meta: { ...goal("goal-b").meta, work_ledger_runtime: {
+      ...goal("goal-b").meta.work_ledger_runtime, reason: "dispatch_receipt_mismatch", managed_wait: false,
+    } },
+  } } }));
+  await open(page);
+  await page.getByTestId("orchestrator-run-row-goal-a").click();
+  await expect(page.getByTestId("goal-dispatch-recovered")).toHaveText("Original turn recovered from a saved broker receipt. No work was resent.");
+  await expect(page.getByTestId("goal-dispatch-receipt-wait")).toHaveCount(0);
+  await page.getByTestId("orchestrator-run-row-goal-b").click();
+  await expect(page.getByTestId("goal-ledger-status")).toHaveText("Receipt does not match this goal; reconciliation required");
+  await expect(page.getByTestId("goal-dispatch-recovered")).toHaveCount(0);
+  await expect(page.getByTestId("goal-ledger-progress")).toContainText("Continuation is stopped");
+});

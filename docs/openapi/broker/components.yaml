@@ -1286,6 +1286,38 @@ schemas:
       expected_status: { type: string }
       expected_owner: { type: string }
 
+  GoalDispatchReceipt:
+    type: object
+    additionalProperties: false
+    required: [schema, team_id, orchestrator_run_id, dispatch_id, binding, ledger_id, revision, digest, control_digest, state, admitted_unix_ms]
+    properties:
+      schema: { type: string, const: agentd.goal-dispatch.v1 }
+      team_id: { type: string }
+      orchestrator_run_id: { type: string }
+      dispatch_id: { type: string }
+      binding:
+        $ref: "#/components/schemas/GoalWorkLedgerBinding"
+      ledger_id: { type: string }
+      revision: { type: integer, format: int64, minimum: 1, maximum: 9007199254740991 }
+      digest: { type: string, pattern: '^[0-9a-f]{64}$' }
+      control_digest: { type: string, pattern: '^[0-9a-f]{64}$' }
+      state: { type: string, enum: [admitted, recorded] }
+      team_run_id:
+        type: string
+        description: Present only for a recorded immutable receipt; not a completion claim.
+      admitted_unix_ms: { type: integer, format: int64 }
+      recorded_unix_ms:
+        type: integer
+        format: int64
+        description: Present only with team_run_id; original team row and receipt committed together.
+  GoalDispatchReceiptResponse:
+    type: object
+    required: [ok, dispatch]
+    properties:
+      ok: { type: boolean }
+      dispatch:
+        $ref: "#/components/schemas/GoalDispatchReceipt"
+
   OrchestratorRunResponse:
     type: object
     required: [ok, team_id, run]

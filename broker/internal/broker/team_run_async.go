@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"agentd-broker/internal/db"
+	"agentd-broker/internal/workledger"
 )
 
 const (
@@ -32,6 +33,7 @@ func (s *Server) executeTeamRunAsync(
 	membersByID map[string]db.TeamMember,
 	quorumEval *teamRunQuorumEval,
 	traceID string,
+	admission *workledger.DispatchReceipt,
 ) (map[string]any, error) {
 	if p == nil {
 		return nil, errors.New("missing principal")
@@ -135,7 +137,17 @@ func (s *Server) executeTeamRunAsync(
 		"run":  runMap,
 		"team": teamMeta,
 	}
-	run, err := s.cfg.DB.CreateTeamRun(ctx, teamRunID, teamID, status, p.Sub, mustJSON(runPayload))
+	var run *db.TeamRun
+	var err error
+	if admission != nil {
+		// Browser/connection loss must not discard a received host job identity.
+		// This bounded durable write cannot dispatch or retry anything.
+		persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 8*time.Second)
+		run, err = s.cfg.DB.CreateTeamRunWithGoalReceipt(persistCtx, teamRunID, teamID, status, p.Sub, mustJSON(runPayload), admission)
+		cancel()
+	} else {
+		run, err = s.cfg.DB.CreateTeamRun(ctx, teamRunID, teamID, status, p.Sub, mustJSON(runPayload))
+	}
 	if err != nil {
 		return nil, errors.New("create team run failed")
 	}

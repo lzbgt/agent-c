@@ -20,13 +20,18 @@ type ledgerHarness struct {
 	posts, reads                                   int
 	teamStatus                                     string
 	losePost, pauseBeforeAdmission, pauseAfterPost bool
+	receipts                                       map[string]workledger.DispatchReceipt
+	pendingReceipt                                 bool
+	receiptHTTP, receiptReads                      int
+	receiptEdit                                    func(*workledger.DispatchReceipt)
+	stopOnReceipt                                  string
 	ledgerHTTP                                     int
 	server                                         *httptest.Server
 }
 
 func newLedgerHarness(t *testing.T) *ledgerHarness {
 	t.Helper()
-	h := &ledgerHarness{teamStatus: "running"}
+	h := &ledgerHarness{teamStatus: "running", receipts: map[string]workledger.DispatchReceipt{}}
 	h.run = orchestratorRun{OrchestratorRunID: "goal1", TeamID: "team1", Status: "running", Goal: "Deliver product", Meta: map[string]any{"work_ledger": map[string]any{"agent_id": "agent1", "deployment_id": "dep1", "session_id": "session1"}}}
 	h.snapshot = workledger.Snapshot{OK: true, SessionID: "session1", State: workledger.State{Schema: "agentd.work.v1", LedgerID: "work_one", Revision: 1, Requirements: map[string]workledger.Requirement{"a": {Title: "First", Status: "pending", DependsOn: []string{}}, "b": {Title: "Second", Status: "pending", DependsOn: []string{}}}, Blockers: map[string]workledger.Blocker{}}}
 	h.server = httptest.NewServer(http.HandlerFunc(h.serve))
@@ -71,6 +76,42 @@ func (h *ledgerHarness) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		send(h.snapshot)
+	case strings.Contains(r.URL.Path, "/dispatches/"):
+		h.receiptReads++
+		if r.Method != "GET" || r.Header.Get("Authorization") != "Bearer fixture" {
+			http.Error(w, "bad receipt request", 400)
+			return
+		}
+		if h.receiptHTTP != 0 {
+			http.Error(w, "unavailable", h.receiptHTTP)
+			return
+		}
+		nonce := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
+		receipt, ok := h.receipts[nonce]
+		if !ok {
+			http.Error(w, "not found", 404)
+			return
+		}
+		if h.receiptEdit != nil {
+			h.receiptEdit(&receipt)
+		}
+		switch h.stopOnReceipt {
+		case "autonomous":
+			h.run.Meta["autonomous"] = false
+		case "owner":
+			h.run.Meta["orchestrator_owner"] = "another"
+		case "waiting":
+			h.run.Status = "waiting"
+			runtime := ledgerRuntime(h.run.Meta)
+			runtime["managed_wait"] = false
+			runtime["reason"] = "owner_waiting"
+			h.run.Meta["work_ledger_runtime"] = runtime
+		default:
+			if h.stopOnReceipt != "" {
+				h.run.Status = h.stopOnReceipt
+			}
+		}
+		send(map[string]any{"ok": true, "dispatch": receipt})
 	case strings.Contains(r.URL.Path, "/guidance"):
 		send(map[string]any{"ok": true, "guidance": []any{}})
 	case strings.HasSuffix(r.URL.Path, "/heartbeat"):
@@ -112,6 +153,18 @@ func (h *ledgerHarness) serve(w http.ResponseWriter, r *http.Request) {
 		dispatch["state"] = "submitted"
 		runtime["dispatch"] = dispatch
 		h.run.Meta["work_ledger_runtime"] = runtime
+		binding, _ := workledger.ParseBinding(h.run.Meta["work_ledger"])
+		revision, _ := asInt64(dispatch["revision"])
+		receipt := workledger.DispatchReceipt{Schema: "agentd.goal-dispatch.v1", TeamID: "team1", OrchestratorRunID: "goal1",
+			DispatchID: asString(dispatch["id"]), Binding: binding, LedgerID: asString(runtime["ledger_id"]), Revision: revision,
+			Digest: asString(dispatch["digest"]), ControlDigest: asString(dispatch["control_digest"]), State: "recorded",
+			TeamRunID: fmt.Sprintf("tr%d", h.posts), AdmittedUnixMS: 1000, RecordedUnixMS: 2000}
+		if h.pendingReceipt {
+			receipt.State = "admitted"
+			receipt.TeamRunID = ""
+			receipt.RecordedUnixMS = 0
+		}
+		h.receipts[receipt.DispatchID] = receipt
 		if h.losePost {
 			http.Error(w, "response lost after accepted host dispatch", 502)
 			return
@@ -234,13 +287,12 @@ func TestBoundGoalNoProgressDoesNotSpin(t *testing.T) {
 func TestBoundGoalLostReceiptNeverReplays(t *testing.T) {
 	h := newLedgerHarness(t)
 	h.losePost = true
-	if h.step(t) == nil {
-		t.Fatal("lost receipt not reported")
-	}
+	h.pendingReceipt = true
+	requireLedgerStep(t, h)
 	for i := 0; i < 3; i++ {
 		requireLedgerStep(t, h)
 	}
-	if h.posts != 1 || ledgerReason(h) != "dispatch_outcome_unknown" || ledgerManagedWait(h.run) {
+	if h.posts != 1 || ledgerReason(h) != "dispatch_receipt_pending" || !ledgerManagedWait(h.run) {
 		t.Fatal("uncertain launch replayed")
 	}
 }

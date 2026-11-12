@@ -23,6 +23,9 @@ export const goalLedgerReason: Record<string, string> = {
   authority_changed: "Authority changed; reconciliation required",
   authority_history_changed: "Ledger identity or history changed; reconciliation required",
   invalid_binding: "Invalid requirement authority",
+  dispatch_receipt_pending: "Waiting for the original turn's receipt",
+  dispatch_receipt_unavailable: "Waiting for broker receipt access",
+  dispatch_receipt_mismatch: "Receipt does not match this goal; reconciliation required",
   dispatch_outcome_unknown: "Dispatch outcome unknown; do not retry",
   unbound_active_run: "Active run is not bound to this ledger",
 };

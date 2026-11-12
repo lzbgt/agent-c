@@ -574,8 +574,10 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 	if len(memberSessions) > 0 {
 		teamMeta["member_sessions"] = memberSessions
 	}
+	var ledgerAdmission *workledger.DispatchReceipt
 	if ledgerBinding != nil {
-		if err := s.admitWorkLedgerTurn(r.Context(), teamID, teamMeta, *ledgerBinding); err != nil {
+		ledgerAdmission, err = s.admitWorkLedgerTurn(r.Context(), teamID, teamMeta, *ledgerBinding)
+		if err != nil {
 			writeErrorJSON(w, "work ledger admission rejected: "+err.Error(), http.StatusConflict)
 			return
 		}
@@ -596,6 +598,7 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 			membersByID,
 			quorumEval,
 			traceID,
+			ledgerAdmission,
 		)
 		if err != nil {
 			writeErrorJSON(w, err.Error(), http.StatusBadRequest)

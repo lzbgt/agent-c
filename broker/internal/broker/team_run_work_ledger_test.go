@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -42,10 +43,16 @@ func ledgerTestDatabase(t *testing.T) *db.DB {
 		t.Fatal(err)
 	}
 	t.Cleanup(database.Close)
-	_, err = database.Pool.Exec(ctx, `CREATE TABLE broker_orchestrator_runs(
- orchestrator_run_id TEXT PRIMARY KEY,team_id TEXT NOT NULL,status TEXT NOT NULL,goal TEXT,
- goal_contract JSONB NOT NULL DEFAULT '{}',role_plan_snapshot JSONB NOT NULL DEFAULT '{}',meta JSONB NOT NULL DEFAULT '{}',
- created_by TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),last_heartbeat_at TIMESTAMPTZ)`)
+	err = database.Migrate(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Re-running all production migrations must preserve existing receipts.
+	if err = database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	_, err = database.Pool.Exec(ctx, `INSERT INTO broker_users(sub) VALUES('owner'),('other');
+ INSERT INTO broker_teams(team_id,owner_sub,display_name) VALUES('team1','owner','Test team'),('otherteam','other','Other team')`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +62,7 @@ func seededLedgerGoal(t *testing.T, database *db.DB, id string) (workledger.Bind
 	t.Helper()
 	binding := workledger.Binding{AgentID: "agent1", DeploymentID: "dep1", SessionID: "session1"}
 	meta := map[string]any{"orchestrator_owner": "worker", "work_ledger": binding.Map()}
-	meta["work_ledger_runtime"] = map[string]any{"dispatch": map[string]any{"id": "nonce_" + id, "state": "admitted", "control_digest": workledger.ControlDigest("Goal", map[string]any{}, map[string]any{}, meta)}}
+	meta["work_ledger_runtime"] = map[string]any{"ledger_id": "work_one", "binding": binding.Map(), "dispatch": map[string]any{"id": "nonce_" + id, "state": "admitted", "revision": int64(1), "digest": strings.Repeat("a", 64), "control_digest": workledger.ControlDigest("Goal", map[string]any{}, map[string]any{}, meta)}}
 	_, err := database.CreateOrchestratorRun(context.Background(), id, "team1", "running", "Goal", "owner", nil, nil, meta)
 	if err != nil {
 		t.Fatal(err)
@@ -72,7 +79,7 @@ func TestWorkLedgerAdmissionPostgresSingleUseAndCAS(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if server.admitWorkLedgerTurn(context.Background(), "team1", payload, binding) == nil {
+			if _, err := server.admitWorkLedgerTurn(context.Background(), "team1", payload, binding); err == nil {
 				wins.Add(1)
 			}
 		}()
@@ -81,7 +88,7 @@ func TestWorkLedgerAdmissionPostgresSingleUseAndCAS(t *testing.T) {
 	if wins.Load() != 1 {
 		t.Fatalf("admission wins %d, want one", wins.Load())
 	}
-	if server.admitWorkLedgerTurn(context.Background(), "team1", payload, binding) == nil {
+	if _, err := server.admitWorkLedgerTurn(context.Background(), "team1", payload, binding); err == nil {
 		t.Fatal("consumed nonce replayed")
 	}
 	row, err := database.GetOrchestratorRun(context.Background(), "team1", "goal1")
@@ -133,7 +140,7 @@ func TestWorkLedgerAdmissionPostgresHonorsLaterOwnerControls(t *testing.T) {
 			if _, err := database.UpdateOrchestratorRun(context.Background(), "team1", id, update); err != nil {
 				t.Fatal(err)
 			}
-			if server.admitWorkLedgerTurn(context.Background(), "team1", payload, binding) == nil {
+			if _, err := server.admitWorkLedgerTurn(context.Background(), "team1", payload, binding); err == nil {
 				t.Fatal("later owner control ignored")
 			}
 		})

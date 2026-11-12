@@ -3479,6 +3479,89 @@ export interface paths {
         };
         trace?: never;
     };
+    "/v1/teams/{team_id}/orchestrator/runs/{orchestrator_run_id}/dispatches/{dispatch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read an immutable goal dispatch admission and its original team-run receipt
+         * @description Team-owner/admin automation access, identical to goal reads. Reads broker-owned
+         *     provenance only; never dispatches, retries, changes goal state or completes work.
+         *     An admitted record has no durable team-run receipt yet and its host outcome
+         *     may be unknown. A recorded receipt links the original team row, not successful
+         *     requirement completion. A missing receipt is not permission to retry.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    team_id: string;
+                    orchestrator_run_id: string;
+                    dispatch_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Exact admission identity and optional original team-run receipt */
+                200: {
+                    headers: {
+                        "Cache-Control"?: "no-store";
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GoalDispatchReceiptResponse"];
+                    };
+                };
+                /** @description Invalid dispatch identity */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Goal-owner/admin automation access required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description No matching durable admission; not proof of non-execution */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Receipt unavailable; do not resubmit the turn */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/teams/{team_id}/orchestrator/runs/{orchestrator_run_id}/heartbeat": {
         parameters: {
             query?: never;
@@ -5009,6 +5092,34 @@ export interface components {
             status?: string;
             expected_status?: string;
             expected_owner?: string;
+        };
+        GoalDispatchReceipt: {
+            /** @constant */
+            schema: "agentd.goal-dispatch.v1";
+            team_id: string;
+            orchestrator_run_id: string;
+            dispatch_id: string;
+            binding: components["schemas"]["GoalWorkLedgerBinding"];
+            ledger_id: string;
+            /** Format: int64 */
+            revision: number;
+            digest: string;
+            control_digest: string;
+            /** @enum {string} */
+            state: "admitted" | "recorded";
+            /** @description Present only for a recorded immutable receipt; not a completion claim. */
+            team_run_id?: string;
+            /** Format: int64 */
+            admitted_unix_ms: number;
+            /**
+             * Format: int64
+             * @description Present only with team_run_id; original team row and receipt committed together.
+             */
+            recorded_unix_ms?: number;
+        };
+        GoalDispatchReceiptResponse: {
+            ok: boolean;
+            dispatch: components["schemas"]["GoalDispatchReceipt"];
         };
         OrchestratorRunResponse: {
             ok: boolean;

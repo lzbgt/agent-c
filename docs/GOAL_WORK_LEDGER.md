@@ -80,17 +80,58 @@ does not erase an accepted run; explicit team cancellation remains the way to
 cancel it. Receipt recording preserves a concurrent owner pause or ownership
 change.
 
-If the process stops after admission, a response is lost, host dispatch succeeds
-but the team row cannot be persisted, or the receipt cannot be correlated, the
-goal becomes an explicit reconciliation wait. The nonce is never automatically
-reused, even after requirements change. This is conservative duplicate
-suppression, **not distributed exactly-once execution**.
+### Recover the original turn, not another submission
 
-Do not clear an uncertain admission merely to get the goal moving. Inspect the
-matching broker/daemon records and authority/session first. There is no automatic
-receipt resolver or operator repair endpoint in this slice. Known active runs
-retain their normal query/cancel controls; a failed/cancelled team turn stops the
-goal rather than silently replaying it.
+Broker migration `013_goal_dispatch_receipts.sql` adds a broker-owned dispatch
+journal. The immutable identity includes team, goal, nonce, authority,
+ledger identity/revision/digest and admission control digest. The journal insert
+and full control CAS commit **together before any host call**. Resetting mutable
+goal metadata cannot reuse an old nonce.
+
+After the async host response, the original team row and receipt link commit in
+one transaction. A bounded persistence context survives a lost/cancelled client
+request. The read-only authenticated endpoint is:
+
+```text
+GET /v1/teams/{team_id}/orchestrator/runs/{orchestrator_run_id}/dispatches/{dispatch_id}
+```
+
+It uses the existing team-owner/admin automation access gate and returns
+`Cache-Control: no-store`. There is no receipt upload, overwrite or repair API.
+
+- **admitted:** the broker consumed the nonce, but has no durable team-row receipt.
+  The host may already have accepted work. This is not a safe-to-retry signal.
+- **recorded:** the immutable receipt identifies the original persisted team run.
+  It proves correlation, not successful work or requirement completion.
+- **404:** no matching durable broker admission is visible. The coordinator may
+  have stopped before sending, the response may be unavailable, or the snapshot
+  may predate this journal. Absence never permits an automatic resubmission.
+
+The coordinator follows a lost response or restart with this exact bounded
+lookup, not a team list scan or a metadata claim. It validates every identity
+field, binds the original team run, then resumes normal team-status and
+requirement-evidence checks. A known response must agree with the saved receipt.
+No host work is resent by recovery.
+
+Pending or temporarily unavailable receipts cause a managed **read-only** wait.
+Polling can discover a late committed receipt, even if requirements have changed.
+It cannot launch another turn or declare completion while the original outcome
+is unknown. A mismatch stops automatic recovery. UI labels distinguish pending,
+unavailable, mismatched and recovered receipts without offering a blind retry.
+
+Owner pause, manual wait, done/error, disabled autonomy and ownership changes
+remain authoritative. Recording a late receipt preserves those controls; it
+never cancels or restarts an already accepted host turn. Pausing a goal is not
+team cancellation. Existing manual uncertainty waits are not automatically
+migrated into managed waits; an owner can inspect and resume the existing goal
+through its ordinary control path.
+
+A crash after host acceptance but before receipt commit still leaves an unknown
+outcome. This slice cannot reconstruct an unrecorded host job ID or prove
+non-execution. Do not clear that admission to make the goal move. Broader trusted
+host/transport receipt adapters remain separate work. This is conservative
+duplicate suppression and original-result recovery, **not distributed
+exactly-once execution**.
 
 ## Scope and remaining work
 
@@ -99,7 +140,7 @@ cross-goal authority lease; single-use admission is scoped to each goal.
 Unbound goals retain their existing legacy behavior. This slice does not
 centralize arbitrary team members' local ledgers, implement multi-authority
 handoff, push wakeups, lifetime goal resource budgets, semantic proof checking,
-or automatic uncertain-dispatch repair. The existing per-turn host limits still
+or reconstruction of unrecorded host outcomes. The existing per-turn host limits still
 apply. Do not attach a binding to an already active unbound turn and assume its
 receipt belongs to the new authority.
 
@@ -120,8 +161,18 @@ For additional race/integration checks:
   go test -race ./internal/broker -run TestWorkLedger -count=1)
 ```
 
-The PostgreSQL tests create/drop only a uniquely named test schema containing
-the orchestrator table contract. They skip when the explicit test DSN is absent.
+The PostgreSQL tests create/drop only uniquely named test schemas and apply the
+full production broker migrations twice. They skip when the explicit test DSN is absent.
 Use a disposable database, not production. The November 12 qualification used a
 localhost-only temporary container from the already installed PostgreSQL 16
 image and removed it afterward.
+
+Receipt qualification also covers concurrent writers, transactional rollback,
+nonce reuse after mutable metadata reset, goal/contract/role-plan races, scoped
+HTTP authorization, an actual async handler with client loss, and abrupt child
+process exits before/after receipt persistence. A durable synthetic host
+acceptance counter proves both restart paths reject replay without another
+acceptance. Coordinator tests cover lost/delayed/missing/mismatched receipts,
+fresh coordinator state, owner-control races, redirect refusal and response
+bounds. These are provider-free, disposable tests, not production deployment
+or physical host-effect qualification.
