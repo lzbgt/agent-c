@@ -10,6 +10,7 @@ import (
 
 	"agentd-broker/internal/db"
 	"agentd-broker/internal/events"
+	"agentd-broker/internal/workledger"
 )
 
 func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, teamID string) {
@@ -407,9 +408,26 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 			quorumEval = &eval
 		}
 	}
+	var ledgerBinding *workledger.Binding
+	if raw, bound := teamMeta["work_ledger"]; bound {
+		binding, err := workledger.ParseBinding(raw)
+		if err != nil || options.Mode != "async" || len(runtimeMembers) != 0 || autoAllocateRoles {
+			writeErrorJSON(w, "bound work ledger needs explicit authority, async mode and no runtime allocation", http.StatusBadRequest)
+			return
+		}
+		ledgerBinding = &binding
+	}
 	persistentMembers := filterTeamRunMembers(members, options.Role, options.Roles)
 	runtimeMembers = filterTeamRunMembers(runtimeMembers, options.Role, options.Roles)
 	runMembers := append(persistentMembers, runtimeMembers...)
+	if ledgerBinding != nil {
+		var err error
+		runMembers, err = selectWorkLedgerAuthority(persistentMembers, *ledgerBinding)
+		if err != nil {
+			writeErrorJSON(w, err.Error(), http.StatusConflict)
+			return
+		}
+	}
 	if len(runMembers) == 0 {
 		writeErrorJSON(w, "no eligible team members", http.StatusBadRequest)
 		return
@@ -464,6 +482,10 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 			writeErrorJSON(w, "invalid session_id", http.StatusBadRequest)
 			return
 		}
+	}
+	if ledgerBinding != nil && (noSession || runSessionID != ledgerBinding.SessionID) {
+		writeErrorJSON(w, "bound turn must use the authority session", http.StatusBadRequest)
+		return
 	}
 	if noSession && runSessionID != "" {
 		writeErrorJSON(w, "no_session true with session_id set", http.StatusBadRequest)
@@ -534,6 +556,11 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 				memberSessions[member.MemberID] = sessionID
 			}
 		}
+		if ledgerBinding != nil {
+			// Per-member overrides may not retarget the authority.
+			runForMember["session_id"] = ledgerBinding.SessionID
+			runForMember["no_session"] = false
+		}
 		memberRunBodies = append(memberRunBodies, mustJSON(runForMember))
 	}
 	if len(memberOverridesApplied) > 0 {
@@ -546,6 +573,12 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 
 	if len(memberSessions) > 0 {
 		teamMeta["member_sessions"] = memberSessions
+	}
+	if ledgerBinding != nil {
+		if err := s.admitWorkLedgerTurn(r.Context(), teamID, teamMeta, *ledgerBinding); err != nil {
+			writeErrorJSON(w, "work ledger admission rejected: "+err.Error(), http.StatusConflict)
+			return
+		}
 	}
 	if options.Mode == "async" {
 		resp, err := s.executeTeamRunAsync(

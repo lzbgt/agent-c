@@ -75,6 +75,9 @@ func leaseTimeoutForRun(run orchestratorRun, meta map[string]any) int64 {
 }
 
 func handleRun(ctx context.Context, client *http.Client, cfg config, teamID string, run orchestratorRun) error {
+	if _, bound := run.Meta["work_ledger"]; bound {
+		return handleLedgerBoundRun(ctx, client, cfg, teamID, run)
+	}
 	status := strings.ToLower(strings.TrimSpace(run.Status))
 	if status == "" {
 		status = "running"

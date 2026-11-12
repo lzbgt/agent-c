@@ -18,6 +18,9 @@ int main() {
   apply("{}"); check(!std::filesystem::exists(root), "read must not create storage");
   reject(R"({"expected_revision":2})");
   apply(R"({"op":"requirement","id":"production","title":"Deploy to production"})");
+  const auto ledger_id = out["state"]["ledger_id"].asString();
+  check(ledger_id.size() == 37 && ledger_id.substr(0, 5) == "work_", "mutation must persist a stable ledger identity");
+  apply("{}"); check(out["state"]["ledger_id"] == ledger_id, "read/reopen must preserve ledger identity");
   apply(R"({"op":"requirement","id":"docs","title":"Update documentation"})");
   apply(R"({"op":"requirement","id":"handoff","title":"Verify deployment","depends_on":["production"]})");
   apply(R"({"op":"raise_blocker","id":"credential","reason":"Account lacks deployment access","required_action":"Grant the deployment role","attempts":["Existing credential returns access denied","Alternate authorized account has no role"],"requirement_ids":["production"]})");
@@ -36,6 +39,10 @@ int main() {
   check(out["runnable"].size() == 1 && out["runnable"][0] == "handoff", "dependencies must become runnable");
   apply(R"({"op":"requirement","id":"handoff","status":"done","evidence":"Operator handoff verified"})");
   check(out["all_requirements_done"].asBool() && !out["can_continue"].asBool(), "completion must require every requirement");
+  check(out["state"]["ledger_id"] == ledger_id, "accepted mutations must retain identity");
+  Json::Value other;
+  check(work_ledger_apply(root / "other.sqlite", parse(R"({"op":"requirement","id":"x","title":"other"})"), &other, &error), error);
+  check(other["state"]["ledger_id"] != ledger_id, "independent ledgers must not share identity");
   reject(R"({"op":"requirement","id":"production","status":"pending"})");
   // The same implementation is exposed to the model through the normal host tool boundary.
   HostToolsetConfig config; config.root_dir = root.string(); config.policy = HostToolsetPolicyMode::ReadOnly;

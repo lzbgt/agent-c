@@ -17,6 +17,12 @@ void handle_sessions_endpoint(
   HttpResponse* resp
 );
 
+// Read-only authority; mutations remain policy-gated host tools.
+void handle_session_work_endpoint(
+  const DaemonConfig& cfg, const CorsConfig& cors_cfg,
+  const HttpRequest& req, HttpResponse* resp
+);
+
 void handle_session_get_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,

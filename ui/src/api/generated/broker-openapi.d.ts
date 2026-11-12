@@ -4958,10 +4958,18 @@ export interface components {
             role_plan_snapshot?: {
                 [key: string]: unknown;
             };
-            /** @description Free-form orchestrator metadata. Revision fields may include goal_version, goal_versions, goal_updated_unix_ms, role_plan_version, role_plan_versions, role_plan_updated_unix_ms. Entries inside goal_versions/role_plan_versions may include goal_changed, goal_contract_changed, goal_contract_diff, or role_plan_diff (added/removed/changed key lists). Change flags are only set when true. Diff key lists are top-level only; nested changes appear under the parent key. Revision histories are bounded to 50 entries each. */
+            /** @description Free-form orchestrator metadata. Revision fields may include goal_version, goal_versions, goal_updated_unix_ms, role_plan_version, role_plan_versions, role_plan_updated_unix_ms. Entries inside goal_versions/role_plan_versions may include goal_changed, goal_contract_changed, goal_contract_diff, or role_plan_diff (added/removed/changed key lists). Change flags are only set when true. Diff key lists are top-level only; nested changes appear under the parent key. Revision histories are bounded to 50 entries each. Optional work_ledger binds this goal to an existing agent/deployment/session requirement authority; work_ledger_runtime contains bounded observations and single-use dispatch admission, not a second requirement store. See GOAL_WORK_LEDGER.md. */
             meta?: {
+                work_ledger?: components["schemas"]["GoalWorkLedgerBinding"];
+            } & {
                 [key: string]: unknown;
             };
+        };
+        /** @description Explicit authoritative session for requirement-driven goals. One matching eligible team member executes bounded continuation turns. Completion requires evidence-backed requirements, not merely team success. No arbitrary source URL. work_ledger_runtime metadata is only a bounded coordinator observation/admission. */
+        GoalWorkLedgerBinding: {
+            agent_id: string;
+            deployment_id: string;
+            session_id: string;
         };
         OrchestratorRunCreateRequest: {
             orchestrator_run_id?: string;
@@ -4972,6 +4980,8 @@ export interface components {
                 [key: string]: unknown;
             };
             meta?: {
+                work_ledger?: components["schemas"]["GoalWorkLedgerBinding"];
+            } & {
                 [key: string]: unknown;
             };
         };
@@ -4979,15 +4989,22 @@ export interface components {
             status?: string;
             expected_status?: string;
             expected_owner?: string;
+            /** @description Optional exact JSONB metadata compare-and-swap. A mismatch returns 409, including same-owner concurrent edits. */
+            expected_meta?: {
+                [key: string]: unknown;
+            };
             goal?: string;
             goal_contract?: components["schemas"]["TeamRunGoalContract"];
             role_plan_snapshot?: {
                 [key: string]: unknown;
             };
             meta?: {
+                work_ledger?: components["schemas"]["GoalWorkLedgerBinding"];
+            } & {
                 [key: string]: unknown;
             };
         };
+        /** @description Bound requirement goals accept lease renewal only; use goal PATCH for status changes. */
         OrchestratorRunHeartbeatRequest: {
             status?: string;
             expected_status?: string;

@@ -1,4 +1,5 @@
 import React from "react";
+import BrokerGoalLedgerProgress from "./BrokerGoalLedgerProgress";
 import type { ApiAuth } from "../../api";
 import BrokerOrchestratorRunMutationSection from "./BrokerOrchestratorRunMutationSection";
 import BrokerOrchestratorRunOverviewSection from "./BrokerOrchestratorRunOverviewSection";
@@ -23,6 +24,7 @@ export default function BrokerOrchestratorRunPanel(props: OrchestratorRunPanelPr
       <div className="mb-2 text-xs font-semibold text-white/80">Orchestrator runs</div>
       <div className="grid gap-3">
         <BrokerOrchestratorRunOverviewSection canQuery={props.canQuery} state={state} />
+        <BrokerGoalLedgerProgress run={state.currentRun} />
         <BrokerOrchestratorRunRevisionsSection state={state} />
         <BrokerOrchestratorRunMutationSection canQuery={props.canQuery} state={state} />
       </div>

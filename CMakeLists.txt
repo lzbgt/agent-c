@@ -408,6 +408,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/trace_id_util.cpp
     daemon/src/scene_store.cpp
     daemon/src/session_endpoints.cpp
+    daemon/src/session_work_endpoint.cpp
     daemon/src/session_voice_backend_policy.cpp
     daemon/src/session_voice_backend_state.cpp
     daemon/src/session_voice_broker_plan.cpp
@@ -2037,6 +2038,7 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
       add_test(NAME workflow_sop_registry_tests COMMAND workflow_sop_registry_tests)
       if(AGENTD_ENABLE_HTTP)
         add_test(NAME agentd_workflow_sop_registry_smoke COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/workflow_sop_registry_smoke.py $<TARGET_FILE:agentd>)
+        add_test(NAME agentd_session_work_smoke COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/session_work_smoke.py $<TARGET_FILE:agentd>)
       endif()
       add_executable(workflow_model_effect_tests tests/test_workflow_model_effect.cpp)
       target_link_libraries(workflow_model_effect_tests PRIVATE agentd_lib)

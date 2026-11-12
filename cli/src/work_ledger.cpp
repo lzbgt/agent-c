@@ -4,6 +4,8 @@
 #include <memory>
 #include <limits>
 #include <sstream>
+#include <random>
+#include <iomanip>
 #include <unordered_map>
 #include <unordered_set>
 #if defined(AGENT_HAVE_SQLITE3)
@@ -35,6 +37,7 @@ std::string encode(const Json::Value& value) {
   Json::StreamWriterBuilder w; w["indentation"] = ""; return Json::writeString(w, value);
 }
 bool project(Json::Value state, Json::Value* out, std::string* error) {
+  if (state.isMember("ledger_id") && !id(state["ledger_id"])) { *error = "invalid stored ledger identity"; return false; }
   auto& requirements = state["requirements"];
   for (const auto& key : requirements.getMemberNames()) {
     const auto& req = requirements[key];
@@ -183,6 +186,13 @@ bool work_ledger_apply(const std::filesystem::path& path, const Json::Value& req
     }
     if (state["requirements"].size() > 256 || state["blockers"].size() > 128) { *error = "work ledger item limit exceeded (256 requirements, 128 blockers)"; return false; }
     if (state["revision"].asInt64() == std::numeric_limits<Json::Int64>::max()) { *error = "work revision limit exceeded"; return false; }
+    if (!state.isMember("ledger_id")) {
+      std::random_device random;
+      std::ostringstream identity;
+      identity << "work_" << std::hex << std::setfill('0');
+      for (int i = 0; i < 4; ++i) identity << std::setw(8) << static_cast<uint32_t>(random());
+      state["ledger_id"] = identity.str();
+    }
     state["revision"] = state["revision"].asInt64() + 1;
   }
   if (!project(state, out, error)) return false;

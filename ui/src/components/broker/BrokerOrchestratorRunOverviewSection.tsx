@@ -1,4 +1,5 @@
 import React from "react";
+import BrokerGoalLedgerBindingForm from "./BrokerGoalLedgerBindingForm";
 import FieldLabel from "../FieldLabel";
 import { fmtTs } from "./teamRunUtils";
 import { fmtAge, toNumber } from "./brokerOrchestratorRunUtils";
@@ -53,6 +54,7 @@ export default function BrokerOrchestratorRunOverviewSection(props: BrokerOrches
             />
           </div>
         </div>
+        <BrokerGoalLedgerBindingForm value={state.createMetaJson} onChange={state.setCreateMetaJson} />
         <div className="grid gap-1">
           <FieldLabel>Meta (JSON, optional)</FieldLabel>
           <textarea

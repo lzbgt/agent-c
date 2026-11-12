@@ -48,6 +48,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/session/work": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the authoritative session requirement and blocker ledger
+         * @description Read-only projection of the existing work_state ledger. Auth and configured session-root confinement apply. Missing storage returns an empty revision-zero state without creating or migrating files. Mutations remain policy-gated host work_state or agent work operations. Initialized ledgers have a stable ledger_id; legacy ledgers gain one only on a successful mutation.
+         */
+        get: {
+            parameters: {
+                query: {
+                    session_id: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Validated ledger projection; empty state is not goal completion */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok: boolean;
+                            session_id: string;
+                            state: {
+                                /** @constant */
+                                schema: "agentd.work.v1";
+                                ledger_id?: string;
+                                /** Format: int64 */
+                                revision: number;
+                                requirements: {
+                                    [key: string]: {
+                                        title: string;
+                                        /** @enum {string} */
+                                        status: "pending" | "running" | "done";
+                                        depends_on: string[];
+                                        evidence?: string;
+                                    };
+                                };
+                                blockers: {
+                                    [key: string]: {
+                                        /** @enum {string} */
+                                        status?: "open" | "resolved";
+                                        requirement_ids?: string[];
+                                        reason?: string;
+                                        required_action?: string;
+                                        attempts?: string[];
+                                        evidence?: string;
+                                    };
+                                };
+                            };
+                            runnable: string[];
+                            waiting: string[];
+                            open_blockers: string[];
+                            all_requirements_done: boolean;
+                            can_continue: boolean;
+                        };
+                    };
+                };
+                /** @description Invalid session identifier */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Session root is not configured */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ready": {
         parameters: {
             query?: never;

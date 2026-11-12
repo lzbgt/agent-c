@@ -1113,6 +1113,10 @@ struct AgentdService::Impl {
       handle_session_get_endpoint(cur, cors_cfg, &db, req, resp);
     });
 
+    server.handle("GET", "/api/v1/session/work", [this](const HttpRequest& req, HttpResponse* resp) {
+      handle_session_work_endpoint(cfg_store->snapshot(), cors_cfg, req, resp);
+    });
+
     server.handle("GET", "/api/v1/session/audit", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_session_audit_endpoint(cur, cors_cfg, &db, req, resp);

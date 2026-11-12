@@ -1,4 +1,5 @@
 import React from "react";
+import { goalLedgerBindingError, record } from "./brokerGoalLedgerUtils";
 import {
   apiBrokerOrchestratorRunCreate,
   apiBrokerOrchestratorRunGet,
@@ -101,6 +102,24 @@ export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestrato
     30000,
   );
   const lastEventKeyRef = React.useRef<string>("");
+  const scopeKey = JSON.stringify([args.base, args.auth, args.canQuery, teamIdTrimmed]);
+  const scopeRef = React.useRef(scopeKey);
+  scopeRef.current = scopeKey;
+  const selectedRef = React.useRef(runId);
+  selectedRef.current = runId;
+  const runSequence = React.useRef(0);
+  const listSequence = React.useRef(0);
+  const createInFlight = React.useRef<string | null>(null);
+  const [resultScope, setResultScope] = React.useState("");
+  React.useEffect(() => {
+    runSequence.current += 1;
+    listSequence.current += 1;
+    setRunResult(null); setRuns([]); setRunError(null); setListError(null);
+    setRunBusy(false); setListBusy(false); setCreateBusy(false); setUpdateBusy(false); setHeartbeatBusy(false);
+    setCreateError(null); setUpdateError(null); setHeartbeatError(null);
+    setCreateNote(null); setUpdateNote(null); setHeartbeatNote(null);
+    setCreateMetaJson("");
+  }, [scopeKey]);
 
   React.useEffect(() => {
     if (!teamIdTrimmed) {
@@ -153,6 +172,9 @@ export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestrato
 
   const setRunId = React.useCallback(
     (next: string) => {
+      selectedRef.current = next;
+      runSequence.current += 1;
+      setRunResult(null);
       setRunIdState(next);
       if (!teamIdTrimmed) return;
       setRunLookupByTeam((prev) => ({ ...prev, [teamIdTrimmed]: next }));
@@ -162,6 +184,8 @@ export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestrato
 
   const loadRuns = React.useCallback(async () => {
     if (!args.canQuery || !teamIdTrimmed) return;
+    const scope = scopeKey, sequence = ++listSequence.current;
+    const current = () => scopeRef.current === scope && sequence === listSequence.current;
     setListBusy(true);
     setListError(null);
     try {
@@ -169,14 +193,15 @@ export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestrato
         limit: 25,
         status: statusFilter.trim() ? statusFilter.trim() : undefined,
       });
+      if (!current()) return;
       if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "orchestrator runs failed");
       setRuns(Array.isArray(resp.runs) ? resp.runs : []);
     } catch (err) {
-      setListError(String(err));
+      if (current()) setListError(String(err));
     } finally {
-      setListBusy(false);
+      if (current()) setListBusy(false);
     }
-  }, [args.auth, args.base, args.canQuery, statusFilter, teamIdTrimmed]);
+  }, [scopeKey, args.auth, args.base, args.canQuery, statusFilter, teamIdTrimmed]);
 
   React.useEffect(() => {
     if (!teamIdTrimmed || !args.canQuery) {
@@ -190,23 +215,29 @@ export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestrato
     async (targetId?: string) => {
       const rid = String(targetId || runId || "").trim();
       if (!args.canQuery || !teamIdTrimmed || !rid) return;
+      const scope = scopeKey, sequence = ++runSequence.current;
+      const current = () => scopeRef.current === scope && selectedRef.current === rid && sequence === runSequence.current;
       setRunBusy(true);
       setRunError(null);
       try {
         const resp = await apiBrokerOrchestratorRunGet(args.base, teamIdTrimmed, rid, args.auth);
+        if (!current()) return;
         if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "orchestrator run lookup failed");
-        setRunResult(resp.run ?? null);
+        setRunResult(resp.run ?? null); setResultScope(scope);
       } catch (err) {
-        setRunError(String(err));
+        if (current()) setRunError(String(err));
       } finally {
-        setRunBusy(false);
+        if (current()) setRunBusy(false);
       }
     },
-    [args.auth, args.base, args.canQuery, runId, teamIdTrimmed],
+    [scopeKey, args.auth, args.base, args.canQuery, runId, teamIdTrimmed],
   );
 
   const handleCreate = React.useCallback(async () => {
-    if (!args.canQuery || !teamIdTrimmed) return;
+    if (!args.canQuery || !teamIdTrimmed || createInFlight.current === scopeKey) return;
+    createInFlight.current = scopeKey;
+    const scope = scopeKey, selection = selectedRef.current;
+    const current = () => scopeRef.current === scope && selectedRef.current === selection;
     setCreateBusy(true);
     setCreateError(null);
     setCreateNote(null);
@@ -231,26 +262,34 @@ export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestrato
         setCreateError(meta.error);
         return;
       }
+      const metaObject = record(meta.value);
+      if (metaObject && Object.prototype.hasOwnProperty.call(metaObject, "work_ledger")) {
+        const error = goalLedgerBindingError(metaObject.work_ledger);
+        if (error) { setCreateError(error); return; }
+      }
       const body: Record<string, unknown> = { goal };
       if (createStatus.trim()) body.status = createStatus.trim();
       if (goalContract.value !== undefined) body.goal_contract = goalContract.value;
       if (rolePlan.value !== undefined) body.role_plan_snapshot = rolePlan.value;
       if (meta.value !== undefined) body.meta = meta.value;
       const resp = await apiBrokerOrchestratorRunCreate(args.base, teamIdTrimmed, body, args.auth);
+      if (!current()) return;
       if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "create orchestrator run failed");
       const newRun = resp.run ?? null;
       if (newRun?.orchestrator_run_id) {
         setRunId(String(newRun.orchestrator_run_id));
-        setRunResult(newRun);
+        setRunResult(newRun); setResultScope(scope);
         setCreateNote(`created ${newRun.orchestrator_run_id}`);
       }
       await loadRuns();
     } catch (err) {
-      setCreateError(String(err));
+      if (current()) setCreateError(String(err));
     } finally {
-      setCreateBusy(false);
+      if (createInFlight.current === scope) createInFlight.current = null;
+      if (scopeRef.current === scope) setCreateBusy(false);
     }
   }, [
+    scopeKey,
     args.auth,
     args.base,
     args.canQuery,
@@ -271,6 +310,8 @@ export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestrato
       setUpdateError("run id required");
       return;
     }
+    const scope = scopeKey, selection = selectedRef.current;
+    const current = () => scopeRef.current === scope && selectedRef.current === selection;
     setUpdateBusy(true);
     setUpdateError(null);
     setUpdateNote(null);
@@ -299,21 +340,27 @@ export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestrato
       if (updateExpectedOwnerEmpty) body.expected_owner = "";
       else if (updateExpectedOwner.trim()) body.expected_owner = updateExpectedOwner.trim();
       if (updateExpectedStatus.trim()) body.expected_status = updateExpectedStatus.trim();
+      if (runResult?.orchestrator_run_id === rid && resultScope === scopeKey && record(runResult.meta)?.work_ledger) {
+        body.expected_meta = runResult.meta;
+        if (!body.expected_status) body.expected_status = runResult.status;
+      }
       if (Object.keys(body).length === 0) {
         setUpdateError("no update fields set");
         return;
       }
       const resp = await apiBrokerOrchestratorRunUpdate(args.base, teamIdTrimmed, rid, body, args.auth);
+      if (!current()) return;
       if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "update orchestrator run failed");
-      setRunResult(resp.run ?? null);
+      setRunResult(resp.run ?? null); setResultScope(scope);
       setUpdateNote("updated");
       await loadRuns();
     } catch (err) {
-      setUpdateError(String(err));
+      if (current()) setUpdateError(String(err));
     } finally {
-      setUpdateBusy(false);
+      if (current()) setUpdateBusy(false);
     }
   }, [
+    scopeKey, runResult, resultScope,
     args.auth,
     args.base,
     args.canQuery,
@@ -337,6 +384,8 @@ export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestrato
       setHeartbeatError("run id required");
       return;
     }
+    const scope = scopeKey, selection = selectedRef.current;
+    const current = () => scopeRef.current === scope && selectedRef.current === selection;
     setHeartbeatBusy(true);
     setHeartbeatError(null);
     setHeartbeatNote(null);
@@ -346,16 +395,18 @@ export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestrato
       if (heartbeatExpectedOwner.trim()) body.expected_owner = heartbeatExpectedOwner.trim();
       if (heartbeatExpectedStatus.trim()) body.expected_status = heartbeatExpectedStatus.trim();
       const resp = await apiBrokerOrchestratorRunHeartbeat(args.base, teamIdTrimmed, rid, body, args.auth);
+      if (!current()) return;
       if (!resp.ok) throw new Error(resp.error || resp.err || resp.code || "heartbeat failed");
-      setRunResult(resp.run ?? null);
+      setRunResult(resp.run ?? null); setResultScope(scope);
       setHeartbeatNote("heartbeat ok");
       await loadRuns();
     } catch (err) {
-      setHeartbeatError(String(err));
+      if (current()) setHeartbeatError(String(err));
     } finally {
-      setHeartbeatBusy(false);
+      if (current()) setHeartbeatBusy(false);
     }
   }, [
+    scopeKey,
     args.auth,
     args.base,
     args.canQuery,
@@ -415,7 +466,7 @@ export default function useBrokerOrchestratorRunState(args: UseBrokerOrchestrato
     }
   }, []);
 
-  const currentRun = runResult;
+  const currentRun = resultScope === scopeKey && runResult?.orchestrator_run_id === runId ? runResult : null;
   const currentMeta = currentRun && typeof currentRun.meta === "object" ? currentRun.meta : null;
   const goalRevisions = sortRevisions(normalizeRevisionEntries(currentMeta?.goal_versions));
   const rolePlanRevisions = sortRevisions(normalizeRevisionEntries(currentMeta?.role_plan_versions));

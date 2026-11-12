@@ -11,6 +11,7 @@ import (
 
 	"agentd-broker/internal/db"
 	"agentd-broker/internal/events"
+	"agentd-broker/internal/workledger"
 )
 
 const (
@@ -22,6 +23,7 @@ type orchestratorRunUpdateInput struct {
 	Status           *string        `json:"status"`
 	ExpectedStatus   *string        `json:"expected_status"`
 	ExpectedOwner    *string        `json:"expected_owner"`
+	ExpectedMeta     map[string]any `json:"expected_meta"`
 	Goal             *string        `json:"goal"`
 	GoalContract     map[string]any `json:"goal_contract"`
 	RolePlanSnapshot map[string]any `json:"role_plan_snapshot"`
@@ -137,6 +139,12 @@ func (s *Server) handleTeamOrchestratorRunCreate(w http.ResponseWriter, r *http.
 		writeErrorJSON(w, "missing goal", http.StatusBadRequest)
 		return
 	}
+	if raw, bound := req.Meta["work_ledger"]; bound {
+		if _, err := workledger.ParseBinding(raw); err != nil {
+			writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 	rolePlan := req.RolePlanSnapshot
 	if rolePlan == nil {
 		rolePlan = buildRolePlanSnapshot(team.Meta())
@@ -230,6 +238,12 @@ func (s *Server) handleTeamOrchestratorRunUpdate(w http.ResponseWriter, r *http.
 		writeErrorJSON(w, "orchestrator run not found", http.StatusNotFound)
 		return
 	}
+	if raw, bound := req.Meta["work_ledger"]; bound {
+		if _, err := workledger.ParseBinding(raw); err != nil {
+			writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 	prevMeta := prev.Meta()
 	meta := map[string]any(nil)
 	if req.Meta != nil {
@@ -247,6 +261,13 @@ func (s *Server) handleTeamOrchestratorRunUpdate(w http.ResponseWriter, r *http.
 	}
 	nowMs := time.Now().UTC().UnixMilli()
 	metaChanged := false
+	if _, bound := prevMeta["work_ledger"]; bound && req.Meta == nil && req.Status != nil && strings.TrimSpace(*req.Status) == "waiting" {
+		meta = manualWorkLedgerWaitMeta(prevMeta)
+		metaChanged = true
+		if req.ExpectedMeta == nil {
+			req.ExpectedMeta = prevMeta
+		}
+	}
 	var goalRevisionPayload map[string]any
 	var roleRevisionPayload map[string]any
 
@@ -360,6 +381,7 @@ func (s *Server) handleTeamOrchestratorRunUpdate(w http.ResponseWriter, r *http.
 		Status:           req.Status,
 		ExpectedStatus:   req.ExpectedStatus,
 		ExpectedOwner:    req.ExpectedOwner,
+		ExpectedMeta:     req.ExpectedMeta,
 		Goal:             req.Goal,
 		GoalContract:     req.GoalContract,
 		RolePlanSnapshot: req.RolePlanSnapshot,
@@ -421,6 +443,17 @@ func (s *Server) handleTeamOrchestratorRunHeartbeat(w http.ResponseWriter, r *ht
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &req); err != nil {
 			writeErrorJSON(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+	}
+	if req.Status != nil && strings.TrimSpace(*req.Status) != "" {
+		current, err := s.cfg.DB.GetOrchestratorRun(r.Context(), teamID, runID)
+		if err != nil {
+			writeErrorJSON(w, "orchestrator run not found", http.StatusNotFound)
+			return
+		}
+		if _, bound := current.Meta()["work_ledger"]; bound {
+			writeErrorJSON(w, "use goal PATCH for bound-goal status changes; heartbeat only renews the lease", http.StatusBadRequest)
 			return
 		}
 	}

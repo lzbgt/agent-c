@@ -105,7 +105,24 @@ func runOnce(ctx context.Context, client *http.Client, cfg config) error {
 			}
 			runs = append(runs, more...)
 		}
+		// Only coordinator-managed ledger waits wake automatically. Manual waits remain stopped.
+		if cfg.status == "running" || cfg.status == "" {
+			waiting, err := fetchOrchestratorRuns(ctx, client, cfg, teamID, "waiting")
+			if err != nil {
+				return err
+			}
+			for _, run := range waiting {
+				if ledgerManagedWait(run) {
+					runs = append(runs, run)
+				}
+			}
+		}
+		seen := map[string]bool{}
 		for _, run := range runs {
+			if seen[run.OrchestratorRunID] {
+				continue
+			}
+			seen[run.OrchestratorRunID] = true
 			if strings.TrimSpace(run.OrchestratorRunID) == "" {
 				continue
 			}

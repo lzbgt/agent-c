@@ -1329,6 +1329,10 @@ int main(int argc, char** argv) {
     handle_session_get_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
+  server.handle("GET", "/api/v1/session/work", [&](const HttpRequest& req, HttpResponse* resp) {
+    handle_session_work_endpoint(cfg_store.snapshot(), cors_cfg, req, resp);
+  });
+
   server.handle("GET", "/api/v1/session/audit", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_session_audit_endpoint(cur, cors_cfg, db_or_null, req, resp);

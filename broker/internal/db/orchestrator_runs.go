@@ -29,6 +29,7 @@ type OrchestratorRunUpdate struct {
 	Status           *string
 	ExpectedStatus   *string
 	ExpectedOwner    *string
+	ExpectedMeta     map[string]any
 	Goal             *string
 	GoalContract     map[string]any
 	RolePlanSnapshot map[string]any
@@ -279,11 +280,19 @@ func (d *DB) UpdateOrchestratorRun(ctx context.Context, teamID, orchestratorRunI
 		args = append(args, expectedOwner)
 		query += " AND COALESCE(meta->>'orchestrator_owner','')=$" + strconv.Itoa(len(args))
 	}
+	if update.ExpectedMeta != nil {
+		b, err := json.Marshal(update.ExpectedMeta)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, string(b))
+		query += " AND meta=$" + strconv.Itoa(len(args)) + "::jsonb"
+	}
 	tag, err := d.Pool.Exec(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
-	if (expectedStatusSet || expectedOwnerSet) && tag.RowsAffected() == 0 {
+	if (expectedStatusSet || expectedOwnerSet || update.ExpectedMeta != nil) && tag.RowsAffected() == 0 {
 		return nil, ErrOrchestratorRunConflict
 	}
 	return d.GetOrchestratorRun(ctx, teamID, orchestratorRunID)
