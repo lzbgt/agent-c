@@ -1,4 +1,5 @@
 import React from "react";
+import WorkflowSopEditor, { editableSop } from "./WorkflowSopEditor";
 
 import WorkflowGraphComposer from "../WorkflowGraphComposer";
 import type { WorkflowDefaults } from "../../workflowTypes";
@@ -25,6 +26,8 @@ type WorkflowComposerBodyProps = {
 };
 
 export default function WorkflowComposerBody(props: WorkflowComposerBodyProps) {
+  const guided = !!editableSop(props.composerJson);
+  const editor = <textarea className="mt-3 h-64 w-full rounded-md border border-white/10 bg-black/40 p-2 font-mono text-[11px] text-white/80" data-testid="workflow-composer-json" value={props.composerJson} onChange={(event) => props.onSetComposerJson(event.target.value)} aria-label="Workflow definition" />;
   return (
     <>
       {props.defaults.api_key ? <details className="tool-details"><summary>Credential options</summary>
@@ -44,13 +47,7 @@ export default function WorkflowComposerBody(props: WorkflowComposerBodyProps) {
           onClearWarnings={props.onClearWarnings}
         />
       ) : (
-        <textarea
-          className="mt-3 h-64 w-full rounded-md border border-white/10 bg-black/40 p-2 font-mono text-[11px] text-white/80"
-          data-testid="workflow-composer-json"
-          value={props.composerJson}
-          onChange={(event) => props.onSetComposerJson(event.target.value)}
-          aria-label="Workflow definition"
-        />
+        guided ? <><WorkflowSopEditor value={props.composerJson} onChange={props.onSetComposerJson} /><details className="mt-3"><summary className="cursor-pointer">Advanced process configuration</summary>{editor}</details></> : editor
       )}
 
       {props.submitError && props.composerMode === "graph" ? (
