@@ -58,12 +58,16 @@ function parseStreamAgentEvent(raw: string): AgentEvent | null {
 
 function parseJobDonePayload(raw: string): JobDonePayload {
   const data = safeObject(safeJsonParse(raw));
-  const status = typeof data.status === "string" ? data.status : "done";
+  const status = typeof data.status === "string" ? data.status : "";
+  if (!["done", "error", "cancelled", "interrupted"].includes(status)) {
+    throw new Error("missing or nonterminal job_done status");
+  }
   const error =
     status === "error" || status === "interrupted"
       ? (typeof data.error === "string" ? data.error : null)
       : null;
   const result = RunResponseSchema.safeParse(data.result);
+  if (!result.success) throw new Error("missing or invalid job_done result");
   return {
     status,
     error,
@@ -218,6 +222,7 @@ export default function useJobStreaming(args: JobStreamingArgs) {
       void (async () => {
         try {
           const job = await apiGetJob(effectiveBase, jobId, daemonAuth);
+          if (cancelled) return;
           if (!job?.ok) {
             const code = String(job?.code ?? "").toLowerCase();
             const err = String(job?.error ?? job?.err ?? "").toLowerCase();
@@ -312,6 +317,8 @@ export default function useJobStreaming(args: JobStreamingArgs) {
               }
             } catch {
               setJobNotice("failed to parse job_done event (falling back to polling)");
+              fallbackToPolling();
+              return;
             }
             fetchFinished = true;
             setActiveJobId(null);
@@ -384,6 +391,9 @@ export default function useJobStreaming(args: JobStreamingArgs) {
             }
           } catch {
             setJobNotice("failed to parse job_done event (falling back to polling)");
+            es?.close();
+            fallbackToPolling();
+            return;
           }
           setActiveJobId(null);
           const sid = String(sessionId || "").trim();
