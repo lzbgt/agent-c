@@ -64,6 +64,9 @@ def main():
             rows = detail(wid)["tasks"]
             assert all(t["status"] == "queued" and t["attempt"] == 0 for t in rows), rows
             assert timer(wid, "child") is None, "dependent timer armed before parent completed"
+            sleeping = next(t for t in rows if t["task_id"] == "sleep")
+            assert sleeping["wait"] == {"kind": "delay", "due_unix_ms": due}, sleeping
+            assert "wait" not in next(t for t in rows if t["task_id"] == "child"), "dependency queue mislabeled as timer"
             quick = submit([{"task_id": "quick", "kind": "delay", "delay_ms": 0, "result": {"assistant_text": "ready"}}])
             assert final(quick)["workflow"]["status"] == "done"
             assert detail(wid)["workflow"]["status"] not in ("done", "error", "cancelled"), "delay finished early"
@@ -78,7 +81,7 @@ def main():
             assert time.monotonic() - started < 1.5, "restart replayed entire delay"
             assert timer(wid)[0] == due, "restart moved persisted deadline"
             assert result["workflow"]["status"] == "done", result
-            assert all(t["attempt"] == 1 for t in result["tasks"]), result
+            assert all(t["attempt"] == 1 and "wait" not in t for t in result["tasks"]), result
             assert timer(wid, "child")[0] >= due + 200, "dependency delay did not start after parent"
             wid = submit([{"task_id": "sleep", "kind": "delay", "delay_ms": 600000}])
             wait(lambda: timer(wid), "cancel timer not armed")

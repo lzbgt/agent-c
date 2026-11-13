@@ -469,6 +469,7 @@ class AgentDb {
     const std::string& reservation_token, std::string* error);
   bool mark_workflow_running(const std::string& workflow_id, int64_t now_ms, std::string* error);
   // Atomically arm a durable timer and release an attempt while it waits.
+  bool get_workflow_delay_due(const WorkflowTaskRow& task, int64_t* due_ms);
   bool prepare_workflow_delay(const WorkflowTaskRow& expected, int64_t delay_ms, bool* yielded, std::string* error);
   bool yield_workflow_task_capacity(const WorkflowTaskRow& expected, int64_t ready_ms, std::string* error);
   bool get_workflow_budget_snapshot(const std::string& workflow_id, WorkflowBudgetSnapshot* out, std::string* error);

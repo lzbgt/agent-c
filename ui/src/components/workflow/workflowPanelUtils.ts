@@ -55,6 +55,9 @@ export function normalizeTask(raw: unknown): WorkflowTask | null {
   if (!taskId) return null;
   const deps = toStringArray(raw.depends_on);
   return {
+    wait: isObjectRecord(raw.wait) && raw.wait.kind === "delay" && typeof raw.wait.due_unix_ms === "number" &&
+      Number.isFinite(raw.wait.due_unix_ms) && raw.wait.due_unix_ms > 0
+      ? { kind: "delay", due_unix_ms: raw.wait.due_unix_ms } : undefined,
     task_id: taskId,
     blocker: isObjectRecord(raw.blocker) && typeof raw.blocker.required_action === "string"
       ? { required_action: raw.blocker.required_action, kind: typeof raw.blocker.kind === "string" ? raw.blocker.kind : undefined } : undefined,

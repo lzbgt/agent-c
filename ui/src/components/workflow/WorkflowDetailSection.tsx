@@ -33,9 +33,22 @@ type WorkflowDetailSectionProps = {
 export default function WorkflowDetailSection(props: WorkflowDetailSectionProps) {
   const summary = props.summary;
   if (!props.detail || !summary?.workflow_id) return null;
+  const waitingTimers = !summary.cancel_requested && (summary.status === "queued" || summary.status === "running")
+    ? props.tasks.filter((task) => task.status === "queued" && task.wait?.kind === "delay") : [];
 
   return (
     <div className="grid gap-3" data-testid="workflow-detail-panel">
+      {waitingTimers.length > 0 ? (
+        <section className="rounded-md border border-sky-300/30 bg-sky-300/5 p-3" aria-label="Scheduled waits" data-testid="workflow-timer-waits">
+          <h2 className="text-sm font-semibold text-sky-100">Scheduled waits</h2>
+          <p className="mt-1 text-xs text-white/60">These persisted timers release workers while waiting and survive a restart.</p>
+          {waitingTimers.map((task) => (
+            <p key={task.task_id} className="mt-2 break-words text-sm text-white/90">
+              <span className="font-mono">{task.task_id}</span>: due {formatUnixMs(task.wait!.due_unix_ms)}
+            </p>
+          ))}
+        </section>
+      ) : null}
       <WorkflowDecisionsSection workflowId={summary.workflow_id} decisions={props.detail.decisions ?? []}
         active={!summary.cancel_requested && (summary.status === "queued" || summary.status === "running") &&
           !(summary.deadline_unix_ms && summary.deadline_unix_ms <= Date.now())}

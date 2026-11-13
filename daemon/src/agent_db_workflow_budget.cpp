@@ -302,6 +302,25 @@ bool AgentDb::mark_workflow_running(const std::string &id, int64_t now,
 }
 
 
+bool AgentDb::get_workflow_delay_due(const WorkflowTaskRow& task, int64_t* due_ms) {
+  if (due_ms) *due_ms = 0;
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)task;
+  return false;
+#else
+  if (!due_ms || task.status != "queued" || task.ready_unix_ms <= 0) return false;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) return false;
+  auto s = query(db_, "SELECT d.due_unix_ms FROM workflow_delay_timers d JOIN workflow_tasks t ON t.workflow_id=d.workflow_id AND t.task_id=d.task_id WHERE d.workflow_id=? AND d.task_id=? AND d.request_json=? AND d.due_unix_ms=? AND t.status='queued' AND t.ready_unix_ms=d.due_unix_ms AND t.request_json=d.request_json");
+  if (!s || !agent_db_bind_text(s.get(), 1, task.workflow_id) ||
+      !agent_db_bind_text(s.get(), 2, task.task_id) ||
+      !agent_db_bind_text(s.get(), 3, task.request_json) ||
+      !agent_db_bind_i64(s.get(), 4, task.ready_unix_ms) || sqlite3_step(s.get()) != SQLITE_ROW) return false;
+  *due_ms = sqlite3_column_int64(s.get(), 0);
+  return true;
+#endif
+}
+
 bool AgentDb::prepare_workflow_delay(const WorkflowTaskRow& expected,
     int64_t delay_ms, bool* yielded, std::string* error) {
   if (error) error->clear();

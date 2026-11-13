@@ -32,7 +32,8 @@ The authoritative capability/verification snapshot is [docs/CURRENT_SNAPSHOT.md]
 - [ ] P0: multi-authority handoff and trusted reconstruction of unrecorded host dispatch outcomes. Current bound-goal scope uses one existing authority with advisory notifications plus polling; durable replayable event streams remain open and missing receipts never authorize retries.
 - [x] Immutable daemon-local SOP library: save/list/read exact versions, canonical conflict detection, hash-pinned run snapshots, restart integrity and composer save/use flow.
 - [x] Durable explicit process decisions: configured continue/fail choices, worker-free waits, immutable idempotent answers, expiry/cancellation, pinned-SOP integration and operator UI.
-- [ ] P1: general durable signals/timers, branches/loops, person/role-bound approvals, compensation and active-run version migration.
+- [x] Restart-safe worker-free delay timers: atomic arm/yield, preserved due times, cancellation/deadlines, idle-budget semantics and visible scheduled waits.
+- [ ] P1: general external signals and richer timer contracts, branches/loops, person/role-bound approvals, compensation and active-run version migration.
 - [ ] P1: instance-scoped pollable core ports and board-level resource/power-loss evidence.
 - [ ] P1: provider metadata/checkpoint contracts, mid-turn steering and remaining legacy CLI decomposition.
 - [ ] P1: subject-oriented SOP stage/action authoring; keep raw execution configuration behind advanced controls.

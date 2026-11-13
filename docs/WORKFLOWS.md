@@ -340,6 +340,7 @@ Semantics:
 - Waits for `delay_ms` (nonnegative integer, capped at `600000`) after its dependencies become eligible.
 - The absolute deadline is persisted before yielding. Waiting tasks stay queued with `ready_unix_ms` set, consume no worker slot or attempt, and resume against the same deadline after a daemon restart.
 - Idle timer time is not execution-budget time. Workflow cancellation and workflow deadlines still apply while waiting.
+- Workflow detail task metadata includes `wait: {kind: "delay", due_unix_ms: ...}` only for a matching persisted queued timer. Retry/dependency queues are not inferred to be timer waits. The WebUI shows these as Scheduled waits with their due times.
 - Deadlines use the host wall clock; clock adjustments can shorten or extend the observed wait. Restarted timers that are already due complete on the next scheduler pass.
 - Produces a deterministic result object with `ok=true`, plus any merged keys from `result`.
 - If `result.assistant_text` is omitted, `assistant_text` defaults to `"delay:<delay_ms>"`.

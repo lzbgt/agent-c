@@ -206,6 +206,11 @@ void handle_workflow_get_endpoint(
 
         // Indefinite input waiting is not a representable wall-clock date.
         if (t.ready_unix_ms != std::numeric_limits<int64_t>::max()) row["ready_unix_ms"] = (Json::Int64)t.ready_unix_ms;
+        int64_t timer_due = 0;
+        if (db_or_null->get_workflow_delay_due(t, &timer_due)) {
+          row["wait"]["kind"] = "delay";
+          row["wait"]["due_unix_ms"] = (Json::Int64)timer_due;
+        }
         row["started_unix_ms"] = (Json::Int64)t.started_unix_ms;
         row["finished_unix_ms"] = (Json::Int64)t.finished_unix_ms;
         if (!t.error.empty()) row["error"] = t.error;
