@@ -3,6 +3,7 @@ import json, os, socket, sqlite3, subprocess, sys, tempfile, time, threading, ur
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 binary=str(Path(sys.argv[1]).resolve())
+streaming = "--stream" in sys.argv[2:]
 calls=[]; release=threading.Event()
 class Provider(BaseHTTPRequestHandler):
   def do_POST(self):
@@ -40,7 +41,7 @@ with tempfile.TemporaryDirectory(prefix="job-admission-") as root:
     raise AssertionError("daemon not ready")
   p=start()
   request={"job_id":"original","trace_id":"trace-original","session_id":"admission","prompt":"synthetic",
-    "tools":"none","model":"fake","api_key":"synthetic","base_url":f"http://127.0.0.1:{provider.server_port}/v1","timeout_ms":15000}
+    "tools":"none","model":"fake","api_key":"synthetic","base_url":f"http://127.0.0.1:{provider.server_port}/v1","timeout_ms":15000,"stream_assistant":streaming}
   try:
     with sqlite3.connect(db) as c:
       c.execute("CREATE TRIGGER reject_admission BEFORE INSERT ON jobs BEGIN SELECT RAISE(FAIL,'synthetic disk failure'); END")
@@ -86,6 +87,7 @@ with tempfile.TemporaryDirectory(prefix="job-admission-") as root:
       if len(calls)==2: break
       time.sleep(.025)
     assert len(calls)==2
+    assert bool(calls[-1].get("stream", False)) == streaming, calls[-1]
     call("/api/v1/job/cancel?job_id=live-cancel",{})
     assert call("/api/v1/job?job_id=live-cancel")["cancel_requested"] is True
     with sqlite3.connect(db) as c:

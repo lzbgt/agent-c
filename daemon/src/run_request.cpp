@@ -1189,6 +1189,13 @@ static Json::Value run_request_to_json_impl(
       return !job_id_local.empty() && job_is_cancel_requested(job_id_local);
     };
 
+    // Share cancellation across streaming, non-streaming and compaction requests.
+    // The borrowed callback remains alive through every synchronous provider call.
+    run_cfg.should_cancel = +[](void* ctx) -> bool {
+      return (*static_cast<decltype(should_cancel_run)*>(ctx))();
+    };
+    run_cfg.should_cancel_ctx = &should_cancel_run;
+
     if (stream_assistant_none) {
       // Retry loop for providers that reject over-long contexts.
       // For stateless providers, retrying with a tighter compaction budget is equivalent to "spawning a new session".
@@ -1448,12 +1455,6 @@ static Json::Value run_request_to_json_impl(
       // Non-stream request path (tools=none): use core runner + OpenAI provider adapter (same as CLI).
       OpenAIProviderCtx pctx;
       pctx.cfg = run_cfg;
-      // The non-stream adapter must observe cancellation during transfer/backoff,
-      // not just between model attempts. This borrowed lambda lives through run_once.
-      pctx.cfg.should_cancel = +[](void* ctx) -> bool {
-        return (*static_cast<decltype(should_cancel_run)*>(ctx))();
-      };
-      pctx.cfg.should_cancel_ctx = &should_cancel_run;
       const agent_provider_t provider = openai_make_provider(&pctx);
 
       agent_run_options_t run_opt{};
