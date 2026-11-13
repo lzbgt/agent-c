@@ -449,8 +449,36 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     out = workflow_decision_step(db_, task, rr["decision"], &yielded);
     if (yielded) return; // Durable wait holds no worker, attempt or budget grant.
   }
+  // A complete, verified receipt prefix can finish without any new execution.
+  // Pin those values before admission; the replay-only path never calls a provider.
+  bool delegate_replay_only = false;
+  std::vector<Json::Value> delegate_receipts;
+  if (out.isNull() && kind == "delegate" && rr["delegate"]["attempts"].isArray() &&
+      !rr["delegate"]["attempts"].empty()) {
+    const auto& definition = rr["delegate"];
+    const bool stop_on_ok = definition.get("stop_on_ok", true).asBool();
+    bool complete = true;
+    for (Json::ArrayIndex i = 0; i < definition["attempts"].size(); ++i) {
+      const auto& child = definition["attempts"][i];
+      if (!child.isObject() || !child["request"].isObject()) { complete = false; break; }
+      WorkflowModelEffect saved(model_context, task.request_json, "delegate.v1:" + std::to_string(i));
+      auto receipt = saved.preflight();
+      if (!receipt.isObject() || receipt["ok"] != true ||
+          receipt["effect"]["state"] != "completed" || receipt["effect"]["replayed"] != true) {
+        complete = false; break;
+      }
+      delegate_receipts.push_back(receipt);
+      std::string expectation_error;
+      const bool expected = !child["expect"].isObject() ||
+        apply_expectations(json_stringify_compact(child["expect"]), receipt, &expectation_error);
+      if (expected && stop_on_ok) break;
+    }
+    delegate_replay_only = complete && !delegate_receipts.empty();
+    if (!delegate_replay_only) delegate_receipts.clear();
+  }
   if (out.isNull()) {
     auto demand=workflow_budget_demand(rr,cfg,configured_limits);
+    if (delegate_replay_only) demand.fill(0);
     if (kind=="edge_invoke") {
       AgentDb::EdgeTaskRow assigned;
       if (db_->get_edge_task(wf.workflow_id,task.task_id,&assigned,nullptr)) {
@@ -774,8 +802,8 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
                                            "delegate.v1:" + std::to_string(i));
           child_effect.set_fresh_budget(wf_limits.max_tool_calls_total > 0, remaining_local,
                                        wf_limits.max_steps_total > 0, remaining_steps_local);
-          Json::Value r = child_effect.preflight();
-          if (r.isNull()) {
+          Json::Value r = delegate_replay_only ? delegate_receipts.at(i) : child_effect.preflight();
+          if (!delegate_replay_only && r.isNull()) {
             r = run_request_to_json_internal_cancellable(
               cfg, ocfg, db_, tool_ext_or_null_, sessions_root_dir_, attempt_body,
               nullptr, workflow_run_should_cancel, &cancel_ctx, &child_effect);

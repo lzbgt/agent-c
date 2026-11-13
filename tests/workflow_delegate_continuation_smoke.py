@@ -271,6 +271,37 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
         assert count("session_transient") == 1
         assert_session_commit("session_transient", sid, original, revision)
 
+        # Simulate the narrow crash tail: durable children completed, parent
+        # publication lost, and every fresh resource dimension already charged.
+        limits={"max_tool_calls_total":8,"max_steps_total":16,"max_elapsed_ms_total":60000,"max_total_tokens":1000}
+        for mode in ("complete","missing","corrupt","stopped"):
+            names=["zero_"+mode+"_first","zero_"+mode+"_last"]
+            wid=submit("zero_"+mode, others=False, budget=limits, children=names)
+            value=terminal(wid)
+            assert value["workflow"]["status"] == "done", value
+            before={name:counts[name] for name in names}
+            stop()
+            with sqlite3.connect(database) as db:
+                db.execute("UPDATE workflow_tasks SET status='running',result_json=NULL,finished_unix_ms=NULL,tool_calls_total_cum=8,steps_executed_cum=16,elapsed_ms_cum=60000,total_tokens_cum=1000 WHERE workflow_id=? AND task_id='write'",(wid,))
+                db.execute("UPDATE workflows SET status='running',result_json=NULL,cancel_requested=? WHERE workflow_id=?",(int(mode=="stopped"),wid))
+                if mode=="missing":
+                    db.execute("DELETE FROM workflow_effects WHERE workflow_id=? AND effect_slot='delegate.v1:1'",(wid,))
+                if mode=="corrupt":
+                    db.execute("UPDATE workflow_effects SET receipt_json='{}' WHERE workflow_id=? AND effect_slot='delegate.v1:1'",(wid,))
+            start()
+            value=terminal(wid)
+            assert all(counts[name]==before[name] and count(name)==1 for name in names), (mode,value,counts)
+            if mode=="complete":
+                assert value["workflow"]["status"]=="done", value
+                outcome=result(value)
+                assert all(outcome[k]==0 for k in ("tool_calls_total","steps_executed","elapsed_ms","total_tokens")),outcome
+                assert sql("SELECT tool_calls_total_cum,steps_executed_cum,elapsed_ms_cum,total_tokens_cum FROM workflow_tasks WHERE workflow_id=? AND task_id='write'",(wid,))==[(8,16,60000,1000)]
+                grants=sql("SELECT tools,steps,elapsed_ms,tokens FROM workflow_budget_reservations WHERE workflow_id=? ORDER BY attempt DESC LIMIT 1",(wid,))
+                assert grants==[(0,0,0,0)],grants
+            else:
+                assert value["workflow"]["status"]!="done", (mode,value)
+            if mode=="stopped": assert value["workflow"]["cancel_requested"],value
+
         # Legacy slot identity remains readable through an actual v40 migration.
         stop()
         with sqlite3.connect(database) as db:
