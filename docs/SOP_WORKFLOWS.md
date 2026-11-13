@@ -1,6 +1,18 @@
 # SOP workflows v1
 
-`POST /api/v1/workflow/submit` accepts exactly one of the existing `tasks` array, an inline `sop` object, or an exact saved `sop_ref`. The server compiles SOP stages into the existing durable DAG before ordinary task validation, policy enforcement, admission control, persistence and scheduling. The WebUI workflow composer includes **SOP · stages and actions** as a JSON template.
+## Guided process authoring
+
+Select the SOP template to name and version a process, reorder stages/actions, and choose sequential or parallel execution. Add model requests, relative waits, fixed UTC waits or process decisions. Edits preserve advanced action settings; editing, adding and reordering never submit or save automatically.
+
+Decisions expose the question, dependency-relative expiry (0 for indefinite, otherwise up to 30 days), and 1–8 choices with explicit IDs, labels and continue/fail outcomes. New choices default to fail, not implicit approval. Choices are process inputs, not person/role authorization or tool permission. Ordinary server validation remains authoritative.
+
+**Wait until a UTC deadline** stores an exact millisecond timestamp. The control is explicitly UTC even in a non-UTC browser; it does not schedule local-time recurrences. New waits default to one hour after authoring. Saved SOPs preserve the same instant across runs, and a past-due wait completes after dependencies finish. Clearing the deadline leaves an invalid draft visibly marked rather than silently choosing another time.
+
+The browser regression in `ui/e2e/workflow_sop_editor.spec.ts` requires `build/agentd` (build it with `cmake --build build --target agentd`). It passes the exact browser-authored JSON to `tests/workflow_authored_process_smoke.py`, which uses a temporary database and loopback daemon to save/pin/run it and verify configured continue/fail choices and idempotent delivery. No real provider or production daemon is used.
+
+## Runtime contract
+
+`POST /api/v1/workflow/submit` accepts exactly one of the existing `tasks` array, an inline `sop` object, or an exact saved `sop_ref`. The server compiles SOP stages into the existing durable DAG before ordinary task validation, policy enforcement, admission control, persistence and scheduling. The WebUI workflow composer includes **SOP · stages and actions** with a guided process builder; raw JSON remains under **Advanced process configuration**.
 
 ```json
 {
@@ -27,7 +39,7 @@ Stage order is significant. Each stage waits for successful completion of the pr
 
 IDs and version strings use `A-Za-z0-9_.:-`, 1–128 bytes. Stage IDs are unique; action `task_id` values are globally unique across the SOP and remain unchanged in task references. Titles are optional, up to 256 bytes. Bounds are 32 nonempty stages and 128 total actions. The compiler rejects unknown SOP/stage/action fields, explicit action dependencies, `allow_error=true`, dependency inference, unsupported kinds and submit-time parallel macros. This prevents a misspelled control rule from being silently ignored.
 
-Actions use the existing task payload contracts. Supported kinds are `llm` (or an omitted kind with `request`), `delay`, `decision`, `host_tool`, `http_json`, `agentd_call`, `aggregate`, `avm_capsule`, memory task kinds, `experience_record`, `edge_invoke`, `edge_wait_sensor`, and sequential `delegate`. Native HTTP/device/capsule policies remain effective; SOP input does not grant capabilities. See [WORKFLOWS.md](WORKFLOWS.md) and the generated OpenAPI contract for their payloads.
+Actions use the existing task payload contracts. Supported kinds are `llm` (or an omitted kind with `request`), `delay`, `timer`, `decision`, `host_tool`, `http_json`, `agentd_call`, `aggregate`, `avm_capsule`, memory task kinds, `experience_record`, `edge_invoke`, `edge_wait_sensor`, and sequential `delegate`. Native HTTP/device/capsule policies remain effective; SOP input does not grant capabilities. See [WORKFLOWS.md](WORKFLOWS.md) and the generated OpenAPI contract for their payloads.
 
 The stored diagnostic spec contains the original `sop`, compiled `tasks`, and server-owned `sop_compiled` metadata: compiler schema, definition ID/version, canonical definition SHA-256 and stage-to-task mapping. The hash uses `agent_json_c14n_v1`, not an unspecified JSON serialization. It identifies the submitted definition, not externally supplied defaults or secrets; the entire redacted run spec records those execution settings separately. Inline SOPs remain ad hoc: reusing an ID/version with changed inline source produces a different hash. Saved versions enforce immutability as described below.
 

@@ -1,4 +1,5 @@
 import React from "react";
+import { ProcessDeadline, ProcessDecision } from "./ProcessActionFields";
 
 type Obj = Record<string, any>;
 const object = (v: unknown): v is Obj => !!v && typeof v === "object" && !Array.isArray(v);
@@ -51,7 +52,8 @@ export default function WorkflowSopEditor({ value, onChange }: { value: string; 
         <legend className="break-all">Action {j + 1}: {action.task_id}</legend>
         {action.kind === "llm" && object(action.request) ? <label className="block">Instructions<textarea aria-label="Instructions" className={field} value={action.request.prompt || ""} onChange={e => update(s => { s.stages[i].actions[j].request.prompt = e.target.value; })} /></label> :
          action.kind === "delay" ? <label className="block">Wait (milliseconds)<input type="number" min="0" max="600000" className={field} value={action.delay_ms ?? 0} onChange={e => { if (e.target.value !== "") update(s => { s.stages[i].actions[j].delay_ms = Number(e.target.value); }); }} /></label> :
-         action.kind === "decision" && object(action.decision) ? <><label className="block">Review question<textarea aria-label="Review question" className={field} value={action.decision.prompt || ""} onChange={e => update(s => { s.stages[i].actions[j].decision.prompt = e.target.value; })} /></label><p className="text-xs">Choices and expiry are preserved; edit them in advanced configuration.</p></> :
+         action.kind === "timer" ? <ProcessDeadline action={action} onChange={next => update(s => { s.stages[i].actions[j] = next; })} /> :
+         action.kind === "decision" && object(action.decision) ? <ProcessDecision decision={action.decision} onChange={next => update(s => { s.stages[i].actions[j].decision = next; })} /> :
          <p className="break-words">Advanced action ({action.kind || "llm"}). Its configuration is preserved unchanged; use advanced configuration to edit it.</p>}
         <div className="flex flex-wrap gap-2">
           <button type="button" className={button} disabled={j === 0} onClick={() => update(s => { const a = s.stages[i].actions; [a[j - 1], a[j]] = [a[j], a[j - 1]]; })}>Move action up</button>
@@ -67,10 +69,10 @@ export default function WorkflowSopEditor({ value, onChange }: { value: string; 
           const action = kind === "llm" ? { task_id, kind, request: { prompt: "Describe the work to perform.", tools: "none" } } :
             kind === "decision" ? { task_id, kind, decision: { prompt: "Continue this process?", timeout_ms: 86400000, choices: [
               { id: "continue", label: "Continue", outcome: "continue" }, { id: "stop", label: "Stop", outcome: "fail" },
-            ] } } : { task_id, kind: "delay", delay_ms: 0 };
+            ] } } : kind === "timer" ? { task_id, kind, due_unix_ms: Date.now() + 3600000 } : { task_id, kind: "delay", delay_ms: 0 };
           s.stages[i].actions.push(action);
         });
-      }}><option value="">Choose an action…</option><option value="llm">Ask the model</option><option value="delay">Wait</option><option value="decision">Request a decision</option></select></label>
+      }}><option value="">Choose an action…</option><option value="llm">Ask the model</option><option value="delay">Wait</option><option value="timer">Wait until a UTC deadline</option><option value="decision">Request a decision</option></select></label>
     </fieldset>)}
     <button type="button" className={button} disabled={sop.stages.length >= 32 || actionCount >= 128} onClick={() => update(s => {
       s.stages.push({ id: unique("stage_", s.stages.map((v: Obj) => v.id)), title: "New stage", mode: "sequence", actions: [
