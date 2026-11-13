@@ -280,6 +280,51 @@ void handle_session_get_endpoint(
     return;
   }
 
+
+  const auto page_limit = query_get(req.query, "messages_limit");
+  const auto before_q = query_get(req.query, "messages_before_index");
+  const auto revision_q = query_get(req.query, "messages_revision");
+  if (page_limit || before_q || revision_q) {
+    const auto number = [](const std::string& value, int64_t* out) {
+      if (value.empty()) return false;
+      int64_t result = 0;
+      for (const unsigned char ch : value) {
+        if (ch < '0' || ch > '9' || result > (9007199254740991LL - (ch - '0')) / 10) return false;
+        result = result * 10 + (ch - '0');
+      }
+      *out = result; return true;
+    };
+    int64_t limit = 0, before = 9007199254740991LL, revision = -1;
+    if (!page_limit || !number(*page_limit, &limit) || limit < 1 || limit > 200 ||
+        (before_q && (!revision_q || !number(*before_q, &before))) ||
+        (revision_q && !number(*revision_q, &revision))) {
+      resp->status = 400;
+      resp->body = json_error_body("messages_limit must be 1..200; continuation requires messages_before_index and messages_revision as nonnegative safe integers");
+      return;
+    }
+    std::vector<AgentDb::IndexedMessageRow> rows;
+    int64_t current_revision = 0; bool more = false; std::string error;
+    const auto result = db->page_session_messages(*sid, before, static_cast<size_t>(limit), revision, &rows, &current_revision, &more, &error);
+    using Result = AgentDb::SessionPageResult;
+    if (result != Result::Ok) {
+      resp->status = result == Result::Conflict ? 409 : result == Result::NotFound ? 404 : result == Result::TooLarge ? 413 : 500;
+      resp->body = json_error_body(error); return;
+    }
+    Json::Value out(Json::objectValue); out["ok"] = true; out["session_id"] = *sid;
+    out["messages"] = Json::Value(Json::arrayValue);
+    for (const auto& item : rows) {
+      Json::Value message(Json::objectValue);
+      message["index"] = Json::Int64(item.index); message["role"] = item.message.role; message["content"] = item.message.content;
+      if (!item.message.mm_json.empty()) message["mm_json"] = item.message.mm_json;
+      if (item.message.mm_bytes > 0) message["mm_bytes"] = Json::Int64(item.message.mm_bytes);
+      if (item.message.mm_truncated) message["mm_truncated"] = Json::Int64(item.message.mm_truncated);
+      out["messages"].append(message);
+    }
+    out["page"]["revision"] = Json::Int64(current_revision); out["page"]["has_more"] = more;
+    out["page"]["next_before_index"] = more && !rows.empty() ? Json::Value(Json::Int64(rows.front().index)) : Json::Value();
+    resp->body = json_stringify(out); return;
+  }
+
   std::vector<AgentDb::MessageRow> msgs;
   {
     std::string err;

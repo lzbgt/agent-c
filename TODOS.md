@@ -41,7 +41,8 @@ The authoritative capability/verification snapshot is [docs/CURRENT_SNAPSHOT.md]
 - [x] Typed decision/UTC-timer authoring: configured choice IDs/labels/outcomes, expiry, exact millisecond UTC waits and real daemon execution of browser-authored saved SOPs.
 - [ ] P1: richer typed SOP authoring for advanced device/host/integration actions and role-bound approval contracts.
 - [x] Workflow composer submission reconciliation: persisted secret-free scoped receipt before dispatch, authenticated read-only lookup, response-loss/reload recovery and no automatic execution retries.
-- [ ] P1: append-only conversation IDs/pagination and chat submission reconciliation; replace model-context snapshots as the long-term chat authority and avoid blind queue retries after uncertain chat submission.
+- [x] Bounded canonical-session snapshot paging: keyset SQL, durable revision fences, strict row/byte caps, restart-safe cursors and typed client validation. See docs/SESSION_MESSAGE_PAGES.md; not append-only history.
+- [ ] P1: append-only conversation IDs/history, migration of UI consumers to bounded pages, and chat submission reconciliation; replace model-context snapshots as the long-term chat authority and avoid blind queue retries after uncertain chat submission.
 
 
 Date: 2026-02-19

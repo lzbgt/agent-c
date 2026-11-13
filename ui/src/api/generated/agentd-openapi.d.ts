@@ -6067,11 +6067,19 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get session messages */
+        /**
+         * Get session messages, optionally as bounded generation-fenced pages
+         * @description With messages_limit, returns newest matching messages in ascending index order. Continue with next_before_index and the same revision. Pages cap raw message text/media at 2 MiB; a single larger message returns 413, never truncation. Session edits cause 409 for old revisions. Without paging parameters the legacy complete snapshot is unchanged.
+         */
         get: {
             parameters: {
                 query: {
                     session_id: string;
+                    messages_limit?: number;
+                    /** @description Exclusive index cursor; requires messages_revision and messages_limit. */
+                    messages_before_index?: number;
+                    /** @description Snapshot generation; changed generations return 409 rather than mixed pages. */
+                    messages_revision?: number;
                 };
                 header?: never;
                 path?: never;
@@ -6089,6 +6097,8 @@ export interface paths {
                             ok: boolean;
                             session_id: string;
                             messages: {
+                                /** @description Present only in paged mode; scoped to page revision */
+                                index?: number;
                                 role: string;
                                 content: string;
                                 mm_json?: string;
@@ -6097,9 +6107,28 @@ export interface paths {
                                 /** Format: int64 */
                                 mm_truncated?: number;
                             }[];
+                            page?: {
+                                revision: number;
+                                has_more: boolean;
+                                next_before_index: number | null;
+                            };
                             error?: string;
                         };
                     };
+                };
+                /** @description Snapshot changed; restart pagination */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description A single message exceeds the page byte cap */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
                 };
             };
         };

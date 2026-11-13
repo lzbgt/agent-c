@@ -1,8 +1,88 @@
 #include "agent_db.h"
+#include <algorithm>
 #include "agent/multimodal_prefix.h"
 #include "agent_db_sqlite.h"
 
 namespace agentd {
+
+AgentDb::SessionPageResult AgentDb::page_session_messages(
+    const std::string& id, int64_t before, size_t limit, int64_t expected_revision,
+    std::vector<IndexedMessageRow>* rows, int64_t* revision, bool* has_more, std::string* error) {
+  if (error) error->clear();
+  if (rows) rows->clear();
+  if (has_more) *has_more = false;
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)id; (void)before; (void)limit; (void)expected_revision; (void)revision;
+  if (error) *error = "SQLite support required";
+  return SessionPageResult::Error;
+#else
+  if (!rows || !revision || !has_more || id.empty() || limit < 1 || limit > 200 || before < 0) {
+    if (error) *error = "invalid message page";
+    return SessionPageResult::Error;
+  }
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_ || !exec_locked("BEGIN", error)) return SessionPageResult::Error;
+  sqlite3_stmt* statement = nullptr;
+  const auto fail = [&](SessionPageResult result, const char* message) {
+    if (statement) { sqlite3_finalize(statement); statement = nullptr; }
+    exec_locked("ROLLBACK", nullptr); rows->clear();
+    if (error) *error = message;
+    return result;
+  };
+  // Existence and generation are read in the same snapshot as the bounded rows.
+  const char* identity = "SELECT COALESCE(r.revision,0) FROM sessions s LEFT JOIN session_revisions r ON r.session_id=s.session_id WHERE s.session_id=?";
+  if (sqlite3_prepare_v2(db_, identity, -1, &statement, nullptr) != SQLITE_OK ||
+      !agent_db_bind_text(statement, 1, id)) return fail(SessionPageResult::Error, "cannot read session page identity");
+  int rc = sqlite3_step(statement);
+  if (rc == SQLITE_DONE) return fail(SessionPageResult::NotFound, "session not found");
+  if (rc != SQLITE_ROW) return fail(SessionPageResult::Error, "cannot read session page identity");
+  *revision = sqlite3_column_int64(statement, 0);
+  sqlite3_finalize(statement); statement = nullptr;
+  if (expected_revision >= 0 && expected_revision != *revision)
+    return fail(SessionPageResult::Conflict, "session revision changed; restart pagination");
+  const char* sql = "SELECT idx,role,content,mm_json,mm_bytes,mm_truncated FROM messages WHERE session_id=? AND idx<? ORDER BY idx DESC LIMIT ?";
+  if (sqlite3_prepare_v2(db_, sql, -1, &statement, nullptr) != SQLITE_OK ||
+      !agent_db_bind_text(statement, 1, id) || !agent_db_bind_i64(statement, 2, before) ||
+      !agent_db_bind_i64(statement, 3, static_cast<int64_t>(limit + 1)))
+    return fail(SessionPageResult::Error, "cannot prepare message page");
+  constexpr size_t max_bytes = 2 * 1024 * 1024;
+  size_t bytes = 0;
+  while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+    if (rows->size() == limit) { *has_more = true; break; }
+    const size_t size = static_cast<size_t>(sqlite3_column_bytes(statement, 1)) +
+      static_cast<size_t>(sqlite3_column_bytes(statement, 2)) + static_cast<size_t>(sqlite3_column_bytes(statement, 3));
+    if (size > max_bytes - bytes) {
+      if (rows->empty()) return fail(SessionPageResult::TooLarge, "message exceeds page byte limit; use the legacy session export");
+      *has_more = true; break;
+    }
+    bytes += size;
+    IndexedMessageRow item;
+    item.index = sqlite3_column_int64(statement, 0);
+    const auto text = [&](int column) {
+      const auto* value = sqlite3_column_text(statement, column);
+      return value ? std::string(reinterpret_cast<const char*>(value), sqlite3_column_bytes(statement, column)) : std::string();
+    };
+    auto& row = item.message;
+    row.role = text(1); row.content = text(2); row.mm_json = text(3);
+    row.mm_bytes = sqlite3_column_int64(statement, 4);
+    row.mm_truncated = sqlite3_column_int64(statement, 5) > 0 ? 1 : 0;
+    if (row.mm_json.empty() && !row.content.empty()) {
+      const char *plain = nullptr, *mm = nullptr; size_t plain_size = 0, mm_size = 0;
+      if (agent_parse_multimodal_prefix(row.content.data(), row.content.size(), &plain, &plain_size, &mm, &mm_size) && mm && mm_size) {
+        const std::string content = plain ? std::string(plain, plain_size) : std::string();
+        row.mm_json.assign(mm, mm_size); row.content = content; row.mm_bytes = mm_size; row.mm_truncated = 0;
+      }
+    }
+    if (row.mm_bytes <= 0) row.mm_bytes = row.mm_json.size();
+    rows->push_back(std::move(item));
+  }
+  if (rc != SQLITE_DONE && rc != SQLITE_ROW) return fail(SessionPageResult::Error, "cannot read message page");
+  sqlite3_finalize(statement); statement = nullptr;
+  if (!exec_locked("COMMIT", error)) return fail(SessionPageResult::Error, "cannot commit message page");
+  std::reverse(rows->begin(), rows->end());
+  return SessionPageResult::Ok;
+#endif
+}
 
 bool AgentDb::load_session_messages(const std::string& session_id, std::vector<MessageRow>* messages,
                                     std::string* error, int64_t* revision) {

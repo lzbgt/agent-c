@@ -3546,13 +3546,29 @@
 /api/v1/session:
   get:
     tags: [sessions]
-    summary: Get session messages
+    summary: Get session messages, optionally as bounded generation-fenced pages
+    description: With messages_limit, returns newest matching messages in ascending index order. Continue with next_before_index and the same revision. Pages cap raw message text/media at 2 MiB; a single larger message returns 413, never truncation. Session edits cause 409 for old revisions. Without paging parameters the legacy complete snapshot is unchanged.
     parameters:
       - in: query
         name: session_id
         required: true
         schema: { type: string }
+      - in: query
+        name: messages_limit
+        schema: { type: integer, minimum: 1, maximum: 200 }
+      - in: query
+        name: messages_before_index
+        description: Exclusive index cursor; requires messages_revision and messages_limit.
+        schema: { type: integer, minimum: 0, maximum: 9007199254740991 }
+      - in: query
+        name: messages_revision
+        description: Snapshot generation; changed generations return 409 rather than mixed pages.
+        schema: { type: integer, minimum: 0, maximum: 9007199254740991 }
     responses:
+      "409":
+        description: Snapshot changed; restart pagination
+      "413":
+        description: A single message exceeds the page byte cap
       "200":
         description: Session payload
         content:
@@ -3569,11 +3585,19 @@
                     type: object
                     required: [role, content]
                     properties:
+                      index: { type: integer, minimum: 0, description: Present only in paged mode; scoped to page revision }
                       role: { type: string }
                       content: { type: string }
                       mm_json: { type: string }
                       mm_bytes: { type: integer, format: int64 }
                       mm_truncated: { type: integer, format: int64 }
+                page:
+                  type: object
+                  required: [revision, has_more, next_before_index]
+                  properties:
+                    revision: { type: integer, minimum: 0, maximum: 9007199254740991 }
+                    has_more: { type: boolean }
+                    next_before_index: { type: integer, nullable: true, minimum: 0 }
                 error: { type: string }
   delete:
     tags: [sessions]

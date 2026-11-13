@@ -58,6 +58,11 @@ class AgentDb {
     int64_t mm_bytes = 0;
     int64_t mm_truncated = 0;
   };
+  struct IndexedMessageRow { int64_t index = 0; MessageRow message; };
+  enum class SessionPageResult { Ok, NotFound, Conflict, TooLarge, Error };
+  SessionPageResult page_session_messages(const std::string& session_id, int64_t before_index,
+    size_t limit, int64_t expected_revision, std::vector<IndexedMessageRow>* rows,
+    int64_t* revision, bool* has_more, std::string* error);
   // Durable conversation generation; retained across deletion/recreation.
   struct SessionFence { std::string session_id; int64_t revision = 0; };
   bool session_matches(const SessionFence& expected, std::string* out_error);
