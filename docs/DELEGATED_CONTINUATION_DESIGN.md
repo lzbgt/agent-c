@@ -12,6 +12,10 @@ Fresh grants remain parent-attempt reservations. Each child receives only the re
 
 Only the existing host-model guard contracts are inherited. Direct chat, capsules, provider-native tools, unsupported preparation and parallel delegate macro semantics are unchanged. No exactly-once physical-effect guarantee or trusted host receipt resolver is added.
 
+## Persistent-conversation chains
+
+A real three-child shared-session fixture verifies that a crash during child two reuses child one without repeating its provider/tool calls or conversation commit. Successful recovery commits each child exactly once to that conversation, with one revision increment per child. An owner edit after child two's checkpoint instead produces model_session_changed, preserves the newer conversation byte-for-byte and prevents child three from executing. This is a session-state publication guarantee, not exactly-once physical execution.
+
 ## Persistence
 
 The transactional v40→v41 migration preserves every old effect ID, receipt and revision with an empty legacy slot. Unique ownership becomes (workflow_id,task_id,effect_slot); the foreign key still references the real parent task. Schema version publication is in the same migration transaction. Empty-slot identity hashing is unchanged.
@@ -22,4 +26,4 @@ Workflow effect metadata exposes child effect_slot. Projection is complete up to
 
 workflow_delegate_continuation_smoke.py uses a temporary authenticated one-worker daemon, loopback fake provider and synthetic subprocess writes. It checks three-child crash/restart, no repeated completed-child provider calls, receipted tool reuse, transient retry, unreceipted-operation stop before fallback, finite fresh usage and v40 legacy receipt migration. Exhausted-ledger crash-tail fixtures verify zero new provider/tool calls, zero new resource grants and unchanged cumulative charges; missing/corrupt receipts and owner stops fail closed. Existing model-effect/transcript and ordinary recovery regressions remain applicable.
 
-Further work: incomplete-checkpoint progress with exhausted fresh grants (not permitted by completed-receipt replay), comprehensive multi-child persistent-session edit qualification, additional preparation adapters and trusted host receipt reconciliation. These are not claimed by this slice.
+Further work: incomplete-checkpoint progress with exhausted fresh grants (not permitted by completed-receipt replay), additional multi-child session deletion/recreation and concurrent-writer stress qualification, additional preparation adapters and trusted host receipt reconciliation. These are not claimed by this slice.

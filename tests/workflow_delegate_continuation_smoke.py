@@ -271,6 +271,38 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
         assert count("session_transient") == 1
         assert_session_commit("session_transient", sid, original, revision)
 
+        # Two children share a real persistent conversation. Crash in child two
+        # must not recommit child one; an intervening edit must stop the chain.
+        for case,edited in (("session_crash",False),("session_changed",True)):
+            provider_waiting.clear();release_provider.clear()
+            sid, original, revision=seed_session("chain_"+case)
+            first="first_"+case
+            last="last_"+case
+            wid=submit("chain_"+case, session=sid, children=[first,case,last])
+            wait_for(provider_waiting.is_set,"second session child did not reach checkpoint")
+            assert count(first)==1 and count(case)==1 and count(last)==0
+            rows=session_rows(sid)
+            assert sum(row["role"]=="user" and row["content"]==first for row in rows)==1,rows
+            before_first=counts[first]
+            if edited:
+                call("/api/v1/session/ui_event", {"session_id":sid,"type":"newer_context",
+                    "ts_unix_ms":1700000001000,"data":{"text":"owner edit between children"},"append_to_session":True})
+                newer=session_rows(sid)
+            stop(kill=True);release_provider.set();start()
+            value=terminal(wid)
+            assert count(first)==1 and counts[first]==before_first and count(case)==1, (value,counts)
+            if edited:
+                assert value["workflow"]["status"]=="error",value
+                assert result(value)["blocker"]["kind"]=="model_session_changed",value
+                assert count(last)==0 and session_rows(sid)==newer,value
+            else:
+                assert value["workflow"]["status"]=="done" and count(last)==1,value
+                rows=session_rows(sid)
+                for name in (first,case,last):
+                    assert sum(row["role"]=="user" and row["content"]==name for row in rows)==1,rows
+                    assert sum(row["role"]=="assistant" and row["content"]=="completed:"+name for row in rows)==1,rows
+                assert sql("SELECT revision FROM session_revisions WHERE session_id=?",(sid,))[0][0]==revision+3
+
         # Simulate the narrow crash tail: durable children completed, parent
         # publication lost, and every fresh resource dimension already charged.
         limits={"max_tool_calls_total":8,"max_steps_total":16,"max_elapsed_ms_total":60000,"max_total_tokens":1000}
