@@ -337,7 +337,10 @@ For deterministic scheduling tests and “wait gates” that do not involve an L
 ```
 
 Semantics:
-- Sleeps for `delay_ms` (clamped to `0..600000`).
+- Waits for `delay_ms` (nonnegative integer, capped at `600000`) after its dependencies become eligible.
+- The absolute deadline is persisted before yielding. Waiting tasks stay queued with `ready_unix_ms` set, consume no worker slot or attempt, and resume against the same deadline after a daemon restart.
+- Idle timer time is not execution-budget time. Workflow cancellation and workflow deadlines still apply while waiting.
+- Deadlines use the host wall clock; clock adjustments can shorten or extend the observed wait. Restarted timers that are already due complete on the next scheduler pass.
 - Produces a deterministic result object with `ok=true`, plus any merged keys from `result`.
 - If `result.assistant_text` is omitted, `assistant_text` defaults to `"delay:<delay_ms>"`.
 

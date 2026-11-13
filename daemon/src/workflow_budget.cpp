@@ -86,7 +86,7 @@ Amounts workflow_budget_demand(const Json::Value &input,
                 600000, std::max<int64_t>(0, value(request, "delay_ms", 0))) +
                 1
           : value(timed, "timeout_ms", std::max<int64_t>(1, cfg.timeout_ms));
-  if (kind == "decision") demand[2] = 0; // Waiting for input is not execution time.
+  if (kind == "decision" || kind == "delay") demand[2] = 0; // Durable waiting is not execution time.
   for (int i = 0; i < 4; i++)
     demand[i] = limits[i] > 0 ? std::min(limits[i], demand[i]) : 0;
   return demand;

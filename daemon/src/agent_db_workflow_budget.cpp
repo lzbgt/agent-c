@@ -301,6 +301,65 @@ bool AgentDb::mark_workflow_running(const std::string &id, int64_t now,
 #endif
 }
 
+
+bool AgentDb::prepare_workflow_delay(const WorkflowTaskRow& expected,
+    int64_t delay_ms, bool* yielded, std::string* error) {
+  if (error) error->clear();
+  if (yielded) *yielded = false;
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)expected; (void)delay_ms;
+  if (error) *error = "SQLite support required";
+  return false;
+#else
+  if (!yielded || delay_ms < 0 || delay_ms > 600000) {
+    if (error) *error = "invalid delay";
+    return false;
+  }
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_ || !exec_locked("BEGIN IMMEDIATE", error)) return false;
+  const auto fail = [&](const char* message) {
+    exec_locked("ROLLBACK", nullptr);
+    *yielded = false;
+    if (error) *error = message;
+    return false;
+  };
+  const int64_t now = agent_db_unix_ms_now();
+  {
+    auto s = query(db_, "SELECT 1 FROM workflow_tasks t JOIN workflows w ON w.workflow_id=t.workflow_id WHERE t.workflow_id=? AND t.task_id=? AND t.attempt=? AND t.request_json=? AND t.status='running' AND w.cancel_requested=0 AND w.status IN ('queued','running')");
+    if (!s || !bind_expected(s.get(), 1, expected) || sqlite3_step(s.get()) != SQLITE_ROW)
+      return fail("stale or cancelled delay attempt");
+  }
+  {
+    auto s = query(db_, "INSERT INTO workflow_delay_timers(workflow_id,task_id,request_json,delay_ms,due_unix_ms) VALUES(?,?,?,?,?) ON CONFLICT(workflow_id,task_id) DO NOTHING");
+    if (!s || !agent_db_bind_text(s.get(), 1, expected.workflow_id) ||
+        !agent_db_bind_text(s.get(), 2, expected.task_id) ||
+        !agent_db_bind_text(s.get(), 3, expected.request_json) ||
+        !agent_db_bind_i64(s.get(), 4, delay_ms) ||
+        !agent_db_bind_i64(s.get(), 5, add(now, delay_ms)) || !agent_db_step_done(s.get()))
+      return fail("cannot persist delay timer");
+  }
+  int64_t due = 0;
+  {
+    auto s = query(db_, "SELECT due_unix_ms FROM workflow_delay_timers WHERE workflow_id=? AND task_id=? AND request_json=? AND delay_ms=?");
+    if (!s || !agent_db_bind_text(s.get(), 1, expected.workflow_id) ||
+        !agent_db_bind_text(s.get(), 2, expected.task_id) ||
+        !agent_db_bind_text(s.get(), 3, expected.request_json) ||
+        !agent_db_bind_i64(s.get(), 4, delay_ms) || sqlite3_step(s.get()) != SQLITE_ROW)
+      return fail("delay timer identity changed");
+    due = sqlite3_column_int64(s.get(), 0);
+  }
+  if (due > now) {
+    auto s = query(db_, "UPDATE workflow_tasks SET status='queued',attempt=MAX(0,attempt-1),ready_unix_ms=?,updated_unix_ms=? WHERE workflow_id=? AND task_id=? AND attempt=? AND request_json=? AND status='running' AND NOT EXISTS(SELECT 1 FROM workflow_budget_reservations r WHERE r.workflow_id=workflow_tasks.workflow_id AND r.task_id=workflow_tasks.task_id AND r.attempt=workflow_tasks.attempt AND r.state='reserved')");
+    if (!s || !agent_db_bind_i64(s.get(), 1, due) || !agent_db_bind_i64(s.get(), 2, now) ||
+        !bind_expected(s.get(), 3, expected) || !agent_db_step_done(s.get()) || sqlite3_changes(db_) != 1)
+      return fail("cannot yield delay task");
+    *yielded = true;
+  }
+  if (!exec_locked("COMMIT", error)) return fail("cannot commit delay timer");
+  return true;
+#endif
+}
+
 bool AgentDb::yield_workflow_task_capacity(const WorkflowTaskRow &expected,
                                            int64_t ready_ms,
                                            std::string *error) {

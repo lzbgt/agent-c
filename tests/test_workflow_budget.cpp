@@ -308,6 +308,38 @@ int main() {
           "settled usage became uncertain");
   }
 #endif
+  {
+    check(first.open(path, &error), error);
+    check(second.open(path, &error), error);
+    const auto wf = workflow(first, "delay-timer");
+    const auto task = claim(first, wf, "a");
+    bool yielded = true;
+    sql(path, "CREATE TRIGGER fail_timer_yield BEFORE UPDATE ON workflow_tasks "
+              "WHEN NEW.workflow_id='delay-timer' AND NEW.status='queued' "
+              "BEGIN SELECT RAISE(ABORT,'injected timer failure'); END;");
+    check(!first.prepare_workflow_delay(task, 5000, &yielded, &error) && !yielded,
+          "timer yield failure was not rolled back");
+    sql(path, "DROP TRIGGER fail_timer_yield;");
+    // A different duration succeeds only if the failed insert rolled back too.
+    check(first.prepare_workflow_delay(task, 10000, &yielded, &error) && yielded, error);
+    std::vector<AgentDb::WorkflowTaskRow> rows;
+    check(second.list_workflow_tasks(wf.workflow_id, &rows, &error), error);
+    AgentDb::WorkflowTaskRow waiting;
+    for (const auto& row : rows) if (row.task_id == "a") waiting = row;
+    check(waiting.status == "queued" && waiting.attempt == 0 && waiting.ready_unix_ms > 0,
+          "timer did not release task capacity");
+    check(!first.prepare_workflow_delay(task, 10000, &yielded, &error),
+          "stale running snapshot changed queued timer");
+    check(snapshot(first, wf.workflow_id).active_attempts == 0, "timer reserved budget");
+    // A fresh connection observes the original durable deadline.
+    AgentDb reopened;
+    check(reopened.open(path, &error), error);
+    check(reopened.list_workflow_tasks(wf.workflow_id, &rows, &error), error);
+    for (const auto& row : rows) if (row.task_id == "a")
+      check(row.ready_unix_ms == waiting.ready_unix_ms, "reopen reset timer");
+  }
+  first.close();
+  second.close();
   std::filesystem::remove_all(root);
   std::cout << "workflow budget tests passed\n";
   return 0;

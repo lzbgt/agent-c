@@ -412,6 +412,26 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   // Probe before allocating fresh budget. Pure/deterministic tasks create no
   // model journal row. Old model receipts and unresolved effects need no calls.
   if (out.isNull()) out = model_effect.preflight();
+  if (out.isNull() && kind == "delay") {
+    // Persist the deadline before yielding. Restart/retry never starts a fresh wait.
+    // Admission happens only after dependencies have completed, and waiting owns
+    // neither a worker slot, an attempt, nor a resource reservation.
+    int64_t delay_ms = 0;
+    if (rr.isMember("delay_ms") && !(rr["delay_ms"].isInt64() || rr["delay_ms"].isInt())) {
+      out["ok"] = false; out["error"] = "delay_ms must be an integer";
+    } else {
+      if (rr.isMember("delay_ms")) delay_ms = rr["delay_ms"].asInt64();
+      if (delay_ms < 0) {
+        out["ok"] = false; out["error"] = "delay_ms must be >= 0";
+      } else {
+        bool yielded = false;
+        std::string error;
+        if (!db_->prepare_workflow_delay(task, std::min<int64_t>(delay_ms, 600000), &yielded, &error)) {
+          out["ok"] = false; out["error"] = error;
+        } else if (yielded) return;
+      }
+    }
+  }
   if (out.isNull() && kind == "decision") {
     bool yielded = false;
     out = workflow_decision_step(db_, task, rr["decision"], &yielded);
@@ -556,22 +576,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         out["error"] = "delay_ms must be >= 0";
       } else {
         if (delay_ms > 600000) delay_ms = 600000;
-        if (delay_ms > 0) {
-          const int64_t until = unix_ms_now() + delay_ms;
-          while (!stop_.load()) {
-            if (workflow_run_should_cancel(&cancel_ctx)) {
-              out["ok"] = false;
-              out["cancelled"] = true;
-              out["error"] = cancel_ctx.reason == WorkflowCancelReason::DeadlineExceeded ? "deadline exceeded" : "cancelled";
-              break;
-            }
-            const int64_t now2 = unix_ms_now();
-            if (now2 >= until) break;
-            const int64_t remaining = until - now2;
-            const int64_t chunk = std::min<int64_t>(50, remaining);
-            if (chunk > 0) std::this_thread::sleep_for(std::chrono::milliseconds(chunk));
-          }
-        }
+        // The durable timer preflight above has already reached its deadline.
 
         if (!out.isMember("cancelled")) {
           out["ok"] = true;
