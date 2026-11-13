@@ -623,9 +623,12 @@ Json::Value WorkflowModelEffect::finish(Json::Value out) {
   const bool complete = out["ok"] == true && uncertain_.empty() && !stopped &&
     (!transcript_ || cursor_ == records_.size()) && (!session_bound_ || session_staged_);
   if (!complete) {
-    const auto why = !uncertain_.empty() ? uncertain_ :
-      stopped ? "model run stopped after host dispatch; prior effects must not be repeated" :
+    // Cancellation describes why execution stopped; uncertainty describes what
+    // may already have happened. Preserve both instead of hiding the owner stop.
+    std::string why = !uncertain_.empty() ? uncertain_ :
       "model run failed after host dispatch without a safe continuation boundary";
+    if (stopped) why = "model run cancelled after host dispatch; " +
+      (uncertain_.empty() ? std::string("prior effects must not be repeated") : uncertain_);
     const auto blocked = unresolved(why);
     if (out["error"].isString()) out["run_error"] = out["error"];
     for (const auto& key : blocked.getMemberNames()) out[key] = blocked[key];

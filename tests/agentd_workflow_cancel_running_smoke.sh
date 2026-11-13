@@ -22,6 +22,7 @@ NAME="agentd_workflow_cancel_running_smoke"
 
 DB_PATH="${LOG_DIR}/${NAME}_${PORT_DAEMON}.sqlite"
 STATE_DIR="${LOG_DIR}/${NAME}_${PORT_DAEMON}.state"
+mkdir -p "${STATE_DIR}"
 
 cleanup() {
   agentd_smoke_stop
@@ -37,7 +38,10 @@ trap cleanup EXIT
 # - Second request (after tool result): returns OK.
 python3 -u - <<PY > "${LOG_DIR}/${NAME}.stub.stdout.log" 2> "${LOG_DIR}/${NAME}.stub.stderr.log" &
 import json
+import shlex
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+tool_code = "from pathlib import Path; import os,time; Path(" + repr(r"${STATE_DIR}/cancel-tool.pid") + ").write_text(str(os.getpid())); time.sleep(10); Path(" + repr(r"${STATE_DIR}/cancel-tool.done") + ").write_text('done')"
 
 def has_tool_result(messages):
   for m in messages:
@@ -91,7 +95,7 @@ class H(BaseHTTPRequestHandler):
                   "function": {
                     "name": "shell_exec",
                     "arguments": json.dumps({
-                      "cmd": "python3 -c 'import time; time.sleep(10); print(\"done\")'",
+                      "cmd": "python3 -c " + shlex.quote(tool_code),
                       "timeout_ms": 20000,
                       "max_output_bytes": 1024
                     }),
@@ -131,6 +135,7 @@ req = {
   "tasks": [
     {
       "task_id":"A",
+      "max_attempts": 3,
       "request":{
         "prompt":"Run a long host tool call; will be cancelled",
         "no_session": True,
@@ -163,8 +168,12 @@ if [[ -z "${workflow_id}" ]]; then
   exit 1
 fi
 
-# Give the workflow a moment to start executing the long-running tool call, then cancel.
-sleep 0.2
+# Prove the child started before cancellation, rather than cancelling a queued task.
+for _ in $(seq 1 100); do
+  [[ -s "${STATE_DIR}/cancel-tool.pid" ]] && break
+  sleep 0.05
+done
+[[ -s "${STATE_DIR}/cancel-tool.pid" ]] || { echo "host tool never started" >&2; exit 1; }
 curl -fsS --noproxy "*" --max-time 20 \
   -H "Content-Type: application/json" \
   -d "$(python3 - <<PY
@@ -178,7 +187,7 @@ final=""
 # If cancellation is not cooperatively enforced, this would take ~10s (tool sleep).
 for _ in $(seq 1 80); do
   final="$(curl -fsS --noproxy "*" --max-time 5 \
-    "${DAEMON_URL}/api/v1/workflow?workflow_id=${workflow_id}&include_tasks=1&include_results=0")"
+    "${DAEMON_URL}/api/v1/workflow?workflow_id=${workflow_id}&include_tasks=1&include_results=1")"
   if python3 - <<PY >/dev/null 2>&1
 import json, sys
 obj = json.loads(r'''${final}''')
@@ -211,6 +220,28 @@ err = (t.get("error") or "").lower()
 if "cancel" not in err and "deadline" not in err:
   print("expected cancellation error to mention cancel/deadline", t, file=sys.stderr)
   raise SystemExit(1)
+PY
+
+# Verify the concrete child stopped and did not reach its final side effect.
+python3 - <<PY
+import json, subprocess, time
+from pathlib import Path
+root = Path(r"${STATE_DIR}")
+pid = int((root / "cancel-tool.pid").read_text())
+end = time.monotonic() + 3
+while True:
+  result = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True)
+  state = result.stdout.strip()
+  if not state or state.startswith("Z"):
+    break
+  if time.monotonic() >= end:
+    raise AssertionError("cancelled host child still executing")
+  time.sleep(.02)
+assert not (root / "cancel-tool.done").exists(), "cancelled child reached final side effect"
+obj = json.loads(r'''${final}''')
+task = next(t for t in obj["tasks"] if t["task_id"] == "A")
+assert task["attempt"] == 1, "cancelled host tool was retried"
+assert any(e["state"] == "unknown" for e in obj["effects"]), "uncertain effect evidence erased"
 PY
 
 echo "${NAME} OK"

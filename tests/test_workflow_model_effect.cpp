@@ -46,7 +46,7 @@ int main() {
   wf.created_unix_ms = wf.updated_unix_ms = 1;
   std::vector<AgentDb::WorkflowTaskRow> tasks;
   for (const char* id : {"pure", "saved", "crash", "provider", "invalid", "large", "throw", "timeout", "negative",
-                         "status", "capacity", "stop", "race", "admission", "receipt", "nonzero"}) {
+                         "status", "capacity", "stop", "stop-uncertain", "race", "admission", "receipt", "nonzero"}) {
     AgentDb::WorkflowTaskRow task;
     task.workflow_id = "wf"; task.task_id = id; task.status = "queued";
     task.request_json = "{}"; task.depends_on_json = "[]";
@@ -147,6 +147,23 @@ int main() {
     check(invoke(guard.wrap(fake.executor())) != AGENT_OK && fake.calls == calls, "stop dispatched another tool");
     auto out = guard.finish(success());
     check(out["cancelled"] == true && out["retryable"] == false && out["effect"]["state"] == "unknown", "stop revived work");
+  }
+  {
+    bool stop = false; auto ctx = context("stop-uncertain"); ctx.should_cancel = [&] { return stop; };
+    Fake interrupted; interrupted.result = R"({"ok":false,"data":{"cancelled":true,"exit_code":-1}})";
+    WorkflowModelEffect guard(ctx, request); check(guard.preflight().isNull(), "cancelled receipt preflight");
+    check(invoke(guard.wrap(interrupted.executor())) != AGENT_OK, "cancelled tool became a completed effect");
+    stop = true;
+    Json::Value cancelled; cancelled["ok"] = false; cancelled["cancelled"] = true; cancelled["error"] = "cancelled";
+    const auto out = guard.finish(cancelled);
+    check(out["error"].asString().find("cancelled") != std::string::npos &&
+          out["error"].asString().find("unverified") != std::string::npos,
+          "cancellation or uncertainty cause was lost");
+    check(out["retryable"] == false && out["effect"]["state"] == "unknown", "cancelled effect lost safety fence");
+    stop = false;
+    WorkflowModelEffect replay(ctx, request);
+    check(!replay.preflight().isNull(), "uncertain cancelled effect automatically resumed");
+    check(invoke(replay.wrap(interrupted.executor())) != AGENT_OK && interrupted.calls == 1, "cancelled tool repeated");
   }
   {
     WorkflowModelEffect first(context("race"), request), second(context("race"), request);
