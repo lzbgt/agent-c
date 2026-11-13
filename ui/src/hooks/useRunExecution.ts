@@ -1,4 +1,5 @@
 import React from "react";
+import { lookupChatJob } from "../api/chatJobLookup";
 import useChatSubmissionFence from "./useChatSubmissionFence";
 import { useMutation } from "@tanstack/react-query";
 import { apiRun, apiRunAsync, type ApiAuth, type RunRequest, type RunResponse, type AgentEvent } from "../api";
@@ -355,6 +356,29 @@ export default function useRunExecution(args: RunExecutionArgs) {
     },
   });
 
+  const [checkingChatSubmission, setCheckingChatSubmission] = React.useState(false);
+  const recoverChatSubmission = async () => {
+    if (checkingChatSubmission || run.isPending || !fence.pending) return;
+    const origin = jobStoreKey;
+    setCheckingChatSubmission(true);
+    try {
+      const receipt = JSON.parse(fence.pending);
+      if (typeof receipt.trace_id !== "string") throw new Error("No trace receipt is available");
+      const found = await lookupChatJob(effectiveBase, receipt.trace_id, sessionId || "default", daemonAuth);
+      writeJobsBySession(prev => ({ ...prev, [origin]: { job_id: found.job_id, cursor: 0, started_unix_ms: Date.now() } }));
+      // Selection changes must not attach an old job to a different conversation.
+      if (fence.currentScope.current !== origin) return;
+      setActiveJobId(found.job_id);
+      setJobStatus(found.status);
+      cursorRef.current = 0;
+      setJobError(null);
+      setJobNotice("Recovered existing job " + found.job_id + "; no request was resubmitted.");
+      fence.finish(origin, receipt.trace_id);
+    } catch (error) {
+      if (fence.currentScope.current === origin) setJobNotice("Receipt lookup: " + String(error) + ". Submission remains held.");
+    } finally { setCheckingChatSubmission(false); }
+  };
+
   const dequeueInFlightRef = React.useRef(false);
 
   const enqueueRun = React.useCallback(
@@ -410,6 +434,8 @@ export default function useRunExecution(args: RunExecutionArgs) {
 
   return {
     handleDirectRunRequest,
+    checkingChatSubmission,
+    recoverChatSubmission,
     pendingChatSubmission: fence.pending,
     releaseChatSubmission: fence.release,
     run,

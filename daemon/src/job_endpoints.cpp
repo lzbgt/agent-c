@@ -4,6 +4,7 @@
 #include "http_util.h"
 #include "job_manager.h"
 #include "json_util.h"
+#include "trace_id_util.h"
 
 #include <json/json.h>
 
@@ -25,6 +26,36 @@ void handle_job_get_endpoint(
   cors_apply(req, resp, cors_cfg);
   resp->headers["Content-Type"] = "application/json; charset=utf-8";
   if (!daemon_require_auth(cfg, req, resp)) return;
+
+  const auto trace = query_get(req.query, "trace_id");
+  if (trace) {
+    const auto sid = query_get(req.query, "session_id");
+    if (query_get(req.query, "job_id") || trace->empty() || !trace_id_is_safe(*trace) || !sid || sid->empty() || sid->size() > 1024) {
+      resp->status = 400; resp->body = json_error_body("trace lookup requires exact trace_id and session_id, without job_id"); return;
+    }
+    if (!db_or_null || !db_or_null->is_open()) {
+      resp->status = 503; resp->body = json_error_body("durable job lookup unavailable"); return;
+    }
+    std::vector<AgentDb::JobRow> matches;
+    std::string error;
+    if (!db_or_null->find_jobs_by_trace_session(*trace, *sid, &matches, &error)) {
+      resp->status = 500; resp->body = json_error_body("durable job lookup failed"); return;
+    }
+    if (matches.empty()) {
+      resp->status = 404; resp->body = json_error_body("no durable job receipt; this does not prove nonexecution"); return;
+    }
+    if (matches.size() != 1) {
+      resp->status = 409; resp->body = json_error_body("ambiguous trace; no job selected"); return;
+    }
+    const auto& row = matches.front();
+    Json::Value out(Json::objectValue);
+    out["ok"] = true; out["job_id"] = row.job_id; out["trace_id"] = row.trace_id;
+    out["session_id"] = row.session_id; out["status"] = row.status;
+    out["cancel_requested"] = row.cancel_requested;
+    out["updated_unix_ms"] = (Json::Int64)row.updated_unix_ms;
+    out["durable_only"] = true;
+    resp->body = json_stringify(out); return;
+  }
 
   const auto jid = query_get(req.query, "job_id");
   if (!jid || jid->empty()) {

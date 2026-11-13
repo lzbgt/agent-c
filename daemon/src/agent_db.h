@@ -388,6 +388,9 @@ class AgentDb {
   // Upserts a job row by job_id. This is intended to be cheap and safe to call on every job transition.
   bool upsert_job(const JobRow& row, std::string* out_error);
   bool get_job(const std::string& job_id, JobRow* out_row, std::string* out_error);
+  // At most two metadata-only matches; ambiguity must never select a job.
+  bool find_jobs_by_trace_session(const std::string& trace, const std::string& session,
+    std::vector<JobRow>* rows, std::string* error);
   bool delete_job(const std::string& job_id, std::string* out_error);
 
   // On daemon restart, queued/running jobs cannot be resumed. Mark them as interrupted so UIs can be truthful.

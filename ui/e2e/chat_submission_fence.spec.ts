@@ -40,11 +40,35 @@ test("unavailable receipt storage sends zero chat POSTs", async ({ page }) => {
   expect((await page.evaluate(() => (window as any).chatFenceTest)).queue).toHaveLength(1);
 });
 
-test("accepted jobs clear only their fence and ordinary queued work continues", async ({ page }) => {
+test("accepted jobs clear their fence and watch the accepted job before further queue work", async ({ page }) => {
   let posts = 0;
   await page.route("**/api/v1/**", route => route.fulfill({ json: { ok: true, sessions: [], features: {}, tools: [], prefs: {} } }));
   await page.route("**/api/v1/run_async", route => { posts++; return route.fulfill({ json: { ok: true, job_id: "job-" + posts } }); });
   await page.goto("/"); await mount(page);
-  await expect.poll(() => posts).toBe(2);
+  await expect.poll(() => posts).toBe(1);
   await expect.poll(() => page.evaluate(() => (window as any).chatFenceTest?.pending)).toBe(null);
+});
+
+test("read-only lookup retains missing receipt then watches unique original job without POST", async ({ page }) => {
+  let posts = 0, found = false, trace = "";
+  await page.route("**/api/v1/**", route => route.fulfill({ json: { ok: true, sessions: [], features: {}, tools: [], prefs: {} } }));
+  await page.route("**/api/v1/run_async", route => { posts++; trace = route.request().postDataJSON().trace_id; return route.abort("failed"); });
+  await page.route("**/api/v1/job?**", route => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("trace_id")).toBe(trace);
+    expect(url.searchParams.get("session_id")).toBe("fence-test");
+    return found
+      ? route.fulfill({ json: { ok: true, job_id: "original-job", trace_id: trace, session_id: "fence-test", status: "running", durable_only: true } })
+      : route.fulfill({ status: 404, json: { error: "no durable receipt" } });
+  });
+  await page.goto("/"); await mount(page);
+  await expect.poll(() => page.evaluate(() => (window as any).chatFenceTest?.prompt)).toBe("first request");
+  await page.evaluate(() => (window as any).chatFenceTest.recover());
+  expect((await page.evaluate(() => (window as any).chatFenceTest)).pending).toBeTruthy();
+  expect(posts).toBe(1);
+  found = true;
+  await page.evaluate(() => (window as any).chatFenceTest.recover());
+  await expect.poll(() => page.evaluate(() => (window as any).chatFenceTest?.active)).toBe("original-job");
+  await expect.poll(() => page.evaluate(() => (window as any).chatFenceTest?.pending)).toBe(null);
+  expect(posts).toBe(1);
 });

@@ -2745,11 +2745,21 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get job status (optionally with bounded events slice) */
+        /**
+         * Get job status or correlate an exact durable trace/session
+         * @description Supply job_id for the existing status/events response, or trace_id plus session_id
+         *     for metadata-only durable correlation. These modes are mutually exclusive.
+         *     Trace correlation is read-only, not idempotency admission. Missing receipts (404)
+         *     do not prove nonexecution; multiple matches (409) never select a job. The response
+         *     has job_id, trace_id, session_id, status, cancel_requested, updated_unix_ms and
+         *     durable_only=true; request bodies, results and events are not returned in trace mode.
+         */
         get: {
             parameters: {
-                query: {
-                    job_id: string;
+                query?: {
+                    job_id?: string;
+                    trace_id?: string;
+                    session_id?: string;
                     include_events?: boolean;
                     cursor?: number;
                     max_events?: number;

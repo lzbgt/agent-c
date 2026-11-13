@@ -1965,4 +1965,38 @@ bool AgentDb::delete_workflow_fairq_sessions_older_than(
 #endif
 }
 
+
+bool AgentDb::find_jobs_by_trace_session(const std::string& trace, const std::string& session,
+    std::vector<JobRow>* rows, std::string* error) {
+  if (error) error->clear();
+  if (!rows) return false;
+  rows->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  if (error) *error = "sqlite3 unavailable";
+  return false;
+#else
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) { if (error) *error = "db not open"; return false; }
+  sqlite3_stmt* st = nullptr;
+  if (sqlite3_prepare_v2(db_, "SELECT job_id,status,cancel_requested,updated_unix_ms FROM jobs WHERE trace_id=? AND session_id=? LIMIT 2", -1, &st, nullptr) != SQLITE_OK) {
+    if (error) *error = sqlite3_errmsg(db_); return false;
+  }
+  bool ok = agent_db_bind_text(st, 1, trace) && agent_db_bind_text(st, 2, session);
+  int rc = SQLITE_ERROR;
+  while (ok && (rc = sqlite3_step(st)) == SQLITE_ROW) {
+    JobRow row;
+    const auto id = sqlite3_column_text(st, 0), status = sqlite3_column_text(st, 1);
+    row.job_id = id ? (const char*)id : "";
+    row.status = status ? (const char*)status : "";
+    row.trace_id = trace; row.session_id = session;
+    row.cancel_requested = sqlite3_column_int(st, 2) != 0;
+    row.updated_unix_ms = sqlite3_column_int64(st, 3);
+    rows->push_back(std::move(row));
+  }
+  ok = ok && rc == SQLITE_DONE;
+  if (!ok && error) *error = sqlite3_errmsg(db_);
+  sqlite3_finalize(st); return ok;
+#endif
+}
+
 }  // namespace agentd
