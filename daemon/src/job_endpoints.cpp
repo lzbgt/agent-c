@@ -169,10 +169,19 @@ void handle_job_get_endpoint(
       resp->body = json_stringify(o);
       return;
     }
+    if (!db_err.empty()) {
+      resp->status = 503;
+      resp->body = json_error_body("durable job lookup failed; outcome remains unknown");
+      return;
+    }
+  } else {
+    resp->status = 503;
+    resp->body = json_error_body("durable job lookup unavailable; outcome remains unknown");
+    return;
   }
 
   resp->status = 404;
-  resp->body = json_error_body("job not found");
+  resp->body = json_error_body("job not found; this does not prove nonexecution");
 }
 
 void handle_job_cancel_endpoint(

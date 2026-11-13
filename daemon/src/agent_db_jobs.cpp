@@ -146,7 +146,12 @@ bool AgentDb::get_job(const std::string& job_id, JobRow* out_row, std::string* o
   }
   bool ok = agent_db_bind_text(st, 1, job_id);
   bool found = false;
-	  if (ok && agent_db_step_row(st)) {
+  const int step_rc = ok ? sqlite3_step(st) : SQLITE_ERROR;
+  if (step_rc != SQLITE_ROW && step_rc != SQLITE_DONE) {
+    ok = false;
+    if (out_error) *out_error = agent_db_sqlite_err(db_);
+  }
+	  if (ok && step_rc == SQLITE_ROW) {
 	    found = true;
 	    const unsigned char* jid = sqlite3_column_text(st, 0);
 	    const unsigned char* sid = sqlite3_column_text(st, 1);

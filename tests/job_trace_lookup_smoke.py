@@ -58,6 +58,16 @@ with tempfile.TemporaryDirectory(prefix="job-trace-") as root:
         c.execute("UPDATE jobs SET session_id='other' WHERE job_id='duplicate'")
       assert call(url)["job_id"]==job
       assert call("/api/v1/job?trace_id=original-trace&session_id=other")["job_id"]=="duplicate"
-      print("PASS authenticated durable trace lookup, real acceptance, no writes, restart, ambiguity and session isolation")
+      call("/api/v1/job?job_id=absent",status=404)
+      with sqlite3.connect(db) as c:
+        c.execute("ALTER TABLE jobs RENAME TO jobs_fault_fixture")
+      failure=call("/api/v1/job?job_id="+job,status=503)
+      assert "outcome remains unknown" in failure["error"], failure
+      call(url,status=500)
+      with sqlite3.connect(db) as c:
+        c.execute("ALTER TABLE jobs_fault_fixture RENAME TO jobs")
+      assert call("/api/v1/job?job_id="+job)["job_id"]==job
+      assert call(url)["job_id"]==job
+      print("PASS durable lookup/auth/restart/isolation and storage-failure outcome preservation/recovery")
     finally:
       p.terminate();p.wait(timeout=10);log.close()
