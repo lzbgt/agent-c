@@ -10,6 +10,14 @@ Decisions expose the question, dependency-relative expiry (0 for indefinite, oth
 
 The browser regression in `ui/e2e/workflow_sop_editor.spec.ts` requires `build/agentd` (build it with `cmake --build build --target agentd`). It passes the exact browser-authored JSON to `tests/workflow_authored_process_smoke.py`, which uses a temporary database and loopback daemon to save/pin/run it and verify configured continue/fail choices and idempotent delivery. No real provider or production daemon is used.
 
+## Guided integration reads
+
+Add **Read integration JSON (GET)** to fetch data through the existing HTTP workflow runtime. Configure the URL, optional name of an already-configured server bearer credential, timeout (1–300000 ms) and response bound (1024–16777216 bytes). New drafts have a blank URL, 30-second timeout and 1 MiB bound; editing does not contact the destination. Save and submit remain explicit.
+
+Do not paste credentials into the URL or free-form source. Credential references do not create credentials or enable HTTP tasks. Server destination policy and the existing HTTP-task enablement still apply. GET can transmit its URL and configured credentials; choose the intended destination deliberately. Existing advanced headers, retries and other action settings are preserved. POST/effect configurations remain advanced and are never silently converted to reads.
+
+`ui/e2e/workflow_sop_http.spec.ts` passes the exact browser-authored source to `tests/workflow_authored_http_smoke.py`: a temporary authenticated daemon saves the SOP without execution, pins the saved version and performs one synthetic loopback GET with preserved headers and a server-only credential reference. The browser also verifies mobile width, no implicit submission and POST/effect preservation. No production server or external provider is involved.
+
 ## Runtime contract
 
 `POST /api/v1/workflow/submit` accepts exactly one of the existing `tasks` array, an inline `sop` object, or an exact saved `sop_ref`. The server compiles SOP stages into the existing durable DAG before ordinary task validation, policy enforcement, admission control, persistence and scheduling. The WebUI workflow composer includes **SOP · stages and actions** with a guided process builder; raw JSON remains under **Advanced process configuration**.
