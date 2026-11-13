@@ -386,6 +386,9 @@ class AgentDb {
   };
 
   // Upserts a job row by job_id. This is intended to be cheap and safe to call on every job transition.
+  enum class JobAdmission { Accepted, Exists, Error };
+  // Insert-only durable dispatch admission. Never overwrite/requeue an existing identity.
+  JobAdmission admit_running_job(const JobRow& row, std::string* error);
   bool upsert_job(const JobRow& row, std::string* out_error);
   bool get_job(const std::string& job_id, JobRow* out_row, std::string* out_error);
   // At most two metadata-only matches; ambiguity must never select a job.
@@ -407,7 +410,7 @@ class AgentDb {
   // Attempts to transition a queued job to running. Returns true only when the job was claimed.
   bool claim_job(const std::string& job_id, int64_t now_unix_ms, std::string* out_error);
 
-  // Recovery on daemon startup: move running -> queued (resumable) and mark any inflight job missing request_json as interrupted.
+  // Recovery: running jobs have uncertain effects and become interrupted; only never-claimed queued jobs remain resumable.
   bool recover_inflight_jobs_resumable(int64_t now_unix_ms, std::string* out_error);
 
   // Durable workflows (task graphs / DAGs).

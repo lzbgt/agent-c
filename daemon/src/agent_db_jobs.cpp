@@ -374,7 +374,8 @@ bool AgentDb::recover_inflight_jobs_resumable(int64_t now_unix_ms, std::string* 
   if (!exec_locked("BEGIN IMMEDIATE TRANSACTION;", out_error)) return false;
   bool ok = true;
   ok = ok && exec_locked(
-    "UPDATE jobs SET status='queued', updated_unix_ms=" + std::to_string((long long)now) + " WHERE status='running';",
+    "UPDATE jobs SET status='interrupted', updated_unix_ms=" + std::to_string((long long)now) +
+      ", error='execution interrupted; effects may have occurred; automatic replay disabled', stop_reason='restart_outcome_unknown' WHERE status='running';",
     out_error);
   ok = ok && exec_locked(
     "UPDATE jobs SET status='interrupted', updated_unix_ms=" + std::to_string((long long)now) +
@@ -1996,6 +1997,38 @@ bool AgentDb::find_jobs_by_trace_session(const std::string& trace, const std::st
   ok = ok && rc == SQLITE_DONE;
   if (!ok && error) *error = sqlite3_errmsg(db_);
   sqlite3_finalize(st); return ok;
+#endif
+}
+
+
+AgentDb::JobAdmission AgentDb::admit_running_job(const JobRow& row, std::string* error) {
+  if (error) error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  if (error) *error = "sqlite3 unavailable";
+  return JobAdmission::Error;
+#else
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_ || row.job_id.empty() || row.request_json.empty()) {
+    if (error) *error = "durable job admission unavailable";
+    return JobAdmission::Error;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = "INSERT INTO jobs(job_id,session_id,trace_id,request_json,priority,created_unix_ms,updated_unix_ms,status,cancel_requested) VALUES(?,?,?,?,?,?,?,'running',0)";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (error) *error = sqlite3_errmsg(db_);
+    return JobAdmission::Error;
+  }
+  bool ok = agent_db_bind_text(st, 1, row.job_id) && agent_db_bind_text(st, 2, row.session_id) &&
+    agent_db_bind_text(st, 3, row.trace_id) && agent_db_bind_text(st, 4, row.request_json) &&
+    agent_db_bind_i64(st, 5, row.priority) && agent_db_bind_i64(st, 6, row.created_unix_ms) &&
+    agent_db_bind_i64(st, 7, row.updated_unix_ms);
+  const int rc = ok ? sqlite3_step(st) : SQLITE_ERROR;
+  const int extended = sqlite3_extended_errcode(db_);
+  if (rc != SQLITE_DONE && error) *error = sqlite3_errmsg(db_);
+  sqlite3_finalize(st);
+  if (rc == SQLITE_DONE) return JobAdmission::Accepted;
+  if (extended == SQLITE_CONSTRAINT_PRIMARYKEY || extended == SQLITE_CONSTRAINT_UNIQUE) return JobAdmission::Exists;
+  return JobAdmission::Error;
 #endif
 }
 

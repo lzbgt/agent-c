@@ -178,9 +178,12 @@ void handle_run_async_endpoint(
   wb["indentation"] = "";
   const std::string body_copy = Json::writeString(wb, args);
   const std::string body_persist = sanitize_job_request_json_for_persist(body_copy);
-  if (body_persist.empty()) {
-    std::cerr << "agentd: warning: run_async job request too large to persist safely; job will not be resumable after restart"
-              << " job=" << job_id << " bytes=" << body_copy.size() << "\n";
+  if (body_persist.empty() || !db_or_null || !db_or_null->is_open()) {
+    job_set_status(job_id, "error", "durable admission unavailable");
+    (void)job_delete(job_id);
+    resp->status = body_persist.empty() ? 413 : 503;
+    resp->body = json_error_body("durable job admission unavailable; no execution started");
+    return;
   }
 
   // Persist a durable job stub so UIs can still inspect job state after daemon restart.
@@ -197,15 +200,23 @@ void handle_run_async_endpoint(
     jr.priority = priority;
     jr.created_unix_ms = created_ms;
     jr.updated_unix_ms = created_ms;
-    jr.status = "queued";
+    // Reserve dispatch durably before starting a thread; the queue engine must not claim it.
+    jr.status = "running";
     jr.cancel_requested = false;
     jr.error.clear();
     jr.stop_reason.clear();
     jr.result_json.clear();
     jr.last_heartbeat_unix_ms = 0;
     std::string db_err;
-    if (!db_or_null->upsert_job(jr, &db_err)) {
-      std::cerr << "agentd: warning: failed to persist job row: " << db_err << " job=" << job_id << "\n";
+    const auto admitted = db_or_null->admit_running_job(jr, &db_err);
+    if (admitted != AgentDb::JobAdmission::Accepted) {
+      job_set_status(job_id, "error", "durable admission failed");
+      (void)job_delete(job_id);
+      resp->status = admitted == AgentDb::JobAdmission::Exists ? 409 : 503;
+      resp->body = json_error_body(admitted == AgentDb::JobAdmission::Exists
+        ? "job_id already exists durably; inspect original job"
+        : "durable job admission failed; no execution started");
+      return;
     }
   }
 

@@ -212,6 +212,7 @@ void JobEngine::execute_job(const AgentDb::JobRow& job) {
     AgentDb::JobRow tr;
     tr.job_id = job_id;
     tr.trace_id = trace_id;
+    tr.status = "running"; // a metadata update must never requeue a claimed job
     tr.updated_unix_ms = now;
     (void)db_->upsert_job(tr, nullptr);
   }
