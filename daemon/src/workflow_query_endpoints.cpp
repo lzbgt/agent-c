@@ -49,9 +49,13 @@ void handle_workflow_get_endpoint(
   }
 
   const auto wid = query_get(req.query, "workflow_id");
-  if (!wid || wid->empty()) {
+  const auto key = query_get(req.query, "idempotency_key");
+  const auto scope = query_get(req.query, "session_id");
+  const bool by_id = wid && !wid->empty();
+  const bool by_key = key && !key->empty();
+  if (by_id == by_key || (key && key->size() > 1024) || (scope && scope->size() > 1024)) {
     resp->status = 400;
-    resp->body = json_error_body("missing workflow_id");
+    resp->body = json_error_body("supply exactly one workflow_id or idempotency_key; session_id selects the submission scope");
     return;
   }
 
@@ -64,9 +68,11 @@ void handle_workflow_get_endpoint(
 
   AgentDb::WorkflowRow wf;
   std::string err;
-  if (!db_or_null->get_workflow(*wid, &wf, &err)) {
-    resp->status = 404;
-    resp->body = json_error_body("workflow not found");
+  const bool found = by_id ? db_or_null->get_workflow(*wid, &wf, &err) :
+    db_or_null->get_workflow_by_idempotency_key(scope ? *scope : "", *key, &wf, &err);
+  if (!found) {
+    resp->status = err.empty() ? 404 : 500;
+    resp->body = json_error_body(err.empty() ? "workflow not found" : "workflow lookup failed");
     return;
   }
 

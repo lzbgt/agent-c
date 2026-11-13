@@ -40,7 +40,8 @@ The authoritative capability/verification snapshot is [docs/CURRENT_SNAPSHOT.md]
 - [x] Guided SOP stage/action authoring: names, sequencing/parallelism, stage/action ordering, model instructions, waits and review questions; preserve advanced fields and keep raw execution configuration behind advanced controls.
 - [x] Typed decision/UTC-timer authoring: configured choice IDs/labels/outcomes, expiry, exact millisecond UTC waits and real daemon execution of browser-authored saved SOPs.
 - [ ] P1: richer typed SOP authoring for advanced device/host/integration actions and role-bound approval contracts.
-- [ ] P1: append-only conversation IDs/pagination and client submission reconciliation; replace model-context snapshots as the long-term chat authority and avoid blind queue retries after uncertain submission.
+- [x] Workflow composer submission reconciliation: persisted secret-free scoped receipt before dispatch, authenticated read-only lookup, response-loss/reload recovery and no automatic execution retries.
+- [ ] P1: append-only conversation IDs/pagination and chat submission reconciliation; replace model-context snapshots as the long-term chat authority and avoid blind queue retries after uncertain chat submission.
 
 
 Date: 2026-02-19

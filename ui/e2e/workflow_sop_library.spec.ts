@@ -108,7 +108,8 @@ test("paged versions load a hash-pinned reference and submit only on explicit ru
   await expect(page.getByTestId("workflow-composer-json")).toHaveValue(JSON.stringify(expected, null, 2));
   expect(submitted).toBeUndefined();
   await page.getByRole("button", { name: "Submit workflow", exact: true }).click();
-  await expect.poll(() => submitted).toEqual(expected);
+  await expect.poll(() => submitted).toMatchObject(expected);
+  expect((submitted as { idempotency_key: string }).idempotency_key).toBeTruthy();
 });
 
 test("leaving during a save keeps the workflow draft and never starts a run", async ({ page }) => {

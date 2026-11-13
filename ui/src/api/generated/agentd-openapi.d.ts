@@ -4049,11 +4049,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get workflow status */
+        /**
+         * Get workflow status or reconcile a submission without resubmitting
+         * @description Supply exactly one workflow_id or idempotency_key. Key lookup is read-only and uses the original session scope (empty unless allow_sessions was true). Not found is not proof that an in-flight submission cannot still commit.
+         */
         get: {
             parameters: {
-                query: {
-                    workflow_id: string;
+                query?: {
+                    workflow_id?: string;
+                    idempotency_key?: string;
+                    /** @description Original idempotency namespace; omit for unscoped submissions. */
+                    session_id?: string;
                     include_tasks?: boolean;
                     include_results?: boolean;
                     include_spec?: boolean;

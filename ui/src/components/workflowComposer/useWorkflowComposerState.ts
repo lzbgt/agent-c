@@ -1,4 +1,5 @@
 import React from "react";
+import useWorkflowSubmission from "./useWorkflowSubmission";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import {
@@ -12,7 +13,6 @@ import {
   apiGetClientPrefs,
   apiGetWorkflow,
   apiPostClientPrefs,
-  apiSubmitWorkflow,
 } from "../../api";
 import useLocalStorageState from "../../hooks/useLocalStorageState";
 import { brokerBaseFromProxy } from "../../utils/brokerBase";
@@ -97,6 +97,11 @@ export default function useWorkflowComposerState(props: WorkflowComposerProps) {
   const [submitError, setSubmitError] = React.useState<string | null>(null);
   const [submitResult, setSubmitResult] = React.useState<WorkflowComposerSubmitResult | null>(null);
   const [submitBusy, setSubmitBusy] = React.useState(false);
+  const submission = useWorkflowSubmission(props.baseUrl, props.authKey, props.auth, setSubmitError);
+  const reconcileSubmission = async () => {
+    const receipt = await submission.reconcile();
+    if (receipt) { setSubmitResult(receipt); props.onSubmitted?.(receipt.workflow_id); }
+  };
   const [cancelBusy, setCancelBusy] = React.useState(false);
   const [runtimeSkillError, setRuntimeSkillError] = React.useState<string | null>(null);
   const [waitState, setWaitState] = React.useState<WaitState | null>(null);
@@ -475,7 +480,8 @@ export default function useWorkflowComposerState(props: WorkflowComposerProps) {
       setWaitState(null);
       setCancelBusy(false);
       try {
-        const resp = await apiSubmitWorkflow(baseUrl, payload, props.auth);
+        const resp = await submission.submit(payload);
+        if (!resp) return;
         setSubmitResult(resp);
         if (resp && resp.workflow_id) {
           props.onSubmitted?.(resp.workflow_id);
@@ -498,7 +504,7 @@ export default function useWorkflowComposerState(props: WorkflowComposerProps) {
         setWaitState((prev) => (prev ? { ...prev, active: false } : prev));
       }
     },
-    [props.auth, props.baseUrl, props.onSubmitted, waitForWorkflow],
+    [props.auth, props.baseUrl, props.onSubmitted, waitForWorkflow, submission],
   );
 
   const cancelWorkflow = React.useCallback(async () => {
@@ -802,7 +808,11 @@ export default function useWorkflowComposerState(props: WorkflowComposerProps) {
     setComposerMode,
     setGraphState,
     submit,
-    submitBusy,
+    submitBusy: submitBusy || submission.busy,
+    submissionBlocked: submission.blocked,
+    pendingSubmission: submission.pending,
+    forgetSubmission: submission.forget,
+    reconcileSubmission,
     submitDemoAndWait,
     submitError,
     submitResult,

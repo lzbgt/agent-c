@@ -7,6 +7,7 @@ type WorkflowComposerStatusProps = {
   cancelBusy: boolean;
   serverWaitStatus: "idle" | "loading" | "ready" | "error";
   submitBusy: boolean;
+  submitBlocked?: boolean;
   submitError: string | null;
   submitResult: WorkflowComposerSubmitResult | null;
   waitPersisted: WaitStatePersisted | null;
@@ -26,7 +27,7 @@ export default function WorkflowComposerStatus(props: WorkflowComposerStatusProp
           className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
           type="button"
           onClick={() => void props.onSubmit()}
-          disabled={props.submitBusy}
+          disabled={props.submitBusy || props.submitBlocked}
         >
           {props.submitBusy ? "Submitting…" : "Submit workflow"}
         </button>

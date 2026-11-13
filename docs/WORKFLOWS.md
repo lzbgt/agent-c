@@ -1,5 +1,15 @@
 # Durable Workflows (agentd)
 
+## Recovering uncertain submissions
+
+`GET /api/v1/workflow?idempotency_key=KEY&session_id=SCOPE&include_tasks=0` finds the original workflow without submitting or executing anything. Supply either `workflow_id` or `idempotency_key`, never both. The namespace is the original session ID only when the submit used `allow_sessions=true`; otherwise omit it. Normal daemon authentication applies. A missing receipt is not evidence that an in-flight request cannot still commit.
+
+The WebUI records a generated (or explicitly supplied) idempotency key before dispatch. Its local receipt contains only key, session scope and timestamp, not the payload or credentials. The storage bucket is a SHA-256 digest of the connection/auth/deployment identity. Response loss or reload keeps the original receipt and blocks another composer submission. **Check submission receipt** performs only GET; there are no automatic POST retries. Old daemons or failed lookups keep uncertainty explicit. Changed connections cannot consume late acceptance from the previous connection.
+
+If storage is unavailable, no request is sent. Once an acceptance is verified, ordinary workflow status resumes. **Forget local receipt…** is an explicit, warned local-only escape hatch after inspecting the original run; it neither cancels that run nor proves it did not execute. Forgetting and resubmitting can duplicate work. This is not a cross-browser/global admission lock or exactly-once external-effect guarantee.
+
+Native verification: `python3 tests/workflow_submission_recovery_smoke.py build/agentd`. Browser failure-injection coverage: `ui/e2e/workflow_submission_recovery.spec.ts`.
+
 Current stage/action authoring: [SOP_WORKFLOWS.md](SOP_WORKFLOWS.md). It compiles into the scheduler described here; at-least-once recovery remains the execution guarantee.
 
 Historical baseline: 2026-02-05

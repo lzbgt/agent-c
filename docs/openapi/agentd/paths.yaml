@@ -2417,12 +2417,22 @@
 /api/v1/workflow:
   get:
     tags: [workflows]
-    summary: Get workflow status
+    summary: Get workflow status or reconcile a submission without resubmitting
+    description: Supply exactly one workflow_id or idempotency_key. Key lookup is read-only and uses the original session scope (empty unless allow_sessions was true). Not found is not proof that an in-flight submission cannot still commit.
     parameters:
       - in: query
         name: workflow_id
-        required: true
+        required: false
         schema: { type: string }
+      - in: query
+        name: idempotency_key
+        required: false
+        schema: { type: string, maxLength: 1024 }
+      - in: query
+        name: session_id
+        required: false
+        description: Original idempotency namespace; omit for unscoped submissions.
+        schema: { type: string, maxLength: 1024 }
       - in: query
         name: include_tasks
         required: false

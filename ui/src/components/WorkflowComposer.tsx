@@ -75,10 +75,17 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
         onSetGraphState={state.setGraphState}
       />
 
+      {state.pendingSubmission ? <section className="mt-3 rounded border border-amber-400/30 p-3 text-sm" aria-label="Unresolved submission">
+        <p>An earlier submission has no confirmed outcome. Check the original receipt rather than creating another run.</p>
+        <p className="break-all text-xs">Receipt key: {state.pendingSubmission.idempotency_key}</p>
+        <button type="button" className="mt-2 rounded border border-white/20 px-3 py-2 disabled:opacity-40" disabled={state.submitBusy} onClick={() => void state.reconcileSubmission()}>Check submission receipt</button>
+        <button type="button" className="ml-2 mt-2 rounded border border-white/20 px-3 py-2 disabled:opacity-40" disabled={state.submitBusy} onClick={state.forgetSubmission}>Forget local receipt…</button>
+      </section> : null}
       <WorkflowComposerStatus
         cancelBusy={state.cancelBusy}
         serverWaitStatus={state.serverWaitStatus}
         submitBusy={state.submitBusy}
+        submitBlocked={state.submissionBlocked}
         submitError={state.submitError}
         submitResult={state.submitResult}
         waitPersisted={state.waitPersisted}
