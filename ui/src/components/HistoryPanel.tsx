@@ -1,4 +1,5 @@
 import React from "react";
+import SessionContextPages from "./SessionContextPages";
 import type { ApiAuth } from "../api";
 import type { ConversationViewProps } from "./conversation/conversationViewTypes";
 import useLocalStorageState from "../hooks/useLocalStorageState";
@@ -184,6 +185,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
 
   return (
     <div className="conversation-layout">
+      {props.chatTarget !== "team" && props.sessionId ? <SessionContextPages key={JSON.stringify([props.effectiveBase, props.sessionId, props.daemonAuth])} base={props.effectiveBase} sessionId={props.sessionId} auth={props.daemonAuth} /> : null}
       <div id={props.chatTarget === "team" ? "team-chat" : undefined}><ChatThread messages={chatMessages} working={Boolean(props.activeJobId)} error={latestChatFailure(entries)} /></div>
       {latestToolResults.length ? <details className="conversation-details" data-testid="chat-tool-outputs">
         <summary>Tool outputs ({latestToolResults.length}){props.activeJobId ? " · available now" : ""}</summary>

@@ -29,7 +29,7 @@ Prepend each older page. Never concatenate a page from a different revision. A 4
 - Missing/deleted session: 404. Authentication remains mandatory.
 - Without any paging parameters, the legacy complete response is unchanged.
 
-The TypeScript `apiGetSessionPage` helper validates bounds, returned session/revision, ordering and continuation identity. It accepts an AbortSignal and raises `SessionPageError` with HTTP status, including 409. It does not silently fall back to the unbounded endpoint or merge stale pages. Existing UI history remains on its previous retrieval path; this source milestone exposes the native and typed-client paging capability, not a claim that every UI consumer has migrated.
+The TypeScript `apiGetSessionPage` helper validates bounds, returned session/revision, ordering and continuation identity. It accepts an AbortSignal and raises `SessionPageError` with HTTP status, including 409. It does not silently fall back to the unbounded endpoint or merge stale pages. The session history panel now includes an opt-in Model context snapshot inspector. Opening it reads 50 messages, Older context replaces the displayed page, and Load latest starts a fresh snapshot. It retains only one page and clears invalid snapshots on 409/404; errors never trigger an unbounded fallback. Connection/session/auth changes remount and abort pending reads. This inspector does not replace the separate DB/audit chat timeline or broker lease metadata. Those existing retrieval paths remain unchanged.
 
 ## Verification
 
