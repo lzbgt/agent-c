@@ -457,10 +457,12 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
 
         # Image preparation is part of the verified prefix. A changed second
         # caption would invalidate the transcript, so the stub labels every one.
-        # Current provider-step/token grants include fresh preparation only.
+        # Current provider-step grants include fresh preparation only. No finite token
+        # grant here: an unmetered failed provider now conservatively consumes it;
+        # workflow_token_grant_smoke separately verifies that fail-closed behavior.
         for case in ("vision_transient", "vision_fallback"):
             wid = submit(case, others=False, attempts=2,
-                         budget={"max_tool_calls_total": 1, "max_steps_total": 4, "max_total_tokens": 20})
+                         budget={"max_tool_calls_total": 1, "max_steps_total": 4})
             value = terminal(wid)
             out = result(value)
             assert value["workflow"]["status"] == "done" and count(case) == 1, value
@@ -470,8 +472,6 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
             assert value["budget_accounting"]["charged"]["max_steps_total"] == 4, value
             # An unavailable preparation keeps its original fallback. It is not
             # retried later in a way that could reinterpret a receipted action.
-            if case == "vision_transient":
-                assert value["budget_accounting"]["charged"]["max_total_tokens"] == 12, value
             event = next(e["data"] for e in out["events"] if e["type"] == "vision_prefetch")
             assert event["replayed"] is True and event["ok"] is (case != "vision_fallback"), event
 

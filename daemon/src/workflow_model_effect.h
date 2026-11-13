@@ -27,7 +27,8 @@ class WorkflowModelEffect {
   // the image-bearing request is fingerprinted, never copied into the receipt.
   bool vision_prefetch(const Json::Value& request, const std::function<Json::Value()>& invoke,
                        Json::Value* result, bool* replayed);
-  void set_fresh_budget(bool tools_limited, int64_t tools, bool steps_limited, int64_t steps);
+  void set_fresh_budget(bool tools_limited, int64_t tools, bool steps_limited, int64_t steps,
+                        bool tokens_limited = false, int64_t tokens = 0);
   bool has_checkpoint() const { return restored_; }
   agent_tool_provider_t wrap_provider(agent_tool_provider_t base, OpenAIToolProviderCtx* context = nullptr);
   Json::Value finish(Json::Value result);
@@ -40,6 +41,8 @@ class WorkflowModelEffect {
   void annotate(Json::Value* result, bool replayed = false) const;
   bool cancelled() const;
   bool validate_session();
+  bool admit_provider_tokens();
+  void account_provider_tokens(bool known, int64_t tokens);
   Json::Value checkpoint_value() const;
   bool save_checkpoint(bool admitting_tool);
   bool append_record(Json::Value record);
@@ -59,6 +62,8 @@ class WorkflowModelEffect {
   bool transcript_ = false, restored_ = false, provider_failed_ = false, budget_refused_ = false;
   bool tools_budget_limited_ = false, steps_budget_limited_ = false;
   int64_t tools_budget_ = 0, steps_budget_ = 0;
+  bool tokens_limited_ = false, tokens_unknown_ = false;
+  int64_t tokens_remaining_ = 0, token_charge_ = 0;
   std::string identity_error_, uncertain_, scope_hash_, config_hash_;
   Json::Value refusal_;
   Json::Value calls_by_tool_{Json::objectValue};

@@ -5,6 +5,16 @@ Update: sequential delegated host-model children now have separate parent-owned 
 `kind: http_json` POST actions now have a durable effect boundary. The scheduler can recover a task after a crash without blindly repeating its external write. GET remains a read-only HTTP task. Device assignments have a separate atomic identity/admission/outbox boundary and signed original-result receipt resolver described in [DEVICE_ASSIGNMENTS.md](DEVICE_ASSIGNMENTS.md). Device recovery shares the reconcile endpoint but accepts no URL or caller-supplied outcome. Explicit deterministic `host_tool` actions have the guarded journal boundary below. Ordinary workflow model runs with host tools have a guarded boundary and, for ephemeral or session-backed ordinary tasks, verified transcript continuation described below. Capsules and delegated model sub-attempts do not acquire that guarantee merely by belonging to the same workflow.
 
 
+## Fresh provider token admission
+
+For finite workflow token grants, ordinary and delegated host-model transcript runs reduce each fresh provider output cap by previously reported fresh usage. Complete cached provider/tool receipts cost zero and are replayed before fresh admission. A depleted grant refuses the next provider request; it does not discard historical receipts or authorize repeating host effects.
+
+Absent, partial or invalid provider usage conservatively consumes the remaining grant. Failed calls without complete telemetry do not become free retries. Results distinguish reported `total_tokens` from `token_budget_charge` and `token_usage_incomplete`; the durable budget ledger/cumulative total charge uses the conservative value. Stream and nonstream adapters capture fresh complete totals without reusing prior-call telemetry. Image preparation also consumes fresh tokens; incomplete preparation telemetry is conservative.
+
+This is **not a strict provider-independent total-token ceiling**. Prompt cost is unknown until the response, providers can ignore output limits, and internal HTTP retries may incur unobservable charges. Known overruns remain charged. Non-host model paths, hidden provider work and arbitrary adapters are not certified by this boundary. Existing tool policy, owner stops and uncertain-effect restrictions are unchanged.
+
+`agentd_workflow_token_grant_smoke` verifies actual outgoing output caps, known exhaustion, missing/partial/error usage, conservative database charges and both streaming/nonstreaming transports using an isolated synthetic provider. Existing transcript/delegate crash suites retain replay and owner-stop coverage.
+
 ## Deterministic host tools
 
 A workflow or SOP action can invoke one registered host tool without an LLM:

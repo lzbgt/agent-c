@@ -710,6 +710,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 	        int64_t attempts_prompt_tokens = 0;
 	        int64_t attempts_completion_tokens = 0;
 	        int64_t attempts_total_tokens = 0;
+        int64_t attempts_token_charge = 0; bool attempts_usage_incomplete = false;
 	        int64_t remaining_local = wf_tool_calls_remaining;
 	        int64_t remaining_steps_local = wf_steps_remaining;
 	        int64_t remaining_elapsed_ms_local = wf_elapsed_ms_remaining;
@@ -801,7 +802,8 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
           WorkflowModelEffect child_effect(model_context, task.request_json,
                                            "delegate.v1:" + std::to_string(i));
           child_effect.set_fresh_budget(wf_limits.max_tool_calls_total > 0, remaining_local,
-                                       wf_limits.max_steps_total > 0, remaining_steps_local);
+                                       wf_limits.max_steps_total > 0, remaining_steps_local,
+                                       wf_limits.max_total_tokens > 0, remaining_tokens_local);
           Json::Value r = delegate_replay_only ? delegate_receipts.at(i) : child_effect.preflight();
           if (!delegate_replay_only && r.isNull()) {
             r = run_request_to_json_internal_cancellable(
@@ -853,6 +855,10 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 	          attempts_prompt_tokens = saturating_add_i64(attempts_prompt_tokens, prompt_tokens_this_attempt);
 	          attempts_completion_tokens = saturating_add_i64(attempts_completion_tokens, completion_tokens_this_attempt);
 	          attempts_total_tokens = saturating_add_i64(attempts_total_tokens, total_tokens_this_attempt);
+          const int64_t token_charge = r["token_budget_charge"].isInt64() ?
+            std::max<int64_t>(total_tokens_this_attempt, r["token_budget_charge"].asInt64()) : total_tokens_this_attempt;
+          attempts_token_charge = saturating_add_i64(attempts_token_charge, token_charge);
+          attempts_usage_incomplete = attempts_usage_incomplete || r["token_usage_incomplete"] == true;
 	          if (wf_limits.max_tool_calls_total > 0) {
 	            remaining_local = std::max<int64_t>(0, remaining_local - tool_calls_this_attempt);
 	          }
@@ -863,7 +869,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 	            remaining_elapsed_ms_local = std::max<int64_t>(0, remaining_elapsed_ms_local - elapsed_ms_this_attempt);
 	          }
 	          if (wf_limits.max_total_tokens > 0) {
-	            remaining_tokens_local = std::max<int64_t>(0, remaining_tokens_local - total_tokens_this_attempt);
+	            remaining_tokens_local = std::max<int64_t>(0, remaining_tokens_local - token_charge);
 	          }
 
 	          Json::Value row(Json::objectValue);
@@ -932,6 +938,8 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 	        out["prompt_tokens"] = (Json::Int64)attempts_prompt_tokens;
 	        out["completion_tokens"] = (Json::Int64)attempts_completion_tokens;
 	        out["total_tokens"] = (Json::Int64)attempts_total_tokens;
+        out["token_budget_charge"] = Json::Int64(attempts_token_charge);
+        out["token_usage_incomplete"] = attempts_usage_incomplete;
 
 	        if (out.isMember("cancelled") && out["cancelled"].isBool() && out["cancelled"].asBool()) {
 	          // already populated
@@ -1499,7 +1507,8 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     WorkflowRunBudgetClampInput run_clamp;
     run_clamp.limits = wf_limits;
     model_effect.set_fresh_budget(wf_limits.max_tool_calls_total > 0, wf_tool_calls_remaining,
-                                 wf_limits.max_steps_total > 0, wf_steps_remaining);
+                                 wf_limits.max_steps_total > 0, wf_steps_remaining,
+                                 wf_limits.max_total_tokens > 0, wf_total_tokens_remaining);
     if (model_effect.has_checkpoint()) {
       if (wf_tool_calls_remaining <= 0) run_clamp.limits.max_tool_calls_total = 0;
       if (wf_steps_remaining <= 0) run_clamp.limits.max_steps_total = 0;
@@ -1639,6 +1648,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     evidence["granted"]=workflow_budget_amounts_json(budget_grant.granted);
     AgentDb::WorkflowBudgetAmounts observed={out.get("tool_calls_total",Json::Int64(0)).asInt64(),out.get("steps_executed",Json::Int64(0)).asInt64(),out.get("elapsed_ms",Json::Int64(0)).asInt64(),out.get("total_tokens",Json::Int64(0)).asInt64()};
     evidence["observed"]=workflow_budget_amounts_json(observed);
+    if (out["token_budget_charge"].isInt64()) evidence["token_charge"] = out["token_budget_charge"];
     evidence["overrun"]=Json::Value(Json::arrayValue);
     for (int i=0;i<4;i++) if (configured_limits[i]>0 && observed[i]>budget_grant.granted[i]) evidence["overrun"].append(workflow_budget_dimension(i));
   }
@@ -1682,6 +1692,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     } else if (prompt_tokens_attempt > 0 || completion_tokens_attempt > 0) {
       total_tokens_attempt = prompt_tokens_attempt + completion_tokens_attempt;
     }
+    if (out["token_budget_charge"].isInt64()) total_tokens_attempt = std::max(total_tokens_attempt, out["token_budget_charge"].asInt64());
     upd.tool_calls_total_cum = saturating_add_i64(std::max<int64_t>(0, task.tool_calls_total_cum), tool_calls_attempt);
     upd.steps_executed_cum = saturating_add_i64(std::max<int64_t>(0, task.steps_executed_cum), steps_attempt);
     upd.elapsed_ms_cum = saturating_add_i64(std::max<int64_t>(0, task.elapsed_ms_cum), elapsed_attempt);

@@ -9,6 +9,9 @@
 #endif
 
 #include <vector>
+#include <memory>
+#include <algorithm>
+#include <cstdint>
 #include <sstream>
 #include <cstring>
 #include <unordered_map>
@@ -235,6 +238,21 @@ static std::string extract_assistant_content(const Json::Value& message) {
   return "";
 }
 
+static void capture_complete_usage(OpenAIToolProviderCtx* ctx, const Json::Value& root) {
+  if (!ctx || !root.isObject() || !root["usage"].isObject()) return;
+  const auto& u = root["usage"];
+  const auto valid = [&](const char* k) { return u[k].isInt64() && u[k].asInt64() >= 0; };
+  const bool pair = valid("prompt_tokens") && valid("completion_tokens");
+  if (!valid("total_tokens") && !pair) return;
+  int64_t sum = 0;
+  if (pair) {
+    const auto p = u["prompt_tokens"].asInt64(), c = u["completion_tokens"].asInt64();
+    sum = c > INT64_MAX - p ? INT64_MAX : p + c;
+  }
+  ctx->last_total_tokens_known = true;
+  ctx->last_total_tokens = std::max<int64_t>(sum, valid("total_tokens") ? u["total_tokens"].asInt64() : 0);
+}
+
 static bool try_extract_usage_tokens(const Json::Value& root, Json::Value* out_usage_obj) {
   if (out_usage_obj) *out_usage_obj = Json::Value(Json::nullValue);
   if (!out_usage_obj) return false;
@@ -386,6 +404,7 @@ static agent_status_t openai_tool_provider_generate(
   if (!vctx || !req || !out_resp) return AGENT_ERR_INVALID_ARGUMENT;
   auto* ctx = static_cast<OpenAIToolProviderCtx*>(vctx);
 
+  ctx->last_total_tokens_known = false; ctx->last_total_tokens = 0;
   ctx->last_http_status = 0;
   ctx->last_response_body.clear();
   ctx->last_request_json.clear();
@@ -497,6 +516,9 @@ static agent_status_t openai_tool_provider_generate(
     auto on_chunk = [](void* vctx, const char* chunk_json, size_t chunk_len) {
       auto* a = static_cast<StreamAccum*>(vctx);
       if (!a || !chunk_json || chunk_len == 0) return;
+      Json::Value value; Json::CharReaderBuilder builder; std::string error;
+      std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+      if (reader->parse(chunk_json, chunk_json + chunk_len, &value, &error)) capture_complete_usage(a->ctx, value);
       (void)openai_stream_core_feed_chunk(&a->core, chunk_json, chunk_len);
     };
 
@@ -686,6 +708,7 @@ static agent_status_t openai_tool_provider_generate(
   }
 
   if (!parsed_is_stream) {
+    capture_complete_usage(ctx, parsed);
     Json::Value usage(Json::nullValue);
     if (try_extract_usage_tokens(parsed, &usage) && usage.isObject()) {
       Json::Value d(Json::objectValue);

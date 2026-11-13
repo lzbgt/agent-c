@@ -302,7 +302,7 @@ Json::Value WorkflowModelEffect::preflight() {
     out["effect"]["prefetch_calls"] = Json::Int64(0);
   }
   annotate(&out, true);
-  for (const char* key : {"tool_calls_total", "steps_executed", "elapsed_ms", "prompt_tokens", "completion_tokens", "total_tokens"}) {
+  for (const char* key : {"tool_calls_total", "steps_executed", "elapsed_ms", "prompt_tokens", "completion_tokens", "total_tokens", "token_budget_charge"}) {
     if (out.isMember(key)) out["effect"]["original_usage"][key] = out[key];
     out[key] = Json::Int64(0);
   }
@@ -341,9 +341,22 @@ void WorkflowModelEffect::stage_session(std::vector<AgentDb::MessageRow> message
   }
   session_messages_ = std::move(messages); session_staged_ = true;
 }
-void WorkflowModelEffect::set_fresh_budget(bool tools_limited, int64_t tools, bool steps_limited, int64_t steps) {
+void WorkflowModelEffect::set_fresh_budget(bool tools_limited, int64_t tools, bool steps_limited, int64_t steps,
+                                         bool tokens_limited, int64_t tokens) {
+  tokens_limited_ = tokens_limited; tokens_remaining_ = std::max<int64_t>(0, tokens);
   tools_budget_limited_ = tools_limited; tools_budget_ = std::max<int64_t>(0, tools);
   steps_budget_limited_ = steps_limited; steps_budget_ = std::max<int64_t>(0, steps);
+}
+bool WorkflowModelEffect::admit_provider_tokens() {
+  if (!tokens_limited_ || tokens_remaining_ > 0) return true;
+  refusal_ = failure("model continuation has no fresh token grant");
+  budget_refused_ = true; return false;
+}
+void WorkflowModelEffect::account_provider_tokens(bool known, int64_t tokens) {
+  if (!tokens_limited_) return;
+  if (!known || tokens < 0) { tokens_unknown_ = true; tokens = tokens_remaining_; }
+  token_charge_ = tokens > INT64_MAX - token_charge_ ? INT64_MAX : token_charge_ + tokens;
+  tokens_remaining_ = tokens >= tokens_remaining_ ? 0 : tokens_remaining_ - tokens;
 }
 void WorkflowModelEffect::configure_transcript(ToolLoopOptions* options, const Json::Value& provider_identity) {
   if (!options) return;
@@ -431,9 +444,12 @@ bool WorkflowModelEffect::vision_prefetch(const Json::Value& request,
   if (provider_limited_ && size_t(provider_calls_) >= provider_limit_) {
     refusal_ = failure("vision preparation has no fresh provider-step grant"); budget_refused_ = true; return false;
   }
+  if (!admit_provider_tokens()) return false;
   ++provider_calls_; ++prefetch_calls_;
   try { *result = invoke(); }
-  catch (...) { reject("vision preparation adapter threw before a usable receipt"); return false; }
+  catch (...) { account_provider_tokens(false, 0); reject("vision preparation adapter threw before a usable receipt"); return false; }
+  const Json::Value& preparation_usage = (*result)["usage"];
+  account_provider_tokens(preparation_usage["total_tokens"].isInt64() && preparation_usage["prompt_tokens"].isInt64() && preparation_usage["completion_tokens"].isInt64(), preparation_usage.get("total_tokens", Json::Int64(0)).asInt64());
   if (!valid_prefetch(*result)) { reject("vision preparation result exceeds its bounded transcript contract"); return false; }
   Json::Value record; record["kind"] = "vision_prefetch"; record["request_hash"] = digest; record["result"] = *result;
   return append_record(std::move(record));
@@ -498,10 +514,38 @@ agent_status_t WorkflowModelEffect::generate(void* ptr, const agent_tool_provide
     self.refusal_ = self.failure("model continuation has no fresh provider-step grant");
     self.budget_refused_ = true; return AGENT_ERR_LIMIT;
   }
+  if (!self.admit_provider_tokens()) return AGENT_ERR_LIMIT;
+  // Bound each fresh output request to its current remaining grant. Prompt
+  // usage is only known afterward, so this is not a strict total-token meter.
+  int64_t completion = 0, legacy = 0;
+  if (self.tokens_limited_ && self.provider_context_) {
+    auto& cfg = self.provider_context_->cfg;
+    completion = cfg.max_completion_tokens; legacy = cfg.max_tokens;
+    if (completion > 0) cfg.max_completion_tokens = std::min(completion, self.tokens_remaining_);
+    else if (legacy > 0) cfg.max_tokens = std::min(legacy, self.tokens_remaining_);
+    else cfg.max_completion_tokens = self.tokens_remaining_;
+    self.provider_context_->last_total_tokens_known = false;
+  }
   ++self.provider_calls_;
-  const auto status = self.provider_.generate(self.provider_.ctx, req, out);
+  agent_status_t status;
+  try { status = self.provider_.generate(self.provider_.ctx, req, out); }
+  catch (...) {
+    if (self.tokens_limited_ && self.provider_context_) {
+      self.provider_context_->cfg.max_completion_tokens = completion;
+      self.provider_context_->cfg.max_tokens = legacy;
+    }
+    self.account_provider_tokens(false, 0); throw;
+  }
+  if (self.tokens_limited_ && self.provider_context_) {
+    self.provider_context_->cfg.max_completion_tokens = completion;
+    self.provider_context_->cfg.max_tokens = legacy;
+  }
+  self.account_provider_tokens(self.provider_context_ && self.provider_context_->last_total_tokens_known,
+                               self.provider_context_ ? self.provider_context_->last_total_tokens : 0);
   if (status != AGENT_OK && status != AGENT_ERR_CONTEXT_TOO_LONG) {
-    self.provider_failed_ = true; return status;
+    self.provider_failed_ = true;
+    if (self.tokens_limited_ && self.tokens_remaining_ == 0) self.budget_refused_ = true;
+    return status;
   }
   Json::Value record;
   record["kind"] = "provider"; record["request_hash"] = digest; record["status"] = int(status);
@@ -594,6 +638,11 @@ Json::Value WorkflowModelEffect::finish(Json::Value out) {
   checked_ = false;
   if (!out.isObject()) out = failure("invalid model run result");
   if (!refusal_.isNull()) for (const auto& key : refusal_.getMemberNames()) out[key] = refusal_[key];
+  if (budget_refused_) out["retryable"] = false;
+  if (tokens_limited_) {
+    out["token_budget_charge"] = Json::Int64(token_charge_);
+    out["token_usage_incomplete"] = tokens_unknown_;
+  }
   if (transcript_) {
     out["steps_executed"] = Json::Int64(provider_calls_);
     out["tool_calls_total"] = Json::Int64(calls_); out["tool_calls_by_tool"] = calls_by_tool_;

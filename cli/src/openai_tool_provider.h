@@ -43,6 +43,9 @@ struct OpenAIToolProviderCtx {
   size_t max_event_chars = 256 * 1024;
 
   // Last HTTP response (best-effort) for callers that want to surface provider errors.
+  // Fresh call only; absent/partial telemetry must not reuse previous usage.
+  bool last_total_tokens_known = false;
+  int64_t last_total_tokens = 0;
   long last_http_status = 0;
   std::string last_response_body;
   std::string last_request_json;
