@@ -1,4 +1,5 @@
 import React from "react";
+import WorkflowSopProgress from "./WorkflowSopProgress";
 import WorkflowEffectsSection from "./WorkflowEffectsSection";
 import WorkflowBudgetSection from "./WorkflowBudgetSection";
 import WorkflowDecisionsSection from "./WorkflowDecisionsSection";
@@ -50,6 +51,7 @@ export default function WorkflowDetailSection(props: WorkflowDetailSectionProps)
           ))}
         </section>
       ) : null}
+      <WorkflowSopProgress detail={props.detail} tasks={props.tasks} />
       <WorkflowDecisionsSection workflowId={summary.workflow_id} decisions={props.detail.decisions ?? []}
         active={!summary.cancel_requested && (summary.status === "queued" || summary.status === "running") &&
           !(summary.deadline_unix_ms && summary.deadline_unix_ms <= Date.now())}

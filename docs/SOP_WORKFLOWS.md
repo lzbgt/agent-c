@@ -45,7 +45,7 @@ This provider-free fixture demonstrates ordering only. Replace the delay actions
 
 Stage order is significant. Each stage waits for successful completion of the previous stage. Within a stage, `sequence` (default) chains actions; `parallel` gives all actions the same incoming dependencies and joins them before the next stage. Existing task `expect` checks and configured retries still apply. Failure does not release later stages.
 
-IDs and version strings use `A-Za-z0-9_.:-`, 1–128 bytes. Stage IDs are unique; action `task_id` values are globally unique across the SOP and remain unchanged in task references. Titles are optional, up to 256 bytes. Bounds are 32 nonempty stages and 128 total actions. The compiler rejects unknown SOP/stage/action fields, explicit action dependencies, `allow_error=true`, dependency inference, unsupported kinds and submit-time parallel macros. This prevents a misspelled control rule from being silently ignored.
+IDs and version strings use `A-Za-z0-9_.:-`, 1–128 bytes. Stage IDs are unique; action `task_id` values are globally unique across the SOP and remain unchanged when repeat_count is omitted or one. Titles are optional, up to 256 bytes. Bounds are 32 nonempty stages and 128 total expanded actions, including repetitions. The compiler rejects unknown SOP/stage/action fields, explicit action dependencies, `allow_error=true`, dependency inference, unsupported kinds and submit-time parallel macros. This prevents a misspelled control rule from being silently ignored.
 
 ### Guided host commands
 
@@ -60,6 +60,14 @@ Actions use the existing task payload contracts. Supported kinds are `llm` (or a
 The stored diagnostic spec contains the original `sop`, compiled `tasks`, and server-owned `sop_compiled` metadata: compiler schema, definition ID/version, canonical definition SHA-256 and stage-to-task mapping. The hash uses `agent_json_c14n_v1`, not an unspecified JSON serialization. It identifies the submitted definition, not externally supplied defaults or secrets; the entire redacted run spec records those execution settings separately. Inline SOPs remain ad hoc: reusing an ID/version with changed inline source produces a different hash. Saved versions enforce immutability as described below.
 
 Submission idempotency retains the existing first-accepted-wins semantics. It does not guarantee exactly-once external effects. New persisted specs above 256 KiB are rejected instead of being truncated into invalid JSON. For a fresh SOP submission, submit its `sop` and desired workflow-level settings, omitting server metadata and generated tasks. For a deliberate DAG copy, submit just its compiled tasks/settings. Diagnostic `spec` is not itself a ready-to-resubmit request.
+
+## Repeated stages and run progress
+
+Set a stage's optional `repeat_count` to 1–32 for a fixed number of intentional repetitions. Each iteration waits for the prior iteration's successful terminal actions. This is not a retry or a conditional loop: commands and writes intentionally happen again. Normal policy, cancellation, deadlines, budgets and uncertain-effect guards remain effective.
+
+For counts greater than one, task IDs become `source_id:repeat:N` (one-based). Expanded IDs must remain globally unique and fit 128 bytes. Input references are not rewritten: advanced references must use exact expanded IDs. All expanded tasks count against the 128-task bound. The stored manifest includes each iteration's task IDs; restart resumes those persisted tasks, not a new loop.
+
+Enable **include spec** in the advanced workflow controls and reload to load the process mapping. The read-only **Process progress** card groups last-loaded task states by stored stage and iteration. Counts are completed tasks, not elapsed-time percentages or acceptance guarantees. Missing rows show “not loaded”; explicit blockers show “needs attention”; queued tasks are not claimed to be executing. Reload uses the existing workflow read. There is no implicit retry, submit, approval or effect reconciliation.
 
 ## Explicit review steps
 
@@ -83,4 +91,4 @@ An optional `sop_ref.definition_hash` asserts the expected canonical content; mi
 
 The library uses the same daemon authentication/access boundary as other workflow APIs. It is not a secret store. Known inline credential fields (including API keys, authorization headers, passwords and access/refresh tokens) are rejected rather than silently redacted into unusable execution source. Use server-side credential references. This check is not a general secret detector; never place credentials in free-form prompts, command strings, URLs or arbitrary data fields. Source is returned only on an exact read/save, not in metadata pages. Keep database backups and authorized erasure under the existing daemon-state policy.
 
-SOP v1 is available on direct workflow submission. Schedule/runtime-skill authoring may still require a tasks-based bundle; the saved library does not add schedule/runtime-skill authoring support. General external signals, person/role-bound process approvals, branches, loops, compensation and active-run version migrations are explicitly future work in [the architecture](ARCHITECTURE_CURRENT.md). The independent [work ledger](AUTONOMOUS_WORK.md) remains separate from the scheduler-level decision node.
+SOP v1 is available on direct workflow submission. Schedule/runtime-skill authoring may still require a tasks-based bundle; the saved library does not add schedule/runtime-skill authoring support. General external signals, person/role-bound process approvals, branches, conditional loops, compensation and active-run version migrations are explicitly future work in [the architecture](ARCHITECTURE_CURRENT.md). The independent [work ledger](AUTONOMOUS_WORK.md) remains separate from the scheduler-level decision node.
