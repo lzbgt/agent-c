@@ -47,6 +47,14 @@ Stage order is significant. Each stage waits for successful completion of the pr
 
 IDs and version strings use `A-Za-z0-9_.:-`, 1–128 bytes. Stage IDs are unique; action `task_id` values are globally unique across the SOP and remain unchanged in task references. Titles are optional, up to 256 bytes. Bounds are 32 nonempty stages and 128 total actions. The compiler rejects unknown SOP/stage/action fields, explicit action dependencies, `allow_error=true`, dependency inference, unsupported kinds and submit-time parallel macros. This prevents a misspelled control rule from being silently ignored.
 
+### Guided host commands
+
+Choose **Run a host command** to author a deterministic `proc_exec` action. The executable and every argument have separate fields; spaces, metacharacters and empty arguments are preserved, not split or passed through a newly added shell. A shell executable can still interpret its own arguments. Set a bounded command timeout. Existing advanced argument/settings fields are preserved; other host tools stay advanced.
+
+Editing and saving never execute commands or grant capabilities. The daemon must already allow host process execution; its policy, approval and budget checks still apply. Do not embed secrets in persisted arguments. An interrupted command can have partial effects: inspect the original outcome instead of copying the process as a blind retry. See [guarded host effects](WORKFLOW_EFFECTS.md).
+
+`ui/e2e/workflow_sop_host.spec.ts` executes the exact browser-authored saved/pinned SOP using `tests/workflow_authored_host_smoke.py`. Isolated daemons verify literal argv output with one completed journal receipt, and disabled execution policy with zero admitted effects. Browser checks cover add/remove arguments, empty strings, advanced field/tool preservation, mobile layout and no implicit submission.
+
 Actions use the existing task payload contracts. Supported kinds are `llm` (or an omitted kind with `request`), `delay`, `timer`, `decision`, `host_tool`, `http_json`, `agentd_call`, `aggregate`, `avm_capsule`, memory task kinds, `experience_record`, `edge_invoke`, `edge_wait_sensor`, and sequential `delegate`. Native HTTP/device/capsule policies remain effective; SOP input does not grant capabilities. See [WORKFLOWS.md](WORKFLOWS.md) and the generated OpenAPI contract for their payloads.
 
 The stored diagnostic spec contains the original `sop`, compiled `tasks`, and server-owned `sop_compiled` metadata: compiler schema, definition ID/version, canonical definition SHA-256 and stage-to-task mapping. The hash uses `agent_json_c14n_v1`, not an unspecified JSON serialization. It identifies the submitted definition, not externally supplied defaults or secrets; the entire redacted run spec records those execution settings separately. Inline SOPs remain ad hoc: reusing an ID/version with changed inline source produces a different hash. Saved versions enforce immutability as described below.
