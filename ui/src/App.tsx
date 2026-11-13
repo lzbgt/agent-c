@@ -385,7 +385,7 @@ export default function App() {
     setPrompt,
   });
 
-  const { handleDirectRunRequest, run } = useRunExecution({
+  const { handleDirectRunRequest, run, pendingChatSubmission, releaseChatSubmission } = useRunExecution({
     activeJobId,
     apiKey,
     automationProfileValue,
@@ -757,7 +757,7 @@ export default function App() {
         prompt={prompt}
         setPrompt={setPrompt}
         composerDisabled={composerSessionPending}
-        runDisabled={composerSessionPending || (isTeamTarget ? !brokerChatAvailable : false)}
+        runDisabled={composerSessionPending || (isTeamTarget ? !brokerChatAvailable : Boolean(pendingChatSubmission))}
         runLabel={
           composerSessionPending ? "Creating chat…" : isTeamTarget
             ? teamRunCreate.isPending
@@ -796,6 +796,12 @@ export default function App() {
         teamAction={teamActionNormalized}
         onTeamActionChange={(next) => setTeamAction(next)}
       />
+
+      {!isTeamTarget && pendingChatSubmission ? <section role="alert" aria-label="Unresolved chat submission">
+        <p>A chat submission may have executed. Further chat dispatch is paused until its outcome is checked.</p>
+        <code>{pendingChatSubmission}</code>
+        <button type="button" disabled={run.isPending} onClick={releaseChatSubmission}>Clear chat uncertainty…</button>
+      </section> : null}
 
       {!localModelProfile ? <SettingsDrawer
         open={showSettings}

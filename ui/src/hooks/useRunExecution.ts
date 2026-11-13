@@ -1,4 +1,5 @@
 import React from "react";
+import useChatSubmissionFence from "./useChatSubmissionFence";
 import { useMutation } from "@tanstack/react-query";
 import { apiRun, apiRunAsync, type ApiAuth, type RunRequest, type RunResponse, type AgentEvent } from "../api";
 import type { Attachment } from "../components/PromptBar";
@@ -138,7 +139,9 @@ export default function useRunExecution(args: RunExecutionArgs) {
     sessionsRefetch,
   } = args;
 
+  const fence = useChatSubmissionFence(jobStoreKey);
   const run = useMutation({
+    retry: false,
     mutationFn: async (vars: { prompt: string; attachments: Attachment[] }) => {
       const maxStepsTrim = String(maxSteps ?? "").trim();
       const parsedMaxSteps =
@@ -287,14 +290,23 @@ export default function useRunExecution(args: RunExecutionArgs) {
         req.memory_search_max_snippet_chars = parsedMemSearchMaxSnippetChars;
         req.memory_search_context_lines = parsedMemSearchContextLines;
       }
+      const traceId = `trace_${crypto.randomUUID()}`;
+      req.trace_id = traceId;
+      const originScope = jobStoreKey;
+      fence.begin(traceId); // durable before either POST; failures never authorize resubmission
       if (effectiveUseAsync) {
         const job = await apiRunAsync(effectiveBase, req, daemonAuth);
-        return { mode: "async" as const, job, req };
+        return { mode: "async" as const, job, req, originScope, traceId };
       }
       const out = await apiRun(effectiveBase, req, daemonAuth);
-      return { mode: "sync" as const, out, req };
+      return { mode: "sync" as const, out, req, originScope, traceId };
     },
     onSuccess: (value, submitted) => {
+      if (value.mode === "async" && value.job.ok && value.job.job_id) {
+        writeJobsBySession(prev => ({ ...prev, [value.originScope]: { job_id: value.job.job_id!, cursor: 0, started_unix_ms: Date.now() } }));
+      }
+      if (value.mode === "sync" || (value.job.ok && value.job.job_id)) fence.finish(value.originScope, value.traceId);
+      if (fence.currentScope.current !== value.originScope) return;
       const accepted = value.mode === "sync" ? value.out.ok : value.job.ok && Boolean(value.job.job_id);
       if (accepted) setPrompt((current) => current === submitted.prompt ? "" : current);
       if (value.mode === "sync") {
@@ -364,7 +376,7 @@ export default function useRunExecution(args: RunExecutionArgs) {
   );
 
   React.useEffect(() => {
-    if (activeJobId || run.isPending) return;
+    if (activeJobId || run.isPending || fence.isBlocked()) return;
     if (!Array.isArray(runQueue) || runQueue.length === 0) return;
     if (dequeueInFlightRef.current) return;
     const next = runQueue[0];
@@ -375,26 +387,31 @@ export default function useRunExecution(args: RunExecutionArgs) {
       .mutateAsync({ prompt: next.prompt, attachments: next.attachments || [] })
       .catch((error) => {
         setJobNotice(`queued run failed: ${String(error)}`);
-        setRunQueue((prev) => [next, ...(Array.isArray(prev) ? prev : [])]);
+        // Never reinsert a possibly executed request into the automatic queue.
+        // Restore its text for inspection, not automatic dispatch.
+        setPrompt(current => current || next.prompt);
       })
       .finally(() => {
         dequeueInFlightRef.current = false;
       });
-  }, [activeJobId, run.isPending, runQueue, run, setJobNotice, setRunQueue]);
+  }, [activeJobId, run.isPending, runQueue, run, fence.pending, setJobNotice, setRunQueue, setPrompt]);
 
   const handleDirectRunRequest = React.useCallback(
     async (vars: { prompt: string; attachments: Attachment[] }) => {
+      if (fence.isBlocked()) { setJobNotice("Chat submission unresolved. Inspect its trace before continuing."); return; }
       if (activeJobId || run.isPending) {
         enqueueRun(vars);
         return;
       }
       run.mutate(vars);
     },
-    [activeJobId, enqueueRun, run],
+    [activeJobId, enqueueRun, run, fence.pending, setJobNotice],
   );
 
   return {
     handleDirectRunRequest,
+    pendingChatSubmission: fence.pending,
+    releaseChatSubmission: fence.release,
     run,
   };
 }
