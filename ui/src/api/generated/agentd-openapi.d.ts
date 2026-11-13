@@ -2818,24 +2818,39 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Request job cancellation */
+        /**
+         * Durably request job cancellation
+         * @description Atomically cancels queued jobs or records a running-job stop flag, including
+         *     DB-only jobs. Already-started effects are not rolled back. Storage failure
+         *     reports 503 and live_cancel_requested separately; it never claims durability.
+         */
         post: {
             parameters: {
-                query?: never;
+                query: {
+                    job_id: string;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
             };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        job_id: string;
-                    };
-                };
-            };
+            requestBody?: never;
             responses: {
-                /** @description Cancellation requested */
+                /** @description Durable cancellation requested */
                 200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Job absent or already terminal */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Durable stop failed; live_cancel_requested reports best-effort in-memory signal */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };

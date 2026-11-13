@@ -1636,19 +1636,23 @@
 /api/v1/job/cancel:
   post:
     tags: [jobs]
-    summary: Request job cancellation
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            type: object
-            required: [job_id]
-            properties:
-              job_id: { type: string }
+    summary: Durably request job cancellation
+    description: |
+      Atomically cancels queued jobs or records a running-job stop flag, including
+      DB-only jobs. Already-started effects are not rolled back. Storage failure
+      reports 503 and live_cancel_requested separately; it never claims durability.
+    parameters:
+      - in: query
+        name: job_id
+        required: true
+        schema: { type: string }
     responses:
       "200":
-        description: Cancellation requested
+        description: Durable cancellation requested
+      "409":
+        description: Job absent or already terminal
+      "503":
+        description: Durable stop failed; live_cancel_requested reports best-effort in-memory signal
 
 /api/v1/job/stream:
   get:

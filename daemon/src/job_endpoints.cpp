@@ -192,14 +192,21 @@ void handle_job_cancel_endpoint(
     resp->body = json_error_body("missing job_id");
     return;
   }
-  if (!job_request_cancel(*jid)) {
-    resp->status = 409;
-    Json::Value o(Json::objectValue);
-    o["ok"] = false;
-    o["error"] = "cannot cancel job (not found or already finished)";
-    o["job_id"] = *jid;
-    resp->body = json_stringify(o);
-    return;
+  std::string cancel_error;
+  const auto durable = db_or_null && db_or_null->is_open()
+    ? db_or_null->request_job_cancel(*jid, now_unix_ms(), &cancel_error)
+    : AgentDb::JobCancelResult::Error;
+  // Signal live execution even if storage fails, but never report a durable stop then.
+  const bool live_requested = job_request_cancel(*jid);
+  if (durable != AgentDb::JobCancelResult::Requested) {
+    resp->status = durable == AgentDb::JobCancelResult::Error ? 503 : 409;
+    Json::Value out(Json::objectValue);
+    out["ok"] = false; out["job_id"] = *jid;
+    out["live_cancel_requested"] = live_requested;
+    out["error"] = durable == AgentDb::JobCancelResult::Error
+      ? "durable cancellation failed; inspect job state"
+      : "cannot cancel job (not found or already finished)";
+    resp->body = json_stringify(out); return;
   }
   // Best-effort: surface cancellation request to any connected UI.
   {
@@ -209,20 +216,7 @@ void handle_job_cancel_endpoint(
     job_append_event(*jid, "cancel_requested", json_stringify(d));
   }
 
-  if (db_or_null && db_or_null->is_open()) {
-    AgentDb::JobRow jr;
-    std::string db_err;
-    if (db_or_null->get_job(*jid, &jr, &db_err)) {
-      jr.updated_unix_ms = now_unix_ms();
-      jr.cancel_requested = true;
-      // Preserve status as-is when known.
-      JobState js;
-      if (job_get(*jid, &js)) {
-        if (!js.status.empty()) jr.status = js.status;
-      }
-      (void)db_or_null->upsert_job(jr, &db_err);
-    }
-  }
+  // Durable queued cancellation is complete even when no in-memory job exists.
 
   Json::Value o(Json::objectValue);
   o["ok"] = true;

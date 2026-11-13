@@ -1448,6 +1448,12 @@ static Json::Value run_request_to_json_impl(
       // Non-stream request path (tools=none): use core runner + OpenAI provider adapter (same as CLI).
       OpenAIProviderCtx pctx;
       pctx.cfg = run_cfg;
+      // The non-stream adapter must observe cancellation during transfer/backoff,
+      // not just between model attempts. This borrowed lambda lives through run_once.
+      pctx.cfg.should_cancel = +[](void* ctx) -> bool {
+        return (*static_cast<decltype(should_cancel_run)*>(ctx))();
+      };
+      pctx.cfg.should_cancel_ctx = &should_cancel_run;
       const agent_provider_t provider = openai_make_provider(&pctx);
 
       agent_run_options_t run_opt{};

@@ -409,6 +409,9 @@ class AgentDb {
 
   // Attempts to transition a queued job to running. Returns true only when the job was claimed.
   bool claim_job(const std::string& job_id, int64_t now_unix_ms, std::string* out_error);
+  enum class JobCancelResult { Requested, NotActive, Error };
+  // Atomic queued cancellation or running stop flag, without read-modify-write status regression.
+  JobCancelResult request_job_cancel(const std::string& job_id, int64_t now, std::string* error);
 
   // Recovery: running jobs have uncertain effects and become interrupted; only never-claimed queued jobs remain resumable.
   bool recover_inflight_jobs_resumable(int64_t now_unix_ms, std::string* out_error);

@@ -2032,4 +2032,30 @@ AgentDb::JobAdmission AgentDb::admit_running_job(const JobRow& row, std::string*
 #endif
 }
 
+
+AgentDb::JobCancelResult AgentDb::request_job_cancel(const std::string& job_id, int64_t now, std::string* error) {
+  if (error) error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  if (error) *error = "sqlite3 unavailable";
+  return JobCancelResult::Error;
+#else
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) { if (error) *error = "db not open"; return JobCancelResult::Error; }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = "UPDATE jobs SET cancel_requested=1,updated_unix_ms=?,"
+    "status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,"
+    "stop_reason=CASE WHEN status='queued' THEN 'cancelled_before_dispatch' ELSE stop_reason END "
+    "WHERE job_id=? AND status IN ('queued','running')";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (error) *error = sqlite3_errmsg(db_);
+    return JobCancelResult::Error;
+  }
+  bool ok = agent_db_bind_i64(st, 1, now) && agent_db_bind_text(st, 2, job_id) && agent_db_step_done(st);
+  if (!ok && error) *error = sqlite3_errmsg(db_);
+  const int changed = sqlite3_changes(db_);
+  sqlite3_finalize(st);
+  return !ok ? JobCancelResult::Error : changed ? JobCancelResult::Requested : JobCancelResult::NotActive;
+#endif
+}
+
 }  // namespace agentd

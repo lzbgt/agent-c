@@ -79,6 +79,24 @@ with tempfile.TemporaryDirectory(prefix="job-admission-") as root:
       time.sleep(.025)
     assert state in ("done","error"),state
     assert len(calls)==1
-    print("PASS failed durable admission executes zero requests; one admitted dispatch; restart stays interrupted; identity cannot be overwritten; never-claimed queue still progresses")
+    release.clear()
+    live={**request,"job_id":"live-cancel","trace_id":"trace-live-cancel"}
+    call("/api/v1/run_async",live,status=202)
+    for _ in range(200):
+      if len(calls)==2: break
+      time.sleep(.025)
+    assert len(calls)==2
+    call("/api/v1/job/cancel?job_id=live-cancel",{})
+    assert call("/api/v1/job?job_id=live-cancel")["cancel_requested"] is True
+    with sqlite3.connect(db) as c:
+      assert c.execute("SELECT cancel_requested FROM jobs WHERE job_id='live-cancel'").fetchone()[0]==1
+    # Keep provider blocked so normal completion does not race the stop callback.
+    for _ in range(200):
+      result=call("/api/v1/job?job_id=live-cancel")
+      if result["status"] in ("cancelled","error","done"): break
+      time.sleep(.025)
+    release.set()
+    assert result["status"]=="cancelled",result
+    print("PASS durable admission failure/crash/identity fences, never-claimed queue progress and live local-provider cancellation")
   finally:
     p.terminate();p.wait(timeout=10);release.set();provider.shutdown();log.close()
