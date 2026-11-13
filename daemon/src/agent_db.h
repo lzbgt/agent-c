@@ -500,6 +500,7 @@ class AgentDb {
   // Stable effect identity is independent of scheduler retries. Revision guards
   // reject stale receipts; attempt increases only when a dispatch is admitted.
   struct WorkflowEffectRow {
+    std::string effect_slot; // internal child namespace; empty retains legacy parent identity
     std::string effect_id;
     std::string workflow_id;
     std::string task_id;

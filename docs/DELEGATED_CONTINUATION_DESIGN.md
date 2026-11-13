@@ -1,55 +1,25 @@
-# Delegated transcript continuation: implementation contract
+# Sequential delegated transcript continuation
 
-Status: design only, 2026-11-13. No delegated continuation is implemented by this document.
-Baseline: 723f30e. Source work remains authorized; production/service/publication holds remain unchanged.
+Implemented source slice, schema v41. No deployment is implied.
 
-## Verified gap
+Sequential kind:delegate host-model children now use the bounded provider/tool transcript guard. Each ordered child has an internally generated delegate.v1:<index> slot under its real parent workflow/task. Labels do not determine identity. The persisted parent definition binds each child; current policy and session fences remain authoritative.
 
-- workflow_engine.cpp delegate branch calls run_request_to_json_internal_cancellable without a WorkflowModelEffect.
-- WorkflowModelEffect hashes only workflow_id/task_id into its mfx_ identity.
-- Schema version 40 retains workflow_effects UNIQUE(workflow_id, task_id) and a foreign key to the real parent workflow task.
-- A different effect hash alone cannot admit another child: prepare_workflow_effect uses INSERT ON CONFLICT DO NOTHING then reads by effect_id, so the second child fails.
-- Synthetic child task IDs break parent ownership and cancellation/reconciliation contracts. Do not use them.
-- Delegate accounting subtracts returned usage from fresh remaining grants, aggregates attempt output, and continues to later attempts after failure. It currently has no explicit stop-on-unresolved-child boundary.
-- Budget minimum admission precedes the delegate loop. Ordinary model checkpoints can lower fresh tool/step minimum to zero; child checkpoints are not currently considered.
-- Effect projection lists at most 128 rows and uses task_id when correlating task status. Multiple children require explicit projection semantics, not hidden truncation.
+Completed children replay saved receipts with zero fresh usage and no provider/tool calls. Verified incomplete transcripts replay exact saved decisions and tool receipts. Any child requiring continuation, reporting uncertainty, or observing cancellation stops the chain before later attempts, even with stop_on_ok:false or an earlier successful child. Uncertain effects never authorize a fallback model.
 
-## Coherent implementation slice
+## Limits
 
-1. Migrate v40 to a schema supporting an explicit effect slot under the unchanged real parent task foreign key.
-   Preserve existing effect IDs, receipts, revisions and ownership with an empty legacy slot. Unique key becomes workflow_id/task_id/slot.
-   Slot is generated internally from a protocol version plus immutable ordered attempt index, not arbitrary user attempt labels. Duplicate labels must not collide.
-   No request parameter may supply an effect ID, ownership tuple or slot.
+Fresh grants remain parent-attempt reservations. Each child receives only the remaining grant; returned fresh usage reduces subsequent availability. Lost reservation charges are not refunded. This slice does NOT bypass exhausted parent admission for replay-only delegates. Existing token, elapsed, step and tool limits remain conservative.
 
-2. Extend the model guard's constructor with an internal optional slot.
-   Empty slot retains byte-for-byte historical identity hashing. Nonempty slot participates in identity hashing; the original persisted parent specification and exact child definition bind the request hash.
-   Mutable remaining grants must not become the immutable definition. Runtime authority/configuration continues through the existing guard's scope checks.
+Only the existing host-model guard contracts are inherited. Direct chat, capsules, provider-native tools, unsupported preparation and parallel delegate macro semantics are unchanged. No exactly-once physical-effect guarantee or trusted host receipt resolver is added.
 
-3. Preflight the ordered children before fresh resource admission.
-   Completed child receipts can be reused without a provider/tool call. Checkpoints may progress only within newly admitted grants.
-   Fresh call consumption and historical original usage remain separate. Never credit cached usage as fresh spending, or treat lost reservations as refunded.
-   Exhausted grants may permit pure receipt replay but never a fresh call. Provider, tool, elapsed and token constraints retain conservative semantics.
+## Persistence
 
-4. Execute each eligible child with its own guard and current policy/session fences.
-   Parent cancellation and deadlines apply before every child and at each tool/provider boundary.
-   Any unresolved effect or integrity/session conflict stops the delegate chain immediately, even when stop_on_ok is false or an earlier child succeeded.
-   Do not silently try another model/provider after an uncertain host operation.
-   Define persistent-session chaining explicitly: an earlier completed child receipt may be reused without recommitting its conversation; a later child's session fence must still validate.
+The transactional v40→v41 migration preserves every old effect ID, receipt and revision with an empty legacy slot. Unique ownership becomes (workflow_id,task_id,effect_slot); the foreign key still references the real parent task. Schema version publication is in the same migration transaction. Empty-slot identity hashing is unchanged.
 
-5. Publish complete child-scoped evidence in API/UI.
-   Include stable internal slot/index and display label separately. Preserve parent task ownership.
-   Avoid silently omitting children through the current 128-row projection cap.
-   Recovery may observe original receipts; it cannot override a stopped parent or synthesize a successful outcome.
+Workflow effect metadata exposes child effect_slot. Projection is complete up to 4096 rows; larger projections fail explicitly instead of silently truncating.
 
-## Required verification before claiming support
+## Verification
 
-- v40 migration preserves every legacy effect receipt and foreign-key cascade; unchanged ordinary tasks replay old IDs.
-- Distinct child indexes under one parent admit distinct records; duplicate labels do not collide; changed parent/child definitions fail closed.
-- Real temporary-daemon crash after child one completed and during child two; restart reuses exact saved decisions/tool receipts without duplicate effects.
-- Unreceipted tool interruption prevents all later attempts, including stop_on_ok=false.
-- Finite grants, exhausted fresh budget, replay-only finish, conservative lost charges, independent workflow progress with one worker.
-- Cancellation/deadline, session edit/delete/recreate and partial conversation commit rejection.
-- Accurate parent aggregate result/usage and complete child-scoped API projection after restart.
-- Existing ordinary transcript, model session, image prefetch, budget and effect-reconciliation regressions.
+workflow_delegate_continuation_smoke.py uses a temporary authenticated one-worker daemon, loopback fake provider and synthetic subprocess writes. It checks three-child crash/restart, no repeated completed-child provider calls, receipted tool reuse, transient retry, unreceipted-operation stop before fallback, finite fresh usage and v40 legacy receipt migration. Existing model-effect/transcript and ordinary recovery regressions remain applicable.
 
-This is a substantial migration plus runtime integration, not a safe one-line wrapper. No exactly-once physical-effect guarantee is proposed.
+Further work: replay-only parent admission with exhausted fresh grants, comprehensive multi-child persistent-session edit qualification, additional preparation adapters and trusted host receipt reconciliation. These are not claimed by this slice.

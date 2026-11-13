@@ -174,11 +174,14 @@ bool terminal_tool(const std::string& name, const std::string& raw) {
      ((name == "shell_exec" || name == "proc_exec") && data["exit_code"].isInt() && data["exit_code"].asInt() < 0))));
 }
 }
-WorkflowModelEffect::WorkflowModelEffect(WorkflowEffectContext context, const std::string& task_request_json)
+WorkflowModelEffect::WorkflowModelEffect(WorkflowEffectContext context, const std::string& task_request_json,
+                                         const std::string& internal_slot)
     : context_(std::move(context)) {
   definition_.workflow_id = context_.workflow_id; definition_.task_id = context_.task_id; definition_.mode = "guarded";
   Json::Value identity(Json::arrayValue);
   identity.append(context_.workflow_id); identity.append(context_.task_id);
+  definition_.effect_slot = internal_slot;
+  if (!internal_slot.empty()) identity.append(internal_slot);
   const auto digest = hash(identity);
   if (!digest.empty()) definition_.effect_id = "mfx_" + digest.substr(7);
   Json::Value task, request;
@@ -203,6 +206,7 @@ void WorkflowModelEffect::annotate(Json::Value* out, bool replayed) const {
   effect["mode"] = row_.mode; effect["state"] = row_.state;
   effect["revision"] = Json::Int64(row_.revision); effect["attempt"] = Json::Int64(row_.attempt);
   effect["boundary"] = "model_run"; effect["replayed"] = replayed;
+  if (!row_.effect_slot.empty()) effect["effect_slot"] = row_.effect_slot;
   if (session_bound_) {
     effect["session_id"] = session_.session_id; effect["session_revision"] = Json::Int64(session_.revision);
     effect["session_committed"] = session_committed_;
@@ -279,7 +283,7 @@ Json::Value WorkflowModelEffect::preflight() {
   if (!context_.db->get_workflow_effect(definition_.effect_id, &row_, &found, &error)) return failure(error, true);
   if (!found) { checked_ = true; return Json::Value(); }
   if (row_.workflow_id != definition_.workflow_id || row_.task_id != definition_.task_id ||
-      row_.request_hash != definition_.request_hash || row_.mode != "guarded")
+      row_.request_hash != definition_.request_hash || row_.effect_slot != definition_.effect_slot || row_.mode != "guarded")
     return unresolved("model effect identity/request mismatch; changed run refused");
   if (row_.state == "prepared") { checked_ = true; return Json::Value(); }
   Json::Value receipt;

@@ -1,5 +1,7 @@
 # Durable effects and reconciliation
 
+Update: sequential delegated host-model children now have separate parent-owned transcript journals; see [bounded delegated support](DELEGATED_CONTINUATION_DESIGN.md). The historical exclusions below are superseded only for that documented slice, not for capsules, other preparation, parallel macros or universal replay.
+
 `kind: http_json` POST actions now have a durable effect boundary. The scheduler can recover a task after a crash without blindly repeating its external write. GET remains a read-only HTTP task. Device assignments have a separate atomic identity/admission/outbox boundary and signed original-result receipt resolver described in [DEVICE_ASSIGNMENTS.md](DEVICE_ASSIGNMENTS.md). Device recovery shares the reconcile endpoint but accepts no URL or caller-supplied outcome. Explicit deterministic `host_tool` actions have the guarded journal boundary below. Ordinary workflow model runs with host tools have a guarded boundary and, for ephemeral or session-backed ordinary tasks, verified transcript continuation described below. Capsules and delegated model sub-attempts do not acquire that guarantee merely by belonging to the same workflow.
 
 

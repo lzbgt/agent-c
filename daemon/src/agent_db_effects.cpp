@@ -8,9 +8,10 @@ namespace agentd {
 #if defined(AGENT_HAVE_SQLITE3)
 namespace {
 using Statement = std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)>;
-const char* columns = "effect_id,workflow_id,task_id,request_hash,mode,state,revision,attempt,created_unix_ms,updated_unix_ms,receipt_json,reconcile_url";
-const char* metadata_columns = "effect_id,workflow_id,task_id,request_hash,mode,state,revision,attempt,created_unix_ms,updated_unix_ms,'',reconcile_url";
+const char* columns = "effect_id,workflow_id,task_id,request_hash,mode,state,revision,attempt,created_unix_ms,updated_unix_ms,receipt_json,reconcile_url,effect_slot";
+const char* metadata_columns = "effect_id,workflow_id,task_id,request_hash,mode,state,revision,attempt,created_unix_ms,updated_unix_ms,'',reconcile_url,effect_slot";
 void read_row(sqlite3_stmt* stmt, AgentDb::WorkflowEffectRow* out) {
+  out->effect_slot = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 12));
   out->effect_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
   out->workflow_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
   out->task_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
@@ -68,14 +69,14 @@ bool AgentDb::prepare_workflow_effect(const WorkflowEffectRow& def, WorkflowEffe
     return false;
   }
   sqlite3_stmt* raw = nullptr;
-  const char* sql = "INSERT INTO workflow_effects(effect_id,workflow_id,task_id,request_hash,mode,state,created_unix_ms,updated_unix_ms,reconcile_url) VALUES(?,?,?,?,?,'prepared',?,?,?) ON CONFLICT DO NOTHING";
+  const char* sql = "INSERT INTO workflow_effects(effect_id,workflow_id,task_id,request_hash,mode,state,created_unix_ms,updated_unix_ms,reconcile_url,effect_slot) VALUES(?,?,?,?,?,'prepared',?,?,?,?) ON CONFLICT DO NOTHING";
   if (sqlite3_prepare_v2(db_, sql, -1, &raw, nullptr) != SQLITE_OK) { if (error) *error = agent_db_sqlite_err(db_); return false; }
   {
     Statement stmt(raw, sqlite3_finalize);
     const auto now = agent_db_unix_ms_now();
     if (!(agent_db_bind_text(raw,1,def.effect_id) && agent_db_bind_text(raw,2,def.workflow_id) &&
           agent_db_bind_text(raw,3,def.task_id) && agent_db_bind_text(raw,4,def.request_hash) &&
-          agent_db_bind_text(raw,5,def.mode) && agent_db_bind_i64(raw,6,now) && agent_db_bind_i64(raw,7,now) && agent_db_bind_text(raw,8,def.reconcile_url) && agent_db_step_done(raw))) {
+          agent_db_bind_text(raw,5,def.mode) && agent_db_bind_i64(raw,6,now) && agent_db_bind_i64(raw,7,now) && agent_db_bind_text(raw,8,def.reconcile_url) && agent_db_bind_text(raw,9,def.effect_slot) && agent_db_step_done(raw))) {
       if (error) *error = agent_db_sqlite_err(db_);
       return false;
     }
@@ -85,7 +86,7 @@ bool AgentDb::prepare_workflow_effect(const WorkflowEffectRow& def, WorkflowEffe
   Statement stmt(raw, sqlite3_finalize);
   if (!agent_db_bind_text(raw,1,def.effect_id) || sqlite3_step(raw) != SQLITE_ROW) { if (error) *error = "effect identity conflicts with an existing action"; return false; }
   read_row(raw, out);
-  if (out->workflow_id != def.workflow_id || out->task_id != def.task_id || out->request_hash != def.request_hash || out->mode != def.mode) {
+  if (out->workflow_id != def.workflow_id || out->task_id != def.task_id || out->effect_slot != def.effect_slot || out->request_hash != def.request_hash || out->mode != def.mode) {
     if (error) *error = "effect identity/request mismatch; refusing a changed write";
     return false;
   }
@@ -188,12 +189,13 @@ bool AgentDb::list_workflow_effects(const std::string& workflow_id, std::vector<
   std::lock_guard<std::mutex> lock(mu_);
   if (!db_ || !out) { if (error) *error = "database unavailable"; return false; }
   sqlite3_stmt* raw = nullptr;
-  const auto sql = std::string("SELECT ") + metadata_columns + " FROM workflow_effects WHERE workflow_id=? ORDER BY task_id LIMIT 128";
+  const auto sql = std::string("SELECT ") + metadata_columns + " FROM workflow_effects WHERE workflow_id=? ORDER BY task_id,effect_slot LIMIT 4097";
   if (sqlite3_prepare_v2(db_,sql.c_str(),-1,&raw,nullptr) != SQLITE_OK) { if (error) *error = agent_db_sqlite_err(db_); return false; }
   Statement stmt(raw,sqlite3_finalize);
   if (!agent_db_bind_text(raw,1,workflow_id)) return false;
   int rc;
   while ((rc = sqlite3_step(raw)) == SQLITE_ROW) { WorkflowEffectRow row; read_row(raw,&row); out->push_back(std::move(row)); }
+  if (out->size() > 4096) { out->clear(); if (error) *error = "effect projection exceeds bounded limit"; return false; }
   if (rc != SQLITE_DONE) { if (error) *error = agent_db_sqlite_err(db_); return false; }
   return true;
 #endif

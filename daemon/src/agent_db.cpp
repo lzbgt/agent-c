@@ -107,7 +107,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 40;
+  const int kSchemaVersion = 41;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -1048,6 +1048,32 @@ CREATE TABLE IF NOT EXISTS workflow_delay_timers(
 )SQL";
     if (!exec_locked(schema_v40, out_error)) return false;
     cur_ver = 40;
+  }
+
+
+  if (cur_ver < 41) {
+    const char* schema_v41 = R"SQL(
+BEGIN IMMEDIATE;
+CREATE TABLE workflow_effects_v41(
+ effect_id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL, task_id TEXT NOT NULL,
+ request_hash TEXT NOT NULL, mode TEXT NOT NULL CHECK(mode IN ('guarded','idempotent')),
+ state TEXT NOT NULL CHECK(state IN ('prepared','dispatching','completed','unknown')),
+ revision INTEGER NOT NULL DEFAULT 0, attempt INTEGER NOT NULL DEFAULT 0,
+ created_unix_ms INTEGER NOT NULL, updated_unix_ms INTEGER NOT NULL,
+ receipt_json TEXT NOT NULL DEFAULT '', reconcile_url TEXT NOT NULL DEFAULT '',
+ effect_slot TEXT NOT NULL DEFAULT '',
+ UNIQUE(workflow_id,task_id,effect_slot),
+ FOREIGN KEY(workflow_id,task_id) REFERENCES workflow_tasks(workflow_id,task_id) ON DELETE CASCADE
+);
+INSERT INTO workflow_effects_v41 SELECT *, '' FROM workflow_effects;
+DROP TABLE workflow_effects;
+ALTER TABLE workflow_effects_v41 RENAME TO workflow_effects;
+CREATE INDEX workflow_effects_by_workflow ON workflow_effects(workflow_id,task_id);
+INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version','41');
+COMMIT;
+)SQL";
+    if (!exec_locked(schema_v41, out_error)) { exec_locked("ROLLBACK", nullptr); return false; }
+    cur_ver = 41;
   }
 
   // Record schema version.

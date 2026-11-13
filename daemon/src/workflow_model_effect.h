@@ -12,7 +12,8 @@ namespace agentd {
 // provider/tool records. Persistent conversations use durable revision fences.
 class WorkflowModelEffect {
  public:
-  WorkflowModelEffect(WorkflowEffectContext context, const std::string& task_request_json);
+  WorkflowModelEffect(WorkflowEffectContext context, const std::string& task_request_json,
+                      const std::string& internal_slot = "");
   Json::Value preflight();
   using Authorize = std::function<agent_status_t(const char*, const char*)>;
   agent_tool_executor_t wrap(agent_tool_executor_t base, Authorize authorize = {});

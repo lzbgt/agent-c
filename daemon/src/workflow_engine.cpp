@@ -671,6 +671,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         Json::Value arr(Json::arrayValue);
 
         bool any_ok = false;
+        bool child_stopped = false;
         std::string chosen_id;
         std::string chosen_text;
         std::string last_err;
@@ -768,17 +769,18 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 	          attempt_clamp.total_tokens_remaining = remaining_tokens_local;
 	          (void)workflow_apply_run_budget_clamps(&areq2, attempt_clamp, nullptr);
 	          const std::string attempt_body = json_stringify_compact(areq2);
-	          Json::Value r = run_request_to_json_internal_cancellable(
-	            cfg,
-	            ocfg,
-	            db_,
-            tool_ext_or_null_,
-            sessions_root_dir_,
-            attempt_body,
-            nullptr,
-            workflow_run_should_cancel,
-            &cancel_ctx
-          );
+          // Stable index is internal; duplicate caller labels cannot alias receipts.
+          WorkflowModelEffect child_effect(model_context, task.request_json,
+                                           "delegate.v1:" + std::to_string(i));
+          child_effect.set_fresh_budget(wf_limits.max_tool_calls_total > 0, remaining_local,
+                                       wf_limits.max_steps_total > 0, remaining_steps_local);
+          Json::Value r = child_effect.preflight();
+          if (r.isNull()) {
+            r = run_request_to_json_internal_cancellable(
+              cfg, ocfg, db_, tool_ext_or_null_, sessions_root_dir_, attempt_body,
+              nullptr, workflow_run_should_cancel, &cancel_ctx, &child_effect);
+            r = child_effect.finish(std::move(r));
+          }
 
           std::string expect_err2;
           bool expect_ok2 = true;
@@ -866,8 +868,19 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
           if (r.isObject() && r.isMember("http_status") && (r["http_status"].isInt() || r["http_status"].isInt64())) {
             row["http_status"] = r["http_status"];
           }
+          if (r.isMember("effect")) row["effect"] = r["effect"];
           arr.append(row);
 
+          // Never switch to a later attempt while an earlier one needs exact
+          // continuation or has uncertain effects, even after earlier success.
+          if (r["needs_input"] == true || r["retryable"] == true || r["cancelled"] == true ||
+              r["effect"]["resume_available"] == true) {
+            child_stopped = true;
+            for (const char* key : {"error", "retryable", "retry_in_ms", "needs_input", "blocker", "effect", "cancelled"})
+              if (r.isMember(key)) out[key] = r[key];
+            out["ok"] = false;
+            break;
+          }
           if (!err.empty()) last_err = err;
           if (!expect_ok2 && last_err.empty()) last_err = expect_err2;
 
@@ -894,6 +907,8 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 
 	        if (out.isMember("cancelled") && out["cancelled"].isBool() && out["cancelled"].asBool()) {
 	          // already populated
+	        } else if (child_stopped) {
+            out["ok"] = false; // Exact child continuation or uncertainty is authoritative.
 	        } else if (any_ok) {
 	          out["ok"] = true;
           out["assistant_text"] = chosen_text;
