@@ -1,5 +1,6 @@
 import React from "react";
 import WorkflowEffectsSection from "./WorkflowEffectsSection";
+import WorkflowBudgetSection from "./WorkflowBudgetSection";
 import WorkflowDecisionsSection from "./WorkflowDecisionsSection";
 import DeviceReceiptButton from "./DeviceReceiptButton";
 import type { ApiAuth } from "../../api/auth";
@@ -194,37 +195,7 @@ export default function WorkflowDetailSection(props: WorkflowDetailSectionProps)
       <WorkflowEffectsSection key={summary.workflow_id} workflowId={summary.workflow_id} effects={props.detail.effects ?? []}
         tasks={props.tasks} controls={props.effectControls} onReload={props.onReloadWorkflow} />
 
-      {(props.workflowLimits || props.workflowUsage || props.workflowRemaining) && (
-        <div className="rounded-md border border-white/10 bg-black/30 p-3">
-          <div className="text-xs font-semibold text-white/70">Budgets</div>
-          <div className="mt-2 grid gap-2 text-[11px] text-white/70">
-            {props.workflowLimits ? (
-              <div>
-                <div className="text-white/50">limits</div>
-                <pre className="mt-1 max-h-40 overflow-auto rounded bg-black/40 p-2 text-[10px] text-white/70">
-                  {JSON.stringify(props.workflowLimits, null, 2)}
-                </pre>
-              </div>
-            ) : null}
-            {props.workflowUsage ? (
-              <div>
-                <div className="text-white/50">usage</div>
-                <pre className="mt-1 max-h-40 overflow-auto rounded bg-black/40 p-2 text-[10px] text-white/70">
-                  {JSON.stringify(props.workflowUsage, null, 2)}
-                </pre>
-              </div>
-            ) : null}
-            {props.workflowRemaining ? (
-              <div>
-                <div className="text-white/50">remaining</div>
-                <pre className="mt-1 max-h-40 overflow-auto rounded bg-black/40 p-2 text-[10px] text-white/70">
-                  {JSON.stringify(props.workflowRemaining, null, 2)}
-                </pre>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      )}
+      <WorkflowBudgetSection detail={props.detail} status={summary.status} stopped={summary.cancel_requested === true} />
 
       {props.detail.result ? (
         <div className="rounded-md border border-white/10 bg-black/30 p-3">

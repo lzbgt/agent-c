@@ -39,9 +39,15 @@ The runtime records observed overages in each result's `workflow_budget.overrun`
 - `uncertain`: the lost-grant portion of charged usage.
 - `active_attempts` and `uncertain_attempts`: reservation counts.
 
-Keys within those vectors match the workflow limit names. `workflow_remaining` reports `max(0, limit - charged - held)`. Existing `workflow_usage` remains observed cumulative task telemetry, so it does not mislabel lost grants as provider invoices. Result evidence contains granted/observed amounts and overrun names, with technical data kept out of primary chat.
+Keys within those vectors match the workflow limit names. `workflow_remaining` reports `max(0, limit - charged - held)`. `workflow_usage` contains cumulative task telemetry; its token total can include conservative charges for missing provider usage. It is not a provider invoice. Individual results retain reported `total_tokens` separately from `token_budget_charge` and mark `token_usage_incomplete`. Result evidence contains granted/observed amounts and overrun names, with technical data kept out of primary chat.
 
 Schema v35 adds the reservation table and an active-state index; no task data transformation or compatibility layer is introduced. Include it in DB backup/erase procedures. The implementation uses WAL and `synchronous=FULL`; actual process-kill tests establish checked host recovery, not hardware power-loss certification.
+
+## User-facing resource status
+
+Run details show **Workflow resources**: configured limits, charged amounts, active reservations, the uncertain portion already included in charges, and server-reported available capacity. Exhausted budgets, capacity held by active work and lost-attempt uncertainty have distinct explanations. Missing accounting is unavailable, never inferred as zero. Stopped runs remain stopped even when capacity remains.
+
+When loaded task results flag incomplete provider usage, the panel explains the conservative token charge. It does not fetch secrets, issue execution requests, refund charges or offer a blind retry. Raw budget metadata remains in a collapsed technical view. `ui/e2e/workflow_budget_visibility.spec.ts` covers actual workflow-page transitions, stale warning removal, mobile width and zero workflow/execution mutation requests.
 
 ## Reproduce
 
