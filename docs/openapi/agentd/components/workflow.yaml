@@ -2030,11 +2030,16 @@ WorkflowSop:
           id: { type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_.:-]+$' }
           title: { type: string, maxLength: 256 }
           mode: { type: string, enum: [sequence, parallel], default: sequence }
+          repeat_count:
+            type: integer
+            minimum: 1
+            maximum: 32
+            description: Optional, defaults to one. Fixed intentional repetition, not retry. Each iteration waits for all prior iteration terminal actions. Counts greater than one expand task IDs to source_id:repeat:N (one-based); references must use exact expanded IDs and are not rewritten. Expanded IDs must fit 128 characters and remain globally unique. All expanded actions count toward the 128-task limit. No loop condition or exactly-once effect guarantee.
           actions:
             type: array
             minItems: 1
             maxItems: 128
-            description: Existing WorkflowTaskSpec objects with globally unique task_id; dependencies are generated. Submit-time macros, explicit depends_on and allow_error=true are rejected. Max 128 actions across all stages. Unknown action fields are rejected.
+            description: Existing WorkflowTaskSpec objects with globally unique task_id; dependencies are generated. Submit-time macros, explicit depends_on and allow_error=true are rejected. Max 128 expanded actions across all stages, including repetitions. Unknown action fields are rejected.
             items:
               $ref: '#/components/schemas/WorkflowTaskSpec'
 

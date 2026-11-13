@@ -57,6 +57,36 @@ int main() {
   bad = example(); bad["sop"]["stages"][0]["actions"] = Json::Value(Json::arrayValue);
   for (int i = 0; i < 129; ++i) { Json::Value t; t["task_id"] = "a" + std::to_string(i); bad["sop"]["stages"][0]["actions"].append(t); }
   rejects(bad);
+  auto repeated = example();
+  repeated["sop"]["stages"][1]["repeat_count"] = 3;
+  check(agentd::workflow_compile_sop(&repeated, &error), error.c_str());
+  const auto& rt = repeated["tasks"];
+  check(rt.size() == 9, "repeat expands distinct tasks");
+  check(rt[2]["task_id"] == "c:repeat:1" && rt[6]["task_id"] == "c:repeat:3", "stable one-based iteration IDs");
+  check(rt[4]["depends_on"].size() == 2 && rt[4]["depends_on"][0] == "c:repeat:1" &&
+        rt[4]["depends_on"][1] == "d:repeat:1", "iteration joins entire parallel predecessor");
+  check(rt[8]["depends_on"][0] == "c:repeat:3" && rt[8]["depends_on"][1] == "d:repeat:3", "next stage joins final iteration");
+  check(repeated["sop_compiled"]["stages"][1]["iterations"].size() == 3 &&
+        repeated["sop_compiled"]["stages"][1]["task_ids"].size() == 6, "manifest exposes iteration mapping");
+  auto sequence = example();
+  sequence["sop"]["stages"][0]["repeat_count"] = 2;
+  check(agentd::workflow_compile_sop(&sequence, &error), error.c_str());
+  check(sequence["tasks"][2]["depends_on"][0] == "b:repeat:1" &&
+        sequence["tasks"][3]["depends_on"][0] == "a:repeat:2", "sequential iteration barrier");
+  auto once = example(); once["sop"]["stages"][0]["repeat_count"] = 1;
+  check(agentd::workflow_compile_sop(&once, &error) && once["tasks"] == tasks, "explicit one preserves original IDs");
+  for (const auto& invalid : {Json::Value(0), Json::Value(-1), Json::Value(33), Json::Value(1.5),
+                             Json::Value(true), Json::Value("2"), Json::Value()}) {
+    bad = example(); bad["sop"]["stages"][0]["repeat_count"] = invalid; rejects(bad);
+  }
+  bad = example(); bad["sop"]["stages"][0]["repeat_count"] = 32;
+  bad["sop"]["stages"][1]["repeat_count"] = 32; rejects(bad); // 129 expanded tasks
+  bad = example(); bad["sop"]["stages"][0]["repeat_count"] = 2;
+  bad["sop"]["stages"][1]["actions"][0]["task_id"] = "a:repeat:1"; rejects(bad);
+  bad = example(); bad["sop"]["stages"][0]["repeat_count"] = 2;
+  bad["sop"]["stages"][0]["actions"][0]["task_id"] = std::string(128, 'x'); rejects(bad);
+  auto repeat_same = example(); repeat_same["sop"]["stages"][1]["repeat_count"] = 3;
+  check(agentd::workflow_compile_sop(&repeat_same, &error) && repeat_same == repeated, "repeat compilation deterministic");
   Json::Value legacy(Json::objectValue); legacy["tasks"] = tasks;
   check(agentd::workflow_compile_sop(&legacy, &error) && !legacy.isMember("sop_compiled"), "legacy submissions pass through");
 }

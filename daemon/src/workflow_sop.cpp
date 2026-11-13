@@ -54,7 +54,7 @@ bool workflow_compile_sop(Json::Value* args, std::string* error) {
   manifest["id"] = sop["id"];
   manifest["version"] = sop["version"];
   manifest["stages"] = Json::Value(Json::arrayValue);
-  std::unordered_set<std::string> stage_ids, task_ids;
+  std::unordered_set<std::string> stage_ids, task_ids, source_task_ids;
   std::vector<std::string> previous;
   // Submit-time macros are excluded: their derived IDs would change stage boundaries.
   const std::unordered_set<std::string> kinds = {
@@ -64,7 +64,7 @@ bool workflow_compile_sop(Json::Value* args, std::string* error) {
     "edge_invoke", "edge_wait_sensor", "delegate"
   };
   for (const auto& stage : stages) {
-    if (!stage.isObject() || !fields_allowed(stage, {"id", "title", "mode", "actions"}) || !safe_id(stage["id"])) return fail("stage requires an id and actions; unknown stage fields are rejected");
+    if (!stage.isObject() || !fields_allowed(stage, {"id", "title", "mode", "repeat_count", "actions"}) || !safe_id(stage["id"])) return fail("stage requires an id and actions; unknown stage fields are rejected");
     const std::string stage_id = stage["id"].asString();
     if (!stage_ids.insert(stage_id).second) return fail("duplicate stage id: " + stage_id);
     if (stage.isMember("title") && (!stage["title"].isString() || stage["title"].asString().size() > 256)) return fail("invalid stage title: " + stage_id);
@@ -73,33 +73,56 @@ bool workflow_compile_sop(Json::Value* args, std::string* error) {
     if (mode != "sequence" && mode != "parallel") return fail("stage mode must be sequence or parallel");
     const auto& actions = stage["actions"];
     if (!actions.isArray() || actions.empty()) return fail("stage actions must be non-empty: " + stage_id);
+    int repeat_count = 1;
+    if (stage.isMember("repeat_count")) {
+      const auto& count = stage["repeat_count"];
+      if (!count.isIntegral() || count.isBool() || !count.isInt64() ||
+          count.asInt64() < 1 || count.asInt64() > 32) return fail("repeat_count must be an integer from 1 to 32: " + stage_id);
+      repeat_count = count.asInt();
+    }
+    if (actions.size() > (128 - tasks.size()) / repeat_count) return fail("too many expanded actions (max 128)");
     Json::Value stage_manifest(Json::objectValue);
     stage_manifest["id"] = stage_id;
     stage_manifest["mode"] = mode;
     if (stage.isMember("title")) stage_manifest["title"] = stage["title"];
     stage_manifest["task_ids"] = Json::Value(Json::arrayValue);
-    std::vector<std::string> current;
-    for (const auto& action : actions) {
-      if (tasks.size() >= 128) return fail("too many actions (max 128)");
-      if (!action.isObject() || !safe_id(action["task_id"])) return fail("actions require globally unique task_id strings");
-      const std::string id = action["task_id"].asString();
-      if (!task_ids.insert(id).second) return fail("duplicate action task_id: " + id);
-      if (action.isMember("depends_on") || action.isMember("id")) return fail("action dependencies are generated from stages: " + id);
-      if (!fields_allowed(action, {"task_id", "kind", "request", "allow_error", "priority", "max_attempts", "expect", "inputs", "delay_ms", "due_unix_ms", "result", "decision", "host_tool", "http_json", "agentd_call", "aggregate", "capsule", "memory_put", "memory_consolidate", "memory_search", "memory_timeline", "memory_structured_query", "memory_correlate", "memory_query", "experience_record", "edge", "edge_wait_sensor", "delegate"})) return fail("unsupported action field: " + id);
-      if (action.isMember("allow_error") && (!action["allow_error"].isBool() || action["allow_error"].asBool())) return fail("allow_error is unsupported in SOP v1: " + id);
-      if (action.isMember("kind") && (!action["kind"].isString() || !kinds.count(action["kind"].asString()))) return fail("unsupported action kind: " + id);
-      Json::Value task = action;
-      task["depends_on"] = Json::Value(Json::arrayValue);
-      if (mode == "sequence" && !current.empty()) {
-        task["depends_on"].append(current.back());
-      } else {
-        for (const auto& dep : previous) task["depends_on"].append(dep);
-      }
-      tasks.append(task);
-      current.push_back(id);
-      stage_manifest["task_ids"].append(id);
+    if (repeat_count > 1) {
+      stage_manifest["repeat_count"] = repeat_count;
+      stage_manifest["iterations"] = Json::Value(Json::arrayValue);
     }
-    previous = mode == "sequence" ? std::vector<std::string>{current.back()} : current;
+    for (int iteration = 1; iteration <= repeat_count; ++iteration) {
+      Json::Value iteration_manifest(Json::objectValue);
+      iteration_manifest["index"] = iteration;
+      iteration_manifest["task_ids"] = Json::Value(Json::arrayValue);
+      std::vector<std::string> current;
+      for (const auto& action : actions) {
+        if (tasks.size() >= 128) return fail("too many actions (max 128)");
+        if (!action.isObject() || !safe_id(action["task_id"])) return fail("actions require globally unique task_id strings");
+        const std::string source_id = action["task_id"].asString();
+        if (iteration == 1 && !source_task_ids.insert(source_id).second) return fail("duplicate action task_id: " + source_id);
+        const std::string id = repeat_count == 1 ? source_id : source_id + ":repeat:" + std::to_string(iteration);
+        if (!safe_id(Json::Value(id))) return fail("expanded task_id exceeds 128 bytes: " + source_id);
+        if (!task_ids.insert(id).second) return fail("duplicate expanded task_id: " + id);
+        if (action.isMember("depends_on") || action.isMember("id")) return fail("action dependencies are generated from stages: " + id);
+        if (!fields_allowed(action, {"task_id", "kind", "request", "allow_error", "priority", "max_attempts", "expect", "inputs", "delay_ms", "due_unix_ms", "result", "decision", "host_tool", "http_json", "agentd_call", "aggregate", "capsule", "memory_put", "memory_consolidate", "memory_search", "memory_timeline", "memory_structured_query", "memory_correlate", "memory_query", "experience_record", "edge", "edge_wait_sensor", "delegate"})) return fail("unsupported action field: " + id);
+        if (action.isMember("allow_error") && (!action["allow_error"].isBool() || action["allow_error"].asBool())) return fail("allow_error is unsupported in SOP v1: " + id);
+        if (action.isMember("kind") && (!action["kind"].isString() || !kinds.count(action["kind"].asString()))) return fail("unsupported action kind: " + id);
+        Json::Value task = action;
+        task["task_id"] = id;
+        task["depends_on"] = Json::Value(Json::arrayValue);
+        if (mode == "sequence" && !current.empty()) {
+          task["depends_on"].append(current.back());
+        } else {
+          for (const auto& dep : previous) task["depends_on"].append(dep);
+        }
+        tasks.append(task);
+        current.push_back(id);
+        stage_manifest["task_ids"].append(id);
+        iteration_manifest["task_ids"].append(id);
+      }
+      previous = mode == "sequence" ? std::vector<std::string>{current.back()} : current;
+      if (repeat_count > 1) stage_manifest["iterations"].append(iteration_manifest);
+    }
     manifest["stages"].append(stage_manifest);
   }
   Json::StreamWriterBuilder writer;

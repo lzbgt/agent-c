@@ -157,13 +157,40 @@ with tempfile.TemporaryDirectory(prefix="sop-registry-") as temp:
         assert done["spec"]["sop_ref"]["definition_hash"] == second["definition_hash"]
         assert all(t["status"] == "done" for t in done["tasks"])
 
+        repeated = sop("repeated", 1000)
+        repeated["stages"][0]["repeat_count"] = 3
+        call("/api/v1/workflow/sops", {"sop": repeated}, expected=201)
+        repeated_id = submit({"id": "inspection", "version": "repeated"})
+        wait_for(lambda: any(t["task_id"] == "wait:repeat:1" and t.get("wait", {}).get("kind") == "delay"
+                            for t in detail(repeated_id)["tasks"]), "repeat timer not armed")
+        before_restart = detail(repeated_id)["spec"]
+        stop()
+        start()
+        repeated_done = wait_for(lambda: (d if d["workflow"]["status"] == "done" else None)
+            if (d := detail(repeated_id)) else None, "repeated SOP did not recover")
+        assert repeated_done["spec"] == before_restart
+        assert len(repeated_done["tasks"]) == 4
+        assert all(t["status"] == "done" for t in repeated_done["tasks"])
+        repeated["version"] = "repeated-cancel"
+        repeated["stages"][0]["actions"][0]["delay_ms"] = 30000
+        call("/api/v1/workflow/sops", {"sop": repeated}, expected=201)
+        cancelled_repeat = submit({"id": "inspection", "version": "repeated-cancel"})
+        wait_for(lambda: any(t.get("wait", {}).get("kind") == "delay" for t in detail(cancelled_repeat)["tasks"]), "repeat cancel timer not armed")
+        call("/api/v1/workflow/cancel", {"workflow_id": cancelled_repeat})
+        wait_for(lambda: detail(cancelled_repeat)["workflow"]["status"] == "cancelled", "repeat cancellation missing")
+        stop()
+        start()
+        assert detail(cancelled_repeat)["workflow"]["status"] == "cancelled"
+        assert all(t["status"] != "done" for t in detail(cancelled_repeat)["tasks"])
+        print("Repeated SOP restart and cancellation checks passed")
+
         # Save validates structure, never grants task execution or loosens normal validation.
         invalid = sop("invalid-action", "not-a-duration")
         call("/api/v1/workflow/sops", {"sop": invalid}, expected=201)
         call("/api/v1/workflow/submit", {"sop_ref": {"id": "inspection", "version": "invalid-action"}}, expected=400)
         stop()
         with sqlite3.connect(database) as db:
-            assert db.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == "40"
+            assert db.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == "41"
             assert db.execute("SELECT count(*) FROM workflow_sop_definitions WHERE sop_json LIKE '%fixture-do-not-store%'").fetchone()[0] == 0
             db.execute("UPDATE workflow_sop_definitions SET sop_json='{}' WHERE version='1'")
         start()

@@ -30,7 +30,7 @@ export default function WorkflowSopEditor({ value, onChange }: { value: string; 
     while (ids.includes(prefix + n)) n++;
     return prefix + n;
   };
-  const actionCount = sop.stages.reduce((n: number, s: Obj) => n + s.actions.length, 0);
+  const actionCount = sop.stages.reduce((n: number, s: Obj) => n + s.actions.length * (Number.isInteger(s.repeat_count) && s.repeat_count >= 1 ? s.repeat_count : 1), 0);
   return <section className="mt-3 min-w-0 space-y-3 text-sm" aria-label="Process builder">
     <p>Stages run in order. Choose whether actions within each stage run together or one at a time. Editing does not run anything.</p>
     <div className="grid min-w-0 gap-2 sm:grid-cols-3">
@@ -39,12 +39,18 @@ export default function WorkflowSopEditor({ value, onChange }: { value: string; 
       <label>Version<input className={field} value={sop.version || ""} onChange={e => update(s => { s.version = e.target.value; })} /></label>
     </div>
     <p className="text-xs text-white/60">Saved versions are immutable. Use a new version for changed processes. IDs use letters, digits, underscore or hyphen.</p>
+    <p role="status">{actionCount} expanded actions (maximum 128).{actionCount > 128 ? " Reduce repetitions or actions before submitting." : ""}</p>
     {sop.stages.map((stage: Obj, i: number) => <fieldset key={i} className="min-w-0 space-y-2 rounded border border-white/15 p-3">
       <legend>Stage {i + 1}</legend>
       <label className="block">Stage name<input className={field} value={stage.title || ""} onChange={e => update(s => { s.stages[i].title = e.target.value; })} /></label>
       <label className="block">Action order<select aria-label="Action order" className={field} value={stage.mode || "sequence"} onChange={e => update(s => { s.stages[i].mode = e.target.value; })}>
         <option value="sequence">One at a time</option><option value="parallel">Together</option>
       </select></label>
+      <label className="block">Stage repetitions<input type="number" min="1" max="32" step="1" className={field} value={stage.repeat_count ?? 1} onChange={e => {
+        const count = Number(e.target.value);
+        if (Number.isInteger(count) && count >= 1 && count <= 32) update(s => { s.stages[i].repeat_count = count; });
+      }} /></label>
+      <p className="text-xs text-white/60">Each repetition waits for the previous one to finish. This intentionally repeats every action, including side effects; it is not a retry.</p>
       <div className="flex flex-wrap gap-2">
         <button type="button" className={button} disabled={i === 0} onClick={() => update(s => { [s.stages[i - 1], s.stages[i]] = [s.stages[i], s.stages[i - 1]]; })}>Move stage up</button>
         <button type="button" className={button} disabled={i === sop.stages.length - 1} onClick={() => update(s => { [s.stages[i + 1], s.stages[i]] = [s.stages[i], s.stages[i + 1]]; })}>Move stage down</button>
@@ -65,7 +71,7 @@ export default function WorkflowSopEditor({ value, onChange }: { value: string; 
           <button type="button" className={button} disabled={stage.actions.length <= 1} onClick={() => update(s => { s.stages[i].actions.splice(j, 1); })}>Remove action</button>
         </div>
       </fieldset>)}
-      <label className="block">Add action<select aria-label="Add action" className={field} value="" disabled={actionCount >= 128} onChange={e => {
+      <label className="block">Add action<select aria-label="Add action" className={field} value="" disabled={actionCount + (stage.repeat_count ?? 1) > 128} onChange={e => {
         const kind = e.target.value;
         if (!kind) return;
         update(s => {

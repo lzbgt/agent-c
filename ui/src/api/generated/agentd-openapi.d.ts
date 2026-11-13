@@ -11986,7 +11986,9 @@ export interface components {
                  * @enum {string}
                  */
                 mode: "sequence" | "parallel";
-                /** @description Existing WorkflowTaskSpec objects with globally unique task_id; dependencies are generated. Submit-time macros, explicit depends_on and allow_error=true are rejected. Max 128 actions across all stages. Unknown action fields are rejected. */
+                /** @description Optional, defaults to one. Fixed intentional repetition, not retry. Each iteration waits for all prior iteration terminal actions. Counts greater than one expand task IDs to source_id:repeat:N (one-based); references must use exact expanded IDs and are not rewritten. Expanded IDs must fit 128 characters and remain globally unique. All expanded actions count toward the 128-task limit. No loop condition or exactly-once effect guarantee. */
+                repeat_count?: number;
+                /** @description Existing WorkflowTaskSpec objects with globally unique task_id; dependencies are generated. Submit-time macros, explicit depends_on and allow_error=true are rejected. Max 128 expanded actions across all stages, including repetitions. Unknown action fields are rejected. */
                 actions: components["schemas"]["WorkflowTaskSpec"][];
             }[];
         };

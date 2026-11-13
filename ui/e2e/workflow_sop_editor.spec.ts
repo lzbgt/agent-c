@@ -79,6 +79,7 @@ test("guided SOP authoring preserves advanced data and submits only explicitly",
   await page.getByLabel("Process name", { exact: true }).fill("Factory inspection");
   await page.getByLabel("Version", { exact: true }).fill("2");
   await page.getByLabel("Action order", { exact: true }).first().selectOption("parallel");
+  await page.getByLabel("Stage repetitions", { exact: true }).first().fill("3");
   await page.getByLabel("Add action", { exact: true }).first().selectOption("llm");
   await page.getByLabel("Instructions", { exact: true }).fill("Summarize the inspection.");
   await page.getByLabel("Add action", { exact: true }).first().selectOption("decision");
@@ -88,6 +89,7 @@ test("guided SOP authoring preserves advanced data and submits only explicitly",
   await page.getByRole("button", { name: "Move stage up", exact: true }).last().click();
   const draft = JSON.parse(await raw.inputValue());
   expect(draft.priority).toBe(7);
+  expect(draft.sop.stages[0].repeat_count).toBe(3);
   expect(draft.sop.stages[0].actions[0].result).toEqual(original.sop.stages[0].actions[0].result);
   expect(draft.sop.stages[0].actions[1]).toEqual(original.sop.stages[0].actions[1]);
   expect(draft.sop.stages[0].actions[2].request).toEqual({ prompt: "Summarize the inspection.", tools: "none" });

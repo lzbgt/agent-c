@@ -40,5 +40,19 @@ for invalid in ({'sop':sop,'tasks':[]}, {'sop':dict(sop, approval=True)}):
     try: call('/api/v1/workflow/submit',invalid)
     except urllib.error.HTTPError as e: assert e.code == 400
     else: raise AssertionError('invalid SOP accepted')
-print('SOP submit, stage barriers, persistence and dedupe passed')
+sop['stages'][1]['repeat_count'] = 3
+payload = {'sop':sop, 'idempotency_key':'sop-repeat-smoke'}
+wid = call('/api/v1/workflow/submit', payload)['workflow_id']
+assert call('/api/v1/workflow/submit', payload).get('deduped') is True
+for _ in range(100):
+    detail = call('/api/v1/workflow?workflow_id='+wid+'&include_tasks=1&include_spec=1')
+    if detail['workflow']['status'] in ('done','error','cancelled'): break
+    time.sleep(.1)
+assert detail['workflow']['status'] == 'done', detail
+assert len(detail['tasks']) == 8
+tasks = {t['task_id']:t for t in detail['spec']['tasks']}
+assert tasks['b:repeat:2']['depends_on'] == ['b:repeat:1','c:repeat:1']
+assert tasks['d']['depends_on'] == ['b:repeat:3','c:repeat:3']
+assert len(detail['spec']['sop_compiled']['stages'][1]['iterations']) == 3
+print('SOP submit, repeated stage barriers, persistence and dedupe passed')
 PY
