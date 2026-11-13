@@ -345,6 +345,27 @@ Semantics:
 - Produces a deterministic result object with `ok=true`, plus any merged keys from `result`.
 - If `result.assistant_text` is omitted, `assistant_text` defaults to `"delay:<delay_ms>"`.
 
+### Absolute-time durable timer (`kind:"timer"`)
+
+Use an absolute timer when a process must not continue before a particular calendar time:
+
+```json
+{
+  "task_id": "release_window",
+  "kind": "timer",
+  "due_unix_ms": 1893456000000,
+  "result": { "assistant_text": "Release window reached" }
+}
+```
+
+- `due_unix_ms` is a required integer Unix epoch timestamp in milliseconds, from `1` through `253402300799999` (end of year 9999 UTC). Strings, booleans, fractions, missing values and out-of-range timestamps are rejected before workflow creation.
+- Dependencies still gate eligibility. If the timestamp has already passed when dependencies finish, the timer completes immediately; it does not add a new relative delay.
+- Absolute timers use the same atomic persisted wait as delay tasks, release workers/attempts/budget while waiting, and retain the exact timestamp across restart. They are not capped at the legacy delay task's ten-minute duration.
+- Host wall-clock adjustments affect when a timer becomes due. Completion is on a scheduler pass, not a real-time delivery guarantee. Cancellation and workflow deadlines remain effective.
+- `wait.kind` is `timer` in queued task metadata. Completion returns `kind:"timer"`, `due_unix_ms` and `ok:true`; supplied result fields cannot override these three reserved keys.
+- Timer actions are allowed in inline and immutable saved SOP versions. A saved absolute timestamp is intentionally fixed; recurring runs needing a different timestamp require an explicitly different definition, not silent rebasing.
+- This timer is not an external signal, a human approval or permission for downstream effects.
+
 ### Deterministic outbound HTTP JSON task (`kind:"http_json"`) (v1.8)
 
 For broker/agent interop and other cross-service collaboration, workflows can run a deterministic outbound HTTP task.

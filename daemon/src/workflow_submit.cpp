@@ -439,6 +439,7 @@ void workflow_submit_handle(
 	    const bool is_edge = (kind == "edge_invoke");
 	    const bool is_edge_wait_sensor = (kind == "edge_wait_sensor");
 	    const bool is_delay = (kind == "delay");
+        const bool is_timer = (kind == "timer");
 	    const bool is_delegate = (kind == "delegate");
 	    const bool is_experience_record = (kind == "experience_record");
 	    const bool is_memory_put = (kind == "memory_put");
@@ -453,7 +454,7 @@ void workflow_submit_handle(
 	    const bool is_http_json = (kind == "http_json");
 	    const bool is_agentd_call = (kind == "agentd_call");
 	    const bool is_special =
-	      is_avm || is_aggregate || is_edge || is_edge_wait_sensor || is_delay || is_delegate || is_experience_record || is_memory_put || is_memory_search ||
+	      is_avm || is_aggregate || is_edge || is_edge_wait_sensor || is_delay || is_timer || is_delegate || is_experience_record || is_memory_put || is_memory_search ||
 	      is_memory_timeline || is_memory_structured_query || is_memory_correlate || is_memory_query || is_memory_consolidate || is_host_tool || is_decision || is_http_json || is_agentd_call;
 
     Json::Value run_req = t.isMember("request") && t["request"].isObject() ? t["request"] : t;
@@ -716,7 +717,21 @@ void workflow_submit_handle(
 	        t.isMember("experience_record") && t["experience_record"].isObject() ? t["experience_record"] : Json::Value(Json::objectValue);
 	      task_req["priority"] = task_priority;
 	      task_req["trace_id"] = trace_id + ":" + task_id;
-	    } else if (is_delay) {
+	    } else if (is_timer) {
+      if (!t["due_unix_ms"].isInt64() || t["due_unix_ms"].asInt64() <= 0 ||
+          t["due_unix_ms"].asInt64() > 253402300799999LL ||
+          (t.isMember("result") && !t["result"].isNull() && !t["result"].isObject())) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue); o["ok"] = false; o["task_id"] = task_id;
+        o["error"] = "timer requires integer due_unix_ms in 1..253402300799999 and optional object result";
+        resp->body = json_stringify_compact(o); return;
+      }
+      task_req["kind"] = "timer";
+      task_req["due_unix_ms"] = t["due_unix_ms"];
+      if (t["result"].isObject()) task_req["result"] = t["result"];
+      task_req["priority"] = task_priority;
+      task_req["trace_id"] = trace_id + ":" + task_id;
+    } else if (is_delay) {
       int64_t delay_ms = 0;
       if (t.isMember("delay_ms") && (t["delay_ms"].isInt64() || t["delay_ms"].isUInt64() || t["delay_ms"].isInt())) {
         delay_ms = t["delay_ms"].asInt64();

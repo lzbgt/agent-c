@@ -412,6 +412,18 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   // Probe before allocating fresh budget. Pure/deterministic tasks create no
   // model journal row. Old model receipts and unresolved effects need no calls.
   if (out.isNull()) out = model_effect.preflight();
+  if (out.isNull() && kind == "timer") {
+    if (!rr["due_unix_ms"].isInt64() || rr["due_unix_ms"].asInt64() <= 0 ||
+        rr["due_unix_ms"].asInt64() > 253402300799999LL) {
+      out["ok"] = false; out["error"] = "invalid absolute timer due_unix_ms";
+    } else {
+      bool yielded = false;
+      std::string error;
+      if (!db_->prepare_workflow_delay(task, 0, &yielded, &error, rr["due_unix_ms"].asInt64())) {
+        out["ok"] = false; out["error"] = error;
+      } else if (yielded) return;
+    }
+  }
   if (out.isNull() && kind == "delay") {
     // Persist the deadline before yielding. Restart/retry never starts a fresh wait.
     // Admission happens only after dependencies have completed, and waiting owns
@@ -559,6 +571,18 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
       return;
     }
     out = workflow_memory_consolidate_to_json(db_, cfg, wf, task, rr, &cancel_ctx, now);
+  } else if (kind == "timer") {
+    out = Json::Value(Json::objectValue);
+    out["ok"] = true; out["kind"] = "timer"; out["due_unix_ms"] = rr["due_unix_ms"];
+    if (rr["result"].isObject()) {
+      for (const auto& key : rr["result"].getMemberNames()) {
+        if (key != "ok" && key != "kind" && key != "due_unix_ms") out[key] = rr["result"][key];
+      }
+    } else if (!rr["result"].isNull()) {
+      out["ok"] = false; out["error"] = "result must be an object";
+    }
+    if (out["ok"] == true && !out["assistant_text"].isString())
+      out["assistant_text"] = "timer:" + std::to_string(rr["due_unix_ms"].asInt64());
   } else if (kind == "delay") {
     out = Json::Value(Json::objectValue);
     out["kind"] = "delay";

@@ -23,6 +23,8 @@ test("persisted timer waits show due time and disappear when cancelled or comple
         depends_on: [], ready_unix_ms: 1893456000000, wait: { kind: "delay", due_unix_ms: 1893456000000 } },
       { task_id: "ordinary-queued", status: "queued", attempt: 0, max_attempts: 1,
         depends_on: [], ready_unix_ms: 1893456000000 },
+      { task_id: "calendar-wait", status: taskStatus, attempt: 0, max_attempts: 1,
+        depends_on: [], ready_unix_ms: 1893456000000, wait: { kind: "timer", due_unix_ms: 1893456000000 } },
     ],
   } }));
   await page.goto("/");
@@ -31,6 +33,7 @@ test("persisted timer waits show due time and disappear when cancelled or comple
   const waits = page.getByTestId("workflow-timer-waits");
   await expect(waits).toBeVisible();
   await expect(waits).toContainText("cooling-period");
+  await expect(waits).toContainText("calendar-wait");
   await expect(waits).toContainText("due");
   await expect(waits).toContainText("survive a restart");
   await expect(waits).not.toContainText("ordinary-queued");

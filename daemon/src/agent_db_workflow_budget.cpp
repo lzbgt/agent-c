@@ -322,15 +322,16 @@ bool AgentDb::get_workflow_delay_due(const WorkflowTaskRow& task, int64_t* due_m
 }
 
 bool AgentDb::prepare_workflow_delay(const WorkflowTaskRow& expected,
-    int64_t delay_ms, bool* yielded, std::string* error) {
+    int64_t delay_ms, bool* yielded, std::string* error, int64_t absolute_due_ms) {
   if (error) error->clear();
   if (yielded) *yielded = false;
 #if !defined(AGENT_HAVE_SQLITE3)
-  (void)expected; (void)delay_ms;
+  (void)expected; (void)delay_ms; (void)absolute_due_ms;
   if (error) *error = "SQLite support required";
   return false;
 #else
-  if (!yielded || delay_ms < 0 || delay_ms > 600000) {
+  if (!yielded || delay_ms < 0 || delay_ms > 600000 || absolute_due_ms < 0 ||
+      absolute_due_ms > 253402300799999LL || (absolute_due_ms > 0 && delay_ms != 0)) {
     if (error) *error = "invalid delay";
     return false;
   }
@@ -354,7 +355,7 @@ bool AgentDb::prepare_workflow_delay(const WorkflowTaskRow& expected,
         !agent_db_bind_text(s.get(), 2, expected.task_id) ||
         !agent_db_bind_text(s.get(), 3, expected.request_json) ||
         !agent_db_bind_i64(s.get(), 4, delay_ms) ||
-        !agent_db_bind_i64(s.get(), 5, add(now, delay_ms)) || !agent_db_step_done(s.get()))
+        !agent_db_bind_i64(s.get(), 5, absolute_due_ms > 0 ? absolute_due_ms : add(now, delay_ms)) || !agent_db_step_done(s.get()))
       return fail("cannot persist delay timer");
   }
   int64_t due = 0;
@@ -366,6 +367,7 @@ bool AgentDb::prepare_workflow_delay(const WorkflowTaskRow& expected,
         !agent_db_bind_i64(s.get(), 4, delay_ms) || sqlite3_step(s.get()) != SQLITE_ROW)
       return fail("delay timer identity changed");
     due = sqlite3_column_int64(s.get(), 0);
+    if (absolute_due_ms > 0 && due != absolute_due_ms) return fail("absolute timer identity changed");
   }
   if (due > now) {
     auto s = query(db_, "UPDATE workflow_tasks SET status='queued',attempt=MAX(0,attempt-1),ready_unix_ms=?,updated_unix_ms=? WHERE workflow_id=? AND task_id=? AND attempt=? AND request_json=? AND status='running' AND NOT EXISTS(SELECT 1 FROM workflow_budget_reservations r WHERE r.workflow_id=workflow_tasks.workflow_id AND r.task_id=workflow_tasks.task_id AND r.attempt=workflow_tasks.attempt AND r.state='reserved')");

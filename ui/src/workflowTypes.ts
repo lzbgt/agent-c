@@ -149,7 +149,7 @@ export type WorkflowTaskRow = WorkflowJsonObject & {
   max_attempts?: number;
   error?: string;
   blocker?: { required_action: string; kind?: string };
-  wait?: { kind: "delay"; due_unix_ms: number };
+  wait?: { kind: "delay" | "timer"; due_unix_ms: number };
   ready_unix_ms?: number;
   started_unix_ms?: number;
   finished_unix_ms?: number;

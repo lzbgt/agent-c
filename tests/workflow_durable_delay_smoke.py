@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+import urllib.error
 
 def wait(fn, reason, timeout=10):
     end = time.monotonic() + timeout
@@ -58,6 +59,18 @@ def main():
                 return connection.execute("SELECT due_unix_ms FROM workflow_delay_timers WHERE workflow_id=? AND task_id=?", (wid, tid)).fetchone()
         try:
             start()
+            for bad in [None, True, False, 0, -1, 1.5, "123", 253402300800000, 2**64 - 1]:
+                try:
+                    submit([{"task_id": "invalid", "kind": "timer", "due_unix_ms": bad}])
+                    raise AssertionError(f"invalid timer admitted: {bad!r}")
+                except urllib.error.HTTPError as error:
+                    assert error.code == 400, error
+            far_due = int(time.time() * 1000) + 86400000
+            absolute = submit([{"task_id": "sleep", "kind": "timer", "due_unix_ms": far_due}])
+            assert wait(lambda: timer(absolute), "absolute timer not persisted")[0] == far_due
+            absolute_task = detail(absolute)["tasks"][0]
+            assert absolute_task["wait"] == {"kind": "timer", "due_unix_ms": far_due}
+            assert absolute_task["attempt"] == 0
             wid = submit([{"task_id": "sleep", "kind": "delay", "delay_ms": 1800},
                 {"task_id": "child", "kind": "delay", "delay_ms": 200, "depends_on": ["sleep"]}])
             due = wait(lambda: timer(wid), "timer not persisted")[0]
@@ -80,6 +93,10 @@ def main():
             result = final(wid)
             assert time.monotonic() - started < 1.5, "restart replayed entire delay"
             assert timer(wid)[0] == due, "restart moved persisted deadline"
+            assert timer(absolute)[0] == far_due, "restart moved absolute deadline"
+            assert detail(absolute)["tasks"][0]["status"] == "queued", "far-future timer completed early"
+            call("/api/v1/workflow/cancel", {"workflow_id": absolute})
+            assert final(absolute)["workflow"]["status"] == "cancelled"
             assert result["workflow"]["status"] == "done", result
             assert all(t["attempt"] == 1 and "wait" not in t for t in result["tasks"]), result
             assert timer(wid, "child")[0] >= due + 200, "dependency delay did not start after parent"
@@ -95,7 +112,26 @@ def main():
             wid = submit([{"task_id": "sleep", "kind": "delay", "delay_ms": 250}],
                 workflow_limits={"max_elapsed_ms_total": 20})
             assert final(wid)["workflow"]["status"] == "done", "idle wait consumed execution budget"
-            print("durable delay smoke passed: worker-free, restart, dependencies, cancellation, budget")
+            # Absolute timers already due complete only after their dependencies.
+            wid = submit([{"task_id": "before", "kind": "delay", "delay_ms": 150},
+                {"task_id": "after", "kind": "timer", "due_unix_ms": 1, "depends_on": ["before"],
+                 "result": {"assistant_text": "absolute done", "ok": False, "kind": "wrong", "due_unix_ms": 2}}])
+            result = final(wid)
+            assert result["workflow"]["status"] == "done", result
+            output = next(t["result"] for t in result["tasks"] if t["task_id"] == "after")
+            assert output["ok"] is True and output["kind"] == "timer" and output["due_unix_ms"] == 1
+            assert output["assistant_text"] == "absolute done"
+            # Save and execute an immutable SOP version containing an absolute timer.
+            sop_due = int(time.time() * 1000) + 300
+            sop = {"schema": "agentd.sop.v1", "id": "calendar-wait", "version": "1",
+                "stages": [{"id": "wait", "actions": [{"task_id": "calendar", "kind": "timer", "due_unix_ms": sop_due}]}]}
+            saved = call("/api/v1/workflow/sops", {"sop": sop})["definition"]
+            ref = {key: saved[key] for key in ("id", "version", "definition_hash")}
+            wid = call("/api/v1/workflow/submit", {"sop_ref": ref})["workflow_id"]
+            result = final(wid)
+            assert result["workflow"]["status"] == "done" and time.time() * 1000 >= sop_due, result
+            assert result["tasks"][0]["result"]["due_unix_ms"] == sop_due
+            print("durable timers passed: relative/absolute, restart, dependencies, cancellation, budget, pinned SOP, strict admission")
         finally:
             if process is not None and process.poll() is None:
                 process.terminate()

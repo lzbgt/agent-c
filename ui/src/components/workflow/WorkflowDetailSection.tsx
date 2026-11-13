@@ -34,7 +34,7 @@ export default function WorkflowDetailSection(props: WorkflowDetailSectionProps)
   const summary = props.summary;
   if (!props.detail || !summary?.workflow_id) return null;
   const waitingTimers = !summary.cancel_requested && (summary.status === "queued" || summary.status === "running")
-    ? props.tasks.filter((task) => task.status === "queued" && task.wait?.kind === "delay") : [];
+    ? props.tasks.filter((task) => task.status === "queued" && (task.wait?.kind === "delay" || task.wait?.kind === "timer")) : [];
 
   return (
     <div className="grid gap-3" data-testid="workflow-detail-panel">

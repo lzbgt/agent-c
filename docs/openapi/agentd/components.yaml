@@ -361,6 +361,8 @@ schemas:
     $ref: ./components/workflow.yaml#/WorkflowAgentdParallelTargetSpec
   WorkflowTaskMemoryConsolidateSpec:
     $ref: ./components/workflow.yaml#/WorkflowTaskMemoryConsolidateSpec
+  WorkflowTaskTimerSpec:
+    $ref: ./components/workflow.yaml#/WorkflowTaskTimerSpec
   WorkflowTaskDelaySpec:
     $ref: ./components/workflow.yaml#/WorkflowTaskDelaySpec
   WorkflowMemoryPutSpec:

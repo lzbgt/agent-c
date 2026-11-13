@@ -45,7 +45,7 @@ const WorkflowTaskSchema = z
     attempt: z.number().optional(),
     max_attempts: z.number().optional(),
     error: z.string().optional(),
-    wait: z.object({ kind: z.literal("delay"), due_unix_ms: z.number().finite() }).optional(),
+    wait: z.object({ kind: z.enum(["delay", "timer"]), due_unix_ms: z.number().finite() }).optional(),
     ready_unix_ms: z.number().optional(),
     started_unix_ms: z.number().optional(),
     finished_unix_ms: z.number().optional(),

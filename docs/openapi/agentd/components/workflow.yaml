@@ -19,6 +19,7 @@ WorkflowTaskSpec:
     - Parallel agent collaboration macro: `kind: agentd_parallel` with `agentd_parallel` (submit-time expansion into parallel `agentd_call` tasks + an aggregate join; configurable)
     - Deterministic memory consolidation tasks: `kind: memory_consolidate` with `memory_consolidate` (see `WorkflowMemoryConsolidateSpec`)
     - Deterministic delay tasks: `kind: delay` with `delay_ms` (no LLM required)
+    - Absolute durable timers: `kind: timer` with required integer `due_unix_ms` (no LLM required)
     - Edge collaboration tasks: `kind: edge_invoke` with `edge` (see `WorkflowEdgeInvokeSpec`)
     - Parallel edge fan-out macro: `kind: edge_parallel` with `edge_parallel` (submit-time expansion into `edge_invoke` tasks + an aggregate join; configurable)
     - Deterministic edge sensor wait: `kind: edge_wait_sensor` with `edge_wait_sensor` (polls edge sensor event log; retryable)
@@ -64,6 +65,7 @@ WorkflowTaskSpec:
     - $ref: "#/components/schemas/WorkflowTaskAgentdParallelSpec"
     - $ref: "#/components/schemas/WorkflowTaskMemoryConsolidateSpec"
     - $ref: "#/components/schemas/WorkflowTaskDelaySpec"
+    - $ref: "#/components/schemas/WorkflowTaskTimerSpec"
     - $ref: "#/components/schemas/WorkflowTaskEdgeInvokeSpec"
     - $ref: "#/components/schemas/WorkflowTaskEdgeParallelSpec"
     - $ref: "#/components/schemas/WorkflowTaskEdgeWaitSensorSpec"
@@ -1161,6 +1163,29 @@ WorkflowTaskMemoryConsolidateSpec:
       description: Deterministic correctness assertions (engine-enforced)
       additionalProperties: true
 
+
+WorkflowTaskTimerSpec:
+  type: object
+  required: [task_id, kind, due_unix_ms]
+  properties:
+    task_id: { type: string }
+    kind: { type: string, enum: [timer] }
+    due_unix_ms:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 253402300799999
+      description: Absolute Unix epoch milliseconds. After dependencies complete, wait without a worker until this wall-clock time. Past-due timers complete immediately. Persisted across restart.
+    depends_on: { type: array, items: { type: string } }
+    allow_error: { type: boolean }
+    max_attempts: { type: integer, format: int32 }
+    priority: { type: integer, format: int32 }
+    inputs: { type: object, additionalProperties: true }
+    result:
+      type: object
+      additionalProperties: true
+      description: Optional deterministic output. Cannot override ok, kind or due_unix_ms.
+    expect: { type: object, additionalProperties: true }
 
 WorkflowTaskDelaySpec:
   type: object

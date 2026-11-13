@@ -10244,6 +10244,7 @@ export interface components {
          *     - Parallel agent collaboration macro: `kind: agentd_parallel` with `agentd_parallel` (submit-time expansion into parallel `agentd_call` tasks + an aggregate join; configurable)
          *     - Deterministic memory consolidation tasks: `kind: memory_consolidate` with `memory_consolidate` (see `WorkflowMemoryConsolidateSpec`)
          *     - Deterministic delay tasks: `kind: delay` with `delay_ms` (no LLM required)
+         *     - Absolute durable timers: `kind: timer` with required integer `due_unix_ms` (no LLM required)
          *     - Edge collaboration tasks: `kind: edge_invoke` with `edge` (see `WorkflowEdgeInvokeSpec`)
          *     - Parallel edge fan-out macro: `kind: edge_parallel` with `edge_parallel` (submit-time expansion into `edge_invoke` tasks + an aggregate join; configurable)
          *     - Deterministic edge sensor wait: `kind: edge_wait_sensor` with `edge_wait_sensor` (polls edge sensor event log; retryable)
@@ -10272,7 +10273,7 @@ export interface components {
          *     - If `kind == delegate_parallel`, `delegate.attempts` is required and `request.prompt` is not used (expanded into multiple tasks).
          *     - Otherwise, `request.prompt` is required (or prompt at the top-level is accepted by the server for legacy reasons).
          */
-        WorkflowTaskSpec: components["schemas"]["WorkflowTaskRunSpec"] | components["schemas"]["WorkflowTaskAvmCapsuleSpec"] | components["schemas"]["WorkflowTaskAggregateSpec"] | components["schemas"]["WorkflowTaskMemoryPutSpec"] | components["schemas"]["WorkflowTaskMemorySearchSpec"] | components["schemas"]["WorkflowTaskMemoryTimelineSpec"] | components["schemas"]["WorkflowTaskMemoryStructuredQuerySpec"] | components["schemas"]["WorkflowTaskMemoryCorrelateSpec"] | components["schemas"]["WorkflowTaskMemoryQuerySpec"] | components["schemas"]["WorkflowTaskExperienceRecordSpec"] | components["schemas"]["WorkflowTaskDecisionSpec"] | components["schemas"]["WorkflowTaskHostToolSpec"] | components["schemas"]["WorkflowTaskHttpJsonSpec"] | components["schemas"]["WorkflowTaskAgentdCallSpec"] | components["schemas"]["WorkflowTaskAgentdParallelSpec"] | components["schemas"]["WorkflowTaskMemoryConsolidateSpec"] | components["schemas"]["WorkflowTaskDelaySpec"] | components["schemas"]["WorkflowTaskEdgeInvokeSpec"] | components["schemas"]["WorkflowTaskEdgeParallelSpec"] | components["schemas"]["WorkflowTaskEdgeWaitSensorSpec"] | components["schemas"]["WorkflowTaskDelegateSpec"];
+        WorkflowTaskSpec: components["schemas"]["WorkflowTaskRunSpec"] | components["schemas"]["WorkflowTaskAvmCapsuleSpec"] | components["schemas"]["WorkflowTaskAggregateSpec"] | components["schemas"]["WorkflowTaskMemoryPutSpec"] | components["schemas"]["WorkflowTaskMemorySearchSpec"] | components["schemas"]["WorkflowTaskMemoryTimelineSpec"] | components["schemas"]["WorkflowTaskMemoryStructuredQuerySpec"] | components["schemas"]["WorkflowTaskMemoryCorrelateSpec"] | components["schemas"]["WorkflowTaskMemoryQuerySpec"] | components["schemas"]["WorkflowTaskExperienceRecordSpec"] | components["schemas"]["WorkflowTaskDecisionSpec"] | components["schemas"]["WorkflowTaskHostToolSpec"] | components["schemas"]["WorkflowTaskHttpJsonSpec"] | components["schemas"]["WorkflowTaskAgentdCallSpec"] | components["schemas"]["WorkflowTaskAgentdParallelSpec"] | components["schemas"]["WorkflowTaskMemoryConsolidateSpec"] | components["schemas"]["WorkflowTaskDelaySpec"] | components["schemas"]["WorkflowTaskTimerSpec"] | components["schemas"]["WorkflowTaskEdgeInvokeSpec"] | components["schemas"]["WorkflowTaskEdgeParallelSpec"] | components["schemas"]["WorkflowTaskEdgeWaitSensorSpec"] | components["schemas"]["WorkflowTaskDelegateSpec"];
         WorkflowTaskRunSpec: {
             task_id: string;
             /** @description If true, task failure does not fail the workflow (soft-fail). */
@@ -11212,6 +11213,32 @@ export interface components {
             priority?: number;
             memory_consolidate?: components["schemas"]["WorkflowMemoryConsolidateSpec"];
             /** @description Deterministic correctness assertions (engine-enforced) */
+            expect?: {
+                [key: string]: unknown;
+            };
+        };
+        WorkflowTaskTimerSpec: {
+            task_id: string;
+            /** @enum {string} */
+            kind: "timer";
+            /**
+             * Format: int64
+             * @description Absolute Unix epoch milliseconds. After dependencies complete, wait without a worker until this wall-clock time. Past-due timers complete immediately. Persisted across restart.
+             */
+            due_unix_ms: number;
+            depends_on?: string[];
+            allow_error?: boolean;
+            /** Format: int32 */
+            max_attempts?: number;
+            /** Format: int32 */
+            priority?: number;
+            inputs?: {
+                [key: string]: unknown;
+            };
+            /** @description Optional deterministic output. Cannot override ok, kind or due_unix_ms. */
+            result?: {
+                [key: string]: unknown;
+            };
             expect?: {
                 [key: string]: unknown;
             };

@@ -208,7 +208,10 @@ void handle_workflow_get_endpoint(
         if (t.ready_unix_ms != std::numeric_limits<int64_t>::max()) row["ready_unix_ms"] = (Json::Int64)t.ready_unix_ms;
         int64_t timer_due = 0;
         if (db_or_null->get_workflow_delay_due(t, &timer_due)) {
-          row["wait"]["kind"] = "delay";
+          Json::Value request;
+          const bool absolute = json_parse_any(t.request_json, &request, nullptr) &&
+            request.isObject() && request["kind"] == "timer";
+          row["wait"]["kind"] = absolute ? "timer" : "delay";
           row["wait"]["due_unix_ms"] = (Json::Int64)timer_due;
         }
         row["started_unix_ms"] = (Json::Int64)t.started_unix_ms;

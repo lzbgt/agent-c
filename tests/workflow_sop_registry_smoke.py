@@ -112,7 +112,11 @@ with tempfile.TemporaryDirectory(prefix="sop-registry-") as temp:
 
         running = submit(ref, idempotency_key="saved-version-run")
         assert submit(ref, idempotency_key="saved-version-run") == running
-        wait_for(lambda: detail(running)["workflow"]["status"] == "running", "saved SOP never ran")
+        # Worker-free delay waits are queued after their deadline is persisted.
+        # Verify actual admission rather than the transient running aggregate.
+        wait_for(lambda: any(t["task_id"] == "wait" and t["status"] == "queued" and
+            t.get("wait", {}).get("kind") == "delay" and t["wait"]["due_unix_ms"] > time.time() * 1000
+            for t in detail(running)["tasks"]), "saved SOP timer was not armed")
         second = call("/api/v1/workflow/sops", {"sop": sop("2")}, expected=201)["definition"]
         pinned = detail(running)["spec"]
         assert pinned["sop"] == first["sop"] and pinned["sop_ref"] == ref
@@ -159,7 +163,7 @@ with tempfile.TemporaryDirectory(prefix="sop-registry-") as temp:
         call("/api/v1/workflow/submit", {"sop_ref": {"id": "inspection", "version": "invalid-action"}}, expected=400)
         stop()
         with sqlite3.connect(database) as db:
-            assert db.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == "39"
+            assert db.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == "40"
             assert db.execute("SELECT count(*) FROM workflow_sop_definitions WHERE sop_json LIKE '%fixture-do-not-store%'").fetchone()[0] == 0
             db.execute("UPDATE workflow_sop_definitions SET sop_json='{}' WHERE version='1'")
         start()
