@@ -13,16 +13,21 @@ import (
 // Config describes an on-demand, loopback-only frontend to an existing agentd.
 // It does not start an agent, store model credentials or contact a cloud service.
 type Config struct {
-	Listen          string
-	DaemonURL       string
-	DaemonTokenFile string
-	LoginKeyFile    string
-	WebDir          string
-	Model           string
-	ModelBaseURL    string
-	MaxOutputTokens int
-	MaxChars        int
-	TimeoutMS       int
+	Listen               string
+	DaemonURL            string
+	DaemonTokenFile      string
+	LoginKeyFile         string
+	WebDir               string
+	Model                string
+	ModelBaseURL         string
+	MaxOutputTokens      int
+	MaxChars             int
+	TimeoutMS            int
+	MaxSteps             int
+	MaxToolCallsTotal    int
+	MaxRepeatedToolCalls int
+	MaxToolCallArgsChars int
+	MaxToolResultChars   int
 }
 
 func loopbackURL(raw string, allowPath bool) (*url.URL, error) {
@@ -56,6 +61,11 @@ func (c Config) Validate() error {
 	}
 	if c.MaxOutputTokens < 1 || c.MaxOutputTokens > 32768 || c.MaxChars < 1024 || c.MaxChars > 1048576 || c.TimeoutMS < 1000 || c.TimeoutMS > 1800000 {
 		return errors.New("invalid local model limits")
+	}
+	for _, limit := range []int{c.MaxSteps, c.MaxToolCallsTotal, c.MaxRepeatedToolCalls, c.MaxToolCallArgsChars, c.MaxToolResultChars} {
+		if limit < 1 || limit > 1048576 {
+			return errors.New("local tool limits must be between 1 and 1048576")
+		}
 	}
 	if !filepath.IsAbs(c.WebDir) {
 		return errors.New("web-dir must be absolute")

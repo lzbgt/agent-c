@@ -13,7 +13,7 @@ const events = [
   } } },
 ];
 
-async function mockActiveLocalJob(page: Page, eventsForJob = events) {
+async function mockActiveLocalJob(page: Page, eventsForJob = events, seedActiveJob = true) {
   const state = {
     status: "running",
     rejectCancel: false,
@@ -23,21 +23,31 @@ async function mockActiveLocalJob(page: Page, eventsForJob = events) {
     auditRequests: 0,
     auditResponses: 0,
     auditDelayMs: 0,
+    runRequests: [] as Record<string, unknown>[],
   };
-  await page.addInitScript(({ jobId }) => {
+  await page.addInitScript(({ jobId, seedActiveJob }) => {
     window.__AGENT_UI_CONFIG__ = {
       localModelProfile: true,
       connectionMode: "direct",
       daemonBaseUrl: "http://127.0.0.1:17887",
+      maxChars: 321000, maxSteps: 7, maxToolCallsTotal: 13, maxRepeatedToolCalls: 2,
+      timeoutMs: 123456,
     };
     if (!window.sessionStorage.getItem("local-job-fixture-seeded")) {
-      // Only the cursor survives a reload; retained events must be replayed.
-      window.localStorage.setItem("agentui.jobsBySession", JSON.stringify(JSON.stringify({
-        default: { job_id: jobId, cursor: 2, started_unix_ms: Date.now() },
-      })));
+      // Stale browser settings must not override the adapter's local profile.
+      for (const field of ["maxChars", "maxSteps", "maxToolCallsTotal", "maxRepeatedToolCalls", "timeoutMs"]) {
+        window.localStorage.setItem("agentui." + field, JSON.stringify("999999"));
+      }
+      window.localStorage.setItem("agentui.maxStepsUserSet", "true");
+      if (seedActiveJob) {
+        // Only the cursor survives a reload; retained events must be replayed.
+        window.localStorage.setItem("agentui.jobsBySession", JSON.stringify(JSON.stringify({
+          default: { job_id: jobId, cursor: 2, started_unix_ms: Date.now() },
+        })));
+      }
       window.sessionStorage.setItem("local-job-fixture-seeded", "true");
     }
-  }, { jobId });
+  }, { jobId, seedActiveJob });
 
   const headers = {
     "access-control-allow-origin": "*",
@@ -49,6 +59,11 @@ async function mockActiveLocalJob(page: Page, eventsForJob = events) {
     const json = (body: unknown, status = 200) => route.fulfill({ status, headers, json: body });
     if (route.request().method() === "OPTIONS") {
       await route.fulfill({ status: 204, headers });
+      return;
+    }
+    if (url.pathname === "/api/v1/run_async") {
+      state.runRequests.push(route.request().postDataJSON());
+      await json({ ok: true, job_id: jobId });
       return;
     }
     if (url.pathname === "/api/v1/job/stream") {
@@ -107,6 +122,19 @@ async function mockActiveLocalJob(page: Page, eventsForJob = events) {
   });
   return state;
 }
+
+test("local run limits come from adapter config despite stale browser settings", async ({ page }) => {
+  const state = await mockActiveLocalJob(page, events, false);
+  await page.goto("/");
+  await page.getByTestId("prompt").fill("Check the configured local profile.");
+  await expect(page.getByTestId("run")).toBeEnabled();
+  await page.getByTestId("run").click();
+  await expect.poll(() => state.runRequests.length).toBe(1);
+  expect(state.runRequests[0]).toMatchObject({
+    max_chars: 321000, max_steps: 7, max_tool_calls_total: 13,
+    max_repeated_tool_calls: 2, timeout_ms: 123456,
+  });
+});
 
 test("active local jobs replay output after reload and keep Stop pending through reconnect", async ({ page, context }) => {
   test.setTimeout(45_000);

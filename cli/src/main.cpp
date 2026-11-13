@@ -431,6 +431,7 @@ static void usage() {
     << "  --max-tool-calls-total <n>     Max total tool calls (default: unlimited; 0 means unlimited)\n"
     << "  --max-tool-calls-per-tool <n>  Max tool calls per tool name (default: unlimited; 0 means unlimited)\n"
     << "  --max-tool-call-args-chars <n> Max tool call arguments JSON length (default: unlimited; 0 means unlimited)\n"
+    << "  --max-tool-result-chars <n>    Max tool result characters in model context (default: 12000; 0 means unlimited)\n"
     << "  --tool-call-limit <tool>=<n>  Per-tool call cap (repeatable; 0 means unlimited for that tool)\n"
     << "  --attach <path>           Attach a local file (repeatable; images are sent as base64)\n"
     << "  --stream-assistant        Stream assistant deltas (tools=none|basic|host; provider-dependent)\n"
@@ -582,6 +583,7 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
   size_t max_tool_calls_total = 0;
   size_t max_tool_calls_per_tool = 0;
   size_t max_tool_call_args_chars = 0;
+  size_t max_tool_result_chars = ToolLoopOptions{}.max_tool_result_chars;
   std::vector<std::string> tool_call_limit_specs;
   std::vector<std::string> attach_paths;
   bool stream_assistant = false;
@@ -717,6 +719,10 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
   }
   if (!take_flag_u64(args, "--max-tool-call-args-chars", &max_tool_call_args_chars)) {
     std::cerr << "Invalid value for --max-tool-call-args-chars\n";
+    return 2;
+  }
+  if (!take_flag_u64(args, "--max-tool-result-chars", &max_tool_result_chars)) {
+    std::cerr << "Invalid value for --max-tool-result-chars\n";
     return 2;
   }
   if (!take_multi_flag(args, "--tool-call-limit", &tool_call_limit_specs)) {
@@ -982,6 +988,7 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
     opt.max_tool_calls_total = max_tool_calls_total;
     opt.max_tool_calls_per_tool = max_tool_calls_per_tool;
     opt.max_tool_call_args_chars = max_tool_call_args_chars;
+    opt.max_tool_result_chars = max_tool_result_chars;
     opt.tool_call_limits = std::move(tool_call_limits);
 	    opt.max_chars = max_chars;
 	    opt.keep_last_messages = keep_last;

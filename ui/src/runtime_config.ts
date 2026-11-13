@@ -27,6 +27,13 @@ export type AgentUIRuntimeConfig = {
   apiKey?: string;
   proxyUrl?: string;
   timeoutMs?: string | number;
+  maxOutputTokens?: string | number;
+  maxChars?: string | number;
+  maxSteps?: string | number;
+  maxToolCallsTotal?: string | number;
+  maxRepeatedToolCalls?: string | number;
+  maxToolCallArgsChars?: string | number;
+  maxToolResultChars?: string | number;
   streamAssistant?: boolean | string;
   trace?: boolean | string;
   useAsync?: boolean | string;
@@ -75,6 +82,13 @@ export type AgentUIDefaults = {
   apiKey: string;
   proxyUrl: string;
   timeoutMs: string;
+  maxOutputTokens: string;
+  maxChars: string;
+  maxSteps: string;
+  maxToolCallsTotal: string;
+  maxRepeatedToolCalls: string;
+  maxToolCallArgsChars: string;
+  maxToolResultChars: string;
   streamAssistant: boolean;
   trace: boolean;
   useAsync: boolean;
@@ -129,6 +143,14 @@ const DEFAULTS: AgentUIDefaults = {
   apiKey: "",
   proxyUrl: "http://localhost:8120",
   timeoutMs: "60000",
+  // Local-profile limits are supplied by the adapter, not duplicated in UI code.
+  maxOutputTokens: "",
+  maxChars: "",
+  maxSteps: "",
+  maxToolCallsTotal: "",
+  maxRepeatedToolCalls: "",
+  maxToolCallArgsChars: "",
+  maxToolResultChars: "",
   streamAssistant: false,
   trace: true,
   useAsync: true,
@@ -291,6 +313,9 @@ export const getUiDefaults = (): AgentUIDefaults => {
   out.apiKey = coerceString(cfg.apiKey) ?? coerceString(envString("VITE_AGENTUI_API_KEY")) ?? out.apiKey;
   out.proxyUrl = coerceString(cfg.proxyUrl) ?? coerceString(envString("VITE_AGENTUI_PROXY_URL")) ?? out.proxyUrl;
   out.timeoutMs = coerceString(cfg.timeoutMs) ?? coerceString(envString("VITE_AGENTUI_TIMEOUT_MS")) ?? out.timeoutMs;
+  for (const field of ["maxOutputTokens", "maxChars", "maxSteps", "maxToolCallsTotal", "maxRepeatedToolCalls", "maxToolCallArgsChars", "maxToolResultChars"] as const) {
+    out[field] = coerceString(cfg[field]) ?? out[field];
+  }
 
   out.streamAssistant =
     coerceBool(cfg.streamAssistant) ??

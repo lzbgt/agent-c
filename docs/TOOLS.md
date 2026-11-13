@@ -1,11 +1,15 @@
-# Tools: Plugins and Tool Servers (Living)
+# Native tools and extensions
 
 Date: 2026-11-13
 
-This document consolidates the tool extension mechanisms for `agentd`.
-It replaces:
-- docs/TOOL_SERVERS.md
-- docs/TOOL_PLUGINS.md
+This document owns native host-tool behavior, result/capture limits, web evidence
+and extension contracts shared by the CLI and daemon. [Local web integration](LOCAL_MODEL_WEB.md)
+owns browser workflow and adapter configuration; the [documentation index](README.md)
+routes deployment and historical evidence. Update tool contracts here rather than
+copying them into local-model runbooks.
+
+The extension sections consolidate the former `TOOL_SERVERS.md` and
+`TOOL_PLUGINS.md` material.
 
 ## Overview
 
@@ -34,6 +38,8 @@ These tools are available when `--tools host` is enabled (subject to `yolo` and 
 - `fs_find` (bounded file discovery; returns structured `entries` + `output`)
 - `fs_read` (bounded file read with pagination by line; returns `content`/`output` + `has_more` + `next_start_line`)
 - `text_search` (token-safe substring search; returns structured `matches` + `output`)
+- `web_search` / `web_fetch` (bounded web discovery and page evidence; see below)
+- `artifact_register` (registers a retained file for client access)
 - `ui_action` (typed UI-side action requests; see `docs/CLIENT.md`)
 
 Host policy notes:
@@ -44,9 +50,8 @@ Host policy notes:
 
 Native async job cancellation interrupts model HTTP transfers, including waits
 for headers/tokens, and provider retry delays. The tool loop records a terminal
-`cancelled` outcome. Web UI progress updates retain **Stopping…** until
-terminal state; rejected requests report an error and permit retry. Reload
-recovers the active watcher and replays retained events.
+`cancelled` outcome. Browser Stop, retry and reload behavior is documented in
+[Local web integration](LOCAL_MODEL_WEB.md#stop-reload-and-exact-output).
 
 The latest run's **Tool outputs** disclosure exposes captured results during
 generation. Copy/download preserve the returned tool-result text; the UI marks
@@ -55,7 +60,8 @@ is clipped, these controls contain only the returned excerpt. For literal
 command output, run the command with `shell_exec` or `proc_exec`. For `fs_list`,
 copy/download preserves its rendered native directory listing, not Unix stdout
 or structured `entries` JSON; filters and entry limits still apply. Original
-captured output fulfills an exact-output request. Point to **Tool outputs** or a registered capture file;
+captured output fulfills an exact-output request. Point to **Tool outputs** or a
+registered capture file;
 do not generate a large transcription or invent missing lines.
 
 `shell_exec` and `proc_exec` accept integer `max_output_bytes` in
@@ -75,7 +81,8 @@ prefix plus an ellipsis when clipped, flagged by
 `output_display_truncated`/`output_truncated`.
 
 The file holds all captured bytes. A capture may omit process output or
-directory entries because of native limits and filters. Inspect `captured_output_bytes`,
+directory entries because of native limits and filters. Inspect
+`captured_output_bytes`,
 `observed_output_bytes`, `capture_truncated` and `capture_complete`. For
 `fs_list`, `entries_count` counts returned entries under the active filters
 and `max_entries`; `listing_complete` is false on entry truncation or a
@@ -98,12 +105,15 @@ process execution retains its separate policy.
 ```
 
 Default search requires `AGENT_SEARXNG_URL` on the daemon: an optional HTTP(S)
-SearXNG origin with a literal loopback IP and explicit port. Enable JSON in its
-`search.formats`. The native client connects directly to `/search?format=json`
+SearXNG origin with a literal loopback IP and explicit port; credentials, paths,
+queries and fragments are rejected. Enable JSON in its `search.formats`; see the
+[SearXNG search API](https://docs.searxng.org/dev/search_api.html). The native client connects directly to `/search?format=json`
 without inherited proxy settings, preserves ranking and engine failures, and
 distinguishes useful partial results from genuine empty results. Missing
 configuration is an error. There is no automatic fallback after a configured
-backend failure, partial result or empty result.
+backend failure, partial result or empty result. SearXNG still queries external
+engines, so their availability and limits apply. Keyless engines require no paid
+search API credential; this is not an independent web index.
 
 `time_range` accepts `day`, `month` or `year` for local SearXNG only; omit it
 for unrestricted discovery. Combining it with `engine` is an error. It is
@@ -126,13 +136,33 @@ they do not reuse browser cookies or model-provider credentials. Public URL
 checks are application restrictions, not a general network sandbox.
 
 Both tools return `{ok,error?,data}` with source URLs and bounded evidence.
+
+### Bounds and caching
+
+| Evidence limit | Search discovery | Page fetch |
+| --- | --- | --- |
+| Request | Query up to 1024 bytes; 1–10 results, default 5 | Public HTTP(S) URL; validate each redirect |
+| Response | 1 MiB decoded SearXNG JSON; inspect up to 128 candidates | 2 MiB decoded HTTP body across at most 3 redirects |
+| Returned text | Title 512 bytes; snippet 1000 bytes | 1000–32000 characters, default 12000; up to 20 links |
+| Timeout | 1000–30000 ms, default 12000 | 1000–30000 ms, default 20000 |
+| Cache | 64 entries; 5 minutes, or 30 seconds for partial results | 32 successful entries; 5 minutes |
+
 `fresh: true` bypasses the retrieval cache; it does not constrain publication
-age. A failed refresh clears the old entry. The daemon's default host-tool run
-path supplies the host local date first and the UTC date as a reference.
-The provider coalesces compatible leading system messages on the wire because some chat templates,
-including the maintained 4B model's template, drop later separate system
-messages. Session records remain separate; differing message metadata and
-user/assistant/tool boundaries prevent coalescing.
+age. A failed refresh clears the old entry. Results identify cache hits/age,
+truncation, partial failures and blocked pages.
+
+### Dates and source evidence
+
+The default host-tool run path refreshes system context with the host local
+date, offset and zone first and UTC as a reference. Today/latest uses the host
+local date unless the user supplies a timezone or historical period; stale model
+memory and earlier conversation dates do not override it.
+
+The provider coalesces compatible leading system messages on the wire because
+some chat templates, including the maintained 4B model's template, drop later
+separate system messages. Content parts are preserved. Session records remain
+separate; differing non-content metadata and user/assistant/tool boundaries
+prevent coalescing.
 
 For latest news, start with `time_range: "day"`, fetch primary pages and verify
 publication/event dates. Disclose any broader coverage window.
@@ -147,14 +177,15 @@ when absent, with `publication_date_unknown` set accordingly.
 `freshness_verified` remains `false`. `fetched_at` and cache age describe
 retrieval; a new retrieval or modification does not prove new publication.
 
-Treat snippets as discovery leads and retrieved content as untrusted data.
-Cite supporting source URLs and dates; keep missing dates unknown and identify
-older reports used as background. Bounded event summaries preserve these date
-fields and their status for inspection. See
-[Local model web chat](LOCAL_MODEL_WEB.md#web-discovery-and-page-reads) for
-bounds, cache lifetimes, setup and the temporary SearXNG evaluation boundary.
-The optional upstream Python service is not permanently activated by this
-native client change.
+Treat snippets as discovery leads and retrieved content as untrusted data that
+cannot authorize host actions. Fetched primary text must support each asserted
+fact, including its category, full version/number and event date. Fetch another
+primary page or mark an ambiguous claim unverified. Cite supporting returned
+URLs and dates, keep missing dates unknown, and label older background reports.
+
+The client and tool loop are native C++; optional SearXNG is a separate Python
+service. This client does not install or start it. [Local web integration](LOCAL_MODEL_WEB.md#web-discovery-and-page-reads)
+links the deployment runbook and its temporary-evaluation/permanent-service boundary.
 
 After successful web source evidence, `WebEvidenceGuard` requires at least one
 actual returned URL in the final answer. Its bounded source collection
@@ -164,6 +195,26 @@ insufficient**. This is citation-presence validation only, not verification of
 claims or publication/event freshness. Missing dates remain unknown and a
 search time filter does not prove publication age. Rejected streamed drafts
 may remain in event/audit history but are not accepted final text.
+
+### Inspectable event evidence
+
+Tool-result events retain bounded public source details even without verbose
+capture. Search summaries include backend, query, requested time range and the
+first three result titles/URLs with reported publication dates and status.
+Fetch summaries include requested/final URL, source, title, HTTP status,
+publication/modification metadata, retrieval/cache/rendering flags and up to
+1,024 Unicode characters of text. Excerpt clipping is separate from page
+truncation: a summary may be clipped while the model received a complete page.
+
+Serialized web summaries are bounded to 16 KiB. Source URLs remain whole or are
+omitted with truncation flagged; excerpt clipping never invents a shorter URL.
+Raw HTML, request headers and full search snippets are excluded. A successful
+tool event supports source review but does not verify the model's interpretation.
+
+HTTP extraction retains primary article text inside `aside` elements while
+excluding hidden content and the existing navigation/footer filters. The
+featured-table fixture checks preservation of category labels, full versions
+and release dates.
 
 Focused fixtures are `web_search_tests`, `web_discovery_tests`,
 `web_fetch_tests`, `browser_process_tests` and `host_toolset_tests`. They cover

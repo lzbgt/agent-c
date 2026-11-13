@@ -2,6 +2,8 @@
 
 A portable agent core, durable process execution and a lean workspace for autonomous work.
 
+**[Documentation index](docs/README.md)** — start here for current contracts, deployment guides and recorded evidence. For the local 4B setup, use the [AI Model runbook](https://github.com/lzbgt/tiny-multimodal-edge-ai/blob/main/docs/local-4b-agent.md) and [Agent C web integration](docs/LOCAL_MODEL_WEB.md).
+
 Agent-C serves three connected uses:
 
 | Use | Current foundation |
@@ -16,7 +18,7 @@ This is a rolling project. We prefer coherent refactoring and fresh deployments 
 
 ## A workspace built around the answer
 
-Chat shows your messages and the agent's replies naturally, once, in chronological order. Files, notes and interactive results remain useful outputs. System context, tool records, timestamps, traces and execution settings are grouped under closed **Activity & details**.
+Chat shows your messages and the agent's replies naturally, once, in chronological order. Files, notes and interactive results remain useful outputs. **Tool outputs** makes captured results available during a run without waiting for an assistant transcription. System context, detailed tool records, timestamps, traces and execution settings are grouped under closed **Activity & details**.
 
 Presentations keep their keyboard events and animation clocks local; typing in the composer leaves them running.
 
@@ -75,7 +77,7 @@ npm run dev
 
 Connection and production build details are in [WebUI](docs/WEBUI.md). Tool extensions are documented in [Tools](docs/TOOLS.md).
 
-Signed original-device receipts can now recover an uncertain workflow without another device command. The API and **Check device receipt** control preserve cancellation, deadlines and completed independent work. This receipt change and the guarded host-action source are not yet deployed; the live runtime remains `a0890c0`. [Device receipt contract](docs/DEVICE_ASSIGNMENTS.md)
+Signed original-device receipts can recover an uncertain workflow without another device command. The API and **Check device receipt** control preserve cancellation, deadlines and completed independent work. [Device receipt contract](docs/DEVICE_ASSIGNMENTS.md). Source availability is separate from installation and live qualification; see the [source/deployment record](docs/CURRENT_SNAPSHOT.md#deployment-state-and-recorded-qualification).
 
 ## Reproduce the checked snapshot
 
@@ -101,9 +103,9 @@ Set `AGENT_E2E_BROWSER_EXECUTABLE` for an existing supported Chromium and `AGENT
 
 ## Deployment
 
-The current reference deployment is [agent.hubstack.cn](https://agent.hubstack.cn), protected by shared Hubstack login. Execution, UI and the dedicated database run on Arch; the VPS supplies HTTPS reverse-proxy ingress and the existing identity service. UI-only releases preserve an unchanged running daemon.
+The production reference topology uses [agent.hubstack.cn](https://agent.hubstack.cn) with shared Hubstack login: Arch hosts execution, UI and its dedicated database; the VPS supplies HTTPS ingress and the existing identity service. The production daemon, gateway and PostgreSQL container remain stopped under the [owner hold](docs/ARCH_HOST_DEPLOYMENT.md#owner-stop-2026-11-12). Source integration does not restart them or update installed binaries.
 
-[Arch deployment](docs/ARCH_HOST_DEPLOYMENT.md) documents private configuration, owner authorization, reproducible installation, immutable artifact manifests and live qualification. [Deployment](docs/DEPLOYMENT.md) describes other supported development/operations paths. The general Docker/Keycloak stack is a verification option, not the current production topology.
+The on-demand [local 4B profile](https://github.com/lzbgt/tiny-multimodal-edge-ai/blob/main/docs/local-4b-agent.md) uses separate loopback processes and state. [Arch deployment](docs/ARCH_HOST_DEPLOYMENT.md) retains production configuration, authorization, installation and qualification procedures; [Deployment](docs/DEPLOYMENT.md) covers other supported paths. The general Docker/Keycloak stack remains a verification option.
 
 ## Source map
 

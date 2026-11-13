@@ -1,15 +1,16 @@
 # Arch-hosted Agent-C
 
-The current deployment target is **https://agent.hubstack.cn**. Execution, UI serving and PostgreSQL run on the owner's Arch host. The VPS supplies the existing Traefik HTTPS ingress and the existing shared Hubstack identity service. It runs no Agent-C application container, daemon or database. Changes and removal are scoped to Agent-C; Panda, payments, Codexw, Local Work Bridge and other deployments remain separate.
+The production reference target is **https://agent.hubstack.cn**. Its topology places execution, UI serving and PostgreSQL on the owner's Arch host; those dedicated services remain stopped under the owner hold below. The VPS supplies the existing Traefik HTTPS ingress and the existing shared Hubstack identity service. It runs no Agent-C application container, daemon or database. Changes and removal are scoped to Agent-C; Panda, payments, Codexw, Local Work Bridge and other deployments remain separate.
 
 This rolling project has no backward compatibility requirement. The gateway bootstraps one canonical schema and checks its fingerprint on restart. A changed schema requires a fresh deployment/database; there is no automatic migration or compatibility branch. Deployment never silently erases an existing database. Keep any required artifacts/backups before intentionally replacing state.
 
 ## Owner stop (2026-11-12)
 
-The owner stopped Agent-C project development and requested shutdown of related
-services to prevent cloud-model API fees. Do not resume implementation, deployment
-or service operation without a new owner instruction. The last integrated source
-is `ab69b1788c644d993578c828d0f0581f332a6ee0`; this shutdown record does not deploy it.
+The owner requested shutdown of production services to prevent cloud-model API
+fees. Later instructions authorized the local 4B profile and source/documentation
+integration; they did not resume the production daemon, gateway or database.
+The shutdown was recorded with source `ab69b1788c644d993578c828d0f0581f332a6ee0`;
+that historical reference is not the current source revision or a deployment claim.
 The prior installed runtime, source history, local configuration, artifacts and
 persistent databases remain preserved. The Panda publication hold remains in force.
 
@@ -33,51 +34,29 @@ ss -ltnp | grep -E ':(18123|18784|15439)\b'
 Expected results are `inactive`, `MainPID=0`, `disabled`, container `exited`
 with restart `no`, and no listeners on the three project ports. This establishes
 local shutdown, not retrospective provider billing or revocation of shared keys.
-Do not run the deployment or live-model probes below while this owner hold applies.
+Do not run the production deployment or cloud-model probes below while this owner hold applies.
 
 ## Owner-directed local 4B web and CLI use (2026-11-12)
 
-The owner's local model task explicitly authorizes the existing Agent C core,
-CLI and a local web interface for the 4B Qwen3.5 fine-tune. The web interface
-uses the native `agentd` chat/session/job APIs through `agentd-local-ui`, which
-serves the existing built UI, handles local browser authentication, and pins
-runs to this local model. Native host tools execute commands. Native web tools
-provide bounded HTTP-first page extraction and an isolated headless Chrome
-fallback over CDP pipes. Search discovery can use an explicitly configured
-local SearXNG JSON service; browser discovery requires an explicit engine.
-No paid search API key or second model agent loop is required. Missing or
-blocked discovery is reported rather than replaced with unrelated results.
+The authorized local profile uses the existing native Agent C runtime and a
+separate loopback UI adapter. Its model, daemon, session state and credentials
+are separate from the production services above.
 
-| Local component | Loopback address | Purpose |
-| --- | --- | --- |
-| `agentd-local-ui` | `127.0.0.1:18088` | Tool-enabled web chat and authenticated same-origin API proxy |
-| `llama-server` | `127.0.0.1:18089` | 4B inference API, 129,024-token context; embedded model UI disabled |
-| Local-profile `agentd` | `127.0.0.1:18090` | Existing native core, sessions, jobs and host/browser tools |
+The [AI Model deployment runbook](https://github.com/lzbgt/tiny-multimodal-edge-ai/blob/main/docs/local-4b-agent.md)
+owns the maintained 4B manifest, launch/stop commands, context setting, ports,
+key locations, optional SearXNG configuration and dated live evidence. Its host
+copy is `/home/bruce/work/ai_model/docs/local-4b-agent.md`. Keep profile values
+there rather than copying them into this production runbook.
 
-The launcher and profile are maintained in `/home/bruce/work/ai_model`:
+Agent C owns the [local browser and adapter contract](LOCAL_MODEL_WEB.md),
+[native CLI behavior](CLI.md#local-models-and-response-budgets) and
+[tool/retrieval contracts](TOOLS.md). These documents distinguish a temporary
+SearXNG evaluation from permanent service activation.
 
-```sh
-python3 /home/bruce/work/ai_model/scripts/deepseek_qwen35.py serve --model 4b
-python3 /home/bruce/work/ai_model/scripts/deepseek_qwen35.py agent chat
-```
-
-The first command supervises all three native processes; Ctrl-C stops the
-stack. Private keys, logs and separate local daemon/session state live under
-`ai_model/.config/deepseek-qwen35`. The web sign-in uses the existing private
-model key without exposing provider or daemon credentials in UI configuration.
-
-For an existing local JSON-enabled SearXNG service, add
-`--searxng-url http://127.0.0.1:18091` to `serve`, or before the native CLI
-command after `agent`. The launcher does not start that service. Its temporary
-development evaluation returned relevant results on this host; permanent
-operation of Python-based SearXNG is not authorized by the project's native
-production-runtime rule. The committed profile leaves this endpoint unset.
-
-The production service stop above and Panda publication hold remain effective.
-This local profile does not enable or restart `agent-c-daemon.service`,
+The local profile does not enable or restart `agent-c-daemon.service`,
 `agent-c-gateway.service`, the dedicated PostgreSQL container, shared ingress
-or any cloud-model workflow. See [Local model web interface](LOCAL_MODEL_WEB.md),
-[CLI](CLI.md#local-models-and-response-budgets), and [Tools](TOOLS.md).
+or a cloud-model workflow. The production service stop and Agent C Panda
+publication hold remain effective.
 
 ## Runtime and authority
 

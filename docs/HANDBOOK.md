@@ -1,11 +1,14 @@
 <!-- GENERATED FILE. DO NOT EDIT. -->
 <!-- Edit docs/handbook/OVERVIEW.md and source docs; run tools/build_handbook_bundle.py. -->
 
-# Agent Handbook (Unified)
+# Agent Handbook (Generated Quick Reference)
 
-Date: 2026-02-19
+Navigation refreshed: 2026-11-13.
 
-This handbook is a **compact summary**. It avoids long history and points to the feature design docs for depth.
+Start with the [documentation index](https://github.com/lzbgt/agent-c/blob/master/docs/README.md).
+This generated handbook is a compact orientation, not a second contract or deployment runbook.
+Feature documents own exact behavior and limits; dated qualification records do not establish live status.
+Edit `docs/handbook/OVERVIEW.md`, then run `python3 tools/build_handbook_bundle.py`.
 For versioned specs, see `docs/openapi/README.md` and `docs/spec/README.md`.
 
 ---
@@ -51,15 +54,16 @@ Stack:
 4. Broker (optional relay + auth)
 5. Clients (WebUI, mobile, integrations)
 
-System map: `DESIGN.md`.
+Current product direction: `docs/ARCHITECTURE_CURRENT.md`. Detailed system map: `DESIGN.md`.
 
 ---
 
 ## 3) Role-based quick paths (merged guidance)
 
-Operator (run it in prod/local):
-- Start with `docs/DEPLOYMENT.md` + `docs/OPERATIONS.md` + `docs/AGENTD.md`.
-- Verify: `tools/verify.sh` (or `tools/verify_compose_stack.sh` for full stack).
+Operator:
+- Select a deployment through `docs/README.md`; local 4B setup belongs to the linked AI Model runbook and `docs/LOCAL_MODEL_WEB.md`.
+- Production operations: `docs/ARCH_HOST_DEPLOYMENT.md` + `docs/DEPLOYMENT.md`; preserve the documented owner stop.
+- Build/verify: `docs/OPERATIONS.md`; daemon configuration: `docs/AGENTD.md`.
 - Keep auth + CORS + size limits aligned with `docs/LIMITS.md`.
 
 Developer (core/daemon/CLI):
@@ -67,7 +71,7 @@ Developer (core/daemon/CLI):
 - Protocol/event payloads: `docs/PROTOCOL.md` + `docs/spec/README.md`.
 
 Architect/PM (capability roadmap):
-- Read `DESIGN.md` + `docs/AGENTIC_VISION.md` + `TODOS.md`.
+- Read `docs/ARCHITECTURE_CURRENT.md` + `docs/CURRENT_SNAPSHOT.md`, then `DESIGN.md`, `docs/AGENTIC_VISION.md` and `TODOS.md`.
 - Control plane + relay: `docs/BROKER.md`; memory: `docs/MEMORY.md`.
 
 ---
@@ -170,9 +174,10 @@ When `--auth-token` is set, all endpoints require `Authorization: Bearer ...`.
 
 ## 10) Where to look (feature design docs)
 
-- `DESIGN.md` for system map and boundaries.
-- `docs/AGENTIC_VISION.md` for user/client + architect expectations and evidence-driven acceptance checks.
-- `docs/README.md` for a fast doc index.
+- `docs/README.md` is the maintained navigation and document-ownership map.
+- `docs/ARCHITECTURE_CURRENT.md` owns current direction; `DESIGN.md` supplies the system map.
+- `docs/AGENTIC_VISION.md` records expectations and evidence-driven acceptance checks.
+- `docs/LOCAL_MODEL_WEB.md` owns local browser/adapter integration; `docs/TOOLS.md` owns native tool/retrieval contracts.
 - `TODOS.md` for roadmap and weighted tasks.
 - `docs/` for feature docs: protocol, client, workflows, tools, memory, diagnostics, DB, streaming, broker, deployment, WebUI, platform.
 - `docs/OPERATIONS.md` for build, verification, testing, cleanup, and publishing workflows.

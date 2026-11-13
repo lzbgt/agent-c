@@ -24,6 +24,11 @@ func main() {
 	flag.IntVar(&cfg.MaxOutputTokens, "max-output-tokens", 8192, "Per-response output token budget")
 	flag.IntVar(&cfg.MaxChars, "max-chars", 480000, "Agent compaction character threshold")
 	flag.IntVar(&cfg.TimeoutMS, "timeout-ms", 600000, "Model request timeout")
+	flag.IntVar(&cfg.MaxSteps, "max-steps", 32, "Maximum model/tool-loop steps")
+	flag.IntVar(&cfg.MaxToolCallsTotal, "max-tool-calls-total", 64, "Maximum tool calls per run")
+	flag.IntVar(&cfg.MaxRepeatedToolCalls, "max-repeated-tool-calls", 3, "Maximum repeated identical tool calls")
+	flag.IntVar(&cfg.MaxToolCallArgsChars, "max-tool-call-args-chars", 65536, "Maximum tool argument characters")
+	flag.IntVar(&cfg.MaxToolResultChars, "max-tool-result-chars", 24000, "Maximum tool result characters in model context")
 	flag.Parse()
 	app, err := localui.New(cfg)
 	if err != nil {

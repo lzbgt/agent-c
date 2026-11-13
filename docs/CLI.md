@@ -47,14 +47,19 @@ If your environment requires an HTTP proxy for outbound HTTPS, pass an explicit 
 
 ## Local models and response budgets
 
-An OpenAI-compatible local server can use the same native core and host tools:
+An OpenAI-compatible local server can use the same native core and host tools.
+The maintained profile and launcher are documented in the
+[AI Model runbook](https://github.com/lzbgt/tiny-multimodal-edge-ai/blob/main/docs/local-4b-agent.md);
+[local web integration](LOCAL_MODEL_WEB.md) describes the separate UI adapter.
+This CLI example targets the model API:
 
 ```sh
 # OPENAI_API_KEY is read from the local server's private key file by the caller.
 ./build/agent exec "Inspect this project" \
-  --base-url http://127.0.0.1:18088/v1 --model deepseek-qwen35-heretic-4b \
+  --base-url http://127.0.0.1:18089/v1 --model deepseek-qwen35-heretic-4b \
   --tools host --max-chars 480000 --max-output-tokens 8192 \
-  --timeout-ms 600000 --max-steps 32 --max-tool-calls-total 64
+  --timeout-ms 600000 --max-steps 32 --max-tool-calls-total 64 \
+  --max-tool-result-chars 24000
 ```
 
 `--max-output-tokens` sets the existing provider's `max_tokens` field for
@@ -66,6 +71,12 @@ share the server's configured capacity. A provider response ending with
 completed final answer, and truncated tool calls are not executed. Streamed
 text may already be visible, but the run remains failed and the previous
 `-o` final file is preserved. Increase the budget or request a shorter result.
+
+`--max-tool-result-chars` sets the tool-result prompt budget. The native CLI
+default is 12000; `0` disables this prompt-size cap. The maintained 4B launcher
+passes its manifest value explicitly (currently 24000), as the example above
+does. Capture limits, UI display limits and saved-output receipt rules remain
+separate; see [captured output](TOOLS.md#cancellation-and-captured-output).
 
 `--max-chars` is an approximate UTF-8 byte budget for conversation compaction,
 not a tokenizer or token count. The server enforces the actual token limit.

@@ -27,7 +27,8 @@ func fixture(t *testing.T, handler http.HandlerFunc) (*Server, string) {
 	if err := os.WriteFile(filepath.Join(dir, "daemon-key"), []byte("test-private-daemon-key-0123456789"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cfg := Config{Listen: "127.0.0.1:18088", DaemonURL: up.URL, DaemonTokenFile: filepath.Join(dir, "daemon-key"), LoginKeyFile: filepath.Join(dir, "login-key"), WebDir: dir, Model: "local-test", ModelBaseURL: "http://127.0.0.1:18089/v1", MaxOutputTokens: 8192, MaxChars: 480000, TimeoutMS: 600000}
+	cfg := Config{Listen: "127.0.0.1:18088", DaemonURL: up.URL, DaemonTokenFile: filepath.Join(dir, "daemon-key"), LoginKeyFile: filepath.Join(dir, "login-key"), WebDir: dir, Model: "local-test", ModelBaseURL: "http://127.0.0.1:18089/v1", MaxOutputTokens: 8192, MaxChars: 480000, TimeoutMS: 600000,
+		MaxSteps: 32, MaxToolCallsTotal: 64, MaxRepeatedToolCalls: 3, MaxToolCallArgsChars: 65536, MaxToolResultChars: 24000}
 	s, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -161,6 +162,92 @@ func TestModelPinningAndPrivateUpstream(t *testing.T) {
 	cfg := call(s, "GET", "/agentui-config.js", "", "", c).Body.String()
 	if strings.Contains(cfg, key) || strings.Contains(cfg, "test-private-daemon-key") || !strings.Contains(cfg, `"localModelProfile":true`) {
 		t.Fatal("runtime config leaked secret or omitted local mode")
+	}
+}
+
+func TestConfiguredRunLimitsAreAuthoritative(t *testing.T) {
+	requests := make(chan map[string]any, 2)
+	s, key := fixture(t, func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		requests <- body
+		_, _ = w.Write([]byte("{\"ok\":true}"))
+	})
+	s.cfg.MaxOutputTokens = 1536
+	s.cfg.MaxChars = 321000
+	s.cfg.TimeoutMS = 123456
+	s.cfg.MaxSteps = 7
+	s.cfg.MaxToolCallsTotal = 13
+	s.cfg.MaxRepeatedToolCalls = 2
+	s.cfg.MaxToolCallArgsChars = 12345
+	s.cfg.MaxToolResultChars = 54321
+	if err := s.cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	limits := []struct {
+		request, ui string
+		value       int
+	}{
+		{"max_tokens", "maxOutputTokens", 1536},
+		{"max_chars", "maxChars", 321000},
+		{"timeout_ms", "timeoutMs", 123456},
+		{"max_steps", "maxSteps", 7},
+		{"max_tool_calls_total", "maxToolCallsTotal", 13},
+		{"max_repeated_tool_calls", "maxRepeatedToolCalls", 2},
+		{"max_tool_call_args_chars", "maxToolCallArgsChars", 12345},
+		{"max_tool_result_chars", "maxToolResultChars", 54321},
+	}
+	cookie := login(t, s, key)
+	browser := map[string]any{"prompt": "Use the configured limits"}
+	for _, limit := range limits {
+		browser[limit.request] = 999999
+	}
+	body, _ := json.Marshal(browser)
+	for _, path := range []string{"/api/v1/run", "/api/v1/run_async"} {
+		if w := call(s, "POST", path, string(body), "http://127.0.0.1:18088", cookie); w.Code != 200 {
+			t.Fatalf("%s failed: %d %s", path, w.Code, w.Body.String())
+		}
+		got := <-requests
+		for _, limit := range limits {
+			if got[limit.request] != float64(limit.value) {
+				t.Errorf("%s = %v, want %d", limit.request, got[limit.request], limit.value)
+			}
+		}
+	}
+	script := call(s, "GET", "/agentui-config.js", "", "", cookie).Body.String()
+	configJSON := strings.TrimPrefix(strings.SplitN(script, ";window.", 2)[0], "window.__AGENT_UI_CONFIG__=")
+	var ui map[string]any
+	if err := json.Unmarshal([]byte(configJSON), &ui); err != nil {
+		t.Fatal(err)
+	}
+	for _, limit := range limits {
+		if ui[limit.ui] != float64(limit.value) {
+			t.Errorf("UI %s = %v, want %d", limit.ui, ui[limit.ui], limit.value)
+		}
+	}
+}
+
+func TestToolLimitValidation(t *testing.T) {
+	s, _ := fixture(t, func(w http.ResponseWriter, r *http.Request) {})
+	for _, field := range []struct {
+		name string
+		set  func(*Config, int)
+	}{
+		{"steps", func(c *Config, n int) { c.MaxSteps = n }},
+		{"calls", func(c *Config, n int) { c.MaxToolCallsTotal = n }},
+		{"repeated", func(c *Config, n int) { c.MaxRepeatedToolCalls = n }},
+		{"arguments", func(c *Config, n int) { c.MaxToolCallArgsChars = n }},
+		{"results", func(c *Config, n int) { c.MaxToolResultChars = n }},
+	} {
+		for _, invalid := range []int{-1, 0, 1048577} {
+			cfg := s.cfg
+			field.set(&cfg, invalid)
+			if cfg.Validate() == nil {
+				t.Errorf("%s accepted invalid limit %d", field.name, invalid)
+			}
+		}
 	}
 }
 

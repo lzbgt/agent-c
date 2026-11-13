@@ -26,9 +26,13 @@ Date: 2026-11-12. This document records implemented behavior and reproducible ch
 
 Usage and exact contracts: [CLI](CLI.md), [work state](AUTONOMOUS_WORK.md), [bound goals](GOAL_WORK_LEDGER.md), [SOP workflows](SOP_WORKFLOWS.md), [embedded C](EMBEDDED_C_API.md), [WebUI](WEBUI.md).
 
-## Live deployment
+## Deployment state and recorded qualification
 
-The deployed runtime at **https://agent.hubstack.cn** remains implementation revision **a0890c07a9dc53f1993ce726dea56aa04f156248**. The signed device receipt, guarded host action, saved SOP library, process-decision, model-transcript and requirement-driven goal source described here is not deployed; it requires an authorized release. Execution, UI and its dedicated PostgreSQL run on Arch; the existing VPS provides only Agent-C ingress and the shared identity service. The verified owner completed Apple SSO and reached the connected workspace. Public authenticated qualification ran a four-action SOP and a bounded `deepseek-v4-pro` request. The public authenticated voice WebSocket also passed a synthetic ASR/image/PCM round trip with the expected image word. No existing Agent-C VPS runtime was found to remove; other deployments were preserved. See [deployment operations and qualification](ARCH_HOST_DEPLOYMENT.md).
+The last recorded production qualification at **https://agent.hubstack.cn** used implementation revision **a0890c07a9dc53f1993ce726dea56aa04f156248**. This is historical evidence, not a claim that the service is currently running or that installed binaries match the current source. The production daemon, gateway and dedicated PostgreSQL container remain stopped under the [owner hold recorded on 2026-11-12](ARCH_HOST_DEPLOYMENT.md#owner-stop-2026-11-12). Later source integration and the separately authorized local 4B profile do not resume or update that production deployment.
+
+The signed device receipt, guarded host action, saved SOP library, process-decision, model-transcript and requirement-driven goal source described here was not part of that recorded production release. Its deployment requires a separate authorized rollout and qualification. The production topology places execution, UI and its dedicated PostgreSQL on Arch; the existing VPS provides only Agent-C ingress and the shared identity service.
+
+During the recorded qualification, the verified owner completed Apple SSO and reached the connected workspace. Public authenticated checks ran a four-action SOP and a bounded `deepseek-v4-pro` request. The voice WebSocket passed a synthetic ASR/image/PCM round trip with the expected image word. No existing Agent-C VPS runtime was found to remove; other deployments were preserved. See [production operations and qualification](ARCH_HOST_DEPLOYMENT.md). Current local-model operation and its dated reports belong to the [AI Model runbook](https://github.com/lzbgt/tiny-multimodal-edge-ai/blob/main/docs/local-4b-agent.md), with Agent C integration in [LOCAL_MODEL_WEB.md](LOCAL_MODEL_WEB.md).
 
 ## Publishing destination
 

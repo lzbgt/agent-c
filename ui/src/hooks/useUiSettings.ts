@@ -33,7 +33,8 @@ export default function useUiSettings(): UiSettings {
       model: defaults.model, summaryModel: defaults.model, baseUrl: defaults.baseUrl,
       apiKey: "", proxyUrl: "", timeoutMs: defaults.timeoutMs,
       streamAssistant: true, useAsync: true, trace: false, verbose: false,
-      maxChars: "480000", maxSteps: "32", maxToolCallsTotal: "64", maxRepeatedToolCalls: "3",
+      maxChars: defaults.maxChars, maxSteps: defaults.maxSteps,
+      maxToolCallsTotal: defaults.maxToolCallsTotal, maxRepeatedToolCalls: defaults.maxRepeatedToolCalls,
     } : run,
     client: defaults.localModelProfile ? {
       ...clientPlane.client, allowClientRpcs: false, allowClientEffects: false, allowUnsafePageEval: false,

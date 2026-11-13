@@ -21,6 +21,12 @@ class Model(BaseHTTPRequestHandler):
         requests.append(req)
         last = next(m["content"] for m in reversed(req["messages"]) if m["role"] == "user")
         message = {"role": "assistant", "content": f"verified:{last}"}
+        if "TOOL_RESULT_BUDGET" in str(last) and not any(m["role"] == "tool" for m in req["messages"]):
+            message = {"role": "assistant", "content": "", "tool_calls": [{
+                "id": "read-budget-fixture", "type": "function",
+                "function": {"name": "fs_read", "arguments": json.dumps({
+                    "path": "large-result.txt", "max_chars": 20000, "max_lines": 2})},
+            }]}
         if "OUTPUT_LIMIT" in str(last):
             message["content"] = "" if "THINKING" in str(last) else "incomplete answer"
             if "TOOL" in str(last):
@@ -77,7 +83,22 @@ try:
             assert result.returncode == expected, (args, result.returncode, result.stdout, result.stderr)
             return result
 
-        run("--help")
+        help_output = run("--help")
+        assert "--max-tool-result-chars" in help_output.stdout + help_output.stderr
+        (root / "large-result.txt").write_text("result-line: " + "R" * 9000 + "TOOL_RESULT_TAIL_MARKER\n")
+        tool_result_lengths = []
+        for cap in (None, 24000, 0):
+            run("exec", "TOOL_RESULT_BUDGET", "-C", tmp, "--no-session", "--tools", "host",
+                "--max-chars", "100000", "--max-steps", "3",
+                *(["--max-tool-result-chars", str(cap)] if cap is not None else []), *options)
+            tool_result = next(m["content"] for m in requests[-1]["messages"] if m["role"] == "tool")
+            tool_result_lengths.append(len(tool_result))
+            if cap is None:
+                assert len(tool_result) <= 12000, "standalone default result cap changed"
+            else:
+                assert 12000 < len(tool_result) < 24000 and "TOOL_RESULT_TAIL_MARKER" in tool_result, "explicit result budget did not reach the tool loop"
+        assert tool_result_lengths[1] == tool_result_lengths[2], "zero must retain the unlimited result option"
+        run("exec", "missing result budget", "--max-tool-result-chars", expected=2)
         assert "verified:stdin goal" in run("exec", "-", "--no-session", "--tools", "none", *options, input="stdin goal").stdout
         assert "max_tokens" not in requests[-1], "default provider budget must remain unchanged"
         for mode in ("none", "host"):

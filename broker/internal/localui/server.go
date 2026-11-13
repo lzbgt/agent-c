@@ -249,9 +249,9 @@ func (s *Server) pinRun(w http.ResponseWriter, r *http.Request) bool {
 		"model": s.cfg.Model, "summary_model": s.cfg.Model, "base_url": s.cfg.ModelBaseURL,
 		"proxy": "", "max_tokens": s.cfg.MaxOutputTokens, "max_chars": s.cfg.MaxChars,
 		"timeout_ms": s.cfg.TimeoutMS, "tools": "host", "host_policy": "full",
-		"automation_profile": "full", "yolo": true, "max_steps": 32,
-		"max_tool_calls_total": 64, "max_repeated_tool_calls": 3,
-		"max_tool_call_args_chars": 65536,
+		"automation_profile": "full", "yolo": true, "max_steps": s.cfg.MaxSteps,
+		"max_tool_calls_total": s.cfg.MaxToolCallsTotal, "max_repeated_tool_calls": s.cfg.MaxRepeatedToolCalls,
+		"max_tool_call_args_chars": s.cfg.MaxToolCallArgsChars, "max_tool_result_chars": s.cfg.MaxToolResultChars,
 	} {
 		body[key] = value
 	}
@@ -305,6 +305,9 @@ func (s *Server) configJS(w http.ResponseWriter) {
 		"yolo": true, "automationProfile": "full", "model": s.cfg.Model,
 		"baseUrl": s.cfg.ModelBaseURL, "apiKey": "", "proxyUrl": "",
 		"timeoutMs": s.cfg.TimeoutMS, "streamAssistant": true, "useAsync": true,
+		"maxOutputTokens": s.cfg.MaxOutputTokens, "maxChars": s.cfg.MaxChars, "maxSteps": s.cfg.MaxSteps,
+		"maxToolCallsTotal": s.cfg.MaxToolCallsTotal, "maxRepeatedToolCalls": s.cfg.MaxRepeatedToolCalls,
+		"maxToolCallArgsChars": s.cfg.MaxToolCallArgsChars, "maxToolResultChars": s.cfg.MaxToolResultChars,
 		"trace": false, "verbose": false, "serverPrefsMode": "off",
 		"allowClientRpcs": false, "allowClientEffects": false, "allowUnsafePageEval": false,
 	}
