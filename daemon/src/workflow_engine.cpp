@@ -18,6 +18,7 @@
 #include "workflow_host_tool.h"
 #include "workflow_model_effect.h"
 #include "workflow_decision.h"
+#include "workflow_signal.h"
 #include "workflow_edge_invoke.h"
 #include "workflow_agentd_call.h"
 #include "workflow_evidence.h"
@@ -443,6 +444,11 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         } else if (yielded) return;
       }
     }
+  }
+  if (out.isNull() && kind == "signal") {
+    bool yielded = false;
+    out = workflow_signal_step(db_, task, rr["signal"], &yielded);
+    if (yielded) return;
   }
   if (out.isNull() && kind == "decision") {
     bool yielded = false;

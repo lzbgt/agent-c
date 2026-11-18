@@ -53,7 +53,7 @@ environment attached to evidence. Regenerate the handbook with
 - [Limits](LIMITS.md): host size/time caps and operator settings.
 - [Autonomous work](AUTONOMOUS_WORK.md): requirements, dependencies and continuation.
 - [Bound goals](GOAL_WORK_LEDGER.md): host authority and broker goal coordination.
-- [Workflows](WORKFLOWS.md), [SOPs](SOP_WORKFLOWS.md), [decisions](WORKFLOW_DECISIONS.md),
+- [Workflows](WORKFLOWS.md), [SOPs](SOP_WORKFLOWS.md), [decisions](WORKFLOW_DECISIONS.md), [external signals](WORKFLOW_SIGNALS.md),
   [effects](WORKFLOW_EFFECTS.md), [budgets](WORKFLOW_BUDGETS.md) and
   [device assignments](DEVICE_ASSIGNMENTS.md): their respective durable contracts.
 - [Runtime skills](../tools/skills/README.md): skill manifests and auditable apply workflow.

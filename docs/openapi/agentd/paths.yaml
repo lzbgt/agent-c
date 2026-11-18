@@ -2319,6 +2319,36 @@
       "500": { description: Storage or definition integrity error }
       "503": { description: Database unavailable }
 
+/api/v1/workflow/signal:
+  post:
+    tags: [workflows]
+    summary: Deliver one immutable JSON input to an activated signal wait
+    description: |
+      Authenticated daemon boundary. Maximum 32 KiB body and 16 KiB compact JSON
+      payload. Exact workflow/task/signal identity is required; names alone do not
+      route events. Identical delivery key and payload returns the saved receipt,
+      including after a stop, without waking or clearing cancellation. Conflicting
+      deliveries, expired/stopped waits and pre-activation delivery are rejected.
+      No publisher-specific permission, broadcast, secret storage or external
+      exactly-once guarantee is implied.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/WorkflowSignalRequest" }
+    responses:
+      "200":
+        description: Input recorded or exact original receipt replayed
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkflowSignalResponse" }
+      "400": { description: Invalid identity, payload or size bound }
+      "401": { description: Authentication required }
+      "404": { description: Signal not found or not yet activated }
+      "409": { description: Conflicting delivery, identity mismatch, expiry or stopped workflow }
+      "500": { description: Storage or integrity failure }
+      "503": { description: Database unavailable }
+
 /api/v1/workflow/decision:
   post:
     tags: [workflows]

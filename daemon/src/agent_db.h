@@ -1106,6 +1106,23 @@ class AgentDb {
     const std::string& choice_id, const std::string& outcome, const std::string& note,
     const std::string& delivery_id, WorkflowDecisionRow* out, std::string* error);
 
+  struct WorkflowSignalRow {
+    std::string signal_id, workflow_id, task_id, request_hash, spec_json, state;
+    int64_t created_unix_ms = 0, expires_unix_ms = 0, resolved_unix_ms = 0;
+    std::string payload_json, payload_hash, delivery_id;
+  };
+  // Atomically arm/yield without a worker or grant; immutable delivery wakes only this task.
+  bool prepare_workflow_signal(const WorkflowTaskRow&, const WorkflowSignalRow&,
+    int64_t timeout_ms, WorkflowSignalRow*, bool* yielded, std::string* error);
+  bool get_workflow_signal(const std::string& workflow_id, const std::string& task_id,
+    WorkflowSignalRow*, std::string* error);
+  bool list_workflow_signals(const std::string& workflow_id, std::vector<WorkflowSignalRow>*, std::string* error);
+  enum class WorkflowSignalResolution { Recorded, Replayed, Conflict, Stopped, Expired, NotFound, StorageError };
+  // Service validates canonical bounded JSON and its hash before this atomic CAS.
+  WorkflowSignalResolution resolve_workflow_signal(const WorkflowSignalRow& expected,
+    const std::string& payload_json, const std::string& payload_hash, const std::string& delivery_id,
+    WorkflowSignalRow*, std::string* error);
+
  private:
   bool ensure_schema_locked(std::string* out_error);
   bool exec_locked(const std::string& sql, std::string* out_error);

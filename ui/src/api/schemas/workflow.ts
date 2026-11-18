@@ -74,12 +74,22 @@ export const WorkflowDecisionSchema = z.object({
 });
 export type WorkflowDecision = z.infer<typeof WorkflowDecisionSchema>;
 
+export const WorkflowSignalSchema = z.object({
+  workflow_id: z.string(), task_id: z.string(), signal_id: z.string(), request_hash: z.string(),
+  name: z.string(), title: z.string().optional(),
+  state: z.enum(["waiting", "resolved", "expired", "stopped"]), available: z.boolean(),
+  created_unix_ms: z.number(), expires_unix_ms: z.number().optional(),
+  resolved_unix_ms: z.number().optional(), payload_hash: z.string().optional(),
+});
+export type WorkflowSignal = z.infer<typeof WorkflowSignalSchema>;
+
 export const WorkflowDetailRespSchema = z
   .object({
     ok: z.boolean().optional(),
     workflow: WorkflowSummarySchema.optional(),
     tasks: z.array(WorkflowTaskSchema).optional(),
     decisions: z.array(WorkflowDecisionSchema).optional(),
+    signals: z.array(WorkflowSignalSchema).optional(),
     effects: z.array(z.object({
       effect_id: z.string(), task_id: z.string(), request_hash: z.string(),
       mode: z.enum(["guarded", "idempotent"]),

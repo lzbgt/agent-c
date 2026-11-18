@@ -139,7 +139,7 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
   await expect(page.getByTestId("workflow-effects")).toContainText("Conversation changed");
   await expect(page.getByTestId("workflow-effects")).toContainText("The newer conversation was preserved");
   await expect(page.getByRole("textbox",{name:"Receipt endpoint for task-f"})).toHaveCount(0);
-  await expect(page.getByText("Budgets", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Workflow resources", exact: true })).toBeVisible();
   await expect(page.getByText("Workflow result", { exact: true })).toBeVisible();
   await expect(page.getByText("Workflow spec", { exact: true })).toBeVisible();
   await page.setViewportSize({ width: 320, height: 740 });

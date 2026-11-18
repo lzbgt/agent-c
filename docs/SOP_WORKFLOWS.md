@@ -2,7 +2,7 @@
 
 ## Guided process authoring
 
-Select the SOP template to name and version a process, reorder stages/actions, and choose sequential or parallel execution. Add model requests, relative waits, fixed UTC waits or process decisions. Edits preserve advanced action settings; editing, adding and reordering never submit or save automatically.
+Select the SOP template to name and version a process, reorder stages/actions, and choose sequential or parallel execution. Add model requests, relative waits, fixed UTC waits, external signal waits or process decisions. Edits preserve advanced action settings; editing, adding and reordering never submit or save automatically.
 
 Decisions expose the question, dependency-relative expiry (0 for indefinite, otherwise up to 30 days), and 1–8 choices with explicit IDs, labels and continue/fail outcomes. New choices default to fail, not implicit approval. Choices are process inputs, not person/role authorization or tool permission. Ordinary server validation remains authoritative.
 
@@ -55,7 +55,7 @@ Editing and saving never execute commands or grant capabilities. The daemon must
 
 `ui/e2e/workflow_sop_host.spec.ts` executes the exact browser-authored saved/pinned SOP using `tests/workflow_authored_host_smoke.py`. Isolated daemons verify literal argv output with one completed journal receipt, and disabled execution policy with zero admitted effects. Browser checks cover add/remove arguments, empty strings, advanced field/tool preservation, mobile layout and no implicit submission.
 
-Actions use the existing task payload contracts. Supported kinds are `llm` (or an omitted kind with `request`), `delay`, `timer`, `decision`, `host_tool`, `http_json`, `agentd_call`, `aggregate`, `avm_capsule`, memory task kinds, `experience_record`, `edge_invoke`, `edge_wait_sensor`, and sequential `delegate`. Native HTTP/device/capsule policies remain effective; SOP input does not grant capabilities. See [WORKFLOWS.md](WORKFLOWS.md) and the generated OpenAPI contract for their payloads.
+Actions use the existing task payload contracts. Supported kinds are `llm` (or an omitted kind with `request`), `delay`, `timer`, `decision`, `signal`, `host_tool`, `http_json`, `agentd_call`, `aggregate`, `avm_capsule`, memory task kinds, `experience_record`, `edge_invoke`, `edge_wait_sensor`, and sequential `delegate`. Native HTTP/device/capsule policies remain effective; SOP input does not grant capabilities. See [WORKFLOWS.md](WORKFLOWS.md) and the generated OpenAPI contract for their payloads.
 
 The stored diagnostic spec contains the original `sop`, compiled `tasks`, and server-owned `sop_compiled` metadata: compiler schema, definition ID/version, canonical definition SHA-256 and stage-to-task mapping. The hash uses `agent_json_c14n_v1`, not an unspecified JSON serialization. It identifies the submitted definition, not externally supplied defaults or secrets; the entire redacted run spec records those execution settings separately. Inline SOPs remain ad hoc: reusing an ID/version with changed inline source produces a different hash. Saved versions enforce immutability as described below.
 
@@ -68,6 +68,16 @@ Set a stage's optional `repeat_count` to 1–32 for a fixed number of intentiona
 For counts greater than one, task IDs become `source_id:repeat:N` (one-based). Expanded IDs must remain globally unique and fit 128 bytes. Input references are not rewritten: advanced references must use exact expanded IDs. All expanded tasks count against the 128-task bound. The stored manifest includes each iteration's task IDs; restart resumes those persisted tasks, not a new loop.
 
 Enable **include spec** in the advanced workflow controls and reload to load the process mapping. The read-only **Process progress** card groups last-loaded task states by stored stage and iteration. Counts are completed tasks, not elapsed-time percentages or acceptance guarantees. Missing rows show “not loaded”; explicit blockers show “needs attention”; queued tasks are not claimed to be executing. Reload uses the existing workflow read. There is no implicit retry, submit, approval or effect reconciliation.
+
+## External-input steps
+
+A `signal` action waits for one explicitly delivered JSON result after its dependencies finish.
+Use **Wait for an external signal** to configure its name, label and expiry. Saving/editing does
+not activate or deliver anything. Each activated run/task has an exact signal identity;
+name-only broadcasts and pre-activation mailboxes are not provided. The authenticated API
+commits one bounded payload and wakeup atomically; exact original delivery replay cannot
+revive cancelled work. The **External signals** run card is read-only. See the
+[signal operation and recovery contract](WORKFLOW_SIGNALS.md).
 
 ## Explicit review steps
 
@@ -91,4 +101,4 @@ An optional `sop_ref.definition_hash` asserts the expected canonical content; mi
 
 The library uses the same daemon authentication/access boundary as other workflow APIs. It is not a secret store. Known inline credential fields (including API keys, authorization headers, passwords and access/refresh tokens) are rejected rather than silently redacted into unusable execution source. Use server-side credential references. This check is not a general secret detector; never place credentials in free-form prompts, command strings, URLs or arbitrary data fields. Source is returned only on an exact read/save, not in metadata pages. Keep database backups and authorized erasure under the existing daemon-state policy.
 
-SOP v1 is available on direct workflow submission. Schedule/runtime-skill authoring may still require a tasks-based bundle; the saved library does not add schedule/runtime-skill authoring support. General external signals, person/role-bound process approvals, branches, conditional loops, compensation and active-run version migrations are explicitly future work in [the architecture](ARCHITECTURE_CURRENT.md). The independent [work ledger](AUTONOMOUS_WORK.md) remains separate from the scheduler-level decision node.
+SOP v1 is available on direct workflow submission. Schedule/runtime-skill authoring may still require a tasks-based bundle; the saved library does not add schedule/runtime-skill authoring support. Pre-activation signal mailboxes, broadcast/publisher authorization, person/role-bound process approvals, branches, conditional loops, compensation and active-run version migrations are explicitly future work in [the architecture](ARCHITECTURE_CURRENT.md). The independent [work ledger](AUTONOMOUS_WORK.md) remains separate from the scheduler-level decision node.

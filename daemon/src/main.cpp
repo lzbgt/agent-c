@@ -1592,6 +1592,9 @@ int main(int argc, char** argv) {
     });
   }
 
+  server.handle("POST", "/api/v1/workflow/signal", [&](const HttpRequest& req, HttpResponse* resp) {
+    handle_workflow_signal_endpoint(cfg_store.snapshot(), cors_cfg, db_or_null, req, resp);
+  });
   server.handle("POST", "/api/v1/workflow/decision", [&](const HttpRequest& req, HttpResponse* resp) {
     handle_workflow_decision_endpoint(cfg_store.snapshot(), cors_cfg, db_or_null, req, resp);
   });

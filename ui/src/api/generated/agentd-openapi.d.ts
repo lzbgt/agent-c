@@ -3823,6 +3823,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workflow/signal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deliver one immutable JSON input to an activated signal wait
+         * @description Authenticated daemon boundary. Maximum 32 KiB body and 16 KiB compact JSON
+         *     payload. Exact workflow/task/signal identity is required; names alone do not
+         *     route events. Identical delivery key and payload returns the saved receipt,
+         *     including after a stop, without waking or clearing cancellation. Conflicting
+         *     deliveries, expired/stopped waits and pre-activation delivery are rejected.
+         *     No publisher-specific permission, broadcast, secret storage or external
+         *     exactly-once guarantee is implied.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["WorkflowSignalRequest"];
+                };
+            };
+            responses: {
+                /** @description Input recorded or exact original receipt replayed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowSignalResponse"];
+                    };
+                };
+                /** @description Invalid identity */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Signal not found or not yet activated */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Conflicting delivery */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Storage or integrity failure */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Database unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workflow/decision": {
         parameters: {
             query?: never;
@@ -10333,7 +10424,7 @@ export interface components {
          *     - If `kind == delegate_parallel`, `delegate.attempts` is required and `request.prompt` is not used (expanded into multiple tasks).
          *     - Otherwise, `request.prompt` is required (or prompt at the top-level is accepted by the server for legacy reasons).
          */
-        WorkflowTaskSpec: components["schemas"]["WorkflowTaskRunSpec"] | components["schemas"]["WorkflowTaskAvmCapsuleSpec"] | components["schemas"]["WorkflowTaskAggregateSpec"] | components["schemas"]["WorkflowTaskMemoryPutSpec"] | components["schemas"]["WorkflowTaskMemorySearchSpec"] | components["schemas"]["WorkflowTaskMemoryTimelineSpec"] | components["schemas"]["WorkflowTaskMemoryStructuredQuerySpec"] | components["schemas"]["WorkflowTaskMemoryCorrelateSpec"] | components["schemas"]["WorkflowTaskMemoryQuerySpec"] | components["schemas"]["WorkflowTaskExperienceRecordSpec"] | components["schemas"]["WorkflowTaskDecisionSpec"] | components["schemas"]["WorkflowTaskHostToolSpec"] | components["schemas"]["WorkflowTaskHttpJsonSpec"] | components["schemas"]["WorkflowTaskAgentdCallSpec"] | components["schemas"]["WorkflowTaskAgentdParallelSpec"] | components["schemas"]["WorkflowTaskMemoryConsolidateSpec"] | components["schemas"]["WorkflowTaskDelaySpec"] | components["schemas"]["WorkflowTaskTimerSpec"] | components["schemas"]["WorkflowTaskEdgeInvokeSpec"] | components["schemas"]["WorkflowTaskEdgeParallelSpec"] | components["schemas"]["WorkflowTaskEdgeWaitSensorSpec"] | components["schemas"]["WorkflowTaskDelegateSpec"];
+        WorkflowTaskSpec: components["schemas"]["WorkflowTaskRunSpec"] | components["schemas"]["WorkflowTaskAvmCapsuleSpec"] | components["schemas"]["WorkflowTaskAggregateSpec"] | components["schemas"]["WorkflowTaskMemoryPutSpec"] | components["schemas"]["WorkflowTaskMemorySearchSpec"] | components["schemas"]["WorkflowTaskMemoryTimelineSpec"] | components["schemas"]["WorkflowTaskMemoryStructuredQuerySpec"] | components["schemas"]["WorkflowTaskMemoryCorrelateSpec"] | components["schemas"]["WorkflowTaskMemoryQuerySpec"] | components["schemas"]["WorkflowTaskExperienceRecordSpec"] | components["schemas"]["WorkflowTaskDecisionSpec"] | components["schemas"]["WorkflowTaskSignalSpec"] | components["schemas"]["WorkflowTaskHostToolSpec"] | components["schemas"]["WorkflowTaskHttpJsonSpec"] | components["schemas"]["WorkflowTaskAgentdCallSpec"] | components["schemas"]["WorkflowTaskAgentdParallelSpec"] | components["schemas"]["WorkflowTaskMemoryConsolidateSpec"] | components["schemas"]["WorkflowTaskDelaySpec"] | components["schemas"]["WorkflowTaskTimerSpec"] | components["schemas"]["WorkflowTaskEdgeInvokeSpec"] | components["schemas"]["WorkflowTaskEdgeParallelSpec"] | components["schemas"]["WorkflowTaskEdgeWaitSensorSpec"] | components["schemas"]["WorkflowTaskDelegateSpec"];
         WorkflowTaskRunSpec: {
             task_id: string;
             /** @description If true, task failure does not fail the workflow (soft-fail). */
@@ -10809,6 +10900,73 @@ export interface components {
              * @description Per-source result bound, clamped to 1024..65536 (default 8192).
              */
             max_result_chars?: number;
+        };
+        /**
+         * @description Single-use external input after dependencies complete. Waiting occupies no worker,
+         *     attempt or execution budget. Delivery is authenticated at the daemon boundary,
+         *     not per-publisher authorization or a tool permission. No pre-activation mailbox,
+         *     broadcast or implicit event matching. allow_error=true is rejected.
+         */
+        WorkflowTaskSignalSpec: {
+            task_id: string;
+            /** @enum {string} */
+            kind: "signal";
+            depends_on?: string[];
+            priority?: number;
+            max_attempts?: number;
+            /** @enum {boolean} */
+            allow_error?: false;
+            expect?: {
+                [key: string]: unknown;
+            };
+            signal: {
+                name: string;
+                /** @description At most 256 UTF-8 bytes; no NUL. */
+                title?: string;
+                /**
+                 * Format: int64
+                 * @description Starts on first activation after dependencies; zero is indefinite. Cancellation and workflow deadline remain effective.
+                 * @default 0
+                 */
+                timeout_ms: number;
+            };
+        };
+        WorkflowSignal: {
+            workflow_id: string;
+            task_id: string;
+            signal_id: string;
+            request_hash: string;
+            name: string;
+            title?: string;
+            /** @enum {string} */
+            state: "waiting" | "resolved" | "expired" | "stopped";
+            /** @description Advisory projection; delivery transaction checks live task state, expiry and cancellation. */
+            available: boolean;
+            /** Format: int64 */
+            created_unix_ms: number;
+            /** Format: int64 */
+            expires_unix_ms?: number;
+            /** Format: int64 */
+            resolved_unix_ms?: number;
+            /** @description Verified canonical payload hash. Payload appears only in the completed task result. */
+            payload_hash?: string;
+        };
+        WorkflowSignalRequest: {
+            workflow_id: string;
+            task_id: string;
+            signal_id: string;
+            /** @description Reuse with the identical payload after an uncertain response. A new key conflicts with an already recorded delivery. */
+            idempotency_key: string;
+            /** @description At most 16384 bytes in server compact JSON. Persisted process data, not a secret store. */
+            payload: {
+                [key: string]: unknown;
+            };
+        };
+        WorkflowSignalResponse: {
+            /** @enum {boolean} */
+            ok: true;
+            replayed: boolean;
+            signal: components["schemas"]["WorkflowSignal"];
         };
         WorkflowDecisionChoice: {
             id: string;
@@ -12296,6 +12454,8 @@ export interface components {
                 active_attempts: number;
                 uncertain_attempts: number;
             };
+            /** @description Bounded metadata for activated external-input waits; no payload bodies. */
+            signals?: components["schemas"]["WorkflowSignal"][];
             /** @description Scoped process choices and immutable outcomes, returned even without tasks/results. Stopped is a projection, not permission to resume cancelled work. */
             decisions?: components["schemas"]["WorkflowDecision"][];
             /** @description Durable external-effect metadata, including attempts whose task result was lost. Receipts are excluded from this polling surface. */

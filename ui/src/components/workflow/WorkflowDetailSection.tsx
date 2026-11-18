@@ -3,6 +3,7 @@ import WorkflowSopProgress from "./WorkflowSopProgress";
 import WorkflowEffectsSection from "./WorkflowEffectsSection";
 import WorkflowBudgetSection from "./WorkflowBudgetSection";
 import WorkflowDecisionsSection from "./WorkflowDecisionsSection";
+import WorkflowSignalsSection from "./WorkflowSignalsSection";
 import DeviceReceiptButton from "./DeviceReceiptButton";
 import type { ApiAuth } from "../../api/auth";
 import type { WorkflowDetailResp } from "../../api";
@@ -52,6 +53,7 @@ export default function WorkflowDetailSection(props: WorkflowDetailSectionProps)
         </section>
       ) : null}
       <WorkflowSopProgress detail={props.detail} tasks={props.tasks} />
+      <WorkflowSignalsSection signals={props.detail.signals ?? []} />
       <WorkflowDecisionsSection workflowId={summary.workflow_id} decisions={props.detail.decisions ?? []}
         active={!summary.cancel_requested && (summary.status === "queued" || summary.status === "running") &&
           !(summary.deadline_unix_ms && summary.deadline_unix_ms <= Date.now())}

@@ -1,6 +1,7 @@
 #include "workflow_endpoints.h"
 #include "workflow_budget.h"
 #include "workflow_decision.h"
+#include "workflow_signal.h"
 
 #include "daemon_auth.h"
 #include "http_util.h"
@@ -94,6 +95,12 @@ void handle_workflow_get_endpoint(
   if (!workflow_decisions_projection(db_or_null, wf, &o["decisions"], &err)) {
     resp->status = 500;
     resp->body = json_error_body("failed to load workflow decisions");
+    return;
+  }
+
+  if (!workflow_signals_projection(db_or_null, wf, &o["signals"], &err)) {
+    resp->status = 500;
+    resp->body = json_error_body("failed to load workflow signals");
     return;
   }
 

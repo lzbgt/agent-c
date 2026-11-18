@@ -355,6 +355,13 @@ Semantics:
 - Produces a deterministic result object with `ok=true`, plus any merged keys from `result`.
 - If `result.assistant_text` is omitted, `assistant_text` defaults to `"delay:<delay_ms>"`.
 
+### External-input wait (`kind:"signal"`)
+
+Use a signal task to wait for one explicitly delivered JSON result. It yields workers,
+attempts and execution grants; an immutable authenticated receipt atomically wakes only
+the exact activated task. Names do not route broadcasts, and early delivery is rejected.
+See [external signal operation, bounds and recovery](WORKFLOW_SIGNALS.md).
+
 ### Absolute-time durable timer (`kind:"timer"`)
 
 Use an absolute timer when a process must not continue before a particular calendar time:

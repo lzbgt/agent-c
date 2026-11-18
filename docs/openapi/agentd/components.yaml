@@ -325,6 +325,14 @@ schemas:
     $ref: ./components/workflow.yaml#/WorkflowMemoryQuerySpec
   WorkflowExperienceRecordSpec:
     $ref: ./components/workflow.yaml#/WorkflowExperienceRecordSpec
+  WorkflowTaskSignalSpec:
+    $ref: ./components/workflow.yaml#/WorkflowTaskSignalSpec
+  WorkflowSignal:
+    $ref: ./components/workflow.yaml#/WorkflowSignal
+  WorkflowSignalRequest:
+    $ref: ./components/workflow.yaml#/WorkflowSignalRequest
+  WorkflowSignalResponse:
+    $ref: ./components/workflow.yaml#/WorkflowSignalResponse
   WorkflowDecisionChoice:
     $ref: ./components/workflow.yaml#/WorkflowDecisionChoice
   WorkflowTaskDecisionSpec:

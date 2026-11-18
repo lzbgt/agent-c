@@ -107,7 +107,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 41;
+  const int kSchemaVersion = 42;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -1065,7 +1065,7 @@ CREATE TABLE workflow_effects_v41(
  UNIQUE(workflow_id,task_id,effect_slot),
  FOREIGN KEY(workflow_id,task_id) REFERENCES workflow_tasks(workflow_id,task_id) ON DELETE CASCADE
 );
-INSERT INTO workflow_effects_v41 SELECT *, '' FROM workflow_effects;
+INSERT INTO workflow_effects_v41 SELECT effect_id,workflow_id,task_id,request_hash,mode,state,revision,attempt,created_unix_ms,updated_unix_ms,receipt_json,reconcile_url,'' FROM workflow_effects;
 DROP TABLE workflow_effects;
 ALTER TABLE workflow_effects_v41 RENAME TO workflow_effects;
 CREATE INDEX workflow_effects_by_workflow ON workflow_effects(workflow_id,task_id);
@@ -1074,6 +1074,29 @@ COMMIT;
 )SQL";
     if (!exec_locked(schema_v41, out_error)) { exec_locked("ROLLBACK", nullptr); return false; }
     cur_ver = 41;
+  }
+
+  if (cur_ver < 42) {
+    const char* schema_v42 = R"SQL(
+CREATE TABLE IF NOT EXISTS workflow_signals(
+  signal_id TEXT PRIMARY KEY,
+  workflow_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  request_hash TEXT NOT NULL,
+  spec_json TEXT NOT NULL,
+  state TEXT NOT NULL CHECK(state IN ('waiting','resolved','expired')),
+  created_unix_ms INTEGER NOT NULL,
+  expires_unix_ms INTEGER NOT NULL DEFAULT 0,
+  resolved_unix_ms INTEGER NOT NULL DEFAULT 0,
+  payload_json TEXT NOT NULL DEFAULT '',
+  payload_hash TEXT NOT NULL DEFAULT '',
+  delivery_id TEXT NOT NULL DEFAULT '',
+  UNIQUE(workflow_id,task_id),
+  FOREIGN KEY(workflow_id,task_id) REFERENCES workflow_tasks(workflow_id,task_id) ON DELETE CASCADE
+);
+)SQL";
+    if (!exec_locked(schema_v42, out_error)) return false;
+    cur_ver = 42;
   }
 
   // Record schema version.

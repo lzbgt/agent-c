@@ -26,7 +26,7 @@ Messages have one renderer: expanding Activity & details never repeats the chat.
 
 The composer focuses on **Attach** and **Send**. Settings leads with model, capabilities and conversation; technical controls and conversation management are collapsed by default. Desktop, phone and tablet layouts share these defaults. [UI design](docs/UI_DESIGN.md) records the attention hierarchy and verification contract.
 
-Workflows has separate **Runs**, **Create workflow** and **Schedules** sections. Its SOP templates define ordered stages and sequential or parallel actions, including explicit durable review decisions that release workers while waiting. The saved SOP library persists immutable versions and loads exact hash-pinned references without starting a run; JSON and graph authoring remain available. [SOP guide](docs/SOP_WORKFLOWS.md)
+Workflows has separate **Runs**, **Create workflow** and **Schedules** sections. Its SOP templates define ordered stages and sequential or parallel actions, including explicit durable review decisions and external JSON signal waits that release workers while waiting. The saved SOP library persists immutable versions and loads exact hash-pinned references without starting a run; JSON and graph authoring remain available. [SOP guide](docs/SOP_WORKFLOWS.md)
 
 ## What is implemented
 
@@ -34,6 +34,7 @@ Workflows has separate **Runs**, **Create workflow** and **Schedules** sections.
 - **Autonomous work state:** a SQLite requirement/blocker ledger shared by `work_state` and `agent work`, with dependency validation, revision checks and evidence-gated transitions.
 - **Durable workflows:** immutable saved SOP versions, hash-pinned run snapshots, SOP compilation, task recovery, scheduling, dataflow and inspectable evidence.
 - **Deterministic host actions:** workflow/SOP tools run under existing policy with durable intent and saved-result replay. Interrupted effects are not blindly repeated; independent work continues. [Host action contract](docs/WORKFLOW_EFFECTS.md#deterministic-host-tools)
+- **External process input:** activated signal waits accept one authenticated, bounded JSON payload with immutable delivery and restart/stop safety. Guided authoring and read-only run progress are included. [Signal contract](docs/WORKFLOW_SIGNALS.md)
 - **HTTP effects:** stable effect identity, intent/receipt journaling and reconciliation for guarded writes. Independent branches continue when another branch needs recovery. [Effect contract](docs/WORKFLOW_EFFECTS.md)
 - **Device dispatch:** immutable operation/node identity and transactional assignment, capacity and outbox publication prevent retry-driven command duplication. Uncertain outcomes expose a scoped human action while independent work continues. [Device contract](docs/DEVICE_ASSIGNMENTS.md)
 - **Workflow budgets:** per-attempt transactional grants, atomic settlement/refunds and conservative crash charges prevent duplicate capacity admission. Observed token/time overages remain explicit. [Budget contract](docs/WORKFLOW_BUDGETS.md)

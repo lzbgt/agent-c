@@ -59,6 +59,7 @@ WorkflowTaskSpec:
     - $ref: "#/components/schemas/WorkflowTaskMemoryQuerySpec"
     - $ref: "#/components/schemas/WorkflowTaskExperienceRecordSpec"
     - $ref: "#/components/schemas/WorkflowTaskDecisionSpec"
+    - $ref: "#/components/schemas/WorkflowTaskSignalSpec"
     - $ref: "#/components/schemas/WorkflowTaskHostToolSpec"
     - $ref: "#/components/schemas/WorkflowTaskHttpJsonSpec"
     - $ref: "#/components/schemas/WorkflowTaskAgentdCallSpec"
@@ -71,6 +72,81 @@ WorkflowTaskSpec:
     - $ref: "#/components/schemas/WorkflowTaskEdgeWaitSensorSpec"
     - $ref: "#/components/schemas/WorkflowTaskDelegateSpec"
 
+
+WorkflowTaskSignalSpec:
+  type: object
+  required: [task_id, kind, signal]
+  description: |
+    Single-use external input after dependencies complete. Waiting occupies no worker,
+    attempt or execution budget. Delivery is authenticated at the daemon boundary,
+    not per-publisher authorization or a tool permission. No pre-activation mailbox,
+    broadcast or implicit event matching. allow_error=true is rejected.
+  properties:
+    task_id: { type: string }
+    kind: { type: string, enum: [signal] }
+    depends_on: { type: array, items: { type: string } }
+    priority: { type: integer }
+    max_attempts: { type: integer }
+    allow_error: { type: boolean, enum: [false] }
+    expect: { type: object, additionalProperties: true }
+    signal:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9_.:-]+$" }
+        title: { type: string, minLength: 1, maxLength: 256, description: "At most 256 UTF-8 bytes; no NUL." }
+        timeout_ms:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 2592000000
+          default: 0
+          description: Starts on first activation after dependencies; zero is indefinite. Cancellation and workflow deadline remain effective.
+
+WorkflowSignal:
+  type: object
+  required: [workflow_id, task_id, signal_id, request_hash, name, state, available, created_unix_ms]
+  properties:
+    workflow_id: { type: string }
+    task_id: { type: string }
+    signal_id: { type: string }
+    request_hash: { type: string }
+    name: { type: string }
+    title: { type: string }
+    state: { type: string, enum: [waiting, resolved, expired, stopped] }
+    available: { type: boolean, description: "Advisory projection; delivery transaction checks live task state, expiry and cancellation." }
+    created_unix_ms: { type: integer, format: int64 }
+    expires_unix_ms: { type: integer, format: int64 }
+    resolved_unix_ms: { type: integer, format: int64 }
+    payload_hash: { type: string, description: "Verified canonical payload hash. Payload appears only in the completed task result." }
+
+WorkflowSignalRequest:
+  type: object
+  additionalProperties: false
+  required: [workflow_id, task_id, signal_id, idempotency_key, payload]
+  properties:
+    workflow_id: { type: string, minLength: 1, maxLength: 1024 }
+    task_id: { type: string, minLength: 1, maxLength: 1024 }
+    signal_id: { type: string, minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9_.:-]+$" }
+    idempotency_key:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: "^[A-Za-z0-9_.:-]+$"
+      description: Reuse with the identical payload after an uncertain response. A new key conflicts with an already recorded delivery.
+    payload:
+      type: object
+      additionalProperties: true
+      description: "At most 16384 bytes in server compact JSON. Persisted process data, not a secret store."
+
+WorkflowSignalResponse:
+  type: object
+  required: [ok, replayed, signal]
+  properties:
+    ok: { type: boolean, enum: [true] }
+    replayed: { type: boolean }
+    signal: { $ref: "#/components/schemas/WorkflowSignal" }
 
 WorkflowDecisionChoice:
   type: object
@@ -2234,6 +2310,10 @@ WorkflowGetResponse:
         uncertain: { type: object, additionalProperties: { type: integer, format: int64 } }
         active_attempts: { type: integer }
         uncertain_attempts: { type: integer }
+    signals:
+      type: array
+      description: Bounded metadata for activated external-input waits; no payload bodies.
+      items: { $ref: "#/components/schemas/WorkflowSignal" }
     decisions:
       type: array
       description: Scoped process choices and immutable outcomes, returned even without tasks/results. Stopped is a projection, not permission to resume cancelled work.

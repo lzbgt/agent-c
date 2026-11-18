@@ -1,6 +1,6 @@
 # Agentd SQLite DB (Canonical Daemon Store)
 
-Date: 2026-02-19
+Date: 2026-11-18
 
 Status: rolling
 
@@ -14,6 +14,8 @@ When built with SQLite support (`AGENT_HAVE_SQLITE3`), `agentd` stores its canon
 - durable scene snapshots (`scene_states`)
 - durable async job metadata (`jobs`)
 - durable workflows (`workflows`, `workflow_tasks`, `workflow_events`)
+- durable activated external-signal waits (`workflow_signals`, schema v42), with a single immutable authenticated delivery receipt and atomic task wakeup. Payloads are durable application data, not credentials storage. See [WORKFLOW_SIGNALS.md](WORKFLOW_SIGNALS.md).
+- worker-free delay timers (`workflow_delay_timers`, schema v40) and task/turn-scoped guarded effect receipts (`workflow_effects.effect_slot`, schema v41). See [WORKFLOWS.md](WORKFLOWS.md) and [WORKFLOW_EFFECTS.md](WORKFLOW_EFFECTS.md).
 - durable process decisions (`workflow_decisions`, schema v38), unique by workflow/task, with worker-free waits, one immutable configured answer and atomic task wakeup. Notes are durable application data, not secrets. See [WORKFLOW_DECISIONS.md](WORKFLOW_DECISIONS.md).
 - immutable saved SOP versions (`workflow_sop_definitions`, schema v37), unique by `(definition_id, version)` with canonical source hash and keyset-paged metadata. Exact versions are copied into submitted workflow snapshots. Definitions are not credentials storage; known inline credential fields are rejected. See [SOP_WORKFLOWS.md](SOP_WORKFLOWS.md).
 - immutable signed device receipts (`edge_task_receipts`, schema v36), bound to original assignment identity/payload and separate from platform timeout/cancellation. Receipt result and attestation data follow the same sensitive-data retention/erase policy as device tasks; deleting the parent assignment cascades its receipt. See [DEVICE_ASSIGNMENTS.md](DEVICE_ASSIGNMENTS.md).
@@ -104,7 +106,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v39)
+## Schema (v42)
 
 ### `edge_task_receipts`
 
@@ -467,6 +469,35 @@ Indexes:
 - `choice_id TEXT NOT NULL DEFAULT ''`, `outcome TEXT NOT NULL DEFAULT ''`, `note TEXT NOT NULL DEFAULT ''`, `delivery_id TEXT NOT NULL DEFAULT ''`.
 
 First wait creation and worker/attempt release are one transaction. First answer and queued-task wakeup are one transaction. Historical receipt replays never mutate workflow cancellation or task readiness. See [decision contract](WORKFLOW_DECISIONS.md).
+
+### `workflow_signals`
+
+- `signal_id TEXT PRIMARY KEY`; stable identity binds workflow, task and canonical signal definition hash.
+- `workflow_id TEXT NOT NULL`, `task_id TEXT NOT NULL`; unique pair and cascading foreign key to `workflow_tasks`.
+- `request_hash TEXT NOT NULL`, `spec_json TEXT NOT NULL`; integrity-checked normalized signal name/title/timeout.
+- `state TEXT NOT NULL`: `waiting|resolved|expired`. `stopped` is a read projection from authoritative workflow/task state.
+- `created_unix_ms INTEGER NOT NULL`, `expires_unix_ms INTEGER NOT NULL DEFAULT 0`, `resolved_unix_ms INTEGER NOT NULL DEFAULT 0`.
+- `payload_json TEXT NOT NULL DEFAULT ''`, `payload_hash TEXT NOT NULL DEFAULT ''`, `delivery_id TEXT NOT NULL DEFAULT ''`.
+
+Activation and worker/attempt release are one transaction. First delivery commits the payload, hash, idempotency identity and queued-task wakeup atomically. Identical historical receipt replays never mutate workflow cancellation or task readiness. The read projection omits payload content; a completed task result contains the accepted payload. These are bounded single-use waits, not preactivation queues or broadcast mailboxes. See [signal contract](WORKFLOW_SIGNALS.md).
+
+### `workflow_delay_timers`
+
+- `workflow_id TEXT NOT NULL`, `task_id TEXT NOT NULL`; composite primary key and cascading foreign key to `workflow_tasks`.
+- `request_json TEXT NOT NULL`; persisted normalized timer request, checked before resumption.
+- `delay_ms INTEGER NOT NULL`, `due_unix_ms INTEGER NOT NULL`; duration and original durable wakeup time.
+
+The original due time survives daemon restarts rather than rearming the delay. Waiting releases the worker and does not consume an execution attempt or elapsed-time budget.
+
+### `workflow_effects`
+
+- `effect_id TEXT PRIMARY KEY`, `workflow_id TEXT NOT NULL`, `task_id TEXT NOT NULL`.
+- `effect_slot TEXT NOT NULL DEFAULT ''`; schema v41 scopes multiple delegated turn effects within one task. `(workflow_id, task_id, effect_slot)` is unique, with cascading foreign key to `workflow_tasks`.
+- `request_hash TEXT NOT NULL`, `mode TEXT NOT NULL` (`guarded|idempotent`), `state TEXT NOT NULL` (`prepared|dispatching|completed|unknown`).
+- `revision INTEGER NOT NULL`, `attempt INTEGER NOT NULL`, `created_unix_ms INTEGER NOT NULL`, `updated_unix_ms INTEGER NOT NULL`.
+- `receipt_json TEXT NOT NULL DEFAULT ''`, `reconcile_url TEXT NOT NULL DEFAULT ''`.
+
+Effect identity and persisted receipts fence unsafe repeat dispatch. Unknown outcomes require the documented reconciliation path, not blind replay. See [effect contract](WORKFLOW_EFFECTS.md).
 
 ### `workflow_events`
 
