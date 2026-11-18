@@ -1,6 +1,7 @@
 import React from "react";
 import ProcessHttpRead from "./ProcessHttpRead";
 import ProcessSignal from "./ProcessSignal";
+import ProcessCondition from "./ProcessCondition";
 import ProcessHostCommand, { editableProcessCommand } from "./ProcessHostCommand";
 import { ProcessDeadline, ProcessDecision } from "./ProcessActionFields";
 
@@ -59,6 +60,13 @@ export default function WorkflowSopEditor({ value, onChange }: { value: string; 
       </div>
       {stage.actions.map((action: Obj, j: number) => <fieldset key={j} className="min-w-0 space-y-2 rounded border border-white/10 p-2">
         <legend className="break-all">Action {j + 1}: {action.task_id}</legend>
+        <ProcessCondition taskId={action.task_id} value={action.when}
+          sources={sop.stages.slice(0, i).flatMap((s: Obj) => s.actions.map((a: Obj) => a.task_id)).concat(
+            (stage.mode || "sequence") === "sequence" ? stage.actions.slice(0, j).map((a: Obj) => a.task_id) : [])}
+          onChange={next => update(s => {
+            if (next === undefined) delete s.stages[i].actions[j].when;
+            else s.stages[i].actions[j].when = next;
+          })} />
         {action.kind === "llm" && object(action.request) ? <label className="block">Instructions<textarea aria-label="Instructions" className={field} value={action.request.prompt || ""} onChange={e => update(s => { s.stages[i].actions[j].request.prompt = e.target.value; })} /></label> :
          action.kind === "delay" ? <label className="block">Wait (milliseconds)<input type="number" min="0" max="600000" className={field} value={action.delay_ms ?? 0} onChange={e => { if (e.target.value !== "") update(s => { s.stages[i].actions[j].delay_ms = Number(e.target.value); }); }} /></label> :
          action.kind === "http_json" && object(action.http_json) && (!action.http_json.method || action.http_json.method === "GET") ? <ProcessHttpRead spec={action.http_json} onChange={next => update(s => { s.stages[i].actions[j].http_json = next; })} /> :

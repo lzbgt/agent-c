@@ -325,6 +325,8 @@ schemas:
     $ref: ./components/workflow.yaml#/WorkflowMemoryQuerySpec
   WorkflowExperienceRecordSpec:
     $ref: ./components/workflow.yaml#/WorkflowExperienceRecordSpec
+  WorkflowCondition:
+    $ref: ./components/workflow.yaml#/WorkflowCondition
   WorkflowTaskSignalSpec:
     $ref: ./components/workflow.yaml#/WorkflowTaskSignalSpec
   WorkflowSignal:

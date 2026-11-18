@@ -35,7 +35,8 @@ The authoritative capability/verification snapshot is [docs/CURRENT_SNAPSHOT.md]
 - [x] Restart-safe worker-free delay timers: atomic arm/yield, preserved due times, cancellation/deadlines, idle-budget semantics and visible scheduled waits.
 - [x] Absolute-time workflow/SOP timers with strict timestamp admission, fixed persisted due times beyond the relative delay cap, worker-free restart/cancellation behavior and typed API/UI support.
 - [x] Activated single-delivery external JSON signals: atomic worker-free wait/wakeup, bounded payloads, exact immutable receipts, restart/expiry/owner-stop safety, repeated-SOP identity and guided/read-only UI.
-- [ ] P1: pre-activation signal mailboxes, broadcast/publisher authorization and richer timer contracts (calendar/timezone/recurrence), branches/loops, person/role-bound approvals, compensation and active-run version migration.
+- [x] Bounded conditional workflow/SOP actions (2026-11-18): strict typed result equality, automatic dependencies, repeat-aware pinned references, fail-closed validation and explicit effect-free skip receipts; guided editing and honest executed/skipped progress.
+- [ ] P1: pre-activation signal mailboxes, broadcast/publisher authorization and richer timer contracts (calendar/timezone/recurrence), general branch transitions/dynamic loops, person/role-bound approvals, compensation and active-run version migration.
 - [ ] P1: instance-scoped pollable core ports and board-level resource/power-loss evidence.
 - [ ] P1: provider metadata/checkpoint contracts, mid-turn steering and remaining legacy CLI decomposition.
 - [x] Guided SOP stage/action authoring: names, sequencing/parallelism, stage/action ordering, model instructions, waits and review questions; preserve advanced fields and keep raw execution configuration behind advanced controls.

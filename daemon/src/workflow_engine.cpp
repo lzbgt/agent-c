@@ -19,6 +19,7 @@
 #include "workflow_model_effect.h"
 #include "workflow_decision.h"
 #include "workflow_signal.h"
+#include "workflow_condition.h"
 #include "workflow_edge_invoke.h"
 #include "workflow_agentd_call.h"
 #include "workflow_evidence.h"
@@ -246,6 +247,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   // Resolve template vars from completed tasks (assistant_text only).
   std::unordered_map<std::string, std::string> assistant_by_task;
   std::unordered_map<std::string, Json::Value> result_json_by_task;
+  std::unordered_map<std::string, Json::Value> condition_sources;
   int64_t workflow_tool_calls_used = 0;
   int64_t workflow_steps_used = 0;
   int64_t workflow_elapsed_ms_used = 0;
@@ -280,6 +282,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         const std::string a = json_get_string(r, "assistant_text");
         if (!a.empty()) assistant_by_task[t.task_id] = a;
         result_json_by_task[t.task_id] = r;
+        if (t.status == "done" && r.get("ok", false) == true && r.get("skipped", false) != true) condition_sources[t.task_id] = r;
       }
     }
   }
@@ -387,17 +390,25 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   Json::Value avm_capsule_args(Json::nullValue);
   Json::Value avm_task_result(Json::nullValue);
   bool should_persist_avm_evidence = false;
+  Json::Value condition_receipt;
+  bool condition_skipped = false;
   if (json_parse_any_value(task.request_json, &rr, &perr) && rr.isObject()) {
-    std::vector<std::string> tmpl_errors;
-    (void)workflow_expand_templates_for_task_request(&rr, assistant_by_task, result_json_by_task, &tmpl_errors);
-    if (!tmpl_errors.empty()) {
-      out = Json::Value(Json::objectValue);
-      out["ok"] = false;
-      out["assistant_text"] = "";
-      out["error"] = "template expansion failed";
-      Json::Value arr(Json::arrayValue);
-      for (const auto& e : tmpl_errors) arr.append(e);
-      out["template_errors"] = arr;
+    // Guard before templates, model journals, waits and budget/effect admission.
+    if (rr.isMember("when")) {
+      out = workflow_condition_evaluate(rr["when"], condition_sources, &condition_receipt);
+      condition_skipped = out.isObject() && out["skipped"] == true;
+      rr.removeMember("when"); // Literal comparisons never enter template expansion.
+    }
+    if (out.isNull()) {
+      std::vector<std::string> tmpl_errors;
+      (void)workflow_expand_templates_for_task_request(&rr, assistant_by_task, result_json_by_task, &tmpl_errors);
+      if (!tmpl_errors.empty()) {
+        out = Json::Value(Json::objectValue);
+        out["ok"] = false; out["assistant_text"] = ""; out["error"] = "template expansion failed";
+        Json::Value arr(Json::arrayValue);
+        for (const auto& e : tmpl_errors) arr.append(e);
+        out["template_errors"] = arr;
+      }
     }
     request_body = json_stringify_compact(rr);
   }
@@ -1544,6 +1555,10 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     out = model_effect.finish(std::move(out));
   }
 
+  if (!condition_receipt.isNull() && out.isObject()) {
+    out["condition"] = condition_receipt;
+    if (!condition_skipped) out.removeMember("skipped");
+  }
   // Ensure deterministic tasks (and budget cancellation results) have basic telemetry fields.
   if (out.isObject()) {
     const auto elapsed_ms =
@@ -1660,7 +1675,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   }
 
   std::string expect_err;
-  const bool expect_ok = apply_expectations(task.expect_json, out, &expect_err);
+  const bool expect_ok = condition_skipped || apply_expectations(task.expect_json, out, &expect_err);
   const bool run_ok = out.isObject() && out.isMember("ok") && out["ok"].isBool() && out["ok"].asBool();
   const bool run_cancelled =
     out.isObject() && out.isMember("cancelled") && out["cancelled"].isBool() && out["cancelled"].asBool();

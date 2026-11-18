@@ -59,6 +59,10 @@ export function normalizeTask(raw: unknown): WorkflowTask | null {
       Number.isFinite(raw.wait.due_unix_ms) && raw.wait.due_unix_ms > 0
       ? { kind: raw.wait.kind, due_unix_ms: raw.wait.due_unix_ms } : undefined,
     task_id: taskId,
+    skipped: raw.skipped === true && raw.status === "done" && isObjectRecord(raw.condition) && raw.condition.matched === false,
+    condition: isObjectRecord(raw.condition) && typeof raw.condition.task_id === "string" &&
+      typeof raw.condition.pointer === "string" && typeof raw.condition.matched === "boolean"
+      ? { task_id: raw.condition.task_id, pointer: raw.condition.pointer, matched: raw.condition.matched } : undefined,
     blocker: isObjectRecord(raw.blocker) && typeof raw.blocker.required_action === "string"
       ? { required_action: raw.blocker.required_action, kind: typeof raw.blocker.kind === "string" ? raw.blocker.kind : undefined } : undefined,
     status: typeof raw.status === "string" ? raw.status : undefined,
@@ -233,7 +237,7 @@ export function extractWorkflowSummary(resp?: WorkflowDetailResp | null): Workfl
 export function countByStatus(tasks: WorkflowTask[]) {
   const counts: Record<string, number> = {};
   for (const task of tasks) {
-    const s = String(task.status || "unknown").toLowerCase();
+    const s = task.skipped ? "skipped" : String(task.status || "unknown").toLowerCase();
     counts[s] = (counts[s] ?? 0) + 1;
   }
   return counts;

@@ -172,11 +172,11 @@ export default function WorkflowDetailSection(props: WorkflowDetailSectionProps)
                 <div className="mt-2 grid gap-2">
                   {levelTasks.length === 0 ? <div className="text-[11px] text-white/40">—</div> : null}
                   {levelTasks.map((task) => (
-                    <div key={task.task_id} className="rounded-md border border-white/10 bg-black/40 px-2 py-1">
+                    <div key={task.task_id} data-testid={"workflow-task-" + task.task_id} className="rounded-md border border-white/10 bg-black/40 px-2 py-1">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="font-mono text-[11px] text-white/80">{task.task_id}</span>
                         <span className={`rounded border px-1.5 py-0.5 text-[9px] ${statusBadge(task.status)}`}>
-                          {task.status ?? "unknown"}
+                          {task.skipped ? "Skipped" : task.status ?? "unknown"}
                         </span>
                       </div>
                       <div className="mt-1 text-[10px] text-white/50">
@@ -186,6 +186,8 @@ export default function WorkflowDetailSection(props: WorkflowDetailSectionProps)
                         attempt {task.attempt ?? 0}/{task.max_attempts ?? 1}
                         {task.allow_error ? " · allow_error" : ""}
                       </div>
+                      {task.skipped ? <p className="mt-1 text-[10px] text-white/60">Action was not executed.</p> : null}
+                      {task.condition ? <details className="mt-1 break-words text-[10px] text-white/60"><summary className="cursor-pointer">Condition {task.condition.matched ? "matched" : "did not match"}</summary><p>{task.condition.task_id}{task.condition.pointer}</p></details> : null}
                       {task.error ? <div className="mt-1 text-[10px] text-rose-200">error: {task.error}</div> : null}
                     </div>
                   ))}

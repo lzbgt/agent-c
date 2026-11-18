@@ -1,4 +1,8 @@
 WorkflowTaskSpec:
+  type: object
+  properties:
+    when:
+      $ref: "#/components/schemas/WorkflowCondition"
   description: |
     Workflow task specification.
 
@@ -72,6 +76,33 @@ WorkflowTaskSpec:
     - $ref: "#/components/schemas/WorkflowTaskEdgeWaitSensorSpec"
     - $ref: "#/components/schemas/WorkflowTaskDelegateSpec"
 
+
+WorkflowCondition:
+  type: object
+  additionalProperties: false
+  required: [task_id, pointer, equals]
+  description: |
+    Optional top-level task guard. Adds a dependency on task_id and compares one
+    field of its successful, non-skipped result before templates, budget admission
+    or effects. Values are literal, never expressions or templates. A false comparison
+    produces a zero-execution-cost skipped receipt; missing, failed, skipped or
+    wrong-typed input fails without retry. Task expectations apply only when executed.
+    No permission is granted. Numbers, compound values, defaults, nested run/delegate
+    guards and submit-time expansion macros are unsupported. SOP sources must be in
+    earlier stages or earlier actions of a sequential stage; the compiler maps source
+    action IDs to the current/latest eligible expanded repetition.
+  properties:
+    task_id: { type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_.:-]+$' }
+    pointer:
+      type: string
+      minLength: 1
+      maxLength: 512
+      description: Strict nonempty JSON pointer, at most 32 segments and 512 UTF-8 bytes. Missing fields are not null; array indexes are canonical nonnegative decimal integers.
+    equals:
+      description: Exact same-type equality. Strings are bounded to 1024 UTF-8 bytes without NUL. No numeric or boolean/string coercion.
+      oneOf:
+        - { type: boolean, nullable: true }
+        - { type: string, maxLength: 1024 }
 
 WorkflowTaskSignalSpec:
   type: object
@@ -2088,7 +2119,7 @@ WorkflowSop:
   type: object
   additionalProperties: false
   required: [schema, id, version, stages]
-  description: Versioned SOP lowered server-side into the existing durable DAG. Stages execute in order; actions within each stage are sequential or parallel. No approval, branching, compensation, or exactly-once guarantee is implied.
+  description: Versioned SOP lowered server-side into the existing durable DAG. Stages execute in order; actions within each stage are sequential or parallel. Bounded conditional actions are supported through when; no person-specific approval, general control-flow, compensation, or exactly-once guarantee is implied.
   properties:
     schema: { type: string, enum: [agentd.sop.v1] }
     id: { type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_.:-]+$' }
@@ -2110,7 +2141,7 @@ WorkflowSop:
             type: integer
             minimum: 1
             maximum: 32
-            description: Optional, defaults to one. Fixed intentional repetition, not retry. Each iteration waits for all prior iteration terminal actions. Counts greater than one expand task IDs to source_id:repeat:N (one-based); references must use exact expanded IDs and are not rewritten. Expanded IDs must fit 128 characters and remain globally unique. All expanded actions count toward the 128-task limit. No loop condition or exactly-once effect guarantee.
+            description: Optional, defaults to one. Fixed intentional repetition, not retry. Each iteration waits for all prior iteration terminal actions. Counts greater than one expand task IDs to source_id:repeat:N (one-based); ordinary template references must use exact expanded IDs and are not rewritten. Conditional when.task_id source references are mapped to the current/latest eligible repetition. Expanded IDs must fit 128 characters and remain globally unique. All expanded actions count toward the 128-task limit. No loop condition or exactly-once effect guarantee.
           actions:
             type: array
             minItems: 1
@@ -2277,6 +2308,18 @@ WorkflowGetResponse:
       items:
         type: object
         properties:
+          skipped:
+            type: boolean
+            description: True only for a recorded non-matching condition. Task status done means its guard completed, not that the action executed.
+          condition:
+            type: object
+            additionalProperties: false
+            required: [task_id, pointer, matched]
+            description: Recorded conditional-action metadata, available without include_results. Compared values are not duplicated in this metadata; full results retain the evaluation receipt.
+            properties:
+              task_id: { type: string }
+              pointer: { type: string }
+              matched: { type: boolean }
           needs_input: { type: boolean }
           blocker:
             type: object

@@ -13,6 +13,7 @@
 #include "workflow_host_tool.h"
 #include "workflow_decision.h"
 #include "workflow_signal.h"
+#include "workflow_condition.h"
 
 #include <json/json.h>
 
@@ -70,6 +71,9 @@ void workflow_submit_handle(
     resp->status = 400;
     resp->body = json_error_body(sop_error);
     return;
+  }
+  if (!workflow_condition_validate_submission(args, &sop_error)) {
+    resp->status = 400; resp->body = json_error_body(sop_error); return;
   }
   Json::Value tasks = args["tasks"];
   if (!tasks.isArray() || tasks.empty()) {
@@ -1832,7 +1836,9 @@ void workflow_submit_handle(
 
     if (infer_depends_on) {
       std::unordered_set<std::string> refs;
-      collect_referenced_task_ids_from_json_value(task_req, &refs);
+      auto reference_request = task_req;
+      reference_request.removeMember("when"); // Conditions are literals, never templates.
+      collect_referenced_task_ids_from_json_value(reference_request, &refs);
       if (!refs.empty()) {
         bool changed = false;
         std::unordered_set<std::string> have(dep_ids.begin(), dep_ids.end());
@@ -1853,6 +1859,11 @@ void workflow_submit_handle(
       }
     }
 
+    std::string condition_error;
+    if (!workflow_condition_attach(t, task_id, &task_req, &deps_arr, &dep_ids, &condition_error)) {
+      resp->status = 400; resp->body = json_error_body(condition_error); return;
+    }
+    deps_by_task[task_id] = dep_ids;
     int max_attempts = 1;
 	    if (t.isMember("max_attempts") && t["max_attempts"].isInt()) {
 	      max_attempts = std::max(1, std::min(512, t["max_attempts"].asInt()));

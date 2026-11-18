@@ -1,7 +1,9 @@
 #include "workflow_sop.h"
+#include "workflow_condition.h"
 
 #include "agent/json_c14n.h"
 
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -56,6 +58,7 @@ bool workflow_compile_sop(Json::Value* args, std::string* error) {
   manifest["stages"] = Json::Value(Json::arrayValue);
   std::unordered_set<std::string> stage_ids, task_ids, source_task_ids;
   std::vector<std::string> previous;
+  std::unordered_map<std::string, std::string> latest_by_source;
   // Submit-time macros are excluded: their derived IDs would change stage boundaries.
   const std::unordered_set<std::string> kinds = {
     "llm", "delay", "timer", "decision", "signal", "host_tool", "http_json", "agentd_call", "aggregate", "avm_capsule",
@@ -95,6 +98,7 @@ bool workflow_compile_sop(Json::Value* args, std::string* error) {
       iteration_manifest["index"] = iteration;
       iteration_manifest["task_ids"] = Json::Value(Json::arrayValue);
       std::vector<std::string> current;
+      const auto parallel_sources = latest_by_source;
       for (const auto& action : actions) {
         if (tasks.size() >= 128) return fail("too many actions (max 128)");
         if (!action.isObject() || !safe_id(action["task_id"])) return fail("actions require globally unique task_id strings");
@@ -104,7 +108,7 @@ bool workflow_compile_sop(Json::Value* args, std::string* error) {
         if (!safe_id(Json::Value(id))) return fail("expanded task_id exceeds 128 bytes: " + source_id);
         if (!task_ids.insert(id).second) return fail("duplicate expanded task_id: " + id);
         if (action.isMember("depends_on") || action.isMember("id")) return fail("action dependencies are generated from stages: " + id);
-        if (!fields_allowed(action, {"task_id", "kind", "request", "allow_error", "priority", "max_attempts", "expect", "inputs", "delay_ms", "due_unix_ms", "result", "decision", "signal", "host_tool", "http_json", "agentd_call", "aggregate", "capsule", "memory_put", "memory_consolidate", "memory_search", "memory_timeline", "memory_structured_query", "memory_correlate", "memory_query", "experience_record", "edge", "edge_wait_sensor", "delegate"})) return fail("unsupported action field: " + id);
+        if (!fields_allowed(action, {"task_id", "kind", "request", "allow_error", "priority", "max_attempts", "expect", "when", "inputs", "delay_ms", "due_unix_ms", "result", "decision", "signal", "host_tool", "http_json", "agentd_call", "aggregate", "capsule", "memory_put", "memory_consolidate", "memory_search", "memory_timeline", "memory_structured_query", "memory_correlate", "memory_query", "experience_record", "edge", "edge_wait_sensor", "delegate"})) return fail("unsupported action field: " + id);
         if (action.isMember("allow_error") && (!action["allow_error"].isBool() || action["allow_error"].asBool())) return fail("allow_error is unsupported in SOP v1: " + id);
         if (action.isMember("kind") && (!action["kind"].isString() || !kinds.count(action["kind"].asString()))) return fail("unsupported action kind: " + id);
         Json::Value task = action;
@@ -115,7 +119,19 @@ bool workflow_compile_sop(Json::Value* args, std::string* error) {
         } else {
           for (const auto& dep : previous) task["depends_on"].append(dep);
         }
+        if (action.isMember("when")) {
+          std::string detail;
+          if (!workflow_condition_validate(action["when"], &detail)) return fail(detail);
+          const auto& available = mode == "parallel" ? parallel_sources : latest_by_source;
+          const auto source = available.find(action["when"]["task_id"].asString());
+          if (source == available.end()) return fail("when must reference an earlier sequential action or prior stage: " + id);
+          task["when"]["task_id"] = source->second;
+          bool dependency = false;
+          for (const auto& dep : task["depends_on"]) if (dep == source->second) dependency = true;
+          if (!dependency) task["depends_on"].append(source->second);
+        }
         tasks.append(task);
+        latest_by_source[source_id] = id;
         current.push_back(id);
         stage_manifest["task_ids"].append(id);
         iteration_manifest["task_ids"].append(id);

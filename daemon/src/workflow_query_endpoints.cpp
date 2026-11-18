@@ -2,6 +2,7 @@
 #include "workflow_budget.h"
 #include "workflow_decision.h"
 #include "workflow_signal.h"
+#include "workflow_condition.h"
 
 #include "daemon_auth.h"
 #include "http_util.h"
@@ -236,11 +237,12 @@ void handle_workflow_get_endpoint(
           std::string derr;
           if (json_parse_any(t.depends_on_json, &deps, &derr) && deps.isArray()) row["depends_on"] = deps;
         }
-        if ((include_results || t.status == "error") && !t.result_json.empty()) {
+        if ((include_results || t.status == "error" || t.request_json.find("\"when\"") != std::string::npos) && !t.result_json.empty()) {
           Json::Value rr;
           std::string rerr;
           if (json_parse_any(t.result_json, &rr, &rerr)) {
             if (include_results) row["result"] = rr;
+            workflow_condition_project(t.request_json, rr, &row);
             // Only a matching server-produced attempt receipt may describe a
             // safe transcript frontier. Never infer safety from dispatching alone
             // or return provider/tool payloads in the metadata projection.

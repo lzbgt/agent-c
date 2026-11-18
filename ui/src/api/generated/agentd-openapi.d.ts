@@ -10424,7 +10424,9 @@ export interface components {
          *     - If `kind == delegate_parallel`, `delegate.attempts` is required and `request.prompt` is not used (expanded into multiple tasks).
          *     - Otherwise, `request.prompt` is required (or prompt at the top-level is accepted by the server for legacy reasons).
          */
-        WorkflowTaskSpec: components["schemas"]["WorkflowTaskRunSpec"] | components["schemas"]["WorkflowTaskAvmCapsuleSpec"] | components["schemas"]["WorkflowTaskAggregateSpec"] | components["schemas"]["WorkflowTaskMemoryPutSpec"] | components["schemas"]["WorkflowTaskMemorySearchSpec"] | components["schemas"]["WorkflowTaskMemoryTimelineSpec"] | components["schemas"]["WorkflowTaskMemoryStructuredQuerySpec"] | components["schemas"]["WorkflowTaskMemoryCorrelateSpec"] | components["schemas"]["WorkflowTaskMemoryQuerySpec"] | components["schemas"]["WorkflowTaskExperienceRecordSpec"] | components["schemas"]["WorkflowTaskDecisionSpec"] | components["schemas"]["WorkflowTaskSignalSpec"] | components["schemas"]["WorkflowTaskHostToolSpec"] | components["schemas"]["WorkflowTaskHttpJsonSpec"] | components["schemas"]["WorkflowTaskAgentdCallSpec"] | components["schemas"]["WorkflowTaskAgentdParallelSpec"] | components["schemas"]["WorkflowTaskMemoryConsolidateSpec"] | components["schemas"]["WorkflowTaskDelaySpec"] | components["schemas"]["WorkflowTaskTimerSpec"] | components["schemas"]["WorkflowTaskEdgeInvokeSpec"] | components["schemas"]["WorkflowTaskEdgeParallelSpec"] | components["schemas"]["WorkflowTaskEdgeWaitSensorSpec"] | components["schemas"]["WorkflowTaskDelegateSpec"];
+        WorkflowTaskSpec: {
+            when?: components["schemas"]["WorkflowCondition"];
+        } & (components["schemas"]["WorkflowTaskRunSpec"] | components["schemas"]["WorkflowTaskAvmCapsuleSpec"] | components["schemas"]["WorkflowTaskAggregateSpec"] | components["schemas"]["WorkflowTaskMemoryPutSpec"] | components["schemas"]["WorkflowTaskMemorySearchSpec"] | components["schemas"]["WorkflowTaskMemoryTimelineSpec"] | components["schemas"]["WorkflowTaskMemoryStructuredQuerySpec"] | components["schemas"]["WorkflowTaskMemoryCorrelateSpec"] | components["schemas"]["WorkflowTaskMemoryQuerySpec"] | components["schemas"]["WorkflowTaskExperienceRecordSpec"] | components["schemas"]["WorkflowTaskDecisionSpec"] | components["schemas"]["WorkflowTaskSignalSpec"] | components["schemas"]["WorkflowTaskHostToolSpec"] | components["schemas"]["WorkflowTaskHttpJsonSpec"] | components["schemas"]["WorkflowTaskAgentdCallSpec"] | components["schemas"]["WorkflowTaskAgentdParallelSpec"] | components["schemas"]["WorkflowTaskMemoryConsolidateSpec"] | components["schemas"]["WorkflowTaskDelaySpec"] | components["schemas"]["WorkflowTaskTimerSpec"] | components["schemas"]["WorkflowTaskEdgeInvokeSpec"] | components["schemas"]["WorkflowTaskEdgeParallelSpec"] | components["schemas"]["WorkflowTaskEdgeWaitSensorSpec"] | components["schemas"]["WorkflowTaskDelegateSpec"]);
         WorkflowTaskRunSpec: {
             task_id: string;
             /** @description If true, task failure does not fail the workflow (soft-fail). */
@@ -10900,6 +10902,24 @@ export interface components {
              * @description Per-source result bound, clamped to 1024..65536 (default 8192).
              */
             max_result_chars?: number;
+        };
+        /**
+         * @description Optional top-level task guard. Adds a dependency on task_id and compares one
+         *     field of its successful, non-skipped result before templates, budget admission
+         *     or effects. Values are literal, never expressions or templates. A false comparison
+         *     produces a zero-execution-cost skipped receipt; missing, failed, skipped or
+         *     wrong-typed input fails without retry. Task expectations apply only when executed.
+         *     No permission is granted. Numbers, compound values, defaults, nested run/delegate
+         *     guards and submit-time expansion macros are unsupported. SOP sources must be in
+         *     earlier stages or earlier actions of a sequential stage; the compiler maps source
+         *     action IDs to the current/latest eligible expanded repetition.
+         */
+        WorkflowCondition: {
+            task_id: string;
+            /** @description Strict nonempty JSON pointer, at most 32 segments and 512 UTF-8 bytes. Missing fields are not null; array indexes are canonical nonnegative decimal integers. */
+            pointer: string;
+            /** @description Exact same-type equality. Strings are bounded to 1024 UTF-8 bytes without NUL. No numeric or boolean/string coercion. */
+            equals: (boolean | null) | string;
         };
         /**
          * @description Single-use external input after dependencies complete. Waiting occupies no worker,
@@ -12129,7 +12149,7 @@ export interface components {
              */
             mounts?: components["schemas"]["AvmCapsuleMountRequest"][];
         };
-        /** @description Versioned SOP lowered server-side into the existing durable DAG. Stages execute in order; actions within each stage are sequential or parallel. No approval, branching, compensation, or exactly-once guarantee is implied. */
+        /** @description Versioned SOP lowered server-side into the existing durable DAG. Stages execute in order; actions within each stage are sequential or parallel. Bounded conditional actions are supported through when; no person-specific approval, general control-flow, compensation, or exactly-once guarantee is implied. */
         WorkflowSop: {
             /** @enum {string} */
             schema: "agentd.sop.v1";
@@ -12144,7 +12164,7 @@ export interface components {
                  * @enum {string}
                  */
                 mode: "sequence" | "parallel";
-                /** @description Optional, defaults to one. Fixed intentional repetition, not retry. Each iteration waits for all prior iteration terminal actions. Counts greater than one expand task IDs to source_id:repeat:N (one-based); references must use exact expanded IDs and are not rewritten. Expanded IDs must fit 128 characters and remain globally unique. All expanded actions count toward the 128-task limit. No loop condition or exactly-once effect guarantee. */
+                /** @description Optional, defaults to one. Fixed intentional repetition, not retry. Each iteration waits for all prior iteration terminal actions. Counts greater than one expand task IDs to source_id:repeat:N (one-based); ordinary template references must use exact expanded IDs and are not rewritten. Conditional when.task_id source references are mapped to the current/latest eligible repetition. Expanded IDs must fit 128 characters and remain globally unique. All expanded actions count toward the 128-task limit. No loop condition or exactly-once effect guarantee. */
                 repeat_count?: number;
                 /** @description Existing WorkflowTaskSpec objects with globally unique task_id; dependencies are generated. Submit-time macros, explicit depends_on and allow_error=true are rejected. Max 128 expanded actions across all stages, including repetitions. Unknown action fields are rejected. */
                 actions: components["schemas"]["WorkflowTaskSpec"][];
@@ -12412,6 +12432,14 @@ export interface components {
                 updated_unix_ms: number;
             };
             tasks?: ({
+                /** @description True only for a recorded non-matching condition. Task status done means its guard completed, not that the action executed. */
+                skipped?: boolean;
+                /** @description Recorded conditional-action metadata, available without include_results. Compared values are not duplicated in this metadata; full results retain the evaluation receipt. */
+                condition?: {
+                    task_id: string;
+                    pointer: string;
+                    matched: boolean;
+                };
                 needs_input?: boolean;
                 /** @description Scoped required action, included without include_results for a failed task needing external input. */
                 blocker?: {

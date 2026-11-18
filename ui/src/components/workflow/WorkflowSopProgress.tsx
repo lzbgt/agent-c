@@ -20,11 +20,15 @@ export default function WorkflowSopProgress({ detail, tasks }: { detail: Workflo
     const counts: Record<string, number> = {};
     for (const id of taskIds) {
       const task = rows.get(id);
-      const status = !task ? "not loaded" : task.blocker?.required_action ? "needs attention" :
+      const status = !task ? "not loaded" : task.skipped ? "skipped" : task.blocker?.required_action ? "needs attention" :
         task.status === "queued" && task.wait?.kind ? "waiting (" + task.wait.kind + ")" : task.status || "unknown";
       counts[status] = (counts[status] || 0) + 1;
     }
     const done = taskIds.filter(id => rows.get(id)?.status === "done").length;
+    const skipped = taskIds.filter(id => rows.get(id)?.skipped === true).length;
+    if (skipped) return (done - skipped) + " executed · " + skipped + " skipped" +
+      Object.entries(counts).filter(([status]) => status !== "done" && status !== "skipped")
+        .map(([status, count]) => " · " + count + " " + status).join("");
     return done + "/" + taskIds.length + " completed · " +
       Object.entries(counts).map(([status, count]) => count + " " + status).join(" · ");
   };

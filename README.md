@@ -34,6 +34,7 @@ Workflows has separate **Runs**, **Create workflow** and **Schedules** sections.
 - **Autonomous work state:** a SQLite requirement/blocker ledger shared by `work_state` and `agent work`, with dependency validation, revision checks and evidence-gated transitions.
 - **Durable workflows:** immutable saved SOP versions, hash-pinned run snapshots, SOP compilation, task recovery, scheduling, dataflow and inspectable evidence.
 - **Deterministic host actions:** workflow/SOP tools run under existing policy with durable intent and saved-result replay. Interrupted effects are not blindly repeated; independent work continues. [Host action contract](docs/WORKFLOW_EFFECTS.md#deterministic-host-tools)
+- **Conditional process actions:** optional actions compare a bounded prior result without expressions or coercion. Non-matches have explicit non-execution receipts; missing/wrong-typed results fail closed. Guided authoring and executed/skipped progress are included. [Condition contract](docs/SOP_WORKFLOWS.md#conditional-actions)
 - **External process input:** activated signal waits accept one authenticated, bounded JSON payload with immutable delivery and restart/stop safety. Guided authoring and read-only run progress are included. [Signal contract](docs/WORKFLOW_SIGNALS.md)
 - **HTTP effects:** stable effect identity, intent/receipt journaling and reconciliation for guarded writes. Independent branches continue when another branch needs recovery. [Effect contract](docs/WORKFLOW_EFFECTS.md)
 - **Device dispatch:** immutable operation/node identity and transactional assignment, capacity and outbox publication prevent retry-driven command duplication. Uncertain outcomes expose a scoped human action while independent work continues. [Device contract](docs/DEVICE_ASSIGNMENTS.md)
@@ -92,7 +93,7 @@ cd ..
 tools/verify_current_snapshot.sh
 ```
 
-The current lane covers **27 native/CLI/API checks**, Go broker/gateway tests, **59 browser checks**, generated OpenAPI types and the production UI build. Browser cases include greeting clarity, streaming handoff, repeated identical turns, IME-safe sends, hidden metadata, subject-oriented settings, authorized browser effects and responsive workflow tools.
+The current lane covers **38 native/CLI/API checks**, Go broker/gateway tests, **81 browser checks**, generated OpenAPI types and the production UI build. Browser cases include greeting clarity, streaming handoff, repeated identical turns, IME-safe sends, hidden metadata, subject-oriented settings, authorized browser effects and responsive workflow tools.
 
 For the embedded-safe build:
 

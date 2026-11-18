@@ -355,6 +355,10 @@ Semantics:
 - Produces a deterministic result object with `ok=true`, plus any merged keys from `result`.
 - If `result.assistant_text` is omitted, `assistant_text` defaults to `"delay:<delay_ms>"`.
 
+### Conditional actions (`when`)
+
+Individual tasks may declare a strict equality condition on a successful earlier task result. The server adds the dependency, evaluates before execution admission and persists an explicit successful skip when the condition does not match. Missing, wrong-typed or skipped source results fail closed. Existing policy, approval and effect-recovery rules remain authoritative. See [conditional actions](SOP_WORKFLOWS.md#conditional-actions) for the raw task contract, bounds, repeated-SOP mapping and skip semantics.
+
 ### External-input wait (`kind:"signal"`)
 
 Use a signal task to wait for one explicitly delivered JSON result. It yields workers,

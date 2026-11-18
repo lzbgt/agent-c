@@ -490,6 +490,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/workflow_sop_registry.cpp
     daemon/src/workflow_decision.cpp
     daemon/src/workflow_signal.cpp
+    daemon/src/workflow_condition.cpp
     daemon/src/workflow_submit_macros.cpp
     daemon/src/workflow_submit_task_builders.cpp
     daemon/src/workflow_fairq_cost.cpp
@@ -2057,6 +2058,10 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
     target_compile_definitions(workflow_fairq_cost_tests PRIVATE AGENT_HAVE_JSONCPP=1)
     add_test(NAME workflow_fairq_cost_tests COMMAND workflow_fairq_cost_tests)
 
+    add_executable(workflow_condition_tests tests/test_workflow_condition.cpp)
+    target_link_libraries(workflow_condition_tests PRIVATE agentd_lib)
+    add_test(NAME workflow_condition_tests COMMAND workflow_condition_tests)
+
     add_executable(workflow_sop_tests tests/test_workflow_sop.cpp)
     target_link_libraries(workflow_sop_tests PRIVATE agentd_lib)
     add_test(NAME workflow_sop_tests COMMAND workflow_sop_tests)
@@ -2076,6 +2081,7 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
       add_test(NAME workflow_signal_tests COMMAND workflow_signal_tests)
       if(AGENTD_ENABLE_HTTP)
         add_test(NAME agentd_workflow_signal_smoke COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/workflow_signal_smoke.py $<TARGET_FILE:agentd>)
+        add_test(NAME agentd_workflow_condition_smoke COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/workflow_condition_smoke.py $<TARGET_FILE:agentd>)
       endif()
       add_executable(workflow_decision_tests tests/test_workflow_decision.cpp)
       target_link_libraries(workflow_decision_tests PRIVATE agentd_lib)
